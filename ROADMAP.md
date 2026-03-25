@@ -4,6 +4,14 @@
 
 ---
 
+## Principles
+
+- **Minimal footprint** — CashPilot itself should be as slim as possible. The managed services already consume resources; the orchestrator should not add significant overhead.
+- **Docker socket optional** — CashPilot works in two modes: direct (socket mounted, full management) and monitor-only (no socket, dashboard + compose export). Never assume the socket is available.
+- **YAML is truth** — every service is defined in `services/{category}/{slug}.yml`. UI, deployment, docs, and compose export all derive from these files.
+
+---
+
 ## v1.0 — Foundation (current)
 
 The MVP: deploy, monitor, and manage passive income containers from a single web UI.
@@ -19,13 +27,16 @@ The MVP: deploy, monitor, and manage passive income containers from a single web
 - [x] Auto-generated documentation from YAML definitions
 - [x] Multi-arch Docker image (amd64 + arm64)
 - [x] 28 services across 4 categories
+- [x] Compose file export (per-service and bulk) for users without Docker socket access
+- [x] Monitor-only mode when Docker socket is not mounted
+- [x] CashPilot labels on all managed containers (`cashpilot.managed`, `cashpilot.service`)
 
 ## v1.1 — Earnings Intelligence
 
 Turn CashPilot from a deployment tool into an earnings optimization platform.
 
 - [ ] **Earnings collectors** for top services
-  - [ ] Honeygain (done)
+  - [x] Honeygain (JWT auth + /v2/earnings)
   - [ ] EarnApp (Bright Data API)
   - [ ] MystNodes (Tequila API at localhost:4449)
   - [ ] Traffmonetizer (token-based API)
@@ -38,24 +49,31 @@ Turn CashPilot from a deployment tool into an earnings optimization platform.
   - [ ] Total portfolio value over time
 - [ ] **Service health scoring** — uptime percentage, restart frequency, earnings-per-hour
 - [ ] **Notifications** — webhook/email alerts for container crashes, earnings drops, payout thresholds
+- [ ] **Auto-claim daily rewards** — automated login + claim for services with daily bonuses (like Honeygain lucky pot)
 
 ## v1.2 — Multi-Node Fleet Management
 
 For power users running CashPilot on multiple servers.
 
-- [ ] **Remote node agents** — lightweight agent that reports back to a central CashPilot instance
-- [ ] **Fleet dashboard** — see all nodes, their services, and aggregate earnings in one view
+- [ ] **CashPilot Agent** — lightweight container (~10 MB) that runs on each remote node
+  - Phones home to the central CashPilot instance over HTTPS
+  - Outbound-only connections (works behind NAT/firewalls)
+  - Reports: container status, resource usage, earnings data
+  - Receives: deploy/stop/restart commands
+  - Auth: shared secret or API key per node
+- [ ] **Fleet dashboard** — all nodes, their services, and aggregate earnings in one view
 - [ ] **Node health map** — geographic visualization of your fleet
-- [ ] **Cross-node service deduplication** — warn if the same account runs on multiple nodes (some services ban this)
-- [ ] **Bulk deploy** — deploy a service across all nodes with one click
+- [ ] **Cross-node deduplication** — warn if the same account runs on multiple nodes (some services ban this)
+- [ ] **Bulk deploy** — deploy a service across all/selected nodes with one click
+- [ ] **Multi-proxy support** — run multiple instances of a service across different proxies/IPs
 
 ## v1.3 — Smart Optimization
 
 Let CashPilot make intelligent recommendations.
 
+- [ ] **IP type detection** — automatically detect residential vs. datacenter and warn about incompatible services
 - [ ] **Earnings estimator** — based on your location, ISP, and hardware, predict which services will earn the most
 - [ ] **Auto-scaling suggestions** — "You could earn $X more by adding Service Y"
-- [ ] **IP type detection** — automatically detect residential vs. datacenter and warn about incompatible services
 - [ ] **Resource usage optimization** — suggest which services to stop if CPU/memory/bandwidth is constrained
 - [ ] **Payout tracker** — track minimum payout thresholds and estimated time to next payout per service
 
@@ -68,14 +86,15 @@ Broaden beyond bandwidth sharing.
 - [ ] **Storage sharing** — guided Storj setup with disk allocation UI
 - [ ] **VPN relay nodes** — Sentinel dVPN, Mysterium (already supported), Orchid
 - [ ] **CDN/edge nodes** — Flux, Theta Edge Node
-- [ ] **New service YAML contributions** — community-submitted services via PR
+- [ ] **New service YAML contributions** — community-submitted services via PR (12+ services found in competitors not yet in CashPilot)
 
 ## v2.0 — Platform
 
 Transform CashPilot into a passive income operating system.
 
 - [ ] **Plugin system** — custom collectors, deployers, and UI widgets without forking
-- [ ] **REST API** — full CRUD API for external integrations and automation
+- [ ] **Full REST API** — documented OpenAPI schema for external integrations and automation
+- [ ] **Helm chart** — deploy CashPilot on Kubernetes clusters
 - [ ] **Mobile app** — React Native companion for monitoring on the go
 - [ ] **Service marketplace** — community-curated service definitions with ratings and reviews
 - [ ] **Earnings export** — CSV/JSON export for tax reporting and accounting
@@ -85,7 +104,6 @@ Transform CashPilot into a passive income operating system.
 ## Future Ideas (unscheduled)
 
 - **Portainer integration** — import/export from existing Portainer stacks
-- **Kubernetes support** — deploy services as K8s pods for enterprise users
 - **Terraform provider** — infrastructure-as-code for CashPilot deployments
 - **Earning benchmarks** — anonymous, opt-in community benchmarks by region/ISP
 - **Referral code manager** — track which referral codes are active and their conversion rates
@@ -93,6 +111,7 @@ Transform CashPilot into a passive income operating system.
 - **Dark/light theme toggle** — currently dark-only
 - **Localization** — i18n for non-English users
 - **Backup/restore** — export and import CashPilot configuration + credentials
+- **Home Assistant add-on** — deploy CashPilot as an HA Supervisor add-on
 
 ---
 

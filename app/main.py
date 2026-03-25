@@ -13,12 +13,12 @@ from typing import Any
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from fastapi import FastAPI, HTTPException, Request, Form
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 
-from app import catalog, database, orchestrator
+from app import catalog, compose_generator, database, orchestrator
 from app import auth
 
 logging.basicConfig(
@@ -71,7 +71,8 @@ async def lifespan(app: FastAPI):
     catalog.register_sighup()
     scheduler.add_job(_run_collection, "interval", hours=6, id="collect")
     scheduler.start()
-    logger.info("CashPilot started")
+    docker_mode = "direct" if orchestrator.docker_available() else "monitor-only"
+    logger.info("CashPilot started (Docker: %s)", docker_mode)
     yield
     # Shutdown
     scheduler.shutdown(wait=False)
@@ -320,6 +321,17 @@ async def page_settings(request: Request):
 # ---------------------------------------------------------------------------
 
 
+@app.get("/api/mode")
+async def api_mode(request: Request) -> dict[str, Any]:
+    """Return CashPilot operating mode and Docker availability."""
+    _require_auth_api(request)
+    has_docker = orchestrator.docker_available()
+    return {
+        "docker": has_docker,
+        "mode": "direct" if has_docker else "monitor-only",
+    }
+
+
 @app.get("/api/services")
 async def api_list_services(request: Request) -> list[dict[str, Any]]:
     _require_auth_api(request)
@@ -409,6 +421,48 @@ async def api_remove(request: Request, slug: str) -> dict[str, str]:
         raise HTTPException(status_code=404, detail=str(exc))
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc))
+
+
+# ---------------------------------------------------------------------------
+# API: Compose export
+# ---------------------------------------------------------------------------
+
+
+@app.get("/api/compose/{slug}", response_class=PlainTextResponse)
+async def api_compose_single(request: Request, slug: str):
+    """Export a docker-compose.yml for a single service."""
+    _require_auth_api(request)
+    svc = catalog.get_service(slug)
+    if not svc:
+        raise HTTPException(status_code=404, detail=f"Service '{slug}' not found")
+    try:
+        return compose_generator.generate_compose_single(slug)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+class ComposeMultiRequest(BaseModel):
+    slugs: list[str]
+
+
+@app.post("/api/compose", response_class=PlainTextResponse)
+async def api_compose_multi(request: Request, body: ComposeMultiRequest):
+    """Export a docker-compose.yml for multiple services."""
+    _require_auth_api(request)
+    try:
+        return compose_generator.generate_compose_multi(body.slugs)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+@app.get("/api/compose", response_class=PlainTextResponse)
+async def api_compose_all(request: Request):
+    """Export a docker-compose.yml for ALL services with Docker images."""
+    _require_auth_api(request)
+    try:
+        return compose_generator.generate_compose_all()
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
 
 
 # ---------------------------------------------------------------------------
