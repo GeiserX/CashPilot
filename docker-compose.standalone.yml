@@ -29,6 +29,7 @@ services:
     environment:
       - TZ=${TZ:-UTC}
       - CASHPILOT_SECRET_KEY=${CASHPILOT_SECRET_KEY:-}
+    init: true
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
