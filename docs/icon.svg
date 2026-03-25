@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#000010"/>
+      <stop offset="50%" stop-color="#0d0025"/>
+      <stop offset="100%" stop-color="#000010"/>
+    </linearGradient>
+    <linearGradient id="sun" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#fde68a"/>
+      <stop offset="30%" stop-color="#fb923c"/>
+      <stop offset="60%" stop-color="#e11d48"/>
+      <stop offset="100%" stop-color="#6d28d9"/>
+    </linearGradient>
+    <clipPath id="sc"><circle cx="128" cy="110" r="70"/></clipPath>
+  </defs>
+  <rect width="256" height="256" rx="32" fill="url(#bg)"/>
+  <circle cx="128" cy="110" r="70" fill="url(#sun)" opacity="0.9"/>
+  <g clip-path="url(#sc)">
+    <rect x="55" y="110" width="146" height="3" fill="#000010"/>
+    <rect x="55" y="118" width="146" height="5" fill="#000010"/>
+    <rect x="55" y="128" width="146" height="7" fill="#000010"/>
+    <rect x="55" y="140" width="146" height="10" fill="#000010"/>
+    <rect x="55" y="156" width="146" height="14" fill="#000010"/>
+  </g>
+  <g stroke="#06b6d4" stroke-width="0.5">
+    <line x1="0" y1="190" x2="256" y2="190" opacity="0.25"/>
+    <line x1="0" y1="210" x2="256" y2="210" opacity="0.15"/>
+    <line x1="0" y1="230" x2="256" y2="230" opacity="0.08"/>
+    <line x1="128" y1="186" x2="0" y2="256" opacity="0.1"/>
+    <line x1="128" y1="186" x2="64" y2="256" opacity="0.1"/>
+    <line x1="128" y1="186" x2="128" y2="256" opacity="0.1"/>
+    <line x1="128" y1="186" x2="192" y2="256" opacity="0.1"/>
+    <line x1="128" y1="186" x2="256" y2="256" opacity="0.1"/>
+  </g>
+</svg>
