@@ -1,6 +1,30 @@
-<p align="center">
-  <img src="docs/banner.svg" alt="CashPilot" width="100%">
-</p>
+<!-- BANNER CANDIDATES — pick one, delete the rest -->
+
+### 1. Bold Neon (blue, high contrast, glowing compass + chart)
+<p align="center"><img src="docs/banners/01-bold-neon.svg" alt="Bold Neon" width="100%"></p>
+
+### 2. Money Green (green gradient, dollar signs, aggressive growth chart)
+<p align="center"><img src="docs/banners/02-money-green.svg" alt="Money Green" width="100%"></p>
+
+### 3. Terminal (ASCII art, hacker aesthetic, green on black)
+<p align="center"><img src="docs/banners/03-terminal.svg" alt="Terminal" width="100%"></p>
+
+### 4. Geometric (purple/cyan, hexagon + node network)
+<p align="center"><img src="docs/banners/04-geometric.svg" alt="Geometric" width="100%"></p>
+
+### 5. Gold Premium (serif, shield crest, coin stacks)
+<p align="center"><img src="docs/banners/05-gold-premium.svg" alt="Gold Premium" width="100%"></p>
+
+### 6. Synthwave (pink/cyan, retro sun, perspective grid)
+<p align="center"><img src="docs/banners/06-synthwave.svg" alt="Synthwave" width="100%"></p>
+
+### 7. Dashboard Dark (mini UI mockup with stats + chart)
+<p align="center"><img src="docs/banners/07-dashboard-dark.svg" alt="Dashboard Dark" width="100%"></p>
+
+### 8. Minimal White (clean white, large compass, container cards)
+<p align="center"><img src="docs/banners/08-minimal-white.svg" alt="Minimal White" width="100%"></p>
+
+<!-- END BANNER CANDIDATES -->
 
 <p align="center">
   <a href="https://hub.docker.com/r/drumsergio/cashpilot"><img alt="Docker Pulls" src="https://img.shields.io/docker/pulls/drumsergio/cashpilot?style=flat-square&logo=docker"></a>

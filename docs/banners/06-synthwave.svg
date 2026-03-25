@@ -1,0 +1,113 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 300" width="1200" height="300">
+  <defs>
+    <linearGradient id="bg6" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#0c0015"/>
+      <stop offset="50%" stop-color="#1a0030"/>
+      <stop offset="100%" stop-color="#0c0015"/>
+    </linearGradient>
+    <linearGradient id="pink6" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#ec4899"/>
+      <stop offset="100%" stop-color="#f472b6"/>
+    </linearGradient>
+    <linearGradient id="cyan6" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#06b6d4"/>
+      <stop offset="100%" stop-color="#22d3ee"/>
+    </linearGradient>
+    <linearGradient id="sunset" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#f472b6"/>
+      <stop offset="40%" stop-color="#ec4899"/>
+      <stop offset="70%" stop-color="#a855f7"/>
+      <stop offset="100%" stop-color="#6366f1"/>
+    </linearGradient>
+    <filter id="pinkGlow">
+      <feGaussianBlur stdDeviation="6" result="blur"/>
+      <feFlood flood-color="#ec4899" flood-opacity="0.5" result="color"/>
+      <feComposite in="color" in2="blur" operator="in" result="glow"/>
+      <feMerge>
+        <feMergeNode in="glow"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    <filter id="cyanGlow">
+      <feGaussianBlur stdDeviation="4" result="blur"/>
+      <feFlood flood-color="#06b6d4" flood-opacity="0.5" result="color"/>
+      <feComposite in="color" in2="blur" operator="in" result="glow"/>
+      <feMerge>
+        <feMergeNode in="glow"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    <linearGradient id="gridFade" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#06b6d4" stop-opacity="0"/>
+      <stop offset="60%" stop-color="#06b6d4" stop-opacity="0.3"/>
+      <stop offset="100%" stop-color="#06b6d4" stop-opacity="0.1"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="1200" height="300" fill="url(#bg6)"/>
+
+  <!-- Synthwave sun -->
+  <g transform="translate(950, 120)">
+    <circle cx="0" cy="0" r="80" fill="url(#sunset)" opacity="0.7"/>
+    <!-- Horizontal cut lines through sun -->
+    <rect x="-80" y="-2" width="160" height="6" fill="#0c0015"/>
+    <rect x="-80" y="10" width="160" height="8" fill="#0c0015"/>
+    <rect x="-80" y="24" width="160" height="10" fill="#0c0015"/>
+    <rect x="-80" y="40" width="160" height="14" fill="#0c0015"/>
+    <rect x="-80" y="60" width="160" height="20" fill="#0c0015"/>
+  </g>
+
+  <!-- Perspective grid floor -->
+  <g opacity="0.5">
+    <!-- Horizontal lines -->
+    <line x1="0" y1="200" x2="1200" y2="200" stroke="#06b6d4" stroke-width="0.5" opacity="0.3"/>
+    <line x1="0" y1="220" x2="1200" y2="220" stroke="#06b6d4" stroke-width="0.5" opacity="0.25"/>
+    <line x1="0" y1="240" x2="1200" y2="240" stroke="#06b6d4" stroke-width="0.5" opacity="0.2"/>
+    <line x1="0" y1="255" x2="1200" y2="255" stroke="#06b6d4" stroke-width="0.5" opacity="0.15"/>
+    <line x1="0" y1="268" x2="1200" y2="268" stroke="#06b6d4" stroke-width="0.5" opacity="0.1"/>
+    <line x1="0" y1="278" x2="1200" y2="278" stroke="#06b6d4" stroke-width="0.5" opacity="0.08"/>
+    <line x1="0" y1="286" x2="1200" y2="286" stroke="#06b6d4" stroke-width="0.5" opacity="0.06"/>
+    <line x1="0" y1="292" x2="1200" y2="292" stroke="#06b6d4" stroke-width="0.5" opacity="0.04"/>
+    <!-- Vertical perspective lines -->
+    <line x1="600" y1="180" x2="0" y2="300" stroke="#06b6d4" stroke-width="0.5" opacity="0.15"/>
+    <line x1="600" y1="180" x2="120" y2="300" stroke="#06b6d4" stroke-width="0.5" opacity="0.15"/>
+    <line x1="600" y1="180" x2="240" y2="300" stroke="#06b6d4" stroke-width="0.5" opacity="0.15"/>
+    <line x1="600" y1="180" x2="360" y2="300" stroke="#06b6d4" stroke-width="0.5" opacity="0.15"/>
+    <line x1="600" y1="180" x2="480" y2="300" stroke="#06b6d4" stroke-width="0.5" opacity="0.15"/>
+    <line x1="600" y1="180" x2="600" y2="300" stroke="#06b6d4" stroke-width="0.5" opacity="0.15"/>
+    <line x1="600" y1="180" x2="720" y2="300" stroke="#06b6d4" stroke-width="0.5" opacity="0.15"/>
+    <line x1="600" y1="180" x2="840" y2="300" stroke="#06b6d4" stroke-width="0.5" opacity="0.15"/>
+    <line x1="600" y1="180" x2="960" y2="300" stroke="#06b6d4" stroke-width="0.5" opacity="0.15"/>
+    <line x1="600" y1="180" x2="1080" y2="300" stroke="#06b6d4" stroke-width="0.5" opacity="0.15"/>
+    <line x1="600" y1="180" x2="1200" y2="300" stroke="#06b6d4" stroke-width="0.5" opacity="0.15"/>
+  </g>
+
+  <!-- Mountain/city silhouette on horizon -->
+  <polygon points="0,200 80,160 150,180 220,140 300,170 380,130 450,165 520,150 600,180 680,145 760,175 840,155 920,180 1000,160 1080,175 1200,180 1200,200"
+           fill="#1a0030" opacity="0.8"/>
+
+  <!-- Title - bold retro -->
+  <text x="80" y="120"
+        font-family="Inter, -apple-system, BlinkMacSystemFont, Arial, sans-serif"
+        font-size="90" font-weight="900" fill="url(#pink6)" letter-spacing="-2" filter="url(#pinkGlow)">
+    CashPilot
+  </text>
+
+  <!-- Chrome/outline text effect -->
+  <text x="80" y="120"
+        font-family="Inter, -apple-system, BlinkMacSystemFont, Arial, sans-serif"
+        font-size="90" font-weight="900" fill="none" stroke="#f8fafc" stroke-width="0.5" letter-spacing="-2" opacity="0.3">
+    CashPilot
+  </text>
+
+  <!-- Tagline -->
+  <text x="85" y="155"
+        font-family="Inter, -apple-system, BlinkMacSystemFont, Arial, sans-serif"
+        font-size="18" font-weight="600" fill="url(#cyan6)" letter-spacing="6" filter="url(#cyanGlow)">
+    PASSIVE INCOME ON AUTOPILOT
+  </text>
+
+  <!-- Top/bottom neon lines -->
+  <rect x="0" y="0" width="1200" height="2" fill="url(#pink6)" filter="url(#pinkGlow)"/>
+  <rect x="0" y="298" width="1200" height="2" fill="url(#cyan6)" filter="url(#cyanGlow)"/>
+</svg>

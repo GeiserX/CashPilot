@@ -1,0 +1,98 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 300" width="1200" height="300">
+  <defs>
+    <linearGradient id="bg1" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#020617"/>
+      <stop offset="100%" stop-color="#0c1222"/>
+    </linearGradient>
+    <linearGradient id="blue1" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#2563eb"/>
+      <stop offset="100%" stop-color="#38bdf8"/>
+    </linearGradient>
+    <linearGradient id="needle1" x1="0%" y1="100%" x2="0%" y2="0%">
+      <stop offset="0%" stop-color="#2563eb"/>
+      <stop offset="100%" stop-color="#38bdf8"/>
+    </linearGradient>
+    <filter id="neonGlow">
+      <feGaussianBlur stdDeviation="6" result="blur"/>
+      <feFlood flood-color="#3b82f6" flood-opacity="0.6" result="color"/>
+      <feComposite in="color" in2="blur" operator="in" result="glow"/>
+      <feMerge>
+        <feMergeNode in="glow"/>
+        <feMergeNode in="glow"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    <filter id="textGlow">
+      <feGaussianBlur stdDeviation="4" result="blur"/>
+      <feFlood flood-color="#3b82f6" flood-opacity="0.4" result="color"/>
+      <feComposite in="color" in2="blur" operator="in" result="glow"/>
+      <feMerge>
+        <feMergeNode in="glow"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <rect width="1200" height="300" fill="url(#bg1)"/>
+
+  <!-- Radiating circles behind compass -->
+  <circle cx="150" cy="150" r="130" fill="none" stroke="#3b82f6" stroke-width="0.5" opacity="0.15"/>
+  <circle cx="150" cy="150" r="100" fill="none" stroke="#3b82f6" stroke-width="0.5" opacity="0.1"/>
+
+  <!-- Bold compass -->
+  <g transform="translate(150, 150)" filter="url(#neonGlow)">
+    <!-- Outer ring - BOLD -->
+    <circle cx="0" cy="0" r="70" fill="none" stroke="url(#blue1)" stroke-width="3"/>
+    <!-- Inner fill -->
+    <circle cx="0" cy="0" r="65" fill="#3b82f6" opacity="0.08"/>
+    <!-- Cardinal ticks - thick -->
+    <line x1="0" y1="-70" x2="0" y2="-52" stroke="#38bdf8" stroke-width="4" stroke-linecap="round"/>
+    <line x1="70" y1="0" x2="52" y2="0" stroke="#38bdf8" stroke-width="3" stroke-linecap="round" opacity="0.7"/>
+    <line x1="0" y1="70" x2="0" y2="52" stroke="#38bdf8" stroke-width="3" stroke-linecap="round" opacity="0.7"/>
+    <line x1="-70" y1="0" x2="-52" y2="0" stroke="#38bdf8" stroke-width="3" stroke-linecap="round" opacity="0.7"/>
+    <!-- Heading arc -->
+    <path d="M -30 -58 A 65 65 0 0 1 30 -58" fill="none" stroke="url(#blue1)" stroke-width="3.5" stroke-linecap="round"/>
+    <!-- Heading bug -->
+    <polygon points="0,-68 -5,-58 5,-58" fill="#38bdf8"/>
+    <!-- Needle north -->
+    <polygon points="0,-48 -10,0 0,-8 10,0" fill="url(#needle1)"/>
+    <!-- Needle south -->
+    <polygon points="0,48 -10,0 0,8 10,0" fill="#1e3a5f" opacity="0.9"/>
+    <!-- Center -->
+    <circle cx="0" cy="0" r="6" fill="#0f172a" stroke="#38bdf8" stroke-width="2"/>
+    <circle cx="0" cy="0" r="2.5" fill="#38bdf8"/>
+  </g>
+
+  <!-- Title - large and bright -->
+  <text x="260" y="138"
+        font-family="Inter, -apple-system, BlinkMacSystemFont, Arial, sans-serif"
+        font-size="80" font-weight="900" fill="#f8fafc" letter-spacing="-3" filter="url(#textGlow)">
+    Cash<tspan fill="url(#blue1)">Pilot</tspan>
+  </text>
+
+  <!-- Tagline -->
+  <text x="265" y="180"
+        font-family="Inter, -apple-system, BlinkMacSystemFont, Arial, sans-serif"
+        font-size="22" font-weight="500" fill="#94a3b8" letter-spacing="1">
+    Self-hosted passive income platform
+  </text>
+
+  <!-- Neon accent bar -->
+  <rect x="265" y="195" width="80" height="3" rx="1.5" fill="url(#blue1)" filter="url(#neonGlow)"/>
+
+  <!-- Earnings chart - right side, bold -->
+  <g opacity="0.9">
+    <polyline
+      points="750,230 800,215 850,220 900,190 950,200 1000,165 1050,175 1100,140 1150,110"
+      fill="none" stroke="url(#blue1)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" filter="url(#neonGlow)"/>
+    <path d="M 750 230 L 800 215 L 850 220 L 900 190 L 950 200 L 1000 165 L 1050 175 L 1100 140 L 1150 110 L 1150 260 L 750 260 Z"
+          fill="#3b82f6" opacity="0.12"/>
+    <!-- Dots -->
+    <circle cx="1000" cy="165" r="4" fill="#38bdf8" filter="url(#neonGlow)"/>
+    <circle cx="1100" cy="140" r="4" fill="#38bdf8" filter="url(#neonGlow)"/>
+    <circle cx="1150" cy="110" r="5" fill="#38bdf8" filter="url(#neonGlow)"/>
+  </g>
+
+  <!-- Top neon line -->
+  <rect x="0" y="0" width="1200" height="3" fill="url(#blue1)" filter="url(#neonGlow)"/>
+</svg>
