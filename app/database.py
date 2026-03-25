@@ -41,6 +41,14 @@ CREATE TABLE IF NOT EXISTS deployments (
     status             TEXT NOT NULL DEFAULT 'running'
 );
 
+CREATE TABLE IF NOT EXISTS users (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    username   TEXT    NOT NULL UNIQUE,
+    password   TEXT    NOT NULL,
+    role       TEXT    NOT NULL DEFAULT 'viewer',
+    created_at TEXT    NOT NULL DEFAULT (datetime('now'))
+);
+
 CREATE INDEX IF NOT EXISTS idx_earnings_platform_date
     ON earnings (platform, date);
 """
@@ -244,6 +252,87 @@ async def remove_deployment(slug: str) -> None:
     db = await _get_db()
     try:
         await db.execute("DELETE FROM deployments WHERE slug = ?", (slug,))
+        await db.commit()
+    finally:
+        await db.close()
+
+
+# --- Users ---
+
+
+async def has_any_users() -> bool:
+    """Check if any user accounts exist (for first-run detection)."""
+    db = await _get_db()
+    try:
+        cursor = await db.execute("SELECT COUNT(*) as cnt FROM users")
+        row = await cursor.fetchone()
+        return row["cnt"] > 0
+    finally:
+        await db.close()
+
+
+async def create_user(username: str, hashed_password: str, role: str = "viewer") -> int:
+    db = await _get_db()
+    try:
+        cursor = await db.execute(
+            "INSERT INTO users (username, password, role) VALUES (?, ?, ?)",
+            (username, hashed_password, role),
+        )
+        await db.commit()
+        return cursor.lastrowid
+    finally:
+        await db.close()
+
+
+async def get_user_by_username(username: str) -> dict[str, Any] | None:
+    db = await _get_db()
+    try:
+        cursor = await db.execute(
+            "SELECT * FROM users WHERE username = ?", (username,)
+        )
+        row = await cursor.fetchone()
+        return dict(row) if row else None
+    finally:
+        await db.close()
+
+
+async def get_user_by_id(user_id: int) -> dict[str, Any] | None:
+    db = await _get_db()
+    try:
+        cursor = await db.execute(
+            "SELECT * FROM users WHERE id = ?", (user_id,)
+        )
+        row = await cursor.fetchone()
+        return dict(row) if row else None
+    finally:
+        await db.close()
+
+
+async def list_users() -> list[dict[str, Any]]:
+    db = await _get_db()
+    try:
+        cursor = await db.execute(
+            "SELECT id, username, role, created_at FROM users ORDER BY id"
+        )
+        rows = await cursor.fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        await db.close()
+
+
+async def update_user_role(user_id: int, role: str) -> None:
+    db = await _get_db()
+    try:
+        await db.execute("UPDATE users SET role = ? WHERE id = ?", (role, user_id))
+        await db.commit()
+    finally:
+        await db.close()
+
+
+async def delete_user(user_id: int) -> None:
+    db = await _get_db()
+    try:
+        await db.execute("DELETE FROM users WHERE id = ?", (user_id,))
         await db.commit()
     finally:
         await db.close()

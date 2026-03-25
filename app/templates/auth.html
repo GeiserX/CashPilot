@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="color-scheme" content="dark">
+  <title>{{ title }} - CashPilot</title>
+  <link rel="stylesheet" href="/static/css/style.css">
+  <style>
+    body { display: flex; align-items: center; justify-content: center; min-height: 100vh; background: var(--bg-primary); }
+    .auth-card {
+      background: var(--bg-secondary);
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius-lg);
+      padding: 2.5rem;
+      width: 100%;
+      max-width: 400px;
+    }
+    .auth-brand {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-size: 1.5rem;
+      font-weight: 700;
+      color: var(--text-primary);
+      margin-bottom: 0.5rem;
+    }
+    .auth-brand svg { color: var(--accent); }
+    .auth-subtitle { color: var(--text-muted); margin-bottom: 1.5rem; font-size: 0.93rem; }
+    .auth-field { margin-bottom: 1rem; }
+    .auth-field label {
+      display: block;
+      color: var(--text-secondary);
+      font-size: 0.85rem;
+      margin-bottom: 0.35rem;
+      font-weight: 500;
+    }
+    .auth-field input {
+      width: 100%;
+      padding: 0.6rem 0.75rem;
+      background: var(--bg-primary);
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius);
+      color: var(--text-primary);
+      font-size: 0.93rem;
+      outline: none;
+      transition: border-color var(--transition);
+    }
+    .auth-field input:focus { border-color: var(--accent); }
+    .auth-btn {
+      width: 100%;
+      padding: 0.65rem;
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      border-radius: var(--radius);
+      font-size: 0.95rem;
+      font-weight: 600;
+      cursor: pointer;
+      margin-top: 0.5rem;
+      transition: background var(--transition);
+    }
+    .auth-btn:hover { background: var(--accent-hover); }
+    .auth-error {
+      background: var(--error-soft);
+      color: var(--error);
+      padding: 0.5rem 0.75rem;
+      border-radius: var(--radius-sm);
+      font-size: 0.85rem;
+      margin-bottom: 1rem;
+    }
+    .auth-footer {
+      text-align: center;
+      margin-top: 1rem;
+      color: var(--text-muted);
+      font-size: 0.85rem;
+    }
+    .auth-footer a { color: var(--accent); text-decoration: none; }
+    .auth-footer a:hover { text-decoration: underline; }
+    .auth-role-info {
+      background: var(--accent-soft);
+      color: var(--accent);
+      padding: 0.5rem 0.75rem;
+      border-radius: var(--radius-sm);
+      font-size: 0.85rem;
+      margin-bottom: 1rem;
+    }
+  </style>
+</head>
+<body>
+  <div class="auth-card">
+    <div class="auth-brand">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/>
+      </svg>
+      CashPilot
+    </div>
+    <div class="auth-subtitle">{{ subtitle }}</div>
+
+    {% if error %}
+    <div class="auth-error">{{ error }}</div>
+    {% endif %}
+
+    {% if mode == "register" and is_first %}
+    <div class="auth-role-info">First account will be the owner with full admin access.</div>
+    {% endif %}
+
+    <form method="POST" action="{{ action }}">
+      <div class="auth-field">
+        <label for="username">Username</label>
+        <input type="text" id="username" name="username" required autocomplete="username" autofocus>
+      </div>
+      <div class="auth-field">
+        <label for="password">Password</label>
+        <input type="password" id="password" name="password" required autocomplete="{{ 'new-password' if mode == 'register' else 'current-password' }}">
+      </div>
+      {% if mode == "register" %}
+      <div class="auth-field">
+        <label for="password_confirm">Confirm Password</label>
+        <input type="password" id="password_confirm" name="password_confirm" required autocomplete="new-password">
+      </div>
+      {% endif %}
+      <button type="submit" class="auth-btn">{{ button_text }}</button>
+    </form>
+
+    {% if mode == "login" %}
+    <div class="auth-footer">
+      No account? <a href="/register">Create one</a>
+    </div>
+    {% elif mode == "register" and not is_first %}
+    <div class="auth-footer">
+      Already have an account? <a href="/login">Sign in</a>
+    </div>
+    {% endif %}
+  </div>
+</body>
+</html>
