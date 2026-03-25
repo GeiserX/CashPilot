@@ -72,13 +72,28 @@
     <circle cx="1160" cy="95" r="3.5" opacity="1"/>
   </g>
 
-  <!-- Dollar sign icon -->
-  <g transform="translate(105, 115)" filter="url(#softGlow)">
-    <circle cx="0" cy="35" r="40" fill="none" stroke="#3b82f6" stroke-width="1.5" opacity="0.15"/>
-    <circle cx="0" cy="35" r="28" fill="none" stroke="#3b82f6" stroke-width="1" opacity="0.1"/>
-    <text x="0" y="52" text-anchor="middle"
-          font-family="Inter, -apple-system, BlinkMacSystemFont, Arial, sans-serif"
-          font-size="50" font-weight="700" fill="url(#accent)" opacity="0.35">$</text>
+  <!-- Autopilot compass icon -->
+  <g transform="translate(105, 150)" filter="url(#softGlow)">
+    <!-- Outer ring -->
+    <circle cx="0" cy="0" r="42" fill="none" stroke="#3b82f6" stroke-width="1.5" opacity="0.25"/>
+    <!-- Inner subtle fill -->
+    <circle cx="0" cy="0" r="38" fill="#3b82f6" opacity="0.04"/>
+    <!-- Cardinal ticks -->
+    <line x1="0" y1="-42" x2="0" y2="-33" stroke="#60a5fa" stroke-width="2" stroke-linecap="round" opacity="0.7"/>
+    <line x1="42" y1="0" x2="33" y2="0" stroke="#60a5fa" stroke-width="1.5" stroke-linecap="round" opacity="0.3"/>
+    <line x1="0" y1="42" x2="0" y2="33" stroke="#60a5fa" stroke-width="1.5" stroke-linecap="round" opacity="0.3"/>
+    <line x1="-42" y1="0" x2="-33" y2="0" stroke="#60a5fa" stroke-width="1.5" stroke-linecap="round" opacity="0.3"/>
+    <!-- Heading arc -->
+    <path d="M -18 -34 A 38 38 0 0 1 18 -34" fill="none" stroke="url(#accent)" stroke-width="2" stroke-linecap="round" opacity="0.4"/>
+    <!-- Heading bug -->
+    <polygon points="0,-40 -3,-35 3,-35" fill="url(#accent)" opacity="0.5"/>
+    <!-- Needle north (blue) -->
+    <polygon points="0,-28 -6,0 0,-4 6,0" fill="url(#accent)" opacity="0.45"/>
+    <!-- Needle south (dark) -->
+    <polygon points="0,28 -6,0 0,4 6,0" fill="#1e3a5f" opacity="0.3"/>
+    <!-- Center hub -->
+    <circle cx="0" cy="0" r="3" fill="#1a1d26" stroke="#3b82f6" stroke-width="1" opacity="0.5"/>
+    <circle cx="0" cy="0" r="1.2" fill="#60a5fa" opacity="0.5"/>
   </g>
 
   <!-- Main title: CashPilot -->

@@ -4,8 +4,8 @@
 
 <p align="center">
   <a href="https://hub.docker.com/r/drumsergio/cashpilot"><img alt="Docker Pulls" src="https://img.shields.io/docker/pulls/drumsergio/cashpilot?style=flat-square&logo=docker"></a>
-  <a href="https://github.com/GeiserX/cashpilot/stargazers"><img alt="GitHub Stars" src="https://img.shields.io/github/stars/GeiserX/cashpilot?style=flat-square&logo=github"></a>
-  <a href="LICENSE"><img alt="License: GPL-3.0" src="https://img.shields.io/github/license/GeiserX/cashpilot?style=flat-square"></a>
+  <a href="https://github.com/GeiserX/CashPilot/stargazers"><img alt="GitHub Stars" src="https://img.shields.io/github/stars/GeiserX/CashPilot?style=flat-square&logo=github"></a>
+  <a href="LICENSE"><img alt="License: GPL-3.0" src="https://img.shields.io/github/license/GeiserX/CashPilot?style=flat-square"></a>
 </p>
 
 ---
@@ -57,54 +57,54 @@ Then open [http://localhost:8080](http://localhost:8080) and follow the setup wi
 <!-- SERVICES_TABLE_START — DO NOT EDIT MANUALLY. Run: python scripts/generate_docs.py -->
 ### Bandwidth Sharing (13 services)
 
-| Service | Docker Image | Residential Only | Est. Monthly (USD) | Referral Link |
-|---------|-------------|:----------------:|-------------------:|---------------|
-| [Bitping](https://app.bitping.com) | `bitping/bitpingd` | No | $1 - $5 | [Sign up](https://app.bitping.com?r={code}) |
-| [Earn.fm](https://earn.fm) | `earnfm/earnfm-client` | Yes | $1 - $3 | [Sign up](https://earn.fm/ref/GEISYB91) |
-| [EarnApp](https://earnapp.com) | `fazalfarhan01/earnapp:lite` | Yes | $2 - $5 | [Sign up](https://earnapp.com/i/TSMD9wSm) |
-| [Honeygain](https://www.honeygain.com) | `honeygain/honeygain` | Yes | $2 - $5 | [Sign up](https://dashboard.honeygain.com/ref/SERGIB4014) |
-| [IPRoyal Pawns](https://pawns.app) | `iproyal/pawns-cli` | Yes | $1 - $5 | [Sign up](https://pawns.app?r=19266874) |
-| [MystNodes](https://mystnodes.com) | `mysteriumnetwork/myst` | No | $2 - $10 | [Sign up](https://mystnodes.co/?referral_code=do7v7YOoBBpbOstKQovX2pUvZYKia4ZhH3QIdNtE) |
-| [PacketStream](https://packetstream.io) | `packetstream/psclient` | Yes | $1 - $4 | [Sign up](https://packetstream.io/?psr=7xgZ) |
-| [Peer2Profit](https://peer2profit.com) | `mrcolorrain/peer2profit` | No | $0 - $3 | [Sign up](https://peer2profit.com/r/{code}) |
-| [ProxyLite](https://proxylite.ru) | `proxylite/proxyservice` | No | $1 - $3 | [Sign up](https://proxylite.ru/?r=KMUPRZIZ) |
-| [ProxyRack](https://peer.proxyrack.com) | `proxyrack/pop` | No | $1 - $4 | [Sign up](https://peer.proxyrack.com/ref/mpwiok3xlaxeycnn5znqlg7ipjeutxyxr6xl7vmn) |
-| [Repocket](https://repocket.com) | `repocket/repocket` | No | $1 - $4 | [Sign up](https://repocket.com/) |
-| [SpeedShare](https://speedshare.app) | `mrcolorrain/speedshare` | Yes | $0 - $3 | [Sign up](https://speedshare.app/?ref={code}) |
-| [Traffmonetizer](https://traffmonetizer.com) | `traffmonetizer/cli_v2` | No | $1 - $4 | [Sign up](https://traffmonetizer.com/?aff=2111758) |
+| Service | Docker Image | Residential IP | Referral Link |
+|---------|-------------|:--------------:|---------------|
+| [Bitping](https://app.bitping.com) | `bitping/bitpingd` | No | [Sign up](https://app.bitping.com?r={code}) |
+| [Earn.fm](https://earn.fm) | `earnfm/earnfm-client` | Yes | [Sign up](https://earn.fm/ref/GEISYB91) |
+| [EarnApp](https://earnapp.com) | `fazalfarhan01/earnapp:lite` | Yes | [Sign up](https://earnapp.com/i/TSMD9wSm) |
+| [Honeygain](https://www.honeygain.com) | `honeygain/honeygain` | Yes | [Sign up](https://dashboard.honeygain.com/ref/SERGIB4014) |
+| [IPRoyal Pawns](https://pawns.app) | `iproyal/pawns-cli` | Yes | [Sign up](https://pawns.app?r=19266874) |
+| [MystNodes](https://mystnodes.com) | `mysteriumnetwork/myst` | No | [Sign up](https://mystnodes.co/?referral_code=do7v7YOoBBpbOstKQovX2pUvZYKia4ZhH3QIdNtE) |
+| [PacketStream](https://packetstream.io) | `packetstream/psclient` | Yes | [Sign up](https://packetstream.io/?psr=7xgZ) |
+| [Peer2Profit](https://peer2profit.com) | `mrcolorrain/peer2profit` | No | [Sign up](https://peer2profit.com/r/{code}) |
+| [ProxyLite](https://proxylite.ru) | `proxylite/proxyservice` | No | [Sign up](https://proxylite.ru/?r=KMUPRZIZ) |
+| [ProxyRack](https://peer.proxyrack.com) | `proxyrack/pop` | No | [Sign up](https://peer.proxyrack.com/ref/mpwiok3xlaxeycnn5znqlg7ipjeutxyxr6xl7vmn) |
+| [Repocket](https://repocket.com) | `repocket/repocket` | No | [Sign up](https://repocket.com/) |
+| [SpeedShare](https://speedshare.app) | `mrcolorrain/speedshare` | Yes | [Sign up](https://speedshare.app/?ref={code}) |
+| [Traffmonetizer](https://traffmonetizer.com) | `traffmonetizer/cli_v2` | No | [Sign up](https://traffmonetizer.com/?aff=2111758) |
 
 ### DePIN (10 services)
 
-| Service | Docker Image | Residential Only | Est. Monthly (USD) | Referral Link |
-|---------|-------------|:----------------:|-------------------:|---------------|
-| [BlockMesh](https://blockmesh.xyz) | N/A | Yes | $1 - $5 | [Sign up](https://blockmesh.xyz) |
-| [Dawn Internet](https://dawninternet.com) | N/A | Yes | $1 - $5 | [Sign up](https://dawninternet.com?code={code}) |
-| [GagaNode](https://www.gaganode.com) | N/A | No | $1 - $5 | [Sign up](https://dashboard.gaganode.com/register) |
-| [Gradient Network](https://gradient.network) | N/A | Yes | $1 - $8 | [Sign up](https://app.gradient.network/signup?referralCode=YSKMY7) |
-| [Grass](https://www.getgrass.io) | N/A | Yes | $1 - $10 | [Sign up](https://app.getgrass.io/register/?referralCode=kn8FNEPnUr2tMqE) |
-| [Network3](https://network3.io) | N/A | No | $0 - $0 | [Sign up](https://network3.io) |
-| [Nodepay](https://nodepay.ai) | N/A | Yes | $1 - $5 | [Sign up](https://app.nodepay.ai/register?ref=0wzzyznen64j9zx) |
-| [Teneo Protocol](https://teneo.pro) | N/A | Yes | $1 - $5 | [Sign up](https://dashboard.teneo.pro/?code=CAqef) |
-| [Titan Network](https://titannet.io) | N/A | Yes | $5 - $30 | [Sign up](https://titannet.io) |
-| [Wipter](https://wipter.com) | N/A | Yes | $1 - $10 | [Sign up](https://wipter.com/en/refer-a-friend) |
+| Service | Docker Image | Residential IP | Referral Link |
+|---------|-------------|:--------------:|---------------|
+| [BlockMesh](https://blockmesh.xyz) | N/A | Yes | [Sign up](https://blockmesh.xyz) |
+| [Dawn Internet](https://dawninternet.com) | N/A | Yes | [Sign up](https://dawninternet.com?code={code}) |
+| [GagaNode](https://www.gaganode.com) | N/A | No | [Sign up](https://dashboard.gaganode.com/register) |
+| [Gradient Network](https://gradient.network) | N/A | Yes | [Sign up](https://app.gradient.network/signup?referralCode=YSKMY7) |
+| [Grass](https://www.getgrass.io) | N/A | Yes | [Sign up](https://app.getgrass.io/register/?referralCode=kn8FNEPnUr2tMqE) |
+| [Network3](https://network3.io) | N/A | No | [Sign up](https://network3.io) |
+| [Nodepay](https://nodepay.ai) | N/A | Yes | [Sign up](https://app.nodepay.ai/register?ref=0wzzyznen64j9zx) |
+| [Teneo Protocol](https://teneo.pro) | N/A | Yes | [Sign up](https://dashboard.teneo.pro/?code=CAqef) |
+| [Titan Network](https://titannet.io) | N/A | Yes | [Sign up](https://titannet.io) |
+| [Wipter](https://wipter.com) | N/A | Yes | [Sign up](https://wipter.com/en/refer-a-friend) |
 
 ### Storage Sharing (1 service)
 
-| Service | Docker Image | Residential Only | Est. Monthly (USD) | Referral Link |
-|---------|-------------|:----------------:|-------------------:|---------------|
-| [Storj](https://www.storj.io) | `storj/storagenode` | No | $2 - $15 | [Sign up](https://www.storj.io/node) |
+| Service | Docker Image | Residential IP | Referral Link |
+|---------|-------------|:--------------:|---------------|
+| [Storj](https://www.storj.io) | `storj/storagenode` | No | [Sign up](https://www.storj.io/node) |
 
 ### GPU Compute (4 services)
 
-| Service | Docker Image | Residential Only | Est. Monthly (USD) | Referral Link |
-|---------|-------------|:----------------:|-------------------:|---------------|
-| [Golem Network](https://golem.network) | N/A | No | $5 - $50 | [Sign up](https://golem.network) |
-| [Nosana](https://nosana.io) | N/A | No | $20 - $100 | [Sign up](https://nosana.io) |
-| [Salad](https://salad.io) | N/A | Yes | $10 - $100 | [Sign up](https://salad.io) |
-| [Vast.ai](https://vast.ai) | N/A | No | $50 - $300 | [Sign up](https://vast.ai) |
+| Service | Docker Image | Residential IP | Referral Link |
+|---------|-------------|:--------------:|---------------|
+| [Golem Network](https://golem.network) | N/A | No | [Sign up](https://golem.network) |
+| [Nosana](https://nosana.io) | N/A | No | [Sign up](https://nosana.io) |
+| [Salad](https://salad.io) | N/A | Yes | [Sign up](https://salad.io) |
+| [Vast.ai](https://vast.ai) | N/A | No | [Sign up](https://vast.ai) |
 <!-- SERVICES_TABLE_END -->
 
-> **Note:** Earning estimates are approximate and vary based on location, bandwidth, hardware, and market demand. The `generate_docs.py` script auto-generates this table from service YAML definitions -- see [Contributing](#contributing).
+> **Note:** The `generate_docs.py` script auto-generates this table from service YAML definitions. Earnings vary widely by location, hardware, and demand -- see individual guide pages in `docs/guides/` for details.
 
 ## How It Works
 
