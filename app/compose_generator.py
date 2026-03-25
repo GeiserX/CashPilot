@@ -19,6 +19,8 @@ import yaml
 from app.catalog import get_service, get_services
 from app.orchestrator import (
     CONTAINER_PREFIX,
+    LABEL_CATEGORY,
+    LABEL_DEPLOYED_BY,
     LABEL_MANAGED,
     LABEL_SERVICE,
     LABEL_VERSION,
@@ -42,6 +44,8 @@ def _service_to_compose(
     slug = svc.get("slug", svc["name"].lower().replace(" ", "-"))
     service_name = f"{CONTAINER_PREFIX}{slug}"
 
+    category = svc.get("category", "bandwidth")
+
     compose_svc: dict[str, Any] = {
         "image": image,
         "container_name": service_name,
@@ -50,6 +54,12 @@ def _service_to_compose(
             LABEL_MANAGED: "true",
             LABEL_SERVICE: slug,
             LABEL_VERSION: "1",
+            LABEL_CATEGORY: category,
+            LABEL_DEPLOYED_BY: "compose",
+        },
+        "logging": {
+            "driver": "json-file",
+            "options": {"max-size": "10m", "max-file": "3"},
         },
     }
 

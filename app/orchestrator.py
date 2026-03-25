@@ -27,6 +27,8 @@ logger = logging.getLogger(__name__)
 LABEL_SERVICE = "cashpilot.service"
 LABEL_MANAGED = "cashpilot.managed"
 LABEL_VERSION = "cashpilot.version"
+LABEL_CATEGORY = "cashpilot.category"
+LABEL_DEPLOYED_BY = "cashpilot.deployed-by"
 CONTAINER_PREFIX = "cashpilot-"
 
 # Cached Docker availability (checked once at startup, refreshed on demand)
@@ -71,6 +73,26 @@ def _get_client() -> docker.DockerClient:
 
 def _container_name(slug: str) -> str:
     return f"{CONTAINER_PREFIX}{slug}"
+
+
+def _find_container(slug: str):
+    """Find a container by name, falling back to label-based lookup."""
+    client = _get_client()
+    name = _container_name(slug)
+    try:
+        return client.containers.get(name)
+    except NotFound:
+        # Fallback: find by label (handles renamed containers)
+        matches = client.containers.list(
+            all=True,
+            filters={"label": [
+                f"{LABEL_SERVICE}={slug}",
+                f"{LABEL_MANAGED}=true",
+            ]},
+        )
+        if matches:
+            return matches[0]
+        raise ValueError(f"Container for {slug} not found")
 
 
 def deploy_service(
@@ -147,6 +169,8 @@ def deploy_service(
         LABEL_SERVICE: slug,
         LABEL_MANAGED: "true",
         LABEL_VERSION: "1",
+        LABEL_CATEGORY: svc.get("category", "bandwidth"),
+        LABEL_DEPLOYED_BY: "direct",
     }
 
     logger.info("Pulling image %s", image)
@@ -177,38 +201,23 @@ def deploy_service(
 
 def stop_service(slug: str) -> None:
     """Stop the container for a service."""
-    client = _get_client()
-    name = _container_name(slug)
-    try:
-        container = client.containers.get(name)
-        container.stop(timeout=30)
-        logger.info("Stopped container %s", name)
-    except NotFound:
-        raise ValueError(f"Container {name} not found")
+    container = _find_container(slug)
+    container.stop(timeout=30)
+    logger.info("Stopped container %s", container.name)
 
 
 def restart_service(slug: str) -> None:
     """Restart the container for a service."""
-    client = _get_client()
-    name = _container_name(slug)
-    try:
-        container = client.containers.get(name)
-        container.restart(timeout=30)
-        logger.info("Restarted container %s", name)
-    except NotFound:
-        raise ValueError(f"Container {name} not found")
+    container = _find_container(slug)
+    container.restart(timeout=30)
+    logger.info("Restarted container %s", container.name)
 
 
 def remove_service(slug: str) -> None:
     """Stop and remove the container for a service."""
-    client = _get_client()
-    name = _container_name(slug)
-    try:
-        container = client.containers.get(name)
-        container.remove(force=True)
-        logger.info("Removed container %s", name)
-    except NotFound:
-        raise ValueError(f"Container {name} not found")
+    container = _find_container(slug)
+    container.remove(force=True)
+    logger.info("Removed container %s", container.name)
 
 
 def get_status() -> list[dict[str, Any]]:
@@ -263,6 +272,8 @@ def get_status() -> list[dict[str, Any]]:
                 "memory_mb": mem_mb,
                 "created": c.attrs.get("Created", ""),
                 "container_id": c.short_id,
+                "deployed_by": c.labels.get(LABEL_DEPLOYED_BY, "unknown"),
+                "category": c.labels.get(LABEL_CATEGORY, ""),
             }
         )
 
@@ -271,12 +282,7 @@ def get_status() -> list[dict[str, Any]]:
 
 def get_service_logs(slug: str, lines: int = 50) -> str:
     """Return the last N lines of logs for a service container."""
-    client = _get_client()
-    name = _container_name(slug)
-    try:
-        container = client.containers.get(name)
-        return container.logs(tail=lines, timestamps=True).decode(
-            "utf-8", errors="replace"
-        )
-    except NotFound:
-        raise ValueError(f"Container {name} not found")
+    container = _find_container(slug)
+    return container.logs(tail=lines, timestamps=True).decode(
+        "utf-8", errors="replace"
+    )
