@@ -1,28 +1,34 @@
 <!-- BANNER CANDIDATES — pick one, delete the rest -->
 
-### 1. Bold Neon (blue, high contrast, glowing compass + chart)
-<p align="center"><img src="docs/banners/01-bold-neon.svg" alt="Bold Neon" width="100%"></p>
+### SW-1. Refined (left-aligned title, right sun, clean grid)
+<p align="center"><img src="docs/banners/sw-01-refined.svg" alt="Refined" width="100%"></p>
 
-### 2. Money Green (green gradient, dollar signs, aggressive growth chart)
-<p align="center"><img src="docs/banners/02-money-green.svg" alt="Money Green" width="100%"></p>
+### SW-2. Cityscape (centered sun behind neon city skyline)
+<p align="center"><img src="docs/banners/sw-02-cityscape.svg" alt="Cityscape" width="100%"></p>
 
-### 3. Terminal (ASCII art, hacker aesthetic, green on black)
-<p align="center"><img src="docs/banners/03-terminal.svg" alt="Terminal" width="100%"></p>
+### SW-3. Palm Trees (vaporwave palms, stars, centered sun)
+<p align="center"><img src="docs/banners/sw-03-palms.svg" alt="Palms" width="100%"></p>
 
-### 4. Geometric (purple/cyan, hexagon + node network)
-<p align="center"><img src="docs/banners/04-geometric.svg" alt="Geometric" width="100%"></p>
+### SW-4. Chrome (metallic text, magenta glow, mountains)
+<p align="center"><img src="docs/banners/sw-04-chrome.svg" alt="Chrome" width="100%"></p>
 
-### 5. Gold Premium (serif, shield crest, coin stacks)
-<p align="center"><img src="docs/banners/05-gold-premium.svg" alt="Gold Premium" width="100%"></p>
+### SW-5. Compass (neon compass overlaid on sun, left)
+<p align="center"><img src="docs/banners/sw-05-compass.svg" alt="Compass" width="100%"></p>
 
-### 6. Synthwave (pink/cyan, retro sun, perspective grid)
-<p align="center"><img src="docs/banners/06-synthwave.svg" alt="Synthwave" width="100%"></p>
+### SW-6. Minimal (massive centered text, half-sun at bottom)
+<p align="center"><img src="docs/banners/sw-06-minimal.svg" alt="Minimal" width="100%"></p>
 
-### 7. Dashboard Dark (mini UI mockup with stats + chart)
-<p align="center"><img src="docs/banners/07-dashboard-dark.svg" alt="Dashboard Dark" width="100%"></p>
+### SW-7. Dual Sun (pink left + cyan right, split color title)
+<p align="center"><img src="docs/banners/sw-07-dualsun.svg" alt="Dual Sun" width="100%"></p>
 
-### 8. Minimal White (clean white, large compass, container cards)
-<p align="center"><img src="docs/banners/08-minimal-white.svg" alt="Minimal White" width="100%"></p>
+### SW-8. Starfield (dense stars, shooting star, deep space)
+<p align="center"><img src="docs/banners/sw-08-stars.svg" alt="Stars" width="100%"></p>
+
+### SW-9. Earnings Chart (neon chart with $4.27/day, stat badges)
+<p align="center"><img src="docs/banners/sw-09-chart.svg" alt="Chart" width="100%"></p>
+
+### SW-10. Containers (floating container cards on grid plane)
+<p align="center"><img src="docs/banners/sw-10-containers.svg" alt="Containers" width="100%"></p>
 
 <!-- END BANNER CANDIDATES -->
 

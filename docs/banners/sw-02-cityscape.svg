@@ -1,0 +1,92 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 300" width="1200" height="300">
+  <defs>
+    <linearGradient id="bg2" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#05000e"/>
+      <stop offset="50%" stop-color="#150028"/>
+      <stop offset="100%" stop-color="#05000e"/>
+    </linearGradient>
+    <linearGradient id="sun2" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#fff7b0"/>
+      <stop offset="25%" stop-color="#fbbf24"/>
+      <stop offset="55%" stop-color="#f43f5e"/>
+      <stop offset="100%" stop-color="#9333ea"/>
+    </linearGradient>
+    <linearGradient id="pink2" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#f43f5e"/>
+      <stop offset="100%" stop-color="#fb7185"/>
+    </linearGradient>
+    <linearGradient id="cyan2" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#06b6d4"/>
+      <stop offset="100%" stop-color="#67e8f9"/>
+    </linearGradient>
+    <filter id="pg2"><feGaussianBlur stdDeviation="5" result="b"/><feFlood flood-color="#f43f5e" flood-opacity="0.6" result="c"/><feComposite in="c" in2="b" operator="in" result="g"/><feMerge><feMergeNode in="g"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+    <filter id="cg2"><feGaussianBlur stdDeviation="3" result="b"/><feFlood flood-color="#06b6d4" flood-opacity="0.5" result="c"/><feComposite in="c" in2="b" operator="in" result="g"/><feMerge><feMergeNode in="g"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+    <clipPath id="sc2"><circle cx="600" cy="155" r="90"/></clipPath>
+  </defs>
+
+  <rect width="1200" height="300" fill="url(#bg2)"/>
+
+  <!-- Centered sun behind skyline -->
+  <circle cx="600" cy="155" r="90" fill="url(#sun2)" opacity="0.8"/>
+  <g clip-path="url(#sc2)">
+    <rect x="505" y="155" width="190" height="5" fill="#05000e"/>
+    <rect x="505" y="167" width="190" height="7" fill="#05000e"/>
+    <rect x="505" y="181" width="190" height="9" fill="#05000e"/>
+    <rect x="505" y="197" width="190" height="13" fill="#05000e"/>
+    <rect x="505" y="218" width="190" height="18" fill="#05000e"/>
+  </g>
+
+  <!-- City skyline silhouette -->
+  <polygon points="0,200 30,200 30,165 50,165 50,180 70,180 70,145 90,145 90,155 110,155 110,130 130,130 130,160 145,160 145,140 165,140 165,175 180,175 180,150 200,150 200,170 230,170 230,120 250,120 250,140 265,140 265,110 285,110 285,135 310,135 310,105 340,105 340,125 360,125 360,90 380,90 380,115 400,115 400,130 420,130 420,105 440,105 440,140 460,140 460,155 480,155 480,130 500,130 500,170 520,170 520,140 540,140 540,160 560,160 560,175 580,175 580,155 600,155 600,185 620,185 620,150 640,150 640,170 660,170 660,135 680,135 680,155 700,155 700,120 720,120 720,140 740,140 740,110 760,110 760,130 780,130 780,100 800,100 800,125 820,125 820,145 840,145 840,115 860,115 860,140 880,140 880,165 900,165 900,135 920,135 920,155 940,155 940,170 960,170 960,145 980,145 980,175 1000,175 1000,155 1020,155 1020,180 1050,180 1050,160 1080,160 1080,185 1110,185 1110,170 1140,170 1140,190 1170,190 1170,180 1200,180 1200,200"
+           fill="#0a0015" opacity="0.95"/>
+  <!-- Window lights on buildings -->
+  <g fill="#fbbf24" opacity="0.4">
+    <rect x="115" y="138" width="3" height="3"/><rect x="123" y="138" width="3" height="3"/>
+    <rect x="235" y="126" width="3" height="3"/><rect x="243" y="126" width="3" height="3"/>
+    <rect x="270" y="118" width="3" height="3"/>
+    <rect x="315" y="112" width="3" height="3"/><rect x="325" y="112" width="3" height="3"/>
+    <rect x="365" y="98" width="3" height="3"/><rect x="373" y="98" width="3" height="3"/>
+    <rect x="425" y="112" width="3" height="3"/><rect x="433" y="112" width="3" height="3"/>
+    <rect x="705" y="128" width="3" height="3"/><rect x="713" y="128" width="3" height="3"/>
+    <rect x="745" y="118" width="3" height="3"/>
+    <rect x="785" y="108" width="3" height="3"/><rect x="793" y="108" width="3" height="3"/>
+    <rect x="845" y="122" width="3" height="3"/>
+    <rect x="965" y="152" width="3" height="3"/>
+  </g>
+
+  <!-- Grid floor -->
+  <g stroke="#06b6d4" stroke-width="0.5">
+    <line x1="0" y1="215" x2="1200" y2="215" opacity="0.25"/>
+    <line x1="0" y1="235" x2="1200" y2="235" opacity="0.18"/>
+    <line x1="0" y1="255" x2="1200" y2="255" opacity="0.12"/>
+    <line x1="0" y1="275" x2="1200" y2="275" opacity="0.07"/>
+    <line x1="600" y1="200" x2="0" y2="300" opacity="0.1"/>
+    <line x1="600" y1="200" x2="150" y2="300" opacity="0.1"/>
+    <line x1="600" y1="200" x2="300" y2="300" opacity="0.1"/>
+    <line x1="600" y1="200" x2="450" y2="300" opacity="0.1"/>
+    <line x1="600" y1="200" x2="600" y2="300" opacity="0.1"/>
+    <line x1="600" y1="200" x2="750" y2="300" opacity="0.1"/>
+    <line x1="600" y1="200" x2="900" y2="300" opacity="0.1"/>
+    <line x1="600" y1="200" x2="1050" y2="300" opacity="0.1"/>
+    <line x1="600" y1="200" x2="1200" y2="300" opacity="0.1"/>
+  </g>
+
+  <!-- Title - top center -->
+  <text x="600" y="75" text-anchor="middle" font-family="Inter, -apple-system, Arial, sans-serif"
+        font-size="72" font-weight="900" fill="url(#pink2)" letter-spacing="-1" filter="url(#pg2)">
+    CashPilot
+  </text>
+  <text x="600" y="75" text-anchor="middle" font-family="Inter, -apple-system, Arial, sans-serif"
+        font-size="72" font-weight="900" fill="none" stroke="#fff" stroke-width="0.3" letter-spacing="-1" opacity="0.2">
+    CashPilot
+  </text>
+
+  <!-- Tagline -->
+  <text x="600" y="105" text-anchor="middle" font-family="Inter, -apple-system, Arial, sans-serif"
+        font-size="16" font-weight="600" fill="url(#cyan2)" letter-spacing="5" filter="url(#cg2)">
+    SELF-HOSTED PASSIVE INCOME PLATFORM
+  </text>
+
+  <rect x="0" y="0" width="1200" height="2" fill="url(#pink2)" filter="url(#pg2)"/>
+  <rect x="0" y="298" width="1200" height="2" fill="url(#cyan2)" filter="url(#cg2)"/>
+</svg>

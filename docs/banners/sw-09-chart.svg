@@ -1,0 +1,99 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 300" width="1200" height="300">
+  <defs>
+    <linearGradient id="bg9" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#06001a"/>
+      <stop offset="50%" stop-color="#140030"/>
+      <stop offset="100%" stop-color="#06001a"/>
+    </linearGradient>
+    <linearGradient id="sun9" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#fde68a"/>
+      <stop offset="35%" stop-color="#f59e0b"/>
+      <stop offset="65%" stop-color="#ec4899"/>
+      <stop offset="100%" stop-color="#7c3aed"/>
+    </linearGradient>
+    <linearGradient id="pink9" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#ec4899"/>
+      <stop offset="100%" stop-color="#f472b6"/>
+    </linearGradient>
+    <linearGradient id="cyan9" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#06b6d4"/>
+      <stop offset="100%" stop-color="#22d3ee"/>
+    </linearGradient>
+    <linearGradient id="chartFill9" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#ec4899" stop-opacity="0.3"/>
+      <stop offset="100%" stop-color="#ec4899" stop-opacity="0"/>
+    </linearGradient>
+    <filter id="pg9"><feGaussianBlur stdDeviation="5" result="b"/><feFlood flood-color="#ec4899" flood-opacity="0.5" result="c"/><feComposite in="c" in2="b" operator="in" result="g"/><feMerge><feMergeNode in="g"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+    <filter id="cg9"><feGaussianBlur stdDeviation="3" result="b"/><feFlood flood-color="#06b6d4" flood-opacity="0.4" result="c"/><feComposite in="c" in2="b" operator="in" result="g"/><feMerge><feMergeNode in="g"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+    <clipPath id="sc9"><circle cx="300" cy="155" r="65"/></clipPath>
+  </defs>
+
+  <rect width="1200" height="300" fill="url(#bg9)"/>
+
+  <!-- Sun (left-center) -->
+  <circle cx="300" cy="155" r="65" fill="url(#sun9)" opacity="0.5"/>
+  <g clip-path="url(#sc9)">
+    <rect x="230" y="155" width="140" height="4" fill="#06001a"/>
+    <rect x="230" y="165" width="140" height="5" fill="#06001a"/>
+    <rect x="230" y="176" width="140" height="7" fill="#06001a"/>
+    <rect x="230" y="189" width="140" height="10" fill="#06001a"/>
+    <rect x="230" y="205" width="140" height="14" fill="#06001a"/>
+  </g>
+
+  <!-- Grid -->
+  <g stroke="#06b6d4" stroke-width="0.5">
+    <line x1="0" y1="200" x2="1200" y2="200" opacity="0.2"/>
+    <line x1="0" y1="222" x2="1200" y2="222" opacity="0.13"/>
+    <line x1="0" y1="248" x2="1200" y2="248" opacity="0.08"/>
+    <line x1="0" y1="276" x2="1200" y2="276" opacity="0.04"/>
+    <line x1="600" y1="195" x2="0" y2="300" opacity="0.07"/>
+    <line x1="600" y1="195" x2="200" y2="300" opacity="0.07"/>
+    <line x1="600" y1="195" x2="400" y2="300" opacity="0.07"/>
+    <line x1="600" y1="195" x2="600" y2="300" opacity="0.07"/>
+    <line x1="600" y1="195" x2="800" y2="300" opacity="0.07"/>
+    <line x1="600" y1="195" x2="1000" y2="300" opacity="0.07"/>
+    <line x1="600" y1="195" x2="1200" y2="300" opacity="0.07"/>
+  </g>
+
+  <!-- Neon earnings chart (right side, prominent) -->
+  <g>
+    <path d="M 580 185 L 640 175 L 700 180 L 760 160 L 820 165 L 880 140 L 940 145 L 1000 115 L 1060 100 L 1120 70 L 1120 195 L 580 195 Z"
+          fill="url(#chartFill9)"/>
+    <polyline
+      points="580,185 640,175 700,180 760,160 820,165 880,140 940,145 1000,115 1060,100 1120,70"
+      fill="none" stroke="url(#pink9)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" filter="url(#pg9)"/>
+    <!-- Chart dots -->
+    <circle cx="880" cy="140" r="4" fill="#f472b6" filter="url(#pg9)"/>
+    <circle cx="1000" cy="115" r="4" fill="#f472b6" filter="url(#pg9)"/>
+    <circle cx="1060" cy="100" r="4.5" fill="#f472b6" filter="url(#pg9)"/>
+    <circle cx="1120" cy="70" r="5" fill="#f472b6" filter="url(#pg9)"/>
+    <!-- Value labels -->
+    <text x="1120" y="58" font-family="Inter, sans-serif" font-size="14" font-weight="700" fill="#f472b6" text-anchor="middle" filter="url(#pg9)">$4.27/day</text>
+  </g>
+
+  <!-- Title -->
+  <text x="60" y="105" font-family="Inter, -apple-system, Arial, sans-serif"
+        font-size="80" font-weight="900" fill="url(#pink9)" letter-spacing="-2" filter="url(#pg9)">
+    CashPilot
+  </text>
+  <text x="60" y="105" font-family="Inter, -apple-system, Arial, sans-serif"
+        font-size="80" font-weight="900" fill="none" stroke="#fff" stroke-width="0.3" letter-spacing="-2" opacity="0.2">
+    CashPilot
+  </text>
+
+  <text x="68" y="140" font-family="Inter, -apple-system, Arial, sans-serif"
+        font-size="17" font-weight="600" fill="url(#cyan9)" letter-spacing="5" filter="url(#cg9)">
+    PASSIVE INCOME ON AUTOPILOT
+  </text>
+
+  <!-- Small stat badges -->
+  <g font-family="Inter, sans-serif" font-size="12" font-weight="600">
+    <rect x="68" y="155" width="90" height="22" rx="11" fill="#ec4899" opacity="0.15" stroke="#ec4899" stroke-width="0.5" opacity="0.3"/>
+    <text x="113" y="170" text-anchor="middle" fill="#f472b6">28 services</text>
+    <rect x="168" y="155" width="80" height="22" rx="11" fill="#06b6d4" opacity="0.15" stroke="#06b6d4" stroke-width="0.5" opacity="0.3"/>
+    <text x="208" y="170" text-anchor="middle" fill="#22d3ee">3 nodes</text>
+  </g>
+
+  <rect x="0" y="0" width="1200" height="2" fill="url(#pink9)" filter="url(#pg9)"/>
+  <rect x="0" y="298" width="1200" height="2" fill="url(#cyan9)" filter="url(#cg9)"/>
+</svg>
