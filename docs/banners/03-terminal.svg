@@ -1,0 +1,94 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 300" width="1200" height="300">
+  <defs>
+    <filter id="scanlines">
+      <feFlood flood-color="#000" flood-opacity="0.08" result="flood"/>
+      <feTile in="flood" result="tile"/>
+      <feComposite in="SourceGraphic" in2="tile" operator="over"/>
+    </filter>
+    <filter id="termGlow">
+      <feGaussianBlur stdDeviation="2" result="blur"/>
+      <feFlood flood-color="#22c55e" flood-opacity="0.6" result="color"/>
+      <feComposite in="color" in2="blur" operator="in" result="glow"/>
+      <feMerge>
+        <feMergeNode in="glow"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <!-- Black terminal background -->
+  <rect width="1200" height="300" fill="#0a0a0a"/>
+
+  <!-- Scanline effect -->
+  <g opacity="0.06">
+    <line x1="0" y1="0" x2="1200" y2="0" stroke="#22c55e" stroke-width="1" repeat="150"/>
+    <!-- manual scanlines -->
+    <rect x="0" y="2" width="1200" height="1" fill="#22c55e"/>
+    <rect x="0" y="6" width="1200" height="1" fill="#22c55e"/>
+    <rect x="0" y="10" width="1200" height="1" fill="#22c55e"/>
+    <rect x="0" y="14" width="1200" height="1" fill="#22c55e"/>
+    <rect x="0" y="18" width="1200" height="1" fill="#22c55e"/>
+    <rect x="0" y="22" width="1200" height="1" fill="#22c55e"/>
+    <rect x="0" y="26" width="1200" height="1" fill="#22c55e"/>
+    <rect x="0" y="30" width="1200" height="1" fill="#22c55e"/>
+    <rect x="0" y="34" width="1200" height="1" fill="#22c55e"/>
+    <rect x="0" y="38" width="1200" height="1" fill="#22c55e"/>
+    <rect x="0" y="42" width="1200" height="1" fill="#22c55e"/>
+    <rect x="0" y="46" width="1200" height="1" fill="#22c55e"/>
+    <rect x="0" y="50" width="1200" height="1" fill="#22c55e"/>
+    <rect x="0" y="54" width="1200" height="1" fill="#22c55e"/>
+    <rect x="0" y="58" width="1200" height="1" fill="#22c55e"/>
+    <rect x="0" y="62" width="1200" height="1" fill="#22c55e"/>
+    <rect x="0" y="66" width="1200" height="1" fill="#22c55e"/>
+    <rect x="0" y="70" width="1200" height="1" fill="#22c55e"/>
+    <rect x="0" y="74" width="1200" height="1" fill="#22c55e"/>
+    <rect x="0" y="78" width="1200" height="1" fill="#22c55e"/>
+  </g>
+
+  <!-- Terminal window chrome -->
+  <rect x="30" y="20" width="1140" height="260" rx="8" fill="none" stroke="#333" stroke-width="1.5"/>
+  <!-- Title bar -->
+  <rect x="30" y="20" width="1140" height="30" rx="8" fill="#1a1a1a"/>
+  <rect x="30" y="42" width="1140" height="8" fill="#1a1a1a"/>
+  <!-- Window dots -->
+  <circle cx="52" cy="35" r="6" fill="#ff5f57"/>
+  <circle cx="72" cy="35" r="6" fill="#febc2e"/>
+  <circle cx="92" cy="35" r="6" fill="#28c840"/>
+  <!-- Title bar text -->
+  <text x="600" y="40" font-family="'SF Mono', 'Fira Code', monospace" font-size="12" fill="#666" text-anchor="middle">cashpilot@server:~</text>
+
+  <!-- Terminal content -->
+  <g font-family="'SF Mono', 'Fira Code', 'Cascadia Code', monospace" font-size="16">
+    <!-- Line 1 -->
+    <text x="55" y="82" fill="#22c55e" filter="url(#termGlow)">$</text>
+    <text x="75" y="82" fill="#e2e8f0"> docker compose up -d</text>
+
+    <!-- Line 2 -->
+    <text x="55" y="108" fill="#94a3b8">[+] Running 28/28</text>
+
+    <!-- Line 3 - ASCII art title -->
+    <text x="55" y="140" fill="#22c55e" font-size="14" filter="url(#termGlow)">
+       ██████╗ █████╗ ███████╗██╗  ██╗██████╗ ██╗██╗      ██████╗ ████████╗</text>
+    <text x="55" y="156" fill="#22c55e" font-size="14" filter="url(#termGlow)">
+      ██╔════╝██╔══██╗██╔════╝██║  ██║██╔══██╗██║██║     ██╔═══██╗╚══██╔══╝</text>
+    <text x="55" y="172" fill="#22c55e" font-size="14" filter="url(#termGlow)">
+      ██║     ███████║███████╗███████║██████╔╝██║██║     ██║   ██║   ██║</text>
+    <text x="55" y="188" fill="#22c55e" font-size="14" filter="url(#termGlow)">
+      ██║     ██╔══██║╚════██║██╔══██║██╔═══╝ ██║██║     ██║   ██║   ██║</text>
+    <text x="55" y="204" fill="#22c55e" font-size="14" filter="url(#termGlow)">
+      ╚██████╗██║  ██║███████║██║  ██║██║     ██║███████╗╚██████╔╝   ██║</text>
+    <text x="55" y="220" fill="#22c55e" font-size="14" filter="url(#termGlow)">
+       ╚═════╝╚═╝  ╚═╝╚══════╝╚═╝  ╚═╝╚═╝     ╚═╝╚══════╝ ╚═════╝    ╚═╝</text>
+
+    <!-- Status line -->
+    <text x="55" y="248" fill="#94a3b8" font-size="13">
+      <tspan fill="#22c55e">28 services</tspan> deployed |
+      <tspan fill="#22c55e">3 nodes</tspan> online |
+      <tspan fill="#22c55e">$4.27</tspan>/day
+    </text>
+
+    <!-- Prompt -->
+    <text x="55" y="270" fill="#22c55e" filter="url(#termGlow)">$</text>
+    <text x="75" y="270" fill="#e2e8f0"> _</text>
+  </g>
+</svg>

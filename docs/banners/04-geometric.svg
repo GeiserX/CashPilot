@@ -1,0 +1,112 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 300" width="1200" height="300">
+  <defs>
+    <linearGradient id="bg4" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0f172a"/>
+      <stop offset="100%" stop-color="#1e1b4b"/>
+    </linearGradient>
+    <linearGradient id="purple4" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#8b5cf6"/>
+      <stop offset="100%" stop-color="#a78bfa"/>
+    </linearGradient>
+    <linearGradient id="cyan4" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#06b6d4"/>
+      <stop offset="100%" stop-color="#22d3ee"/>
+    </linearGradient>
+    <filter id="purpleGlow">
+      <feGaussianBlur stdDeviation="8" result="blur"/>
+      <feFlood flood-color="#8b5cf6" flood-opacity="0.4" result="color"/>
+      <feComposite in="color" in2="blur" operator="in" result="glow"/>
+      <feMerge>
+        <feMergeNode in="glow"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <rect width="1200" height="300" fill="url(#bg4)"/>
+
+  <!-- Geometric triangles pattern -->
+  <g opacity="0.08" stroke="#8b5cf6" stroke-width="1" fill="none">
+    <polygon points="100,0 200,150 0,150"/>
+    <polygon points="200,150 300,300 100,300"/>
+    <polygon points="300,0 400,150 200,150"/>
+    <polygon points="400,150 500,300 300,300"/>
+    <polygon points="500,0 600,150 400,150"/>
+    <polygon points="600,150 700,300 500,300"/>
+    <polygon points="700,0 800,150 600,150"/>
+    <polygon points="800,150 900,300 700,300"/>
+    <polygon points="900,0 1000,150 800,150"/>
+    <polygon points="1000,150 1100,300 900,300"/>
+    <polygon points="1100,0 1200,150 1000,150"/>
+    <polygon points="1200,150 1200,300 1100,300"/>
+  </g>
+
+  <!-- Hexagon cluster (left side) -->
+  <g transform="translate(130, 150)" opacity="0.9">
+    <!-- Large hexagon -->
+    <polygon points="0,-70 60.6,-35 60.6,35 0,70 -60.6,35 -60.6,-35" fill="none" stroke="url(#purple4)" stroke-width="2.5" filter="url(#purpleGlow)"/>
+    <!-- Inner hexagon -->
+    <polygon points="0,-45 39,-22.5 39,22.5 0,45 -39,22.5 -39,-22.5" fill="#8b5cf6" opacity="0.08"/>
+    <polygon points="0,-45 39,-22.5 39,22.5 0,45 -39,22.5 -39,-22.5" fill="none" stroke="#a78bfa" stroke-width="1" opacity="0.4"/>
+    <!-- Inner inner -->
+    <polygon points="0,-22 19,-11 19,11 0,22 -19,11 -19,-11" fill="#8b5cf6" opacity="0.15"/>
+    <!-- Center dot -->
+    <circle cx="0" cy="0" r="4" fill="#a78bfa"/>
+    <!-- Connection lines radiating out -->
+    <line x1="0" y1="-45" x2="0" y2="-70" stroke="#a78bfa" stroke-width="1" opacity="0.5"/>
+    <line x1="39" y1="-22.5" x2="60.6" y2="-35" stroke="#a78bfa" stroke-width="1" opacity="0.5"/>
+    <line x1="39" y1="22.5" x2="60.6" y2="35" stroke="#a78bfa" stroke-width="1" opacity="0.5"/>
+    <line x1="0" y1="45" x2="0" y2="70" stroke="#a78bfa" stroke-width="1" opacity="0.5"/>
+    <line x1="-39" y1="22.5" x2="-60.6" y2="35" stroke="#a78bfa" stroke-width="1" opacity="0.5"/>
+    <line x1="-39" y1="-22.5" x2="-60.6" y2="-35" stroke="#a78bfa" stroke-width="1" opacity="0.5"/>
+  </g>
+
+  <!-- Title -->
+  <text x="240" y="128"
+        font-family="Inter, -apple-system, BlinkMacSystemFont, Arial, sans-serif"
+        font-size="78" font-weight="900" fill="#f8fafc" letter-spacing="-2">
+    Cash<tspan fill="url(#purple4)">Pilot</tspan>
+  </text>
+
+  <!-- Tagline with cyan -->
+  <text x="245" y="170"
+        font-family="Inter, -apple-system, BlinkMacSystemFont, Arial, sans-serif"
+        font-size="20" font-weight="400" fill="url(#cyan4)" letter-spacing="3" opacity="0.8">
+    PASSIVE INCOME ORCHESTRATOR
+  </text>
+
+  <!-- Accent -->
+  <rect x="245" y="182" width="60" height="2.5" rx="1" fill="url(#cyan4)" opacity="0.6"/>
+
+  <!-- Right side: node network visualization -->
+  <g transform="translate(950, 150)">
+    <!-- Central node -->
+    <circle cx="0" cy="0" r="12" fill="#8b5cf6" opacity="0.3"/>
+    <circle cx="0" cy="0" r="6" fill="#a78bfa"/>
+    <!-- Satellite nodes -->
+    <circle cx="-80" cy="-50" r="4" fill="#06b6d4"/>
+    <circle cx="80" cy="-60" r="4" fill="#06b6d4"/>
+    <circle cx="100" cy="30" r="4" fill="#06b6d4"/>
+    <circle cx="-90" cy="40" r="4" fill="#06b6d4"/>
+    <circle cx="30" cy="80" r="4" fill="#06b6d4"/>
+    <circle cx="-40" cy="-80" r="4" fill="#06b6d4"/>
+    <circle cx="60" cy="70" r="3" fill="#06b6d4" opacity="0.6"/>
+    <circle cx="-110" cy="-10" r="3" fill="#06b6d4" opacity="0.6"/>
+    <!-- Connection lines -->
+    <g stroke="#8b5cf6" stroke-width="1" opacity="0.3">
+      <line x1="0" y1="0" x2="-80" y2="-50"/>
+      <line x1="0" y1="0" x2="80" y2="-60"/>
+      <line x1="0" y1="0" x2="100" y2="30"/>
+      <line x1="0" y1="0" x2="-90" y2="40"/>
+      <line x1="0" y1="0" x2="30" y2="80"/>
+      <line x1="0" y1="0" x2="-40" y2="-80"/>
+      <line x1="0" y1="0" x2="60" y2="70"/>
+      <line x1="0" y1="0" x2="-110" y2="-10"/>
+    </g>
+    <!-- Orbit ring -->
+    <circle cx="0" cy="0" r="95" fill="none" stroke="#8b5cf6" stroke-width="0.5" opacity="0.2" stroke-dasharray="4 4"/>
+  </g>
+
+  <!-- Top accent -->
+  <rect x="0" y="0" width="1200" height="2" fill="url(#purple4)"/>
+</svg>

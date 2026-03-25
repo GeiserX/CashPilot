@@ -55,27 +55,47 @@ Turn CashPilot from a deployment tool into an earnings optimization platform.
 
 For power users running CashPilot on multiple servers.
 
-Architecture: **outbound WebSocket agent** (no broker, no VPN, no SSH needed).
+### Architecture: Federated CashPilot Instances
+
+Every node runs a **full CashPilot instance** with its own dashboard and local service management. One instance is designated **master**; the rest are **children** that report upstream via outbound WebSocket.
 
 ```
-Central CashPilot <--- WSS --- Agent (node-1, Docker socket)
-                  <--- WSS --- Agent (node-2, Docker socket)
-                  <--- WSS --- Agent (node-N, Docker socket)
+Master CashPilot (fleet view + local management)
+        ^                ^                ^
+        | WSS            | WSS            | WSS
+        |                |                |
+  Child CashPilot    Child CashPilot    Child CashPilot
+  (server-1)         (server-2)         (server-N)
+  bandwidth svcs     Storj + compute    bandwidth svcs
+  Docker: direct     Docker: direct     Docker: monitor-only
 ```
 
-- [ ] **CashPilot Agent** — lightweight container (`drumsergio/cashpilot-agent`)
-  - Single `docker run` with join token — no config files, no port forwarding
-  - **Outbound WebSocket** to central instance (works behind any NAT/firewall)
-  - Heartbeats every 30-60s: container list, CPU, RAM, disk, uptime
-  - Receives commands: deploy, stop, restart, remove, logs, update
-  - Accesses local Docker socket only — never exposes it remotely
-  - Commands validated against YAML catalog — agent refuses arbitrary images
+**Why full instances, not headless agents?** Each server may run a different mix of services (bandwidth on one, storage on another, GPU compute on a third). Users need local dashboards for per-server management, and the master aggregates everything into a unified fleet view.
+
+### Instance modes (2x2 matrix)
+
+| | **Docker: direct** (socket mounted) | **Docker: monitor-only** (no socket) |
+|---|---|---|
+| **Master** | Full management + fleet aggregation | Fleet aggregation + compose export (containers managed externally, e.g. Portainer) |
+| **Child** | Local management + reports to master | Earnings tracking only + reports to master (containers managed externally) |
+
+A child in monitor-only mode is useful when containers are managed by Portainer or manual compose, but you still want CashPilot's earnings collection and fleet-wide visibility from the master.
+
+### Features
+
+- [ ] **Master/child setting** — toggle in UI or via `CASHPILOT_ROLE=master|child` env var
+  - Master: enables fleet dashboard, accepts WebSocket connections from children
+  - Child: connects to master URL via `CASHPILOT_MASTER_URL=wss://...`
+  - Both: full local dashboard, local service management (if Docker socket available)
+- [ ] **Outbound WebSocket** from child to master (works behind any NAT/firewall)
+  - Heartbeats every 30-60s: container list, CPU, RAM, disk, uptime, earnings
+  - Master can push commands: deploy, stop, restart, remove, logs, update
+  - Commands validated against YAML catalog — child refuses arbitrary images
   - Reconnects with exponential backoff, queues status during disconnection
-  - Target: Python (reuses orchestrator logic), ~30 MB image, ~20 MB RAM
-  - Phase 1: visibility only (heartbeats). Phase 2: remote management. Phase 3: bulk deploy
-- [ ] **Join tokens** — generated in CashPilot UI, HMAC-signed, single-use or time-limited
-- [ ] **Fleet dashboard** — all nodes, their services, and aggregate earnings in one view
-- [ ] **Database: `nodes` table** — id, name, token_hash, last_seen, ip, os, docker_version, status
+- [ ] **Join tokens** — generated in master UI, HMAC-signed, single-use or time-limited
+  - Child setup: set `CASHPILOT_MASTER_URL` and `CASHPILOT_JOIN_TOKEN`, restart
+- [ ] **Fleet dashboard** (master only) — all nodes, their services, and aggregate earnings in one view
+- [ ] **Database: `nodes` table** — id, name, token_hash, last_seen, ip, os, docker_version, role, status
 - [ ] **`node_id` on deployments/earnings** — per-node tracking (nullable for backward compat)
 - [ ] **Cross-node deduplication** — warn if the same account runs on multiple nodes (some services ban this)
 - [ ] **Bulk deploy** — deploy a service across all/selected nodes with one click

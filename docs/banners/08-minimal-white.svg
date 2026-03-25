@@ -1,0 +1,106 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 300" width="1200" height="300">
+  <defs>
+    <linearGradient id="blue8" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#2563eb"/>
+      <stop offset="100%" stop-color="#3b82f6"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Clean white background -->
+  <rect width="1200" height="300" fill="#ffffff"/>
+
+  <!-- Very subtle dot grid -->
+  <g fill="#e2e8f0" opacity="0.5">
+    <!-- Row pattern every 30px -->
+    <circle cx="30" cy="30" r="1"/><circle cx="60" cy="30" r="1"/><circle cx="90" cy="30" r="1"/><circle cx="120" cy="30" r="1"/>
+    <circle cx="150" cy="30" r="1"/><circle cx="180" cy="30" r="1"/><circle cx="210" cy="30" r="1"/><circle cx="240" cy="30" r="1"/>
+    <circle cx="30" cy="60" r="1"/><circle cx="60" cy="60" r="1"/><circle cx="90" cy="60" r="1"/><circle cx="120" cy="60" r="1"/>
+    <circle cx="150" cy="60" r="1"/><circle cx="180" cy="60" r="1"/><circle cx="210" cy="60" r="1"/><circle cx="240" cy="60" r="1"/>
+    <circle cx="30" cy="90" r="1"/><circle cx="60" cy="90" r="1"/><circle cx="90" cy="90" r="1"/><circle cx="120" cy="90" r="1"/>
+    <circle cx="30" cy="120" r="1"/><circle cx="60" cy="120" r="1"/><circle cx="90" cy="120" r="1"/>
+    <circle cx="30" cy="150" r="1"/><circle cx="60" cy="150" r="1"/>
+  </g>
+
+  <!-- Large bold compass icon (left) -->
+  <g transform="translate(160, 150)">
+    <!-- Outer ring -->
+    <circle cx="0" cy="0" r="90" fill="none" stroke="url(#blue8)" stroke-width="4"/>
+    <!-- Cardinal ticks -->
+    <line x1="0" y1="-90" x2="0" y2="-70" stroke="#2563eb" stroke-width="5" stroke-linecap="round"/>
+    <line x1="90" y1="0" x2="70" y2="0" stroke="#2563eb" stroke-width="4" stroke-linecap="round" opacity="0.5"/>
+    <line x1="0" y1="90" x2="0" y2="70" stroke="#2563eb" stroke-width="4" stroke-linecap="round" opacity="0.5"/>
+    <line x1="-90" y1="0" x2="-70" y2="0" stroke="#2563eb" stroke-width="4" stroke-linecap="round" opacity="0.5"/>
+    <!-- Heading arc -->
+    <path d="M -35 -76 A 85 85 0 0 1 35 -76" fill="none" stroke="url(#blue8)" stroke-width="4" stroke-linecap="round"/>
+    <!-- Heading bug -->
+    <polygon points="0,-88 -6,-76 6,-76" fill="#2563eb"/>
+    <!-- North needle -->
+    <polygon points="0,-60 -14,0 0,-12 14,0" fill="url(#blue8)"/>
+    <!-- South needle -->
+    <polygon points="0,60 -14,0 0,12 14,0" fill="#cbd5e1"/>
+    <!-- Center -->
+    <circle cx="0" cy="0" r="8" fill="#ffffff" stroke="#2563eb" stroke-width="3"/>
+    <circle cx="0" cy="0" r="3" fill="#2563eb"/>
+  </g>
+
+  <!-- Title -->
+  <text x="310" y="135"
+        font-family="Inter, -apple-system, BlinkMacSystemFont, Arial, sans-serif"
+        font-size="86" font-weight="900" fill="#0f172a" letter-spacing="-3">
+    Cash<tspan fill="url(#blue8)">Pilot</tspan>
+  </text>
+
+  <!-- Tagline -->
+  <text x="315" y="175"
+        font-family="Inter, -apple-system, BlinkMacSystemFont, Arial, sans-serif"
+        font-size="22" font-weight="400" fill="#64748b" letter-spacing="0.5">
+    Self-hosted passive income platform
+  </text>
+
+  <!-- Blue accent bar -->
+  <rect x="315" y="190" width="80" height="4" rx="2" fill="url(#blue8)"/>
+
+  <!-- Right side: container icons -->
+  <g transform="translate(900, 90)">
+    <!-- Container boxes stacked -->
+    <rect x="0" y="0" width="60" height="40" rx="4" fill="#eff6ff" stroke="#3b82f6" stroke-width="1.5"/>
+    <rect x="8" y="8" width="8" height="8" rx="2" fill="#3b82f6" opacity="0.6"/>
+    <rect x="8" y="22" width="30" height="4" rx="2" fill="#93c5fd" opacity="0.5"/>
+    <rect x="8" y="30" width="20" height="4" rx="2" fill="#93c5fd" opacity="0.3"/>
+
+    <rect x="75" y="15" width="60" height="40" rx="4" fill="#eff6ff" stroke="#3b82f6" stroke-width="1.5"/>
+    <rect x="83" y="23" width="8" height="8" rx="2" fill="#3b82f6" opacity="0.6"/>
+    <rect x="83" y="37" width="30" height="4" rx="2" fill="#93c5fd" opacity="0.5"/>
+    <rect x="83" y="45" width="20" height="4" rx="2" fill="#93c5fd" opacity="0.3"/>
+
+    <rect x="150" y="0" width="60" height="40" rx="4" fill="#eff6ff" stroke="#3b82f6" stroke-width="1.5"/>
+    <rect x="158" y="8" width="8" height="8" rx="2" fill="#3b82f6" opacity="0.6"/>
+    <rect x="158" y="22" width="30" height="4" rx="2" fill="#93c5fd" opacity="0.5"/>
+    <rect x="158" y="30" width="20" height="4" rx="2" fill="#93c5fd" opacity="0.3"/>
+
+    <!-- More rows -->
+    <rect x="30" y="55" width="60" height="40" rx="4" fill="#eff6ff" stroke="#3b82f6" stroke-width="1.5"/>
+    <rect x="38" y="63" width="8" height="8" rx="2" fill="#22c55e" opacity="0.6"/>
+    <rect x="38" y="77" width="30" height="4" rx="2" fill="#93c5fd" opacity="0.5"/>
+
+    <rect x="105" y="55" width="60" height="40" rx="4" fill="#eff6ff" stroke="#3b82f6" stroke-width="1.5"/>
+    <rect x="113" y="63" width="8" height="8" rx="2" fill="#22c55e" opacity="0.6"/>
+    <rect x="113" y="77" width="30" height="4" rx="2" fill="#93c5fd" opacity="0.5"/>
+
+    <rect x="180" y="55" width="60" height="40" rx="4" fill="#eff6ff" stroke="#3b82f6" stroke-width="1.5"/>
+    <rect x="188" y="63" width="8" height="8" rx="2" fill="#22c55e" opacity="0.6"/>
+    <rect x="188" y="77" width="30" height="4" rx="2" fill="#93c5fd" opacity="0.5"/>
+
+    <!-- Third row -->
+    <rect x="60" y="110" width="60" height="40" rx="4" fill="#eff6ff" stroke="#3b82f6" stroke-width="1.5"/>
+    <rect x="68" y="118" width="8" height="8" rx="2" fill="#f59e0b" opacity="0.6"/>
+    <rect x="68" y="132" width="30" height="4" rx="2" fill="#93c5fd" opacity="0.5"/>
+
+    <rect x="135" y="110" width="60" height="40" rx="4" fill="#eff6ff" stroke="#3b82f6" stroke-width="1.5"/>
+    <rect x="143" y="118" width="8" height="8" rx="2" fill="#f59e0b" opacity="0.6"/>
+    <rect x="143" y="132" width="30" height="4" rx="2" fill="#93c5fd" opacity="0.5"/>
+  </g>
+
+  <!-- Top blue line -->
+  <rect x="0" y="0" width="1200" height="3" fill="url(#blue8)"/>
+</svg>
