@@ -46,6 +46,11 @@ Turn CashPilot from a deployment tool into an earnings optimization platform.
   - [ ] Daily/weekly/monthly aggregation
   - [ ] Per-service breakdown
   - [ ] Total portfolio value over time
+- [ ] **One-click cashout buttons** — per-service payout trigger from the dashboard
+  - [ ] Each service YAML defines a `cashout` section (API endpoint, method, min payout, currency)
+  - [ ] Dashboard shows "Cash Out" button per service when balance >= minimum payout
+  - [ ] Supports different payout methods: API call, redirect to external dashboard, or instructions
+  - [ ] Must be implemented for every new service added to the catalog
 - [ ] **Service health scoring** — uptime percentage, restart frequency, earnings-per-hour
 - [ ] **Notifications** — webhook/email alerts for container crashes, earnings drops, payout thresholds
 - [ ] **Auto-claim daily rewards** — automated login + claim for services with daily bonuses (like Honeygain lucky pot)
