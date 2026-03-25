@@ -1,0 +1,106 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 300" width="1200" height="300">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0a0c12"/>
+      <stop offset="50%" stop-color="#0f1117"/>
+      <stop offset="100%" stop-color="#0a0e18"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#3b82f6"/>
+      <stop offset="100%" stop-color="#60a5fa"/>
+    </linearGradient>
+    <linearGradient id="chartLine" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#3b82f6" stop-opacity="0.3"/>
+      <stop offset="50%" stop-color="#3b82f6" stop-opacity="1"/>
+      <stop offset="100%" stop-color="#60a5fa" stop-opacity="0.8"/>
+    </linearGradient>
+    <linearGradient id="chartFill" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#3b82f6" stop-opacity="0.15"/>
+      <stop offset="100%" stop-color="#3b82f6" stop-opacity="0"/>
+    </linearGradient>
+    <filter id="glow">
+      <feGaussianBlur stdDeviation="3" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    <filter id="softGlow">
+      <feGaussianBlur stdDeviation="8" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1200" height="300" fill="url(#bg)"/>
+
+  <!-- Subtle grid pattern -->
+  <g opacity="0.04" stroke="#3b82f6" stroke-width="0.5">
+    <line x1="0" y1="60" x2="1200" y2="60"/>
+    <line x1="0" y1="120" x2="1200" y2="120"/>
+    <line x1="0" y1="180" x2="1200" y2="180"/>
+    <line x1="0" y1="240" x2="1200" y2="240"/>
+    <line x1="200" y1="0" x2="200" y2="300"/>
+    <line x1="400" y1="0" x2="400" y2="300"/>
+    <line x1="600" y1="0" x2="600" y2="300"/>
+    <line x1="800" y1="0" x2="800" y2="300"/>
+    <line x1="1000" y1="0" x2="1000" y2="300"/>
+  </g>
+
+  <!-- Background chart area fill (right side) -->
+  <path d="M 620 230 L 680 210 L 740 220 L 800 185 L 860 195 L 920 160 L 980 170 L 1040 130 L 1100 115 L 1160 95 L 1160 260 L 620 260 Z"
+        fill="url(#chartFill)" opacity="0.6"/>
+
+  <!-- Background chart line (right side, subtle earnings trend) -->
+  <polyline
+    points="620,230 680,210 740,220 800,185 860,195 920,160 980,170 1040,130 1100,115 1160,95"
+    fill="none"
+    stroke="url(#chartLine)"
+    stroke-width="2.5"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    filter="url(#glow)"
+  />
+
+  <!-- Chart dots -->
+  <g fill="#3b82f6" filter="url(#glow)">
+    <circle cx="920" cy="160" r="3" opacity="0.6"/>
+    <circle cx="1040" cy="130" r="3" opacity="0.8"/>
+    <circle cx="1160" cy="95" r="3.5" opacity="1"/>
+  </g>
+
+  <!-- Dollar sign icon -->
+  <g transform="translate(105, 115)" filter="url(#softGlow)">
+    <circle cx="0" cy="35" r="40" fill="none" stroke="#3b82f6" stroke-width="1.5" opacity="0.15"/>
+    <circle cx="0" cy="35" r="28" fill="none" stroke="#3b82f6" stroke-width="1" opacity="0.1"/>
+    <text x="0" y="52" text-anchor="middle"
+          font-family="Inter, -apple-system, BlinkMacSystemFont, Arial, sans-serif"
+          font-size="50" font-weight="700" fill="url(#accent)" opacity="0.35">$</text>
+  </g>
+
+  <!-- Main title: CashPilot -->
+  <text x="170" y="155"
+        font-family="Inter, -apple-system, BlinkMacSystemFont, Arial, sans-serif"
+        font-size="72" font-weight="800" fill="#f0f2f5" letter-spacing="-2">
+    Cash<tspan fill="url(#accent)">Pilot</tspan>
+  </text>
+
+  <!-- Tagline -->
+  <text x="175" y="195"
+        font-family="Inter, -apple-system, BlinkMacSystemFont, Arial, sans-serif"
+        font-size="20" font-weight="400" fill="#6b7280" letter-spacing="0.5">
+    Self-hosted passive income platform
+  </text>
+
+  <!-- Accent line under tagline -->
+  <rect x="175" y="208" width="60" height="2.5" rx="1.25" fill="url(#accent)" opacity="0.6"/>
+
+  <!-- Top border accent -->
+  <rect x="0" y="0" width="1200" height="2" fill="url(#accent)" opacity="0.4"/>
+
+  <!-- Bottom border accent -->
+  <rect x="0" y="298" width="1200" height="2" fill="url(#accent)" opacity="0.2"/>
+</svg>

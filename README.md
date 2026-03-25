@@ -1,6 +1,5 @@
 <p align="center">
-  <h1 align="center">CashPilot</h1>
-  <p align="center">Self-hosted passive income platform. Deploy once, earn everywhere.</p>
+  <img src="docs/banner.svg" alt="CashPilot" width="100%">
 </p>
 
 <p align="center">
