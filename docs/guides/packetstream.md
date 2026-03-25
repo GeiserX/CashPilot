@@ -33,7 +33,7 @@ PacketStream is a peer-to-peer bandwidth marketplace where you can sell your unu
 
 ### 1. Create an account
 
-Sign up at [PacketStream](https://packetstream.io/?psr={code}).
+Sign up at [PacketStream](https://packetstream.io/?psr=7xgZ).
 
 ### 2. Get your credentials
 

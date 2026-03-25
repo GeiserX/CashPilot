@@ -33,7 +33,7 @@ Grass is a decentralized network that lets you sell your unused bandwidth for AI
 
 ### 1. Create an account
 
-Sign up at [Grass](https://app.getgrass.io/register/?referralCode={code}).
+Sign up at [Grass](https://app.getgrass.io/register/?referralCode=kn8FNEPnUr2tMqE).
 
 ### 2. Get your credentials
 

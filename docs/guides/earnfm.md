@@ -33,7 +33,7 @@ Earn.fm pays you for sharing your internet bandwidth. It uses a simple token-bas
 
 ### 1. Create an account
 
-Sign up at [Earn.fm](https://earn.fm/ref/{code}).
+Sign up at [Earn.fm](https://earn.fm/ref/GEISYB91).
 
 ### 2. Get your credentials
 

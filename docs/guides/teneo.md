@@ -33,7 +33,7 @@ Teneo Protocol is a DePIN network that rewards users for sharing bandwidth via a
 
 ### 1. Create an account
 
-Sign up at [Teneo Protocol](https://dashboard.teneo.pro/?code={code}).
+Sign up at [Teneo Protocol](https://dashboard.teneo.pro/?code=CAqef).
 
 ### 2. Get your credentials
 

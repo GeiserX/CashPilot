@@ -33,7 +33,7 @@ IPRoyal Pawns lets you earn by sharing your unused bandwidth. IPRoyal is a well-
 
 ### 1. Create an account
 
-Sign up at [IPRoyal Pawns](https://pawns.app?r={code}).
+Sign up at [IPRoyal Pawns](https://pawns.app?r=19266874).
 
 ### 2. Get your credentials
 

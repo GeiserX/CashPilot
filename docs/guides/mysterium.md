@@ -33,7 +33,7 @@ MystNodes (Mysterium Network) is a decentralized VPN and proxy network built on 
 
 ### 1. Create an account
 
-Sign up at [MystNodes](https://mystnodes.co/?referral_code={code}).
+Sign up at [MystNodes](https://mystnodes.co/?referral_code=do7v7YOoBBpbOstKQovX2pUvZYKia4ZhH3QIdNtE).
 
 ### 2. Get your credentials
 

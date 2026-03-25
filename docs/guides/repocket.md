@@ -1,7 +1,7 @@
 # Repocket
 
 > **Category:** Bandwidth Sharing | **Status:** Active
-> **Website:** [https://repocket.co](https://repocket.co)
+> **Website:** [https://repocket.com](https://repocket.com)
 
 ## Description
 
@@ -33,7 +33,7 @@ Repocket lets you earn passive income by sharing your unused internet bandwidth.
 
 ### 1. Create an account
 
-Sign up at [Repocket](https://link.repocket.co/{code}).
+Sign up at [Repocket](https://repocket.com/).
 
 ### 2. Get your credentials
 
@@ -71,9 +71,9 @@ docker run -d \
 
 | | Details |
 |---|---------|
-| Referrer bonus | Percentage of referral earnings |
+| Referrer bonus |  |
 | New user bonus |  |
-| How to get code | Dashboard > Referral > Copy your referral link |
+| How to get code | No public referral program found as of March 2025 |
 
 ---
 

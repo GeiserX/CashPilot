@@ -33,7 +33,7 @@ Nodepay is a DePIN network that rewards users for sharing bandwidth through a br
 
 ### 1. Create an account
 
-Sign up at [Nodepay](https://app.nodepay.ai/register).
+Sign up at [Nodepay](https://app.nodepay.ai/register?ref=0wzzyznen64j9zx).
 
 ### 2. Get your credentials
 
