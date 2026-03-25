@@ -70,20 +70,20 @@ In this mode CashPilot provides the service catalog, compose file export, earnin
 
 Services CashPilot can deploy and manage automatically via Docker.
 
-| Service | Residential IP | VPS IP | Devices / Acct | Devices / IP | Payout |
-|---------|:-:|:-:|:-:|:-:|--------|
-| [Bitping](https://app.bitping.com) | ✅ | ✅ | Unlimited | 1 | Crypto (SOL) |
-| [Earn.fm](https://earn.fm/ref/GEISYB91) | ✅ | ✅ | Unlimited | 1 | Crypto |
-| [EarnApp](https://earnapp.com/i/TSMD9wSm) | ✅ | ❌ | 15 | 1 | PayPal, Gift Cards |
-| [Honeygain](https://dashboard.honeygain.com/ref/SERGIB4014) | ✅ | ❌ | 10 | 1 | PayPal, Crypto |
-| [IPRoyal Pawns](https://pawns.app?r=19266874) | ✅ | ❌ | Unlimited | 1 | PayPal, Crypto |
-| [MystNodes](https://mystnodes.co/?referral_code=do7v7YOoBBpbOstKQovX2pUvZYKia4ZhH3QIdNtE) | ✅ | ✅ | Unlimited | Unlimited | Crypto (MYST) |
-| [PacketStream](https://packetstream.io/?psr=7xgZ) | ✅ | ❌ | Unlimited | 1 | PayPal |
-| [ProxyLite](https://proxylite.ru/?r=KMUPRZIZ) | ✅ | ✅ | Unlimited | 1 | Crypto, PayPal |
-| [ProxyRack](https://peer.proxyrack.com/ref/mpwiok3xlaxeycnn5znqlg7ipjeutxyxr6xl7vmn) | ✅ | ✅ | 500 | 1 | PayPal, Crypto |
-| [Repocket](https://repocket.com/) | ✅ | ❌ | 5 | 2 | PayPal, Crypto |
-| [Storj](https://www.storj.io/node) | ✅ | ✅ | Unlimited | 1 * | Crypto (STORJ) |
-| [Traffmonetizer](https://traffmonetizer.com/?aff=2111758) | ✅ | ✅ ** | Unlimited | Unlimited | Crypto (USDT) |
+| Service | Type | Residential IP | VPS IP | Devices / Acct | Devices / IP | Payout |
+|---------|------|:-:|:-:|:-:|:-:|--------|
+| [Bitping](https://app.bitping.com) | Network monitoring | ✅ | ✅ | Unlimited | 1 | Crypto (SOL) |
+| [Earn.fm](https://earn.fm/ref/GEISYB91) | Bandwidth | ✅ | ✅ | Unlimited | 1 | Crypto |
+| [EarnApp](https://earnapp.com/i/TSMD9wSm) | Bandwidth | ✅ | ❌ | 15 | 1 | PayPal, Gift Cards |
+| [Honeygain](https://dashboard.honeygain.com/ref/SERGIB4014) | Bandwidth | ✅ | ❌ | 10 | 1 | PayPal, Crypto |
+| [IPRoyal Pawns](https://pawns.app?r=19266874) | Proxy network | ✅ | ❌ | Unlimited | 1 | PayPal, Crypto |
+| [MystNodes](https://mystnodes.co/?referral_code=do7v7YOoBBpbOstKQovX2pUvZYKia4ZhH3QIdNtE) | VPN node | ✅ | ✅ | Unlimited | Unlimited | Crypto (MYST) |
+| [PacketStream](https://packetstream.io/?psr=7xgZ) | Proxy network | ✅ | ❌ | Unlimited | 1 | PayPal |
+| [ProxyLite](https://proxylite.ru/?r=KMUPRZIZ) | Proxy network | ✅ | ✅ | Unlimited | 1 | Crypto, PayPal |
+| [ProxyRack](https://peer.proxyrack.com/ref/mpwiok3xlaxeycnn5znqlg7ipjeutxyxr6xl7vmn) | Proxy network | ✅ | ✅ | 500 | 1 | PayPal, Crypto |
+| [Repocket](https://repocket.com/) | Bandwidth | ✅ | ❌ | 5 | 2 | PayPal, Crypto |
+| [Storj](https://www.storj.io/node) | Storage | ✅ | ✅ | Unlimited | 1 * | Crypto (STORJ) |
+| [Traffmonetizer](https://traffmonetizer.com/?aff=2111758) | Bandwidth | ✅ | ✅ ** | Unlimited | Unlimited | Crypto (USDT) |
 
 > \* Storj nodes on the same /24 subnet share data allocation, reducing per-node earnings.
 >
@@ -161,20 +161,11 @@ cashpilot/
 | `CASHPILOT_COLLECTION_INTERVAL` | `3600` | Seconds between earnings collection cycles |
 | `CASHPILOT_PORT` | `8080` | Web UI port inside the container |
 
-### Referral Codes
-
-You can set your own referral codes in two ways:
-
-1. **Settings page** -- open the web UI, go to Settings, and enter your codes per service
-2. **Environment variables** -- set `CASHPILOT_REF_{SERVICE_SLUG}` (e.g., `CASHPILOT_REF_HONEYGAIN=abc123`)
-
-If no referral code is configured, the default project referral codes are used. You can replace all of them with your own at any time.
-
 ## FAQ
 
 **Is bandwidth sharing safe?**
 
-Bandwidth sharing services route only legitimate traffic (market research, ad verification, price comparison, content delivery) through your connection. They do not use your connection for illegal activity. That said, you are sharing your IP address, so review each service's terms and privacy policy. Running these on a VPS rather than residential IP is an option for some services.
+Bandwidth sharing services generally route legitimate traffic (market research, ad verification, price comparison, content delivery) through your connection. That said, you are sharing your IP address, so review each service's terms of service and privacy policy carefully before signing up. Running these on a VPS rather than residential IP is an option for some services. **This is not legal advice -- consult with the particular services you intend to use and, if needed, seek independent legal counsel regarding your jurisdiction.**
 
 **How much can I earn?**
 
