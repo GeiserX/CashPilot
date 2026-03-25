@@ -1,0 +1,54 @@
+name: Dawn Internet
+slug: dawn
+category: depin
+status: active
+website: https://dawninternet.com
+description: >
+  Dawn Internet is a decentralized wireless network that rewards users for sharing
+  their internet connection. Available as a browser extension and a dedicated
+  hardware box (Dawn Node). The extension passively earns Dawn Points while you
+  browse. The network aims to build a decentralized ISP layer for underserved areas.
+short_description: DePIN wireless network - browser extension and hardware box
+
+referral:
+  url_template: "https://dawninternet.com?code={code}"
+  code: ""
+  signup_url: "https://dawninternet.com?code={code}"
+  bonus:
+    referrer: "Bonus Dawn Points per active referral"
+    referee: "Bonus Dawn Points on signup"
+  how_to_get_code: "Dashboard > Referral section > Copy your referral code"
+
+docker:
+  image: ""
+  platforms: []
+  env: []
+  ports: []
+  volumes: []
+  command: ""
+  network_mode: ""
+
+requirements:
+  residential_ip: true
+  min_bandwidth: ""
+  gpu: false
+  min_storage: ""
+
+payment:
+  methods: [crypto]
+  minimum_payout: ""
+  currency: DAWN
+  frequency: "Token airdrop (TBA)"
+
+earnings:
+  monthly_low: 1
+  monthly_high: 5
+  currency: USD
+  per: "device"
+  notes: "Earns Dawn Points pre-token launch. Actual value depends on future token price. Hardware box earns more than browser extension."
+
+platforms: [browser_extension]
+
+collector:
+  type: scrape
+  notes: "Points visible in extension popup and web dashboard. No public API documented."

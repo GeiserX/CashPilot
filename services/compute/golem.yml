@@ -1,0 +1,55 @@
+name: Golem Network
+slug: golem
+category: compute
+status: active
+website: https://golem.network
+description: >
+  Golem Network is a decentralized compute marketplace where you share CPU and
+  GPU resources in exchange for GLM tokens. Providers run the Yagna agent which
+  manages workload execution in sandboxed environments. One of the oldest
+  decentralized compute projects (founded 2016). Supports CPU tasks, GPU
+  rendering, and general-purpose compute. Payments via Polygon L2.
+short_description: Decentralized compute marketplace - GLM tokens via Yagna agent
+
+referral:
+  url_template: ""
+  code: ""
+  signup_url: "https://golem.network"
+  bonus:
+    referrer: ""
+    referee: ""
+  how_to_get_code: ""
+
+docker:
+  image: ""
+  platforms: [linux/amd64]
+  env: []
+  ports: []
+  volumes: []
+  command: ""
+  network_mode: ""
+
+requirements:
+  residential_ip: false
+  min_bandwidth: "10 Mbps"
+  gpu: false
+  min_storage: "20GB"
+
+payment:
+  methods: [crypto]
+  minimum_payout: ""
+  currency: GLM
+  frequency: "Per task completion"
+
+earnings:
+  monthly_low: 5
+  monthly_high: 50
+  currency: USD
+  per: "device"
+  notes: "Earnings depend on hardware, pricing, and task demand. CPU-only nodes earn less. GPU nodes earn more but require NVIDIA. Run the Yagna provider agent (not Docker image). Payments on Polygon in GLM tokens."
+
+platforms: [linux]
+
+collector:
+  type: api
+  notes: "Yagna REST API at localhost:7465. Provider earnings queryable via /payment/invoices. GLM on Polygon for on-chain tracking."

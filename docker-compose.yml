@@ -1,0 +1,25 @@
+services:
+  cashpilot:
+    # Build from source or pull pre-built image:
+    #   docker compose up -d --build        (build locally)
+    #   docker compose pull && docker compose up -d  (use Docker Hub image)
+    build: .
+    image: drumsergio/cashpilot:latest
+    container_name: cashpilot
+    ports:
+      - "8080:8080"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - cashpilot_data:/data
+    environment:
+      - TZ=Europe/Madrid
+      - CASHPILOT_SECRET_KEY=${CASHPILOT_SECRET_KEY:-changeme-generate-a-random-secret}
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp:size=64M
+
+volumes:
+  cashpilot_data:

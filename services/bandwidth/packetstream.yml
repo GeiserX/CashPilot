@@ -1,0 +1,60 @@
+name: PacketStream
+slug: packetstream
+category: bandwidth
+status: active
+website: https://packetstream.io
+description: >
+  PacketStream is a peer-to-peer bandwidth marketplace where you can sell your
+  unused bandwidth. It powers a residential proxy network used for market research,
+  SEO monitoring, and ad verification. Simple Docker setup with just a CID
+  (Client ID) required. Note that CAPTCHA-protected login can make automated
+  earnings collection challenging.
+short_description: Bandwidth sharing - simple CID-based setup
+
+referral:
+  url_template: "https://packetstream.io/?psr={code}"
+  code: ""
+  signup_url: "https://packetstream.io/?psr={code}"
+  bonus:
+    referrer: "$0.10 per GB from referral traffic"
+    referee: ""
+  how_to_get_code: "Dashboard > Referral > Copy your referral link"
+
+docker:
+  image: packetstream/psclient
+  platforms: [linux/amd64]
+  env:
+    - key: CID
+      label: "Client ID"
+      required: true
+      secret: false
+      description: "Your PacketStream Client ID (found in Dashboard > Setup)"
+  ports: []
+  volumes: []
+  command: ""
+  network_mode: ""
+
+requirements:
+  residential_ip: true
+  min_bandwidth: ""
+  gpu: false
+  min_storage: ""
+
+payment:
+  methods: [paypal]
+  minimum_payout: "$5"
+  currency: USD
+  frequency: "On request"
+
+earnings:
+  monthly_low: 1
+  monthly_high: 4
+  currency: USD
+  per: "device"
+  notes: "Pays $0.10/GB for bandwidth shared. Earnings depend heavily on demand for your IP's location."
+
+platforms: [windows, macos, linux, docker]
+
+collector:
+  type: scrape
+  notes: "Dashboard is CAPTCHA-protected. May need manual JWT from browser session for API access."

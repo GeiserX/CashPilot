@@ -1,0 +1,122 @@
+{% extends "base.html" %}
+
+{% block title %}Setup Wizard - CashPilot{% endblock %}
+{% block page %}setup{% endblock %}
+{% block topbar_title %}Setup Wizard{% endblock %}
+
+{% block content %}
+<!-- Wizard Progress -->
+<div class="wizard-progress">
+  <div class="wizard-step active">
+    <span class="wizard-step-number">1</span>
+    <span class="wizard-step-label">Categories</span>
+  </div>
+  <div class="wizard-step-connector"></div>
+  <div class="wizard-step">
+    <span class="wizard-step-number">2</span>
+    <span class="wizard-step-label">Services</span>
+  </div>
+  <div class="wizard-step-connector"></div>
+  <div class="wizard-step">
+    <span class="wizard-step-number">3</span>
+    <span class="wizard-step-label">Setup</span>
+  </div>
+  <div class="wizard-step-connector"></div>
+  <div class="wizard-step">
+    <span class="wizard-step-number">4</span>
+    <span class="wizard-step-label">Summary</span>
+  </div>
+</div>
+
+<!-- Step 1: Categories -->
+<div class="wizard-panel active">
+  <div class="card">
+    <h2 class="section-title" style="margin-bottom: 8px;">Welcome to CashPilot</h2>
+    <p style="color: var(--text-secondary); margin-bottom: 24px;">
+      What resources would you like to share? Select the categories below to see matching services.
+    </p>
+
+    <div class="category-grid">
+      <label class="category-card">
+        <input type="checkbox" value="bandwidth">
+        <div class="category-icon">
+          <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="1.5"><path d="M5 12.55a11 11 0 0114.08 0"/><path d="M1.42 9a16 16 0 0121.16 0"/><path d="M8.53 16.11a6 6 0 016.95 0"/><circle cx="12" cy="20" r="1"/></svg>
+        </div>
+        <div class="category-label">Bandwidth</div>
+        <div class="category-desc">Share your internet connection</div>
+      </label>
+
+      <label class="category-card">
+        <input type="checkbox" value="depin">
+        <div class="category-icon">
+          <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z"/></svg>
+        </div>
+        <div class="category-label">DePIN</div>
+        <div class="category-desc">Decentralized infrastructure</div>
+      </label>
+
+      <label class="category-card">
+        <input type="checkbox" value="storage">
+        <div class="category-icon">
+          <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="1.5"><path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
+        </div>
+        <div class="category-label">Storage</div>
+        <div class="category-desc">Rent out disk space</div>
+      </label>
+
+      <label class="category-card">
+        <input type="checkbox" value="compute">
+        <div class="category-icon">
+          <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="1.5"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><line x1="9" y1="1" x2="9" y2="4"/><line x1="15" y1="1" x2="15" y2="4"/><line x1="9" y1="20" x2="9" y2="23"/><line x1="15" y1="20" x2="15" y2="23"/><line x1="20" y1="9" x2="23" y2="9"/><line x1="20" y1="14" x2="23" y2="14"/><line x1="1" y1="9" x2="4" y2="9"/><line x1="1" y1="14" x2="4" y2="14"/></svg>
+        </div>
+        <div class="category-label">Compute</div>
+        <div class="category-desc">Share CPU/GPU power</div>
+      </label>
+    </div>
+  </div>
+</div>
+
+<!-- Step 2: Service Selection -->
+<div class="wizard-panel">
+  <div class="card">
+    <h2 class="section-title" style="margin-bottom: 8px;">Select Services</h2>
+    <p style="color: var(--text-secondary); margin-bottom: 24px;">
+      Click the services you want to deploy. You can deploy multiple services at once.
+    </p>
+    <div class="services-grid" id="wizard-services">
+      <div class="spinner" style="margin: 24px auto;"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Step 3: Per-Service Setup -->
+<div class="wizard-panel">
+  <h2 class="section-title" style="margin-bottom: 16px;">Configure &amp; Deploy</h2>
+  <p style="color: var(--text-secondary); margin-bottom: 24px;">
+    For each service, sign up if needed, then enter your credentials and deploy.
+  </p>
+  <div id="wizard-setup-forms">
+    <div class="spinner" style="margin: 24px auto;"></div>
+  </div>
+</div>
+
+<!-- Step 4: Summary -->
+<div class="wizard-panel">
+  <div class="card" style="text-align: center; padding: 48px 24px;">
+    <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--success)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-bottom: 16px;">
+      <path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>
+    </svg>
+    <h2 class="section-title" style="margin-bottom: 8px;">You're all set!</h2>
+    <p style="color: var(--text-secondary); margin-bottom: 24px;">
+      Your services are being deployed. Head to the dashboard to monitor their status and earnings.
+    </p>
+    <a href="/" class="btn btn-primary btn-lg">Go to Dashboard</a>
+  </div>
+</div>
+
+<!-- Wizard Footer -->
+<div class="wizard-footer">
+  <button class="btn btn-secondary" id="wizard-prev" onclick="CP.wizardPrev()" style="display: none;">Back</button>
+  <button class="btn btn-primary" id="wizard-next" onclick="CP.wizardNext()">Next</button>
+</div>
+{% endblock %}

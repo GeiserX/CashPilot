@@ -1,0 +1,59 @@
+name: ProxyLite
+slug: proxylite
+category: bandwidth
+status: active
+website: https://proxylite.ru
+description: >
+  ProxyLite monetizes your internet traffic by sharing bandwidth with verified
+  organizations. Works on both residential and VPS/datacenter connections. Simple
+  setup requiring only a user ID from the dashboard. Offers a generous 15% lifetime
+  referral commission.
+short_description: Bandwidth sharing - 15% lifetime referral, works on VPS
+
+referral:
+  url_template: "https://proxylite.ru/?r={code}"
+  code: ""
+  signup_url: "https://proxylite.ru/?r={code}"
+  bonus:
+    referrer: "15% of referral earnings for life"
+    referee: ""
+  how_to_get_code: "Dashboard > Referral > Copy your referral link"
+
+docker:
+  image: proxylite/proxyservice
+  platforms: [linux/amd64, linux/arm64]
+  env:
+    - key: USER_ID
+      label: "User ID"
+      required: true
+      secret: false
+      description: "Your ProxyLite account ID (found in dashboard at lk.proxylite.ru after registration)"
+  ports: []
+  volumes: []
+  command: ""
+  network_mode: ""
+
+requirements:
+  residential_ip: false
+  min_bandwidth: ""
+  gpu: false
+  min_storage: ""
+
+payment:
+  methods: [crypto, paypal]
+  minimum_payout: "$5"
+  currency: USD
+  frequency: "On request"
+
+earnings:
+  monthly_low: 1
+  monthly_high: 3
+  currency: USD
+  per: "device"
+  notes: "Residential IPs earn more. VPS/datacenter connections accepted at lower rates."
+
+platforms: [windows, linux, docker]
+
+collector:
+  type: api
+  notes: "Dashboard at lk.proxylite.ru. User ID based authentication."

@@ -1,0 +1,247 @@
+"""Docker container orchestrator for CashPilot.
+
+Manages lifecycle (deploy, stop, restart, remove) and status inspection
+for cashpilot-managed containers via the Docker SDK.
+"""
+
+from __future__ import annotations
+
+import logging
+import socket
+from typing import Any
+
+import docker
+from docker.errors import DockerException, NotFound, APIError
+
+from app.catalog import get_service
+
+logger = logging.getLogger(__name__)
+
+LABEL_SERVICE = "cashpilot.service"
+LABEL_MANAGED = "cashpilot.managed"
+CONTAINER_PREFIX = "cashpilot-"
+
+
+def _get_client() -> docker.DockerClient:
+    """Return a Docker client, raising a clear error if the socket is missing."""
+    try:
+        client = docker.from_env()
+        client.ping()
+        return client
+    except DockerException as exc:
+        raise RuntimeError(
+            "Cannot connect to Docker. Is the Docker socket mounted at "
+            "/var/run/docker.sock?"
+        ) from exc
+
+
+def _container_name(slug: str) -> str:
+    return f"{CONTAINER_PREFIX}{slug}"
+
+
+def deploy_service(
+    slug: str,
+    env_vars: dict[str, str] | None = None,
+    hostname: str | None = None,
+) -> str:
+    """Create and start a container for the given service slug.
+
+    Args:
+        slug: Service identifier (must exist in catalog).
+        env_vars: User-provided environment variables (override defaults).
+        hostname: Optional container hostname.
+
+    Returns:
+        Container ID.
+    """
+    svc = get_service(slug)
+    if not svc:
+        raise ValueError(f"Unknown service: {slug}")
+
+    docker_conf = svc.get("docker", {})
+    image = docker_conf.get("image")
+    if not image:
+        raise ValueError(f"Service {slug} has no Docker image defined")
+
+    client = _get_client()
+    name = _container_name(slug)
+
+    # Remove any existing container with the same name
+    try:
+        old = client.containers.get(name)
+        logger.info("Removing existing container %s", name)
+        old.remove(force=True)
+    except NotFound:
+        pass
+
+    # Build environment: defaults from YAML + user overrides
+    env: dict[str, str] = {}
+    for var in docker_conf.get("env", []):
+        default = var.get("default", "")
+        if default:
+            # Substitute {hostname} placeholder
+            default = default.replace(
+                "{hostname}", hostname or socket.gethostname()
+            )
+            env[var["key"]] = default
+    if env_vars:
+        env.update(env_vars)
+
+    # Ports: list of "host:container" strings
+    ports: dict[str, int] = {}
+    for mapping in docker_conf.get("ports", []):
+        if ":" in str(mapping):
+            container_port, host_port = str(mapping).split(":", 1)
+            ports[container_port] = int(host_port)
+
+    # Volumes: list of "host:container" strings
+    volumes: dict[str, dict[str, str]] = {}
+    for mapping in docker_conf.get("volumes", []):
+        if ":" in str(mapping):
+            parts = str(mapping).split(":")
+            host_path = parts[0]
+            container_path = parts[1]
+            mode = parts[2] if len(parts) > 2 else "rw"
+            volumes[host_path] = {"bind": container_path, "mode": mode}
+
+    # Optional settings
+    network_mode = docker_conf.get("network_mode") or None
+    cap_add = docker_conf.get("cap_add") or None
+    command = docker_conf.get("command") or None
+
+    labels = {
+        LABEL_SERVICE: slug,
+        LABEL_MANAGED: "true",
+    }
+
+    logger.info("Pulling image %s", image)
+    try:
+        client.images.pull(image)
+    except APIError as exc:
+        logger.warning("Failed to pull image %s: %s (trying local)", image, exc)
+
+    logger.info("Creating container %s from %s", name, image)
+    container = client.containers.run(
+        image=image,
+        name=name,
+        environment=env,
+        ports=ports if ports else None,
+        volumes=volumes if volumes else None,
+        network_mode=network_mode,
+        cap_add=cap_add,
+        command=command if command else None,
+        labels=labels,
+        hostname=hostname or f"cashpilot-{slug}",
+        detach=True,
+        restart_policy={"Name": "unless-stopped"},
+    )
+
+    logger.info("Container %s started: %s", name, container.short_id)
+    return container.id
+
+
+def stop_service(slug: str) -> None:
+    """Stop the container for a service."""
+    client = _get_client()
+    name = _container_name(slug)
+    try:
+        container = client.containers.get(name)
+        container.stop(timeout=30)
+        logger.info("Stopped container %s", name)
+    except NotFound:
+        raise ValueError(f"Container {name} not found")
+
+
+def restart_service(slug: str) -> None:
+    """Restart the container for a service."""
+    client = _get_client()
+    name = _container_name(slug)
+    try:
+        container = client.containers.get(name)
+        container.restart(timeout=30)
+        logger.info("Restarted container %s", name)
+    except NotFound:
+        raise ValueError(f"Container {name} not found")
+
+
+def remove_service(slug: str) -> None:
+    """Stop and remove the container for a service."""
+    client = _get_client()
+    name = _container_name(slug)
+    try:
+        container = client.containers.get(name)
+        container.remove(force=True)
+        logger.info("Removed container %s", name)
+    except NotFound:
+        raise ValueError(f"Container {name} not found")
+
+
+def get_status() -> list[dict[str, Any]]:
+    """Return status of all cashpilot-managed containers."""
+    try:
+        client = _get_client()
+    except RuntimeError:
+        return []
+
+    containers = client.containers.list(
+        all=True,
+        filters={"label": f"{LABEL_MANAGED}=true"},
+    )
+
+    results: list[dict[str, Any]] = []
+    for c in containers:
+        slug = c.labels.get(LABEL_SERVICE, "unknown")
+        # Gather resource stats (non-streaming)
+        cpu_pct = 0.0
+        mem_mb = 0.0
+        try:
+            stats = c.stats(stream=False)
+            # CPU %
+            cpu_delta = (
+                stats["cpu_stats"]["cpu_usage"]["total_usage"]
+                - stats["precpu_stats"]["cpu_usage"]["total_usage"]
+            )
+            system_delta = (
+                stats["cpu_stats"]["system_cpu_usage"]
+                - stats["precpu_stats"]["system_cpu_usage"]
+            )
+            num_cpus = stats["cpu_stats"].get(
+                "online_cpus",
+                len(stats["cpu_stats"]["cpu_usage"].get("percpu_usage", [1])),
+            )
+            if system_delta > 0:
+                cpu_pct = round((cpu_delta / system_delta) * num_cpus * 100, 2)
+
+            # Memory
+            mem_usage = stats["memory_stats"].get("usage", 0)
+            mem_mb = round(mem_usage / (1024 * 1024), 1)
+        except (KeyError, ZeroDivisionError, APIError):
+            pass
+
+        results.append(
+            {
+                "slug": slug,
+                "name": c.name,
+                "status": c.status,
+                "image": c.image.tags[0] if c.image.tags else str(c.image.short_id),
+                "cpu_percent": cpu_pct,
+                "memory_mb": mem_mb,
+                "created": c.attrs.get("Created", ""),
+                "container_id": c.short_id,
+            }
+        )
+
+    return results
+
+
+def get_service_logs(slug: str, lines: int = 50) -> str:
+    """Return the last N lines of logs for a service container."""
+    client = _get_client()
+    name = _container_name(slug)
+    try:
+        container = client.containers.get(name)
+        return container.logs(tail=lines, timestamps=True).decode(
+            "utf-8", errors="replace"
+        )
+    except NotFound:
+        raise ValueError(f"Container {name} not found")

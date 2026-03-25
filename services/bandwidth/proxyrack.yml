@@ -1,0 +1,71 @@
+name: ProxyRack
+slug: proxyrack
+category: bandwidth
+status: active
+website: https://peer.proxyrack.com
+description: >
+  ProxyRack's Peer program lets you earn by sharing your bandwidth as part of
+  their proxy network. Each device requires a unique 64-character hex UUID and
+  optionally an API key to auto-register the device. Works on both residential
+  and VPS/datacenter connections. Dashboard is behind Cloudflare, which may
+  require manual browser-based API key retrieval.
+short_description: Bandwidth sharing - UUID per device, works on VPS
+
+referral:
+  url_template: "https://peer.proxyrack.com/ref/{code}"
+  code: ""
+  signup_url: "https://peer.proxyrack.com/ref/{code}"
+  bonus:
+    referrer: "Percentage of referral earnings"
+    referee: ""
+  how_to_get_code: "Dashboard > Referrals > Copy your referral link"
+
+docker:
+  image: proxyrack/pop
+  platforms: [linux/amd64]
+  env:
+    - key: UUID
+      label: "Device UUID"
+      required: true
+      secret: false
+      description: "Unique 64-character hex ID per device. Generate with: cat /dev/urandom | tr -dc 'a-f0-9' | fold -w 64 | head -n 1"
+    - key: API_KEY
+      label: "API Key"
+      required: false
+      secret: true
+      description: "Your ProxyRack API key (auto-registers device in dashboard if provided)"
+    - key: DEVICE_NAME
+      label: "Device name"
+      required: false
+      secret: false
+      description: "Friendly name for the device in dashboard"
+      default: "Device-${UUID}"
+  ports: []
+  volumes: []
+  command: ""
+  network_mode: ""
+
+requirements:
+  residential_ip: false
+  min_bandwidth: ""
+  gpu: false
+  min_storage: ""
+
+payment:
+  methods: [paypal, crypto]
+  minimum_payout: "$5"
+  currency: USD
+  frequency: "On request"
+
+earnings:
+  monthly_low: 1
+  monthly_high: 4
+  currency: USD
+  per: "device"
+  notes: "Residential IPs earn more than datacenter. Dashboard behind Cloudflare may complicate automated access."
+
+platforms: [windows, macos, linux, docker]
+
+collector:
+  type: api
+  notes: "Dashboard behind Cloudflare. May need API key from browser session. Per-device earnings visible."

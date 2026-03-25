@@ -1,0 +1,65 @@
+name: SpeedShare
+slug: speedshare
+category: bandwidth
+status: beta
+website: https://speedshare.app
+description: >
+  SpeedShare lets you earn by sharing your unused internet bandwidth. Residential
+  IPs only - datacenter and VPS connections are not accepted. There is no official
+  Docker image; the community image (mrcolorrain) provides container support with
+  a referral code and UUID-based authentication.
+short_description: Bandwidth sharing - residential only, no official Docker
+
+referral:
+  url_template: "https://speedshare.app/?ref={code}"
+  code: ""
+  signup_url: "https://speedshare.app/?ref={code}"
+  bonus:
+    referrer: "Percentage of referral earnings"
+    referee: ""
+  how_to_get_code: "Dashboard > Referral > Copy your referral link"
+
+docker:
+  image: mrcolorrain/speedshare
+  platforms: [linux/amd64]
+  env:
+    - key: CODE
+      label: "Authorization Code"
+      required: true
+      secret: true
+      description: "Your SpeedShare authorization code from the dashboard"
+    - key: SPEEDSHARE_UUID
+      label: "Device UUID"
+      required: false
+      secret: false
+      description: "Unique device identifier. Auto-generated if not provided."
+      default: ""
+  ports: []
+  volumes: []
+  command: ""
+  network_mode: ""
+
+requirements:
+  residential_ip: true
+  min_bandwidth: ""
+  gpu: false
+  min_storage: ""
+
+payment:
+  methods: [crypto, paypal]
+  minimum_payout: "$5"
+  currency: USD
+  frequency: "On request"
+
+earnings:
+  monthly_low: 0
+  monthly_high: 3
+  currency: USD
+  per: "device"
+  notes: "Residential IPs only. No official Docker image - uses community build. Relatively newer platform."
+
+platforms: [windows, macos, linux, docker]
+
+collector:
+  type: manual
+  notes: "No official API. Community Docker image. Manual earnings tracking via dashboard."

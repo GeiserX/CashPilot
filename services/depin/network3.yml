@@ -1,0 +1,55 @@
+name: Network3
+slug: network3
+category: depin
+status: broken
+website: https://network3.io
+description: >
+  Network3 was a DePIN project focused on decentralized AI training and bandwidth
+  sharing. The project's SSL certificate has expired and the platform appears
+  to be non-functional. Status marked as broken due to certificate issues and
+  possible project abandonment. Exercise caution before investing time or
+  resources.
+short_description: DePIN AI network - certificate expired, possibly dead
+
+referral:
+  url_template: ""
+  code: ""
+  signup_url: "https://network3.io"
+  bonus:
+    referrer: ""
+    referee: ""
+  how_to_get_code: ""
+
+docker:
+  image: ""
+  platforms: []
+  env: []
+  ports: []
+  volumes: []
+  command: ""
+  network_mode: ""
+
+requirements:
+  residential_ip: false
+  min_bandwidth: ""
+  gpu: false
+  min_storage: ""
+
+payment:
+  methods: [crypto]
+  minimum_payout: ""
+  currency: N3
+  frequency: ""
+
+earnings:
+  monthly_low: 0
+  monthly_high: 0
+  currency: USD
+  per: "device"
+  notes: "Project appears inactive. SSL certificate expired. Do not expect any earnings."
+
+platforms: [windows, macos, linux]
+
+collector:
+  type: manual
+  notes: "Site unreachable due to expired certificate. No collection possible."

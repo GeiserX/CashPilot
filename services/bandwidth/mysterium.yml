@@ -1,0 +1,58 @@
+name: MystNodes
+slug: mysterium
+category: bandwidth
+status: active
+website: https://mystnodes.com
+description: >
+  MystNodes (Mysterium Network) is a decentralized VPN and proxy network built on
+  blockchain technology. You earn MYST tokens by running a node that provides VPN,
+  proxy, and data scraping services to users. Requires NET_ADMIN capability and
+  host networking for full functionality. Includes a built-in web UI for node
+  management. Works on both residential and VPS connections.
+short_description: Decentralized VPN node - blockchain-based, works on VPS
+
+referral:
+  url_template: "https://mystnodes.co/?referral_code={code}"
+  code: ""
+  signup_url: "https://mystnodes.co/?referral_code={code}"
+  bonus:
+    referrer: "5% bonus on referral earnings"
+    referee: ""
+  how_to_get_code: "Dashboard > Referrals > Copy your referral link"
+
+docker:
+  image: mysteriumnetwork/myst
+  platforms: [linux/amd64, linux/arm64]
+  env: []
+  ports:
+    - "4449:4449"
+  volumes:
+    - "mysterium-data:/var/lib/mysterium-node"
+  command: "service --agreed-terms-and-conditions"
+  network_mode: "host"
+  cap_add: [NET_ADMIN]
+
+requirements:
+  residential_ip: false
+  min_bandwidth: ""
+  gpu: false
+  min_storage: ""
+
+payment:
+  methods: [crypto]
+  minimum_payout: "$2"
+  currency: MYST
+  frequency: "On request"
+
+earnings:
+  monthly_low: 2
+  monthly_high: 10
+  currency: USD
+  per: "device"
+  notes: "Earnings in MYST tokens. Residential IPs earn significantly more. Node WebUI at port 4449 for management. VPS accepted."
+
+platforms: [windows, macos, linux, docker]
+
+collector:
+  type: api
+  notes: "Node API at http://localhost:4449/tequilapi/. Built-in Tequila API for earnings and session data."

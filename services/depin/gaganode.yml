@@ -1,0 +1,55 @@
+name: GagaNode
+slug: gaganode
+category: depin
+status: active
+website: https://www.gaganode.com
+description: >
+  GagaNode is a multi-platform decentralized bandwidth sharing network that runs
+  on Windows, Linux, macOS, ARM devices, and Raspberry Pi. It provides a wide
+  range of platform support making it suitable for headless servers and SBCs.
+  The network monetizes idle bandwidth by routing legitimate traffic through
+  residential and datacenter connections.
+short_description: Multi-platform DePIN - Windows, Linux, macOS, ARM, RPi
+
+referral:
+  url_template: ""
+  code: ""
+  signup_url: "https://dashboard.gaganode.com/register"
+  bonus:
+    referrer: "Bonus credits per active referral"
+    referee: ""
+  how_to_get_code: "Dashboard > Invite Friends > Copy referral link"
+
+docker:
+  image: ""
+  platforms: []
+  env: []
+  ports: []
+  volumes: []
+  command: ""
+  network_mode: ""
+
+requirements:
+  residential_ip: false
+  min_bandwidth: ""
+  gpu: false
+  min_storage: ""
+
+payment:
+  methods: [crypto, paypal]
+  minimum_payout: "$5"
+  currency: USD
+  frequency: "On request"
+
+earnings:
+  monthly_low: 1
+  monthly_high: 5
+  currency: USD
+  per: "device"
+  notes: "Earnings vary by location and bandwidth. Supports a wide range of platforms including ARM and Raspberry Pi. Native binaries, no Docker image."
+
+platforms: [windows, macos, linux]
+
+collector:
+  type: api
+  notes: "Dashboard API at dashboard.gaganode.com. Token-based auth. Earnings and node status endpoints."

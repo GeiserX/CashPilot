@@ -1,0 +1,54 @@
+name: Wipter
+slug: wipter
+category: depin
+status: active
+website: https://wipter.com
+description: >
+  Wipter is a bandwidth sharing platform available on Windows, Mac, Linux, and
+  Android. It claims to pay up to $1/GB of shared bandwidth with a minimum payout
+  threshold of $20. The platform operates similarly to traditional bandwidth
+  sharing apps, routing legitimate traffic through residential connections.
+short_description: Bandwidth sharing - claims up to $1/GB, min payout $20
+
+referral:
+  url_template: "https://wipter.com/en/refer-a-friend?ref={code}"
+  code: ""
+  signup_url: "https://wipter.com/en/refer-a-friend"
+  bonus:
+    referrer: "Percentage of referral earnings"
+    referee: "Signup bonus"
+  how_to_get_code: "Dashboard > Refer a Friend page > Copy link"
+
+docker:
+  image: ""
+  platforms: []
+  env: []
+  ports: []
+  volumes: []
+  command: ""
+  network_mode: ""
+
+requirements:
+  residential_ip: true
+  min_bandwidth: ""
+  gpu: false
+  min_storage: ""
+
+payment:
+  methods: [paypal, crypto]
+  minimum_payout: "$20"
+  currency: USD
+  frequency: "On request"
+
+earnings:
+  monthly_low: 1
+  monthly_high: 10
+  currency: USD
+  per: "device"
+  notes: "Claims up to $1/GB but real-world earnings are lower. Minimum payout $20. Earnings vary heavily by location and demand."
+
+platforms: [windows, macos, linux, android]
+
+collector:
+  type: scrape
+  notes: "Dashboard at wipter.com. Earnings visible in account panel. No public API documented."
