@@ -18,7 +18,7 @@ import socket
 from typing import Any
 
 import docker
-from docker.errors import DockerException, NotFound, APIError
+from docker.errors import APIError, DockerException, NotFound
 
 from app.catalog import get_service
 
@@ -85,10 +85,12 @@ def _find_container(slug: str):
         # Fallback: find by label (handles renamed containers)
         matches = client.containers.list(
             all=True,
-            filters={"label": [
-                f"{LABEL_SERVICE}={slug}",
-                f"{LABEL_MANAGED}=true",
-            ]},
+            filters={
+                "label": [
+                    f"{LABEL_SERVICE}={slug}",
+                    f"{LABEL_MANAGED}=true",
+                ]
+            },
         )
         if matches:
             return matches[0]
@@ -136,9 +138,7 @@ def deploy_service(
         default = var.get("default", "")
         if default:
             # Substitute {hostname} placeholder
-            default = default.replace(
-                "{hostname}", hostname or socket.gethostname()
-            )
+            default = default.replace("{hostname}", hostname or socket.gethostname())
             env[var["key"]] = default
     if env_vars:
         env.update(env_vars)
@@ -242,13 +242,9 @@ def get_status() -> list[dict[str, Any]]:
             stats = c.stats(stream=False)
             # CPU %
             cpu_delta = (
-                stats["cpu_stats"]["cpu_usage"]["total_usage"]
-                - stats["precpu_stats"]["cpu_usage"]["total_usage"]
+                stats["cpu_stats"]["cpu_usage"]["total_usage"] - stats["precpu_stats"]["cpu_usage"]["total_usage"]
             )
-            system_delta = (
-                stats["cpu_stats"]["system_cpu_usage"]
-                - stats["precpu_stats"]["system_cpu_usage"]
-            )
+            system_delta = stats["cpu_stats"]["system_cpu_usage"] - stats["precpu_stats"]["system_cpu_usage"]
             num_cpus = stats["cpu_stats"].get(
                 "online_cpus",
                 len(stats["cpu_stats"]["cpu_usage"].get("percpu_usage", [1])),
@@ -283,6 +279,4 @@ def get_status() -> list[dict[str, Any]]:
 def get_service_logs(slug: str, lines: int = 50) -> str:
     """Return the last N lines of logs for a service container."""
     container = _find_container(slug)
-    return container.logs(tail=lines, timestamps=True).decode(
-        "utf-8", errors="replace"
-    )
+    return container.logs(tail=lines, timestamps=True).decode("utf-8", errors="replace")

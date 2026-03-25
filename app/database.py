@@ -7,7 +7,6 @@ fallback to ./data/cashpilot.db for development.
 
 from __future__ import annotations
 
-import json
 import os
 from datetime import datetime
 from pathlib import Path
@@ -164,9 +163,7 @@ async def get_config(key: str | None = None) -> dict[str, str] | str | None:
     db = await _get_db()
     try:
         if key:
-            cursor = await db.execute(
-                "SELECT value FROM config WHERE key = ?", (key,)
-            )
+            cursor = await db.execute("SELECT value FROM config WHERE key = ?", (key,))
             row = await cursor.fetchone()
             return row["value"] if row else None
         cursor = await db.execute("SELECT key, value FROM config")
@@ -239,9 +236,7 @@ async def get_deployments() -> list[dict[str, Any]]:
 async def get_deployment(slug: str) -> dict[str, Any] | None:
     db = await _get_db()
     try:
-        cursor = await db.execute(
-            "SELECT * FROM deployments WHERE slug = ?", (slug,)
-        )
+        cursor = await db.execute("SELECT * FROM deployments WHERE slug = ?", (slug,))
         row = await cursor.fetchone()
         return dict(row) if row else None
     finally:
@@ -287,9 +282,7 @@ async def create_user(username: str, hashed_password: str, role: str = "viewer")
 async def get_user_by_username(username: str) -> dict[str, Any] | None:
     db = await _get_db()
     try:
-        cursor = await db.execute(
-            "SELECT * FROM users WHERE username = ?", (username,)
-        )
+        cursor = await db.execute("SELECT * FROM users WHERE username = ?", (username,))
         row = await cursor.fetchone()
         return dict(row) if row else None
     finally:
@@ -299,9 +292,7 @@ async def get_user_by_username(username: str) -> dict[str, Any] | None:
 async def get_user_by_id(user_id: int) -> dict[str, Any] | None:
     db = await _get_db()
     try:
-        cursor = await db.execute(
-            "SELECT * FROM users WHERE id = ?", (user_id,)
-        )
+        cursor = await db.execute("SELECT * FROM users WHERE id = ?", (user_id,))
         row = await cursor.fetchone()
         return dict(row) if row else None
     finally:
@@ -311,9 +302,7 @@ async def get_user_by_id(user_id: int) -> dict[str, Any] | None:
 async def list_users() -> list[dict[str, Any]]:
     db = await _get_db()
     try:
-        cursor = await db.execute(
-            "SELECT id, username, role, created_at FROM users ORDER BY id"
-        )
+        cursor = await db.execute("SELECT id, username, role, created_at FROM users ORDER BY id")
         rows = await cursor.fetchall()
         return [dict(r) for r in rows]
     finally:

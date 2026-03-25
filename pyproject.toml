@@ -1,0 +1,54 @@
+[project]
+name = "cashpilot"
+version = "0.1.0"
+description = "Self-hosted passive income orchestrator"
+readme = "README.md"
+requires-python = ">=3.12"
+license = {text = "GPL-3.0-or-later"}
+authors = [
+    {name = "Sergio Fernandez", email = "9169332+GeiserX@users.noreply.github.com"}
+]
+keywords = ["passive-income", "docker", "bandwidth", "depin", "orchestrator"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: End Users/Desktop",
+    "License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: System :: Systems Administration",
+]
+
+[project.urls]
+Homepage = "https://github.com/GeiserX/CashPilot"
+Repository = "https://github.com/GeiserX/CashPilot"
+Issues = "https://github.com/GeiserX/CashPilot/issues"
+
+[tool.ruff]
+target-version = "py312"
+line-length = 120
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "F",   # pyflakes
+    "W",   # pycodestyle warnings
+    "I",   # isort
+    "UP",  # pyupgrade
+    "B",   # flake8-bugbear
+    "SIM", # flake8-simplify
+]
+ignore = [
+    "E501",   # line too long (handled by formatter)
+    "B008",   # do not perform function calls in argument defaults (FastAPI Depends pattern)
+    "B904",   # raise-without-from-inside-except (FastAPI HTTPException pattern)
+]
+
+[tool.ruff.lint.per-file-ignores]
+"scripts/*" = ["F841", "B007"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["app"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"

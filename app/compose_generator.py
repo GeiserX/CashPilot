@@ -72,9 +72,7 @@ def _service_to_compose(
         key = var["key"]
         default = var.get("default", "")
         if default:
-            default = default.replace(
-                "{hostname}", hostname or socket.gethostname()
-            )
+            default = default.replace("{hostname}", hostname or socket.gethostname())
         if env_vars and key in env_vars:
             env[key] = env_vars[key]
         elif default:
@@ -148,9 +146,7 @@ def generate_compose_multi(
         svc = get_service(slug)
         if not svc:
             continue
-        compose_svc = _service_to_compose(
-            svc, env_map.get(slug), hostname
-        )
+        compose_svc = _service_to_compose(svc, env_map.get(slug), hostname)
         if compose_svc:
             services[f"{CONTAINER_PREFIX}{slug}"] = compose_svc
 
@@ -167,11 +163,7 @@ def generate_compose_all(
 ) -> str:
     """Generate a docker-compose.yml for ALL services with Docker images."""
     all_svcs = get_services()
-    slugs = [
-        s.get("slug", s["name"].lower().replace(" ", "-"))
-        for s in all_svcs
-        if s.get("docker", {}).get("image")
-    ]
+    slugs = [s.get("slug", s["name"].lower().replace(" ", "-")) for s in all_svcs if s.get("docker", {}).get("image")]
     return generate_compose_multi(slugs, env_map, hostname)
 
 

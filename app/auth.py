@@ -13,8 +13,6 @@ from fastapi.responses import RedirectResponse
 from itsdangerous import BadSignature, URLSafeTimedSerializer
 from passlib.hash import bcrypt
 
-from app import database
-
 SECRET_KEY = os.getenv("CASHPILOT_SECRET_KEY", "changeme-generate-a-random-secret")
 SESSION_COOKIE = "cashpilot_session"
 SESSION_MAX_AGE = 60 * 60 * 24 * 30  # 30 days

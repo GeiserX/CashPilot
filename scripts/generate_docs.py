@@ -13,7 +13,6 @@ Usage:
     python scripts/generate_docs.py
 """
 
-import os
 import sys
 from pathlib import Path
 
@@ -49,13 +48,14 @@ CATEGORY_LABELS = {
 # Load services
 # ---------------------------------------------------------------------------
 
+
 def load_services() -> list[dict]:
     """Recursively load all YAML service definitions from services/."""
     services = []
     for yml_path in sorted(SERVICES_DIR.rglob("*.yml")):
         if yml_path.name.startswith("_"):
             continue
-        with open(yml_path, "r", encoding="utf-8") as f:
+        with open(yml_path, encoding="utf-8") as f:
             data = yaml.safe_load(f)
         if data and isinstance(data, dict) and "name" in data:
             data["_source"] = str(yml_path.relative_to(ROOT_DIR))
@@ -63,7 +63,7 @@ def load_services() -> list[dict]:
     for yaml_path in sorted(SERVICES_DIR.rglob("*.yaml")):
         if yaml_path.name.startswith("_"):
             continue
-        with open(yaml_path, "r", encoding="utf-8") as f:
+        with open(yaml_path, encoding="utf-8") as f:
             data = yaml.safe_load(f)
         if data and isinstance(data, dict) and "name" in data:
             data["_source"] = str(yaml_path.relative_to(ROOT_DIR))
@@ -96,6 +96,7 @@ def group_by_category(services: list[dict]) -> dict[str, list[dict]]:
 # ---------------------------------------------------------------------------
 # README table generation
 # ---------------------------------------------------------------------------
+
 
 def _residential_badge(svc: dict) -> str:
     req = svc.get("requirements", {})
@@ -141,24 +142,13 @@ def generate_services_table(groups: dict[str, list[dict]]) -> str:
         svc_word = "service" if count == 1 else "services"
         lines.append(f"### {label} ({count} {svc_word})")
         lines.append("")
-        lines.append(
-            "| Service | Docker Image | Residential IP "
-            "| Referral Link |"
-        )
-        lines.append(
-            "|---------|-------------|:--------------:"
-            "|---------------|"
-        )
+        lines.append("| Service | Docker Image | Residential IP | Referral Link |")
+        lines.append("|---------|-------------|:--------------:|---------------|")
         for svc in svcs:
             name = svc["name"]
             website = svc.get("website", "")
             name_col = f"[{name}]({website})" if website else name
-            lines.append(
-                f"| {name_col} "
-                f"| {_docker_image(svc)} "
-                f"| {_residential_badge(svc)} "
-                f"| {_signup_link(svc)} |"
-            )
+            lines.append(f"| {name_col} | {_docker_image(svc)} | {_residential_badge(svc)} | {_signup_link(svc)} |")
         lines.append("")
 
     # Handle any extra categories not in CATEGORY_ORDER
@@ -170,24 +160,13 @@ def generate_services_table(groups: dict[str, list[dict]]) -> str:
         svc_word = "service" if count == 1 else "services"
         lines.append(f"### {label} ({count} {svc_word})")
         lines.append("")
-        lines.append(
-            "| Service | Docker Image | Residential IP "
-            "| Referral Link |"
-        )
-        lines.append(
-            "|---------|-------------|:--------------:"
-            "|---------------|"
-        )
+        lines.append("| Service | Docker Image | Residential IP | Referral Link |")
+        lines.append("|---------|-------------|:--------------:|---------------|")
         for svc in svcs:
             name = svc["name"]
             website = svc.get("website", "")
             name_col = f"[{name}]({website})" if website else name
-            lines.append(
-                f"| {name_col} "
-                f"| {_docker_image(svc)} "
-                f"| {_residential_badge(svc)} "
-                f"| {_signup_link(svc)} |"
-            )
+            lines.append(f"| {name_col} | {_docker_image(svc)} | {_residential_badge(svc)} | {_signup_link(svc)} |")
         lines.append("")
 
     return "\n".join(lines).rstrip()
@@ -216,13 +195,7 @@ def update_readme(table_content: str) -> None:
 
     # Advance past the full start marker line (may contain trailing comment)
     start_line_end = readme.index("\n", start_idx)
-    new_readme = (
-        readme[: start_line_end]
-        + "\n"
-        + table_content
-        + "\n"
-        + readme[end_idx:]
-    )
+    new_readme = readme[:start_line_end] + "\n" + table_content + "\n" + readme[end_idx:]
 
     README_PATH.write_text(new_readme, encoding="utf-8")
     print(f"Updated {README_PATH.relative_to(ROOT_DIR)}")
@@ -231,6 +204,7 @@ def update_readme(table_content: str) -> None:
 # ---------------------------------------------------------------------------
 # Individual guide generation
 # ---------------------------------------------------------------------------
+
 
 def _payment_methods_str(svc: dict) -> str:
     payment = svc.get("payment", {})
@@ -276,7 +250,7 @@ def _docker_run_example(svc: dict) -> str:
         return ""
 
     slug = svc.get("slug", svc["name"].lower().replace(" ", "-"))
-    parts = [f"docker run -d \\", f"  --name cashpilot-{slug} \\"]
+    parts = ["docker run -d \\", f"  --name cashpilot-{slug} \\"]
 
     network_mode = docker.get("network_mode", "")
     if network_mode:
@@ -294,7 +268,7 @@ def _docker_run_example(svc: dict) -> str:
     for var in docker.get("env", []):
         key = var.get("key", "")
         label = var.get("label", key)
-        parts.append(f"  -e {key}=\"<{label}>\" \\")
+        parts.append(f'  -e {key}="<{label}>" \\')
 
     command = docker.get("command", "")
     if command:
@@ -358,8 +332,8 @@ def generate_guide(svc: dict) -> str:
     # Earning Estimates
     sections.append("## Earning Estimates")
     sections.append("")
-    sections.append(f"| Metric | Value |")
-    sections.append(f"|--------|-------|")
+    sections.append("| Metric | Value |")
+    sections.append("|--------|-------|")
     sections.append(f"| Monthly range | {earnings_range} |")
     sections.append(f"| Per | {earnings_per} |")
     sections.append(f"| Minimum payout | {min_payout} |")
@@ -373,8 +347,8 @@ def generate_guide(svc: dict) -> str:
     # Requirements
     sections.append("## Requirements")
     sections.append("")
-    sections.append(f"| Requirement | Value |")
-    sections.append(f"|-------------|-------|")
+    sections.append("| Requirement | Value |")
+    sections.append("|-------------|-------|")
     sections.append(f"| Residential IP | {residential} |")
     sections.append(f"| Minimum bandwidth | {min_bw} |")
     sections.append(f"| GPU required | {gpu} |")
@@ -385,7 +359,7 @@ def generate_guide(svc: dict) -> str:
     # Setup Instructions
     sections.append("## Setup Instructions")
     sections.append("")
-    sections.append(f"### 1. Create an account")
+    sections.append("### 1. Create an account")
     sections.append("")
     if signup_url:
         sections.append(f"Sign up at [{name}]({signup_url}).")
@@ -436,8 +410,8 @@ def generate_guide(svc: dict) -> str:
     # Referral Program
     sections.append("## Referral Program")
     sections.append("")
-    sections.append(f"| | Details |")
-    sections.append(f"|---|---------|")
+    sections.append("| | Details |")
+    sections.append("|---|---------|")
     sections.append(f"| Referrer bonus | {ref_bonus_referrer} |")
     sections.append(f"| New user bonus | {ref_bonus_referee} |")
     sections.append(f"| How to get code | {how_to_get_code} |")
@@ -530,12 +504,13 @@ def write_guides(services: list[dict], groups: dict[str, list[dict]]) -> None:
     index_path = GUIDES_DIR / "README.md"
     index_content = generate_guides_index(groups)
     index_path.write_text(index_content, encoding="utf-8")
-    print(f"  Generated docs/guides/README.md")
+    print("  Generated docs/guides/README.md")
 
 
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
+
 
 def main() -> None:
     print("Loading service definitions...")

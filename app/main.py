@@ -12,14 +12,13 @@ from contextlib import asynccontextmanager
 from typing import Any
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from fastapi import FastAPI, HTTPException, Request, Form
+from fastapi import FastAPI, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 
-from app import catalog, compose_generator, database, orchestrator
-from app import auth
+from app import auth, catalog, compose_generator, database, orchestrator
 
 logging.basicConfig(
     level=logging.INFO,
@@ -142,15 +141,19 @@ async def page_login(request: Request, error: str = ""):
     # If already logged in, go to dashboard
     if auth.get_current_user(request):
         return RedirectResponse("/", status_code=303)
-    return templates.TemplateResponse(request, "auth.html", {
-        "title": "Sign In",
-        "subtitle": "Sign in to your CashPilot instance",
-        "mode": "login",
-        "action": "/login",
-        "button_text": "Sign In",
-        "error": error,
-        "is_first": False,
-    })
+    return templates.TemplateResponse(
+        request,
+        "auth.html",
+        {
+            "title": "Sign In",
+            "subtitle": "Sign in to your CashPilot instance",
+            "mode": "login",
+            "action": "/login",
+            "button_text": "Sign In",
+            "error": error,
+            "is_first": False,
+        },
+    )
 
 
 @app.post("/login")
@@ -161,15 +164,20 @@ async def do_login(
 ):
     user = await database.get_user_by_username(username)
     if not user or not auth.verify_password(password, user["password"]):
-        return templates.TemplateResponse(request, "auth.html", {
-            "title": "Sign In",
-            "subtitle": "Sign in to your CashPilot instance",
-            "mode": "login",
-            "action": "/login",
-            "button_text": "Sign In",
-            "error": "Invalid username or password",
-            "is_first": False,
-        }, status_code=401)
+        return templates.TemplateResponse(
+            request,
+            "auth.html",
+            {
+                "title": "Sign In",
+                "subtitle": "Sign in to your CashPilot instance",
+                "mode": "login",
+                "action": "/login",
+                "button_text": "Sign In",
+                "error": "Invalid username or password",
+                "is_first": False,
+            },
+            status_code=401,
+        )
 
     token = auth.create_session_token(user["id"], user["username"], user["role"])
     response = RedirectResponse("/", status_code=303)
@@ -185,15 +193,19 @@ async def page_register(request: Request, error: str = ""):
         if not user or user.get("r") != "owner":
             return RedirectResponse("/login", status_code=303)
 
-    return templates.TemplateResponse(request, "auth.html", {
-        "title": "Create Account" if is_first else "Add User",
-        "subtitle": "Create the first admin account" if is_first else "Add a new user to this instance",
-        "mode": "register",
-        "action": "/register",
-        "button_text": "Create Account",
-        "error": error,
-        "is_first": is_first,
-    })
+    return templates.TemplateResponse(
+        request,
+        "auth.html",
+        {
+            "title": "Create Account" if is_first else "Add User",
+            "subtitle": "Create the first admin account" if is_first else "Add a new user to this instance",
+            "mode": "register",
+            "action": "/register",
+            "button_text": "Create Account",
+            "error": error,
+            "is_first": is_first,
+        },
+    )
 
 
 @app.post("/register")
@@ -212,38 +224,53 @@ async def do_register(
             raise HTTPException(status_code=403, detail="Only owners can add users")
 
     if password != password_confirm:
-        return templates.TemplateResponse(request, "auth.html", {
-            "title": "Create Account" if is_first else "Add User",
-            "subtitle": "Create the first admin account" if is_first else "Add a new user",
-            "mode": "register",
-            "action": "/register",
-            "button_text": "Create Account",
-            "error": "Passwords do not match",
-            "is_first": is_first,
-        }, status_code=400)
+        return templates.TemplateResponse(
+            request,
+            "auth.html",
+            {
+                "title": "Create Account" if is_first else "Add User",
+                "subtitle": "Create the first admin account" if is_first else "Add a new user",
+                "mode": "register",
+                "action": "/register",
+                "button_text": "Create Account",
+                "error": "Passwords do not match",
+                "is_first": is_first,
+            },
+            status_code=400,
+        )
 
     if len(password) < 6:
-        return templates.TemplateResponse(request, "auth.html", {
-            "title": "Create Account" if is_first else "Add User",
-            "subtitle": "Create the first admin account" if is_first else "Add a new user",
-            "mode": "register",
-            "action": "/register",
-            "button_text": "Create Account",
-            "error": "Password must be at least 6 characters",
-            "is_first": is_first,
-        }, status_code=400)
+        return templates.TemplateResponse(
+            request,
+            "auth.html",
+            {
+                "title": "Create Account" if is_first else "Add User",
+                "subtitle": "Create the first admin account" if is_first else "Add a new user",
+                "mode": "register",
+                "action": "/register",
+                "button_text": "Create Account",
+                "error": "Password must be at least 6 characters",
+                "is_first": is_first,
+            },
+            status_code=400,
+        )
 
     existing = await database.get_user_by_username(username)
     if existing:
-        return templates.TemplateResponse(request, "auth.html", {
-            "title": "Create Account" if is_first else "Add User",
-            "subtitle": "Create the first admin account" if is_first else "Add a new user",
-            "mode": "register",
-            "action": "/register",
-            "button_text": "Create Account",
-            "error": "Username already taken",
-            "is_first": is_first,
-        }, status_code=400)
+        return templates.TemplateResponse(
+            request,
+            "auth.html",
+            {
+                "title": "Create Account" if is_first else "Add User",
+                "subtitle": "Create the first admin account" if is_first else "Add a new user",
+                "mode": "register",
+                "action": "/register",
+                "button_text": "Create Account",
+                "error": "Username already taken",
+                "is_first": is_first,
+            },
+            status_code=400,
+        )
 
     # First user is always owner
     role = "owner" if is_first else "viewer"

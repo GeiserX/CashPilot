@@ -2,8 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from typing import Optional
+from dataclasses import dataclass
 
 
 @dataclass
@@ -14,7 +13,7 @@ class EarningsResult:
     balance: float
     currency: str = "USD"
     bytes_uploaded: int = 0
-    error: Optional[str] = None
+    error: str | None = None
 
 
 class BaseCollector:
