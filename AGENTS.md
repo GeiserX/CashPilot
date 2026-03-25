@@ -301,9 +301,10 @@ Docker socket must be accessible for container management.
 ### Adding a New Service
 
 1. Create `services/{category}/{slug}.yml` following `_schema.yml`
-2. Run `python scripts/generate_docs.py` to regenerate README + guides
-3. Optionally add a collector in `app/collectors/{slug}.py` and register it in `__init__.py`
-4. Submit a PR (one service per PR)
+2. **Include a `cashout` section** in the YAML — every service must define how users can cash out (API endpoint, redirect URL, or manual instructions). This is mandatory, not optional.
+3. Run `python scripts/generate_docs.py` to regenerate README + guides
+4. Optionally add a collector in `app/collectors/{slug}.py` and register it in `__init__.py`
+5. Submit a PR (one service per PR)
 
 ### Documentation Generation
 
