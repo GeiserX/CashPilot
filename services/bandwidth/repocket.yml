@@ -2,7 +2,7 @@ name: Repocket
 slug: repocket
 category: bandwidth
 status: active
-website: https://repocket.co
+website: https://repocket.com
 description: >
   Repocket lets you earn passive income by sharing your unused internet bandwidth.
   It works on both residential and VPS/datacenter connections. Setup requires an
@@ -11,13 +11,13 @@ description: >
 short_description: Bandwidth sharing - works on VPS, env-based auth
 
 referral:
-  url_template: "https://link.repocket.co/{code}"
+  url_template: ""
   code: ""
-  signup_url: "https://link.repocket.co/{code}"
+  signup_url: "https://repocket.com/"
   bonus:
-    referrer: "Percentage of referral earnings"
+    referrer: ""
     referee: ""
-  how_to_get_code: "Dashboard > Referral > Copy your referral link"
+  how_to_get_code: "No public referral program found as of March 2025"
 
 docker:
   image: repocket/repocket

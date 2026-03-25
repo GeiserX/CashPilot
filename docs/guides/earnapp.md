@@ -33,7 +33,7 @@ EarnApp by Bright Data lets you sell your unused bandwidth for passive income. B
 
 ### 1. Create an account
 
-Sign up at [EarnApp](https://earnapp.com/i/{code}).
+Sign up at [EarnApp](https://earnapp.com/i/TSMD9wSm).
 
 ### 2. Get your credentials
 

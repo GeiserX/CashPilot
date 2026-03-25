@@ -33,7 +33,7 @@ ProxyRack's Peer program lets you earn by sharing your bandwidth as part of thei
 
 ### 1. Create an account
 
-Sign up at [ProxyRack](https://peer.proxyrack.com/ref/{code}).
+Sign up at [ProxyRack](https://peer.proxyrack.com/ref/mpwiok3xlaxeycnn5znqlg7ipjeutxyxr6xl7vmn).
 
 ### 2. Get your credentials
 

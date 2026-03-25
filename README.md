@@ -61,18 +61,18 @@ Then open [http://localhost:8080](http://localhost:8080) and follow the setup wi
 | Service | Docker Image | Residential Only | Est. Monthly (USD) | Referral Link |
 |---------|-------------|:----------------:|-------------------:|---------------|
 | [Bitping](https://app.bitping.com) | `bitping/bitpingd` | No | $1 - $5 | [Sign up](https://app.bitping.com?r={code}) |
-| [Earn.fm](https://earn.fm) | `earnfm/earnfm-client` | Yes | $1 - $3 | [Sign up](https://earn.fm/ref/{code}) |
-| [EarnApp](https://earnapp.com) | `fazalfarhan01/earnapp:lite` | Yes | $2 - $5 | [Sign up](https://earnapp.com/i/{code}) |
-| [Honeygain](https://www.honeygain.com) | `honeygain/honeygain` | Yes | $2 - $5 | [Sign up](https://dashboard.honeygain.com/ref/{code}) |
-| [IPRoyal Pawns](https://pawns.app) | `iproyal/pawns-cli` | Yes | $1 - $5 | [Sign up](https://pawns.app?r={code}) |
-| [MystNodes](https://mystnodes.com) | `mysteriumnetwork/myst` | No | $2 - $10 | [Sign up](https://mystnodes.co/?referral_code={code}) |
-| [PacketStream](https://packetstream.io) | `packetstream/psclient` | Yes | $1 - $4 | [Sign up](https://packetstream.io/?psr={code}) |
+| [Earn.fm](https://earn.fm) | `earnfm/earnfm-client` | Yes | $1 - $3 | [Sign up](https://earn.fm/ref/GEISYB91) |
+| [EarnApp](https://earnapp.com) | `fazalfarhan01/earnapp:lite` | Yes | $2 - $5 | [Sign up](https://earnapp.com/i/TSMD9wSm) |
+| [Honeygain](https://www.honeygain.com) | `honeygain/honeygain` | Yes | $2 - $5 | [Sign up](https://dashboard.honeygain.com/ref/SERGIB4014) |
+| [IPRoyal Pawns](https://pawns.app) | `iproyal/pawns-cli` | Yes | $1 - $5 | [Sign up](https://pawns.app?r=19266874) |
+| [MystNodes](https://mystnodes.com) | `mysteriumnetwork/myst` | No | $2 - $10 | [Sign up](https://mystnodes.co/?referral_code=do7v7YOoBBpbOstKQovX2pUvZYKia4ZhH3QIdNtE) |
+| [PacketStream](https://packetstream.io) | `packetstream/psclient` | Yes | $1 - $4 | [Sign up](https://packetstream.io/?psr=7xgZ) |
 | [Peer2Profit](https://peer2profit.com) | `mrcolorrain/peer2profit` | No | $0 - $3 | [Sign up](https://peer2profit.com/r/{code}) |
-| [ProxyLite](https://proxylite.ru) | `proxylite/proxyservice` | No | $1 - $3 | [Sign up](https://proxylite.ru/?r={code}) |
-| [ProxyRack](https://peer.proxyrack.com) | `proxyrack/pop` | No | $1 - $4 | [Sign up](https://peer.proxyrack.com/ref/{code}) |
-| [Repocket](https://repocket.co) | `repocket/repocket` | No | $1 - $4 | [Sign up](https://link.repocket.co/{code}) |
+| [ProxyLite](https://proxylite.ru) | `proxylite/proxyservice` | No | $1 - $3 | [Sign up](https://proxylite.ru/?r=KMUPRZIZ) |
+| [ProxyRack](https://peer.proxyrack.com) | `proxyrack/pop` | No | $1 - $4 | [Sign up](https://peer.proxyrack.com/ref/mpwiok3xlaxeycnn5znqlg7ipjeutxyxr6xl7vmn) |
+| [Repocket](https://repocket.com) | `repocket/repocket` | No | $1 - $4 | [Sign up](https://repocket.com/) |
 | [SpeedShare](https://speedshare.app) | `mrcolorrain/speedshare` | Yes | $0 - $3 | [Sign up](https://speedshare.app/?ref={code}) |
-| [Traffmonetizer](https://traffmonetizer.com) | `traffmonetizer/cli_v2` | No | $1 - $4 | [Sign up](https://traffmonetizer.com/?aff={code}) |
+| [Traffmonetizer](https://traffmonetizer.com) | `traffmonetizer/cli_v2` | No | $1 - $4 | [Sign up](https://traffmonetizer.com/?aff=2111758) |
 
 ### DePIN (10 services)
 
@@ -81,11 +81,11 @@ Then open [http://localhost:8080](http://localhost:8080) and follow the setup wi
 | [BlockMesh](https://blockmesh.xyz) | N/A | Yes | $1 - $5 | [Sign up](https://blockmesh.xyz) |
 | [Dawn Internet](https://dawninternet.com) | N/A | Yes | $1 - $5 | [Sign up](https://dawninternet.com?code={code}) |
 | [GagaNode](https://www.gaganode.com) | N/A | No | $1 - $5 | [Sign up](https://dashboard.gaganode.com/register) |
-| [Gradient Network](https://gradient.network) | N/A | Yes | $1 - $8 | [Sign up](https://app.gradient.network/signup?code={code}) |
-| [Grass](https://www.getgrass.io) | N/A | Yes | $1 - $10 | [Sign up](https://app.getgrass.io/register/?referralCode={code}) |
+| [Gradient Network](https://gradient.network) | N/A | Yes | $1 - $8 | [Sign up](https://app.gradient.network/signup?code=YSKMY7) |
+| [Grass](https://www.getgrass.io) | N/A | Yes | $1 - $10 | [Sign up](https://app.getgrass.io/register/?referralCode=kn8FNEPnUr2tMqE) |
 | [Network3](https://network3.io) | N/A | No | $0 - $0 | [Sign up](https://network3.io) |
-| [Nodepay](https://nodepay.ai) | N/A | Yes | $1 - $5 | [Sign up](https://app.nodepay.ai/register) |
-| [Teneo Protocol](https://teneo.pro) | N/A | Yes | $1 - $5 | [Sign up](https://dashboard.teneo.pro/?code={code}) |
+| [Nodepay](https://nodepay.ai) | N/A | Yes | $1 - $5 | [Sign up](https://app.nodepay.ai/register?ref=0wzzyznen64j9zx) |
+| [Teneo Protocol](https://teneo.pro) | N/A | Yes | $1 - $5 | [Sign up](https://dashboard.teneo.pro/?code=CAqef) |
 | [Titan Network](https://titannet.io) | N/A | Yes | $5 - $30 | [Sign up](https://titannet.io) |
 | [Wipter](https://wipter.com) | N/A | Yes | $1 - $10 | [Sign up](https://wipter.com/en/refer-a-friend) |
 

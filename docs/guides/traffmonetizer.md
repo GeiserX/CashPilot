@@ -33,7 +33,7 @@ Traffmonetizer lets you monetize your internet traffic by sharing bandwidth with
 
 ### 1. Create an account
 
-Sign up at [Traffmonetizer](https://traffmonetizer.com/?aff={code}).
+Sign up at [Traffmonetizer](https://traffmonetizer.com/?aff=2111758).
 
 ### 2. Get your credentials
 

@@ -33,7 +33,7 @@ Share your unused internet bandwidth and earn passive income. Honeygain routes w
 
 ### 1. Create an account
 
-Sign up at [Honeygain](https://dashboard.honeygain.com/ref/{code}).
+Sign up at [Honeygain](https://dashboard.honeygain.com/ref/SERGIB4014).
 
 ### 2. Get your credentials
 

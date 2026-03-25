@@ -12,8 +12,8 @@ short_description: Bandwidth sharing - token-based, lightweight client
 
 referral:
   url_template: "https://earn.fm/ref/{code}"
-  code: ""
-  signup_url: "https://earn.fm/ref/{code}"
+  code: "GEISYB91"
+  signup_url: "https://earn.fm/ref/GEISYB91"
   bonus:
     referrer: "Percentage of referral earnings"
     referee: ""

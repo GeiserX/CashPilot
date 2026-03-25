@@ -33,7 +33,7 @@ ProxyLite monetizes your internet traffic by sharing bandwidth with verified org
 
 ### 1. Create an account
 
-Sign up at [ProxyLite](https://proxylite.ru/?r={code}).
+Sign up at [ProxyLite](https://proxylite.ru/?r=KMUPRZIZ).
 
 ### 2. Get your credentials
 
