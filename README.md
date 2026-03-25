@@ -1,36 +1,6 @@
-<!-- BANNER CANDIDATES — pick one, delete the rest -->
-
-### 1. Text x=220 y=155 (right-shifted from original, sun right)
-<p align="center"><img src="docs/banners/star-01.svg" alt="Star 1" width="100%"></p>
-
-### 2. Text centered, y=160 (sun right)
-<p align="center"><img src="docs/banners/star-02.svg" alt="Star 2" width="100%"></p>
-
-### 3. Sun LEFT, text x=740 centered-right, y=155
-<p align="center"><img src="docs/banners/star-03.svg" alt="Star 3" width="100%"></p>
-
-### 4. Text x=280 y=165, font 85px (sun right)
-<p align="center"><img src="docs/banners/star-04.svg" alt="Star 4" width="100%"></p>
-
-### 5. Text x=250 y=160, accent line, bigger sun (r=85)
-<p align="center"><img src="docs/banners/star-05.svg" alt="Star 5" width="100%"></p>
-
-### 6. Text RIGHT-ALIGNED x=1160 y=155 (sun behind text)
-<p align="center"><img src="docs/banners/star-06.svg" alt="Star 6" width="100%"></p>
-
-### 7. Text x=300 y=170, font 82px, tagline "SELF-HOSTED..."
-<p align="center"><img src="docs/banners/star-07.svg" alt="Star 7" width="100%"></p>
-
-### 8. Text x=200 y=175, font 86px, wider letter-spacing
-<p align="center"><img src="docs/banners/star-08.svg" alt="Star 8" width="100%"></p>
-
-### 9. Text x=240 y=162, font 88px, tight tagline gap
-<p align="center"><img src="docs/banners/star-09.svg" alt="Star 9" width="100%"></p>
-
-### 10. Text x=260 y=168, font 86px, sun slightly bigger (r=82)
-<p align="center"><img src="docs/banners/star-10.svg" alt="Star 10" width="100%"></p>
-
-<!-- END BANNER CANDIDATES -->
+<p align="center">
+  <img src="docs/banner.svg" alt="CashPilot" width="100%">
+</p>
 
 <p align="center">
   <a href="https://hub.docker.com/r/drumsergio/cashpilot"><img alt="Docker Pulls" src="https://img.shields.io/docker/pulls/drumsergio/cashpilot?style=flat-square&logo=docker"></a>
