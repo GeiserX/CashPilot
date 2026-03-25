@@ -1,0 +1,66 @@
+name: EarnApp
+slug: earnapp
+category: bandwidth
+status: active
+website: https://earnapp.com
+description: >
+  EarnApp by Bright Data lets you sell your unused bandwidth for passive income.
+  Bright Data is the world's largest proxy network, powering data collection for
+  Fortune 500 companies. The community Docker image (fazalfarhan01) makes headless
+  deployment easy with a lite mode that requires only a UUID.
+short_description: Bandwidth sharing - backed by Bright Data
+
+referral:
+  url_template: "https://earnapp.com/i/{code}"
+  code: ""
+  signup_url: "https://earnapp.com/i/{code}"
+  bonus:
+    referrer: "10% of referral earnings for life"
+    referee: ""
+  how_to_get_code: "Dashboard > Referrals > Copy your referral link"
+
+docker:
+  image: fazalfarhan01/earnapp:lite
+  platforms: [linux/amd64]
+  env:
+    - key: EARNAPP_UUID
+      label: "Node UUID"
+      required: true
+      secret: false
+      description: "Your EarnApp node ID (run 'earnapp showid' to get it, or generate one with the sdk-node-id format)"
+    - key: EARNAPP_TERM
+      label: "Accept Terms"
+      required: false
+      secret: false
+      description: "Set to 'yes' to accept terms of service"
+      default: "yes"
+  ports: []
+  volumes:
+    - "earnapp-data:/etc/earnapp"
+  command: ""
+  network_mode: ""
+
+requirements:
+  residential_ip: true
+  min_bandwidth: ""
+  gpu: false
+  min_storage: ""
+
+payment:
+  methods: [paypal, amazon_giftcard]
+  minimum_payout: "$2.50"
+  currency: USD
+  frequency: "On request"
+
+earnings:
+  monthly_low: 2
+  monthly_high: 5
+  currency: USD
+  per: "device"
+  notes: "Highly location-dependent. US/EU IPs earn the most. Earnings scale with bandwidth consumed."
+
+platforms: [windows, macos, linux, android, docker]
+
+collector:
+  type: api
+  notes: "Bright Data SDK API. Auth via device UUID. Dashboard shows earnings per node."

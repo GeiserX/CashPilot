@@ -1,0 +1,77 @@
+name: IPRoyal Pawns
+slug: iproyal
+category: bandwidth
+status: active
+website: https://pawns.app
+description: >
+  IPRoyal Pawns lets you earn by sharing your unused bandwidth. IPRoyal is a
+  well-established proxy provider, and Pawns is their residential bandwidth-sharing
+  arm. The CLI Docker image accepts credentials via command-line flags. Offers a
+  generous 10% lifetime referral commission and $3 bonus for new signups with code
+  EARN3.
+short_description: Bandwidth sharing - 10% lifetime referral, $3 signup bonus
+
+referral:
+  url_template: "https://pawns.app?r={code}"
+  code: ""
+  signup_url: "https://pawns.app?r={code}"
+  bonus:
+    referrer: "10% of referral earnings for life"
+    referee: "$3 with code EARN3"
+  how_to_get_code: "Dashboard > Referrals > Copy your referral link"
+
+docker:
+  image: iproyal/pawns-cli
+  platforms: [linux/amd64, linux/arm64]
+  env:
+    - key: IPROYAL_EMAIL
+      label: "Email"
+      required: true
+      secret: false
+      description: "Your IPRoyal Pawns account email (passed as -email flag)"
+    - key: IPROYAL_PASSWORD
+      label: "Password"
+      required: true
+      secret: true
+      description: "Your IPRoyal Pawns account password (passed as -password flag)"
+    - key: IPROYAL_DEVICE_NAME
+      label: "Device name"
+      required: false
+      secret: false
+      description: "Name shown in your Pawns dashboard (passed as -device-name flag)"
+      default: "cashpilot-{hostname}"
+    - key: IPROYAL_DEVICE_ID
+      label: "Device ID"
+      required: false
+      secret: false
+      description: "Unique device identifier (passed as -device-id flag)"
+      default: "cashpilot-{hostname}"
+  ports: []
+  volumes: []
+  command: "-email ${IPROYAL_EMAIL} -password ${IPROYAL_PASSWORD} -device-name ${IPROYAL_DEVICE_NAME} -device-id ${IPROYAL_DEVICE_ID} -accept-tos"
+  network_mode: ""
+
+requirements:
+  residential_ip: true
+  min_bandwidth: ""
+  gpu: false
+  min_storage: ""
+
+payment:
+  methods: [paypal, crypto, bank]
+  minimum_payout: "$5"
+  currency: USD
+  frequency: "On request"
+
+earnings:
+  monthly_low: 1
+  monthly_high: 5
+  currency: USD
+  per: "device"
+  notes: "Earnings depend on location and bandwidth usage. US/EU residential IPs earn more."
+
+platforms: [windows, macos, linux, android, docker]
+
+collector:
+  type: api
+  notes: "API available via dashboard. Auth with account credentials."

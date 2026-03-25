@@ -1,0 +1,59 @@
+name: Earn.fm
+slug: earnfm
+category: bandwidth
+status: active
+website: https://earn.fm
+description: >
+  Earn.fm pays you for sharing your internet bandwidth. It uses a simple
+  token-based authentication via the EARNFM_TOKEN environment variable. The
+  platform provides an API key from user settings that serves as the token.
+  Lightweight Docker image with straightforward deployment.
+short_description: Bandwidth sharing - token-based, lightweight client
+
+referral:
+  url_template: "https://earn.fm/ref/{code}"
+  code: ""
+  signup_url: "https://earn.fm/ref/{code}"
+  bonus:
+    referrer: "Percentage of referral earnings"
+    referee: ""
+  how_to_get_code: "Dashboard > Settings > Copy your referral link"
+
+docker:
+  image: earnfm/earnfm-client
+  platforms: [linux/amd64, linux/arm64]
+  env:
+    - key: EARNFM_TOKEN
+      label: "API Token"
+      required: true
+      secret: true
+      description: "Your Earn.fm API key (found in app.earn.fm > Settings)"
+  ports: []
+  volumes: []
+  command: ""
+  network_mode: ""
+
+requirements:
+  residential_ip: true
+  min_bandwidth: ""
+  gpu: false
+  min_storage: ""
+
+payment:
+  methods: [crypto]
+  minimum_payout: "$3"
+  currency: USD
+  frequency: "On request"
+
+earnings:
+  monthly_low: 1
+  monthly_high: 3
+  currency: USD
+  per: "device"
+  notes: "Relatively new platform. Earnings vary by location and bandwidth availability."
+
+platforms: [linux, docker]
+
+collector:
+  type: api
+  notes: "Token-based auth via EARNFM_TOKEN. Dashboard at app.earn.fm shows earnings."

@@ -1,0 +1,174 @@
+{% extends "base.html" %}
+
+{% block title %}{{ service.name }} - CashPilot{% endblock %}
+{% block page %}service_detail{% endblock %}
+{% block topbar_title %}{{ service.name }}{% endblock %}
+
+{% block content %}
+<div style="margin-bottom: 16px;">
+  <a href="/catalog" style="color: var(--text-muted); font-size: 0.85rem;">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align: -2px;"><polyline points="15 18 9 12 15 6"/></svg>
+    Back to Catalog
+  </a>
+</div>
+
+<div style="display: flex; align-items: flex-start; gap: 24px; flex-wrap: wrap;">
+  <!-- Left: Details -->
+  <div style="flex: 1; min-width: 320px;">
+    <div class="card" style="margin-bottom: 16px;">
+      <div style="display: flex; align-items: center; gap: 14px; margin-bottom: 16px;">
+        <div class="service-icon" style="width: 48px; height: 48px; font-size: 1.5rem;">
+          {{ service.name[0] | upper if service.name else '?' }}
+        </div>
+        <div>
+          <h2 style="font-size: 1.25rem; font-weight: 700;">{{ service.name }}</h2>
+          <div class="service-meta">
+            <span class="badge badge-category">{{ service.category }}</span>
+            {% if service.status == 'active' %}
+              <span class="badge badge-running">Active</span>
+            {% elif service.status == 'broken' %}
+              <span class="badge badge-broken">Broken</span>
+            {% else %}
+              <span class="badge badge-available">{{ service.status }}</span>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+
+      <p style="color: var(--text-secondary); margin-bottom: 20px;">{{ service.description }}</p>
+
+      <div class="detail-grid">
+        <div class="detail-item">
+          <div class="detail-label">Estimated Earnings</div>
+          <div class="detail-value" style="color: var(--success);">
+            {% if service.earnings %}
+              ${{ service.earnings.monthly_low }}-${{ service.earnings.monthly_high }} / {{ service.earnings.per or 'month' }}
+            {% else %}
+              Varies
+            {% endif %}
+          </div>
+        </div>
+        <div class="detail-item">
+          <div class="detail-label">Payout Methods</div>
+          <div class="detail-value">
+            {{ service.payment.methods | join(', ') if service.payment and service.payment.methods else 'N/A' }}
+          </div>
+        </div>
+        <div class="detail-item">
+          <div class="detail-label">Minimum Payout</div>
+          <div class="detail-value">{{ service.payment.minimum_payout if service.payment else 'N/A' }}</div>
+        </div>
+        <div class="detail-item">
+          <div class="detail-label">Payout Frequency</div>
+          <div class="detail-value">{{ service.payment.frequency if service.payment else 'N/A' }}</div>
+        </div>
+        <div class="detail-item">
+          <div class="detail-label">Residential IP Required</div>
+          <div class="detail-value">
+            {% if service.requirements and service.requirements.residential_ip %}
+              <span class="badge badge-residential">Yes</span>
+            {% else %}
+              No
+            {% endif %}
+          </div>
+        </div>
+        <div class="detail-item">
+          <div class="detail-label">Platforms</div>
+          <div class="platform-badges">
+            {% for p in service.platforms or [] %}
+              <span class="platform-badge">{{ p }}</span>
+            {% endfor %}
+          </div>
+        </div>
+      </div>
+
+      {% if service.earnings and service.earnings.notes %}
+      <div style="margin-top: 16px; padding: 12px; background: var(--bg-tertiary); border-radius: var(--radius); font-size: 0.85rem; color: var(--text-secondary);">
+        {{ service.earnings.notes }}
+      </div>
+      {% endif %}
+    </div>
+
+    <!-- Referral Info -->
+    {% if service.referral %}
+    <div class="card" style="margin-bottom: 16px;">
+      <h3 class="card-title" style="margin-bottom: 12px;">Referral Program</h3>
+      <div class="detail-grid">
+        <div class="detail-item">
+          <div class="detail-label">Referrer Bonus</div>
+          <div class="detail-value">{{ service.referral.bonus.referrer if service.referral.bonus else 'N/A' }}</div>
+        </div>
+        <div class="detail-item">
+          <div class="detail-label">New User Bonus</div>
+          <div class="detail-value">{{ service.referral.bonus.referee if service.referral.bonus else 'N/A' }}</div>
+        </div>
+      </div>
+      {% if service.referral.how_to_get_code %}
+      <div class="form-hint" style="margin-top: 8px;">
+        How to find your code: {{ service.referral.how_to_get_code }}
+      </div>
+      {% endif %}
+    </div>
+    {% endif %}
+  </div>
+
+  <!-- Right: Setup / Container -->
+  <div style="flex: 1; min-width: 320px;">
+    <!-- Setup Guide -->
+    <div class="card" style="margin-bottom: 16px;">
+      <h3 class="card-title" style="margin-bottom: 12px;">Deploy</h3>
+
+      {% set signup_url = service.referral.signup_url.replace('{code}', service.referral.code or '') if service.referral and service.referral.signup_url else service.website or '#' %}
+      <div style="margin-bottom: 16px;">
+        <p style="color: var(--text-secondary); margin-bottom: 8px;">
+          New to {{ service.name }}?
+        </p>
+        <a href="{{ signup_url }}" target="_blank" rel="noopener" class="btn btn-secondary btn-sm">
+          Sign Up
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+        </a>
+      </div>
+
+      <p style="color: var(--text-muted); font-size: 0.85rem; margin-bottom: 16px;">
+        Already have an account? Enter your credentials below and deploy.
+      </p>
+
+      {% if service.docker and service.docker.env %}
+        {% for env in service.docker.env %}
+        <div class="form-group">
+          <label class="form-label">{{ env.label }}</label>
+          <input class="form-input" type="{{ 'password' if env.secret else 'text' }}"
+                 data-slug="{{ service.slug }}" data-key="{{ env.key }}"
+                 placeholder="{{ env.description or '' }}"
+                 value="{{ env.default or '' }}"
+                 {{ 'required' if env.required else '' }}>
+          {% if env.description %}
+            <div class="form-hint">{{ env.description }}</div>
+          {% endif %}
+        </div>
+        {% endfor %}
+      {% endif %}
+
+      <div style="display: flex; gap: 8px; align-items: center;">
+        <button class="btn btn-success" onclick="CP.deployService('{{ service.slug }}')">Deploy</button>
+        <span id="deploy-status-{{ service.slug }}" style="font-size: 0.85rem;"></span>
+      </div>
+    </div>
+
+    <!-- Container Controls (if deployed) -->
+    <div class="card" style="margin-bottom: 16px;">
+      <h3 class="card-title" style="margin-bottom: 12px;">Container</h3>
+      <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px;">
+        <button class="btn btn-secondary btn-sm" onclick="CP.startService('{{ service.slug }}')">Start</button>
+        <button class="btn btn-secondary btn-sm" onclick="CP.restartService('{{ service.slug }}')">Restart</button>
+        <button class="btn btn-secondary btn-sm" onclick="CP.stopService('{{ service.slug }}')">Stop</button>
+        <button class="btn btn-danger btn-sm" onclick="CP.removeService('{{ service.slug }}')">Remove</button>
+      </div>
+
+      <h4 style="font-size: 0.9rem; margin-bottom: 8px; color: var(--text-secondary);">Logs</h4>
+      <div class="log-viewer" id="detail-logs-{{ service.slug }}">(Click Load Logs to view)</div>
+      <button class="btn btn-ghost btn-sm" style="margin-top: 8px;" onclick="CP.loadDetailLogs('{{ service.slug }}')">Load Logs</button>
+    </div>
+  </div>
+</div>
+{% endblock %}

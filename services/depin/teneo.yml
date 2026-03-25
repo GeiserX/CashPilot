@@ -1,0 +1,54 @@
+name: Teneo Protocol
+slug: teneo
+category: depin
+status: active
+website: https://teneo.pro
+description: >
+  Teneo Protocol is a DePIN network that rewards users for sharing bandwidth
+  via a browser extension. It operates a community node system where users earn
+  Teneo Points by keeping the extension active. Referrals grant 2000 points each.
+  The protocol focuses on building decentralized data infrastructure.
+short_description: DePIN browser extension - 2000 pts per referral
+
+referral:
+  url_template: "https://dashboard.teneo.pro/?code={code}"
+  code: ""
+  signup_url: "https://dashboard.teneo.pro/?code={code}"
+  bonus:
+    referrer: "2000 Teneo Points per referral"
+    referee: "Bonus points on signup"
+  how_to_get_code: "Dashboard > Referral > Copy link"
+
+docker:
+  image: ""
+  platforms: []
+  env: []
+  ports: []
+  volumes: []
+  command: ""
+  network_mode: ""
+
+requirements:
+  residential_ip: true
+  min_bandwidth: ""
+  gpu: false
+  min_storage: ""
+
+payment:
+  methods: [crypto]
+  minimum_payout: ""
+  currency: TENEO
+  frequency: "Token airdrop (TBA)"
+
+earnings:
+  monthly_low: 1
+  monthly_high: 5
+  currency: USD
+  per: "device"
+  notes: "Earns Teneo Points pre-token launch. Browser extension must remain active. Actual USD value depends on future token conversion."
+
+platforms: [browser_extension]
+
+collector:
+  type: scrape
+  notes: "Points visible in dashboard.teneo.pro. Websocket-based connection tracking."

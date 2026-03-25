@@ -1,0 +1,60 @@
+name: Vast.ai
+slug: vast-ai
+category: compute
+status: active
+website: https://vast.ai
+description: >
+  Vast.ai is a GPU cloud marketplace where you rent out your NVIDIA GPU to
+  AI/ML researchers and developers. Docker-native platform where you set your
+  own hourly prices. An RTX 3090 typically earns $0.20-0.40/hr when rented.
+  Requires an NVIDIA GPU with recent drivers and a stable internet connection.
+  Revenue depends heavily on GPU model, pricing strategy, and market demand.
+short_description: GPU marketplace - set your own prices, RTX 3090 ~$0.20-0.40/hr
+
+referral:
+  url_template: ""
+  code: ""
+  signup_url: "https://vast.ai"
+  bonus:
+    referrer: ""
+    referee: ""
+  how_to_get_code: ""
+
+docker:
+  image: ""
+  platforms: [linux/amd64]
+  env:
+    - key: VAST_API_KEY
+      label: "API Key"
+      required: true
+      secret: true
+      description: "Vast.ai host API key from dashboard"
+  ports: []
+  volumes: []
+  command: ""
+  network_mode: ""
+
+requirements:
+  residential_ip: false
+  min_bandwidth: "100 Mbps"
+  gpu: true
+  min_storage: "100GB"
+
+payment:
+  methods: [crypto, bank]
+  minimum_payout: "$25"
+  currency: USD
+  frequency: "On request"
+
+earnings:
+  monthly_low: 50
+  monthly_high: 300
+  currency: USD
+  per: "GPU-hour"
+  notes: "RTX 3090 ~$0.20-0.40/hr, RTX 4090 ~$0.40-0.80/hr when rented. Utilization varies. Requires NVIDIA GPU, Linux host, Docker, and nvidia-container-toolkit. Set your own pricing."
+
+platforms: [linux, docker]
+
+collector:
+  type: api
+  notes: "REST API at https://console.vast.ai/api/v0/. API key auth. Endpoints for machine stats and earnings."

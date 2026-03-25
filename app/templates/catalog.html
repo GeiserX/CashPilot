@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+
+{% block title %}Service Catalog - CashPilot{% endblock %}
+{% block page %}catalog{% endblock %}
+{% block topbar_title %}Service Catalog{% endblock %}
+
+{% block content %}
+<div class="section-header">
+  <h2 class="section-title">Available Services</h2>
+</div>
+
+<!-- Filter Bar -->
+<div class="filter-bar">
+  <div class="filter-tabs">
+    <button class="filter-tab active" data-category="all">All</button>
+    <button class="filter-tab" data-category="bandwidth">Bandwidth</button>
+    <button class="filter-tab" data-category="depin">DePIN</button>
+    <button class="filter-tab" data-category="storage">Storage</button>
+    <button class="filter-tab" data-category="compute">Compute</button>
+  </div>
+  <div class="search-box">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+    </svg>
+    <input class="form-input" type="search" id="catalog-search" placeholder="Search services...">
+  </div>
+</div>
+
+<!-- Service Grid -->
+<div class="services-grid" id="catalog-grid">
+  <div class="spinner" style="margin: 48px auto;"></div>
+</div>
+{% endblock %}

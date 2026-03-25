@@ -1,0 +1,54 @@
+name: Gradient Network
+slug: gradient
+category: depin
+status: active
+website: https://gradient.network
+description: >
+  Gradient Network is a decentralized compute and bandwidth sharing platform
+  backed by Pantera Capital. Users earn Gradient Points by running a browser-based
+  node that contributes idle resources to the network. The project focuses on
+  building open AI infrastructure through distributed edge computing.
+short_description: DePIN network backed by Pantera Capital - browser-based node
+
+referral:
+  url_template: "https://app.gradient.network/signup?code={code}"
+  code: ""
+  signup_url: "https://app.gradient.network/signup?code={code}"
+  bonus:
+    referrer: "Bonus Gradient Points per active referral"
+    referee: "Bonus points on signup"
+  how_to_get_code: "Dashboard > Referrals > Copy referral link"
+
+docker:
+  image: ""
+  platforms: []
+  env: []
+  ports: []
+  volumes: []
+  command: ""
+  network_mode: ""
+
+requirements:
+  residential_ip: true
+  min_bandwidth: ""
+  gpu: false
+  min_storage: ""
+
+payment:
+  methods: [crypto]
+  minimum_payout: ""
+  currency: GRADIENT
+  frequency: "Token airdrop (TBA)"
+
+earnings:
+  monthly_low: 1
+  monthly_high: 8
+  currency: USD
+  per: "device"
+  notes: "Earns Gradient Points pre-token launch. Web-based node runs in browser tab. Backed by Pantera Capital, which may indicate stronger token value at launch."
+
+platforms: [browser_extension]
+
+collector:
+  type: scrape
+  notes: "Points visible at app.gradient.network dashboard. No public API documented."

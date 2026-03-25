@@ -1,0 +1,66 @@
+name: Traffmonetizer
+slug: traffmonetizer
+category: bandwidth
+status: active
+website: https://traffmonetizer.com
+description: >
+  Traffmonetizer lets you monetize your internet traffic by sharing bandwidth with
+  verified businesses. One of the few bandwidth-sharing services that works well on
+  VPS and datacenter IPs in addition to residential connections. Uses a simple
+  token-based authentication passed via command-line arguments. Supports ARM
+  architectures for Raspberry Pi and similar devices.
+short_description: Bandwidth sharing - works on VPS, token-based auth
+
+referral:
+  url_template: "https://traffmonetizer.com/?aff={code}"
+  code: ""
+  signup_url: "https://traffmonetizer.com/?aff={code}"
+  bonus:
+    referrer: "10% of referral earnings for life"
+    referee: "$5 signup bonus"
+  how_to_get_code: "Dashboard > Referral Program > Copy your referral link"
+
+docker:
+  image: traffmonetizer/cli_v2
+  platforms: [linux/amd64, linux/arm64]
+  env:
+    - key: TRAFFMONETIZER_TOKEN
+      label: "Token"
+      required: true
+      secret: true
+      description: "Your Traffmonetizer account token (found in Dashboard > Docker run command)"
+    - key: TRAFFMONETIZER_DEVICE_NAME
+      label: "Device name"
+      required: false
+      secret: false
+      description: "Name displayed in dashboard for device management"
+      default: "cashpilot-{hostname}"
+  ports: []
+  volumes: []
+  command: "start accept --token ${TRAFFMONETIZER_TOKEN} --device-name ${TRAFFMONETIZER_DEVICE_NAME}"
+  network_mode: ""
+
+requirements:
+  residential_ip: false
+  min_bandwidth: ""
+  gpu: false
+  min_storage: ""
+
+payment:
+  methods: [crypto, paypal]
+  minimum_payout: "$5"
+  currency: USD
+  frequency: "On request"
+
+earnings:
+  monthly_low: 1
+  monthly_high: 4
+  currency: USD
+  per: "device"
+  notes: "VPS and datacenter IPs earn less than residential. US/EU locations earn more. Multiple IPs supported via Docker networks."
+
+platforms: [windows, macos, linux, docker]
+
+collector:
+  type: api
+  notes: "Dashboard provides per-device statistics. Token auth via account API."

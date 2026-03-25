@@ -1,0 +1,61 @@
+# CashPilot Service Definition Schema
+# Each YAML file in services/ defines one income service.
+# This is the SINGLE SOURCE OF TRUTH — README, web UI, and guides all derive from these files.
+
+# name: Human-readable service name
+# slug: URL/container-safe identifier (lowercase, hyphens)
+# category: bandwidth | depin | storage | compute
+# status: active | beta | broken | dead
+# website: Main URL
+# description: One paragraph description
+# short_description: One line (for tables)
+
+# referral:
+#   url_template: URL with {code} placeholder
+#   code: "" (owner fills in)
+#   signup_url: Direct signup page URL (referral code appended or embedded)
+#   bonus:
+#     referrer: What the referrer gets
+#     referee: What the new user gets
+#   how_to_get_code: Instructions to find referral link in dashboard
+
+# docker:
+#   image: Docker Hub image
+#   platforms: [linux/amd64, linux/arm64]
+#   env:
+#     - key: ENV_VAR_NAME
+#       label: "Human label"
+#       required: true/false
+#       secret: true/false
+#       description: "Help text"
+#       default: "" (optional)
+#   ports: ["port:port"]
+#   volumes: ["host:container"]
+#   command: "" (optional override)
+#   network_mode: "" (optional, e.g. "host")
+#   cap_add: [] (optional)
+
+# requirements:
+#   residential_ip: true/false
+#   min_bandwidth: ""
+#   gpu: false
+#   min_storage: ""
+
+# payment:
+#   methods: [paypal, crypto, bank, giftcard]
+#   minimum_payout: "$20"
+#   currency: USD
+#   frequency: "On request" | "Monthly" | "Weekly"
+
+# earnings:
+#   monthly_low: 2
+#   monthly_high: 5
+#   currency: USD
+#   per: "device" | "TB" | "GPU-hour"
+#   notes: ""
+
+# platforms: [windows, macos, linux, android, ios, docker, browser_extension]
+
+# collector:
+#   type: api | scrape | manual
+#   notes: "Implementation hints for the earnings collector"

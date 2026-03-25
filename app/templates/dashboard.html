@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - CashPilot{% endblock %}
+{% block page %}dashboard{% endblock %}
+{% block topbar_title %}Dashboard{% endblock %}
+
+{% block content %}
+<!-- Stats Row -->
+<div class="stats-grid">
+  <div class="stat-card">
+    <div class="stat-label">Total Earnings</div>
+    <div class="stat-value highlight" id="total-earnings">$0.00</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Today</div>
+    <div class="stat-value" id="today-earnings">$0.00</div>
+    <div class="stat-change" id="today-change"></div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">This Month</div>
+    <div class="stat-value" id="month-earnings">$0.00</div>
+    <div class="stat-change" id="month-change"></div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Active Services</div>
+    <div class="stat-value" id="active-services">0</div>
+  </div>
+</div>
+
+<!-- Earnings Chart -->
+<div class="card" style="margin-bottom: 24px;">
+  <div class="card-header">
+    <span class="card-title">Earnings</span>
+    <div class="tab-strip">
+      <button class="tab-btn chart-period-btn active" data-days="7" onclick="CP.loadEarningsChart('7')">7 days</button>
+      <button class="tab-btn chart-period-btn" data-days="30" onclick="CP.loadEarningsChart('30')">30 days</button>
+    </div>
+  </div>
+  <div class="chart-container">
+    <canvas id="earnings-chart"></canvas>
+  </div>
+</div>
+
+<!-- Service Cards -->
+<div class="section-header">
+  <h2 class="section-title">Deployed Services</h2>
+  <a href="/setup" class="btn btn-primary btn-sm">+ Add Service</a>
+</div>
+
+<div class="services-grid" id="services-list">
+  <!-- Populated by JS -->
+  <div class="empty-state">
+    <div class="empty-state-icon">&#x1f680;</div>
+    <div class="empty-state-title">No services deployed yet</div>
+    <div class="empty-state-text">Get started by deploying your first passive income service.</div>
+    <a href="/setup" class="btn btn-primary btn-lg">Setup Wizard</a>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,55 @@
+name: Nosana
+slug: nosana
+category: compute
+status: active
+website: https://nosana.io
+description: >
+  Nosana is a decentralized GPU compute marketplace built on Solana. It connects
+  GPU owners with AI workload demand, paying in NOS tokens. An RTX 3060 earns
+  approximately $0.048/hr. The platform focuses on AI inference workloads and
+  uses the Solana blockchain for job scheduling and payment settlement. Nodes
+  run containerized workloads via the Nosana CLI.
+short_description: GPU compute on Solana - NOS tokens, RTX 3060 ~$0.048/hr
+
+referral:
+  url_template: ""
+  code: ""
+  signup_url: "https://nosana.io"
+  bonus:
+    referrer: ""
+    referee: ""
+  how_to_get_code: ""
+
+docker:
+  image: ""
+  platforms: [linux/amd64]
+  env: []
+  ports: []
+  volumes: []
+  command: ""
+  network_mode: ""
+
+requirements:
+  residential_ip: false
+  min_bandwidth: "50 Mbps"
+  gpu: true
+  min_storage: "50GB"
+
+payment:
+  methods: [crypto]
+  minimum_payout: ""
+  currency: NOS
+  frequency: "Per job completion"
+
+earnings:
+  monthly_low: 20
+  monthly_high: 100
+  currency: USD
+  per: "GPU-hour"
+  notes: "RTX 3060 ~$0.048/hr, higher-end GPUs earn more. Earnings depend on job availability and GPU model. Requires NVIDIA GPU, Linux, Docker, and Nosana CLI. Payments in NOS token on Solana."
+
+platforms: [linux]
+
+collector:
+  type: api
+  notes: "Nosana explorer API on Solana. Node earnings queryable via Solana RPC and Nosana dashboard."
