@@ -4,7 +4,7 @@
 
 > **IMPORTANT**: Do NOT update this file unless the user explicitly says to. Only the user can authorize changes to AGENTS.md.
 
-> **SECURITY WARNING**: This repository is PUBLIC at [github.com/GeiserX/cashpilot](https://github.com/GeiserX/cashpilot). **NEVER commit secrets, API keys, passwords, tokens, or any sensitive data.** Referral codes are NOT secrets (they are public affiliate links). All actual secrets must be stored in:
+> **SECURITY WARNING**: This repository is PUBLIC at [github.com/GeiserX/CashPilot](https://github.com/GeiserX/CashPilot). **NEVER commit secrets, API keys, passwords, tokens, or any sensitive data.** Referral codes are NOT secrets (they are public affiliate links). All actual secrets must be stored in:
 > - GitHub Secrets (for CI/CD)
 > - Environment variables at deploy time
 > - Local `.env` files (gitignored)
@@ -15,7 +15,7 @@
 
 **CashPilot** is a self-hosted passive income orchestrator. Deploy once, manage everything from a single web dashboard. It deploys, monitors, and manages Docker containers for bandwidth-sharing, DePIN, storage, and GPU compute services. Think of it as Portainer meets a passive-income aggregator.
 
-- **Repository**: https://github.com/GeiserX/cashpilot
+- **Repository**: https://github.com/GeiserX/CashPilot
 - **Docker Image**: `drumsergio/cashpilot` on Docker Hub
 - **License**: GPL-3.0
 
@@ -30,16 +30,33 @@ No existing project combines all of these:
 
 ### Competitors
 
-| Project | GitHub | What It Does | What It Lacks |
-|---------|--------|-------------|---------------|
-| [money4band](https://github.com/MRColorR/money4band) | ~2.5k stars | Docker compose generator for bandwidth-sharing services. Interactive CLI wizard generates a compose file. | No web UI, no earnings tracking, no guided signup, no container monitoring. CLI-only. |
-| [CashFactory](https://github.com/CashFactory/CashFactory) | ~300 stars | Docker compose template for multiple passive income services. | Dead project (no commits in 2+ years). No web UI, no earnings. Just a static compose file. |
-| [InternetIncome](https://github.com/nicklama/InternetIncome) | ~400 stars | Another compose template for bandwidth sharing. | Archived/inactive. No web UI, no earnings tracking. Static compose. |
-| [income-generator](https://github.com/XternA/income-generator) | ~200 stars | CLI tool to manage passive income containers. Menu-driven terminal UI. | Terminal-only, no web dashboard, no earnings aggregation, no guided setup. |
-| [awesome-passive-income](https://github.com/open-compensation-token-license/awesome-passive-income) | List | Curated list of passive income apps. | Just a list -- no software, no automation, no deployment. |
-| [EarnApp-Docker](https://github.com/fazalfarhan01/earnapp-docker) | ~500 stars | Single-service Docker wrapper for EarnApp. | Only covers one service. No orchestration. |
+| Project | GitHub | Stars | Last Active | Services | What It Does | What It Lacks |
+|---------|--------|:-----:|:-----------:|:--------:|-------------|---------------|
+| [money4band](https://github.com/MRColorR/money4band) | MRColorR | 380 | Mar 2026 | 20 | CLI wizard generating docker-compose. Recently added basic web monitoring dashboard. Multi-proxy support, auto-updater, pre-built binaries. | Web dashboard is monitoring-only, no guided signup, no earnings aggregation, no one-click deploy from browser. |
+| [CashFactory](https://github.com/OlivierGaland/CashFactory) | OlivierGaland | 394 | Apr 2025 | 11 | Docker compose template with bookmark page (uhttpd) + bundled Portainer. Setup script. | "Web UI" is just bookmark links to external dashboards. No earnings tracking. x86 only. Slowing down. |
+| [InternetIncome](https://github.com/engageub/InternetIncome) | engageub | 219 | Mar 2026 | 27+ | Bash script for multi-proxy scaling. Largest service breadth. Core feature: multi-IP/multi-VPN operation. | No web UI. No earnings dashboard. No compose file. Pure bash. |
+| [income-generator](https://github.com/XternA/income-generator) | XternA | 193 | Mar 2026 | 25 | Polished CLI tool (`igm` command). Auto-claim daily rewards, dynamic resource limits, encrypted creds. | Terminal-only, no web dashboard, no earnings aggregation, no guided setup. |
+| [home-assistant-passive-income](https://github.com/bvlinsky/home-assistant-passive-income) | bvlinsky | 93 | Mar 2026 | 10 | Home Assistant add-ons for passive income services. | HA-only deployment. No standalone UI. Limited services. |
+| [EarnApp-Docker](https://github.com/fazalfarhan01/earnapp-docker) | fazalfarhan01 | 45 | Apr 2022 | 1 | Single-service Docker wrapper for EarnApp. | Dead (4 years). Only one service. |
 
 **CashPilot's differentiation:** Web-based setup wizard, one-click deployment from browser, earnings dashboard with historical charts, container health monitoring, YAML-driven extensible catalog. No other project has a web UI that guides users from signup through deployment and monitoring.
+
+### Services in Competitors Missing from CashPilot
+
+| Service | Found In | Category | Notes |
+|---------|----------|----------|-------|
+| ProxyBase | money4band, income-generator, InternetIncome | Bandwidth | Crypto payout |
+| PacketShare | money4band | Bandwidth | Bandwidth sharing |
+| WizardGain | income-generator, InternetIncome | Bandwidth | Crypto payout |
+| AntGain | income-generator, InternetIncome | Bandwidth | Unlimited devices |
+| Spide | income-generator | Bandwidth | Bandwidth sharing |
+| Ebesucher | InternetIncome | Bandwidth | Traffic exchange/surfbar |
+| URnetwork | InternetIncome | Bandwidth | VPN/bandwidth |
+| Adnade | InternetIncome | Bandwidth | Ad-based earning |
+| Uprock | InternetIncome | DePIN | Crypto, internet sharing |
+| PassiveApp | InternetIncome, income-generator | DePIN | Crypto/PayPal |
+| Bytebenefit | InternetIncome, income-generator | Bandwidth | PayPal/Stripe |
+| Bytelixir | InternetIncome, income-generator | Bandwidth | Bandwidth |
 
 ---
 

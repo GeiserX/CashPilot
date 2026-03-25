@@ -142,12 +142,12 @@ def generate_services_table(groups: dict[str, list[dict]]) -> str:
         lines.append(f"### {label} ({count} {svc_word})")
         lines.append("")
         lines.append(
-            "| Service | Docker Image | Residential Only "
-            "| Est. Monthly (USD) | Referral Link |"
+            "| Service | Docker Image | Residential IP "
+            "| Referral Link |"
         )
         lines.append(
-            "|---------|-------------|:----------------:"
-            "|-------------------:|---------------|"
+            "|---------|-------------|:--------------:"
+            "|---------------|"
         )
         for svc in svcs:
             name = svc["name"]
@@ -157,7 +157,6 @@ def generate_services_table(groups: dict[str, list[dict]]) -> str:
                 f"| {name_col} "
                 f"| {_docker_image(svc)} "
                 f"| {_residential_badge(svc)} "
-                f"| {_earnings_range(svc)} "
                 f"| {_signup_link(svc)} |"
             )
         lines.append("")
@@ -172,12 +171,12 @@ def generate_services_table(groups: dict[str, list[dict]]) -> str:
         lines.append(f"### {label} ({count} {svc_word})")
         lines.append("")
         lines.append(
-            "| Service | Docker Image | Residential Only "
-            "| Est. Monthly (USD) | Referral Link |"
+            "| Service | Docker Image | Residential IP "
+            "| Referral Link |"
         )
         lines.append(
-            "|---------|-------------|:----------------:"
-            "|-------------------:|---------------|"
+            "|---------|-------------|:--------------:"
+            "|---------------|"
         )
         for svc in svcs:
             name = svc["name"]
@@ -187,7 +186,6 @@ def generate_services_table(groups: dict[str, list[dict]]) -> str:
                 f"| {name_col} "
                 f"| {_docker_image(svc)} "
                 f"| {_residential_badge(svc)} "
-                f"| {_earnings_range(svc)} "
                 f"| {_signup_link(svc)} |"
             )
         lines.append("")

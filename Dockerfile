@@ -11,7 +11,7 @@ FROM python:3.12-slim
 
 LABEL maintainer="Sergio Fernandez <9169332+GeiserX@users.noreply.github.com>"
 LABEL org.opencontainers.image.description="CashPilot - Self-hosted passive income orchestrator"
-LABEL org.opencontainers.image.url="https://github.com/GeiserX/cashpilot"
+LABEL org.opencontainers.image.url="https://github.com/GeiserX/CashPilot"
 
 # Install minimal runtime deps (tini for PID 1)
 RUN apt-get update && apt-get install -y --no-install-recommends tini \
