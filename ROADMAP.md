@@ -55,17 +55,33 @@ Turn CashPilot from a deployment tool into an earnings optimization platform.
 
 For power users running CashPilot on multiple servers.
 
-- [ ] **CashPilot Agent** — lightweight container (~10 MB) that runs on each remote node
-  - Phones home to the central CashPilot instance over HTTPS
-  - Outbound-only connections (works behind NAT/firewalls)
-  - Reports: container status, resource usage, earnings data
-  - Receives: deploy/stop/restart commands
-  - Auth: shared secret or API key per node
+Architecture: **outbound WebSocket agent** (no broker, no VPN, no SSH needed).
+
+```
+Central CashPilot <--- WSS --- Agent (node-1, Docker socket)
+                  <--- WSS --- Agent (node-2, Docker socket)
+                  <--- WSS --- Agent (node-N, Docker socket)
+```
+
+- [ ] **CashPilot Agent** — lightweight container (`drumsergio/cashpilot-agent`)
+  - Single `docker run` with join token — no config files, no port forwarding
+  - **Outbound WebSocket** to central instance (works behind any NAT/firewall)
+  - Heartbeats every 30-60s: container list, CPU, RAM, disk, uptime
+  - Receives commands: deploy, stop, restart, remove, logs, update
+  - Accesses local Docker socket only — never exposes it remotely
+  - Commands validated against YAML catalog — agent refuses arbitrary images
+  - Reconnects with exponential backoff, queues status during disconnection
+  - Target: Python (reuses orchestrator logic), ~30 MB image, ~20 MB RAM
+  - Phase 1: visibility only (heartbeats). Phase 2: remote management. Phase 3: bulk deploy
+- [ ] **Join tokens** — generated in CashPilot UI, HMAC-signed, single-use or time-limited
 - [ ] **Fleet dashboard** — all nodes, their services, and aggregate earnings in one view
-- [ ] **Node health map** — geographic visualization of your fleet
+- [ ] **Database: `nodes` table** — id, name, token_hash, last_seen, ip, os, docker_version, status
+- [ ] **`node_id` on deployments/earnings** — per-node tracking (nullable for backward compat)
 - [ ] **Cross-node deduplication** — warn if the same account runs on multiple nodes (some services ban this)
 - [ ] **Bulk deploy** — deploy a service across all/selected nodes with one click
 - [ ] **Multi-proxy support** — run multiple instances of a service across different proxies/IPs
+
+> **Why WebSocket over alternatives?** Portainer Edge uses HTTP polling + reverse SSH tunnel — more complex. NATS/MQTT add an external broker. Tailscale requires separate installation on every node. SSH fails across NAT. WebSocket is a single persistent bidirectional channel built into FastAPI, works behind any firewall, and scales to 1000+ nodes trivially.
 
 ## v1.3 — Smart Optimization
 
