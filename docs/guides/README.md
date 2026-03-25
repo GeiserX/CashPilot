@@ -2,7 +2,7 @@
 
 Individual setup and configuration guides for every supported service.
 
-**28 services** across 4 categories.
+**27 services** across 4 categories.
 
 ## Bandwidth Sharing
 
@@ -13,7 +13,6 @@ Individual setup and configuration guides for every supported service.
 - [IPRoyal Pawns](iproyal.md) -- Bandwidth sharing - 10% lifetime referral, $3 signup bonus
 - [MystNodes](mysterium.md) -- Decentralized VPN node - blockchain-based, works on VPS
 - [PacketStream](packetstream.md) -- Bandwidth sharing - simple CID-based setup
-- [Peer2Profit](peer2profit.md) -- Bandwidth sharing - works on VPS, status may be unreliable
 - [ProxyLite](proxylite.md) -- Bandwidth sharing - 15% lifetime referral, works on VPS
 - [ProxyRack](proxyrack.md) -- Bandwidth sharing - UUID per device, works on VPS
 - [Repocket](repocket.md) -- Bandwidth sharing - works on VPS, env-based auth

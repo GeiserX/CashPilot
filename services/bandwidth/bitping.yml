@@ -12,13 +12,13 @@ description: >
 short_description: Bandwidth sharing - decentralized network monitoring, works on VPS
 
 referral:
-  url_template: "https://app.bitping.com?r={code}"
+  url_template: ""
   code: ""
-  signup_url: "https://app.bitping.com?r={code}"
+  signup_url: "https://app.bitping.com"
   bonus:
-    referrer: "Percentage of referral earnings"
+    referrer: ""
     referee: ""
-  how_to_get_code: "Dashboard > Referral > Copy your referral link"
+  how_to_get_code: "No referral program available"
 
 docker:
   image: bitping/bitpingd

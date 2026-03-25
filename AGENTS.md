@@ -171,6 +171,10 @@ cashpilot/
 |---------|--------|-------|-------|
 | **SpeedShare** | `broken` | API at `api.speedshare.app` returns Telegraf metrics exporter output instead of JSON | Landing page loads but login/dashboard/earnings all broken. Service appears abandoned (last build Feb 2024). |
 | **Network3** | `broken` | Service appears non-functional | Marked broken in YAML. |
+| **Peer2Profit** | `dead` | Registrations closed. Only via Telegram bot `peer2profit_app_bot` which is not accepting new users. | YAML removed. |
+| **GagaNode** | `dead` | Support Telegram inactive 4+ months. Dashboard barely functional. | YAML changed to dead. |
+| **Titan Network** | `dead` | Rebranded to proxytitan.com. Business-only, no consumer signups. | YAML changed to dead. |
+| **Dawn Internet** | `broken` | Chrome extension not working as of Mar 2025. | YAML changed to broken. |
 
 ### Services Without Docker Support (Extension/App Only)
 
@@ -209,14 +213,14 @@ cashpilot/
 | Nodepay | Yes | 0wzzyznen64j9zx | Bonus points |
 | **Repocket** | **No** | -- | No public referral program. `repocket.co` 301s to `repocket.com`. `/refer-a-friend` returns 404. |
 | **SpeedShare** | Unknown | -- | Dashboard broken, can't verify |
-| Bitping | Yes | Not set | Need to create account |
-| Peer2Profit | Yes | Not set | Need to create account |
+| Bitping | **No** | -- | No referral program exists |
+| ~~Peer2Profit~~ | **Removed** | -- | Dead. Registrations closed, only via Telegram bot `peer2profit_app_bot` which is not accepting new users. |
 | Wipter | Yes | Not set | 10% + $5 signup. Code only visible in desktop app. |
 | Storj | No | -- | No referral program for node operators |
-| BlockMesh | Unknown | Not set | -- |
-| Dawn | Yes | Not set | Code from dashboard/extension |
-| GagaNode | Unknown | Not set | -- |
-| Titan | Unknown | Not set | -- |
+| BlockMesh | **No** | -- | No referral program exists |
+| Dawn | Yes | Not set | Chrome extension broken as of Mar 2025. Code from dashboard/extension when working. |
+| ~~GagaNode~~ | **Removed** | -- | Dead. Support Telegram inactive 4+ months. Dashboard barely functional. |
+| ~~Titan~~ | **Removed** | -- | Business-only (proxytitan.com). No consumer/user signups. Not a passive income service. |
 
 ### Collector Implementation Status
 

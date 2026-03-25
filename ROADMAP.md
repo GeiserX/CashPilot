@@ -41,7 +41,6 @@ Turn CashPilot from a deployment tool into an earnings optimization platform.
   - [ ] MystNodes (Tequila API at localhost:4449)
   - [ ] Traffmonetizer (token-based API)
   - [ ] IPRoyal Pawns (API)
-  - [ ] Peer2Profit (API)
   - [ ] Storj (storagenode API)
 - [ ] **Earnings dashboard** with Chart.js historical charts
   - [ ] Daily/weekly/monthly aggregation
