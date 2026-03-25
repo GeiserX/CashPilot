@@ -12,14 +12,14 @@ from contextlib import asynccontextmanager
 from typing import Any
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import HTMLResponse
+from fastapi import FastAPI, HTTPException, Request, Form
+from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 
 from app import catalog, database, orchestrator
-from app.collectors import make_collectors
+from app import auth
 
 logging.basicConfig(
     level=logging.INFO,
@@ -42,7 +42,7 @@ async def _run_collection() -> None:
         config = await database.get_config() or {}
         if not isinstance(config, dict):
             config = {}
-        collectors = make_collectors(deployments, config)
+        collectors = __import__("app.collectors", fromlist=["make_collectors"]).make_collectors(deployments, config)
         for collector in collectors:
             result = await collector.collect()
             if result.error:
@@ -90,28 +90,229 @@ templates = Jinja2Templates(directory="app/templates")
 
 
 # ---------------------------------------------------------------------------
-# Page routes (HTML)
+# Auth helpers
+# ---------------------------------------------------------------------------
+
+
+def _login_redirect() -> RedirectResponse:
+    return RedirectResponse("/login", status_code=303)
+
+
+def _require_auth(request: Request) -> dict[str, Any]:
+    """Return user dict or raise redirect. For page routes."""
+    user = auth.get_current_user(request)
+    if not user:
+        raise HTTPException(status_code=401)
+    return user
+
+
+def _require_auth_api(request: Request) -> dict[str, Any]:
+    """Return user dict or raise 401 for API routes."""
+    user = auth.get_current_user(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    return user
+
+
+def _require_writer(request: Request) -> dict[str, Any]:
+    user = _require_auth_api(request)
+    if not auth.require_role(user, "owner", "writer"):
+        raise HTTPException(status_code=403, detail="Insufficient permissions")
+    return user
+
+
+def _require_owner(request: Request) -> dict[str, Any]:
+    user = _require_auth_api(request)
+    if not auth.require_role(user, "owner"):
+        raise HTTPException(status_code=403, detail="Owner access required")
+    return user
+
+
+# ---------------------------------------------------------------------------
+# Auth routes
+# ---------------------------------------------------------------------------
+
+
+@app.get("/login", response_class=HTMLResponse)
+async def page_login(request: Request, error: str = ""):
+    # If no users exist, redirect to register
+    if not await database.has_any_users():
+        return RedirectResponse("/register", status_code=303)
+    # If already logged in, go to dashboard
+    if auth.get_current_user(request):
+        return RedirectResponse("/", status_code=303)
+    return templates.TemplateResponse(request, "auth.html", {
+        "title": "Sign In",
+        "subtitle": "Sign in to your CashPilot instance",
+        "mode": "login",
+        "action": "/login",
+        "button_text": "Sign In",
+        "error": error,
+        "is_first": False,
+    })
+
+
+@app.post("/login")
+async def do_login(
+    request: Request,
+    username: str = Form(...),
+    password: str = Form(...),
+):
+    user = await database.get_user_by_username(username)
+    if not user or not auth.verify_password(password, user["password"]):
+        return templates.TemplateResponse(request, "auth.html", {
+            "title": "Sign In",
+            "subtitle": "Sign in to your CashPilot instance",
+            "mode": "login",
+            "action": "/login",
+            "button_text": "Sign In",
+            "error": "Invalid username or password",
+            "is_first": False,
+        }, status_code=401)
+
+    token = auth.create_session_token(user["id"], user["username"], user["role"])
+    response = RedirectResponse("/", status_code=303)
+    return auth.set_session_cookie(response, token)
+
+
+@app.get("/register", response_class=HTMLResponse)
+async def page_register(request: Request, error: str = ""):
+    is_first = not await database.has_any_users()
+    # Only allow registration if first user OR if requester is owner
+    if not is_first:
+        user = auth.get_current_user(request)
+        if not user or user.get("r") != "owner":
+            return RedirectResponse("/login", status_code=303)
+
+    return templates.TemplateResponse(request, "auth.html", {
+        "title": "Create Account" if is_first else "Add User",
+        "subtitle": "Create the first admin account" if is_first else "Add a new user to this instance",
+        "mode": "register",
+        "action": "/register",
+        "button_text": "Create Account",
+        "error": error,
+        "is_first": is_first,
+    })
+
+
+@app.post("/register")
+async def do_register(
+    request: Request,
+    username: str = Form(...),
+    password: str = Form(...),
+    password_confirm: str = Form(...),
+):
+    is_first = not await database.has_any_users()
+
+    # Only allow registration if first user or owner
+    if not is_first:
+        user = auth.get_current_user(request)
+        if not user or user.get("r") != "owner":
+            raise HTTPException(status_code=403, detail="Only owners can add users")
+
+    if password != password_confirm:
+        return templates.TemplateResponse(request, "auth.html", {
+            "title": "Create Account" if is_first else "Add User",
+            "subtitle": "Create the first admin account" if is_first else "Add a new user",
+            "mode": "register",
+            "action": "/register",
+            "button_text": "Create Account",
+            "error": "Passwords do not match",
+            "is_first": is_first,
+        }, status_code=400)
+
+    if len(password) < 6:
+        return templates.TemplateResponse(request, "auth.html", {
+            "title": "Create Account" if is_first else "Add User",
+            "subtitle": "Create the first admin account" if is_first else "Add a new user",
+            "mode": "register",
+            "action": "/register",
+            "button_text": "Create Account",
+            "error": "Password must be at least 6 characters",
+            "is_first": is_first,
+        }, status_code=400)
+
+    existing = await database.get_user_by_username(username)
+    if existing:
+        return templates.TemplateResponse(request, "auth.html", {
+            "title": "Create Account" if is_first else "Add User",
+            "subtitle": "Create the first admin account" if is_first else "Add a new user",
+            "mode": "register",
+            "action": "/register",
+            "button_text": "Create Account",
+            "error": "Username already taken",
+            "is_first": is_first,
+        }, status_code=400)
+
+    # First user is always owner
+    role = "owner" if is_first else "viewer"
+    hashed = auth.hash_password(password)
+    user_id = await database.create_user(username, hashed, role)
+
+    token = auth.create_session_token(user_id, username, role)
+    # First user goes to onboarding, subsequent users go to dashboard
+    dest = "/onboarding" if is_first else "/"
+    response = RedirectResponse(dest, status_code=303)
+    return auth.set_session_cookie(response, token)
+
+
+@app.get("/logout")
+async def do_logout():
+    response = RedirectResponse("/login", status_code=303)
+    return auth.clear_session_cookie(response)
+
+
+# ---------------------------------------------------------------------------
+# Onboarding
+# ---------------------------------------------------------------------------
+
+
+@app.get("/onboarding", response_class=HTMLResponse)
+async def page_onboarding(request: Request):
+    user = auth.get_current_user(request)
+    if not user:
+        return RedirectResponse("/login", status_code=303)
+    return templates.TemplateResponse(request, "onboarding.html")
+
+
+# ---------------------------------------------------------------------------
+# Page routes (HTML) — protected
 # ---------------------------------------------------------------------------
 
 
 @app.get("/", response_class=HTMLResponse)
 async def page_dashboard(request: Request):
-    return templates.TemplateResponse(request, "dashboard.html")
+    user = auth.get_current_user(request)
+    if not user:
+        # Check if first run
+        if not await database.has_any_users():
+            return RedirectResponse("/register", status_code=303)
+        return RedirectResponse("/login", status_code=303)
+    return templates.TemplateResponse(request, "dashboard.html", {"user": user})
 
 
 @app.get("/setup", response_class=HTMLResponse)
 async def page_setup(request: Request):
-    return templates.TemplateResponse(request, "setup.html")
+    user = auth.get_current_user(request)
+    if not user:
+        return _login_redirect()
+    return templates.TemplateResponse(request, "setup.html", {"user": user})
 
 
 @app.get("/catalog", response_class=HTMLResponse)
 async def page_catalog(request: Request):
-    return templates.TemplateResponse(request, "catalog.html")
+    user = auth.get_current_user(request)
+    if not user:
+        return _login_redirect()
+    return templates.TemplateResponse(request, "catalog.html", {"user": user})
 
 
 @app.get("/settings", response_class=HTMLResponse)
 async def page_settings(request: Request):
-    return templates.TemplateResponse(request, "settings.html")
+    user = auth.get_current_user(request)
+    if not user:
+        return _login_redirect()
+    return templates.TemplateResponse(request, "settings.html", {"user": user})
 
 
 # ---------------------------------------------------------------------------
@@ -120,14 +321,14 @@ async def page_settings(request: Request):
 
 
 @app.get("/api/services")
-async def api_list_services() -> list[dict[str, Any]]:
-    """List all services from YAML definitions."""
+async def api_list_services(request: Request) -> list[dict[str, Any]]:
+    _require_auth_api(request)
     return catalog.get_services()
 
 
 @app.get("/api/services/{slug}")
-async def api_get_service(slug: str) -> dict[str, Any]:
-    """Get a single service by slug."""
+async def api_get_service(request: Request, slug: str) -> dict[str, Any]:
+    _require_auth_api(request)
     svc = catalog.get_service(slug)
     if not svc:
         raise HTTPException(status_code=404, detail=f"Service '{slug}' not found")
@@ -140,8 +341,8 @@ async def api_get_service(slug: str) -> dict[str, Any]:
 
 
 @app.get("/api/status")
-async def api_status() -> list[dict[str, Any]]:
-    """Container status for all deployed cashpilot services."""
+async def api_status(request: Request) -> list[dict[str, Any]]:
+    _require_auth_api(request)
     try:
         return orchestrator.get_status()
     except RuntimeError as exc:
@@ -154,8 +355,8 @@ class DeployRequest(BaseModel):
 
 
 @app.post("/api/deploy/{slug}")
-async def api_deploy(slug: str, body: DeployRequest) -> dict[str, str]:
-    """Deploy a service container."""
+async def api_deploy(request: Request, slug: str, body: DeployRequest) -> dict[str, str]:
+    _require_writer(request)
     svc = catalog.get_service(slug)
     if not svc:
         raise HTTPException(status_code=404, detail=f"Service '{slug}' not found")
@@ -174,8 +375,8 @@ async def api_deploy(slug: str, body: DeployRequest) -> dict[str, str]:
 
 
 @app.post("/api/stop/{slug}")
-async def api_stop(slug: str) -> dict[str, str]:
-    """Stop a service container."""
+async def api_stop(request: Request, slug: str) -> dict[str, str]:
+    _require_writer(request)
     try:
         orchestrator.stop_service(slug)
         return {"status": "stopped"}
@@ -186,8 +387,8 @@ async def api_stop(slug: str) -> dict[str, str]:
 
 
 @app.post("/api/restart/{slug}")
-async def api_restart(slug: str) -> dict[str, str]:
-    """Restart a service container."""
+async def api_restart(request: Request, slug: str) -> dict[str, str]:
+    _require_writer(request)
     try:
         orchestrator.restart_service(slug)
         return {"status": "restarted"}
@@ -198,8 +399,8 @@ async def api_restart(slug: str) -> dict[str, str]:
 
 
 @app.delete("/api/remove/{slug}")
-async def api_remove(slug: str) -> dict[str, str]:
-    """Stop and remove a service container."""
+async def api_remove(request: Request, slug: str) -> dict[str, str]:
+    _require_writer(request)
     try:
         orchestrator.remove_service(slug)
         await database.remove_deployment(slug)
@@ -216,22 +417,22 @@ async def api_remove(slug: str) -> dict[str, str]:
 
 
 @app.get("/api/earnings")
-async def api_earnings() -> list[dict[str, Any]]:
-    """Current earnings summary (latest balance per platform)."""
+async def api_earnings(request: Request) -> list[dict[str, Any]]:
+    _require_auth_api(request)
     return await database.get_earnings_summary()
 
 
 @app.get("/api/earnings/history")
-async def api_earnings_history(period: str = "week") -> list[dict[str, Any]]:
-    """Historical earnings data."""
+async def api_earnings_history(request: Request, period: str = "week") -> list[dict[str, Any]]:
+    _require_auth_api(request)
     if period not in ("week", "month", "year", "all"):
         raise HTTPException(status_code=400, detail="period must be week, month, year, or all")
     return await database.get_earnings_history(period)
 
 
 @app.post("/api/collect")
-async def api_collect() -> dict[str, str]:
-    """Trigger a manual earnings collection run."""
+async def api_collect(request: Request) -> dict[str, str]:
+    _require_writer(request)
     asyncio.create_task(_run_collection())
     return {"status": "collection_started"}
 
@@ -242,8 +443,8 @@ async def api_collect() -> dict[str, str]:
 
 
 @app.get("/api/config")
-async def api_get_config() -> dict[str, str]:
-    """Get all user config (referral codes, credentials, etc.)."""
+async def api_get_config(request: Request) -> dict[str, str]:
+    _require_auth_api(request)
     result = await database.get_config()
     if isinstance(result, dict):
         return result
@@ -255,7 +456,46 @@ class ConfigUpdate(BaseModel):
 
 
 @app.post("/api/config")
-async def api_set_config(body: ConfigUpdate) -> dict[str, str]:
-    """Save user config entries."""
+async def api_set_config(request: Request, body: ConfigUpdate) -> dict[str, str]:
+    _require_owner(request)
     await database.set_config_bulk(body.data)
     return {"status": "saved"}
+
+
+# ---------------------------------------------------------------------------
+# API: Users (owner only)
+# ---------------------------------------------------------------------------
+
+
+@app.get("/api/users")
+async def api_list_users(request: Request) -> list[dict[str, Any]]:
+    _require_owner(request)
+    return await database.list_users()
+
+
+class UserRoleUpdate(BaseModel):
+    role: str
+
+
+@app.patch("/api/users/{user_id}")
+async def api_update_user_role(request: Request, user_id: int, body: UserRoleUpdate) -> dict[str, str]:
+    _require_owner(request)
+    if body.role not in ("viewer", "writer", "owner"):
+        raise HTTPException(status_code=400, detail="Role must be viewer, writer, or owner")
+    user = await database.get_user_by_id(user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    await database.update_user_role(user_id, body.role)
+    return {"status": "updated"}
+
+
+@app.delete("/api/users/{user_id}")
+async def api_delete_user(request: Request, user_id: int) -> dict[str, str]:
+    current = _require_owner(request)
+    if current["uid"] == user_id:
+        raise HTTPException(status_code=400, detail="Cannot delete yourself")
+    user = await database.get_user_by_id(user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    await database.delete_user(user_id)
+    return {"status": "deleted"}

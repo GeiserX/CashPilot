@@ -8,3 +8,5 @@ httpx>=0.28
 apscheduler>=3.10
 python-multipart>=0.0.18
 cryptography>=44.0
+passlib[bcrypt]>=1.7
+itsdangerous>=2.2

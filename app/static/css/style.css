@@ -178,6 +178,40 @@ img { max-width: 100%; }
   gap: 16px;
 }
 
+.topbar-user {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.topbar-username {
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+  font-weight: 500;
+}
+.topbar-role {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+}
+.badge-owner { background: var(--accent-soft); color: var(--accent); }
+.badge-writer { background: var(--success-soft); color: var(--success); }
+.badge-viewer { background: var(--warning-soft); color: var(--warning); }
+.topbar-logout {
+  display: flex;
+  align-items: center;
+  color: var(--text-muted);
+  padding: 4px;
+  border-radius: var(--radius-sm);
+  transition: color var(--transition), background var(--transition);
+}
+.topbar-logout:hover {
+  color: var(--error);
+  background: var(--error-soft);
+}
+
 .topbar-earnings {
   display: flex;
   align-items: center;
@@ -1153,4 +1187,148 @@ img { max-width: 100%; }
 }
 .sidebar-overlay.open {
   display: block;
+}
+
+/* ----- Onboarding ----- */
+.onboarding-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 200;
+  backdrop-filter: blur(4px);
+}
+.onboarding-card {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  padding: 2.5rem;
+  width: 100%;
+  max-width: 560px;
+  text-align: center;
+}
+.onboarding-steps {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+  margin-bottom: 2rem;
+}
+.onboarding-step {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.85rem;
+  font-weight: 600;
+  background: var(--bg-tertiary);
+  color: var(--text-muted);
+  transition: all var(--transition);
+}
+.onboarding-step.active {
+  background: var(--accent);
+  color: #fff;
+}
+.onboarding-step-line {
+  width: 40px;
+  height: 2px;
+  background: var(--border-color);
+}
+.onboarding-panel {
+  display: none;
+}
+.onboarding-panel.active {
+  display: block;
+}
+.onboarding-icon {
+  margin-bottom: 1rem;
+}
+.onboarding-panel h2 {
+  color: var(--text-primary);
+  font-size: 1.5rem;
+  margin-bottom: 0.5rem;
+}
+.onboarding-desc {
+  color: var(--text-secondary);
+  margin-bottom: 1.5rem;
+  line-height: 1.5;
+}
+.onboarding-options {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+  margin-bottom: 1.5rem;
+  text-align: left;
+}
+.onboarding-option input { display: none; }
+.onboarding-option-card {
+  padding: 1rem;
+  border: 2px solid var(--border-color);
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: all var(--transition);
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+.onboarding-option-card svg {
+  color: var(--text-muted);
+  margin-bottom: 0.25rem;
+  transition: color var(--transition);
+}
+.onboarding-option-card strong {
+  color: var(--text-primary);
+  font-size: 0.95rem;
+}
+.onboarding-option-card span {
+  color: var(--text-muted);
+  font-size: 0.8rem;
+}
+.onboarding-est {
+  color: var(--success) !important;
+  font-weight: 500;
+}
+.onboarding-option input:checked + .onboarding-option-card {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+.onboarding-option input:checked + .onboarding-option-card svg {
+  color: var(--accent);
+}
+.onboarding-option-card:hover {
+  border-color: var(--border-light);
+  background: var(--bg-hover);
+}
+.onboarding-actions {
+  display: flex;
+  gap: 0.75rem;
+  justify-content: center;
+}
+.btn-lg {
+  padding: 0.75rem 2rem;
+  font-size: 1rem;
+}
+.btn-ghost {
+  background: transparent;
+  color: var(--text-secondary);
+  border: 1px solid var(--border-color);
+  padding: 0.5rem 1.25rem;
+  border-radius: var(--radius);
+  font-size: 0.9rem;
+  font-weight: 500;
+  cursor: pointer;
+  text-decoration: none;
+  transition: all var(--transition);
+}
+.btn-ghost:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+@media (max-width: 600px) {
+  .onboarding-options { grid-template-columns: 1fr; }
+  .onboarding-card { padding: 1.5rem; margin: 1rem; }
 }
