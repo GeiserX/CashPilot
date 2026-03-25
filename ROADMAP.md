@@ -12,7 +12,7 @@
 
 ---
 
-## v1.0 — Foundation (current)
+## v1.0 — Foundation ✅
 
 The MVP: deploy, monitor, and manage passive income containers from a single web UI.
 
@@ -26,7 +26,7 @@ The MVP: deploy, monitor, and manage passive income containers from a single web
 - [x] Credential encryption at rest (Fernet)
 - [x] Auto-generated documentation from YAML definitions
 - [x] Multi-arch Docker image (amd64 + arm64)
-- [x] 28 services across 4 categories
+- [x] 27 services across 4 categories
 - [x] Compose file export (per-service and bulk) for users without Docker socket access
 - [x] Monitor-only mode when Docker socket is not mounted
 - [x] CashPilot labels on all managed containers (`cashpilot.managed`, `cashpilot.service`)
@@ -55,9 +55,9 @@ Turn CashPilot from a deployment tool into an earnings optimization platform.
 - [ ] **Notifications** — webhook/email alerts for container crashes, earnings drops, payout thresholds
 - [ ] **Auto-claim daily rewards** — automated login + claim for services with daily bonuses (like Honeygain lucky pot)
 
-## v1.2 — Multi-Node Fleet Management
+## v1.2 — Multi-Node Fleet Management (in progress)
 
-For power users running CashPilot on multiple servers.
+For power users running CashPilot on multiple servers. Core federation is implemented and deployed.
 
 ### Architecture: Federated CashPilot Instances
 
@@ -87,23 +87,25 @@ A child in monitor-only mode is useful when containers are managed by Portainer 
 
 ### Features
 
-- [ ] **Master/child setting** — toggle in UI or via `CASHPILOT_ROLE=master|child` env var
+- [x] **Master/child setting** — via `CASHPILOT_ROLE=master|child` env var (default: master)
   - Master: enables fleet dashboard, accepts WebSocket connections from children
-  - Child: connects to master URL via `CASHPILOT_MASTER_URL=wss://...`
+  - Child: connects to master URL via `CASHPILOT_MASTER_URL=ws://...`
   - Both: full local dashboard, local service management (if Docker socket available)
-- [ ] **Outbound WebSocket** from child to master (works behind any NAT/firewall)
-  - Heartbeats every 30-60s: container list, CPU, RAM, disk, uptime, earnings
-  - Master can push commands: deploy, stop, restart, remove, logs, update
-  - Commands validated against YAML catalog — child refuses arbitrary images
-  - Reconnects with exponential backoff, queues status during disconnection
-- [ ] **Join tokens** — generated in master UI, HMAC-signed, single-use or time-limited
+- [x] **Outbound WebSocket** from child to master (works behind any NAT/firewall)
+  - Heartbeats every 30s: container list, OS, arch, docker version, earnings
+  - Master can push commands: deploy, stop, restart, remove, status
+  - Reconnects with exponential backoff (1s → 300s max)
+- [x] **Two auth methods** — master key (persistent, derived from secret) + join tokens (HMAC-signed, time-limited, reusable)
   - Child setup: set `CASHPILOT_MASTER_URL` and `CASHPILOT_JOIN_TOKEN`, restart
-- [ ] **Fleet dashboard** (master only) — all nodes, their services, and aggregate earnings in one view
-- [ ] **Database: `nodes` table** — id, name, token_hash, last_seen, ip, os, docker_version, role, status
+  - Per-node DB entries via hostname-salted token hashing
+- [x] **Fleet dashboard** (master only) — all nodes, their services, live connection state, and remote commands
+- [x] **Database: `nodes` table** — id, name, token_hash, last_seen, ip, os, arch, docker_version, docker_mode, role, status
+- [x] **Federation API** — 8 endpoints for node management, token generation, fleet summary, remote commands
 - [ ] **`node_id` on deployments/earnings** — per-node tracking (nullable for backward compat)
 - [ ] **Cross-node deduplication** — warn if the same account runs on multiple nodes (some services ban this)
 - [ ] **Bulk deploy** — deploy a service across all/selected nodes with one click
 - [ ] **Multi-proxy support** — run multiple instances of a service across different proxies/IPs
+- [ ] **Command validation against YAML catalog** — child refuses arbitrary images
 
 > **Why WebSocket over alternatives?** Portainer Edge uses HTTP polling + reverse SSH tunnel — more complex. NATS/MQTT add an external broker. Tailscale requires separate installation on every node. SSH fails across NAT. WebSocket is a single persistent bidirectional channel built into FastAPI, works behind any firewall, and scales to 1000+ nodes trivially.
 
