@@ -96,22 +96,22 @@ templates = Jinja2Templates(directory="app/templates")
 
 @app.get("/", response_class=HTMLResponse)
 async def page_dashboard(request: Request):
-    return templates.TemplateResponse("dashboard.html", {"request": request})
+    return templates.TemplateResponse(request, "dashboard.html")
 
 
 @app.get("/setup", response_class=HTMLResponse)
 async def page_setup(request: Request):
-    return templates.TemplateResponse("setup.html", {"request": request})
+    return templates.TemplateResponse(request, "setup.html")
 
 
 @app.get("/catalog", response_class=HTMLResponse)
 async def page_catalog(request: Request):
-    return templates.TemplateResponse("catalog.html", {"request": request})
+    return templates.TemplateResponse(request, "catalog.html")
 
 
 @app.get("/settings", response_class=HTMLResponse)
 async def page_settings(request: Request):
-    return templates.TemplateResponse("settings.html", {"request": request})
+    return templates.TemplateResponse(request, "settings.html")
 
 
 # ---------------------------------------------------------------------------

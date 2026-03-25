@@ -17,7 +17,7 @@
 
 - **Repository**: https://github.com/GeiserX/cashpilot
 - **Docker Image**: `drumsergio/cashpilot` on Docker Hub
-- **License**: MIT
+- **License**: GPL-3.0
 
 ### What Makes This Different
 
@@ -28,7 +28,18 @@ No existing project combines all of these:
 4. Container health monitoring (CPU, memory, network)
 5. YAML-driven service catalog (single source of truth)
 
-Competitors (money4band, CashFactory, InternetIncome, income-generator) are all CLI/compose-only with no web UI, no earnings tracking, and no guided setup.
+### Competitors
+
+| Project | GitHub | What It Does | What It Lacks |
+|---------|--------|-------------|---------------|
+| [money4band](https://github.com/MRColorR/money4band) | ~2.5k stars | Docker compose generator for bandwidth-sharing services. Interactive CLI wizard generates a compose file. | No web UI, no earnings tracking, no guided signup, no container monitoring. CLI-only. |
+| [CashFactory](https://github.com/CashFactory/CashFactory) | ~300 stars | Docker compose template for multiple passive income services. | Dead project (no commits in 2+ years). No web UI, no earnings. Just a static compose file. |
+| [InternetIncome](https://github.com/nicklama/InternetIncome) | ~400 stars | Another compose template for bandwidth sharing. | Archived/inactive. No web UI, no earnings tracking. Static compose. |
+| [income-generator](https://github.com/XternA/income-generator) | ~200 stars | CLI tool to manage passive income containers. Menu-driven terminal UI. | Terminal-only, no web dashboard, no earnings aggregation, no guided setup. |
+| [awesome-passive-income](https://github.com/open-compensation-token-license/awesome-passive-income) | List | Curated list of passive income apps. | Just a list -- no software, no automation, no deployment. |
+| [EarnApp-Docker](https://github.com/fazalfarhan01/earnapp-docker) | ~500 stars | Single-service Docker wrapper for EarnApp. | Only covers one service. No orchestration. |
+
+**CashPilot's differentiation:** Web-based setup wizard, one-click deployment from browser, earnings dashboard with historical charts, container health monitoring, YAML-driven extensible catalog. No other project has a web UI that guides users from signup through deployment and monitoring.
 
 ---
 

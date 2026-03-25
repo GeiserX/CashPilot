@@ -6,7 +6,7 @@
 <p align="center">
   <a href="https://hub.docker.com/r/drumsergio/cashpilot"><img alt="Docker Pulls" src="https://img.shields.io/docker/pulls/drumsergio/cashpilot?style=flat-square&logo=docker"></a>
   <a href="https://github.com/GeiserX/cashpilot/stargazers"><img alt="GitHub Stars" src="https://img.shields.io/github/stars/GeiserX/cashpilot?style=flat-square&logo=github"></a>
-  <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/github/license/GeiserX/cashpilot?style=flat-square"></a>
+  <a href="LICENSE"><img alt="License: GPL-3.0" src="https://img.shields.io/github/license/GeiserX/cashpilot?style=flat-square"></a>
 </p>
 
 ---
@@ -198,4 +198,4 @@ For bug reports and feature requests, open an issue on GitHub.
 
 ## License
 
-[MIT](LICENSE) -- Sergio Fernandez, 2026
+[GPL-3.0](LICENSE) -- Sergio Fernandez, 2026
