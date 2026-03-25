@@ -1,7 +1,7 @@
 name: SpeedShare
 slug: speedshare
 category: bandwidth
-status: beta
+status: broken
 website: https://speedshare.app
 description: >
   SpeedShare lets you earn by sharing your unused internet bandwidth. Residential
@@ -56,7 +56,7 @@ earnings:
   monthly_high: 3
   currency: USD
   per: "device"
-  notes: "Residential IPs only. No official Docker image - uses community build. Relatively newer platform."
+  notes: "Residential IPs only. No official Docker image - uses community build. API at api.speedshare.app is broken (returns Telegraf metrics instead of JSON). Service appears non-functional as of March 2025."
 
 platforms: [windows, macos, linux, docker]
 

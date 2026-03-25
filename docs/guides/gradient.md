@@ -33,7 +33,7 @@ Gradient Network is a decentralized compute and bandwidth sharing platform backe
 
 ### 1. Create an account
 
-Sign up at [Gradient Network](https://app.gradient.network/signup?code=YSKMY7).
+Sign up at [Gradient Network](https://app.gradient.network/signup?referralCode=YSKMY7).
 
 ### 2. Get your credentials
 

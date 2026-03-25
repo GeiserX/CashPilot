@@ -81,7 +81,7 @@ Then open [http://localhost:8080](http://localhost:8080) and follow the setup wi
 | [BlockMesh](https://blockmesh.xyz) | N/A | Yes | $1 - $5 | [Sign up](https://blockmesh.xyz) |
 | [Dawn Internet](https://dawninternet.com) | N/A | Yes | $1 - $5 | [Sign up](https://dawninternet.com?code={code}) |
 | [GagaNode](https://www.gaganode.com) | N/A | No | $1 - $5 | [Sign up](https://dashboard.gaganode.com/register) |
-| [Gradient Network](https://gradient.network) | N/A | Yes | $1 - $8 | [Sign up](https://app.gradient.network/signup?code=YSKMY7) |
+| [Gradient Network](https://gradient.network) | N/A | Yes | $1 - $8 | [Sign up](https://app.gradient.network/signup?referralCode=YSKMY7) |
 | [Grass](https://www.getgrass.io) | N/A | Yes | $1 - $10 | [Sign up](https://app.getgrass.io/register/?referralCode=kn8FNEPnUr2tMqE) |
 | [Network3](https://network3.io) | N/A | No | $0 - $0 | [Sign up](https://network3.io) |
 | [Nodepay](https://nodepay.ai) | N/A | Yes | $1 - $5 | [Sign up](https://app.nodepay.ai/register?ref=0wzzyznen64j9zx) |

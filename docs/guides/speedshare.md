@@ -1,6 +1,6 @@
 # SpeedShare
 
-> **Category:** Bandwidth Sharing | **Status:** Beta
+> **Category:** Bandwidth Sharing | **Status:** Broken
 > **Website:** [https://speedshare.app](https://speedshare.app)
 
 ## Description
@@ -17,7 +17,7 @@ SpeedShare lets you earn by sharing your unused internet bandwidth. Residential 
 | Payout frequency | On request |
 | Payment methods | Crypto, Paypal |
 
-> Residential IPs only. No official Docker image - uses community build. Relatively newer platform.
+> Residential IPs only. No official Docker image - uses community build. API at api.speedshare.app is broken (returns Telegraf metrics instead of JSON). Service appears non-functional as of March 2025.
 
 ## Requirements
 
