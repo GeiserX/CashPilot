@@ -22,7 +22,7 @@
     <filter id="pg"><feGaussianBlur stdDeviation="6" result="b"/><feFlood flood-color="#f43f5e" flood-opacity="0.5" result="c"/><feComposite in="c" in2="b" operator="in" result="g"/><feMerge><feMergeNode in="g"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
     <filter id="cg"><feGaussianBlur stdDeviation="3" result="b"/><feFlood flood-color="#06b6d4" flood-opacity="0.4" result="c"/><feComposite in="c" in2="b" operator="in" result="g"/><feMerge><feMergeNode in="g"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
     <filter id="sg"><feGaussianBlur stdDeviation="1.5" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
-    <clipPath id="sc"><circle cx="900" cy="100" r="80"/></clipPath>
+    <clipPath id="sc"><circle cx="900" cy="150" r="80"/></clipPath>
   </defs>
 
   <rect width="1200" height="300" fill="url(#bg)"/>
@@ -45,42 +45,42 @@
     <circle cx="650" cy="108" r="0.6" opacity="0.3"/><circle cx="1150" cy="100" r="0.7" opacity="0.3"/>
   </g>
 
-  <!-- Sun — centered at y=100 (middle of 0-200 content area) -->
-  <circle cx="900" cy="100" r="80" fill="url(#sun)" opacity="0.8"/>
+  <!-- Sun — vertically centered at y=150 -->
+  <circle cx="900" cy="150" r="80" fill="url(#sun)" opacity="0.8"/>
   <g clip-path="url(#sc)">
-    <rect x="815" y="100" width="170" height="4" fill="#000010"/>
-    <rect x="815" y="110" width="170" height="6" fill="#000010"/>
-    <rect x="815" y="122" width="170" height="8" fill="#000010"/>
-    <rect x="815" y="136" width="170" height="11" fill="#000010"/>
-    <rect x="815" y="154" width="170" height="16" fill="#000010"/>
+    <rect x="815" y="150" width="170" height="4" fill="#000010"/>
+    <rect x="815" y="160" width="170" height="6" fill="#000010"/>
+    <rect x="815" y="172" width="170" height="8" fill="#000010"/>
+    <rect x="815" y="186" width="170" height="11" fill="#000010"/>
+    <rect x="815" y="204" width="170" height="16" fill="#000010"/>
   </g>
 
-  <!-- Grid -->
+  <!-- Grid — horizon pushed down to match centered sun -->
   <g stroke="#06b6d4" stroke-width="0.5">
-    <line x1="0" y1="200" x2="1200" y2="200" opacity="0.2"/>
-    <line x1="0" y1="220" x2="1200" y2="220" opacity="0.14"/>
-    <line x1="0" y1="242" x2="1200" y2="242" opacity="0.09"/>
-    <line x1="0" y1="264" x2="1200" y2="264" opacity="0.05"/>
-    <line x1="600" y1="195" x2="0" y2="300" opacity="0.07"/>
-    <line x1="600" y1="195" x2="200" y2="300" opacity="0.07"/>
-    <line x1="600" y1="195" x2="400" y2="300" opacity="0.07"/>
-    <line x1="600" y1="195" x2="600" y2="300" opacity="0.07"/>
-    <line x1="600" y1="195" x2="800" y2="300" opacity="0.07"/>
-    <line x1="600" y1="195" x2="1000" y2="300" opacity="0.07"/>
-    <line x1="600" y1="195" x2="1200" y2="300" opacity="0.07"/>
+    <line x1="0" y1="230" x2="1200" y2="230" opacity="0.2"/>
+    <line x1="0" y1="248" x2="1200" y2="248" opacity="0.14"/>
+    <line x1="0" y1="266" x2="1200" y2="266" opacity="0.09"/>
+    <line x1="0" y1="284" x2="1200" y2="284" opacity="0.05"/>
+    <line x1="600" y1="225" x2="0" y2="300" opacity="0.07"/>
+    <line x1="600" y1="225" x2="200" y2="300" opacity="0.07"/>
+    <line x1="600" y1="225" x2="400" y2="300" opacity="0.07"/>
+    <line x1="600" y1="225" x2="600" y2="300" opacity="0.07"/>
+    <line x1="600" y1="225" x2="800" y2="300" opacity="0.07"/>
+    <line x1="600" y1="225" x2="1000" y2="300" opacity="0.07"/>
+    <line x1="600" y1="225" x2="1200" y2="300" opacity="0.07"/>
   </g>
 
-  <!-- Title — centered at y=100: baseline at 132, visual center ~100 -->
-  <text x="220" y="132" font-family="Inter, -apple-system, Arial, sans-serif"
+  <!-- Title — vertically centered at y=150 -->
+  <text x="220" y="170" font-family="Inter, -apple-system, Arial, sans-serif"
         font-size="90" font-weight="900" fill="url(#pk)" letter-spacing="-2" filter="url(#pg)">
     CashPilot
   </text>
-  <text x="220" y="132" font-family="Inter, -apple-system, Arial, sans-serif"
+  <text x="220" y="170" font-family="Inter, -apple-system, Arial, sans-serif"
         font-size="90" font-weight="900" fill="none" stroke="#fff" stroke-width="0.3" letter-spacing="-2" opacity="0.2">
     CashPilot
   </text>
 
-  <text x="228" y="160" font-family="Inter, -apple-system, Arial, sans-serif"
+  <text x="228" y="198" font-family="Inter, -apple-system, Arial, sans-serif"
         font-size="17" font-weight="600" fill="url(#cy)" letter-spacing="6" filter="url(#cg)">
     PASSIVE INCOME ON AUTOPILOT
   </text>

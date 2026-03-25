@@ -70,20 +70,20 @@ In this mode CashPilot provides the service catalog, compose file export, earnin
 
 Services CashPilot can deploy and manage automatically via Docker.
 
-| Service | Residential IP | VPS IP | Devices / Acct | Devices / IP | Payout | Referral |
-|---------|:-:|:-:|:-:|:-:|--------|----------|
-| [Bitping](https://app.bitping.com) | ✅ | ✅ | Unlimited | 1 | Crypto (SOL) | [Sign up](https://app.bitping.com) |
-| [Earn.fm](https://earn.fm) | ✅ | ✅ | Unlimited | 1 | Crypto | [Sign up](https://earn.fm/ref/GEISYB91) |
-| [EarnApp](https://earnapp.com) | ✅ | ❌ | 15 | 1 | PayPal, Gift Cards | [Sign up](https://earnapp.com/i/TSMD9wSm) |
-| [Honeygain](https://www.honeygain.com) | ✅ | ❌ | 10 | 1 | PayPal, Crypto | [Sign up](https://dashboard.honeygain.com/ref/SERGIB4014) |
-| [IPRoyal Pawns](https://pawns.app) | ✅ | ❌ | Unlimited | 1 | PayPal, Crypto | [Sign up](https://pawns.app?r=19266874) |
-| [MystNodes](https://mystnodes.com) | ✅ | ✅ | Unlimited | Unlimited | Crypto (MYST) | [Sign up](https://mystnodes.co/?referral_code=do7v7YOoBBpbOstKQovX2pUvZYKia4ZhH3QIdNtE) |
-| [PacketStream](https://packetstream.io) | ✅ | ❌ | Unlimited | 1 | PayPal | [Sign up](https://packetstream.io/?psr=7xgZ) |
-| [ProxyLite](https://proxylite.ru) | ✅ | ✅ | Unlimited | 1 | Crypto, PayPal | [Sign up](https://proxylite.ru/?r=KMUPRZIZ) |
-| [ProxyRack](https://peer.proxyrack.com) | ✅ | ✅ | 500 | 1 | PayPal, Crypto | [Sign up](https://peer.proxyrack.com/ref/mpwiok3xlaxeycnn5znqlg7ipjeutxyxr6xl7vmn) |
-| [Repocket](https://repocket.com) | ✅ | ❌ | 5 | 2 | PayPal, Crypto | [Sign up](https://repocket.com/) |
-| [Storj](https://www.storj.io) | ✅ | ✅ | Unlimited | 1 * | Crypto (STORJ) | [Sign up](https://www.storj.io/node) |
-| [Traffmonetizer](https://traffmonetizer.com) | ✅ | ✅ ** | Unlimited | Unlimited | Crypto (USDT) | [Sign up](https://traffmonetizer.com/?aff=2111758) |
+| Service | Residential IP | VPS IP | Devices / Acct | Devices / IP | Payout |
+|---------|:-:|:-:|:-:|:-:|--------|
+| [Bitping](https://app.bitping.com) | ✅ | ✅ | Unlimited | 1 | Crypto (SOL) |
+| [Earn.fm](https://earn.fm/ref/GEISYB91) | ✅ | ✅ | Unlimited | 1 | Crypto |
+| [EarnApp](https://earnapp.com/i/TSMD9wSm) | ✅ | ❌ | 15 | 1 | PayPal, Gift Cards |
+| [Honeygain](https://dashboard.honeygain.com/ref/SERGIB4014) | ✅ | ❌ | 10 | 1 | PayPal, Crypto |
+| [IPRoyal Pawns](https://pawns.app?r=19266874) | ✅ | ❌ | Unlimited | 1 | PayPal, Crypto |
+| [MystNodes](https://mystnodes.co/?referral_code=do7v7YOoBBpbOstKQovX2pUvZYKia4ZhH3QIdNtE) | ✅ | ✅ | Unlimited | Unlimited | Crypto (MYST) |
+| [PacketStream](https://packetstream.io/?psr=7xgZ) | ✅ | ❌ | Unlimited | 1 | PayPal |
+| [ProxyLite](https://proxylite.ru/?r=KMUPRZIZ) | ✅ | ✅ | Unlimited | 1 | Crypto, PayPal |
+| [ProxyRack](https://peer.proxyrack.com/ref/mpwiok3xlaxeycnn5znqlg7ipjeutxyxr6xl7vmn) | ✅ | ✅ | 500 | 1 | PayPal, Crypto |
+| [Repocket](https://repocket.com/) | ✅ | ❌ | 5 | 2 | PayPal, Crypto |
+| [Storj](https://www.storj.io/node) | ✅ | ✅ | Unlimited | 1 * | Crypto (STORJ) |
+| [Traffmonetizer](https://traffmonetizer.com/?aff=2111758) | ✅ | ✅ ** | Unlimited | Unlimited | Crypto (USDT) |
 
 > \* Storj nodes on the same /24 subnet share data allocation, reducing per-node earnings.
 >
@@ -93,19 +93,19 @@ Services CashPilot can deploy and manage automatically via Docker.
 
 These services have no Docker image. CashPilot lists them in the catalog with signup links and earning estimates, but cannot deploy or monitor them.
 
-| Service | Residential IP | VPS IP | Devices / Acct | Devices / IP | Payout | Status | Referral |
-|---------|:-:|:-:|:-:|:-:|--------|--------|----------|
-| [Grass](https://www.getgrass.io) | ✅ | ❌ | Unlimited | 1 | Crypto (GRASS) | Active | [Sign up](https://app.getgrass.io/register/?referralCode=kn8FNEPnUr2tMqE) |
-| [Gradient](https://gradient.network) | ✅ | ❌ | Unlimited | 1 | Crypto (TBA) | Active | [Sign up](https://app.gradient.network/signup?referralCode=YSKMY7) |
-| [Nodepay](https://nodepay.ai) | ✅ | ❌ | Unlimited | 1 | Crypto (TBA) | Active | [Sign up](https://app.nodepay.ai/register?ref=0wzzyznen64j9zx) |
-| [Teneo](https://teneo.pro) | ✅ | ❌ | Unlimited | 1 | Crypto (TBA) | Active | [Sign up](https://dashboard.teneo.pro/?code=CAqef) |
-| [BlockMesh](https://blockmesh.xyz) | ✅ | ❌ | Unlimited | 1 | Crypto (TBA) | Active | [Sign up](https://blockmesh.xyz) |
-| [Wipter](https://wipter.com) | ✅ | ❌ | Unlimited | Unlimited | Crypto, PayPal | Active | [Sign up](https://wipter.com/en/refer-a-friend) |
-| [Dawn](https://dawninternet.com) | ✅ | ❌ | Unlimited | 1 | Crypto (TBA) | Broken | -- |
-| [GagaNode](https://www.gaganode.com) | ✅ | ✅ | Unlimited | 1 | Crypto, PayPal | Dead | -- |
-| [Titan](https://titannet.io) | ✅ | ❌ | -- | -- | Crypto (TNT) | Dead | -- |
-| [Network3](https://network3.io) | -- | -- | -- | -- | -- | Dead | -- |
-| [SpeedShare](https://speedshare.app) | ✅ | ❌ | Unlimited | 1 | PayPal, Crypto | Broken | -- |
+| Service | Residential IP | VPS IP | Devices / Acct | Devices / IP | Payout | Status |
+|---------|:-:|:-:|:-:|:-:|--------|--------|
+| [Grass](https://app.getgrass.io/register/?referralCode=kn8FNEPnUr2tMqE) | ✅ | ❌ | Unlimited | 1 | Crypto (GRASS) | Active |
+| [Gradient](https://app.gradient.network/signup?referralCode=YSKMY7) | ✅ | ❌ | Unlimited | 1 | Crypto (TBA) | Active |
+| [Nodepay](https://app.nodepay.ai/register?ref=0wzzyznen64j9zx) | ✅ | ❌ | Unlimited | 1 | Crypto (TBA) | Active |
+| [Teneo](https://dashboard.teneo.pro/?code=CAqef) | ✅ | ❌ | Unlimited | 1 | Crypto (TBA) | Active |
+| [BlockMesh](https://blockmesh.xyz) | ✅ | ❌ | Unlimited | 1 | Crypto (TBA) | Active |
+| [Wipter](https://wipter.com) | ✅ | ❌ | Unlimited | Unlimited | Crypto, PayPal | Active |
+| [Dawn](https://dawninternet.com) | ✅ | ❌ | Unlimited | 1 | Crypto (TBA) | Broken |
+| [GagaNode](https://www.gaganode.com) | ✅ | ✅ | Unlimited | 1 | Crypto, PayPal | Dead |
+| [Titan](https://titannet.io) | ✅ | ❌ | -- | -- | Crypto (TNT) | Dead |
+| [Network3](https://network3.io) | -- | -- | -- | -- | -- | Dead |
+| [SpeedShare](https://speedshare.app) | ✅ | ❌ | Unlimited | 1 | PayPal, Crypto | Broken |
 
 ### GPU Compute (requires dedicated hardware)
 
