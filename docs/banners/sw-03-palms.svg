@@ -1,0 +1,103 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 300" width="1200" height="300">
+  <defs>
+    <linearGradient id="bg3" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#0c0020"/>
+      <stop offset="45%" stop-color="#1e0040"/>
+      <stop offset="100%" stop-color="#0c0020"/>
+    </linearGradient>
+    <linearGradient id="sun3" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#fde68a"/>
+      <stop offset="30%" stop-color="#fb923c"/>
+      <stop offset="60%" stop-color="#e11d48"/>
+      <stop offset="100%" stop-color="#7c3aed"/>
+    </linearGradient>
+    <linearGradient id="pink3" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#e11d48"/>
+      <stop offset="100%" stop-color="#f472b6"/>
+    </linearGradient>
+    <linearGradient id="cyan3" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#06b6d4"/>
+      <stop offset="100%" stop-color="#22d3ee"/>
+    </linearGradient>
+    <filter id="pg3"><feGaussianBlur stdDeviation="6" result="b"/><feFlood flood-color="#e11d48" flood-opacity="0.5" result="c"/><feComposite in="c" in2="b" operator="in" result="g"/><feMerge><feMergeNode in="g"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+    <filter id="cg3"><feGaussianBlur stdDeviation="4" result="b"/><feFlood flood-color="#06b6d4" flood-opacity="0.5" result="c"/><feComposite in="c" in2="b" operator="in" result="g"/><feMerge><feMergeNode in="g"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+    <clipPath id="sc3"><circle cx="600" cy="145" r="80"/></clipPath>
+  </defs>
+
+  <rect width="1200" height="300" fill="url(#bg3)"/>
+
+  <!-- Stars -->
+  <g fill="#fff" opacity="0.4">
+    <circle cx="80" cy="30" r="1"/><circle cx="200" cy="55" r="0.8"/><circle cx="340" cy="20" r="1.2"/>
+    <circle cx="450" cy="45" r="0.7"/><circle cx="520" cy="15" r="1"/><circle cx="680" cy="40" r="0.8"/>
+    <circle cx="750" cy="25" r="1"/><circle cx="870" cy="50" r="0.6"/><circle cx="1000" cy="30" r="1"/>
+    <circle cx="1100" cy="55" r="0.8"/><circle cx="150" cy="70" r="0.6"/><circle cx="950" cy="15" r="0.9"/>
+  </g>
+
+  <!-- Sun -->
+  <circle cx="600" cy="145" r="80" fill="url(#sun3)" opacity="0.85"/>
+  <g clip-path="url(#sc3)">
+    <rect x="515" y="145" width="170" height="4" fill="#0c0020"/>
+    <rect x="515" y="156" width="170" height="6" fill="#0c0020"/>
+    <rect x="515" y="169" width="170" height="8" fill="#0c0020"/>
+    <rect x="515" y="184" width="170" height="11" fill="#0c0020"/>
+    <rect x="515" y="202" width="170" height="15" fill="#0c0020"/>
+  </g>
+
+  <!-- Palm tree left -->
+  <g fill="#0c0020" opacity="0.95">
+    <!-- Trunk -->
+    <path d="M 120 200 Q 115 160 108 100" stroke="#0c0020" stroke-width="6" fill="none"/>
+    <!-- Fronds -->
+    <path d="M 108 100 Q 80 85 30 95 Q 70 80 108 100"/>
+    <path d="M 108 100 Q 75 70 40 55 Q 75 60 108 100"/>
+    <path d="M 108 100 Q 100 65 90 35 Q 105 60 108 100"/>
+    <path d="M 108 100 Q 120 60 140 40 Q 125 65 108 100"/>
+    <path d="M 108 100 Q 140 75 175 70 Q 140 85 108 100"/>
+    <path d="M 108 100 Q 145 95 185 100 Q 140 100 108 100"/>
+  </g>
+
+  <!-- Palm tree right -->
+  <g fill="#0c0020" opacity="0.95">
+    <path d="M 1080 200 Q 1085 155 1095 90" stroke="#0c0020" stroke-width="6" fill="none"/>
+    <path d="M 1095 90 Q 1125 75 1175 85 Q 1135 70 1095 90"/>
+    <path d="M 1095 90 Q 1130 60 1165 45 Q 1128 55 1095 90"/>
+    <path d="M 1095 90 Q 1105 55 1115 25 Q 1100 55 1095 90"/>
+    <path d="M 1095 90 Q 1080 50 1060 30 Q 1078 55 1095 90"/>
+    <path d="M 1095 90 Q 1060 65 1025 60 Q 1065 75 1095 90"/>
+    <path d="M 1095 90 Q 1055 85 1015 90 Q 1060 88 1095 90"/>
+  </g>
+
+  <!-- Grid -->
+  <g stroke="#06b6d4" stroke-width="0.5">
+    <line x1="0" y1="210" x2="1200" y2="210" opacity="0.2"/>
+    <line x1="0" y1="228" x2="1200" y2="228" opacity="0.15"/>
+    <line x1="0" y1="248" x2="1200" y2="248" opacity="0.1"/>
+    <line x1="0" y1="268" x2="1200" y2="268" opacity="0.07"/>
+    <line x1="0" y1="286" x2="1200" y2="286" opacity="0.04"/>
+    <line x1="600" y1="200" x2="0" y2="300" opacity="0.1"/>
+    <line x1="600" y1="200" x2="150" y2="300" opacity="0.1"/>
+    <line x1="600" y1="200" x2="300" y2="300" opacity="0.1"/>
+    <line x1="600" y1="200" x2="450" y2="300" opacity="0.1"/>
+    <line x1="600" y1="200" x2="600" y2="300" opacity="0.1"/>
+    <line x1="600" y1="200" x2="750" y2="300" opacity="0.1"/>
+    <line x1="600" y1="200" x2="900" y2="300" opacity="0.1"/>
+    <line x1="600" y1="200" x2="1050" y2="300" opacity="0.1"/>
+    <line x1="600" y1="200" x2="1200" y2="300" opacity="0.1"/>
+  </g>
+
+  <!-- Title -->
+  <text x="600" y="80" text-anchor="middle" font-family="Inter, -apple-system, Arial, sans-serif"
+        font-size="80" font-weight="900" fill="url(#pink3)" letter-spacing="-2" filter="url(#pg3)">
+    CashPilot
+  </text>
+
+  <!-- Tagline -->
+  <text x="600" y="112" text-anchor="middle" font-family="Inter, -apple-system, Arial, sans-serif"
+        font-size="16" font-weight="600" fill="url(#cyan3)" letter-spacing="6" filter="url(#cg3)">
+    PASSIVE INCOME ON AUTOPILOT
+  </text>
+
+  <rect x="0" y="0" width="1200" height="2" fill="url(#pink3)" filter="url(#pg3)"/>
+  <rect x="0" y="298" width="1200" height="2" fill="url(#cyan3)" filter="url(#cg3)"/>
+</svg>
