@@ -48,8 +48,26 @@ CREATE TABLE IF NOT EXISTS users (
     created_at TEXT    NOT NULL DEFAULT (datetime('now'))
 );
 
+CREATE TABLE IF NOT EXISTS nodes (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    name            TEXT    NOT NULL,
+    token_hash      TEXT    NOT NULL UNIQUE,
+    ip              TEXT    NOT NULL DEFAULT '',
+    os              TEXT    NOT NULL DEFAULT '',
+    arch            TEXT    NOT NULL DEFAULT '',
+    docker_version  TEXT    NOT NULL DEFAULT '',
+    docker_mode     TEXT    NOT NULL DEFAULT 'unknown',
+    role            TEXT    NOT NULL DEFAULT 'child',
+    status          TEXT    NOT NULL DEFAULT 'pending',
+    last_seen       TEXT,
+    registered_at   TEXT    NOT NULL DEFAULT (datetime('now'))
+);
+
 CREATE INDEX IF NOT EXISTS idx_earnings_platform_date
     ON earnings (platform, date);
+
+CREATE INDEX IF NOT EXISTS idx_nodes_status
+    ON nodes (status);
 """
 
 
@@ -322,6 +340,107 @@ async def delete_user(user_id: int) -> None:
     db = await _get_db()
     try:
         await db.execute("DELETE FROM users WHERE id = ?", (user_id,))
+        await db.commit()
+    finally:
+        await db.close()
+
+
+# --- Nodes (Federation) ---
+
+
+async def register_node(
+    name: str,
+    token_hash: str,
+    ip: str = "",
+    os_info: str = "",
+    arch: str = "",
+    docker_version: str = "",
+    docker_mode: str = "unknown",
+) -> int:
+    """Register a new child node. Returns the new node ID."""
+    db = await _get_db()
+    try:
+        cursor = await db.execute(
+            """
+            INSERT INTO nodes (name, token_hash, ip, os, arch, docker_version, docker_mode, status)
+            VALUES (?, ?, ?, ?, ?, ?, ?, 'online')
+            """,
+            (name, token_hash, ip, os_info, arch, docker_version, docker_mode),
+        )
+        await db.commit()
+        return cursor.lastrowid
+    finally:
+        await db.close()
+
+
+async def get_node_by_token_hash(token_hash: str) -> dict[str, Any] | None:
+    db = await _get_db()
+    try:
+        cursor = await db.execute("SELECT * FROM nodes WHERE token_hash = ?", (token_hash,))
+        row = await cursor.fetchone()
+        return dict(row) if row else None
+    finally:
+        await db.close()
+
+
+async def get_node(node_id: int) -> dict[str, Any] | None:
+    db = await _get_db()
+    try:
+        cursor = await db.execute("SELECT * FROM nodes WHERE id = ?", (node_id,))
+        row = await cursor.fetchone()
+        return dict(row) if row else None
+    finally:
+        await db.close()
+
+
+async def list_nodes() -> list[dict[str, Any]]:
+    db = await _get_db()
+    try:
+        cursor = await db.execute("SELECT * FROM nodes ORDER BY name")
+        rows = await cursor.fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        await db.close()
+
+
+async def update_node_heartbeat(
+    node_id: int,
+    ip: str = "",
+    os_info: str = "",
+    arch: str = "",
+    docker_version: str = "",
+    docker_mode: str = "unknown",
+) -> None:
+    """Update a node's last_seen timestamp and system info."""
+    db = await _get_db()
+    try:
+        await db.execute(
+            """
+            UPDATE nodes
+            SET last_seen = datetime('now'), status = 'online',
+                ip = ?, os = ?, arch = ?, docker_version = ?, docker_mode = ?
+            WHERE id = ?
+            """,
+            (ip, os_info, arch, docker_version, docker_mode, node_id),
+        )
+        await db.commit()
+    finally:
+        await db.close()
+
+
+async def set_node_status(node_id: int, status: str) -> None:
+    db = await _get_db()
+    try:
+        await db.execute("UPDATE nodes SET status = ? WHERE id = ?", (status, node_id))
+        await db.commit()
+    finally:
+        await db.close()
+
+
+async def delete_node(node_id: int) -> None:
+    db = await _get_db()
+    try:
+        await db.execute("DELETE FROM nodes WHERE id = ?", (node_id,))
         await db.commit()
     finally:
         await db.close()

@@ -12,13 +12,13 @@ from contextlib import asynccontextmanager
 from typing import Any
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from fastapi import FastAPI, Form, HTTPException, Request
+from fastapi import FastAPI, Form, HTTPException, Request, WebSocket
 from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 
-from app import auth, catalog, compose_generator, database, orchestrator
+from app import auth, catalog, compose_generator, database, federation, orchestrator, ws_client, ws_server
 
 logging.basicConfig(
     level=logging.INFO,
@@ -71,9 +71,18 @@ async def lifespan(app: FastAPI):
     scheduler.add_job(_run_collection, "interval", hours=6, id="collect")
     scheduler.start()
     docker_mode = "direct" if orchestrator.docker_available() else "monitor-only"
-    logger.info("CashPilot started (Docker: %s)", docker_mode)
+    role = federation.get_role()
+    logger.info("CashPilot started (Docker: %s, Role: %s)", docker_mode, role)
+
+    # Start federation client if child node
+    if federation.is_child():
+        await ws_client.start()
+
     yield
+
     # Shutdown
+    if federation.is_child():
+        await ws_client.stop()
     scheduler.shutdown(wait=False)
     logger.info("CashPilot stopped")
 
@@ -316,7 +325,7 @@ async def page_dashboard(request: Request):
         if not await database.has_any_users():
             return RedirectResponse("/register", status_code=303)
         return RedirectResponse("/login", status_code=303)
-    return templates.TemplateResponse(request, "dashboard.html", {"user": user})
+    return templates.TemplateResponse(request, "dashboard.html", {"user": user, "role": federation.get_role()})
 
 
 @app.get("/setup", response_class=HTMLResponse)
@@ -324,7 +333,7 @@ async def page_setup(request: Request):
     user = auth.get_current_user(request)
     if not user:
         return _login_redirect()
-    return templates.TemplateResponse(request, "setup.html", {"user": user})
+    return templates.TemplateResponse(request, "setup.html", {"user": user, "role": federation.get_role()})
 
 
 @app.get("/catalog", response_class=HTMLResponse)
@@ -332,7 +341,7 @@ async def page_catalog(request: Request):
     user = auth.get_current_user(request)
     if not user:
         return _login_redirect()
-    return templates.TemplateResponse(request, "catalog.html", {"user": user})
+    return templates.TemplateResponse(request, "catalog.html", {"user": user, "role": federation.get_role()})
 
 
 @app.get("/settings", response_class=HTMLResponse)
@@ -340,7 +349,7 @@ async def page_settings(request: Request):
     user = auth.get_current_user(request)
     if not user:
         return _login_redirect()
-    return templates.TemplateResponse(request, "settings.html", {"user": user})
+    return templates.TemplateResponse(request, "settings.html", {"user": user, "role": federation.get_role()})
 
 
 # ---------------------------------------------------------------------------
@@ -580,3 +589,198 @@ async def api_delete_user(request: Request, user_id: int) -> dict[str, str]:
         raise HTTPException(status_code=404, detail="User not found")
     await database.delete_user(user_id)
     return {"status": "deleted"}
+
+
+# ---------------------------------------------------------------------------
+# WebSocket: Federation (master only)
+# ---------------------------------------------------------------------------
+
+
+@app.websocket("/ws/federation")
+async def ws_federation(ws: WebSocket):
+    """WebSocket endpoint for child nodes to connect to master."""
+    if not federation.is_master():
+        await ws.close(code=4003, reason="Not a master node")
+        return
+    await ws_server.handle_connection(ws)
+
+
+# ---------------------------------------------------------------------------
+# Page: Fleet dashboard (master only)
+# ---------------------------------------------------------------------------
+
+
+@app.get("/fleet", response_class=HTMLResponse)
+async def page_fleet(request: Request):
+    user = auth.get_current_user(request)
+    if not user:
+        return _login_redirect()
+    if not federation.is_master():
+        return RedirectResponse("/", status_code=303)
+    return templates.TemplateResponse(
+        request,
+        "fleet.html",
+        {
+            "user": user,
+            "role": federation.get_role(),
+        },
+    )
+
+
+# ---------------------------------------------------------------------------
+# API: Federation
+# ---------------------------------------------------------------------------
+
+
+@app.get("/api/federation/info")
+async def api_federation_info(request: Request) -> dict[str, Any]:
+    """Return this node's federation role and info."""
+    _require_auth_api(request)
+    return {
+        "role": federation.get_role(),
+        "node_name": federation.NODE_NAME,
+        "node_info": federation.get_node_info(),
+        "docker_mode": "direct" if orchestrator.docker_available() else "monitor-only",
+    }
+
+
+@app.get("/api/federation/master-key")
+async def api_master_key(request: Request) -> dict[str, str]:
+    """Return the derived master key (owner only, master only)."""
+    _require_owner(request)
+    if not federation.is_master():
+        raise HTTPException(status_code=400, detail="Only master nodes have a master key")
+    return {"master_key": federation.get_master_key()}
+
+
+class TokenRequest(BaseModel):
+    node_name: str = ""
+    expires_hours: int = 24
+
+
+@app.post("/api/federation/token")
+async def api_generate_token(request: Request, body: TokenRequest) -> dict[str, str]:
+    """Generate a join token (master only)."""
+    _require_owner(request)
+    if not federation.is_master():
+        raise HTTPException(status_code=400, detail="Only master nodes can generate join tokens")
+    token = federation.generate_join_token(
+        node_name=body.node_name,
+        expires_hours=body.expires_hours,
+    )
+    return {"token": token}
+
+
+@app.get("/api/federation/nodes")
+async def api_list_nodes(request: Request) -> list[dict[str, Any]]:
+    """List all registered child nodes (master only)."""
+    _require_auth_api(request)
+    if not federation.is_master():
+        raise HTTPException(status_code=400, detail="Not a master node")
+    nodes = await database.list_nodes()
+    # Enrich with live state
+    live_states = ws_server.get_connected_nodes()
+    for node in nodes:
+        state = live_states.get(node["id"], {})
+        node["containers"] = state.get("containers", [])
+        node["container_count"] = state.get("container_count", 0)
+        node["running_count"] = state.get("running_count", 0)
+        node["earnings"] = state.get("earnings", [])
+        node["connected"] = node["id"] in live_states
+    return nodes
+
+
+@app.get("/api/federation/nodes/{node_id}")
+async def api_get_node(request: Request, node_id: int) -> dict[str, Any]:
+    """Get details for a specific node."""
+    _require_auth_api(request)
+    if not federation.is_master():
+        raise HTTPException(status_code=400, detail="Not a master node")
+    node = await database.get_node(node_id)
+    if not node:
+        raise HTTPException(status_code=404, detail="Node not found")
+    state = ws_server.get_connected_nodes().get(node_id, {})
+    node["containers"] = state.get("containers", [])
+    node["container_count"] = state.get("container_count", 0)
+    node["running_count"] = state.get("running_count", 0)
+    node["earnings"] = state.get("earnings", [])
+    node["connected"] = node_id in ws_server.get_connected_nodes()
+    return node
+
+
+class NodeCommand(BaseModel):
+    command: str
+    slug: str = ""
+    env: dict[str, str] = {}
+
+
+@app.post("/api/federation/nodes/{node_id}/command")
+async def api_node_command(request: Request, node_id: int, body: NodeCommand) -> dict[str, Any]:
+    """Send a command to a child node (master only)."""
+    _require_writer(request)
+    if not federation.is_master():
+        raise HTTPException(status_code=400, detail="Not a master node")
+    if body.command not in ("deploy", "stop", "restart", "remove", "status"):
+        raise HTTPException(status_code=400, detail="Invalid command")
+    sent = await ws_server.send_command(
+        node_id,
+        body.command,
+        {
+            "slug": body.slug,
+            "env": body.env,
+        },
+    )
+    if not sent:
+        raise HTTPException(status_code=503, detail="Node is not connected")
+    return {"status": "command_sent", "command": body.command, "node_id": node_id}
+
+
+@app.delete("/api/federation/nodes/{node_id}")
+async def api_delete_node(request: Request, node_id: int) -> dict[str, str]:
+    """Remove a registered node (master only)."""
+    _require_owner(request)
+    if not federation.is_master():
+        raise HTTPException(status_code=400, detail="Not a master node")
+    node = await database.get_node(node_id)
+    if not node:
+        raise HTTPException(status_code=404, detail="Node not found")
+    await database.delete_node(node_id)
+    return {"status": "deleted"}
+
+
+@app.get("/api/fleet/summary")
+async def api_fleet_summary(request: Request) -> dict[str, Any]:
+    """Aggregate fleet stats (master only)."""
+    _require_auth_api(request)
+    if not federation.is_master():
+        raise HTTPException(status_code=400, detail="Not a master node")
+
+    nodes = await database.list_nodes()
+    live_states = ws_server.get_connected_nodes()
+
+    total_containers = 0
+    total_running = 0
+    online_nodes = 0
+
+    for node in nodes:
+        state = live_states.get(node["id"], {})
+        total_containers += state.get("container_count", 0)
+        total_running += state.get("running_count", 0)
+        if node["id"] in live_states:
+            online_nodes += 1
+
+    # Add local node stats
+    try:
+        local_status = orchestrator.get_status()
+        total_containers += len(local_status)
+        total_running += sum(1 for c in local_status if c.get("status") == "running")
+    except Exception:
+        pass
+
+    return {
+        "total_nodes": len(nodes) + 1,  # +1 for master
+        "online_nodes": online_nodes + 1,
+        "total_containers": total_containers,
+        "running_containers": total_running,
+        "master_name": federation.NODE_NAME,
+    }

@@ -3,6 +3,8 @@ FROM python:3.12-alpine AS builder
 
 WORKDIR /build
 
+RUN apk add --no-cache gcc musl-dev libffi-dev
+
 COPY requirements.txt .
 RUN python -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"

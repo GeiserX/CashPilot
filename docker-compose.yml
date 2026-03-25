@@ -22,6 +22,12 @@ services:
     environment:
       - TZ=${TZ:-UTC}
       - CASHPILOT_SECRET_KEY=${CASHPILOT_SECRET_KEY:-}
+      # Federation: standalone (default), master, or child
+      - CASHPILOT_ROLE=${CASHPILOT_ROLE:-master}
+      - CASHPILOT_NODE_NAME=${CASHPILOT_NODE_NAME:-}
+      # Child-only: master URL and join token
+      - CASHPILOT_MASTER_URL=${CASHPILOT_MASTER_URL:-}
+      - CASHPILOT_JOIN_TOKEN=${CASHPILOT_JOIN_TOKEN:-}
     init: true
     restart: unless-stopped
     security_opt:
