@@ -2,6 +2,13 @@
 
 Manages lifecycle (deploy, stop, restart, remove) and status inspection
 for cashpilot-managed containers via the Docker SDK.
+
+CashPilot operates in two modes:
+  - **Direct mode**: Docker socket is mounted. Full container management
+    (deploy, stop, restart, remove) and live monitoring.
+  - **Monitor-only mode**: No Docker socket. CashPilot functions as a
+    dashboard for earnings tracking and service catalog only. Container
+    management endpoints return 503 with a clear message.
 """
 
 from __future__ import annotations
@@ -19,7 +26,31 @@ logger = logging.getLogger(__name__)
 
 LABEL_SERVICE = "cashpilot.service"
 LABEL_MANAGED = "cashpilot.managed"
+LABEL_VERSION = "cashpilot.version"
 CONTAINER_PREFIX = "cashpilot-"
+
+# Cached Docker availability (checked once at startup, refreshed on demand)
+_docker_available: bool | None = None
+
+
+def docker_available() -> bool:
+    """Check whether the Docker socket is accessible. Result is cached."""
+    global _docker_available
+    if _docker_available is None:
+        try:
+            client = docker.from_env()
+            client.ping()
+            _docker_available = True
+            client.close()
+        except Exception:
+            _docker_available = False
+    return _docker_available
+
+
+def reset_docker_status() -> None:
+    """Force re-check of Docker availability on next call."""
+    global _docker_available
+    _docker_available = None
 
 
 def _get_client() -> docker.DockerClient:
@@ -29,9 +60,12 @@ def _get_client() -> docker.DockerClient:
         client.ping()
         return client
     except DockerException as exc:
+        global _docker_available
+        _docker_available = False
         raise RuntimeError(
-            "Cannot connect to Docker. Is the Docker socket mounted at "
-            "/var/run/docker.sock?"
+            "Docker socket not available. Mount /var/run/docker.sock to "
+            "enable container management, or use CashPilot in monitor-only "
+            "mode for earnings tracking and compose file export."
         ) from exc
 
 
@@ -112,6 +146,7 @@ def deploy_service(
     labels = {
         LABEL_SERVICE: slug,
         LABEL_MANAGED: "true",
+        LABEL_VERSION: "1",
     }
 
     logger.info("Pulling image %s", image)

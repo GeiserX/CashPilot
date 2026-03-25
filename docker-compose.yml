@@ -1,19 +1,27 @@
+# CashPilot - Self-hosted passive income orchestrator
+# https://github.com/GeiserX/CashPilot
+#
+# This is the RECOMMENDED configuration with Docker socket access.
+# CashPilot can deploy, monitor, and manage service containers directly.
+#
+# For a version WITHOUT Docker socket access (monitor-only mode), see:
+#   docker-compose.standalone.yml
+
 services:
   cashpilot:
-    # Build from source or pull pre-built image:
-    #   docker compose up -d --build        (build locally)
-    #   docker compose pull && docker compose up -d  (use Docker Hub image)
     build: .
     image: drumsergio/cashpilot:latest
     container_name: cashpilot
     ports:
       - "8080:8080"
     volumes:
+      # Docker socket: gives CashPilot the ability to deploy and manage
+      # service containers. Remove this line for monitor-only mode.
       - /var/run/docker.sock:/var/run/docker.sock
       - cashpilot_data:/data
     environment:
-      - TZ=Europe/Madrid
-      - CASHPILOT_SECRET_KEY=${CASHPILOT_SECRET_KEY:-changeme-generate-a-random-secret}
+      - TZ=${TZ:-UTC}
+      - CASHPILOT_SECRET_KEY=${CASHPILOT_SECRET_KEY:-}
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true

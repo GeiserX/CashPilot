@@ -32,7 +32,7 @@ The key differentiator: a browser-based setup wizard guides you through account 
 
 ## Quick Start
 
-With Docker Compose:
+With Docker Compose (recommended):
 
 ```bash
 docker compose up -d
@@ -51,6 +51,16 @@ docker run -d \
 ```
 
 Then open [http://localhost:8080](http://localhost:8080) and follow the setup wizard.
+
+### Running without Docker socket (monitor-only mode)
+
+If you prefer to manage containers yourself (via Portainer, manual compose, etc.), CashPilot works without Docker socket access:
+
+```bash
+docker compose -f docker-compose.standalone.yml up -d
+```
+
+In this mode CashPilot provides the service catalog, compose file export, earnings dashboard, and credential storage -- but cannot deploy or monitor containers directly. Use the **Export Compose** button in the UI to get ready-to-use `docker-compose.yml` files for any service.
 
 ## Supported Services
 
