@@ -65,52 +65,56 @@ In this mode CashPilot provides the service catalog, compose file export, earnin
 ## Supported Services
 
 <!-- SERVICES_TABLE_START — DO NOT EDIT MANUALLY. Run: python scripts/generate_docs.py -->
-### Bandwidth Sharing (13 services)
 
-| Service | Docker Image | Residential IP | Referral Link |
-|---------|-------------|:--------------:|---------------|
-| [Bitping](https://app.bitping.com) | `bitping/bitpingd` | No | [Sign up](https://app.bitping.com) |
-| [Earn.fm](https://earn.fm) | `earnfm/earnfm-client` | Yes | [Sign up](https://earn.fm/ref/GEISYB91) |
-| [EarnApp](https://earnapp.com) | `fazalfarhan01/earnapp:lite` | Yes | [Sign up](https://earnapp.com/i/TSMD9wSm) |
-| [Honeygain](https://www.honeygain.com) | `honeygain/honeygain` | Yes | [Sign up](https://dashboard.honeygain.com/ref/SERGIB4014) |
-| [IPRoyal Pawns](https://pawns.app) | `iproyal/pawns-cli` | Yes | [Sign up](https://pawns.app?r=19266874) |
-| [MystNodes](https://mystnodes.com) | `mysteriumnetwork/myst` | No | [Sign up](https://mystnodes.co/?referral_code=do7v7YOoBBpbOstKQovX2pUvZYKia4ZhH3QIdNtE) |
-| [PacketStream](https://packetstream.io) | `packetstream/psclient` | Yes | [Sign up](https://packetstream.io/?psr=7xgZ) |
-| [ProxyLite](https://proxylite.ru) | `proxylite/proxyservice` | No | [Sign up](https://proxylite.ru/?r=KMUPRZIZ) |
-| [ProxyRack](https://peer.proxyrack.com) | `proxyrack/pop` | No | [Sign up](https://peer.proxyrack.com/ref/mpwiok3xlaxeycnn5znqlg7ipjeutxyxr6xl7vmn) |
-| [Repocket](https://repocket.com) | `repocket/repocket` | No | [Sign up](https://repocket.com/) |
-| [SpeedShare](https://speedshare.app) | `mrcolorrain/speedshare` | Yes | [Sign up](https://speedshare.app/?ref={code}) |
-| [Traffmonetizer](https://traffmonetizer.com) | `traffmonetizer/cli_v2` | No | [Sign up](https://traffmonetizer.com/?aff=2111758) |
+### Docker-Deployable Services
 
-### DePIN (10 services)
+Services CashPilot can deploy and manage automatically via Docker.
 
-| Service | Docker Image | Residential IP | Referral Link |
-|---------|-------------|:--------------:|---------------|
-| [BlockMesh](https://blockmesh.xyz) | N/A | Yes | [Sign up](https://blockmesh.xyz) |
-| [Dawn Internet](https://dawninternet.com) | N/A | Yes | [Sign up](https://dawninternet.com?code={code}) |
-| [GagaNode](https://www.gaganode.com) | N/A | No | [Sign up](https://dashboard.gaganode.com/register) |
-| [Gradient Network](https://gradient.network) | N/A | Yes | [Sign up](https://app.gradient.network/signup?referralCode=YSKMY7) |
-| [Grass](https://www.getgrass.io) | N/A | Yes | [Sign up](https://app.getgrass.io/register/?referralCode=kn8FNEPnUr2tMqE) |
-| [Network3](https://network3.io) | N/A | No | [Sign up](https://network3.io) |
-| [Nodepay](https://nodepay.ai) | N/A | Yes | [Sign up](https://app.nodepay.ai/register?ref=0wzzyznen64j9zx) |
-| [Teneo Protocol](https://teneo.pro) | N/A | Yes | [Sign up](https://dashboard.teneo.pro/?code=CAqef) |
-| [Titan Network](https://titannet.io) | N/A | Yes | [Sign up](https://titannet.io) |
-| [Wipter](https://wipter.com) | N/A | Yes | [Sign up](https://wipter.com/en/refer-a-friend) |
+| Service | Residential IP | VPS IP | Devices / Acct | Devices / IP | Payout | Referral |
+|---------|:-:|:-:|:-:|:-:|--------|----------|
+| [Bitping](https://app.bitping.com) | ✅ | ✅ | Unlimited | 1 | Crypto (SOL) | [Sign up](https://app.bitping.com) |
+| [Earn.fm](https://earn.fm) | ✅ | ✅ | Unlimited | 1 | Crypto | [Sign up](https://earn.fm/ref/GEISYB91) |
+| [EarnApp](https://earnapp.com) | ✅ | ❌ | 15 | 1 | PayPal, Gift Cards | [Sign up](https://earnapp.com/i/TSMD9wSm) |
+| [Honeygain](https://www.honeygain.com) | ✅ | ❌ | 10 | 1 | PayPal, Crypto | [Sign up](https://dashboard.honeygain.com/ref/SERGIB4014) |
+| [IPRoyal Pawns](https://pawns.app) | ✅ | ❌ | Unlimited | 1 | PayPal, Crypto | [Sign up](https://pawns.app?r=19266874) |
+| [MystNodes](https://mystnodes.com) | ✅ | ✅ | Unlimited | Unlimited | Crypto (MYST) | [Sign up](https://mystnodes.co/?referral_code=do7v7YOoBBpbOstKQovX2pUvZYKia4ZhH3QIdNtE) |
+| [PacketStream](https://packetstream.io) | ✅ | ❌ | Unlimited | 1 | PayPal | [Sign up](https://packetstream.io/?psr=7xgZ) |
+| [ProxyLite](https://proxylite.ru) | ✅ | ✅ | Unlimited | 1 | Crypto, PayPal | [Sign up](https://proxylite.ru/?r=KMUPRZIZ) |
+| [ProxyRack](https://peer.proxyrack.com) | ✅ | ✅ | 500 | 1 | PayPal, Crypto | [Sign up](https://peer.proxyrack.com/ref/mpwiok3xlaxeycnn5znqlg7ipjeutxyxr6xl7vmn) |
+| [Repocket](https://repocket.com) | ✅ | ❌ | 5 | 2 | PayPal, Crypto | [Sign up](https://repocket.com/) |
+| [Storj](https://www.storj.io) | ✅ | ✅ | Unlimited | 1 * | Crypto (STORJ) | [Sign up](https://www.storj.io/node) |
+| [Traffmonetizer](https://traffmonetizer.com) | ✅ | ✅ ** | Unlimited | Unlimited | Crypto (USDT) | [Sign up](https://traffmonetizer.com/?aff=2111758) |
 
-### Storage Sharing (1 service)
+> \* Storj nodes on the same /24 subnet share data allocation, reducing per-node earnings.
+>
+> \*\* Traffmonetizer ToS requires residential IP, but VPS nodes are accepted in practice.
 
-| Service | Docker Image | Residential IP | Referral Link |
-|---------|-------------|:--------------:|---------------|
-| [Storj](https://www.storj.io) | `storj/storagenode` | No | [Sign up](https://www.storj.io/node) |
+### Browser Extension / Desktop Only
 
-### GPU Compute (4 services)
+These services have no Docker image. CashPilot lists them in the catalog with signup links and earning estimates, but cannot deploy or monitor them.
 
-| Service | Docker Image | Residential IP | Referral Link |
-|---------|-------------|:--------------:|---------------|
-| [Golem Network](https://golem.network) | N/A | No | [Sign up](https://golem.network) |
-| [Nosana](https://nosana.io) | N/A | No | [Sign up](https://nosana.io) |
-| [Salad](https://salad.io) | N/A | Yes | [Sign up](https://salad.io) |
-| [Vast.ai](https://vast.ai) | N/A | No | [Sign up](https://vast.ai) |
+| Service | Residential IP | VPS IP | Devices / Acct | Devices / IP | Payout | Status | Referral |
+|---------|:-:|:-:|:-:|:-:|--------|--------|----------|
+| [Grass](https://www.getgrass.io) | ✅ | ❌ | Unlimited | 1 | Crypto (GRASS) | Active | [Sign up](https://app.getgrass.io/register/?referralCode=kn8FNEPnUr2tMqE) |
+| [Gradient](https://gradient.network) | ✅ | ❌ | Unlimited | 1 | Crypto (TBA) | Active | [Sign up](https://app.gradient.network/signup?referralCode=YSKMY7) |
+| [Nodepay](https://nodepay.ai) | ✅ | ❌ | Unlimited | 1 | Crypto (TBA) | Active | [Sign up](https://app.nodepay.ai/register?ref=0wzzyznen64j9zx) |
+| [Teneo](https://teneo.pro) | ✅ | ❌ | Unlimited | 1 | Crypto (TBA) | Active | [Sign up](https://dashboard.teneo.pro/?code=CAqef) |
+| [BlockMesh](https://blockmesh.xyz) | ✅ | ❌ | Unlimited | 1 | Crypto (TBA) | Active | [Sign up](https://blockmesh.xyz) |
+| [Wipter](https://wipter.com) | ✅ | ❌ | Unlimited | Unlimited | Crypto, PayPal | Active | [Sign up](https://wipter.com/en/refer-a-friend) |
+| [Dawn](https://dawninternet.com) | ✅ | ❌ | Unlimited | 1 | Crypto (TBA) | Broken | -- |
+| [GagaNode](https://www.gaganode.com) | ✅ | ✅ | Unlimited | 1 | Crypto, PayPal | Dead | -- |
+| [Titan](https://titannet.io) | ✅ | ❌ | -- | -- | Crypto (TNT) | Dead | -- |
+| [Network3](https://network3.io) | -- | -- | -- | -- | -- | Dead | -- |
+| [SpeedShare](https://speedshare.app) | ✅ | ❌ | Unlimited | 1 | PayPal, Crypto | Broken | -- |
+
+### GPU Compute (requires dedicated hardware)
+
+| Service | GPU Required | Platform | Payout |
+|---------|:-:|----------|--------|
+| [Vast.ai](https://vast.ai) | Yes | Linux | USD, Crypto |
+| [Salad](https://salad.io) | Yes | Windows only | PayPal, Gift Cards |
+| [Nosana](https://nosana.io) | Yes | Linux | Crypto (NOS) |
+| [Golem](https://golem.network) | Optional | Linux | Crypto (GLM) |
 <!-- SERVICES_TABLE_END -->
 
 > **Note:** The `generate_docs.py` script auto-generates this table from service YAML definitions. Earnings vary widely by location, hardware, and demand -- see individual guide pages in `docs/guides/` for details.

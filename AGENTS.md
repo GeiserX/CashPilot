@@ -122,7 +122,7 @@ cashpilot/
       js/app.js         # Vanilla JS, CP namespace, Chart.js, wizard state machine
   services/             # YAML service definitions (SINGLE SOURCE OF TRUTH)
     _schema.yml         # Schema documentation
-    bandwidth/          # 13 services (honeygain, iproyal, earnapp, etc.)
+    bandwidth/          # 12 services (honeygain, iproyal, earnapp, etc.)
     depin/              # 10 services (grass, gradient, teneo, etc.)
     storage/            # 1 service (storj)
     compute/            # 4 services (vast-ai, salad, nosana, golem)

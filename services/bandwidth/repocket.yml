@@ -5,10 +5,10 @@ status: active
 website: https://repocket.com
 description: >
   Repocket lets you earn passive income by sharing your unused internet bandwidth.
-  It works on both residential and VPS/datacenter connections. Setup requires an
-  email and API key from the dashboard. The Docker image uses environment variables
-  directly (no command-line flags needed), making it straightforward to deploy.
-short_description: Bandwidth sharing - works on VPS, env-based auth
+  Residential IP required (ToS prohibits VPS, proxies, and VPNs). Max 5 devices
+  and 5 active sessions per account. Setup requires an email and API key from the
+  dashboard. The Docker image uses environment variables directly.
+short_description: Bandwidth sharing - residential only, max 5 devices, env-based auth
 
 referral:
   url_template: ""
@@ -39,7 +39,7 @@ docker:
   network_mode: ""
 
 requirements:
-  residential_ip: false
+  residential_ip: true
   min_bandwidth: ""
   gpu: false
   min_storage: ""
