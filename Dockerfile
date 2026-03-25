@@ -29,14 +29,13 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 COPY --from=builder /opt/venv /opt/venv
 
-RUN addgroup -g 999 docker \
-    && adduser -D -u 1000 -G docker cashpilot \
-    && mkdir -p /data && chown cashpilot:docker /data
+RUN adduser -D -u 1000 cashpilot \
+    && mkdir -p /data && chown cashpilot:root /data
 
 WORKDIR /app
 
-COPY --chown=cashpilot:docker app/ ./app/
-COPY --chown=cashpilot:docker services/ ./services/
+COPY --chown=cashpilot:root app/ ./app/
+COPY --chown=cashpilot:root services/ ./services/
 
 VOLUME /data
 EXPOSE 8080
