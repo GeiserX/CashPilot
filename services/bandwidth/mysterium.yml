@@ -55,4 +55,4 @@ platforms: [windows, macos, linux, docker]
 
 collector:
   type: api
-  notes: "Node API at http://localhost:4449/tequilapi/. Built-in Tequila API for earnings and session data."
+  notes: "Tequila API at http://localhost:4449/tequilapi/settlement/total-fees. Returns MYST in wei (10^18). No auth needed."

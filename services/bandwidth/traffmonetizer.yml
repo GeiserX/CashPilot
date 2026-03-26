@@ -63,4 +63,4 @@ platforms: [windows, macos, linux, docker]
 
 collector:
   type: api
-  notes: "Dashboard provides per-device statistics. Token auth via account API."
+  notes: "API at api.traffmonetizer.com/api/dashboard. Bearer token auth. Returns balance in USD."

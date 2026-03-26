@@ -63,4 +63,4 @@ platforms: [windows, macos, linux, android, docker]
 
 collector:
   type: api
-  notes: "Bright Data SDK API. Auth via device UUID. Dashboard shows earnings per node."
+  notes: "Dashboard API at /dashboard/api/money/. Auth via OAuth refresh token cookie. Returns balance in USD."
