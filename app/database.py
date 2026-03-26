@@ -63,6 +63,17 @@ CREATE TABLE IF NOT EXISTS nodes (
     registered_at   TEXT    NOT NULL DEFAULT (datetime('now'))
 );
 
+CREATE TABLE IF NOT EXISTS user_preferences (
+    user_id             INTEGER PRIMARY KEY,
+    setup_mode          TEXT    NOT NULL DEFAULT 'fresh',
+    selected_categories TEXT    NOT NULL DEFAULT '[]',
+    timezone            TEXT    NOT NULL DEFAULT 'UTC',
+    setup_completed     INTEGER NOT NULL DEFAULT 0,
+    created_at          TEXT    NOT NULL DEFAULT (datetime('now')),
+    updated_at          TEXT    NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
 CREATE INDEX IF NOT EXISTS idx_earnings_platform_date
     ON earnings (platform, date);
 
@@ -495,6 +506,61 @@ async def delete_user(user_id: int) -> None:
     db = await _get_db()
     try:
         await db.execute("DELETE FROM users WHERE id = ?", (user_id,))
+        await db.commit()
+    finally:
+        await db.close()
+
+
+# --- User Preferences ---
+
+
+async def get_user_preferences(user_id: int) -> dict[str, Any] | None:
+    db = await _get_db()
+    try:
+        cursor = await db.execute(
+            "SELECT * FROM user_preferences WHERE user_id = ?", (user_id,)
+        )
+        row = await cursor.fetchone()
+        return dict(row) if row else None
+    finally:
+        await db.close()
+
+
+async def save_user_preferences(
+    user_id: int,
+    setup_mode: str = "fresh",
+    selected_categories: str = "[]",
+    timezone: str = "UTC",
+    setup_completed: bool = False,
+) -> None:
+    db = await _get_db()
+    try:
+        await db.execute(
+            """
+            INSERT INTO user_preferences
+                (user_id, setup_mode, selected_categories, timezone, setup_completed, updated_at)
+            VALUES (?, ?, ?, ?, ?, datetime('now'))
+            ON CONFLICT(user_id) DO UPDATE SET
+                setup_mode = excluded.setup_mode,
+                selected_categories = excluded.selected_categories,
+                timezone = excluded.timezone,
+                setup_completed = excluded.setup_completed,
+                updated_at = datetime('now')
+            """,
+            (user_id, setup_mode, selected_categories, timezone, int(setup_completed)),
+        )
+        await db.commit()
+    finally:
+        await db.close()
+
+
+async def mark_setup_completed(user_id: int) -> None:
+    db = await _get_db()
+    try:
+        await db.execute(
+            "UPDATE user_preferences SET setup_completed = 1, updated_at = datetime('now') WHERE user_id = ?",
+            (user_id,),
+        )
         await db.commit()
     finally:
         await db.close()

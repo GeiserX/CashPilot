@@ -14,6 +14,8 @@
       <div class="onboarding-step" data-step="2">2</div>
       <div class="onboarding-step-line"></div>
       <div class="onboarding-step" data-step="3">3</div>
+      <div class="onboarding-step-line"></div>
+      <div class="onboarding-step" data-step="4">4</div>
     </div>
 
     <!-- Step 1: Welcome -->
@@ -28,13 +30,55 @@
       <button class="btn btn-primary btn-lg" onclick="CP.obNext(2)">Get Started</button>
     </div>
 
-    <!-- Step 2: What do you want to share? -->
+    <!-- Step 2: What's your situation? -->
     <div class="onboarding-panel" id="ob-step-2">
-      <h2>What would you like to share?</h2>
-      <p class="onboarding-desc">Select the resource types you'd like to monetize. You can change this anytime.</p>
+      <h2>What's your situation?</h2>
+      <p class="onboarding-desc">This helps us tailor the setup experience for you.</p>
       <div class="onboarding-options">
         <label class="onboarding-option">
-          <input type="checkbox" value="bandwidth" checked>
+          <input type="radio" name="setup_mode" value="fresh">
+          <div class="onboarding-option-card">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/>
+            </svg>
+            <strong>Starting fresh</strong>
+            <span>I'm new to passive income services. Guide me through signing up and deploying everything.</span>
+          </div>
+        </label>
+        <label class="onboarding-option">
+          <input type="radio" name="setup_mode" value="monitoring">
+          <div class="onboarding-option-card">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
+            </svg>
+            <strong>Already running services</strong>
+            <span>I have containers running (e.g. money4band, manual Docker). I just want earnings tracking and a unified dashboard.</span>
+          </div>
+        </label>
+        <label class="onboarding-option">
+          <input type="radio" name="setup_mode" value="mixed">
+          <div class="onboarding-option-card">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/>
+            </svg>
+            <strong>Mix of both</strong>
+            <span>Some services are running, but I want to add more through CashPilot.</span>
+          </div>
+        </label>
+      </div>
+      <div class="onboarding-actions">
+        <button class="btn btn-ghost" onclick="CP.obNext(1)">Back</button>
+        <button class="btn btn-primary" onclick="CP.obNext(3)">Continue</button>
+      </div>
+    </div>
+
+    <!-- Step 3: What do you want to share? -->
+    <div class="onboarding-panel" id="ob-step-3">
+      <h2>What would you like to share?</h2>
+      <p class="onboarding-desc">Select the resource types you're interested in. You can change this anytime.</p>
+      <div class="onboarding-options">
+        <label class="onboarding-option">
+          <input type="checkbox" name="category" value="bandwidth" checked>
           <div class="onboarding-option-card">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <path d="M5 12.55a11 11 0 0114.08 0"/><path d="M1.42 9a16 16 0 0121.16 0"/><path d="M8.53 16.11a6 6 0 016.95 0"/><line x1="12" y1="20" x2="12.01" y2="20"/>
@@ -45,7 +89,7 @@
           </div>
         </label>
         <label class="onboarding-option">
-          <input type="checkbox" value="depin">
+          <input type="checkbox" name="category" value="depin">
           <div class="onboarding-option-card">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
@@ -56,7 +100,7 @@
           </div>
         </label>
         <label class="onboarding-option">
-          <input type="checkbox" value="storage">
+          <input type="checkbox" name="category" value="storage">
           <div class="onboarding-option-card">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/>
@@ -67,7 +111,7 @@
           </div>
         </label>
         <label class="onboarding-option">
-          <input type="checkbox" value="compute">
+          <input type="checkbox" name="category" value="compute">
           <div class="onboarding-option-card">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <rect x="4" y="4" width="16" height="16" rx="2" ry="2"/><rect x="9" y="9" width="6" height="6"/><line x1="9" y1="1" x2="9" y2="4"/><line x1="15" y1="1" x2="15" y2="4"/><line x1="9" y1="20" x2="9" y2="23"/><line x1="15" y1="20" x2="15" y2="23"/><line x1="20" y1="9" x2="23" y2="9"/><line x1="20" y1="14" x2="23" y2="14"/><line x1="1" y1="9" x2="4" y2="9"/><line x1="1" y1="14" x2="4" y2="14"/>
@@ -79,24 +123,21 @@
         </label>
       </div>
       <div class="onboarding-actions">
-        <button class="btn btn-ghost" onclick="CP.obNext(1)">Back</button>
-        <button class="btn btn-primary" onclick="CP.obNext(3)">Continue</button>
+        <button class="btn btn-ghost" onclick="CP.obNext(2)">Back</button>
+        <button class="btn btn-primary" onclick="CP.obSaveAndFinish()">Continue</button>
       </div>
     </div>
 
-    <!-- Step 3: Ready -->
-    <div class="onboarding-panel" id="ob-step-3">
+    <!-- Step 4: Ready (dynamic based on setup_mode) -->
+    <div class="onboarding-panel" id="ob-step-4">
       <div class="onboarding-icon">
         <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--success)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
           <path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>
         </svg>
       </div>
-      <h2>You're all set!</h2>
-      <p class="onboarding-desc">Head to the <strong>Service Catalog</strong> to browse available services, or use the <strong>Setup Wizard</strong> for guided deployment.</p>
-      <div class="onboarding-actions">
-        <a href="/catalog" class="btn btn-ghost">Browse Catalog</a>
-        <a href="/setup" class="btn btn-primary">Setup Wizard</a>
-      </div>
+      <h2 id="ob-finish-title">You're all set!</h2>
+      <p class="onboarding-desc" id="ob-finish-desc"></p>
+      <div class="onboarding-actions" id="ob-finish-actions"></div>
     </div>
   </div>
 </div>
@@ -104,13 +145,74 @@
 
 {% block scripts %}
 <script>
-CP.obNext = function(step) {
-  document.querySelectorAll('.onboarding-panel').forEach(p => p.classList.remove('active'));
-  document.querySelectorAll('.onboarding-step').forEach(s => {
-    s.classList.remove('active');
-    if (parseInt(s.dataset.step) <= step) s.classList.add('active');
-  });
-  document.getElementById('ob-step-' + step).classList.add('active');
-};
+(function() {
+  let setupMode = 'fresh';
+
+  CP.obNext = function(step) {
+    // Validation for step 2 -> 3
+    if (step === 3) {
+      const selected = document.querySelector('input[name="setup_mode"]:checked');
+      if (!selected) {
+        CP.toast('Please select your situation', 'warning');
+        return;
+      }
+      setupMode = selected.value;
+    }
+
+    document.querySelectorAll('.onboarding-panel').forEach(p => p.classList.remove('active'));
+    document.querySelectorAll('.onboarding-step').forEach(s => {
+      s.classList.remove('active');
+      if (parseInt(s.dataset.step) <= step) s.classList.add('active');
+    });
+    document.getElementById('ob-step-' + step).classList.add('active');
+  };
+
+  CP.obSaveAndFinish = function() {
+    const categories = Array.from(document.querySelectorAll('input[name="category"]:checked'))
+      .map(cb => cb.value);
+
+    if (categories.length === 0) {
+      CP.toast('Select at least one category', 'warning');
+      return;
+    }
+
+    // Save preferences to server
+    CP.api('/api/preferences', {
+      method: 'POST',
+      body: {
+        setup_mode: setupMode,
+        selected_categories: JSON.stringify(categories),
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
+      },
+    }).catch(() => {});
+
+    // Show appropriate finish step
+    const title = document.getElementById('ob-finish-title');
+    const desc = document.getElementById('ob-finish-desc');
+    const actions = document.getElementById('ob-finish-actions');
+
+    if (setupMode === 'fresh') {
+      title.textContent = "Let's deploy your first services!";
+      desc.innerHTML = 'The <strong>Setup Wizard</strong> will guide you through signing up for services and deploying containers.';
+      actions.innerHTML = `
+        <a href="/catalog" class="btn btn-ghost">Browse Catalog</a>
+        <a href="/setup" class="btn btn-primary">Setup Wizard</a>`;
+    } else if (setupMode === 'monitoring') {
+      title.textContent = 'Configure earnings tracking';
+      desc.innerHTML = 'Head to <strong>Settings</strong> to enter your API tokens and credentials. CashPilot will collect your earnings automatically &mdash; no container deployment needed.';
+      actions.innerHTML = `
+        <a href="/" class="btn btn-ghost">Dashboard</a>
+        <a href="/settings" class="btn btn-primary">Configure Credentials</a>`;
+    } else {
+      title.textContent = "Let's expand your portfolio!";
+      desc.innerHTML = 'Configure existing services in <strong>Settings</strong>, then use the <strong>Setup Wizard</strong> to deploy new ones.';
+      actions.innerHTML = `
+        <a href="/settings" class="btn btn-ghost">Configure Existing</a>
+        <a href="/setup" class="btn btn-primary">Deploy New Services</a>`;
+    }
+
+    CP.obNext(4);
+  };
+})();
 </script>
 {% endblock %}
