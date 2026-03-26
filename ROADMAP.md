@@ -129,6 +129,7 @@ Broaden beyond bandwidth sharing.
 - [ ] **VPN relay nodes** — Sentinel dVPN, Mysterium (already supported), Orchid
 - [ ] **CDN/edge nodes** — Flux, Theta Edge Node
 - [ ] **New service YAML contributions** — community-submitted services via PR (12+ services found in competitors not yet in CashPilot)
+- [ ] **Mobile phone earning** — track and manage earnings from always-on Android phones running passive income apps (Honeygain, EarnApp, IPRoyal, Mysterium, etc.). Research containerized Android environments, ADB-based app management, and phone-as-a-node fleet integration
 
 ## v2.0 — Platform
 
@@ -150,7 +151,6 @@ Transform CashPilot into a passive income operating system.
 - **Earning benchmarks** — anonymous, opt-in community benchmarks by region/ISP
 - **Referral code manager** — track which referral codes are active and their conversion rates
 - **Uptime SLA tracking** — per-service uptime guarantees vs. actual
-- **Dark/light theme toggle** — currently dark-only
 - **Localization** — i18n for non-English users
 - **Backup/restore** — export and import CashPilot configuration + credentials
 - **Home Assistant add-on** — deploy CashPilot as an HA Supervisor add-on
