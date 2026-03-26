@@ -383,19 +383,22 @@ def get_status() -> list[dict[str, Any]]:
 
 
 def get_status_cached(max_age: int = 600) -> list[dict[str, Any]]:
-    """Return cached container status, falling back to live if cache is stale.
+    """Return cached container status, falling back to light query if stale.
 
     Args:
         max_age: Maximum cache age in seconds (default 10 min).
                  The health check refreshes every 5 min, so 10 min
                  gives a comfortable margin.
 
-    Returns instantly from memory on page loads.
+    Returns instantly from memory on page loads. If the cache is empty
+    (e.g. first load, cache still warming), falls back to the fast
+    get_status_light() which skips per-container stats.
     """
     if _status_cache and (time.monotonic() - _status_cache_time) < max_age:
         return _status_cache
-    # Cache empty or stale — do a live fetch (first load or missed health check)
-    return get_status()
+    # Cache empty or stale — return fast light status (no CPU/memory)
+    # rather than blocking for 20+ seconds on get_status()
+    return get_status_light()
 
 
 def get_status_light() -> list[dict[str, Any]]:
