@@ -169,7 +169,7 @@ async def worker_status_page():
     """Self-contained HTML status page for the worker."""
     containers = []
     with contextlib.suppress(Exception):
-        containers = orchestrator.get_status()
+        containers = orchestrator.get_status_cached()
 
     container_rows = ""
     for c in containers:
@@ -264,7 +264,7 @@ async def api_worker_status(request: Request) -> dict[str, Any]:
     _verify_api_key(request)
     containers = []
     with contextlib.suppress(Exception):
-        containers = orchestrator.get_status()
+        containers = orchestrator.get_status_cached()
     return {
         "name": WORKER_NAME,
         "docker_available": orchestrator.docker_available(),
@@ -279,7 +279,7 @@ async def api_list_containers(request: Request) -> list[dict[str, Any]]:
     """List all CashPilot-managed containers."""
     _verify_api_key(request)
     try:
-        return orchestrator.get_status()
+        return orchestrator.get_status_cached()
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc))
 

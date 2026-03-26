@@ -16,6 +16,7 @@ from __future__ import annotations
 import logging
 import re
 import socket
+import time
 from typing import Any
 
 import docker
@@ -38,6 +39,10 @@ CONTAINER_PREFIX = "cashpilot-"
 
 # Cached Docker availability (checked once at startup, refreshed on demand)
 _docker_available: bool | None = None
+
+# In-memory status cache — populated by health check, served instantly to UI
+_status_cache: list[dict[str, Any]] = []
+_status_cache_time: float = 0.0
 
 
 def docker_available() -> bool:
@@ -312,7 +317,13 @@ def start_service(slug: str) -> None:
 
 
 def get_status() -> list[dict[str, Any]]:
-    """Return status of all cashpilot-managed containers."""
+    """Return live status of all cashpilot-managed containers.
+
+    This is SLOW (~1-2s per container) because it calls Docker stats API.
+    Use get_status_cached() for page loads; this is for background refresh.
+    """
+    global _status_cache, _status_cache_time
+
     try:
         client = _get_client()
     except RuntimeError:
@@ -364,6 +375,62 @@ def get_status() -> list[dict[str, Any]]:
             }
         )
 
+    # Update the cache
+    _status_cache = results
+    _status_cache_time = time.monotonic()
+
+    return results
+
+
+def get_status_cached(max_age: int = 600) -> list[dict[str, Any]]:
+    """Return cached container status, falling back to live if cache is stale.
+
+    Args:
+        max_age: Maximum cache age in seconds (default 10 min).
+                 The health check refreshes every 5 min, so 10 min
+                 gives a comfortable margin.
+
+    Returns instantly from memory on page loads.
+    """
+    if _status_cache and (time.monotonic() - _status_cache_time) < max_age:
+        return _status_cache
+    # Cache empty or stale — do a live fetch (first load or missed health check)
+    return get_status()
+
+
+def get_status_light() -> list[dict[str, Any]]:
+    """Return container list/status WITHOUT resource stats (fast).
+
+    Only queries Docker for container list + labels, skips the slow
+    per-container stats() call. Used when we need fresh container
+    states (running/stopped) but don't need CPU/memory numbers.
+    """
+    try:
+        client = _get_client()
+    except RuntimeError:
+        return []
+
+    containers = client.containers.list(
+        all=True,
+        filters={"label": f"{LABEL_MANAGED}=true"},
+    )
+
+    results: list[dict[str, Any]] = []
+    for c in containers:
+        results.append(
+            {
+                "slug": c.labels.get(LABEL_SERVICE, "unknown"),
+                "name": c.name,
+                "status": c.status,
+                "image": c.image.tags[0] if c.image.tags else str(c.image.short_id),
+                "cpu_percent": 0.0,
+                "memory_mb": 0.0,
+                "created": c.attrs.get("Created", ""),
+                "container_id": c.short_id,
+                "deployed_by": c.labels.get(LABEL_DEPLOYED_BY, "unknown"),
+                "category": c.labels.get(LABEL_CATEGORY, ""),
+            }
+        )
     return results
 
 

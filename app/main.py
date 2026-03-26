@@ -107,12 +107,15 @@ async def lifespan(app: FastAPI):
     await database.init_db()
     catalog.load_services()
     catalog.register_sighup()
-    scheduler.add_job(_run_collection, "interval", hours=6, id="collect")
+    scheduler.add_job(_run_collection, "interval", hours=1, id="collect")
     scheduler.add_job(_run_health_check, "interval", minutes=5, id="health_check")
     scheduler.add_job(_check_stale_workers, "interval", minutes=2, id="stale_workers")
     scheduler.start()
     docker_mode = "direct" if orchestrator.docker_available() else "monitor-only"
     logger.info("CashPilot started (Docker: %s)", docker_mode)
+
+    # Populate status cache immediately so first page load is instant
+    asyncio.get_event_loop().run_in_executor(None, orchestrator.get_status)
 
     yield
 
@@ -413,7 +416,7 @@ async def api_services_deployed(request: Request) -> list[dict[str, Any]]:
     """Return deployed services with container status, balance, CPU, memory."""
     _require_auth_api(request)
     try:
-        statuses = orchestrator.get_status()
+        statuses = orchestrator.get_status_cached()
     except RuntimeError:
         statuses = []
 
@@ -484,7 +487,7 @@ async def api_get_service(request: Request, slug: str) -> dict[str, Any]:
 async def api_status(request: Request) -> list[dict[str, Any]]:
     _require_auth_api(request)
     try:
-        return orchestrator.get_status()
+        return orchestrator.get_status_cached()
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc))
 
@@ -682,10 +685,10 @@ async def api_earnings_summary(request: Request) -> dict[str, Any]:
     _require_auth_api(request)
     summary = await database.get_earnings_dashboard_summary()
 
-    # Count active (running) services
+    # Count active (running) services — use cached data for instant response
     active = 0
     try:
-        statuses = orchestrator.get_status()
+        statuses = orchestrator.get_status_cached()
         active = sum(1 for s in statuses if s.get("status") == "running")
     except Exception:
         pass
@@ -1022,9 +1025,9 @@ async def api_fleet_summary(request: Request) -> dict[str, Any]:
         if w["status"] == "online":
             online_workers += 1
 
-    # Add local containers
+    # Add local containers (cached for instant response)
     try:
-        local_status = orchestrator.get_status()
+        local_status = orchestrator.get_status_cached()
         total_containers += len(local_status)
         total_running += sum(1 for c in local_status if c.get("status") == "running")
     except Exception:
