@@ -80,6 +80,16 @@ async def _run_collection() -> None:
 # ---------------------------------------------------------------------------
 
 
+async def _run_data_retention() -> None:
+    """Purge data older than 400 days."""
+    try:
+        deleted = await database.purge_old_data()
+        if deleted:
+            logger.info("Data retention: purged %d old rows", deleted)
+    except Exception as exc:
+        logger.debug("Data retention error: %s", exc)
+
+
 async def _check_stale_workers() -> None:
     """Mark workers as offline if they haven't sent a heartbeat recently."""
     try:
@@ -110,6 +120,7 @@ async def lifespan(app: FastAPI):
     scheduler.add_job(_run_collection, "interval", hours=1, id="collect")
     scheduler.add_job(_run_health_check, "interval", minutes=5, id="health_check")
     scheduler.add_job(_check_stale_workers, "interval", minutes=2, id="stale_workers")
+    scheduler.add_job(_run_data_retention, "interval", hours=24, id="data_retention")
     scheduler.start()
     docker_mode = "direct" if orchestrator.docker_available() else "monitor-only"
     logger.info("CashPilot started (Docker: %s)", docker_mode)

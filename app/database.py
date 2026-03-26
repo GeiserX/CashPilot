@@ -769,3 +769,27 @@ async def get_health_scores(days: int = 7) -> list[dict[str, Any]]:
         return results
     finally:
         await db.close()
+
+
+# --- Data Retention ---
+
+RETENTION_DAYS = 400
+
+
+async def purge_old_data() -> int:
+    """Delete earnings and health_events older than RETENTION_DAYS. Returns rows deleted."""
+    db = await _get_db()
+    try:
+        cutoff = f"-{RETENTION_DAYS} days"
+        c1 = await db.execute(
+            "DELETE FROM earnings WHERE created_at < datetime('now', ?)",
+            (cutoff,),
+        )
+        c2 = await db.execute(
+            "DELETE FROM health_events WHERE created_at < datetime('now', ?)",
+            (cutoff,),
+        )
+        await db.commit()
+        return (c1.rowcount or 0) + (c2.rowcount or 0)
+    finally:
+        await db.close()
