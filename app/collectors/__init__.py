@@ -42,11 +42,11 @@ COLLECTOR_MAP: dict[str, type[BaseCollector]] = {
 # Map of slug -> list of config keys needed to instantiate the collector
 _COLLECTOR_ARGS: dict[str, list[str]] = {
     "honeygain": ["email", "password"],
-    "earnapp": ["oauth_token"],
+    "earnapp": ["oauth_token", "?brd_sess_id"],
     "iproyal": ["email", "password"],
     "mysterium": ["email", "password"],
     "storj": ["api_url"],
-    "traffmonetizer": ["email", "password"],
+    "traffmonetizer": ["token"],
     "repocket": ["email", "password"],
     "proxyrack": ["api_key"],
     "bitping": ["email", "password"],
@@ -80,15 +80,18 @@ def make_collectors(
         arg_keys = _COLLECTOR_ARGS.get(slug, [])
 
         # Resolve constructor kwargs from config
+        # Args prefixed with ? are optional
         kwargs: dict[str, str] = {}
         missing: list[str] = []
         for arg in arg_keys:
-            config_key = f"{slug}_{arg}"
+            optional = arg.startswith("?")
+            arg_name = arg.lstrip("?")
+            config_key = f"{slug}_{arg_name}"
             val = config.get(config_key, "")
-            if not val:
+            if not val and not optional:
                 missing.append(config_key)
-            else:
-                kwargs[arg] = val
+            elif val:
+                kwargs[arg_name] = val
 
         if missing:
             logger.warning(
