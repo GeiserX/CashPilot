@@ -429,6 +429,9 @@ async def api_services_deployed(request: Request) -> list[dict[str, Any]]:
             cashout = svc.get("cashout", {})
             if cashout:
                 entry["cashout"] = cashout
+            referral = svc.get("referral", {})
+            if referral:
+                entry["referral_url"] = referral.get("signup_url", "")
         result.append(entry)
     return result
 

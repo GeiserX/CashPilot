@@ -41,16 +41,19 @@
   </div>
 </div>
 
-<!-- Earnings Breakdown -->
+<!-- Deployed Services Table -->
 <div class="card" style="margin-bottom: 24px;">
   <div class="card-header">
-    <span class="card-title">Earnings Breakdown</span>
-    <button class="btn btn-ghost btn-sm" onclick="CP.refreshBreakdown()" title="Refresh">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg>
-    </button>
+    <span class="card-title">Deployed Services</span>
+    <div style="display:flex; gap:8px; align-items:center;">
+      <button class="btn btn-ghost btn-sm" onclick="CP.refreshServices()" title="Refresh">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg>
+      </button>
+      <a href="/setup" class="btn btn-primary btn-sm">+ Add Service</a>
+    </div>
   </div>
-  <div id="earnings-breakdown">
-    <div class="empty-state-text" style="padding: 16px 0; text-align: center; color: var(--text-muted);">Loading...</div>
+  <div id="services-table-container" style="overflow-x:auto;">
+    <div class="empty-state-text" style="padding: 24px 0; text-align: center; color: var(--text-muted);">Loading...</div>
   </div>
 </div>
 
@@ -66,22 +69,6 @@
     <div class="modal-body" id="claim-modal-body">
       <!-- Populated by JS -->
     </div>
-  </div>
-</div>
-
-<!-- Service Cards -->
-<div class="section-header">
-  <h2 class="section-title">Deployed Services</h2>
-  <a href="/setup" class="btn btn-primary btn-sm">+ Add Service</a>
-</div>
-
-<div class="services-grid" id="services-list">
-  <!-- Populated by JS -->
-  <div class="empty-state">
-    <div class="empty-state-icon">&#x1f680;</div>
-    <div class="empty-state-title">No services deployed yet</div>
-    <div class="empty-state-text">Get started by deploying your first passive income service.</div>
-    <a href="/setup" class="btn btn-primary btn-lg">Setup Wizard</a>
   </div>
 </div>
 {% endblock %}
