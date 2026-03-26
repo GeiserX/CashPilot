@@ -715,12 +715,14 @@ const CP = (() => {
   function renderWizardServiceCard(svc) {
     const isSelected = wizardState.selectedServices.includes(svc.slug);
     const isDeployed = svc.deployed;
+    const isManual = svc.manual_only;
     const workerNodes = _wizardWorkerSlugs[svc.slug] || 0;
     const totalNodes = (isDeployed ? 1 : 0) + workerNodes;
 
     const classes = ['service-card'];
     if (isSelected) classes.push('selected');
     if (isDeployed) classes.push('deployed');
+    if (isManual) classes.push('manual-only');
 
     const earning = svc.earnings
       ? `$${svc.earnings.monthly_low}-$${svc.earnings.monthly_high}/${svc.earnings.per || 'mo'}`
@@ -730,6 +732,13 @@ const CP = (() => {
     if (totalNodes > 0) {
       const label = totalNodes === 1 ? 'Deployed on 1 node' : `Deployed on ${totalNodes} nodes`;
       deployedBadge = `<span class="deployed-badge"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg> ${label}</span>`;
+    }
+
+    // Platform notice for manual-only services
+    let manualNotice = '';
+    if (isManual) {
+      const platforms = (svc.platforms || []).map(p => p.charAt(0).toUpperCase() + p.slice(1)).join('/');
+      manualNotice = `<div class="manual-notice">${platforms || 'Desktop'} only — earnings tracking available</div>`;
     }
 
     return `
@@ -742,6 +751,7 @@ const CP = (() => {
         </div>
       </div>
       <div class="service-desc">${escapeHtml(svc.short_description || '')}</div>
+      ${manualNotice}
       <div class="service-meta" style="margin-top: 8px;">
         <span class="badge badge-available">${earning}</span>
         ${svc.requirements && svc.requirements.residential_ip ? '<span class="badge badge-residential">Residential IP</span>' : ''}
@@ -777,6 +787,34 @@ const CP = (() => {
   }
 
   function renderServiceSetupForm(svc) {
+    const signupUrl = svc.referral && svc.referral.signup_url
+      ? svc.referral.signup_url.replace('{code}', svc.referral.code || '')
+      : svc.website || '#';
+
+    // Manual-only services: show signup link + earnings tracking notice
+    if (svc.manual_only) {
+      const platforms = (svc.platforms || []).map(p => p.charAt(0).toUpperCase() + p.slice(1)).join(', ');
+      return `
+      <div class="card" style="margin-bottom: 16px;" id="setup-${svc.slug}">
+        <div class="card-header">
+          <h3 class="section-title">${escapeHtml(svc.name)}</h3>
+          <span class="badge badge-category">${escapeHtml(svc.category)}</span>
+        </div>
+        <div style="padding: 8px 0;">
+          <p style="color: var(--warning, #f59e0b); margin-bottom: 12px;">
+            <strong>${platforms || 'Desktop'} only</strong> — no Docker image available for automated deployment.
+          </p>
+          <p style="color: var(--text-secondary); margin-bottom: 16px;">
+            Install the app on your device, then CashPilot will track your earnings automatically.
+          </p>
+          <a href="${escapeHtml(signupUrl)}" target="_blank" rel="noopener" class="btn btn-primary btn-sm">
+            Sign Up for ${escapeHtml(svc.name)}
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+          </a>
+        </div>
+      </div>`;
+    }
+
     const envFields = (svc.docker && svc.docker.env || []).map(env => {
       const inputType = env.secret ? 'password' : 'text';
       return `
@@ -790,10 +828,6 @@ const CP = (() => {
         ${env.description ? `<div class="form-hint">${escapeHtml(env.description)}</div>` : ''}
       </div>`;
     }).join('');
-
-    const signupUrl = svc.referral && svc.referral.signup_url
-      ? svc.referral.signup_url.replace('{code}', svc.referral.code || '')
-      : svc.website || '#';
 
     return `
     <div class="card" style="margin-bottom: 16px;" id="setup-${svc.slug}">

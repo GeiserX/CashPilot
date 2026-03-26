@@ -473,6 +473,16 @@ img { max-width: 100%; }
 .service-card.deployed {
   border-color: var(--success);
 }
+.service-card.manual-only {
+  opacity: 0.75;
+  border-style: dashed;
+}
+.manual-notice {
+  font-size: 0.75rem;
+  color: var(--warning, #f59e0b);
+  margin-top: 6px;
+  font-style: italic;
+}
 .deployed-badge {
   display: inline-flex;
   align-items: center;
