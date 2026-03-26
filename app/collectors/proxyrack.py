@@ -28,7 +28,12 @@ class ProxyRackCollector(BaseCollector):
     async def collect(self) -> EarningsResult:
         """Fetch current ProxyRack balance."""
         try:
-            headers = {"Api-Key": self.api_key}
+            headers = {
+                "Api-Key": self.api_key,
+                "User-Agent": "Mozilla/5.0",
+                "Accept": "application/json",
+                "Content-Type": "application/json",
+            }
 
             async with httpx.AsyncClient(timeout=30) as client:
                 resp = await client.post(
