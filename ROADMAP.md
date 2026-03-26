@@ -35,13 +35,13 @@ The MVP: deploy, monitor, and manage passive income containers from a single web
 
 Turn CashPilot from a deployment tool into an earnings optimization platform.
 
-- [x] **Earnings collectors** for top services (5 of 6)
+- [x] **Earnings collectors** for top services
   - [x] Honeygain (JWT auth + /v2/earnings)
   - [x] EarnApp (OAuth cookie auth + /dashboard/api/money/)
   - [x] MystNodes (Tequila API at localhost:4449)
   - [x] Traffmonetizer (Bearer token + /api/dashboard)
   - [x] IPRoyal Pawns (JWT auth + /api/v1/users/me/balance-dashboard)
-  - [ ] Storj (storagenode API)
+  - [x] Storj (storagenode local API at port 14002)
 - [ ] **Earnings dashboard** with Chart.js historical charts
   - [x] Dashboard API: /api/earnings/summary (total, today, month, change %)
   - [x] Daily chart API: /api/earnings/daily?days=N

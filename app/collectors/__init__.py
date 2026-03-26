@@ -14,6 +14,7 @@ from app.collectors.earnapp import EarnAppCollector
 from app.collectors.honeygain import HoneygainCollector
 from app.collectors.iproyal import IPRoyalCollector
 from app.collectors.mystnodes import MystNodesCollector
+from app.collectors.storj import StorjCollector
 from app.collectors.traffmonetizer import TraffmonetizerCollector
 
 logger = logging.getLogger(__name__)
@@ -24,6 +25,7 @@ COLLECTOR_MAP: dict[str, type[BaseCollector]] = {
     "earnapp": EarnAppCollector,
     "iproyal": IPRoyalCollector,
     "mysterium": MystNodesCollector,
+    "storj": StorjCollector,
     "traffmonetizer": TraffmonetizerCollector,
 }
 
@@ -33,6 +35,7 @@ _COLLECTOR_ARGS: dict[str, list[str]] = {
     "earnapp": ["oauth_token"],
     "iproyal": ["email", "password"],
     "mysterium": ["api_url"],
+    "storj": ["api_url"],
     "traffmonetizer": ["token"],
 }
 
