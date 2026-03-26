@@ -377,10 +377,12 @@ async def get_daily_earnings(days: int = 7) -> list[dict[str, Any]]:
             previous = balance_by_date.get(prev_str, 0.0)
             delta = max(0.0, current - previous) if current > 0 else 0.0
 
-            result.append({
-                "date": d.strftime("%b %d"),
-                "amount": round(delta, 2),
-            })
+            result.append(
+                {
+                    "date": d.strftime("%b %d"),
+                    "amount": round(delta, 2),
+                }
+            )
 
         return result
     finally:
@@ -565,9 +567,7 @@ async def delete_user(user_id: int) -> None:
 async def get_user_preferences(user_id: int) -> dict[str, Any] | None:
     db = await _get_db()
     try:
-        cursor = await db.execute(
-            "SELECT * FROM user_preferences WHERE user_id = ?", (user_id,)
-        )
+        cursor = await db.execute("SELECT * FROM user_preferences WHERE user_id = ?", (user_id,))
         row = await cursor.fetchone()
         return dict(row) if row else None
     finally:
@@ -777,16 +777,18 @@ async def get_health_scores(days: int = 7) -> list[dict[str, Any]]:
                 score = score * 0.4 + uptime_ratio * 100 * 0.6
             score = max(0.0, min(100.0, score))
 
-            results.append({
-                "slug": r["slug"],
-                "score": round(score, 1),
-                "restarts": r["restarts"],
-                "crashes": r["crashes"],
-                "stops": r["stops"],
-                "uptime_checks": r["ok_checks"],
-                "total_checks": r["total_checks"],
-                "uptime_pct": round(r["ok_checks"] / r["total_checks"] * 100, 1) if r["total_checks"] > 0 else None,
-            })
+            results.append(
+                {
+                    "slug": r["slug"],
+                    "score": round(score, 1),
+                    "restarts": r["restarts"],
+                    "crashes": r["crashes"],
+                    "stops": r["stops"],
+                    "uptime_checks": r["ok_checks"],
+                    "total_checks": r["total_checks"],
+                    "uptime_pct": round(r["ok_checks"] / r["total_checks"] * 100, 1) if r["total_checks"] > 0 else None,
+                }
+            )
         return results
     finally:
         await db.close()

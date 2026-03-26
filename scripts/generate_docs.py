@@ -198,14 +198,9 @@ def generate_services_table(services: list[dict]) -> str:
     if docker_svcs:
         lines.append("### Docker-Deployable Services")
         lines.append("")
-        lines.append(
-            "Services CashPilot can deploy and manage automatically via Docker."
-        )
+        lines.append("Services CashPilot can deploy and manage automatically via Docker.")
         lines.append("")
-        lines.append(
-            "| Service | Residential IP | VPS IP "
-            "| Devices / Acct | Devices / IP | Payout |"
-        )
+        lines.append("| Service | Residential IP | VPS IP | Devices / Acct | Devices / IP | Payout |")
         lines.append("|---------|:-:|:-:|:-:|:-:|--------|")
 
         for svc in docker_svcs:
@@ -229,10 +224,7 @@ def generate_services_table(services: list[dict]) -> str:
                     dev_ip_str = f"{dev_ip_str} {mark}"
 
             name_link = _service_name_link(svc)
-            lines.append(
-                f"| {name_link} | \u2705 | {vps_str} "
-                f"| {dev_acct} | {dev_ip_str} | {payout} |"
-            )
+            lines.append(f"| {name_link} | \u2705 | {vps_str} | {dev_acct} | {dev_ip_str} | {payout} |")
 
         lines.append("")
         if footnotes:
@@ -252,10 +244,7 @@ def generate_services_table(services: list[dict]) -> str:
             "or monitor them."
         )
         lines.append("")
-        lines.append(
-            "| Service | Residential IP | VPS IP "
-            "| Devices / Acct | Devices / IP | Payout | Status |"
-        )
+        lines.append("| Service | Residential IP | VPS IP | Devices / Acct | Devices / IP | Payout | Status |")
         lines.append("|---------|:-:|:-:|:-:|:-:|--------|--------|")
 
         for svc in browser_svcs:
@@ -266,10 +255,7 @@ def generate_services_table(services: list[dict]) -> str:
             payout = _payout_str(svc)
             status = svc.get("status", "active").title()
             name_link = _service_name_link(svc)
-            lines.append(
-                f"| {name_link} | \u2705 | {_ip_badge(vps)} "
-                f"| {dev_acct} | {dev_ip} | {payout} | {status} |"
-            )
+            lines.append(f"| {name_link} | \u2705 | {_ip_badge(vps)} | {dev_acct} | {dev_ip} | {payout} | {status} |")
 
         lines.append("")
 
@@ -277,14 +263,9 @@ def generate_services_table(services: list[dict]) -> str:
     if gpu_svcs:
         lines.append("### GPU Compute")
         lines.append("")
-        lines.append(
-            "GPU-intensive computing services. Requires compatible hardware."
-        )
+        lines.append("GPU-intensive computing services. Requires compatible hardware.")
         lines.append("")
-        lines.append(
-            "| Service | Residential IP | GPU "
-            "| Min Storage | Payout | Status |"
-        )
+        lines.append("| Service | Residential IP | GPU | Min Storage | Payout | Status |")
         lines.append("|---------|:-:|:-:|:-:|--------|--------|")
 
         for svc in gpu_svcs:
@@ -294,10 +275,7 @@ def generate_services_table(services: list[dict]) -> str:
             payout = _payout_str(svc)
             status = svc.get("status", "active").title()
             name_link = _service_name_link(svc)
-            lines.append(
-                f"| {name_link} | \u2705 | {gpu} "
-                f"| {min_storage} | {payout} | {status} |"
-            )
+            lines.append(f"| {name_link} | \u2705 | {gpu} | {min_storage} | {payout} | {status} |")
 
         lines.append("")
 
