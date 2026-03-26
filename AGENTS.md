@@ -145,6 +145,54 @@ cashpilot/
 
 ---
 
+## Federation Architecture (Multi-Instance)
+
+CashPilot is designed to run on multiple servers simultaneously. The federation system lets all instances share a unified view of earnings and fleet status. This is a core differentiator -- no competitor does this.
+
+### Core Principles
+
+1. **Global view by default.** Any non-headless instance shows the same global earnings total, global service count, and global charts. The UI must clearly indicate this is a global view (not just local).
+2. **Every instance owns its own data.** Each instance has its own SQLite DB tracking both global aggregated data and local drill-down data (which containers it manages, their health, their earnings).
+3. **No assumptions about network topology.** Users may have Tailscale, plain LAN, WAN with port forwarding, VPN, or no connectivity at all between instances. The system must handle all cases gracefully:
+   - If instances can reach each other: they sync earnings and fleet status.
+   - If they cannot: each instance operates as a standalone master with awareness that other instances exist but no live data from them.
+4. **Visibility only, not remote management.** An instance never deploys/stops/restarts containers on another instance. Each server manages its own containers. Federation is purely for aggregating earnings and showing fleet health.
+5. **Drill-down is per-server and per-service.** The global view is the default. Users can drill down to see earnings broken down by server, or by service, or by service-on-a-specific-server.
+
+### Instance Roles
+
+| Role | Description |
+|------|-------------|
+| **Full instance** | Web UI + container management + earnings collection + federation sync. This is the default. |
+| **Headless instance** | No web UI. Manages containers locally, collects earnings, transmits data to other instances. Lightweight satellite for servers that don't need a dashboard. |
+
+- Full instances are peers (multi-master). There is no single "master" -- any instance can be opened and shows the global view.
+- Headless instances are data sources only. They push to full instances but don't serve a UI.
+- All roles use the same Docker image, configured via environment variables.
+
+### Data Model
+
+- Each instance stores: its own container health events, its own earnings snapshots, and a cache of other instances' latest reported earnings.
+- The "Total Earnings" displayed is: sum of latest balance per platform across all known instances.
+- If an instance goes offline, its last-known data remains visible. Fleet status shows "last seen X ago" for unreachable nodes.
+- Stale data from offline instances still counts toward historical earnings -- it doesn't disappear.
+
+### UI Expectations
+
+- Dashboard stats (Total Earnings, Today, This Month, Active Services) are **global** by default.
+- A clear visual indicator (badge, label, or header) shows the user they're viewing global data.
+- Drill-down: filter by server or by service. This may be a dropdown, tabs, or a dedicated fleet page.
+- Services table includes a "Server" column when viewing global data.
+- Fleet/nodes section shows each known instance: name, URL, health status, last seen, number of services.
+
+### What NOT to Build Yet
+
+- Remote container management (deploy/stop from another instance) -- future roadmap only.
+- Hub-only aggregator instance (no local containers) -- future roadmap only.
+- Auto-discovery (mDNS, Tailscale API, etc.) -- instances are manually registered in settings for now.
+
+---
+
 ## CI/CD
 
 ### `build.yml` -- Docker Build & Push
@@ -224,13 +272,18 @@ cashpilot/
 
 ### Collector Implementation Status
 
-Only **Honeygain** has a working earnings collector (`app/collectors/honeygain.py`). All other services are `api`, `scrape`, or `manual` stubs. Priority for next collectors:
-
-1. **EarnApp** -- Bright Data SDK API, UUID-based auth
-2. **MystNodes** -- Tequila API at `localhost:4449`
-3. **Traffmonetizer** -- Token-based API
-4. **PacketStream** -- CAPTCHA-protected dashboard (needs manual JWT)
-5. **ProxyRack** -- Behind Cloudflare (needs browser session)
+Working collectors (10/10 deployed services):
+- **Honeygain** -- JWT auth, `/v1/users/tokens` + `/v1/users/balances`
+- **EarnApp** -- XSRF rotation + cookie auth, `/money` endpoint
+- **MystNodes** -- Cloud API (`my.mystnodes.com/api/v2`), email/password auth
+- **Traffmonetizer** -- JWT token, `data.traffmonetizer.com/api/app_user/get_balance`
+- **IPRoyal** -- Email/password auth
+- **Repocket** -- Firebase auth (Google Identity Toolkit)
+- **Bitping** -- JWT cookie auth, `/api/v2/payouts/earnings`
+- **Earn.fm** -- Supabase auth, `/v2/harvester/view_balance`
+- **PacketStream** -- Manual JWT cookie, HTML scraping `window.userData`
+- **ProxyRack** -- API key auth, POST `/api/balance`
+- **Storj** -- API URL-based
 
 ### API/Dashboard Access Gotchas
 
