@@ -80,4 +80,4 @@ platforms: [windows, macos, linux, android, docker]
 
 collector:
   type: api
-  notes: "API available via dashboard. Auth with account credentials."
+  notes: "JWT auth via POST /api/v1/users/tokens (email+password), then GET /api/v1/users/me/balance-dashboard"
