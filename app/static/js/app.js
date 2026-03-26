@@ -123,12 +123,24 @@ const CP = (() => {
   let earningsChart = null;
   let refreshTimer = null;
 
+  let _initialRefreshDone = false;
+
   async function loadDashboard() {
     await Promise.all([
       loadDashboardStats(),
       loadServicesTable(),
       loadEarningsChart('7'),
     ]);
+
+    // Quick re-fetch after 10s to pick up freshly-cached stats (CPU/memory)
+    // that may not have been available on the very first cold-start load
+    if (!_initialRefreshDone) {
+      _initialRefreshDone = true;
+      setTimeout(() => {
+        loadDashboardStats();
+        loadServicesTable();
+      }, 10000);
+    }
 
     // Auto-refresh every 60 seconds
     if (refreshTimer) clearInterval(refreshTimer);
