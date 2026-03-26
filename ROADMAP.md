@@ -37,9 +37,9 @@ Turn CashPilot from a deployment tool into an earnings optimization platform.
 
 - [ ] **Earnings collectors** for top services
   - [x] Honeygain (JWT auth + /v2/earnings)
-  - [ ] EarnApp (Bright Data API)
-  - [ ] MystNodes (Tequila API at localhost:4449)
-  - [ ] Traffmonetizer (token-based API)
+  - [x] EarnApp (OAuth cookie auth + /dashboard/api/money/)
+  - [x] MystNodes (Tequila API at localhost:4449)
+  - [x] Traffmonetizer (Bearer token + /api/dashboard)
   - [ ] IPRoyal Pawns (API)
   - [ ] Storj (storagenode API)
 - [ ] **Earnings dashboard** with Chart.js historical charts
