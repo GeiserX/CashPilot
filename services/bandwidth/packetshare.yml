@@ -57,6 +57,12 @@ earnings:
   per: "device"
   notes: "One device per public IP. Residential IPs only. Earnings depend on location and bandwidth usage."
 
+cashout:
+  method: redirect
+  dashboard_url: "https://www.packetshare.io/dashboard"
+  min_amount: 5.0
+  currency: USD
+
 platforms: [windows, macos, linux, docker]
 
 collector:

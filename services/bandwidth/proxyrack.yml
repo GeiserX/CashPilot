@@ -64,6 +64,12 @@ earnings:
   per: "device"
   notes: "Residential IPs earn more than datacenter. Dashboard behind Cloudflare may complicate automated access."
 
+cashout:
+  method: redirect
+  dashboard_url: "https://peer.proxyrack.com/dashboard"
+  min_amount: 5.0
+  currency: USD
+
 platforms: [windows, macos, linux, docker]
 
 collector:

@@ -70,6 +70,12 @@ earnings:
   per: "device"
   notes: "Earnings depend on location and bandwidth usage. US/EU residential IPs earn more."
 
+cashout:
+  method: redirect
+  dashboard_url: "https://pawns.app/dashboard/earnings"
+  min_amount: 5.0
+  currency: USD
+
 platforms: [windows, macos, linux, android, docker]
 
 collector:

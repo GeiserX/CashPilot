@@ -52,6 +52,12 @@ earnings:
   per: "device"
   notes: "Residential IPs earn more. VPS/datacenter connections accepted at lower rates."
 
+cashout:
+  method: redirect
+  dashboard_url: "https://proxylite.ru/dashboard"
+  min_amount: 5.0
+  currency: USD
+
 platforms: [windows, linux, docker]
 
 collector:

@@ -53,6 +53,13 @@ earnings:
   per: "GPU-hour"
   notes: "RTX 3090 ~$0.20-0.40/hr, RTX 4090 ~$0.40-0.80/hr when rented. Utilization varies. Requires NVIDIA GPU, Linux host, Docker, and nvidia-container-toolkit. Set your own pricing."
 
+cashout:
+  method: redirect
+  dashboard_url: "https://cloud.vast.ai/host/earnings"
+  min_amount: 25.0
+  currency: USD
+  notes: "Earnings accumulate in Vast.ai balance. Withdraw via PayPal or crypto."
+
 platforms: [linux, docker]
 
 collector:

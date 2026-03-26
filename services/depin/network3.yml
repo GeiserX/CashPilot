@@ -48,6 +48,13 @@ earnings:
   per: "device"
   notes: "Project appears inactive. SSL certificate expired. Do not expect any earnings."
 
+cashout:
+  method: manual
+  dashboard_url: "https://account.network3.ai"
+  min_amount: 0
+  currency: N3
+  notes: "Service broken. Cashout unavailable."
+
 platforms: [windows, macos, linux]
 
 collector:

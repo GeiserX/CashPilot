@@ -46,6 +46,12 @@ earnings:
   per: "device"
   notes: "No Docker image available. Desktop app only."
 
+cashout:
+  method: redirect
+  dashboard_url: "https://bytebenefit.com/dashboard"
+  min_amount: 5.0
+  currency: USD
+
 platforms: [windows, macos, linux]
 
 collector:

@@ -52,6 +52,12 @@ earnings:
   per: "device"
   notes: "Relatively new platform. Earnings vary by location and bandwidth availability."
 
+cashout:
+  method: redirect
+  dashboard_url: "https://earn.fm/dashboard"
+  min_amount: 3.0
+  currency: USD
+
 platforms: [linux, docker]
 
 collector:

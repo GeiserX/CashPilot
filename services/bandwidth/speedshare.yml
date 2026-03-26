@@ -58,6 +58,13 @@ earnings:
   per: "device"
   notes: "Residential IPs only. No official Docker image - uses community build. API at api.speedshare.app is broken (returns Telegraf metrics instead of JSON). Service appears non-functional as of March 2025."
 
+cashout:
+  method: manual
+  dashboard_url: "https://dashboard.speedshare.app"
+  min_amount: 5.0
+  currency: USD
+  notes: "Service broken. Cashout unavailable."
+
 platforms: [windows, macos, linux, docker]
 
 collector:

@@ -47,6 +47,13 @@ earnings:
   per: "device"
   notes: "Claims up to $1/GB but real-world earnings are lower. Minimum payout $20. Earnings vary heavily by location and demand."
 
+cashout:
+  method: redirect
+  dashboard_url: "https://wipter.com/dashboard"
+  min_amount: 20.0
+  currency: USD
+  notes: "Cashout only visible in desktop app. No web dashboard payout."
+
 platforms: [windows, macos, linux, android]
 
 collector:

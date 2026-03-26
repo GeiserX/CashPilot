@@ -54,6 +54,16 @@
 #   per: "device" | "TB" | "GPU-hour"
 #   notes: ""
 
+# cashout:
+#   method: redirect | api | manual
+#     - redirect: user clicks through to service dashboard to request payout
+#     - api: CashPilot can trigger payout via API (rare)
+#     - manual: instructions only (e.g. crypto claim, no dashboard)
+#   dashboard_url: "https://service.com/dashboard/earnings"
+#   min_amount: 20 (numeric, derived from payment.minimum_payout)
+#   currency: USD
+#   notes: "Additional cashout instructions or caveats"
+
 # platforms: [windows, macos, linux, android, ios, docker, browser_extension]
 
 # collector:

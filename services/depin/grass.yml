@@ -48,6 +48,13 @@ earnings:
   per: "device"
   notes: "Earns Grass Points convertible to GRASS tokens via airdrops. Actual USD value depends on token price. Browser extension or desktop app required."
 
+cashout:
+  method: redirect
+  dashboard_url: "https://app.getgrass.io/dashboard"
+  min_amount: 0
+  currency: GRASS
+  notes: "GRASS token airdrop-based. Claim from dashboard when eligible."
+
 platforms: [windows, macos, linux, browser_extension]
 
 collector:

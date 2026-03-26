@@ -69,6 +69,13 @@ earnings:
   per: "TB"
   notes: "~$1.50/TB stored + $2/TB egress + $2.74/TB audit/repair. Earnings scale with disk allocated and node age. First 9 months have held-back escrow. Port 28967 must be forwarded."
 
+cashout:
+  method: redirect
+  dashboard_url: "https://www.storj.io/dcs/dashboard"
+  min_amount: 4.0
+  currency: STORJ
+  notes: "Payouts sent monthly in STORJ tokens to configured wallet address."
+
 platforms: [linux, docker]
 
 collector:

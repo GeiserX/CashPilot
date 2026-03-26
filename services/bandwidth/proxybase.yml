@@ -57,6 +57,12 @@ earnings:
   per: "device"
   notes: "Crypto payouts. Earnings depend on location and bandwidth usage."
 
+cashout:
+  method: redirect
+  dashboard_url: "https://proxybase.io/dashboard"
+  min_amount: 5.0
+  currency: USD
+
 platforms: [windows, linux, docker]
 
 collector:

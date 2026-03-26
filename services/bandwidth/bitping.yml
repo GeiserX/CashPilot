@@ -59,6 +59,12 @@ earnings:
   per: "device"
   notes: "Earnings depend on network quality and demand for monitoring from your location. VPS nodes accepted."
 
+cashout:
+  method: redirect
+  dashboard_url: "https://app.bitping.com/dashboard"
+  min_amount: 5.0
+  currency: USD
+
 platforms: [windows, macos, linux, docker]
 
 collector:

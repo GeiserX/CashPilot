@@ -59,6 +59,12 @@ earnings:
   per: "device"
   notes: "Highly location-dependent. US/EU IPs earn the most. Earnings scale with bandwidth consumed."
 
+cashout:
+  method: redirect
+  dashboard_url: "https://earnapp.com/dashboard"
+  min_amount: 2.5
+  currency: USD
+
 platforms: [windows, macos, linux, android, docker]
 
 collector:

@@ -51,6 +51,13 @@ earnings:
   per: "device"
   notes: "Earnings in MYST tokens. Residential IPs earn significantly more. Node WebUI at port 4449 for management. VPS accepted."
 
+cashout:
+  method: redirect
+  dashboard_url: "https://mystnodes.com/dashboard"
+  min_amount: 2.0
+  currency: MYST
+  notes: "MYST tokens settle on-chain. Withdraw from MyST node dashboard to your wallet."
+
 platforms: [windows, macos, linux, docker]
 
 collector:

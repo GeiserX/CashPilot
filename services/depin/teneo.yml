@@ -47,6 +47,13 @@ earnings:
   per: "device"
   notes: "Earns Teneo Points pre-token launch. Browser extension must remain active. Actual USD value depends on future token conversion."
 
+cashout:
+  method: redirect
+  dashboard_url: "https://dashboard.teneo.pro"
+  min_amount: 0
+  currency: TENEO
+  notes: "Points convert to tokens. Claim from dashboard."
+
 platforms: [browser_extension]
 
 collector:

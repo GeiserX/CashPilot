@@ -47,6 +47,13 @@ earnings:
   per: "device"
   notes: "Earns Dawn Points pre-token launch. Actual value depends on future token price. Hardware box earns more than browser extension."
 
+cashout:
+  method: manual
+  dashboard_url: "https://dashboard.dawninternet.com"
+  min_amount: 0
+  currency: DAWN
+  notes: "Service broken. Cashout unavailable."
+
 platforms: [browser_extension]
 
 collector:

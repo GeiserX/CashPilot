@@ -52,6 +52,12 @@ earnings:
   per: "device"
   notes: "Unlimited devices per account. Crypto payouts."
 
+cashout:
+  method: redirect
+  dashboard_url: "https://antgain.app/dashboard"
+  min_amount: 5.0
+  currency: USD
+
 platforms: [windows, linux, docker]
 
 collector:

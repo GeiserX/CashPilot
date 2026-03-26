@@ -53,6 +53,12 @@ earnings:
   per: "device"
   notes: "Pays $0.10/GB for bandwidth shared. Earnings depend heavily on demand for your IP's location."
 
+cashout:
+  method: redirect
+  dashboard_url: "https://packetstream.io/dashboard"
+  min_amount: 5.0
+  currency: USD
+
 platforms: [windows, macos, linux, docker]
 
 collector:
