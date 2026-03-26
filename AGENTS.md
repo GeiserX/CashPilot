@@ -392,21 +392,16 @@ volumes:
 
 ### Current Deployment
 
-| Server | Mode | URL | Services |
-|--------|------|-----|:--------:|
-| watchtower | UI | `http://192.168.10.100:8085` | 10 |
-| geiserback | worker | `http://192.168.10.110:8081` | 0 (ready) |
-| geiserct | worker | `http://192.168.20.5:8081` (host network) | 0 (ready) |
-
-**Fleet API key**: Set via `CASHPILOT_API_KEY` env var on all instances.
+3-server fleet: 1 UI instance + 2 workers. Workers send heartbeats to UI every 60s.
+Fleet API key set via `CASHPILOT_API_KEY` env var on all instances.
 
 ### Performance & Deployment Learnings
 
 - **`container.stats(stream=False)` is slow** (~1-2s per container). Never call in request path. Use `get_status_cached()` for page loads; background health check refreshes every 5 min.
 - **`--read-only` breaks Docker socket access**: The entrypoint needs to modify `/etc/group` to add the `cashpilot` user to the Docker socket's group. Drop `--read-only` or add tmpfs for `/etc`.
-- **geiserct (192.168.20.x) cannot reach watchtower (192.168.10.x) directly**. Use Tailscale IP (`100.68.43.109`) for cross-subnet worker→UI communication. Worker uses `--network host` for Tailscale routing.
+- **Cross-subnet workers**: If worker and UI are on different subnets, use a VPN/overlay IP for `CASHPILOT_UI_URL`. Worker may need `--network host` for VPN routing.
 - **SQLite data retention**: 400-day retention. Daily job purges `earnings` and `health_events` older than 400 days.
-- **Collection interval**: 1 hour (was 6h). Earnings cache in SQLite, served instantly.
+- **Collection interval**: 1 hour. Earnings cache in SQLite, served instantly.
 - **Docker availability check caches result**: If startup races and returns False, the cache stays False. Fixed by warming cache in background on startup via `run_in_executor`.
 
 ---
