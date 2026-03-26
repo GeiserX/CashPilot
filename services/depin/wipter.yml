@@ -17,7 +17,6 @@ referral:
   bonus:
     referrer: "Percentage of referral earnings"
     referee: "Signup bonus"
-  how_to_get_code: "Dashboard > Refer a Friend page > Copy link"
 
 docker:
   image: ""

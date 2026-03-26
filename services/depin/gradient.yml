@@ -17,7 +17,6 @@ referral:
   bonus:
     referrer: "Bonus Gradient Points per active referral"
     referee: "Bonus points on signup"
-  how_to_get_code: "Dashboard > Referrals > Copy referral link"
 
 docker:
   image: ""

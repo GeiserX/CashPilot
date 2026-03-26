@@ -17,7 +17,6 @@ referral:
   bonus:
     referrer: "Bonus points per active referral"
     referee: "Bonus points on signup"
-  how_to_get_code: "Dashboard > Referral section > Copy link"
 
 docker:
   image: ""

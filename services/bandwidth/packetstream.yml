@@ -18,7 +18,6 @@ referral:
   bonus:
     referrer: "$0.10 per GB from referral traffic"
     referee: ""
-  how_to_get_code: "Dashboard > Referral > Copy your referral link"
 
 docker:
   image: packetstream/psclient

@@ -18,7 +18,6 @@ referral:
   bonus:
     referrer: ""
     referee: ""
-  how_to_get_code: "No referral program available"
 
 docker:
   image: ""

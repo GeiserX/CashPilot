@@ -17,7 +17,6 @@ referral:
   bonus:
     referrer: ""
     referee: ""
-  how_to_get_code: "No public referral program found as of March 2025"
 
 docker:
   image: repocket/repocket

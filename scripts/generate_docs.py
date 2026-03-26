@@ -403,7 +403,6 @@ def generate_guide(svc: dict) -> str:
     signup_url = ref.get("signup_url", ref.get("url_template", website))
     ref_bonus_referrer = ref.get("bonus", {}).get("referrer", "N/A")
     ref_bonus_referee = ref.get("bonus", {}).get("referee", "N/A")
-    how_to_get_code = ref.get("how_to_get_code", "Check the service dashboard.")
 
     earn = svc.get("earnings", {})
     earnings_range = _earnings_range(svc)
@@ -524,7 +523,6 @@ def generate_guide(svc: dict) -> str:
     sections.append("|---|---------|")
     sections.append(f"| Referrer bonus | {ref_bonus_referrer} |")
     sections.append(f"| New user bonus | {ref_bonus_referee} |")
-    sections.append(f"| How to get code | {how_to_get_code} |")
     sections.append("")
 
     # Footer

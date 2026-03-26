@@ -17,7 +17,6 @@ referral:
   bonus:
     referrer: "Bonus Dawn Points per active referral"
     referee: "Bonus Dawn Points on signup"
-  how_to_get_code: "Dashboard > Referral section > Copy your referral code"
 
 docker:
   image: ""

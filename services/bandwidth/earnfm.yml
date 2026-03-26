@@ -17,7 +17,6 @@ referral:
   bonus:
     referrer: "Percentage of referral earnings"
     referee: ""
-  how_to_get_code: "Dashboard > Settings > Copy your referral link"
 
 docker:
   image: earnfm/earnfm-client

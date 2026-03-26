@@ -18,7 +18,6 @@ referral:
   bonus:
     referrer: "Bonus credits per active referral"
     referee: ""
-  how_to_get_code: "Dashboard > Invite Friends > Copy referral link"
 
 docker:
   image: ""

@@ -16,7 +16,6 @@ referral:
   bonus:
     referrer: ""
     referee: ""
-  how_to_get_code: "Dashboard > Referral > Copy your referral link"
 
 docker:
   image: ""

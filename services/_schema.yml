@@ -17,7 +17,6 @@
 #   bonus:
 #     referrer: What the referrer gets
 #     referee: What the new user gets
-#   how_to_get_code: Instructions to find referral link in dashboard
 
 # docker:
 #   image: Docker Hub image

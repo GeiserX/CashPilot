@@ -17,7 +17,6 @@ referral:
   bonus:
     referrer: "2000 Teneo Points per referral"
     referee: "Bonus points on signup"
-  how_to_get_code: "Dashboard > Referral > Copy link"
 
 docker:
   image: ""

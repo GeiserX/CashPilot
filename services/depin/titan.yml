@@ -18,7 +18,6 @@ referral:
   bonus:
     referrer: "Bonus TNT tokens per referral"
     referee: ""
-  how_to_get_code: "Dashboard > Referral section > Copy link"
 
 docker:
   image: ""

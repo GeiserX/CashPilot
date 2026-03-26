@@ -16,7 +16,6 @@ referral:
   bonus:
     referrer: ""
     referee: ""
-  how_to_get_code: "Check the dashboard for referral options"
 
 docker:
   image: pinors/antgain-cli

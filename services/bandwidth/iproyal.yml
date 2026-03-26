@@ -18,7 +18,6 @@ referral:
   bonus:
     referrer: "10% of referral earnings for life"
     referee: "$3 with code EARN3"
-  how_to_get_code: "Dashboard > Referrals > Copy your referral link"
 
 docker:
   image: iproyal/pawns-cli

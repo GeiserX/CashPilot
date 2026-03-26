@@ -18,7 +18,6 @@ referral:
   bonus:
     referrer: "$1 per referral who earns $5"
     referee: ""
-  how_to_get_code: "App > Referrals > Copy referral code"
 
 docker:
   image: ""

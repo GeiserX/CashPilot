@@ -18,7 +18,6 @@ referral:
   bonus:
     referrer: "10% of referral earnings for life"
     referee: "$5 signup bonus"
-  how_to_get_code: "Dashboard > Referral Program > Copy your referral link"
 
 docker:
   image: traffmonetizer/cli_v2

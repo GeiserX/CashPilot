@@ -103,11 +103,6 @@
           <div class="detail-value">{{ service.referral.bonus.referee if service.referral.bonus else 'N/A' }}</div>
         </div>
       </div>
-      {% if service.referral.how_to_get_code %}
-      <div class="form-hint" style="margin-top: 8px;">
-        How to find your code: {{ service.referral.how_to_get_code }}
-      </div>
-      {% endif %}
     </div>
     {% endif %}
   </div>

@@ -17,7 +17,6 @@ referral:
   bonus:
     referrer: "25% of referral earnings for life"
     referee: "$3 signup bonus"
-  how_to_get_code: "Dashboard > Referrals > Copy your referral link"
 
 docker:
   image: honeygain/honeygain

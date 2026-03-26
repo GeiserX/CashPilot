@@ -17,7 +17,6 @@ referral:
   bonus:
     referrer: "15% of referral earnings for life"
     referee: ""
-  how_to_get_code: "Dashboard > Referral > Copy your referral link"
 
 docker:
   image: proxylite/proxyservice
