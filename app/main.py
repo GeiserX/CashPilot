@@ -391,7 +391,7 @@ async def api_services_deployed(request: Request) -> list[dict[str, Any]]:
     for s in statuses:
         slug = s["slug"]
         svc = catalog.get_service(slug)
-        result.append({
+        entry = {
             "slug": slug,
             "name": svc["name"] if svc else slug,
             "container_status": s["status"],
@@ -400,7 +400,12 @@ async def api_services_deployed(request: Request) -> list[dict[str, Any]]:
             "memory": f"{s.get('memory_mb', 0)} MB",
             "image": s.get("image", ""),
             "category": s.get("category", ""),
-        })
+        }
+        if svc:
+            cashout = svc.get("cashout", {})
+            if cashout:
+                entry["cashout"] = cashout
+        result.append(entry)
     return result
 
 

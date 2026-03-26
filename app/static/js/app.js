@@ -199,6 +199,21 @@ const CP = (() => {
     const statusLabel = statusClass.charAt(0).toUpperCase() + statusClass.slice(1);
     const initial = (svc.name || svc.slug || '?')[0].toUpperCase();
 
+    // Cashout button: show when balance >= min_amount and cashout is configured
+    let cashoutBtn = '';
+    if (svc.cashout && svc.cashout.dashboard_url) {
+      const minAmount = parseFloat(svc.cashout.min_amount) || 0;
+      const balance = parseFloat(svc.balance) || 0;
+      const canCashout = balance >= minAmount && minAmount > 0;
+      cashoutBtn = `
+        <a href="${escapeHtml(svc.cashout.dashboard_url)}" target="_blank" rel="noopener"
+           class="btn btn-sm ${canCashout ? 'btn-success' : 'btn-ghost'}" title="${canCashout ? 'Cash out now' : `Min $${minAmount}`}"
+           style="font-size:0.75rem; padding:4px 8px;">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>
+          Cash Out
+        </a>`;
+    }
+
     return `
     <div class="service-card" data-slug="${escapeHtml(svc.slug)}">
       <div class="service-card-header">
@@ -216,6 +231,7 @@ const CP = (() => {
         </div>
       </div>
       <div class="service-actions">
+        ${cashoutBtn}
         <button class="btn btn-ghost btn-sm btn-icon" onclick="CP.restartService('${svc.slug}')" title="Restart">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg>
         </button>
