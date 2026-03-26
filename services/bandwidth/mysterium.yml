@@ -31,6 +31,7 @@ docker:
   command: "service --agreed-terms-and-conditions"
   network_mode: "host"
   cap_add: [NET_ADMIN]
+  privileged: true
 
 requirements:
   residential_ip: false

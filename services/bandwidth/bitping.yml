@@ -39,6 +39,7 @@ docker:
     - "bitping-data:/root/.bitping"
   command: ""
   network_mode: ""
+  privileged: true
 
 requirements:
   residential_ip: false

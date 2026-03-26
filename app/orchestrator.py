@@ -14,6 +14,7 @@ CashPilot operates in two modes:
 from __future__ import annotations
 
 import logging
+import re
 import socket
 from typing import Any
 
@@ -163,7 +164,18 @@ def deploy_service(
     # Optional settings
     network_mode = docker_conf.get("network_mode") or None
     cap_add = docker_conf.get("cap_add") or None
-    command = docker_conf.get("command") or None
+    privileged = docker_conf.get("privileged", False)
+
+    # Command: resolve ${VAR} placeholders from env dict
+    raw_command = docker_conf.get("command") or None
+    command = None
+    if raw_command:
+        resolved = re.sub(
+            r"\$\{(\w+)\}",
+            lambda m: env.get(m.group(1), m.group(0)),
+            raw_command,
+        )
+        command = resolved
 
     labels = {
         LABEL_SERVICE: slug,
@@ -188,6 +200,7 @@ def deploy_service(
         volumes=volumes if volumes else None,
         network_mode=network_mode,
         cap_add=cap_add,
+        privileged=privileged,
         command=command if command else None,
         labels=labels,
         hostname=hostname or f"cashpilot-{slug}",

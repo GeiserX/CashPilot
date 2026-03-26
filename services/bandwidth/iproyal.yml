@@ -50,6 +50,7 @@ docker:
   volumes: []
   command: "-email ${IPROYAL_EMAIL} -password ${IPROYAL_PASSWORD} -device-name ${IPROYAL_DEVICE_NAME} -device-id ${IPROYAL_DEVICE_ID} -accept-tos"
   network_mode: ""
+  privileged: true
 
 requirements:
   residential_ip: true

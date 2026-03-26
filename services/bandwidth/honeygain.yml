@@ -41,8 +41,9 @@ docker:
       default: "cashpilot-{hostname}"
   ports: []
   volumes: []
-  command: ""
+  command: "-tou-accept -email ${HONEYGAIN_EMAIL} -pass ${HONEYGAIN_PASSWORD} -device ${HONEYGAIN_DEVICE_NAME}"
   network_mode: ""
+  privileged: true
 
 requirements:
   residential_ip: true
