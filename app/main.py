@@ -470,14 +470,23 @@ async def api_services_deployed(request: Request) -> list[dict[str, Any]]:
 
 @app.get("/api/services/available")
 async def api_services_available(request: Request) -> list[dict[str, Any]]:
-    """Return all services from catalog, enriched with deployment status."""
+    """Return deployable services from catalog, enriched with deployment status."""
     _require_auth_api(request)
     services = catalog.get_services()
     deployments = await database.get_deployments()
     deployed_slugs = {d["slug"] for d in deployments}
+
+    # Only return services that can actually be deployed via Docker
+    deployable = []
     for svc in services:
+        docker_conf = svc.get("docker", {})
+        if not docker_conf or not docker_conf.get("image"):
+            continue  # No Docker image — can't deploy
+        if svc.get("status") in ("broken", "dead"):
+            continue  # Known non-functional
         svc["deployed"] = svc.get("slug", "") in deployed_slugs
-    return services
+        deployable.append(svc)
+    return deployable
 
 
 @app.get("/api/services/{slug}")

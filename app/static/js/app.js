@@ -676,12 +676,29 @@ const CP = (() => {
     }
   }
 
+  // Cached worker container data for wizard
+  let _wizardWorkerSlugs = {};  // slug -> node count
+
   async function loadWizardServices() {
     const container = document.getElementById('wizard-services');
     if (!container) return;
 
     try {
-      const services = await api('/api/services/available');
+      // Fetch services and worker data in parallel
+      const [services, workers] = await Promise.all([
+        api('/api/services/available'),
+        api('/api/workers').catch(() => []),
+      ]);
+
+      // Count how many worker nodes run each service slug
+      _wizardWorkerSlugs = {};
+      for (const w of workers) {
+        const slugs = new Set((w.containers || []).map(c => c.slug).filter(Boolean));
+        for (const s of slugs) {
+          _wizardWorkerSlugs[s] = (_wizardWorkerSlugs[s] || 0) + 1;
+        }
+      }
+
       const filtered = services.filter(s =>
         wizardState.categories.includes(s.category)
       );
@@ -696,13 +713,27 @@ const CP = (() => {
   }
 
   function renderWizardServiceCard(svc) {
-    const checked = wizardState.selectedServices.includes(svc.slug) ? 'selected' : '';
+    const isSelected = wizardState.selectedServices.includes(svc.slug);
+    const isDeployed = svc.deployed;
+    const workerNodes = _wizardWorkerSlugs[svc.slug] || 0;
+    const totalNodes = (isDeployed ? 1 : 0) + workerNodes;
+
+    const classes = ['service-card'];
+    if (isSelected) classes.push('selected');
+    if (isDeployed) classes.push('deployed');
+
     const earning = svc.earnings
       ? `$${svc.earnings.monthly_low}-$${svc.earnings.monthly_high}/${svc.earnings.per || 'mo'}`
       : 'Varies';
 
+    let deployedBadge = '';
+    if (totalNodes > 0) {
+      const label = totalNodes === 1 ? 'Deployed on 1 node' : `Deployed on ${totalNodes} nodes`;
+      deployedBadge = `<span class="deployed-badge"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg> ${label}</span>`;
+    }
+
     return `
-    <div class="service-card ${checked}" data-slug="${svc.slug}" onclick="CP.toggleWizardService('${svc.slug}', this)">
+    <div class="${classes.join(' ')}" data-slug="${svc.slug}" onclick="CP.toggleWizardService('${svc.slug}', this)">
       <div class="service-card-header">
         <div class="service-icon">${(svc.name || '?')[0]}</div>
         <div>
@@ -714,6 +745,7 @@ const CP = (() => {
       <div class="service-meta" style="margin-top: 8px;">
         <span class="badge badge-available">${earning}</span>
         ${svc.requirements && svc.requirements.residential_ip ? '<span class="badge badge-residential">Residential IP</span>' : ''}
+        ${deployedBadge}
       </div>
     </div>`;
   }
