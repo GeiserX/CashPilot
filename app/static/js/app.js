@@ -126,17 +126,15 @@ const CP = (() => {
   async function loadDashboard() {
     await Promise.all([
       loadDashboardStats(),
-      loadDashboardServices(),
+      loadServicesTable(),
       loadEarningsChart('7'),
-      loadEarningsBreakdown(),
     ]);
 
     // Auto-refresh every 60 seconds
     if (refreshTimer) clearInterval(refreshTimer);
     refreshTimer = setInterval(() => {
       loadDashboardStats();
-      loadDashboardServices();
-      loadEarningsBreakdown();
+      loadServicesTable();
     }, 60000);
   }
 
@@ -168,93 +166,125 @@ const CP = (() => {
     }
   }
 
-  async function loadDashboardServices() {
-    const container = document.getElementById('services-list');
+  async function loadServicesTable() {
+    const container = document.getElementById('services-table-container');
     if (!container) return;
 
     try {
-      const services = await api('/api/services/deployed');
+      const [services, breakdown] = await Promise.all([
+        api('/api/services/deployed'),
+        api('/api/earnings/breakdown').catch(() => []),
+      ]);
+
       if (!services || services.length === 0) {
         container.innerHTML = `
-          <div class="empty-state">
-            <div class="empty-state-icon">&#x1f680;</div>
+          <div class="empty-state" style="padding:32px 0; text-align:center;">
             <div class="empty-state-title">No services deployed yet</div>
             <div class="empty-state-text">Get started by deploying your first passive income service.</div>
-            <a href="/setup" class="btn btn-primary btn-lg">Setup Wizard</a>
+            <a href="/setup" class="btn btn-primary" style="margin-top:12px;">Setup Wizard</a>
           </div>`;
         return;
       }
-      container.innerHTML = services.map(renderServiceCard).join('');
-    } catch (err) {
+
+      // Merge breakdown data into services by slug
+      const breakdownMap = {};
+      (breakdown || []).forEach(b => { breakdownMap[b.platform] = b; });
+
+      const rows = services.map(svc => renderServiceRow(svc, breakdownMap[svc.slug])).join('');
       container.innerHTML = `
-        <div class="empty-state">
-          <div class="empty-state-icon">&#x1f680;</div>
-          <div class="empty-state-title">No services deployed yet</div>
-          <div class="empty-state-text">Get started by deploying your first passive income service.</div>
-          <a href="/setup" class="btn btn-primary btn-lg">Setup Wizard</a>
-        </div>`;
+        <table class="breakdown-table">
+          <thead>
+            <tr>
+              <th>Service</th>
+              <th style="text-align:center;">Status</th>
+              <th style="text-align:center;">Health</th>
+              <th style="text-align:right;">Balance</th>
+              <th style="text-align:right;">Change</th>
+              <th style="text-align:right;">CPU</th>
+              <th style="text-align:right;">Memory</th>
+              <th style="text-align:center;">Payout</th>
+              <th style="text-align:center;">Actions</th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>`;
+    } catch (err) {
+      container.innerHTML = `<div class="empty-state-text" style="padding:24px 0; text-align:center; color:var(--text-muted);">Failed to load services.</div>`;
     }
   }
 
-  function renderServiceCard(svc) {
+  function renderServiceRow(svc, bk) {
     const statusClass = (svc.container_status || 'stopped').toLowerCase();
     const statusLabel = statusClass.charAt(0).toUpperCase() + statusClass.slice(1);
-    const initial = (svc.name || svc.slug || '?')[0].toUpperCase();
 
-    // Health score badge
-    let healthBadge = '';
+    // Service name — linked to referral URL if available
+    const name = escapeHtml(svc.name);
+    const nameHtml = svc.referral_url
+      ? `<a href="${escapeHtml(svc.referral_url)}" target="_blank" rel="noopener" title="Referral link" style="color:var(--accent); text-decoration:none; font-weight:600;">${name}</a>`
+      : `<span style="font-weight:600;">${name}</span>`;
+
+    // Health badge
+    let healthBadge = '<span style="color:var(--text-muted);">--</span>';
     if (svc.health_score !== null && svc.health_score !== undefined) {
       const score = svc.health_score;
       const hClass = score >= 80 ? 'badge-running' : score >= 50 ? 'badge-error' : 'badge-stopped';
-      const uptimeStr = svc.uptime_pct !== null ? ` · ${svc.uptime_pct}% up` : '';
-      healthBadge = `<span class="badge ${hClass}" title="Health ${score}/100${uptimeStr}" style="margin-left:6px;">${score}</span>`;
+      healthBadge = `<span class="badge ${hClass}" title="Health ${score}/100">${score}</span>`;
     }
 
-    // Claim button instead of direct cashout link
-    let claimBtn = '';
-    if (svc.cashout && svc.cashout.dashboard_url) {
-      const minAmount = parseFloat(svc.cashout.min_amount) || 0;
-      const balance = parseFloat(svc.balance) || 0;
-      const canCashout = balance >= minAmount && minAmount > 0;
-      claimBtn = `
-        <button class="btn btn-sm ${canCashout ? 'btn-success' : 'btn-ghost'}"
-                onclick="CP.openClaimModal('${svc.slug}')"
-                title="${canCashout ? 'Eligible for payout' : `Min $${minAmount}`}"
-                style="font-size:0.75rem; padding:4px 8px;">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>
-          Claim
-        </button>`;
-    }
+    // Balance + delta from breakdown
+    const balance = (bk && bk.balance) || svc.balance || 0;
+    const delta = bk ? bk.delta : 0;
+    const deltaSign = delta > 0 ? '+' : '';
+    const deltaClass = delta > 0 ? 'positive' : delta < 0 ? 'negative' : '';
+    const deltaStr = delta !== 0 ? `${deltaSign}${formatCurrency(delta)}` : '--';
+
+    // Payout progress
+    const co = svc.cashout || {};
+    const minAmount = co.min_amount || 0;
+    const eligible = minAmount > 0 && balance >= minAmount;
+    const pctToMin = minAmount > 0 ? Math.min(100, (balance / minAmount) * 100) : 0;
+    const progressBar = minAmount > 0 ? `
+      <div class="payout-progress" title="${formatCurrency(balance)} / ${formatCurrency(minAmount)}" style="min-width:60px;">
+        <div class="payout-progress-bar ${eligible ? 'eligible' : ''}" style="width:${pctToMin.toFixed(0)}%"></div>
+      </div>
+      <span class="payout-label">${pctToMin.toFixed(0)}%</span>
+    ` : '<span style="color:var(--text-muted);">--</span>';
+
+    // Action buttons
+    const claimBtn = co.dashboard_url
+      ? `<button class="btn btn-sm ${eligible ? 'btn-success' : 'btn-ghost'} btn-icon" onclick="CP.openClaimModal('${svc.slug}')" title="${eligible ? 'Claim' : 'Details'}">
+           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>
+         </button>`
+      : '';
 
     return `
-    <div class="service-card" data-slug="${escapeHtml(svc.slug)}">
-      <div class="service-card-header">
-        <div class="service-icon">${initial}</div>
-        <div>
-          <div class="service-name">${escapeHtml(svc.name)}${healthBadge}</div>
-          <span class="badge badge-${statusClass}"><span class="status-dot ${statusClass}"></span> ${statusLabel}</span>
-        </div>
-      </div>
-      <div class="service-stats">
-        <div class="service-balance">${formatCurrency(svc.balance || 0)}</div>
-        <div class="service-usage">
-          <span>CPU ${svc.cpu || '0'}%</span>
-          <span>MEM ${svc.memory || '0 MB'}</span>
-        </div>
-      </div>
-      <div class="service-actions">
+    <tr class="breakdown-row" data-slug="${escapeHtml(svc.slug)}">
+      <td>${nameHtml}<div style="font-size:0.7rem; color:var(--text-muted);">${escapeHtml(svc.image || '')}</div></td>
+      <td style="text-align:center;"><span class="badge badge-${statusClass}"><span class="status-dot ${statusClass}"></span> ${statusLabel}</span></td>
+      <td style="text-align:center;">${healthBadge}</td>
+      <td style="text-align:right; font-weight:600;">${formatCurrency(balance)}</td>
+      <td style="text-align:right;"><span class="stat-change ${deltaClass}">${deltaStr}</span></td>
+      <td style="text-align:right;">${svc.cpu || '0'}%</td>
+      <td style="text-align:right;">${svc.memory || '0 MB'}</td>
+      <td style="text-align:center;">${progressBar}</td>
+      <td style="text-align:center; white-space:nowrap;">
         ${claimBtn}
         <button class="btn btn-ghost btn-sm btn-icon" onclick="CP.restartService('${svc.slug}')" title="Restart">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg>
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg>
         </button>
         <button class="btn btn-ghost btn-sm btn-icon" onclick="CP.stopService('${svc.slug}')" title="Stop">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="6" width="12" height="12" rx="1"/></svg>
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="6" width="12" height="12" rx="1"/></svg>
         </button>
         <button class="btn btn-ghost btn-sm btn-icon" onclick="CP.viewLogs('${svc.slug}')" title="Logs">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
         </button>
-      </div>
-    </div>`;
+      </td>
+    </tr>`;
+  }
+
+  function refreshServices() {
+    loadServicesTable();
+    toast('Services refreshed', 'info');
   }
 
   async function loadEarningsChart(days) {
@@ -345,82 +375,7 @@ const CP = (() => {
   // -----------------------------------------------------------
   // Earnings Breakdown
   // -----------------------------------------------------------
-  async function loadEarningsBreakdown() {
-    const container = document.getElementById('earnings-breakdown');
-    if (!container) return;
-
-    try {
-      const data = await api('/api/earnings/breakdown');
-      if (!data || data.length === 0) {
-        container.innerHTML = '<div class="empty-state-text" style="padding: 16px 0; text-align: center;">No earnings data yet. Configure collectors in Settings.</div>';
-        return;
-      }
-      const rows = data.map(renderBreakdownRow).join('');
-      container.innerHTML = `
-        <table class="breakdown-table">
-          <thead>
-            <tr>
-              <th>Service</th>
-              <th style="text-align:right;">Balance</th>
-              <th style="text-align:right;">Change</th>
-              <th style="text-align:center;">Payout</th>
-              <th style="text-align:center;">Action</th>
-            </tr>
-          </thead>
-          <tbody>${rows}</tbody>
-        </table>`;
-    } catch (err) {
-      container.innerHTML = '<div class="empty-state-text" style="padding: 16px 0; text-align: center;">Could not load breakdown.</div>';
-    }
-  }
-
-  function renderBreakdownRow(svc) {
-    const initial = (svc.name || svc.platform || '?')[0].toUpperCase();
-    const deltaSign = svc.delta > 0 ? '+' : '';
-    const deltaClass = svc.delta > 0 ? 'positive' : svc.delta < 0 ? 'negative' : '';
-    const deltaStr = svc.delta !== 0 ? `${deltaSign}${formatCurrency(svc.delta)}` : '--';
-
-    const co = svc.cashout || {};
-    const eligible = co.eligible;
-    const minAmount = co.min_amount || 0;
-    const pctToMin = minAmount > 0 ? Math.min(100, (svc.balance / minAmount) * 100) : 0;
-
-    // Progress bar toward minimum payout
-    const progressBar = minAmount > 0 ? `
-      <div class="payout-progress" title="${formatCurrency(svc.balance)} / ${formatCurrency(minAmount)}">
-        <div class="payout-progress-bar ${eligible ? 'eligible' : ''}" style="width:${pctToMin.toFixed(0)}%"></div>
-      </div>
-      <span class="payout-label">${formatCurrency(svc.balance)} / ${formatCurrency(minAmount)}</span>
-    ` : '<span class="payout-label" style="color:var(--text-muted);">N/A</span>';
-
-    const claimBtn = co.dashboard_url
-      ? `<button class="btn btn-sm ${eligible ? 'btn-success' : 'btn-ghost'}" onclick="CP.openClaimModal('${escapeHtml(svc.platform)}')" ${!eligible ? 'title="Below minimum payout"' : ''}>
-           ${eligible ? 'Claim' : 'Details'}
-         </button>`
-      : '';
-
-    return `
-    <tr class="breakdown-row">
-      <td>
-        <div style="display:flex; align-items:center; gap:10px;">
-          <div class="service-icon" style="width:32px;height:32px;font-size:0.9rem;">${initial}</div>
-          <div>
-            <div style="font-weight:600; font-size:0.9rem;">${escapeHtml(svc.name)}</div>
-            <div style="font-size:0.75rem; color:var(--text-muted);">${escapeHtml(svc.currency)}</div>
-          </div>
-        </div>
-      </td>
-      <td style="text-align:right; font-weight:600; font-size:0.95rem;">${formatCurrency(svc.balance)}</td>
-      <td style="text-align:right;"><span class="stat-change ${deltaClass}">${deltaStr}</span></td>
-      <td style="text-align:center;">${progressBar}</td>
-      <td style="text-align:center;">${claimBtn}</td>
-    </tr>`;
-  }
-
-  function refreshBreakdown() {
-    loadEarningsBreakdown();
-    toast('Breakdown refreshed', 'info');
-  }
+  // loadEarningsBreakdown merged into loadServicesTable above
 
   // -----------------------------------------------------------
   // Claim Modal
@@ -519,7 +474,7 @@ const CP = (() => {
     try {
       await api(`/api/services/${slug}/restart`, { method: 'POST' });
       toast(`${slug} restarting...`, 'success');
-      loadDashboardServices();
+      loadServicesTable();
     } catch (err) {
       toast(err.message, 'error');
     }
@@ -529,7 +484,7 @@ const CP = (() => {
     try {
       await api(`/api/services/${slug}/stop`, { method: 'POST' });
       toast(`${slug} stopped`, 'success');
-      loadDashboardServices();
+      loadServicesTable();
     } catch (err) {
       toast(err.message, 'error');
     }
@@ -539,7 +494,7 @@ const CP = (() => {
     try {
       await api(`/api/services/${slug}/start`, { method: 'POST' });
       toast(`${slug} starting...`, 'success');
-      loadDashboardServices();
+      loadServicesTable();
     } catch (err) {
       toast(err.message, 'error');
     }
@@ -550,7 +505,7 @@ const CP = (() => {
     try {
       await api(`/api/services/${slug}`, { method: 'DELETE' });
       toast(`${slug} removed`, 'success');
-      loadDashboardServices();
+      loadServicesTable();
     } catch (err) {
       toast(err.message, 'error');
     }
@@ -1310,7 +1265,7 @@ const CP = (() => {
     testCollectors,
     editCredentials,
     filterCatalog,
-    refreshBreakdown,
+    refreshServices,
     openClaimModal,
   };
 })();
