@@ -1,8 +1,7 @@
 """Grass earnings collector.
 
-Uses the Grass API with an access token (from browser session) to fetch
-cumulative points. Grass uses OTP email login with no password, so users
-must provide their access token from the browser.
+Uses the Grass API with an access token (from browser localStorage) to
+fetch cumulative points from the /retrieveUser endpoint.
 
 To get the token: open app.grass.io, log in, press F12, go to
 Application > Local Storage, and copy the `accessToken` value.
@@ -42,7 +41,7 @@ class GrassCollector(BaseCollector):
 
             async with httpx.AsyncClient(timeout=30) as client:
                 resp = await client.get(
-                    f"{API_BASE}/users/earnings/epochs",
+                    f"{API_BASE}/retrieveUser",
                     headers=headers,
                 )
 
@@ -50,17 +49,14 @@ class GrassCollector(BaseCollector):
                     return EarningsResult(
                         platform=self.platform,
                         balance=0.0,
-                        error="Token expired — get a new one from app.grass.io browser console: localStorage.getItem('token')",
+                        error="Token expired — get a new accessToken from app.grass.io Local Storage",
                     )
 
                 resp.raise_for_status()
                 data = resp.json()
 
-                # Extract total cumulative points from epochs
-                epoch_earnings = data.get("result", {}).get("data", {}).get("epochEarnings", [])
-                total_points = 0.0
-                if epoch_earnings:
-                    total_points = float(epoch_earnings[0].get("totalCumulativePoints", 0))
+                user = data.get("result", {}).get("data", {})
+                total_points = float(user.get("totalPoints", 0))
 
                 return EarningsResult(
                     platform=self.platform,
