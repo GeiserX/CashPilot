@@ -4,8 +4,8 @@ Uses the Grass API with an access token (from browser session) to fetch
 cumulative points. Grass uses OTP email login with no password, so users
 must provide their access token from the browser.
 
-To get the token: open app.grass.io, log in, then run in the browser console:
-  localStorage.getItem('token')
+To get the token: open app.grass.io, log in, press F12, go to
+Application > Local Storage, and copy the `accessToken` value.
 """
 
 from __future__ import annotations
