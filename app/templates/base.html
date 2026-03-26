@@ -16,19 +16,23 @@
   <!-- Sidebar -->
   <aside class="sidebar">
     <div class="sidebar-brand">
-      <svg width="28" height="28" viewBox="0 0 512 512" fill="none">
-        <circle cx="256" cy="256" r="240" stroke="#3b82f6" stroke-width="12" opacity="0.4"/>
-        <circle cx="256" cy="256" r="220" fill="#3b82f6" opacity="0.05"/>
-        <line x1="256" y1="36" x2="256" y2="96" stroke="#60a5fa" stroke-width="12" stroke-linecap="round" opacity="0.8"/>
-        <line x1="476" y1="256" x2="416" y2="256" stroke="#60a5fa" stroke-width="10" stroke-linecap="round" opacity="0.3"/>
-        <line x1="256" y1="476" x2="256" y2="416" stroke="#60a5fa" stroke-width="10" stroke-linecap="round" opacity="0.3"/>
-        <line x1="36" y1="256" x2="96" y2="256" stroke="#60a5fa" stroke-width="10" stroke-linecap="round" opacity="0.3"/>
-        <path d="M 190 80 A 190 190 0 0 1 322 80" fill="none" stroke="#3b82f6" stroke-width="14" stroke-linecap="round" opacity="0.5"/>
-        <polygon points="256,52 244,80 268,80" fill="#3b82f6" opacity="0.6"/>
-        <polygon points="256,100 220,256 256,232 292,256" fill="#3b82f6"/>
-        <polygon points="256,412 220,256 256,280 292,256" fill="#1e3a5f" opacity="0.7"/>
-        <circle cx="256" cy="256" r="20" fill="#1a1d26" stroke="#3b82f6" stroke-width="8"/>
-        <circle cx="256" cy="256" r="8" fill="#60a5fa"/>
+      <svg width="28" height="28" viewBox="0 0 32 32">
+        <defs>
+          <linearGradient id="cpSun" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="#fde68a"/>
+            <stop offset="35%" stop-color="#fb923c"/>
+            <stop offset="65%" stop-color="#e11d48"/>
+            <stop offset="100%" stop-color="#6d28d9"/>
+          </linearGradient>
+          <mask id="cpMask">
+            <circle cx="16" cy="16" r="12" fill="white"/>
+            <rect x="0" y="16" width="32" height="1" fill="black"/>
+            <rect x="0" y="18.5" width="32" height="1.5" fill="black"/>
+            <rect x="0" y="21.5" width="32" height="2.5" fill="black"/>
+            <rect x="0" y="25.5" width="32" height="4" fill="black"/>
+          </mask>
+        </defs>
+        <circle cx="16" cy="16" r="12" fill="url(#cpSun)" mask="url(#cpMask)"/>
       </svg>
       CashPilot
     </div>
