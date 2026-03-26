@@ -5,7 +5,7 @@
 
 ## Description
 
-Repocket lets you earn passive income by sharing your unused internet bandwidth. It works on both residential and VPS/datacenter connections. Setup requires an email and API key from the dashboard. The Docker image uses environment variables directly (no command-line flags needed), making it straightforward to deploy.
+Repocket lets you earn passive income by sharing your unused internet bandwidth. Residential IP required (ToS prohibits VPS, proxies, and VPNs). Max 5 devices and 5 active sessions per account. Setup requires an email and API key from the dashboard. The Docker image uses environment variables directly.
 
 ## Earning Estimates
 
@@ -23,7 +23,7 @@ Repocket lets you earn passive income by sharing your unused internet bandwidth.
 
 | Requirement | Value |
 |-------------|-------|
-| Residential IP | No |
+| Residential IP | Yes |
 | Minimum bandwidth | None |
 | GPU required | No |
 | Minimum storage | None |

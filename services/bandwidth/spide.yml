@@ -1,0 +1,58 @@
+name: Spide
+slug: spide
+category: bandwidth
+status: active
+website: https://spide.app
+description: >
+  Spide is a bandwidth-sharing service that lets you monetize unused internet
+  bandwidth. Uses an optional machine ID for device tracking. Available through
+  community Docker images from the income-generator project.
+short_description: Bandwidth sharing - machine ID based
+
+referral:
+  url_template: ""
+  code: ""
+  signup_url: "https://spide.app"
+  bonus:
+    referrer: ""
+    referee: ""
+  how_to_get_code: "Check the dashboard for referral options"
+
+docker:
+  image: ""
+  platforms: []
+  env:
+    - key: SPIDE_MACHINE_ID
+      label: "Machine ID"
+      required: false
+      secret: false
+      description: "Machine ID for existing device already registered (auto-generated if empty)"
+  ports: []
+  volumes: []
+  command: ""
+  network_mode: ""
+
+requirements:
+  residential_ip: true
+  min_bandwidth: ""
+  gpu: false
+  min_storage: ""
+
+payment:
+  methods: [crypto]
+  minimum_payout: "$5"
+  currency: USD
+  frequency: "On request"
+
+earnings:
+  monthly_low: 1
+  monthly_high: 3
+  currency: USD
+  per: "device"
+  notes: "Limited information available. Earnings depend on location."
+
+platforms: [windows, linux]
+
+collector:
+  type: manual
+  notes: "No official Docker image or public API found."

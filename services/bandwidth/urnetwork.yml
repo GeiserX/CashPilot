@@ -1,0 +1,60 @@
+name: URnetwork
+slug: urnetwork
+category: bandwidth
+status: active
+website: https://ur.io
+description: >
+  URnetwork is a decentralized VPN and bandwidth-sharing network. You earn by
+  providing bandwidth as a community provider. Uses JWT-based authentication.
+  Official Docker image from Bring Your Own (bringyour). Supports both direct
+  mode (with tun device) and proxy mode (SOCKS5).
+short_description: Decentralized VPN/bandwidth - JWT auth, direct or proxy mode
+
+referral:
+  url_template: ""
+  code: ""
+  signup_url: "https://ur.io"
+  bonus:
+    referrer: ""
+    referee: ""
+  how_to_get_code: "Check the dashboard for referral options"
+
+docker:
+  image: bringyour/community-provider
+  platforms: [linux/amd64, linux/arm64]
+  env:
+    - key: UR_AUTH_TOKEN
+      label: "Auth Token"
+      required: true
+      secret: true
+      description: "Your URnetwork authentication token from the dashboard"
+  ports: []
+  volumes:
+    - "urnetwork-data:/root/.urnetwork"
+  command: "provide"
+  network_mode: ""
+
+requirements:
+  residential_ip: false
+  min_bandwidth: ""
+  gpu: false
+  min_storage: ""
+
+payment:
+  methods: [crypto]
+  minimum_payout: "$5"
+  currency: USD
+  frequency: "On request"
+
+earnings:
+  monthly_low: 1
+  monthly_high: 5
+  currency: USD
+  per: "device"
+  notes: "Works on VPS and residential. Crypto payouts. Supports proxy mode for multi-IP setups."
+
+platforms: [windows, macos, linux, docker]
+
+collector:
+  type: manual
+  notes: "No known public earnings API."

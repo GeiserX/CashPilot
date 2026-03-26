@@ -1,6 +1,6 @@
 # Titan Network
 
-> **Category:** DePIN | **Status:** Active
+> **Category:** DePIN | **Status:** Dead
 > **Website:** [https://titannet.io](https://titannet.io)
 
 ## Description

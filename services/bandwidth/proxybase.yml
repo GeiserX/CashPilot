@@ -1,0 +1,64 @@
+name: ProxyBase
+slug: proxybase
+category: bandwidth
+status: active
+website: https://proxybase.io
+description: >
+  ProxyBase is a bandwidth-sharing platform that pays users in cryptocurrency for
+  sharing their unused internet connection. Uses a simple user ID-based authentication
+  system. Works on residential connections. Official Docker image available.
+short_description: Bandwidth sharing - crypto payout, user ID auth
+
+referral:
+  url_template: ""
+  code: ""
+  signup_url: "https://proxybase.io"
+  bonus:
+    referrer: ""
+    referee: ""
+  how_to_get_code: "Check the dashboard for referral options"
+
+docker:
+  image: proxybase/proxybase
+  platforms: [linux/amd64]
+  env:
+    - key: USER_ID
+      label: "User ID"
+      required: true
+      secret: false
+      description: "Your ProxyBase user ID from the dashboard"
+    - key: DEVICE_NAME
+      label: "Device Name"
+      required: false
+      secret: false
+      description: "Name shown in your ProxyBase dashboard"
+      default: "cashpilot-{hostname}"
+  ports: []
+  volumes: []
+  command: ""
+  network_mode: ""
+
+requirements:
+  residential_ip: true
+  min_bandwidth: ""
+  gpu: false
+  min_storage: ""
+
+payment:
+  methods: [crypto]
+  minimum_payout: "$5"
+  currency: USD
+  frequency: "On request"
+
+earnings:
+  monthly_low: 1
+  monthly_high: 5
+  currency: USD
+  per: "device"
+  notes: "Crypto payouts. Earnings depend on location and bandwidth usage."
+
+platforms: [windows, linux, docker]
+
+collector:
+  type: manual
+  notes: "No known public API for earnings."

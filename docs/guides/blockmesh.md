@@ -57,7 +57,7 @@ No environment variables required.
 |---|---------|
 | Referrer bonus |  |
 | New user bonus |  |
-| How to get code | Dashboard > Referral section (if available) |
+| How to get code | No referral program available |
 
 ---
 
