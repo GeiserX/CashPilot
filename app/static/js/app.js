@@ -170,6 +170,11 @@ const CP = (() => {
     const container = document.getElementById('services-table-container');
     if (!container) return;
 
+    // Show spinner while loading (only on first load, not refresh)
+    if (!container.querySelector('.breakdown-table')) {
+      container.innerHTML = `<div style="display:flex; align-items:center; justify-content:center; gap:8px; padding:24px 0; color:var(--text-muted);"><div class="spinner"></div> Loading services...</div>`;
+    }
+
     try {
       const [services, breakdown] = await Promise.all([
         api('/api/services/deployed'),
@@ -209,7 +214,10 @@ const CP = (() => {
           <tbody>${rows}</tbody>
         </table>`;
     } catch (err) {
-      container.innerHTML = `<div class="empty-state-text" style="padding:24px 0; text-align:center; color:var(--text-muted);">Failed to load services.</div>`;
+      // Keep existing table if we had one; only show spinner on truly empty state
+      if (!container.querySelector('.breakdown-table')) {
+        container.innerHTML = `<div style="display:flex; align-items:center; justify-content:center; gap:8px; padding:24px 0; color:var(--text-muted);"><div class="spinner"></div> Loading services...</div>`;
+      }
     }
   }
 
