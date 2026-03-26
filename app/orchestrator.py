@@ -196,7 +196,7 @@ def deploy_service(
         image=image,
         name=name,
         environment=env,
-        ports=ports if ports else None,
+        ports=ports if ports and network_mode != "host" else None,
         volumes=volumes if volumes else None,
         network_mode=network_mode,
         cap_add=cap_add,
