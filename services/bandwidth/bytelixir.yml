@@ -1,13 +1,14 @@
 name: Bytelixir
 slug: bytelixir
 category: bandwidth
-status: beta
+status: active
 website: https://bytelixir.com
 description: >
-  Bytelixir is a bandwidth-sharing service. Relatively new with limited
-  information available. No official Docker image found. Desktop application
-  is the primary client.
-short_description: Bandwidth sharing - newer service, desktop app
+  Bytelixir lets you earn passive income by sharing unused internet bandwidth.
+  Supports Windows, macOS, Linux, and Android. Earnings range $2-50/month
+  depending on location. Web dashboard at dash.bytelixir.com for tracking.
+  No Docker image available.
+short_description: Bandwidth sharing - $2-50/month, desktop + Android
 
 referral:
   signup_url: "https://bytelixir.com/r/OYEIRE0VSZBZ"
@@ -41,16 +42,16 @@ earnings:
   monthly_high: 3
   currency: USD
   per: "device"
-  notes: "No Docker image available. Limited information."
+  notes: "Earnings vary by location ($2-50/month). No Docker image. Desktop app or Android app required."
 
 cashout:
   method: redirect
-  dashboard_url: "https://bytelixir.com/dashboard"
+  dashboard_url: "https://dash.bytelixir.com"
   min_amount: 5.0
   currency: USD
 
-platforms: [windows, android]
+platforms: [windows, macos, linux, android]
 
 collector:
   type: manual
-  notes: "No Docker image or public API."
+  notes: "No public API. Dashboard at dash.bytelixir.com uses email/password auth. Scraping possible."

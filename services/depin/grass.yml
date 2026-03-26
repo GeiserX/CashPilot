@@ -19,7 +19,7 @@ referral:
 
 docker:
   image: ""
-  platforms: [browser-extension, windows, macos]
+  platforms: [browser-extension, windows, macos, android, ios]
   env: []
   ports: []
   volumes: []
@@ -52,7 +52,7 @@ cashout:
   currency: GRASS
   notes: "GRASS token airdrop-based. Claim from dashboard when eligible."
 
-platforms: [browser-extension, windows, macos]
+platforms: [browser-extension, windows, macos, android, ios]
 
 collector:
   type: api
