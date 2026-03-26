@@ -23,10 +23,11 @@ import docker
 from docker.errors import APIError, DockerException, NotFound
 
 try:
-    from app.catalog import get_service
+    from app.catalog import get_service, get_services
 except ImportError:
     # Worker image doesn't include catalog module
     get_service = None  # type: ignore[assignment]
+    get_services = None  # type: ignore[assignment]
 
 logger = logging.getLogger(__name__)
 
@@ -316,8 +317,31 @@ def start_service(slug: str) -> None:
     logger.info("Started container %s", container.name)
 
 
+def _collect_stats(c) -> tuple[float, float]:
+    """Collect CPU% and memory for a single container. Returns (cpu_pct, mem_mb)."""
+    try:
+        stats = c.stats(stream=False)
+        cpu_delta = (
+            stats["cpu_stats"]["cpu_usage"]["total_usage"]
+            - stats["precpu_stats"]["cpu_usage"]["total_usage"]
+        )
+        system_delta = (
+            stats["cpu_stats"]["system_cpu_usage"]
+            - stats["precpu_stats"]["system_cpu_usage"]
+        )
+        num_cpus = stats["cpu_stats"].get(
+            "online_cpus",
+            len(stats["cpu_stats"]["cpu_usage"].get("percpu_usage", [1])),
+        )
+        cpu_pct = round((cpu_delta / system_delta) * num_cpus * 100, 2) if system_delta > 0 else 0.0
+        mem_mb = round(stats["memory_stats"].get("usage", 0) / (1024 * 1024), 1)
+        return cpu_pct, mem_mb
+    except (KeyError, ZeroDivisionError, APIError):
+        return 0.0, 0.0
+
+
 def get_status() -> list[dict[str, Any]]:
-    """Return live status of all cashpilot-managed containers.
+    """Return live status of all known containers (labeled + image-matched).
 
     This is SLOW (~1-2s per container) because it calls Docker stats API.
     Use get_status_cached() for page loads; this is for background refresh.
@@ -329,37 +353,18 @@ def get_status() -> list[dict[str, Any]]:
     except RuntimeError:
         return []
 
-    containers = client.containers.list(
+    # Labeled containers (CashPilot-managed)
+    labeled = client.containers.list(
         all=True,
         filters={"label": f"{LABEL_MANAGED}=true"},
     )
+    seen_ids: set[str] = set()
 
     results: list[dict[str, Any]] = []
-    for c in containers:
+    for c in labeled:
+        seen_ids.add(c.id)
         slug = c.labels.get(LABEL_SERVICE, "unknown")
-        # Gather resource stats (non-streaming)
-        cpu_pct = 0.0
-        mem_mb = 0.0
-        try:
-            stats = c.stats(stream=False)
-            # CPU %
-            cpu_delta = (
-                stats["cpu_stats"]["cpu_usage"]["total_usage"] - stats["precpu_stats"]["cpu_usage"]["total_usage"]
-            )
-            system_delta = stats["cpu_stats"]["system_cpu_usage"] - stats["precpu_stats"]["system_cpu_usage"]
-            num_cpus = stats["cpu_stats"].get(
-                "online_cpus",
-                len(stats["cpu_stats"]["cpu_usage"].get("percpu_usage", [1])),
-            )
-            if system_delta > 0:
-                cpu_pct = round((cpu_delta / system_delta) * num_cpus * 100, 2)
-
-            # Memory
-            mem_usage = stats["memory_stats"].get("usage", 0)
-            mem_mb = round(mem_usage / (1024 * 1024), 1)
-        except (KeyError, ZeroDivisionError, APIError):
-            pass
-
+        cpu_pct, mem_mb = _collect_stats(c)
         results.append(
             {
                 "slug": slug,
@@ -374,6 +379,35 @@ def get_status() -> list[dict[str, Any]]:
                 "category": c.labels.get(LABEL_CATEGORY, ""),
             }
         )
+
+    # Image-matched containers (deployed externally)
+    image_map = _build_image_slug_map()
+    if image_map:
+        all_containers = client.containers.list(all=True)
+        for c in all_containers:
+            if c.id in seen_ids:
+                continue
+            image_name = c.image.tags[0] if c.image.tags else ""
+            slug = image_map.get(image_name, "")
+            if not slug and image_name:
+                slug = image_map.get(image_name.split(":")[0], "")
+            if slug:
+                seen_ids.add(c.id)
+                cpu_pct, mem_mb = _collect_stats(c)
+                results.append(
+                    {
+                        "slug": slug,
+                        "name": c.name,
+                        "status": c.status,
+                        "image": image_name or str(c.image.short_id),
+                        "cpu_percent": cpu_pct,
+                        "memory_mb": mem_mb,
+                        "created": c.attrs.get("Created", ""),
+                        "container_id": c.short_id,
+                        "deployed_by": "external",
+                        "category": "",
+                    }
+                )
 
     # Update the cache
     _status_cache = results
@@ -401,25 +435,47 @@ def get_status_cached(max_age: int = 600) -> list[dict[str, Any]]:
     return get_status_light()
 
 
+def _build_image_slug_map() -> dict[str, str]:
+    """Build a map of Docker image names to service slugs from catalog."""
+    if not get_services:
+        return {}
+    mapping: dict[str, str] = {}
+    for svc in get_services():
+        docker_conf = svc.get("docker", {})
+        image = docker_conf.get("image", "")
+        if image:
+            # Map both "image" and "image:latest" to the slug
+            mapping[image] = svc["slug"]
+            if ":" not in image:
+                mapping[f"{image}:latest"] = svc["slug"]
+    return mapping
+
+
 def get_status_light() -> list[dict[str, Any]]:
     """Return container list/status WITHOUT resource stats (fast).
 
     Only queries Docker for container list + labels, skips the slow
     per-container stats() call. Used when we need fresh container
     states (running/stopped) but don't need CPU/memory numbers.
+
+    Finds containers by cashpilot label OR by matching Docker image
+    to known catalog services (for containers deployed externally).
     """
     try:
         client = _get_client()
     except RuntimeError:
         return []
 
-    containers = client.containers.list(
+    # First: labeled containers (CashPilot-managed)
+    labeled = client.containers.list(
         all=True,
         filters={"label": f"{LABEL_MANAGED}=true"},
     )
+    seen_ids: set[str] = set()
 
     results: list[dict[str, Any]] = []
-    for c in containers:
+    for c in labeled:
+        seen_ids.add(c.id)
         results.append(
             {
                 "slug": c.labels.get(LABEL_SERVICE, "unknown"),
@@ -434,6 +490,37 @@ def get_status_light() -> list[dict[str, Any]]:
                 "category": c.labels.get(LABEL_CATEGORY, ""),
             }
         )
+
+    # Second: scan all containers and match by image name
+    image_map = _build_image_slug_map()
+    if image_map:
+        all_containers = client.containers.list(all=True)
+        for c in all_containers:
+            if c.id in seen_ids:
+                continue
+            image_name = c.image.tags[0] if c.image.tags else ""
+            slug = image_map.get(image_name, "")
+            if not slug and image_name:
+                # Try without tag
+                base = image_name.split(":")[0]
+                slug = image_map.get(base, "")
+            if slug:
+                seen_ids.add(c.id)
+                results.append(
+                    {
+                        "slug": slug,
+                        "name": c.name,
+                        "status": c.status,
+                        "image": image_name or str(c.image.short_id),
+                        "cpu_percent": 0.0,
+                        "memory_mb": 0.0,
+                        "created": c.attrs.get("Created", ""),
+                        "container_id": c.short_id,
+                        "deployed_by": "external",
+                        "category": "",
+                    }
+                )
+
     return results
 
 

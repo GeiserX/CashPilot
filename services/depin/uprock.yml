@@ -18,7 +18,7 @@ referral:
 
 docker:
   image: ""
-  platforms: []
+  platforms: [browser-extension, android]
   env: []
   ports: []
   volumes: []
@@ -51,7 +51,7 @@ cashout:
   currency: USD
   notes: "Crypto token-based rewards. Claim from dashboard."
 
-platforms: [windows, macos, linux, browser_extension]
+platforms: [browser-extension, android]
 
 collector:
   type: manual
