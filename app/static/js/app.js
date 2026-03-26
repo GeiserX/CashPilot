@@ -1243,7 +1243,7 @@ const CP = (() => {
   }
 
   function updateCollectorStatuses() {
-    const configuredServices = ['honeygain', 'earnapp', 'iproyal', 'traffmonetizer', 'mysterium', 'storj'];
+    const configuredServices = ['honeygain', 'earnapp', 'iproyal', 'traffmonetizer', 'mysterium', 'storj', 'grass', 'bytelixir'];
     configuredServices.forEach(slug => {
       const badge = document.getElementById(`status-${slug}`);
       if (!badge) return;
@@ -1288,6 +1288,83 @@ const CP = (() => {
   }
 
   // -----------------------------------------------------------
+  // Notification bell (collector alerts)
+  // -----------------------------------------------------------
+  function initNotifications() {
+    const toggle = document.getElementById('notify-toggle');
+    const dropdown = document.getElementById('notify-dropdown');
+    if (!toggle || !dropdown) return;
+
+    toggle.addEventListener('click', (e) => {
+      e.stopPropagation();
+      dropdown.classList.toggle('open');
+    });
+
+    document.addEventListener('click', (e) => {
+      if (!dropdown.contains(e.target) && e.target !== toggle) {
+        dropdown.classList.remove('open');
+      }
+    });
+
+    // Fetch alerts now and every 60s
+    loadCollectorAlerts();
+    setInterval(loadCollectorAlerts, 60000);
+  }
+
+  async function loadCollectorAlerts() {
+    const container = document.getElementById('topbar-notifications');
+    const badge = document.getElementById('notify-badge');
+    const list = document.getElementById('notify-list');
+    if (!container || !badge || !list) return;
+
+    try {
+      const alerts = await api('/api/collector-alerts');
+      if (!alerts || alerts.length === 0) {
+        container.style.display = 'none';
+        return;
+      }
+
+      container.style.display = '';
+      badge.textContent = alerts.length;
+      list.innerHTML = alerts.map(a => `
+        <div class="notify-item" data-platform="${escapeHtml(a.platform)}" onclick="CP.goToCollectorSettings('${escapeHtml(a.platform)}')">
+          <div class="notify-item-icon">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+          </div>
+          <div class="notify-item-body">
+            <div class="notify-item-platform">${escapeHtml(a.platform)}</div>
+            <div class="notify-item-msg" title="${escapeHtml(a.error)}">${escapeHtml(a.error)}</div>
+          </div>
+        </div>
+      `).join('');
+    } catch {
+      container.style.display = 'none';
+    }
+  }
+
+  function goToCollectorSettings(platform) {
+    // Navigate to settings and open the relevant collector section
+    if (window.location.pathname === '/settings') {
+      // Already on settings — just open the section
+      openCollectorSection(platform);
+    } else {
+      window.location.href = '/settings?highlight=' + encodeURIComponent(platform);
+    }
+  }
+
+  function openCollectorSection(platform) {
+    const badge = document.getElementById('status-' + platform);
+    if (!badge) return;
+    const details = badge.closest('details.collector-section');
+    if (details) {
+      details.open = true;
+      details.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      details.classList.add('highlight-flash');
+      setTimeout(() => details.classList.remove('highlight-flash'), 2000);
+    }
+  }
+
+  // -----------------------------------------------------------
   // Init on DOMContentLoaded
   // -----------------------------------------------------------
   // -----------------------------------------------------------
@@ -1307,6 +1384,7 @@ const CP = (() => {
   document.addEventListener('DOMContentLoaded', () => {
     initSidebar();
     initThemeToggle();
+    initNotifications();
 
     const page = document.body.dataset.page;
     switch (page) {
@@ -1322,6 +1400,9 @@ const CP = (() => {
         break;
       case 'settings':
         loadSettings();
+        // Auto-open collector section if ?highlight= param present
+        const hl = new URLSearchParams(window.location.search).get('highlight');
+        if (hl) setTimeout(() => openCollectorSection(hl), 300);
         break;
     }
   });
@@ -1355,5 +1436,6 @@ const CP = (() => {
     filterCatalog,
     refreshServices,
     openClaimModal,
+    goToCollectorSettings,
   };
 })();

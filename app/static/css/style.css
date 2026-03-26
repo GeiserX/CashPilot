@@ -305,6 +305,112 @@ img { max-width: 100%; }
 :root[data-theme="light"] #theme-toggle .icon-sun { display: none; }
 :root[data-theme="light"] #theme-toggle .icon-moon { display: block; }
 
+/* Notification bell */
+.topbar-notifications {
+  position: relative;
+}
+.topbar-notify-btn {
+  position: relative;
+}
+.notify-badge {
+  position: absolute;
+  top: -2px;
+  right: -4px;
+  min-width: 16px;
+  height: 16px;
+  line-height: 16px;
+  font-size: 0.65rem;
+  font-weight: 700;
+  text-align: center;
+  background: var(--error);
+  color: #fff;
+  border-radius: 8px;
+  padding: 0 4px;
+  pointer-events: none;
+}
+.notify-dropdown {
+  display: none;
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  width: 320px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-card-hover);
+  z-index: 200;
+  overflow: hidden;
+}
+.notify-dropdown.open {
+  display: block;
+}
+.notify-header {
+  padding: 10px 14px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  border-bottom: 1px solid var(--border-color);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.notify-list {
+  max-height: 280px;
+  overflow-y: auto;
+}
+.notify-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 14px;
+  cursor: pointer;
+  transition: background var(--transition);
+  border-bottom: 1px solid var(--border-color);
+}
+.notify-item:last-child {
+  border-bottom: none;
+}
+.notify-item:hover {
+  background: var(--bg-hover);
+}
+.notify-item-icon {
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--error-soft);
+  color: var(--error);
+  border-radius: var(--radius-sm);
+}
+.notify-item-body {
+  flex: 1;
+  min-width: 0;
+}
+.notify-item-platform {
+  font-weight: 600;
+  font-size: 0.85rem;
+  text-transform: capitalize;
+}
+.notify-item-msg {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  margin-top: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Collector section highlight flash */
+.collector-section.highlight-flash {
+  animation: flash-highlight 2s ease;
+}
+@keyframes flash-highlight {
+  0%, 100% { background: transparent; }
+  20% { background: var(--warning-soft); }
+  50% { background: var(--warning-soft); }
+}
+
 .topbar-earnings {
   display: flex;
   align-items: center;

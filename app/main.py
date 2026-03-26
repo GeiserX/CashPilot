@@ -31,6 +31,9 @@ logger = logging.getLogger(__name__)
 
 scheduler = AsyncIOScheduler()
 
+# In-memory store for the latest collector alerts (errors from last run)
+_collector_alerts: list[dict[str, str]] = []
+
 
 # ---------------------------------------------------------------------------
 # Periodic collection job
@@ -54,16 +57,19 @@ async def _run_health_check() -> None:
 
 async def _run_collection() -> None:
     """Collect earnings from all deployed services that have collectors."""
+    global _collector_alerts
     try:
         deployments = await database.get_deployments()
         config = await database.get_config() or {}
         if not isinstance(config, dict):
             config = {}
         collectors = __import__("app.collectors", fromlist=["make_collectors"]).make_collectors(deployments, config)
+        alerts: list[dict[str, str]] = []
         for collector in collectors:
             result = await collector.collect()
             if result.error:
                 logger.warning("Collection error for %s: %s", result.platform, result.error)
+                alerts.append({"platform": result.platform, "error": result.error})
             else:
                 await database.upsert_earnings(
                     platform=result.platform,
@@ -71,6 +77,7 @@ async def _run_collection() -> None:
                     currency=result.currency,
                 )
                 logger.info("Collected %s: %.4f %s", result.platform, result.balance, result.currency)
+        _collector_alerts = alerts
     except Exception as exc:
         logger.error("Collection run failed: %s", exc)
 
@@ -786,6 +793,13 @@ async def api_collect(request: Request) -> dict[str, str]:
     _require_writer(request)
     asyncio.create_task(_run_collection())
     return {"status": "collection_started"}
+
+
+@app.get("/api/collector-alerts")
+async def api_collector_alerts(request: Request) -> list[dict[str, str]]:
+    """Return collector errors from the last collection run."""
+    _require_auth_api(request)
+    return _collector_alerts
 
 
 # ---------------------------------------------------------------------------
