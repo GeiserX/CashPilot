@@ -340,3 +340,4 @@ Before completing any task, verify:
 - [ ] No secrets committed (referral codes are OK, credentials are NOT)
 - [ ] Commit author is GeiserX (`--author="GeiserX <9169332+GeiserX@users.noreply.github.com>"`)
 - [ ] No `Co-Authored-By` lines in commit messages
+- [ ] After pushing, wait for all GitHub Actions runs to pass (`gh run watch`) before considering the task done
