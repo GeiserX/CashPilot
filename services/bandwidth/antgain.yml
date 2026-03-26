@@ -1,0 +1,59 @@
+name: AntGain
+slug: antgain
+category: bandwidth
+status: active
+website: https://antgain.app
+description: >
+  AntGain is a bandwidth-sharing service that supports unlimited devices per account.
+  Uses API key-based authentication obtained from the dashboard profile tab.
+  Community Docker image available. Pays in cryptocurrency.
+short_description: Bandwidth sharing - unlimited devices, API key auth, crypto payout
+
+referral:
+  url_template: ""
+  code: ""
+  signup_url: "https://antgain.app"
+  bonus:
+    referrer: ""
+    referee: ""
+  how_to_get_code: "Check the dashboard for referral options"
+
+docker:
+  image: pinors/antgain-cli
+  platforms: [linux/amd64]
+  env:
+    - key: ANTGAIN_API_KEY
+      label: "API Key"
+      required: true
+      secret: true
+      description: "Your AntGain API key (Dashboard > Profile tab)"
+  ports: []
+  volumes:
+    - "antgain-data:/data"
+  command: ""
+  network_mode: ""
+
+requirements:
+  residential_ip: true
+  min_bandwidth: ""
+  gpu: false
+  min_storage: ""
+
+payment:
+  methods: [crypto]
+  minimum_payout: "$5"
+  currency: USD
+  frequency: "On request"
+
+earnings:
+  monthly_low: 1
+  monthly_high: 5
+  currency: USD
+  per: "device"
+  notes: "Unlimited devices per account. Crypto payouts."
+
+platforms: [windows, linux, docker]
+
+collector:
+  type: manual
+  notes: "No known public API for earnings."

@@ -33,7 +33,7 @@ Bitping is a decentralized network monitoring platform that pays you for running
 
 ### 1. Create an account
 
-Sign up at [Bitping](https://app.bitping.com?r={code}).
+Sign up at [Bitping](https://app.bitping.com).
 
 ### 2. Get your credentials
 
@@ -72,9 +72,9 @@ docker run -d \
 
 | | Details |
 |---|---------|
-| Referrer bonus | Percentage of referral earnings |
+| Referrer bonus |  |
 | New user bonus |  |
-| How to get code | Dashboard > Referral > Copy your referral link |
+| How to get code | No referral program available |
 
 ---
 

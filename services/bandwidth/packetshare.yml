@@ -1,0 +1,64 @@
+name: PacketShare
+slug: packetshare
+category: bandwidth
+status: active
+website: https://www.packetshare.io
+description: >
+  PacketShare lets you earn passive income by sharing your unused internet bandwidth.
+  The official Docker image supports headless deployment with email/password authentication
+  via command-line flags. Each container should have a different public IP address.
+  Works on residential and some datacenter connections.
+short_description: Bandwidth sharing - official Docker image, email/password auth
+
+referral:
+  url_template: ""
+  code: ""
+  signup_url: "https://www.packetshare.io/register.html"
+  bonus:
+    referrer: ""
+    referee: ""
+  how_to_get_code: "Check the dashboard for referral options"
+
+docker:
+  image: packetshare/packetshare
+  platforms: [linux/amd64]
+  env:
+    - key: PACKETSHARE_EMAIL
+      label: "Email"
+      required: true
+      secret: false
+      description: "Your PacketShare account email"
+    - key: PACKETSHARE_PASSWORD
+      label: "Password"
+      required: true
+      secret: true
+      description: "Your PacketShare account password"
+  ports: []
+  volumes: []
+  command: "-accept-tos -email=${PACKETSHARE_EMAIL} -password=${PACKETSHARE_PASSWORD}"
+  network_mode: ""
+
+requirements:
+  residential_ip: true
+  min_bandwidth: ""
+  gpu: false
+  min_storage: ""
+
+payment:
+  methods: [paypal, crypto]
+  minimum_payout: "$5"
+  currency: USD
+  frequency: "On request"
+
+earnings:
+  monthly_low: 1
+  monthly_high: 4
+  currency: USD
+  per: "device"
+  notes: "One device per public IP. Residential IPs only. Earnings depend on location and bandwidth usage."
+
+platforms: [windows, macos, linux, docker]
+
+collector:
+  type: manual
+  notes: "No known public API for earnings. Check dashboard manually."

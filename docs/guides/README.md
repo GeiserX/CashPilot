@@ -2,22 +2,32 @@
 
 Individual setup and configuration guides for every supported service.
 
-**27 services** across 4 categories.
+**39 services** across 4 categories.
 
 ## Bandwidth Sharing
 
+- [Adnade](adnade.md) -- Ad-based earning - browser surfbar, views ads automatically
+- [AntGain](antgain.md) -- Bandwidth sharing - unlimited devices, API key auth, crypto payout
 - [Bitping](bitping.md) -- Bandwidth sharing - decentralized network monitoring, works on VPS
+- [Bytebenefit](bytebenefit.md) -- Bandwidth sharing - PayPal/Stripe payouts, desktop app
+- [Bytelixir](bytelixir.md) -- Bandwidth sharing - newer service, desktop app
 - [Earn.fm](earnfm.md) -- Bandwidth sharing - token-based, lightweight client
 - [EarnApp](earnapp.md) -- Bandwidth sharing - backed by Bright Data
+- [Ebesucher](ebesucher.md) -- Traffic exchange surfbar - browser-based, auto website visits
 - [Honeygain](honeygain.md) -- Bandwidth sharing - most established platform
 - [IPRoyal Pawns](iproyal.md) -- Bandwidth sharing - 10% lifetime referral, $3 signup bonus
 - [MystNodes](mysterium.md) -- Decentralized VPN node - blockchain-based, works on VPS
+- [PacketShare](packetshare.md) -- Bandwidth sharing - official Docker image, email/password auth
 - [PacketStream](packetstream.md) -- Bandwidth sharing - simple CID-based setup
+- [ProxyBase](proxybase.md) -- Bandwidth sharing - crypto payout, user ID auth
 - [ProxyLite](proxylite.md) -- Bandwidth sharing - 15% lifetime referral, works on VPS
 - [ProxyRack](proxyrack.md) -- Bandwidth sharing - UUID per device, works on VPS
-- [Repocket](repocket.md) -- Bandwidth sharing - works on VPS, env-based auth
+- [Repocket](repocket.md) -- Bandwidth sharing - residential only, max 5 devices, env-based auth
 - [SpeedShare](speedshare.md) -- Bandwidth sharing - residential only, no official Docker
+- [Spide](spide.md) -- Bandwidth sharing - machine ID based
 - [Traffmonetizer](traffmonetizer.md) -- Bandwidth sharing - works on VPS, token-based auth
+- [URnetwork](urnetwork.md) -- Decentralized VPN/bandwidth - JWT auth, direct or proxy mode
+- [WizardGain](wizardgain.md) -- Bandwidth sharing - crypto payout, email auth
 
 ## DePIN
 
@@ -28,8 +38,10 @@ Individual setup and configuration guides for every supported service.
 - [Grass](grass.md) -- DePIN bandwidth sharing for AI data - earns GRASS tokens
 - [Network3](network3.md) -- DePIN AI network - certificate expired, possibly dead
 - [Nodepay](nodepay.md) -- DePIN bandwidth sharing for AI - browser extension
+- [PassiveApp](passiveapp.md) -- DePIN bandwidth/compute - crypto and PayPal payouts
 - [Teneo Protocol](teneo.md) -- DePIN browser extension - 2000 pts per referral
 - [Titan Network](titan.md) -- DePIN sharing IP, storage, bandwidth - $5-30/month
+- [Uprock](uprock.md) -- DePIN internet sharing - crypto payout, browser extension primary
 - [Wipter](wipter.md) -- Bandwidth sharing - claims up to $1/GB, min payout $20
 
 ## Storage Sharing
