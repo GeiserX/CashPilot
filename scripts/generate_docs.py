@@ -98,11 +98,13 @@ def group_by_category(services: list[dict]) -> dict[str, list[dict]]:
 # ---------------------------------------------------------------------------
 
 
-def _residential_badge(svc: dict) -> str:
-    req = svc.get("requirements", {})
-    if req.get("residential_ip"):
-        return "Yes"
-    return "No"
+_METHOD_LABELS = {
+    "paypal": "PayPal",
+    "crypto": "Crypto",
+    "bank": "Bank Transfer",
+    "amazon_giftcard": "Gift Cards",
+    "giftcard": "Gift Cards",
+}
 
 
 def _earnings_range(svc: dict) -> str:
@@ -115,58 +117,188 @@ def _earnings_range(svc: dict) -> str:
     return f"{low} - {high} {currency}"
 
 
-def _signup_link(svc: dict) -> str:
+def _service_name_link(svc: dict) -> str:
+    """Service name linked to referral signup URL, fallback to website."""
+    name = svc["name"]
     ref = svc.get("referral", {})
     signup_url = ref.get("signup_url", ref.get("url_template", ""))
-    if not signup_url:
-        website = svc.get("website", "")
-        return f"[Sign up]({website})" if website else "N/A"
-    return f"[Sign up]({signup_url})"
+    if signup_url:
+        return f"[{name}]({signup_url})"
+    website = svc.get("website", "")
+    if website:
+        return f"[{name}]({website})"
+    return name
 
 
-def _docker_image(svc: dict) -> str:
-    docker = svc.get("docker", {})
-    image = docker.get("image", "")
-    return f"`{image}`" if image else "N/A"
+def _ip_badge(value: bool) -> str:
+    return "\u2705" if value else "\u274c"
 
 
-def generate_services_table(groups: dict[str, list[dict]]) -> str:
-    """Generate the full markdown table block for all service categories."""
-    lines = []
-    for cat in CATEGORY_ORDER:
-        svcs = groups.get(cat, [])
-        if not svcs:
+def _get_vps_ip(svc: dict) -> bool:
+    """Get VPS IP support. If explicitly set, use that. Otherwise derive from residential_ip."""
+    req = svc.get("requirements", {})
+    vps = req.get("vps_ip")
+    if vps is not None:
+        return bool(vps)
+    return not req.get("residential_ip", False)
+
+
+def _devices_str(value) -> str:
+    if not value or value == 0:
+        return "Unlimited"
+    return str(value)
+
+
+def _payout_str(svc: dict) -> str:
+    """Generate payout column string from payment data."""
+    payment = svc.get("payment", {})
+    methods = payment.get("methods", [])
+    currency = payment.get("currency", "USD")
+    crypto_token = payment.get("crypto_token", "")
+
+    parts = []
+    for m in methods:
+        label = _METHOD_LABELS.get(m, m.replace("_", " ").title())
+        if m == "crypto":
+            token = crypto_token or (currency if currency not in ("USD", "EUR") else "")
+            if token:
+                label = f"Crypto ({token})"
+        parts.append(label)
+
+    return ", ".join(parts) if parts else "N/A"
+
+
+def generate_services_table(services: list[dict]) -> str:
+    """Generate the full markdown table block, split by deployability."""
+    docker_svcs = []
+    browser_svcs = []
+    gpu_svcs = []
+
+    for svc in services:
+        status = svc.get("status", "active")
+        if status in ("dead", "broken"):
             continue
-        label = CATEGORY_LABELS.get(cat, cat.title())
-        count = len(svcs)
-        svc_word = "service" if count == 1 else "services"
-        lines.append(f"### {label} ({count} {svc_word})")
+        cat = svc.get("category", "bandwidth")
+        docker_img = svc.get("docker", {}).get("image", "")
+        if cat == "compute":
+            gpu_svcs.append(svc)
+        elif docker_img:
+            docker_svcs.append(svc)
+        else:
+            browser_svcs.append(svc)
+
+    docker_svcs.sort(key=lambda s: s["name"].lower())
+    browser_svcs.sort(key=lambda s: s["name"].lower())
+    gpu_svcs.sort(key=lambda s: s["name"].lower())
+
+    lines: list[str] = []
+    footnotes: list[str] = []
+
+    # --- Docker-Deployable Services ---
+    if docker_svcs:
+        lines.append("### Docker-Deployable Services")
         lines.append("")
-        lines.append("| Service | Docker Image | Residential IP | Referral Link |")
-        lines.append("|---------|-------------|:--------------:|---------------|")
-        for svc in svcs:
-            name = svc["name"]
-            website = svc.get("website", "")
-            name_col = f"[{name}]({website})" if website else name
-            lines.append(f"| {name_col} | {_docker_image(svc)} | {_residential_badge(svc)} | {_signup_link(svc)} |")
+        lines.append(
+            "Services CashPilot can deploy and manage automatically via Docker."
+        )
+        lines.append("")
+        lines.append(
+            "| Service | Residential IP | VPS IP "
+            "| Devices / Acct | Devices / IP | Payout |"
+        )
+        lines.append("|---------|:-:|:-:|:-:|:-:|--------|")
+
+        for svc in docker_svcs:
+            req = svc.get("requirements", {})
+            vps = _get_vps_ip(svc)
+            dev_acct = _devices_str(req.get("devices_per_account", 0))
+            dev_ip = _devices_str(req.get("devices_per_ip", 1))
+            payout = _payout_str(svc)
+
+            vps_str = _ip_badge(vps)
+            dev_ip_str = dev_ip
+
+            note = req.get("note", "")
+            if note:
+                footnotes.append(note)
+                mark = "\\*" * len(footnotes)
+                col = req.get("note_column", "")
+                if col == "vps_ip":
+                    vps_str = f"{vps_str} {mark}"
+                elif col == "devices_per_ip":
+                    dev_ip_str = f"{dev_ip_str} {mark}"
+
+            name_link = _service_name_link(svc)
+            lines.append(
+                f"| {name_link} | \u2705 | {vps_str} "
+                f"| {dev_acct} | {dev_ip_str} | {payout} |"
+            )
+
+        lines.append("")
+        if footnotes:
+            for i, fn in enumerate(footnotes):
+                mark = "\\*" * (i + 1)
+                lines.append(f"> {mark} {fn}")
+                lines.append(">")
+            lines[-1] = ""
+
+    # --- Browser Extension / Desktop Only ---
+    if browser_svcs:
+        lines.append("### Browser Extension / Desktop Only")
+        lines.append("")
+        lines.append(
+            "These services have no Docker image. CashPilot lists them in the "
+            "catalog with signup links and earning estimates, but cannot deploy "
+            "or monitor them."
+        )
+        lines.append("")
+        lines.append(
+            "| Service | Residential IP | VPS IP "
+            "| Devices / Acct | Devices / IP | Payout | Status |"
+        )
+        lines.append("|---------|:-:|:-:|:-:|:-:|--------|--------|")
+
+        for svc in browser_svcs:
+            req = svc.get("requirements", {})
+            vps = _get_vps_ip(svc)
+            dev_acct = _devices_str(req.get("devices_per_account", 0))
+            dev_ip = _devices_str(req.get("devices_per_ip", 1))
+            payout = _payout_str(svc)
+            status = svc.get("status", "active").title()
+            name_link = _service_name_link(svc)
+            lines.append(
+                f"| {name_link} | \u2705 | {_ip_badge(vps)} "
+                f"| {dev_acct} | {dev_ip} | {payout} | {status} |"
+            )
+
         lines.append("")
 
-    # Handle any extra categories not in CATEGORY_ORDER
-    for cat, svcs in groups.items():
-        if cat in CATEGORY_ORDER or not svcs:
-            continue
-        label = cat.replace("_", " ").title()
-        count = len(svcs)
-        svc_word = "service" if count == 1 else "services"
-        lines.append(f"### {label} ({count} {svc_word})")
+    # --- GPU Compute ---
+    if gpu_svcs:
+        lines.append("### GPU Compute")
         lines.append("")
-        lines.append("| Service | Docker Image | Residential IP | Referral Link |")
-        lines.append("|---------|-------------|:--------------:|---------------|")
-        for svc in svcs:
-            name = svc["name"]
-            website = svc.get("website", "")
-            name_col = f"[{name}]({website})" if website else name
-            lines.append(f"| {name_col} | {_docker_image(svc)} | {_residential_badge(svc)} | {_signup_link(svc)} |")
+        lines.append(
+            "GPU-intensive computing services. Requires compatible hardware."
+        )
+        lines.append("")
+        lines.append(
+            "| Service | Residential IP | GPU "
+            "| Min Storage | Payout | Status |"
+        )
+        lines.append("|---------|:-:|:-:|:-:|--------|--------|")
+
+        for svc in gpu_svcs:
+            req = svc.get("requirements", {})
+            gpu = _ip_badge(req.get("gpu", False))
+            min_storage = req.get("min_storage", "") or "N/A"
+            payout = _payout_str(svc)
+            status = svc.get("status", "active").title()
+            name_link = _service_name_link(svc)
+            lines.append(
+                f"| {name_link} | \u2705 | {gpu} "
+                f"| {min_storage} | {payout} | {status} |"
+            )
+
         lines.append("")
 
     return "\n".join(lines).rstrip()
@@ -524,7 +656,7 @@ def main() -> None:
     groups = group_by_category(services)
 
     print("\nGenerating README services table...")
-    table = generate_services_table(groups)
+    table = generate_services_table(services)
     update_readme(table)
 
     print("\nGenerating individual guide pages...")

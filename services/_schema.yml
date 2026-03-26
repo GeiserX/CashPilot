@@ -37,12 +37,18 @@
 
 # requirements:
 #   residential_ip: true/false
+#   vps_ip: true/false  (default: opposite of residential_ip)
+#   devices_per_account: 0  (0 = unlimited)
+#   devices_per_ip: 1  (0 = unlimited)
+#   note: ""  (footnote text for special cases in README table)
+#   note_column: ""  (which column footnote applies to: vps_ip, devices_per_ip)
 #   min_bandwidth: ""
 #   gpu: false
 #   min_storage: ""
 
 # payment:
 #   methods: [paypal, crypto, bank, giftcard]
+#   crypto_token: ""  (specific token if different from currency, e.g. "SOL", "USDT")
 #   minimum_payout: "$20"
 #   currency: USD
 #   frequency: "On request" | "Monthly" | "Weekly"

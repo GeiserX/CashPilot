@@ -49,6 +49,7 @@ requirements:
 
 payment:
   methods: [crypto]
+  crypto_token: SOL
   minimum_payout: "$5"
   currency: USD
   frequency: "On request"

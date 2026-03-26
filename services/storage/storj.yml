@@ -52,6 +52,8 @@ docker:
 
 requirements:
   residential_ip: false
+  note: "Storj nodes on the same /24 subnet share data allocation, reducing per-node earnings."
+  note_column: devices_per_ip
   min_bandwidth: "5 Mbps upload"
   gpu: false
   min_storage: "550GB"

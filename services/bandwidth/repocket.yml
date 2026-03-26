@@ -41,6 +41,8 @@ docker:
 
 requirements:
   residential_ip: true
+  devices_per_account: 5
+  devices_per_ip: 2
   min_bandwidth: ""
   gpu: false
   min_storage: ""

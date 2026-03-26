@@ -66,7 +66,7 @@ docker run -d \
   -e HONEYGAIN_EMAIL="<Email>" \
   -e HONEYGAIN_PASSWORD="<Password>" \
   -e HONEYGAIN_DEVICE_NAME="<Device name>" \
-  honeygain/honeygain
+  honeygain/honeygain -tou-accept -email ${HONEYGAIN_EMAIL} -pass ${HONEYGAIN_PASSWORD} -device ${HONEYGAIN_DEVICE_NAME}
 ```
 
 ## Referral Program
