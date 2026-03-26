@@ -57,7 +57,7 @@ _COLLECTOR_ARGS: dict[str, list[str]] = {
     "earnfm": ["email", "password"],
     "packetstream": ["auth_token"],
     "grass": ["access_token"],
-    "bytelixir": ["email", "password"],
+    "bytelixir": ["session_cookie"],
 }
 
 
