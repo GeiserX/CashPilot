@@ -34,7 +34,7 @@ _COLLECTOR_ARGS: dict[str, list[str]] = {
     "honeygain": ["email", "password"],
     "earnapp": ["oauth_token"],
     "iproyal": ["email", "password"],
-    "mysterium": ["api_url"],
+    "mysterium": ["api_url", "password"],
     "storj": ["api_url"],
     "traffmonetizer": ["token"],
 }
