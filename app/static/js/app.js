@@ -271,10 +271,11 @@ const CP = (() => {
         datasets: [{
           label: 'Earnings ($)',
           data: values,
-          backgroundColor: 'rgba(59, 130, 246, 0.5)',
-          borderColor: 'rgba(59, 130, 246, 1)',
+          backgroundColor: 'rgba(244, 63, 94, 0.4)',
+          borderColor: 'rgba(244, 63, 94, 0.9)',
           borderWidth: 1,
           borderRadius: 4,
+          hoverBackgroundColor: 'rgba(244, 63, 94, 0.6)',
         }],
       },
       options: {
@@ -283,10 +284,10 @@ const CP = (() => {
         plugins: {
           legend: { display: false },
           tooltip: {
-            backgroundColor: '#1a1d26',
-            titleColor: '#e2e4e9',
-            bodyColor: '#9ca3af',
-            borderColor: '#2e313a',
+            backgroundColor: '#0e0e1a',
+            titleColor: '#e8e6f0',
+            bodyColor: '#9d95b0',
+            borderColor: 'rgba(139, 92, 246, 0.2)',
             borderWidth: 1,
             padding: 10,
             callbacks: {
@@ -296,14 +297,14 @@ const CP = (() => {
         },
         scales: {
           x: {
-            grid: { color: 'rgba(46, 49, 58, 0.5)' },
-            ticks: { color: '#6b7280', font: { size: 11 } },
+            grid: { color: 'rgba(139, 92, 246, 0.08)' },
+            ticks: { color: '#6b6280', font: { size: 11 } },
           },
           y: {
             beginAtZero: true,
-            grid: { color: 'rgba(46, 49, 58, 0.5)' },
+            grid: { color: 'rgba(139, 92, 246, 0.08)' },
             ticks: {
-              color: '#6b7280',
+              color: '#6b6280',
               font: { size: 11 },
               callback: (v) => `$${v}`,
             },

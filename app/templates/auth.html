@@ -6,19 +6,34 @@
   <meta name="color-scheme" content="dark light">
   <title>{{ title }} - CashPilot</title>
   <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/static/css/style.css">
   <script>
     (function(){var t=localStorage.getItem('cp-theme')||'dark';document.documentElement.setAttribute('data-theme',t)})();
   </script>
   <style>
-    body { display: flex; align-items: center; justify-content: center; min-height: 100vh; background: var(--bg-primary); }
+    body {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      background: var(--bg-primary);
+      background-image:
+        radial-gradient(ellipse at 20% 50%, rgba(244, 63, 94, 0.08) 0%, transparent 60%),
+        radial-gradient(ellipse at 80% 20%, rgba(139, 92, 246, 0.06) 0%, transparent 50%),
+        radial-gradient(ellipse at 60% 80%, rgba(6, 182, 212, 0.05) 0%, transparent 50%);
+    }
     .auth-card {
       background: var(--bg-secondary);
+      background-image: var(--gradient-card);
       border: 1px solid var(--border-color);
       border-radius: var(--radius-lg);
       padding: 2.5rem;
       width: 100%;
       max-width: 400px;
+      box-shadow: 0 16px 48px rgba(0, 0, 0, 0.4), 0 0 1px rgba(139, 92, 246, 0.15);
     }
     .auth-brand {
       display: flex;
@@ -26,10 +41,13 @@
       gap: 0.5rem;
       font-size: 1.5rem;
       font-weight: 700;
-      color: var(--text-primary);
       margin-bottom: 0.5rem;
+      background: var(--gradient-rose);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
     }
-    .auth-brand svg { color: var(--accent); }
+    .auth-brand svg { -webkit-text-fill-color: initial; }
     .auth-subtitle { color: var(--text-muted); margin-bottom: 1.5rem; font-size: 0.93rem; }
     .auth-field { margin-bottom: 1rem; }
     .auth-field label {
@@ -47,24 +65,32 @@
       border-radius: var(--radius);
       color: var(--text-primary);
       font-size: 0.93rem;
+      font-family: inherit;
       outline: none;
-      transition: border-color var(--transition);
+      transition: border-color var(--transition), box-shadow var(--transition);
     }
-    .auth-field input:focus { border-color: var(--accent); }
+    .auth-field input:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 2px var(--accent-soft), 0 0 16px rgba(244, 63, 94, 0.15);
+    }
     .auth-btn {
       width: 100%;
       padding: 0.65rem;
-      background: var(--accent);
+      background: var(--gradient-rose);
       color: #fff;
       border: none;
       border-radius: var(--radius);
       font-size: 0.95rem;
       font-weight: 600;
+      font-family: inherit;
       cursor: pointer;
       margin-top: 0.5rem;
-      transition: background var(--transition);
+      transition: box-shadow var(--transition), transform var(--transition);
     }
-    .auth-btn:hover { background: var(--accent-hover); }
+    .auth-btn:hover {
+      box-shadow: 0 0 20px rgba(244, 63, 94, 0.3);
+      transform: translateY(-1px);
+    }
     .auth-error {
       background: var(--error-soft);
       color: var(--error);
