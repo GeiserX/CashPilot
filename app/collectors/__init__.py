@@ -12,6 +12,7 @@ from typing import Any
 from app.collectors.base import BaseCollector, EarningsResult
 from app.collectors.earnapp import EarnAppCollector
 from app.collectors.honeygain import HoneygainCollector
+from app.collectors.iproyal import IPRoyalCollector
 from app.collectors.mystnodes import MystNodesCollector
 from app.collectors.traffmonetizer import TraffmonetizerCollector
 
@@ -21,6 +22,7 @@ logger = logging.getLogger(__name__)
 COLLECTOR_MAP: dict[str, type[BaseCollector]] = {
     "honeygain": HoneygainCollector,
     "earnapp": EarnAppCollector,
+    "iproyal": IPRoyalCollector,
     "mysterium": MystNodesCollector,
     "traffmonetizer": TraffmonetizerCollector,
 }
@@ -29,6 +31,7 @@ COLLECTOR_MAP: dict[str, type[BaseCollector]] = {
 _COLLECTOR_ARGS: dict[str, list[str]] = {
     "honeygain": ["email", "password"],
     "earnapp": ["oauth_token"],
+    "iproyal": ["email", "password"],
     "mysterium": ["api_url"],
     "traffmonetizer": ["token"],
 }

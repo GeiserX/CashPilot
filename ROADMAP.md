@@ -40,7 +40,7 @@ Turn CashPilot from a deployment tool into an earnings optimization platform.
   - [x] EarnApp (OAuth cookie auth + /dashboard/api/money/)
   - [x] MystNodes (Tequila API at localhost:4449)
   - [x] Traffmonetizer (Bearer token + /api/dashboard)
-  - [ ] IPRoyal Pawns (API)
+  - [x] IPRoyal Pawns (JWT auth + /api/v1/users/me/balance-dashboard)
   - [ ] Storj (storagenode API)
 - [ ] **Earnings dashboard** with Chart.js historical charts
   - [ ] Daily/weekly/monthly aggregation
