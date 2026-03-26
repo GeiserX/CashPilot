@@ -29,6 +29,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PATH="/opt/venv/bin:$PATH"
 
+RUN apk add --no-cache su-exec
+
 COPY --from=builder /opt/venv /opt/venv
 
 RUN adduser -D -u 1000 cashpilot \
@@ -38,10 +40,11 @@ WORKDIR /app
 
 COPY --chown=cashpilot:root app/ ./app/
 COPY --chown=cashpilot:root services/ ./services/
+COPY entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
 
 VOLUME /data
 EXPOSE 8080
 
-USER cashpilot
-
+ENTRYPOINT ["/entrypoint.sh"]
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8080", "--no-access-log"]
