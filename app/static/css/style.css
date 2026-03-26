@@ -16,9 +16,11 @@
   --text-secondary: #9ca3af;
   --text-muted: #6b7280;
 
-  --accent: #3b82f6;
-  --accent-hover: #2563eb;
-  --accent-soft: rgba(59, 130, 246, 0.12);
+  --accent: #f43f5e;
+  --accent-hover: #e11d48;
+  --accent-soft: rgba(244, 63, 94, 0.12);
+  --accent-secondary: #06b6d4;
+  --accent-secondary-soft: rgba(6, 182, 212, 0.12);
 
   --success: #22c55e;
   --success-soft: rgba(34, 197, 94, 0.12);
@@ -49,9 +51,11 @@
   --text-secondary: #4b5563;
   --text-muted: #6b7280;
 
-  --accent: #2563eb;
-  --accent-hover: #1d4ed8;
-  --accent-soft: rgba(37, 99, 235, 0.10);
+  --accent: #e11d48;
+  --accent-hover: #be123c;
+  --accent-soft: rgba(225, 29, 72, 0.10);
+  --accent-secondary: #0891b2;
+  --accent-secondary-soft: rgba(8, 145, 178, 0.10);
 
   --success: #16a34a;
   --success-soft: rgba(22, 163, 74, 0.10);
@@ -264,8 +268,8 @@ img { max-width: 100%; }
   display: flex;
   align-items: center;
   gap: 6px;
-  background: var(--success-soft);
-  color: var(--success);
+  background: var(--accent-secondary-soft);
+  color: var(--accent-secondary);
   padding: 6px 14px;
   border-radius: 20px;
   font-size: 0.9rem;
@@ -474,16 +478,16 @@ img { max-width: 100%; }
   color: var(--warning);
 }
 .badge-docker {
-  background: var(--accent-soft);
-  color: var(--accent);
+  background: var(--accent-secondary-soft);
+  color: var(--accent-secondary);
 }
 .badge-deployed {
   background: var(--success-soft);
   color: var(--success);
 }
 .badge-available {
-  background: var(--accent-soft);
-  color: var(--accent);
+  background: var(--accent-secondary-soft);
+  color: var(--accent-secondary);
 }
 .badge-broken {
   background: rgba(107, 114, 128, 0.15);
