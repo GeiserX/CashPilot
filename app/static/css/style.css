@@ -1467,6 +1467,58 @@ img { max-width: 100%; }
   .onboarding-card { padding: 1.5rem; margin: 1rem; }
 }
 
+/* ----- Earnings Breakdown Table ----- */
+.breakdown-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.breakdown-table th {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border-color);
+  font-weight: 600;
+}
+.breakdown-table td {
+  padding: 12px;
+  border-bottom: 1px solid var(--border-color);
+  vertical-align: middle;
+}
+.breakdown-row:last-child td {
+  border-bottom: none;
+}
+.breakdown-row:hover {
+  background: var(--bg-hover);
+}
+
+/* Payout progress bar */
+.payout-progress {
+  width: 100%;
+  max-width: 120px;
+  height: 6px;
+  background: var(--bg-tertiary);
+  border-radius: 3px;
+  overflow: hidden;
+  margin: 0 auto 4px;
+}
+.payout-progress-bar {
+  height: 100%;
+  background: var(--warning);
+  border-radius: 3px;
+  transition: width 0.3s ease;
+}
+.payout-progress-bar.eligible {
+  background: var(--success);
+}
+.payout-label {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  display: block;
+  text-align: center;
+}
+
 /* ----- Collector Credential Sections ----- */
 .collector-section {
   border: 1px solid var(--border-color);

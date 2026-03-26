@@ -34,6 +34,21 @@ scheduler = AsyncIOScheduler()
 # ---------------------------------------------------------------------------
 
 
+async def _run_health_check() -> None:
+    """Check health of all deployed containers and record events."""
+    try:
+        statuses = orchestrator.get_status()
+        for s in statuses:
+            slug = s["slug"]
+            status = s.get("status", "unknown")
+            if status == "running":
+                await database.record_health_event(slug, "check_ok")
+            else:
+                await database.record_health_event(slug, "check_down", status)
+    except Exception as exc:
+        logger.debug("Health check skipped: %s", exc)
+
+
 async def _run_collection() -> None:
     """Collect earnings from all deployed services that have collectors."""
     try:
@@ -69,6 +84,7 @@ async def lifespan(app: FastAPI):
     catalog.load_services()
     catalog.register_sighup()
     scheduler.add_job(_run_collection, "interval", hours=6, id="collect")
+    scheduler.add_job(_run_health_check, "interval", minutes=5, id="health_check")
     scheduler.start()
     docker_mode = "direct" if orchestrator.docker_available() else "monitor-only"
     role = federation.get_role()
@@ -387,10 +403,15 @@ async def api_services_deployed(request: Request) -> list[dict[str, Any]]:
     earnings = await database.get_earnings_summary()
     balance_map = {e["platform"]: e["balance"] for e in earnings}
 
+    # Get health scores
+    health_scores = await database.get_health_scores(7)
+    health_map = {h["slug"]: h for h in health_scores}
+
     result = []
     for s in statuses:
         slug = s["slug"]
         svc = catalog.get_service(slug)
+        health = health_map.get(slug, {})
         entry = {
             "slug": slug,
             "name": svc["name"] if svc else slug,
@@ -400,6 +421,9 @@ async def api_services_deployed(request: Request) -> list[dict[str, Any]]:
             "memory": f"{s.get('memory_mb', 0)} MB",
             "image": s.get("image", ""),
             "category": s.get("category", ""),
+            "health_score": health.get("score"),
+            "uptime_pct": health.get("uptime_pct"),
+            "restarts_7d": health.get("restarts", 0),
         }
         if svc:
             cashout = svc.get("cashout", {})
@@ -462,6 +486,7 @@ async def api_deploy(request: Request, slug: str, body: DeployRequest) -> dict[s
             hostname=body.hostname,
         )
         await database.save_deployment(slug=slug, container_id=container_id)
+        await database.record_health_event(slug, "start", "deployed")
         # Trigger collection so earnings show up quickly
         asyncio.create_task(_run_collection())
         return {"status": "deployed", "container_id": container_id}
@@ -518,6 +543,7 @@ async def api_service_restart(request: Request, slug: str) -> dict[str, str]:
     _require_writer(request)
     try:
         orchestrator.restart_service(slug)
+        await database.record_health_event(slug, "restart")
         return {"status": "restarted"}
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
@@ -530,6 +556,7 @@ async def api_service_stop(request: Request, slug: str) -> dict[str, str]:
     _require_writer(request)
     try:
         orchestrator.stop_service(slug)
+        await database.record_health_event(slug, "stop")
         return {"status": "stopped"}
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
@@ -542,6 +569,7 @@ async def api_service_start(request: Request, slug: str) -> dict[str, str]:
     _require_writer(request)
     try:
         orchestrator.start_service(slug)
+        await database.record_health_event(slug, "start")
         return {"status": "started"}
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
@@ -653,12 +681,61 @@ async def api_earnings_daily(request: Request, days: int = 7) -> list[dict[str, 
     return await database.get_daily_earnings(days)
 
 
+@app.get("/api/earnings/breakdown")
+async def api_earnings_breakdown(request: Request) -> list[dict[str, Any]]:
+    """Per-service earnings breakdown with cashout eligibility."""
+    _require_auth_api(request)
+    rows = await database.get_earnings_per_service()
+
+    result = []
+    for row in rows:
+        slug = row["platform"]
+        svc = catalog.get_service(slug)
+        cashout = (svc.get("cashout", {}) if svc else {}) or {}
+        min_amount = float(cashout.get("min_amount", 0))
+        balance = float(row["balance"])
+        prev_balance = float(row.get("prev_balance", 0))
+        delta = balance - prev_balance
+
+        entry = {
+            "platform": slug,
+            "name": svc["name"] if svc else slug,
+            "balance": round(balance, 4),
+            "currency": row["currency"],
+            "last_updated": row["date"],
+            "delta": round(delta, 4),
+            "cashout": {
+                "eligible": balance >= min_amount > 0,
+                "min_amount": min_amount,
+                "method": cashout.get("method", "redirect"),
+                "dashboard_url": cashout.get("dashboard_url", ""),
+                "notes": cashout.get("notes", ""),
+            },
+        }
+        result.append(entry)
+    return result
+
+
 @app.get("/api/earnings/history")
 async def api_earnings_history(request: Request, period: str = "week") -> list[dict[str, Any]]:
     _require_auth_api(request)
     if period not in ("week", "month", "year", "all"):
         raise HTTPException(status_code=400, detail="period must be week, month, year, or all")
     return await database.get_earnings_history(period)
+
+
+@app.get("/api/health/scores")
+async def api_health_scores(request: Request, days: int = 7) -> list[dict[str, Any]]:
+    """Health scores for all services."""
+    _require_auth_api(request)
+    if days < 1 or days > 90:
+        raise HTTPException(status_code=400, detail="days must be between 1 and 90")
+    scores = await database.get_health_scores(days)
+    # Enrich with service names
+    for s in scores:
+        svc = catalog.get_service(s["slug"])
+        s["name"] = svc["name"] if svc else s["slug"]
+    return scores
 
 
 @app.post("/api/collect")
