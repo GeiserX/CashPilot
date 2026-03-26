@@ -103,7 +103,7 @@ These services have no Docker image. CashPilot lists them in the catalog with si
 |---------|:-:|:-:|:-:|:-:|--------|--------|
 | [BlockMesh](https://blockmesh.xyz) | ✅ | ❌ | Unlimited | 1 | Crypto (BMESH) | Active |
 | [Bytebenefit](https://bytebenefit.com) | ✅ | ❌ | Unlimited | 1 | PayPal | Beta |
-| [Bytelixir](https://bytelixir.com) | ✅ | ❌ | Unlimited | 1 | Crypto | Beta |
+| [Bytelixir](https://bytelixir.com/r/OYEIRE0VSZBZ) | ✅ | ❌ | Unlimited | 1 | Crypto | Beta |
 | [Gradient Network](https://app.gradient.network/signup?referralCode=YSKMY7) | ✅ | ❌ | Unlimited | 1 | Crypto (GRADIENT) | Active |
 | [Grass](https://app.getgrass.io/register/?referralCode=kn8FNEPnUr2tMqE) | ✅ | ❌ | Unlimited | 1 | Crypto (GRASS) | Active |
 | [Nodepay](https://app.nodepay.ai/register?ref=0wzzyznen64j9zx) | ✅ | ❌ | Unlimited | 1 | Crypto (NC) | Active |

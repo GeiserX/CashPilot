@@ -10,13 +10,13 @@ description: >
 short_description: Bandwidth sharing - newer service, desktop app
 
 referral:
-  url_template: ""
-  code: ""
-  signup_url: "https://bytelixir.com"
+  url_template: "https://bytelixir.com/r/{code}"
+  code: "OYEIRE0VSZBZ"
+  signup_url: "https://bytelixir.com/r/OYEIRE0VSZBZ"
   bonus:
     referrer: ""
     referee: ""
-  how_to_get_code: "Check the dashboard for referral options"
+  how_to_get_code: "Dashboard > Referral > Copy your referral link"
 
 docker:
   image: ""
