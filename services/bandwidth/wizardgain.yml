@@ -51,6 +51,12 @@ earnings:
   per: "device"
   notes: "Crypto payouts. Earnings depend on location and bandwidth demand."
 
+cashout:
+  method: redirect
+  dashboard_url: "https://wizardgain.com/dashboard"
+  min_amount: 5.0
+  currency: USD
+
 platforms: [windows, linux, docker]
 
 collector:

@@ -51,6 +51,12 @@ earnings:
   per: "device"
   notes: "Limited information available. Earnings depend on location."
 
+cashout:
+  method: redirect
+  dashboard_url: "https://spide.network/dashboard"
+  min_amount: 5.0
+  currency: USD
+
 platforms: [windows, linux]
 
 collector:

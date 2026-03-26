@@ -48,6 +48,13 @@ earnings:
   per: "GPU-hour"
   notes: "RTX 3060 ~$0.048/hr, higher-end GPUs earn more. Earnings depend on job availability and GPU model. Requires NVIDIA GPU, Linux, Docker, and Nosana CLI. Payments in NOS token on Solana."
 
+cashout:
+  method: redirect
+  dashboard_url: "https://app.nosana.io/dashboard"
+  min_amount: 0
+  currency: NOS
+  notes: "NOS tokens earned on Solana. Payout to configured wallet."
+
 platforms: [linux]
 
 collector:

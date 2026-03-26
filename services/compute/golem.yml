@@ -48,6 +48,13 @@ earnings:
   per: "device"
   notes: "Earnings depend on hardware, pricing, and task demand. CPU-only nodes earn less. GPU nodes earn more but require NVIDIA. Run the Yagna provider agent (not Docker image). Payments on Polygon in GLM tokens."
 
+cashout:
+  method: redirect
+  dashboard_url: "https://stats.golem.network"
+  min_amount: 0
+  currency: GLM
+  notes: "GLM tokens earned. Configure payout wallet in provider setup."
+
 platforms: [linux]
 
 collector:

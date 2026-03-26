@@ -47,6 +47,13 @@ earnings:
   per: "device"
   notes: "Crypto/token-based earnings. No official Docker image — browser extension is the primary client."
 
+cashout:
+  method: redirect
+  dashboard_url: "https://app.uprock.com/dashboard"
+  min_amount: 5.0
+  currency: USD
+  notes: "Crypto token-based rewards. Claim from dashboard."
+
 platforms: [windows, macos, linux, browser_extension]
 
 collector:

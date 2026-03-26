@@ -47,6 +47,13 @@ earnings:
   per: "device"
   notes: "Earns Nodepay Points pre-token launch. Cloudflare protection may block automated collection. Browser extension required."
 
+cashout:
+  method: redirect
+  dashboard_url: "https://app.nodepay.ai/dashboard"
+  min_amount: 0
+  currency: NC
+  notes: "Points-based system. Token conversion TBD."
+
 platforms: [browser_extension]
 
 collector:

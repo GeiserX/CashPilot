@@ -48,6 +48,13 @@ earnings:
   per: "device"
   notes: "Earns points pre-token launch. Solana wallet required for signup and future rewards. 700K+ active nodes in the network."
 
+cashout:
+  method: redirect
+  dashboard_url: "https://app.blockmesh.xyz/dashboard"
+  min_amount: 0
+  currency: BMESH
+  notes: "Token-based rewards. Claim from dashboard when available."
+
 platforms: [browser_extension]
 
 collector:

@@ -48,6 +48,13 @@ earnings:
   per: "GPU-hour"
   notes: "Earnings depend on GPU model and availability of work. RTX 3060 ~$1-3/day. Windows only. Native app, no Docker support. Redeemable for gift cards, games, or PayPal."
 
+cashout:
+  method: redirect
+  dashboard_url: "https://app.salad.io/earn/summary"
+  min_amount: 5.0
+  currency: USD
+  notes: "PayPal or gift cards via Salad storefront."
+
 platforms: [windows]
 
 collector:

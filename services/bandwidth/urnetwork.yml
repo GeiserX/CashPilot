@@ -53,6 +53,12 @@ earnings:
   per: "device"
   notes: "Works on VPS and residential. Crypto payouts. Supports proxy mode for multi-IP setups."
 
+cashout:
+  method: redirect
+  dashboard_url: "https://urnetwork.com/dashboard"
+  min_amount: 5.0
+  currency: USD
+
 platforms: [windows, macos, linux, docker]
 
 collector:

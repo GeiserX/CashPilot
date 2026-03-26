@@ -46,6 +46,12 @@ earnings:
   per: "device"
   notes: "Relatively new. No official Docker image available yet."
 
+cashout:
+  method: redirect
+  dashboard_url: "https://passiveapp.io/dashboard"
+  min_amount: 5.0
+  currency: USD
+
 platforms: [windows, macos, linux, android]
 
 collector:

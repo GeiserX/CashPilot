@@ -61,6 +61,13 @@ earnings:
   per: "device"
   notes: "Earnings in BTP points convertible to EUR. Uses significant CPU/memory for browser. Needs periodic restart."
 
+cashout:
+  method: redirect
+  dashboard_url: "https://www.ebesucher.com/account"
+  min_amount: 2.0
+  currency: EUR
+  notes: "Euro payout via PayPal or bank transfer."
+
 platforms: [linux, docker]
 
 collector:

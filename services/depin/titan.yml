@@ -48,6 +48,13 @@ earnings:
   per: "device"
   notes: "Shares IP, storage, and bandwidth. Earnings depend on resources contributed and region. Higher storage allocation yields higher rewards."
 
+cashout:
+  method: manual
+  dashboard_url: "https://proxytitan.com/dashboard"
+  min_amount: 0
+  currency: TNT
+  notes: "Service dead. Cashout unavailable."
+
 platforms: [windows, macos, android]
 
 collector:

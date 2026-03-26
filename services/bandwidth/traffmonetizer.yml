@@ -59,6 +59,12 @@ earnings:
   per: "device"
   notes: "VPS and datacenter IPs earn less than residential. US/EU locations earn more. Multiple IPs supported via Docker networks."
 
+cashout:
+  method: redirect
+  dashboard_url: "https://app.traffmonetizer.com/dashboard"
+  min_amount: 5.0
+  currency: USD
+
 platforms: [windows, macos, linux, docker]
 
 collector:

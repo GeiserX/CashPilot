@@ -48,6 +48,13 @@ earnings:
   per: "device"
   notes: "Earnings vary by location and bandwidth. Supports a wide range of platforms including ARM and Raspberry Pi. Native binaries, no Docker image."
 
+cashout:
+  method: manual
+  dashboard_url: "https://dashboard.gaganode.com"
+  min_amount: 5.0
+  currency: USD
+  notes: "Service dead. Cashout unavailable."
+
 platforms: [windows, macos, linux]
 
 collector:

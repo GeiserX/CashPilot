@@ -60,6 +60,12 @@ earnings:
   per: "device"
   notes: "Ad-view based. Uses significant CPU/memory for browser. May need periodic restart."
 
+cashout:
+  method: redirect
+  dashboard_url: "https://adnade.com/dashboard"
+  min_amount: 5.0
+  currency: USD
+
 platforms: [linux, docker]
 
 collector:
