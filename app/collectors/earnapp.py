@@ -40,7 +40,7 @@ class EarnAppCollector(BaseCollector):
 
             async with httpx.AsyncClient(timeout=30, cookies=cookies) as client:
                 # Step 1: Rotate XSRF token
-                xsrf_resp = await client.get(
+                await client.get(
                     f"{API_BASE}/sec/rotate_xsrf",
                     params=API_PARAMS,
                 )
