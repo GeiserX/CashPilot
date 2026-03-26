@@ -160,6 +160,98 @@ cashpilot/
 | `CASHPILOT_SECRET_KEY` | *(auto-generated)* | Encryption key for stored credentials |
 | `CASHPILOT_COLLECTION_INTERVAL` | `3600` | Seconds between earnings collection cycles |
 | `CASHPILOT_PORT` | `8080` | Web UI port inside the container |
+| `CASHPILOT_ROLE` | `master` | Instance role: `master` (fleet aggregation) or `child` (reports to master) |
+| `CASHPILOT_NODE_NAME` | *(hostname)* | Display name for this node in the fleet dashboard |
+| `CASHPILOT_MASTER_URL` | -- | WebSocket URL of the master instance (child only), e.g. `ws://master-ip:8080/ws/federation` |
+| `CASHPILOT_JOIN_TOKEN` | -- | Join token issued by the master (child only) |
+
+## Multi-Node Fleet Management
+
+For power users running services across multiple servers, CashPilot supports a federated master/child architecture. Every node runs a **full CashPilot instance** with its own dashboard. One instance is the **master** that aggregates everything into a unified fleet view; the rest are **children** that report upstream via outbound WebSocket.
+
+```
+Master CashPilot (fleet view + local management)
+        ^                ^                ^
+        | WSS            | WSS            | WSS
+  Child CashPilot    Child CashPilot    Child CashPilot
+  (server-1)         (server-2)         (server-N)
+```
+
+### Setting up the master
+
+The first CashPilot instance you deploy is the master by default. No extra configuration needed -- just deploy normally:
+
+```yaml
+services:
+  cashpilot:
+    image: drumsergio/cashpilot:latest
+    ports:
+      - "8085:8080"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - cashpilot_data:/data
+    environment:
+      - CASHPILOT_SECRET_KEY=your-secret-key
+      - CASHPILOT_ROLE=master
+      - CASHPILOT_NODE_NAME=main-server
+      - TZ=Europe/Madrid
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  cashpilot_data:
+```
+
+### Adding child nodes
+
+1. **Generate a join token** from the master's fleet dashboard or via the API:
+
+   ```bash
+   curl -b cookies.txt http://master-ip:8085/api/federation/token \
+     -X POST -H "Content-Type: application/json" \
+     -d '{"node_name": "server-2", "expires_hours": 720}'
+   ```
+
+2. **Deploy the child** on the remote server with the token:
+
+   ```yaml
+   services:
+     cashpilot:
+       image: drumsergio/cashpilot:latest
+       ports:
+         - "8085:8080"
+       volumes:
+         - /var/run/docker.sock:/var/run/docker.sock
+         - cashpilot_data:/data
+       environment:
+         - CASHPILOT_SECRET_KEY=child-secret-key
+         - CASHPILOT_ROLE=child
+         - CASHPILOT_NODE_NAME=server-2
+         - CASHPILOT_MASTER_URL=ws://master-ip:8085/ws/federation
+         - CASHPILOT_JOIN_TOKEN=<token-from-step-1>
+         - TZ=Europe/Madrid
+       restart: unless-stopped
+       security_opt:
+         - no-new-privileges:true
+
+   volumes:
+     cashpilot_data:
+   ```
+
+The child connects outbound to the master via WebSocket -- no port forwarding or VPN needed on the child side. It works behind any NAT or firewall. The master's fleet dashboard shows all connected nodes, their services, and live status. The master can also push commands (deploy, stop, restart) to any child remotely.
+
+### Monitor-only mode (external services)
+
+If you manage containers yourself (via Portainer, manual compose, etc.) and don't want CashPilot to deploy or control containers, run it **without mounting the Docker socket**:
+
+```yaml
+volumes:
+  # - /var/run/docker.sock:/var/run/docker.sock  # omit this
+  - cashpilot_data:/data
+```
+
+In monitor-only mode, CashPilot still provides the service catalog, compose file export, earnings dashboard, and credential storage. You can combine this with the child role to report earnings and status to a master while managing containers externally. Use the **Export Compose** button in the UI to get ready-to-use `docker-compose.yml` files for any service.
 
 ## FAQ
 
