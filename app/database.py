@@ -82,7 +82,7 @@ CREATE TABLE IF NOT EXISTS health_events (
     created_at TEXT    NOT NULL DEFAULT (datetime('now'))
 );
 
-CREATE INDEX IF NOT EXISTS idx_earnings_platform_date
+CREATE UNIQUE INDEX IF NOT EXISTS idx_earnings_platform_date
     ON earnings (platform, date);
 
 CREATE INDEX IF NOT EXISTS idx_nodes_status
