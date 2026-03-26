@@ -128,6 +128,7 @@ const CP = (() => {
       loadDashboardStats(),
       loadDashboardServices(),
       loadEarningsChart('7'),
+      loadEarningsBreakdown(),
     ]);
 
     // Auto-refresh every 60 seconds
@@ -135,6 +136,7 @@ const CP = (() => {
     refreshTimer = setInterval(() => {
       loadDashboardStats();
       loadDashboardServices();
+      loadEarningsBreakdown();
     }, 60000);
   }
 
@@ -199,19 +201,29 @@ const CP = (() => {
     const statusLabel = statusClass.charAt(0).toUpperCase() + statusClass.slice(1);
     const initial = (svc.name || svc.slug || '?')[0].toUpperCase();
 
-    // Cashout button: show when balance >= min_amount and cashout is configured
-    let cashoutBtn = '';
+    // Health score badge
+    let healthBadge = '';
+    if (svc.health_score !== null && svc.health_score !== undefined) {
+      const score = svc.health_score;
+      const hClass = score >= 80 ? 'badge-running' : score >= 50 ? 'badge-error' : 'badge-stopped';
+      const uptimeStr = svc.uptime_pct !== null ? ` · ${svc.uptime_pct}% up` : '';
+      healthBadge = `<span class="badge ${hClass}" title="Health ${score}/100${uptimeStr}" style="margin-left:6px;">${score}</span>`;
+    }
+
+    // Claim button instead of direct cashout link
+    let claimBtn = '';
     if (svc.cashout && svc.cashout.dashboard_url) {
       const minAmount = parseFloat(svc.cashout.min_amount) || 0;
       const balance = parseFloat(svc.balance) || 0;
       const canCashout = balance >= minAmount && minAmount > 0;
-      cashoutBtn = `
-        <a href="${escapeHtml(svc.cashout.dashboard_url)}" target="_blank" rel="noopener"
-           class="btn btn-sm ${canCashout ? 'btn-success' : 'btn-ghost'}" title="${canCashout ? 'Cash out now' : `Min $${minAmount}`}"
-           style="font-size:0.75rem; padding:4px 8px;">
+      claimBtn = `
+        <button class="btn btn-sm ${canCashout ? 'btn-success' : 'btn-ghost'}"
+                onclick="CP.openClaimModal('${svc.slug}')"
+                title="${canCashout ? 'Eligible for payout' : `Min $${minAmount}`}"
+                style="font-size:0.75rem; padding:4px 8px;">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>
-          Cash Out
-        </a>`;
+          Claim
+        </button>`;
     }
 
     return `
@@ -219,7 +231,7 @@ const CP = (() => {
       <div class="service-card-header">
         <div class="service-icon">${initial}</div>
         <div>
-          <div class="service-name">${escapeHtml(svc.name)}</div>
+          <div class="service-name">${escapeHtml(svc.name)}${healthBadge}</div>
           <span class="badge badge-${statusClass}"><span class="status-dot ${statusClass}"></span> ${statusLabel}</span>
         </div>
       </div>
@@ -231,7 +243,7 @@ const CP = (() => {
         </div>
       </div>
       <div class="service-actions">
-        ${cashoutBtn}
+        ${claimBtn}
         <button class="btn btn-ghost btn-sm btn-icon" onclick="CP.restartService('${svc.slug}')" title="Restart">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg>
         </button>
@@ -328,6 +340,176 @@ const CP = (() => {
         },
       },
     });
+  }
+
+  // -----------------------------------------------------------
+  // Earnings Breakdown
+  // -----------------------------------------------------------
+  async function loadEarningsBreakdown() {
+    const container = document.getElementById('earnings-breakdown');
+    if (!container) return;
+
+    try {
+      const data = await api('/api/earnings/breakdown');
+      if (!data || data.length === 0) {
+        container.innerHTML = '<div class="empty-state-text" style="padding: 16px 0; text-align: center;">No earnings data yet. Configure collectors in Settings.</div>';
+        return;
+      }
+      const rows = data.map(renderBreakdownRow).join('');
+      container.innerHTML = `
+        <table class="breakdown-table">
+          <thead>
+            <tr>
+              <th>Service</th>
+              <th style="text-align:right;">Balance</th>
+              <th style="text-align:right;">Change</th>
+              <th style="text-align:center;">Payout</th>
+              <th style="text-align:center;">Action</th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>`;
+    } catch (err) {
+      container.innerHTML = '<div class="empty-state-text" style="padding: 16px 0; text-align: center;">Could not load breakdown.</div>';
+    }
+  }
+
+  function renderBreakdownRow(svc) {
+    const initial = (svc.name || svc.platform || '?')[0].toUpperCase();
+    const deltaSign = svc.delta > 0 ? '+' : '';
+    const deltaClass = svc.delta > 0 ? 'positive' : svc.delta < 0 ? 'negative' : '';
+    const deltaStr = svc.delta !== 0 ? `${deltaSign}${formatCurrency(svc.delta)}` : '--';
+
+    const co = svc.cashout || {};
+    const eligible = co.eligible;
+    const minAmount = co.min_amount || 0;
+    const pctToMin = minAmount > 0 ? Math.min(100, (svc.balance / minAmount) * 100) : 0;
+
+    // Progress bar toward minimum payout
+    const progressBar = minAmount > 0 ? `
+      <div class="payout-progress" title="${formatCurrency(svc.balance)} / ${formatCurrency(minAmount)}">
+        <div class="payout-progress-bar ${eligible ? 'eligible' : ''}" style="width:${pctToMin.toFixed(0)}%"></div>
+      </div>
+      <span class="payout-label">${formatCurrency(svc.balance)} / ${formatCurrency(minAmount)}</span>
+    ` : '<span class="payout-label" style="color:var(--text-muted);">N/A</span>';
+
+    const claimBtn = co.dashboard_url
+      ? `<button class="btn btn-sm ${eligible ? 'btn-success' : 'btn-ghost'}" onclick="CP.openClaimModal('${escapeHtml(svc.platform)}')" ${!eligible ? 'title="Below minimum payout"' : ''}>
+           ${eligible ? 'Claim' : 'Details'}
+         </button>`
+      : '';
+
+    return `
+    <tr class="breakdown-row">
+      <td>
+        <div style="display:flex; align-items:center; gap:10px;">
+          <div class="service-icon" style="width:32px;height:32px;font-size:0.9rem;">${initial}</div>
+          <div>
+            <div style="font-weight:600; font-size:0.9rem;">${escapeHtml(svc.name)}</div>
+            <div style="font-size:0.75rem; color:var(--text-muted);">${escapeHtml(svc.currency)}</div>
+          </div>
+        </div>
+      </td>
+      <td style="text-align:right; font-weight:600; font-size:0.95rem;">${formatCurrency(svc.balance)}</td>
+      <td style="text-align:right;"><span class="stat-change ${deltaClass}">${deltaStr}</span></td>
+      <td style="text-align:center;">${progressBar}</td>
+      <td style="text-align:center;">${claimBtn}</td>
+    </tr>`;
+  }
+
+  function refreshBreakdown() {
+    loadEarningsBreakdown();
+    toast('Breakdown refreshed', 'info');
+  }
+
+  // -----------------------------------------------------------
+  // Claim Modal
+  // -----------------------------------------------------------
+  let _breakdownCache = [];
+
+  async function openClaimModal(platform) {
+    openModal('claim-modal');
+    const title = document.getElementById('claim-modal-title');
+    const body = document.getElementById('claim-modal-body');
+
+    if (title) title.textContent = 'Checking eligibility...';
+    if (body) body.innerHTML = '<div class="spinner" style="margin:24px auto;"></div>';
+
+    try {
+      const data = await api('/api/earnings/breakdown');
+      const svc = data.find(s => s.platform === platform);
+      if (!svc) {
+        if (body) body.innerHTML = '<p>Service not found.</p>';
+        return;
+      }
+
+      const co = svc.cashout || {};
+      const eligible = co.eligible;
+      const minAmount = co.min_amount || 0;
+
+      if (title) title.textContent = `Claim — ${svc.name}`;
+
+      const statusIcon = eligible
+        ? '<svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--success)" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="16 8 10 16 7 13"/></svg>'
+        : '<svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--warning)" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>';
+
+      const statusText = eligible
+        ? `<span style="color:var(--success); font-weight:600; font-size:1.1rem;">Eligible for payout!</span>`
+        : `<span style="color:var(--warning); font-weight:600; font-size:1.1rem;">Below minimum payout</span>`;
+
+      const pctToMin = minAmount > 0 ? Math.min(100, (svc.balance / minAmount) * 100) : 0;
+      const remaining = Math.max(0, minAmount - svc.balance);
+
+      const progressSection = minAmount > 0 ? `
+        <div style="margin: 20px 0;">
+          <div style="display:flex; justify-content:space-between; font-size:0.85rem; margin-bottom:6px;">
+            <span>Current: <strong>${formatCurrency(svc.balance)}</strong></span>
+            <span>Minimum: <strong>${formatCurrency(minAmount)}</strong></span>
+          </div>
+          <div class="payout-progress" style="height:10px; border-radius:5px;">
+            <div class="payout-progress-bar ${eligible ? 'eligible' : ''}" style="width:${pctToMin.toFixed(0)}%; height:100%; border-radius:5px;"></div>
+          </div>
+          ${!eligible ? `<div style="font-size:0.85rem; color:var(--text-muted); margin-top:8px;">Need ${formatCurrency(remaining)} more to reach minimum payout.</div>` : ''}
+        </div>` : '';
+
+      const notesSection = co.notes
+        ? `<div style="background:var(--bg-tertiary); border:1px solid var(--border-color); border-radius:var(--radius); padding:12px; margin:16px 0; font-size:0.85rem; color:var(--text-secondary);">
+             <strong style="color:var(--text-primary);">Notes:</strong> ${escapeHtml(co.notes)}
+           </div>`
+        : '';
+
+      const methodLabel = {
+        redirect: 'You will be redirected to the service dashboard to complete the payout.',
+        api: 'Payout will be triggered via the service API.',
+        manual: 'Follow the instructions below to claim your earnings.',
+      };
+
+      const actionSection = eligible && co.dashboard_url
+        ? `<div style="margin-top:20px; text-align:center;">
+             <p style="font-size:0.85rem; color:var(--text-secondary); margin-bottom:12px;">${methodLabel[co.method] || methodLabel.redirect}</p>
+             <a href="${escapeHtml(co.dashboard_url)}" target="_blank" rel="noopener" class="btn btn-success btn-lg" style="min-width:200px;">
+               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+               Go to Dashboard
+             </a>
+           </div>`
+        : !eligible
+          ? `<div style="margin-top:16px; text-align:center;">
+               <p style="font-size:0.85rem; color:var(--text-muted);">Keep your service running to accumulate more earnings.</p>
+             </div>`
+          : '';
+
+      if (body) body.innerHTML = `
+        <div style="text-align:center; padding:8px 0;">
+          ${statusIcon}
+          <div style="margin-top:12px;">${statusText}</div>
+        </div>
+        ${progressSection}
+        ${notesSection}
+        ${actionSection}
+      `;
+    } catch (err) {
+      if (body) body.innerHTML = `<p style="color:var(--error);">Error: ${escapeHtml(err.message)}</p>`;
+    }
   }
 
   // -----------------------------------------------------------
@@ -1128,5 +1310,7 @@ const CP = (() => {
     testCollectors,
     editCredentials,
     filterCatalog,
+    refreshBreakdown,
+    openClaimModal,
   };
 })();

@@ -74,11 +74,22 @@ CREATE TABLE IF NOT EXISTS user_preferences (
     FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS health_events (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    slug       TEXT    NOT NULL,
+    event      TEXT    NOT NULL,
+    detail     TEXT    NOT NULL DEFAULT '',
+    created_at TEXT    NOT NULL DEFAULT (datetime('now'))
+);
+
 CREATE INDEX IF NOT EXISTS idx_earnings_platform_date
     ON earnings (platform, date);
 
 CREATE INDEX IF NOT EXISTS idx_nodes_status
     ON nodes (status);
+
+CREATE INDEX IF NOT EXISTS idx_health_events_slug
+    ON health_events (slug, created_at);
 """
 
 
@@ -289,6 +300,43 @@ async def get_earnings_dashboard_summary() -> dict[str, Any]:
             "today_change": round(today_change, 1),
             "month_change": 0.0,
         }
+    finally:
+        await db.close()
+
+
+async def get_earnings_per_service() -> list[dict[str, Any]]:
+    """Return per-platform earnings breakdown: latest balance, previous balance, trend."""
+    db = await _get_db()
+    try:
+        # Latest balance per platform
+        cursor = await db.execute(
+            """
+            SELECT
+                e.platform,
+                e.balance,
+                e.currency,
+                e.date,
+                COALESCE(prev.balance, 0) as prev_balance
+            FROM earnings e
+            INNER JOIN (
+                SELECT platform, MAX(date) as max_date
+                FROM earnings GROUP BY platform
+            ) latest ON e.platform = latest.platform AND e.date = latest.max_date
+            LEFT JOIN (
+                SELECT e2.platform, e2.balance
+                FROM earnings e2
+                INNER JOIN (
+                    SELECT platform, MAX(date) as max_date
+                    FROM earnings
+                    WHERE date < (SELECT MAX(date) FROM earnings e3 WHERE e3.platform = earnings.platform)
+                    GROUP BY platform
+                ) prev_latest ON e2.platform = prev_latest.platform AND e2.date = prev_latest.max_date
+            ) prev ON e.platform = prev.platform
+            ORDER BY e.balance DESC
+            """
+        )
+        rows = await cursor.fetchall()
+        return [dict(r) for r in rows]
     finally:
         await db.close()
 
@@ -663,5 +711,82 @@ async def delete_node(node_id: int) -> None:
     try:
         await db.execute("DELETE FROM nodes WHERE id = ?", (node_id,))
         await db.commit()
+    finally:
+        await db.close()
+
+
+# --- Health Events ---
+
+
+async def record_health_event(slug: str, event: str, detail: str = "") -> None:
+    """Record a health event (start, stop, restart, crash, check_ok)."""
+    db = await _get_db()
+    try:
+        await db.execute(
+            "INSERT INTO health_events (slug, event, detail) VALUES (?, ?, ?)",
+            (slug, event, detail),
+        )
+        await db.commit()
+    finally:
+        await db.close()
+
+
+async def get_health_scores(days: int = 7) -> list[dict[str, Any]]:
+    """Compute health score per service over the last N days.
+
+    Score formula (0-100):
+    - Start at 100
+    - -5 per restart
+    - -20 per crash
+    - Uptime ratio bonus: (running_checks / total_checks) * weight
+    """
+    db = await _get_db()
+    try:
+        cutoff = f"-{days} days"
+        cursor = await db.execute(
+            """
+            SELECT
+                slug,
+                COUNT(*) as total_events,
+                SUM(CASE WHEN event = 'restart' THEN 1 ELSE 0 END) as restarts,
+                SUM(CASE WHEN event = 'crash' THEN 1 ELSE 0 END) as crashes,
+                SUM(CASE WHEN event = 'stop' THEN 1 ELSE 0 END) as stops,
+                SUM(CASE WHEN event = 'check_ok' THEN 1 ELSE 0 END) as ok_checks,
+                SUM(CASE WHEN event IN ('check_ok', 'check_down') THEN 1 ELSE 0 END) as total_checks,
+                MIN(created_at) as first_event,
+                MAX(created_at) as last_event
+            FROM health_events
+            WHERE created_at >= datetime('now', ?)
+            GROUP BY slug
+            ORDER BY slug
+            """,
+            (cutoff,),
+        )
+        rows = await cursor.fetchall()
+        results = []
+        for row in rows:
+            r = dict(row)
+            score = 100.0
+            score -= r["restarts"] * 5
+            score -= r["crashes"] * 20
+            score -= r["stops"] * 2
+
+            # Uptime ratio
+            if r["total_checks"] > 0:
+                uptime_ratio = r["ok_checks"] / r["total_checks"]
+                score = score * 0.4 + uptime_ratio * 100 * 0.6
+            score = max(0.0, min(100.0, score))
+
+            results.append({
+                "slug": r["slug"],
+                "score": round(score, 1),
+                "restarts": r["restarts"],
+                "crashes": r["crashes"],
+                "stops": r["stops"],
+                "uptime_checks": r["ok_checks"],
+                "total_checks": r["total_checks"],
+                "uptime_pct": round(r["ok_checks"] / r["total_checks"] * 100, 1) if r["total_checks"] > 0 else None,
+            })
+        return results
     finally:
         await db.close()

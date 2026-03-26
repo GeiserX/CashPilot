@@ -41,6 +41,34 @@
   </div>
 </div>
 
+<!-- Earnings Breakdown -->
+<div class="card" style="margin-bottom: 24px;">
+  <div class="card-header">
+    <span class="card-title">Earnings Breakdown</span>
+    <button class="btn btn-ghost btn-sm" onclick="CP.refreshBreakdown()" title="Refresh">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg>
+    </button>
+  </div>
+  <div id="earnings-breakdown">
+    <div class="empty-state-text" style="padding: 16px 0; text-align: center; color: var(--text-muted);">Loading...</div>
+  </div>
+</div>
+
+<!-- Claim Modal -->
+<div class="modal-overlay" id="claim-modal">
+  <div class="modal" style="max-width: 480px;">
+    <div class="modal-header">
+      <h3 class="modal-title" id="claim-modal-title">Claim Earnings</h3>
+      <button class="modal-close" onclick="CP.closeModal('claim-modal')">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="modal-body" id="claim-modal-body">
+      <!-- Populated by JS -->
+    </div>
+  </div>
+</div>
+
 <!-- Service Cards -->
 <div class="section-header">
   <h2 class="section-title">Deployed Services</h2>
