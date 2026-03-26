@@ -35,7 +35,7 @@ The MVP: deploy, monitor, and manage passive income containers from a single web
 
 Turn CashPilot from a deployment tool into an earnings optimization platform.
 
-- [ ] **Earnings collectors** for top services
+- [x] **Earnings collectors** for top services (5 of 6)
   - [x] Honeygain (JWT auth + /v2/earnings)
   - [x] EarnApp (OAuth cookie auth + /dashboard/api/money/)
   - [x] MystNodes (Tequila API at localhost:4449)
@@ -43,14 +43,15 @@ Turn CashPilot from a deployment tool into an earnings optimization platform.
   - [x] IPRoyal Pawns (JWT auth + /api/v1/users/me/balance-dashboard)
   - [ ] Storj (storagenode API)
 - [ ] **Earnings dashboard** with Chart.js historical charts
-  - [ ] Daily/weekly/monthly aggregation
-  - [ ] Per-service breakdown
+  - [x] Dashboard API: /api/earnings/summary (total, today, month, change %)
+  - [x] Daily chart API: /api/earnings/daily?days=N
+  - [x] Deployed services API: /api/services/deployed (balance, CPU, memory)
+  - [ ] Per-service breakdown view
   - [ ] Total portfolio value over time
 - [ ] **One-click cashout buttons** — per-service payout trigger from the dashboard
-  - [ ] Each service YAML defines a `cashout` section (API endpoint, method, min payout, currency)
+  - [x] Each service YAML defines a `cashout` section (method, dashboard_url, min_amount, currency)
   - [ ] Dashboard shows "Cash Out" button per service when balance >= minimum payout
   - [ ] Supports different payout methods: API call, redirect to external dashboard, or instructions
-  - [ ] Must be implemented for every new service added to the catalog
 - [ ] **Service health scoring** — uptime percentage, restart frequency, earnings-per-hour
 - [ ] **Notifications** — webhook/email alerts for container crashes, earnings drops, payout thresholds
 - [ ] **Auto-claim daily rewards** — automated login + claim for services with daily bonuses (like Honeygain lucky pot)
