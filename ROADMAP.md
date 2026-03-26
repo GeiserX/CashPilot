@@ -42,19 +42,24 @@ Turn CashPilot from a deployment tool into an earnings optimization platform.
   - [x] Traffmonetizer (Bearer token + /api/dashboard)
   - [x] IPRoyal Pawns (JWT auth + /api/v1/users/me/balance-dashboard)
   - [x] Storj (storagenode local API at port 14002)
-- [ ] **Earnings dashboard** with Chart.js historical charts
+- [x] **Earnings dashboard** with Chart.js historical charts
   - [x] Dashboard API: /api/earnings/summary (total, today, month, change %)
   - [x] Daily chart API: /api/earnings/daily?days=N
   - [x] Deployed services API: /api/services/deployed (balance, CPU, memory)
-  - [ ] Per-service breakdown view
+  - [x] Per-service breakdown view with progress bars toward minimum payout
   - [ ] Total portfolio value over time
-- [ ] **One-click cashout buttons** — per-service payout trigger from the dashboard
+- [x] **Manual claim buttons** — per-service payout with eligibility checking
   - [x] Each service YAML defines a `cashout` section (method, dashboard_url, min_amount, currency)
-  - [ ] Dashboard shows "Cash Out" button per service when balance >= minimum payout
-  - [ ] Supports different payout methods: API call, redirect to external dashboard, or instructions
-- [ ] **Service health scoring** — uptime percentage, restart frequency, earnings-per-hour
+  - [x] Breakdown table shows balance vs. threshold with progress bars
+  - [x] Claim modal checks eligibility, shows balance/threshold, then redirects to service dashboard
+  - [x] Supports different payout methods: redirect to external dashboard, API, or manual instructions
+- [x] **Service health scoring** — uptime percentage, restart frequency, score 0-100
+  - [x] health_events table tracks start/stop/restart/crash/check_ok/check_down
+  - [x] 5-minute health check scheduler records container state
+  - [x] Health score displayed on service cards (color-coded badge)
+  - [x] GET /api/health/scores endpoint
 - [ ] **Notifications** — webhook/email alerts for container crashes, earnings drops, payout thresholds
-- [ ] **Auto-claim daily rewards** — automated login + claim for services with daily bonuses (like Honeygain lucky pot)
+- ~~**Auto-claim daily rewards**~~ — deferred; manual claim button covers this (each service has different thresholds and conditions)
 
 ## v1.2 — Multi-Node Fleet Management (in progress)
 
