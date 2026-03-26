@@ -462,6 +462,8 @@ async def api_deploy(request: Request, slug: str, body: DeployRequest) -> dict[s
             hostname=body.hostname,
         )
         await database.save_deployment(slug=slug, container_id=container_id)
+        # Trigger collection so earnings show up quickly
+        asyncio.create_task(_run_collection())
         return {"status": "deployed", "container_id": container_id}
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc))
@@ -664,6 +666,45 @@ async def api_collect(request: Request) -> dict[str, str]:
     _require_writer(request)
     asyncio.create_task(_run_collection())
     return {"status": "collection_started"}
+
+
+# ---------------------------------------------------------------------------
+# API: User Preferences (onboarding state)
+# ---------------------------------------------------------------------------
+
+
+@app.get("/api/preferences")
+async def api_get_preferences(request: Request) -> dict[str, Any]:
+    user = _require_auth_api(request)
+    prefs = await database.get_user_preferences(user["uid"])
+    if not prefs:
+        return {"setup_mode": "fresh", "selected_categories": "[]", "timezone": "UTC", "setup_completed": False}
+    return prefs
+
+
+class PreferencesUpdate(BaseModel):
+    setup_mode: str = "fresh"
+    selected_categories: str = "[]"
+    timezone: str = "UTC"
+    setup_completed: bool = False
+
+
+@app.post("/api/preferences")
+async def api_set_preferences(request: Request, body: PreferencesUpdate) -> dict[str, str]:
+    user = _require_auth_api(request)
+    if body.setup_mode not in ("fresh", "monitoring", "mixed"):
+        raise HTTPException(status_code=400, detail="setup_mode must be fresh, monitoring, or mixed")
+    await database.save_user_preferences(
+        user_id=user["uid"],
+        setup_mode=body.setup_mode,
+        selected_categories=body.selected_categories,
+        timezone=body.timezone,
+        setup_completed=body.setup_completed,
+    )
+    # If setup is completed, trigger an immediate collection
+    if body.setup_completed:
+        asyncio.create_task(_run_collection())
+    return {"status": "saved"}
 
 
 # ---------------------------------------------------------------------------

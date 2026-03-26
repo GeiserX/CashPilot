@@ -419,8 +419,30 @@ const CP = (() => {
     deployed: [],
   };
 
-  function initWizard() {
+  async function initWizard() {
     wizardState = { step: 1, categories: [], selectedServices: [], deployed: [] };
+
+    // Pre-populate from saved preferences
+    try {
+      const prefs = await api('/api/preferences');
+      if (prefs.selected_categories) {
+        const saved = JSON.parse(prefs.selected_categories);
+        if (Array.isArray(saved) && saved.length > 0) {
+          wizardState.categories = saved;
+          // Check matching category cards
+          document.querySelectorAll('.category-card').forEach(card => {
+            const cb = card.querySelector('input[type="checkbox"]');
+            if (cb && saved.includes(cb.value)) {
+              card.classList.add('selected');
+              cb.checked = true;
+            }
+          });
+        }
+      }
+    } catch (err) {
+      // Preferences not available — no pre-population
+    }
+
     updateWizardUI();
 
     // Category card toggles
