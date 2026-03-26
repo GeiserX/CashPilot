@@ -32,6 +32,121 @@
   </div>
 </div>
 
+<!-- Earnings Collection Credentials -->
+<div class="card settings-section">
+  <h3 class="settings-section-title">Earnings Collection</h3>
+  <p class="settings-section-desc">
+    Enter credentials for services you want to track earnings from.
+    You don't need to deploy containers through CashPilot &mdash; just add your credentials and earnings will be collected automatically.
+  </p>
+
+  <!-- Honeygain -->
+  <details class="collector-section">
+    <summary class="collector-header">
+      <span class="collector-name">Honeygain</span>
+      <span class="badge badge-category" id="status-honeygain">Not configured</span>
+    </summary>
+    <div class="collector-body">
+      <div class="form-group">
+        <label class="form-label">Email</label>
+        <input class="form-input collector-input" type="text" data-config="honeygain_email" placeholder="Your Honeygain email">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Password</label>
+        <input class="form-input collector-input" type="password" data-config="honeygain_password" placeholder="Your Honeygain password">
+      </div>
+    </div>
+  </details>
+
+  <!-- EarnApp -->
+  <details class="collector-section">
+    <summary class="collector-header">
+      <span class="collector-name">EarnApp</span>
+      <span class="badge badge-category" id="status-earnapp">Not configured</span>
+    </summary>
+    <div class="collector-body">
+      <div class="form-group">
+        <label class="form-label">OAuth Token</label>
+        <input class="form-input collector-input" type="password" data-config="earnapp_oauth_token"
+               placeholder="From browser: F12 > Application > Cookies > oauth-refresh-token">
+        <div class="form-hint">Open earnapp.com, press F12, go to Application > Cookies, and copy the <code>oauth-refresh-token</code> value.</div>
+      </div>
+    </div>
+  </details>
+
+  <!-- IPRoyal Pawns -->
+  <details class="collector-section">
+    <summary class="collector-header">
+      <span class="collector-name">IPRoyal Pawns</span>
+      <span class="badge badge-category" id="status-iproyal">Not configured</span>
+    </summary>
+    <div class="collector-body">
+      <div class="form-group">
+        <label class="form-label">Email</label>
+        <input class="form-input collector-input" type="text" data-config="iproyal_email" placeholder="Your Pawns email">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Password</label>
+        <input class="form-input collector-input" type="password" data-config="iproyal_password" placeholder="Your Pawns password">
+      </div>
+    </div>
+  </details>
+
+  <!-- Traffmonetizer -->
+  <details class="collector-section">
+    <summary class="collector-header">
+      <span class="collector-name">Traffmonetizer</span>
+      <span class="badge badge-category" id="status-traffmonetizer">Not configured</span>
+    </summary>
+    <div class="collector-body">
+      <div class="form-group">
+        <label class="form-label">API Token</label>
+        <input class="form-input collector-input" type="password" data-config="traffmonetizer_token"
+               placeholder="From browser: F12 > Local Storage > token">
+        <div class="form-hint">Open app.traffmonetizer.com, press F12, go to Application > Local Storage, and copy the <code>token</code> value.</div>
+      </div>
+    </div>
+  </details>
+
+  <!-- MystNodes -->
+  <details class="collector-section">
+    <summary class="collector-header">
+      <span class="collector-name">MystNodes (Mysterium)</span>
+      <span class="badge badge-category" id="status-mysterium">Not configured</span>
+    </summary>
+    <div class="collector-body">
+      <div class="form-group">
+        <label class="form-label">Tequila API URL</label>
+        <input class="form-input collector-input" type="text" data-config="mysterium_api_url"
+               value="http://localhost:4449" placeholder="http://localhost:4449">
+        <div class="form-hint">The Mysterium node's local API. Default: <code>http://localhost:4449</code>. Change if your node runs on another host.</div>
+      </div>
+    </div>
+  </details>
+
+  <!-- Storj -->
+  <details class="collector-section">
+    <summary class="collector-header">
+      <span class="collector-name">Storj</span>
+      <span class="badge badge-category" id="status-storj">Not configured</span>
+    </summary>
+    <div class="collector-body">
+      <div class="form-group">
+        <label class="form-label">Storagenode API URL</label>
+        <input class="form-input collector-input" type="text" data-config="storj_api_url"
+               value="http://localhost:14002" placeholder="http://localhost:14002">
+        <div class="form-hint">Your storagenode's local dashboard API. Default: <code>http://localhost:14002</code>.</div>
+      </div>
+    </div>
+  </details>
+
+  <div style="margin-top: 16px; display: flex; gap: 8px; align-items: center;">
+    <button class="btn btn-primary" onclick="CP.saveCollectorCredentials()">Save Credentials</button>
+    <button class="btn btn-secondary" onclick="CP.testCollectors()">Test Collection Now</button>
+    <span id="collector-save-status" style="font-size: 0.85rem; color: var(--text-muted);"></span>
+  </div>
+</div>
+
 <!-- Referral Codes -->
 <div class="card settings-section">
   <h3 class="settings-section-title">Referral Codes</h3>
@@ -42,18 +157,8 @@
   </div>
 </div>
 
-<!-- Credentials -->
-<div class="card settings-section">
-  <h3 class="settings-section-title">Saved Credentials</h3>
-  <p class="settings-section-desc">Credentials for deployed services. Passwords are stored encrypted.</p>
-
-  <div id="settings-credentials">
-    <p class="form-hint">No saved credentials yet. Deploy a service to add credentials.</p>
-  </div>
-</div>
-
-<!-- Save -->
+<!-- Save General -->
 <div style="display: flex; justify-content: flex-end; margin-top: 8px;">
-  <button class="btn btn-primary btn-lg" onclick="CP.saveSettings()">Save Settings</button>
+  <button class="btn btn-primary btn-lg" onclick="CP.saveSettings()">Save General Settings</button>
 </div>
 {% endblock %}

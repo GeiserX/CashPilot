@@ -883,6 +883,21 @@ const CP = (() => {
     try {
       const config = await api('/api/config');
       populateSettings(config);
+
+      // Populate collector credential fields from config
+      document.querySelectorAll('.collector-input').forEach(input => {
+        const key = input.dataset.config;
+        if (config[key]) {
+          // Mask passwords/tokens but show that a value exists
+          if (input.type === 'password') {
+            input.value = '********';
+            input.placeholder = 'Value saved (enter new to replace)';
+          } else {
+            input.value = config[key];
+          }
+        }
+      });
+      updateCollectorStatuses();
     } catch (err) {
       // Settings may not be available yet
     }
@@ -960,8 +975,63 @@ const CP = (() => {
   }
 
   async function editCredentials(slug) {
-    // Open a prompt-style flow to edit credentials
     toast(`Edit credentials for ${slug} — coming soon`, 'info');
+  }
+
+  async function saveCollectorCredentials() {
+    const inputs = document.querySelectorAll('.collector-input');
+    const data = {};
+    inputs.forEach(input => {
+      const key = input.dataset.config;
+      const val = input.value.trim();
+      // Only save non-empty, non-masked values
+      if (val && val !== '********') {
+        data[key] = val;
+      }
+    });
+
+    if (Object.keys(data).length === 0) {
+      toast('No credentials to save', 'warning');
+      return;
+    }
+
+    try {
+      await api('/api/config', { method: 'POST', body: { data } });
+      toast('Credentials saved', 'success');
+      updateCollectorStatuses();
+    } catch (err) {
+      toast(`Save failed: ${err.message}`, 'error');
+    }
+  }
+
+  async function testCollectors() {
+    const statusEl = document.getElementById('collector-save-status');
+    if (statusEl) statusEl.textContent = 'Running collection...';
+    try {
+      await api('/api/collect', { method: 'POST' });
+      toast('Collection started. Check dashboard in a moment.', 'success');
+      if (statusEl) statusEl.textContent = 'Collection triggered';
+    } catch (err) {
+      toast(`Collection failed: ${err.message}`, 'error');
+      if (statusEl) statusEl.textContent = '';
+    }
+  }
+
+  function updateCollectorStatuses() {
+    const configuredServices = ['honeygain', 'earnapp', 'iproyal', 'traffmonetizer', 'mysterium', 'storj'];
+    configuredServices.forEach(slug => {
+      const badge = document.getElementById(`status-${slug}`);
+      if (!badge) return;
+      const inputs = document.querySelectorAll(`.collector-input[data-config^="${slug}_"]`);
+      let hasValue = false;
+      inputs.forEach(input => {
+        if (input.value.trim() && input.value !== '********') hasValue = true;
+      });
+      if (hasValue) {
+        badge.textContent = 'Configured';
+        badge.className = 'badge badge-deployed';
+      }
+    });
   }
 
   // -----------------------------------------------------------
@@ -1054,6 +1124,8 @@ const CP = (() => {
     openServiceDetail,
     loadDetailLogs,
     saveSettings,
+    saveCollectorCredentials,
+    testCollectors,
     editCredentials,
     filterCatalog,
   };

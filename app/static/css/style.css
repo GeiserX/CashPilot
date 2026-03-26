@@ -1466,3 +1466,46 @@ img { max-width: 100%; }
   .onboarding-options { grid-template-columns: 1fr; }
   .onboarding-card { padding: 1.5rem; margin: 1rem; }
 }
+
+/* ----- Collector Credential Sections ----- */
+.collector-section {
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  margin-bottom: 8px;
+  background: var(--bg-secondary);
+}
+.collector-section[open] {
+  border-color: var(--border-light);
+}
+.collector-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  cursor: pointer;
+  user-select: none;
+  list-style: none;
+}
+.collector-header::-webkit-details-marker { display: none; }
+.collector-header::before {
+  content: '';
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-right: 2px solid var(--text-muted);
+  border-bottom: 2px solid var(--text-muted);
+  transform: rotate(-45deg);
+  margin-right: 12px;
+  transition: transform 0.15s;
+}
+.collector-section[open] .collector-header::before {
+  transform: rotate(45deg);
+}
+.collector-name {
+  font-weight: 600;
+  font-size: 0.95rem;
+  color: var(--text-primary);
+}
+.collector-body {
+  padding: 0 16px 16px;
+}
