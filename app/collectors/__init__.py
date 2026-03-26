@@ -10,18 +10,27 @@ import logging
 from typing import Any
 
 from app.collectors.base import BaseCollector, EarningsResult
+from app.collectors.earnapp import EarnAppCollector
 from app.collectors.honeygain import HoneygainCollector
+from app.collectors.mystnodes import MystNodesCollector
+from app.collectors.traffmonetizer import TraffmonetizerCollector
 
 logger = logging.getLogger(__name__)
 
 # slug -> collector class
 COLLECTOR_MAP: dict[str, type[BaseCollector]] = {
     "honeygain": HoneygainCollector,
+    "earnapp": EarnAppCollector,
+    "mysterium": MystNodesCollector,
+    "traffmonetizer": TraffmonetizerCollector,
 }
 
 # Map of slug -> list of config keys needed to instantiate the collector
 _COLLECTOR_ARGS: dict[str, list[str]] = {
     "honeygain": ["email", "password"],
+    "earnapp": ["oauth_token"],
+    "mysterium": ["api_url"],
+    "traffmonetizer": ["token"],
 }
 
 
