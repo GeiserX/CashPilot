@@ -250,12 +250,14 @@ const CP = (() => {
       <span class="payout-label">${pctToMin.toFixed(0)}%</span>
     ` : '<span style="color:var(--text-muted);">--</span>';
 
-    // Action buttons
-    const claimBtn = co.dashboard_url
-      ? `<button class="btn btn-sm ${eligible ? 'btn-success' : 'btn-ghost'} btn-icon" onclick="CP.openClaimModal('${svc.slug}')" title="${eligible ? 'Claim' : 'Details'}">
+    // Action buttons — always render cashout button for consistent width
+    const claimTitle = co.dashboard_url
+      ? (eligible ? 'Cash out earnings' : 'View payout details')
+      : 'No payout info available';
+    const claimDisabled = !co.dashboard_url;
+    const claimBtn = `<button class="btn btn-sm ${eligible ? 'btn-success' : 'btn-ghost'} btn-icon" onclick="${claimDisabled ? '' : `CP.openClaimModal('${svc.slug}')`}" title="${claimTitle}"${claimDisabled ? ' disabled' : ''}>
            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>
-         </button>`
-      : '';
+         </button>`;
 
     return `
     <tr class="breakdown-row" data-slug="${escapeHtml(svc.slug)}">
@@ -269,13 +271,13 @@ const CP = (() => {
       <td style="text-align:center;">${progressBar}</td>
       <td style="text-align:center; white-space:nowrap;">
         ${claimBtn}
-        <button class="btn btn-ghost btn-sm btn-icon" onclick="CP.restartService('${svc.slug}')" title="Restart">
+        <button class="btn btn-ghost btn-sm btn-icon" onclick="CP.restartService('${svc.slug}')" title="Restart container">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg>
         </button>
-        <button class="btn btn-ghost btn-sm btn-icon" onclick="CP.stopService('${svc.slug}')" title="Stop">
+        <button class="btn btn-ghost btn-sm btn-icon" onclick="CP.stopService('${svc.slug}')" title="Stop container">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="6" width="12" height="12" rx="1"/></svg>
         </button>
-        <button class="btn btn-ghost btn-sm btn-icon" onclick="CP.viewLogs('${svc.slug}')" title="Logs">
+        <button class="btn btn-ghost btn-sm btn-icon" onclick="CP.viewLogs('${svc.slug}')" title="View container logs">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
         </button>
       </td>
