@@ -12,8 +12,6 @@ description: >
 short_description: Bandwidth sharing - UUID per device, works on VPS
 
 referral:
-  url_template: "https://peer.proxyrack.com/ref/{code}"
-  code: "mpwiok3xlaxeycnn5znqlg7ipjeutxyxr6xl7vmn"
   signup_url: "https://peer.proxyrack.com/ref/mpwiok3xlaxeycnn5znqlg7ipjeutxyxr6xl7vmn"
   bonus:
     referrer: "Percentage of referral earnings"

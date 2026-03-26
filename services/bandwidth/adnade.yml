@@ -11,8 +11,6 @@ description: >
 short_description: Ad-based earning - browser surfbar, views ads automatically
 
 referral:
-  url_template: ""
-  code: ""
   signup_url: "https://adnade.com"
   bonus:
     referrer: ""

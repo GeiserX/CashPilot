@@ -12,8 +12,6 @@ description: >
 short_description: Decentralized storage node - ~$1.50/TB stored + $2/TB egress
 
 referral:
-  url_template: ""
-  code: ""
   signup_url: "https://www.storj.io/node"
   bonus:
     referrer: ""

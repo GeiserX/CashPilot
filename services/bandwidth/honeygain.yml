@@ -11,8 +11,6 @@ description: >
 short_description: Bandwidth sharing - most established platform
 
 referral:
-  url_template: "https://r.honeygain.me/{code}"
-  code: "SERGIB4014"
   signup_url: "https://dashboard.honeygain.com/ref/SERGIB4014"
   bonus:
     referrer: "25% of referral earnings for life"

@@ -10,8 +10,6 @@ description: >
 short_description: Bandwidth sharing - crypto payout, email auth
 
 referral:
-  url_template: ""
-  code: ""
   signup_url: "https://wizardgain.com"
   bonus:
     referrer: ""

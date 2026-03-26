@@ -10,8 +10,6 @@ description: >
 short_description: DePIN bandwidth/compute - crypto and PayPal payouts
 
 referral:
-  url_template: ""
-  code: ""
   signup_url: "https://passiveapp.io"
   bonus:
     referrer: ""

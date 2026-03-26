@@ -33,7 +33,7 @@ SpeedShare lets you earn by sharing your unused internet bandwidth. Residential 
 
 ### 1. Create an account
 
-Sign up at [SpeedShare](https://speedshare.app/?ref={code}).
+Sign up at [SpeedShare](https://speedshare.app).
 
 ### 2. Get your credentials
 

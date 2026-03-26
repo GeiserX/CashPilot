@@ -10,8 +10,6 @@ description: >
 short_description: Bandwidth sharing - unlimited devices, API key auth, crypto payout
 
 referral:
-  url_template: ""
-  code: ""
   signup_url: "https://antgain.app"
   bonus:
     referrer: ""

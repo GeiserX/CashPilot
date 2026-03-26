@@ -12,8 +12,6 @@ description: >
 short_description: GPU compute on Solana - NOS tokens, RTX 3060 ~$0.048/hr
 
 referral:
-  url_template: ""
-  code: ""
   signup_url: "https://nosana.io"
   bonus:
     referrer: ""

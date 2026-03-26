@@ -10,8 +10,6 @@ description: >
 short_description: Bandwidth sharing - machine ID based
 
 referral:
-  url_template: ""
-  code: ""
   signup_url: "https://spide.app"
   bonus:
     referrer: ""

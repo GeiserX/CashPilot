@@ -10,8 +10,6 @@ description: >
 short_description: Bandwidth sharing - crypto payout, user ID auth
 
 referral:
-  url_template: ""
-  code: ""
   signup_url: "https://proxybase.io"
   bonus:
     referrer: ""

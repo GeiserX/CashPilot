@@ -121,7 +121,7 @@ def _service_name_link(svc: dict) -> str:
     """Service name linked to referral signup URL, fallback to website."""
     name = svc["name"]
     ref = svc.get("referral", {})
-    signup_url = ref.get("signup_url", ref.get("url_template", ""))
+    signup_url = ref.get("signup_url", "")
     if signup_url:
         return f"[{name}]({signup_url})"
     website = svc.get("website", "")
@@ -400,7 +400,7 @@ def generate_guide(svc: dict) -> str:
     status = svc.get("status", "active")
 
     ref = svc.get("referral", {})
-    signup_url = ref.get("signup_url", ref.get("url_template", website))
+    signup_url = ref.get("signup_url", website)
     ref_bonus_referrer = ref.get("bonus", {}).get("referrer", "N/A")
     ref_bonus_referee = ref.get("bonus", {}).get("referee", "N/A")
 

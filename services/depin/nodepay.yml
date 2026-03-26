@@ -11,8 +11,6 @@ description: >
 short_description: DePIN bandwidth sharing for AI - browser extension
 
 referral:
-  url_template: "https://app.nodepay.ai/register?ref={code}"
-  code: "0wzzyznen64j9zx"
   signup_url: "https://app.nodepay.ai/register?ref=0wzzyznen64j9zx"
   bonus:
     referrer: "Bonus points per active referral"

@@ -12,8 +12,6 @@ description: >
 short_description: Bandwidth sharing - simple CID-based setup
 
 referral:
-  url_template: "https://packetstream.io/?psr={code}"
-  code: "7xgZ"
   signup_url: "https://packetstream.io/?psr=7xgZ"
   bonus:
     referrer: "$0.10 per GB from referral traffic"

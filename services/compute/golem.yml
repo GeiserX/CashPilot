@@ -12,8 +12,6 @@ description: >
 short_description: Decentralized compute marketplace - GLM tokens via Yagna agent
 
 referral:
-  url_template: ""
-  code: ""
   signup_url: "https://golem.network"
   bonus:
     referrer: ""

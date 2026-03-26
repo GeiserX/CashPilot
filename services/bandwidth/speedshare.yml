@@ -11,9 +11,7 @@ description: >
 short_description: Bandwidth sharing - residential only, no official Docker
 
 referral:
-  url_template: "https://speedshare.app/?ref={code}"
-  code: ""
-  signup_url: "https://speedshare.app/?ref={code}"
+  signup_url: "https://speedshare.app"
   bonus:
     referrer: "Percentage of referral earnings"
     referee: ""

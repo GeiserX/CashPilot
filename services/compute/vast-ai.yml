@@ -12,8 +12,6 @@ description: >
 short_description: GPU marketplace - set your own prices, RTX 3090 ~$0.20-0.40/hr
 
 referral:
-  url_template: ""
-  code: ""
   signup_url: "https://vast.ai"
   bonus:
     referrer: ""

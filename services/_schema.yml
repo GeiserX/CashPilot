@@ -11,9 +11,7 @@
 # short_description: One line (for tables)
 
 # referral:
-#   url_template: URL with {code} placeholder
-#   code: "" (owner fills in)
-#   signup_url: Direct signup page URL (referral code appended or embedded)
+#   signup_url: Full signup URL with referral code already embedded
 #   bonus:
 #     referrer: What the referrer gets
 #     referee: What the new user gets

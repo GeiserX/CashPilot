@@ -11,8 +11,6 @@ description: >
 short_description: Bandwidth sharing - official Docker image, email/password auth
 
 referral:
-  url_template: ""
-  code: ""
   signup_url: "https://www.packetshare.io/register.html"
   bonus:
     referrer: ""

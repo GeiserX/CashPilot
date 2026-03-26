@@ -11,8 +11,6 @@ description: >
 short_description: Bandwidth sharing - 15% lifetime referral, works on VPS
 
 referral:
-  url_template: "https://proxylite.ru/?r={code}"
-  code: "KMUPRZIZ"
   signup_url: "https://proxylite.ru/?r=KMUPRZIZ"
   bonus:
     referrer: "15% of referral earnings for life"

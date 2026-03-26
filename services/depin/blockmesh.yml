@@ -12,8 +12,6 @@ description: >
 short_description: DePIN bandwidth marketplace on Solana - 700K+ nodes
 
 referral:
-  url_template: ""
-  code: ""
   signup_url: "https://blockmesh.xyz"
   bonus:
     referrer: ""

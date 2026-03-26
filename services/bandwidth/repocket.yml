@@ -11,8 +11,6 @@ description: >
 short_description: Bandwidth sharing - residential only, max 5 devices, env-based auth
 
 referral:
-  url_template: ""
-  code: ""
   signup_url: "https://repocket.com/"
   bonus:
     referrer: ""

@@ -12,8 +12,6 @@ description: >
 short_description: DePIN AI network - certificate expired, possibly dead
 
 referral:
-  url_template: ""
-  code: ""
   signup_url: "https://network3.io"
   bonus:
     referrer: ""

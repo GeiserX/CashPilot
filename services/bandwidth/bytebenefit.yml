@@ -10,8 +10,6 @@ description: >
 short_description: Bandwidth sharing - PayPal/Stripe payouts, desktop app
 
 referral:
-  url_template: ""
-  code: ""
   signup_url: "https://bytebenefit.com"
   bonus:
     referrer: ""

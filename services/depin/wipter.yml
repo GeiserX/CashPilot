@@ -11,8 +11,6 @@ description: >
 short_description: Bandwidth sharing - claims up to $1/GB, min payout $20
 
 referral:
-  url_template: "https://wipter.com/en/refer-a-friend?ref={code}"
-  code: ""
   signup_url: "https://wipter.com/en/refer-a-friend"
   bonus:
     referrer: "Percentage of referral earnings"

@@ -12,8 +12,6 @@ description: >
 short_description: Bandwidth sharing - decentralized network monitoring, works on VPS
 
 referral:
-  url_template: ""
-  code: ""
   signup_url: "https://app.bitping.com"
   bonus:
     referrer: ""

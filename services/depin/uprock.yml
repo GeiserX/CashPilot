@@ -11,8 +11,6 @@ description: >
 short_description: DePIN internet sharing - crypto payout, browser extension primary
 
 referral:
-  url_template: ""
-  code: ""
   signup_url: "https://uprock.com"
   bonus:
     referrer: ""

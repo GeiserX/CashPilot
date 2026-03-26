@@ -10,8 +10,6 @@ description: >
 short_description: Bandwidth sharing - newer service, desktop app
 
 referral:
-  url_template: "https://bytelixir.com/r/{code}"
-  code: "OYEIRE0VSZBZ"
   signup_url: "https://bytelixir.com/r/OYEIRE0VSZBZ"
   bonus:
     referrer: ""

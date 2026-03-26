@@ -788,7 +788,7 @@ const CP = (() => {
 
   function renderServiceSetupForm(svc) {
     const signupUrl = svc.referral && svc.referral.signup_url
-      ? svc.referral.signup_url.replace('{code}', svc.referral.code || '')
+      ? svc.referral.signup_url
       : svc.website || '#';
 
     // Manual-only services: show signup link + earnings tracking notice
@@ -1037,7 +1037,7 @@ const CP = (() => {
       </div>` : '';
 
     const signupUrl = svc.referral && svc.referral.signup_url
-      ? svc.referral.signup_url.replace('{code}', svc.referral.code || '')
+      ? svc.referral.signup_url
       : svc.website || '#';
 
     return `

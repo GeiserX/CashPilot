@@ -11,8 +11,6 @@ description: >
 short_description: Decentralized VPN/bandwidth - JWT auth, direct or proxy mode
 
 referral:
-  url_template: ""
-  code: ""
   signup_url: "https://ur.io"
   bonus:
     referrer: ""

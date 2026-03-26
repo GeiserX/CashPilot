@@ -12,8 +12,6 @@ description: >
 short_description: Bandwidth sharing - 10% lifetime referral, $3 signup bonus
 
 referral:
-  url_template: "https://pawns.app?r={code}"
-  code: "19266874"
   signup_url: "https://pawns.app?r=19266874"
   bonus:
     referrer: "10% of referral earnings for life"

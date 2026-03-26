@@ -12,8 +12,6 @@ description: >
 short_description: Bandwidth sharing - works on VPS, token-based auth
 
 referral:
-  url_template: "https://traffmonetizer.com/?aff={code}"
-  code: "2111758"
   signup_url: "https://traffmonetizer.com/?aff=2111758"
   bonus:
     referrer: "10% of referral earnings for life"

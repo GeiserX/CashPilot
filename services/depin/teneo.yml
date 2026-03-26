@@ -11,8 +11,6 @@ description: >
 short_description: DePIN browser extension - 2000 pts per referral
 
 referral:
-  url_template: "https://dashboard.teneo.pro/?code={code}"
-  code: "CAqef"
   signup_url: "https://dashboard.teneo.pro/?code=CAqef"
   bonus:
     referrer: "2000 Teneo Points per referral"

@@ -5,39 +5,23 @@ status: active
 website: https://www.ebesucher.com
 description: >
   Ebesucher is a traffic exchange platform where you earn credits by visiting
-  websites through an automated surfbar. Runs in a headless browser container
-  (Firefox or Chromium). Not a traditional bandwidth-sharing service — it
-  generates traffic by browsing websites automatically. Requires a browser
-  container which uses more resources than typical bandwidth apps.
-short_description: Traffic exchange surfbar - browser-based, auto website visits
+  websites through an automated surfbar. Runs as a browser extension/addon.
+  Not a traditional bandwidth-sharing service — it generates traffic by
+  browsing websites automatically.
+short_description: Traffic exchange surfbar - browser extension
 
 referral:
-  url_template: "https://www.ebesucher.com/?ref={code}"
-  code: "geiserx"
   signup_url: "https://www.ebesucher.com/?ref=geiserx"
   bonus:
     referrer: ""
     referee: ""
 
 docker:
-  image: jlesage/firefox
-  platforms: [linux/amd64]
-  env:
-    - key: EBESUCHER_USERNAME
-      label: "Username"
-      required: true
-      secret: false
-      description: "Your Ebesucher username for the surfbar URL"
-    - key: VNC_PASSWORD
-      label: "VNC Password"
-      required: false
-      secret: true
-      description: "Password for VNC access to the browser"
-      default: "cashpilot"
-  ports:
-    - "5800:5800"
-  volumes:
-    - "ebesucher-data:/config"
+  image: ""
+  platforms: []
+  env: []
+  ports: []
+  volumes: []
   command: ""
   network_mode: ""
 
@@ -58,7 +42,7 @@ earnings:
   monthly_high: 2
   currency: EUR
   per: "device"
-  notes: "Earnings in BTP points convertible to EUR. Uses significant CPU/memory for browser. Needs periodic restart."
+  notes: "Earnings in BTP points convertible to EUR. Browser extension only."
 
 cashout:
   method: redirect
@@ -67,8 +51,8 @@ cashout:
   currency: EUR
   notes: "Euro payout via PayPal or bank transfer."
 
-platforms: [linux, docker]
+platforms: [browser-extension]
 
 collector:
   type: manual
-  notes: "No API. Earnings visible in Ebesucher dashboard only."
+  notes: "Browser extension only. No API. Earnings visible in Ebesucher dashboard only."

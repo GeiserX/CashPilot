@@ -113,7 +113,7 @@
     <div class="card" style="margin-bottom: 16px;">
       <h3 class="card-title" style="margin-bottom: 12px;">Deploy</h3>
 
-      {% set signup_url = service.referral.signup_url.replace('{code}', service.referral.code or '') if service.referral and service.referral.signup_url else service.website or '#' %}
+      {% set signup_url = service.referral.signup_url if service.referral and service.referral.signup_url else service.website or '#' %}
       <div style="margin-bottom: 16px;">
         <p style="color: var(--text-secondary); margin-bottom: 8px;">
           New to {{ service.name }}?

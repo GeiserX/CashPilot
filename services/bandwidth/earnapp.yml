@@ -11,8 +11,6 @@ description: >
 short_description: Bandwidth sharing - backed by Bright Data
 
 referral:
-  url_template: "https://earnapp.com/i/{code}"
-  code: "TSMD9wSm"
   signup_url: "https://earnapp.com/i/TSMD9wSm"
   bonus:
     referrer: "10% of referral earnings for life"

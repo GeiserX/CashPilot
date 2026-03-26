@@ -11,9 +11,7 @@ description: >
 short_description: DePIN wireless network - browser extension and hardware box
 
 referral:
-  url_template: "https://dawninternet.com?code={code}"
-  code: ""
-  signup_url: "https://dawninternet.com?code={code}"
+  signup_url: "https://dawninternet.com"
   bonus:
     referrer: "Bonus Dawn Points per active referral"
     referee: "Bonus Dawn Points on signup"
