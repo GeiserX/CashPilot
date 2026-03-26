@@ -18,7 +18,7 @@ referral:
 
 docker:
   image: ""
-  platforms: []
+  platforms: [browser-extension]
   env: []
   ports: []
   volumes: []
@@ -51,7 +51,7 @@ cashout:
   currency: GRADIENT
   notes: "Points-based system. Token conversion TBD."
 
-platforms: [browser_extension]
+platforms: [browser-extension]
 
 collector:
   type: scrape

@@ -19,7 +19,7 @@ referral:
 
 docker:
   image: ""
-  platforms: []
+  platforms: [browser-extension]
   env: []
   ports: []
   volumes: []
@@ -52,7 +52,7 @@ cashout:
   currency: BMESH
   notes: "Token-based rewards. Claim from dashboard when available."
 
-platforms: [browser_extension]
+platforms: [browser-extension]
 
 collector:
   type: scrape

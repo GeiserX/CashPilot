@@ -71,8 +71,6 @@ Services CashPilot can deploy and manage automatically via Docker.
 
 | Service | Residential IP | VPS IP | Devices / Acct | Devices / IP | Payout |
 |---------|:-:|:-:|:-:|:-:|--------|
-| [Adnade](https://adnade.com) | ✅ | ✅ | Unlimited | 1 | PayPal, Crypto |
-| [AntGain](https://antgain.app) | ✅ | ❌ | Unlimited | 1 | Crypto |
 | [Bitping](https://app.bitping.com) | ✅ | ✅ | Unlimited | 1 | Crypto (SOL) |
 | [Earn.fm](https://earn.fm/ref/GEISYB91) | ✅ | ✅ | Unlimited | 1 | Crypto |
 | [EarnApp](https://earnapp.com/i/TSMD9wSm) | ✅ | ❌ | 15 | 1 | PayPal, Gift Cards |
@@ -101,14 +99,11 @@ These services have no Docker image. CashPilot lists them in the catalog with si
 | Service | Residential IP | VPS IP | Devices / Acct | Devices / IP | Payout | Status |
 |---------|:-:|:-:|:-:|:-:|--------|--------|
 | [BlockMesh](https://blockmesh.xyz) | ✅ | ❌ | Unlimited | 1 | Crypto (BMESH) | Active |
+| [Bytelixir](https://bytelixir.com/r/OYEIRE0VSZBZ) | ✅ | ❌ | Unlimited | 1 | Crypto | Active |
 | [Ebesucher](https://www.ebesucher.com/?ref=geiserx) | ✅ | ✅ | Unlimited | 1 | PayPal | Active |
-| [Bytebenefit](https://bytebenefit.com) | ✅ | ❌ | Unlimited | 1 | PayPal | Beta |
-| [Bytelixir](https://bytelixir.com/r/OYEIRE0VSZBZ) | ✅ | ❌ | Unlimited | 1 | Crypto | Beta |
 | [Gradient Network](https://app.gradient.network/signup?referralCode=YSKMY7) | ✅ | ❌ | Unlimited | 1 | Crypto (GRADIENT) | Active |
 | [Grass](https://app.getgrass.io/register/?referralCode=kn8FNEPnUr2tMqE) | ✅ | ❌ | Unlimited | 1 | Crypto (GRASS) | Active |
 | [Nodepay](https://app.nodepay.ai/register?ref=0wzzyznen64j9zx) | ✅ | ❌ | Unlimited | 1 | Crypto (NC) | Active |
-| [PassiveApp](https://passiveapp.io) | ✅ | ❌ | Unlimited | 1 | Crypto, PayPal | Beta |
-| [Spide](https://spide.app) | ✅ | ❌ | Unlimited | 1 | Crypto | Active |
 | [Teneo Protocol](https://dashboard.teneo.pro/?code=CAqef) | ✅ | ❌ | Unlimited | 1 | Crypto (TENEO) | Active |
 | [Uprock](https://uprock.com) | ✅ | ❌ | Unlimited | 1 | Crypto | Active |
 | [Wipter](https://wipter.com/en/refer-a-friend) | ✅ | ❌ | Unlimited | 1 | PayPal, Crypto | Active |
