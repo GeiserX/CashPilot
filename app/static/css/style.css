@@ -666,6 +666,9 @@ img { max-width: 100%; }
   padding: 6px;
   min-width: 32px;
   min-height: 32px;
+  width: 32px;
+  height: 32px;
+  box-sizing: border-box;
 }
 
 /* ----- Forms ----- */
