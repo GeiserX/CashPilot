@@ -140,6 +140,40 @@
     </div>
   </details>
 
+  <!-- Grass -->
+  <details class="collector-section">
+    <summary class="collector-header">
+      <span class="collector-name">Grass</span>
+      <span class="badge badge-category" id="status-grass">Not configured</span>
+    </summary>
+    <div class="collector-body">
+      <div class="form-group">
+        <label class="form-label">Access Token</label>
+        <input class="form-input collector-input" type="password" data-config="grass_access_token"
+               placeholder="From browser: F12 > Console > localStorage.getItem('token')">
+        <div class="form-hint">Open <a href="https://app.grass.io" target="_blank">app.grass.io</a>, log in, press F12, go to Console, and run: <code>localStorage.getItem('token')</code></div>
+      </div>
+    </div>
+  </details>
+
+  <!-- Bytelixir -->
+  <details class="collector-section">
+    <summary class="collector-header">
+      <span class="collector-name">Bytelixir</span>
+      <span class="badge badge-category" id="status-bytelixir">Not configured</span>
+    </summary>
+    <div class="collector-body">
+      <div class="form-group">
+        <label class="form-label">Email</label>
+        <input class="form-input collector-input" type="text" data-config="bytelixir_email" placeholder="Your Bytelixir email">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Password</label>
+        <input class="form-input collector-input" type="password" data-config="bytelixir_password" placeholder="Your Bytelixir password">
+      </div>
+    </div>
+  </details>
+
   <div style="margin-top: 16px; display: flex; gap: 8px; align-items: center;">
     <button class="btn btn-primary" onclick="CP.saveCollectorCredentials()">Save Credentials</button>
     <button class="btn btn-secondary" onclick="CP.testCollectors()">Test Collection Now</button>

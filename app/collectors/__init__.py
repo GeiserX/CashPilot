@@ -11,8 +11,10 @@ from typing import Any
 
 from app.collectors.base import BaseCollector, EarningsResult
 from app.collectors.bitping import BitpingCollector
+from app.collectors.bytelixir import BytelixirCollector
 from app.collectors.earnapp import EarnAppCollector
 from app.collectors.earnfm import EarnFMCollector
+from app.collectors.grass import GrassCollector
 from app.collectors.honeygain import HoneygainCollector
 from app.collectors.iproyal import IPRoyalCollector
 from app.collectors.mystnodes import MystNodesCollector
@@ -37,6 +39,8 @@ COLLECTOR_MAP: dict[str, type[BaseCollector]] = {
     "bitping": BitpingCollector,
     "earnfm": EarnFMCollector,
     "packetstream": PacketStreamCollector,
+    "grass": GrassCollector,
+    "bytelixir": BytelixirCollector,
 }
 
 # Map of slug -> list of config keys needed to instantiate the collector
@@ -52,6 +56,8 @@ _COLLECTOR_ARGS: dict[str, list[str]] = {
     "bitping": ["email", "password"],
     "earnfm": ["email", "password"],
     "packetstream": ["auth_token"],
+    "grass": ["access_token"],
+    "bytelixir": ["email", "password"],
 }
 
 
