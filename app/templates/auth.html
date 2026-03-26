@@ -3,10 +3,13 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="color-scheme" content="dark">
+  <meta name="color-scheme" content="dark light">
   <title>{{ title }} - CashPilot</title>
   <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
   <link rel="stylesheet" href="/static/css/style.css">
+  <script>
+    (function(){var t=localStorage.getItem('cp-theme')||'dark';document.documentElement.setAttribute('data-theme',t)})();
+  </script>
   <style>
     body { display: flex; align-items: center; justify-content: center; min-height: 100vh; background: var(--bg-primary); }
     .auth-card {

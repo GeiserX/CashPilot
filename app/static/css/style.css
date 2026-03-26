@@ -35,6 +35,32 @@
   --transition: 150ms ease;
 }
 
+/* ----- Light Theme ----- */
+:root[data-theme="light"] {
+  --bg-primary: #f8f9fb;
+  --bg-secondary: #ffffff;
+  --bg-tertiary: #f0f1f4;
+  --bg-hover: #e8e9ed;
+  --bg-log: #f4f5f7;
+  --border-color: #d4d6dc;
+  --border-light: #bfc2ca;
+
+  --text-primary: #1a1d26;
+  --text-secondary: #4b5563;
+  --text-muted: #6b7280;
+
+  --accent: #2563eb;
+  --accent-hover: #1d4ed8;
+  --accent-soft: rgba(37, 99, 235, 0.10);
+
+  --success: #16a34a;
+  --success-soft: rgba(22, 163, 74, 0.10);
+  --warning: #d97706;
+  --warning-soft: rgba(217, 119, 6, 0.10);
+  --error: #dc2626;
+  --error-soft: rgba(220, 38, 38, 0.10);
+}
+
 /* ----- Reset & Base ----- */
 *, *::before, *::after {
   box-sizing: border-box;
@@ -211,6 +237,28 @@ img { max-width: 100%; }
   color: var(--error);
   background: var(--error-soft);
 }
+
+.topbar-icon-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  padding: 6px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: color var(--transition), background var(--transition);
+}
+.topbar-icon-btn:hover {
+  color: var(--text-primary);
+  background: var(--bg-hover);
+}
+
+/* Theme toggle icon visibility */
+#theme-toggle .icon-moon { display: none; }
+:root[data-theme="light"] #theme-toggle .icon-sun { display: none; }
+:root[data-theme="light"] #theme-toggle .icon-moon { display: block; }
 
 .topbar-earnings {
   display: flex;
