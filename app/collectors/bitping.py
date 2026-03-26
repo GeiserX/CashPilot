@@ -1,7 +1,7 @@
-"""Honeygain earnings collector.
+"""Bitping earnings collector.
 
-Authenticates via JWT and fetches the current balance from the
-Honeygain API.
+Authenticates via email/password and fetches earnings from the
+Bitping nodes API.
 """
 
 from __future__ import annotations
@@ -14,13 +14,13 @@ from app.collectors.base import BaseCollector, EarningsResult
 
 logger = logging.getLogger(__name__)
 
-API_BASE = "https://dashboard.honeygain.com/api"
+API_BASE = "https://nodes.bitping.com"
 
 
-class HoneygainCollector(BaseCollector):
-    """Collect earnings from Honeygain's REST API."""
+class BitpingCollector(BaseCollector):
+    """Collect earnings from Bitping's API."""
 
-    platform = "honeygain"
+    platform = "bitping"
 
     def __init__(self, email: str, password: str) -> None:
         self.email = email
@@ -28,24 +28,28 @@ class HoneygainCollector(BaseCollector):
         self._token: str | None = None
 
     async def _authenticate(self, client: httpx.AsyncClient) -> str:
-        """Obtain a JWT token via email/password login."""
+        """Obtain JWT token via email/password login."""
         resp = await client.post(
-            f"{API_BASE}/v1/users/tokens",
+            f"{API_BASE}/auth/login",
             json={"email": self.email, "password": self.password},
-            headers={
-                "User-Agent": "Mozilla/5.0",
-                "Referer": "https://dashboard.honeygain.com/",
-            },
         )
         resp.raise_for_status()
-        data = resp.json()
-        token = data.get("data", {}).get("access_token", "")
+        # Token comes as HttpOnly cookie named "token"
+        token = ""
+        for name, value in client.cookies.items():
+            if name == "token":
+                token = value
+                break
+        # Also check response body
         if not token:
-            raise ValueError("No access_token in Honeygain login response")
+            data = resp.json()
+            token = data.get("token", "")
+        if not token:
+            raise ValueError("No token in Bitping login response")
         return token
 
     async def collect(self) -> EarningsResult:
-        """Fetch current Honeygain balance."""
+        """Fetch current Bitping earnings."""
         try:
             async with httpx.AsyncClient(timeout=30) as client:
                 if not self._token:
@@ -53,34 +57,30 @@ class HoneygainCollector(BaseCollector):
 
                 headers = {"Authorization": f"Bearer {self._token}"}
                 resp = await client.get(
-                    f"{API_BASE}/v1/users/balances",
+                    f"{API_BASE}/api/v2/payouts/earnings",
                     headers=headers,
                 )
 
-                # Token may have expired — retry once
                 if resp.status_code == 401:
                     self._token = await self._authenticate(client)
                     headers = {"Authorization": f"Bearer {self._token}"}
                     resp = await client.get(
-                        f"{API_BASE}/v1/users/balances",
+                        f"{API_BASE}/api/v2/payouts/earnings",
                         headers=headers,
                     )
 
                 resp.raise_for_status()
                 data = resp.json()
 
-                # Balance is in cents (usd_cents)
-                payout = data.get("data", {}).get("payout", {})
-                usd_cents = float(payout.get("usd_cents", 0))
-                balance_usd = round(usd_cents / 100, 4)
+                balance = float(data.get("usdEarnings", 0))
 
                 return EarningsResult(
                     platform=self.platform,
-                    balance=balance_usd,
+                    balance=round(balance, 4),
                     currency="USD",
                 )
         except Exception as exc:
-            logger.error("Honeygain collection failed: %s", exc)
+            logger.error("Bitping collection failed: %s", exc)
             return EarningsResult(
                 platform=self.platform,
                 balance=0.0,

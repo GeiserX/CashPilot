@@ -1,7 +1,7 @@
 """MystNodes (Mysterium Network) earnings collector.
 
-Fetches earnings data from the local Tequila API running on
-the Mysterium node at port 4449.
+Uses the MystNodes cloud API at my.mystnodes.com to fetch total earnings.
+Falls back to local Tequila API if cloud credentials are not configured.
 """
 
 from __future__ import annotations
@@ -14,61 +14,97 @@ from app.collectors.base import BaseCollector, EarningsResult
 
 logger = logging.getLogger(__name__)
 
+CLOUD_BASE = "https://my.mystnodes.com/api/v2"
+
 
 class MystNodesCollector(BaseCollector):
-    """Collect earnings from MystNodes Tequila API."""
+    """Collect earnings from MystNodes cloud API."""
 
     platform = "mysterium"
 
     def __init__(
         self,
-        api_url: str = "http://localhost:4449",
+        email: str = "",
         password: str = "",
     ) -> None:
-        self.api_url = api_url.rstrip("/")
+        self.email = email
         self.password = password
+        self._access_token: str | None = None
+        self._refresh_token: str | None = None
 
-    async def _get_auth_header(self, client: httpx.AsyncClient) -> dict[str, str]:
-        """Authenticate and return Authorization header, or empty dict if no password."""
-        if not self.password:
-            return {}
+    async def _authenticate(self, client: httpx.AsyncClient) -> str:
+        """Obtain access token via cloud login."""
         resp = await client.post(
-            f"{self.api_url}/tequilapi/auth/authenticate",
-            json={"username": "myst", "password": self.password},
+            f"{CLOUD_BASE}/auth/login",
+            json={
+                "email": self.email,
+                "password": self.password,
+                "remember": True,
+            },
         )
         resp.raise_for_status()
-        token = resp.json().get("token", "")
-        return {"Authorization": f"Bearer {token}"}
+        data = resp.json()
+        self._access_token = data.get("accessToken", "")
+        self._refresh_token = data.get("refreshToken", "")
+        if not self._access_token:
+            raise ValueError("No accessToken in MystNodes login response")
+        return self._access_token
+
+    async def _refresh(self, client: httpx.AsyncClient) -> str:
+        """Refresh access token."""
+        if not self._refresh_token:
+            return await self._authenticate(client)
+        resp = await client.post(
+            f"{CLOUD_BASE}/auth/refresh",
+            json={"refreshToken": self._refresh_token},
+        )
+        if resp.status_code in (401, 403):
+            return await self._authenticate(client)
+        resp.raise_for_status()
+        data = resp.json()
+        self._access_token = data.get("accessToken", "")
+        self._refresh_token = data.get("refreshToken", self._refresh_token)
+        return self._access_token
 
     async def collect(self) -> EarningsResult:
-        """Fetch current MystNodes earnings via Tequila API."""
-        try:
-            async with httpx.AsyncClient(timeout=30) as client:
-                headers = await self._get_auth_header(client)
-
-                # Get aggregated session stats (contains total tokens earned)
-                resp = await client.get(
-                    f"{self.api_url}/tequilapi/sessions/stats-aggregated",
-                    headers=headers,
-                )
-                resp.raise_for_status()
-                data = resp.json()
-
-                # sum_tokens is in MYST wei (10^18)
-                sum_tokens = float(data.get("stats", {}).get("sum_tokens", 0))
-                total_myst = sum_tokens / 1e18
-
-                return EarningsResult(
-                    platform=self.platform,
-                    balance=round(total_myst, 6),
-                    currency="MYST",
-                )
-        except httpx.ConnectError:
+        """Fetch total MystNodes earnings via cloud API."""
+        if not self.email or not self.password:
             return EarningsResult(
                 platform=self.platform,
                 balance=0.0,
-                error="Cannot connect to Tequila API — is the node running?",
+                error="MystNodes email/password not configured",
             )
+        try:
+            async with httpx.AsyncClient(timeout=30) as client:
+                if not self._access_token:
+                    await self._authenticate(client)
+
+                headers = {"Authorization": f"Bearer {self._access_token}"}
+                resp = await client.get(
+                    f"{CLOUD_BASE}/node/total-earnings",
+                    headers=headers,
+                )
+
+                # Token expired — refresh and retry
+                if resp.status_code == 401:
+                    await self._refresh(client)
+                    headers = {"Authorization": f"Bearer {self._access_token}"}
+                    resp = await client.get(
+                        f"{CLOUD_BASE}/node/total-earnings",
+                        headers=headers,
+                    )
+
+                resp.raise_for_status()
+                data = resp.json()
+
+                # earningsTotal is already in USD
+                total_usd = float(data.get("earningsTotal", 0))
+
+                return EarningsResult(
+                    platform=self.platform,
+                    balance=round(total_usd, 4),
+                    currency="USD",
+                )
         except Exception as exc:
             logger.error("MystNodes collection failed: %s", exc)
             return EarningsResult(

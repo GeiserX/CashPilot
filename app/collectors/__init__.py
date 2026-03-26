@@ -10,10 +10,15 @@ import logging
 from typing import Any
 
 from app.collectors.base import BaseCollector, EarningsResult
+from app.collectors.bitping import BitpingCollector
 from app.collectors.earnapp import EarnAppCollector
+from app.collectors.earnfm import EarnFMCollector
 from app.collectors.honeygain import HoneygainCollector
 from app.collectors.iproyal import IPRoyalCollector
 from app.collectors.mystnodes import MystNodesCollector
+from app.collectors.packetstream import PacketStreamCollector
+from app.collectors.proxyrack import ProxyRackCollector
+from app.collectors.repocket import RepocketCollector
 from app.collectors.storj import StorjCollector
 from app.collectors.traffmonetizer import TraffmonetizerCollector
 
@@ -27,6 +32,11 @@ COLLECTOR_MAP: dict[str, type[BaseCollector]] = {
     "mysterium": MystNodesCollector,
     "storj": StorjCollector,
     "traffmonetizer": TraffmonetizerCollector,
+    "repocket": RepocketCollector,
+    "proxyrack": ProxyRackCollector,
+    "bitping": BitpingCollector,
+    "earnfm": EarnFMCollector,
+    "packetstream": PacketStreamCollector,
 }
 
 # Map of slug -> list of config keys needed to instantiate the collector
@@ -34,9 +44,14 @@ _COLLECTOR_ARGS: dict[str, list[str]] = {
     "honeygain": ["email", "password"],
     "earnapp": ["oauth_token"],
     "iproyal": ["email", "password"],
-    "mysterium": ["api_url", "password"],
+    "mysterium": ["email", "password"],
     "storj": ["api_url"],
-    "traffmonetizer": ["token"],
+    "traffmonetizer": ["email", "password"],
+    "repocket": ["email", "password"],
+    "proxyrack": ["api_key"],
+    "bitping": ["email", "password"],
+    "earnfm": ["email", "password"],
+    "packetstream": ["auth_token"],
 }
 
 
