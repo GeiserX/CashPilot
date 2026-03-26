@@ -12,9 +12,9 @@ description: >
 short_description: Traffic exchange surfbar - browser-based, auto website visits
 
 referral:
-  url_template: ""
-  code: ""
-  signup_url: "https://www.ebesucher.com"
+  url_template: "https://www.ebesucher.com/?ref={code}"
+  code: "geiserx"
+  signup_url: "https://www.ebesucher.com/?ref=geiserx"
   bonus:
     referrer: ""
     referee: ""
