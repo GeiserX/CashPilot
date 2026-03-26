@@ -17,8 +17,9 @@ logger = logging.getLogger(__name__)
 SUPABASE_URL = "https://sb.earn.fm"
 SUPABASE_ANON_KEY = (
     "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9."
-    "eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBucmFsZnNmd3Nia2pjZG1uZGF5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3MjI0NjE5NjQsImV4cCI6MjAzODAzNzk2NH0."
-    "X4M2GXm8Ea_2QtoiyHn_3Ce5yvSjQZo"
+    "ewogICJyb2xlIjogImFub24iLAogICJpc3MiOiAic3VwYWJhc2UiLAog"
+    "ICJpYXQiOiAxNjkyNjU1MjAwLAogICJleHAiOiAxODUwNTA4MDAwCn0."
+    "jp-Uj5ro0jj7MHnlE8HHZRsZAFOI1d_T9n_9tnE09vM"
 )
 API_BASE = "https://api.earn.fm/v2"
 
