@@ -321,14 +321,8 @@ def _collect_stats(c) -> tuple[float, float]:
     """Collect CPU% and memory for a single container. Returns (cpu_pct, mem_mb)."""
     try:
         stats = c.stats(stream=False)
-        cpu_delta = (
-            stats["cpu_stats"]["cpu_usage"]["total_usage"]
-            - stats["precpu_stats"]["cpu_usage"]["total_usage"]
-        )
-        system_delta = (
-            stats["cpu_stats"]["system_cpu_usage"]
-            - stats["precpu_stats"]["system_cpu_usage"]
-        )
+        cpu_delta = stats["cpu_stats"]["cpu_usage"]["total_usage"] - stats["precpu_stats"]["cpu_usage"]["total_usage"]
+        system_delta = stats["cpu_stats"]["system_cpu_usage"] - stats["precpu_stats"]["system_cpu_usage"]
         num_cpus = stats["cpu_stats"].get(
             "online_cpus",
             len(stats["cpu_stats"]["cpu_usage"].get("percpu_usage", [1])),
