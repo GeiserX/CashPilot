@@ -1,4 +1,4 @@
-name: Build and Push Docker Image
+name: Build and Push Docker Images
 
 on:
   push:
@@ -6,7 +6,9 @@ on:
     tags: ["v*"]
     paths:
       - 'Dockerfile'
+      - 'Dockerfile.worker'
       - 'requirements.txt'
+      - 'requirements-worker.txt'
       - 'app/**'
       - 'services/**'
       - '.github/workflows/build.yml'
@@ -17,11 +19,36 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install ruff
+        run: pip install ruff
+
+      - name: Lint and format check
+        run: ruff check app/ && ruff format --check app/
+
   build:
+    needs: lint
     runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
+    strategy:
+      matrix:
+        include:
+          - image: drumsergio/cashpilot
+            dockerfile: Dockerfile
+          - image: drumsergio/cashpilot-worker
+            dockerfile: Dockerfile.worker
 
     steps:
       - name: Checkout
@@ -43,7 +70,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: drumsergio/cashpilot
+          images: ${{ matrix.image }}
           tags: |
             type=raw,value=latest,enable={{is_default_branch}}
             type=semver,pattern={{version}}
@@ -53,9 +80,10 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
+          file: ${{ matrix.dockerfile }}
           platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=gha,scope=${{ matrix.image }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.image }}

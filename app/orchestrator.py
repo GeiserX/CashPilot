@@ -21,7 +21,11 @@ from typing import Any
 import docker
 from docker.errors import APIError, DockerException, NotFound
 
-from app.catalog import get_service
+try:
+    from app.catalog import get_service
+except ImportError:
+    # Worker image doesn't include catalog module
+    get_service = None  # type: ignore[assignment]
 
 logger = logging.getLogger(__name__)
 
@@ -203,6 +207,73 @@ def deploy_service(
         privileged=privileged,
         command=command if command else None,
         labels=labels,
+        hostname=hostname or f"cashpilot-{slug}",
+        detach=True,
+        restart_policy={"Name": "unless-stopped"},
+    )
+
+    logger.info("Container %s started: %s", name, container.short_id)
+    return container.id
+
+
+def deploy_raw(
+    slug: str,
+    image: str,
+    env: dict[str, str] | None = None,
+    ports: dict[str, int] | None = None,
+    volumes: dict[str, dict[str, str]] | None = None,
+    network_mode: str | None = None,
+    cap_add: list[str] | None = None,
+    privileged: bool = False,
+    command: str | None = None,
+    hostname: str | None = None,
+    labels: dict[str, str] | None = None,
+    category: str = "bandwidth",
+) -> str:
+    """Deploy a container from a raw spec (no catalog lookup).
+
+    Used by CashPilot Worker when the UI sends a full container spec.
+    Returns the container ID.
+    """
+    client = _get_client()
+    name = _container_name(slug)
+
+    # Remove any existing container with the same name
+    try:
+        old = client.containers.get(name)
+        logger.info("Removing existing container %s", name)
+        old.remove(force=True)
+    except NotFound:
+        pass
+
+    all_labels = {
+        LABEL_SERVICE: slug,
+        LABEL_MANAGED: "true",
+        LABEL_VERSION: "1",
+        LABEL_CATEGORY: category,
+        LABEL_DEPLOYED_BY: "worker",
+    }
+    if labels:
+        all_labels.update(labels)
+
+    logger.info("Pulling image %s", image)
+    try:
+        client.images.pull(image)
+    except APIError as exc:
+        logger.warning("Failed to pull image %s: %s (trying local)", image, exc)
+
+    logger.info("Creating container %s from %s", name, image)
+    container = client.containers.run(
+        image=image,
+        name=name,
+        environment=env or {},
+        ports=ports if ports and network_mode != "host" else None,
+        volumes=volumes if volumes else None,
+        network_mode=network_mode,
+        cap_add=cap_add,
+        privileged=privileged,
+        command=command if command else None,
+        labels=all_labels,
         hostname=hostname or f"cashpilot-{slug}",
         detach=True,
         restart_policy={"Name": "unless-stopped"},

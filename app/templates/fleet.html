@@ -8,12 +8,12 @@
 <!-- Fleet Stats -->
 <div class="stats-grid">
   <div class="stat-card">
-    <div class="stat-label">Total Nodes</div>
-    <div class="stat-value highlight" id="fleet-total-nodes">-</div>
+    <div class="stat-label">Total Workers</div>
+    <div class="stat-value highlight" id="fleet-total-workers">-</div>
   </div>
   <div class="stat-card">
     <div class="stat-label">Online</div>
-    <div class="stat-value" id="fleet-online-nodes">-</div>
+    <div class="stat-value" id="fleet-online-workers">-</div>
   </div>
   <div class="stat-card">
     <div class="stat-label">Total Containers</div>
@@ -25,65 +25,33 @@
   </div>
 </div>
 
-<!-- Master Key (persistent, reusable) -->
+<!-- Add Worker Info -->
 <div class="card" style="margin-bottom: 24px;">
   <div class="card-header">
-    <span class="card-title">Add Node</span>
+    <span class="card-title">Add Worker</span>
   </div>
   <div style="padding: 0 20px 20px;">
-    <p style="color: var(--text-secondary); margin-bottom: 8px; font-size: 0.9rem;">
-      Two ways to register child nodes. Both auto-register on first connect.
+    <p style="color: var(--text-secondary); margin-bottom: 12px; font-size: 0.9rem;">
+      Deploy <code>drumsergio/cashpilot-worker</code> on each remote server with these environment variables:
     </p>
-
-    <!-- Method 1: Master Key -->
-    <div style="margin-bottom: 16px;">
-      <div style="font-weight: 600; color: var(--text-primary); margin-bottom: 6px; font-size: 0.9rem;">
-        1. Master Key <span class="badge" style="background: var(--bg-hover); font-weight: 400;">reusable, never expires</span>
-      </div>
-      <p style="color: var(--text-muted); font-size: 0.85rem; margin-bottom: 8px;">
-        Derived from your secret key. Use this for automation (docker-compose, IaC). Same key works for all nodes.
-      </p>
-      <div style="background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 8px; padding: 12px;">
-        <code id="master-key-env" style="display: block; word-break: break-all; color: var(--text-primary); font-size: 0.85rem; white-space: pre-wrap;">Loading...</code>
-        <button class="btn btn-ghost btn-sm" style="margin-top: 8px;" onclick="CP.copyMasterKey()">Copy</button>
-      </div>
+    <div style="background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 8px; padding: 12px;">
+      <code id="worker-env" style="display: block; word-break: break-all; color: var(--text-primary); font-size: 0.85rem; white-space: pre-wrap;">CASHPILOT_UI_URL=<span id="env-ui-url"></span>
+CASHPILOT_API_KEY=&lt;your-shared-api-key&gt;
+CASHPILOT_WORKER_NAME=server-name</code>
+      <button class="btn btn-ghost btn-sm" style="margin-top: 8px;" onclick="copyWorkerEnv()">Copy</button>
     </div>
-
-    <!-- Method 2: Join Token -->
-    <div>
-      <div style="font-weight: 600; color: var(--text-primary); margin-bottom: 6px; font-size: 0.9rem;">
-        2. Join Token <span class="badge" style="background: var(--bg-hover); font-weight: 400;">time-limited, reusable</span>
-      </div>
-      <p style="color: var(--text-muted); font-size: 0.85rem; margin-bottom: 8px;">
-        Generate a token with an optional expiry. Useful for one-time enrollments where you want the token to self-destruct.
-      </p>
-      <div style="display: flex; gap: 8px; align-items: end; flex-wrap: wrap;">
-        <div class="form-group" style="margin-bottom: 0; flex: 1; min-width: 200px;">
-          <label class="form-label">Node Name (optional)</label>
-          <input class="form-input" type="text" id="token-node-name" placeholder="e.g. server-2">
-        </div>
-        <div class="form-group" style="margin-bottom: 0;">
-          <label class="form-label">Expires (hours, 0=never)</label>
-          <input class="form-input" type="number" id="token-expires" value="24" min="0" style="width: 120px;">
-        </div>
-        <button class="btn btn-primary" onclick="CP.generateToken()">Generate</button>
-      </div>
-      <div id="token-result" style="display: none; margin-top: 12px;">
-        <div style="background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 8px; padding: 12px;">
-          <code class="token-display" id="token-env" style="display: block; word-break: break-all; color: var(--text-primary); font-size: 0.85rem; white-space: pre-wrap;"></code>
-          <button class="btn btn-ghost btn-sm" style="margin-top: 8px;" onclick="CP.copyToken()">Copy</button>
-        </div>
-      </div>
-    </div>
+    <p style="color: var(--text-muted); margin-top: 8px; font-size: 0.82rem;">
+      Set <code>CASHPILOT_API_KEY</code> in both the UI and workers. Workers auto-register on first heartbeat.
+    </p>
   </div>
 </div>
 
-<!-- Node List -->
+<!-- Worker List -->
 <div class="section-header">
-  <h2 class="section-title">Nodes</h2>
+  <h2 class="section-title">Workers</h2>
 </div>
 
-<div id="fleet-nodes">
+<div id="fleet-workers">
   <div class="empty-state">
     <div class="empty-state-title">Loading fleet...</div>
   </div>
@@ -95,84 +63,75 @@
 (function() {
   let fleetTimer = null;
 
-  async function loadMasterKey() {
-    try {
-      const res = await CP.api('/api/federation/master-key');
-      const masterUrl = window.location.origin.replace('http', 'ws') + '/ws/federation';
-      document.getElementById('master-key-env').textContent =
-        `CASHPILOT_ROLE=child\nCASHPILOT_MASTER_URL=${masterUrl}\nCASHPILOT_JOIN_TOKEN=${res.master_key}`;
-    } catch (err) {
-      document.getElementById('master-key-env').textContent = 'Failed to load master key';
-    }
-  }
+  // Set the UI URL in the env example
+  document.getElementById('env-ui-url').textContent = window.location.origin;
 
   async function loadFleet() {
     try {
-      const [summary, nodes] = await Promise.all([
+      const [summary, workers] = await Promise.all([
         CP.api('/api/fleet/summary'),
-        CP.api('/api/federation/nodes'),
+        CP.api('/api/workers'),
       ]);
 
-      // Stats
-      document.getElementById('fleet-total-nodes').textContent = summary.total_nodes || 0;
-      document.getElementById('fleet-online-nodes').textContent = summary.online_nodes || 0;
+      document.getElementById('fleet-total-workers').textContent = summary.total_workers || 0;
+      document.getElementById('fleet-online-workers').textContent = summary.online_workers || 0;
       document.getElementById('fleet-total-containers').textContent = summary.total_containers || 0;
       document.getElementById('fleet-running-containers').textContent = summary.running_containers || 0;
 
-      renderNodes(nodes, summary.master_name);
+      renderWorkers(workers);
     } catch (err) {
-      document.getElementById('fleet-nodes').innerHTML =
+      document.getElementById('fleet-workers').innerHTML =
         `<div class="empty-state"><div class="empty-state-text">Failed to load fleet data: ${err.message}</div></div>`;
     }
   }
 
-  function renderNodes(nodes, masterName) {
-    const container = document.getElementById('fleet-nodes');
+  function renderWorkers(workers) {
+    const container = document.getElementById('fleet-workers');
     if (!container) return;
 
-    // Master node card first
+    // Local instance card
     let html = `
     <div class="card" style="margin-bottom: 12px; border-left: 3px solid var(--accent);">
       <div style="padding: 16px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
         <div>
-          <div style="font-weight: 600; color: var(--text-primary);">${masterName || 'Master'}</div>
-          <span class="badge badge-master">master</span>
+          <span style="font-weight: 600; color: var(--text-primary);">This Instance</span>
           <span class="badge badge-running">local</span>
         </div>
       </div>
     </div>`;
 
-    if (nodes.length === 0) {
+    if (workers.length === 0) {
       html += `<div class="empty-state" style="padding: 40px 20px;">
-        <div class="empty-state-title">No child nodes</div>
-        <div class="empty-state-text">Generate a join token above and configure it on your other servers.</div>
+        <div class="empty-state-title">No remote workers</div>
+        <div class="empty-state-text">Deploy a CashPilot Worker on your other servers to see them here.</div>
       </div>`;
     } else {
-      for (const node of nodes) {
-        const statusClass = node.connected ? 'running' : 'stopped';
-        const statusLabel = node.connected ? 'Online' : 'Offline';
+      for (const w of workers) {
+        const isOnline = w.status === 'online';
+        const statusClass = isOnline ? 'running' : 'stopped';
+        const statusLabel = isOnline ? 'Online' : 'Offline';
+        const sysInfo = w.system_info || {};
         html += `
         <div class="card" style="margin-bottom: 12px;">
           <div style="padding: 16px;">
             <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 12px;">
               <div>
-                <span style="font-weight: 600; color: var(--text-primary);">${escapeHtml(node.name)}</span>
+                <span style="font-weight: 600; color: var(--text-primary);">${esc(w.name)}</span>
                 <span class="badge badge-${statusClass}"><span class="status-dot ${statusClass}"></span> ${statusLabel}</span>
-                <span class="badge" style="background: var(--bg-hover);">${escapeHtml(node.docker_mode || 'unknown')}</span>
               </div>
               <div style="display: flex; gap: 6px;">
-                <button class="btn btn-ghost btn-sm" onclick="CP.sendNodeCommand(${node.id}, 'status')" title="Refresh status">Status</button>
-                <button class="btn btn-danger btn-sm" onclick="CP.removeNode(${node.id}, '${escapeHtml(node.name)}')" title="Remove node">Remove</button>
+                <button class="btn btn-danger btn-sm" onclick="removeWorker(${w.id}, '${esc(w.name)}')" title="Remove worker">Remove</button>
               </div>
             </div>
             <div style="display: flex; gap: 16px; flex-wrap: wrap; font-size: 0.85rem; color: var(--text-muted);">
-              <span>IP: ${escapeHtml(node.ip || '-')}</span>
-              <span>OS: ${escapeHtml(node.os || '-')}</span>
-              <span>Docker: ${escapeHtml(node.docker_version || '-')}</span>
-              <span>Containers: ${node.container_count || 0} (${node.running_count || 0} running)</span>
-              <span>Last seen: ${node.last_seen || 'never'}</span>
+              <span>URL: ${esc(w.url || '-')}</span>
+              <span>OS: ${esc(sysInfo.os || '-')}</span>
+              <span>Arch: ${esc(sysInfo.arch || '-')}</span>
+              <span>Docker: ${sysInfo.docker_available ? 'Yes' : 'No'}</span>
+              <span>Containers: ${w.container_count || 0} (${w.running_count || 0} running)</span>
+              <span>Last heartbeat: ${w.last_heartbeat || 'never'}</span>
             </div>
-            ${node.containers && node.containers.length > 0 ? renderNodeContainers(node) : ''}
+            ${w.containers && w.containers.length > 0 ? renderContainers(w) : ''}
           </div>
         </div>`;
       }
@@ -180,79 +139,41 @@
     container.innerHTML = html;
   }
 
-  function renderNodeContainers(node) {
+  function renderContainers(worker) {
     let html = '<div style="margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border-color);">';
     html += '<div style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 8px;">Containers:</div>';
     html += '<div style="display: flex; gap: 6px; flex-wrap: wrap;">';
-    for (const c of node.containers) {
+    for (const c of worker.containers) {
       const cls = (c.status || 'stopped').toLowerCase();
-      html += `<span class="badge badge-${cls}">${escapeHtml(c.slug || c.name)} (${cls})</span>`;
+      html += `<span class="badge badge-${cls}">${esc(c.slug || c.name)} (${cls})</span>`;
     }
     html += '</div></div>';
     return html;
   }
 
-  function escapeHtml(str) {
+  function esc(str) {
     const d = document.createElement('div');
     d.textContent = str || '';
     return d.innerHTML;
   }
 
-  // Extend CP namespace
-  CP.generateToken = async function() {
-    const name = document.getElementById('token-node-name').value;
-    const hours = parseInt(document.getElementById('token-expires').value) || 24;
+  window.removeWorker = async function(workerId, name) {
+    if (!confirm(`Remove worker "${name}"? This will unregister it from the fleet.`)) return;
     try {
-      const res = await CP.api('/api/federation/token', {
-        method: 'POST',
-        body: { node_name: name, expires_hours: hours },
-      });
-      const masterUrl = window.location.origin.replace('http', 'ws') + '/ws/federation';
-      document.getElementById('token-env').textContent =
-        `CASHPILOT_ROLE=child\nCASHPILOT_MASTER_URL=${masterUrl}\nCASHPILOT_JOIN_TOKEN=${res.token}`;
-      document.getElementById('token-result').style.display = 'block';
-      CP.toast('Token generated', 'success');
-    } catch (err) {
-      CP.toast('Failed: ' + err.message, 'error');
-    }
-  };
-
-  CP.copyToken = function() {
-    const text = document.getElementById('token-env').textContent;
-    navigator.clipboard.writeText(text).then(() => CP.toast('Copied', 'success'));
-  };
-
-  CP.sendNodeCommand = async function(nodeId, command, slug) {
-    try {
-      await CP.api(`/api/federation/nodes/${nodeId}/command`, {
-        method: 'POST',
-        body: { command, slug: slug || '' },
-      });
-      CP.toast(`Command "${command}" sent`, 'success');
-      setTimeout(loadFleet, 2000);
-    } catch (err) {
-      CP.toast('Command failed: ' + err.message, 'error');
-    }
-  };
-
-  CP.removeNode = async function(nodeId, name) {
-    if (!confirm(`Remove node "${name}"? This will unregister it from the fleet.`)) return;
-    try {
-      await CP.api(`/api/federation/nodes/${nodeId}`, { method: 'DELETE' });
-      CP.toast(`Node "${name}" removed`, 'success');
+      await CP.api(`/api/workers/${workerId}`, { method: 'DELETE' });
+      CP.toast(`Worker "${name}" removed`, 'success');
       loadFleet();
     } catch (err) {
       CP.toast('Failed: ' + err.message, 'error');
     }
   };
 
-  CP.copyMasterKey = function() {
-    const text = document.getElementById('master-key-env').textContent;
+  window.copyWorkerEnv = function() {
+    const text = document.getElementById('worker-env').textContent;
     navigator.clipboard.writeText(text).then(() => CP.toast('Copied', 'success'));
   };
 
   // Init
-  loadMasterKey();
   loadFleet();
   fleetTimer = setInterval(loadFleet, 30000);
 })();

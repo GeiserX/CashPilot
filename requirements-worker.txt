@@ -1,0 +1,7 @@
+fastapi>=0.115
+uvicorn>=0.34
+uvloop>=0.21
+httptools>=0.6
+docker>=7.0
+aiosqlite>=0.20
+httpx>=0.28

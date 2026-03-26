@@ -7,18 +7,21 @@ management, and earnings tracking.
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
+import os
 from contextlib import asynccontextmanager
 from typing import Any
 
+import httpx
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from fastapi import FastAPI, Form, HTTPException, Request, WebSocket
+from fastapi import FastAPI, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 
-from app import auth, catalog, compose_generator, database, federation, orchestrator, ws_client, ws_server
+from app import auth, catalog, compose_generator, database, orchestrator
 
 logging.basicConfig(
     level=logging.INFO,
@@ -77,6 +80,27 @@ async def _run_collection() -> None:
 # ---------------------------------------------------------------------------
 
 
+async def _check_stale_workers() -> None:
+    """Mark workers as offline if they haven't sent a heartbeat recently."""
+    try:
+        workers = await database.list_workers()
+        from datetime import datetime, timedelta
+
+        cutoff = datetime.utcnow() - timedelta(seconds=STALE_WORKER_SECONDS)
+        for w in workers:
+            if w["status"] == "online" and w.get("last_heartbeat"):
+                last = datetime.fromisoformat(w["last_heartbeat"])
+                if last < cutoff:
+                    await database.set_worker_status(w["id"], "offline")
+                    logger.info("Worker '%s' marked offline (last heartbeat: %s)", w["name"], w["last_heartbeat"])
+    except Exception as exc:
+        logger.debug("Stale worker check error: %s", exc)
+
+
+FLEET_API_KEY = os.getenv("CASHPILOT_API_KEY", "")
+STALE_WORKER_SECONDS = 180  # Mark worker offline after 3 missed heartbeats
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup
@@ -85,20 +109,14 @@ async def lifespan(app: FastAPI):
     catalog.register_sighup()
     scheduler.add_job(_run_collection, "interval", hours=6, id="collect")
     scheduler.add_job(_run_health_check, "interval", minutes=5, id="health_check")
+    scheduler.add_job(_check_stale_workers, "interval", minutes=2, id="stale_workers")
     scheduler.start()
     docker_mode = "direct" if orchestrator.docker_available() else "monitor-only"
-    role = federation.get_role()
-    logger.info("CashPilot started (Docker: %s, Role: %s)", docker_mode, role)
-
-    # Start federation client if child node
-    if federation.is_child():
-        await ws_client.start()
+    logger.info("CashPilot started (Docker: %s)", docker_mode)
 
     yield
 
     # Shutdown
-    if federation.is_child():
-        await ws_client.stop()
     scheduler.shutdown(wait=False)
     logger.info("CashPilot stopped")
 
@@ -341,7 +359,7 @@ async def page_dashboard(request: Request):
         if not await database.has_any_users():
             return RedirectResponse("/register", status_code=303)
         return RedirectResponse("/login", status_code=303)
-    return templates.TemplateResponse(request, "dashboard.html", {"user": user, "role": federation.get_role()})
+    return templates.TemplateResponse(request, "dashboard.html", {"user": user})
 
 
 @app.get("/setup", response_class=HTMLResponse)
@@ -349,7 +367,7 @@ async def page_setup(request: Request):
     user = auth.get_current_user(request)
     if not user:
         return _login_redirect()
-    return templates.TemplateResponse(request, "setup.html", {"user": user, "role": federation.get_role()})
+    return templates.TemplateResponse(request, "setup.html", {"user": user})
 
 
 @app.get("/catalog", response_class=HTMLResponse)
@@ -357,7 +375,7 @@ async def page_catalog(request: Request):
     user = auth.get_current_user(request)
     if not user:
         return _login_redirect()
-    return templates.TemplateResponse(request, "catalog.html", {"user": user, "role": federation.get_role()})
+    return templates.TemplateResponse(request, "catalog.html", {"user": user})
 
 
 @app.get("/settings", response_class=HTMLResponse)
@@ -365,7 +383,7 @@ async def page_settings(request: Request):
     user = auth.get_current_user(request)
     if not user:
         return _login_redirect()
-    return templates.TemplateResponse(request, "settings.html", {"user": user, "role": federation.get_role()})
+    return templates.TemplateResponse(request, "settings.html", {"user": user})
 
 
 # ---------------------------------------------------------------------------
@@ -852,21 +870,7 @@ async def api_delete_user(request: Request, user_id: int) -> dict[str, str]:
 
 
 # ---------------------------------------------------------------------------
-# WebSocket: Federation (master only)
-# ---------------------------------------------------------------------------
-
-
-@app.websocket("/ws/federation")
-async def ws_federation(ws: WebSocket):
-    """WebSocket endpoint for child nodes to connect to master."""
-    if not federation.is_master():
-        await ws.close(code=4003, reason="Not a master node")
-        return
-    await ws_server.handle_connection(ws)
-
-
-# ---------------------------------------------------------------------------
-# Page: Fleet dashboard (master only)
+# Page: Fleet dashboard
 # ---------------------------------------------------------------------------
 
 
@@ -875,161 +879,150 @@ async def page_fleet(request: Request):
     user = auth.get_current_user(request)
     if not user:
         return _login_redirect()
-    if not federation.is_master():
-        return RedirectResponse("/", status_code=303)
-    return templates.TemplateResponse(
-        request,
-        "fleet.html",
-        {
-            "user": user,
-            "role": federation.get_role(),
-        },
-    )
+    return templates.TemplateResponse(request, "fleet.html", {"user": user})
 
 
 # ---------------------------------------------------------------------------
-# API: Federation
+# API: Fleet (Workers)
 # ---------------------------------------------------------------------------
 
 
-@app.get("/api/federation/info")
-async def api_federation_info(request: Request) -> dict[str, Any]:
-    """Return this node's federation role and info."""
-    _require_auth_api(request)
-    return {
-        "role": federation.get_role(),
-        "node_name": federation.NODE_NAME,
-        "node_info": federation.get_node_info(),
-        "docker_mode": "direct" if orchestrator.docker_available() else "monitor-only",
-    }
+def _verify_fleet_api_key(request: Request) -> None:
+    """Verify the shared fleet API key from a worker's request."""
+    if not FLEET_API_KEY:
+        raise HTTPException(status_code=403, detail="Fleet API key not configured")
+    auth_header = request.headers.get("Authorization", "")
+    if auth_header != f"Bearer {FLEET_API_KEY}":
+        raise HTTPException(status_code=401, detail="Invalid API key")
 
 
-@app.get("/api/federation/master-key")
-async def api_master_key(request: Request) -> dict[str, str]:
-    """Return the derived master key (owner only, master only)."""
-    _require_owner(request)
-    if not federation.is_master():
-        raise HTTPException(status_code=400, detail="Only master nodes have a master key")
-    return {"master_key": federation.get_master_key()}
+class WorkerHeartbeat(BaseModel):
+    name: str
+    url: str = ""
+    containers: list[dict[str, Any]] = []
+    system_info: dict[str, Any] = {}
 
 
-class TokenRequest(BaseModel):
-    node_name: str = ""
-    expires_hours: int = 24
-
-
-@app.post("/api/federation/token")
-async def api_generate_token(request: Request, body: TokenRequest) -> dict[str, str]:
-    """Generate a join token (master only)."""
-    _require_owner(request)
-    if not federation.is_master():
-        raise HTTPException(status_code=400, detail="Only master nodes can generate join tokens")
-    token = federation.generate_join_token(
-        node_name=body.node_name,
-        expires_hours=body.expires_hours,
+@app.post("/api/workers/heartbeat")
+async def api_worker_heartbeat(request: Request, body: WorkerHeartbeat) -> dict[str, Any]:
+    """Receive a heartbeat from a worker. Registers or updates the worker."""
+    _verify_fleet_api_key(request)
+    worker_id = await database.upsert_worker(
+        name=body.name,
+        url=body.url,
+        containers=json.dumps(body.containers),
+        system_info=json.dumps(body.system_info),
     )
-    return {"token": token}
+    return {"status": "ok", "worker_id": worker_id}
 
 
-@app.get("/api/federation/nodes")
-async def api_list_nodes(request: Request) -> list[dict[str, Any]]:
-    """List all registered child nodes (master only)."""
+@app.get("/api/workers")
+async def api_list_workers(request: Request) -> list[dict[str, Any]]:
+    """List all registered workers."""
     _require_auth_api(request)
-    if not federation.is_master():
-        raise HTTPException(status_code=400, detail="Not a master node")
-    nodes = await database.list_nodes()
-    # Enrich with live state
-    live_states = ws_server.get_connected_nodes()
-    for node in nodes:
-        state = live_states.get(node["id"], {})
-        node["containers"] = state.get("containers", [])
-        node["container_count"] = state.get("container_count", 0)
-        node["running_count"] = state.get("running_count", 0)
-        node["earnings"] = state.get("earnings", [])
-        node["connected"] = node["id"] in live_states
-    return nodes
+    workers = await database.list_workers()
+    for w in workers:
+        # Parse stored JSON for the API response
+        w["containers"] = json.loads(w.get("containers", "[]"))
+        w["system_info"] = json.loads(w.get("system_info", "{}"))
+        w["container_count"] = len(w["containers"])
+        w["running_count"] = sum(1 for c in w["containers"] if c.get("status") == "running")
+    return workers
 
 
-@app.get("/api/federation/nodes/{node_id}")
-async def api_get_node(request: Request, node_id: int) -> dict[str, Any]:
-    """Get details for a specific node."""
+@app.get("/api/workers/{worker_id}")
+async def api_get_worker(request: Request, worker_id: int) -> dict[str, Any]:
+    """Get details for a specific worker."""
     _require_auth_api(request)
-    if not federation.is_master():
-        raise HTTPException(status_code=400, detail="Not a master node")
-    node = await database.get_node(node_id)
-    if not node:
-        raise HTTPException(status_code=404, detail="Node not found")
-    state = ws_server.get_connected_nodes().get(node_id, {})
-    node["containers"] = state.get("containers", [])
-    node["container_count"] = state.get("container_count", 0)
-    node["running_count"] = state.get("running_count", 0)
-    node["earnings"] = state.get("earnings", [])
-    node["connected"] = node_id in ws_server.get_connected_nodes()
-    return node
+    worker = await database.get_worker(worker_id)
+    if not worker:
+        raise HTTPException(status_code=404, detail="Worker not found")
+    worker["containers"] = json.loads(worker.get("containers", "[]"))
+    worker["system_info"] = json.loads(worker.get("system_info", "{}"))
+    worker["container_count"] = len(worker["containers"])
+    worker["running_count"] = sum(1 for c in worker["containers"] if c.get("status") == "running")
+    return worker
 
 
-class NodeCommand(BaseModel):
-    command: str
-    slug: str = ""
-    env: dict[str, str] = {}
-
-
-@app.post("/api/federation/nodes/{node_id}/command")
-async def api_node_command(request: Request, node_id: int, body: NodeCommand) -> dict[str, Any]:
-    """Send a command to a child node (master only)."""
-    _require_writer(request)
-    if not federation.is_master():
-        raise HTTPException(status_code=400, detail="Not a master node")
-    if body.command not in ("deploy", "stop", "restart", "remove", "status"):
-        raise HTTPException(status_code=400, detail="Invalid command")
-    sent = await ws_server.send_command(
-        node_id,
-        body.command,
-        {
-            "slug": body.slug,
-            "env": body.env,
-        },
-    )
-    if not sent:
-        raise HTTPException(status_code=503, detail="Node is not connected")
-    return {"status": "command_sent", "command": body.command, "node_id": node_id}
-
-
-@app.delete("/api/federation/nodes/{node_id}")
-async def api_delete_node(request: Request, node_id: int) -> dict[str, str]:
-    """Remove a registered node (master only)."""
+@app.delete("/api/workers/{worker_id}")
+async def api_delete_worker(request: Request, worker_id: int) -> dict[str, str]:
+    """Remove a registered worker."""
     _require_owner(request)
-    if not federation.is_master():
-        raise HTTPException(status_code=400, detail="Not a master node")
-    node = await database.get_node(node_id)
-    if not node:
-        raise HTTPException(status_code=404, detail="Node not found")
-    await database.delete_node(node_id)
+    worker = await database.get_worker(worker_id)
+    if not worker:
+        raise HTTPException(status_code=404, detail="Worker not found")
+    await database.delete_worker(worker_id)
     return {"status": "deleted"}
+
+
+class WorkerCommand(BaseModel):
+    command: str  # deploy, stop, restart, start, remove
+    slug: str = ""
+    spec: dict[str, Any] = {}
+
+
+@app.post("/api/workers/{worker_id}/command")
+async def api_worker_command(request: Request, worker_id: int, body: WorkerCommand) -> dict[str, Any]:
+    """Send a command to a worker by proxying to its REST API."""
+    _require_writer(request)
+
+    worker = await database.get_worker(worker_id)
+    if not worker:
+        raise HTTPException(status_code=404, detail="Worker not found")
+    if worker["status"] != "online":
+        raise HTTPException(status_code=503, detail="Worker is offline")
+    if not worker["url"]:
+        raise HTTPException(status_code=503, detail="Worker URL not known")
+
+    url = worker["url"].rstrip("/")
+    headers = {}
+    if FLEET_API_KEY:
+        headers["Authorization"] = f"Bearer {FLEET_API_KEY}"
+
+    try:
+        async with httpx.AsyncClient(timeout=30) as client:
+            if body.command == "deploy":
+                resp = await client.post(
+                    f"{url}/api/containers/{body.slug}/deploy",
+                    json=body.spec,
+                    headers=headers,
+                )
+            elif body.command in ("stop", "restart", "start"):
+                resp = await client.post(
+                    f"{url}/api/containers/{body.slug}/{body.command}",
+                    headers=headers,
+                )
+            elif body.command == "remove":
+                resp = await client.delete(
+                    f"{url}/api/containers/{body.slug}",
+                    headers=headers,
+                )
+            else:
+                raise HTTPException(status_code=400, detail=f"Unknown command: {body.command}")
+
+            return resp.json()
+    except httpx.HTTPError as exc:
+        raise HTTPException(status_code=503, detail=f"Worker communication failed: {exc}")
 
 
 @app.get("/api/fleet/summary")
 async def api_fleet_summary(request: Request) -> dict[str, Any]:
-    """Aggregate fleet stats (master only)."""
+    """Aggregate fleet stats across local + all workers."""
     _require_auth_api(request)
-    if not federation.is_master():
-        raise HTTPException(status_code=400, detail="Not a master node")
 
-    nodes = await database.list_nodes()
-    live_states = ws_server.get_connected_nodes()
-
+    workers = await database.list_workers()
     total_containers = 0
     total_running = 0
-    online_nodes = 0
+    online_workers = 0
 
-    for node in nodes:
-        state = live_states.get(node["id"], {})
-        total_containers += state.get("container_count", 0)
-        total_running += state.get("running_count", 0)
-        if node["id"] in live_states:
-            online_nodes += 1
+    for w in workers:
+        containers = json.loads(w.get("containers", "[]"))
+        total_containers += len(containers)
+        total_running += sum(1 for c in containers if c.get("status") == "running")
+        if w["status"] == "online":
+            online_workers += 1
 
-    # Add local node stats
+    # Add local containers
     try:
         local_status = orchestrator.get_status()
         total_containers += len(local_status)
@@ -1038,9 +1031,8 @@ async def api_fleet_summary(request: Request) -> dict[str, Any]:
         pass
 
     return {
-        "total_nodes": len(nodes) + 1,  # +1 for master
-        "online_nodes": online_nodes + 1,
+        "total_workers": len(workers) + 1,  # +1 for local
+        "online_workers": online_workers + 1,
         "total_containers": total_containers,
         "running_containers": total_running,
-        "master_name": federation.NODE_NAME,
     }

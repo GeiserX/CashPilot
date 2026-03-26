@@ -1,0 +1,59 @@
+# CashPilot Fleet - Multi-server deployment example
+# https://github.com/GeiserX/CashPilot
+#
+# This file shows the architecture for multi-server deployments.
+# Deploy the UI service on your main server, then deploy workers
+# on each additional server using their own docker-compose.
+#
+# UI: Full dashboard + earnings collection + embedded local worker
+# Workers: Lightweight agents that manage containers and report to UI
+
+# === Deploy on main server (e.g., server-a) ===
+services:
+  cashpilot:
+    image: drumsergio/cashpilot:latest
+    container_name: cashpilot
+    ports:
+      - "8080:8080"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - cashpilot_data:/data
+    environment:
+      - TZ=${TZ:-UTC}
+      - CASHPILOT_SECRET_KEY=${CASHPILOT_SECRET_KEY}
+      - CASHPILOT_MODE=ui
+      - CASHPILOT_API_KEY=${CASHPILOT_API_KEY}
+    init: true
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp:size=64M
+
+# === Deploy on each remote server (e.g., server-b, server-c) ===
+# Copy this section to a separate docker-compose.yml on each worker server.
+#
+#  cashpilot-worker:
+#    image: drumsergio/cashpilot-worker:latest
+#    container_name: cashpilot-worker
+#    ports:
+#      - "8081:8081"
+#    volumes:
+#      - /var/run/docker.sock:/var/run/docker.sock
+#      - cashpilot_worker_data:/data
+#    environment:
+#      - TZ=${TZ:-UTC}
+#      - CASHPILOT_UI_URL=http://server-a:8080
+#      - CASHPILOT_API_KEY=${CASHPILOT_API_KEY}
+#      - CASHPILOT_WORKER_NAME=server-b
+#    init: true
+#    restart: unless-stopped
+#    security_opt:
+#      - no-new-privileges:true
+#    read_only: true
+#    tmpfs:
+#      - /tmp:size=64M
+
+volumes:
+  cashpilot_data:

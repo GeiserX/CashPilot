@@ -16,7 +16,7 @@
 **CashPilot** is a self-hosted passive income orchestrator. Deploy once, manage everything from a single web dashboard. It deploys, monitors, and manages Docker containers for bandwidth-sharing, DePIN, storage, and GPU compute services. Think of it as Portainer meets a passive-income aggregator.
 
 - **Repository**: https://github.com/GeiserX/CashPilot
-- **Docker Image**: `drumsergio/cashpilot` on Docker Hub
+- **Docker Images**: `drumsergio/cashpilot` (UI) and `drumsergio/cashpilot-worker` on Docker Hub
 - **License**: GPL-3.0
 
 ### What Makes This Different
@@ -108,11 +108,13 @@ No existing project combines all of these:
 ```
 cashpilot/
   app/                  # FastAPI application
-    main.py             # App entrypoint, lifespan, 16 routes (4 HTML + 12 API)
+    main.py             # App entrypoint, lifespan, mode routing (standalone/ui/worker)
     catalog.py          # Loads YAML service definitions, caches, SIGHUP reload
     orchestrator.py     # Docker SDK: deploy, stop, restart, remove, logs
-    database.py         # Async SQLite: earnings, config, deployments tables
-    collectors/         # Earnings collectors (one module per service)
+    database.py         # Async SQLite: earnings, config, deployments, workers tables
+    worker_api.py       # Worker REST API: heartbeat, container commands, mini-UI
+    ui_api.py           # UI API: worker registration, fleet view, earnings
+    collectors/         # Earnings collectors (one module per service, UI/standalone only)
       base.py           # BaseCollector ABC + EarningsResult dataclass
       honeygain.py      # Honeygain JWT auth + /v2/earnings
       __init__.py       # COLLECTOR_MAP registry + make_collectors() factory
@@ -129,8 +131,10 @@ cashpilot/
   docs/guides/          # Auto-generated per-service setup guides
   scripts/
     generate_docs.py    # YAML -> README table + guide pages
-  Dockerfile            # Multi-stage python:3.12-slim, tini, non-root
-  docker-compose.yml    # Production deployment
+  Dockerfile            # UI image: multi-stage python:3.12-slim, tini, non-root
+  Dockerfile.worker     # Worker image: minimal deps, no collectors/templates
+  docker-compose.yml    # Standalone deployment (UI + embedded worker)
+  docker-compose.fleet.yml  # Multi-server example (UI + remote workers)
   .github/workflows/
     build.yml           # QEMU + Buildx multi-arch, Docker Hub push
 ```
@@ -145,51 +149,103 @@ cashpilot/
 
 ---
 
-## Federation Architecture (Multi-Instance)
+## Architecture: CashPilot UI + CashPilot Worker
 
-CashPilot is designed to run on multiple servers simultaneously. The federation system lets all instances share a unified view of earnings and fleet status. This is a core differentiator -- no competitor does this.
+CashPilot is split into two components that can run together (default) or separately across multiple servers. This is a core differentiator -- no competitor does multi-server fleet management.
+
+### Components
+
+| Component | Description |
+|-----------|-------------|
+| **CashPilot UI** | The single web dashboard. Collects all earnings centrally, shows global fleet view, manages workers. Only ONE UI instance exists -- deploying a second is rejected if workers are already connected to another. |
+| **CashPilot Worker** | Lightweight agent running on each server. Manages local containers (deploy/stop/restart/health). Reports status to the UI. Has a minimal config page (connection status, running services). Configured via env vars. |
+
+Two separate Docker images to minimize worker footprint:
+- **`drumsergio/cashpilot`** — Full UI image (~90 MB): FastAPI, Jinja2, templates, static assets, collectors, APScheduler, Docker SDK.
+- **`drumsergio/cashpilot-worker`** — Lightweight worker image (~40 MB): FastAPI (minimal), Docker SDK, heartbeat timer, tiny config page. No collectors, no templates, no Chart.js.
+
+The UI image in `standalone` mode (default) includes an embedded worker — no need to run both images on the same server.
 
 ### Core Principles
 
-1. **Global view by default.** Any non-headless instance shows the same global earnings total, global service count, and global charts. The UI must clearly indicate this is a global view (not just local).
-2. **Every instance owns its own data.** Each instance has its own SQLite DB tracking both global aggregated data and local drill-down data (which containers it manages, their health, their earnings).
-3. **No assumptions about network topology.** Users may have Tailscale, plain LAN, WAN with port forwarding, VPN, or no connectivity at all between instances. The system must handle all cases gracefully:
-   - If instances can reach each other: they sync earnings and fleet status.
-   - If they cannot: each instance operates as a standalone master with awareness that other instances exist but no live data from them.
-4. **Visibility only, not remote management.** An instance never deploys/stops/restarts containers on another instance. Each server manages its own containers. Federation is purely for aggregating earnings and showing fleet health.
-5. **Drill-down is per-server and per-service.** The global view is the default. Users can drill down to see earnings broken down by server, or by service, or by service-on-a-specific-server.
+1. **Single source of truth.** The UI instance is the only one that collects earnings, stores historical data, and serves the dashboard. Workers never collect earnings -- they only manage containers and report health.
+2. **Earnings are never duplicated.** Since only the UI collects, there is no risk of the same Honeygain account being counted twice across servers. The UI queries each service API once and gets the global balance.
+3. **Workers are stateless satellites.** A worker knows: (a) which containers to keep running, (b) the UI URL to report to. It has a tiny local SQLite for config persistence but no earnings data.
+4. **Default must work perfectly.** A single `docker-compose.yml` with no extra config deploys UI + Worker on the same server. Multi-server is opt-in.
+5. **Drill-down per server and per service.** The UI shows global totals by default. Users can drill down to see which containers run on which server, container health per server, and service-level details.
 
-### Instance Roles
+### Deployment Modes
 
-| Role | Description |
-|------|-------------|
-| **Full instance** | Web UI + container management + earnings collection + federation sync. This is the default. |
-| **Headless instance** | No web UI. Manages containers locally, collects earnings, transmits data to other instances. Lightweight satellite for servers that don't need a dashboard. |
+```
+┌─────────────────────────────────────────────┐
+│  Mode: standalone (default)                 │
+│  One server, one container                  │
+│  UI + Worker combined, Docker socket mounted│
+│  No federation config needed                │
+└─────────────────────────────────────────────┘
 
-- Full instances are peers (multi-master). There is no single "master" -- any instance can be opened and shows the global view.
-- Headless instances are data sources only. They push to full instances but don't serve a UI.
-- All roles use the same Docker image, configured via environment variables.
+┌──────────────────┐     ┌──────────────────┐     ┌──────────────────┐
+│  Server A (UI)   │     │  Server B        │     │  Server C        │
+│  CashPilot UI    │◄────│  CashPilot Worker│     │  CashPilot Worker│
+│  + local Worker  │◄────│  Reports health  │     │  Reports health  │
+│  Collects all    │     │  Manages local   │     │  Manages local   │
+│  earnings        │     │  containers      │     │  containers      │
+│  Port 8080 (UI)  │     │  Port 8081 (cfg) │     │  Port 8081 (cfg) │
+└──────────────────┘     └──────────────────┘     └──────────────────┘
+```
 
-### Data Model
+### Authentication
 
-- Each instance stores: its own container health events, its own earnings snapshots, and a cache of other instances' latest reported earnings.
-- The "Total Earnings" displayed is: sum of latest balance per platform across all known instances.
-- If an instance goes offline, its last-known data remains visible. Fleet status shows "last seen X ago" for unreachable nodes.
-- Stale data from offline instances still counts toward historical earnings -- it doesn't disappear.
+- A single shared **API key** authenticates all workers to the UI.
+- Set once in the UI, provided to each worker via `CASHPILOT_API_KEY` env var.
+- Workers also need `CASHPILOT_UI_URL` pointing to the UI's address.
 
-### UI Expectations
+### Worker Environment Variables
 
-- Dashboard stats (Total Earnings, Today, This Month, Active Services) are **global** by default.
-- A clear visual indicator (badge, label, or header) shows the user they're viewing global data.
-- Drill-down: filter by server or by service. This may be a dropdown, tabs, or a dedicated fleet page.
-- Services table includes a "Server" column when viewing global data.
-- Fleet/nodes section shows each known instance: name, URL, health status, last seen, number of services.
+| Variable | Required | Default | Description |
+|----------|:--------:|---------|-------------|
+| `CASHPILOT_MODE` | No | `standalone` | `standalone`, `ui`, or `worker` |
+| `CASHPILOT_UI_URL` | Worker only | -- | URL of the CashPilot UI (e.g. `http://192.168.10.100:8080`) |
+| `CASHPILOT_API_KEY` | Worker only | -- | Shared API key for worker→UI auth |
+| `CASHPILOT_WORKER_NAME` | No | hostname | Human-readable name for this worker in the UI |
+
+### Worker Capabilities
+
+- **With Docker socket** (default): Full container lifecycle -- deploy, stop, restart, remove, health checks, logs, resource stats.
+- **Without Docker socket**: Read-only monitoring. Can check if expected containers exist and are running via `docker ps` equivalent. Cannot manage containers. Useful for locked-down environments.
+
+### Worker Mini-UI
+
+Each worker exposes a minimal web page on port 8081 showing:
+- Connection status (connected to UI at `X`, last heartbeat `Y` ago)
+- List of local containers managed by CashPilot (name, status, uptime)
+- Worker name and version
+- No earnings data, no charts, no service catalog -- that's all in the UI.
+
+### Data Flow
+
+1. **Worker → UI (heartbeat):** Every 60s, each worker sends: container list, health status, resource usage (CPU/mem/net per container). The UI stores this in its DB.
+2. **UI → Worker (commands):** The UI can instruct a worker to deploy, stop, restart, or remove a container. Commands are sent via REST API calls to the worker.
+3. **UI earnings collection:** The scheduler in the UI runs collectors for all configured services. Results go into the UI's SQLite DB. Workers are not involved in earnings.
+4. **Offline handling:** If a worker goes offline, the UI shows "last seen X ago" for that server's containers. Historical data is retained. The worker reconnects automatically when back online.
+
+### Credential Flow (Option C — Docker-native)
+
+The worker **never handles or stores credentials**. The flow:
+
+1. User configures service credentials in the UI (stored encrypted in UI's SQLite).
+2. When UI tells a worker to deploy a container, it sends the full container spec (image, env vars, volumes, ports) in the API call.
+3. The worker passes this spec to the Docker API to create the container. Docker stores the env vars in the container config.
+4. For container restarts: `docker restart` preserves env vars natively — no credential re-send needed.
+5. For full redeploys (remove + create): the UI resends the full spec.
+
+This is how Portainer works. The worker is a dumb executor — it never decrypts, stores, or inspects credentials.
 
 ### What NOT to Build Yet
 
-- Remote container management (deploy/stop from another instance) -- future roadmap only.
-- Hub-only aggregator instance (no local containers) -- future roadmap only.
-- Auto-discovery (mDNS, Tailscale API, etc.) -- instances are manually registered in settings for now.
+- Auto-discovery (mDNS, Tailscale API) -- workers are manually configured via env vars.
+- Worker-to-worker communication -- workers only talk to the UI.
+- Multi-UI failover -- there is exactly one UI instance.
 
 ---
 
@@ -201,7 +257,7 @@ CashPilot is designed to run on multiple servers simultaneously. The federation 
 
 **What it does:**
 1. Builds multi-arch image (linux/amd64 + linux/arm64) via QEMU + Buildx
-2. Pushes to Docker Hub as `drumsergio/cashpilot`
+2. Pushes to Docker Hub as `drumsergio/cashpilot` (UI) and `drumsergio/cashpilot-worker`
 3. Tags: `latest` on main, semver on tags (`v1.0.0` -> `1.0.0` + `1.0`)
 4. Layer caching via GitHub Actions cache
 
@@ -326,15 +382,21 @@ volumes:
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `TZ` | `UTC` | Timezone |
-| `CASHPILOT_SECRET_KEY` | Auto-generated | Fernet encryption key for credentials |
-| `CASHPILOT_COLLECTION_INTERVAL` | `3600` | Seconds between earnings collection |
-| `CASHPILOT_PORT` | `8080` | Web UI port |
+| `CASHPILOT_MODE` | `standalone` | `standalone` (UI+Worker), `ui` (UI only), or `worker` (Worker only) |
+| `CASHPILOT_SECRET_KEY` | Auto-generated | Fernet encryption key for credentials (UI/standalone only) |
+| `CASHPILOT_COLLECTION_INTERVAL` | `3600` | Seconds between earnings collection (UI/standalone only) |
+| `CASHPILOT_PORT` | `8080` | Web UI port (UI/standalone) or mini-UI port (worker, default 8081) |
+| `CASHPILOT_UI_URL` | -- | URL of UI instance (worker mode only, required) |
+| `CASHPILOT_API_KEY` | -- | Shared API key for worker↔UI auth (required in multi-server) |
+| `CASHPILOT_WORKER_NAME` | hostname | Human-readable worker name shown in UI fleet view |
 
 ### Current Deployment
 
-| Server | URL | Purpose |
-|--------|-----|---------|
-| geiserback | `http://192.168.10.110:8085` | Testing/staging instance |
+| Server | Mode | URL | Services |
+|--------|------|-----|:--------:|
+| watchtower | standalone | `http://192.168.10.100:8085` | 10 |
+| geiserback | standalone | `http://192.168.10.110:8085` | (flaky) |
+| geiserct | standalone | `http://geiserct:8085` | running |
 
 ---
 

@@ -13,4 +13,3 @@ cryptography>=44.0
 passlib[bcrypt]>=1.7
 bcrypt>=4.0,<4.1
 itsdangerous>=2.2
-websockets>=14.0
