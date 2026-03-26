@@ -220,6 +220,13 @@ def remove_service(slug: str) -> None:
     logger.info("Removed container %s", container.name)
 
 
+def start_service(slug: str) -> None:
+    """Start a stopped container for a service."""
+    container = _find_container(slug)
+    container.start()
+    logger.info("Started container %s", container.name)
+
+
 def get_status() -> list[dict[str, Any]]:
     """Return status of all cashpilot-managed containers."""
     try:

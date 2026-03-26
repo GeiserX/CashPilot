@@ -374,6 +374,48 @@ async def api_list_services(request: Request) -> list[dict[str, Any]]:
     return catalog.get_services()
 
 
+@app.get("/api/services/deployed")
+async def api_services_deployed(request: Request) -> list[dict[str, Any]]:
+    """Return deployed services with container status, balance, CPU, memory."""
+    _require_auth_api(request)
+    try:
+        statuses = orchestrator.get_status()
+    except RuntimeError:
+        statuses = []
+
+    # Get latest earnings per platform for balance display
+    earnings = await database.get_earnings_summary()
+    balance_map = {e["platform"]: e["balance"] for e in earnings}
+
+    result = []
+    for s in statuses:
+        slug = s["slug"]
+        svc = catalog.get_service(slug)
+        result.append({
+            "slug": slug,
+            "name": svc["name"] if svc else slug,
+            "container_status": s["status"],
+            "balance": balance_map.get(slug, 0.0),
+            "cpu": f"{s.get('cpu_percent', 0)}",
+            "memory": f"{s.get('memory_mb', 0)} MB",
+            "image": s.get("image", ""),
+            "category": s.get("category", ""),
+        })
+    return result
+
+
+@app.get("/api/services/available")
+async def api_services_available(request: Request) -> list[dict[str, Any]]:
+    """Return all services from catalog, enriched with deployment status."""
+    _require_auth_api(request)
+    services = catalog.get_services()
+    deployments = await database.get_deployments()
+    deployed_slugs = {d["slug"] for d in deployments}
+    for svc in services:
+        svc["deployed"] = svc.get("slug", "") in deployed_slugs
+    return services
+
+
 @app.get("/api/services/{slug}")
 async def api_get_service(request: Request, slug: str) -> dict[str, Any]:
     _require_auth_api(request)
@@ -460,6 +502,72 @@ async def api_remove(request: Request, slug: str) -> dict[str, str]:
 
 
 # ---------------------------------------------------------------------------
+# API: Service management (new-style routes matching frontend)
+# ---------------------------------------------------------------------------
+
+
+@app.post("/api/services/{slug}/restart")
+async def api_service_restart(request: Request, slug: str) -> dict[str, str]:
+    _require_writer(request)
+    try:
+        orchestrator.restart_service(slug)
+        return {"status": "restarted"}
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
+
+
+@app.post("/api/services/{slug}/stop")
+async def api_service_stop(request: Request, slug: str) -> dict[str, str]:
+    _require_writer(request)
+    try:
+        orchestrator.stop_service(slug)
+        return {"status": "stopped"}
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
+
+
+@app.post("/api/services/{slug}/start")
+async def api_service_start(request: Request, slug: str) -> dict[str, str]:
+    _require_writer(request)
+    try:
+        orchestrator.start_service(slug)
+        return {"status": "started"}
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
+
+
+@app.get("/api/services/{slug}/logs")
+async def api_service_logs(request: Request, slug: str, lines: int = 50) -> dict[str, str]:
+    _require_auth_api(request)
+    try:
+        logs = orchestrator.get_service_logs(slug, lines=min(lines, 1000))
+        return {"logs": logs}
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
+
+
+@app.delete("/api/services/{slug}")
+async def api_service_remove(request: Request, slug: str) -> dict[str, str]:
+    _require_writer(request)
+    try:
+        orchestrator.remove_service(slug)
+        await database.remove_deployment(slug)
+        return {"status": "removed"}
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
+
+
+# ---------------------------------------------------------------------------
 # API: Compose export
 # ---------------------------------------------------------------------------
 
@@ -510,6 +618,32 @@ async def api_compose_all(request: Request):
 async def api_earnings(request: Request) -> list[dict[str, Any]]:
     _require_auth_api(request)
     return await database.get_earnings_summary()
+
+
+@app.get("/api/earnings/summary")
+async def api_earnings_summary(request: Request) -> dict[str, Any]:
+    """Aggregated earnings stats for the dashboard."""
+    _require_auth_api(request)
+    summary = await database.get_earnings_dashboard_summary()
+
+    # Count active (running) services
+    active = 0
+    try:
+        statuses = orchestrator.get_status()
+        active = sum(1 for s in statuses if s.get("status") == "running")
+    except Exception:
+        pass
+    summary["active_services"] = active
+    return summary
+
+
+@app.get("/api/earnings/daily")
+async def api_earnings_daily(request: Request, days: int = 7) -> list[dict[str, Any]]:
+    """Daily earnings for charting."""
+    _require_auth_api(request)
+    if days < 1 or days > 365:
+        raise HTTPException(status_code=400, detail="days must be between 1 and 365")
+    return await database.get_daily_earnings(days)
 
 
 @app.get("/api/earnings/history")

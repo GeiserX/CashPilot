@@ -8,7 +8,7 @@ fallback to ./data/cashpilot.db for development.
 from __future__ import annotations
 
 import os
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -169,6 +169,161 @@ async def get_earnings_history(
             )
         rows = await cursor.fetchall()
         return [dict(r) for r in rows]
+    finally:
+        await db.close()
+
+
+async def get_earnings_dashboard_summary() -> dict[str, Any]:
+    """Return aggregated earnings stats for the dashboard."""
+    db = await _get_db()
+    try:
+        today = datetime.utcnow().strftime("%Y-%m-%d")
+        yesterday = (datetime.utcnow() - timedelta(days=1)).strftime("%Y-%m-%d")
+        first_of_month = datetime.utcnow().replace(day=1).strftime("%Y-%m-%d")
+
+        # Total: sum of latest balance per platform (USD only for now)
+        cursor = await db.execute(
+            """
+            SELECT COALESCE(SUM(e.balance), 0) as total
+            FROM earnings e
+            INNER JOIN (
+                SELECT platform, MAX(date) as max_date
+                FROM earnings WHERE currency = 'USD'
+                GROUP BY platform
+            ) latest ON e.platform = latest.platform AND e.date = latest.max_date
+            WHERE e.currency = 'USD'
+            """
+        )
+        row = await cursor.fetchone()
+        total = row["total"]
+
+        # Today's earnings: delta from yesterday per platform
+        cursor = await db.execute(
+            """
+            SELECT COALESCE(SUM(t.balance - COALESCE(y.balance, 0)), 0) as earned
+            FROM (
+                SELECT platform, balance FROM earnings
+                WHERE date = ? AND currency = 'USD'
+            ) t
+            LEFT JOIN (
+                SELECT platform, balance FROM earnings
+                WHERE date = ? AND currency = 'USD'
+            ) y ON t.platform = y.platform
+            """,
+            (today, yesterday),
+        )
+        row = await cursor.fetchone()
+        today_earned = max(0.0, row["earned"])
+
+        # This month's earnings: latest balance minus first-of-month balance
+        cursor = await db.execute(
+            """
+            SELECT COALESCE(SUM(
+                latest.balance - COALESCE(month_start.balance, 0)
+            ), 0) as earned
+            FROM (
+                SELECT e.platform, e.balance
+                FROM earnings e
+                INNER JOIN (
+                    SELECT platform, MAX(date) as max_date
+                    FROM earnings WHERE currency = 'USD'
+                    GROUP BY platform
+                ) m ON e.platform = m.platform AND e.date = m.max_date
+                WHERE e.currency = 'USD'
+            ) latest
+            LEFT JOIN (
+                SELECT e.platform, e.balance
+                FROM earnings e
+                INNER JOIN (
+                    SELECT platform, MIN(date) as min_date
+                    FROM earnings
+                    WHERE date >= ? AND currency = 'USD'
+                    GROUP BY platform
+                ) m ON e.platform = m.platform AND e.date = m.min_date
+                WHERE e.currency = 'USD'
+            ) month_start ON latest.platform = month_start.platform
+            """,
+            (first_of_month,),
+        )
+        row = await cursor.fetchone()
+        month_earned = max(0.0, row["earned"])
+
+        # Yesterday's delta for percentage change
+        day_before = (datetime.utcnow() - timedelta(days=2)).strftime("%Y-%m-%d")
+        cursor = await db.execute(
+            """
+            SELECT COALESCE(SUM(y.balance - COALESCE(dy.balance, 0)), 0) as earned
+            FROM (
+                SELECT platform, balance FROM earnings
+                WHERE date = ? AND currency = 'USD'
+            ) y
+            LEFT JOIN (
+                SELECT platform, balance FROM earnings
+                WHERE date = ? AND currency = 'USD'
+            ) dy ON y.platform = dy.platform
+            """,
+            (yesterday, day_before),
+        )
+        row = await cursor.fetchone()
+        yesterday_earned = max(0.0, row["earned"])
+
+        today_change = 0.0
+        if yesterday_earned > 0:
+            today_change = ((today_earned - yesterday_earned) / yesterday_earned) * 100
+
+        return {
+            "total": round(total, 2),
+            "today": round(today_earned, 2),
+            "month": round(month_earned, 2),
+            "today_change": round(today_change, 1),
+            "month_change": 0.0,
+        }
+    finally:
+        await db.close()
+
+
+async def get_daily_earnings(days: int = 7) -> list[dict[str, Any]]:
+    """Return daily aggregated earnings for charting (delta per day)."""
+    db = await _get_db()
+    try:
+        # Get daily total balance (sum across platforms) for the range
+        # Include one extra day before the range so we can compute the first delta
+        cursor = await db.execute(
+            """
+            SELECT date, SUM(balance) as total_balance
+            FROM earnings
+            WHERE date >= date('now', ?) AND currency = 'USD'
+            GROUP BY date
+            ORDER BY date
+            """,
+            (f"-{days + 1} days",),
+        )
+        rows = await cursor.fetchall()
+        data = [dict(r) for r in rows]
+
+        # Build a map of date -> total_balance
+        balance_by_date: dict[str, float] = {}
+        for row in data:
+            balance_by_date[row["date"]] = row["total_balance"]
+
+        # Generate result for exactly `days` days
+        now = datetime.utcnow()
+        result = []
+        for i in range(days - 1, -1, -1):
+            d = now - timedelta(days=i)
+            date_str = d.strftime("%Y-%m-%d")
+            prev_str = (d - timedelta(days=1)).strftime("%Y-%m-%d")
+
+            current = balance_by_date.get(date_str, 0.0)
+            previous = balance_by_date.get(prev_str, 0.0)
+            delta = max(0.0, current - previous) if current > 0 else 0.0
+
+            result.append({
+                "date": d.strftime("%b %d"),
+                "amount": round(delta, 2),
+            })
+
+        return result
     finally:
         await db.close()
 
