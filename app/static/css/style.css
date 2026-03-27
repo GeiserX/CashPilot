@@ -369,6 +369,12 @@ img { max-width: 100%; }
 .notify-item:last-child {
   border-bottom: none;
 }
+.notify-empty {
+  padding: 16px 14px;
+  text-align: center;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
 .notify-item:hover {
   background: var(--bg-hover);
 }
@@ -1706,6 +1712,47 @@ img { max-width: 100%; }
 }
 .breakdown-row:hover {
   background: var(--bg-hover);
+}
+.breakdown-row.expandable {
+  cursor: pointer;
+}
+.breakdown-row.expandable > td:first-child {
+  position: relative;
+}
+
+/* Expand chevron */
+.expand-toggle {
+  transition: transform 0.2s ease;
+}
+.expand-chevron {
+  transition: transform 0.2s ease;
+}
+.breakdown-row.expanded .expand-chevron {
+  transform: rotate(180deg);
+}
+
+/* Instance sub-rows */
+.instance-row {
+  background: var(--bg-tertiary);
+}
+.instance-row td {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border-color);
+  vertical-align: middle;
+  font-size: 0.82rem;
+}
+.instance-row:hover {
+  background: var(--bg-hover);
+}
+.instance-node-label {
+  display: inline-block;
+  font-weight: 600;
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  padding: 1px 6px;
 }
 
 /* Payout progress bar */

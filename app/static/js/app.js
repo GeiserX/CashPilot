@@ -237,18 +237,15 @@ const CP = (() => {
     const isExternal = svc.container_status === 'external';
     const statusClass = isExternal ? 'external' : (svc.container_status || 'stopped').toLowerCase();
     const statusLabel = isExternal ? 'External' : statusClass.charAt(0).toUpperCase() + statusClass.slice(1);
+    const instances = svc.instances || 0;
+    const details = svc.instance_details || [];
+    const isMulti = details.length > 1;
 
     // Service name — linked to referral URL if available
     const name = escapeHtml(svc.name);
     const nameHtml = svc.referral_url
       ? `<a href="${escapeHtml(svc.referral_url)}" target="_blank" rel="noopener" title="Referral link" style="color:var(--accent); text-decoration:none; font-weight:600;">${name}</a>`
       : `<span style="font-weight:600;">${name}</span>`;
-
-    // Instance count badge
-    const instances = svc.instances || 0;
-    const instanceBadge = instances > 1
-      ? `<span class="badge badge-instances" title="${instances} instances">${instances}x</span>`
-      : '';
 
     // Subtitle: image for Docker, empty for external
     const subtitle = svc.image
@@ -270,9 +267,21 @@ const CP = (() => {
     const deltaClass = delta > 0 ? 'positive' : delta < 0 ? 'negative' : '';
     const deltaStr = delta !== 0 ? `${deltaSign}${formatCurrency(delta)}` : '--';
 
-    // CPU/Memory — skip for external
-    const cpuStr = isExternal ? '--' : `${svc.cpu || '0'}%`;
-    const memStr = isExternal ? '--' : (svc.memory || '0 MB');
+    // CPU/Memory — skip for external; show avg for multi-instance
+    let cpuStr, memStr;
+    if (isExternal) {
+      cpuStr = '--';
+      memStr = '--';
+    } else if (isMulti && instances > 0) {
+      const avgCpu = (parseFloat(svc.cpu) / instances).toFixed(2);
+      const totalMem = parseFloat(svc.memory);
+      const avgMem = (totalMem / instances).toFixed(1);
+      cpuStr = `<span title="Average across ${instances} instances">~${avgCpu}%</span>`;
+      memStr = `<span title="Average across ${instances} instances">~${avgMem} MB</span>`;
+    } else {
+      cpuStr = `${svc.cpu || '0'}%`;
+      memStr = svc.memory || '0 MB';
+    }
 
     // Payout progress
     const co = svc.cashout || {};
@@ -286,7 +295,7 @@ const CP = (() => {
       <span class="payout-label">${pctToMin.toFixed(0)}%</span>
     ` : '<span style="color:var(--text-muted);">--</span>';
 
-    // Action buttons — hide container controls for external services
+    // Payout (claim) button — always visible in main row
     const claimTitle = co.dashboard_url
       ? (eligible ? 'Cash out earnings' : 'View payout details')
       : 'No payout info available';
@@ -295,24 +304,43 @@ const CP = (() => {
            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>
          </button>`;
 
-    const containerBtns = isExternal ? '' : `
-        <button class="btn btn-icon" onclick="CP.restartService('${svc.slug}')" title="Restart container">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg>
-        </button>
-        <button class="btn btn-icon" onclick="CP.stopService('${svc.slug}')" title="Stop container">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="6" width="12" height="12" rx="1"/></svg>
-        </button>
-        <button class="btn btn-icon" onclick="CP.viewLogs('${svc.slug}')" title="View container logs">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
-        </button>`;
-
-    // Instance count — always show next to status (external services don't have container instances)
+    // Instance badge (shown next to status)
     const instanceLabel = !isExternal && instances > 0
       ? ` <span class="badge badge-instances" title="${instances} instance${instances > 1 ? 's' : ''}">${instances}x</span>`
       : '';
 
-    return `
-    <tr class="breakdown-row" data-slug="${escapeHtml(svc.slug)}">
+    // For multi-instance: expand chevron, no container action buttons in main row
+    // For single instance: show action buttons directly
+    let actionBtns;
+    if (isMulti) {
+      const chevron = `<button class="btn btn-icon expand-toggle" onclick="CP.toggleInstances('${svc.slug}')" title="Expand instances">
+        <svg class="expand-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+      </button>`;
+      actionBtns = `<div class="action-btns">${claimBtn}${chevron}</div>`;
+    } else if (isExternal) {
+      actionBtns = `<div class="action-btns">${claimBtn}</div>`;
+    } else {
+      // Single instance — build container buttons targeting the right node
+      const inst = details[0] || {};
+      const wParam = inst.worker_id != null ? `', ${inst.worker_id}` : `'`;
+      const disabledAttr = !inst.has_docker ? ' disabled title="No Docker access"' : '';
+      actionBtns = `<div class="action-btns">
+          ${claimBtn}
+          <button class="btn btn-icon" onclick="CP.restartService('${svc.slug}${wParam})" title="Restart"${disabledAttr}>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg>
+          </button>
+          <button class="btn btn-icon" onclick="CP.stopService('${svc.slug}${wParam})" title="Stop"${disabledAttr}>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="6" width="12" height="12" rx="1"/></svg>
+          </button>
+          <button class="btn btn-icon" onclick="CP.viewLogs('${svc.slug}${wParam})" title="Logs"${disabledAttr}>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+          </button>
+        </div>`;
+    }
+
+    // Main row
+    let html = `
+    <tr class="breakdown-row${isMulti ? ' expandable' : ''}" data-slug="${escapeHtml(svc.slug)}">
       <td>${nameHtml}<div style="font-size:0.7rem; color:var(--text-muted);">${subtitle}</div></td>
       <td style="text-align:center;"><span class="badge badge-${statusClass}"><span class="status-dot ${statusClass}"></span> ${statusLabel}</span>${instanceLabel}</td>
       <td style="text-align:center;">${healthBadge}</td>
@@ -321,13 +349,56 @@ const CP = (() => {
       <td style="text-align:right;">${cpuStr}</td>
       <td style="text-align:right;">${memStr}</td>
       <td style="text-align:center;">${progressBar}</td>
-      <td style="text-align:center; white-space:nowrap;">
-        <div class="action-btns">
-          ${claimBtn}
-          ${containerBtns}
-        </div>
-      </td>
+      <td style="text-align:center; white-space:nowrap;">${actionBtns}</td>
     </tr>`;
+
+    // Sub-rows for multi-instance (hidden by default)
+    if (isMulti) {
+      for (const inst of details) {
+        const iStatus = (inst.status || 'unknown').toLowerCase();
+        const iStatusLabel = iStatus.charAt(0).toUpperCase() + iStatus.slice(1);
+        const nodeLabel = inst.node === 'local' ? 'Local' : escapeHtml(inst.node);
+        const wParam = inst.worker_id != null ? `', ${inst.worker_id}` : `'`;
+        const disabledAttr = !inst.has_docker ? ' disabled title="No Docker access"' : '';
+        html += `
+        <tr class="instance-row" data-parent="${escapeHtml(svc.slug)}" style="display:none;">
+          <td style="padding-left:28px;">
+            <span class="instance-node-label">${nodeLabel}</span>
+            <span style="font-size:0.7rem; color:var(--text-muted); margin-left:4px;">${escapeHtml(inst.container_name)}</span>
+          </td>
+          <td style="text-align:center;"><span class="badge badge-${iStatus}"><span class="status-dot ${iStatus}"></span> ${iStatusLabel}</span></td>
+          <td></td>
+          <td></td>
+          <td></td>
+          <td style="text-align:right;">${inst.cpu || '0'}%</td>
+          <td style="text-align:right;">${inst.memory || '0 MB'}</td>
+          <td></td>
+          <td style="text-align:center; white-space:nowrap;">
+            <div class="action-btns">
+              <button class="btn btn-icon" onclick="CP.restartService('${svc.slug}${wParam})" title="Restart on ${nodeLabel}"${disabledAttr}>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg>
+              </button>
+              <button class="btn btn-icon" onclick="CP.stopService('${svc.slug}${wParam})" title="Stop on ${nodeLabel}"${disabledAttr}>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="6" width="12" height="12" rx="1"/></svg>
+              </button>
+              <button class="btn btn-icon" onclick="CP.viewLogs('${svc.slug}${wParam})" title="Logs on ${nodeLabel}"${disabledAttr}>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+              </button>
+            </div>
+          </td>
+        </tr>`;
+      }
+    }
+
+    return html;
+  }
+
+  function toggleInstances(slug) {
+    const rows = document.querySelectorAll(`.instance-row[data-parent="${slug}"]`);
+    const mainRow = document.querySelector(`.breakdown-row[data-slug="${slug}"]`);
+    const isOpen = rows.length > 0 && rows[0].style.display !== 'none';
+    rows.forEach(r => { r.style.display = isOpen ? 'none' : ''; });
+    if (mainRow) mainRow.classList.toggle('expanded', !isOpen);
   }
 
   function refreshServices() {
@@ -518,9 +589,10 @@ const CP = (() => {
   // -----------------------------------------------------------
   // Service actions
   // -----------------------------------------------------------
-  async function restartService(slug) {
+  async function restartService(slug, workerId) {
+    const q = workerId != null ? `?worker_id=${workerId}` : '';
     try {
-      await api(`/api/services/${slug}/restart`, { method: 'POST' });
+      await api(`/api/services/${slug}/restart${q}`, { method: 'POST' });
       toast(`${slug} restarting...`, 'success');
       loadServicesTable();
     } catch (err) {
@@ -528,9 +600,10 @@ const CP = (() => {
     }
   }
 
-  async function stopService(slug) {
+  async function stopService(slug, workerId) {
+    const q = workerId != null ? `?worker_id=${workerId}` : '';
     try {
-      await api(`/api/services/${slug}/stop`, { method: 'POST' });
+      await api(`/api/services/${slug}/stop${q}`, { method: 'POST' });
       toast(`${slug} stopped`, 'success');
       loadServicesTable();
     } catch (err) {
@@ -538,9 +611,10 @@ const CP = (() => {
     }
   }
 
-  async function startService(slug) {
+  async function startService(slug, workerId) {
+    const q = workerId != null ? `?worker_id=${workerId}` : '';
     try {
-      await api(`/api/services/${slug}/start`, { method: 'POST' });
+      await api(`/api/services/${slug}/start${q}`, { method: 'POST' });
       toast(`${slug} starting...`, 'success');
       loadServicesTable();
     } catch (err) {
@@ -564,18 +638,20 @@ const CP = (() => {
   // -----------------------------------------------------------
   let logPollTimer = null;
 
-  async function viewLogs(slug) {
+  async function viewLogs(slug, workerId) {
     openModal('logs-modal');
     const title = document.getElementById('logs-modal-title');
     const viewer = document.getElementById('log-content');
-    if (title) title.textContent = `Logs: ${slug}`;
+    const label = workerId != null ? `${slug} (worker #${workerId})` : slug;
+    if (title) title.textContent = `Logs: ${label}`;
     if (viewer) viewer.textContent = 'Loading logs...';
 
     if (logPollTimer) clearInterval(logPollTimer);
+    const q = workerId != null ? `lines=200&worker_id=${workerId}` : 'lines=200';
 
     async function fetchLogs() {
       try {
-        const data = await api(`/api/services/${slug}/logs?lines=200`);
+        const data = await api(`/api/services/${slug}/logs?${q}`);
         if (viewer) viewer.textContent = data.logs || '(no logs)';
         viewer.scrollTop = viewer.scrollHeight;
       } catch (err) {
@@ -1155,17 +1231,6 @@ const CP = (() => {
   }
 
   function populateSettings(config) {
-    // Referral codes
-    const referralsEl = document.getElementById('settings-referrals');
-    if (referralsEl && config.referral_codes) {
-      referralsEl.innerHTML = Object.entries(config.referral_codes).map(([slug, code]) => `
-        <div class="form-group">
-          <label class="form-label">${escapeHtml(slug)}</label>
-          <input class="form-input" data-referral="${slug}" value="${escapeHtml(code || '')}">
-        </div>
-      `).join('');
-    }
-
     // Credentials
     const credsEl = document.getElementById('settings-credentials');
     if (credsEl && config.credentials) {
@@ -1197,15 +1262,6 @@ const CP = (() => {
 
   async function saveSettings() {
     const config = {};
-
-    // Referral codes
-    const referralInputs = document.querySelectorAll('[data-referral]');
-    if (referralInputs.length > 0) {
-      config.referral_codes = {};
-      referralInputs.forEach(input => {
-        config.referral_codes[input.dataset.referral] = input.value;
-      });
-    }
 
     // General
     const hostnameInput = document.getElementById('settings-hostname');
@@ -1346,11 +1402,12 @@ const CP = (() => {
     try {
       const alerts = await api('/api/collector-alerts');
       if (!alerts || alerts.length === 0) {
-        container.style.display = 'none';
+        badge.style.display = 'none';
+        list.innerHTML = '<div class="notify-empty">All collectors healthy</div>';
         return;
       }
 
-      container.style.display = '';
+      badge.style.display = '';
       badge.textContent = alerts.length;
       list.innerHTML = alerts.map(a => `
         <div class="notify-item" data-platform="${escapeHtml(a.platform)}" onclick="CP.goToCollectorSettings('${escapeHtml(a.platform)}')">
@@ -1364,7 +1421,7 @@ const CP = (() => {
         </div>
       `).join('');
     } catch {
-      container.style.display = 'none';
+      badge.style.display = 'none';
     }
   }
 
@@ -1463,5 +1520,6 @@ const CP = (() => {
     refreshServices,
     openClaimModal,
     goToCollectorSettings,
+    toggleInstances,
   };
 })();

@@ -444,7 +444,8 @@ async def api_services_deployed(request: Request) -> list[dict[str, Any]]:
     """Return deployed services with container status, balance, CPU, memory.
 
     Multiple containers for the same slug (multi-node) are aggregated into a
-    single row with summed CPU/memory and an instance count.
+    single row with summed CPU/memory, an instance count, and per-instance
+    details for the expandable sub-row UI.
     """
     _require_auth_api(request)
     try:
@@ -452,11 +453,19 @@ async def api_services_deployed(request: Request) -> list[dict[str, Any]]:
     except RuntimeError:
         statuses = []
 
+    # Tag local containers with node info
+    for s in statuses:
+        s["_node"] = "local"
+        s["_worker_id"] = None
+        s["_has_docker"] = orchestrator.docker_available()
+
     # Also include worker containers
     workers = await database.list_workers()
     for w in workers:
         if w.get("status") != "online":
             continue
+        sys_info = json.loads(w.get("system_info", "{}"))
+        worker_has_docker = sys_info.get("docker_available", False)
         containers = json.loads(w.get("containers", "[]"))
         for c in containers:
             slug = c.get("slug", "")
@@ -471,6 +480,9 @@ async def api_services_deployed(request: Request) -> list[dict[str, Any]]:
                         "memory_mb": c.get("memory_mb", 0),
                         "category": "",
                         "deployed_by": w.get("name", "worker"),
+                        "_node": w.get("name", "worker"),
+                        "_worker_id": w.get("id"),
+                        "_has_docker": worker_has_docker,
                     }
                 )
 
@@ -507,6 +519,24 @@ async def api_services_deployed(request: Request) -> list[dict[str, Any]]:
     for slug, agg in slug_agg.items():
         svc = catalog.get_service(slug)
         health = health_map.get(slug, {})
+
+        # Build per-instance detail list (local first)
+        instance_details = []
+        for inst in agg["instances"]:
+            instance_details.append(
+                {
+                    "node": inst.get("_node", "unknown"),
+                    "worker_id": inst.get("_worker_id"),
+                    "status": inst.get("status", "unknown"),
+                    "cpu": f"{float(inst.get('cpu_percent', 0)):.2f}",
+                    "memory": f"{float(inst.get('memory_mb', 0)):.1f} MB",
+                    "container_name": inst.get("name", ""),
+                    "has_docker": inst.get("_has_docker", False),
+                }
+            )
+        # Sort: local first, then alphabetically by node name
+        instance_details.sort(key=lambda x: (0 if x["node"] == "local" else 1, x["node"]))
+
         entry = {
             "slug": slug,
             "name": svc["name"] if svc else slug,
@@ -520,6 +550,7 @@ async def api_services_deployed(request: Request) -> list[dict[str, Any]]:
             "uptime_pct": health.get("uptime_pct"),
             "restarts_7d": health.get("restarts", 0),
             "instances": len(agg["instances"]),
+            "instance_details": instance_details,
         }
         if svc:
             cashout = svc.get("cashout", {})
@@ -554,6 +585,7 @@ async def api_services_deployed(request: Request) -> list[dict[str, Any]]:
             "uptime_pct": health.get("uptime_pct"),
             "restarts_7d": 0,
             "instances": 0,
+            "instance_details": [],
         }
         if svc:
             cashout = svc.get("cashout", {})
@@ -676,13 +708,70 @@ async def api_remove(request: Request, slug: str) -> dict[str, str]:
 
 
 # ---------------------------------------------------------------------------
+# Helpers: proxy commands / logs to worker nodes
+# ---------------------------------------------------------------------------
+
+
+async def _proxy_worker_command(worker_id: int, command: str, slug: str) -> dict[str, str]:
+    """Forward a container command (restart/stop/start) to a worker."""
+    worker = await database.get_worker(worker_id)
+    if not worker:
+        raise HTTPException(status_code=404, detail="Worker not found")
+    if worker["status"] != "online":
+        raise HTTPException(status_code=503, detail="Worker is offline")
+    if not worker["url"]:
+        raise HTTPException(status_code=503, detail="Worker URL not known")
+
+    url = worker["url"].rstrip("/")
+    headers = {}
+    if FLEET_API_KEY:
+        headers["Authorization"] = f"Bearer {FLEET_API_KEY}"
+
+    try:
+        async with httpx.AsyncClient(timeout=30) as client:
+            resp = await client.post(f"{url}/api/containers/{slug}/{command}", headers=headers)
+            return resp.json()
+    except httpx.HTTPError as exc:
+        raise HTTPException(status_code=503, detail=f"Worker communication failed: {exc}")
+
+
+async def _proxy_worker_logs(worker_id: int, slug: str, lines: int = 50) -> dict[str, str]:
+    """Forward a logs request to a worker."""
+    worker = await database.get_worker(worker_id)
+    if not worker:
+        raise HTTPException(status_code=404, detail="Worker not found")
+    if worker["status"] != "online":
+        raise HTTPException(status_code=503, detail="Worker is offline")
+    if not worker["url"]:
+        raise HTTPException(status_code=503, detail="Worker URL not known")
+
+    url = worker["url"].rstrip("/")
+    headers = {}
+    if FLEET_API_KEY:
+        headers["Authorization"] = f"Bearer {FLEET_API_KEY}"
+
+    try:
+        async with httpx.AsyncClient(timeout=30) as client:
+            resp = await client.get(
+                f"{url}/api/containers/{slug}/logs",
+                params={"lines": min(lines, 1000)},
+                headers=headers,
+            )
+            return resp.json()
+    except httpx.HTTPError as exc:
+        raise HTTPException(status_code=503, detail=f"Worker communication failed: {exc}")
+
+
+# ---------------------------------------------------------------------------
 # API: Service management (new-style routes matching frontend)
 # ---------------------------------------------------------------------------
 
 
 @app.post("/api/services/{slug}/restart")
-async def api_service_restart(request: Request, slug: str) -> dict[str, str]:
+async def api_service_restart(request: Request, slug: str, worker_id: int | None = None) -> dict[str, str]:
     _require_writer(request)
+    if worker_id is not None:
+        return await _proxy_worker_command(worker_id, "restart", slug)
     try:
         orchestrator.restart_service(slug)
         await database.record_health_event(slug, "restart")
@@ -694,8 +783,10 @@ async def api_service_restart(request: Request, slug: str) -> dict[str, str]:
 
 
 @app.post("/api/services/{slug}/stop")
-async def api_service_stop(request: Request, slug: str) -> dict[str, str]:
+async def api_service_stop(request: Request, slug: str, worker_id: int | None = None) -> dict[str, str]:
     _require_writer(request)
+    if worker_id is not None:
+        return await _proxy_worker_command(worker_id, "stop", slug)
     try:
         orchestrator.stop_service(slug)
         await database.record_health_event(slug, "stop")
@@ -707,8 +798,10 @@ async def api_service_stop(request: Request, slug: str) -> dict[str, str]:
 
 
 @app.post("/api/services/{slug}/start")
-async def api_service_start(request: Request, slug: str) -> dict[str, str]:
+async def api_service_start(request: Request, slug: str, worker_id: int | None = None) -> dict[str, str]:
     _require_writer(request)
+    if worker_id is not None:
+        return await _proxy_worker_command(worker_id, "start", slug)
     try:
         orchestrator.start_service(slug)
         await database.record_health_event(slug, "start")
@@ -720,8 +813,12 @@ async def api_service_start(request: Request, slug: str) -> dict[str, str]:
 
 
 @app.get("/api/services/{slug}/logs")
-async def api_service_logs(request: Request, slug: str, lines: int = 50) -> dict[str, str]:
+async def api_service_logs(
+    request: Request, slug: str, lines: int = 50, worker_id: int | None = None
+) -> dict[str, str]:
     _require_auth_api(request)
+    if worker_id is not None:
+        return await _proxy_worker_logs(worker_id, slug, lines)
     try:
         logs = orchestrator.get_service_logs(slug, lines=min(lines, 1000))
         return {"logs": logs}
@@ -892,6 +989,26 @@ async def api_collector_alerts(request: Request) -> list[dict[str, str]]:
     """Return collector errors from the last collection run."""
     _require_auth_api(request)
     return _collector_alerts
+
+
+@app.get("/api/services/{slug}/per-node-earnings")
+async def api_per_node_earnings(request: Request, slug: str) -> list[dict[str, Any]]:
+    """Return per-node earnings for services that support it (e.g. MystNodes)."""
+    _require_auth_api(request)
+    config = await database.get_config() or {}
+    if not isinstance(config, dict):
+        config = {}
+
+    if slug == "mysterium":
+        from app.collectors.mystnodes import MystNodesCollector
+
+        collector = MystNodesCollector(
+            email=config.get("mysterium_email", ""),
+            password=config.get("mysterium_password", ""),
+        )
+        return await collector.get_per_node_earnings()
+
+    return []
 
 
 # ---------------------------------------------------------------------------

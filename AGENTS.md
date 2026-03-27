@@ -241,11 +241,21 @@ The worker **never handles or stores credentials**. The flow:
 
 This is how Portainer works. The worker is a dumb executor — it never decrypts, stores, or inspects credentials.
 
+### Dashboard UI Features
+
+- **Expandable instance rows**: Services with multiple instances (multi-node) show an expand chevron. Clicking reveals sub-rows with per-instance status, CPU/memory, and action buttons (restart/stop/logs). Local instance is always listed first.
+- **Per-instance actions**: Sub-row action buttons target the correct node. Local containers use the orchestrator directly. Worker containers proxy via `?worker_id=X` query parameter to `_proxy_worker_command()` / `_proxy_worker_logs()`.
+- **Greyed-out actions**: If a worker doesn't have Docker socket access (`system_info.docker_available == false`), its action buttons are disabled.
+- **CPU/Memory averaging**: Multi-instance services show average CPU/memory in the main row (prefixed with `~`), individual values in sub-rows.
+- **Notification bell**: Always visible in topbar. Polls `/api/collector-alerts` every 60s. Shows red badge with count when collectors fail. Clicking an alert navigates to Settings and highlights the relevant collector section.
+- **External services**: Services deployed outside Docker (Grass, Bytelixir on Android) appear with "External" badge. No container actions, no CPU/memory.
+
 ### What NOT to Build Yet
 
 - Auto-discovery (mDNS, Tailscale API) -- workers are manually configured via env vars.
 - Worker-to-worker communication -- workers only talk to the UI.
 - Multi-UI failover -- there is exactly one UI instance.
+- Android service worker -- for tracking Grass/Bytelixir running on Android (future roadmap).
 
 ---
 
@@ -328,18 +338,32 @@ This is how Portainer works. The worker is a dumb executor — it never decrypts
 
 ### Collector Implementation Status
 
-Working collectors (10/10 deployed services):
+Working collectors (12/12 deployed services):
 - **Honeygain** -- JWT auth, `/v1/users/tokens` + `/v1/users/balances`
 - **EarnApp** -- XSRF rotation + cookie auth, `/money` endpoint
-- **MystNodes** -- Cloud API (`my.mystnodes.com/api/v2`), email/password auth
+- **MystNodes** -- Cloud API (`my.mystnodes.com/api/v2`), email/password auth. **Supports per-node earnings** via `GET /api/v2/node` (30-day MYST per node, need price conversion for USD).
 - **Traffmonetizer** -- JWT token, `data.traffmonetizer.com/api/app_user/get_balance`
 - **IPRoyal** -- Email/password auth
 - **Repocket** -- Firebase auth (Google Identity Toolkit)
-- **Bitping** -- JWT cookie auth, `/api/v2/payouts/earnings`
+- **Bitping** -- JWT cookie auth, `/api/v2/payouts/earnings`. No per-device API.
 - **Earn.fm** -- Supabase auth, `/v2/harvester/view_balance`
 - **PacketStream** -- Manual JWT cookie, HTML scraping `window.userData`
-- **ProxyRack** -- API key auth, POST `/api/balance`
+- **ProxyRack** -- API key auth, POST `/api/balance`. Per-device bandwidth (not earnings) via POST `/api/bandwidth` with `device_id` param.
 - **Storj** -- API URL-based
+- **Grass** -- Bearer token from localStorage (`app.grass.io`), `api.getgrass.io`. Returns points, not USD.
+- **Bytelixir** -- Laravel session cookie (expires ~3.5h), `dash.bytelixir.com`. hCaptcha blocks automated login.
+
+#### Per-Node/Per-Device Earnings Support
+
+Only MystNodes has a real per-node earnings API. Research on all 12 services:
+
+| Service | Per-Device Earnings | Notes |
+|---------|:------------------:|-------|
+| MystNodes | **Yes** | `GET /api/v2/node` returns per-node 30d MYST earnings. Implemented in `mystnodes.py:get_per_node_earnings()` |
+| ProxyRack | Bandwidth only | `POST /api/bandwidth` with `device_id` returns daily GB. No per-device USD. |
+| Bitping | No | No per-device REST API. gRPC only internally. |
+| Traffmonetizer | Unconfirmed | May have device stats endpoint, not documented. |
+| All others | No | Account-level balance only. |
 
 ### API/Dashboard Access Gotchas
 
@@ -349,6 +373,8 @@ Working collectors (10/10 deployed services):
 | **ProxyRack** | Dashboard behind Cloudflare. Need API key from browser. Device UUIDs must be manually registered in `peer.proxyrack.com` dashboard. |
 | **SpeedShare** | API domain (`api.speedshare.app`) misconfigured -- returns Telegraf metrics exporter output. Service non-functional. |
 | **Nodepay** | Behind Cloudflare protection. API access requires browser session cookies. |
+| **Grass** | Token must be extracted from browser localStorage at `app.grass.io`. Returns points (GRASS_POINTS), not USD. |
+| **Bytelixir** | Laravel session cookie expires ~3.5h. hCaptcha blocks automated login. Must manually extract cookie from browser. Most session-fragile service. |
 
 ---
 
@@ -399,10 +425,23 @@ Fleet API key set via `CASHPILOT_API_KEY` env var on all instances.
 
 - **`container.stats(stream=False)` is slow** (~1-2s per container). Never call in request path. Use `get_status_cached()` for page loads; background health check refreshes every 5 min.
 - **`--read-only` breaks Docker socket access**: The entrypoint needs to modify `/etc/group` to add the `cashpilot` user to the Docker socket's group. Drop `--read-only` or add tmpfs for `/etc`.
-- **Cross-subnet workers**: If worker and UI are on different subnets, use a VPN/overlay IP for `CASHPILOT_UI_URL`. Worker may need `--network host` for VPN routing.
+- **Cross-subnet workers**: If worker and UI are on different subnets, use a VPN/overlay IP (e.g. Tailscale MagicDNS) for `CASHPILOT_UI_URL`. Worker may need `--network host` for VPN routing.
 - **SQLite data retention**: 400-day retention. Daily job purges `earnings` and `health_events` older than 400 days.
 - **Collection interval**: 1 hour. Earnings cache in SQLite, served instantly.
 - **Docker availability check caches result**: If startup races and returns False, the cache stays False. Fixed by warming cache in background on startup via `run_in_executor`.
+- **Cache mutation bug**: `orchestrator.get_status_cached()` returns a reference to the module-level `_status_cache` list. Always copy with `list()` before appending worker containers, or the cache grows infinitely.
+- **Health check deduplication**: When a service runs on multiple nodes, record only one health event per slug per check cycle (best status wins: running > restarting > exited). Without this, multi-instance services get penalised with duplicate `check_down` events.
+- **Google Fonts render-blocking**: Use async preload pattern (`<link rel="preload" as="style" onload="this.rel='stylesheet'">`) to avoid blocking page render.
+- **First earnings collection baseline**: When a service is first onboarded, insert a synthetic baseline record for the prior day with the same balance, so the first delta is 0 (not the full cumulative balance).
+
+### Service-Specific Deployment Notes
+
+#### MystNodes / Mysterium
+- **MMN API key is critical**: The Mysterium container must have `MYSTNODES_API_KEY` env var or `[mmn] api-key` in `config-mainnet.toml` to link the node to the user's MystNodes cloud account.
+- **Node identity is per-volume**: The Mysterium keystore lives in the Docker volume (`mysterium-data:/var/lib/mysterium-node/keystore/`). Deleting the volume or creating a new container without the same volume generates a NEW blockchain identity.
+- **Registration is blockchain-based**: New identities must be registered on Polygon. This is triggered by Hermes and requires the MMN API key. If Hermes returns "internal error", it's a temporary server-side issue.
+- **Per-node earnings**: The MystNodes cloud API (`GET /api/v2/node?page=1&itemsPerPage=100`) returns per-node 30-day earnings in MYST. The `earningsTotal` endpoint returns pre-converted USD total.
+- **Image name**: `mysteriumnetwork/myst` (NOT `mysteriumnet/myst`).
 
 ---
 
