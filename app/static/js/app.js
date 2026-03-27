@@ -158,22 +158,12 @@ const CP = (() => {
       loadEarningsChart('7'),
     ]);
 
-    // Quick re-fetch after 10s to pick up freshly-cached stats (CPU/memory)
-    // that may not have been available on the very first cold-start load
-    if (!_initialRefreshDone) {
-      _initialRefreshDone = true;
-      setTimeout(() => {
-        loadDashboardStats();
-        loadServicesTable();
-      }, 10000);
-    }
-
-    // Auto-refresh every 60 seconds
+    // Auto-refresh every hour
     if (refreshTimer) clearInterval(refreshTimer);
     refreshTimer = setInterval(() => {
       loadDashboardStats();
       loadServicesTable();
-    }, 60000);
+    }, 3600000);
   }
 
   async function loadDashboardStats() {
