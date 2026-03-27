@@ -1566,11 +1566,36 @@ const CP = (() => {
   function initThemeToggle() {
     const btn = document.getElementById('theme-toggle');
     if (!btn) return;
-    btn.addEventListener('click', () => {
+    function updateLabel() {
+      const label = btn.querySelector('.theme-label');
+      if (label) {
+        const current = document.documentElement.getAttribute('data-theme') || 'dark';
+        label.textContent = current === 'dark' ? 'Light mode' : 'Dark mode';
+      }
+    }
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
       const current = document.documentElement.getAttribute('data-theme') || 'dark';
       const next = current === 'dark' ? 'light' : 'dark';
       document.documentElement.setAttribute('data-theme', next);
       localStorage.setItem('cp-theme', next);
+      updateLabel();
+    });
+    updateLabel();
+  }
+
+  function initAvatarDropdown() {
+    const toggle = document.getElementById('avatar-toggle');
+    const dropdown = document.getElementById('avatar-dropdown');
+    if (!toggle || !dropdown) return;
+    toggle.addEventListener('click', (e) => {
+      e.stopPropagation();
+      dropdown.classList.toggle('open');
+    });
+    document.addEventListener('click', (e) => {
+      if (!dropdown.contains(e.target) && e.target !== toggle) {
+        dropdown.classList.remove('open');
+      }
     });
   }
 
@@ -1619,6 +1644,7 @@ const CP = (() => {
     initSidebar();
     initThemeToggle();
     initNotifications();
+    initAvatarDropdown();
 
     // Detect or restore display currency preference
     _displayCurrency = localStorage.getItem('cp-display-currency') || detectDefaultCurrency();
