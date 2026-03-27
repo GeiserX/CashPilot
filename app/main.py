@@ -21,7 +21,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 
-from app import auth, catalog, compose_generator, database, orchestrator
+from app import auth, catalog, compose_generator, database, exchange_rates, orchestrator
 
 logging.basicConfig(
     level=logging.INFO,
@@ -138,7 +138,9 @@ async def lifespan(app: FastAPI):
     scheduler.add_job(_run_health_check, "interval", minutes=5, id="health_check")
     scheduler.add_job(_check_stale_workers, "interval", minutes=2, id="stale_workers")
     scheduler.add_job(_run_data_retention, "interval", hours=24, id="data_retention")
+    scheduler.add_job(exchange_rates.refresh, "interval", minutes=15, id="exchange_rates")
     scheduler.start()
+    await exchange_rates.refresh()
     docker_mode = "direct" if orchestrator.docker_available() else "monitor-only"
     logger.info("CashPilot started (Docker: %s)", docker_mode)
 
@@ -489,6 +491,7 @@ async def api_services_deployed(request: Request) -> list[dict[str, Any]]:
     # Get latest earnings per platform for balance display
     earnings = await database.get_earnings_summary()
     balance_map = {e["platform"]: e["balance"] for e in earnings}
+    currency_map = {e["platform"]: e["currency"] for e in earnings}
 
     # Get health scores
     health_scores = await database.get_health_scores(7)
@@ -542,6 +545,7 @@ async def api_services_deployed(request: Request) -> list[dict[str, Any]]:
             "name": svc["name"] if svc else slug,
             "container_status": agg["best_status"],
             "balance": balance_map.get(slug, 0.0),
+            "currency": currency_map.get(slug, "USD"),
             "cpu": f"{agg['total_cpu']:.2f}",
             "memory": f"{agg['total_mem']:.1f} MB",
             "image": agg["image"],
@@ -577,6 +581,7 @@ async def api_services_deployed(request: Request) -> list[dict[str, Any]]:
             "name": svc["name"] if svc else slug,
             "container_status": "external",
             "balance": balance_map.get(slug, 0.0),
+            "currency": currency_map.get(slug, "USD"),
             "cpu": "",
             "memory": "",
             "image": "",
@@ -900,6 +905,14 @@ async def api_earnings_summary(request: Request) -> dict[str, Any]:
     _require_auth_api(request)
     summary = await database.get_earnings_dashboard_summary()
 
+    # Include non-USD balances converted to USD in the total
+    all_earnings = await database.get_earnings_summary()
+    for e in all_earnings:
+        if e["currency"] != "USD":
+            usd_val = exchange_rates.to_usd(e["balance"], e["currency"])
+            if usd_val is not None:
+                summary["total"] = round(summary["total"] + usd_val, 2)
+
     # Count active (running) services — use cached data for instant response
     active = 0
     try:
@@ -989,6 +1002,13 @@ async def api_collector_alerts(request: Request) -> list[dict[str, str]]:
     """Return collector errors from the last collection run."""
     _require_auth_api(request)
     return _collector_alerts
+
+
+@app.get("/api/exchange-rates")
+async def api_exchange_rates(request: Request) -> dict[str, Any]:
+    """Return current exchange rates (fiat + crypto) for frontend conversion."""
+    _require_auth_api(request)
+    return exchange_rates.get_all()
 
 
 @app.get("/api/services/{slug}/per-node-earnings")

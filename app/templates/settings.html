@@ -25,10 +25,19 @@
     </div>
   </div>
 
-  <div class="form-group" style="max-width: 400px;">
-    <label class="form-label" for="settings-timezone">Timezone</label>
-    <input class="form-input" type="text" id="settings-timezone" value="UTC" placeholder="UTC">
-    <div class="form-hint">IANA timezone, e.g. Europe/Madrid, America/New_York</div>
+  <div class="form-row">
+    <div class="form-group">
+      <label class="form-label" for="settings-timezone">Timezone</label>
+      <input class="form-input" type="text" id="settings-timezone" value="UTC" placeholder="UTC">
+      <div class="form-hint">IANA timezone, e.g. Europe/Madrid, America/New_York</div>
+    </div>
+    <div class="form-group">
+      <label class="form-label" for="settings-currency">Display Currency</label>
+      <select class="form-input" id="settings-currency">
+        <option value="USD">USD</option>
+      </select>
+      <div class="form-hint">All balances will be converted and displayed in this currency. Auto-detected from your browser locale.</div>
+    </div>
   </div>
 </div>
 

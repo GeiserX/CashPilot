@@ -97,13 +97,13 @@ class MystNodesCollector(BaseCollector):
                 resp.raise_for_status()
                 data = resp.json()
 
-                # earningsTotal is already in USD
-                total_usd = float(data.get("earningsTotal", 0))
+                # earningsTotal is in MYST tokens (Polygon)
+                total_myst = float(data.get("earningsTotal", 0))
 
                 return EarningsResult(
                     platform=self.platform,
-                    balance=round(total_usd, 4),
-                    currency="USD",
+                    balance=round(total_myst, 4),
+                    currency="MYST",
                 )
         except Exception as exc:
             logger.error("MystNodes collection failed: %s", exc)

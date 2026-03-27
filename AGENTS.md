@@ -350,7 +350,7 @@ Working collectors (12/12 deployed services):
 - **PacketStream** -- Manual JWT cookie, HTML scraping `window.userData`
 - **ProxyRack** -- API key auth, POST `/api/balance`. Per-device bandwidth (not earnings) via POST `/api/bandwidth` with `device_id` param.
 - **Storj** -- API URL-based
-- **Grass** -- Bearer token from localStorage (`app.grass.io`), `api.getgrass.io`. Returns points, not USD.
+- **Grass** -- Bearer token from localStorage (`app.grass.io`), `api.getgrass.io`. Returns GRASS token balance (converted to USD via CoinGecko).
 - **Bytelixir** -- Laravel session cookie (expires ~3.5h), `dash.bytelixir.com`. hCaptcha blocks automated login.
 
 #### Per-Node/Per-Device Earnings Support
@@ -373,8 +373,8 @@ Only MystNodes has a real per-node earnings API. Research on all 12 services:
 | **ProxyRack** | Dashboard behind Cloudflare. Need API key from browser. Device UUIDs must be manually registered in `peer.proxyrack.com` dashboard. |
 | **SpeedShare** | API domain (`api.speedshare.app`) misconfigured -- returns Telegraf metrics exporter output. Service non-functional. |
 | **Nodepay** | Behind Cloudflare protection. API access requires browser session cookies. |
-| **Grass** | Token must be extracted from browser localStorage at `app.grass.io`. Returns points (GRASS_POINTS), not USD. |
-| **Bytelixir** | Laravel session cookie expires ~3.5h. hCaptcha blocks automated login. Must manually extract cookie from browser. Most session-fragile service. |
+| **Grass** | Token must be extracted from browser localStorage at `app.grass.io`. Returns GRASS tokens (converted via exchange rates). |
+| **Bytelixir** | Laravel session cookie. hCaptcha blocks automated login. Must manually extract cookie from browser. With "Remember Me" ticked, sessions last days/weeks. |
 
 ---
 
@@ -440,8 +440,45 @@ Fleet API key set via `CASHPILOT_API_KEY` env var on all instances.
 - **MMN API key is critical**: The Mysterium container must have `MYSTNODES_API_KEY` env var or `[mmn] api-key` in `config-mainnet.toml` to link the node to the user's MystNodes cloud account.
 - **Node identity is per-volume**: The Mysterium keystore lives in the Docker volume (`mysterium-data:/var/lib/mysterium-node/keystore/`). Deleting the volume or creating a new container without the same volume generates a NEW blockchain identity.
 - **Registration is blockchain-based**: New identities must be registered on Polygon. This is triggered by Hermes and requires the MMN API key. If Hermes returns "internal error", it's a temporary server-side issue.
-- **Per-node earnings**: The MystNodes cloud API (`GET /api/v2/node?page=1&itemsPerPage=100`) returns per-node 30-day earnings in MYST. The `earningsTotal` endpoint returns pre-converted USD total.
+- **Per-node earnings**: The MystNodes cloud API (`GET /api/v2/node?page=1&itemsPerPage=100`) returns per-node 30-day earnings in MYST. The `earningsTotal` endpoint returns MYST token balance (not USD).
 - **Image name**: `mysteriumnetwork/myst` (NOT `mysteriumnet/myst`).
+
+### Multi-Currency & Exchange Rates
+
+CashPilot stores earnings in each service's **native currency** (USD, MYST, GRASS, STORJ, etc.) and converts for display.
+
+- **`app/exchange_rates.py`**: Fetches crypto→USD rates from CoinGecko (free, no key) and USD→fiat from Frankfurter API. Cached in memory, refreshed every 15 min + on startup.
+- **CoinGecko IDs**: `mysterium` (MYST), `grass` (GRASS). Add new tokens to `CRYPTO_IDS` dict.
+- **Frontend conversion**: `app.js` fetches `/api/exchange-rates`, stores rates client-side. `formatCurrency(val, nativeCurrency)` converts native→USD→display currency. `formatNative(val, currency)` shows original token amount alongside converted value.
+- **Display currency**: Auto-detected from `navigator.language` locale (e.g. `es` → EUR). User can override in Settings. Persisted in `localStorage('cp-display-currency')`.
+- **Dashboard totals**: Backend converts all non-USD balances to USD via `exchange_rates.to_usd()` for the summary total.
+- **Collector currencies**: Each collector returns its native currency in `EarningsResult.currency`. MystNodes returns `MYST`, Grass returns `GRASS`, all others return `USD`.
+
+### Worker Deployment
+
+**Always use the dedicated worker image** (`drumsergio/cashpilot-worker`), never the UI image for workers. The worker image runs `app.worker_api:app` on port 8081.
+
+**Topology:**
+- **watchtower**: `drumsergio/cashpilot` (UI, standalone mode — includes embedded local worker). Port 8085→8080. Manages local containers + collects all earnings.
+- **geiserback** (192.168.10.110): `drumsergio/cashpilot-worker`. Port 8081. Same subnet as watchtower — uses direct IP for `CASHPILOT_UI_URL`.
+- **geiserct** (192.168.20.5, user `geiser`): `drumsergio/cashpilot-worker`. Port 8081. Different subnet — **must use Tailscale MagicDNS** (`watchtower.mango-alpha.ts.net`) for `CASHPILOT_UI_URL`.
+
+```bash
+# Worker deployment (geiserback or geiserct)
+docker run -d --name cashpilot-worker --restart unless-stopped \
+  -p 8081:8081 \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  -e TZ=Europe/Madrid \
+  -e "CASHPILOT_UI_URL=http://192.168.10.100:8085" \
+  -e "CASHPILOT_API_KEY=XV5LwdpApfERQmhKbbcANI8nz3pca1Up" \
+  -e CASHPILOT_WORKER_NAME=<server-name> \
+  --security-opt no-new-privileges:true \
+  drumsergio/cashpilot-worker:latest
+```
+
+**Cross-subnet note**: geiserct uses `CASHPILOT_UI_URL=http://watchtower.mango-alpha.ts.net:8085` since 192.168.20.x cannot reach 192.168.10.x directly.
+
+**Important**: The `entrypoint.sh` does NOT switch modes — it only sets up Docker socket permissions. Mode is determined by which Docker image runs (`Dockerfile` → `app.main:app`, `Dockerfile.worker` → `app.worker_api:app`).
 
 ---
 

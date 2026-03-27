@@ -61,7 +61,7 @@ class GrassCollector(BaseCollector):
                 return EarningsResult(
                     platform=self.platform,
                     balance=round(total_points, 4),
-                    currency="GRASS_POINTS",
+                    currency="GRASS",
                 )
         except Exception as exc:
             logger.error("Grass collection failed: %s", exc)
