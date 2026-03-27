@@ -286,18 +286,35 @@ This is how Portainer works. The worker is a dumb executor — it never decrypts
 
 ---
 
-## Service Status & Known Issues
+## Service Status (Updated 2026-03-27)
 
-### Broken / Non-Functional Services
+### 49 services across 4 categories
 
-| Service | Status | Issue | Notes |
-|---------|--------|-------|-------|
-| **SpeedShare** | `broken` | API at `api.speedshare.app` returns Telegraf metrics exporter output instead of JSON | Landing page loads but login/dashboard/earnings all broken. Service appears abandoned (last build Feb 2024). |
-| **Network3** | `broken` | Service appears non-functional | Marked broken in YAML. |
-| **Peer2Profit** | `dead` | Registrations closed. Only via Telegram bot `peer2profit_app_bot` which is not accepting new users. | YAML removed. |
-| **GagaNode** | `dead` | Support Telegram inactive 4+ months. Dashboard barely functional. | YAML changed to dead. |
-| **Titan Network** | `dead` | Rebranded to proxytitan.com. Business-only, no consumer signups. | YAML changed to dead. |
-| **Dawn Internet** | `broken` | Chrome extension not working as of Mar 2025. | YAML changed to broken. |
+| Category | Active | Broken | Dead | Shady | Total |
+|----------|--------|--------|------|-------|-------|
+| Bandwidth | 14 | 2 | 4 | 0 | 22 |
+| DePIN | 8 | 4 | 0 | 2 | 20 |
+| Compute | 4 | 1 | 0 | 0 | 6 |
+| Storage | 1 | 0 | 0 | 0 | 1 |
+
+### Service Status Table
+
+| Service | Status | Notes |
+|---------|--------|-------|
+| SpeedShare | **dead** | Confirmed dead in Discord (Mar 2026) |
+| PacketShare | **dead** | Site refuses connections |
+| Peer2Profit | **dead** | Both domains refuse connections |
+| Network3 | **broken** | Up but no SSL, no updates in months |
+| WizardGain | **broken** | Under maintenance |
+| Dawn Internet | **broken** | Extension works but half-baked. Black Box hardware announced |
+| Wipter | **broken** | SSL failing |
+| Koii Network | **broken** | Website returns HTTP 402 (paused) |
+| earn.cc | **broken** | Server error on signup |
+| GagaNode | **shady** | Site poorly made, not recommended |
+| BlockMesh | **shady** | Rebranded to Perceptron Network, unofficial extension requires dev mode |
+| PassiveApp | **active** | Restored from dead (Mar 2026) |
+| Titan Network | **active** | Restored from dead (Mar 2026) |
+| Spide Network | **active** | Restored from dead (Mar 2026) |
 
 ### Services Without Docker Support (Extension/App Only)
 
@@ -334,16 +351,22 @@ This is how Portainer works. The worker is a dumb executor — it never decrypts
 | Gradient | Yes | YSKMY7 | Bonus points. URL param: `?referralCode=` |
 | Teneo | Yes | CAqef | 2000 pts per referral |
 | Nodepay | Yes | 0wzzyznen64j9zx | Bonus points |
-| **Repocket** | **No** | -- | No public referral program. `repocket.co` 301s to `repocket.com`. `/refer-a-friend` returns 404. |
-| **SpeedShare** | Unknown | -- | Dashboard broken, can't verify |
+| **Repocket** | **No** | -- | No public referral program |
 | Bitping | **No** | -- | No referral program exists |
-| ~~Peer2Profit~~ | **Removed** | -- | Dead. Registrations closed, only via Telegram bot `peer2profit_app_bot` which is not accepting new users. |
-| Wipter | Yes | Not set | 10% + $5 signup. Code only visible in desktop app. |
-| Storj | No | -- | No referral program for node operators |
-| BlockMesh | **No** | -- | No referral program exists |
-| Dawn | Yes | Not set | Chrome extension broken as of Mar 2025. Code from dashboard/extension when working. |
-| ~~GagaNode~~ | **Removed** | -- | Dead. Support Telegram inactive 4+ months. Dashboard barely functional. |
-| ~~Titan~~ | **Removed** | -- | Business-only (proxytitan.com). No consumer/user signups. Not a passive income service. |
+| Storj | **No** | -- | No referral program for node operators |
+| ProxyBase | **No** | -- | No referral program |
+| Dawn | Yes | 2QLQV97F | Extension-based |
+| Spide | Yes | f3bc51 | `spide.network/register.html?f3bc51` |
+| PassiveApp | Yes | bqpC4M | `passiveapp.com/i/bqpC4M` |
+| Titan | Yes | 2GKKJ495 | `edge.titannet.info/signup?inviteCode=2GKKJ495` |
+| URnetwork | Yes | 1Q3G19 | Obtained via API. 50% earnings + 50% referral bonus (cap 5 referrals) |
+| Uprock | Yes | 33e8492e | `link.uprock.com/i/33e8492e` |
+| Vast.ai | Yes | 452772 | `cloud.vast.ai/?ref_id=452772` |
+| Presearch | Yes | 4872322 | `presearch.com/signup?rid=4872322`. Requires 4000 PRE stake |
+| Bytelixir | Yes | OYEIRE0VSZBZ | |
+| Ebesucher | Yes | geiserx | Browser autosurfing |
+| Wipter | Unknown | -- | SSL failing, can't verify. Unofficial Docker may reveal code |
+| BlockMesh | **No** | -- | Shady, dev mode required |
 
 ### Collector Implementation Status
 
@@ -399,7 +422,7 @@ services:
     ports:
       - "8080:8080"
     volumes:
-      - cashpilot_data:/data
+      - /mnt/user/appdata/cashpilot:/data  # NEVER use named volumes on Unraid
     environment:
       - TZ=Europe/Madrid
       - CASHPILOT_SECRET_KEY=<generate-a-random-secret>
@@ -415,7 +438,7 @@ services:
       - "8081:8081"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-      - cashpilot_worker_data:/data
+      - /mnt/user/appdata/cashpilot-worker:/data
     environment:
       - TZ=Europe/Madrid
       - CASHPILOT_UI_URL=http://cashpilot-ui:8080
@@ -424,10 +447,6 @@ services:
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
-
-volumes:
-  cashpilot_data:
-  cashpilot_worker_data:
 ```
 
 ### Environment Variables
@@ -563,3 +582,48 @@ Before completing any task, verify:
 - [ ] Commit author is GeiserX (`--author="GeiserX <9169332+GeiserX@users.noreply.github.com>"`)
 - [ ] No `Co-Authored-By` lines in commit messages
 - [ ] After pushing, wait for all GitHub Actions runs to pass (`gh run watch`) before considering the task done
+
+---
+
+## URnetwork API (Collector Reference)
+
+Base URL: `https://api.bringyour.com`
+
+| Method | Endpoint | Auth | Purpose |
+|--------|----------|------|---------|
+| `POST` | `/auth/login-with-password` | None | Login: `{"user_auth":"email","password":"pass"}` → `{network:{by_jwt:"..."}}` |
+| `GET` | `/auth/refresh` | Bearer JWT | Refresh JWT token |
+| `GET` | `/account/referral-code` | Bearer JWT | Returns `{referral_code, total_referrals}` |
+| `POST` | `/referral-code/validate` | None | Validate code: `{"referral_code":"ABC123"}` → `{is_valid, is_capped}` |
+
+Referral system: 50% of referred user's earnings + 50% of their referral bonus. Capped at 5 referrals per referrer.
+
+---
+
+## Services Requiring Special Setup
+
+### GPU Required (not viable for NUCs/home servers without discrete GPU)
+
+- **Salad**: Windows desktop app. NVIDIA GPU required. No Docker.
+- **Nosana**: NVIDIA RTX 30/40/50 or A-series. Ubuntu 20.04+. Solana wallet required.
+- **io.net**: NVIDIA GPU with 8GB+ VRAM. Docker supported. Sign up at `worker.io.net/worker/devices`.
+
+### Hardware Purchase Required
+
+- **Helium**: Approved hotspot hardware ($200-500). No personal approval needed — just buy and set up.
+- **Deeper Network**: Deeper Connect router ($350-400). Has affiliate program. Moken is unrelated/dead.
+- **Flux**: Cumulus tier: 1,000 FLUX stake (~$400-600), 2 cores, 8GB RAM, 220GB SSD, 25 Mbps.
+
+### No Account/Signup (just run software)
+
+- **Golem**: `curl -sSf https://join.golem.network/as-provider | bash -`. Linux x86-64 only. Set own GLM/hour price.
+- **Anyone Protocol**: Docker or native. `anyone.io/mine`. Needs Ethereum wallet.
+- **Sentinel dVPN**: `docs.sentinel.co/dvpn-node-setup`. Need ~50 DVPN for gas. Set own bandwidth price.
+
+### Enterprise-Only (not viable for home)
+
+- **Filecoin**: Datacenter infrastructure required. Enterprise-grade. Penalties for downtime.
+
+---
+
+*Generated by [LynxPrompt](https://lynxprompt.com) CLI*
