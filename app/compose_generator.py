@@ -17,7 +17,7 @@ from typing import Any
 import yaml
 
 from app.catalog import get_service, get_services
-from app.orchestrator import (
+from app.constants import (
     CONTAINER_PREFIX,
     LABEL_CATEGORY,
     LABEL_DEPLOYED_BY,

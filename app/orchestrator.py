@@ -31,12 +31,14 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
-LABEL_SERVICE = "cashpilot.service"
-LABEL_MANAGED = "cashpilot.managed"
-LABEL_VERSION = "cashpilot.version"
-LABEL_CATEGORY = "cashpilot.category"
-LABEL_DEPLOYED_BY = "cashpilot.deployed-by"
-CONTAINER_PREFIX = "cashpilot-"
+from app.constants import (  # noqa: E402
+    CONTAINER_PREFIX,
+    LABEL_CATEGORY,
+    LABEL_DEPLOYED_BY,
+    LABEL_MANAGED,
+    LABEL_SERVICE,
+    LABEL_VERSION,
+)
 
 # Cached Docker availability (checked once at startup, refreshed on demand)
 _docker_available: bool | None = None
