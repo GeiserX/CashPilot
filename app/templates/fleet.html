@@ -8,7 +8,7 @@
 <!-- Fleet Stats -->
 <div class="stats-grid">
   <div class="stat-card">
-    <div class="stat-label">Total Workers</div>
+    <div class="stat-label">Workers</div>
     <div class="stat-value highlight" id="fleet-total-workers">-</div>
   </div>
   <div class="stat-card">
@@ -16,7 +16,7 @@
     <div class="stat-value" id="fleet-online-workers">-</div>
   </div>
   <div class="stat-card">
-    <div class="stat-label">Total Containers</div>
+    <div class="stat-label">Containers</div>
     <div class="stat-value" id="fleet-total-containers">-</div>
   </div>
   <div class="stat-card">
@@ -32,16 +32,19 @@
   </div>
   <div style="padding: 0 20px 20px;">
     <p style="color: var(--text-secondary); margin-bottom: 12px; font-size: 0.9rem;">
-      Deploy <code>drumsergio/cashpilot-worker</code> on each remote server with these environment variables:
+      Deploy <code>drumsergio/cashpilot-worker</code> on each server with these environment variables:
     </p>
     <div style="background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 8px; padding: 12px;">
       <code id="worker-env" style="display: block; word-break: break-all; color: var(--text-primary); font-size: 0.85rem; white-space: pre-wrap;">CASHPILOT_UI_URL=<span id="env-ui-url"></span>
-CASHPILOT_API_KEY=&lt;your-shared-api-key&gt;
+CASHPILOT_API_KEY=<span id="env-api-key">********</span>
 CASHPILOT_WORKER_NAME=server-name</code>
-      <button class="btn btn-ghost btn-sm" style="margin-top: 8px;" onclick="copyWorkerEnv()">Copy</button>
+      <div style="display: flex; gap: 8px; margin-top: 8px;">
+        <button class="btn btn-ghost btn-sm" onclick="toggleApiKey()" id="reveal-btn">Reveal API Key</button>
+        <button class="btn btn-ghost btn-sm" onclick="copyWorkerEnv()">Copy</button>
+      </div>
     </div>
     <p style="color: var(--text-muted); margin-top: 8px; font-size: 0.82rem;">
-      Set <code>CASHPILOT_API_KEY</code> in both the UI and workers. Workers auto-register on first heartbeat.
+      The API key is set via <code>CASHPILOT_API_KEY</code> env var on the UI container. Use the same key on all workers.
     </p>
   </div>
 </div>
@@ -62,8 +65,9 @@ CASHPILOT_WORKER_NAME=server-name</code>
 <script>
 (function() {
   let fleetTimer = null;
+  let _apiKeyRevealed = false;
+  let _apiKey = '';
 
-  // Set the UI URL in the env example
   document.getElementById('env-ui-url').textContent = window.location.origin;
 
   async function loadFleet() {
@@ -89,47 +93,34 @@ CASHPILOT_WORKER_NAME=server-name</code>
     const container = document.getElementById('fleet-workers');
     if (!container) return;
 
-    // Local instance card
-    let html = `
-    <div class="card" style="margin-bottom: 12px; border-left: 3px solid var(--accent);">
-      <div style="padding: 16px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
-        <div>
-          <span style="font-weight: 600; color: var(--text-primary);">This Instance</span>
-          <span class="badge badge-running">local</span>
-        </div>
-      </div>
-    </div>`;
+    let html = '';
 
     if (workers.length === 0) {
-      html += `<div class="empty-state" style="padding: 40px 20px;">
-        <div class="empty-state-title">No remote workers</div>
-        <div class="empty-state-text">Deploy a CashPilot Worker on your other servers to see them here.</div>
+      html = `<div class="empty-state" style="padding: 40px 20px;">
+        <div class="empty-state-title">No workers registered</div>
+        <div class="empty-state-text">Deploy a CashPilot Worker on your servers to see them here.</div>
       </div>`;
     } else {
       for (const w of workers) {
         const isOnline = w.status === 'online';
         const statusClass = isOnline ? 'running' : 'stopped';
-        const statusLabel = isOnline ? 'Online' : 'Offline';
+        const borderColor = isOnline ? 'var(--success)' : 'var(--text-muted)';
         const sysInfo = w.system_info || {};
         html += `
-        <div class="card" style="margin-bottom: 12px;">
+        <div class="card" style="margin-bottom: 12px; border-left: 3px solid ${borderColor};">
           <div style="padding: 16px;">
             <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 12px;">
-              <div>
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <span class="status-dot ${statusClass}"></span>
                 <span style="font-weight: 600; color: var(--text-primary);">${esc(w.name)}</span>
-                <span class="badge badge-${statusClass}"><span class="status-dot ${statusClass}"></span> ${statusLabel}</span>
               </div>
-              <div style="display: flex; gap: 6px;">
-                <button class="btn btn-danger btn-sm" onclick="removeWorker(${w.id}, '${esc(w.name)}')" title="Remove worker">Remove</button>
-              </div>
+              <button class="btn btn-danger btn-sm" onclick="removeWorker(${w.id}, '${esc(w.name)}')" title="Remove worker">Remove</button>
             </div>
-            <div style="display: flex; gap: 16px; flex-wrap: wrap; font-size: 0.85rem; color: var(--text-muted);">
-              <span>URL: ${esc(w.url || '-')}</span>
-              <span>OS: ${esc(sysInfo.os || '-')}</span>
-              <span>Arch: ${esc(sysInfo.arch || '-')}</span>
-              <span>Docker: ${sysInfo.docker_available ? 'Yes' : 'No'}</span>
-              <span>Containers: ${w.container_count || 0} (${w.running_count || 0} running)</span>
-              <span>Last heartbeat: ${w.last_heartbeat || 'never'}</span>
+            <div style="display: flex; gap: 16px; flex-wrap: wrap; font-size: 0.82rem; color: var(--text-muted);">
+              <span>${esc(w.url || '-')}</span>
+              <span>${esc(sysInfo.os || '-')}</span>
+              <span>${esc(sysInfo.arch || '-')}</span>
+              <span>Last seen: ${w.last_heartbeat || 'never'}</span>
             </div>
             ${w.containers && w.containers.length > 0 ? renderContainers(w) : ''}
           </div>
@@ -141,11 +132,13 @@ CASHPILOT_WORKER_NAME=server-name</code>
 
   function renderContainers(worker) {
     let html = '<div style="margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border-color);">';
-    html += '<div style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 8px;">Containers:</div>';
     html += '<div style="display: flex; gap: 6px; flex-wrap: wrap;">';
     for (const c of worker.containers) {
-      const cls = (c.status || 'stopped').toLowerCase();
-      html += `<span class="badge badge-${cls}">${esc(c.slug || c.name)} (${cls})</span>`;
+      const status = (c.status || 'stopped').toLowerCase();
+      const isRunning = status === 'running';
+      const color = isRunning ? 'var(--success)' : 'var(--text-muted)';
+      const bg = isRunning ? 'var(--success-soft)' : 'var(--bg-hover)';
+      html += `<span style="font-size:0.75rem; padding:3px 8px; border-radius:4px; background:${bg}; color:${color}; font-weight:500;">${esc(c.slug || c.name)}</span>`;
     }
     html += '</div></div>';
     return html;
@@ -156,6 +149,26 @@ CASHPILOT_WORKER_NAME=server-name</code>
     d.textContent = str || '';
     return d.innerHTML;
   }
+
+  window.toggleApiKey = async function() {
+    const el = document.getElementById('env-api-key');
+    const btn = document.getElementById('reveal-btn');
+    if (_apiKeyRevealed) {
+      el.textContent = '********';
+      btn.textContent = 'Reveal API Key';
+      _apiKeyRevealed = false;
+    } else {
+      if (!_apiKey) {
+        try {
+          const data = await CP.api('/api/fleet/api-key');
+          _apiKey = data.api_key || '(not configured)';
+        } catch { _apiKey = '(error)'; }
+      }
+      el.textContent = _apiKey;
+      btn.textContent = 'Hide API Key';
+      _apiKeyRevealed = true;
+    }
+  };
 
   window.removeWorker = async function(workerId, name) {
     if (!confirm(`Remove worker "${name}"? This will unregister it from the fleet.`)) return;
@@ -173,9 +186,8 @@ CASHPILOT_WORKER_NAME=server-name</code>
     navigator.clipboard.writeText(text).then(() => CP.toast('Copied', 'success'));
   };
 
-  // Init
   loadFleet();
-  fleetTimer = setInterval(loadFleet, 30000);
+  fleetTimer = setInterval(loadFleet, 60000);
 })();
 </script>
 {% endblock %}

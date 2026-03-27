@@ -1295,3 +1295,10 @@ async def api_fleet_summary(request: Request) -> dict[str, Any]:
         "total_containers": total_containers,
         "running_containers": total_running,
     }
+
+
+@app.get("/api/fleet/api-key")
+async def api_fleet_api_key(request: Request) -> dict[str, str]:
+    """Return the configured fleet API key (owner only)."""
+    _require_auth_api(request)
+    return {"api_key": FLEET_API_KEY or ""}
