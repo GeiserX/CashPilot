@@ -828,12 +828,52 @@ img { max-width: 100%; }
 }
 
 .btn-icon {
-  padding: 6px;
-  min-width: 32px;
-  min-height: 32px;
-  width: 32px;
-  height: 32px;
+  padding: 0;
+  width: 28px;
+  height: 28px;
+  min-width: 28px;
+  min-height: 28px;
+  border-radius: var(--radius-sm);
   box-sizing: border-box;
+}
+
+/* Action buttons in table rows — consistent sizing */
+.action-btns {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+.action-btns .btn-icon {
+  width: 26px;
+  height: 26px;
+  min-width: 26px;
+  min-height: 26px;
+  border: 1px solid var(--border-color);
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+}
+.action-btns .btn-icon:hover:not(:disabled) {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+  border-color: var(--border-light);
+}
+.action-btns .btn-icon:disabled {
+  opacity: 0.35;
+  border-color: transparent;
+  background: transparent;
+}
+.action-btns .btn-icon.btn-success {
+  background: var(--success-soft);
+  color: var(--success);
+  border-color: rgba(34, 197, 94, 0.25);
+}
+.action-btns .btn-icon.btn-success:hover:not(:disabled) {
+  background: var(--success);
+  color: #fff;
+}
+.action-btns .btn-icon svg {
+  width: 13px;
+  height: 13px;
 }
 
 /* ----- Forms ----- */
