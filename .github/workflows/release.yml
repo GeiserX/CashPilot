@@ -15,6 +15,7 @@ on:
 
 permissions:
   contents: write
+  packages: write
 
 jobs:
   release:
@@ -34,29 +35,30 @@ jobs:
       - name: Detect what changed
         id: changes
         run: |
-          # Compare against the previous commit
           CHANGED=$(git diff --name-only HEAD~1 HEAD 2>/dev/null || echo "")
           echo "Changed files: $CHANGED"
 
           BUILD_UI=false
           BUILD_WORKER=false
 
-          # UI changes: main.py, templates, static, collectors, Dockerfile, requirements.txt
-          if echo "$CHANGED" | grep -qE '^(Dockerfile|requirements\.txt|app/(main|database|catalog|auth|compose_generator|exchange_rates|collectors|templates|static))'  ; then
+          if echo "$CHANGED" | grep -qE '^(Dockerfile|requirements\.txt|app/(main|database|catalog|auth|compose_generator|exchange_rates|constants|collectors|templates|static))'; then
             BUILD_UI=true
           fi
-          # Also trigger UI on services/ changes (catalog data)
           if echo "$CHANGED" | grep -qE '^services/'; then
             BUILD_UI=true
           fi
 
-          # Worker changes: worker_api.py, orchestrator.py, Dockerfile.worker, requirements-worker.txt
-          if echo "$CHANGED" | grep -qE '^(Dockerfile\.worker|requirements-worker\.txt|app/(worker_api|orchestrator)\.py)'; then
+          if echo "$CHANGED" | grep -qE '^(Dockerfile\.worker|requirements-worker\.txt|app/(worker_api|orchestrator|constants)\.py)'; then
             BUILD_WORKER=true
           fi
 
-          # If both Dockerfiles or shared files changed, build both
           if echo "$CHANGED" | grep -qE '^app/__init__\.py'; then
+            BUILD_UI=true
+            BUILD_WORKER=true
+          fi
+
+          # Shared constants affect both
+          if echo "$CHANGED" | grep -qE '^app/constants\.py'; then
             BUILD_UI=true
             BUILD_WORKER=true
           fi
@@ -102,3 +104,13 @@ jobs:
           prerelease: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  build:
+    needs: release
+    if: needs.release.outputs.new_tag
+    uses: ./.github/workflows/build.yml
+    with:
+      build_ui: ${{ needs.release.outputs.build_ui == 'true' }}
+      build_worker: ${{ needs.release.outputs.build_worker == 'true' }}
+      version: ${{ needs.release.outputs.new_tag }}
+    secrets: inherit
