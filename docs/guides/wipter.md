@@ -1,6 +1,6 @@
 # Wipter
 
-> **Category:** DePIN | **Status:** Active
+> **Category:** DePIN | **Status:** Dead
 > **Website:** [https://wipter.com](https://wipter.com)
 
 ## Description
@@ -46,6 +46,7 @@ In the CashPilot web UI, find **Wipter** in the service catalog and click **Depl
 ## Docker Configuration
 
 - **Image:** ``
+- **Platforms:** windows, macos, linux, android
 
 ### Environment Variables
 
@@ -57,7 +58,6 @@ No environment variables required.
 |---|---------|
 | Referrer bonus | Percentage of referral earnings |
 | New user bonus | Signup bonus |
-| How to get code | Dashboard > Refer a Friend page > Copy link |
 
 ---
 

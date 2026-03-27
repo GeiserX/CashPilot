@@ -57,7 +57,7 @@ cashout:
   currency: USD
   notes: "Earnings accumulate in Vast.ai balance. Withdraw via PayPal or crypto."
 
-platforms: [linux, docker]
+platforms: [linux]
 
 collector:
   type: api

@@ -27,7 +27,7 @@ Teneo Protocol is a DePIN network that rewards users for sharing bandwidth via a
 | Minimum bandwidth | None |
 | GPU required | No |
 | Minimum storage | None |
-| Supported platforms | Browser Extension |
+| Supported platforms | Browser-Extension |
 
 ## Setup Instructions
 
@@ -46,6 +46,7 @@ In the CashPilot web UI, find **Teneo Protocol** in the service catalog and clic
 ## Docker Configuration
 
 - **Image:** ``
+- **Platforms:** browser-extension
 
 ### Environment Variables
 
@@ -57,7 +58,6 @@ No environment variables required.
 |---|---------|
 | Referrer bonus | 2000 Teneo Points per referral |
 | New user bonus | Bonus points on signup |
-| How to get code | Dashboard > Referral > Copy link |
 
 ---
 

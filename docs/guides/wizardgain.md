@@ -1,6 +1,6 @@
 # WizardGain
 
-> **Category:** Bandwidth Sharing | **Status:** Active
+> **Category:** Bandwidth Sharing | **Status:** Broken
 > **Website:** [https://wizardgain.com](https://wizardgain.com)
 
 ## Description
@@ -27,7 +27,7 @@ WizardGain turns your unused internet bandwidth into a recurring revenue stream.
 | Minimum bandwidth | None |
 | GPU required | No |
 | Minimum storage | None |
-| Supported platforms | Windows, Linux, Docker |
+| Supported platforms | Windows, Linux |
 
 ## Setup Instructions
 
@@ -71,7 +71,6 @@ docker run -d \
 |---|---------|
 | Referrer bonus |  |
 | New user bonus |  |
-| How to get code | Check the dashboard for referral options |
 
 ---
 

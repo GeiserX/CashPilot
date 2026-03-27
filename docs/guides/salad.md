@@ -57,7 +57,6 @@ No environment variables required.
 |---|---------|
 | Referrer bonus | $1 per referral who earns $5 |
 | New user bonus |  |
-| How to get code | App > Referrals > Copy referral code |
 
 ---
 

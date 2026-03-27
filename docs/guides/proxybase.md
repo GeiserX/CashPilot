@@ -27,7 +27,7 @@ ProxyBase is a bandwidth-sharing platform that pays users in cryptocurrency for 
 | Minimum bandwidth | None |
 | GPU required | No |
 | Minimum storage | None |
-| Supported platforms | Windows, Linux, Docker |
+| Supported platforms | Windows, Linux |
 
 ## Setup Instructions
 
@@ -73,7 +73,6 @@ docker run -d \
 |---|---------|
 | Referrer bonus |  |
 | New user bonus |  |
-| How to get code | Check the dashboard for referral options |
 
 ---
 

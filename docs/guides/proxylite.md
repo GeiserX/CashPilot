@@ -27,7 +27,7 @@ ProxyLite monetizes your internet traffic by sharing bandwidth with verified org
 | Minimum bandwidth | None |
 | GPU required | No |
 | Minimum storage | None |
-| Supported platforms | Windows, Linux, Docker |
+| Supported platforms | Windows, Linux |
 
 ## Setup Instructions
 
@@ -71,7 +71,6 @@ docker run -d \
 |---|---------|
 | Referrer bonus | 15% of referral earnings for life |
 | New user bonus |  |
-| How to get code | Dashboard > Referral > Copy your referral link |
 
 ---
 

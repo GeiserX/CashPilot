@@ -33,11 +33,6 @@ def _validate(data: dict[str, Any], path: Path) -> list[str]:
     missing = _REQUIRED_FIELDS - set(data.keys())
     if missing:
         errors.append(f"{path.name}: missing required fields: {missing}")
-
-    docker = data.get("docker", {})
-    if docker and not docker.get("image"):
-        errors.append(f"{path.name}: docker.image is required")
-
     return errors
 
 

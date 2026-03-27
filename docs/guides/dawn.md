@@ -27,7 +27,7 @@ Dawn Internet is a decentralized wireless network that rewards users for sharing
 | Minimum bandwidth | None |
 | GPU required | No |
 | Minimum storage | None |
-| Supported platforms | Browser Extension |
+| Supported platforms | Browser-Extension |
 
 ## Setup Instructions
 
@@ -57,7 +57,6 @@ No environment variables required.
 |---|---------|
 | Referrer bonus | Bonus Dawn Points per active referral |
 | New user bonus | Bonus Dawn Points on signup |
-| How to get code | Dashboard > Referral section > Copy your referral code |
 
 ---
 

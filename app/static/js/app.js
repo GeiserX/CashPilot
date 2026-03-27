@@ -1101,9 +1101,16 @@ const CP = (() => {
       `<span class="platform-badge">${escapeHtml(p)}</span>`
     ).join('');
 
-    const actionBtn = isDeployed
-      ? `<button class="btn btn-secondary btn-sm" onclick="CP.openServiceDetail('${svc.slug}')">Manage</button>`
-      : `<button class="btn btn-primary btn-sm" onclick="CP.openServiceDetail('${svc.slug}')">Deploy</button>`;
+    const hasDocker = svc.docker && svc.docker.image;
+    let actionBtn;
+    if (isDeployed) {
+      actionBtn = `<button class="btn btn-secondary btn-sm" onclick="CP.openServiceDetail('${svc.slug}')">Manage</button>`;
+    } else if (hasDocker) {
+      actionBtn = `<button class="btn btn-primary btn-sm" onclick="CP.openServiceDetail('${svc.slug}')">Deploy</button>`;
+    } else {
+      const url = (svc.referral && svc.referral.signup_url) || svc.website || '#';
+      actionBtn = `<a href="${escapeHtml(url)}" target="_blank" rel="noopener" class="btn btn-ghost btn-sm">Visit</a>`;
+    }
 
     return `
     <div class="service-card" data-slug="${svc.slug}">
@@ -1119,7 +1126,7 @@ const CP = (() => {
         ${statusBadge}
         <span class="badge badge-available">${earning}</span>
         ${svc.requirements && svc.requirements.residential_ip ? '<span class="badge badge-residential">Residential IP</span>' : ''}
-        ${svc.docker ? '<span class="badge badge-docker">Docker</span>' : ''}
+        ${hasDocker ? '<span class="badge badge-docker">Docker</span>' : ''}
       </div>
       ${platforms ? `<div class="platform-badges" style="margin-top:8px;">${platforms}</div>` : ''}
       <div class="service-stats" style="margin-top:12px; padding-top:12px; border-top:1px solid var(--border-color);">

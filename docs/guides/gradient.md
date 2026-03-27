@@ -27,7 +27,7 @@ Gradient Network is a decentralized compute and bandwidth sharing platform backe
 | Minimum bandwidth | None |
 | GPU required | No |
 | Minimum storage | None |
-| Supported platforms | Browser Extension |
+| Supported platforms | Browser-Extension |
 
 ## Setup Instructions
 
@@ -46,6 +46,7 @@ In the CashPilot web UI, find **Gradient Network** in the service catalog and cl
 ## Docker Configuration
 
 - **Image:** ``
+- **Platforms:** browser-extension
 
 ### Environment Variables
 
@@ -57,7 +58,6 @@ No environment variables required.
 |---|---------|
 | Referrer bonus | Bonus Gradient Points per active referral |
 | New user bonus | Bonus points on signup |
-| How to get code | Dashboard > Referrals > Copy referral link |
 
 ---
 

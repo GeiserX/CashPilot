@@ -104,7 +104,6 @@ These services have no Docker image. CashPilot lists them in the catalog with si
 | [Nodepay](https://app.nodepay.ai/register?ref=0wzzyznen64j9zx) | ✅ | ❌ | Unlimited | 1 | Crypto (NC) | Active |
 | [Teneo Protocol](https://dashboard.teneo.pro/?code=CAqef) | ✅ | ❌ | Unlimited | 1 | Crypto (TENEO) | Active |
 | [Uprock](https://uprock.com) | ✅ | ❌ | Unlimited | 1 | Crypto | Active |
-| [Wipter](https://wipter.com/en/refer-a-friend) | ✅ | ❌ | Unlimited | 1 | PayPal, Crypto | Active |
 
 ### GPU Compute
 

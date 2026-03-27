@@ -2,7 +2,7 @@ name: Spide
 slug: spide
 category: bandwidth
 status: dead
-website: https://spide.app
+website: https://spide.io
 description: >
   Spide is a bandwidth-sharing service that lets you monetize unused internet
   bandwidth. Uses an optional machine ID for device tracking. Available through
@@ -10,7 +10,7 @@ description: >
 short_description: Bandwidth sharing - machine ID based
 
 referral:
-  signup_url: "https://spide.app"
+  signup_url: "https://spide.io"
   bonus:
     referrer: ""
     referee: ""

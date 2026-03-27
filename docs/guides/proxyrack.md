@@ -27,7 +27,7 @@ ProxyRack's Peer program lets you earn by sharing your bandwidth as part of thei
 | Minimum bandwidth | None |
 | GPU required | No |
 | Minimum storage | None |
-| Supported platforms | Windows, Macos, Linux, Docker |
+| Supported platforms | Windows, Macos, Linux |
 
 ## Setup Instructions
 
@@ -75,7 +75,6 @@ docker run -d \
 |---|---------|
 | Referrer bonus | Percentage of referral earnings |
 | New user bonus |  |
-| How to get code | Dashboard > Referrals > Copy your referral link |
 
 ---
 

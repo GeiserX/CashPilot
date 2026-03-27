@@ -1,6 +1,6 @@
 # PacketShare
 
-> **Category:** Bandwidth Sharing | **Status:** Active
+> **Category:** Bandwidth Sharing | **Status:** Dead
 > **Website:** [https://www.packetshare.io](https://www.packetshare.io)
 
 ## Description
@@ -27,7 +27,7 @@ PacketShare lets you earn passive income by sharing your unused internet bandwid
 | Minimum bandwidth | None |
 | GPU required | No |
 | Minimum storage | None |
-| Supported platforms | Windows, Macos, Linux, Docker |
+| Supported platforms | Windows, Macos, Linux |
 
 ## Setup Instructions
 
@@ -73,7 +73,6 @@ docker run -d \
 |---|---------|
 | Referrer bonus |  |
 | New user bonus |  |
-| How to get code | Check the dashboard for referral options |
 
 ---
 

@@ -52,7 +52,7 @@ cashout:
   currency: USD
   notes: "Service dead. Cashout unavailable."
 
-platforms: [windows, macos, linux]
+platforms: [windows, macos, linux, android]
 
 collector:
   type: api

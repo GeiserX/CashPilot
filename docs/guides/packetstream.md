@@ -27,7 +27,7 @@ PacketStream is a peer-to-peer bandwidth marketplace where you can sell your unu
 | Minimum bandwidth | None |
 | GPU required | No |
 | Minimum storage | None |
-| Supported platforms | Windows, Macos, Linux, Docker |
+| Supported platforms | Windows, Macos, Linux |
 
 ## Setup Instructions
 
@@ -71,7 +71,6 @@ docker run -d \
 |---|---------|
 | Referrer bonus | $0.10 per GB from referral traffic |
 | New user bonus |  |
-| How to get code | Dashboard > Referral > Copy your referral link |
 
 ---
 

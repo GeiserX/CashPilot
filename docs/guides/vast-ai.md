@@ -27,7 +27,7 @@ Vast.ai is a GPU cloud marketplace where you rent out your NVIDIA GPU to AI/ML r
 | Minimum bandwidth | 100 Mbps |
 | GPU required | Yes |
 | Minimum storage | 100GB |
-| Supported platforms | Linux, Docker |
+| Supported platforms | Linux |
 
 ## Setup Instructions
 
@@ -60,7 +60,6 @@ In the CashPilot web UI, find **Vast.ai** in the service catalog and click **Dep
 |---|---------|
 | Referrer bonus |  |
 | New user bonus |  |
-| How to get code |  |
 
 ---
 

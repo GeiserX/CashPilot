@@ -27,7 +27,7 @@ SpeedShare lets you earn by sharing your unused internet bandwidth. Residential 
 | Minimum bandwidth | None |
 | GPU required | No |
 | Minimum storage | None |
-| Supported platforms | Windows, Macos, Linux, Docker |
+| Supported platforms | Windows, Macos, Linux |
 
 ## Setup Instructions
 
@@ -73,7 +73,6 @@ docker run -d \
 |---|---------|
 | Referrer bonus | Percentage of referral earnings |
 | New user bonus |  |
-| How to get code | Dashboard > Referral > Copy your referral link |
 
 ---
 

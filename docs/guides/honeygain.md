@@ -27,7 +27,7 @@ Share your unused internet bandwidth and earn passive income. Honeygain routes w
 | Minimum bandwidth | None |
 | GPU required | No |
 | Minimum storage | None |
-| Supported platforms | Windows, Macos, Linux, Android, Docker |
+| Supported platforms | Windows, Macos, Linux, Android |
 
 ## Setup Instructions
 
@@ -75,7 +75,6 @@ docker run -d \
 |---|---------|
 | Referrer bonus | 25% of referral earnings for life |
 | New user bonus | $3 signup bonus |
-| How to get code | Dashboard > Referrals > Copy your referral link |
 
 ---
 

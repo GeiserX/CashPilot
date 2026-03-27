@@ -1,6 +1,6 @@
 # Network3
 
-> **Category:** DePIN | **Status:** Broken
+> **Category:** DePIN | **Status:** Dead
 > **Website:** [https://network3.io](https://network3.io)
 
 ## Description
@@ -57,7 +57,6 @@ No environment variables required.
 |---|---------|
 | Referrer bonus |  |
 | New user bonus |  |
-| How to get code |  |
 
 ---
 

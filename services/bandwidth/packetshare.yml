@@ -1,7 +1,7 @@
 name: PacketShare
 slug: packetshare
 category: bandwidth
-status: broken
+status: dead
 website: https://www.packetshare.io
 description: >
   PacketShare lets you earn passive income by sharing your unused internet bandwidth.
@@ -60,7 +60,7 @@ cashout:
   min_amount: 5.0
   currency: USD
 
-platforms: [windows, macos, linux, docker]
+platforms: [windows, macos, linux]
 
 collector:
   type: manual

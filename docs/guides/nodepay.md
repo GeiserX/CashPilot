@@ -27,7 +27,7 @@ Nodepay is a DePIN network that rewards users for sharing bandwidth through a br
 | Minimum bandwidth | None |
 | GPU required | No |
 | Minimum storage | None |
-| Supported platforms | Browser Extension |
+| Supported platforms | Browser-Extension |
 
 ## Setup Instructions
 
@@ -46,6 +46,7 @@ In the CashPilot web UI, find **Nodepay** in the service catalog and click **Dep
 ## Docker Configuration
 
 - **Image:** ``
+- **Platforms:** browser-extension
 
 ### Environment Variables
 
@@ -57,7 +58,6 @@ No environment variables required.
 |---|---------|
 | Referrer bonus | Bonus points per active referral |
 | New user bonus | Bonus points on signup |
-| How to get code | Dashboard > Referral section > Copy link |
 
 ---
 

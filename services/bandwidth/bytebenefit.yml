@@ -49,7 +49,7 @@ cashout:
   min_amount: 5.0
   currency: USD
 
-platforms: [windows, macos, linux]
+platforms: [windows, android]
 
 collector:
   type: manual

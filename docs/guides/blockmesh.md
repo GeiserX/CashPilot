@@ -27,7 +27,7 @@ BlockMesh is a decentralized bandwidth marketplace built on the Solana blockchai
 | Minimum bandwidth | None |
 | GPU required | No |
 | Minimum storage | None |
-| Supported platforms | Browser Extension |
+| Supported platforms | Browser-Extension |
 
 ## Setup Instructions
 
@@ -46,6 +46,7 @@ In the CashPilot web UI, find **BlockMesh** in the service catalog and click **D
 ## Docker Configuration
 
 - **Image:** ``
+- **Platforms:** browser-extension
 
 ### Environment Variables
 
@@ -57,7 +58,6 @@ No environment variables required.
 |---|---------|
 | Referrer bonus |  |
 | New user bonus |  |
-| How to get code | No referral program available |
 
 ---
 

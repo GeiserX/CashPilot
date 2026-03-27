@@ -27,7 +27,7 @@ IPRoyal Pawns lets you earn by sharing your unused bandwidth. IPRoyal is a well-
 | Minimum bandwidth | None |
 | GPU required | No |
 | Minimum storage | None |
-| Supported platforms | Windows, Macos, Linux, Android, Docker |
+| Supported platforms | Windows, Macos, Linux, Android |
 
 ## Setup Instructions
 
@@ -77,7 +77,6 @@ docker run -d \
 |---|---------|
 | Referrer bonus | 10% of referral earnings for life |
 | New user bonus | $3 with code EARN3 |
-| How to get code | Dashboard > Referrals > Copy your referral link |
 
 ---
 
