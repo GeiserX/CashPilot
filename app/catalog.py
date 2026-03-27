@@ -66,7 +66,7 @@ def _load_from_disk() -> list[dict[str, Any]]:
         if errors:
             for err in errors:
                 logger.warning("Validation: %s", err)
-            # Still load it — warn, don't reject
+            continue
         services.append(data)
 
     # Also pick up .yaml extension
@@ -80,8 +80,10 @@ def _load_from_disk() -> list[dict[str, Any]]:
             continue
         if isinstance(data, dict):
             errors = _validate(data, path)
-            for err in errors:
-                logger.warning("Validation: %s", err)
+            if errors:
+                for err in errors:
+                    logger.warning("Validation: %s", err)
+                continue
             services.append(data)
 
     return services
