@@ -234,14 +234,26 @@ const CP = (() => {
   }
 
   function renderServiceRow(svc, bk) {
-    const statusClass = (svc.container_status || 'stopped').toLowerCase();
-    const statusLabel = statusClass.charAt(0).toUpperCase() + statusClass.slice(1);
+    const isExternal = svc.container_status === 'external';
+    const statusClass = isExternal ? 'external' : (svc.container_status || 'stopped').toLowerCase();
+    const statusLabel = isExternal ? 'External' : statusClass.charAt(0).toUpperCase() + statusClass.slice(1);
 
     // Service name — linked to referral URL if available
     const name = escapeHtml(svc.name);
     const nameHtml = svc.referral_url
       ? `<a href="${escapeHtml(svc.referral_url)}" target="_blank" rel="noopener" title="Referral link" style="color:var(--accent); text-decoration:none; font-weight:600;">${name}</a>`
       : `<span style="font-weight:600;">${name}</span>`;
+
+    // Instance count badge
+    const instances = svc.instances || 0;
+    const instanceBadge = instances > 1
+      ? `<span class="badge badge-instances" title="${instances} instances">${instances}x</span>`
+      : '';
+
+    // Subtitle: image for Docker, empty for external
+    const subtitle = svc.image
+      ? escapeHtml(svc.image)
+      : (isExternal ? 'App / Browser' : '');
 
     // Health badge
     let healthBadge = '<span style="color:var(--text-muted);">--</span>';
@@ -258,6 +270,10 @@ const CP = (() => {
     const deltaClass = delta > 0 ? 'positive' : delta < 0 ? 'negative' : '';
     const deltaStr = delta !== 0 ? `${deltaSign}${formatCurrency(delta)}` : '--';
 
+    // CPU/Memory — skip for external
+    const cpuStr = isExternal ? '--' : `${svc.cpu || '0'}%`;
+    const memStr = isExternal ? '--' : (svc.memory || '0 MB');
+
     // Payout progress
     const co = svc.cashout || {};
     const minAmount = co.min_amount || 0;
@@ -270,7 +286,7 @@ const CP = (() => {
       <span class="payout-label">${pctToMin.toFixed(0)}%</span>
     ` : '<span style="color:var(--text-muted);">--</span>';
 
-    // Action buttons — always render cashout button for consistent width
+    // Action buttons — hide container controls for external services
     const claimTitle = co.dashboard_url
       ? (eligible ? 'Cash out earnings' : 'View payout details')
       : 'No payout info available';
@@ -279,18 +295,7 @@ const CP = (() => {
            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>
          </button>`;
 
-    return `
-    <tr class="breakdown-row" data-slug="${escapeHtml(svc.slug)}">
-      <td>${nameHtml}<div style="font-size:0.7rem; color:var(--text-muted);">${escapeHtml(svc.image || '')}</div></td>
-      <td style="text-align:center;"><span class="badge badge-${statusClass}"><span class="status-dot ${statusClass}"></span> ${statusLabel}</span></td>
-      <td style="text-align:center;">${healthBadge}</td>
-      <td style="text-align:right; font-weight:600;">${formatCurrency(balance)}</td>
-      <td style="text-align:right;"><span class="stat-change ${deltaClass}">${deltaStr}</span></td>
-      <td style="text-align:right;">${svc.cpu || '0'}%</td>
-      <td style="text-align:right;">${svc.memory || '0 MB'}</td>
-      <td style="text-align:center;">${progressBar}</td>
-      <td style="text-align:center; white-space:nowrap;">
-        ${claimBtn}
+    const containerBtns = isExternal ? '' : `
         <button class="btn btn-ghost btn-sm btn-icon" onclick="CP.restartService('${svc.slug}')" title="Restart container">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg>
         </button>
@@ -299,7 +304,21 @@ const CP = (() => {
         </button>
         <button class="btn btn-ghost btn-sm btn-icon" onclick="CP.viewLogs('${svc.slug}')" title="View container logs">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
-        </button>
+        </button>`;
+
+    return `
+    <tr class="breakdown-row" data-slug="${escapeHtml(svc.slug)}">
+      <td>${nameHtml} ${instanceBadge}<div style="font-size:0.7rem; color:var(--text-muted);">${subtitle}</div></td>
+      <td style="text-align:center;"><span class="badge badge-${statusClass}"><span class="status-dot ${statusClass}"></span> ${statusLabel}</span></td>
+      <td style="text-align:center;">${healthBadge}</td>
+      <td style="text-align:right; font-weight:600;">${formatCurrency(balance)}</td>
+      <td style="text-align:right;"><span class="stat-change ${deltaClass}">${deltaStr}</span></td>
+      <td style="text-align:right;">${cpuStr}</td>
+      <td style="text-align:right;">${memStr}</td>
+      <td style="text-align:center;">${progressBar}</td>
+      <td style="text-align:center; white-space:nowrap;">
+        ${claimBtn}
+        ${containerBtns}
       </td>
     </tr>`;
   }

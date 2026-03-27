@@ -730,6 +730,18 @@ img { max-width: 100%; }
 }
 .status-dot.stopped { background: var(--error); }
 .status-dot.error   { background: var(--warning); }
+.status-dot.external { background: var(--accent-secondary); }
+.badge-external {
+  background: var(--accent-secondary-soft);
+  color: var(--accent-secondary);
+}
+.badge-instances {
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  font-size: 0.7rem;
+  margin-left: 4px;
+  vertical-align: middle;
+}
 
 @keyframes pulse-glow {
   0%, 100% { box-shadow: 0 0 4px rgba(34, 197, 94, 0.4); }
