@@ -233,6 +233,13 @@ const CP = (() => {
       const breakdownMap = {};
       (breakdown || []).forEach(b => { breakdownMap[b.platform] = b; });
 
+      // Preserve expanded rows across re-renders
+      const expandedSlugs = new Set();
+      container.querySelectorAll('.breakdown-row.expanded').forEach(r => {
+        const slug = r.dataset.slug;
+        if (slug) expandedSlugs.add(slug);
+      });
+
       const rows = services.map(svc => renderServiceRow(svc, breakdownMap[svc.slug])).join('');
       container.innerHTML = `
         <table class="breakdown-table">
@@ -251,6 +258,15 @@ const CP = (() => {
           </thead>
           <tbody>${rows}</tbody>
         </table>`;
+
+      // Restore expanded state
+      expandedSlugs.forEach(slug => {
+        const mainRow = container.querySelector(`.breakdown-row[data-slug="${slug}"]`);
+        if (mainRow) {
+          mainRow.classList.add('expanded');
+          container.querySelectorAll(`.instance-row[data-parent="${slug}"]`).forEach(r => { r.style.display = ''; });
+        }
+      });
     } catch (err) {
       // Keep existing table if we had one; only show spinner on truly empty state
       if (!container.querySelector('.breakdown-table')) {
