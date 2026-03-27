@@ -261,15 +261,30 @@ This is how Portainer works. The worker is a dumb executor — it never decrypts
 
 ## CI/CD
 
-### `build.yml` -- Docker Build & Push
+### `release.yml` -- Auto Release
 
-**Triggers:** Push to `main` or version tags (`v*`)
+**Triggers:** Push to `main` (paths: `app/`, `services/`, `Dockerfile*`, `requirements*.txt`)
 
 **What it does:**
-1. Builds multi-arch image (linux/amd64 + linux/arm64) via QEMU + Buildx
-2. Pushes to Docker Hub as `drumsergio/cashpilot` (UI) and `drumsergio/cashpilot-worker`
-3. Tags: `latest` on main, semver on tags (`v1.0.0` -> `1.0.0` + `1.0`)
-4. Layer caching via GitHub Actions cache
+1. Reads the latest `v*.*.*` tag
+2. Auto-increments patch version (e.g. `v0.1.0` → `v0.1.1`)
+3. Creates annotated git tag + GitHub Release with auto-generated notes
+4. Skips if commit message contains `[skip ci]`
+
+### `build.yml` -- Docker Build & Push
+
+**Triggers:** Version tags (`v*`) — created by `release.yml` or manually
+
+**What it does:**
+1. Lints with ruff
+2. Builds multi-arch images (linux/amd64 + linux/arm64) via QEMU + Buildx
+3. Pushes to Docker Hub as `drumsergio/cashpilot` (UI) and `drumsergio/cashpilot-worker`
+4. Tags: `latest` + semver (`v1.0.0` → `1.0.0` + `1.0`)
+5. Layer caching via GitHub Actions cache
+
+**Flow:** Push to main → auto-release v0.1.x → tag triggers Docker build → versioned images on Docker Hub.
+
+**Always use tagged images in deployment** (e.g. `drumsergio/cashpilot:0.1.1`), never `:latest`.
 
 **Required GitHub Secrets:**
 - `DOCKERHUB_USERNAME`
@@ -408,7 +423,7 @@ volumes:
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `TZ` | `UTC` | Timezone |
-| `CASHPILOT_MODE` | `standalone` | `standalone` (UI+Worker), `ui` (UI only), or `worker` (Worker only) |
+| `CASHPILOT_MODE` | `standalone` | `standalone` (UI+Worker with Docker socket), `ui` (UI only — no Docker socket, all ops via workers), or `worker` (Worker only) |
 | `CASHPILOT_SECRET_KEY` | Auto-generated | Fernet encryption key for credentials (UI/standalone only) |
 | `CASHPILOT_COLLECTION_INTERVAL` | `3600` | Seconds between earnings collection (UI/standalone only) |
 | `CASHPILOT_PORT` | `8080` | Web UI port (UI/standalone) or mini-UI port (worker, default 8081) |
