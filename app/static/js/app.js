@@ -149,6 +149,16 @@ const CP = (() => {
     } catch { /* keep defaults */ }
   }
 
+  async function loadTopbarEarnings() {
+    try {
+      await loadExchangeRates();
+      const data = await api('/api/earnings/summary');
+      setTextContent('topbar-total', formatCurrency(data.total || 0));
+    } catch {
+      setTextContent('topbar-total', formatCurrency(0));
+    }
+  }
+
   async function loadDashboard() {
     await loadExchangeRates();
     await Promise.all([
@@ -1649,6 +1659,9 @@ const CP = (() => {
     // Detect or restore display currency preference
     _displayCurrency = localStorage.getItem('cp-display-currency') || detectDefaultCurrency();
     initTopbarCurrency();
+
+    // Load topbar earnings on every page
+    loadTopbarEarnings();
 
     const page = document.body.dataset.page;
     switch (page) {
