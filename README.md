@@ -71,6 +71,7 @@ Services CashPilot can deploy and manage automatically via Docker.
 
 | Service | Residential IP | VPS IP | Devices / Acct | Devices / IP | Payout |
 |---------|:-:|:-:|:-:|:-:|--------|
+| [Anyone Protocol](https://anyone.io) | ✅ | ✅ | Unlimited | 1 | Crypto (ANYONE) |
 | [Bitping](https://app.bitping.com) | ✅ | ✅ | Unlimited | 1 | Crypto (SOL) |
 | [Earn.fm](https://earn.fm/ref/GEISYB91) | ✅ | ✅ | Unlimited | 1 | Crypto |
 | [EarnApp](https://earnapp.com/i/TSMD9wSm) | ✅ | ❌ | 15 | 1 | PayPal, Gift Cards |
@@ -78,6 +79,8 @@ Services CashPilot can deploy and manage automatically via Docker.
 | [IPRoyal Pawns](https://pawns.app?r=19266874) | ✅ | ❌ | Unlimited | 1 | PayPal, Crypto, Bank Transfer |
 | [MystNodes](https://mystnodes.co/?referral_code=do7v7YOoBBpbOstKQovX2pUvZYKia4ZhH3QIdNtE) | ✅ | ✅ | Unlimited | Unlimited | Crypto (MYST) |
 | [PacketStream](https://packetstream.io/?psr=7xgZ) | ✅ | ❌ | Unlimited | 1 | PayPal |
+| [Peer2Profit](https://peer2profit.com) | ✅ | ✅ | Unlimited | 1 | PayPal, Crypto |
+| [Presearch](https://presearch.com/signup?rid=4872322) | ✅ | ✅ | Unlimited | 1 | Crypto (PRE) |
 | [ProxyBase](https://proxybase.io) | ✅ | ❌ | Unlimited | 1 | Crypto |
 | [ProxyLite](https://proxylite.ru/?r=KMUPRZIZ) | ✅ | ✅ | Unlimited | 1 | Crypto, PayPal |
 | [ProxyRack](https://peer.proxyrack.com/ref/mpwiok3xlaxeycnn5znqlg7ipjeutxyxr6xl7vmn) | ✅ | ✅ | 500 | 1 | PayPal, Crypto |
@@ -99,11 +102,20 @@ These services have no Docker image. CashPilot lists them in the catalog with si
 | [BlockMesh (Perceptron Network)](https://blockmesh.xyz) | ✅ | ❌ | Unlimited | 1 | Crypto (BMESH) | Shady |
 | [Bytebenefit](https://bytebenefit.com) | ✅ | ❌ | Unlimited | 1 | PayPal | Active |
 | [Bytelixir](https://bytelixir.com/r/OYEIRE0VSZBZ) | ✅ | ❌ | Unlimited | 1 | Crypto | Active |
+| [Deeper Network](https://deeper.network) | ✅ | ❌ | Unlimited | 1 | Crypto (DPR) | Active |
 | [Ebesucher](https://www.ebesucher.com/?ref=geiserx) | ✅ | ✅ | Unlimited | 1 | PayPal | Active |
+| [GagaNode](https://dashboard.gaganode.com/register) | ✅ | ✅ | Unlimited | 1 | Crypto, PayPal | Shady |
 | [Gradient Network](https://app.gradient.network/signup?referralCode=YSKMY7) | ✅ | ❌ | Unlimited | 1 | Crypto (GRADIENT) | Active |
 | [Grass](https://app.grass.io/register?referralCode=kn8FNEPnUr2tMqE) | ✅ | ❌ | Unlimited | 1 | Crypto (GRASS) | Active |
+| [Helium](https://helium.com) | ✅ | ❌ | Unlimited | 1 | Crypto (HNT) | Active |
 | [Nodepay](https://app.nodepay.ai/register?ref=0wzzyznen64j9zx) | ✅ | ❌ | Unlimited | 1 | Crypto (NC) | Active |
+| [Nodle](https://nodle.com) | ✅ | ✅ | Unlimited | 1 | Crypto (NODL) | Active |
+| [PassiveApp](https://passiveapp.com/i/bqpC4M) | ✅ | ❌ | Unlimited | 1 | Crypto, PayPal | Active |
+| [Sentinel dVPN](https://sentinel.co) | ✅ | ✅ | Unlimited | 1 | Crypto (DVPN) | Active |
+| [Spide](https://spide.network/register.html?f3bc51) | ✅ | ❌ | Unlimited | 1 | Crypto | Active |
 | [Teneo Protocol](https://dashboard.teneo.pro/?code=CAqef) | ✅ | ❌ | Unlimited | 1 | Crypto (TENEO) | Active |
+| [Theta Edge Node](https://thetatoken.org) | ✅ | ✅ | Unlimited | 1 | Crypto (TFUEL) | Active |
+| [Titan Network](https://edge.titannet.info/signup?inviteCode=2GKKJ495) | ✅ | ❌ | Unlimited | 1 | Crypto (TNT) | Active |
 | [Uprock](https://link.uprock.com/i/33e8492e) | ✅ | ❌ | Unlimited | 1 | Crypto | Active |
 
 ### GPU Compute
@@ -112,7 +124,9 @@ GPU-intensive computing services. Requires compatible hardware.
 
 | Service | Residential IP | GPU | Min Storage | Payout | Status |
 |---------|:-:|:-:|:-:|--------|--------|
+| [Flux](https://runonflux.io) | ✅ | ❌ | 220GB | Crypto (FLUX) | Active |
 | [Golem Network](https://golem.network) | ✅ | ❌ | 20GB | Crypto (GLM) | Active |
+| [io.net](https://io.net) | ✅ | ✅ | N/A | Crypto (IO) | Active |
 | [Nosana](https://nosana.io) | ✅ | ✅ | 50GB | Crypto (NOS) | Active |
 | [Salad](https://salad.io) | ✅ | ✅ | N/A | PayPal, Gift Cards | Active |
 | [Vast.ai](https://cloud.vast.ai/?ref_id=452772) | ✅ | ✅ | 100GB | Crypto, Bank Transfer | Active |

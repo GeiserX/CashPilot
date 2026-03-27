@@ -1,8 +1,8 @@
 name: PassiveApp
 slug: passiveapp
 category: depin
-status: dead
-website: https://passiveapp.io
+status: active
+website: https://passiveapp.com
 description: >
   PassiveApp is a DePIN platform that lets you earn crypto and PayPal rewards
   by sharing unused bandwidth and computing resources. Relatively new service
@@ -10,7 +10,7 @@ description: >
 short_description: DePIN bandwidth/compute - crypto and PayPal payouts
 
 referral:
-  signup_url: "https://passiveapp.io"
+  signup_url: "https://passiveapp.com/i/bqpC4M"
 
 docker:
   image: ""
@@ -42,7 +42,7 @@ earnings:
 
 cashout:
   method: redirect
-  dashboard_url: "https://passiveapp.io/dashboard"
+  dashboard_url: "https://passiveapp.com/dashboard"
   min_amount: 5.0
   currency: USD
 

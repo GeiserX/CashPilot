@@ -1,7 +1,7 @@
 # PassiveApp
 
-> **Category:** DePIN | **Status:** Dead
-> **Website:** [https://passiveapp.io](https://passiveapp.io)
+> **Category:** DePIN | **Status:** Active
+> **Website:** [https://passiveapp.com](https://passiveapp.com)
 
 ## Description
 
@@ -33,7 +33,7 @@ PassiveApp is a DePIN platform that lets you earn crypto and PayPal rewards by s
 
 ### 1. Create an account
 
-Sign up at [PassiveApp](https://passiveapp.io).
+Sign up at [PassiveApp](https://passiveapp.com/i/bqpC4M).
 
 ### 2. Get your credentials
 

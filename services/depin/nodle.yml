@@ -1,0 +1,54 @@
+name: Nodle
+slug: nodle
+category: depin
+status: active
+website: https://nodle.com
+description: >
+  Nodle uses smartphone Bluetooth to create IoT infrastructure. The app
+  passively detects and relays data from nearby IoT devices, earning NODL
+  tokens. Featured in Forbes, enterprise partnerships with Vivendi and Hayden AI.
+  Mobile-only (iOS and Android).
+short_description: Bluetooth IoT relay - mobile app, NODL token rewards
+
+referral:
+  signup_url: "https://nodle.com"
+
+docker:
+  image: ""
+  platforms: []
+  env: []
+  ports: []
+  volumes: []
+  command: ""
+  network_mode: ""
+
+requirements:
+  residential_ip: false
+  min_bandwidth: ""
+  gpu: false
+  min_storage: ""
+
+payment:
+  methods: [crypto]
+  minimum_payout: ""
+  currency: NODL
+  frequency: "Continuous"
+
+earnings:
+  monthly_low: 0.5
+  monthly_high: 3
+  currency: USD
+  per: "device"
+  notes: "Very low earnings. Background phone app using Bluetooth. Wallet connect may be flaky."
+
+cashout:
+  method: manual
+  dashboard_url: "https://nodle.com"
+  min_amount: 0
+  currency: NODL
+
+platforms: [ios, android]
+
+collector:
+  type: manual
+  notes: "Mobile app only. No API documented."

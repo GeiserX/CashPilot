@@ -1,23 +1,23 @@
-# Network3
+# Koii Network
 
 > **Category:** DePIN | **Status:** Broken
-> **Website:** [https://network3.io](https://network3.io)
+> **Website:** [https://koii.network](https://koii.network)
 
 ## Description
 
-Network3 was a DePIN project focused on decentralized AI training and bandwidth sharing. The project's SSL certificate has expired and the platform appears to be non-functional. Status marked as broken due to certificate issues and possible project abandonment. Exercise caution before investing time or resources.
+Koii Network is a Solana-based DePIN for distributed data, storage, and compute tasks. Task operators post jobs, node operators execute them and earn KOII tokens. Currently paused.
 
 ## Earning Estimates
 
 | Metric | Value |
 |--------|-------|
 | Monthly range | $0 - $0 |
-| Per | device |
+| Per | node |
 | Minimum payout |  |
-| Payout frequency |  |
+| Payout frequency | Per task |
 | Payment methods | Crypto |
 
-> Project appears inactive. SSL certificate expired. Do not expect any earnings.
+> Website says paused as of March 2026. Check back later.
 
 ## Requirements
 
@@ -33,7 +33,7 @@ Network3 was a DePIN project focused on decentralized AI training and bandwidth 
 
 ### 1. Create an account
 
-Sign up at [Network3](https://network3.io).
+Sign up at [Koii Network](https://koii.network).
 
 ### 2. Get your credentials
 
@@ -41,7 +41,7 @@ After signing up, locate the credentials needed for Docker deployment. These are
 
 ### 3. Deploy with CashPilot
 
-In the CashPilot web UI, find **Network3** in the service catalog and click **Deploy**. Enter the required credentials and CashPilot will handle the rest.
+In the CashPilot web UI, find **Koii Network** in the service catalog and click **Deploy**. Enter the required credentials and CashPilot will handle the rest.
 
 ## Docker Configuration
 
@@ -60,4 +60,4 @@ No environment variables required.
 
 ---
 
-*This guide was auto-generated from [`services/depin/network3.yml`](../../services/depin/network3.yml). Edit the YAML source and run `python scripts/generate_docs.py` to update.*
+*This guide was auto-generated from [`services/depin/koii.yml`](../../services/depin/koii.yml). Edit the YAML source and run `python scripts/generate_docs.py` to update.*

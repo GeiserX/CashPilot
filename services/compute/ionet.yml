@@ -1,0 +1,53 @@
+name: io.net
+slug: ionet
+category: compute
+status: active
+website: https://io.net
+description: >
+  io.net is a decentralized GPU network for AI/ML workloads. Aggregates idle
+  GPUs from consumers and data centers. Requires NVIDIA GPU with 8GB+ VRAM
+  for meaningful earnings. Container-based deployments supported.
+short_description: Decentralized GPU network for AI - NVIDIA GPU required
+
+referral:
+  signup_url: "https://io.net"
+
+docker:
+  image: ""
+  platforms: []
+  env: []
+  ports: []
+  volumes: []
+  command: ""
+  network_mode: ""
+
+requirements:
+  residential_ip: false
+  min_bandwidth: ""
+  gpu: true
+  min_storage: ""
+
+payment:
+  methods: [crypto]
+  minimum_payout: ""
+  currency: IO
+  frequency: "Epoch-based"
+
+earnings:
+  monthly_low: 10
+  monthly_high: 500
+  currency: USD
+  per: "GPU"
+  notes: "Requires NVIDIA GPU with 8GB+ VRAM. RTX 4090 claims of $500-1000/mo (likely lower in practice)."
+
+cashout:
+  method: manual
+  dashboard_url: "https://cloud.io.net"
+  min_amount: 0
+  currency: IO
+
+platforms: [linux]
+
+collector:
+  type: manual
+  notes: "Dashboard at cloud.io.net. GPU provider signup process unclear."

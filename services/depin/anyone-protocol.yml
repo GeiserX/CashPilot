@@ -1,0 +1,59 @@
+name: Anyone Protocol
+slug: anyone-protocol
+category: depin
+status: active
+website: https://anyone.io
+description: >
+  Anyone Protocol (formerly ATOR) is a decentralized onion-routing privacy
+  network. Node operators run relay nodes and earn ANYONE tokens for bandwidth
+  contributed. Think "incentivized Tor." Official Docker images available for
+  amd64 and arm64 including Raspberry Pi.
+short_description: Decentralized onion routing - incentivized Tor relay nodes
+
+referral:
+  signup_url: "https://anyone.io"
+
+docker:
+  image: ghcr.io/anyone-protocol/ator-protocol-relay
+  platforms: [linux/amd64, linux/arm64]
+  env:
+    - key: ANYONE_OPERATOR_ADDRESS
+      label: "Operator Wallet Address"
+      required: true
+      secret: false
+      description: "Your wallet address for receiving ANYONE token rewards"
+  ports: []
+  volumes: []
+  command: ""
+  network_mode: ""
+
+requirements:
+  residential_ip: false
+  min_bandwidth: "10 Mbps"
+  gpu: false
+  min_storage: ""
+
+payment:
+  methods: [crypto]
+  minimum_payout: ""
+  currency: ANYONE
+  frequency: "Epoch-based"
+
+earnings:
+  monthly_low: 5
+  monthly_high: 50
+  currency: USD
+  per: "relay"
+  notes: "Earnings based on bandwidth contributed and uptime. Open source project with active development."
+
+cashout:
+  method: manual
+  dashboard_url: "https://anyone.io"
+  min_amount: 0
+  currency: ANYONE
+
+platforms: [linux]
+
+collector:
+  type: manual
+  notes: "Open source relay. Earnings tracked on-chain."

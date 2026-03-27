@@ -1,0 +1,53 @@
+name: Flux
+slug: flux
+category: compute
+status: active
+website: https://runonflux.io
+description: >
+  Flux is a globally distributed compute infrastructure. Node operators stake
+  FLUX tokens and provide server resources. Three tiers: Cumulus (1,000 FLUX),
+  Nimbus (12,500 FLUX), Stratus (40,000 FLUX). Official Docker images available.
+short_description: Decentralized compute - requires FLUX token stake
+
+referral:
+  signup_url: "https://runonflux.io"
+
+docker:
+  image: ""
+  platforms: []
+  env: []
+  ports: []
+  volumes: []
+  command: ""
+  network_mode: ""
+
+requirements:
+  residential_ip: false
+  min_bandwidth: "25 Mbps"
+  gpu: false
+  min_storage: "220GB"
+
+payment:
+  methods: [crypto]
+  minimum_payout: ""
+  currency: FLUX
+  frequency: "Block rewards"
+
+earnings:
+  monthly_low: 10
+  monthly_high: 100
+  currency: USD
+  per: "node"
+  notes: "Requires 1,000+ FLUX stake (~$50-500 depending on price). Higher tiers need more collateral but earn more."
+
+cashout:
+  method: manual
+  dashboard_url: "https://home.runonflux.io"
+  min_amount: 0
+  currency: FLUX
+
+platforms: [linux]
+
+collector:
+  type: manual
+  notes: "FluxOS dashboard. On-chain earnings."

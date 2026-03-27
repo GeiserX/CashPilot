@@ -1,0 +1,53 @@
+name: Sentinel dVPN
+slug: sentinel-dvpn
+category: depin
+status: active
+website: https://sentinel.co
+description: >
+  Sentinel is a Layer 1 Cosmos blockchain for decentralized VPN. Node operators
+  sell bandwidth to VPN users with flexible pricing (per-GB or hourly). Official
+  Docker deployment guide available. Long-running project with active community.
+short_description: Decentralized VPN on Cosmos - node operators sell bandwidth
+
+referral:
+  signup_url: "https://sentinel.co"
+
+docker:
+  image: ""
+  platforms: []
+  env: []
+  ports: []
+  volumes: []
+  command: ""
+  network_mode: ""
+
+requirements:
+  residential_ip: false
+  min_bandwidth: "10 Mbps"
+  gpu: false
+  min_storage: ""
+
+payment:
+  methods: [crypto]
+  minimum_payout: ""
+  currency: DVPN
+  frequency: "Per session"
+
+earnings:
+  monthly_low: 5
+  monthly_high: 30
+  currency: USD
+  per: "node"
+  notes: "Operators set own pricing per-GB or hourly. Earnings depend on VPN user demand in your region."
+
+cashout:
+  method: manual
+  dashboard_url: "https://sentinel.co"
+  min_amount: 0
+  currency: DVPN
+
+platforms: [linux]
+
+collector:
+  type: manual
+  notes: "Cosmos blockchain-based. Earnings tracked on-chain. Node Spawner tool available for automated setup."

@@ -1,7 +1,7 @@
 name: Titan Network
 slug: titan
 category: depin
-status: dead
+status: active
 website: https://titannet.io
 description: >
   Titan Network is a DePIN platform that shares your IP address, storage, and
@@ -12,7 +12,7 @@ description: >
 short_description: DePIN sharing IP, storage, bandwidth - $5-30/month
 
 referral:
-  signup_url: "https://titannet.io"
+  signup_url: "https://edge.titannet.info/signup?inviteCode=2GKKJ495"
 
 docker:
   image: ""
@@ -47,7 +47,7 @@ cashout:
   dashboard_url: "https://proxytitan.com/dashboard"
   min_amount: 0
   currency: TNT
-  notes: "Service dead. Cashout unavailable."
+  notes: ""
 
 platforms: [windows, macos, android]
 

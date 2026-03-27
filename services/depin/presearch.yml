@@ -1,0 +1,61 @@
+name: Presearch
+slug: presearch
+category: depin
+status: active
+website: https://presearch.com
+description: >
+  Presearch is a decentralized search engine where node operators run Docker
+  containers to process search queries and earn PRE tokens. Requires staking
+  a minimum of 4,000 PRE tokens to earn rewards. Prioritizes fast internet
+  and low latency nodes.
+short_description: Decentralized search engine - Docker nodes, PRE token rewards
+
+referral:
+  signup_url: "https://presearch.com/signup?rid=4872322"
+
+docker:
+  image: presearch/node
+  platforms: [linux/amd64, linux/arm64]
+  env:
+    - key: PRESEARCH_REGISTRATION_CODE
+      label: "Registration Code"
+      required: true
+      secret: true
+      description: "Your Presearch node registration code from the dashboard"
+  ports: []
+  volumes:
+    - container_path: /app/node
+      description: "Node data and keys"
+  command: ""
+  network_mode: ""
+
+requirements:
+  residential_ip: false
+  min_bandwidth: ""
+  gpu: false
+  min_storage: ""
+
+payment:
+  methods: [crypto]
+  minimum_payout: ""
+  currency: PRE
+  frequency: "Daily"
+
+earnings:
+  monthly_low: 5
+  monthly_high: 30
+  currency: USD
+  per: "node"
+  notes: "Requires 4,000 PRE stake (~$100-200). Earnings depend on search query volume routed to your node. Fast internet and low latency prioritized."
+
+cashout:
+  method: redirect
+  dashboard_url: "https://nodes.presearch.com/dashboard"
+  min_amount: 0
+  currency: PRE
+
+platforms: [windows, macos, linux]
+
+collector:
+  type: api
+  notes: "Node dashboard at nodes.presearch.com. Shows earnings, uptime, and reliability score."

@@ -1,0 +1,53 @@
+name: Theta Edge Node
+slug: theta-edge
+category: depin
+status: active
+website: https://thetatoken.org
+description: >
+  Theta Network is an established decentralized video delivery and AI compute
+  network (since 2018). Users run Edge Nodes sharing bandwidth, storage, and
+  compute power. Major content partnerships. Earns TFUEL tokens.
+short_description: Decentralized CDN + AI compute - TFUEL rewards, established project
+
+referral:
+  signup_url: "https://thetatoken.org"
+
+docker:
+  image: ""
+  platforms: []
+  env: []
+  ports: []
+  volumes: []
+  command: ""
+  network_mode: ""
+
+requirements:
+  residential_ip: false
+  min_bandwidth: ""
+  gpu: false
+  min_storage: ""
+
+payment:
+  methods: [crypto]
+  minimum_payout: ""
+  currency: TFUEL
+  frequency: "Continuous"
+
+earnings:
+  monthly_low: 1
+  monthly_high: 10
+  currency: USD
+  per: "node"
+  notes: "Desktop app only. Earnings depend on resources and location. Major partnerships, listed on all exchanges."
+
+cashout:
+  method: manual
+  dashboard_url: "https://edgecloud.thetatoken.org"
+  min_amount: 0
+  currency: TFUEL
+
+platforms: [windows, macos, linux]
+
+collector:
+  type: manual
+  notes: "Desktop app shows earnings. No headless/Docker mode available."

@@ -1,0 +1,53 @@
+name: Deeper Network
+slug: deeper-network
+category: depin
+status: active
+website: https://deeper.network
+description: >
+  Deeper Network is a decentralized VPN and web3 infrastructure project.
+  Primarily requires proprietary Deeper Connect hardware devices. Moken is
+  a related mining/staking platform. Not software-only.
+short_description: Decentralized VPN - requires proprietary hardware device
+
+referral:
+  signup_url: "https://deeper.network"
+
+docker:
+  image: ""
+  platforms: []
+  env: []
+  ports: []
+  volumes: []
+  command: ""
+  network_mode: ""
+
+requirements:
+  residential_ip: true
+  min_bandwidth: ""
+  gpu: false
+  min_storage: ""
+
+payment:
+  methods: [crypto]
+  minimum_payout: ""
+  currency: DPR
+  frequency: "Continuous"
+
+earnings:
+  monthly_low: 5
+  monthly_high: 30
+  currency: USD
+  per: "device"
+  notes: "Requires Deeper Connect hardware ($200-500). Moken platform for mining/staking. Not software-only."
+
+cashout:
+  method: manual
+  dashboard_url: "https://device.deeper.network"
+  min_amount: 0
+  currency: DPR
+
+platforms: []
+
+collector:
+  type: manual
+  notes: "Hardware device dashboard. Requires Deeper Connect device."

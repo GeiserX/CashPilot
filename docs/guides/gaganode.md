@@ -1,6 +1,6 @@
 # GagaNode
 
-> **Category:** DePIN | **Status:** Dead
+> **Category:** DePIN | **Status:** Shady
 > **Website:** [https://www.gaganode.com](https://www.gaganode.com)
 
 ## Description

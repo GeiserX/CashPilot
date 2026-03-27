@@ -1,7 +1,7 @@
 name: SpeedShare
 slug: speedshare
 category: bandwidth
-status: broken
+status: dead
 website: https://speedshare.app
 description: >
   SpeedShare lets you earn by sharing your unused internet bandwidth. Residential
@@ -57,7 +57,7 @@ cashout:
   dashboard_url: "https://dashboard.speedshare.app"
   min_amount: 5.0
   currency: USD
-  notes: "Service broken. Cashout unavailable."
+  notes: "Confirmed dead (Discord, March 2026)."
 
 platforms: [windows, macos, linux]
 
