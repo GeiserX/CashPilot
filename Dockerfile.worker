@@ -39,6 +39,7 @@ RUN adduser -D -u 1000 cashpilot \
 WORKDIR /app
 
 COPY --chown=cashpilot:root app/__init__.py ./app/
+COPY --chown=cashpilot:root app/constants.py ./app/
 COPY --chown=cashpilot:root app/worker_api.py ./app/
 COPY --chown=cashpilot:root app/orchestrator.py ./app/
 COPY --chown=cashpilot:root app/catalog.py ./app/
