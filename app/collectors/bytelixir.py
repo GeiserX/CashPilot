@@ -15,6 +15,7 @@ returns an error that surfaces as a notification in the CashPilot UI.
 from __future__ import annotations
 
 import logging
+from urllib.parse import unquote
 
 import httpx
 
@@ -31,7 +32,7 @@ class BytelixirCollector(BaseCollector):
     platform = "bytelixir"
 
     def __init__(self, session_cookie: str) -> None:
-        self.session_cookie = session_cookie
+        self.session_cookie = unquote(session_cookie)
 
     async def collect(self) -> EarningsResult:
         """Fetch current Bytelixir balance."""
