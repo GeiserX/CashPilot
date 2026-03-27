@@ -27,7 +27,7 @@ EarnApp by Bright Data lets you sell your unused bandwidth for passive income. B
 | Minimum bandwidth | None |
 | GPU required | No |
 | Minimum storage | None |
-| Supported platforms | Windows, Macos, Linux, Android, Docker |
+| Supported platforms | Windows, Macos, Linux, Android |
 
 ## Setup Instructions
 
@@ -74,7 +74,6 @@ docker run -d \
 |---|---------|
 | Referrer bonus | 10% of referral earnings for life |
 | New user bonus |  |
-| How to get code | Dashboard > Referrals > Copy your referral link |
 
 ---
 

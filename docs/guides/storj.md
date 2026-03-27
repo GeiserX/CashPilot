@@ -27,7 +27,7 @@ Storj is a decentralized cloud storage network where you earn by renting out you
 | Minimum bandwidth | 5 Mbps upload |
 | GPU required | No |
 | Minimum storage | 550GB |
-| Supported platforms | Linux, Docker |
+| Supported platforms | Linux |
 
 ## Setup Instructions
 
@@ -81,7 +81,6 @@ docker run -d \
 |---|---------|
 | Referrer bonus |  |
 | New user bonus |  |
-| How to get code |  |
 
 ---
 

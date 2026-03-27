@@ -1,7 +1,7 @@
 # Grass
 
 > **Category:** DePIN | **Status:** Active
-> **Website:** [https://www.getgrass.io](https://www.getgrass.io)
+> **Website:** [https://www.grass.io](https://www.grass.io)
 
 ## Description
 
@@ -27,13 +27,13 @@ Grass is a decentralized network that lets you sell your unused bandwidth for AI
 | Minimum bandwidth | None |
 | GPU required | No |
 | Minimum storage | None |
-| Supported platforms | Windows, Macos, Linux, Browser Extension |
+| Supported platforms | Browser-Extension, Windows, Macos, Android, Ios |
 
 ## Setup Instructions
 
 ### 1. Create an account
 
-Sign up at [Grass](https://app.getgrass.io/register/?referralCode=kn8FNEPnUr2tMqE).
+Sign up at [Grass](https://app.grass.io/register?referralCode=kn8FNEPnUr2tMqE).
 
 ### 2. Get your credentials
 
@@ -46,6 +46,7 @@ In the CashPilot web UI, find **Grass** in the service catalog and click **Deplo
 ## Docker Configuration
 
 - **Image:** ``
+- **Platforms:** browser-extension, windows, macos, android, ios
 
 ### Environment Variables
 
@@ -57,7 +58,6 @@ No environment variables required.
 |---|---------|
 | Referrer bonus | 20% of referral's Grass Points permanently |
 | New user bonus | Bonus Grass Points on signup |
-| How to get code | Dashboard > Referrals > Copy your referral link |
 
 ---
 

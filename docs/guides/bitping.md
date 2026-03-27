@@ -27,7 +27,7 @@ Bitping is a decentralized network monitoring platform that pays you for running
 | Minimum bandwidth | None |
 | GPU required | No |
 | Minimum storage | None |
-| Supported platforms | Windows, Macos, Linux, Docker |
+| Supported platforms | Windows, Macos, Linux |
 
 ## Setup Instructions
 
@@ -74,7 +74,6 @@ docker run -d \
 |---|---------|
 | Referrer bonus |  |
 | New user bonus |  |
-| How to get code | No referral program available |
 
 ---
 

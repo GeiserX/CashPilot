@@ -27,7 +27,7 @@ Traffmonetizer lets you monetize your internet traffic by sharing bandwidth with
 | Minimum bandwidth | None |
 | GPU required | No |
 | Minimum storage | None |
-| Supported platforms | Windows, Macos, Linux, Docker |
+| Supported platforms | Windows, Macos, Linux |
 
 ## Setup Instructions
 
@@ -73,7 +73,6 @@ docker run -d \
 |---|---------|
 | Referrer bonus | 10% of referral earnings for life |
 | New user bonus | $5 signup bonus |
-| How to get code | Dashboard > Referral Program > Copy your referral link |
 
 ---
 

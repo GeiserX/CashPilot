@@ -58,7 +58,6 @@ No environment variables required.
 |---|---------|
 | Referrer bonus |  |
 | New user bonus |  |
-| How to get code |  |
 
 ---
 

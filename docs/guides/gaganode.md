@@ -27,7 +27,7 @@ GagaNode is a multi-platform decentralized bandwidth sharing network that runs o
 | Minimum bandwidth | None |
 | GPU required | No |
 | Minimum storage | None |
-| Supported platforms | Windows, Macos, Linux |
+| Supported platforms | Windows, Macos, Linux, Android |
 
 ## Setup Instructions
 
@@ -57,7 +57,6 @@ No environment variables required.
 |---|---------|
 | Referrer bonus | Bonus credits per active referral |
 | New user bonus |  |
-| How to get code | Dashboard > Invite Friends > Copy referral link |
 
 ---
 

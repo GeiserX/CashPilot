@@ -27,7 +27,7 @@ Uprock is a DePIN (Decentralized Physical Infrastructure Network) platform that 
 | Minimum bandwidth | None |
 | GPU required | No |
 | Minimum storage | None |
-| Supported platforms | Windows, Macos, Linux, Browser Extension |
+| Supported platforms | Browser-Extension, Android |
 
 ## Setup Instructions
 
@@ -46,6 +46,7 @@ In the CashPilot web UI, find **Uprock** in the service catalog and click **Depl
 ## Docker Configuration
 
 - **Image:** ``
+- **Platforms:** browser-extension, android
 
 ### Environment Variables
 
@@ -57,7 +58,6 @@ No environment variables required.
 |---|---------|
 | Referrer bonus |  |
 | New user bonus |  |
-| How to get code | Check the dashboard for referral options |
 
 ---
 

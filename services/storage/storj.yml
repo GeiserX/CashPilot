@@ -75,7 +75,7 @@ cashout:
   currency: STORJ
   notes: "Payouts sent monthly in STORJ tokens to configured wallet address."
 
-platforms: [linux, docker]
+platforms: [linux]
 
 collector:
   type: api

@@ -1,11 +1,11 @@
 # Bytelixir
 
-> **Category:** Bandwidth Sharing | **Status:** Beta
+> **Category:** Bandwidth Sharing | **Status:** Active
 > **Website:** [https://bytelixir.com](https://bytelixir.com)
 
 ## Description
 
-Bytelixir is a bandwidth-sharing service. Relatively new with limited information available. No official Docker image found. Desktop application is the primary client.
+Bytelixir lets you earn passive income by sharing unused internet bandwidth. Supports Windows, macOS, Linux, and Android. Earnings range $2-50/month depending on location. Web dashboard at dash.bytelixir.com for tracking. No Docker image available.
 
 ## Earning Estimates
 
@@ -17,7 +17,7 @@ Bytelixir is a bandwidth-sharing service. Relatively new with limited informatio
 | Payout frequency | On request |
 | Payment methods | Crypto |
 
-> No Docker image available. Limited information.
+> Earnings vary by location ($2-50/month). No Docker image. Desktop app or Android app required.
 
 ## Requirements
 
@@ -27,13 +27,13 @@ Bytelixir is a bandwidth-sharing service. Relatively new with limited informatio
 | Minimum bandwidth | None |
 | GPU required | No |
 | Minimum storage | None |
-| Supported platforms | Windows, Macos, Linux |
+| Supported platforms | Windows, Macos, Linux, Android |
 
 ## Setup Instructions
 
 ### 1. Create an account
 
-Sign up at [Bytelixir](https://bytelixir.com).
+Sign up at [Bytelixir](https://bytelixir.com/r/OYEIRE0VSZBZ).
 
 ### 2. Get your credentials
 
@@ -57,7 +57,6 @@ No environment variables required.
 |---|---------|
 | Referrer bonus |  |
 | New user bonus |  |
-| How to get code | Check the dashboard for referral options |
 
 ---
 

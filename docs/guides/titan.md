@@ -57,7 +57,6 @@ No environment variables required.
 |---|---------|
 | Referrer bonus | Bonus TNT tokens per referral |
 | New user bonus |  |
-| How to get code | Dashboard > Referral section > Copy link |
 
 ---
 

@@ -5,7 +5,7 @@
 
 ## Description
 
-Ebesucher is a traffic exchange platform where you earn credits by visiting websites through an automated surfbar. Runs in a headless browser container (Firefox or Chromium). Not a traditional bandwidth-sharing service — it generates traffic by browsing websites automatically. Requires a browser container which uses more resources than typical bandwidth apps.
+Ebesucher is a traffic exchange platform where you earn credits by visiting websites through an automated surfbar. Runs as a browser extension/addon. Not a traditional bandwidth-sharing service — it generates traffic by browsing websites automatically.
 
 ## Earning Estimates
 
@@ -17,7 +17,7 @@ Ebesucher is a traffic exchange platform where you earn credits by visiting webs
 | Payout frequency | On request |
 | Payment methods | Paypal |
 
-> Earnings in BTP points convertible to EUR. Uses significant CPU/memory for browser. Needs periodic restart.
+> Earnings in BTP points convertible to EUR. Browser extension only.
 
 ## Requirements
 
@@ -27,13 +27,13 @@ Ebesucher is a traffic exchange platform where you earn credits by visiting webs
 | Minimum bandwidth | None |
 | GPU required | No |
 | Minimum storage | None |
-| Supported platforms | Linux, Docker |
+| Supported platforms | Browser |
 
 ## Setup Instructions
 
 ### 1. Create an account
 
-Sign up at [Ebesucher](https://www.ebesucher.com).
+Sign up at [Ebesucher](https://www.ebesucher.com/?ref=geiserx).
 
 ### 2. Get your credentials
 
@@ -45,29 +45,11 @@ In the CashPilot web UI, find **Ebesucher** in the service catalog and click **D
 
 ## Docker Configuration
 
-- **Image:** `jlesage/firefox`
-- **Platforms:** linux/amd64
+- **Image:** ``
 
 ### Environment Variables
 
-| Variable | Label | Required | Secret | Description |
-|----------|-------|:--------:|:------:|-------------|
-| `EBESUCHER_USERNAME` | Username | Yes | No | Your Ebesucher username for the surfbar URL |
-| `VNC_PASSWORD` | VNC Password | No | Yes | Password for VNC access to the browser (default: `cashpilot`) |
-
-### Manual Docker Run
-
-If running outside CashPilot:
-
-```bash
-docker run -d \
-  --name cashpilot-ebesucher \
-  -p 5800:5800 \
-  -v ebesucher-data:/config \
-  -e EBESUCHER_USERNAME="<Username>" \
-  -e VNC_PASSWORD="<VNC Password>" \
-  jlesage/firefox
-```
+No environment variables required.
 
 ## Referral Program
 
@@ -75,7 +57,6 @@ docker run -d \
 |---|---------|
 | Referrer bonus |  |
 | New user bonus |  |
-| How to get code | Check the dashboard for referral options |
 
 ---
 

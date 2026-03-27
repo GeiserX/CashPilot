@@ -27,7 +27,7 @@ Earn.fm pays you for sharing your internet bandwidth. It uses a simple token-bas
 | Minimum bandwidth | None |
 | GPU required | No |
 | Minimum storage | None |
-| Supported platforms | Linux, Docker |
+| Supported platforms | Linux |
 
 ## Setup Instructions
 
@@ -71,7 +71,6 @@ docker run -d \
 |---|---------|
 | Referrer bonus | Percentage of referral earnings |
 | New user bonus |  |
-| How to get code | Dashboard > Settings > Copy your referral link |
 
 ---
 

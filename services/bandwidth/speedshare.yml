@@ -62,7 +62,7 @@ cashout:
   currency: USD
   notes: "Service broken. Cashout unavailable."
 
-platforms: [windows, macos, linux, docker]
+platforms: [windows, macos, linux]
 
 collector:
   type: manual

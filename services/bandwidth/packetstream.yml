@@ -57,7 +57,7 @@ cashout:
   min_amount: 5.0
   currency: USD
 
-platforms: [windows, macos, linux, docker]
+platforms: [windows, macos, linux]
 
 collector:
   type: scrape

@@ -51,7 +51,7 @@ cashout:
   currency: DAWN
   notes: "Service broken. Cashout unavailable."
 
-platforms: [browser_extension]
+platforms: [browser-extension]
 
 collector:
   type: scrape

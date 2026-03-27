@@ -2,18 +2,16 @@
 
 Individual setup and configuration guides for every supported service.
 
-**39 services** across 4 categories.
+**37 services** across 4 categories.
 
 ## Bandwidth Sharing
 
-- [Adnade](adnade.md) -- Ad-based earning - browser surfbar, views ads automatically
-- [AntGain](antgain.md) -- Bandwidth sharing - unlimited devices, API key auth, crypto payout
 - [Bitping](bitping.md) -- Bandwidth sharing - decentralized network monitoring, works on VPS
 - [Bytebenefit](bytebenefit.md) -- Bandwidth sharing - PayPal/Stripe payouts, desktop app
-- [Bytelixir](bytelixir.md) -- Bandwidth sharing - newer service, desktop app
+- [Bytelixir](bytelixir.md) -- Bandwidth sharing - $2-50/month, desktop + Android
 - [Earn.fm](earnfm.md) -- Bandwidth sharing - token-based, lightweight client
 - [EarnApp](earnapp.md) -- Bandwidth sharing - backed by Bright Data
-- [Ebesucher](ebesucher.md) -- Traffic exchange surfbar - browser-based, auto website visits
+- [Ebesucher](ebesucher.md) -- Traffic exchange surfbar - browser extension
 - [Honeygain](honeygain.md) -- Bandwidth sharing - most established platform
 - [IPRoyal Pawns](iproyal.md) -- Bandwidth sharing - 10% lifetime referral, $3 signup bonus
 - [MystNodes](mysterium.md) -- Decentralized VPN node - blockchain-based, works on VPS
