@@ -1,5 +1,5 @@
 # -- Build stage --
-FROM python:3.12-alpine AS builder
+FROM python:3.14-alpine AS builder
 
 WORKDIR /build
 
@@ -17,7 +17,7 @@ RUN --mount=type=cache,target=/root/.cache/pip \
        find /opt/venv -type d -name "test" -exec rm -rf {} + 2>/dev/null; true
 
 # -- Runtime stage --
-FROM python:3.12-alpine
+FROM python:3.14-alpine
 
 LABEL maintainer="Sergio Fernandez <9169332+GeiserX@users.noreply.github.com>"
 LABEL org.opencontainers.image.description="CashPilot Worker - Lightweight Docker container orchestration agent"
