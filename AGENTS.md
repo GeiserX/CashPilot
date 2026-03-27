@@ -62,7 +62,7 @@ No existing project combines all of these:
 
 ## Owner Context
 
-**Operator**: Sergio Fernandez Rubio
+**Operator**: Sergio Fernandez
 **Trade Name**: GeiserCloud
 **GitHub**: GeiserX
 
@@ -412,55 +412,6 @@ Only MystNodes has a real per-node earnings API. Research on all 12 services:
 
 ## Deployment
 
-### Docker Compose (recommended)
-
-```yaml
-services:
-  cashpilot-ui:
-    image: drumsergio/cashpilot:latest
-    container_name: cashpilot-ui
-    ports:
-      - "8080:8080"
-    volumes:
-      - /mnt/user/appdata/cashpilot:/data  # NEVER use named volumes on Unraid
-    environment:
-      - TZ=Europe/Madrid
-      - CASHPILOT_SECRET_KEY=<generate-a-random-secret>
-      - CASHPILOT_API_KEY=<shared-api-key>
-    restart: unless-stopped
-    security_opt:
-      - no-new-privileges:true
-
-  cashpilot-worker:
-    image: drumsergio/cashpilot-worker:latest
-    container_name: cashpilot-worker
-    ports:
-      - "8081:8081"
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
-      - /mnt/user/appdata/cashpilot-worker:/data
-    environment:
-      - TZ=Europe/Madrid
-      - CASHPILOT_UI_URL=http://cashpilot-ui:8080
-      - CASHPILOT_API_KEY=<shared-api-key>
-      - CASHPILOT_WORKER_NAME=local
-    restart: unless-stopped
-    security_opt:
-      - no-new-privileges:true
-```
-
-### Environment Variables
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `TZ` | `UTC` | Timezone |
-| `CASHPILOT_SECRET_KEY` | Auto-generated | Fernet encryption key for credentials (UI only) |
-| `CASHPILOT_COLLECTION_INTERVAL` | `3600` | Seconds between earnings collection (UI only) |
-| `CASHPILOT_PORT` | `8080` | Web UI port (UI) or mini-UI port (worker, default 8081) |
-| `CASHPILOT_UI_URL` | -- | URL of UI instance (worker mode only, required) |
-| `CASHPILOT_API_KEY` | -- | Shared API key for worker↔UI auth (required in multi-server) |
-| `CASHPILOT_WORKER_NAME` | hostname | Human-readable worker name shown in UI fleet view |
-
 ### Current Deployment
 
 3-server fleet: 1 UI instance + 2 workers. Workers send heartbeats to UI every 60s.
@@ -502,26 +453,6 @@ CashPilot stores earnings in each service's **native currency** (USD, MYST, GRAS
 
 **Always use the dedicated worker image** (`drumsergio/cashpilot-worker`), never the UI image for workers. The worker image runs `app.worker_api:app` on port 8081.
 
-**Topology:**
-- **watchtower**: `drumsergio/cashpilot` (UI, port 8085→8080) + `drumsergio/cashpilot-worker` (worker, port 8081). UI collects all earnings, worker manages local containers.
-- **geiserback** (192.168.10.110): `drumsergio/cashpilot-worker`. Port 8081. Same subnet as watchtower — uses direct IP for `CASHPILOT_UI_URL`.
-- **geiserct** (192.168.20.5, user `geiser`): `drumsergio/cashpilot-worker`. Port 8081. Different subnet — **must use Tailscale MagicDNS** (`watchtower.mango-alpha.ts.net`) for `CASHPILOT_UI_URL`.
-
-```bash
-# Worker deployment (geiserback or geiserct)
-docker run -d --name cashpilot-worker --restart unless-stopped \
-  -p 8081:8081 \
-  -v /var/run/docker.sock:/var/run/docker.sock \
-  -e TZ=Europe/Madrid \
-  -e "CASHPILOT_UI_URL=http://192.168.10.100:8085" \
-  -e "CASHPILOT_API_KEY=XV5LwdpApfERQmhKbbcANI8nz3pca1Up" \
-  -e CASHPILOT_WORKER_NAME=<server-name> \
-  --security-opt no-new-privileges:true \
-  drumsergio/cashpilot-worker:latest
-```
-
-**Cross-subnet note**: geiserct uses `CASHPILOT_UI_URL=http://watchtower.mango-alpha.ts.net:8085` since 192.168.20.x cannot reach 192.168.10.x directly.
-
 **Important**: The `entrypoint.sh` does NOT switch modes — it only sets up Docker socket permissions. Mode is determined by which Docker image runs (`Dockerfile` → `app.main:app`, `Dockerfile.worker` → `app.worker_api:app`).
 
 ---
@@ -544,7 +475,7 @@ Docker socket must be accessible for container management.
 1. Create `services/{category}/{slug}.yml` following `_schema.yml`
 2. **Include a `cashout` section** in the YAML — every service must define how users can cash out (API endpoint, redirect URL, or manual instructions). This is mandatory, not optional.
 3. Run `python scripts/generate_docs.py` to regenerate README + guides
-4. Optionally add a collector in `app/collectors/{slug}.py` and register it in `__init__.py`
+4. Add a collector in `app/collectors/{slug}.py` and register it in `__init__.py` 
 5. Submit a PR (one service per PR)
 
 ### Documentation Generation
