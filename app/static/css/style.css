@@ -288,9 +288,7 @@ img { max-width: 100%; }
 #theme-toggle .icon-moon { display: none; }
 :root[data-theme="light"] #theme-toggle .icon-sun { display: none; }
 :root[data-theme="light"] #theme-toggle .icon-moon { display: block; }
-/* Theme label text */
-#theme-toggle .theme-label::after { content: 'Light mode'; }
-:root[data-theme="light"] #theme-toggle .theme-label::after { content: 'Dark mode'; }
+/* Theme label text — set via JS updateLabel() */
 
 /* Avatar button + dropdown */
 .topbar-avatar-wrap {
