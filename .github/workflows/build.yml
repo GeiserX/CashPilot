@@ -1,8 +1,18 @@
 name: Build and Push Docker Images
 
 on:
-  push:
-    tags: ["v*"]
+  workflow_call:
+    inputs:
+      build_ui:
+        type: boolean
+        default: true
+      build_worker:
+        type: boolean
+        default: true
+      version:
+        description: 'Version tag (e.g. v0.2.1)'
+        type: string
+        required: true
   workflow_dispatch:
     inputs:
       build_ui:
@@ -15,54 +25,49 @@ on:
         default: true
 
 concurrency:
-  group: build-${{ github.ref }}
+  group: build-${{ inputs.version || github.ref }}
   cancel-in-progress: true
 
 jobs:
-  detect:
+  resolve-tags:
     runs-on: ubuntu-latest
     outputs:
-      build_ui: ${{ steps.check.outputs.ui }}
-      build_worker: ${{ steps.check.outputs.worker }}
+      ui_tags: ${{ steps.tags.outputs.ui_tags }}
+      worker_tags: ${{ steps.tags.outputs.worker_tags }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 2
-
-      - name: Detect what to build
-        id: check
+      - name: Compute Docker tags
+        id: tags
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "ui=${{ inputs.build_ui }}" >> "$GITHUB_OUTPUT"
-            echo "worker=${{ inputs.build_worker }}" >> "$GITHUB_OUTPUT"
+          VERSION="${{ inputs.version }}"
+          if [ -z "$VERSION" ]; then
+            echo "ui_tags=drumsergio/cashpilot:latest" >> "$GITHUB_OUTPUT"
+            echo "worker_tags=drumsergio/cashpilot-worker:latest" >> "$GITHUB_OUTPUT"
             exit 0
           fi
+          # Strip leading 'v'
+          VER="${VERSION#v}"
+          MAJOR_MINOR="$(echo "$VER" | cut -d. -f1).$(echo "$VER" | cut -d. -f2)"
 
-          CHANGED=$(git diff --name-only HEAD~1 HEAD 2>/dev/null || echo "all")
-          BUILD_UI=false
-          BUILD_WORKER=false
+          UI="drumsergio/cashpilot:latest"
+          UI="${UI}
+          drumsergio/cashpilot:${VER}"
+          UI="${UI}
+          drumsergio/cashpilot:${MAJOR_MINOR}"
 
-          if echo "$CHANGED" | grep -qE '^(Dockerfile|requirements\.txt|app/(main|database|catalog|auth|compose_generator|exchange_rates|collectors|templates|static)|services/)'; then
-            BUILD_UI=true
-          fi
-          if echo "$CHANGED" | grep -qE '^(Dockerfile\.worker|requirements-worker\.txt|app/(worker_api|orchestrator)\.py)'; then
-            BUILD_WORKER=true
-          fi
-          if echo "$CHANGED" | grep -qE '^app/__init__\.py'; then
-            BUILD_UI=true
-            BUILD_WORKER=true
-          fi
+          WORKER="drumsergio/cashpilot-worker:latest"
+          WORKER="${WORKER}
+          drumsergio/cashpilot-worker:${VER}"
+          WORKER="${WORKER}
+          drumsergio/cashpilot-worker:${MAJOR_MINOR}"
 
-          # Default: if no specific detection, build both (safety net)
-          if [ "$BUILD_UI" = "false" ] && [ "$BUILD_WORKER" = "false" ]; then
-            BUILD_UI=true
-            BUILD_WORKER=true
-          fi
-
-          echo "ui=$BUILD_UI" >> "$GITHUB_OUTPUT"
-          echo "worker=$BUILD_WORKER" >> "$GITHUB_OUTPUT"
-          echo "Build UI: $BUILD_UI, Build Worker: $BUILD_WORKER"
+          {
+            echo "ui_tags<<EOF"
+            echo "$UI"
+            echo "EOF"
+            echo "worker_tags<<EOF"
+            echo "$WORKER"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
 
   lint:
     runs-on: ubuntu-latest
@@ -82,8 +87,8 @@ jobs:
         run: ruff check app/ && ruff format --check app/
 
   build-ui:
-    needs: [lint, detect]
-    if: needs.detect.outputs.build_ui == 'true'
+    needs: [lint, resolve-tags]
+    if: inputs.build_ui
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -103,16 +108,6 @@ jobs:
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
-
-      - name: Extract metadata
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: drumsergio/cashpilot
-          tags: |
-            type=raw,value=latest
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
 
       - name: Build and push UI image
         uses: docker/build-push-action@v6
@@ -121,14 +116,13 @@ jobs:
           file: Dockerfile
           platforms: linux/amd64,linux/arm64
           push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
+          tags: ${{ needs.resolve-tags.outputs.ui_tags }}
           cache-from: type=gha,scope=cashpilot-ui
           cache-to: type=gha,mode=max,scope=cashpilot-ui
 
   build-worker:
-    needs: [lint, detect]
-    if: needs.detect.outputs.build_worker == 'true'
+    needs: [lint, resolve-tags]
+    if: inputs.build_worker
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -149,16 +143,6 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Extract metadata
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: drumsergio/cashpilot-worker
-          tags: |
-            type=raw,value=latest
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-
       - name: Build and push Worker image
         uses: docker/build-push-action@v6
         with:
@@ -166,7 +150,6 @@ jobs:
           file: Dockerfile.worker
           platforms: linux/amd64,linux/arm64
           push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
+          tags: ${{ needs.resolve-tags.outputs.worker_tags }}
           cache-from: type=gha,scope=cashpilot-worker
           cache-to: type=gha,mode=max,scope=cashpilot-worker
