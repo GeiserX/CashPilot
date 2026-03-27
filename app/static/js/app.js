@@ -123,7 +123,6 @@ const CP = (() => {
   let earningsChart = null;
   let refreshTimer = null;
 
-  let _initialRefreshDone = false;
   let _exchangeRates = { fiat: { USD: 1 }, crypto_usd: {} };
   let _displayCurrency = 'USD';
 
@@ -1553,6 +1552,8 @@ const CP = (() => {
       _displayCurrency = select.value;
       localStorage.setItem('cp-display-currency', select.value);
       toast(`Display currency set to ${select.value}`, 'success');
+      const topbarSelect = document.getElementById('topbar-currency');
+      if (topbarSelect) topbarSelect.value = select.value;
     });
   }
 
@@ -1573,6 +1574,47 @@ const CP = (() => {
     });
   }
 
+  async function initTopbarCurrency() {
+    const select = document.getElementById('topbar-currency');
+    if (!select) return;
+    await loadExchangeRates();
+    const fiatCodes = Object.keys(_exchangeRates.fiat || {}).sort();
+    const popular = ['USD', 'EUR', 'GBP', 'JPY', 'CAD', 'AUD', 'CHF'];
+    const popularSet = new Set(popular);
+    select.innerHTML = '';
+    for (const code of popular) {
+      if (_exchangeRates.fiat[code] !== undefined) {
+        const opt = document.createElement('option');
+        opt.value = code; opt.textContent = code;
+        select.appendChild(opt);
+      }
+    }
+    const rest = fiatCodes.filter(c => !popularSet.has(c));
+    if (rest.length && popular.length) {
+      const sep = document.createElement('option');
+      sep.disabled = true; sep.textContent = '---';
+      select.appendChild(sep);
+    }
+    for (const code of rest) {
+      const opt = document.createElement('option');
+      opt.value = code; opt.textContent = code;
+      select.appendChild(opt);
+    }
+    select.value = _displayCurrency;
+    select.addEventListener('change', () => {
+      _displayCurrency = select.value;
+      localStorage.setItem('cp-display-currency', select.value);
+      // Re-render dashboard if on that page
+      if (document.body.dataset.page === 'dashboard') {
+        loadDashboardStats();
+        loadServicesTable();
+      }
+      // Also sync settings page dropdown if present
+      const settingsSelect = document.getElementById('settings-currency');
+      if (settingsSelect) settingsSelect.value = select.value;
+    });
+  }
+
   document.addEventListener('DOMContentLoaded', () => {
     initSidebar();
     initThemeToggle();
@@ -1580,6 +1622,7 @@ const CP = (() => {
 
     // Detect or restore display currency preference
     _displayCurrency = localStorage.getItem('cp-display-currency') || detectDefaultCurrency();
+    initTopbarCurrency();
 
     const page = document.body.dataset.page;
     switch (page) {
