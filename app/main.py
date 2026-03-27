@@ -448,7 +448,7 @@ async def api_services_deployed(request: Request) -> list[dict[str, Any]]:
     """
     _require_auth_api(request)
     try:
-        statuses = orchestrator.get_status_cached()
+        statuses = list(orchestrator.get_status_cached())  # copy — don't mutate cache
     except RuntimeError:
         statuses = []
 
