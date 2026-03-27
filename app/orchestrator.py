@@ -468,13 +468,16 @@ def get_status_light() -> list[dict[str, Any]]:
         filters={"label": f"{LABEL_MANAGED}=true"},
     )
     seen_ids: set[str] = set()
+    seen_slugs: set[str] = set()
 
     results: list[dict[str, Any]] = []
     for c in labeled:
         seen_ids.add(c.id)
+        slug = c.labels.get(LABEL_SERVICE, "unknown")
+        seen_slugs.add(slug)
         results.append(
             {
-                "slug": c.labels.get(LABEL_SERVICE, "unknown"),
+                "slug": slug,
                 "name": c.name,
                 "status": c.status,
                 "image": c.image.tags[0] if c.image.tags else str(c.image.short_id),
@@ -500,8 +503,9 @@ def get_status_light() -> list[dict[str, Any]]:
                 # Try without tag
                 base = image_name.split(":")[0]
                 slug = image_map.get(base, "")
-            if slug:
+            if slug and slug not in seen_slugs:
                 seen_ids.add(c.id)
+                seen_slugs.add(slug)
                 results.append(
                     {
                         "slug": slug,
