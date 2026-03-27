@@ -2,16 +2,7 @@ name: Build and Push Docker Images
 
 on:
   push:
-    branches: [main]
     tags: ["v*"]
-    paths:
-      - 'Dockerfile'
-      - 'Dockerfile.worker'
-      - 'requirements.txt'
-      - 'requirements-worker.txt'
-      - 'app/**'
-      - 'services/**'
-      - '.github/workflows/build.yml'
   workflow_dispatch:
 
 concurrency:
@@ -72,7 +63,7 @@ jobs:
         with:
           images: ${{ matrix.image }}
           tags: |
-            type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=latest
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
 

@@ -1,26 +1,63 @@
-name: GitHub Release
+name: Auto Release
 
 on:
   push:
-    tags:
-      - "v*.*.*"
+    branches: [main]
+    paths:
+      - 'Dockerfile'
+      - 'Dockerfile.worker'
+      - 'requirements.txt'
+      - 'requirements-worker.txt'
+      - 'app/**'
+      - 'services/**'
+  workflow_dispatch:
 
 permissions:
   contents: write
 
 jobs:
   release:
-    name: Create GitHub Release
+    name: Bump version and release
     runs-on: ubuntu-latest
+    # Skip releases triggered by the release workflow itself
+    if: "!contains(github.event.head_commit.message, '[skip ci]')"
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Create Release
+      - name: Get latest version tag
+        id: version
+        run: |
+          # Get the latest semver tag, default to v0.0.0 if none
+          LATEST=$(git tag -l 'v*.*.*' --sort=-v:refname | head -1)
+          if [ -z "$LATEST" ]; then
+            LATEST="v0.0.0"
+          fi
+          echo "latest=$LATEST" >> "$GITHUB_OUTPUT"
+
+          # Increment patch version
+          VERSION="${LATEST#v}"
+          MAJOR=$(echo "$VERSION" | cut -d. -f1)
+          MINOR=$(echo "$VERSION" | cut -d. -f2)
+          PATCH=$(echo "$VERSION" | cut -d. -f3)
+          NEW_PATCH=$((PATCH + 1))
+          NEW_TAG="v${MAJOR}.${MINOR}.${NEW_PATCH}"
+          echo "new_tag=$NEW_TAG" >> "$GITHUB_OUTPUT"
+          echo "Bumping $LATEST -> $NEW_TAG"
+
+      - name: Create and push tag
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -a "${{ steps.version.outputs.new_tag }}" -m "Release ${{ steps.version.outputs.new_tag }}"
+          git push origin "${{ steps.version.outputs.new_tag }}"
+
+      - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ steps.version.outputs.new_tag }}
           generate_release_notes: true
           draft: false
           prerelease: false
