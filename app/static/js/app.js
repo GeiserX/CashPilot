@@ -124,8 +124,34 @@ const CP = (() => {
   let refreshTimer = null;
 
   let _initialRefreshDone = false;
+  let _exchangeRates = { fiat: { USD: 1 }, crypto_usd: {} };
+  let _displayCurrency = 'USD';
+
+  function detectDefaultCurrency() {
+    const locale = navigator.language || 'en-US';
+    const map = {
+      'en-US': 'USD', 'en-GB': 'GBP', 'en-AU': 'AUD', 'en-CA': 'CAD',
+      'de': 'EUR', 'fr': 'EUR', 'es': 'EUR', 'it': 'EUR', 'pt': 'EUR',
+      'nl': 'EUR', 'el': 'EUR', 'fi': 'EUR', 'et': 'EUR', 'lv': 'EUR',
+      'lt': 'EUR', 'sk': 'EUR', 'sl': 'EUR', 'mt': 'EUR', 'ie': 'EUR',
+      'ja': 'JPY', 'ko': 'KRW', 'zh': 'CNY', 'hi': 'INR',
+      'pt-BR': 'BRL', 'ru': 'RUB', 'tr': 'TRY', 'pl': 'PLN',
+      'cs': 'CZK', 'sv': 'SEK', 'nb': 'NOK', 'nn': 'NOK', 'da': 'DKK',
+      'hu': 'HUF', 'ro': 'RON', 'bg': 'BGN', 'hr': 'EUR',
+      'th': 'THB', 'id': 'IDR', 'ms': 'MYR', 'vi': 'VND',
+      'ar': 'SAR', 'he': 'ILS', 'uk': 'UAH',
+    };
+    return map[locale] || map[locale.split('-')[0]] || 'USD';
+  }
+
+  async function loadExchangeRates() {
+    try {
+      _exchangeRates = await api('/api/exchange-rates');
+    } catch { /* keep defaults */ }
+  }
 
   async function loadDashboard() {
+    await loadExchangeRates();
     await Promise.all([
       loadDashboardStats(),
       loadServicesTable(),
@@ -170,11 +196,11 @@ const CP = (() => {
       }
     } catch (err) {
       // API not yet implemented — fill with placeholder
-      setTextContent('total-earnings', '$0.00');
-      setTextContent('today-earnings', '$0.00');
-      setTextContent('month-earnings', '$0.00');
+      setTextContent('total-earnings', formatCurrency(0));
+      setTextContent('today-earnings', formatCurrency(0));
+      setTextContent('month-earnings', formatCurrency(0));
       setTextContent('active-services', '0');
-      setTextContent('topbar-total', '$0.00');
+      setTextContent('topbar-total', formatCurrency(0));
     }
   }
 
@@ -262,10 +288,15 @@ const CP = (() => {
 
     // Balance + delta from breakdown
     const balance = (bk && bk.balance) || svc.balance || 0;
+    const currency = (bk && bk.currency) || svc.currency || 'USD';
     const delta = bk ? bk.delta : 0;
     const deltaSign = delta > 0 ? '+' : '';
     const deltaClass = delta > 0 ? 'positive' : delta < 0 ? 'negative' : '';
-    const deltaStr = delta !== 0 ? `${deltaSign}${formatCurrency(delta)}` : '--';
+    const deltaStr = delta !== 0 ? `${deltaSign}${formatCurrency(delta, currency)}` : '--';
+    const nativeLabel = formatNative(balance, currency);
+    const balanceHtml = nativeLabel
+      ? `${formatCurrency(balance, currency)}<div style="font-size:0.65rem;color:var(--text-muted);">${nativeLabel}</div>`
+      : formatCurrency(balance, currency);
 
     // CPU/Memory — skip for external; show avg for multi-instance
     let cpuStr, memStr;
@@ -289,7 +320,7 @@ const CP = (() => {
     const eligible = minAmount > 0 && balance >= minAmount;
     const pctToMin = minAmount > 0 ? Math.min(100, (balance / minAmount) * 100) : 0;
     const progressBar = minAmount > 0 ? `
-      <div class="payout-progress" title="${formatCurrency(balance)} / ${formatCurrency(minAmount)}" style="min-width:60px;">
+      <div class="payout-progress" title="${formatCurrency(balance, currency)} / ${formatCurrency(minAmount, currency)}" style="min-width:60px;">
         <div class="payout-progress-bar ${eligible ? 'eligible' : ''}" style="width:${pctToMin.toFixed(0)}%"></div>
       </div>
       <span class="payout-label">${pctToMin.toFixed(0)}%</span>
@@ -344,7 +375,7 @@ const CP = (() => {
       <td>${nameHtml}<div style="font-size:0.7rem; color:var(--text-muted);">${subtitle}</div></td>
       <td style="text-align:center;"><span class="badge badge-${statusClass}"><span class="status-dot ${statusClass}"></span> ${statusLabel}</span>${instanceLabel}</td>
       <td style="text-align:center;">${healthBadge}</td>
-      <td style="text-align:right; font-weight:600;">${formatCurrency(balance)}</td>
+      <td style="text-align:right; font-weight:600;">${balanceHtml}</td>
       <td style="text-align:right;"><span class="stat-change ${deltaClass}">${deltaStr}</span></td>
       <td style="text-align:right;">${cpuStr}</td>
       <td style="text-align:right;">${memStr}</td>
@@ -446,7 +477,7 @@ const CP = (() => {
       data: {
         labels,
         datasets: [{
-          label: 'Earnings ($)',
+          label: 'Daily Earnings',
           data: values,
           backgroundColor: 'rgba(244, 63, 94, 0.4)',
           borderColor: 'rgba(244, 63, 94, 0.9)',
@@ -468,7 +499,7 @@ const CP = (() => {
             borderWidth: 1,
             padding: 10,
             callbacks: {
-              label: (ctx) => `$${ctx.parsed.y.toFixed(2)}`,
+              label: (ctx) => formatCurrency(ctx.parsed.y),
             },
           },
         },
@@ -483,7 +514,7 @@ const CP = (() => {
             ticks: {
               color: '#6b6280',
               font: { size: 11 },
-              callback: (v) => `$${v}`,
+              callback: (v) => formatCurrency(v),
             },
           },
         },
@@ -520,6 +551,7 @@ const CP = (() => {
       const co = svc.cashout || {};
       const eligible = co.eligible;
       const minAmount = co.min_amount || 0;
+      const currency = svc.currency || 'USD';
 
       if (title) title.textContent = `Claim — ${svc.name}`;
 
@@ -537,13 +569,13 @@ const CP = (() => {
       const progressSection = minAmount > 0 ? `
         <div style="margin: 20px 0;">
           <div style="display:flex; justify-content:space-between; font-size:0.85rem; margin-bottom:6px;">
-            <span>Current: <strong>${formatCurrency(svc.balance)}</strong></span>
-            <span>Minimum: <strong>${formatCurrency(minAmount)}</strong></span>
+            <span>Current: <strong>${formatCurrency(svc.balance, currency)}</strong></span>
+            <span>Minimum: <strong>${formatCurrency(minAmount, currency)}</strong></span>
           </div>
           <div class="payout-progress" style="height:10px; border-radius:5px;">
             <div class="payout-progress-bar ${eligible ? 'eligible' : ''}" style="width:${pctToMin.toFixed(0)}%; height:100%; border-radius:5px;"></div>
           </div>
-          ${!eligible ? `<div style="font-size:0.85rem; color:var(--text-muted); margin-top:8px;">Need ${formatCurrency(remaining)} more to reach minimum payout.</div>` : ''}
+          ${!eligible ? `<div style="font-size:0.85rem; color:var(--text-muted); margin-top:8px;">Need ${formatCurrency(remaining, currency)} more to reach minimum payout.</div>` : ''}
         </div>` : '';
 
       const notesSection = co.notes
@@ -1207,6 +1239,7 @@ const CP = (() => {
   // Settings
   // -----------------------------------------------------------
   async function loadSettings() {
+    populateCurrencyDropdown();
     try {
       const config = await api('/api/config');
       populateSettings(config);
@@ -1344,8 +1377,43 @@ const CP = (() => {
   // -----------------------------------------------------------
   // Utility
   // -----------------------------------------------------------
-  function formatCurrency(val) {
-    return '$' + parseFloat(val || 0).toFixed(2);
+  function formatCurrency(val, nativeCurrency) {
+    nativeCurrency = nativeCurrency || 'USD';
+    const amount = parseFloat(val || 0);
+
+    // Convert to USD first
+    let usdAmount;
+    if (nativeCurrency === 'USD') {
+      usdAmount = amount;
+    } else if (_exchangeRates.crypto_usd && _exchangeRates.crypto_usd[nativeCurrency]) {
+      usdAmount = amount * _exchangeRates.crypto_usd[nativeCurrency];
+    } else {
+      // Unknown token with no rate — show raw value
+      return amount.toFixed(2) + ' ' + nativeCurrency;
+    }
+
+    // Convert USD to display currency
+    let displayAmount = usdAmount;
+    if (_displayCurrency !== 'USD' && _exchangeRates.fiat && _exchangeRates.fiat[_displayCurrency]) {
+      displayAmount = usdAmount * _exchangeRates.fiat[_displayCurrency];
+    }
+
+    try {
+      return new Intl.NumberFormat(undefined, {
+        style: 'currency',
+        currency: _displayCurrency,
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      }).format(displayAmount);
+    } catch {
+      return displayAmount.toFixed(2) + ' ' + _displayCurrency;
+    }
+  }
+
+  function formatNative(val, currency) {
+    if (!currency || currency === 'USD') return null;
+    const amount = parseFloat(val || 0);
+    return amount.toFixed(4) + ' ' + currency;
   }
 
   function setTextContent(id, text) {
@@ -1448,6 +1516,41 @@ const CP = (() => {
   }
 
   // -----------------------------------------------------------
+  // Currency selector (settings page)
+  // -----------------------------------------------------------
+  async function populateCurrencyDropdown() {
+    const select = document.getElementById('settings-currency');
+    if (!select) return;
+
+    await loadExchangeRates();
+    const fiatCodes = Object.keys(_exchangeRates.fiat || {}).sort();
+
+    const popular = ['USD', 'EUR', 'GBP', 'JPY', 'CAD', 'AUD', 'CHF', 'CNY', 'INR', 'BRL', 'MXN', 'PLN', 'SEK', 'NOK', 'DKK', 'CZK', 'HUF', 'RON'];
+    const options = [];
+
+    for (const code of popular) {
+      if (fiatCodes.includes(code)) {
+        options.push(`<option value="${code}"${code === _displayCurrency ? ' selected' : ''}>${code}</option>`);
+      }
+    }
+
+    const remaining = fiatCodes.filter(c => !popular.includes(c));
+    if (remaining.length > 0) {
+      options.push('<option disabled>──────────</option>');
+      for (const code of remaining) {
+        options.push(`<option value="${code}"${code === _displayCurrency ? ' selected' : ''}>${code}</option>`);
+      }
+    }
+
+    select.innerHTML = options.join('');
+    select.addEventListener('change', () => {
+      _displayCurrency = select.value;
+      localStorage.setItem('cp-display-currency', select.value);
+      toast(`Display currency set to ${select.value}`, 'success');
+    });
+  }
+
+  // -----------------------------------------------------------
   // Init on DOMContentLoaded
   // -----------------------------------------------------------
   // -----------------------------------------------------------
@@ -1468,6 +1571,9 @@ const CP = (() => {
     initSidebar();
     initThemeToggle();
     initNotifications();
+
+    // Detect or restore display currency preference
+    _displayCurrency = localStorage.getItem('cp-display-currency') || detectDefaultCurrency();
 
     const page = document.body.dataset.page;
     switch (page) {
@@ -1521,5 +1627,6 @@ const CP = (() => {
     openClaimModal,
     goToCollectorSettings,
     toggleInstances,
+    populateCurrencyDropdown,
   };
 })();

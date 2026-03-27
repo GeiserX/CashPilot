@@ -7,7 +7,8 @@ is not possible. Users must extract session cookies from their browser.
 To get the cookie: open dash.bytelixir.com, log in (tick "Remember Me"),
 press F12 > Application > Cookies, and copy the `bytelixir_session` value.
 
-Note: session expires after ~3.5 hours. When expired, the collector
+Note: session lifetime depends on "Remember Me" — with it ticked, cookies
+last days/weeks. Without it, they expire quickly. When expired, the collector
 returns an error that surfaces as a notification in the CashPilot UI.
 """
 
