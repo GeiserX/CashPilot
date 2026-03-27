@@ -1,6 +1,6 @@
 # Peer2Profit
 
-> **Category:** Bandwidth Sharing | **Status:** Active
+> **Category:** Bandwidth Sharing | **Status:** Dead
 > **Website:** [https://peer2profit.com](https://peer2profit.com)
 
 ## Description
