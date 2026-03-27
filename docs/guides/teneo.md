@@ -56,8 +56,8 @@ No environment variables required.
 
 | | Details |
 |---|---------|
-| Referrer bonus | 2000 Teneo Points per referral |
-| New user bonus | Bonus points on signup |
+| Referrer bonus | N/A |
+| New user bonus | N/A |
 
 ---
 

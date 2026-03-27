@@ -13,9 +13,6 @@ short_description: Multi-platform DePIN - Windows, Linux, macOS, ARM, RPi
 
 referral:
   signup_url: "https://dashboard.gaganode.com/register"
-  bonus:
-    referrer: "Bonus credits per active referral"
-    referee: ""
 
 docker:
   image: ""

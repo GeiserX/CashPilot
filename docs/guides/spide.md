@@ -57,8 +57,8 @@ In the CashPilot web UI, find **Spide** in the service catalog and click **Deplo
 
 | | Details |
 |---|---------|
-| Referrer bonus |  |
-| New user bonus |  |
+| Referrer bonus | N/A |
+| New user bonus | N/A |
 
 ---
 

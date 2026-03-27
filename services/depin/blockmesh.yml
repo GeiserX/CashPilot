@@ -1,25 +1,21 @@
-name: BlockMesh
+name: BlockMesh (Perceptron Network)
 slug: blockmesh
 category: depin
-status: active
+status: shady
 website: https://blockmesh.xyz
 description: >
-  BlockMesh is a decentralized bandwidth marketplace built on the Solana
-  blockchain. Users share their unused bandwidth via a browser extension and
-  earn rewards. The network has grown to 700K+ nodes and aims to create a
-  peer-to-peer bandwidth trading layer. Uses Solana for transaction settlement
-  and identity verification.
-short_description: DePIN bandwidth marketplace on Solana - 700K+ nodes
+  Formerly BlockMesh, now rebranded as Perceptron Network. A decentralized
+  bandwidth marketplace built on the Solana blockchain. Users share unused
+  bandwidth via a browser extension and earn rewards. Flagged as shady due
+  to rebrand and unclear project direction.
+short_description: DePIN bandwidth on Solana - rebranded from BlockMesh, shady
 
 referral:
   signup_url: "https://blockmesh.xyz"
-  bonus:
-    referrer: ""
-    referee: ""
 
 docker:
   image: ""
-  platforms: [browser-extension]
+  platforms: []
   env: []
   ports: []
   volumes: []
@@ -39,11 +35,11 @@ payment:
   frequency: "Token airdrop (TBA)"
 
 earnings:
-  monthly_low: 1
+  monthly_low: 0
   monthly_high: 5
   currency: USD
   per: "device"
-  notes: "Earns points pre-token launch. Solana wallet required for signup and future rewards. 700K+ active nodes in the network."
+  notes: "Earns points pre-token launch. Solana wallet required. Rebranded to Perceptron Network — proceed with caution."
 
 cashout:
   method: redirect

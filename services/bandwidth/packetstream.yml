@@ -13,9 +13,6 @@ short_description: Bandwidth sharing - simple CID-based setup
 
 referral:
   signup_url: "https://packetstream.io/?psr=7xgZ"
-  bonus:
-    referrer: "$0.10 per GB from referral traffic"
-    referee: ""
 
 docker:
   image: packetstream/psclient

@@ -12,9 +12,6 @@ short_description: Bandwidth sharing - token-based, lightweight client
 
 referral:
   signup_url: "https://earn.fm/ref/GEISYB91"
-  bonus:
-    referrer: "Percentage of referral earnings"
-    referee: ""
 
 docker:
   image: earnfm/earnfm-client

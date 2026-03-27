@@ -11,9 +11,6 @@ short_description: Bandwidth sharing - crypto payout, email auth
 
 referral:
   signup_url: "https://wizardgain.com"
-  bonus:
-    referrer: ""
-    referee: ""
 
 docker:
   image: wizardgain/worker

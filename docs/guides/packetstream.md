@@ -69,8 +69,8 @@ docker run -d \
 
 | | Details |
 |---|---------|
-| Referrer bonus | $0.10 per GB from referral traffic |
-| New user bonus |  |
+| Referrer bonus | N/A |
+| New user bonus | N/A |
 
 ---
 

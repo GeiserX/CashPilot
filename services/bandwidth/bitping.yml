@@ -13,9 +13,6 @@ short_description: Bandwidth sharing - decentralized network monitoring, works o
 
 referral:
   signup_url: "https://app.bitping.com"
-  bonus:
-    referrer: ""
-    referee: ""
 
 docker:
   image: bitping/bitpingd

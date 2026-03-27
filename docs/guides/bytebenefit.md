@@ -1,6 +1,6 @@
 # Bytebenefit
 
-> **Category:** Bandwidth Sharing | **Status:** Dead
+> **Category:** Bandwidth Sharing | **Status:** Active
 > **Website:** [https://bytebenefit.com](https://bytebenefit.com)
 
 ## Description
@@ -55,8 +55,8 @@ No environment variables required.
 
 | | Details |
 |---|---------|
-| Referrer bonus |  |
-| New user bonus |  |
+| Referrer bonus | N/A |
+| New user bonus | N/A |
 
 ---
 

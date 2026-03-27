@@ -12,9 +12,6 @@ short_description: DePIN wireless network - browser extension and hardware box
 
 referral:
   signup_url: "https://dawninternet.com"
-  bonus:
-    referrer: "Bonus Dawn Points per active referral"
-    referee: "Bonus Dawn Points on signup"
 
 docker:
   image: ""

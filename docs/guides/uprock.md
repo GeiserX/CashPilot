@@ -33,7 +33,7 @@ Uprock is a DePIN (Decentralized Physical Infrastructure Network) platform that 
 
 ### 1. Create an account
 
-Sign up at [Uprock](https://uprock.com).
+Sign up at [Uprock](https://link.uprock.com/i/33e8492e).
 
 ### 2. Get your credentials
 
@@ -56,8 +56,8 @@ No environment variables required.
 
 | | Details |
 |---|---------|
-| Referrer bonus |  |
-| New user bonus |  |
+| Referrer bonus | N/A |
+| New user bonus | N/A |
 
 ---
 

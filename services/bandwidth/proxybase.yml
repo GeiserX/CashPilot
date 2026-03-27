@@ -11,9 +11,6 @@ short_description: Bandwidth sharing - crypto payout, user ID auth
 
 referral:
   signup_url: "https://proxybase.io"
-  bonus:
-    referrer: ""
-    referee: ""
 
 docker:
   image: proxybase/proxybase

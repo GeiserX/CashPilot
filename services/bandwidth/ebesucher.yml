@@ -12,9 +12,6 @@ short_description: Traffic exchange surfbar - browser extension
 
 referral:
   signup_url: "https://www.ebesucher.com/?ref=geiserx"
-  bonus:
-    referrer: ""
-    referee: ""
 
 docker:
   image: ""

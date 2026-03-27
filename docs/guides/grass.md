@@ -56,8 +56,8 @@ No environment variables required.
 
 | | Details |
 |---|---------|
-| Referrer bonus | 20% of referral's Grass Points permanently |
-| New user bonus | Bonus Grass Points on signup |
+| Referrer bonus | N/A |
+| New user bonus | N/A |
 
 ---
 

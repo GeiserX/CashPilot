@@ -71,8 +71,8 @@ docker run -d \
 
 | | Details |
 |---|---------|
-| Referrer bonus | Percentage of referral earnings |
-| New user bonus |  |
+| Referrer bonus | N/A |
+| New user bonus | N/A |
 
 ---
 

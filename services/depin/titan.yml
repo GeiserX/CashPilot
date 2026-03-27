@@ -13,9 +13,6 @@ short_description: DePIN sharing IP, storage, bandwidth - $5-30/month
 
 referral:
   signup_url: "https://titannet.io"
-  bonus:
-    referrer: "Bonus TNT tokens per referral"
-    referee: ""
 
 docker:
   image: ""

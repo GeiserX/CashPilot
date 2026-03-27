@@ -13,9 +13,6 @@ short_description: GPU sharing for AI - Windows only, gift card or cash payout
 
 referral:
   signup_url: "https://salad.io"
-  bonus:
-    referrer: "$1 per referral who earns $5"
-    referee: ""
 
 docker:
   image: ""

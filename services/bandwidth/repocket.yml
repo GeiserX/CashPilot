@@ -12,9 +12,6 @@ short_description: Bandwidth sharing - residential only, max 5 devices, env-base
 
 referral:
   signup_url: "https://repocket.com/"
-  bonus:
-    referrer: ""
-    referee: ""
 
 docker:
   image: repocket/repocket

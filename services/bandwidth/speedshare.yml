@@ -12,9 +12,6 @@ short_description: Bandwidth sharing - residential only, no official Docker
 
 referral:
   signup_url: "https://speedshare.app"
-  bonus:
-    referrer: "Percentage of referral earnings"
-    referee: ""
 
 docker:
   image: mrcolorrain/speedshare

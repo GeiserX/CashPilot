@@ -55,8 +55,8 @@ No environment variables required.
 
 | | Details |
 |---|---------|
-| Referrer bonus | $1 per referral who earns $5 |
-| New user bonus |  |
+| Referrer bonus | N/A |
+| New user bonus | N/A |
 
 ---
 

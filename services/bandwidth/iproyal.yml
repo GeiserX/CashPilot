@@ -13,9 +13,6 @@ short_description: Bandwidth sharing - 10% lifetime referral, $3 signup bonus
 
 referral:
   signup_url: "https://pawns.app?r=19266874"
-  bonus:
-    referrer: "10% of referral earnings for life"
-    referee: "$3 with code EARN3"
 
 docker:
   image: iproyal/pawns-cli

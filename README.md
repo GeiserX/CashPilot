@@ -96,14 +96,15 @@ These services have no Docker image. CashPilot lists them in the catalog with si
 
 | Service | Residential IP | VPS IP | Devices / Acct | Devices / IP | Payout | Status |
 |---------|:-:|:-:|:-:|:-:|--------|--------|
-| [BlockMesh](https://blockmesh.xyz) | ✅ | ❌ | Unlimited | 1 | Crypto (BMESH) | Active |
+| [BlockMesh (Perceptron Network)](https://blockmesh.xyz) | ✅ | ❌ | Unlimited | 1 | Crypto (BMESH) | Shady |
+| [Bytebenefit](https://bytebenefit.com) | ✅ | ❌ | Unlimited | 1 | PayPal | Active |
 | [Bytelixir](https://bytelixir.com/r/OYEIRE0VSZBZ) | ✅ | ❌ | Unlimited | 1 | Crypto | Active |
 | [Ebesucher](https://www.ebesucher.com/?ref=geiserx) | ✅ | ✅ | Unlimited | 1 | PayPal | Active |
 | [Gradient Network](https://app.gradient.network/signup?referralCode=YSKMY7) | ✅ | ❌ | Unlimited | 1 | Crypto (GRADIENT) | Active |
 | [Grass](https://app.grass.io/register?referralCode=kn8FNEPnUr2tMqE) | ✅ | ❌ | Unlimited | 1 | Crypto (GRASS) | Active |
 | [Nodepay](https://app.nodepay.ai/register?ref=0wzzyznen64j9zx) | ✅ | ❌ | Unlimited | 1 | Crypto (NC) | Active |
 | [Teneo Protocol](https://dashboard.teneo.pro/?code=CAqef) | ✅ | ❌ | Unlimited | 1 | Crypto (TENEO) | Active |
-| [Uprock](https://uprock.com) | ✅ | ❌ | Unlimited | 1 | Crypto | Active |
+| [Uprock](https://link.uprock.com/i/33e8492e) | ✅ | ❌ | Unlimited | 1 | Crypto | Active |
 
 ### GPU Compute
 
@@ -114,7 +115,7 @@ GPU-intensive computing services. Requires compatible hardware.
 | [Golem Network](https://golem.network) | ✅ | ❌ | 20GB | Crypto (GLM) | Active |
 | [Nosana](https://nosana.io) | ✅ | ✅ | 50GB | Crypto (NOS) | Active |
 | [Salad](https://salad.io) | ✅ | ✅ | N/A | PayPal, Gift Cards | Active |
-| [Vast.ai](https://vast.ai) | ✅ | ✅ | 100GB | Crypto, Bank Transfer | Active |
+| [Vast.ai](https://cloud.vast.ai/?ref_id=452772) | ✅ | ✅ | 100GB | Crypto, Bank Transfer | Active |
 <!-- SERVICES_TABLE_END -->
 
 > **Note:** The `generate_docs.py` script auto-generates this table from service YAML definitions. Earnings vary widely by location, hardware, and demand -- see individual guide pages in `docs/guides/` for details.

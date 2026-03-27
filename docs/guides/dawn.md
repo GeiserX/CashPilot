@@ -55,8 +55,8 @@ No environment variables required.
 
 | | Details |
 |---|---------|
-| Referrer bonus | Bonus Dawn Points per active referral |
-| New user bonus | Bonus Dawn Points on signup |
+| Referrer bonus | N/A |
+| New user bonus | N/A |
 
 ---
 

@@ -29,7 +29,7 @@ Individual setup and configuration guides for every supported service.
 
 ## DePIN
 
-- [BlockMesh](blockmesh.md) -- DePIN bandwidth marketplace on Solana - 700K+ nodes
+- [BlockMesh (Perceptron Network)](blockmesh.md) -- DePIN bandwidth on Solana - rebranded from BlockMesh, shady
 - [Dawn Internet](dawn.md) -- DePIN wireless network - browser extension and hardware box
 - [GagaNode](gaganode.md) -- Multi-platform DePIN - Windows, Linux, macOS, ARM, RPi
 - [Gradient Network](gradient.md) -- DePIN network backed by Pantera Capital - browser-based node

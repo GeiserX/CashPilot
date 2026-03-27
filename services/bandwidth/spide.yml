@@ -11,9 +11,6 @@ short_description: Bandwidth sharing - machine ID based
 
 referral:
   signup_url: "https://spide.io"
-  bonus:
-    referrer: ""
-    referee: ""
 
 docker:
   image: ""

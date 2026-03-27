@@ -72,8 +72,8 @@ docker run -d \
 
 | | Details |
 |---|---------|
-| Referrer bonus |  |
-| New user bonus |  |
+| Referrer bonus | N/A |
+| New user bonus | N/A |
 
 ---
 

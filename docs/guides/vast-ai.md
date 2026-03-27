@@ -33,7 +33,7 @@ Vast.ai is a GPU cloud marketplace where you rent out your NVIDIA GPU to AI/ML r
 
 ### 1. Create an account
 
-Sign up at [Vast.ai](https://vast.ai).
+Sign up at [Vast.ai](https://cloud.vast.ai/?ref_id=452772).
 
 ### 2. Get your credentials
 
@@ -58,8 +58,8 @@ In the CashPilot web UI, find **Vast.ai** in the service catalog and click **Dep
 
 | | Details |
 |---|---------|
-| Referrer bonus |  |
-| New user bonus |  |
+| Referrer bonus | N/A |
+| New user bonus | N/A |
 
 ---
 

@@ -12,9 +12,6 @@ short_description: Decentralized VPN/bandwidth - JWT auth, direct or proxy mode
 
 referral:
   signup_url: "https://ur.io"
-  bonus:
-    referrer: ""
-    referee: ""
 
 docker:
   image: bringyour/community-provider

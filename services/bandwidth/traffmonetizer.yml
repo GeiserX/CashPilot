@@ -13,9 +13,6 @@ short_description: Bandwidth sharing - works on VPS, token-based auth
 
 referral:
   signup_url: "https://traffmonetizer.com/?aff=2111758"
-  bonus:
-    referrer: "10% of referral earnings for life"
-    referee: "$5 signup bonus"
 
 docker:
   image: traffmonetizer/cli_v2

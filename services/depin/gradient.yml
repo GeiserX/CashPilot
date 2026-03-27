@@ -12,9 +12,6 @@ short_description: DePIN network backed by Pantera Capital - browser-based node
 
 referral:
   signup_url: "https://app.gradient.network/signup?referralCode=YSKMY7"
-  bonus:
-    referrer: "Bonus Gradient Points per active referral"
-    referee: "Bonus points on signup"
 
 docker:
   image: ""

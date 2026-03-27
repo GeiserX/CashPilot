@@ -55,8 +55,8 @@ No environment variables required.
 
 | | Details |
 |---|---------|
-| Referrer bonus | Bonus credits per active referral |
-| New user bonus |  |
+| Referrer bonus | N/A |
+| New user bonus | N/A |
 
 ---
 

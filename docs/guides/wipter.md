@@ -56,8 +56,8 @@ No environment variables required.
 
 | | Details |
 |---|---------|
-| Referrer bonus | Percentage of referral earnings |
-| New user bonus | Signup bonus |
+| Referrer bonus | N/A |
+| New user bonus | N/A |
 
 ---
 
