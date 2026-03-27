@@ -21,7 +21,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 
-from app import auth, catalog, compose_generator, database, exchange_rates, orchestrator
+from app import auth, catalog, compose_generator, database, exchange_rates
 
 logging.basicConfig(
     level=logging.INFO,
@@ -33,9 +33,6 @@ scheduler = AsyncIOScheduler()
 
 # In-memory store for the latest collector alerts (errors from last run)
 _collector_alerts: list[dict[str, str]] = []
-
-# UI-only mode: no Docker socket, all container ops go through workers
-_ui_only: bool = os.getenv("CASHPILOT_MODE", "standalone").lower() == "ui"
 
 
 async def _get_all_worker_containers() -> list[dict[str, Any]]:
@@ -69,12 +66,12 @@ async def _get_all_worker_containers() -> list[dict[str, Any]]:
     return result
 
 
-def _require_worker_id_in_ui_mode(worker_id: int | None) -> None:
-    """Raise 400 if running in UI mode and no worker_id was provided."""
-    if _ui_only and worker_id is None:
+def _require_worker_id(worker_id: int | None) -> None:
+    """Raise 400 if no worker_id was provided."""
+    if worker_id is None:
         raise HTTPException(
             status_code=400,
-            detail="worker_id is required in UI mode (no local Docker socket)",
+            detail="worker_id is required (specify which worker to target)",
         )
 
 
@@ -91,10 +88,7 @@ async def _run_health_check() -> None:
     deployed on multiple nodes where one may be stopped).
     """
     try:
-        if _ui_only:
-            statuses = await _get_all_worker_containers()
-        else:
-            statuses = orchestrator.get_status()
+        statuses = await _get_all_worker_containers()
         # Aggregate: slug -> best status (running wins)
         slug_best: dict[str, str] = {}
         for s in statuses:
@@ -187,13 +181,7 @@ async def lifespan(app: FastAPI):
     scheduler.add_job(exchange_rates.refresh, "interval", minutes=15, id="exchange_rates")
     scheduler.start()
     await exchange_rates.refresh()
-    if _ui_only:
-        logger.info("CashPilot started (mode: ui, no local Docker)")
-    else:
-        docker_mode = "direct" if orchestrator.docker_available() else "monitor-only"
-        logger.info("CashPilot started (Docker: %s)", docker_mode)
-        # Populate status cache immediately so first page load is instant
-        asyncio.get_event_loop().run_in_executor(None, orchestrator.get_status)
+    logger.info("CashPilot UI started (container ops via workers)")
 
     yield
 
@@ -476,13 +464,7 @@ async def page_settings(request: Request):
 async def api_mode(request: Request) -> dict[str, Any]:
     """Return CashPilot operating mode and Docker availability."""
     _require_auth_api(request)
-    if _ui_only:
-        return {"docker": False, "mode": "ui"}
-    has_docker = orchestrator.docker_available()
-    return {
-        "docker": has_docker,
-        "mode": "direct" if has_docker else "monitor-only",
-    }
+    return {"docker": False, "mode": "ui"}
 
 
 @app.get("/api/services")
@@ -500,20 +482,9 @@ async def api_services_deployed(request: Request) -> list[dict[str, Any]]:
     details for the expandable sub-row UI.
     """
     _require_auth_api(request)
-    if _ui_only:
-        statuses: list[dict[str, Any]] = []
-    else:
-        try:
-            statuses = list(orchestrator.get_status_cached())  # copy — don't mutate cache
-        except RuntimeError:
-            statuses = []
-        # Tag local containers with node info
-        for s in statuses:
-            s["_node"] = "local"
-            s["_worker_id"] = None
-            s["_has_docker"] = orchestrator.docker_available()
+    statuses: list[dict[str, Any]] = []
 
-    # Also include worker containers
+    # Collect containers from all workers
     workers = await database.list_workers()
     for w in workers:
         if w.get("status") != "online":
@@ -692,13 +663,9 @@ async def api_get_service(request: Request, slug: str) -> dict[str, Any]:
 
 @app.get("/api/status")
 async def api_status(request: Request) -> list[dict[str, Any]]:
+    """Return container statuses from all workers."""
     _require_auth_api(request)
-    if _ui_only:
-        return []
-    try:
-        return orchestrator.get_status_cached()
-    except RuntimeError as exc:
-        raise HTTPException(status_code=503, detail=str(exc))
+    return await _get_all_worker_containers()
 
 
 class DeployRequest(BaseModel):
@@ -709,91 +676,45 @@ class DeployRequest(BaseModel):
 @app.post("/api/deploy/{slug}")
 async def api_deploy(request: Request, slug: str, body: DeployRequest, worker_id: int | None = None) -> dict[str, str]:
     _require_writer(request)
+    _require_worker_id(worker_id)
     svc = catalog.get_service(slug)
     if not svc:
         raise HTTPException(status_code=404, detail=f"Service '{slug}' not found")
 
-    if _ui_only or worker_id is not None:
-        _require_worker_id_in_ui_mode(worker_id)
-        # Build deploy spec from catalog and forward to worker
-        docker_conf = svc.get("docker", {})
-        image = docker_conf.get("image")
-        if not image:
-            raise HTTPException(status_code=400, detail=f"Service '{slug}' has no Docker image")
-        spec = {
-            "image": image,
-            "env": body.env or {},
-            "hostname": body.hostname,
-        }
-        result = await _proxy_worker_deploy(worker_id, slug, spec)  # type: ignore[arg-type]
-        container_id = result.get("container_id", "remote")
-        await database.save_deployment(slug=slug, container_id=container_id)
-        await database.record_health_event(slug, "start", f"deployed to worker {worker_id}")
-        asyncio.create_task(_run_collection())
-        return {"status": "deployed", "container_id": container_id}
-
-    try:
-        container_id = orchestrator.deploy_service(
-            slug=slug,
-            env_vars=body.env,
-            hostname=body.hostname,
-        )
-        await database.save_deployment(slug=slug, container_id=container_id)
-        await database.record_health_event(slug, "start", "deployed")
-        asyncio.create_task(_run_collection())
-        return {"status": "deployed", "container_id": container_id}
-    except RuntimeError as exc:
-        raise HTTPException(status_code=503, detail=str(exc))
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc))
+    docker_conf = svc.get("docker", {})
+    image = docker_conf.get("image")
+    if not image:
+        raise HTTPException(status_code=400, detail=f"Service '{slug}' has no Docker image")
+    spec = {"image": image, "env": body.env or {}, "hostname": body.hostname}
+    result = await _proxy_worker_deploy(worker_id, slug, spec)  # type: ignore[arg-type]
+    container_id = result.get("container_id", "remote")
+    await database.save_deployment(slug=slug, container_id=container_id)
+    await database.record_health_event(slug, "start", f"deployed to worker {worker_id}")
+    asyncio.create_task(_run_collection())
+    return {"status": "deployed", "container_id": container_id}
 
 
 @app.post("/api/stop/{slug}")
 async def api_stop(request: Request, slug: str, worker_id: int | None = None) -> dict[str, str]:
     _require_writer(request)
-    _require_worker_id_in_ui_mode(worker_id)
-    if worker_id is not None:
-        return await _proxy_worker_command(worker_id, "stop", slug)
-    try:
-        orchestrator.stop_service(slug)
-        return {"status": "stopped"}
-    except ValueError as exc:
-        raise HTTPException(status_code=404, detail=str(exc))
-    except RuntimeError as exc:
-        raise HTTPException(status_code=503, detail=str(exc))
+    _require_worker_id(worker_id)
+    return await _proxy_worker_command(worker_id, "stop", slug)  # type: ignore[arg-type]
 
 
 @app.post("/api/restart/{slug}")
 async def api_restart(request: Request, slug: str, worker_id: int | None = None) -> dict[str, str]:
     _require_writer(request)
-    _require_worker_id_in_ui_mode(worker_id)
-    if worker_id is not None:
-        return await _proxy_worker_command(worker_id, "restart", slug)
-    try:
-        orchestrator.restart_service(slug)
-        return {"status": "restarted"}
-    except ValueError as exc:
-        raise HTTPException(status_code=404, detail=str(exc))
-    except RuntimeError as exc:
-        raise HTTPException(status_code=503, detail=str(exc))
+    _require_worker_id(worker_id)
+    return await _proxy_worker_command(worker_id, "restart", slug)  # type: ignore[arg-type]
 
 
 @app.delete("/api/remove/{slug}")
 async def api_remove(request: Request, slug: str, worker_id: int | None = None) -> dict[str, str]:
     _require_writer(request)
-    _require_worker_id_in_ui_mode(worker_id)
-    if worker_id is not None:
-        result = await _proxy_worker_command(worker_id, "remove", slug)
-        await database.remove_deployment(slug)
-        return result
-    try:
-        orchestrator.remove_service(slug)
-        await database.remove_deployment(slug)
-        return {"status": "removed"}
-    except ValueError as exc:
-        raise HTTPException(status_code=404, detail=str(exc))
-    except RuntimeError as exc:
-        raise HTTPException(status_code=503, detail=str(exc))
+    _require_worker_id(worker_id)
+    result = await _proxy_worker_command(worker_id, "remove", slug)  # type: ignore[arg-type]
+    await database.remove_deployment(slug)
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -885,49 +806,28 @@ async def _proxy_worker_logs(worker_id: int, slug: str, lines: int = 50) -> dict
 @app.post("/api/services/{slug}/restart")
 async def api_service_restart(request: Request, slug: str, worker_id: int | None = None) -> dict[str, str]:
     _require_writer(request)
-    if worker_id is not None:
-        return await _proxy_worker_command(worker_id, "restart", slug)
-    _require_worker_id_in_ui_mode(worker_id)
-    try:
-        orchestrator.restart_service(slug)
-        await database.record_health_event(slug, "restart")
-        return {"status": "restarted"}
-    except ValueError as exc:
-        raise HTTPException(status_code=404, detail=str(exc))
-    except RuntimeError as exc:
-        raise HTTPException(status_code=503, detail=str(exc))
+    _require_worker_id(worker_id)
+    result = await _proxy_worker_command(worker_id, "restart", slug)  # type: ignore[arg-type]
+    await database.record_health_event(slug, "restart")
+    return result
 
 
 @app.post("/api/services/{slug}/stop")
 async def api_service_stop(request: Request, slug: str, worker_id: int | None = None) -> dict[str, str]:
     _require_writer(request)
-    if worker_id is not None:
-        return await _proxy_worker_command(worker_id, "stop", slug)
-    _require_worker_id_in_ui_mode(worker_id)
-    try:
-        orchestrator.stop_service(slug)
-        await database.record_health_event(slug, "stop")
-        return {"status": "stopped"}
-    except ValueError as exc:
-        raise HTTPException(status_code=404, detail=str(exc))
-    except RuntimeError as exc:
-        raise HTTPException(status_code=503, detail=str(exc))
+    _require_worker_id(worker_id)
+    result = await _proxy_worker_command(worker_id, "stop", slug)  # type: ignore[arg-type]
+    await database.record_health_event(slug, "stop")
+    return result
 
 
 @app.post("/api/services/{slug}/start")
 async def api_service_start(request: Request, slug: str, worker_id: int | None = None) -> dict[str, str]:
     _require_writer(request)
-    if worker_id is not None:
-        return await _proxy_worker_command(worker_id, "start", slug)
-    _require_worker_id_in_ui_mode(worker_id)
-    try:
-        orchestrator.start_service(slug)
-        await database.record_health_event(slug, "start")
-        return {"status": "started"}
-    except ValueError as exc:
-        raise HTTPException(status_code=404, detail=str(exc))
-    except RuntimeError as exc:
-        raise HTTPException(status_code=503, detail=str(exc))
+    _require_worker_id(worker_id)
+    result = await _proxy_worker_command(worker_id, "start", slug)  # type: ignore[arg-type]
+    await database.record_health_event(slug, "start")
+    return result
 
 
 @app.get("/api/services/{slug}/logs")
@@ -935,34 +835,17 @@ async def api_service_logs(
     request: Request, slug: str, lines: int = 50, worker_id: int | None = None
 ) -> dict[str, str]:
     _require_auth_api(request)
-    if worker_id is not None:
-        return await _proxy_worker_logs(worker_id, slug, lines)
-    _require_worker_id_in_ui_mode(worker_id)
-    try:
-        logs = orchestrator.get_service_logs(slug, lines=min(lines, 1000))
-        return {"logs": logs}
-    except ValueError as exc:
-        raise HTTPException(status_code=404, detail=str(exc))
-    except RuntimeError as exc:
-        raise HTTPException(status_code=503, detail=str(exc))
+    _require_worker_id(worker_id)
+    return await _proxy_worker_logs(worker_id, slug, lines)  # type: ignore[arg-type]
 
 
 @app.delete("/api/services/{slug}")
 async def api_service_remove(request: Request, slug: str, worker_id: int | None = None) -> dict[str, str]:
     _require_writer(request)
-    _require_worker_id_in_ui_mode(worker_id)
-    if worker_id is not None:
-        result = await _proxy_worker_command(worker_id, "remove", slug)
-        await database.remove_deployment(slug)
-        return result
-    try:
-        orchestrator.remove_service(slug)
-        await database.remove_deployment(slug)
-        return {"status": "removed"}
-    except ValueError as exc:
-        raise HTTPException(status_code=404, detail=str(exc))
-    except RuntimeError as exc:
-        raise HTTPException(status_code=503, detail=str(exc))
+    _require_worker_id(worker_id)
+    result = await _proxy_worker_command(worker_id, "remove", slug)  # type: ignore[arg-type]
+    await database.remove_deployment(slug)
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -1032,15 +915,11 @@ async def api_earnings_summary(request: Request) -> dict[str, Any]:
             if usd_val is not None:
                 summary["total"] = round(summary["total"] + usd_val, 2)
 
-    # Count active (running) services
+    # Count active (running) services from worker data
     active = 0
     try:
-        if _ui_only:
-            worker_containers = await _get_all_worker_containers()
-            active = sum(1 for s in worker_containers if s.get("status") == "running")
-        else:
-            statuses = orchestrator.get_status_cached()
-            active = sum(1 for s in statuses if s.get("status") == "running")
+        worker_containers = await _get_all_worker_containers()
+        active = sum(1 for s in worker_containers if s.get("status") == "running")
     except Exception:
         pass
     summary["active_services"] = active
@@ -1410,19 +1289,9 @@ async def api_fleet_summary(request: Request) -> dict[str, Any]:
         if w["status"] == "online":
             online_workers += 1
 
-    # Add local containers (cached for instant response) — skip in UI mode
-    if not _ui_only:
-        try:
-            local_status = orchestrator.get_status_cached()
-            total_containers += len(local_status)
-            total_running += sum(1 for c in local_status if c.get("status") == "running")
-        except Exception:
-            pass
-
-    local_offset = 0 if _ui_only else 1
     return {
-        "total_workers": len(workers) + local_offset,
-        "online_workers": online_workers + local_offset,
+        "total_workers": len(workers),
+        "online_workers": online_workers,
         "total_containers": total_containers,
         "running_containers": total_running,
     }

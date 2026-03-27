@@ -4,12 +4,66 @@ on:
   push:
     tags: ["v*"]
   workflow_dispatch:
+    inputs:
+      build_ui:
+        description: 'Build UI image'
+        type: boolean
+        default: true
+      build_worker:
+        description: 'Build Worker image'
+        type: boolean
+        default: true
 
 concurrency:
   group: build-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
+  detect:
+    runs-on: ubuntu-latest
+    outputs:
+      build_ui: ${{ steps.check.outputs.ui }}
+      build_worker: ${{ steps.check.outputs.worker }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Detect what to build
+        id: check
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "ui=${{ inputs.build_ui }}" >> "$GITHUB_OUTPUT"
+            echo "worker=${{ inputs.build_worker }}" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          CHANGED=$(git diff --name-only HEAD~1 HEAD 2>/dev/null || echo "all")
+          BUILD_UI=false
+          BUILD_WORKER=false
+
+          if echo "$CHANGED" | grep -qE '^(Dockerfile|requirements\.txt|app/(main|database|catalog|auth|compose_generator|exchange_rates|collectors|templates|static)|services/)'; then
+            BUILD_UI=true
+          fi
+          if echo "$CHANGED" | grep -qE '^(Dockerfile\.worker|requirements-worker\.txt|app/(worker_api|orchestrator)\.py)'; then
+            BUILD_WORKER=true
+          fi
+          if echo "$CHANGED" | grep -qE '^app/__init__\.py'; then
+            BUILD_UI=true
+            BUILD_WORKER=true
+          fi
+
+          # Default: if no specific detection, build both (safety net)
+          if [ "$BUILD_UI" = "false" ] && [ "$BUILD_WORKER" = "false" ]; then
+            BUILD_UI=true
+            BUILD_WORKER=true
+          fi
+
+          echo "ui=$BUILD_UI" >> "$GITHUB_OUTPUT"
+          echo "worker=$BUILD_WORKER" >> "$GITHUB_OUTPUT"
+          echo "Build UI: $BUILD_UI, Build Worker: $BUILD_WORKER"
+
   lint:
     runs-on: ubuntu-latest
     steps:
@@ -27,20 +81,13 @@ jobs:
       - name: Lint and format check
         run: ruff check app/ && ruff format --check app/
 
-  build:
-    needs: lint
+  build-ui:
+    needs: [lint, detect]
+    if: needs.detect.outputs.build_ui == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
-    strategy:
-      matrix:
-        include:
-          - image: drumsergio/cashpilot
-            dockerfile: Dockerfile
-          - image: drumsergio/cashpilot-worker
-            dockerfile: Dockerfile.worker
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -57,24 +104,69 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Extract metadata (tags, labels)
+      - name: Extract metadata
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ matrix.image }}
+          images: drumsergio/cashpilot
           tags: |
             type=raw,value=latest
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
 
-      - name: Build and push
+      - name: Build and push UI image
         uses: docker/build-push-action@v6
         with:
           context: .
-          file: ${{ matrix.dockerfile }}
+          file: Dockerfile
           platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha,scope=${{ matrix.image }}
-          cache-to: type=gha,mode=max,scope=${{ matrix.image }}
+          cache-from: type=gha,scope=cashpilot-ui
+          cache-to: type=gha,mode=max,scope=cashpilot-ui
+
+  build-worker:
+    needs: [lint, detect]
+    if: needs.detect.outputs.build_worker == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: drumsergio/cashpilot-worker
+          tags: |
+            type=raw,value=latest
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+
+      - name: Build and push Worker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.worker
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=cashpilot-worker
+          cache-to: type=gha,mode=max,scope=cashpilot-worker

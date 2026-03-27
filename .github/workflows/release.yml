@@ -10,6 +10,7 @@ on:
       - 'requirements-worker.txt'
       - 'app/**'
       - 'services/**'
+      - 'docker-compose*.yml'
   workflow_dispatch:
 
 permissions:
@@ -19,25 +20,61 @@ jobs:
   release:
     name: Bump version and release
     runs-on: ubuntu-latest
-    # Skip releases triggered by the release workflow itself
     if: "!contains(github.event.head_commit.message, '[skip ci]')"
+    outputs:
+      new_tag: ${{ steps.version.outputs.new_tag }}
+      build_ui: ${{ steps.changes.outputs.ui }}
+      build_worker: ${{ steps.changes.outputs.worker }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
+      - name: Detect what changed
+        id: changes
+        run: |
+          # Compare against the previous commit
+          CHANGED=$(git diff --name-only HEAD~1 HEAD 2>/dev/null || echo "")
+          echo "Changed files: $CHANGED"
+
+          BUILD_UI=false
+          BUILD_WORKER=false
+
+          # UI changes: main.py, templates, static, collectors, Dockerfile, requirements.txt
+          if echo "$CHANGED" | grep -qE '^(Dockerfile|requirements\.txt|app/(main|database|catalog|auth|compose_generator|exchange_rates|collectors|templates|static))'  ; then
+            BUILD_UI=true
+          fi
+          # Also trigger UI on services/ changes (catalog data)
+          if echo "$CHANGED" | grep -qE '^services/'; then
+            BUILD_UI=true
+          fi
+
+          # Worker changes: worker_api.py, orchestrator.py, Dockerfile.worker, requirements-worker.txt
+          if echo "$CHANGED" | grep -qE '^(Dockerfile\.worker|requirements-worker\.txt|app/(worker_api|orchestrator)\.py)'; then
+            BUILD_WORKER=true
+          fi
+
+          # If both Dockerfiles or shared files changed, build both
+          if echo "$CHANGED" | grep -qE '^app/__init__\.py'; then
+            BUILD_UI=true
+            BUILD_WORKER=true
+          fi
+
+          echo "ui=$BUILD_UI" >> "$GITHUB_OUTPUT"
+          echo "worker=$BUILD_WORKER" >> "$GITHUB_OUTPUT"
+          echo "Build UI: $BUILD_UI, Build Worker: $BUILD_WORKER"
+
       - name: Get latest version tag
         id: version
+        if: steps.changes.outputs.ui == 'true' || steps.changes.outputs.worker == 'true'
         run: |
-          # Get the latest semver tag, default to v0.0.0 if none
           LATEST=$(git tag -l 'v*.*.*' --sort=-v:refname | head -1)
           if [ -z "$LATEST" ]; then
             LATEST="v0.0.0"
           fi
           echo "latest=$LATEST" >> "$GITHUB_OUTPUT"
 
-          # Increment patch version
           VERSION="${LATEST#v}"
           MAJOR=$(echo "$VERSION" | cut -d. -f1)
           MINOR=$(echo "$VERSION" | cut -d. -f2)
@@ -48,6 +85,7 @@ jobs:
           echo "Bumping $LATEST -> $NEW_TAG"
 
       - name: Create and push tag
+        if: steps.version.outputs.new_tag
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
@@ -55,6 +93,7 @@ jobs:
           git push origin "${{ steps.version.outputs.new_tag }}"
 
       - name: Create GitHub Release
+        if: steps.version.outputs.new_tag
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.version.outputs.new_tag }}
