@@ -1,6 +1,6 @@
 # SpeedShare
 
-> **Category:** Bandwidth Sharing | **Status:** Broken
+> **Category:** Bandwidth Sharing | **Status:** Dead
 > **Website:** [https://speedshare.app](https://speedshare.app)
 
 ## Description

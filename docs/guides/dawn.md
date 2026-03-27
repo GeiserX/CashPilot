@@ -33,7 +33,7 @@ Dawn Internet is a decentralized wireless network that rewards users for sharing
 
 ### 1. Create an account
 
-Sign up at [Dawn Internet](https://dawninternet.com).
+Sign up at [Dawn Internet](https://dawninternet.com/?code=2QLQV97F).
 
 ### 2. Get your credentials
 

@@ -1,0 +1,54 @@
+name: earn.cc
+slug: earncc
+category: bandwidth
+status: broken
+website: https://earn.cc
+description: >
+  earn.cc is a bandwidth monetization service similar to Honeygain. Desktop
+  GUI only, no Docker support. Very new with limited information available.
+  Residential IP required. Crypto payouts.
+short_description: Bandwidth sharing - new service, server error on signup
+
+referral:
+  signup_url: "https://earn.cc"
+
+docker:
+  image: ""
+  platforms: []
+  env: []
+  ports: []
+  volumes: []
+  command: ""
+  network_mode: ""
+
+requirements:
+  residential_ip: true
+  min_bandwidth: ""
+  gpu: false
+  min_storage: ""
+
+payment:
+  methods: [crypto]
+  minimum_payout: ""
+  currency: USD
+  frequency: ""
+
+earnings:
+  monthly_low: 0
+  monthly_high: 0
+  currency: USD
+  per: "device"
+  notes: "Server error on signup as of March 2026. Service may not be functional."
+
+cashout:
+  method: manual
+  dashboard_url: "https://earn.cc"
+  min_amount: 0
+  currency: USD
+  notes: "Signup broken. Cannot assess."
+
+platforms: [windows, macos, linux]
+
+collector:
+  type: manual
+  notes: "No info available. Signup broken."

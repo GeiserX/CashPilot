@@ -11,7 +11,7 @@ description: >
 short_description: DePIN wireless network - browser extension and hardware box
 
 referral:
-  signup_url: "https://dawninternet.com"
+  signup_url: "https://dawninternet.com/?code=2QLQV97F"
 
 docker:
   image: ""
@@ -46,7 +46,7 @@ cashout:
   dashboard_url: "https://dashboard.dawninternet.com"
   min_amount: 0
   currency: DAWN
-  notes: "Service broken. Cashout unavailable."
+  notes: "Extension works but half-baked. Black Box hardware announced. Check future."
 
 platforms: [browser-extension]
 

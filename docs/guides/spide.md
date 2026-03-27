@@ -1,6 +1,6 @@
 # Spide
 
-> **Category:** Bandwidth Sharing | **Status:** Dead
+> **Category:** Bandwidth Sharing | **Status:** Active
 > **Website:** [https://spide.io](https://spide.io)
 
 ## Description
@@ -33,7 +33,7 @@ Spide is a bandwidth-sharing service that lets you monetize unused internet band
 
 ### 1. Create an account
 
-Sign up at [Spide](https://spide.io).
+Sign up at [Spide](https://spide.network/register.html?f3bc51).
 
 ### 2. Get your credentials
 

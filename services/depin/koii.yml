@@ -1,0 +1,53 @@
+name: Koii Network
+slug: koii
+category: depin
+status: broken
+website: https://koii.network
+description: >
+  Koii Network is a Solana-based DePIN for distributed data, storage, and
+  compute tasks. Task operators post jobs, node operators execute them and
+  earn KOII tokens. Currently paused.
+short_description: Solana DePIN - distributed compute tasks, currently paused
+
+referral:
+  signup_url: "https://koii.network"
+
+docker:
+  image: ""
+  platforms: []
+  env: []
+  ports: []
+  volumes: []
+  command: ""
+  network_mode: ""
+
+requirements:
+  residential_ip: false
+  min_bandwidth: ""
+  gpu: false
+  min_storage: ""
+
+payment:
+  methods: [crypto]
+  minimum_payout: ""
+  currency: KOII
+  frequency: "Per task"
+
+earnings:
+  monthly_low: 0
+  monthly_high: 0
+  currency: USD
+  per: "node"
+  notes: "Website says paused as of March 2026. Check back later."
+
+cashout:
+  method: manual
+  dashboard_url: "https://koii.network"
+  min_amount: 0
+  currency: KOII
+
+platforms: [windows, macos, linux]
+
+collector:
+  type: manual
+  notes: "Service paused. No collection possible."

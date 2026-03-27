@@ -1,6 +1,6 @@
 # PacketShare
 
-> **Category:** Bandwidth Sharing | **Status:** Dead
+> **Category:** Bandwidth Sharing | **Status:** Broken
 > **Website:** [https://www.packetshare.io](https://www.packetshare.io)
 
 ## Description

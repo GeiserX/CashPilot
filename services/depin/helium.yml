@@ -1,0 +1,53 @@
+name: Helium
+slug: helium
+category: depin
+status: active
+website: https://helium.com
+description: >
+  Helium is an established decentralized wireless network. Originally LoRaWAN
+  hotspots, now expanded to 5G. Requires dedicated hardware ($500+). Earns
+  HNT/MOBILE tokens. ROI has dropped significantly - typical $4-8/month.
+short_description: Decentralized wireless network - requires hardware, HNT tokens
+
+referral:
+  signup_url: "https://helium.com"
+
+docker:
+  image: ""
+  platforms: []
+  env: []
+  ports: []
+  volumes: []
+  command: ""
+  network_mode: ""
+
+requirements:
+  residential_ip: true
+  min_bandwidth: ""
+  gpu: false
+  min_storage: ""
+
+payment:
+  methods: [crypto]
+  minimum_payout: ""
+  currency: HNT
+  frequency: "Epoch-based"
+
+earnings:
+  monthly_low: 4
+  monthly_high: 8
+  currency: USD
+  per: "hotspot"
+  notes: "Requires $500+ hardware purchase. ROI has dropped significantly. Approval process for new operators."
+
+cashout:
+  method: manual
+  dashboard_url: "https://app.helium.com"
+  min_amount: 0
+  currency: HNT
+
+platforms: []
+
+collector:
+  type: api
+  notes: "Helium Explorer API for network stats. Individual earnings via wallet on-chain."

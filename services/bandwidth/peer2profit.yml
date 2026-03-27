@@ -1,0 +1,59 @@
+name: Peer2Profit
+slug: peer2profit
+category: bandwidth
+status: active
+website: https://peer2profit.com
+description: >
+  Peer2Profit monetizes unused internet bandwidth by routing legitimate traffic
+  through your connection. Works on both residential and datacenter IPs, which
+  is a differentiator from most bandwidth services. Registration via Telegram
+  bot or website. Payouts via PayPal or crypto (MATIC).
+short_description: Bandwidth sharing - works on residential and datacenter IPs
+
+referral:
+  signup_url: "https://peer2profit.com"
+
+docker:
+  image: peer2profit/peer2profit-linux
+  platforms: [linux/amd64]
+  env:
+    - key: P2P_EMAIL
+      label: "Email"
+      required: true
+      secret: false
+      description: "Your Peer2Profit account email"
+  ports: []
+  volumes: []
+  command: ""
+  network_mode: ""
+
+requirements:
+  residential_ip: false
+  min_bandwidth: ""
+  gpu: false
+  min_storage: ""
+
+payment:
+  methods: [paypal, crypto]
+  minimum_payout: "$2"
+  currency: USD
+  frequency: "On request"
+
+earnings:
+  monthly_low: 1
+  monthly_high: 5
+  currency: USD
+  per: "device"
+  notes: "Works on residential AND datacenter/VPS IPs. Mixed reviews - has had downtime scares. Payouts via PayPal or MATIC."
+
+cashout:
+  method: redirect
+  dashboard_url: "https://peer2profit.com/dashboard"
+  min_amount: 2.0
+  currency: USD
+
+platforms: [windows, macos, linux, android]
+
+collector:
+  type: api
+  notes: "Dashboard at peer2profit.com. API endpoints undocumented."

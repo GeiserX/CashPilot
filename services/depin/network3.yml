@@ -1,7 +1,7 @@
 name: Network3
 slug: network3
 category: depin
-status: dead
+status: broken
 website: https://network3.io
 description: >
   Network3 was a DePIN project focused on decentralized AI training and bandwidth
@@ -47,7 +47,7 @@ cashout:
   dashboard_url: "https://account.network3.ai"
   min_amount: 0
   currency: N3
-  notes: "Service broken. Cashout unavailable."
+  notes: "Site up but no SSL, no updates in months. Avoid for now."
 
 platforms: [windows, macos, linux]
 

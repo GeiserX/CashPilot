@@ -1,6 +1,6 @@
 # Titan Network
 
-> **Category:** DePIN | **Status:** Dead
+> **Category:** DePIN | **Status:** Active
 > **Website:** [https://titannet.io](https://titannet.io)
 
 ## Description
@@ -33,7 +33,7 @@ Titan Network is a DePIN platform that shares your IP address, storage, and band
 
 ### 1. Create an account
 
-Sign up at [Titan Network](https://titannet.io).
+Sign up at [Titan Network](https://edge.titannet.info/signup?inviteCode=2GKKJ495).
 
 ### 2. Get your credentials
 
