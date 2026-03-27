@@ -461,16 +461,18 @@ async def api_services_deployed(request: Request) -> list[dict[str, Any]]:
         for c in containers:
             slug = c.get("slug", "")
             if slug:
-                statuses.append({
-                    "slug": slug,
-                    "name": c.get("name", slug),
-                    "status": c.get("status", "unknown"),
-                    "image": c.get("image", ""),
-                    "cpu_percent": c.get("cpu_percent", 0),
-                    "memory_mb": c.get("memory_mb", 0),
-                    "category": "",
-                    "deployed_by": w.get("name", "worker"),
-                })
+                statuses.append(
+                    {
+                        "slug": slug,
+                        "name": c.get("name", slug),
+                        "status": c.get("status", "unknown"),
+                        "image": c.get("image", ""),
+                        "cpu_percent": c.get("cpu_percent", 0),
+                        "memory_mb": c.get("memory_mb", 0),
+                        "category": "",
+                        "deployed_by": w.get("name", "worker"),
+                    }
+                )
 
     # Get latest earnings per platform for balance display
     earnings = await database.get_earnings_summary()
