@@ -41,12 +41,22 @@ _collector_alerts: list[dict[str, str]] = []
 
 
 async def _run_health_check() -> None:
-    """Check health of all deployed containers and record events."""
+    """Check health of all deployed containers and record events.
+
+    Deduplicates by slug: if *any* instance of a service is running,
+    record a single check_ok for that slug (avoids penalising services
+    deployed on multiple nodes where one may be stopped).
+    """
     try:
         statuses = orchestrator.get_status()
+        # Aggregate: slug -> best status (running wins)
+        slug_best: dict[str, str] = {}
         for s in statuses:
             slug = s["slug"]
             status = s.get("status", "unknown")
+            if slug_best.get(slug) != "running":
+                slug_best[slug] = status
+        for slug, status in slug_best.items():
             if status == "running":
                 await database.record_health_event(slug, "check_ok")
             else:
@@ -431,12 +441,36 @@ async def api_list_services(request: Request) -> list[dict[str, Any]]:
 
 @app.get("/api/services/deployed")
 async def api_services_deployed(request: Request) -> list[dict[str, Any]]:
-    """Return deployed services with container status, balance, CPU, memory."""
+    """Return deployed services with container status, balance, CPU, memory.
+
+    Multiple containers for the same slug (multi-node) are aggregated into a
+    single row with summed CPU/memory and an instance count.
+    """
     _require_auth_api(request)
     try:
         statuses = orchestrator.get_status_cached()
     except RuntimeError:
         statuses = []
+
+    # Also include worker containers
+    workers = await database.list_workers()
+    for w in workers:
+        if w.get("status") != "online":
+            continue
+        containers = json.loads(w.get("containers", "[]"))
+        for c in containers:
+            slug = c.get("slug", "")
+            if slug:
+                statuses.append({
+                    "slug": slug,
+                    "name": c.get("name", slug),
+                    "status": c.get("status", "unknown"),
+                    "image": c.get("image", ""),
+                    "cpu_percent": c.get("cpu_percent", 0),
+                    "memory_mb": c.get("memory_mb", 0),
+                    "category": "",
+                    "deployed_by": w.get("name", "worker"),
+                })
 
     # Get latest earnings per platform for balance display
     earnings = await database.get_earnings_summary()
@@ -446,23 +480,44 @@ async def api_services_deployed(request: Request) -> list[dict[str, Any]]:
     health_scores = await database.get_health_scores(7)
     health_map = {h["slug"]: h for h in health_scores}
 
-    result = []
+    # Aggregate by slug: one row per service
+    _STATUS_PRIORITY = {"running": 0, "restarting": 1, "exited": 2, "created": 3, "dead": 4}
+    slug_agg: dict[str, dict[str, Any]] = {}
     for s in statuses:
         slug = s["slug"]
+        if slug not in slug_agg:
+            slug_agg[slug] = {
+                "instances": [],
+                "total_cpu": 0.0,
+                "total_mem": 0.0,
+                "best_status": s.get("status", "unknown"),
+                "image": s.get("image", ""),
+            }
+        agg = slug_agg[slug]
+        agg["instances"].append(s)
+        agg["total_cpu"] += float(s.get("cpu_percent", 0))
+        agg["total_mem"] += float(s.get("memory_mb", 0))
+        cur = s.get("status", "unknown")
+        if _STATUS_PRIORITY.get(cur, 9) < _STATUS_PRIORITY.get(agg["best_status"], 9):
+            agg["best_status"] = cur
+
+    result = []
+    for slug, agg in slug_agg.items():
         svc = catalog.get_service(slug)
         health = health_map.get(slug, {})
         entry = {
             "slug": slug,
             "name": svc["name"] if svc else slug,
-            "container_status": s["status"],
+            "container_status": agg["best_status"],
             "balance": balance_map.get(slug, 0.0),
-            "cpu": f"{s.get('cpu_percent', 0)}",
-            "memory": f"{s.get('memory_mb', 0)} MB",
-            "image": s.get("image", ""),
-            "category": s.get("category", ""),
+            "cpu": f"{agg['total_cpu']:.2f}",
+            "memory": f"{agg['total_mem']:.1f} MB",
+            "image": agg["image"],
+            "category": agg["instances"][0].get("category", ""),
             "health_score": health.get("score"),
             "uptime_pct": health.get("uptime_pct"),
             "restarts_7d": health.get("restarts", 0),
+            "instances": len(agg["instances"]),
         }
         if svc:
             cashout = svc.get("cashout", {})
@@ -472,6 +527,41 @@ async def api_services_deployed(request: Request) -> list[dict[str, Any]]:
             if referral:
                 entry["referral_url"] = referral.get("signup_url", "")
         result.append(entry)
+
+    # Include external services (no Docker container, e.g. Grass, Bytelixir)
+    seen_slugs = {r["slug"] for r in result}
+    deployments = await database.get_deployments()
+    for d in deployments:
+        slug = d["slug"]
+        if slug in seen_slugs:
+            continue
+        if d.get("status") != "external":
+            continue
+        svc = catalog.get_service(slug)
+        health = health_map.get(slug, {})
+        entry = {
+            "slug": slug,
+            "name": svc["name"] if svc else slug,
+            "container_status": "external",
+            "balance": balance_map.get(slug, 0.0),
+            "cpu": "",
+            "memory": "",
+            "image": "",
+            "category": svc.get("category", "") if svc else "",
+            "health_score": health.get("score"),
+            "uptime_pct": health.get("uptime_pct"),
+            "restarts_7d": 0,
+            "instances": 0,
+        }
+        if svc:
+            cashout = svc.get("cashout", {})
+            if cashout:
+                entry["cashout"] = cashout
+            referral = svc.get("referral", {})
+            if referral:
+                entry["referral_url"] = referral.get("signup_url", "")
+        result.append(entry)
+
     return result
 
 
