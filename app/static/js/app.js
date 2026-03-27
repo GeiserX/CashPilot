@@ -306,8 +306,10 @@ const CP = (() => {
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
         </button>`;
 
-    // Instance count — show in status column
-    const instanceLabel = instances > 1 ? ` <span class="badge badge-instances">${instances}x</span>` : '';
+    // Instance count — always show next to status (external services don't have container instances)
+    const instanceLabel = !isExternal && instances > 0
+      ? ` <span class="badge badge-instances" title="${instances} instance${instances > 1 ? 's' : ''}">${instances}x</span>`
+      : '';
 
     return `
     <tr class="breakdown-row" data-slug="${escapeHtml(svc.slug)}">
