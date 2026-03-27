@@ -79,7 +79,6 @@ Services CashPilot can deploy and manage automatically via Docker.
 | [IPRoyal Pawns](https://pawns.app?r=19266874) | ✅ | ❌ | Unlimited | 1 | PayPal, Crypto, Bank Transfer |
 | [MystNodes](https://mystnodes.co/?referral_code=do7v7YOoBBpbOstKQovX2pUvZYKia4ZhH3QIdNtE) | ✅ | ✅ | Unlimited | Unlimited | Crypto (MYST) |
 | [PacketStream](https://packetstream.io/?psr=7xgZ) | ✅ | ❌ | Unlimited | 1 | PayPal |
-| [Peer2Profit](https://peer2profit.com) | ✅ | ✅ | Unlimited | 1 | PayPal, Crypto |
 | [Presearch](https://presearch.com/signup?rid=4872322) | ✅ | ✅ | Unlimited | 1 | Crypto (PRE) |
 | [ProxyBase](https://proxybase.io) | ✅ | ❌ | Unlimited | 1 | Crypto |
 | [ProxyLite](https://proxylite.ru/?r=KMUPRZIZ) | ✅ | ✅ | Unlimited | 1 | Crypto, PayPal |
@@ -87,7 +86,7 @@ Services CashPilot can deploy and manage automatically via Docker.
 | [Repocket](https://repocket.com/) | ✅ | ❌ | 5 | 2 | PayPal, Crypto |
 | [Storj](https://www.storj.io/node) | ✅ | ✅ | Unlimited | 1 \* | Crypto (STORJ) |
 | [Traffmonetizer](https://traffmonetizer.com/?aff=2111758) | ✅ | ✅ \*\* | Unlimited | Unlimited | Crypto (USDT), PayPal |
-| [URnetwork](https://ur.io) | ✅ | ✅ | Unlimited | 1 | Crypto |
+| [URnetwork](https://ur.io/?referral_code=1Q3G19) | ✅ | ✅ | Unlimited | 1 | Crypto |
 
 > \* Storj nodes on the same /24 subnet share data allocation, reducing per-node earnings.
 >

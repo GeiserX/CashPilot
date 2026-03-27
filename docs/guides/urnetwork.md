@@ -33,7 +33,7 @@ URnetwork is a decentralized VPN and bandwidth-sharing network. You earn by prov
 
 ### 1. Create an account
 
-Sign up at [URnetwork](https://ur.io).
+Sign up at [URnetwork](https://ur.io/?referral_code=1Q3G19).
 
 ### 2. Get your credentials
 
