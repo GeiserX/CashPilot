@@ -108,13 +108,13 @@ No existing project combines all of these:
 ```
 cashpilot/
   app/                  # FastAPI application
-    main.py             # App entrypoint, lifespan, mode routing (standalone/ui/worker)
+    main.py             # App entrypoint, lifespan, UI routes (no Docker dependency)
     catalog.py          # Loads YAML service definitions, caches, SIGHUP reload
     orchestrator.py     # Docker SDK: deploy, stop, restart, remove, logs
     database.py         # Async SQLite: earnings, config, deployments, workers tables
     worker_api.py       # Worker REST API: heartbeat, container commands, mini-UI
     ui_api.py           # UI API: worker registration, fleet view, earnings
-    collectors/         # Earnings collectors (one module per service, UI/standalone only)
+    collectors/         # Earnings collectors (one module per service, UI only)
       base.py           # BaseCollector ABC + EarningsResult dataclass
       honeygain.py      # Honeygain JWT auth + /v2/earnings
       __init__.py       # COLLECTOR_MAP registry + make_collectors() factory
@@ -133,7 +133,7 @@ cashpilot/
     generate_docs.py    # YAML -> README table + guide pages
   Dockerfile            # UI image: multi-stage python:3.12-slim, tini, non-root
   Dockerfile.worker     # Worker image: minimal deps, no collectors/templates
-  docker-compose.yml    # Standalone deployment (UI + embedded worker)
+  docker-compose.yml    # Example deployment (UI + worker on same server)
   docker-compose.fleet.yml  # Multi-server example (UI + remote workers)
   .github/workflows/
     build.yml           # QEMU + Buildx multi-arch, Docker Hub push
@@ -151,46 +151,40 @@ cashpilot/
 
 ## Architecture: CashPilot UI + CashPilot Worker
 
-CashPilot is split into two components that can run together (default) or separately across multiple servers. This is a core differentiator -- no competitor does multi-server fleet management.
+CashPilot is split into two **always-separate** components. The UI never touches Docker — all container operations go through workers. This is a core differentiator -- no competitor does multi-server fleet management.
 
 ### Components
 
 | Component | Description |
 |-----------|-------------|
-| **CashPilot UI** | The single web dashboard. Collects all earnings centrally, shows global fleet view, manages workers. Only ONE UI instance exists -- deploying a second is rejected if workers are already connected to another. |
-| **CashPilot Worker** | Lightweight agent running on each server. Manages local containers (deploy/stop/restart/health). Reports status to the UI. Has a minimal config page (connection status, running services). Configured via env vars. |
+| **CashPilot UI** | The single web dashboard. Collects all earnings centrally, shows global fleet view, manages workers. **Has NO Docker socket.** Can be hosted anywhere. Only ONE UI instance exists. |
+| **CashPilot Worker** | Agent running on each server that has Docker. **Must have Docker socket access** (by design, never non-privileged). Manages local containers, reports status to UI via heartbeats. Has a minimal config page. |
 
-Two separate Docker images to minimize worker footprint:
-- **`drumsergio/cashpilot`** — Full UI image (~90 MB): FastAPI, Jinja2, templates, static assets, collectors, APScheduler, Docker SDK.
-- **`drumsergio/cashpilot-worker`** — Lightweight worker image (~40 MB): FastAPI (minimal), Docker SDK, heartbeat timer, tiny config page. No collectors, no templates, no Chart.js.
+Two separate Docker images:
+- **`drumsergio/cashpilot`** — UI image: FastAPI, Jinja2, templates, static assets, collectors, APScheduler. **No Docker SDK.**
+- **`drumsergio/cashpilot-worker`** — Worker image: FastAPI (minimal), Docker SDK, heartbeat timer, tiny config page. No collectors, no templates.
 
-The UI image in `standalone` mode (default) includes an embedded worker — no need to run both images on the same server.
+**There is no standalone mode.** Every server that runs Docker containers needs a worker. The UI is a pure dashboard/scheduler — it can run on any machine, including one without Docker.
 
 ### Core Principles
 
-1. **Single source of truth.** The UI instance is the only one that collects earnings, stores historical data, and serves the dashboard. Workers never collect earnings -- they only manage containers and report health.
-2. **Earnings are never duplicated.** Since only the UI collects, there is no risk of the same Honeygain account being counted twice across servers. The UI queries each service API once and gets the global balance.
-3. **Workers are stateless satellites.** A worker knows: (a) which containers to keep running, (b) the UI URL to report to. It has a tiny local SQLite for config persistence but no earnings data.
-4. **Default must work perfectly.** A single `docker-compose.yml` with no extra config deploys UI + Worker on the same server. Multi-server is opt-in.
-5. **Drill-down per server and per service.** The UI shows global totals by default. Users can drill down to see which containers run on which server, container health per server, and service-level details.
+1. **Separation of concerns.** UI handles: dashboard, earnings collection, scheduling, user auth. Workers handle: Docker container lifecycle, health reporting. They never overlap.
+2. **Workers must be privileged.** A worker without Docker socket is useless. If you don't need Docker management, just run the UI alone to track earnings.
+3. **Single source of truth.** The UI instance is the only one that collects earnings, stores historical data, and serves the dashboard. Workers never collect earnings.
+4. **Earnings are never duplicated.** Since only the UI collects, there is no risk of the same account being counted twice.
+5. **Workers are stateless satellites.** A worker knows: (a) which containers to keep running, (b) the UI URL to report to. It has a tiny local SQLite for config persistence but no earnings data.
+6. **Drill-down per server and per service.** The UI shows global totals by default. Users can drill down to see which containers run on which server.
 
-### Deployment Modes
+### Deployment
 
 ```
-┌─────────────────────────────────────────────┐
-│  Mode: standalone (default)                 │
-│  One server, one container                  │
-│  UI + Worker combined, Docker socket mounted│
-│  No federation config needed                │
-└─────────────────────────────────────────────┘
-
 ┌──────────────────┐     ┌──────────────────┐     ┌──────────────────┐
-│  Server A (UI)   │     │  Server B        │     │  Server C        │
+│  Server A        │     │  Server B        │     │  Server C        │
 │  CashPilot UI    │◄────│  CashPilot Worker│     │  CashPilot Worker│
-│  + local Worker  │◄────│  Reports health  │     │  Reports health  │
-│  Collects all    │     │  Manages local   │     │  Manages local   │
-│  earnings        │     │  containers      │     │  containers      │
-│  Port 8080 (UI)  │     │  Port 8081 (cfg) │     │  Port 8081 (cfg) │
+│  CashPilot Worker│◄────│  Reports health  │     │  Reports health  │
+│  (2 containers)  │     │  Manages local   │     │  Manages local   │
+│  Port 8085 (UI)  │     │  containers      │     │  containers      │
+│  Port 8081 (wkr) │     │  Port 8081       │     │  Port 8081       │
 └──────────────────┘     └──────────────────┘     └──────────────────┘
 ```
 
@@ -204,15 +198,15 @@ The UI image in `standalone` mode (default) includes an embedded worker — no n
 
 | Variable | Required | Default | Description |
 |----------|:--------:|---------|-------------|
-| `CASHPILOT_MODE` | No | `standalone` | `standalone`, `ui`, or `worker` |
-| `CASHPILOT_UI_URL` | Worker only | -- | URL of the CashPilot UI (e.g. `http://192.168.10.100:8080`) |
-| `CASHPILOT_API_KEY` | Worker only | -- | Shared API key for worker→UI auth |
+| `CASHPILOT_UI_URL` | Yes | -- | URL of the CashPilot UI (e.g. `http://192.168.10.100:8085`) |
+| `CASHPILOT_API_KEY` | Yes | -- | Shared API key for worker→UI auth |
 | `CASHPILOT_WORKER_NAME` | No | hostname | Human-readable name for this worker in the UI |
 
 ### Worker Capabilities
 
-- **With Docker socket** (default): Full container lifecycle -- deploy, stop, restart, remove, health checks, logs, resource stats.
-- **Without Docker socket**: Read-only monitoring. Can check if expected containers exist and are running via `docker ps` equivalent. Cannot manage containers. Useful for locked-down environments.
+Workers **must** have Docker socket access — this is by design. A worker without Docker socket is useless. If you don't need container management on a server, don't deploy a worker there.
+
+Full container lifecycle: deploy, stop, restart, remove, health checks, logs, resource stats.
 
 ### Worker Mini-UI
 
@@ -399,23 +393,41 @@ Only MystNodes has a real per-node earnings API. Research on all 12 services:
 
 ```yaml
 services:
-  cashpilot:
+  cashpilot-ui:
     image: drumsergio/cashpilot:latest
-    container_name: cashpilot
+    container_name: cashpilot-ui
     ports:
       - "8080:8080"
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
       - cashpilot_data:/data
     environment:
       - TZ=Europe/Madrid
       - CASHPILOT_SECRET_KEY=<generate-a-random-secret>
+      - CASHPILOT_API_KEY=<shared-api-key>
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+
+  cashpilot-worker:
+    image: drumsergio/cashpilot-worker:latest
+    container_name: cashpilot-worker
+    ports:
+      - "8081:8081"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - cashpilot_worker_data:/data
+    environment:
+      - TZ=Europe/Madrid
+      - CASHPILOT_UI_URL=http://cashpilot-ui:8080
+      - CASHPILOT_API_KEY=<shared-api-key>
+      - CASHPILOT_WORKER_NAME=local
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
 
 volumes:
   cashpilot_data:
+  cashpilot_worker_data:
 ```
 
 ### Environment Variables
@@ -423,10 +435,9 @@ volumes:
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `TZ` | `UTC` | Timezone |
-| `CASHPILOT_MODE` | `standalone` | `standalone` (UI+Worker with Docker socket), `ui` (UI only — no Docker socket, all ops via workers), or `worker` (Worker only) |
-| `CASHPILOT_SECRET_KEY` | Auto-generated | Fernet encryption key for credentials (UI/standalone only) |
-| `CASHPILOT_COLLECTION_INTERVAL` | `3600` | Seconds between earnings collection (UI/standalone only) |
-| `CASHPILOT_PORT` | `8080` | Web UI port (UI/standalone) or mini-UI port (worker, default 8081) |
+| `CASHPILOT_SECRET_KEY` | Auto-generated | Fernet encryption key for credentials (UI only) |
+| `CASHPILOT_COLLECTION_INTERVAL` | `3600` | Seconds between earnings collection (UI only) |
+| `CASHPILOT_PORT` | `8080` | Web UI port (UI) or mini-UI port (worker, default 8081) |
 | `CASHPILOT_UI_URL` | -- | URL of UI instance (worker mode only, required) |
 | `CASHPILOT_API_KEY` | -- | Shared API key for worker↔UI auth (required in multi-server) |
 | `CASHPILOT_WORKER_NAME` | hostname | Human-readable worker name shown in UI fleet view |
@@ -443,8 +454,7 @@ Fleet API key set via `CASHPILOT_API_KEY` env var on all instances.
 - **Cross-subnet workers**: If worker and UI are on different subnets, use a VPN/overlay IP (e.g. Tailscale MagicDNS) for `CASHPILOT_UI_URL`. Worker may need `--network host` for VPN routing.
 - **SQLite data retention**: 400-day retention. Daily job purges `earnings` and `health_events` older than 400 days.
 - **Collection interval**: 1 hour. Earnings cache in SQLite, served instantly.
-- **Docker availability check caches result**: If startup races and returns False, the cache stays False. Fixed by warming cache in background on startup via `run_in_executor`.
-- **Cache mutation bug**: `orchestrator.get_status_cached()` returns a reference to the module-level `_status_cache` list. Always copy with `list()` before appending worker containers, or the cache grows infinitely.
+- **Worker heartbeat data**: Container status comes from workers' heartbeat data stored in SQLite. `_get_all_worker_containers()` consolidates all online workers' container lists into a flat list for display.
 - **Health check deduplication**: When a service runs on multiple nodes, record only one health event per slug per check cycle (best status wins: running > restarting > exited). Without this, multi-instance services get penalised with duplicate `check_down` events.
 - **Google Fonts render-blocking**: Use async preload pattern (`<link rel="preload" as="style" onload="this.rel='stylesheet'">`) to avoid blocking page render.
 - **First earnings collection baseline**: When a service is first onboarded, insert a synthetic baseline record for the prior day with the same balance, so the first delta is 0 (not the full cumulative balance).
@@ -474,7 +484,7 @@ CashPilot stores earnings in each service's **native currency** (USD, MYST, GRAS
 **Always use the dedicated worker image** (`drumsergio/cashpilot-worker`), never the UI image for workers. The worker image runs `app.worker_api:app` on port 8081.
 
 **Topology:**
-- **watchtower**: `drumsergio/cashpilot` (UI, standalone mode — includes embedded local worker). Port 8085→8080. Manages local containers + collects all earnings.
+- **watchtower**: `drumsergio/cashpilot` (UI, port 8085→8080) + `drumsergio/cashpilot-worker` (worker, port 8081). UI collects all earnings, worker manages local containers.
 - **geiserback** (192.168.10.110): `drumsergio/cashpilot-worker`. Port 8081. Same subnet as watchtower — uses direct IP for `CASHPILOT_UI_URL`.
 - **geiserct** (192.168.20.5, user `geiser`): `drumsergio/cashpilot-worker`. Port 8081. Different subnet — **must use Tailscale MagicDNS** (`watchtower.mango-alpha.ts.net`) for `CASHPILOT_UI_URL`.
 
