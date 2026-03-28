@@ -359,7 +359,7 @@ const CP = (() => {
     // For single instance: show action buttons directly
     let actionBtns;
     if (isMulti) {
-      const chevron = `<button class="btn btn-icon expand-toggle" onclick="CP.toggleInstances('${svc.slug}')" title="Expand instances">
+      const chevron = `<button class="btn btn-icon expand-toggle" onclick="event.stopPropagation(); CP.toggleInstances('${svc.slug}')" title="Expand instances">
         <svg class="expand-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
       </button>`;
       actionBtns = `<div class="action-btns">${claimBtn}${chevron}</div>`;
@@ -386,7 +386,7 @@ const CP = (() => {
 
     // Main row
     let html = `
-    <tr class="breakdown-row${isMulti ? ' expandable' : ''}" data-slug="${escapeHtml(svc.slug)}">
+    <tr class="breakdown-row${isMulti ? ' expandable' : ''}" data-slug="${escapeHtml(svc.slug)}"${isMulti ? ` onclick="CP.toggleInstances('${escapeHtml(svc.slug)}', event)" style="cursor:pointer;"` : ''}>
       <td>${nameHtml}<div style="font-size:0.7rem; color:var(--text-muted);">${subtitle}</div></td>
       <td style="text-align:center;"><span class="badge badge-${statusClass}"><span class="status-dot ${statusClass}"></span> ${statusLabel}</span>${instanceLabel}</td>
       <td style="text-align:center;">${healthBadge}</td>
@@ -439,7 +439,12 @@ const CP = (() => {
     return html;
   }
 
-  function toggleInstances(slug) {
+  function toggleInstances(slug, event) {
+    if (event) {
+      // Don't toggle when clicking links or buttons inside the row
+      const target = event.target.closest('a, button, .action-btns');
+      if (target) return;
+    }
     const rows = document.querySelectorAll(`.instance-row[data-parent="${slug}"]`);
     const mainRow = document.querySelector(`.breakdown-row[data-slug="${slug}"]`);
     const isOpen = rows.length > 0 && rows[0].style.display !== 'none';

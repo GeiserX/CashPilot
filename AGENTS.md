@@ -311,7 +311,7 @@ This is how Portainer works. The worker is a dumb executor — it never decrypts
 | Koii Network | **broken** | Website returns HTTP 402 (paused) |
 | earn.cc | **broken** | Server error on signup |
 | GagaNode | **shady** | Site poorly made, not recommended |
-| BlockMesh | **shady** | Rebranded to Perceptron Network, unofficial extension requires dev mode |
+| BlockMesh | **dropped** | Rebranded to Perceptron Network, unofficial extension requires dev mode. Shady |
 | PassiveApp | **active** | Restored from dead (Mar 2026) |
 | Titan Network | **active** | Restored from dead (Mar 2026) |
 | Spide Network | **active** | Restored from dead (Mar 2026) |
@@ -320,12 +320,12 @@ This is how Portainer works. The worker is a dumb executor — it never decrypts
 
 | Service | Type | Docker Feasibility | Notes |
 |---------|------|-------------------|-------|
-| **Grass** | Browser extension | No official image | Community Python bots exist but not containerized |
+| **Grass** | Browser extension | No official image | OTP-only login. `mrcolorrain/grass` lite image broken (Chrome driver error). WebSocket-based approach using `user_id` UUID bypasses login (e.g. `wss://proxy2.wynd.network:4650`) |
 | **Gradient** | Browser extension (Next.js) | No official image | Client-side JS reads `?referralCode=` param (camelCase, NOT `?code=`) |
 | **Teneo** | Browser extension | No official image | Websocket-based connection |
 | **Dawn** | Chrome extension / hardware box | Community Python bots exist (`Justi1980/Dawn-Validator-BOT`, `Jaammerr/The-Dawn-Bot`) that call Dawn's HTTP API directly, no browser needed. Trivially containerizable. |
 | **Nodepay** | Browser extension | No official image | Behind Cloudflare protection |
-| **BlockMesh** | Browser extension | No official image | -- |
+| **BlockMesh** | Browser extension | No official image | Dropped — shady, rebranded to Perceptron Network |
 | **Wipter** | Desktop/mobile app only | No Docker or API | Web registration at `/en/register` (accepts referral code), but **no web login/dashboard** -- `/login`, `/en/login`, `/dashboard`, `app.wipter.com` all 404/refused. Earnings visible only in desktop app. |
 | **GagaNode** | Desktop app | No official Docker image | -- |
 | **Titan** | Desktop app | No official Docker image | -- |
@@ -354,7 +354,7 @@ This is how Portainer works. The worker is a dumb executor — it never decrypts
 | **Repocket** | **No** | -- | No public referral program |
 | Bitping | **No** | -- | No referral program exists |
 | Storj | **No** | -- | No referral program for node operators |
-| ProxyBase | **No** | -- | No referral program |
+| ProxyBase | Yes | nXzS3c6iTO | `peer.proxybase.org?referral=nXzS3c6iTO`. **Two dashboards**: `client.proxybase.org` (buyer) vs `peer.proxybase.org` (seller). Docker needs **peer** USER_ID. $0.50/GB residential, $1 min payout |
 | Dawn | Yes | 2QLQV97F | Extension-based |
 | Spide | Yes | f3bc51 | `spide.network/register.html?f3bc51` |
 | PassiveApp | Yes | bqpC4M | `passiveapp.com/i/bqpC4M` |
@@ -372,7 +372,7 @@ This is how Portainer works. The worker is a dumb executor — it never decrypts
 
 Working collectors (12/12 deployed services):
 - **Honeygain** -- JWT auth, `/v1/users/tokens` + `/v1/users/balances`
-- **EarnApp** -- XSRF rotation + cookie auth, `/money` endpoint
+- **EarnApp** -- XSRF rotation + cookie auth, `/money` endpoint. **Auto-redeem** available: Amazon ($50 min), Wise ($10 min), PayPal ($10 min)
 - **MystNodes** -- Cloud API (`my.mystnodes.com/api/v2`), email/password auth. **Supports per-node earnings** via `GET /api/v2/node` (30-day MYST per node, need price conversion for USD).
 - **Traffmonetizer** -- JWT token, `data.traffmonetizer.com/api/app_user/get_balance`
 - **IPRoyal** -- Email/password auth
@@ -383,7 +383,7 @@ Working collectors (12/12 deployed services):
 - **ProxyRack** -- API key auth, POST `/api/balance`. Per-device bandwidth (not earnings) via POST `/api/bandwidth` with `device_id` param.
 - **Storj** -- API URL-based
 - **Grass** -- Bearer token from localStorage (`app.grass.io`), `api.getgrass.io`. Returns GRASS token balance (converted to USD via CoinGecko).
-- **Bytelixir** -- Laravel session cookie (expires ~3.5h), `dash.bytelixir.com`. hCaptcha blocks automated login.
+- **Bytelixir** -- Laravel session cookie (expires ~3.5h), `dash.bytelixir.com`. hCaptcha blocks automated login. v0.2.17: `unquote()` handles URL-encoded cookies automatically.
 
 #### Per-Node/Per-Device Earnings Support
 
@@ -421,7 +421,7 @@ Fleet API key set via `CASHPILOT_API_KEY` env var on all instances.
 
 - **`container.stats(stream=False)` is slow** (~1-2s per container). Never call in request path. Use `get_status_cached()` for page loads; background health check refreshes every 5 min.
 - **`--read-only` breaks Docker socket access**: The entrypoint needs to modify `/etc/group` to add the `cashpilot` user to the Docker socket's group. Drop `--read-only` or add tmpfs for `/etc`.
-- **Cross-subnet workers**: If worker and UI are on different subnets, use a VPN/overlay IP (e.g. Tailscale MagicDNS) for `CASHPILOT_UI_URL`. Worker may need `--network host` for VPN routing.
+- **Cross-subnet workers**: If worker and UI are on different subnets, ensure Tailscale subnet routing: the UI server must `tailscale set --advertise-routes=<UI-subnet>` and the worker server must `tailscale set --accept-routes=true`. Worker uses `CASHPILOT_UI_URL` with the UI's LAN IP (not Tailscale IP).
 - **SQLite data retention**: 400-day retention. Daily job purges `earnings` and `health_events` older than 400 days.
 - **Collection interval**: 1 hour. Earnings cache in SQLite, served instantly.
 - **Worker heartbeat data**: Container status comes from workers' heartbeat data stored in SQLite. `_get_all_worker_containers()` consolidates all online workers' container lists into a flat list for display.

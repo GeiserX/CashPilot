@@ -43,10 +43,10 @@ requirements:
   min_storage: ""
 
 payment:
-  methods: [paypal, amazon_giftcard]
+  methods: [paypal, amazon_giftcard, wise]
   minimum_payout: "$2.50"
   currency: USD
-  frequency: "On request"
+  frequency: "On request (auto-redeem available: PayPal $10 min, Wise $10 min, Amazon $50 min)"
 
 earnings:
   monthly_low: 2

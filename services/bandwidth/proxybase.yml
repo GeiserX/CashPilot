@@ -10,7 +10,7 @@ description: >
 short_description: Bandwidth sharing - crypto payout, user ID auth
 
 referral:
-  signup_url: "https://proxybase.io"
+  signup_url: "https://peer.proxybase.org?referral=nXzS3c6iTO"
 
 docker:
   image: proxybase/proxybase
@@ -40,7 +40,7 @@ requirements:
 
 payment:
   methods: [crypto]
-  minimum_payout: "$5"
+  minimum_payout: "$1"
   currency: USD
   frequency: "On request"
 
@@ -53,8 +53,8 @@ earnings:
 
 cashout:
   method: redirect
-  dashboard_url: "https://proxybase.io/dashboard"
-  min_amount: 5.0
+  dashboard_url: "https://peer.proxybase.org/dashboard"
+  min_amount: 1.0
   currency: USD
 
 platforms: [windows, linux]

@@ -13,7 +13,7 @@ ProxyBase is a bandwidth-sharing platform that pays users in cryptocurrency for 
 |--------|-------|
 | Monthly range | $1 - $5 |
 | Per | device |
-| Minimum payout | $5 |
+| Minimum payout | $1 |
 | Payout frequency | On request |
 | Payment methods | Crypto |
 
@@ -33,7 +33,7 @@ ProxyBase is a bandwidth-sharing platform that pays users in cryptocurrency for 
 
 ### 1. Create an account
 
-Sign up at [ProxyBase](https://proxybase.io).
+Sign up at [ProxyBase](https://peer.proxybase.org?referral=nXzS3c6iTO).
 
 ### 2. Get your credentials
 
