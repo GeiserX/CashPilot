@@ -44,7 +44,7 @@ earnings:
 
 cashout:
   method: manual
-  dashboard_url: "https://test1.titannet.io"
+  dashboard_url: "https://edge.titannet.io"
   min_amount: 0
   currency: TNT
   notes: ""
@@ -53,4 +53,4 @@ platforms: [windows, macos, android]
 
 collector:
   type: api
-  notes: "Dashboard at titannet.io. Node status and earnings visible via web UI. API details sparse."
+  notes: "Dashboard at edge.titannet.io. Node status and earnings visible via web UI. API details sparse."
