@@ -27,7 +27,7 @@ Earn.fm pays you for sharing your internet bandwidth. It uses a simple token-bas
 | Minimum bandwidth | None |
 | GPU required | No |
 | Minimum storage | None |
-| Supported platforms | Linux |
+| Supported platforms | Docker, Linux |
 
 ## Setup Instructions
 

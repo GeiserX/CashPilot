@@ -27,7 +27,7 @@ Repocket lets you earn passive income by sharing your unused internet bandwidth.
 | Minimum bandwidth | None |
 | GPU required | No |
 | Minimum storage | None |
-| Supported platforms | Windows, Macos, Linux, Android |
+| Supported platforms | Docker, Windows, Macos, Linux, Android |
 
 ## Setup Instructions
 

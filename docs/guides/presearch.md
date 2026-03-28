@@ -27,7 +27,7 @@ Presearch is a decentralized search engine where node operators run Docker conta
 | Minimum bandwidth | None |
 | GPU required | No |
 | Minimum storage | None |
-| Supported platforms | Windows, Macos, Linux |
+| Supported platforms | Docker, Linux |
 
 ## Setup Instructions
 

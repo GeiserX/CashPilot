@@ -27,7 +27,7 @@ Share your unused internet bandwidth and earn passive income. Honeygain routes w
 | Minimum bandwidth | None |
 | GPU required | No |
 | Minimum storage | None |
-| Supported platforms | Windows, Macos, Linux, Android |
+| Supported platforms | Docker, Windows, Macos, Linux, Android |
 
 ## Setup Instructions
 

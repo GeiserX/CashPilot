@@ -71,7 +71,7 @@ cashout:
   min_amount: 5.0
   currency: USD
 
-platforms: [windows, macos, linux, android]
+platforms: [docker, windows, macos, linux, android, ios]
 
 collector:
   type: api

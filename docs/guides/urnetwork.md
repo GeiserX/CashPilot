@@ -27,7 +27,7 @@ URnetwork is a decentralized VPN and bandwidth-sharing network. You earn by prov
 | Minimum bandwidth | None |
 | GPU required | No |
 | Minimum storage | None |
-| Supported platforms | Windows, Macos, Linux |
+| Supported platforms | Docker, Windows, Macos, Linux |
 
 ## Setup Instructions
 

@@ -27,7 +27,7 @@ Peer2Profit monetizes unused internet bandwidth by routing legitimate traffic th
 | Minimum bandwidth | None |
 | GPU required | No |
 | Minimum storage | None |
-| Supported platforms | Windows, Macos, Linux, Android |
+| Supported platforms | Docker, Windows, Macos, Linux, Android |
 
 ## Setup Instructions
 

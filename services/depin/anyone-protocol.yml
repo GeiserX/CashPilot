@@ -52,7 +52,7 @@ cashout:
   min_amount: 0
   currency: ANYONE
 
-platforms: [linux]
+platforms: [docker, linux]
 
 collector:
   type: manual

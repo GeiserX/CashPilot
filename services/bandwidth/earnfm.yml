@@ -54,7 +54,7 @@ cashout:
   min_amount: 3.0
   currency: USD
 
-platforms: [linux]
+platforms: [docker, linux]
 
 collector:
   type: api

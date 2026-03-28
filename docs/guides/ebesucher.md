@@ -27,7 +27,7 @@ Ebesucher is a traffic exchange platform where you earn credits by visiting webs
 | Minimum bandwidth | None |
 | GPU required | No |
 | Minimum storage | None |
-| Supported platforms | Browser |
+| Supported platforms | Browser-Extension |
 
 ## Setup Instructions
 

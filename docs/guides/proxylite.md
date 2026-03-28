@@ -27,7 +27,7 @@ ProxyLite monetizes your internet traffic by sharing bandwidth with verified org
 | Minimum bandwidth | None |
 | GPU required | No |
 | Minimum storage | None |
-| Supported platforms | Windows, Linux |
+| Supported platforms | Docker, Windows, Linux |
 
 ## Setup Instructions
 

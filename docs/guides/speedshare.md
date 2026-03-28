@@ -27,7 +27,7 @@ SpeedShare lets you earn by sharing your unused internet bandwidth. Residential 
 | Minimum bandwidth | None |
 | GPU required | No |
 | Minimum storage | None |
-| Supported platforms | Windows, Macos, Linux |
+| Supported platforms | Docker, Windows, Macos, Linux |
 
 ## Setup Instructions
 

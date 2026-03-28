@@ -51,7 +51,7 @@ cashout:
   min_amount: 5.0
   currency: USD
 
-platforms: [windows, linux]
+platforms: [docker, windows, linux]
 
 collector:
   type: manual
