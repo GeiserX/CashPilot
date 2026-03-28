@@ -7,44 +7,6 @@
 {% block content %}
 <h2 class="section-title" style="margin-bottom: 24px;">Settings</h2>
 
-<!-- General Settings -->
-<div class="card settings-section">
-  <h3 class="settings-section-title">General</h3>
-  <p class="settings-section-desc">Container and collection preferences.</p>
-
-  <div class="form-row">
-    <div class="form-group">
-      <label class="form-label" for="settings-hostname">Container Hostname Prefix</label>
-      <input class="form-input" type="text" id="settings-hostname" value="cashpilot" placeholder="cashpilot">
-      <div class="form-hint">Containers will be named {prefix}-{service}, e.g. cashpilot-honeygain</div>
-    </div>
-    <div class="form-group">
-      <label class="form-label" for="settings-interval">Auto-Collect Interval (minutes)</label>
-      <input class="form-input" type="number" id="settings-interval" value="60" min="5" max="1440">
-      <div class="form-hint">How often CashPilot collects earnings data from services</div>
-    </div>
-  </div>
-
-  <div class="form-row">
-    <div class="form-group">
-      <label class="form-label" for="settings-timezone">Timezone</label>
-      <input class="form-input" type="text" id="settings-timezone" value="UTC" placeholder="UTC">
-      <div class="form-hint">IANA timezone, e.g. Europe/Madrid, America/New_York</div>
-    </div>
-    <div class="form-group">
-      <label class="form-label" for="settings-currency">Display Currency</label>
-      <select class="form-input" id="settings-currency">
-        <option value="USD">USD</option>
-      </select>
-      <div class="form-hint">All balances will be converted and displayed in this currency.</div>
-    </div>
-  </div>
-
-  <div style="display: flex; justify-content: flex-end; margin-top: 4px;">
-    <button class="btn btn-primary" onclick="CP.saveSettings()">Save General Settings</button>
-  </div>
-</div>
-
 <!-- Environment Variables -->
 <div class="card settings-section">
   <h3 class="settings-section-title">Environment Variables</h3>

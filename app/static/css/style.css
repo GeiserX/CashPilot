@@ -1929,3 +1929,13 @@ img { max-width: 100%; }
 .collector-body {
   padding: 0 16px 16px;
 }
+.collectors-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+@media (max-width: 768px) {
+  .collectors-grid {
+    grid-template-columns: 1fr;
+  }
+}
