@@ -1590,7 +1590,7 @@ const CP = (() => {
       const fromEnv = v.set_via_env;
       const locked = fromEnv || v.read_only;
       const dbVal = config[v.key] || '';
-      const displayVal = fromEnv ? v.value : dbVal;
+      const displayVal = dbVal || v.value;
       const inputType = v.secret ? 'password' : 'text';
       const lockIcon = locked
         ? '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" stroke-width="2" style="vertical-align:middle;margin-left:6px;"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>'
@@ -1599,6 +1599,7 @@ const CP = (() => {
       if (fromEnv) badge = '<span class="badge badge-deployed" style="font-size:0.7rem;margin-left:8px;">ENV</span>';
       else if (v.read_only) badge = '<span class="badge" style="font-size:0.7rem;margin-left:8px;opacity:0.6;">Read-only</span>';
       else if (dbVal) badge = '<span class="badge badge-category" style="font-size:0.7rem;margin-left:8px;">DB</span>';
+      else if (v.value) badge = '<span class="badge" style="font-size:0.7rem;margin-left:8px;opacity:0.5;">Default</span>';
       else badge = '<span class="badge" style="font-size:0.7rem;margin-left:8px;opacity:0.5;">Not set</span>';
       return `
       <div style="display:grid;grid-template-columns:220px 1fr;gap:12px;align-items:start;padding:10px 0;border-bottom:1px solid var(--border-color);">

@@ -1168,7 +1168,7 @@ async def api_env_info(request: Request) -> list[dict[str, Any]]:
             "Session Secret Key",
             True,
             False,
-            "",
+            "changeme-generate-a-random-secret",
             "Secret for JWT session tokens — change from default for security",
         ),
         (
