@@ -377,10 +377,13 @@ const CP = (() => {
     const details = svc.instance_details || [];
     const isMulti = details.length > 1;
 
-    // Service name — linked to referral URL if available
+    // Service name — linked to dashboard for deployed services, referral URL otherwise
     const name = escapeHtml(svc.name);
-    const nameHtml = svc.referral_url
-      ? `<a href="${escapeHtml(svc.referral_url)}" target="_blank" rel="noopener" title="Referral link" style="color:var(--accent); text-decoration:none; font-weight:600;">${name}</a>`
+    const dashUrl = (svc.cashout && svc.cashout.dashboard_url) || svc.website || '';
+    const nameLink = dashUrl || svc.referral_url;
+    const nameTitle = dashUrl ? 'Open dashboard' : 'Referral link';
+    const nameHtml = nameLink
+      ? `<a href="${escapeHtml(nameLink)}" target="_blank" rel="noopener" title="${nameTitle}" style="color:var(--accent); text-decoration:none; font-weight:600;">${name}</a>`
       : `<span style="font-weight:600;">${name}</span>`;
 
     // Subtitle: image for Docker, empty for external
@@ -1055,9 +1058,13 @@ const CP = (() => {
   }
 
   function renderServiceSetupForm(svc, workers) {
+    const isDeployed = svc.deployed || false;
+    const dashboardUrl = (svc.cashout && svc.cashout.dashboard_url) || svc.website || '';
     const signupUrl = svc.referral && svc.referral.signup_url
       ? svc.referral.signup_url
       : svc.website || '#';
+    const linkUrl = isDeployed && dashboardUrl ? dashboardUrl : signupUrl;
+    const linkLabel = isDeployed && dashboardUrl ? 'Dashboard' : 'Sign Up';
 
     // Manual-only services: show signup link + earnings tracking notice + any env fields
     if (svc.manual_only) {
@@ -1075,6 +1082,9 @@ const CP = (() => {
           ${env.description ? `<div class="form-hint">${escapeHtml(env.description)}</div>` : ''}
         </div>`;
       }).join('');
+      const manualBtnLabel = isDeployed && dashboardUrl
+        ? `Dashboard for ${escapeHtml(svc.name)}`
+        : `Sign Up for ${escapeHtml(svc.name)}`;
       return `
       <div class="card" style="margin-bottom: 16px;" id="setup-${svc.slug}">
         <div class="card-header">
@@ -1088,8 +1098,8 @@ const CP = (() => {
           <p style="color: var(--text-secondary); margin-bottom: 16px;">
             Install the app on your device, then CashPilot will track your earnings automatically.
           </p>
-          <a href="${escapeHtml(signupUrl)}" target="_blank" rel="noopener" class="btn btn-primary btn-sm">
-            Sign Up for ${escapeHtml(svc.name)}
+          <a href="${escapeHtml(linkUrl)}" target="_blank" rel="noopener" class="btn btn-primary btn-sm">
+            ${manualBtnLabel}
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
           </a>
           ${manualEnvFields ? `<div style="margin-top: 16px;">${manualEnvFields}</div>` : ''}
@@ -1120,9 +1130,9 @@ const CP = (() => {
 
       <div style="margin-bottom: 16px;">
         <p style="color: var(--text-secondary); margin-bottom: 12px;">
-          New to ${escapeHtml(svc.name)}?
-          <a href="${escapeHtml(signupUrl)}" target="_blank" rel="noopener" class="btn btn-primary btn-sm" style="margin-left: 8px;">
-            Sign Up
+          ${isDeployed && dashboardUrl ? '' : `New to ${escapeHtml(svc.name)}?`}
+          <a href="${escapeHtml(linkUrl)}" target="_blank" rel="noopener" class="btn btn-primary btn-sm" style="margin-left: 8px;">
+            ${linkLabel}
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
           </a>
         </p>
@@ -1369,6 +1379,8 @@ const CP = (() => {
       ? `$${svc.earnings.monthly_low}-$${svc.earnings.monthly_high} per ${svc.earnings.per || 'month'}`
       : 'Varies';
 
+    const isDeployed = svc.deployed || false;
+    const dashboardUrl = (svc.cashout && svc.cashout.dashboard_url) || svc.website || '';
     const signupUrl = svc.referral && svc.referral.signup_url
       ? svc.referral.signup_url
       : svc.website || '#';
@@ -1391,8 +1403,16 @@ const CP = (() => {
       </div>
     </div>`;
 
-    // --- Sign Up (only if NOT deployed anywhere) ---
-    if (!svc.deployed) {
+    // --- Dashboard link for deployed services, Sign Up for non-deployed ---
+    if (isDeployed && dashboardUrl) {
+      html += `
+      <div style="margin-bottom: 20px;">
+        <a href="${escapeHtml(dashboardUrl)}" target="_blank" rel="noopener" class="btn btn-primary btn-sm">
+          Open Dashboard
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+        </a>
+      </div>`;
+    } else if (!isDeployed) {
       html += `
       <div style="margin-bottom: 20px;">
         <a href="${escapeHtml(signupUrl)}" target="_blank" rel="noopener" class="btn btn-primary btn-sm">
@@ -1679,15 +1699,21 @@ const CP = (() => {
       const fields = col.fields.map(f => {
         const savedVal = config[f.key] || '';
         const inputType = f.secret ? 'password' : 'text';
-        const displayVal = (f.secret && savedVal) ? '********' : savedVal;
-        const placeholder = (f.secret && savedVal) ? 'Value saved (enter new to replace)' : f.label;
+        const inputId = `cred-${f.key}`;
+        const showBtn = f.secret && savedVal ? `<button type="button" class="btn btn-ghost btn-sm" onclick="CP.toggleEnvSecret('${inputId}', this)" title="Show" style="white-space:nowrap;padding:6px 8px;">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+            </button>` : '';
         return `
         <div class="form-group" style="margin-bottom:8px;">
           <label class="form-label" style="font-size:0.8rem;">${escapeHtml(f.label)}${f.required ? '' : ' <span style="opacity:0.5;">(optional)</span>'}</label>
-          <input class="form-input collector-input" type="${inputType}"
-                 data-config="${escapeHtml(f.key)}"
-                 value="${escapeHtml(displayVal)}"
-                 placeholder="${escapeHtml(placeholder)}">
+          <div style="display:flex;gap:6px;align-items:center;">
+            <input class="form-input collector-input" type="${inputType}" id="${inputId}"
+                   data-config="${escapeHtml(f.key)}"
+                   value="${escapeHtml(savedVal)}"
+                   placeholder="${escapeHtml(f.label)}"
+                   style="flex:1;">
+            ${showBtn}
+          </div>
         </div>`;
       }).join('');
       return `

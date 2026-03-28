@@ -592,6 +592,7 @@ async def api_services_deployed(request: Request) -> list[dict[str, Any]]:
             referral = svc.get("referral", {})
             if referral:
                 entry["referral_url"] = referral.get("signup_url", "")
+            entry["website"] = svc.get("website", "")
         result.append(entry)
 
     # Include external services (no Docker container, e.g. Grass, Bytelixir)
@@ -629,6 +630,7 @@ async def api_services_deployed(request: Request) -> list[dict[str, Any]]:
             referral = svc.get("referral", {})
             if referral:
                 entry["referral_url"] = referral.get("signup_url", "")
+            entry["website"] = svc.get("website", "")
         result.append(entry)
 
     return result
