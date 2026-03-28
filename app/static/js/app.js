@@ -884,10 +884,6 @@ const CP = (() => {
     if (isDeployed) classes.push('deployed');
     if (isManual) classes.push('manual-only');
 
-    const earning = svc.earnings
-      ? `$${svc.earnings.monthly_low}-$${svc.earnings.monthly_high}/${svc.earnings.per || 'mo'}`
-      : 'Varies';
-
     let deployedBadge = '';
     if (totalNodes > 0) {
       const label = totalNodes === 1 ? 'Deployed on 1 node' : `Deployed on ${totalNodes} nodes`;
@@ -913,7 +909,6 @@ const CP = (() => {
       <div class="service-desc">${escapeHtml(svc.short_description || '')}</div>
       ${manualNotice}
       <div class="service-meta" style="margin-top: 8px;">
-        <span class="badge badge-available">${earning}</span>
         ${svc.requirements && svc.requirements.residential_ip ? '<span class="badge badge-residential">Residential IP</span>' : ''}
         ${deployedBadge}
       </div>
@@ -1108,10 +1103,6 @@ const CP = (() => {
         ? '<span class="badge badge-deployed">Deployed</span>'
         : '<span class="badge badge-available">Available</span>';
 
-    const platforms = (svc.platforms || []).map(p =>
-      `<span class="platform-badge">${escapeHtml(p)}</span>`
-    ).join('');
-
     const hasDocker = svc.docker && svc.docker.image;
     let actionBtn;
     if (isDeployed) {
@@ -1123,8 +1114,17 @@ const CP = (() => {
       actionBtn = `<a href="${escapeHtml(url)}" target="_blank" rel="noopener" class="btn btn-ghost btn-sm">Visit</a>`;
     }
 
+    // Platform list — add Docker if service has a Docker image
+    const allPlatforms = [...(svc.platforms || [])];
+    if (hasDocker && !allPlatforms.includes('docker')) allPlatforms.unshift('docker');
+    const platformBadges = allPlatforms.map(p =>
+      `<span class="platform-badge">${escapeHtml(p)}</span>`
+    ).join('');
+
+    const deployedClass = isDeployed ? ' service-card-deployed' : '';
+
     return `
-    <div class="service-card" data-slug="${svc.slug}">
+    <div class="service-card${deployedClass}" data-slug="${svc.slug}">
       <div class="service-card-header">
         <div class="service-icon">${initial}</div>
         <div style="flex:1;">
@@ -1135,11 +1135,9 @@ const CP = (() => {
       <div class="service-meta">
         <span class="badge badge-category">${escapeHtml(svc.category)}</span>
         ${statusBadge}
-        <span class="badge badge-available">${earning}</span>
         ${svc.requirements && svc.requirements.residential_ip ? '<span class="badge badge-residential">Residential IP</span>' : ''}
-        ${hasDocker ? '<span class="badge badge-docker">Docker</span>' : ''}
       </div>
-      ${platforms ? `<div class="platform-badges" style="margin-top:8px;">${platforms}</div>` : ''}
+      ${platformBadges ? `<div class="platform-badges" style="margin-top:8px;">${platformBadges}</div>` : ''}
       <div class="service-stats" style="margin-top:12px; padding-top:12px; border-top:1px solid var(--border-color);">
         <span></span>
         ${actionBtn}

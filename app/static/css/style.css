@@ -654,7 +654,8 @@ img { max-width: 100%; }
   background-position: center;
   background-size: 14px;
 }
-.service-card.deployed {
+.service-card.deployed,
+.service-card-deployed {
   border-color: var(--success);
 }
 .service-card.manual-only {
