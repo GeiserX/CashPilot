@@ -45,7 +45,7 @@ No existing project combines all of these:
 
 | Service | Found In | Category | Notes |
 |---------|----------|----------|-------|
-| ProxyBase | money4band, income-generator, InternetIncome | Bandwidth | Crypto payout |
+| ~~ProxyBase~~ | ~~money4band, income-generator, InternetIncome~~ | ~~Bandwidth~~ | **Now in CashPilot** (deployed Mar 2026) |
 | PacketShare | money4band | Bandwidth | Bandwidth sharing |
 | WizardGain | income-generator, InternetIncome | Bandwidth | Crypto payout |
 | AntGain | income-generator, InternetIncome | Bandwidth | Unlimited devices |
@@ -128,9 +128,7 @@ cashpilot/
     depin/              # 10 services (grass, gradient, teneo, etc.)
     storage/            # 1 service (storj)
     compute/            # 4 services (vast-ai, salad, nosana, golem)
-  docs/guides/          # Auto-generated per-service setup guides
-  scripts/
-    generate_docs.py    # YAML -> README table + guide pages
+  docs/guides/          # Per-service setup guides (manually maintained)
   Dockerfile            # UI image: multi-stage python:3.12-slim, tini, non-root
   Dockerfile.worker     # Worker image: minimal deps, no collectors/templates
   docker-compose.yml    # Example deployment (UI + worker on same server)
@@ -145,7 +143,7 @@ cashpilot/
 - **Container naming:** All managed containers are `cashpilot-{slug}` with labels `cashpilot.managed=true` and `cashpilot.service={slug}`.
 - **Data directory:** `/data` volume holds SQLite DB and persistent config. Never write outside `/data` at runtime.
 - **Credentials:** Encrypted at rest via `CASHPILOT_SECRET_KEY` (Fernet). The key is auto-generated if not provided.
-- **README table is auto-generated.** Markers: `<!-- SERVICES_TABLE_START -->` / `<!-- SERVICES_TABLE_END -->`. Run `python scripts/generate_docs.py` to regenerate. **Never edit the table directly.**
+- **README table is manually maintained.** Update the tables in README.md directly when adding/changing services.
 
 ---
 
@@ -312,7 +310,7 @@ This is how Portainer works. The worker is a dumb executor — it never decrypts
 | earn.cc | **broken** | Server error on signup |
 | GagaNode | **shady** | Site poorly made, not recommended |
 | BlockMesh | **dropped** | Rebranded to Perceptron Network, unofficial extension requires dev mode. Shady |
-| PassiveApp | **active** | Restored from dead (Mar 2026) |
+| PassiveApp | **dead** | App does not exist on Android (Mar 2026). Desktop may still work. |
 | Titan Network | **active** | Restored from dead (Mar 2026) |
 | Spide Network | **active** | Restored from dead (Mar 2026) |
 
@@ -328,7 +326,7 @@ This is how Portainer works. The worker is a dumb executor — it never decrypts
 | **BlockMesh** | Browser extension | No official image | Dropped — shady, rebranded to Perceptron Network |
 | **Wipter** | Desktop/mobile app only | No Docker or API | Web registration at `/en/register` (accepts referral code), but **no web login/dashboard** -- `/login`, `/en/login`, `/dashboard`, `app.wipter.com` all 404/refused. Earnings visible only in desktop app. |
 | **GagaNode** | Desktop app | No official Docker image | -- |
-| **Titan** | Desktop app | No official Docker image | -- |
+| **Titan** | Desktop/mobile app | No official Docker image | Android app installed but **not earning** (Mar 2026): WebUI has no way to generate device ID, app buttons broken |
 | **Golem** | Provider node | Complex setup, not containerized via CashPilot | -- |
 | **Nosana** | Solana-based | Requires Solana wallet + GPU | -- |
 | **Salad** | Desktop app | Requires GPU passthrough | -- |
@@ -474,20 +472,9 @@ Docker socket must be accessible for container management.
 
 1. Create `services/{category}/{slug}.yml` following `_schema.yml`
 2. **Include a `cashout` section** in the YAML — every service must define how users can cash out (API endpoint, redirect URL, or manual instructions). This is mandatory, not optional.
-3. Run `python scripts/generate_docs.py` to regenerate README + guides
-4. Add a collector in `app/collectors/{slug}.py` and register it in `__init__.py` 
+3. Manually update README.md service tables and `docs/guides/{slug}.md`
+4. Add a collector in `app/collectors/{slug}.py` and register it in `__init__.py`
 5. Submit a PR (one service per PR)
-
-### Documentation Generation
-
-```bash
-python scripts/generate_docs.py
-```
-
-Reads all YAMLs from `services/`, generates:
-- README.md service table (between `<!-- SERVICES_TABLE_START -->` / `<!-- SERVICES_TABLE_END -->` markers)
-- `docs/guides/{slug}.md` for each service
-- `docs/guides/README.md` index
 
 ---
 
@@ -507,8 +494,8 @@ Reads all YAMLs from `services/`, generates:
 Before completing any task, verify:
 
 - [ ] Service YAMLs follow `_schema.yml` structure
-- [ ] `python scripts/generate_docs.py` runs without errors after YAML changes
-- [ ] README table matches YAML content (auto-generated, not hand-edited)
+- [ ] README table updated to reflect YAML changes
+- [ ] Guide doc in `docs/guides/` updated if service details changed
 - [ ] No secrets committed (referral codes are OK, credentials are NOT)
 - [ ] Commit author is GeiserX (`--author="GeiserX <9169332+GeiserX@users.noreply.github.com>"`)
 - [ ] No `Co-Authored-By` lines in commit messages
@@ -548,7 +535,7 @@ Referral system: 50% of referred user's earnings + 50% of their referral bonus. 
 ### No Account/Signup (just run software)
 
 - **Golem**: `curl -sSf https://join.golem.network/as-provider | bash -`. Linux x86-64 only. Set own GLM/hour price.
-- **Anyone Protocol**: Docker or native. `anyone.io/mine`. Needs Ethereum wallet.
+- **Anyone Protocol**: Docker or native. `anyone.io/mine`. Needs Ethereum wallet. **Requires `AgreeToTerms 1` in anonrc** (since v0.4.9.7-live). Config dir must be writable (chown 100:101) for notices.log. Port 9001 (ORPort) must be forwarded.
 - **Sentinel dVPN**: `docs.sentinel.co/dvpn-node-setup`. Need ~50 DVPN for gas. Set own bandwidth price.
 
 ### Enterprise-Only (not viable for home)

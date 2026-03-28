@@ -35,18 +35,25 @@ Titan Network is a DePIN platform that shares your IP address, storage, and band
 
 Sign up at [Titan Network](https://edge.titannet.info/signup?inviteCode=2GKKJ495).
 
-### 2. Get your credentials
+### 2. Get a Device ID
 
-After signing up, locate the credentials needed for Docker deployment. These are typically your email/password or an API token found in the dashboard.
+Log into the Titan Edge dashboard to obtain a Device ID for your node. **Note**: As of March 2026, the WebUI cannot generate device IDs and the Android app buttons are non-functional. You may need to wait for Titan to fix these issues.
 
-### 3. Deploy with CashPilot
+### 3. Deploy
 
-In the CashPilot web UI, find **Titan Network** in the service catalog and click **Deploy**. Enter the required credentials and CashPilot will handle the rest.
+No official Docker image exists. Titan provides native binaries for Windows, macOS, and Android. Unofficial Docker images exist but are not endorsed.
 
 ## Docker Configuration
 
-- **Image:** ``
+- **Image:** (no official Docker image)
 
 ### Environment Variables
 
 No environment variables required.
+
+## Known Issues (March 2026)
+
+- **Android app broken**: App installs but buttons/controls are non-functional. Cannot start earning.
+- **WebUI device ID generation broken**: The web dashboard cannot generate new device IDs needed for node setup.
+- **No official Docker image**: Only native desktop/mobile apps are officially supported.
+- **Status**: Wait for Titan team to fix the app and dashboard before attempting setup.

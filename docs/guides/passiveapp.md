@@ -1,6 +1,6 @@
 # PassiveApp
 
-> **Category:** DePIN | **Status:** Active
+> **Category:** DePIN | **Status:** Dead
 > **Website:** [https://passiveapp.com](https://passiveapp.com)
 
 ## Description
@@ -17,7 +17,7 @@ PassiveApp is a DePIN platform that lets you earn crypto and PayPal rewards by s
 | Payout frequency | On request |
 | Payment methods | Crypto, Paypal |
 
-> Relatively new. No official Docker image available yet.
+> **Dead as of March 2026.** App does not exist on Android Play Store. Website still up but no working app available on any platform. Do not attempt to deploy.
 
 ## Requirements
 

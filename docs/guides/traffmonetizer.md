@@ -17,7 +17,9 @@ Traffmonetizer lets you monetize your internet traffic by sharing bandwidth with
 | Payout frequency | On request |
 | Payment methods | Crypto, Paypal |
 
-> VPS and datacenter IPs earn less than residential. US/EU locations earn more. Multiple IPs supported via Docker networks.
+> VPS and datacenter IPs earn less than residential. US/EU locations earn more. The more **unique public IPs** your devices have, the more you earn.
+
+> **Same IP = shared traffic.** Multiple devices on the same public IP are allowed (no ban risk), but traffic is split between them — you don't earn more total. Running on both a phone and server on the same WiFi is pointless. The phone only adds value on cellular data (different IP). Also available on iOS.
 
 ## Requirements
 

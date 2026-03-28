@@ -33,15 +33,58 @@ Storj is a decentralized cloud storage network where you earn by renting out you
 
 ### 1. Create an account
 
-Sign up at [Storj](https://www.storj.io/node).
+Sign up at [Storj](https://www.storj.io/node). No referral program available.
 
-### 2. Get your credentials
+### 2. Create a node identity
 
-After signing up, locate the credentials needed for Docker deployment. These are typically your email/password or an API token found in the dashboard.
+Before running a storage node, you must generate a cryptographic identity. This involves computing a proof-of-work to difficulty 36, which takes **several hours** of CPU time.
 
-### 3. Deploy with CashPilot
+```bash
+# Download the identity binary
+curl -L https://github.com/storj/storj/releases/latest/download/identity_linux_amd64.zip -o identity.zip
+unzip identity.zip
+
+# Generate identity (CPU-intensive, takes hours)
+nohup ./identity create storagenode --identity-dir /path/to/identity/ > /tmp/storj-identity.log 2>&1 &
+```
+
+The process outputs progress like `Generated 50000 keys; best difficulty so far: 34`. It's done when it reaches difficulty 36 and exits. Files created: `ca.cert`, `ca.key`, `identity.cert`, `identity.key`.
+
+### 3. Authorize the identity
+
+After identity creation, authorize it with an auth token from the Storj dashboard:
+
+```bash
+./identity authorize storagenode <auth-token> --identity-dir /path/to/identity/
+```
+
+Verify: `identity.cert` should have 3 certificate entries, `ca.cert` should have 2.
+
+### 4. Port forwarding
+
+Forward these ports through your router to the server running the node:
+- **TCP 28967** — Storage node traffic (required)
+- **TCP 14002** — Dashboard/monitoring (optional, local access only)
+
+### 5. Deploy with CashPilot
 
 In the CashPilot web UI, find **Storj** in the service catalog and click **Deploy**. Enter the required credentials and CashPilot will handle the rest.
+
+### Manual Docker deployment
+
+```bash
+docker run -d --name storj-node --restart unless-stopped \
+  -p 28967:28967/tcp -p 28967:28967/udp -p 14002:14002 \
+  -e WALLET="0xYourWalletAddress" \
+  -e EMAIL="your@email.com" \
+  -e ADDRESS="your.ddns.net:28967" \
+  -e STORAGE="2TB" \
+  -v /path/to/identity/storagenode:/app/identity \
+  -v /path/to/storage:/app/config \
+  storj/storagenode
+```
+
+**Important**: Use spinning disks (HDD) for storage, not SSDs. Storj earnings are based on stored data volume, and HDDs offer much better $/TB. SSDs provide no advantage since Storj traffic is not IOPS-intensive.
 
 ## Docker Configuration
 
@@ -56,3 +99,10 @@ In the CashPilot web UI, find **Storj** in the service catalog and click **Deplo
 | `EMAIL` | Email | Yes | No | Email address for operator notifications |
 | `ADDRESS` | External address | Yes | No | External IP or DDNS hostname with port (e.g. mynode.ddns.net:28967) |
 | `STORAGE` | Storage allocation | Yes | No | Maximum disk space to allocate (e.g. 2TB) (default: `1TB`) |
+
+### Important Notes
+
+- **Escrow period**: First 9 months of operation have held-back escrow (75% of storage fees held, released gradually). This incentivizes long-term operation.
+- **One node per IP**: Storj recommends one node per public IP for optimal satellite allocation.
+- **Uptime matters**: Nodes with poor uptime get less data. Aim for 99.5%+ uptime.
+- **Disk selection**: Always use spinning disks (HDD). The data stored is cold storage — IOPS don't matter, capacity does.

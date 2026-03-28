@@ -23,9 +23,9 @@ docker:
       description: "Your ProxyBase user ID from the dashboard"
     - key: DEVICE_NAME
       label: "Device Name"
-      required: false
+      required: true
       secret: false
-      description: "Name shown in your ProxyBase dashboard"
+      description: "Name shown in your ProxyBase dashboard (container crashes without it)"
       default: "cashpilot-{hostname}"
   ports: []
   volumes: []

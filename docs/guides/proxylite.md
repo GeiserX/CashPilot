@@ -37,7 +37,7 @@ Sign up at [ProxyLite](https://proxylite.ru/?r=KMUPRZIZ).
 
 ### 2. Get your credentials
 
-After signing up, locate the credentials needed for Docker deployment. These are typically your email/password or an API token found in the dashboard.
+After signing up at [proxylite.ru](https://proxylite.ru), your User ID is visible in the dashboard at `lk.proxylite.ru`. It's a numeric ID (e.g. `521465`).
 
 ### 3. Deploy with CashPilot
 

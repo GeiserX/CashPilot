@@ -126,6 +126,10 @@ const CP = (() => {
   let _exchangeRates = { fiat: { USD: 1 }, crypto_usd: {} };
   let _displayCurrency = 'USD';
 
+  // Sort state — persisted across re-renders
+  let _sortCol = 'name';
+  let _sortAsc = true;
+
   function detectDefaultCurrency() {
     const locale = navigator.language || 'en-US';
     const map = {
@@ -203,6 +207,67 @@ const CP = (() => {
     }
   }
 
+  function sortServices(services, breakdownMap) {
+    const statusOrder = { running: 0, external: 1, restarting: 2, paused: 3, stopped: 4, exited: 5, error: 6 };
+    services.sort((a, b) => {
+      let va, vb;
+      switch (_sortCol) {
+        case 'name':
+          va = (a.name || '').toLowerCase();
+          vb = (b.name || '').toLowerCase();
+          return _sortAsc ? va.localeCompare(vb) : vb.localeCompare(va);
+        case 'status': {
+          const sa = (a.container_status || 'stopped').toLowerCase();
+          const sb = (b.container_status || 'stopped').toLowerCase();
+          va = statusOrder[sa] ?? 99;
+          vb = statusOrder[sb] ?? 99;
+          break;
+        }
+        case 'health':
+          va = a.health_score ?? -1;
+          vb = b.health_score ?? -1;
+          break;
+        case 'balance': {
+          const ba = breakdownMap[a.slug];
+          const bb = breakdownMap[b.slug];
+          va = (ba && ba.balance) || a.balance || 0;
+          vb = (bb && bb.balance) || b.balance || 0;
+          break;
+        }
+        case 'change': {
+          const ba = breakdownMap[a.slug];
+          const bb = breakdownMap[b.slug];
+          va = ba ? ba.delta : 0;
+          vb = bb ? bb.delta : 0;
+          break;
+        }
+        case 'cpu':
+          va = parseFloat(a.cpu) || 0;
+          vb = parseFloat(b.cpu) || 0;
+          break;
+        case 'memory':
+          va = parseFloat(a.memory) || 0;
+          vb = parseFloat(b.memory) || 0;
+          break;
+        case 'payout': {
+          const coA = a.cashout || {};
+          const coB = b.cashout || {};
+          const balA = (breakdownMap[a.slug] && breakdownMap[a.slug].balance) || a.balance || 0;
+          const balB = (breakdownMap[b.slug] && breakdownMap[b.slug].balance) || b.balance || 0;
+          va = coA.min_amount > 0 ? (balA / coA.min_amount) : -1;
+          vb = coB.min_amount > 0 ? (balB / coB.min_amount) : -1;
+          break;
+        }
+        default:
+          va = 0; vb = 0;
+      }
+      if (_sortCol !== 'name') {
+        return _sortAsc ? va - vb : vb - va;
+      }
+      return 0;
+    });
+  }
+
   async function loadServicesTable() {
     const container = document.getElementById('services-table-container');
     if (!container) return;
@@ -239,24 +304,52 @@ const CP = (() => {
         if (slug) expandedSlugs.add(slug);
       });
 
+      // Sort services
+      sortServices(services, breakdownMap);
+
       const rows = services.map(svc => renderServiceRow(svc, breakdownMap[svc.slug])).join('');
+      const sortIcon = (col) => {
+        if (_sortCol !== col) return '<span class="sort-indicator"></span>';
+        return _sortAsc
+          ? '<span class="sort-indicator active">&#9650;</span>'
+          : '<span class="sort-indicator active">&#9660;</span>';
+      };
+      const sortTh = (col, label, align) => {
+        const style = align ? ` style="text-align:${align};"` : '';
+        return `<th class="sortable" data-sort="${col}"${style}>${label}${sortIcon(col)}</th>`;
+      };
+
       container.innerHTML = `
         <table class="breakdown-table">
           <thead>
             <tr>
-              <th>Service</th>
-              <th style="text-align:center;">Status</th>
-              <th style="text-align:center;">Health</th>
-              <th style="text-align:right;">Balance</th>
-              <th style="text-align:right;">Change</th>
-              <th style="text-align:right;">CPU</th>
-              <th style="text-align:right;">Memory</th>
-              <th style="text-align:center;">Payout</th>
+              ${sortTh('name', 'Service', '')}
+              ${sortTh('status', 'Status', 'center')}
+              ${sortTh('health', 'Health', 'center')}
+              ${sortTh('balance', 'Balance', 'right')}
+              ${sortTh('change', 'Change', 'right')}
+              ${sortTh('cpu', 'CPU', 'right')}
+              ${sortTh('memory', 'Memory', 'right')}
+              ${sortTh('payout', 'Payout', 'center')}
               <th style="text-align:center;">Actions</th>
             </tr>
           </thead>
           <tbody>${rows}</tbody>
         </table>`;
+
+      // Bind sort click handlers
+      container.querySelectorAll('th.sortable').forEach(th => {
+        th.addEventListener('click', () => {
+          const col = th.dataset.sort;
+          if (_sortCol === col) {
+            _sortAsc = !_sortAsc;
+          } else {
+            _sortCol = col;
+            _sortAsc = col === 'name' || col === 'status'; // text cols default A-Z, numeric cols default highest-first
+          }
+          loadServicesTable();
+        });
+      });
 
       // Restore expanded state
       expandedSlugs.forEach(slug => {
