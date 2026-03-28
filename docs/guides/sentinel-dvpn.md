@@ -11,7 +11,7 @@ Sentinel is a Layer 1 Cosmos blockchain for decentralized VPN. Node operators se
 
 | Metric | Value |
 |--------|-------|
-| Monthly range | $5 - $30 |
+| Monthly range | $0 - $30 (estimate) |
 | Per | node |
 | Minimum payout |  |
 | Payout frequency | Per session |
@@ -50,14 +50,3 @@ In the CashPilot web UI, find **Sentinel dVPN** in the service catalog and click
 ### Environment Variables
 
 No environment variables required.
-
-## Referral Program
-
-| | Details |
-|---|---------|
-| Referrer bonus | N/A |
-| New user bonus | N/A |
-
----
-
-*This guide was auto-generated from [`services/depin/sentinel-dvpn.yml`](../../services/depin/sentinel-dvpn.yml). Edit the YAML source and run `python scripts/generate_docs.py` to update.*

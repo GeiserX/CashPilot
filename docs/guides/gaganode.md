@@ -11,7 +11,7 @@ GagaNode is a multi-platform decentralized bandwidth sharing network that runs o
 
 | Metric | Value |
 |--------|-------|
-| Monthly range | $1 - $5 |
+| Monthly range | $0 - $5 (estimate) |
 | Per | device |
 | Minimum payout | $5 |
 | Payout frequency | On request |
@@ -50,14 +50,3 @@ In the CashPilot web UI, find **GagaNode** in the service catalog and click **De
 ### Environment Variables
 
 No environment variables required.
-
-## Referral Program
-
-| | Details |
-|---|---------|
-| Referrer bonus | N/A |
-| New user bonus | N/A |
-
----
-
-*This guide was auto-generated from [`services/depin/gaganode.yml`](../../services/depin/gaganode.yml). Edit the YAML source and run `python scripts/generate_docs.py` to update.*

@@ -11,7 +11,7 @@ Traffmonetizer lets you monetize your internet traffic by sharing bandwidth with
 
 | Metric | Value |
 |--------|-------|
-| Monthly range | $1 - $4 |
+| Monthly range | $0 - $4 (estimate) |
 | Per | device |
 | Minimum payout | $5 |
 | Payout frequency | On request |
@@ -54,26 +54,3 @@ In the CashPilot web UI, find **Traffmonetizer** in the service catalog and clic
 |----------|-------|:--------:|:------:|-------------|
 | `TRAFFMONETIZER_TOKEN` | Token | Yes | Yes | Your Traffmonetizer account token (found in Dashboard > Docker run command) |
 | `TRAFFMONETIZER_DEVICE_NAME` | Device name | No | No | Name displayed in dashboard for device management (default: `cashpilot-{hostname}`) |
-
-### Manual Docker Run
-
-If running outside CashPilot:
-
-```bash
-docker run -d \
-  --name cashpilot-traffmonetizer \
-  -e TRAFFMONETIZER_TOKEN="<Token>" \
-  -e TRAFFMONETIZER_DEVICE_NAME="<Device name>" \
-  traffmonetizer/cli_v2 start accept --token ${TRAFFMONETIZER_TOKEN} --device-name ${TRAFFMONETIZER_DEVICE_NAME}
-```
-
-## Referral Program
-
-| | Details |
-|---|---------|
-| Referrer bonus | N/A |
-| New user bonus | N/A |
-
----
-
-*This guide was auto-generated from [`services/bandwidth/traffmonetizer.yml`](../../services/bandwidth/traffmonetizer.yml). Edit the YAML source and run `python scripts/generate_docs.py` to update.*

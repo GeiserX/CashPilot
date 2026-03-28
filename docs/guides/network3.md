@@ -11,7 +11,7 @@ Network3 was a DePIN project focused on decentralized AI training and bandwidth 
 
 | Metric | Value |
 |--------|-------|
-| Monthly range | $0 - $0 |
+| Monthly range | $0 - $0 (estimate) |
 | Per | device |
 | Minimum payout |  |
 | Payout frequency |  |
@@ -50,14 +50,3 @@ In the CashPilot web UI, find **Network3** in the service catalog and click **De
 ### Environment Variables
 
 No environment variables required.
-
-## Referral Program
-
-| | Details |
-|---|---------|
-| Referrer bonus | N/A |
-| New user bonus | N/A |
-
----
-
-*This guide was auto-generated from [`services/depin/network3.yml`](../../services/depin/network3.yml). Edit the YAML source and run `python scripts/generate_docs.py` to update.*

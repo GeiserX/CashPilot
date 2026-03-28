@@ -11,7 +11,7 @@ Golem Network is a decentralized compute marketplace where you share CPU and GPU
 
 | Metric | Value |
 |--------|-------|
-| Monthly range | $5 - $50 |
+| Monthly range | $0 - $50 (estimate) |
 | Per | device |
 | Minimum payout |  |
 | Payout frequency | Per task completion |
@@ -51,14 +51,3 @@ In the CashPilot web UI, find **Golem Network** in the service catalog and click
 ### Environment Variables
 
 No environment variables required.
-
-## Referral Program
-
-| | Details |
-|---|---------|
-| Referrer bonus | N/A |
-| New user bonus | N/A |
-
----
-
-*This guide was auto-generated from [`services/compute/golem.yml`](../../services/compute/golem.yml). Edit the YAML source and run `python scripts/generate_docs.py` to update.*

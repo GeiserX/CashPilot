@@ -11,7 +11,7 @@ Theta Network is an established decentralized video delivery and AI compute netw
 
 | Metric | Value |
 |--------|-------|
-| Monthly range | $1 - $10 |
+| Monthly range | $0 - $10 (estimate) |
 | Per | node |
 | Minimum payout |  |
 | Payout frequency | Continuous |
@@ -50,14 +50,3 @@ In the CashPilot web UI, find **Theta Edge Node** in the service catalog and cli
 ### Environment Variables
 
 No environment variables required.
-
-## Referral Program
-
-| | Details |
-|---|---------|
-| Referrer bonus | N/A |
-| New user bonus | N/A |
-
----
-
-*This guide was auto-generated from [`services/depin/theta-edge.yml`](../../services/depin/theta-edge.yml). Edit the YAML source and run `python scripts/generate_docs.py` to update.*

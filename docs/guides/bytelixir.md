@@ -11,7 +11,7 @@ Bytelixir lets you earn passive income by sharing unused internet bandwidth. Sup
 
 | Metric | Value |
 |--------|-------|
-| Monthly range | $1 - $3 |
+| Monthly range | $0 - $3 (estimate) |
 | Per | device |
 | Minimum payout | $5 |
 | Payout frequency | On request |
@@ -50,14 +50,3 @@ In the CashPilot web UI, find **Bytelixir** in the service catalog and click **D
 ### Environment Variables
 
 No environment variables required.
-
-## Referral Program
-
-| | Details |
-|---|---------|
-| Referrer bonus | N/A |
-| New user bonus | N/A |
-
----
-
-*This guide was auto-generated from [`services/bandwidth/bytelixir.yml`](../../services/bandwidth/bytelixir.yml). Edit the YAML source and run `python scripts/generate_docs.py` to update.*

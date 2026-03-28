@@ -11,7 +11,7 @@ Vast.ai is a GPU cloud marketplace where you rent out your NVIDIA GPU to AI/ML r
 
 | Metric | Value |
 |--------|-------|
-| Monthly range | $50 - $300 |
+| Monthly range | $0 - $300 (estimate) |
 | Per | GPU-hour |
 | Minimum payout | $25 |
 | Payout frequency | On request |
@@ -53,14 +53,3 @@ In the CashPilot web UI, find **Vast.ai** in the service catalog and click **Dep
 | Variable | Label | Required | Secret | Description |
 |----------|-------|:--------:|:------:|-------------|
 | `VAST_API_KEY` | API Key | Yes | Yes | Vast.ai host API key from dashboard |
-
-## Referral Program
-
-| | Details |
-|---|---------|
-| Referrer bonus | N/A |
-| New user bonus | N/A |
-
----
-
-*This guide was auto-generated from [`services/compute/vast-ai.yml`](../../services/compute/vast-ai.yml). Edit the YAML source and run `python scripts/generate_docs.py` to update.*

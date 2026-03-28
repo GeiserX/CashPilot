@@ -11,7 +11,7 @@ IPRoyal Pawns lets you earn by sharing your unused bandwidth. IPRoyal is a well-
 
 | Metric | Value |
 |--------|-------|
-| Monthly range | $1 - $5 |
+| Monthly range | $0 - $5 (estimate) |
 | Per | device |
 | Minimum payout | $5 |
 | Payout frequency | On request |
@@ -56,28 +56,3 @@ In the CashPilot web UI, find **IPRoyal Pawns** in the service catalog and click
 | `IPROYAL_PASSWORD` | Password | Yes | Yes | Your IPRoyal Pawns account password (passed as -password flag) |
 | `IPROYAL_DEVICE_NAME` | Device name | No | No | Name shown in your Pawns dashboard (passed as -device-name flag) (default: `cashpilot-{hostname}`) |
 | `IPROYAL_DEVICE_ID` | Device ID | No | No | Unique device identifier (passed as -device-id flag) (default: `cashpilot-{hostname}`) |
-
-### Manual Docker Run
-
-If running outside CashPilot:
-
-```bash
-docker run -d \
-  --name cashpilot-iproyal \
-  -e IPROYAL_EMAIL="<Email>" \
-  -e IPROYAL_PASSWORD="<Password>" \
-  -e IPROYAL_DEVICE_NAME="<Device name>" \
-  -e IPROYAL_DEVICE_ID="<Device ID>" \
-  iproyal/pawns-cli -email ${IPROYAL_EMAIL} -password ${IPROYAL_PASSWORD} -device-name ${IPROYAL_DEVICE_NAME} -device-id ${IPROYAL_DEVICE_ID} -accept-tos
-```
-
-## Referral Program
-
-| | Details |
-|---|---------|
-| Referrer bonus | N/A |
-| New user bonus | N/A |
-
----
-
-*This guide was auto-generated from [`services/bandwidth/iproyal.yml`](../../services/bandwidth/iproyal.yml). Edit the YAML source and run `python scripts/generate_docs.py` to update.*

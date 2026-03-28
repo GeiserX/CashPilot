@@ -11,7 +11,7 @@ Koii Network is a Solana-based DePIN for distributed data, storage, and compute 
 
 | Metric | Value |
 |--------|-------|
-| Monthly range | $0 - $0 |
+| Monthly range | $0 - $0 (estimate) |
 | Per | node |
 | Minimum payout |  |
 | Payout frequency | Per task |
@@ -50,14 +50,3 @@ In the CashPilot web UI, find **Koii Network** in the service catalog and click 
 ### Environment Variables
 
 No environment variables required.
-
-## Referral Program
-
-| | Details |
-|---|---------|
-| Referrer bonus | N/A |
-| New user bonus | N/A |
-
----
-
-*This guide was auto-generated from [`services/depin/koii.yml`](../../services/depin/koii.yml). Edit the YAML source and run `python scripts/generate_docs.py` to update.*

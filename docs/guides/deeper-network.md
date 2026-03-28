@@ -11,7 +11,7 @@ Deeper Network is a decentralized VPN and web3 infrastructure project. Primarily
 
 | Metric | Value |
 |--------|-------|
-| Monthly range | $5 - $30 |
+| Monthly range | $0 - $30 (estimate) |
 | Per | device |
 | Minimum payout |  |
 | Payout frequency | Continuous |
@@ -50,14 +50,3 @@ In the CashPilot web UI, find **Deeper Network** in the service catalog and clic
 ### Environment Variables
 
 No environment variables required.
-
-## Referral Program
-
-| | Details |
-|---|---------|
-| Referrer bonus | N/A |
-| New user bonus | N/A |
-
----
-
-*This guide was auto-generated from [`services/depin/deeper-network.yml`](../../services/depin/deeper-network.yml). Edit the YAML source and run `python scripts/generate_docs.py` to update.*

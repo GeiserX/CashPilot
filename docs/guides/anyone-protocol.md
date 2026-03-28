@@ -11,7 +11,7 @@ Anyone Protocol (formerly ATOR) is a decentralized onion-routing privacy network
 
 | Metric | Value |
 |--------|-------|
-| Monthly range | $5 - $50 |
+| Monthly range | $0 - $50 (estimate) |
 | Per | relay |
 | Minimum payout |  |
 | Payout frequency | Epoch-based |
@@ -51,27 +51,3 @@ In the CashPilot web UI, find **Anyone Protocol** in the service catalog and cli
 ### Environment Variables
 
 No environment variables required.
-
-### Manual Docker Run
-
-If running outside CashPilot:
-
-```bash
-docker run -d \
-  --name cashpilot-anyone-protocol \
-  -p 9001:9001 \
-  -v anon-data:/var/lib/anon \
-  -v anon-config:/etc/anon \
-  ghcr.io/anyone-protocol/ator-protocol
-```
-
-## Referral Program
-
-| | Details |
-|---|---------|
-| Referrer bonus | N/A |
-| New user bonus | N/A |
-
----
-
-*This guide was auto-generated from [`services/depin/anyone-protocol.yml`](../../services/depin/anyone-protocol.yml). Edit the YAML source and run `python scripts/generate_docs.py` to update.*

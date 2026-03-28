@@ -11,7 +11,7 @@ Nodle uses smartphone Bluetooth to create IoT infrastructure. The app passively 
 
 | Metric | Value |
 |--------|-------|
-| Monthly range | $0.5 - $3 |
+| Monthly range | $0 - $3 (estimate) |
 | Per | device |
 | Minimum payout |  |
 | Payout frequency | Continuous |
@@ -50,14 +50,3 @@ In the CashPilot web UI, find **Nodle** in the service catalog and click **Deplo
 ### Environment Variables
 
 No environment variables required.
-
-## Referral Program
-
-| | Details |
-|---|---------|
-| Referrer bonus | N/A |
-| New user bonus | N/A |
-
----
-
-*This guide was auto-generated from [`services/depin/nodle.yml`](../../services/depin/nodle.yml). Edit the YAML source and run `python scripts/generate_docs.py` to update.*

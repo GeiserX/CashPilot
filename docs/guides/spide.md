@@ -11,7 +11,7 @@ Spide is a bandwidth-sharing service that lets you monetize unused internet band
 
 | Metric | Value |
 |--------|-------|
-| Monthly range | $1 - $3 |
+| Monthly range | $0 - $3 (estimate) |
 | Per | device |
 | Minimum payout | $5 |
 | Payout frequency | On request |
@@ -52,14 +52,3 @@ In the CashPilot web UI, find **Spide** in the service catalog and click **Deplo
 | Variable | Label | Required | Secret | Description |
 |----------|-------|:--------:|:------:|-------------|
 | `SPIDE_MACHINE_ID` | Machine ID | No | No | Machine ID for existing device already registered (auto-generated if empty) |
-
-## Referral Program
-
-| | Details |
-|---|---------|
-| Referrer bonus | N/A |
-| New user bonus | N/A |
-
----
-
-*This guide was auto-generated from [`services/bandwidth/spide.yml`](../../services/bandwidth/spide.yml). Edit the YAML source and run `python scripts/generate_docs.py` to update.*

@@ -11,7 +11,7 @@ PacketStream is a peer-to-peer bandwidth marketplace where you can sell your unu
 
 | Metric | Value |
 |--------|-------|
-| Monthly range | $1 - $4 |
+| Monthly range | $0 - $4 (estimate) |
 | Per | device |
 | Minimum payout | $5 |
 | Payout frequency | On request |
@@ -53,25 +53,3 @@ In the CashPilot web UI, find **PacketStream** in the service catalog and click 
 | Variable | Label | Required | Secret | Description |
 |----------|-------|:--------:|:------:|-------------|
 | `CID` | Client ID | Yes | No | Your PacketStream Client ID (found in Dashboard > Setup) |
-
-### Manual Docker Run
-
-If running outside CashPilot:
-
-```bash
-docker run -d \
-  --name cashpilot-packetstream \
-  -e CID="<Client ID>" \
-  packetstream/psclient
-```
-
-## Referral Program
-
-| | Details |
-|---|---------|
-| Referrer bonus | N/A |
-| New user bonus | N/A |
-
----
-
-*This guide was auto-generated from [`services/bandwidth/packetstream.yml`](../../services/bandwidth/packetstream.yml). Edit the YAML source and run `python scripts/generate_docs.py` to update.*

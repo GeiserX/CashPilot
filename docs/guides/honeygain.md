@@ -11,7 +11,7 @@ Share your unused internet bandwidth and earn passive income. Honeygain routes w
 
 | Metric | Value |
 |--------|-------|
-| Monthly range | $2 - $5 |
+| Monthly range | $0 - $5 (estimate) |
 | Per | device |
 | Minimum payout | $20 |
 | Payout frequency | On request |
@@ -55,27 +55,3 @@ In the CashPilot web UI, find **Honeygain** in the service catalog and click **D
 | `HONEYGAIN_EMAIL` | Email | Yes | No | Your Honeygain account email |
 | `HONEYGAIN_PASSWORD` | Password | Yes | Yes | Your Honeygain account password |
 | `HONEYGAIN_DEVICE_NAME` | Device name | No | No | Name shown in your Honeygain dashboard (default: `cashpilot-{hostname}`) |
-
-### Manual Docker Run
-
-If running outside CashPilot:
-
-```bash
-docker run -d \
-  --name cashpilot-honeygain \
-  -e HONEYGAIN_EMAIL="<Email>" \
-  -e HONEYGAIN_PASSWORD="<Password>" \
-  -e HONEYGAIN_DEVICE_NAME="<Device name>" \
-  honeygain/honeygain -tou-accept -email ${HONEYGAIN_EMAIL} -pass ${HONEYGAIN_PASSWORD} -device ${HONEYGAIN_DEVICE_NAME}
-```
-
-## Referral Program
-
-| | Details |
-|---|---------|
-| Referrer bonus | N/A |
-| New user bonus | N/A |
-
----
-
-*This guide was auto-generated from [`services/bandwidth/honeygain.yml`](../../services/bandwidth/honeygain.yml). Edit the YAML source and run `python scripts/generate_docs.py` to update.*

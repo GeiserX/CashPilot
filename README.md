@@ -56,24 +56,24 @@ Then open [http://localhost:8080](http://localhost:8080) and follow the setup wi
 
 Services CashPilot can deploy and manage automatically via Docker.
 
-| Service | Residential IP | VPS IP | Devices / Acct | Devices / IP | Payout |
-|---------|:-:|:-:|:-:|:-:|--------|
-| [Anyone Protocol](https://anyone.io) ([guide](docs/guides/anyone-protocol.md)) | ✅ | ✅ | Unlimited | 1 | Crypto (ANYONE) |
-| [Bitping](https://app.bitping.com) ([guide](docs/guides/bitping.md)) | ✅ | ✅ | Unlimited | 1 | Crypto (SOL) |
-| [Earn.fm](https://earn.fm/ref/GEISYB91) ([guide](docs/guides/earnfm.md)) | ✅ | ✅ | Unlimited | 1 | Crypto |
-| [EarnApp](https://earnapp.com/i/TSMD9wSm) ([guide](docs/guides/earnapp.md)) | ✅ | ❌ | 15 | 1 | PayPal, Gift Cards, Wise |
-| [Honeygain](https://dashboard.honeygain.com/ref/SERGIB4014) ([guide](docs/guides/honeygain.md)) | ✅ | ❌ | 10 | 1 | PayPal, Crypto |
-| [IPRoyal Pawns](https://pawns.app?r=19266874) ([guide](docs/guides/iproyal.md)) | ✅ | ❌ | Unlimited | 1 | PayPal, Crypto, Bank Transfer |
-| [MystNodes](https://mystnodes.co/?referral_code=do7v7YOoBBpbOstKQovX2pUvZYKia4ZhH3QIdNtE) ([guide](docs/guides/mysterium.md)) | ✅ | ✅ | Unlimited | Unlimited | Crypto (MYST) |
-| [PacketStream](https://packetstream.io/?psr=7xgZ) ([guide](docs/guides/packetstream.md)) | ✅ | ❌ | Unlimited | 1 | PayPal |
-| [Presearch](https://presearch.com/signup?rid=4872322) ([guide](docs/guides/presearch.md)) | ✅ | ✅ | Unlimited | 1 | Crypto (PRE) |
-| [ProxyBase](https://peer.proxybase.org?referral=nXzS3c6iTO) ([guide](docs/guides/proxybase.md)) | ✅ | ❌ | Unlimited | 1 | Crypto |
-| [ProxyLite](https://proxylite.ru/?r=KMUPRZIZ) ([guide](docs/guides/proxylite.md)) | ✅ | ✅ | Unlimited | 1 | Crypto, PayPal |
-| [ProxyRack](https://peer.proxyrack.com/ref/mpwiok3xlaxeycnn5znqlg7ipjeutxyxr6xl7vmn) ([guide](docs/guides/proxyrack.md)) | ✅ | ✅ | 500 | 1 | PayPal, Crypto |
-| [Repocket](https://repocket.com/) ([guide](docs/guides/repocket.md)) | ✅ | ❌ | 5 | 2 | PayPal, Crypto |
-| [Storj](https://www.storj.io/node) ([guide](docs/guides/storj.md)) | ✅ | ✅ | Unlimited | 1 \* | Crypto (STORJ) |
-| [Traffmonetizer](https://traffmonetizer.com/?aff=2111758) ([guide](docs/guides/traffmonetizer.md)) | ✅ | ✅ \*\* | Unlimited | Unlimited | Crypto (USDT), PayPal |
-| [URnetwork](https://ur.io/?referral_code=1Q3G19) ([guide](docs/guides/urnetwork.md)) | ✅ | ✅ | Unlimited | 1 | Crypto |
+| Service | Guide | Residential IP | VPS IP | Devices / Acct | Devices / IP | Payout |
+|---------|-------|:-:|:-:|:-:|:-:|--------|
+| [Anyone Protocol](https://anyone.io) | [Guide](docs/guides/anyone-protocol.md) | ✅ | ✅ | Unlimited | 1 | Crypto (ANYONE) |
+| [Bitping](https://app.bitping.com) | [Guide](docs/guides/bitping.md) | ✅ | ✅ | Unlimited | 1 | Crypto (SOL) |
+| [Earn.fm](https://earn.fm/ref/GEISYB91) | [Guide](docs/guides/earnfm.md) | ✅ | ✅ | Unlimited | 1 | Crypto |
+| [EarnApp](https://earnapp.com/i/TSMD9wSm) | [Guide](docs/guides/earnapp.md) | ✅ | ❌ | 15 | 1 | PayPal, Gift Cards, Wise |
+| [Honeygain](https://dashboard.honeygain.com/ref/SERGIB4014) | [Guide](docs/guides/honeygain.md) | ✅ | ❌ | 10 | 1 | PayPal, Crypto |
+| [IPRoyal Pawns](https://pawns.app?r=19266874) | [Guide](docs/guides/iproyal.md) | ✅ | ❌ | Unlimited | 1 | PayPal, Crypto, Bank Transfer |
+| [MystNodes](https://mystnodes.co/?referral_code=do7v7YOoBBpbOstKQovX2pUvZYKia4ZhH3QIdNtE) | [Guide](docs/guides/mysterium.md) | ✅ | ✅ | Unlimited | Unlimited | Crypto (MYST) |
+| [PacketStream](https://packetstream.io/?psr=7xgZ) | [Guide](docs/guides/packetstream.md) | ✅ | ❌ | Unlimited | 1 | PayPal |
+| [Presearch](https://presearch.com/signup?rid=4872322) | [Guide](docs/guides/presearch.md) | ✅ | ✅ | Unlimited | 1 | Crypto (PRE) |
+| [ProxyBase](https://peer.proxybase.org?referral=nXzS3c6iTO) | [Guide](docs/guides/proxybase.md) | ✅ | ❌ | Unlimited | 1 | Crypto |
+| [ProxyLite](https://proxylite.ru/?r=KMUPRZIZ) | [Guide](docs/guides/proxylite.md) | ✅ | ✅ | Unlimited | 1 | Crypto, PayPal |
+| [ProxyRack](https://peer.proxyrack.com/ref/mpwiok3xlaxeycnn5znqlg7ipjeutxyxr6xl7vmn) | [Guide](docs/guides/proxyrack.md) | ✅ | ✅ | 500 | 1 | PayPal, Crypto |
+| [Repocket](https://repocket.com/) | [Guide](docs/guides/repocket.md) | ✅ | ❌ | 5 | 2 | PayPal, Crypto |
+| [Storj](https://www.storj.io/node) | [Guide](docs/guides/storj.md) | ✅ | ✅ | Unlimited | 1 \* | Crypto (STORJ) |
+| [Traffmonetizer](https://traffmonetizer.com/?aff=2111758) | [Guide](docs/guides/traffmonetizer.md) | ✅ | ✅ \*\* | Unlimited | Unlimited | Crypto (USDT), PayPal |
+| [URnetwork](https://ur.io/?referral_code=1Q3G19) | [Guide](docs/guides/urnetwork.md) | ✅ | ✅ | Unlimited | 1 | Crypto |
 
 > \* Storj nodes on the same /24 subnet share data allocation, reducing per-node earnings.
 >
@@ -83,37 +83,37 @@ Services CashPilot can deploy and manage automatically via Docker.
 
 These services have no Docker image. CashPilot lists them in the catalog with signup links and earning estimates, but cannot deploy or monitor them.
 
-| Service | Residential IP | VPS IP | Devices / Acct | Devices / IP | Payout | Status |
-|---------|:-:|:-:|:-:|:-:|--------|--------|
-| [Bytelixir](https://bytelixir.com/r/OYEIRE0VSZBZ) ([guide](docs/guides/bytelixir.md)) | ✅ | ❌ | Unlimited | 1 | Crypto | Active |
-| [Dawn Internet](https://dawninternet.com/?code=2QLQV97F) ([guide](docs/guides/dawn.md)) | ✅ | ❌ | Unlimited | 1 | Crypto (DAWN) | Active |
-| [Deeper Network](https://deeper.network) ([guide](docs/guides/deeper-network.md)) | ✅ | ❌ | Unlimited | 1 | Crypto (DPR) | Active |
-| [Ebesucher](https://www.ebesucher.com/?ref=geiserx) ([guide](docs/guides/ebesucher.md)) | ✅ | ✅ | Unlimited | 1 | PayPal | Active |
-| [Gradient Network](https://app.gradient.network/signup?referralCode=YSKMY7) ([guide](docs/guides/gradient.md)) | ✅ | ❌ | Unlimited | 1 | Crypto (GRADIENT) | Active |
-| [Grass](https://app.grass.io/register?referralCode=kn8FNEPnUr2tMqE) ([guide](docs/guides/grass.md)) | ✅ | ❌ | Unlimited | 1 | Crypto (GRASS) | Active |
-| [Helium](https://helium.com) ([guide](docs/guides/helium.md)) | ✅ | ❌ | Unlimited | 1 | Crypto (HNT) | Active |
-| [Nodepay](https://app.nodepay.ai/register?ref=0wzzyznen64j9zx) ([guide](docs/guides/nodepay.md)) | ✅ | ❌ | Unlimited | 1 | Crypto (NC) | Active |
-| [Nodle](https://nodle.com) ([guide](docs/guides/nodle.md)) | ✅ | ✅ | Unlimited | 1 | Crypto (NODL) | Active |
-| [PassiveApp](https://passiveapp.com/i/bqpC4M) ([guide](docs/guides/passiveapp.md)) | ✅ | ❌ | Unlimited | 1 | Crypto, PayPal | Active |
-| [Sentinel dVPN](https://sentinel.co) ([guide](docs/guides/sentinel-dvpn.md)) | ✅ | ✅ | Unlimited | 1 | Crypto (DVPN) | Active |
-| [Spide](https://spide.network/register.html?f3bc51) ([guide](docs/guides/spide.md)) | ✅ | ❌ | Unlimited | 1 | Crypto | Active |
-| [Teneo Protocol](https://dashboard.teneo.pro/?code=CAqef) ([guide](docs/guides/teneo.md)) | ✅ | ❌ | Unlimited | 1 | Crypto (TENEO) | Active |
-| [Theta Edge Node](https://thetatoken.org) ([guide](docs/guides/theta-edge.md)) | ✅ | ✅ | Unlimited | 1 | Crypto (TFUEL) | Active |
-| [Titan Network](https://edge.titannet.info/signup?inviteCode=2GKKJ495) ([guide](docs/guides/titan.md)) | ✅ | ❌ | Unlimited | 1 | Crypto (TNT) | Active |
-| [Uprock](https://link.uprock.com/i/33e8492e) ([guide](docs/guides/uprock.md)) | ✅ | ❌ | Unlimited | 1 | Crypto | Active |
+| Service | Guide | Residential IP | VPS IP | Devices / Acct | Devices / IP | Payout | Status |
+|---------|-------|:-:|:-:|:-:|:-:|--------|--------|
+| [Bytelixir](https://bytelixir.com/r/OYEIRE0VSZBZ) | [Guide](docs/guides/bytelixir.md) | ✅ | ❌ | Unlimited | 1 | Crypto | Active |
+| [Dawn Internet](https://dawninternet.com/?code=2QLQV97F) | [Guide](docs/guides/dawn.md) | ✅ | ❌ | Unlimited | 1 | Crypto (DAWN) | Active |
+| [Deeper Network](https://deeper.network) | [Guide](docs/guides/deeper-network.md) | ✅ | ❌ | Unlimited | 1 | Crypto (DPR) | Active |
+| [Ebesucher](https://www.ebesucher.com/?ref=geiserx) | [Guide](docs/guides/ebesucher.md) | ✅ | ✅ | Unlimited | 1 | PayPal | Active |
+| [Gradient Network](https://app.gradient.network/signup?referralCode=YSKMY7) | [Guide](docs/guides/gradient.md) | ✅ | ❌ | Unlimited | 1 | Crypto (GRADIENT) | Active |
+| [Grass](https://app.grass.io/register?referralCode=kn8FNEPnUr2tMqE) | [Guide](docs/guides/grass.md) | ✅ | ❌ | Unlimited | 1 | Crypto (GRASS) | Active |
+| [Helium](https://helium.com) | [Guide](docs/guides/helium.md) | ✅ | ❌ | Unlimited | 1 | Crypto (HNT) | Active |
+| [Nodepay](https://app.nodepay.ai/register?ref=0wzzyznen64j9zx) | [Guide](docs/guides/nodepay.md) | ✅ | ❌ | Unlimited | 1 | Crypto (NC) | Active |
+| [Nodle](https://nodle.com) | [Guide](docs/guides/nodle.md) | ✅ | ✅ | Unlimited | 1 | Crypto (NODL) | Active |
+| [PassiveApp](https://passiveapp.com/i/bqpC4M) | [Guide](docs/guides/passiveapp.md) | ✅ | ❌ | Unlimited | 1 | Crypto, PayPal | Active |
+| [Sentinel dVPN](https://sentinel.co) | [Guide](docs/guides/sentinel-dvpn.md) | ✅ | ✅ | Unlimited | 1 | Crypto (DVPN) | Active |
+| [Spide](https://spide.network/register.html?f3bc51) | [Guide](docs/guides/spide.md) | ✅ | ❌ | Unlimited | 1 | Crypto | Active |
+| [Teneo Protocol](https://dashboard.teneo.pro/?code=CAqef) | [Guide](docs/guides/teneo.md) | ✅ | ❌ | Unlimited | 1 | Crypto (TENEO) | Active |
+| [Theta Edge Node](https://thetatoken.org) | [Guide](docs/guides/theta-edge.md) | ✅ | ✅ | Unlimited | 1 | Crypto (TFUEL) | Active |
+| [Titan Network](https://edge.titannet.info/signup?inviteCode=2GKKJ495) | [Guide](docs/guides/titan.md) | ✅ | ❌ | Unlimited | 1 | Crypto (TNT) | Active |
+| [Uprock](https://link.uprock.com/i/33e8492e) | [Guide](docs/guides/uprock.md) | ✅ | ❌ | Unlimited | 1 | Crypto | Active |
 
 ### GPU Compute
 
 GPU-intensive computing services. Requires compatible hardware.
 
-| Service | Residential IP | GPU | Min Storage | Payout | Status |
-|---------|:-:|:-:|:-:|--------|--------|
-| [Flux](https://runonflux.io) ([guide](docs/guides/flux.md)) | ✅ | ❌ | 220GB | Crypto (FLUX) | Active |
-| [Golem Network](https://golem.network) ([guide](docs/guides/golem.md)) | ✅ | ❌ | 20GB | Crypto (GLM) | Active |
-| [io.net](https://io.net) ([guide](docs/guides/ionet.md)) | ✅ | ✅ | N/A | Crypto (IO) | Active |
-| [Nosana](https://nosana.io) ([guide](docs/guides/nosana.md)) | ✅ | ✅ | 50GB | Crypto (NOS) | Active |
-| [Salad](https://salad.io) ([guide](docs/guides/salad.md)) | ✅ | ✅ | N/A | PayPal, Gift Cards | Active |
-| [Vast.ai](https://cloud.vast.ai/?ref_id=452772) ([guide](docs/guides/vast-ai.md)) | ✅ | ✅ | 100GB | Crypto, Bank Transfer | Active |
+| Service | Guide | Residential IP | GPU | Min Storage | Payout | Status |
+|---------|-------|:-:|:-:|:-:|--------|--------|
+| [Flux](https://runonflux.io) | [Guide](docs/guides/flux.md) | ✅ | ❌ | 220GB | Crypto (FLUX) | Active |
+| [Golem Network](https://golem.network) | [Guide](docs/guides/golem.md) | ✅ | ❌ | 20GB | Crypto (GLM) | Active |
+| [io.net](https://io.net) | [Guide](docs/guides/ionet.md) | ✅ | ✅ | N/A | Crypto (IO) | Active |
+| [Nosana](https://nosana.io) | [Guide](docs/guides/nosana.md) | ✅ | ✅ | 50GB | Crypto (NOS) | Active |
+| [Salad](https://salad.io) | [Guide](docs/guides/salad.md) | ✅ | ✅ | N/A | PayPal, Gift Cards | Active |
+| [Vast.ai](https://cloud.vast.ai/?ref_id=452772) | [Guide](docs/guides/vast-ai.md) | ✅ | ✅ | 100GB | Crypto, Bank Transfer | Active |
 
 > **Note:** Earnings vary widely by location, hardware, and demand -- see individual guide pages in `docs/guides/` for details.
 
@@ -144,7 +144,6 @@ cashpilot/
     depin/        # DePIN services
     storage/      # Storage sharing services
     compute/      # GPU compute services
-  scripts/        # Utilities (doc generation, etc.)
   docs/           # Documentation and guides
 ```
 
@@ -255,7 +254,7 @@ CashPilot monitors container health continuously. If a service container exits u
 Contributions are welcome. To add a new service:
 
 1. Create a YAML file in the appropriate `services/` subdirectory following `services/_schema.yml`
-2. Run `python scripts/generate_docs.py` to regenerate the guide pages in `docs/guides/`
+2. Add a guide page in `docs/guides/` for the service
 3. Update the service tables in this README
 4. Submit a pull request
 

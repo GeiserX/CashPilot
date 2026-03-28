@@ -11,7 +11,7 @@ URnetwork is a decentralized VPN and bandwidth-sharing network. You earn by prov
 
 | Metric | Value |
 |--------|-------|
-| Monthly range | $1 - $5 |
+| Monthly range | $0 - $5 (estimate) |
 | Per | device |
 | Minimum payout | $5 |
 | Payout frequency | On request |
@@ -53,26 +53,3 @@ In the CashPilot web UI, find **URnetwork** in the service catalog and click **D
 | Variable | Label | Required | Secret | Description |
 |----------|-------|:--------:|:------:|-------------|
 | `UR_AUTH_TOKEN` | Auth Token | Yes | Yes | Your URnetwork authentication token from the dashboard |
-
-### Manual Docker Run
-
-If running outside CashPilot:
-
-```bash
-docker run -d \
-  --name cashpilot-urnetwork \
-  -v urnetwork-data:/root/.urnetwork \
-  -e UR_AUTH_TOKEN="<Auth Token>" \
-  bringyour/community-provider provide
-```
-
-## Referral Program
-
-| | Details |
-|---|---------|
-| Referrer bonus | N/A |
-| New user bonus | N/A |
-
----
-
-*This guide was auto-generated from [`services/bandwidth/urnetwork.yml`](../../services/bandwidth/urnetwork.yml). Edit the YAML source and run `python scripts/generate_docs.py` to update.*

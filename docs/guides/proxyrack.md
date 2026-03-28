@@ -11,7 +11,7 @@ ProxyRack's Peer program lets you earn by sharing your bandwidth as part of thei
 
 | Metric | Value |
 |--------|-------|
-| Monthly range | $1 - $4 |
+| Monthly range | $0 - $4 (estimate) |
 | Per | device |
 | Minimum payout | $5 |
 | Payout frequency | On request |
@@ -55,27 +55,3 @@ In the CashPilot web UI, find **ProxyRack** in the service catalog and click **D
 | `UUID` | Device UUID | Yes | No | Unique 64-character hex ID per device. Generate with: cat /dev/urandom | tr -dc 'a-f0-9' | fold -w 64 | head -n 1 |
 | `API_KEY` | API Key | No | Yes | Your ProxyRack API key (auto-registers device in dashboard if provided) |
 | `DEVICE_NAME` | Device name | No | No | Friendly name for the device in dashboard (default: `Device-${UUID}`) |
-
-### Manual Docker Run
-
-If running outside CashPilot:
-
-```bash
-docker run -d \
-  --name cashpilot-proxyrack \
-  -e UUID="<Device UUID>" \
-  -e API_KEY="<API Key>" \
-  -e DEVICE_NAME="<Device name>" \
-  proxyrack/pop
-```
-
-## Referral Program
-
-| | Details |
-|---|---------|
-| Referrer bonus | N/A |
-| New user bonus | N/A |
-
----
-
-*This guide was auto-generated from [`services/bandwidth/proxyrack.yml`](../../services/bandwidth/proxyrack.yml). Edit the YAML source and run `python scripts/generate_docs.py` to update.*

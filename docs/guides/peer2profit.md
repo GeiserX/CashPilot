@@ -11,7 +11,7 @@ Peer2Profit monetizes unused internet bandwidth by routing legitimate traffic th
 
 | Metric | Value |
 |--------|-------|
-| Monthly range | $1 - $5 |
+| Monthly range | $0 - $5 (estimate) |
 | Per | device |
 | Minimum payout | $2 |
 | Payout frequency | On request |
@@ -53,25 +53,3 @@ In the CashPilot web UI, find **Peer2Profit** in the service catalog and click *
 | Variable | Label | Required | Secret | Description |
 |----------|-------|:--------:|:------:|-------------|
 | `P2P_EMAIL` | Email | Yes | No | Your Peer2Profit account email |
-
-### Manual Docker Run
-
-If running outside CashPilot:
-
-```bash
-docker run -d \
-  --name cashpilot-peer2profit \
-  -e P2P_EMAIL="<Email>" \
-  peer2profit/peer2profit-linux
-```
-
-## Referral Program
-
-| | Details |
-|---|---------|
-| Referrer bonus | N/A |
-| New user bonus | N/A |
-
----
-
-*This guide was auto-generated from [`services/bandwidth/peer2profit.yml`](../../services/bandwidth/peer2profit.yml). Edit the YAML source and run `python scripts/generate_docs.py` to update.*

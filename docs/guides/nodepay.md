@@ -11,7 +11,7 @@ Nodepay is a DePIN network that rewards users for sharing bandwidth through a br
 
 | Metric | Value |
 |--------|-------|
-| Monthly range | $1 - $5 |
+| Monthly range | $0 - $5 (estimate) |
 | Per | device |
 | Minimum payout |  |
 | Payout frequency | Token airdrop (TBA) |
@@ -51,14 +51,3 @@ In the CashPilot web UI, find **Nodepay** in the service catalog and click **Dep
 ### Environment Variables
 
 No environment variables required.
-
-## Referral Program
-
-| | Details |
-|---|---------|
-| Referrer bonus | N/A |
-| New user bonus | N/A |
-
----
-
-*This guide was auto-generated from [`services/depin/nodepay.yml`](../../services/depin/nodepay.yml). Edit the YAML source and run `python scripts/generate_docs.py` to update.*

@@ -50,14 +50,3 @@ In the CashPilot web UI, find **Ebesucher** in the service catalog and click **D
 ### Environment Variables
 
 No environment variables required.
-
-## Referral Program
-
-| | Details |
-|---|---------|
-| Referrer bonus | N/A |
-| New user bonus | N/A |
-
----
-
-*This guide was auto-generated from [`services/bandwidth/ebesucher.yml`](../../services/bandwidth/ebesucher.yml). Edit the YAML source and run `python scripts/generate_docs.py` to update.*

@@ -11,7 +11,7 @@ Storj is a decentralized cloud storage network where you earn by renting out you
 
 | Metric | Value |
 |--------|-------|
-| Monthly range | $2 - $15 |
+| Monthly range | $0 - $15 (estimate) |
 | Per | TB |
 | Minimum payout | $4 |
 | Payout frequency | Monthly |
@@ -56,32 +56,3 @@ In the CashPilot web UI, find **Storj** in the service catalog and click **Deplo
 | `EMAIL` | Email | Yes | No | Email address for operator notifications |
 | `ADDRESS` | External address | Yes | No | External IP or DDNS hostname with port (e.g. mynode.ddns.net:28967) |
 | `STORAGE` | Storage allocation | Yes | No | Maximum disk space to allocate (e.g. 2TB) (default: `1TB`) |
-
-### Manual Docker Run
-
-If running outside CashPilot:
-
-```bash
-docker run -d \
-  --name cashpilot-storj \
-  -p 28967:28967/tcp \
-  -p 14002:14002 \
-  -v /path/to/identity:/app/identity \
-  -v /path/to/storage:/app/config \
-  -e WALLET="<Wallet address>" \
-  -e EMAIL="<Email>" \
-  -e ADDRESS="<External address>" \
-  -e STORAGE="<Storage allocation>" \
-  storj/storagenode
-```
-
-## Referral Program
-
-| | Details |
-|---|---------|
-| Referrer bonus | N/A |
-| New user bonus | N/A |
-
----
-
-*This guide was auto-generated from [`services/storage/storj.yml`](../../services/storage/storj.yml). Edit the YAML source and run `python scripts/generate_docs.py` to update.*

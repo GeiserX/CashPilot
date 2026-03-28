@@ -11,7 +11,7 @@ MystNodes (Mysterium Network) is a decentralized VPN and proxy network built on 
 
 | Metric | Value |
 |--------|-------|
-| Monthly range | $2 - $10 |
+| Monthly range | $0 - $10 (estimate) |
 | Per | device |
 | Minimum payout | $2 |
 | Payout frequency | On request |
@@ -51,28 +51,3 @@ In the CashPilot web UI, find **MystNodes** in the service catalog and click **D
 ### Environment Variables
 
 No environment variables required.
-
-### Manual Docker Run
-
-If running outside CashPilot:
-
-```bash
-docker run -d \
-  --name cashpilot-mysterium \
-  --network host \
-  --cap-add NET_ADMIN \
-  -p 4449:4449 \
-  -v mysterium-data:/var/lib/mysterium-node \
-  mysteriumnetwork/myst --ui.address=0.0.0.0 --tequilapi.address=0.0.0.0 service --agreed-terms-and-conditions
-```
-
-## Referral Program
-
-| | Details |
-|---|---------|
-| Referrer bonus | N/A |
-| New user bonus | N/A |
-
----
-
-*This guide was auto-generated from [`services/bandwidth/mysterium.yml`](../../services/bandwidth/mysterium.yml). Edit the YAML source and run `python scripts/generate_docs.py` to update.*

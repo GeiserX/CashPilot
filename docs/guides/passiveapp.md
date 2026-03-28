@@ -11,7 +11,7 @@ PassiveApp is a DePIN platform that lets you earn crypto and PayPal rewards by s
 
 | Metric | Value |
 |--------|-------|
-| Monthly range | $1 - $4 |
+| Monthly range | $0 - $4 (estimate) |
 | Per | device |
 | Minimum payout | $5 |
 | Payout frequency | On request |
@@ -50,14 +50,3 @@ In the CashPilot web UI, find **PassiveApp** in the service catalog and click **
 ### Environment Variables
 
 No environment variables required.
-
-## Referral Program
-
-| | Details |
-|---|---------|
-| Referrer bonus | N/A |
-| New user bonus | N/A |
-
----
-
-*This guide was auto-generated from [`services/depin/passiveapp.yml`](../../services/depin/passiveapp.yml). Edit the YAML source and run `python scripts/generate_docs.py` to update.*

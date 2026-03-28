@@ -11,7 +11,7 @@ Salad.io lets you share your GPU for distributed AI workloads and earn Salad bal
 
 | Metric | Value |
 |--------|-------|
-| Monthly range | $10 - $100 |
+| Monthly range | $0 - $100 (estimate) |
 | Per | GPU-hour |
 | Minimum payout | $5 |
 | Payout frequency | On request |
@@ -50,14 +50,3 @@ In the CashPilot web UI, find **Salad** in the service catalog and click **Deplo
 ### Environment Variables
 
 No environment variables required.
-
-## Referral Program
-
-| | Details |
-|---|---------|
-| Referrer bonus | N/A |
-| New user bonus | N/A |
-
----
-
-*This guide was auto-generated from [`services/compute/salad.yml`](../../services/compute/salad.yml). Edit the YAML source and run `python scripts/generate_docs.py` to update.*

@@ -11,7 +11,7 @@ Gradient Network is a decentralized compute and bandwidth sharing platform backe
 
 | Metric | Value |
 |--------|-------|
-| Monthly range | $1 - $8 |
+| Monthly range | $0 - $8 (estimate) |
 | Per | device |
 | Minimum payout |  |
 | Payout frequency | Token airdrop (TBA) |
@@ -51,14 +51,3 @@ In the CashPilot web UI, find **Gradient Network** in the service catalog and cl
 ### Environment Variables
 
 No environment variables required.
-
-## Referral Program
-
-| | Details |
-|---|---------|
-| Referrer bonus | N/A |
-| New user bonus | N/A |
-
----
-
-*This guide was auto-generated from [`services/depin/gradient.yml`](../../services/depin/gradient.yml). Edit the YAML source and run `python scripts/generate_docs.py` to update.*
