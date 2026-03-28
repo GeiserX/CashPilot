@@ -1933,6 +1933,7 @@ img { max-width: 100%; }
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 8px;
+  align-items: start;
 }
 @media (max-width: 768px) {
   .collectors-grid {
