@@ -520,6 +520,9 @@ async def api_services_deployed(request: Request) -> list[dict[str, Any]]:
     health_scores = await database.get_health_scores(7)
     health_map = {h["slug"]: h for h in health_scores}
 
+    # Build set of slugs with collector errors (disconnected)
+    alert_slugs = {a["platform"] for a in _collector_alerts}
+
     # Aggregate by slug: one row per service
     _STATUS_PRIORITY = {"running": 0, "restarting": 1, "exited": 2, "created": 3, "dead": 4}
     slug_agg: dict[str, dict[str, Any]] = {}
@@ -578,6 +581,7 @@ async def api_services_deployed(request: Request) -> list[dict[str, Any]]:
             "restarts_7d": health.get("restarts", 0),
             "instances": len(agg["instances"]),
             "instance_details": instance_details,
+            "collector_disconnected": slug in alert_slugs,
         }
         if svc:
             cashout = svc.get("cashout", {})
@@ -609,11 +613,12 @@ async def api_services_deployed(request: Request) -> list[dict[str, Any]]:
             "memory": "",
             "image": "",
             "category": svc.get("category", "") if svc else "",
-            "health_score": health.get("score"),
-            "uptime_pct": health.get("uptime_pct"),
+            "health_score": None,
+            "uptime_pct": None,
             "restarts_7d": 0,
             "instances": 0,
             "instance_details": [],
+            "collector_disconnected": slug in alert_slugs,
         }
         if svc:
             cashout = svc.get("cashout", {})
