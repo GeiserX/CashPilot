@@ -1572,23 +1572,11 @@ const CP = (() => {
         api('/api/env-info').catch(() => []),
         api('/api/collectors/meta').catch(() => []),
       ]);
-      populateSettings(config);
       renderEnvVars(envInfo, config);
       renderCollectors(collectorsMeta, config);
     } catch (err) {
       // Settings may not be available yet
     }
-  }
-
-  function populateSettings(config) {
-    const hostnameInput = document.getElementById('settings-hostname');
-    if (hostnameInput && config.hostname_prefix) hostnameInput.value = config.hostname_prefix;
-
-    const intervalInput = document.getElementById('settings-interval');
-    if (intervalInput && config.collect_interval) intervalInput.value = config.collect_interval;
-
-    const timezoneInput = document.getElementById('settings-timezone');
-    if (timezoneInput && config.timezone) timezoneInput.value = config.timezone;
   }
 
   function renderEnvVars(envInfo, config) {
@@ -1600,16 +1588,18 @@ const CP = (() => {
     }
     const rows = envInfo.map(v => {
       const fromEnv = v.set_via_env;
+      const locked = fromEnv || v.read_only;
       const dbVal = config[v.key] || '';
       const displayVal = fromEnv ? v.value : dbVal;
       const inputType = v.secret ? 'password' : 'text';
-      const lockIcon = fromEnv
+      const lockIcon = locked
         ? '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" stroke-width="2" style="vertical-align:middle;margin-left:6px;"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>'
         : '';
-      const badge = fromEnv
-        ? '<span class="badge badge-deployed" style="font-size:0.7rem;margin-left:8px;">ENV</span>'
-        : (dbVal ? '<span class="badge badge-category" style="font-size:0.7rem;margin-left:8px;">DB</span>'
-                 : '<span class="badge" style="font-size:0.7rem;margin-left:8px;opacity:0.5;">Not set</span>');
+      let badge;
+      if (fromEnv) badge = '<span class="badge badge-deployed" style="font-size:0.7rem;margin-left:8px;">ENV</span>';
+      else if (v.read_only) badge = '<span class="badge" style="font-size:0.7rem;margin-left:8px;opacity:0.6;">Read-only</span>';
+      else if (dbVal) badge = '<span class="badge badge-category" style="font-size:0.7rem;margin-left:8px;">DB</span>';
+      else badge = '<span class="badge" style="font-size:0.7rem;margin-left:8px;opacity:0.5;">Not set</span>';
       return `
       <div style="display:grid;grid-template-columns:220px 1fr;gap:12px;align-items:start;padding:10px 0;border-bottom:1px solid var(--border-color);">
         <div>
@@ -1621,7 +1611,7 @@ const CP = (() => {
                  data-env-key="${escapeHtml(v.key)}"
                  value="${escapeHtml(displayVal)}"
                  placeholder="${escapeHtml(v.description)}"
-                 ${fromEnv ? 'disabled style="opacity:0.6;cursor:not-allowed;"' : ''}>
+                 ${locked ? 'disabled style="opacity:0.6;cursor:not-allowed;"' : ''}>
           <div class="form-hint">${escapeHtml(v.description)}</div>
         </div>
       </div>`;
@@ -1660,7 +1650,7 @@ const CP = (() => {
       container.innerHTML = '<p style="color:var(--text-muted);font-size:0.85rem;">No collectors available.</p>';
       return;
     }
-    container.innerHTML = meta.map(col => {
+    const items = meta.map(col => {
       const configured = col.fields.some(f => {
         const val = config[f.key];
         return val && val.trim() !== '';
@@ -1693,25 +1683,7 @@ const CP = (() => {
         </div>
       </details>`;
     }).join('');
-  }
-
-  async function saveSettings() {
-    const data = {};
-    const hostnameInput = document.getElementById('settings-hostname');
-    if (hostnameInput) data.hostname_prefix = hostnameInput.value;
-
-    const intervalInput = document.getElementById('settings-interval');
-    if (intervalInput) data.collect_interval = String(parseInt(intervalInput.value) || 60);
-
-    const timezoneInput = document.getElementById('settings-timezone');
-    if (timezoneInput) data.timezone = timezoneInput.value;
-
-    try {
-      await api('/api/config', { method: 'POST', body: { data } });
-      toast('Settings saved', 'success');
-    } catch (err) {
-      toast(`Save failed: ${err.message}`, 'error');
-    }
+    container.innerHTML = `<div class="collectors-grid">${items}</div>`;
   }
 
   async function saveCollectorCredentials() {
@@ -2066,7 +2038,6 @@ const CP = (() => {
     wizardPrev,
     openServiceDetail,
     loadDetailLogs,
-    saveSettings,
     saveCollectorCredentials,
     testCollectors,
     saveEnvSettings,
@@ -2075,7 +2046,6 @@ const CP = (() => {
     openClaimModal,
     goToCollectorSettings,
     toggleInstances,
-    populateCurrencyDropdown,
     deployServiceToWorkers,
     workerAction,
     loadWorkerLogs,
