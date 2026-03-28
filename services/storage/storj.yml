@@ -23,7 +23,7 @@ docker:
       label: "Wallet address"
       required: true
       secret: false
-      description: "ERC-20 wallet address for STORJ token payouts (e.g. 0x1234...abcd). Reuse any Ethereum wallet you already have"
+      description: "ERC-20 wallet address for STORJ token payouts (e.g. 0x1234...abcd). Must be self-custodial (MetaMask, Ledger, etc.) -- never use an exchange address"
     - key: EMAIL
       label: "Email"
       required: true
@@ -54,7 +54,7 @@ docker:
   volumes:
     - "${IDENTITY_DIR}:/app/identity"
     - "${STORAGE_DIR}:/app/config"
-  command: ""
+  command: "--operator.wallet-features=zksync-era"
   network_mode: ""
   notes: >
     No signup or auth token required (permissionless since mid-2025).
