@@ -43,7 +43,7 @@ earnings:
 
 cashout:
   method: redirect
-  dashboard_url: "https://app.uprock.com/dashboard"
+  dashboard_url: "https://uprock.com"
   min_amount: 5.0
   currency: USD
   notes: "Crypto token-based rewards. Claim from dashboard."

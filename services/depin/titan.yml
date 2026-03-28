@@ -44,7 +44,7 @@ earnings:
 
 cashout:
   method: manual
-  dashboard_url: "https://proxytitan.com/dashboard"
+  dashboard_url: "https://test1.titannet.io"
   min_amount: 0
   currency: TNT
   notes: ""
