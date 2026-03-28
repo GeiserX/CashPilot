@@ -22,7 +22,7 @@ docker:
     - "4449:4449"
   volumes:
     - "mysterium-data:/var/lib/mysterium-node"
-  command: "service --agreed-terms-and-conditions"
+  command: "--ui.address=0.0.0.0 --tequilapi.address=0.0.0.0 service --agreed-terms-and-conditions"
   network_mode: "host"
   cap_add: [NET_ADMIN]
   privileged: true
