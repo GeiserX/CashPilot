@@ -1607,11 +1607,17 @@ const CP = (() => {
           <div style="font-size:0.75rem;color:var(--text-muted);margin-top:2px;font-family:monospace;">${escapeHtml(v.key)}</div>
         </div>
         <div>
-          <input class="form-input env-var-input" type="${inputType}"
-                 data-env-key="${escapeHtml(v.key)}"
-                 value="${escapeHtml(displayVal)}"
-                 placeholder="${escapeHtml(v.description)}"
-                 ${locked ? 'disabled style="opacity:0.6;cursor:not-allowed;"' : ''}>
+          <div style="display:flex;gap:6px;align-items:center;">
+            <input class="form-input env-var-input" type="${inputType}" id="env-${v.key}"
+                   data-env-key="${escapeHtml(v.key)}"
+                   value="${escapeHtml(displayVal)}"
+                   placeholder="${escapeHtml(v.description)}"
+                   style="flex:1;${locked ? 'opacity:0.6;cursor:not-allowed;' : ''}"
+                   ${locked ? 'disabled' : ''}>
+            ${v.secret && displayVal ? `<button type="button" class="btn btn-ghost btn-sm" onclick="CP.toggleEnvSecret('env-${v.key}', this)" title="Show" style="white-space:nowrap;padding:6px 8px;">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+            </button>` : ''}
+          </div>
           <div class="form-hint">${escapeHtml(v.description)}</div>
         </div>
       </div>`;
@@ -1620,6 +1626,17 @@ const CP = (() => {
     <div style="display:flex;justify-content:flex-end;margin-top:12px;">
       <button class="btn btn-primary" onclick="CP.saveEnvSettings()">Save Variables</button>
     </div>`;
+  }
+
+  function toggleEnvSecret(inputId, btn) {
+    const input = document.getElementById(inputId);
+    if (!input) return;
+    const showing = input.type === 'text';
+    input.type = showing ? 'password' : 'text';
+    btn.title = showing ? 'Show' : 'Hide';
+    btn.innerHTML = showing
+      ? '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>'
+      : '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19m-6.72-1.07a3 3 0 11-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>';
   }
 
   async function saveEnvSettings() {
@@ -2041,6 +2058,7 @@ const CP = (() => {
     saveCollectorCredentials,
     testCollectors,
     saveEnvSettings,
+    toggleEnvSecret,
     filterCatalog,
     refreshServices,
     openClaimModal,

@@ -1202,7 +1202,7 @@ async def api_env_info(request: Request) -> list[dict[str, Any]]:
                 "read_only": read_only,
                 "description": desc,
                 "set_via_env": bool(raw),
-                "value": "********" if (secret and val) else val,
+                "value": val,
             }
         )
     return result
