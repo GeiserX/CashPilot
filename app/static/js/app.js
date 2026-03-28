@@ -969,8 +969,7 @@ const CP = (() => {
     const isSelected = wizardState.selectedServices.includes(svc.slug);
     const isDeployed = svc.deployed;
     const isManual = svc.manual_only;
-    const workerNodes = _wizardWorkerSlugs[svc.slug] || 0;
-    const totalNodes = (isDeployed ? 1 : 0) + workerNodes;
+    const totalNodes = svc.node_count || 0;
 
     const classes = ['service-card'];
     if (isSelected) classes.push('selected');
@@ -1039,9 +1038,22 @@ const CP = (() => {
       ? svc.referral.signup_url
       : svc.website || '#';
 
-    // Manual-only services: show signup link + earnings tracking notice
+    // Manual-only services: show signup link + earnings tracking notice + any env fields
     if (svc.manual_only) {
       const platforms = (svc.platforms || []).map(p => p.charAt(0).toUpperCase() + p.slice(1)).join(', ');
+      const manualEnvFields = (svc.docker && svc.docker.env || []).map(env => {
+        const inputType = env.secret ? 'password' : 'text';
+        return `
+        <div class="form-group">
+          <label class="form-label" for="env-${svc.slug}-${env.key}">${escapeHtml(env.label)}</label>
+          <input class="form-input" type="${inputType}" id="env-${svc.slug}-${env.key}"
+                 data-slug="${svc.slug}" data-key="${env.key}"
+                 placeholder="${escapeHtml(env.description || '')}"
+                 value="${escapeHtml(env.default || '')}"
+                 ${env.required ? 'required' : ''}>
+          ${env.description ? `<div class="form-hint">${escapeHtml(env.description)}</div>` : ''}
+        </div>`;
+      }).join('');
       return `
       <div class="card" style="margin-bottom: 16px;" id="setup-${svc.slug}">
         <div class="card-header">
@@ -1059,6 +1071,7 @@ const CP = (() => {
             Sign Up for ${escapeHtml(svc.name)}
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
           </a>
+          ${manualEnvFields ? `<div style="margin-top: 16px;">${manualEnvFields}</div>` : ''}
         </div>
       </div>`;
     }
@@ -1087,7 +1100,7 @@ const CP = (() => {
       <div style="margin-bottom: 16px;">
         <p style="color: var(--text-secondary); margin-bottom: 12px;">
           New to ${escapeHtml(svc.name)}?
-          <a href="${escapeHtml(signupUrl)}" target="_blank" rel="noopener" class="btn btn-secondary btn-sm" style="margin-left: 8px;">
+          <a href="${escapeHtml(signupUrl)}" target="_blank" rel="noopener" class="btn btn-primary btn-sm" style="margin-left: 8px;">
             Sign Up
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
           </a>
@@ -1318,7 +1331,7 @@ const CP = (() => {
     </div>
 
     <div style="margin-bottom: 20px;">
-      <a href="${escapeHtml(signupUrl)}" target="_blank" rel="noopener" class="btn btn-secondary btn-sm">
+      <a href="${escapeHtml(signupUrl)}" target="_blank" rel="noopener" class="btn btn-primary btn-sm">
         Sign Up for ${escapeHtml(svc.name)}
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
       </a>

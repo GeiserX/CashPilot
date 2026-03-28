@@ -640,14 +640,29 @@ async def api_services_available(request: Request) -> list[dict[str, Any]]:
     deployments = await database.get_deployments()
     deployed_slugs = {d["slug"] for d in deployments}
 
+    # Also check worker containers for deployed status (catches externally-deployed services)
+    worker_containers = await _get_all_worker_containers()
+    worker_slugs: set[str] = set()
+    worker_node_counts: dict[str, set[str]] = {}
+    for c in worker_containers:
+        slug = c.get("slug", "")
+        if slug:
+            worker_slugs.add(slug)
+            node = c.get("_node", "unknown")
+            if slug not in worker_node_counts:
+                worker_node_counts[slug] = set()
+            worker_node_counts[slug].add(node)
+
     available = []
     for svc in services:
         if svc.get("status") in ("broken", "dead"):
             continue  # Known non-functional — hide completely
         docker_conf = svc.get("docker", {})
         has_image = bool(docker_conf and docker_conf.get("image"))
-        svc["deployed"] = svc.get("slug", "") in deployed_slugs
+        slug = svc.get("slug", "")
+        svc["deployed"] = slug in deployed_slugs or slug in worker_slugs
         svc["manual_only"] = not has_image
+        svc["node_count"] = len(worker_node_counts.get(slug, set()))
         available.append(svc)
     return available
 
