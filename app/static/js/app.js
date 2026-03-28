@@ -293,9 +293,9 @@ const CP = (() => {
       ? escapeHtml(svc.image)
       : (isExternal ? 'App / Browser' : '');
 
-    // Health badge
+    // Health badge — external services always show --
     let healthBadge = '<span style="color:var(--text-muted);">--</span>';
-    if (svc.health_score !== null && svc.health_score !== undefined) {
+    if (!isExternal && svc.health_score !== null && svc.health_score !== undefined) {
       const score = svc.health_score;
       const hClass = score >= 80 ? 'badge-running' : score >= 50 ? 'badge-error' : 'badge-stopped';
       healthBadge = `<span class="badge ${hClass}" title="Health ${score}/100">${score}</span>`;
@@ -309,9 +309,15 @@ const CP = (() => {
     const deltaClass = delta > 0 ? 'positive' : delta < 0 ? 'negative' : '';
     const deltaStr = delta !== 0 ? `${deltaSign}${formatCurrency(delta, currency)}` : '--';
     const nativeLabel = formatNative(balance, currency);
-    const balanceHtml = nativeLabel
-      ? `${formatCurrency(balance, currency)}<div style="font-size:0.65rem;color:var(--text-muted);">${nativeLabel}</div>`
-      : formatCurrency(balance, currency);
+    const disconnectedLabel = svc.collector_disconnected
+      ? '<div style="font-size:0.6rem; color:#ef4444; font-weight:500;">disconnected</div>'
+      : '';
+    let balanceHtml;
+    if (nativeLabel) {
+      balanceHtml = `${formatCurrency(balance, currency)}<div style="font-size:0.65rem;color:var(--text-muted);">${nativeLabel}</div>${disconnectedLabel}`;
+    } else {
+      balanceHtml = `${formatCurrency(balance, currency)}${disconnectedLabel}`;
+    }
 
     // CPU/Memory — skip for external; show avg for multi-instance
     let cpuStr, memStr;
