@@ -118,16 +118,19 @@ def _earnings_range(svc: dict) -> str:
 
 
 def _service_name_link(svc: dict) -> str:
-    """Service name linked to referral signup URL, fallback to website."""
+    """Service name linked to referral signup URL, with guide page link."""
     name = svc["name"]
+    slug = svc.get("slug", name.lower().replace(" ", "-"))
+    guide_link = f"docs/guides/{slug}.md"
+
     ref = svc.get("referral", {})
     signup_url = ref.get("signup_url", "")
-    if signup_url:
-        return f"[{name}]({signup_url})"
     website = svc.get("website", "")
-    if website:
-        return f"[{name}]({website})"
-    return name
+    external_url = signup_url or website
+
+    if external_url:
+        return f"[{name}]({external_url}) ([guide]({guide_link}))"
+    return f"[{name}]({guide_link})"
 
 
 def _ip_badge(value: bool) -> str:

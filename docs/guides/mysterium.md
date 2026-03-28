@@ -17,7 +17,7 @@ MystNodes (Mysterium Network) is a decentralized VPN and proxy network built on 
 | Payout frequency | On request |
 | Payment methods | Crypto |
 
-> Earnings in MYST tokens. Residential IPs earn significantly more. Node WebUI at port 4449 for management. VPS accepted.
+> Earnings in MYST tokens. Residential IPs earn significantly more. Node WebUI at port 4449 for management. VPS accepted. Important: after first run, set your beneficiary (settlement) wallet via the node WebUI or CLI to match your mystnodes.com account -- this links on-chain earnings to your cloud dashboard.
 
 ## Requirements
 
