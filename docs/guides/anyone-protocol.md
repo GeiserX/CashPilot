@@ -61,25 +61,6 @@ AgreeToTerms 1
 
 In the CashPilot web UI, find **Anyone Protocol** in the service catalog and click **Deploy**. CashPilot will handle the anonrc creation and volume setup.
 
-### Manual Docker deployment
-
-If deploying manually, mount three volumes and ensure correct permissions:
-
-```bash
-mkdir -p /path/to/anyone-protocol/{config,data,run}
-# Write your anonrc to /path/to/anyone-protocol/config/anonrc
-chown -R 100:101 /path/to/anyone-protocol/{config,data,run}
-
-docker run -d --name anyone-relay --restart unless-stopped --init \
-  -p 9001:9001 \
-  -v /path/to/anyone-protocol/data:/var/lib/anon \
-  -v /path/to/anyone-protocol/config:/etc/anon \
-  -v /path/to/anyone-protocol/run:/run/anon \
-  ghcr.io/anyone-protocol/ator-protocol:latest
-```
-
-**Note:** The config directory must be writable by UID 100 (anond) for `notices.log`. Port 9001 must be forwarded through your router.
-
 ## Docker Configuration
 
 - **Image:** `ghcr.io/anyone-protocol/ator-protocol`

@@ -70,22 +70,6 @@ Forward these ports through your router to the server running the node:
 
 In the CashPilot web UI, find **Storj** in the service catalog and click **Deploy**. Enter the required credentials and CashPilot will handle the rest.
 
-### Manual Docker deployment
-
-```bash
-docker run -d --name storj-node --restart unless-stopped \
-  -p 28967:28967/tcp -p 28967:28967/udp -p 14002:14002 \
-  -e WALLET="0xYourWalletAddress" \
-  -e EMAIL="your@email.com" \
-  -e ADDRESS="your.ddns.net:28967" \
-  -e STORAGE="2TB" \
-  -v /path/to/identity/storagenode:/app/identity \
-  -v /path/to/storage:/app/config \
-  storj/storagenode
-```
-
-**Important**: Use spinning disks (HDD) for storage, not SSDs. Storj earnings are based on stored data volume, and HDDs offer much better $/TB. SSDs provide no advantage since Storj traffic is not IOPS-intensive.
-
 ## Docker Configuration
 
 - **Image:** `storj/storagenode`
