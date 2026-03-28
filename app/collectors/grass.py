@@ -23,6 +23,7 @@ Application > Local Storage, and copy the `accessToken` value.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 
 import httpx
@@ -54,15 +55,31 @@ class GrassCollector(BaseCollector):
             "User-Agent": "Mozilla/5.0",
         }
 
+    async def _request_with_retry(self, client: httpx.AsyncClient, url: str, **kwargs) -> httpx.Response:
+        """Make a request with retry on 429 (Cloudflare rate limit)."""
+        max_retries = 3
+        for attempt in range(max_retries + 1):
+            resp = await client.get(url, headers=self._make_headers(), **kwargs)
+            if resp.status_code != 429:
+                return resp
+            retry_after = int(resp.headers.get("Retry-After", 30))
+            # Cap wait at 60s per attempt to avoid extremely long waits
+            wait = min(retry_after, 60)
+            logger.info("Grass API 429, retry %d/%d in %ds", attempt + 1, max_retries, wait)
+            if attempt < max_retries:
+                await asyncio.sleep(wait)
+        return resp  # Return last 429 response if all retries exhausted
+
     async def _get_settled_points(self, client: httpx.AsyncClient) -> float:
         """Fetch totalPoints from /retrieveUser (non-zero only after epoch settles)."""
-        resp = await client.get(
-            f"{API_BASE}/retrieveUser",
-            headers=self._make_headers(),
-        )
+        resp = await self._request_with_retry(client, f"{API_BASE}/retrieveUser")
 
         if resp.status_code in (401, 403):
             return -1.0  # Signal auth failure
+
+        if resp.status_code == 429:
+            logger.warning("Grass API still rate-limited after retries")
+            return -2.0  # Signal rate limit
 
         resp.raise_for_status()
         data = resp.json()
@@ -76,11 +93,10 @@ class GrassCollector(BaseCollector):
           hours * 50 * (ipScore / 100) * multiplier
         for each device, summed.
         """
-        resp = await client.get(
-            f"{API_BASE}/devices",
-            params={"input": "{}"},
-            headers=self._make_headers(),
-        )
+        resp = await self._request_with_retry(client, f"{API_BASE}/devices", params={"input": "{}"})
+        if resp.status_code == 429:
+            logger.warning("Grass /devices still rate-limited after retries")
+            return -1.0
         resp.raise_for_status()
         data = resp.json()
 
@@ -128,7 +144,7 @@ class GrassCollector(BaseCollector):
         3. Otherwise, estimate from /devices uptime data.
         """
         try:
-            async with httpx.AsyncClient(timeout=30) as client:
+            async with httpx.AsyncClient(timeout=60) as client:
                 # First, check if we have settled points
                 settled = await self._get_settled_points(client)
 
@@ -137,6 +153,13 @@ class GrassCollector(BaseCollector):
                         platform=self.platform,
                         balance=0.0,
                         error="Token expired — get a new accessToken from app.grass.io Local Storage",
+                    )
+
+                if settled == -2.0:
+                    return EarningsResult(
+                        platform=self.platform,
+                        balance=0.0,
+                        error="Cloudflare rate limit — will retry next collection cycle",
                     )
 
                 if settled > 0:
@@ -149,6 +172,13 @@ class GrassCollector(BaseCollector):
 
                 # Active epoch: estimate from device uptime
                 estimated = await self._estimate_from_devices(client)
+
+                if estimated == -1.0:
+                    return EarningsResult(
+                        platform=self.platform,
+                        balance=0.0,
+                        error="Cloudflare rate limit — will retry next collection cycle",
+                    )
 
                 return EarningsResult(
                     platform=self.platform,

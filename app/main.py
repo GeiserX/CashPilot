@@ -183,6 +183,7 @@ async def lifespan(app: FastAPI):
     scheduler.add_job(exchange_rates.refresh, "interval", minutes=15, id="exchange_rates")
     scheduler.start()
     await exchange_rates.refresh()
+    asyncio.create_task(_run_collection())
     logger.info("CashPilot UI started (container ops via workers)")
 
     yield
