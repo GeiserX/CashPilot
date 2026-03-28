@@ -690,8 +690,54 @@ async def api_deploy(request: Request, slug: str, body: DeployRequest, worker_id
     image = docker_conf.get("image")
     if not image:
         raise HTTPException(status_code=400, detail=f"Service '{slug}' has no Docker image")
-    spec = {"image": image, "env": body.env or {}, "hostname": body.hostname}
-    result = await _proxy_worker_deploy(worker_id, slug, spec)  # type: ignore[arg-type]
+
+    # Build full env: YAML defaults + {hostname} substitution + user overrides
+    import re
+    import socket
+
+    hn = body.hostname or socket.gethostname()
+    env: dict[str, str] = {}
+    for var in docker_conf.get("env", []):
+        default = var.get("default", "")
+        if default and "{hostname}" in str(default):
+            default = str(default).replace("{hostname}", hn)
+        env[var["key"]] = str(default)
+    env.update(body.env or {})
+
+    # Ports
+    ports: dict[str, int] = {}
+    for mapping in docker_conf.get("ports", []):
+        if ":" in str(mapping):
+            parts = str(mapping).split(":")
+            ports[parts[0]] = int(parts[1].split("/")[0]) if "/" in parts[1] else int(parts[1])
+
+    # Volumes: resolve ${VAR} in host paths using env
+    volumes: dict[str, dict[str, str]] = {}
+    for mapping in docker_conf.get("volumes", []):
+        if ":" in str(mapping):
+            parts = str(mapping).split(":")
+            host_path = re.sub(r"\$\{(\w+)\}", lambda m: env.get(m.group(1), m.group(0)), parts[0])
+            container_path = parts[1]
+            mode = parts[2] if len(parts) > 2 else "rw"
+            volumes[host_path] = {"bind": container_path, "mode": mode}
+
+    spec: dict[str, Any] = {
+        "image": image,
+        "env": env,
+        "hostname": body.hostname,
+        "ports": ports,
+        "volumes": volumes,
+        "network_mode": docker_conf.get("network_mode") or None,
+        "cap_add": docker_conf.get("cap_add") or None,
+        "privileged": docker_conf.get("privileged", False),
+    }
+
+    # Command: resolve ${VAR} placeholders
+    raw_command = docker_conf.get("command") or None
+    if raw_command:
+        spec["command"] = re.sub(r"\$\{(\w+)\}", lambda m: env.get(m.group(1), m.group(0)), raw_command)
+
+    result = await _proxy_worker_deploy(worker_id, slug, spec)
     container_id = result.get("container_id", "remote")
     await database.save_deployment(slug=slug, container_id=container_id)
     await database.record_health_event(slug, "start", f"deployed to worker {worker_id}")
