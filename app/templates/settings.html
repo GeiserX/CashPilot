@@ -36,160 +36,42 @@
       <select class="form-input" id="settings-currency">
         <option value="USD">USD</option>
       </select>
-      <div class="form-hint">All balances will be converted and displayed in this currency. Auto-detected from your browser locale.</div>
+      <div class="form-hint">All balances will be converted and displayed in this currency.</div>
     </div>
+  </div>
+
+  <div style="display: flex; justify-content: flex-end; margin-top: 4px;">
+    <button class="btn btn-primary" onclick="CP.saveSettings()">Save General Settings</button>
   </div>
 </div>
 
-<!-- Earnings Collection Credentials -->
+<!-- Environment Variables -->
+<div class="card settings-section">
+  <h3 class="settings-section-title">Environment Variables</h3>
+  <p class="settings-section-desc">
+    Variables set via Docker <code>-e</code> flags are locked. Unset variables can be configured here and saved to the database.
+  </p>
+  <div id="env-vars-container">
+    <p style="color: var(--text-muted); font-size: 0.85rem;">Loading...</p>
+  </div>
+</div>
+
+<!-- Earnings Collection -->
 <div class="card settings-section">
   <h3 class="settings-section-title">Earnings Collection</h3>
   <p class="settings-section-desc">
-    Enter credentials for services you want to track earnings from.
-    You don't need to deploy containers through CashPilot &mdash; just add your credentials and earnings will be collected automatically.
+    Credentials for automated earnings tracking. Only services with a built-in collector are shown.
+    You don't need to deploy containers through CashPilot &mdash; just add your credentials.
   </p>
 
-  <!-- Honeygain -->
-  <details class="collector-section">
-    <summary class="collector-header">
-      <span class="collector-name">Honeygain</span>
-      <span class="badge badge-category" id="status-honeygain">Not configured</span>
-    </summary>
-    <div class="collector-body">
-      <div class="form-group">
-        <label class="form-label">Email</label>
-        <input class="form-input collector-input" type="text" data-config="honeygain_email" placeholder="Your Honeygain email">
-      </div>
-      <div class="form-group">
-        <label class="form-label">Password</label>
-        <input class="form-input collector-input" type="password" data-config="honeygain_password" placeholder="Your Honeygain password">
-      </div>
-    </div>
-  </details>
-
-  <!-- EarnApp -->
-  <details class="collector-section">
-    <summary class="collector-header">
-      <span class="collector-name">EarnApp</span>
-      <span class="badge badge-category" id="status-earnapp">Not configured</span>
-    </summary>
-    <div class="collector-body">
-      <div class="form-group">
-        <label class="form-label">OAuth Token</label>
-        <input class="form-input collector-input" type="password" data-config="earnapp_oauth_token"
-               placeholder="From browser: F12 > Application > Cookies > oauth-refresh-token">
-        <div class="form-hint">Open earnapp.com, press F12, go to Application > Cookies, and copy the <code>oauth-refresh-token</code> value.</div>
-      </div>
-    </div>
-  </details>
-
-  <!-- IPRoyal Pawns -->
-  <details class="collector-section">
-    <summary class="collector-header">
-      <span class="collector-name">IPRoyal Pawns</span>
-      <span class="badge badge-category" id="status-iproyal">Not configured</span>
-    </summary>
-    <div class="collector-body">
-      <div class="form-group">
-        <label class="form-label">Email</label>
-        <input class="form-input collector-input" type="text" data-config="iproyal_email" placeholder="Your Pawns email">
-      </div>
-      <div class="form-group">
-        <label class="form-label">Password</label>
-        <input class="form-input collector-input" type="password" data-config="iproyal_password" placeholder="Your Pawns password">
-      </div>
-    </div>
-  </details>
-
-  <!-- Traffmonetizer -->
-  <details class="collector-section">
-    <summary class="collector-header">
-      <span class="collector-name">Traffmonetizer</span>
-      <span class="badge badge-category" id="status-traffmonetizer">Not configured</span>
-    </summary>
-    <div class="collector-body">
-      <div class="form-group">
-        <label class="form-label">API Token</label>
-        <input class="form-input collector-input" type="password" data-config="traffmonetizer_token"
-               placeholder="From browser: F12 > Local Storage > token">
-        <div class="form-hint">Open app.traffmonetizer.com, press F12, go to Application > Local Storage, and copy the <code>token</code> value.</div>
-      </div>
-    </div>
-  </details>
-
-  <!-- MystNodes -->
-  <details class="collector-section">
-    <summary class="collector-header">
-      <span class="collector-name">MystNodes (Mysterium)</span>
-      <span class="badge badge-category" id="status-mysterium">Not configured</span>
-    </summary>
-    <div class="collector-body">
-      <div class="form-group">
-        <label class="form-label">Tequila API URL</label>
-        <input class="form-input collector-input" type="text" data-config="mysterium_api_url"
-               value="http://localhost:4449" placeholder="http://localhost:4449">
-        <div class="form-hint">The Mysterium node's local API. Default: <code>http://localhost:4449</code>. Change if your node runs on another host.</div>
-      </div>
-    </div>
-  </details>
-
-  <!-- Storj -->
-  <details class="collector-section">
-    <summary class="collector-header">
-      <span class="collector-name">Storj</span>
-      <span class="badge badge-category" id="status-storj">Not configured</span>
-    </summary>
-    <div class="collector-body">
-      <div class="form-group">
-        <label class="form-label">Storagenode API URL</label>
-        <input class="form-input collector-input" type="text" data-config="storj_api_url"
-               value="http://localhost:14002" placeholder="http://localhost:14002">
-        <div class="form-hint">Your storagenode's local dashboard API. Default: <code>http://localhost:14002</code>.</div>
-      </div>
-    </div>
-  </details>
-
-  <!-- Grass -->
-  <details class="collector-section">
-    <summary class="collector-header">
-      <span class="collector-name">Grass</span>
-      <span class="badge badge-category" id="status-grass">Not configured</span>
-    </summary>
-    <div class="collector-body">
-      <div class="form-group">
-        <label class="form-label">Access Token</label>
-        <input class="form-input collector-input" type="password" data-config="grass_access_token"
-               placeholder="From browser: F12 > Application > Local Storage > accessToken">
-        <div class="form-hint">Open <a href="https://app.grass.io" target="_blank">app.grass.io</a>, log in, press F12, go to Application &gt; Local Storage, and copy the <code>accessToken</code> value.</div>
-      </div>
-    </div>
-  </details>
-
-  <!-- Bytelixir -->
-  <details class="collector-section">
-    <summary class="collector-header">
-      <span class="collector-name">Bytelixir</span>
-      <span class="badge badge-category" id="status-bytelixir">Not configured</span>
-    </summary>
-    <div class="collector-body">
-      <div class="form-group">
-        <label class="form-label">Session Cookie</label>
-        <input class="form-input collector-input" type="password" data-config="bytelixir_session_cookie"
-               placeholder="bytelixir_session cookie value from browser">
-        <div class="form-hint">Open <a href="https://dash.bytelixir.com" target="_blank">dash.bytelixir.com</a>, log in (tick &ldquo;Remember Me&rdquo;), press F12, go to Application &gt; Cookies, and copy the <code>bytelixir_session</code> value.</div>
-      </div>
-    </div>
-  </details>
+  <div id="collectors-container">
+    <p style="color: var(--text-muted); font-size: 0.85rem;">Loading...</p>
+  </div>
 
   <div style="margin-top: 16px; display: flex; gap: 8px; align-items: center;">
     <button class="btn btn-primary" onclick="CP.saveCollectorCredentials()">Save Credentials</button>
     <button class="btn btn-secondary" onclick="CP.testCollectors()">Test Collection Now</button>
     <span id="collector-save-status" style="font-size: 0.85rem; color: var(--text-muted);"></span>
   </div>
-</div>
-
-<!-- Save General -->
-<div style="display: flex; justify-content: flex-end; margin-top: 8px;">
-  <button class="btn btn-primary btn-lg" onclick="CP.saveSettings()">Save General Settings</button>
 </div>
 {% endblock %}

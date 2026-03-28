@@ -1567,81 +1567,151 @@ const CP = (() => {
   async function loadSettings() {
     populateCurrencyDropdown();
     try {
-      const config = await api('/api/config');
+      const [config, envInfo, collectorsMeta] = await Promise.all([
+        api('/api/config'),
+        api('/api/env-info').catch(() => []),
+        api('/api/collectors/meta').catch(() => []),
+      ]);
       populateSettings(config);
-
-      // Populate collector credential fields from config
-      document.querySelectorAll('.collector-input').forEach(input => {
-        const key = input.dataset.config;
-        if (config[key]) {
-          // Mask passwords/tokens but show that a value exists
-          if (input.type === 'password') {
-            input.value = '********';
-            input.placeholder = 'Value saved (enter new to replace)';
-          } else {
-            input.value = config[key];
-          }
-        }
-      });
-      updateCollectorStatuses();
+      renderEnvVars(envInfo, config);
+      renderCollectors(collectorsMeta, config);
     } catch (err) {
       // Settings may not be available yet
     }
   }
 
   function populateSettings(config) {
-    // Credentials
-    const credsEl = document.getElementById('settings-credentials');
-    if (credsEl && config.credentials) {
-      credsEl.innerHTML = Object.entries(config.credentials).map(([slug, creds]) => `
-        <div class="credential-row">
-          <span class="credential-name">${escapeHtml(slug)}</span>
-          <span class="credential-value">${Object.keys(creds).map(k => `${k}: ********`).join(', ')}</span>
-          <button class="btn btn-ghost btn-sm" onclick="CP.editCredentials('${slug}')">Edit</button>
-        </div>
-      `).join('');
-    }
-
-    // General settings
     const hostnameInput = document.getElementById('settings-hostname');
-    if (hostnameInput && config.hostname_prefix) {
-      hostnameInput.value = config.hostname_prefix;
-    }
+    if (hostnameInput && config.hostname_prefix) hostnameInput.value = config.hostname_prefix;
 
     const intervalInput = document.getElementById('settings-interval');
-    if (intervalInput && config.collect_interval) {
-      intervalInput.value = config.collect_interval;
-    }
+    if (intervalInput && config.collect_interval) intervalInput.value = config.collect_interval;
 
     const timezoneInput = document.getElementById('settings-timezone');
-    if (timezoneInput && config.timezone) {
-      timezoneInput.value = config.timezone;
-    }
+    if (timezoneInput && config.timezone) timezoneInput.value = config.timezone;
   }
 
-  async function saveSettings() {
-    const config = {};
+  function renderEnvVars(envInfo, config) {
+    const container = document.getElementById('env-vars-container');
+    if (!container) return;
+    if (!envInfo.length) {
+      container.innerHTML = '<p style="color:var(--text-muted);font-size:0.85rem;">No environment variable info available.</p>';
+      return;
+    }
+    const rows = envInfo.map(v => {
+      const fromEnv = v.set_via_env;
+      const dbVal = config[v.key] || '';
+      const displayVal = fromEnv ? v.value : dbVal;
+      const inputType = v.secret ? 'password' : 'text';
+      const lockIcon = fromEnv
+        ? '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" stroke-width="2" style="vertical-align:middle;margin-left:6px;"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>'
+        : '';
+      const badge = fromEnv
+        ? '<span class="badge badge-deployed" style="font-size:0.7rem;margin-left:8px;">ENV</span>'
+        : (dbVal ? '<span class="badge badge-category" style="font-size:0.7rem;margin-left:8px;">DB</span>'
+                 : '<span class="badge" style="font-size:0.7rem;margin-left:8px;opacity:0.5;">Not set</span>');
+      return `
+      <div style="display:grid;grid-template-columns:220px 1fr;gap:12px;align-items:start;padding:10px 0;border-bottom:1px solid var(--border-color);">
+        <div>
+          <div style="font-weight:600;font-size:0.9rem;color:var(--text-primary);">${escapeHtml(v.label)}${lockIcon}${badge}</div>
+          <div style="font-size:0.75rem;color:var(--text-muted);margin-top:2px;font-family:monospace;">${escapeHtml(v.key)}</div>
+        </div>
+        <div>
+          <input class="form-input env-var-input" type="${inputType}"
+                 data-env-key="${escapeHtml(v.key)}"
+                 value="${escapeHtml(displayVal)}"
+                 placeholder="${escapeHtml(v.description)}"
+                 ${fromEnv ? 'disabled style="opacity:0.6;cursor:not-allowed;"' : ''}>
+          <div class="form-hint">${escapeHtml(v.description)}</div>
+        </div>
+      </div>`;
+    }).join('');
+    container.innerHTML = rows + `
+    <div style="display:flex;justify-content:flex-end;margin-top:12px;">
+      <button class="btn btn-primary" onclick="CP.saveEnvSettings()">Save Variables</button>
+    </div>`;
+  }
 
-    // General
-    const hostnameInput = document.getElementById('settings-hostname');
-    if (hostnameInput) config.hostname_prefix = hostnameInput.value;
-
-    const intervalInput = document.getElementById('settings-interval');
-    if (intervalInput) config.collect_interval = parseInt(intervalInput.value) || 60;
-
-    const timezoneInput = document.getElementById('settings-timezone');
-    if (timezoneInput) config.timezone = timezoneInput.value;
-
+  async function saveEnvSettings() {
+    const inputs = document.querySelectorAll('.env-var-input:not(:disabled)');
+    const data = {};
+    inputs.forEach(input => {
+      const val = input.value.trim();
+      if (val && val !== '********') {
+        data[input.dataset.envKey] = val;
+      }
+    });
+    if (Object.keys(data).length === 0) {
+      toast('No changes to save', 'info');
+      return;
+    }
     try {
-      await api('/api/config', { method: 'POST', body: config });
-      toast('Settings saved', 'success');
+      await api('/api/config', { method: 'POST', body: { data } });
+      toast('Variables saved', 'success');
     } catch (err) {
       toast(`Save failed: ${err.message}`, 'error');
     }
   }
 
-  async function editCredentials(slug) {
-    toast(`Edit credentials for ${slug} — coming soon`, 'info');
+  function renderCollectors(meta, config) {
+    const container = document.getElementById('collectors-container');
+    if (!container) return;
+    if (!meta.length) {
+      container.innerHTML = '<p style="color:var(--text-muted);font-size:0.85rem;">No collectors available.</p>';
+      return;
+    }
+    container.innerHTML = meta.map(col => {
+      const configured = col.fields.some(f => {
+        const val = config[f.key];
+        return val && val.trim() !== '';
+      });
+      const statusBadge = configured
+        ? '<span class="badge badge-deployed">Configured</span>'
+        : '<span class="badge badge-category">Not configured</span>';
+      const fields = col.fields.map(f => {
+        const savedVal = config[f.key] || '';
+        const inputType = f.secret ? 'password' : 'text';
+        const displayVal = (f.secret && savedVal) ? '********' : savedVal;
+        const placeholder = (f.secret && savedVal) ? 'Value saved (enter new to replace)' : f.label;
+        return `
+        <div class="form-group" style="margin-bottom:8px;">
+          <label class="form-label" style="font-size:0.8rem;">${escapeHtml(f.label)}${f.required ? '' : ' <span style="opacity:0.5;">(optional)</span>'}</label>
+          <input class="form-input collector-input" type="${inputType}"
+                 data-config="${escapeHtml(f.key)}"
+                 value="${escapeHtml(displayVal)}"
+                 placeholder="${escapeHtml(placeholder)}">
+        </div>`;
+      }).join('');
+      return `
+      <details class="collector-section" id="collector-${col.slug}">
+        <summary class="collector-header">
+          <span class="collector-name">${escapeHtml(col.name)}</span>
+          ${statusBadge}
+        </summary>
+        <div class="collector-body">
+          ${fields}
+        </div>
+      </details>`;
+    }).join('');
+  }
+
+  async function saveSettings() {
+    const data = {};
+    const hostnameInput = document.getElementById('settings-hostname');
+    if (hostnameInput) data.hostname_prefix = hostnameInput.value;
+
+    const intervalInput = document.getElementById('settings-interval');
+    if (intervalInput) data.collect_interval = String(parseInt(intervalInput.value) || 60);
+
+    const timezoneInput = document.getElementById('settings-timezone');
+    if (timezoneInput) data.timezone = timezoneInput.value;
+
+    try {
+      await api('/api/config', { method: 'POST', body: { data } });
+      toast('Settings saved', 'success');
+    } catch (err) {
+      toast(`Save failed: ${err.message}`, 'error');
+    }
   }
 
   async function saveCollectorCredentials() {
@@ -1650,7 +1720,6 @@ const CP = (() => {
     inputs.forEach(input => {
       const key = input.dataset.config;
       const val = input.value.trim();
-      // Only save non-empty, non-masked values
       if (val && val !== '********') {
         data[key] = val;
       }
@@ -1664,7 +1733,7 @@ const CP = (() => {
     try {
       await api('/api/config', { method: 'POST', body: { data } });
       toast('Credentials saved', 'success');
-      updateCollectorStatuses();
+      loadSettings();
     } catch (err) {
       toast(`Save failed: ${err.message}`, 'error');
     }
@@ -1681,23 +1750,6 @@ const CP = (() => {
       toast(`Collection failed: ${err.message}`, 'error');
       if (statusEl) statusEl.textContent = '';
     }
-  }
-
-  function updateCollectorStatuses() {
-    const configuredServices = ['honeygain', 'earnapp', 'iproyal', 'traffmonetizer', 'mysterium', 'storj', 'grass', 'bytelixir'];
-    configuredServices.forEach(slug => {
-      const badge = document.getElementById(`status-${slug}`);
-      if (!badge) return;
-      const inputs = document.querySelectorAll(`.collector-input[data-config^="${slug}_"]`);
-      let hasValue = false;
-      inputs.forEach(input => {
-        if (input.value.trim() && input.value !== '********') hasValue = true;
-      });
-      if (hasValue) {
-        badge.textContent = 'Configured';
-        badge.className = 'badge badge-deployed';
-      }
-    });
   }
 
   // -----------------------------------------------------------
@@ -1830,15 +1882,12 @@ const CP = (() => {
   }
 
   function openCollectorSection(platform) {
-    const badge = document.getElementById('status-' + platform);
-    if (!badge) return;
-    const details = badge.closest('details.collector-section');
-    if (details) {
-      details.open = true;
-      details.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      details.classList.add('highlight-flash');
-      setTimeout(() => details.classList.remove('highlight-flash'), 2000);
-    }
+    const details = document.getElementById('collector-' + platform);
+    if (!details) return;
+    details.open = true;
+    details.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    details.classList.add('highlight-flash');
+    setTimeout(() => details.classList.remove('highlight-flash'), 2000);
   }
 
   // -----------------------------------------------------------
@@ -2020,7 +2069,7 @@ const CP = (() => {
     saveSettings,
     saveCollectorCredentials,
     testCollectors,
-    editCredentials,
+    saveEnvSettings,
     filterCatalog,
     refreshServices,
     openClaimModal,

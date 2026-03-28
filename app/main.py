@@ -1152,6 +1152,66 @@ async def api_set_preferences(request: Request, body: PreferencesUpdate) -> dict
 
 
 # ---------------------------------------------------------------------------
+# API: Environment Info
+# ---------------------------------------------------------------------------
+
+
+@app.get("/api/env-info")
+async def api_env_info(request: Request) -> list[dict[str, Any]]:
+    _require_owner(request)
+    env_defs = [
+        ("CASHPILOT_API_KEY", "Fleet API Key", True, "Bearer token for worker-to-UI authentication"),
+        ("CASHPILOT_SECRET_KEY", "Session Secret Key", True, "Secret for JWT session tokens — change from default for security"),
+        ("CASHPILOT_DATA_DIR", "Data Directory", False, "Directory containing the SQLite database"),
+        ("DATABASE_PATH", "Database Path", False, "Full path override for the SQLite database file"),
+        ("TZ", "System Timezone", False, "Container timezone in IANA format (e.g. Europe/Madrid)"),
+    ]
+    result = []
+    for key, label, secret, desc in env_defs:
+        raw = os.getenv(key, "")
+        result.append({
+            "key": key,
+            "label": label,
+            "secret": secret,
+            "description": desc,
+            "set_via_env": bool(raw),
+            "value": "********" if (secret and raw) else raw,
+        })
+    return result
+
+
+# ---------------------------------------------------------------------------
+# API: Collectors Metadata
+# ---------------------------------------------------------------------------
+
+
+@app.get("/api/collectors/meta")
+async def api_collectors_meta(request: Request) -> list[dict[str, Any]]:
+    _require_auth_api(request)
+    from app.collectors import _COLLECTOR_ARGS, COLLECTOR_MAP
+
+    secret_args = {"password", "token", "auth_token", "access_token", "api_key", "session_cookie", "oauth_token", "brd_sess_id"}
+    meta = []
+    for slug in sorted(COLLECTOR_MAP.keys()):
+        args = _COLLECTOR_ARGS.get(slug, [])
+        svc = catalog.get_service(slug)
+        name = svc.get("name", slug) if svc else slug
+        fields = []
+        for arg in args:
+            optional = arg.startswith("?")
+            arg_name = arg.lstrip("?")
+            config_key = f"{slug}_{arg_name}"
+            fields.append({
+                "key": config_key,
+                "label": arg_name.replace("_", " ").title(),
+                "secret": arg_name in secret_args,
+                "required": not optional,
+            })
+        meta.append({"slug": slug, "name": name, "fields": fields})
+    return meta
+
+
+# ---------------------------------------------------------------------------
 # API: Config
 # ---------------------------------------------------------------------------
 
