@@ -52,7 +52,6 @@ Then open [http://localhost:8080](http://localhost:8080) and follow the setup wi
 
 ## Supported Services
 
-<!-- SERVICES_TABLE_START — DO NOT EDIT MANUALLY. Run: python scripts/generate_docs.py -->
 ### Docker-Deployable Services
 
 Services CashPilot can deploy and manage automatically via Docker.
@@ -115,9 +114,8 @@ GPU-intensive computing services. Requires compatible hardware.
 | [Nosana](https://nosana.io) ([guide](docs/guides/nosana.md)) | ✅ | ✅ | 50GB | Crypto (NOS) | Active |
 | [Salad](https://salad.io) ([guide](docs/guides/salad.md)) | ✅ | ✅ | N/A | PayPal, Gift Cards | Active |
 | [Vast.ai](https://cloud.vast.ai/?ref_id=452772) ([guide](docs/guides/vast-ai.md)) | ✅ | ✅ | 100GB | Crypto, Bank Transfer | Active |
-<!-- SERVICES_TABLE_END -->
 
-> **Note:** The `generate_docs.py` script auto-generates this table from service YAML definitions. Earnings vary widely by location, hardware, and demand -- see individual guide pages in `docs/guides/` for details.
+> **Note:** Earnings vary widely by location, hardware, and demand -- see individual guide pages in `docs/guides/` for details.
 
 ## How It Works
 
@@ -257,10 +255,9 @@ CashPilot monitors container health continuously. If a service container exits u
 Contributions are welcome. To add a new service:
 
 1. Create a YAML file in the appropriate `services/` subdirectory following `services/_schema.yml`
-2. Run `python scripts/generate_docs.py` to regenerate the README table and guide pages
-3. Submit a pull request
-
-**Do not edit the service table in this README directly** — it is auto-generated from the YAML files in `services/`. Edit the YAML source of truth instead, then run the generator.
+2. Run `python scripts/generate_docs.py` to regenerate the guide pages in `docs/guides/`
+3. Update the service tables in this README
+4. Submit a pull request
 
 For bug reports and feature requests, open an issue on GitHub.
 
