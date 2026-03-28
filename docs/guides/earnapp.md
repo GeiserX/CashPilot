@@ -27,7 +27,7 @@ EarnApp by Bright Data lets you sell your unused bandwidth for passive income. B
 | Minimum bandwidth | None |
 | GPU required | No |
 | Minimum storage | None |
-| Supported platforms | Windows, Macos, Linux, Android |
+| Supported platforms | Docker, Windows, Macos, Linux, Android |
 
 ## Setup Instructions
 

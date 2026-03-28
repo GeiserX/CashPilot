@@ -27,7 +27,7 @@ PacketShare lets you earn passive income by sharing your unused internet bandwid
 | Minimum bandwidth | None |
 | GPU required | No |
 | Minimum storage | None |
-| Supported platforms | Windows, Macos, Linux |
+| Supported platforms | Docker, Windows, Macos, Linux |
 
 ## Setup Instructions
 

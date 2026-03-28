@@ -27,7 +27,7 @@ Anyone Protocol (formerly ATOR) is a decentralized onion-routing privacy network
 | Minimum bandwidth | 10 Mbps |
 | GPU required | No |
 | Minimum storage | None |
-| Supported platforms | Linux |
+| Supported platforms | Docker, Linux |
 
 ## Setup Instructions
 

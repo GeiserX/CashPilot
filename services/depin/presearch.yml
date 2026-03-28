@@ -54,7 +54,7 @@ cashout:
   min_amount: 0
   currency: PRE
 
-platforms: [windows, macos, linux]
+platforms: [docker, linux]
 
 collector:
   type: api

@@ -27,7 +27,7 @@ IPRoyal Pawns lets you earn by sharing your unused bandwidth. IPRoyal is a well-
 | Minimum bandwidth | None |
 | GPU required | No |
 | Minimum storage | None |
-| Supported platforms | Windows, Macos, Linux, Android |
+| Supported platforms | Docker, Windows, Macos, Linux, Android, Ios |
 
 ## Setup Instructions
 

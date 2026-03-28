@@ -27,7 +27,7 @@ PassiveApp is a DePIN platform that lets you earn crypto and PayPal rewards by s
 | Minimum bandwidth | None |
 | GPU required | No |
 | Minimum storage | None |
-| Supported platforms | Windows, Macos, Linux, Android |
+| Supported platforms | Windows, Linux, Android, Ios |
 
 ## Setup Instructions
 

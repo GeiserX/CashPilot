@@ -54,7 +54,7 @@ cashout:
   currency: MYST
   notes: "MYST tokens settle on-chain. Withdraw from MyST node dashboard to your wallet."
 
-platforms: [windows, macos, linux]
+platforms: [docker, windows, macos, linux, android, browser-extension]
 
 collector:
   type: api

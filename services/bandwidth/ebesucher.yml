@@ -48,7 +48,7 @@ cashout:
   currency: EUR
   notes: "Euro payout via PayPal or bank transfer."
 
-platforms: [browser]
+platforms: [browser-extension]
 
 collector:
   type: manual

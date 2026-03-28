@@ -27,7 +27,7 @@ PacketStream is a peer-to-peer bandwidth marketplace where you can sell your unu
 | Minimum bandwidth | None |
 | GPU required | No |
 | Minimum storage | None |
-| Supported platforms | Windows, Macos, Linux |
+| Supported platforms | Docker, Windows, Linux, Android |
 
 ## Setup Instructions
 

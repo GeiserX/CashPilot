@@ -59,7 +59,7 @@ cashout:
   currency: USD
   notes: "Confirmed dead (Discord, March 2026)."
 
-platforms: [windows, macos, linux]
+platforms: [docker, windows, macos, linux]
 
 collector:
   type: manual

@@ -27,7 +27,7 @@ Traffmonetizer lets you monetize your internet traffic by sharing bandwidth with
 | Minimum bandwidth | None |
 | GPU required | No |
 | Minimum storage | None |
-| Supported platforms | Windows, Macos, Linux |
+| Supported platforms | Docker, Windows, Macos, Android |
 
 ## Setup Instructions
 

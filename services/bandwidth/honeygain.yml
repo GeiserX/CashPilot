@@ -66,7 +66,7 @@ cashout:
   currency: USD
   notes: "PayPal payout or BTC/JumpToken via dashboard. Lucky Pot daily bonus available."
 
-platforms: [windows, macos, linux, android]
+platforms: [docker, windows, macos, linux, android]
 
 collector:
   type: api

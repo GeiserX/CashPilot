@@ -27,7 +27,7 @@ MystNodes (Mysterium Network) is a decentralized VPN and proxy network built on 
 | Minimum bandwidth | None |
 | GPU required | No |
 | Minimum storage | None |
-| Supported platforms | Windows, Macos, Linux |
+| Supported platforms | Docker, Windows, Macos, Linux, Android, Browser-Extension |
 
 ## Setup Instructions
 
