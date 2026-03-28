@@ -1,6 +1,6 @@
 # Bytebenefit
 
-> **Category:** Bandwidth Sharing | **Status:** Active
+> **Category:** Bandwidth Sharing | **Status:** Dead
 > **Website:** [https://bytebenefit.com](https://bytebenefit.com)
 
 ## Description

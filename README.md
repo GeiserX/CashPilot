@@ -100,12 +100,10 @@ These services have no Docker image. CashPilot lists them in the catalog with si
 
 | Service | Residential IP | VPS IP | Devices / Acct | Devices / IP | Payout | Status |
 |---------|:-:|:-:|:-:|:-:|--------|--------|
-| [BlockMesh (Perceptron Network)](https://blockmesh.xyz) | ✅ | ❌ | Unlimited | 1 | Crypto (BMESH) | Shady |
-| [Bytebenefit](https://bytebenefit.com) | ✅ | ❌ | Unlimited | 1 | PayPal | Active |
 | [Bytelixir](https://bytelixir.com/r/OYEIRE0VSZBZ) | ✅ | ❌ | Unlimited | 1 | Crypto | Active |
+| [Dawn Internet](https://dawninternet.com/?code=2QLQV97F) | ✅ | ❌ | Unlimited | 1 | Crypto (DAWN) | Active |
 | [Deeper Network](https://deeper.network) | ✅ | ❌ | Unlimited | 1 | Crypto (DPR) | Active |
 | [Ebesucher](https://www.ebesucher.com/?ref=geiserx) | ✅ | ✅ | Unlimited | 1 | PayPal | Active |
-| [GagaNode](https://dashboard.gaganode.com/register) | ✅ | ✅ | Unlimited | 1 | Crypto, PayPal | Shady |
 | [Gradient Network](https://app.gradient.network/signup?referralCode=YSKMY7) | ✅ | ❌ | Unlimited | 1 | Crypto (GRADIENT) | Active |
 | [Grass](https://app.grass.io/register?referralCode=kn8FNEPnUr2tMqE) | ✅ | ❌ | Unlimited | 1 | Crypto (GRASS) | Active |
 | [Helium](https://helium.com) | ✅ | ❌ | Unlimited | 1 | Crypto (HNT) | Active |
@@ -312,6 +310,26 @@ Contributions are welcome. To add a new service:
 **Do not edit the service table in this README directly** — it is auto-generated from the YAML files in `services/`. Edit the YAML source of truth instead, then run the generator.
 
 For bug reports and feature requests, open an issue on GitHub.
+
+## Discontinued / Broken Services
+
+Services that were evaluated but are no longer listed in the catalog due to being dead, broken, or untrustworthy. Kept here for reference so they are not re-added.
+
+| Service | Status | Reason | Last checked |
+|---------|--------|--------|:------------:|
+| SpeedShare | Dead | Project confirmed dead in Discord | Mar 2026 |
+| Peer2Profit | Dead | Domain unreachable | Mar 2026 |
+| PacketShare | Dead | Signup process broken, no progress | Mar 2026 |
+| earn.cc | Broken | Server error on signup | Mar 2026 |
+| WizardGain | Broken | Under maintenance indefinitely | Mar 2026 |
+| Koii Network | Broken | Website says paused | Mar 2026 |
+| Network3 | Broken | No SSL, no updates in months | Mar 2026 |
+| GagaNode | Shady | Poorly made website, untrustworthy | Mar 2026 |
+| BlockMesh (Perceptron) | Dropped | Rebranded, requires browser dev mode, shady | Mar 2026 |
+| Bytebenefit | Dead | Domain sold/parked on marketplace | Mar 2026 |
+| Wipter | Dead | Domain resolves to DNS sinkhole, infrastructure gone | Mar 2026 |
+| Filecoin | Not viable | Enterprise-only (10 TiB min, datacenter infrastructure required) | Mar 2026 |
+| AntGain | Dead | Telegram channel unavailable | Mar 2026 |
 
 ## License
 

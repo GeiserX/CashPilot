@@ -63,7 +63,7 @@ docker run -d \
   --cap-add NET_ADMIN \
   -p 4449:4449 \
   -v mysterium-data:/var/lib/mysterium-node \
-  mysteriumnetwork/myst service --agreed-terms-and-conditions
+  mysteriumnetwork/myst --ui.address=0.0.0.0 --tequilapi.address=0.0.0.0 service --agreed-terms-and-conditions
 ```
 
 ## Referral Program

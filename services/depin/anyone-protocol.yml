@@ -7,23 +7,19 @@ description: >
   Anyone Protocol (formerly ATOR) is a decentralized onion-routing privacy
   network. Node operators run relay nodes and earn ANYONE tokens for bandwidth
   contributed. Think "incentivized Tor." Official Docker images available for
-  amd64 and arm64 including Raspberry Pi.
+  amd64 and arm64 including Raspberry Pi. Configuration is file-based via an
+  anonrc file mounted into the container (Nickname, ContactInfo, ORPort, etc.).
 short_description: Decentralized onion routing - incentivized Tor relay nodes
 
 referral:
   signup_url: "https://anyone.io"
 
 docker:
-  image: ghcr.io/anyone-protocol/ator-protocol-relay
+  image: ghcr.io/anyone-protocol/ator-protocol
   platforms: [linux/amd64, linux/arm64]
-  env:
-    - key: ANYONE_OPERATOR_ADDRESS
-      label: "Operator Wallet Address"
-      required: true
-      secret: false
-      description: "Your wallet address for receiving ANYONE token rewards"
-  ports: []
-  volumes: []
+  env: []
+  ports: ["9001:9001"]
+  volumes: ["anon-data:/var/lib/anon", "anon-config:/etc/anon"]
   command: ""
   network_mode: ""
 

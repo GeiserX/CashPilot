@@ -1,6 +1,6 @@
 # Dawn Internet
 
-> **Category:** DePIN | **Status:** Broken
+> **Category:** DePIN | **Status:** Active
 > **Website:** [https://dawninternet.com](https://dawninternet.com)
 
 ## Description

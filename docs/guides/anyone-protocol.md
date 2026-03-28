@@ -5,7 +5,7 @@
 
 ## Description
 
-Anyone Protocol (formerly ATOR) is a decentralized onion-routing privacy network. Node operators run relay nodes and earn ANYONE tokens for bandwidth contributed. Think "incentivized Tor." Official Docker images available for amd64 and arm64 including Raspberry Pi.
+Anyone Protocol (formerly ATOR) is a decentralized onion-routing privacy network. Node operators run relay nodes and earn ANYONE tokens for bandwidth contributed. Think "incentivized Tor." Official Docker images available for amd64 and arm64 including Raspberry Pi. Configuration is file-based via an anonrc file mounted into the container (Nickname, ContactInfo, ORPort, etc.).
 
 ## Earning Estimates
 
@@ -45,14 +45,12 @@ In the CashPilot web UI, find **Anyone Protocol** in the service catalog and cli
 
 ## Docker Configuration
 
-- **Image:** `ghcr.io/anyone-protocol/ator-protocol-relay`
+- **Image:** `ghcr.io/anyone-protocol/ator-protocol`
 - **Platforms:** linux/amd64, linux/arm64
 
 ### Environment Variables
 
-| Variable | Label | Required | Secret | Description |
-|----------|-------|:--------:|:------:|-------------|
-| `ANYONE_OPERATOR_ADDRESS` | Operator Wallet Address | Yes | No | Your wallet address for receiving ANYONE token rewards |
+No environment variables required.
 
 ### Manual Docker Run
 
@@ -61,8 +59,10 @@ If running outside CashPilot:
 ```bash
 docker run -d \
   --name cashpilot-anyone-protocol \
-  -e ANYONE_OPERATOR_ADDRESS="<Operator Wallet Address>" \
-  ghcr.io/anyone-protocol/ator-protocol-relay
+  -p 9001:9001 \
+  -v anon-data:/var/lib/anon \
+  -v anon-config:/etc/anon \
+  ghcr.io/anyone-protocol/ator-protocol
 ```
 
 ## Referral Program

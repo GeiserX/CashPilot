@@ -176,7 +176,7 @@ def generate_services_table(services: list[dict]) -> str:
 
     for svc in services:
         status = svc.get("status", "active")
-        if status in ("dead", "broken"):
+        if status in ("dead", "broken", "dropped", "shady"):
             continue
         cat = svc.get("category", "bandwidth")
         docker_img = svc.get("docker", {}).get("image", "")
