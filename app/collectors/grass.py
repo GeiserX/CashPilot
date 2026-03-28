@@ -86,29 +86,30 @@ class GrassCollector(BaseCollector):
         user = data.get("result", {}).get("data", {})
         return float(user.get("totalPoints", 0))
 
-    async def _estimate_from_devices(self, client: httpx.AsyncClient) -> float:
-        """Estimate current epoch points from per-device uptime data.
+    async def _estimate_from_active_devices(self, client: httpx.AsyncClient) -> float:
+        """Estimate current epoch points from active device uptime.
 
-        Fetches GET /devices and calculates:
-          hours * 50 * (ipScore / 100) * multiplier
-        for each device, summed.
+        Uses /activeDevices which provides ``aggUptime`` (epoch-scoped
+        aggregate uptime per device) — unlike /devices whose totalUptime
+        field is 0 for connected devices during an active epoch.
+
+        Formula per device: (aggUptime / 3600) * 50 * (ipScore / 100) * multiplier
         """
-        resp = await self._request_with_retry(client, f"{API_BASE}/devices", params={"input": "{}"})
+        resp = await self._request_with_retry(client, f"{API_BASE}/activeDevices")
         if resp.status_code == 429:
-            logger.warning("Grass /devices still rate-limited after retries")
+            logger.warning("Grass /activeDevices still rate-limited after retries")
             return -1.0
         resp.raise_for_status()
         data = resp.json()
 
         devices = data.get("result", {}).get("data", [])
         if not devices:
-            logger.debug("Grass /devices returned no devices")
+            logger.debug("Grass /activeDevices returned no devices")
             return 0.0
 
         total_estimated = 0.0
         for device in devices:
-            # totalUptime is in seconds; fall back to 0 if missing
-            uptime_seconds = float(device.get("totalUptime", 0))
+            uptime_seconds = float(device.get("aggUptime", 0))
             ip_score = float(device.get("ipScore", 0))
             multiplier = float(device.get("multiplier", 1))
 
@@ -129,7 +130,7 @@ class GrassCollector(BaseCollector):
             )
 
         logger.info(
-            "Grass estimated %.2f points from %d device(s)",
+            "Grass estimated %.2f points from %d active device(s)",
             total_estimated,
             len(devices),
         )
@@ -170,8 +171,8 @@ class GrassCollector(BaseCollector):
                         currency="GRASS",
                     )
 
-                # Active epoch: estimate from device uptime
-                estimated = await self._estimate_from_devices(client)
+                # Active epoch: estimate from active device uptime
+                estimated = await self._estimate_from_active_devices(client)
 
                 if estimated == -1.0:
                     return EarningsResult(

@@ -91,48 +91,36 @@ class BytelixirCollector(BaseCollector):
 
     @staticmethod
     def _parse_balance_from_html(html: str) -> float | None:
-        """Extract the USD balance from server-rendered ``data-balance``
-        attributes.
+        """Extract the USD balance from server-rendered HTML.
 
-        The dashboard uses Alpine.js ``Balance()`` components that read
-        their initial value from ``data-balance="..."`` attributes.
-        There may be two balance elements (USD and Bytelixir token) that
-        animate between each other via ``BalanceSwitch``.  We look for
-        the one with ``data-currency="USD"``.
+        Bytelixir renders balances as split-span dollar amounts::
+
+            <span>$</span>0.04<span class="text-2xs">025</span>
+
+        The integer+decimal part sits between two spans; the trailing
+        precision digits are inside the next ``<span>``.  There are
+        typically several instances (mobile + desktop + withdrawable).
+        We return the first non-zero value found.
         """
-        # Strategy 1: find elements with both data-balance and
-        # data-currency="USD".  Blade renders them as attributes on the
-        # same element.
-        usd_pattern = re.compile(
-            r'data-currency=["\']USD["\']'
-            r"[^>]*"
-            r'data-balance=["\']([^"\']+)["\']',
-            re.IGNORECASE,
+        # Pattern: <span>$</span>DIGITS<span...>DIGITS</span>
+        matches = re.findall(
+            r"<span>\$</span>(\d+\.\d+)<span[^>]*>(\d*)</span>",
+            html,
         )
-        match = usd_pattern.search(html)
-        if not match:
-            # Attributes may appear in opposite order.
-            usd_pattern_rev = re.compile(
-                r'data-balance=["\']([^"\']+)["\']'
-                r"[^>]*"
-                r'data-currency=["\']USD["\']',
-                re.IGNORECASE,
-            )
-            match = usd_pattern_rev.search(html)
-
-        if match:
+        for main, extra in matches:
             try:
-                return float(match.group(1))
-            except (ValueError, TypeError):
-                pass
-
-        # Strategy 2: fall back to any data-balance that looks numeric.
-        all_balances = re.findall(r'data-balance=["\']([0-9.]+)["\']', html)
-        for val in all_balances:
-            try:
-                return float(val)
+                val = float(main + extra)
+                if val > 0:
+                    return val
             except (ValueError, TypeError):
                 continue
+
+        # If all matched values are 0, return the first one
+        if matches:
+            try:
+                return float(matches[0][0] + matches[0][1])
+            except (ValueError, TypeError):
+                pass
 
         return None
 
