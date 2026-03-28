@@ -1160,13 +1160,15 @@ async def api_set_preferences(request: Request, body: PreferencesUpdate) -> dict
 @app.get("/api/env-info")
 async def api_env_info(request: Request) -> list[dict[str, Any]]:
     _require_owner(request)
+    # (key, label, secret, read_only, default, description)
     env_defs = [
-        ("CASHPILOT_API_KEY", "Fleet API Key", True, False, "Bearer token for worker-to-UI authentication"),
+        ("CASHPILOT_API_KEY", "Fleet API Key", True, False, "", "Bearer token for worker-to-UI authentication"),
         (
             "CASHPILOT_SECRET_KEY",
             "Session Secret Key",
             True,
             False,
+            "",
             "Secret for JWT session tokens — change from default for security",
         ),
         (
@@ -1174,22 +1176,24 @@ async def api_env_info(request: Request) -> list[dict[str, Any]]:
             "Hostname Prefix",
             False,
             False,
-            "Containers named {prefix}-{service} (default: cashpilot)",
+            "cashpilot",
+            "Containers named {prefix}-{service}",
         ),
         (
             "CASHPILOT_COLLECT_INTERVAL",
             "Collect Interval (min)",
             False,
             False,
-            "Minutes between automatic earnings collection (default: 60)",
+            "60",
+            "Minutes between automatic earnings collection",
         ),
-        ("CASHPILOT_DATA_DIR", "Data Directory", False, True, "Directory containing the SQLite database"),
-        ("DATABASE_PATH", "Database Path", False, True, "Full path override for the SQLite database file"),
-        ("TZ", "System Timezone", False, False, "Container timezone in IANA format (e.g. Europe/Madrid)"),
+        ("CASHPILOT_DATA_DIR", "Data Directory", False, True, "/data", "Directory containing the SQLite database"),
+        ("TZ", "System Timezone", False, False, "", "Container timezone in IANA format (e.g. Europe/Madrid)"),
     ]
     result = []
-    for key, label, secret, read_only, desc in env_defs:
+    for key, label, secret, read_only, default, desc in env_defs:
         raw = os.getenv(key, "")
+        val = raw or default
         result.append(
             {
                 "key": key,
@@ -1198,7 +1202,7 @@ async def api_env_info(request: Request) -> list[dict[str, Any]]:
                 "read_only": read_only,
                 "description": desc,
                 "set_via_env": bool(raw),
-                "value": "********" if (secret and raw) else raw,
+                "value": "********" if (secret and val) else val,
             }
         )
     return result
