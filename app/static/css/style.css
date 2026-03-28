@@ -1779,6 +1779,30 @@ img { max-width: 100%; }
   border-bottom: 1px solid var(--border-color);
   font-weight: 600;
 }
+.breakdown-table th.sortable {
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+.breakdown-table th.sortable:hover {
+  color: var(--text-primary);
+}
+.sort-indicator {
+  display: inline-block;
+  width: 10px;
+  margin-left: 4px;
+  font-size: 0.55rem;
+  vertical-align: middle;
+  opacity: 0;
+}
+.breakdown-table th.sortable:hover .sort-indicator:not(.active) {
+  opacity: 0.3;
+  content: '\25B2';
+}
+.sort-indicator.active {
+  opacity: 0.8;
+  color: var(--accent);
+}
 .breakdown-table td {
   padding: 12px;
   border-bottom: 1px solid var(--border-color);

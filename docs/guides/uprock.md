@@ -35,19 +35,24 @@ Uprock is a DePIN (Decentralized Physical Infrastructure Network) platform that 
 
 Sign up at [Uprock](https://link.uprock.com/i/33e8492e).
 
-### 2. Get your credentials
+### 2. Install the extension or app
 
-After signing up, locate the credentials needed for Docker deployment. These are typically your email/password or an API token found in the dashboard.
+Uprock is available as:
+- **Browser extension** (Chrome/Brave) — install from the Chrome Web Store
+- **Android app** — install from Google Play, works well alongside other bandwidth-sharing apps
 
-### 3. Deploy with CashPilot
+No Docker image is available (community or official).
 
-In the CashPilot web UI, find **Uprock** in the service catalog and click **Deploy**. Enter the required credentials and CashPilot will handle the rest.
+### 3. Start earning
+
+Log in with your account, enable the extension/app, and it runs in the background. No additional configuration needed.
 
 ## Docker Configuration
 
-- **Image:** ``
-- **Platforms:** browser-extension, android
+No Docker image available. Uprock is a browser extension and mobile app only.
 
-### Environment Variables
+## Important Notes
 
-No environment variables required.
+- **Android works well**: The Android app runs reliably in the background with proper battery optimization settings.
+- **No IP conflicts**: Can run alongside other bandwidth-sharing services on the same device/network.
+- **Extension + App**: You can run both the browser extension and mobile app simultaneously on different devices for additional earnings.

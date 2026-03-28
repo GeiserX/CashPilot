@@ -17,7 +17,7 @@ Nodle uses smartphone Bluetooth to create IoT infrastructure. The app passively 
 | Payout frequency | Continuous |
 | Payment methods | Crypto |
 
-> Very low earnings. Background phone app using Bluetooth. Wallet connect may be flaky.
+> Very low earnings. Background phone app using Bluetooth. Web3-only — no web dashboard for earnings, check via app or Polkadot blockchain explorer only.
 
 ## Requirements
 
@@ -31,22 +31,24 @@ Nodle uses smartphone Bluetooth to create IoT infrastructure. The app passively 
 
 ## Setup Instructions
 
-### 1. Create an account
+### 1. Install the app
 
-Sign up at [Nodle](https://nodle.com).
+Download the Nodle app from [Google Play](https://play.google.com/store/apps/details?id=io.nodle.cash) or [App Store](https://apps.apple.com/app/nodle-cash/id1480763553). There is no Docker image — Nodle is mobile-only and uses your phone's Bluetooth to detect nearby IoT devices.
 
-### 2. Get your credentials
+### 2. Create a wallet
 
-After signing up, locate the credentials needed for Docker deployment. These are typically your email/password or an API token found in the dashboard.
+The app creates a Polkadot-based wallet on first launch. Your NODL earnings are on-chain. There is **no web dashboard** — you can only check earnings inside the app or via a Polkadot/Subscan blockchain explorer.
 
-### 3. Deploy with CashPilot
+### 3. Enable permissions
 
-In the CashPilot web UI, find **Nodle** in the service catalog and click **Deploy**. Enter the required credentials and CashPilot will handle the rest.
+Grant Bluetooth, Location, and Background Activity permissions. The app earns passively by scanning for nearby IoT beacons.
 
 ## Docker Configuration
 
-- **Image:** ``
+Nodle does not support Docker deployment. It is a mobile-only app that requires Bluetooth hardware.
 
-### Environment Variables
+## Important Notes
 
-No environment variables required.
+- **Web3-only**: Nodle runs on the Nodle parachain (Polkadot ecosystem). There is no centralized API or web dashboard to check earnings or connected devices.
+- **Token**: NODL — can be viewed on Subscan or other Polkadot explorers using your wallet address.
+- **No IP conflicts**: Since Nodle uses Bluetooth (not internet bandwidth), it does not conflict with other bandwidth-sharing services on the same network.

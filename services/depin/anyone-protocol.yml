@@ -16,12 +16,25 @@ referral:
 
 docker:
   image: ghcr.io/anyone-protocol/ator-protocol
+  tag: latest
   platforms: [linux/amd64, linux/arm64]
-  env: []
+  env:
+    - key: CONTACT_EMAIL
+      label: "Contact Email"
+      required: false
+      secret: false
+      description: "Operator email (set in anonrc ContactInfo if not already present)"
   ports: ["9001:9001"]
-  volumes: ["anon-data:/var/lib/anon", "anon-config:/etc/anon"]
+  volumes:
+    - "anon-data:/var/lib/anon"
+    - "anon-config:/etc/anon"
+    - "anon-run:/run/anon"
   command: ""
   network_mode: ""
+  notes: >
+    Requires an anonrc config file mounted at /etc/anon/anonrc with AgreeToTerms 1.
+    The config dir must be writable (chown 100:101) for notices.log.
+    Port 9001 is the ORPort for relay traffic.
 
 requirements:
   residential_ip: false

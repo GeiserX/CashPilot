@@ -33,15 +33,52 @@ Anyone Protocol (formerly ATOR) is a decentralized onion-routing privacy network
 
 ### 1. Create an account
 
-Sign up at [Anyone Protocol](https://anyone.io).
+No account creation is needed. Anyone Protocol relays are permissionless -- you just run a node and earn ANYONE tokens based on uptime and bandwidth.
 
-### 2. Get your credentials
+### 2. Configure anonrc
 
-After signing up, locate the credentials needed for Docker deployment. These are typically your email/password or an API token found in the dashboard.
+Anyone Protocol requires an `anonrc` configuration file. Create it before deploying:
+
+```
+User anond
+DataDirectory /var/lib/anon
+ControlSocket /run/anon/control
+ControlSocketsGroupWritable 1
+CookieAuthentication 1
+CookieAuthFile /run/anon/control.authcookie
+CookieAuthFileGroupReadable 1
+Log notice file /etc/anon/notices.log
+ORPort 9001
+ExitRelay 0
+Nickname YourRelayName
+ContactInfo your@email.com
+AgreeToTerms 1
+```
+
+**Important:** `AgreeToTerms 1` is required since version 0.4.9.7-live. Without it, the container exits immediately with "User has not agreed to the terms and conditions."
 
 ### 3. Deploy with CashPilot
 
-In the CashPilot web UI, find **Anyone Protocol** in the service catalog and click **Deploy**. Enter the required credentials and CashPilot will handle the rest.
+In the CashPilot web UI, find **Anyone Protocol** in the service catalog and click **Deploy**. CashPilot will handle the anonrc creation and volume setup.
+
+### Manual Docker deployment
+
+If deploying manually, mount three volumes and ensure correct permissions:
+
+```bash
+mkdir -p /path/to/anyone-protocol/{config,data,run}
+# Write your anonrc to /path/to/anyone-protocol/config/anonrc
+chown -R 100:101 /path/to/anyone-protocol/{config,data,run}
+
+docker run -d --name anyone-relay --restart unless-stopped --init \
+  -p 9001:9001 \
+  -v /path/to/anyone-protocol/data:/var/lib/anon \
+  -v /path/to/anyone-protocol/config:/etc/anon \
+  -v /path/to/anyone-protocol/run:/run/anon \
+  ghcr.io/anyone-protocol/ator-protocol:latest
+```
+
+**Note:** The config directory must be writable by UID 100 (anond) for `notices.log`. Port 9001 must be forwarded through your router.
 
 ## Docker Configuration
 
@@ -50,4 +87,10 @@ In the CashPilot web UI, find **Anyone Protocol** in the service catalog and cli
 
 ### Environment Variables
 
-No environment variables required.
+| Variable | Label | Required | Secret | Description |
+|----------|-------|:--------:|:------:|-------------|
+| `CONTACT_EMAIL` | Contact Email | No | No | Operator email (set in anonrc ContactInfo if not already present) |
+
+### Required Configuration
+
+The `anonrc` file must contain `AgreeToTerms 1` to accept the [Anyone Protocol Terms](https://www.anyone.io/terms). The entrypoint script only handles Nickname and ContactInfo -- the terms check is in the `anon` binary itself.

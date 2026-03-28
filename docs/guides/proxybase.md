@@ -37,7 +37,7 @@ Sign up at [ProxyBase](https://peer.proxybase.org?referral=nXzS3c6iTO).
 
 ### 2. Get your credentials
 
-After signing up, locate the credentials needed for Docker deployment. These are typically your email/password or an API token found in the dashboard.
+After signing up and verifying your email, go to [peer.proxybase.org](https://peer.proxybase.org) and find your User ID in the dashboard. It looks like a short alphanumeric string (e.g. `nXzS3c6iTO`).
 
 ### 3. Deploy with CashPilot
 
@@ -53,4 +53,4 @@ In the CashPilot web UI, find **ProxyBase** in the service catalog and click **D
 | Variable | Label | Required | Secret | Description |
 |----------|-------|:--------:|:------:|-------------|
 | `USER_ID` | User ID | Yes | No | Your ProxyBase user ID from the dashboard |
-| `DEVICE_NAME` | Device Name | No | No | Name shown in your ProxyBase dashboard (default: `cashpilot-{hostname}`) |
+| `DEVICE_NAME` | Device Name | Yes | No | Name shown in your ProxyBase dashboard -- container crashes without it (default: `cashpilot-{hostname}`) |
