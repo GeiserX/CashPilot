@@ -634,10 +634,6 @@ def main() -> None:
 
     groups = group_by_category(services)
 
-    print("\nGenerating README services table...")
-    table = generate_services_table(services)
-    update_readme(table)
-
     print("\nGenerating individual guide pages...")
     write_guides(services, groups)
 
