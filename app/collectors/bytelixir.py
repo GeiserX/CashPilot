@@ -37,21 +37,43 @@ class BytelixirCollector(BaseCollector):
 
     platform = "bytelixir"
 
-    def __init__(self, session_cookie: str) -> None:
+    # The Laravel "remember me" cookie name — constant per app guard.
+    _REMEMBER_COOKIE = "remember_web_59ba36addc2b2f9401580f014c7f58ea4e30989d"
+
+    def __init__(
+        self,
+        session_cookie: str,
+        remember_web: str = "",
+        xsrf_token: str = "",
+    ) -> None:
         self.session_cookie = unquote(session_cookie)
+        self.remember_web = unquote(remember_web) if remember_web else ""
+        self.xsrf_token = unquote(xsrf_token) if xsrf_token else ""
 
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
 
     def _make_client(self) -> httpx.AsyncClient:
-        """Build an httpx client with the session cookie pre-set."""
+        """Build an httpx client with all session cookies pre-set."""
         cookies = httpx.Cookies()
         cookies.set(
             "bytelixir_session",
             self.session_cookie,
             domain="dash.bytelixir.com",
         )
+        if self.remember_web:
+            cookies.set(
+                self._REMEMBER_COOKIE,
+                self.remember_web,
+                domain="dash.bytelixir.com",
+            )
+        if self.xsrf_token:
+            cookies.set(
+                "XSRF-TOKEN",
+                self.xsrf_token,
+                domain="dash.bytelixir.com",
+            )
         return httpx.AsyncClient(
             timeout=30,
             cookies=cookies,
