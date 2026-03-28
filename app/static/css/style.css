@@ -1930,13 +1930,15 @@ img { max-width: 100%; }
   padding: 0 16px 16px;
 }
 .collectors-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px;
-  align-items: start;
+  columns: 2;
+  column-gap: 8px;
+}
+.collectors-grid > * {
+  break-inside: avoid;
+  margin-bottom: 8px;
 }
 @media (max-width: 768px) {
   .collectors-grid {
-    grid-template-columns: 1fr;
+    columns: 1;
   }
 }
