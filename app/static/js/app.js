@@ -1521,7 +1521,7 @@ const CP = (() => {
 
   async function workerAction(slug, action, workerId) {
     try {
-      await api(`/api/containers/${slug}/${action}?worker_id=${workerId}`, { method: 'POST' });
+      await api(`/api/services/${slug}/${action}?worker_id=${workerId}`, { method: 'POST' });
       // Refresh the modal
       openServiceDetail(slug);
     } catch (err) {
@@ -1536,7 +1536,7 @@ const CP = (() => {
       viewer.style.display = 'block';
       viewer.textContent = 'Loading...';
       try {
-        const data = await api(`/api/containers/${slug}/logs?worker_id=${workerId}&lines=100`);
+        const data = await api(`/api/services/${slug}/logs?worker_id=${workerId}&lines=100`);
         viewer.textContent = data.logs || '(no logs)';
         viewer.scrollTop = viewer.scrollHeight;
       } catch (err) {
