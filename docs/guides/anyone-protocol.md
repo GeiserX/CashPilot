@@ -57,7 +57,15 @@ AgreeToTerms 1
 
 **Important:** `AgreeToTerms 1` is required since version 0.4.9.7-live. Without it, the container exits immediately with "User has not agreed to the terms and conditions."
 
-### 3. Deploy with CashPilot
+### 3. Port forwarding (required)
+
+**Port TCP 9001 must be forwarded** to the server running the relay. The relay performs a self-test by connecting to its own ORPort from the outside. If the port is not reachable, the relay **will not publish its descriptor** to the network directory — it stays invisible, handles zero traffic, and earns nothing. You'll see repeated warnings in `notices.log`:
+
+> "Your server has not managed to confirm reachability for its ORPort(s). Relays do not publish descriptors until their ORPort and DirPort are reachable."
+
+If running behind a firewall (e.g. ufw), also allow port 9001/tcp inbound.
+
+### 4. Deploy with CashPilot
 
 In the CashPilot web UI, find **Anyone Protocol** in the service catalog and click **Deploy**. CashPilot will handle the anonrc creation and volume setup.
 
