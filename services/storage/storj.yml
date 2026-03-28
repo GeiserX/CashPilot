@@ -9,10 +9,11 @@ description: >
   $1.50/TB stored per month plus $2/TB egress. Payments are in STORJ token or via
   zkSync L2. Requires at least 550GB of available disk space and a stable internet
   connection. One of the most mature and truly passive storage income services.
+  No account or signup needed -- nodes are permissionless since mid-2025.
 short_description: Decentralized storage node - ~$1.50/TB stored + $2/TB egress
 
 referral:
-  signup_url: "https://www.storj.io/node"
+  signup_url: "https://storj.dev/node/get-started/setup"
 
 docker:
   image: storj/storagenode
@@ -22,7 +23,7 @@ docker:
       label: "Wallet address"
       required: true
       secret: false
-      description: "ERC-20 wallet address for STORJ token payouts (or zkSync)"
+      description: "ERC-20 wallet address for STORJ token payouts (e.g. 0x1234...abcd). Reuse any Ethereum wallet you already have"
     - key: EMAIL
       label: "Email"
       required: true
@@ -32,17 +33,34 @@ docker:
       label: "External address"
       required: true
       secret: false
-      description: "External IP or DDNS hostname with port (e.g. mynode.ddns.net:28967)"
+      description: "Your public IP or DDNS hostname with port (e.g. 84.54.27.229:28967). Port 28967 must be forwarded (TCP+UDP)"
     - key: STORAGE
       label: "Storage allocation"
       required: true
       secret: false
-      description: "Maximum disk space to allocate (e.g. 2TB)"
+      description: "Maximum disk space to allocate (e.g. 2TB). Use spinning disks (HDD), not SSD"
       default: "1TB"
-  ports: ["28967:28967/tcp", "14002:14002"]
-  volumes: ["/path/to/identity:/app/identity", "/path/to/storage:/app/config"]
+    - key: IDENTITY_DIR
+      label: "Identity directory"
+      required: true
+      secret: false
+      description: "Host path where identity files are stored (must contain ca.cert, ca.key, identity.cert, identity.key)"
+    - key: STORAGE_DIR
+      label: "Storage directory"
+      required: true
+      secret: false
+      description: "Host path on a spinning disk (HDD) for Storj data storage. Needs at least 550GB free"
+  ports: ["28967:28967/tcp", "28967:28967/udp", "14002:14002"]
+  volumes:
+    - "${IDENTITY_DIR}:/app/identity"
+    - "${STORAGE_DIR}:/app/config"
   command: ""
   network_mode: ""
+  notes: >
+    No signup or auth token required (permissionless since mid-2025).
+    Identity must be pre-generated using the identity binary (proof-of-work to difficulty 36, takes hours).
+    Use spinning disks for storage. Port 28967 TCP+UDP must be forwarded.
+    Local dashboard available at port 14002.
 
 requirements:
   residential_ip: false
@@ -67,10 +85,10 @@ earnings:
 
 cashout:
   method: redirect
-  dashboard_url: "https://www.storj.io/dcs/dashboard"
+  dashboard_url: "http://localhost:14002"
   min_amount: 4.0
   currency: STORJ
-  notes: "Payouts sent monthly in STORJ tokens to configured wallet address."
+  notes: "Payouts sent monthly in STORJ tokens to configured wallet address. Dashboard at port 14002."
 
 platforms: [docker, windows, linux]
 

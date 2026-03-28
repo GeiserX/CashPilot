@@ -163,12 +163,16 @@ def deploy_service(
             container_port, host_port = str(mapping).split(":", 1)
             ports[container_port] = int(host_port)
 
-    # Volumes: list of "host:container" strings
+    # Volumes: list of "host:container" strings — resolve ${VAR} in host paths
     volumes: dict[str, dict[str, str]] = {}
     for mapping in docker_conf.get("volumes", []):
         if ":" in str(mapping):
             parts = str(mapping).split(":")
-            host_path = parts[0]
+            host_path = re.sub(
+                r"\$\{(\w+)\}",
+                lambda m: env.get(m.group(1), m.group(0)),
+                parts[0],
+            )
             container_path = parts[1]
             mode = parts[2] if len(parts) > 2 else "rw"
             volumes[host_path] = {"bind": container_path, "mode": mode}
