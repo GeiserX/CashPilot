@@ -36,7 +36,7 @@ payment:
   frequency: "Epoch-based airdrop"
 
 earnings:
-  monthly_low: 1
+  monthly_low: 0
   monthly_high: 10
   currency: USD
   per: "device"

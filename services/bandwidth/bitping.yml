@@ -17,23 +17,17 @@ referral:
 docker:
   image: bitping/bitpingd
   platforms: [linux/amd64, linux/arm64]
-  env:
-    - key: BITPING_EMAIL
-      label: "Email"
-      required: true
-      secret: false
-      description: "Your Bitping account email"
-    - key: BITPING_PASSWORD
-      label: "Password"
-      required: true
-      secret: true
-      description: "Your Bitping account password"
+  env: []
   ports: []
   volumes:
     - "bitping-data:/root/.bitping"
   command: ""
   network_mode: ""
   privileged: true
+  notes: >
+    Initial authentication is interactive via the container's web UI.
+    Credentials are then persisted in the /root/.bitping volume mount.
+    No environment variables are needed.
 
 requirements:
   residential_ip: false
@@ -49,7 +43,7 @@ payment:
   frequency: "On request"
 
 earnings:
-  monthly_low: 1
+  monthly_low: 0
   monthly_high: 5
   currency: USD
   per: "device"

@@ -18,12 +18,7 @@ docker:
   image: ghcr.io/anyone-protocol/ator-protocol
   tag: latest
   platforms: [linux/amd64, linux/arm64]
-  env:
-    - key: CONTACT_EMAIL
-      label: "Contact Email"
-      required: false
-      secret: false
-      description: "Operator email (set in anonrc ContactInfo if not already present)"
+  env: []
   ports: ["9001:9001"]
   volumes:
     - "anon-data:/var/lib/anon"
@@ -49,7 +44,7 @@ payment:
   frequency: "Epoch-based"
 
 earnings:
-  monthly_low: 5
+  monthly_low: 0
   monthly_high: 50
   currency: USD
   per: "relay"

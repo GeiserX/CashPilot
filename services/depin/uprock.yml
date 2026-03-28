@@ -35,7 +35,7 @@ payment:
   frequency: "On request"
 
 earnings:
-  monthly_low: 1
+  monthly_low: 0
   monthly_high: 5
   currency: USD
   per: "device"

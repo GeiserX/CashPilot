@@ -77,7 +77,7 @@ payment:
   frequency: "Monthly"
 
 earnings:
-  monthly_low: 2
+  monthly_low: 0
   monthly_high: 15
   currency: USD
   per: "TB"

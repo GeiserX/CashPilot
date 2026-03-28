@@ -34,7 +34,7 @@ payment:
   frequency: "Epoch-based"
 
 earnings:
-  monthly_low: 10
+  monthly_low: 0
   monthly_high: 500
   currency: USD
   per: "GPU"

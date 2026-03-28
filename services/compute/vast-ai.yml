@@ -41,7 +41,7 @@ payment:
   frequency: "On request"
 
 earnings:
-  monthly_low: 50
+  monthly_low: 0
   monthly_high: 300
   currency: USD
   per: "GPU-hour"

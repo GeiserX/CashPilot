@@ -629,8 +629,13 @@ img { max-width: 100%; }
 }
 .service-card:hover {
   border-color: var(--border-light);
-  box-shadow: var(--shadow-card-hover);
+  box-shadow: var(--shadow-card-hover), 0 0 16px rgba(244, 63, 94, 0.15), 0 0 4px rgba(251, 113, 133, 0.10);
   transform: translateY(-1px);
+}
+.service-card.deployed:hover,
+.service-card-deployed:hover {
+  border-color: var(--success);
+  box-shadow: var(--shadow-card-hover), 0 0 16px rgba(244, 63, 94, 0.15), 0 0 4px rgba(251, 113, 133, 0.10);
 }
 .service-card[onclick] {
   cursor: pointer;

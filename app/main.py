@@ -673,6 +673,19 @@ async def api_get_service(request: Request, slug: str) -> dict[str, Any]:
     svc = catalog.get_service(slug)
     if not svc:
         raise HTTPException(status_code=404, detail=f"Service '{slug}' not found")
+
+    # Enrich with deployment status (same logic as /api/services/available)
+    deployments = await database.get_deployments()
+    deployed_slugs = {d["slug"] for d in deployments}
+    worker_containers = await _get_all_worker_containers()
+    worker_slugs = {c["slug"] for c in worker_containers if c.get("slug")}
+    worker_nodes: set[str] = set()
+    for c in worker_containers:
+        if c.get("slug") == slug:
+            worker_nodes.add(c.get("_node", "unknown"))
+
+    svc["deployed"] = slug in deployed_slugs or slug in worker_slugs
+    svc["node_count"] = len(worker_nodes)
     return svc
 
 

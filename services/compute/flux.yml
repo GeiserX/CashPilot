@@ -34,7 +34,7 @@ payment:
   frequency: "Block rewards"
 
 earnings:
-  monthly_low: 10
+  monthly_low: 0
   monthly_high: 100
   currency: USD
   per: "node"

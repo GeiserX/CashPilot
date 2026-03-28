@@ -42,7 +42,7 @@ payment:
   frequency: "Daily"
 
 earnings:
-  monthly_low: 5
+  monthly_low: 0
   monthly_high: 30
   currency: USD
   per: "node"

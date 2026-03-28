@@ -49,7 +49,7 @@ payment:
   frequency: "On request (auto-redeem available: PayPal $10 min, Wise $10 min, Amazon $50 min)"
 
 earnings:
-  monthly_low: 2
+  monthly_low: 0
   monthly_high: 5
   currency: USD
   per: "device"

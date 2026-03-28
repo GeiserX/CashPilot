@@ -34,7 +34,7 @@ payment:
   frequency: "Epoch-based"
 
 earnings:
-  monthly_low: 4
+  monthly_low: 0
   monthly_high: 8
   currency: USD
   per: "hotspot"

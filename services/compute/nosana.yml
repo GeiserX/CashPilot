@@ -36,7 +36,7 @@ payment:
   frequency: "Per job completion"
 
 earnings:
-  monthly_low: 20
+  monthly_low: 0
   monthly_high: 100
   currency: USD
   per: "GPU-hour"

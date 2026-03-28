@@ -18,23 +18,23 @@ docker:
   image: iproyal/pawns-cli
   platforms: [linux/amd64, linux/arm64]
   env:
-    - key: IPROYAL_EMAIL
+    - key: IPROYALPAWNS_EMAIL
       label: "Email"
       required: true
       secret: false
       description: "Your IPRoyal Pawns account email (passed as -email flag)"
-    - key: IPROYAL_PASSWORD
+    - key: IPROYALPAWNS_PASSWORD
       label: "Password"
       required: true
       secret: true
       description: "Your IPRoyal Pawns account password (passed as -password flag)"
-    - key: IPROYAL_DEVICE_NAME
+    - key: IPROYALPAWNS_DEVICE_NAME
       label: "Device name"
       required: false
       secret: false
       description: "Name shown in your Pawns dashboard (passed as -device-name flag)"
       default: "cashpilot-{hostname}"
-    - key: IPROYAL_DEVICE_ID
+    - key: IPROYALPAWNS_DEVICE_ID
       label: "Device ID"
       required: false
       secret: false
@@ -42,7 +42,7 @@ docker:
       default: "cashpilot-{hostname}"
   ports: []
   volumes: []
-  command: "-email ${IPROYAL_EMAIL} -password ${IPROYAL_PASSWORD} -device-name ${IPROYAL_DEVICE_NAME} -device-id ${IPROYAL_DEVICE_ID} -accept-tos"
+  command: "-email ${IPROYALPAWNS_EMAIL} -password ${IPROYALPAWNS_PASSWORD} -device-name ${IPROYALPAWNS_DEVICE_NAME} -device-id ${IPROYALPAWNS_DEVICE_ID} -accept-tos"
   network_mode: ""
   privileged: true
 
@@ -59,7 +59,7 @@ payment:
   frequency: "On request"
 
 earnings:
-  monthly_low: 1
+  monthly_low: 0
   monthly_high: 5
   currency: USD
   per: "device"

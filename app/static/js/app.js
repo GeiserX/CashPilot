@@ -69,6 +69,8 @@ const CP = (() => {
     return d.innerHTML;
   }
 
+  function capFirst(s) { return s ? s.charAt(0).toUpperCase() + s.slice(1) : ''; }
+
   // -----------------------------------------------------------
   // Modal
   // -----------------------------------------------------------
@@ -931,6 +933,20 @@ const CP = (() => {
 
   // Cached worker container data for wizard
   let _wizardWorkerSlugs = {};  // slug -> node count
+  let _wizardWorkers = [];      // full workers array from /api/workers
+
+  // Global worker cache for detail modal
+  let _cachedWorkers = null;
+  async function getCachedWorkers() {
+    if (_cachedWorkers) return _cachedWorkers;
+    try {
+      _cachedWorkers = await api('/api/workers');
+    } catch {
+      _cachedWorkers = [];
+    }
+    return _cachedWorkers;
+  }
+  function invalidateWorkerCache() { _cachedWorkers = null; }
 
   async function loadWizardServices() {
     const container = document.getElementById('wizard-services');
@@ -943,7 +959,8 @@ const CP = (() => {
         api('/api/workers').catch(() => []),
       ]);
 
-      // Count how many worker nodes run each service slug
+      // Cache full workers list and count how many nodes run each slug
+      _wizardWorkers = workers;
       _wizardWorkerSlugs = {};
       for (const w of workers) {
         const slugs = new Set((w.containers || []).map(c => c.slug).filter(Boolean));
@@ -995,7 +1012,7 @@ const CP = (() => {
         <div class="service-icon">${(svc.name || '?')[0]}</div>
         <div>
           <div class="service-name">${escapeHtml(svc.name)}</div>
-          <span class="badge badge-category">${escapeHtml(svc.category)}</span>
+          <span class="badge badge-category">${escapeHtml(capFirst(svc.category))}</span>
         </div>
       </div>
       <div class="service-desc">${escapeHtml(svc.short_description || '')}</div>
@@ -1025,15 +1042,19 @@ const CP = (() => {
     container.innerHTML = '<div class="spinner" style="margin:24px auto;"></div>';
 
     try {
-      const services = await api('/api/services/available');
+      const [services, workers] = await Promise.all([
+        api('/api/services/available'),
+        _wizardWorkers.length ? Promise.resolve(_wizardWorkers) : api('/api/workers').catch(() => []),
+      ]);
+      _wizardWorkers = workers;
       const selected = services.filter(s => wizardState.selectedServices.includes(s.slug));
-      container.innerHTML = selected.map(renderServiceSetupForm).join('');
+      container.innerHTML = selected.map(svc => renderServiceSetupForm(svc, workers)).join('');
     } catch (err) {
       container.innerHTML = '<p class="empty-state-text">Could not load service details.</p>';
     }
   }
 
-  function renderServiceSetupForm(svc) {
+  function renderServiceSetupForm(svc, workers) {
     const signupUrl = svc.referral && svc.referral.signup_url
       ? svc.referral.signup_url
       : svc.website || '#';
@@ -1058,7 +1079,7 @@ const CP = (() => {
       <div class="card" style="margin-bottom: 16px;" id="setup-${svc.slug}">
         <div class="card-header">
           <h3 class="section-title">${escapeHtml(svc.name)}</h3>
-          <span class="badge badge-category">${escapeHtml(svc.category)}</span>
+          <span class="badge badge-category">${escapeHtml(capFirst(svc.category))}</span>
         </div>
         <div style="padding: 8px 0;">
           <p style="color: var(--warning, #f59e0b); margin-bottom: 12px;">
@@ -1094,7 +1115,7 @@ const CP = (() => {
     <div class="card" style="margin-bottom: 16px;" id="setup-${svc.slug}">
       <div class="card-header">
         <h3 class="section-title">${escapeHtml(svc.name)}</h3>
-        <span class="badge badge-category">${escapeHtml(svc.category)}</span>
+        <span class="badge badge-category">${escapeHtml(capFirst(svc.category))}</span>
       </div>
 
       <div style="margin-bottom: 16px;">
@@ -1110,21 +1131,58 @@ const CP = (() => {
 
       ${envFields}
 
-      <button class="btn btn-success" onclick="CP.deployService('${svc.slug}')">
-        Deploy ${escapeHtml(svc.name)}
-      </button>
-      <span class="deploy-status" id="deploy-status-${svc.slug}" style="margin-left: 12px; font-size: 0.85rem;"></span>
+      ${(() => {
+        const onlineWorkers = (workers || []).filter(w => w.status === 'online');
+        let workerRows = '';
+        let allDeployed = true;
+        for (const w of onlineWorkers) {
+          const slugs = (w.containers || []).map(c => c.slug);
+          const deployed = slugs.includes(svc.slug);
+          if (!deployed) allDeployed = false;
+          workerRows += `
+          <label style="display:flex; align-items:center; gap:8px; padding:6px 0; ${deployed ? 'opacity:0.5;' : ''}">
+            <input type="checkbox" class="setup-deploy-worker-cb" data-slug="${svc.slug}" data-wid="${w.id}" ${deployed ? 'disabled checked' : ''}>
+            <span>${escapeHtml(w.name)}</span>
+            ${deployed ? '<span class="badge badge-deployed" style="font-size:0.75rem;">Deployed</span>' : '<span class="badge badge-available" style="font-size:0.75rem;">Available</span>'}
+          </label>`;
+        }
+
+        if (onlineWorkers.length === 0) {
+          return `<p style="color:var(--text-muted); font-size:0.85rem; margin-bottom:12px;">No workers online.</p>`;
+        }
+
+        if (allDeployed) {
+          return `<p style="color:var(--success); font-size:0.9rem; margin:12px 0;">Deployed on all nodes.</p>`;
+        }
+
+        return `
+        <div style="margin-bottom:12px;">
+          <div style="font-size:0.85rem; color:var(--text-muted); margin-bottom:6px;">Deploy to Workers:</div>
+          <div id="setup-worker-list-${svc.slug}">${workerRows}</div>
+        </div>
+        <div style="display:flex; gap:8px; align-items:center;">
+          <button class="btn btn-success" onclick="CP.deployService('${svc.slug}')">
+            Deploy ${escapeHtml(svc.name)}
+          </button>
+          <span class="deploy-status" id="deploy-status-${svc.slug}" style="margin-left: 4px; font-size: 0.85rem;"></span>
+        </div>`;
+      })()}
     </div>`;
   }
 
   async function deployService(slug) {
     const statusEl = document.getElementById(`deploy-status-${slug}`);
-    if (statusEl) {
-      statusEl.innerHTML = '<span class="spinner" style="display:inline-block;width:14px;height:14px;vertical-align:middle;"></span> Deploying...';
+    const checkboxes = document.querySelectorAll(`.setup-deploy-worker-cb[data-slug="${slug}"]:checked:not(:disabled)`);
+    const workerIds = Array.from(checkboxes).map(cb => parseInt(cb.dataset.wid));
+
+    if (workerIds.length === 0) {
+      toast('Select at least one worker node', 'warning');
+      if (statusEl) statusEl.textContent = 'Select at least one node.';
+      return;
     }
 
-    // Collect env vars
-    const envInputs = document.querySelectorAll(`input[data-slug="${slug}"]`);
+    // Collect env vars (only env inputs, not worker checkboxes)
+    const envInputs = document.querySelectorAll(`input[data-slug="${slug}"][data-key]`);
     const env = {};
     let missingRequired = false;
     envInputs.forEach(input => {
@@ -1143,16 +1201,30 @@ const CP = (() => {
       return;
     }
 
-    try {
-      await api(`/api/deploy/${slug}`, { method: 'POST', body: { env } });
-      toast(`${slug} deployed successfully!`, 'success');
-      if (statusEl) statusEl.innerHTML = '<span style="color:var(--success);">Deployed!</span>';
+    if (statusEl) {
+      statusEl.innerHTML = '<span class="spinner" style="display:inline-block;width:14px;height:14px;vertical-align:middle;"></span> Deploying...';
+    }
+
+    let ok = 0, fail = 0;
+    for (const wid of workerIds) {
+      try {
+        await api(`/api/deploy/${slug}?worker_id=${wid}`, { method: 'POST', body: { env } });
+        ok++;
+      } catch (err) {
+        fail++;
+        toast(`Deploy to worker ${wid} failed: ${err.message}`, 'error');
+      }
+    }
+
+    if (statusEl) {
+      statusEl.textContent = fail === 0 ? `Deployed to ${ok} node(s)` : `${ok} ok, ${fail} failed`;
+      statusEl.style.color = fail === 0 ? 'var(--success)' : 'var(--error)';
+    }
+    if (ok > 0) {
+      toast(`${slug} deployed to ${ok} node(s)`, 'success');
       if (!wizardState.deployed.includes(slug)) {
         wizardState.deployed.push(slug);
       }
-    } catch (err) {
-      toast(`Deploy failed: ${err.message}`, 'error');
-      if (statusEl) statusEl.innerHTML = `<span style="color:var(--error);">${escapeHtml(err.message)}</span>`;
     }
   }
 
@@ -1239,7 +1311,7 @@ const CP = (() => {
         </div>
       </div>
       <div class="service-meta">
-        <span class="badge badge-category">${escapeHtml(svc.category)}</span>
+        <span class="badge badge-category">${escapeHtml(capFirst(svc.category))}</span>
         ${statusBadge}
         ${svc.requirements && svc.requirements.residential_ip ? '<span class="badge badge-residential">Residential IP</span>' : ''}
       </div>
@@ -1269,6 +1341,9 @@ const CP = (() => {
   // -----------------------------------------------------------
   // Service Detail Modal
   // -----------------------------------------------------------
+  // Cached workers for detail modal
+  let _detailWorkers = [];
+
   async function openServiceDetail(slug) {
     openModal('service-detail-modal');
     const body = document.getElementById('service-detail-body');
@@ -1277,47 +1352,34 @@ const CP = (() => {
     if (title) title.textContent = 'Loading...';
 
     try {
-      const svc = await api(`/api/services/${slug}`);
+      const [svc, workers] = await Promise.all([
+        api(`/api/services/${slug}`),
+        api('/api/workers').catch(() => []),
+      ]);
+      _detailWorkers = workers;
       if (title) title.textContent = svc.name;
-      if (body) body.innerHTML = renderServiceDetail(svc);
+      if (body) body.innerHTML = renderServiceDetail(svc, workers);
     } catch (err) {
       if (body) body.innerHTML = `<p class="empty-state-text">Could not load service: ${escapeHtml(err.message)}</p>`;
     }
   }
 
-  function renderServiceDetail(svc) {
+  function renderServiceDetail(svc, workers) {
     const earning = svc.earnings
       ? `$${svc.earnings.monthly_low}-$${svc.earnings.monthly_high} per ${svc.earnings.per || 'month'}`
       : 'Varies';
-
-    const envFields = (svc.docker && svc.docker.env || []).map(env => {
-      const inputType = env.secret ? 'password' : 'text';
-      return `
-      <div class="form-group">
-        <label class="form-label">${escapeHtml(env.label)}</label>
-        <input class="form-input" type="${inputType}" data-slug="${svc.slug}" data-key="${env.key}"
-               placeholder="${escapeHtml(env.description || '')}" value="${escapeHtml(env.default || '')}"
-               ${env.required ? 'required' : ''}>
-      </div>`;
-    }).join('');
-
-    const referralHtml = svc.referral ? `
-      <div class="detail-item">
-        <div class="detail-label">Referral Bonus</div>
-        <div class="detail-value">${escapeHtml(svc.referral.bonus?.referee || 'N/A')}</div>
-      </div>` : '';
 
     const signupUrl = svc.referral && svc.referral.signup_url
       ? svc.referral.signup_url
       : svc.website || '#';
 
-    return `
+    // --- Info grid (no referral bonus) ---
+    let html = `
     <p style="color: var(--text-secondary); margin-bottom: 16px;">${escapeHtml(svc.description || svc.short_description || '')}</p>
-
     <div class="detail-grid" style="margin-bottom: 20px;">
       <div class="detail-item">
         <div class="detail-label">Category</div>
-        <div class="detail-value">${escapeHtml(svc.category)}</div>
+        <div class="detail-value">${escapeHtml(capFirst(svc.category))}</div>
       </div>
       <div class="detail-item">
         <div class="detail-label">Estimated Earnings</div>
@@ -1327,39 +1389,166 @@ const CP = (() => {
         <div class="detail-label">Payout</div>
         <div class="detail-value">${escapeHtml((svc.payment?.methods || []).join(', ') || 'N/A')} (min ${escapeHtml(svc.payment?.minimum_payout || 'N/A')})</div>
       </div>
-      ${referralHtml}
-    </div>
+    </div>`;
 
-    <div style="margin-bottom: 20px;">
-      <a href="${escapeHtml(signupUrl)}" target="_blank" rel="noopener" class="btn btn-primary btn-sm">
-        Sign Up for ${escapeHtml(svc.name)}
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
-      </a>
-    </div>
+    // --- Sign Up (only if NOT deployed anywhere) ---
+    if (!svc.deployed) {
+      html += `
+      <div style="margin-bottom: 20px;">
+        <a href="${escapeHtml(signupUrl)}" target="_blank" rel="noopener" class="btn btn-primary btn-sm">
+          Sign Up / Log In for ${escapeHtml(svc.name)}
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+        </a>
+      </div>`;
+    }
 
-    <h4 style="margin-bottom: 12px; font-size: 0.95rem;">Deploy</h4>
-    ${envFields}
-    <div style="display:flex; gap:8px; align-items:center;">
-      <button class="btn btn-success" onclick="CP.deployService('${svc.slug}')">Deploy</button>
-      <span id="deploy-status-${svc.slug}" style="font-size:0.85rem;"></span>
-    </div>
+    // --- Deploy section (worker-aware) ---
+    const hasDocker = svc.docker && svc.docker.image;
+    if (hasDocker) {
+      const envFields = (svc.docker.env || []).map(env => {
+        const inputType = env.secret ? 'password' : 'text';
+        return `
+        <div class="form-group">
+          <label class="form-label">${escapeHtml(env.label)}</label>
+          <input class="form-input" type="${inputType}" data-slug="${svc.slug}" data-key="${env.key}"
+                 placeholder="${escapeHtml(env.description || '')}" value="${escapeHtml(env.default || '')}"
+                 ${env.required ? 'required' : ''}>
+        </div>`;
+      }).join('');
 
-    ${svc.deployed ? `
-    <div style="margin-top: 24px; padding-top: 16px; border-top: 1px solid var(--border-color);">
-      <h4 style="margin-bottom: 12px; font-size: 0.95rem;">Container</h4>
-      <div style="display: flex; gap: 8px; margin-bottom: 12px;">
-        <button class="btn btn-secondary btn-sm" onclick="CP.startService('${svc.slug}')">Start</button>
-        <button class="btn btn-secondary btn-sm" onclick="CP.restartService('${svc.slug}')">Restart</button>
-        <button class="btn btn-secondary btn-sm" onclick="CP.stopService('${svc.slug}')">Stop</button>
-        <button class="btn btn-danger btn-sm" onclick="CP.removeService('${svc.slug}')">Remove</button>
-      </div>
-      <h4 style="margin-bottom: 8px; font-size: 0.95rem;">Logs</h4>
-      <div class="log-viewer" id="detail-logs-${svc.slug}">Click "Load Logs" to view.</div>
-      <button class="btn btn-ghost btn-sm" style="margin-top:8px;" onclick="CP.loadDetailLogs('${svc.slug}')">Load Logs</button>
-    </div>` : ''}`;
+      // Worker deploy targets
+      const onlineWorkers = (workers || []).filter(w => w.status === 'online');
+      let workerRows = '';
+      let allDeployed = true;
+      for (const w of onlineWorkers) {
+        const slugs = (w.containers || []).map(c => c.slug);
+        const deployed = slugs.includes(svc.slug);
+        if (!deployed) allDeployed = false;
+        workerRows += `
+        <label style="display:flex; align-items:center; gap:8px; padding:6px 0; ${deployed ? 'opacity:0.5;' : ''}">
+          <input type="checkbox" class="deploy-worker-cb" data-wid="${w.id}" ${deployed ? 'disabled checked' : ''}>
+          <span>${escapeHtml(w.name)}</span>
+          ${deployed ? '<span class="badge badge-deployed" style="font-size:0.75rem;">Deployed</span>' : '<span class="badge badge-available" style="font-size:0.75rem;">Available</span>'}
+        </label>`;
+      }
+
+      if (onlineWorkers.length === 0) {
+        workerRows = '<p style="color:var(--text-muted); font-size:0.85rem;">No workers online.</p>';
+      }
+
+      html += `<h4 style="margin-bottom: 12px; font-size: 0.95rem;">Deploy</h4>`;
+      html += envFields;
+
+      if (allDeployed && onlineWorkers.length > 0) {
+        html += `<p style="color:var(--success); font-size:0.9rem; margin:12px 0;">Deployed on all nodes.</p>`;
+      } else {
+        html += `
+        <div style="margin-bottom:12px;">
+          <div style="font-size:0.85rem; color:var(--text-muted); margin-bottom:6px;">Select target nodes:</div>
+          <div id="deploy-worker-list">${workerRows}</div>
+        </div>
+        <div style="display:flex; gap:8px; align-items:center;">
+          <button class="btn btn-success" onclick="CP.deployServiceToWorkers('${svc.slug}')">Deploy</button>
+          <span id="deploy-status-${svc.slug}" style="font-size:0.85rem;"></span>
+        </div>`;
+      }
+    }
+
+    // --- Container management (per worker) ---
+    const onlineWorkers = (workers || []).filter(w => w.status === 'online');
+    const instances = [];
+    for (const w of onlineWorkers) {
+      const container = (w.containers || []).find(c => c.slug === svc.slug);
+      if (container) instances.push({ worker: w, container });
+    }
+
+    if (instances.length > 0) {
+      html += `
+      <div style="margin-top: 24px; padding-top: 16px; border-top: 1px solid var(--border-color);">
+        <h4 style="margin-bottom: 12px; font-size: 0.95rem;">Running Instances</h4>`;
+      for (const inst of instances) {
+        const s = inst.container.status || 'unknown';
+        const badgeClass = s === 'running' ? 'badge-deployed' : 'badge-broken';
+        html += `
+        <div style="display:flex; align-items:center; gap:10px; padding:8px 0; border-bottom:1px solid var(--border-color);">
+          <strong style="min-width:100px;">${escapeHtml(inst.worker.name)}</strong>
+          <span class="badge ${badgeClass}" style="font-size:0.75rem;">${escapeHtml(s)}</span>
+          <div style="margin-left:auto; display:flex; gap:4px;">
+            <button class="btn btn-secondary btn-sm" onclick="CP.workerAction('${svc.slug}','restart',${inst.worker.id})">Restart</button>
+            <button class="btn btn-secondary btn-sm" onclick="CP.workerAction('${svc.slug}','stop',${inst.worker.id})">Stop</button>
+            <button class="btn btn-ghost btn-sm" onclick="CP.loadWorkerLogs('${svc.slug}',${inst.worker.id},'logs-${svc.slug}-${inst.worker.id}')">Logs</button>
+          </div>
+        </div>
+        <div class="log-viewer" id="logs-${svc.slug}-${inst.worker.id}" style="display:none; max-height:200px;"></div>`;
+      }
+      html += `</div>`;
+    }
+
+    return html;
+  }
+
+  async function deployServiceToWorkers(slug) {
+    const statusEl = document.getElementById(`deploy-status-${slug}`);
+    const checkboxes = document.querySelectorAll('.deploy-worker-cb:checked:not(:disabled)');
+    const workerIds = Array.from(checkboxes).map(cb => parseInt(cb.dataset.wid));
+
+    if (workerIds.length === 0) {
+      if (statusEl) statusEl.textContent = 'Select at least one node.';
+      return;
+    }
+
+    // Collect env vars
+    const envInputs = document.querySelectorAll(`input[data-slug="${slug}"]`);
+    const env = {};
+    envInputs.forEach(input => { if (input.dataset.key) env[input.dataset.key] = input.value; });
+
+    if (statusEl) statusEl.innerHTML = '<span class="spinner" style="display:inline-block;width:14px;height:14px;vertical-align:middle;"></span> Deploying...';
+
+    let ok = 0, fail = 0;
+    for (const wid of workerIds) {
+      try {
+        await api(`/api/deploy/${slug}?worker_id=${wid}`, { method: 'POST', body: { env } });
+        ok++;
+      } catch (err) {
+        fail++;
+      }
+    }
+    if (statusEl) {
+      statusEl.textContent = fail === 0 ? `Deployed to ${ok} node(s)` : `${ok} ok, ${fail} failed`;
+      statusEl.style.color = fail === 0 ? 'var(--success)' : 'var(--danger)';
+    }
+  }
+
+  async function workerAction(slug, action, workerId) {
+    try {
+      await api(`/api/containers/${slug}/${action}?worker_id=${workerId}`, { method: 'POST' });
+      // Refresh the modal
+      openServiceDetail(slug);
+    } catch (err) {
+      alert(`${action} failed: ${err.message}`);
+    }
+  }
+
+  async function loadWorkerLogs(slug, workerId, elemId) {
+    const viewer = document.getElementById(elemId);
+    if (!viewer) return;
+    if (viewer.style.display === 'none') {
+      viewer.style.display = 'block';
+      viewer.textContent = 'Loading...';
+      try {
+        const data = await api(`/api/containers/${slug}/logs?worker_id=${workerId}&lines=100`);
+        viewer.textContent = data.logs || '(no logs)';
+        viewer.scrollTop = viewer.scrollHeight;
+      } catch (err) {
+        viewer.textContent = `Error: ${err.message}`;
+      }
+    } else {
+      viewer.style.display = 'none';
+    }
   }
 
   async function loadDetailLogs(slug) {
+    // Legacy — kept for backward compat
     const viewer = document.getElementById(`detail-logs-${slug}`);
     if (!viewer) return;
     viewer.textContent = 'Loading...';
@@ -1838,5 +2027,8 @@ const CP = (() => {
     goToCollectorSettings,
     toggleInstances,
     populateCurrencyDropdown,
+    deployServiceToWorkers,
+    workerAction,
+    loadWorkerLogs,
   };
 })();
