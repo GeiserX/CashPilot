@@ -11,7 +11,7 @@ Presearch is a decentralized search engine where node operators run Docker conta
 
 | Metric | Value |
 |--------|-------|
-| Monthly range | $5 - $30 |
+| Monthly range | $0 - $30 (estimate) |
 | Per | node |
 | Minimum payout |  |
 | Payout frequency | Daily |
@@ -53,26 +53,3 @@ In the CashPilot web UI, find **Presearch** in the service catalog and click **D
 | Variable | Label | Required | Secret | Description |
 |----------|-------|:--------:|:------:|-------------|
 | `PRESEARCH_REGISTRATION_CODE` | Registration Code | Yes | Yes | Your Presearch node registration code from the dashboard |
-
-### Manual Docker Run
-
-If running outside CashPilot:
-
-```bash
-docker run -d \
-  --name cashpilot-presearch \
-  -v {'container_path': '/app/node', 'description': 'Node data and keys'} \
-  -e PRESEARCH_REGISTRATION_CODE="<Registration Code>" \
-  presearch/node
-```
-
-## Referral Program
-
-| | Details |
-|---|---------|
-| Referrer bonus | N/A |
-| New user bonus | N/A |
-
----
-
-*This guide was auto-generated from [`services/depin/presearch.yml`](../../services/depin/presearch.yml). Edit the YAML source and run `python scripts/generate_docs.py` to update.*

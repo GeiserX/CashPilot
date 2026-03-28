@@ -11,7 +11,7 @@ io.net is a decentralized GPU network for AI/ML workloads. Aggregates idle GPUs 
 
 | Metric | Value |
 |--------|-------|
-| Monthly range | $10 - $500 |
+| Monthly range | $0 - $500 (estimate) |
 | Per | GPU |
 | Minimum payout |  |
 | Payout frequency | Epoch-based |
@@ -50,14 +50,3 @@ In the CashPilot web UI, find **io.net** in the service catalog and click **Depl
 ### Environment Variables
 
 No environment variables required.
-
-## Referral Program
-
-| | Details |
-|---|---------|
-| Referrer bonus | N/A |
-| New user bonus | N/A |
-
----
-
-*This guide was auto-generated from [`services/compute/ionet.yml`](../../services/compute/ionet.yml). Edit the YAML source and run `python scripts/generate_docs.py` to update.*

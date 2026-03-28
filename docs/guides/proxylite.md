@@ -11,7 +11,7 @@ ProxyLite monetizes your internet traffic by sharing bandwidth with verified org
 
 | Metric | Value |
 |--------|-------|
-| Monthly range | $1 - $3 |
+| Monthly range | $0 - $3 (estimate) |
 | Per | device |
 | Minimum payout | $5 |
 | Payout frequency | On request |
@@ -53,25 +53,3 @@ In the CashPilot web UI, find **ProxyLite** in the service catalog and click **D
 | Variable | Label | Required | Secret | Description |
 |----------|-------|:--------:|:------:|-------------|
 | `USER_ID` | User ID | Yes | No | Your ProxyLite account ID (found in dashboard at lk.proxylite.ru after registration) |
-
-### Manual Docker Run
-
-If running outside CashPilot:
-
-```bash
-docker run -d \
-  --name cashpilot-proxylite \
-  -e USER_ID="<User ID>" \
-  proxylite/proxyservice
-```
-
-## Referral Program
-
-| | Details |
-|---|---------|
-| Referrer bonus | N/A |
-| New user bonus | N/A |
-
----
-
-*This guide was auto-generated from [`services/bandwidth/proxylite.yml`](../../services/bandwidth/proxylite.yml). Edit the YAML source and run `python scripts/generate_docs.py` to update.*

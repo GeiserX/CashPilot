@@ -11,7 +11,7 @@ Formerly BlockMesh, now rebranded as Perceptron Network. A decentralized bandwid
 
 | Metric | Value |
 |--------|-------|
-| Monthly range | $0 - $5 |
+| Monthly range | $0 - $5 (estimate) |
 | Per | device |
 | Minimum payout |  |
 | Payout frequency | Token airdrop (TBA) |
@@ -50,14 +50,3 @@ In the CashPilot web UI, find **BlockMesh (Perceptron Network)** in the service 
 ### Environment Variables
 
 No environment variables required.
-
-## Referral Program
-
-| | Details |
-|---|---------|
-| Referrer bonus | N/A |
-| New user bonus | N/A |
-
----
-
-*This guide was auto-generated from [`services/depin/blockmesh.yml`](../../services/depin/blockmesh.yml). Edit the YAML source and run `python scripts/generate_docs.py` to update.*

@@ -11,7 +11,7 @@ SpeedShare lets you earn by sharing your unused internet bandwidth. Residential 
 
 | Metric | Value |
 |--------|-------|
-| Monthly range | $0 - $3 |
+| Monthly range | $0 - $3 (estimate) |
 | Per | device |
 | Minimum payout | $5 |
 | Payout frequency | On request |
@@ -54,26 +54,3 @@ In the CashPilot web UI, find **SpeedShare** in the service catalog and click **
 |----------|-------|:--------:|:------:|-------------|
 | `CODE` | Authorization Code | Yes | Yes | Your SpeedShare authorization code from the dashboard |
 | `SPEEDSHARE_UUID` | Device UUID | No | No | Unique device identifier. Auto-generated if not provided. |
-
-### Manual Docker Run
-
-If running outside CashPilot:
-
-```bash
-docker run -d \
-  --name cashpilot-speedshare \
-  -e CODE="<Authorization Code>" \
-  -e SPEEDSHARE_UUID="<Device UUID>" \
-  mrcolorrain/speedshare
-```
-
-## Referral Program
-
-| | Details |
-|---|---------|
-| Referrer bonus | N/A |
-| New user bonus | N/A |
-
----
-
-*This guide was auto-generated from [`services/bandwidth/speedshare.yml`](../../services/bandwidth/speedshare.yml). Edit the YAML source and run `python scripts/generate_docs.py` to update.*

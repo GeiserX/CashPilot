@@ -11,7 +11,7 @@ Nosana is a decentralized GPU compute marketplace built on Solana. It connects G
 
 | Metric | Value |
 |--------|-------|
-| Monthly range | $20 - $100 |
+| Monthly range | $0 - $100 (estimate) |
 | Per | GPU-hour |
 | Minimum payout |  |
 | Payout frequency | Per job completion |
@@ -51,14 +51,3 @@ In the CashPilot web UI, find **Nosana** in the service catalog and click **Depl
 ### Environment Variables
 
 No environment variables required.
-
-## Referral Program
-
-| | Details |
-|---|---------|
-| Referrer bonus | N/A |
-| New user bonus | N/A |
-
----
-
-*This guide was auto-generated from [`services/compute/nosana.yml`](../../services/compute/nosana.yml). Edit the YAML source and run `python scripts/generate_docs.py` to update.*

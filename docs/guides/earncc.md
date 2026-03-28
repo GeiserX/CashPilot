@@ -11,7 +11,7 @@ earn.cc is a bandwidth monetization service similar to Honeygain. Desktop GUI on
 
 | Metric | Value |
 |--------|-------|
-| Monthly range | $0 - $0 |
+| Monthly range | $0 - $0 (estimate) |
 | Per | device |
 | Minimum payout |  |
 | Payout frequency |  |
@@ -50,14 +50,3 @@ In the CashPilot web UI, find **earn.cc** in the service catalog and click **Dep
 ### Environment Variables
 
 No environment variables required.
-
-## Referral Program
-
-| | Details |
-|---|---------|
-| Referrer bonus | N/A |
-| New user bonus | N/A |
-
----
-
-*This guide was auto-generated from [`services/bandwidth/earncc.yml`](../../services/bandwidth/earncc.yml). Edit the YAML source and run `python scripts/generate_docs.py` to update.*

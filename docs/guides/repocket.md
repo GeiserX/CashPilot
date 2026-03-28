@@ -11,7 +11,7 @@ Repocket lets you earn passive income by sharing your unused internet bandwidth.
 
 | Metric | Value |
 |--------|-------|
-| Monthly range | $1 - $4 |
+| Monthly range | $0 - $4 (estimate) |
 | Per | device |
 | Minimum payout | $20 |
 | Payout frequency | On request |
@@ -54,26 +54,3 @@ In the CashPilot web UI, find **Repocket** in the service catalog and click **De
 |----------|-------|:--------:|:------:|-------------|
 | `RP_EMAIL` | Email | Yes | No | Your Repocket account email |
 | `RP_API_KEY` | API Key | Yes | Yes | Your Repocket API key (found in Dashboard > API Key section) |
-
-### Manual Docker Run
-
-If running outside CashPilot:
-
-```bash
-docker run -d \
-  --name cashpilot-repocket \
-  -e RP_EMAIL="<Email>" \
-  -e RP_API_KEY="<API Key>" \
-  repocket/repocket
-```
-
-## Referral Program
-
-| | Details |
-|---|---------|
-| Referrer bonus | N/A |
-| New user bonus | N/A |
-
----
-
-*This guide was auto-generated from [`services/bandwidth/repocket.yml`](../../services/bandwidth/repocket.yml). Edit the YAML source and run `python scripts/generate_docs.py` to update.*

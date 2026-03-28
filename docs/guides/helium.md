@@ -11,7 +11,7 @@ Helium is an established decentralized wireless network. Originally LoRaWAN hots
 
 | Metric | Value |
 |--------|-------|
-| Monthly range | $4 - $8 |
+| Monthly range | $0 - $8 (estimate) |
 | Per | hotspot |
 | Minimum payout |  |
 | Payout frequency | Epoch-based |
@@ -50,14 +50,3 @@ In the CashPilot web UI, find **Helium** in the service catalog and click **Depl
 ### Environment Variables
 
 No environment variables required.
-
-## Referral Program
-
-| | Details |
-|---|---------|
-| Referrer bonus | N/A |
-| New user bonus | N/A |
-
----
-
-*This guide was auto-generated from [`services/depin/helium.yml`](../../services/depin/helium.yml). Edit the YAML source and run `python scripts/generate_docs.py` to update.*

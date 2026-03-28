@@ -11,7 +11,7 @@ Grass is a decentralized network that lets you sell your unused bandwidth for AI
 
 | Metric | Value |
 |--------|-------|
-| Monthly range | $1 - $10 |
+| Monthly range | $0 - $10 (estimate) |
 | Per | device |
 | Minimum payout |  |
 | Payout frequency | Epoch-based airdrop |
@@ -51,14 +51,3 @@ In the CashPilot web UI, find **Grass** in the service catalog and click **Deplo
 ### Environment Variables
 
 No environment variables required.
-
-## Referral Program
-
-| | Details |
-|---|---------|
-| Referrer bonus | N/A |
-| New user bonus | N/A |
-
----
-
-*This guide was auto-generated from [`services/depin/grass.yml`](../../services/depin/grass.yml). Edit the YAML source and run `python scripts/generate_docs.py` to update.*

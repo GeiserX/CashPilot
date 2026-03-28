@@ -11,7 +11,7 @@ ProxyBase is a bandwidth-sharing platform that pays users in cryptocurrency for 
 
 | Metric | Value |
 |--------|-------|
-| Monthly range | $1 - $5 |
+| Monthly range | $0 - $5 (estimate) |
 | Per | device |
 | Minimum payout | $1 |
 | Payout frequency | On request |
@@ -54,26 +54,3 @@ In the CashPilot web UI, find **ProxyBase** in the service catalog and click **D
 |----------|-------|:--------:|:------:|-------------|
 | `USER_ID` | User ID | Yes | No | Your ProxyBase user ID from the dashboard |
 | `DEVICE_NAME` | Device Name | No | No | Name shown in your ProxyBase dashboard (default: `cashpilot-{hostname}`) |
-
-### Manual Docker Run
-
-If running outside CashPilot:
-
-```bash
-docker run -d \
-  --name cashpilot-proxybase \
-  -e USER_ID="<User ID>" \
-  -e DEVICE_NAME="<Device Name>" \
-  proxybase/proxybase
-```
-
-## Referral Program
-
-| | Details |
-|---|---------|
-| Referrer bonus | N/A |
-| New user bonus | N/A |
-
----
-
-*This guide was auto-generated from [`services/bandwidth/proxybase.yml`](../../services/bandwidth/proxybase.yml). Edit the YAML source and run `python scripts/generate_docs.py` to update.*

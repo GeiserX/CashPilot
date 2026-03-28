@@ -11,7 +11,7 @@ Earn.fm pays you for sharing your internet bandwidth. It uses a simple token-bas
 
 | Metric | Value |
 |--------|-------|
-| Monthly range | $1 - $3 |
+| Monthly range | $0 - $3 (estimate) |
 | Per | device |
 | Minimum payout | $3 |
 | Payout frequency | On request |
@@ -53,25 +53,3 @@ In the CashPilot web UI, find **Earn.fm** in the service catalog and click **Dep
 | Variable | Label | Required | Secret | Description |
 |----------|-------|:--------:|:------:|-------------|
 | `EARNFM_TOKEN` | API Token | Yes | Yes | Your Earn.fm API key (found in app.earn.fm > Settings) |
-
-### Manual Docker Run
-
-If running outside CashPilot:
-
-```bash
-docker run -d \
-  --name cashpilot-earnfm \
-  -e EARNFM_TOKEN="<API Token>" \
-  earnfm/earnfm-client
-```
-
-## Referral Program
-
-| | Details |
-|---|---------|
-| Referrer bonus | N/A |
-| New user bonus | N/A |
-
----
-
-*This guide was auto-generated from [`services/bandwidth/earnfm.yml`](../../services/bandwidth/earnfm.yml). Edit the YAML source and run `python scripts/generate_docs.py` to update.*

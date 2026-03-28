@@ -11,7 +11,7 @@ Wipter is a bandwidth sharing platform available on Windows, Mac, Linux, and And
 
 | Metric | Value |
 |--------|-------|
-| Monthly range | $1 - $10 |
+| Monthly range | $0 - $10 (estimate) |
 | Per | device |
 | Minimum payout | $20 |
 | Payout frequency | On request |
@@ -51,14 +51,3 @@ In the CashPilot web UI, find **Wipter** in the service catalog and click **Depl
 ### Environment Variables
 
 No environment variables required.
-
-## Referral Program
-
-| | Details |
-|---|---------|
-| Referrer bonus | N/A |
-| New user bonus | N/A |
-
----
-
-*This guide was auto-generated from [`services/depin/wipter.yml`](../../services/depin/wipter.yml). Edit the YAML source and run `python scripts/generate_docs.py` to update.*

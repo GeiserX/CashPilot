@@ -11,7 +11,7 @@ WizardGain turns your unused internet bandwidth into a recurring revenue stream.
 
 | Metric | Value |
 |--------|-------|
-| Monthly range | $1 - $4 |
+| Monthly range | $0 - $4 (estimate) |
 | Per | device |
 | Minimum payout | $5 |
 | Payout frequency | On request |
@@ -53,25 +53,3 @@ In the CashPilot web UI, find **WizardGain** in the service catalog and click **
 | Variable | Label | Required | Secret | Description |
 |----------|-------|:--------:|:------:|-------------|
 | `EMAIL` | Email | Yes | No | Your WizardGain account email |
-
-### Manual Docker Run
-
-If running outside CashPilot:
-
-```bash
-docker run -d \
-  --name cashpilot-wizardgain \
-  -e EMAIL="<Email>" \
-  wizardgain/worker
-```
-
-## Referral Program
-
-| | Details |
-|---|---------|
-| Referrer bonus | N/A |
-| New user bonus | N/A |
-
----
-
-*This guide was auto-generated from [`services/bandwidth/wizardgain.yml`](../../services/bandwidth/wizardgain.yml). Edit the YAML source and run `python scripts/generate_docs.py` to update.*

@@ -11,7 +11,7 @@ PacketShare lets you earn passive income by sharing your unused internet bandwid
 
 | Metric | Value |
 |--------|-------|
-| Monthly range | $1 - $4 |
+| Monthly range | $0 - $4 (estimate) |
 | Per | device |
 | Minimum payout | $5 |
 | Payout frequency | On request |
@@ -54,26 +54,3 @@ In the CashPilot web UI, find **PacketShare** in the service catalog and click *
 |----------|-------|:--------:|:------:|-------------|
 | `PACKETSHARE_EMAIL` | Email | Yes | No | Your PacketShare account email |
 | `PACKETSHARE_PASSWORD` | Password | Yes | Yes | Your PacketShare account password |
-
-### Manual Docker Run
-
-If running outside CashPilot:
-
-```bash
-docker run -d \
-  --name cashpilot-packetshare \
-  -e PACKETSHARE_EMAIL="<Email>" \
-  -e PACKETSHARE_PASSWORD="<Password>" \
-  packetshare/packetshare -accept-tos -email=${PACKETSHARE_EMAIL} -password=${PACKETSHARE_PASSWORD}
-```
-
-## Referral Program
-
-| | Details |
-|---|---------|
-| Referrer bonus | N/A |
-| New user bonus | N/A |
-
----
-
-*This guide was auto-generated from [`services/bandwidth/packetshare.yml`](../../services/bandwidth/packetshare.yml). Edit the YAML source and run `python scripts/generate_docs.py` to update.*

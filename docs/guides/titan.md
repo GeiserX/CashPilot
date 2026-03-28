@@ -11,7 +11,7 @@ Titan Network is a DePIN platform that shares your IP address, storage, and band
 
 | Metric | Value |
 |--------|-------|
-| Monthly range | $5 - $30 |
+| Monthly range | $0 - $30 (estimate) |
 | Per | device |
 | Minimum payout |  |
 | Payout frequency | Epoch-based |
@@ -50,14 +50,3 @@ In the CashPilot web UI, find **Titan Network** in the service catalog and click
 ### Environment Variables
 
 No environment variables required.
-
-## Referral Program
-
-| | Details |
-|---|---------|
-| Referrer bonus | N/A |
-| New user bonus | N/A |
-
----
-
-*This guide was auto-generated from [`services/depin/titan.yml`](../../services/depin/titan.yml). Edit the YAML source and run `python scripts/generate_docs.py` to update.*

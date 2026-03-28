@@ -11,7 +11,7 @@ EarnApp by Bright Data lets you sell your unused bandwidth for passive income. B
 
 | Metric | Value |
 |--------|-------|
-| Monthly range | $2 - $5 |
+| Monthly range | $0 - $5 (estimate) |
 | Per | device |
 | Minimum payout | $2.50 |
 | Payout frequency | On request (auto-redeem available: PayPal $10 min, Wise $10 min, Amazon $50 min) |
@@ -54,27 +54,3 @@ In the CashPilot web UI, find **EarnApp** in the service catalog and click **Dep
 |----------|-------|:--------:|:------:|-------------|
 | `EARNAPP_UUID` | Node UUID | Yes | No | Your EarnApp node ID (run 'earnapp showid' to get it, or generate one with the sdk-node-id format) |
 | `EARNAPP_TERM` | Accept Terms | No | No | Set to 'yes' to accept terms of service (default: `yes`) |
-
-### Manual Docker Run
-
-If running outside CashPilot:
-
-```bash
-docker run -d \
-  --name cashpilot-earnapp \
-  -v earnapp-data:/etc/earnapp \
-  -e EARNAPP_UUID="<Node UUID>" \
-  -e EARNAPP_TERM="<Accept Terms>" \
-  fazalfarhan01/earnapp:lite
-```
-
-## Referral Program
-
-| | Details |
-|---|---------|
-| Referrer bonus | N/A |
-| New user bonus | N/A |
-
----
-
-*This guide was auto-generated from [`services/bandwidth/earnapp.yml`](../../services/bandwidth/earnapp.yml). Edit the YAML source and run `python scripts/generate_docs.py` to update.*

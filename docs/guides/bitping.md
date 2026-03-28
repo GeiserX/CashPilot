@@ -11,7 +11,7 @@ Bitping is a decentralized network monitoring platform that pays you for running
 
 | Metric | Value |
 |--------|-------|
-| Monthly range | $1 - $5 |
+| Monthly range | $0 - $5 (estimate) |
 | Per | device |
 | Minimum payout | $5 |
 | Payout frequency | On request |
@@ -54,27 +54,3 @@ In the CashPilot web UI, find **Bitping** in the service catalog and click **Dep
 |----------|-------|:--------:|:------:|-------------|
 | `BITPING_EMAIL` | Email | Yes | No | Your Bitping account email |
 | `BITPING_PASSWORD` | Password | Yes | Yes | Your Bitping account password |
-
-### Manual Docker Run
-
-If running outside CashPilot:
-
-```bash
-docker run -d \
-  --name cashpilot-bitping \
-  -v bitping-data:/root/.bitping \
-  -e BITPING_EMAIL="<Email>" \
-  -e BITPING_PASSWORD="<Password>" \
-  bitping/bitpingd
-```
-
-## Referral Program
-
-| | Details |
-|---|---------|
-| Referrer bonus | N/A |
-| New user bonus | N/A |
-
----
-
-*This guide was auto-generated from [`services/bandwidth/bitping.yml`](../../services/bandwidth/bitping.yml). Edit the YAML source and run `python scripts/generate_docs.py` to update.*
