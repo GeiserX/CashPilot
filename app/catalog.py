@@ -94,10 +94,10 @@ def load_services() -> list[dict[str, Any]]:
 
 
 def get_services() -> list[dict[str, Any]]:
-    """Return cached services (load first if empty)."""
+    """Return shallow copies of cached services (safe to mutate per-request)."""
     if not _services:
         load_services()
-    return _services
+    return [dict(s) for s in _services]
 
 
 def get_services_by_category() -> dict[str, list[dict[str, Any]]]:
@@ -110,10 +110,11 @@ def get_services_by_category() -> dict[str, list[dict[str, Any]]]:
 
 
 def get_service(slug: str) -> dict[str, Any] | None:
-    """Look up a single service by slug."""
+    """Look up a single service by slug (returns a shallow copy)."""
     if not _by_slug:
         load_services()
-    return _by_slug.get(slug)
+    svc = _by_slug.get(slug)
+    return dict(svc) if svc else None
 
 
 def _sighup_handler(signum: int, frame: Any) -> None:
