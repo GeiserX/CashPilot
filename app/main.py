@@ -940,7 +940,7 @@ async def api_service_start(request: Request, slug: str, worker_id: int | None =
 async def api_service_logs(
     request: Request, slug: str, lines: int = 50, worker_id: int | None = None
 ) -> dict[str, str]:
-    _require_auth_api(request)
+    _require_writer(request)
     _require_worker_id(worker_id)
     return await _proxy_worker_logs(worker_id, slug, lines)  # type: ignore[arg-type]
 
@@ -1361,7 +1361,7 @@ async def page_fleet(request: Request):
 def _verify_fleet_api_key(request: Request) -> None:
     """Verify the shared fleet API key from a worker's request."""
     if not FLEET_API_KEY:
-        raise HTTPException(status_code=403, detail="Fleet API key not configured")
+        return  # No key configured — local compose, skip auth
     auth_header = request.headers.get("Authorization", "")
     if auth_header != f"Bearer {FLEET_API_KEY}":
         raise HTTPException(status_code=401, detail="Invalid API key")
@@ -1471,6 +1471,8 @@ async def api_worker_command(request: Request, worker_id: int, body: WorkerComma
             else:
                 raise HTTPException(status_code=400, detail=f"Unknown command: {body.command}")
 
+            if resp.status_code >= 400:
+                raise HTTPException(status_code=resp.status_code, detail=resp.text)
             return resp.json()
     except httpx.HTTPError as exc:
         raise HTTPException(status_code=503, detail=f"Worker communication failed: {exc}")

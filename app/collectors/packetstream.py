@@ -67,7 +67,7 @@ class PacketStreamCollector(BaseCollector):
 
                 # If no pattern matched at all, report an error rather than
                 # silently returning 0 (which hides integration breakage).
-                if balance == 0.0 and not match and "userData" not in html:
+                if balance == 0.0:
                     return EarningsResult(
                         platform=self.platform,
                         balance=0.0,

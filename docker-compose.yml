@@ -16,6 +16,7 @@ services:
       - TZ=${TZ:-UTC}
       - CASHPILOT_SECRET_KEY=${CASHPILOT_SECRET_KEY:-}
       - CASHPILOT_API_KEY=${CASHPILOT_API_KEY:-}
+      - CASHPILOT_ADMIN_API_KEY=${CASHPILOT_ADMIN_API_KEY:-}
     init: true
     restart: unless-stopped
     security_opt:
