@@ -191,6 +191,7 @@
     const desc = document.getElementById('ob-finish-desc');
     const actions = document.getElementById('ob-finish-actions');
 
+    const _isOwner = window._userRole === 'owner';
     if (setupMode === 'fresh') {
       title.textContent = "Let's deploy your first services!";
       desc.innerHTML = 'The <strong>Setup Wizard</strong> will guide you through signing up for services and deploying containers.';
@@ -199,16 +200,28 @@
         <a href="/setup" class="btn btn-primary">Setup Wizard</a>`;
     } else if (setupMode === 'monitoring') {
       title.textContent = 'Configure earnings tracking';
-      desc.innerHTML = 'Head to <strong>Settings</strong> to enter your API tokens and credentials. CashPilot will collect your earnings automatically &mdash; no container deployment needed.';
-      actions.innerHTML = `
-        <a href="/" class="btn btn-ghost">Dashboard</a>
-        <a href="/settings" class="btn btn-primary">Configure Credentials</a>`;
+      if (_isOwner) {
+        desc.innerHTML = 'Head to <strong>Settings</strong> to enter your API tokens and credentials. CashPilot will collect your earnings automatically &mdash; no container deployment needed.';
+        actions.innerHTML = `
+          <a href="/" class="btn btn-ghost">Dashboard</a>
+          <a href="/settings" class="btn btn-primary">Configure Credentials</a>`;
+      } else {
+        desc.innerHTML = 'An owner will configure API tokens and credentials. CashPilot will collect your earnings automatically &mdash; no container deployment needed.';
+        actions.innerHTML = `<a href="/" class="btn btn-primary">Dashboard</a>`;
+      }
     } else {
       title.textContent = "Let's expand your portfolio!";
-      desc.innerHTML = 'Configure existing services in <strong>Settings</strong>, then use the <strong>Setup Wizard</strong> to deploy new ones.';
-      actions.innerHTML = `
-        <a href="/settings" class="btn btn-ghost">Configure Existing</a>
-        <a href="/setup" class="btn btn-primary">Deploy New Services</a>`;
+      if (_isOwner) {
+        desc.innerHTML = 'Configure existing services in <strong>Settings</strong>, then use the <strong>Setup Wizard</strong> to deploy new ones.';
+        actions.innerHTML = `
+          <a href="/settings" class="btn btn-ghost">Configure Existing</a>
+          <a href="/setup" class="btn btn-primary">Deploy New Services</a>`;
+      } else {
+        desc.innerHTML = 'Use the <strong>Setup Wizard</strong> to browse and deploy new services.';
+        actions.innerHTML = `
+          <a href="/" class="btn btn-ghost">Dashboard</a>
+          <a href="/setup" class="btn btn-primary">Deploy New Services</a>`;
+      }
     }
 
     CP.obNext(4);
