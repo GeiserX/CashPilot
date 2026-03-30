@@ -1,0 +1,132 @@
+site_name: CashPilot
+site_url: https://geiserx.github.io/CashPilot
+site_description: Self-hosted passive income orchestrator. Deploy, manage, and monitor 49 services from a single dashboard.
+site_author: Sergio Fernandez
+repo_url: https://github.com/GeiserX/CashPilot
+repo_name: GeiserX/CashPilot
+edit_uri: edit/main/docs/
+
+copyright: Copyright &copy; 2026 Sergio Fernandez
+
+theme:
+  name: material
+  language: en
+  logo: logo.svg
+  favicon: icon.svg
+  palette:
+    - scheme: slate
+      primary: deep purple
+      accent: pink
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+    - scheme: default
+      primary: deep purple
+      accent: pink
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.expand
+    - navigation.top
+    - content.code.copy
+    - content.action.edit
+    - search.highlight
+    - search.suggest
+    - toc.follow
+  icon:
+    repo: fontawesome/brands/github
+
+plugins:
+  - search
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_mermaid
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.mark
+  - attr_list
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/GeiserX/CashPilot
+    - icon: fontawesome/brands/docker
+      link: https://hub.docker.com/r/drumsergio/cashpilot
+
+nav:
+  - Home: index.md
+  - Getting Started: getting-started.md
+  - Architecture: architecture.md
+  - Fleet Management: fleet.md
+  - Service Guides:
+    - guides/README.md
+    - Bandwidth Sharing:
+      - Bitping: guides/bitping.md
+      - Bytebenefit: guides/bytebenefit.md
+      - Bytelixir: guides/bytelixir.md
+      - earn.cc: guides/earncc.md
+      - Earn.fm: guides/earnfm.md
+      - EarnApp: guides/earnapp.md
+      - Ebesucher: guides/ebesucher.md
+      - Honeygain: guides/honeygain.md
+      - IPRoyal Pawns: guides/iproyal.md
+      - MystNodes: guides/mysterium.md
+      - PacketShare: guides/packetshare.md
+      - PacketStream: guides/packetstream.md
+      - Peer2Profit: guides/peer2profit.md
+      - ProxyBase: guides/proxybase.md
+      - ProxyLite: guides/proxylite.md
+      - ProxyRack: guides/proxyrack.md
+      - Repocket: guides/repocket.md
+      - SpeedShare: guides/speedshare.md
+      - Spide: guides/spide.md
+      - Traffmonetizer: guides/traffmonetizer.md
+      - URnetwork: guides/urnetwork.md
+      - WizardGain: guides/wizardgain.md
+    - DePIN:
+      - Anyone Protocol: guides/anyone-protocol.md
+      - BlockMesh: guides/blockmesh.md
+      - Dawn Internet: guides/dawn.md
+      - Deeper Network: guides/deeper-network.md
+      - GagaNode: guides/gaganode.md
+      - Gradient Network: guides/gradient.md
+      - Grass: guides/grass.md
+      - Helium: guides/helium.md
+      - Koii Network: guides/koii.md
+      - Network3: guides/network3.md
+      - Nodepay: guides/nodepay.md
+      - Nodle: guides/nodle.md
+      - PassiveApp: guides/passiveapp.md
+      - Presearch: guides/presearch.md
+      - Sentinel dVPN: guides/sentinel-dvpn.md
+      - Teneo Protocol: guides/teneo.md
+      - Theta Edge Node: guides/theta-edge.md
+      - Titan Network: guides/titan.md
+      - Uprock: guides/uprock.md
+      - Wipter: guides/wipter.md
+    - Storage:
+      - Storj: guides/storj.md
+    - GPU Compute:
+      - Flux: guides/flux.md
+      - Golem Network: guides/golem.md
+      - io.net: guides/ionet.md
+      - Nosana: guides/nosana.md
+      - Salad: guides/salad.md
+      - Vast.ai: guides/vast-ai.md
