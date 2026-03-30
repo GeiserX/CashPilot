@@ -455,6 +455,8 @@ async def page_settings(request: Request):
     user = auth.get_current_user(request)
     if not user:
         return _login_redirect()
+    if not auth.require_role(user, "owner"):
+        raise HTTPException(status_code=403, detail="Owner access required")
     return templates.TemplateResponse(request, "settings.html", {"user": user})
 
 
@@ -826,6 +828,13 @@ async def _proxy_worker_command(worker_id: int, command: str, slug: str) -> dict
                 resp = await client.delete(f"{url}/api/containers/{slug}", headers=headers)
             else:
                 resp = await client.post(f"{url}/api/containers/{slug}/{command}", headers=headers)
+            if resp.status_code >= 400:
+                detail = (
+                    resp.json().get("detail", resp.text)
+                    if resp.headers.get("content-type", "").startswith("application/json")
+                    else resp.text
+                )
+                raise HTTPException(status_code=resp.status_code, detail=f"Worker error: {detail}")
             return resp.json()
     except httpx.HTTPError as exc:
         raise HTTPException(status_code=503, detail=f"Worker communication failed: {exc}")
@@ -849,6 +858,13 @@ async def _proxy_worker_deploy(worker_id: int, slug: str, spec: dict[str, Any]) 
     try:
         async with httpx.AsyncClient(timeout=60) as client:
             resp = await client.post(f"{url}/api/containers/{slug}/deploy", json=spec, headers=headers)
+            if resp.status_code >= 400:
+                detail = (
+                    resp.json().get("detail", resp.text)
+                    if resp.headers.get("content-type", "").startswith("application/json")
+                    else resp.text
+                )
+                raise HTTPException(status_code=resp.status_code, detail=f"Worker deploy error: {detail}")
             return resp.json()
     except httpx.HTTPError as exc:
         raise HTTPException(status_code=503, detail=f"Worker communication failed: {exc}")
@@ -876,6 +892,13 @@ async def _proxy_worker_logs(worker_id: int, slug: str, lines: int = 50) -> dict
                 params={"lines": min(lines, 1000)},
                 headers=headers,
             )
+            if resp.status_code >= 400:
+                detail = (
+                    resp.json().get("detail", resp.text)
+                    if resp.headers.get("content-type", "").startswith("application/json")
+                    else resp.text
+                )
+                raise HTTPException(status_code=resp.status_code, detail=f"Worker error: {detail}")
             return resp.json()
     except httpx.HTTPError as exc:
         raise HTTPException(status_code=503, detail=f"Worker communication failed: {exc}")
@@ -1218,7 +1241,7 @@ async def api_env_info(request: Request) -> list[dict[str, Any]]:
 
 @app.get("/api/collectors/meta")
 async def api_collectors_meta(request: Request) -> list[dict[str, Any]]:
-    _require_auth_api(request)
+    _require_owner(request)
     from app.collectors import _COLLECTOR_ARGS, COLLECTOR_MAP
 
     secret_args = {
@@ -1260,7 +1283,7 @@ async def api_collectors_meta(request: Request) -> list[dict[str, Any]]:
 
 @app.get("/api/config")
 async def api_get_config(request: Request) -> dict[str, str]:
-    _require_auth_api(request)
+    _require_owner(request)
     result = await database.get_config()
     if isinstance(result, dict):
         return result
@@ -1481,5 +1504,5 @@ async def api_fleet_summary(request: Request) -> dict[str, Any]:
 @app.get("/api/fleet/api-key")
 async def api_fleet_api_key(request: Request) -> dict[str, str]:
     """Return the configured fleet API key (owner only)."""
-    _require_auth_api(request)
+    _require_owner(request)
     return {"api_key": FLEET_API_KEY or ""}

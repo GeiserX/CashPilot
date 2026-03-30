@@ -5,7 +5,10 @@ Session-based auth using signed cookies (itsdangerous) and bcrypt password hashi
 
 from __future__ import annotations
 
+import logging
 import os
+import secrets
+from pathlib import Path
 from typing import Any
 
 from fastapi import Request
@@ -13,7 +16,58 @@ from fastapi.responses import RedirectResponse
 from itsdangerous import BadSignature, URLSafeTimedSerializer
 from passlib.hash import bcrypt
 
-SECRET_KEY = os.getenv("CASHPILOT_SECRET_KEY", "changeme-generate-a-random-secret")
+_logger = logging.getLogger(__name__)
+
+_KNOWN_DEFAULTS = {
+    "changeme-generate-a-random-secret",
+    "changeme",
+    "",
+}
+
+
+def _resolve_secret_key() -> str:
+    """Return a cryptographically safe secret key.
+
+    Priority:
+    1. CASHPILOT_SECRET_KEY env var (if not a known default)
+    2. Persisted key in <data_dir>/.secret_key
+    3. Generate, persist, and return a new random key
+    """
+    env_key = os.getenv("CASHPILOT_SECRET_KEY", "")
+    if env_key and env_key not in _KNOWN_DEFAULTS:
+        return env_key
+
+    if env_key in _KNOWN_DEFAULTS and env_key:
+        _logger.warning(
+            "CASHPILOT_SECRET_KEY is set to a known default — ignoring it. "
+            "Set a strong random value or remove it to auto-generate."
+        )
+
+    # Try to read persisted key
+    data_dir = Path(os.getenv("CASHPILOT_DATA_DIR", "/data"))
+    key_file = data_dir / ".secret_key"
+    try:
+        if key_file.is_file():
+            stored = key_file.read_text().strip()
+            if stored and stored not in _KNOWN_DEFAULTS:
+                return stored
+    except OSError:
+        pass
+
+    # Generate and persist
+    new_key = secrets.token_urlsafe(48)
+    try:
+        data_dir.mkdir(parents=True, exist_ok=True)
+        key_file.write_text(new_key)
+        key_file.chmod(0o600)
+        _logger.info("Generated and persisted new secret key to %s", key_file)
+    except OSError as exc:
+        _logger.warning("Could not persist secret key to %s: %s", key_file, exc)
+
+    return new_key
+
+
+SECRET_KEY = _resolve_secret_key()
 SESSION_COOKIE = "cashpilot_session"
 SESSION_MAX_AGE = 60 * 60 * 24 * 30  # 30 days
 

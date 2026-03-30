@@ -50,7 +50,7 @@ _COLLECTOR_ARGS: dict[str, list[str]] = {
     "iproyal": ["email", "password"],
     "mysterium": ["email", "password"],
     "storj": ["api_url"],
-    "traffmonetizer": ["token"],
+    "traffmonetizer": ["?token", "?email", "?password"],
     "repocket": ["email", "password"],
     "proxyrack": ["api_key"],
     "bitping": ["email", "password"],

@@ -39,7 +39,16 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 UI_URL = os.getenv("CASHPILOT_UI_URL", "")
-API_KEY = os.getenv("CASHPILOT_API_KEY", "")
+_configured_key = os.getenv("CASHPILOT_API_KEY", "")
+if not _configured_key:
+    import secrets as _secrets
+
+    _configured_key = _secrets.token_urlsafe(32)
+    logger.warning(
+        "CASHPILOT_API_KEY not set — generated ephemeral key. "
+        "Workers and UI MUST share the same key. Set CASHPILOT_API_KEY in your environment."
+    )
+API_KEY: str = _configured_key
 WORKER_NAME = os.getenv("CASHPILOT_WORKER_NAME", socket.gethostname())
 WORKER_PORT = int(os.getenv("CASHPILOT_PORT", "8081"))
 HEARTBEAT_INTERVAL = 60  # seconds
@@ -57,8 +66,6 @@ _last_error: str = ""
 
 def _verify_api_key(request: Request) -> None:
     """Verify the shared API key from Authorization header."""
-    if not API_KEY:
-        return  # No key = no auth (local-only / standalone)
     auth = request.headers.get("Authorization", "")
     if auth != f"Bearer {API_KEY}":
         raise HTTPException(status_code=401, detail="Invalid API key")
