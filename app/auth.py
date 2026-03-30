@@ -41,7 +41,19 @@ def decode_session_token(token: str) -> dict[str, Any] | None:
 
 
 def get_current_user(request: Request) -> dict[str, Any] | None:
-    """Extract user info from session cookie. Returns None if not authenticated."""
+    """Extract user info from Bearer API key or session cookie.
+
+    Checks Authorization header first (for programmatic access like Home Assistant),
+    then falls back to session cookie (for browser sessions).
+    """
+    # Check Bearer token against CASHPILOT_API_KEY
+    api_key = os.getenv("CASHPILOT_API_KEY", "")
+    if api_key:
+        auth_header = request.headers.get("Authorization", "")
+        if auth_header == f"Bearer {api_key}":
+            return {"uid": 0, "u": "api", "r": "owner"}
+
+    # Fall back to session cookie
     token = request.cookies.get(SESSION_COOKIE)
     if not token:
         return None
