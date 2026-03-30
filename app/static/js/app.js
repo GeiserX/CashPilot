@@ -1204,7 +1204,7 @@ const CP = (() => {
           <div id="setup-worker-list-${svc.slug}">${workerRows}</div>
         </div>
         <div style="display:flex; gap:8px; align-items:center;">
-          <button class="btn btn-success" onclick="CP.deployService('${svc.slug}')">
+          <button class="btn btn-success" onclick="CP.deployService('${svc.slug}')"${_canWrite ? '' : ' disabled title="Writer access required"'}>
             Deploy ${escapeHtml(svc.name)}
           </button>
           <span class="deploy-status" id="deploy-status-${svc.slug}" style="margin-left: 4px; font-size: 0.85rem;"></span>
@@ -1536,11 +1536,11 @@ const CP = (() => {
         <div style="display:flex; align-items:center; gap:10px; padding:8px 0; border-bottom:1px solid var(--border-color);">
           <strong style="min-width:100px;">${escapeHtml(inst.worker.name)}</strong>
           <span class="badge ${badgeClass}" style="font-size:0.75rem;">${escapeHtml(s)}</span>
-          <div style="margin-left:auto; display:flex; gap:4px;">
+          ${_canWrite ? `<div style="margin-left:auto; display:flex; gap:4px;">
             <button class="btn btn-secondary btn-sm" onclick="CP.workerAction('${svc.slug}','restart',${inst.worker.id})">Restart</button>
             <button class="btn btn-secondary btn-sm" onclick="CP.workerAction('${svc.slug}','stop',${inst.worker.id})">Stop</button>
             <button class="btn btn-ghost btn-sm" onclick="CP.loadWorkerLogs('${svc.slug}',${inst.worker.id},'logs-${svc.slug}-${inst.worker.id}')">Logs</button>
-          </div>
+          </div>` : ''}
         </div>
         <div class="log-viewer" id="logs-${svc.slug}-${inst.worker.id}" style="display:none; max-height:200px;"></div>`;
       }
@@ -1578,7 +1578,7 @@ const CP = (() => {
     }
     if (statusEl) {
       statusEl.textContent = fail === 0 ? `Deployed to ${ok} node(s)` : `${ok} ok, ${fail} failed`;
-      statusEl.style.color = fail === 0 ? 'var(--success)' : 'var(--danger)';
+      statusEl.style.color = fail === 0 ? 'var(--success)' : 'var(--error)';
     }
   }
 
