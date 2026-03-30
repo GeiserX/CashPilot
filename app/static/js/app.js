@@ -484,10 +484,10 @@ const CP = (() => {
           </button>
           <button class="btn btn-icon" onclick="CP.stopService('${svc.slug}${wParam})" title="Stop"${disabledAttr}>
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="6" width="12" height="12" rx="1"/></svg>
-          </button>` : ''}
+          </button>
           <button class="btn btn-icon" onclick="CP.viewLogs('${svc.slug}${wParam})" title="Logs"${disabledAttr}>
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
-          </button>
+          </button>` : ''}
         </div>`;
     }
 
@@ -534,10 +534,10 @@ const CP = (() => {
               </button>
               <button class="btn btn-icon" onclick="CP.stopService('${svc.slug}${wParam})" title="Stop on ${nodeLabel}"${disabledAttr}>
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="6" width="12" height="12" rx="1"/></svg>
-              </button>` : ''}
+              </button>
               <button class="btn btn-icon" onclick="CP.viewLogs('${svc.slug}${wParam})" title="Logs on ${nodeLabel}"${disabledAttr}>
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
-              </button>
+              </button>` : ''}
             </div>
           </td>
         </tr>`;

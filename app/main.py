@@ -1338,12 +1338,19 @@ class UserRoleUpdate(BaseModel):
 
 @app.patch("/api/users/{user_id}")
 async def api_update_user_role(request: Request, user_id: int, body: UserRoleUpdate) -> dict[str, str]:
-    _require_owner(request)
+    current = _require_owner(request)
     if body.role not in ("viewer", "writer", "owner"):
         raise HTTPException(status_code=400, detail="Role must be viewer, writer, or owner")
     user = await database.get_user_by_id(user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
+    if current["uid"] == user_id and body.role != "owner":
+        raise HTTPException(status_code=400, detail="Cannot demote yourself")
+    if user["role"] == "owner" and body.role != "owner":
+        all_users = await database.list_users()
+        owner_count = sum(1 for u in all_users if u["role"] == "owner")
+        if owner_count <= 1:
+            raise HTTPException(status_code=400, detail="Cannot remove the last owner")
     await database.update_user_role(user_id, body.role)
     return {"status": "updated"}
 
