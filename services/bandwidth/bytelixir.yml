@@ -16,7 +16,22 @@ referral:
 docker:
   image: ""
   platforms: []
-  env: []
+  env:
+    - key: BYTELIXIR_SESSION_COOKIE
+      label: "Session Cookie"
+      required: true
+      secret: true
+      description: "bytelixir_session cookie from dash.bytelixir.com (F12 > Application > Cookies)"
+    - key: BYTELIXIR_REMEMBER_WEB
+      label: "Remember Web Cookie"
+      required: false
+      secret: true
+      description: "remember_web_* cookie (optional, extends session lifetime)"
+    - key: BYTELIXIR_XSRF_TOKEN
+      label: "XSRF Token"
+      required: false
+      secret: true
+      description: "XSRF-TOKEN cookie (optional)"
   ports: []
   volumes: []
   command: ""
