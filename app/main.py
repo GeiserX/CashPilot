@@ -1378,9 +1378,19 @@ class WorkerHeartbeat(BaseModel):
 async def api_worker_heartbeat(request: Request, body: WorkerHeartbeat) -> dict[str, Any]:
     """Receive a heartbeat from a worker. Registers or updates the worker."""
     _verify_fleet_api_key(request)
+
+    # In no-key mode, derive the worker URL from the request source IP
+    # instead of trusting the caller-supplied URL (prevents URL injection).
+    worker_url = body.url
+    if not FLEET_API_KEY and body.url and request.client:
+        from urllib.parse import urlparse
+
+        parsed = urlparse(body.url)
+        worker_url = f"{parsed.scheme}://{request.client.host}:{parsed.port or 8081}"
+
     worker_id = await database.upsert_worker(
         name=body.name,
-        url=body.url,
+        url=worker_url,
         containers=json.dumps(body.containers),
         system_info=json.dumps(body.system_info),
     )
