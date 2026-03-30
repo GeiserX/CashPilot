@@ -46,6 +46,7 @@ class PacketStreamCollector(BaseCollector):
 
                 # Extract balance from window.userData in the HTML
                 balance = 0.0
+                parsed = False
                 match = re.search(
                     r"window\.userData\s*=\s*(\{[^}]+\})",
                     html,
@@ -56,18 +57,20 @@ class PacketStreamCollector(BaseCollector):
                     try:
                         user_data = json.loads(match.group(1))
                         balance = float(user_data.get("balance", 0))
+                        parsed = True
                     except (json.JSONDecodeError, ValueError):
                         pass
 
                 # Fallback: look for balance pattern
-                if balance == 0.0:
+                if not parsed:
                     match = re.search(r'"balance"\s*:\s*([\d.]+)', html)
                     if match:
                         balance = float(match.group(1))
+                        parsed = True
 
                 # If no pattern matched at all, report an error rather than
                 # silently returning 0 (which hides integration breakage).
-                if balance == 0.0:
+                if not parsed:
                     return EarningsResult(
                         platform=self.platform,
                         balance=0.0,

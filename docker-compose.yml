@@ -30,8 +30,8 @@ services:
       dockerfile: Dockerfile.worker
     image: drumsergio/cashpilot-worker:latest
     container_name: cashpilot-worker
-    ports:
-      - "8081:8081"
+    expose:
+      - "8081"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - cashpilot_worker_data:/data
