@@ -12,6 +12,7 @@ services:
       - "8080:8080"
     volumes:
       - cashpilot_data:/data
+      - cashpilot_fleet:/fleet
     environment:
       - TZ=${TZ:-UTC}
       - CASHPILOT_SECRET_KEY=${CASHPILOT_SECRET_KEY:-}
@@ -35,6 +36,7 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - cashpilot_worker_data:/data
+      - cashpilot_fleet:/fleet
     environment:
       - TZ=${TZ:-UTC}
       - CASHPILOT_UI_URL=http://cashpilot-ui:8080
@@ -50,3 +52,4 @@ services:
 volumes:
   cashpilot_data:
   cashpilot_worker_data:
+  cashpilot_fleet:

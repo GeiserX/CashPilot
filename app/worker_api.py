@@ -26,7 +26,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 
-from app import orchestrator
+from app import fleet_key, orchestrator
 
 logging.basicConfig(
     level=logging.INFO,
@@ -39,12 +39,9 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 UI_URL = os.getenv("CASHPILOT_UI_URL", "")
-API_KEY: str = os.getenv("CASHPILOT_API_KEY", "")
+API_KEY: str = fleet_key.resolve_fleet_key()
 if not API_KEY:
-    logger.warning(
-        "CASHPILOT_API_KEY not set — fleet auth disabled for local compose. "
-        "Set CASHPILOT_API_KEY for secure worker-UI communication."
-    )
+    logger.warning("Could not resolve fleet API key — set CASHPILOT_API_KEY or mount a shared /fleet volume")
 WORKER_NAME = os.getenv("CASHPILOT_WORKER_NAME", socket.gethostname())
 WORKER_PORT = int(os.getenv("CASHPILOT_PORT", "8081"))
 HEARTBEAT_INTERVAL = 60  # seconds
@@ -63,7 +60,7 @@ _last_error: str = ""
 def _verify_api_key(request: Request) -> None:
     """Verify the shared API key from Authorization header."""
     if not API_KEY:
-        return  # No key configured — local compose, skip auth
+        raise HTTPException(status_code=503, detail="Fleet key not configured")
     auth = request.headers.get("Authorization", "")
     if auth != f"Bearer {API_KEY}":
         raise HTTPException(status_code=401, detail="Invalid API key")
@@ -99,7 +96,7 @@ async def _send_heartbeat() -> None:
             resp = await client.post(
                 f"{UI_URL.rstrip('/')}/api/workers/heartbeat",
                 json=payload,
-                headers={"Authorization": f"Bearer {API_KEY}"} if API_KEY else {},
+                headers={"Authorization": f"Bearer {API_KEY}"},
             )
             resp.raise_for_status()
             _ui_connected = True

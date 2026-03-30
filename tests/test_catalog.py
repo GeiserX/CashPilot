@@ -71,8 +71,7 @@ class TestServiceYAML:
         volumes = (data.get("docker") or {}).get("volumes") or []
         for v in volumes:
             assert isinstance(v, str), (
-                f"{yml_path.name}: volume must be a colon-delimited string, "
-                f"got {type(v).__name__}: {v}"
+                f"{yml_path.name}: volume must be a colon-delimited string, got {type(v).__name__}: {v}"
             )
 
     def test_slug_matches_filename(self, yml_path):

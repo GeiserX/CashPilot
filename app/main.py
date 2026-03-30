@@ -21,7 +21,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 
-from app import auth, catalog, compose_generator, database, exchange_rates
+from app import auth, catalog, compose_generator, database, exchange_rates, fleet_key
 
 logging.basicConfig(
     level=logging.INFO,
@@ -164,7 +164,7 @@ async def _check_stale_workers() -> None:
         logger.debug("Stale worker check error: %s", exc)
 
 
-FLEET_API_KEY = os.getenv("CASHPILOT_API_KEY", "")
+FLEET_API_KEY = fleet_key.resolve_fleet_key()
 HOSTNAME_PREFIX = os.getenv("CASHPILOT_HOSTNAME_PREFIX", "cashpilot")
 COLLECT_INTERVAL_MIN = int(os.getenv("CASHPILOT_COLLECT_INTERVAL", "60"))
 STALE_WORKER_SECONDS = 180  # Mark worker offline after 3 missed heartbeats
@@ -1361,7 +1361,10 @@ async def page_fleet(request: Request):
 def _verify_fleet_api_key(request: Request) -> None:
     """Verify the shared fleet API key from a worker's request."""
     if not FLEET_API_KEY:
-        return  # No key configured — local compose, skip auth
+        raise HTTPException(
+            status_code=503,
+            detail="Fleet key not configured — set CASHPILOT_API_KEY or mount shared /fleet volume",
+        )
     auth_header = request.headers.get("Authorization", "")
     if auth_header != f"Bearer {FLEET_API_KEY}":
         raise HTTPException(status_code=401, detail="Invalid API key")
@@ -1378,19 +1381,9 @@ class WorkerHeartbeat(BaseModel):
 async def api_worker_heartbeat(request: Request, body: WorkerHeartbeat) -> dict[str, Any]:
     """Receive a heartbeat from a worker. Registers or updates the worker."""
     _verify_fleet_api_key(request)
-
-    # In no-key mode, derive the worker URL from the request source IP
-    # instead of trusting the caller-supplied URL (prevents URL injection).
-    worker_url = body.url
-    if not FLEET_API_KEY and body.url and request.client:
-        from urllib.parse import urlparse
-
-        parsed = urlparse(body.url)
-        worker_url = f"{parsed.scheme}://{request.client.host}:{parsed.port or 8081}"
-
     worker_id = await database.upsert_worker(
         name=body.name,
-        url=worker_url,
+        url=body.url,
         containers=json.dumps(body.containers),
         system_info=json.dumps(body.system_info),
     )
