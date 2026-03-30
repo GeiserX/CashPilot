@@ -10,6 +10,7 @@ from __future__ import annotations
 import logging
 import os
 import secrets
+import time
 from pathlib import Path
 
 _logger = logging.getLogger(__name__)
@@ -49,11 +50,17 @@ def resolve_fleet_key() -> str:
         _logger.info("Generated shared fleet key at %s", _FLEET_KEY_FILE)
         return new_key
     except FileExistsError:
-        # Other container created it first
-        try:
-            return _FLEET_KEY_FILE.read_text().strip()
-        except OSError:
-            pass
+        # Other container created it first — poll briefly for content
+        # (file exists but may be empty until the writer finishes)
+        for _ in range(20):
+            try:
+                stored = _FLEET_KEY_FILE.read_text().strip()
+                if stored:
+                    _logger.info("Loaded fleet key from %s", _FLEET_KEY_FILE)
+                    return stored
+            except OSError:
+                pass
+            time.sleep(0.1)
     except OSError as exc:
         _logger.warning(
             "Could not persist fleet key to %s: %s — set CASHPILOT_API_KEY or mount a shared /fleet volume",
