@@ -1930,15 +1930,19 @@ img { max-width: 100%; }
   padding: 0 16px 16px;
 }
 .collectors-grid {
-  columns: 2;
-  column-gap: 8px;
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
 }
-.collectors-grid > * {
-  break-inside: avoid;
-  margin-bottom: 8px;
+.collectors-grid .collector-section {
+  min-width: 0;
+  overflow: hidden;
+}
+.collectors-grid .collector-section .form-input {
+  min-width: 0;
 }
 @media (max-width: 768px) {
   .collectors-grid {
-    columns: 1;
+    grid-template-columns: 1fr;
   }
 }
