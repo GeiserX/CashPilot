@@ -40,6 +40,7 @@ services:
       - CASHPILOT_UI_URL=http://cashpilot-ui:8080
       - CASHPILOT_API_KEY=${CASHPILOT_API_KEY}
       - CASHPILOT_WORKER_NAME=server-a
+      # CASHPILOT_WORKER_URL: override auto-detected URL if the UI can't reach the default
     init: true
     restart: unless-stopped
     security_opt:
@@ -64,6 +65,7 @@ services:
 #        - CASHPILOT_UI_URL=http://server-a:8080
 #        - CASHPILOT_API_KEY=${CASHPILOT_API_KEY}
 #        - CASHPILOT_WORKER_NAME=server-b
+#        - CASHPILOT_WORKER_URL=http://server-b:8081  # URL the UI uses to reach this worker
 #      init: true
 #      restart: unless-stopped
 #      security_opt:

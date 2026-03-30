@@ -44,6 +44,7 @@ if not API_KEY:
     logger.warning("Could not resolve fleet API key — set CASHPILOT_API_KEY or mount a shared /fleet volume")
 WORKER_NAME = os.getenv("CASHPILOT_WORKER_NAME", socket.gethostname())
 WORKER_PORT = int(os.getenv("CASHPILOT_PORT", "8081"))
+WORKER_URL = os.getenv("CASHPILOT_WORKER_URL", "")
 HEARTBEAT_INTERVAL = 60  # seconds
 
 _heartbeat_task: asyncio.Task | None = None
@@ -81,7 +82,7 @@ async def _send_heartbeat() -> None:
 
     payload = {
         "name": WORKER_NAME,
-        "url": f"http://{_get_local_ip()}:{WORKER_PORT}",
+        "url": WORKER_URL or f"http://{_get_local_ip()}:{WORKER_PORT}",
         "containers": containers,
         "system_info": {
             "os": f"{platform.system()} {platform.release()}",
