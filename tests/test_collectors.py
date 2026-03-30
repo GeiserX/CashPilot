@@ -2,7 +2,7 @@
 
 import inspect
 
-from app.collectors import COLLECTOR_MAP
+from app.collectors import _COLLECTOR_ARGS, COLLECTOR_MAP, make_collectors
 from app.collectors.base import BaseCollector, EarningsResult
 
 
@@ -40,3 +40,27 @@ def test_earnings_result_fields():
     assert result.currency == "USD"
     assert result.bytes_uploaded == 0
     assert result.error is None
+
+
+def test_storj_api_url_is_optional():
+    """Storj api_url must be marked optional so the built-in default works."""
+    storj_args = _COLLECTOR_ARGS.get("storj", [])
+    assert "?api_url" in storj_args, "storj api_url should be optional (prefixed with ?)"
+    assert "api_url" not in storj_args, "storj api_url should not be mandatory"
+
+
+def test_storj_collector_created_without_config():
+    """make_collectors should create a StorjCollector with no api_url config."""
+    deployments = [{"slug": "storj"}]
+    collectors = make_collectors(deployments, config={})
+    assert len(collectors) == 1
+    assert collectors[0].platform == "storj"
+    assert "localhost:14002" in collectors[0].api_url
+
+
+def test_storj_collector_respects_custom_url():
+    """make_collectors should pass custom api_url when provided."""
+    deployments = [{"slug": "storj"}]
+    collectors = make_collectors(deployments, config={"storj_api_url": "http://mynode:14002"})
+    assert len(collectors) == 1
+    assert collectors[0].api_url == "http://mynode:14002"

@@ -5,6 +5,8 @@
 const CP = (() => {
   'use strict';
 
+  const _canWrite = window._userRole === 'owner' || window._userRole === 'writer';
+
   // -----------------------------------------------------------
   // API helper
   // -----------------------------------------------------------
@@ -436,7 +438,7 @@ const CP = (() => {
     // Payout progress
     const co = svc.cashout || {};
     const minAmount = co.min_amount || 0;
-    const eligible = minAmount > 0 && balance >= minAmount;
+    const eligible = balance > 0 && balance >= minAmount;
     const pctToMin = minAmount > 0 ? Math.min(100, (balance / minAmount) * 100) : 0;
     const progressBar = minAmount > 0 ? `
       <div class="payout-progress" title="${formatCurrency(balance, currency)} / ${formatCurrency(minAmount, currency)}" style="min-width:60px;">
@@ -476,6 +478,7 @@ const CP = (() => {
       const disabledAttr = !inst.has_docker ? ' disabled title="No Docker access"' : '';
       actionBtns = `<div class="action-btns">
           ${claimBtn}
+          ${_canWrite ? `
           <button class="btn btn-icon" onclick="CP.restartService('${svc.slug}${wParam})" title="Restart"${disabledAttr}>
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg>
           </button>
@@ -484,7 +487,7 @@ const CP = (() => {
           </button>
           <button class="btn btn-icon" onclick="CP.viewLogs('${svc.slug}${wParam})" title="Logs"${disabledAttr}>
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
-          </button>
+          </button>` : ''}
         </div>`;
     }
 
@@ -525,6 +528,7 @@ const CP = (() => {
           <td></td>
           <td style="text-align:center; white-space:nowrap;">
             <div class="action-btns">
+              ${_canWrite ? `
               <button class="btn btn-icon" onclick="CP.restartService('${svc.slug}${wParam})" title="Restart on ${nodeLabel}"${disabledAttr}>
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg>
               </button>
@@ -533,7 +537,7 @@ const CP = (() => {
               </button>
               <button class="btn btn-icon" onclick="CP.viewLogs('${svc.slug}${wParam})" title="Logs on ${nodeLabel}"${disabledAttr}>
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
-              </button>
+              </button>` : ''}
             </div>
           </td>
         </tr>`;
@@ -561,9 +565,19 @@ const CP = (() => {
     toast('Services refreshed', 'info');
   }
 
+  async function _waitForChart() {
+    if (typeof Chart !== 'undefined') return;
+    return new Promise(resolve => {
+      const id = setInterval(() => { if (typeof Chart !== 'undefined') { clearInterval(id); resolve(); } }, 100);
+      setTimeout(() => { clearInterval(id); resolve(); }, 5000);
+    });
+  }
+
   async function loadEarningsChart(days) {
     const ctx = document.getElementById('earnings-chart');
     if (!ctx) return;
+    await _waitForChart();
+    if (typeof Chart === 'undefined') return;
 
     // Highlight active tab
     document.querySelectorAll('.chart-period-btn').forEach(btn => {
@@ -888,6 +902,17 @@ const CP = (() => {
       updateWizardUI();
       if (wizardState.step === 2) loadWizardServices();
       if (wizardState.step === 3) loadWizardSetupForms();
+      if (wizardState.step === 4) {
+        // Persist category/service selections
+        api('/api/preferences', {
+          method: 'POST',
+          body: {
+            selected_categories: JSON.stringify(wizardState.categories),
+            timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
+            setup_completed: 1,
+          },
+        }).catch(() => {});
+      }
     }
   }
 
@@ -1179,7 +1204,7 @@ const CP = (() => {
           <div id="setup-worker-list-${svc.slug}">${workerRows}</div>
         </div>
         <div style="display:flex; gap:8px; align-items:center;">
-          <button class="btn btn-success" onclick="CP.deployService('${svc.slug}')">
+          <button class="btn btn-success" onclick="CP.deployService('${svc.slug}')"${_canWrite ? '' : ' disabled title="Writer access required"'}>
             Deploy ${escapeHtml(svc.name)}
           </button>
           <span class="deploy-status" id="deploy-status-${svc.slug}" style="margin-left: 4px; font-size: 0.85rem;"></span>
@@ -1486,7 +1511,7 @@ const CP = (() => {
           <div id="deploy-worker-list">${workerRows}</div>
         </div>
         <div style="display:flex; gap:8px; align-items:center;">
-          <button class="btn btn-success" onclick="CP.deployServiceToWorkers('${svc.slug}')">Deploy</button>
+          <button class="btn btn-success" onclick="CP.deployServiceToWorkers('${svc.slug}')"${_canWrite ? '' : ' disabled title="Writer access required"'}>Deploy</button>
           <span id="deploy-status-${svc.slug}" style="font-size:0.85rem;"></span>
         </div>`;
       }
@@ -1511,11 +1536,11 @@ const CP = (() => {
         <div style="display:flex; align-items:center; gap:10px; padding:8px 0; border-bottom:1px solid var(--border-color);">
           <strong style="min-width:100px;">${escapeHtml(inst.worker.name)}</strong>
           <span class="badge ${badgeClass}" style="font-size:0.75rem;">${escapeHtml(s)}</span>
-          <div style="margin-left:auto; display:flex; gap:4px;">
+          ${_canWrite ? `<div style="margin-left:auto; display:flex; gap:4px;">
             <button class="btn btn-secondary btn-sm" onclick="CP.workerAction('${svc.slug}','restart',${inst.worker.id})">Restart</button>
             <button class="btn btn-secondary btn-sm" onclick="CP.workerAction('${svc.slug}','stop',${inst.worker.id})">Stop</button>
             <button class="btn btn-ghost btn-sm" onclick="CP.loadWorkerLogs('${svc.slug}',${inst.worker.id},'logs-${svc.slug}-${inst.worker.id}')">Logs</button>
-          </div>
+          </div>` : ''}
         </div>
         <div class="log-viewer" id="logs-${svc.slug}-${inst.worker.id}" style="display:none; max-height:200px;"></div>`;
       }
@@ -1553,7 +1578,7 @@ const CP = (() => {
     }
     if (statusEl) {
       statusEl.textContent = fail === 0 ? `Deployed to ${ok} node(s)` : `${ok} ok, ${fail} failed`;
-      statusEl.style.color = fail === 0 ? 'var(--success)' : 'var(--danger)';
+      statusEl.style.color = fail === 0 ? 'var(--success)' : 'var(--error)';
     }
   }
 
@@ -1889,8 +1914,9 @@ const CP = (() => {
 
       badge.style.display = '';
       badge.textContent = alerts.length;
+      const _isOwner = window._userRole === 'owner';
       list.innerHTML = alerts.map(a => `
-        <div class="notify-item" data-platform="${escapeHtml(a.platform)}" onclick="CP.goToCollectorSettings('${escapeHtml(a.platform)}')">
+        <div class="notify-item" data-platform="${escapeHtml(a.platform)}"${_isOwner ? ` onclick="CP.goToCollectorSettings('${escapeHtml(a.platform)}')" style="cursor:pointer;"` : ''}>
           <div class="notify-item-icon">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
           </div>

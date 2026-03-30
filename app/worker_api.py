@@ -26,7 +26,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 
-from app import orchestrator
+from app import fleet_key, orchestrator
 
 logging.basicConfig(
     level=logging.INFO,
@@ -39,9 +39,12 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 UI_URL = os.getenv("CASHPILOT_UI_URL", "")
-API_KEY = os.getenv("CASHPILOT_API_KEY", "")
+API_KEY: str = fleet_key.resolve_fleet_key()
+if not API_KEY:
+    logger.warning("Could not resolve fleet API key — set CASHPILOT_API_KEY or mount a shared /fleet volume")
 WORKER_NAME = os.getenv("CASHPILOT_WORKER_NAME", socket.gethostname())
 WORKER_PORT = int(os.getenv("CASHPILOT_PORT", "8081"))
+WORKER_URL = os.getenv("CASHPILOT_WORKER_URL", "")
 HEARTBEAT_INTERVAL = 60  # seconds
 
 _heartbeat_task: asyncio.Task | None = None
@@ -58,7 +61,7 @@ _last_error: str = ""
 def _verify_api_key(request: Request) -> None:
     """Verify the shared API key from Authorization header."""
     if not API_KEY:
-        return  # No key = no auth (local-only / standalone)
+        raise HTTPException(status_code=503, detail="Fleet key not configured")
     auth = request.headers.get("Authorization", "")
     if auth != f"Bearer {API_KEY}":
         raise HTTPException(status_code=401, detail="Invalid API key")
@@ -79,7 +82,7 @@ async def _send_heartbeat() -> None:
 
     payload = {
         "name": WORKER_NAME,
-        "url": f"http://{_get_local_ip()}:{WORKER_PORT}",
+        "url": WORKER_URL or f"http://{_get_local_ip()}:{WORKER_PORT}",
         "containers": containers,
         "system_info": {
             "os": f"{platform.system()} {platform.release()}",
@@ -141,11 +144,13 @@ async def lifespan(app: FastAPI):
     docker_mode = "direct" if orchestrator.docker_available() else "monitor-only"
     logger.info("Docker: %s", docker_mode)
 
-    if UI_URL and API_KEY:
+    if UI_URL:
         _heartbeat_task = asyncio.create_task(_heartbeat_loop())
         logger.info("Heartbeat enabled -> %s (every %ds)", UI_URL, HEARTBEAT_INTERVAL)
+        if not API_KEY:
+            logger.warning("CASHPILOT_API_KEY not set — heartbeats sent without auth")
     else:
-        logger.warning("No CASHPILOT_UI_URL or CASHPILOT_API_KEY — running without UI connection")
+        logger.warning("No CASHPILOT_UI_URL — running without UI connection")
 
     yield
 
