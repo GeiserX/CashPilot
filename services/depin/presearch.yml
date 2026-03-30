@@ -24,8 +24,7 @@ docker:
       description: "Your Presearch node registration code from the dashboard"
   ports: []
   volumes:
-    - container_path: /app/node
-      description: "Node data and keys"
+    - "/data/presearch-node:/app/node"
   command: ""
   network_mode: ""
 

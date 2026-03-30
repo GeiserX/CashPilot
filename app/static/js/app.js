@@ -561,9 +561,19 @@ const CP = (() => {
     toast('Services refreshed', 'info');
   }
 
+  async function _waitForChart() {
+    if (typeof Chart !== 'undefined') return;
+    return new Promise(resolve => {
+      const id = setInterval(() => { if (typeof Chart !== 'undefined') { clearInterval(id); resolve(); } }, 100);
+      setTimeout(() => { clearInterval(id); resolve(); }, 5000);
+    });
+  }
+
   async function loadEarningsChart(days) {
     const ctx = document.getElementById('earnings-chart');
     if (!ctx) return;
+    await _waitForChart();
+    if (typeof Chart === 'undefined') return;
 
     // Highlight active tab
     document.querySelectorAll('.chart-period-btn').forEach(btn => {

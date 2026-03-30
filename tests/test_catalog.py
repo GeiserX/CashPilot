@@ -58,6 +58,23 @@ class TestServiceYAML:
         if "docker" in data and data["docker"]:
             assert "image" in data["docker"], f"{yml_path.name}: docker section missing image"
 
+    def test_docker_section_present(self, yml_path):
+        """Runtime catalog loader expects a docker section on every service."""
+        with open(yml_path) as f:
+            data = yaml.safe_load(f)
+        assert "docker" in data, f"{yml_path.name}: missing docker section (required at runtime)"
+
+    def test_volumes_are_strings(self, yml_path):
+        """Deploy code splits volumes on ':'. Mappings break it."""
+        with open(yml_path) as f:
+            data = yaml.safe_load(f)
+        volumes = (data.get("docker") or {}).get("volumes") or []
+        for v in volumes:
+            assert isinstance(v, str), (
+                f"{yml_path.name}: volume must be a colon-delimited string, "
+                f"got {type(v).__name__}: {v}"
+            )
+
     def test_slug_matches_filename(self, yml_path):
         with open(yml_path) as f:
             data = yaml.safe_load(f)

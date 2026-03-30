@@ -65,6 +65,15 @@ class PacketStreamCollector(BaseCollector):
                     if match:
                         balance = float(match.group(1))
 
+                # If no pattern matched at all, report an error rather than
+                # silently returning 0 (which hides integration breakage).
+                if balance == 0.0 and not match and "userData" not in html:
+                    return EarningsResult(
+                        platform=self.platform,
+                        balance=0.0,
+                        error="Could not parse balance from dashboard — page structure may have changed",
+                    )
+
                 return EarningsResult(
                     platform=self.platform,
                     balance=round(balance, 4),
