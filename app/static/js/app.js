@@ -5,6 +5,8 @@
 const CP = (() => {
   'use strict';
 
+  const _canWrite = window._userRole === 'owner' || window._userRole === 'writer';
+
   // -----------------------------------------------------------
   // API helper
   // -----------------------------------------------------------
@@ -476,12 +478,13 @@ const CP = (() => {
       const disabledAttr = !inst.has_docker ? ' disabled title="No Docker access"' : '';
       actionBtns = `<div class="action-btns">
           ${claimBtn}
+          ${_canWrite ? `
           <button class="btn btn-icon" onclick="CP.restartService('${svc.slug}${wParam})" title="Restart"${disabledAttr}>
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg>
           </button>
           <button class="btn btn-icon" onclick="CP.stopService('${svc.slug}${wParam})" title="Stop"${disabledAttr}>
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="6" width="12" height="12" rx="1"/></svg>
-          </button>
+          </button>` : ''}
           <button class="btn btn-icon" onclick="CP.viewLogs('${svc.slug}${wParam})" title="Logs"${disabledAttr}>
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
           </button>
@@ -525,12 +528,13 @@ const CP = (() => {
           <td></td>
           <td style="text-align:center; white-space:nowrap;">
             <div class="action-btns">
+              ${_canWrite ? `
               <button class="btn btn-icon" onclick="CP.restartService('${svc.slug}${wParam})" title="Restart on ${nodeLabel}"${disabledAttr}>
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg>
               </button>
               <button class="btn btn-icon" onclick="CP.stopService('${svc.slug}${wParam})" title="Stop on ${nodeLabel}"${disabledAttr}>
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="6" width="12" height="12" rx="1"/></svg>
-              </button>
+              </button>` : ''}
               <button class="btn btn-icon" onclick="CP.viewLogs('${svc.slug}${wParam})" title="Logs on ${nodeLabel}"${disabledAttr}>
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
               </button>
@@ -898,6 +902,17 @@ const CP = (() => {
       updateWizardUI();
       if (wizardState.step === 2) loadWizardServices();
       if (wizardState.step === 3) loadWizardSetupForms();
+      if (wizardState.step === 4) {
+        // Persist category/service selections
+        api('/api/preferences', {
+          method: 'POST',
+          body: {
+            selected_categories: JSON.stringify(wizardState.categories),
+            timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
+            setup_completed: 1,
+          },
+        }).catch(() => {});
+      }
     }
   }
 
@@ -1496,7 +1511,7 @@ const CP = (() => {
           <div id="deploy-worker-list">${workerRows}</div>
         </div>
         <div style="display:flex; gap:8px; align-items:center;">
-          <button class="btn btn-success" onclick="CP.deployServiceToWorkers('${svc.slug}')">Deploy</button>
+          <button class="btn btn-success" onclick="CP.deployServiceToWorkers('${svc.slug}')"${_canWrite ? '' : ' disabled title="Writer access required"'}>Deploy</button>
           <span id="deploy-status-${svc.slug}" style="font-size:0.85rem;"></span>
         </div>`;
       }
