@@ -1,0 +1,89 @@
+name: New Service Request
+description: Request a new passive income service to be added
+title: "[Service]: "
+labels: ["new-service"]
+body:
+  - type: input
+    id: name
+    attributes:
+      label: Service Name
+      placeholder: "e.g. MyNewService"
+    validations:
+      required: true
+
+  - type: input
+    id: website
+    attributes:
+      label: Website URL
+      placeholder: "https://..."
+    validations:
+      required: true
+
+  - type: dropdown
+    id: category
+    attributes:
+      label: Category
+      options:
+        - Bandwidth Sharing
+        - DePIN
+        - Storage
+        - GPU Compute
+        - Other
+    validations:
+      required: true
+
+  - type: dropdown
+    id: docker
+    attributes:
+      label: Has Docker Image?
+      options:
+        - "Yes"
+        - "No"
+        - "Unknown"
+    validations:
+      required: true
+
+  - type: input
+    id: docker_image
+    attributes:
+      label: Docker Image (if known)
+      placeholder: "e.g. dockerhub-user/image:latest"
+
+  - type: dropdown
+    id: residential
+    attributes:
+      label: Requires Residential IP?
+      options:
+        - "Yes"
+        - "No"
+        - "Unknown"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: referral
+    attributes:
+      label: Has Referral Program?
+      options:
+        - "Yes"
+        - "No"
+        - "Unknown"
+
+  - type: input
+    id: earnings
+    attributes:
+      label: Estimated Monthly Earnings
+      placeholder: "e.g. $2-5/month per device"
+
+  - type: textarea
+    id: notes
+    attributes:
+      label: Additional Notes
+      description: Any other relevant details (payout methods, device limits, etc.)
+
+  - type: checkboxes
+    id: contribution
+    attributes:
+      label: Contribution
+      options:
+        - label: I would be willing to submit a PR adding this service

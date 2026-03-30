@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Documentation
+    url: https://github.com/GeiserX/CashPilot/tree/main/docs
+    about: Check the docs and service guides before opening an issue
+  - name: Discussions
+    url: https://github.com/GeiserX/CashPilot/discussions
+    about: Ask questions or share your setup

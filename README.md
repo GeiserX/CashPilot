@@ -6,6 +6,7 @@
   <a href="https://hub.docker.com/r/drumsergio/cashpilot"><img alt="Docker Pulls" src="https://img.shields.io/docker/pulls/drumsergio/cashpilot?style=flat-square&logo=docker"></a>
   <a href="https://github.com/GeiserX/CashPilot/stargazers"><img alt="GitHub Stars" src="https://img.shields.io/github/stars/GeiserX/CashPilot?style=flat-square&logo=github"></a>
   <a href="LICENSE"><img alt="License: GPL-3.0" src="https://img.shields.io/github/license/GeiserX/CashPilot?style=flat-square"></a>
+  <a href="https://github.com/GeiserX/CashPilot/actions/workflows/test.yml"><img alt="Tests" src="https://img.shields.io/github/actions/workflow/status/GeiserX/CashPilot/test.yml?style=flat-square&label=tests"></a>
 </p>
 
 ---
@@ -279,6 +280,21 @@ Services that were evaluated but are no longer listed in the catalog due to bein
 | Wipter | Dead | Domain resolves to DNS sinkhole, infrastructure gone | Mar 2026 |
 | Filecoin | Not viable | Enterprise-only (10 TiB min, datacenter infrastructure required) | Mar 2026 |
 | AntGain | Dead | Telegram channel unavailable | Mar 2026 |
+
+## How CashPilot Compares
+
+| Feature | CashPilot | money4band | CashFactory | income-generator | InternetIncome |
+|---------|:---------:|:----------:|:-----------:|:----------------:|:--------------:|
+| Web UI with guided setup | **Yes** | No (CLI) | Partial (links only) | No (CLI) | No (CLI) |
+| One-click container deploy | **Yes** | No (compose) | No (compose) | No | No (compose) |
+| Earnings dashboard | **Yes** | No | No | No | No |
+| Historical charts | **Yes** | No | No | No | No |
+| Multi-node fleet management | **Yes** | No | No | No | No |
+| Service catalog with guides | **49 services** | 17 | 8 | 14 | 8 |
+| Automated earnings collection | **13 collectors** | 0 | 0 | 0 | 0 |
+| Multi-arch (amd64 + arm64) | **Yes** | Yes | Yes | No | No |
+| Credential encryption | **Yes** | No | No | No | No |
+| Compose export | **Yes** | Yes | Yes | Yes | Yes |
 
 ## License
 
