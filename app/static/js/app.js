@@ -438,7 +438,7 @@ const CP = (() => {
     // Payout progress
     const co = svc.cashout || {};
     const minAmount = co.min_amount || 0;
-    const eligible = minAmount > 0 && balance >= minAmount;
+    const eligible = balance > 0 && balance >= minAmount;
     const pctToMin = minAmount > 0 ? Math.min(100, (balance / minAmount) * 100) : 0;
     const progressBar = minAmount > 0 ? `
       <div class="payout-progress" title="${formatCurrency(balance, currency)} / ${formatCurrency(minAmount, currency)}" style="min-width:60px;">
@@ -1914,8 +1914,9 @@ const CP = (() => {
 
       badge.style.display = '';
       badge.textContent = alerts.length;
+      const _isOwner = window._userRole === 'owner';
       list.innerHTML = alerts.map(a => `
-        <div class="notify-item" data-platform="${escapeHtml(a.platform)}" onclick="CP.goToCollectorSettings('${escapeHtml(a.platform)}')">
+        <div class="notify-item" data-platform="${escapeHtml(a.platform)}"${_isOwner ? ` onclick="CP.goToCollectorSettings('${escapeHtml(a.platform)}')" style="cursor:pointer;"` : ''}>
           <div class="notify-item-icon">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
           </div>

@@ -1078,7 +1078,7 @@ async def api_earnings_breakdown(request: Request) -> list[dict[str, Any]]:
             "last_updated": row["date"],
             "delta": round(delta, 4),
             "cashout": {
-                "eligible": balance >= min_amount > 0,
+                "eligible": bool(cashout) and balance > 0 and balance >= min_amount,
                 "min_amount": min_amount,
                 "method": cashout.get("method", "redirect"),
                 "dashboard_url": cashout.get("dashboard_url", ""),
