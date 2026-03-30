@@ -7,15 +7,89 @@ fallback to ./data/cashpilot.db for development.
 
 from __future__ import annotations
 
+import logging
 import os
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
 import aiosqlite
+from cryptography.fernet import Fernet, InvalidToken
+
+_logger = logging.getLogger(__name__)
 
 DB_DIR = Path(os.getenv("CASHPILOT_DATA_DIR", "/data"))
 DB_PATH = DB_DIR / "cashpilot.db"
+
+# ---------------------------------------------------------------------------
+# Credential encryption (Fernet)
+# ---------------------------------------------------------------------------
+
+_FERNET_KEY_FILE = DB_DIR / ".fernet_key"
+
+# Keys that contain secrets and must be encrypted at rest
+SECRET_CONFIG_KEYS = {
+    "password",
+    "token",
+    "auth_token",
+    "access_token",
+    "api_key",
+    "secret_key",
+    "session_cookie",
+    "oauth_token",
+    "brd_sess_id",
+    "remember_web",
+    "xsrf_token",
+}
+
+
+def _is_secret_key(key: str) -> bool:
+    """Return True if a config key holds a secret value (by suffix match)."""
+    lower = key.lower()
+    return any(lower.endswith(s) for s in SECRET_CONFIG_KEYS)
+
+
+def _load_or_create_fernet() -> Fernet:
+    """Load or generate the Fernet encryption key."""
+    try:
+        if _FERNET_KEY_FILE.is_file():
+            raw = _FERNET_KEY_FILE.read_text().strip()
+            if raw:
+                return Fernet(raw.encode())
+    except (OSError, ValueError):
+        pass
+
+    key = Fernet.generate_key()
+    try:
+        DB_DIR.mkdir(parents=True, exist_ok=True)
+        _FERNET_KEY_FILE.write_text(key.decode())
+        _FERNET_KEY_FILE.chmod(0o600)
+        _logger.info("Generated new Fernet key at %s", _FERNET_KEY_FILE)
+    except OSError as exc:
+        _logger.warning("Could not persist Fernet key: %s", exc)
+    return Fernet(key)
+
+
+_fernet = _load_or_create_fernet()
+
+_ENC_PREFIX = "enc:"
+
+
+def encrypt_value(value: str) -> str:
+    """Encrypt a string value, returning an 'enc:' prefixed token."""
+    return _ENC_PREFIX + _fernet.encrypt(value.encode()).decode()
+
+
+def decrypt_value(value: str) -> str:
+    """Decrypt an 'enc:' prefixed token back to plaintext."""
+    if not value.startswith(_ENC_PREFIX):
+        return value  # Not encrypted (legacy data)
+    try:
+        return _fernet.decrypt(value[len(_ENC_PREFIX) :].encode()).decode()
+    except InvalidToken:
+        _logger.warning("Failed to decrypt config value — key may have changed")
+        return ""
+
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS earnings (
@@ -94,6 +168,7 @@ async def _get_db() -> aiosqlite.Connection:
     db = await aiosqlite.connect(str(DB_PATH))
     db.row_factory = aiosqlite.Row
     await db.execute("PRAGMA journal_mode=WAL")
+    await db.execute("PRAGMA foreign_keys=ON")
     return db
 
 
@@ -389,27 +464,34 @@ async def get_daily_earnings(days: int = 7) -> list[dict[str, Any]]:
 
 
 async def get_config(key: str | None = None) -> dict[str, str] | str | None:
-    """Get a single config value (if key given) or all config as a dict."""
+    """Get a single config value (if key given) or all config as a dict.
+
+    Secret values are decrypted transparently.
+    """
     db = await _get_db()
     try:
         if key:
             cursor = await db.execute("SELECT value FROM config WHERE key = ?", (key,))
             row = await cursor.fetchone()
-            return row["value"] if row else None
+            if not row:
+                return None
+            val = row["value"]
+            return decrypt_value(val) if _is_secret_key(key) else val
         cursor = await db.execute("SELECT key, value FROM config")
         rows = await cursor.fetchall()
-        return {r["key"]: r["value"] for r in rows}
+        return {r["key"]: (decrypt_value(r["value"]) if _is_secret_key(r["key"]) else r["value"]) for r in rows}
     finally:
         await db.close()
 
 
 async def set_config(key: str, value: str) -> None:
-    """Upsert a config key-value pair."""
+    """Upsert a config key-value pair. Secrets are encrypted at rest."""
+    stored = encrypt_value(value) if _is_secret_key(key) else value
     db = await _get_db()
     try:
         await db.execute(
             "INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)",
-            (key, value),
+            (key, stored),
         )
         await db.commit()
     finally:
@@ -417,12 +499,13 @@ async def set_config(key: str, value: str) -> None:
 
 
 async def set_config_bulk(data: dict[str, str]) -> None:
-    """Upsert multiple config entries at once."""
+    """Upsert multiple config entries at once. Secrets are encrypted at rest."""
+    pairs = [(k, encrypt_value(v) if _is_secret_key(k) else v) for k, v in data.items()]
     db = await _get_db()
     try:
         await db.executemany(
             "INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)",
-            list(data.items()),
+            pairs,
         )
         await db.commit()
     finally:

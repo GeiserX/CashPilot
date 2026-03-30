@@ -38,10 +38,12 @@
       <code id="worker-env" style="display: block; word-break: break-all; color: var(--text-primary); font-size: 0.85rem; white-space: pre-wrap;">CASHPILOT_UI_URL=<span id="env-ui-url"></span>
 CASHPILOT_API_KEY=<span id="env-api-key">********</span>
 CASHPILOT_WORKER_NAME=server-name</code>
+      {% if user.r == 'owner' %}
       <div style="display: flex; gap: 8px; margin-top: 8px;">
         <button class="btn btn-ghost btn-sm" onclick="toggleApiKey()" id="reveal-btn">Reveal API Key</button>
         <button class="btn btn-ghost btn-sm" onclick="copyWorkerEnv()">Copy</button>
       </div>
+      {% endif %}
     </div>
     <p style="color: var(--text-muted); margin-top: 8px; font-size: 0.82rem;">
       The API key is set via <code>CASHPILOT_API_KEY</code> env var on the UI container. Use the same key on all workers.
@@ -67,6 +69,7 @@ CASHPILOT_WORKER_NAME=server-name</code>
   let fleetTimer = null;
   let _apiKeyRevealed = false;
   let _apiKey = '';
+  const _isOwner = {{ 'true' if user.r == 'owner' else 'false' }};
 
   document.getElementById('env-ui-url').textContent = window.location.origin;
 
@@ -114,7 +117,7 @@ CASHPILOT_WORKER_NAME=server-name</code>
                 <span class="status-dot ${statusClass}"></span>
                 <span style="font-weight: 600; color: var(--text-primary);">${esc(w.name)}</span>
               </div>
-              <button class="btn btn-danger btn-sm" onclick="removeWorker(${w.id}, '${esc(w.name)}')" title="Remove worker">Remove</button>
+              ${_isOwner ? `<button class="btn btn-danger btn-sm" onclick="removeWorker(${w.id}, '${esc(w.name)}')" title="Remove worker">Remove</button>` : ''}
             </div>
             <div style="display: flex; gap: 16px; flex-wrap: wrap; font-size: 0.82rem; color: var(--text-muted);">
               <span>${esc(w.url || '-')}</span>
@@ -181,8 +184,16 @@ CASHPILOT_WORKER_NAME=server-name</code>
     }
   };
 
-  window.copyWorkerEnv = function() {
-    const text = document.getElementById('worker-env').textContent;
+  window.copyWorkerEnv = async function() {
+    // Auto-fetch API key if not yet revealed
+    if (!_apiKey) {
+      try {
+        const data = await CP.api('/api/fleet/api-key');
+        _apiKey = data.api_key || '(not configured)';
+      } catch { _apiKey = '(error)'; }
+    }
+    const uiUrl = document.getElementById('env-ui-url').textContent;
+    const text = `CASHPILOT_UI_URL=${uiUrl}\nCASHPILOT_API_KEY=${_apiKey}\nCASHPILOT_WORKER_NAME=server-name`;
     navigator.clipboard.writeText(text).then(() => CP.toast('Copied', 'success'));
   };
 

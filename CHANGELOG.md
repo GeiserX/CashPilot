@@ -2,6 +2,40 @@
 
 All notable changes to CashPilot are documented here.
 
+## [0.2.49] - 2026-03-31
+
+### Security
+- Fix unauthenticated worker-control exposure on default Docker Compose (worker port no longer published)
+- Atomic shared fleet key generation with `O_CREAT | O_EXCL` — eliminates skip-auth, ephemeral key mismatch, and worker impersonation vectors
+- Bearer auth split: `CASHPILOT_ADMIN_API_KEY` for owner-level, fleet key for writer-level API access
+- Worker heartbeat URL pinned to prevent spoofing in no-key mode
+- Fleet key first-boot race condition closed with retry-read backoff
+- Credential encryption key (`secret_key`) added to secret config redaction
+- `PRAGMA foreign_keys=ON` enforced for SQLite CASCADE integrity
+
+### Fixed
+- Zero-threshold payout: services with `min_amount: 0` are now correctly eligible when balance > 0
+- Storj collector no longer requires manual `api_url` setting — uses built-in default
+- Owner self-demotion and last-owner removal guards on `PATCH /api/users/{id}`
+- Viewer/writer role gating on dashboard controls (restart, stop, logs), settings sidebar, fleet page, and service detail modal
+- Onboarding step 4 CTAs no longer link non-owners to the owner-only settings page
+- Collector alert clicks are no-op for non-owners (no /settings dead-end)
+- Partial preference updates (nullable fields merged with existing)
+- Port parsing preserves TCP/UDP protocol for Docker SDK
+- Auto-resolve `worker_id` when only one worker is online
+- Catalog cache returns shallow copies to prevent cross-request mutation
+- CSS `var(--danger)` replaced with `var(--error)` for deploy failure styling
+- Bytelixir API fallback clearly reports HTML scrape failure
+- Worker URL override via `CASHPILOT_WORKER_URL` env var
+- Fleet page copy-to-clipboard fetches key before copying
+
+### Added
+- `app/fleet_key.py` — central fleet key resolution module (env var → shared file → auto-generate)
+- `CASHPILOT_WORKER_URL` env var for explicit worker URL override
+- `cashpilot_fleet` shared Docker volume for fleet key exchange
+- Integration tests for payout eligibility (14 tests against real handler)
+- Regression tests for Storj optional `api_url` and fleet key bootstrap (12 tests)
+
 ## [0.2.17] - 2026-03-28
 
 ### Fixed

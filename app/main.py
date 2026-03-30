@@ -21,7 +21,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 
-from app import auth, catalog, compose_generator, database, exchange_rates
+from app import auth, catalog, compose_generator, database, exchange_rates, fleet_key
 
 logging.basicConfig(
     level=logging.INFO,
@@ -66,13 +66,20 @@ async def _get_all_worker_containers() -> list[dict[str, Any]]:
     return result
 
 
-def _require_worker_id(worker_id: int | None) -> None:
-    """Raise 400 if no worker_id was provided."""
-    if worker_id is None:
-        raise HTTPException(
-            status_code=400,
-            detail="worker_id is required (specify which worker to target)",
-        )
+async def _resolve_worker_id(worker_id: int | None) -> int:
+    """Return a valid worker_id, auto-resolving when only one worker is online."""
+    if worker_id is not None:
+        return worker_id
+    workers = await database.list_workers()
+    online = [w for w in workers if w["status"] == "online"]
+    if len(online) == 1:
+        return online[0]["id"]
+    if len(online) == 0:
+        raise HTTPException(status_code=503, detail="No workers online")
+    raise HTTPException(
+        status_code=400,
+        detail="worker_id is required (multiple workers online)",
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -164,7 +171,7 @@ async def _check_stale_workers() -> None:
         logger.debug("Stale worker check error: %s", exc)
 
 
-FLEET_API_KEY = os.getenv("CASHPILOT_API_KEY", "")
+FLEET_API_KEY = fleet_key.resolve_fleet_key()
 HOSTNAME_PREFIX = os.getenv("CASHPILOT_HOSTNAME_PREFIX", "cashpilot")
 COLLECT_INTERVAL_MIN = int(os.getenv("CASHPILOT_COLLECT_INTERVAL", "60"))
 STALE_WORKER_SECONDS = 180  # Mark worker offline after 3 missed heartbeats
@@ -455,6 +462,8 @@ async def page_settings(request: Request):
     user = auth.get_current_user(request)
     if not user:
         return _login_redirect()
+    if not auth.require_role(user, "owner"):
+        raise HTTPException(status_code=403, detail="Owner access required")
     return templates.TemplateResponse(request, "settings.html", {"user": user})
 
 
@@ -714,7 +723,7 @@ class DeployRequest(BaseModel):
 @app.post("/api/deploy/{slug}")
 async def api_deploy(request: Request, slug: str, body: DeployRequest, worker_id: int | None = None) -> dict[str, str]:
     _require_writer(request)
-    _require_worker_id(worker_id)
+    worker_id = await _resolve_worker_id(worker_id)
     svc = catalog.get_service(slug)
     if not svc:
         raise HTTPException(status_code=404, detail=f"Service '{slug}' not found")
@@ -736,12 +745,18 @@ async def api_deploy(request: Request, slug: str, body: DeployRequest, worker_id
         env[var["key"]] = str(default)
     env.update(body.env or {})
 
-    # Ports
+    # Ports — key is "container_port/protocol" per Docker SDK
     ports: dict[str, int] = {}
     for mapping in docker_conf.get("ports", []):
-        if ":" in str(mapping):
-            parts = str(mapping).split(":")
-            ports[parts[0]] = int(parts[1].split("/")[0]) if "/" in parts[1] else int(parts[1])
+        raw = str(mapping)
+        if ":" not in raw:
+            continue
+        parts = raw.split(":")
+        host_port = int(parts[0])
+        container_part = parts[1]  # e.g. "28967/tcp" or "28967"
+        if "/" not in container_part:
+            container_part += "/tcp"
+        ports[container_part] = host_port
 
     # Volumes: resolve ${VAR} in host paths using env
     volumes: dict[str, dict[str, str]] = {}
@@ -780,22 +795,22 @@ async def api_deploy(request: Request, slug: str, body: DeployRequest, worker_id
 @app.post("/api/stop/{slug}")
 async def api_stop(request: Request, slug: str, worker_id: int | None = None) -> dict[str, str]:
     _require_writer(request)
-    _require_worker_id(worker_id)
-    return await _proxy_worker_command(worker_id, "stop", slug)  # type: ignore[arg-type]
+    worker_id = await _resolve_worker_id(worker_id)
+    return await _proxy_worker_command(worker_id, "stop", slug)
 
 
 @app.post("/api/restart/{slug}")
 async def api_restart(request: Request, slug: str, worker_id: int | None = None) -> dict[str, str]:
     _require_writer(request)
-    _require_worker_id(worker_id)
-    return await _proxy_worker_command(worker_id, "restart", slug)  # type: ignore[arg-type]
+    worker_id = await _resolve_worker_id(worker_id)
+    return await _proxy_worker_command(worker_id, "restart", slug)
 
 
 @app.delete("/api/remove/{slug}")
 async def api_remove(request: Request, slug: str, worker_id: int | None = None) -> dict[str, str]:
     _require_writer(request)
-    _require_worker_id(worker_id)
-    result = await _proxy_worker_command(worker_id, "remove", slug)  # type: ignore[arg-type]
+    worker_id = await _resolve_worker_id(worker_id)
+    result = await _proxy_worker_command(worker_id, "remove", slug)
     await database.remove_deployment(slug)
     return result
 
@@ -826,6 +841,13 @@ async def _proxy_worker_command(worker_id: int, command: str, slug: str) -> dict
                 resp = await client.delete(f"{url}/api/containers/{slug}", headers=headers)
             else:
                 resp = await client.post(f"{url}/api/containers/{slug}/{command}", headers=headers)
+            if resp.status_code >= 400:
+                detail = (
+                    resp.json().get("detail", resp.text)
+                    if resp.headers.get("content-type", "").startswith("application/json")
+                    else resp.text
+                )
+                raise HTTPException(status_code=resp.status_code, detail=f"Worker error: {detail}")
             return resp.json()
     except httpx.HTTPError as exc:
         raise HTTPException(status_code=503, detail=f"Worker communication failed: {exc}")
@@ -849,6 +871,13 @@ async def _proxy_worker_deploy(worker_id: int, slug: str, spec: dict[str, Any]) 
     try:
         async with httpx.AsyncClient(timeout=60) as client:
             resp = await client.post(f"{url}/api/containers/{slug}/deploy", json=spec, headers=headers)
+            if resp.status_code >= 400:
+                detail = (
+                    resp.json().get("detail", resp.text)
+                    if resp.headers.get("content-type", "").startswith("application/json")
+                    else resp.text
+                )
+                raise HTTPException(status_code=resp.status_code, detail=f"Worker deploy error: {detail}")
             return resp.json()
     except httpx.HTTPError as exc:
         raise HTTPException(status_code=503, detail=f"Worker communication failed: {exc}")
@@ -876,6 +905,13 @@ async def _proxy_worker_logs(worker_id: int, slug: str, lines: int = 50) -> dict
                 params={"lines": min(lines, 1000)},
                 headers=headers,
             )
+            if resp.status_code >= 400:
+                detail = (
+                    resp.json().get("detail", resp.text)
+                    if resp.headers.get("content-type", "").startswith("application/json")
+                    else resp.text
+                )
+                raise HTTPException(status_code=resp.status_code, detail=f"Worker error: {detail}")
             return resp.json()
     except httpx.HTTPError as exc:
         raise HTTPException(status_code=503, detail=f"Worker communication failed: {exc}")
@@ -889,8 +925,8 @@ async def _proxy_worker_logs(worker_id: int, slug: str, lines: int = 50) -> dict
 @app.post("/api/services/{slug}/restart")
 async def api_service_restart(request: Request, slug: str, worker_id: int | None = None) -> dict[str, str]:
     _require_writer(request)
-    _require_worker_id(worker_id)
-    result = await _proxy_worker_command(worker_id, "restart", slug)  # type: ignore[arg-type]
+    worker_id = await _resolve_worker_id(worker_id)
+    result = await _proxy_worker_command(worker_id, "restart", slug)
     await database.record_health_event(slug, "restart")
     return result
 
@@ -898,8 +934,8 @@ async def api_service_restart(request: Request, slug: str, worker_id: int | None
 @app.post("/api/services/{slug}/stop")
 async def api_service_stop(request: Request, slug: str, worker_id: int | None = None) -> dict[str, str]:
     _require_writer(request)
-    _require_worker_id(worker_id)
-    result = await _proxy_worker_command(worker_id, "stop", slug)  # type: ignore[arg-type]
+    worker_id = await _resolve_worker_id(worker_id)
+    result = await _proxy_worker_command(worker_id, "stop", slug)
     await database.record_health_event(slug, "stop")
     return result
 
@@ -907,8 +943,8 @@ async def api_service_stop(request: Request, slug: str, worker_id: int | None = 
 @app.post("/api/services/{slug}/start")
 async def api_service_start(request: Request, slug: str, worker_id: int | None = None) -> dict[str, str]:
     _require_writer(request)
-    _require_worker_id(worker_id)
-    result = await _proxy_worker_command(worker_id, "start", slug)  # type: ignore[arg-type]
+    worker_id = await _resolve_worker_id(worker_id)
+    result = await _proxy_worker_command(worker_id, "start", slug)
     await database.record_health_event(slug, "start")
     return result
 
@@ -917,16 +953,16 @@ async def api_service_start(request: Request, slug: str, worker_id: int | None =
 async def api_service_logs(
     request: Request, slug: str, lines: int = 50, worker_id: int | None = None
 ) -> dict[str, str]:
-    _require_auth_api(request)
-    _require_worker_id(worker_id)
-    return await _proxy_worker_logs(worker_id, slug, lines)  # type: ignore[arg-type]
+    _require_writer(request)
+    worker_id = await _resolve_worker_id(worker_id)
+    return await _proxy_worker_logs(worker_id, slug, lines)
 
 
 @app.delete("/api/services/{slug}")
 async def api_service_remove(request: Request, slug: str, worker_id: int | None = None) -> dict[str, str]:
     _require_writer(request)
-    _require_worker_id(worker_id)
-    result = await _proxy_worker_command(worker_id, "remove", slug)  # type: ignore[arg-type]
+    worker_id = await _resolve_worker_id(worker_id)
+    result = await _proxy_worker_command(worker_id, "remove", slug)
     await database.remove_deployment(slug)
     return result
 
@@ -1042,7 +1078,7 @@ async def api_earnings_breakdown(request: Request) -> list[dict[str, Any]]:
             "last_updated": row["date"],
             "delta": round(delta, 4),
             "cashout": {
-                "eligible": balance >= min_amount > 0,
+                "eligible": bool(cashout) and balance > 0 and balance >= min_amount,
                 "min_amount": min_amount,
                 "method": cashout.get("method", "redirect"),
                 "dashboard_url": cashout.get("dashboard_url", ""),
@@ -1131,23 +1167,30 @@ async def api_get_preferences(request: Request) -> dict[str, Any]:
 
 
 class PreferencesUpdate(BaseModel):
-    setup_mode: str = "fresh"
-    selected_categories: str = "[]"
-    timezone: str = "UTC"
-    setup_completed: bool = False
+    setup_mode: str | None = None
+    selected_categories: str | None = None
+    timezone: str | None = None
+    setup_completed: bool | None = None
 
 
 @app.post("/api/preferences")
 async def api_set_preferences(request: Request, body: PreferencesUpdate) -> dict[str, str]:
     user = _require_auth_api(request)
-    if body.setup_mode not in ("fresh", "monitoring", "mixed"):
+    if body.setup_mode is not None and body.setup_mode not in ("fresh", "monitoring", "mixed"):
         raise HTTPException(status_code=400, detail="setup_mode must be fresh, monitoring, or mixed")
+
+    # Merge with existing preferences so partial updates don't overwrite
+    existing = await database.get_user_preferences(user["uid"]) or {}
     await database.save_user_preferences(
         user_id=user["uid"],
-        setup_mode=body.setup_mode,
-        selected_categories=body.selected_categories,
-        timezone=body.timezone,
-        setup_completed=body.setup_completed,
+        setup_mode=body.setup_mode if body.setup_mode is not None else existing.get("setup_mode", "fresh"),
+        selected_categories=body.selected_categories
+        if body.selected_categories is not None
+        else existing.get("selected_categories", "[]"),
+        timezone=body.timezone if body.timezone is not None else existing.get("timezone", "UTC"),
+        setup_completed=body.setup_completed
+        if body.setup_completed is not None
+        else existing.get("setup_completed", False),
     )
     # If setup is completed, trigger an immediate collection
     if body.setup_completed:
@@ -1218,7 +1261,7 @@ async def api_env_info(request: Request) -> list[dict[str, Any]]:
 
 @app.get("/api/collectors/meta")
 async def api_collectors_meta(request: Request) -> list[dict[str, Any]]:
-    _require_auth_api(request)
+    _require_owner(request)
     from app.collectors import _COLLECTOR_ARGS, COLLECTOR_MAP
 
     secret_args = {
@@ -1260,7 +1303,7 @@ async def api_collectors_meta(request: Request) -> list[dict[str, Any]]:
 
 @app.get("/api/config")
 async def api_get_config(request: Request) -> dict[str, str]:
-    _require_auth_api(request)
+    _require_owner(request)
     result = await database.get_config()
     if isinstance(result, dict):
         return result
@@ -1295,12 +1338,19 @@ class UserRoleUpdate(BaseModel):
 
 @app.patch("/api/users/{user_id}")
 async def api_update_user_role(request: Request, user_id: int, body: UserRoleUpdate) -> dict[str, str]:
-    _require_owner(request)
+    current = _require_owner(request)
     if body.role not in ("viewer", "writer", "owner"):
         raise HTTPException(status_code=400, detail="Role must be viewer, writer, or owner")
     user = await database.get_user_by_id(user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
+    if current["uid"] == user_id and body.role != "owner":
+        raise HTTPException(status_code=400, detail="Cannot demote yourself")
+    if user["role"] == "owner" and body.role != "owner":
+        all_users = await database.list_users()
+        owner_count = sum(1 for u in all_users if u["role"] == "owner")
+        if owner_count <= 1:
+            raise HTTPException(status_code=400, detail="Cannot remove the last owner")
     await database.update_user_role(user_id, body.role)
     return {"status": "updated"}
 
@@ -1338,7 +1388,10 @@ async def page_fleet(request: Request):
 def _verify_fleet_api_key(request: Request) -> None:
     """Verify the shared fleet API key from a worker's request."""
     if not FLEET_API_KEY:
-        raise HTTPException(status_code=403, detail="Fleet API key not configured")
+        raise HTTPException(
+            status_code=503,
+            detail="Fleet key not configured — set CASHPILOT_API_KEY or mount shared /fleet volume",
+        )
     auth_header = request.headers.get("Authorization", "")
     if auth_header != f"Bearer {FLEET_API_KEY}":
         raise HTTPException(status_code=401, detail="Invalid API key")
@@ -1448,6 +1501,8 @@ async def api_worker_command(request: Request, worker_id: int, body: WorkerComma
             else:
                 raise HTTPException(status_code=400, detail=f"Unknown command: {body.command}")
 
+            if resp.status_code >= 400:
+                raise HTTPException(status_code=resp.status_code, detail=resp.text)
             return resp.json()
     except httpx.HTTPError as exc:
         raise HTTPException(status_code=503, detail=f"Worker communication failed: {exc}")
@@ -1481,5 +1536,5 @@ async def api_fleet_summary(request: Request) -> dict[str, Any]:
 @app.get("/api/fleet/api-key")
 async def api_fleet_api_key(request: Request) -> dict[str, str]:
     """Return the configured fleet API key (owner only)."""
-    _require_auth_api(request)
+    _require_owner(request)
     return {"api_key": FLEET_API_KEY or ""}
