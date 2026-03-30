@@ -113,6 +113,13 @@
     <div class="card" style="margin-bottom: 16px;">
       <h3 class="card-title" style="margin-bottom: 12px;">Deploy</h3>
 
+      <div style="margin-bottom: 16px;">
+        <a href="https://geiserx.github.io/CashPilot/guides/{{ service.slug }}/" target="_blank" rel="noopener" class="btn btn-ghost btn-sm">
+          Setup Guide
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 3h6a4 4 0 014 4v14a3 3 0 00-3-3H2z"/><path d="M22 3h-6a4 4 0 00-4 4v14a3 3 0 013-3h7z"/></svg>
+        </a>
+      </div>
+
       {% set signup_url = service.referral.signup_url if service.referral and service.referral.signup_url else service.website or '#' %}
       <div style="margin-bottom: 16px;">
         <p style="color: var(--text-secondary); margin-bottom: 8px;">

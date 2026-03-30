@@ -1403,6 +1403,16 @@ const CP = (() => {
       </div>
     </div>`;
 
+    // --- Setup guide link ---
+    const guideUrl = `https://geiserx.github.io/CashPilot/guides/${svc.slug}/`;
+    html += `
+    <div style="margin-bottom: 16px;">
+      <a href="${guideUrl}" target="_blank" rel="noopener" class="btn btn-ghost btn-sm">
+        Setup Guide
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 3h6a4 4 0 014 4v14a3 3 0 00-3-3H2z"/><path d="M22 3h-6a4 4 0 00-4 4v14a3 3 0 013-3h7z"/></svg>
+      </a>
+    </div>`;
+
     // --- Dashboard link for deployed services, Sign Up for non-deployed ---
     if (isDeployed && dashboardUrl) {
       html += `
