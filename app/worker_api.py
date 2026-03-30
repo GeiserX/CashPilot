@@ -146,11 +146,13 @@ async def lifespan(app: FastAPI):
     docker_mode = "direct" if orchestrator.docker_available() else "monitor-only"
     logger.info("Docker: %s", docker_mode)
 
-    if UI_URL and API_KEY:
+    if UI_URL:
         _heartbeat_task = asyncio.create_task(_heartbeat_loop())
         logger.info("Heartbeat enabled -> %s (every %ds)", UI_URL, HEARTBEAT_INTERVAL)
+        if not API_KEY:
+            logger.warning("CASHPILOT_API_KEY not set — heartbeats sent without auth")
     else:
-        logger.warning("No CASHPILOT_UI_URL or CASHPILOT_API_KEY — running without UI connection")
+        logger.warning("No CASHPILOT_UI_URL — running without UI connection")
 
     yield
 
