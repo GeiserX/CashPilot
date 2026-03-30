@@ -1167,23 +1167,30 @@ async def api_get_preferences(request: Request) -> dict[str, Any]:
 
 
 class PreferencesUpdate(BaseModel):
-    setup_mode: str = "fresh"
-    selected_categories: str = "[]"
-    timezone: str = "UTC"
-    setup_completed: bool = False
+    setup_mode: str | None = None
+    selected_categories: str | None = None
+    timezone: str | None = None
+    setup_completed: bool | None = None
 
 
 @app.post("/api/preferences")
 async def api_set_preferences(request: Request, body: PreferencesUpdate) -> dict[str, str]:
     user = _require_auth_api(request)
-    if body.setup_mode not in ("fresh", "monitoring", "mixed"):
+    if body.setup_mode is not None and body.setup_mode not in ("fresh", "monitoring", "mixed"):
         raise HTTPException(status_code=400, detail="setup_mode must be fresh, monitoring, or mixed")
+
+    # Merge with existing preferences so partial updates don't overwrite
+    existing = await database.get_user_preferences(user["uid"]) or {}
     await database.save_user_preferences(
         user_id=user["uid"],
-        setup_mode=body.setup_mode,
-        selected_categories=body.selected_categories,
-        timezone=body.timezone,
-        setup_completed=body.setup_completed,
+        setup_mode=body.setup_mode if body.setup_mode is not None else existing.get("setup_mode", "fresh"),
+        selected_categories=body.selected_categories
+        if body.selected_categories is not None
+        else existing.get("selected_categories", "[]"),
+        timezone=body.timezone if body.timezone is not None else existing.get("timezone", "UTC"),
+        setup_completed=body.setup_completed
+        if body.setup_completed is not None
+        else existing.get("setup_completed", False),
     )
     # If setup is completed, trigger an immediate collection
     if body.setup_completed:
