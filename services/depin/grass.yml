@@ -17,7 +17,12 @@ referral:
 docker:
   image: ""
   platforms: [browser-extension, windows, macos, android, ios]
-  env: []
+  env:
+    - key: GRASS_ACCESS_TOKEN
+      label: "Access Token"
+      required: true
+      secret: true
+      description: "Session token from app.grass.io (F12 > Application > Local Storage > token)"
   ports: []
   volumes: []
   command: ""

@@ -1102,6 +1102,10 @@ const CP = (() => {
             ${manualBtnLabel}
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
           </a>
+          <a href="https://geiserx.github.io/CashPilot/guides/${svc.slug}/" target="_blank" rel="noopener" class="btn btn-ghost btn-sm" style="margin-left: 8px;">
+            Setup Guide
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 3h6a4 4 0 014 4v14a3 3 0 00-3-3H2z"/><path d="M22 3h-6a4 4 0 00-4 4v14a3 3 0 013-3h7z"/></svg>
+          </a>
           ${manualEnvFields ? `<div style="margin-top: 16px;">${manualEnvFields}</div>` : ''}
         </div>
       </div>`;
@@ -1134,6 +1138,10 @@ const CP = (() => {
           <a href="${escapeHtml(linkUrl)}" target="_blank" rel="noopener" class="btn btn-primary btn-sm" style="margin-left: 8px;">
             ${linkLabel}
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+          </a>
+          <a href="https://geiserx.github.io/CashPilot/guides/${svc.slug}/" target="_blank" rel="noopener" class="btn btn-ghost btn-sm" style="margin-left: 8px;">
+            Setup Guide
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 3h6a4 4 0 014 4v14a3 3 0 00-3-3H2z"/><path d="M22 3h-6a4 4 0 00-4 4v14a3 3 0 013-3h7z"/></svg>
           </a>
         </p>
         <p style="color: var(--text-muted); font-size: 0.85rem;">Already have an account? Enter your credentials below.</p>
