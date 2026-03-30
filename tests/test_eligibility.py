@@ -7,6 +7,7 @@ Requires fastapi + httpx (installed in CI via requirements.txt).
 Skipped automatically in minimal local environments.
 """
 
+import asyncio
 import os
 
 # Fleet key env must be set before app.main import triggers resolve_fleet_key()
@@ -39,7 +40,7 @@ def _service(slug, cashout=None):
     return svc
 
 
-async def _call_breakdown(rows, services_by_slug):
+def _call_breakdown(rows, services_by_slug):
     """Call the real handler with mocked dependencies."""
     request = MagicMock()
     with (
@@ -47,58 +48,57 @@ async def _call_breakdown(rows, services_by_slug):
         patch("app.main.database.get_earnings_per_service", new_callable=AsyncMock, return_value=rows),
         patch("app.main.catalog.get_service", side_effect=lambda slug: services_by_slug.get(slug)),
     ):
-        return await api_earnings_breakdown(request)
+        return asyncio.run(api_earnings_breakdown(request))
 
 
-@pytest.mark.asyncio
 class TestBreakdownEligibility:
     """Zero-threshold payout eligibility via the real route handler."""
 
-    async def test_zero_threshold_positive_balance_eligible(self):
+    def test_zero_threshold_positive_balance_eligible(self):
         rows = [_earnings_row("svc-a", balance=5.0)]
         svcs = {"svc-a": _service("svc-a", cashout={"min_amount": 0, "dashboard_url": "https://x.com"})}
-        result = await _call_breakdown(rows, svcs)
+        result = _call_breakdown(rows, svcs)
         assert result[0]["cashout"]["eligible"] is True
 
-    async def test_zero_threshold_zero_balance_not_eligible(self):
+    def test_zero_threshold_zero_balance_not_eligible(self):
         rows = [_earnings_row("svc-a", balance=0.0)]
         svcs = {"svc-a": _service("svc-a", cashout={"min_amount": 0})}
-        result = await _call_breakdown(rows, svcs)
+        result = _call_breakdown(rows, svcs)
         assert result[0]["cashout"]["eligible"] is False
 
-    async def test_normal_threshold_above(self):
+    def test_normal_threshold_above(self):
         rows = [_earnings_row("svc-a", balance=10.0)]
         svcs = {"svc-a": _service("svc-a", cashout={"min_amount": 5})}
-        result = await _call_breakdown(rows, svcs)
+        result = _call_breakdown(rows, svcs)
         assert result[0]["cashout"]["eligible"] is True
 
-    async def test_normal_threshold_exact(self):
+    def test_normal_threshold_exact(self):
         rows = [_earnings_row("svc-a", balance=5.0)]
         svcs = {"svc-a": _service("svc-a", cashout={"min_amount": 5})}
-        result = await _call_breakdown(rows, svcs)
+        result = _call_breakdown(rows, svcs)
         assert result[0]["cashout"]["eligible"] is True
 
-    async def test_normal_threshold_below(self):
+    def test_normal_threshold_below(self):
         rows = [_earnings_row("svc-a", balance=3.0)]
         svcs = {"svc-a": _service("svc-a", cashout={"min_amount": 5})}
-        result = await _call_breakdown(rows, svcs)
+        result = _call_breakdown(rows, svcs)
         assert result[0]["cashout"]["eligible"] is False
 
-    async def test_no_cashout_section_not_eligible(self):
+    def test_no_cashout_section_not_eligible(self):
         """Service with no cashout in catalog should never be eligible."""
         rows = [_earnings_row("svc-a", balance=100.0)]
         svcs = {"svc-a": _service("svc-a", cashout=None)}
-        result = await _call_breakdown(rows, svcs)
+        result = _call_breakdown(rows, svcs)
         assert result[0]["cashout"]["eligible"] is False
 
-    async def test_unknown_service_not_eligible(self):
+    def test_unknown_service_not_eligible(self):
         """Service not in catalog (svc returns None) should not be eligible."""
         rows = [_earnings_row("unknown", balance=50.0)]
-        result = await _call_breakdown(rows, {})
+        result = _call_breakdown(rows, {})
         assert result[0]["cashout"]["eligible"] is False
         assert result[0]["name"] == "unknown"  # falls back to slug
 
-    async def test_response_includes_cashout_fields(self):
+    def test_response_includes_cashout_fields(self):
         """Verify full cashout response structure from the real handler."""
         rows = [_earnings_row("svc-a", balance=10.0)]
         svcs = {
@@ -112,7 +112,7 @@ class TestBreakdownEligibility:
                 },
             )
         }
-        result = await _call_breakdown(rows, svcs)
+        result = _call_breakdown(rows, svcs)
         co = result[0]["cashout"]
         assert co["eligible"] is True
         assert co["min_amount"] == 5.0
@@ -120,11 +120,11 @@ class TestBreakdownEligibility:
         assert co["dashboard_url"] == "https://dash.example.com"
         assert co["notes"] == "Payout every Monday"
 
-    async def test_delta_computation(self):
+    def test_delta_computation(self):
         """Verify delta is computed from real handler, not just eligibility."""
         rows = [_earnings_row("svc-a", balance=10.0, prev_balance=7.5)]
         svcs = {"svc-a": _service("svc-a", cashout={"min_amount": 0})}
-        result = await _call_breakdown(rows, svcs)
+        result = _call_breakdown(rows, svcs)
         assert result[0]["delta"] == 2.5
 
     @pytest.mark.parametrize(
@@ -137,8 +137,8 @@ class TestBreakdownEligibility:
             (9.99, 10, False),
         ],
     )
-    async def test_edge_cases(self, balance, min_amount, expected):
+    def test_edge_cases(self, balance, min_amount, expected):
         rows = [_earnings_row("svc-a", balance=balance)]
         svcs = {"svc-a": _service("svc-a", cashout={"min_amount": min_amount, "dashboard_url": "https://x.com"})}
-        result = await _call_breakdown(rows, svcs)
+        result = _call_breakdown(rows, svcs)
         assert result[0]["cashout"]["eligible"] is expected
