@@ -16,6 +16,8 @@ from fastapi.responses import RedirectResponse
 from itsdangerous import BadSignature, URLSafeTimedSerializer
 from passlib.hash import bcrypt
 
+from app import fleet_key as _fleet_key_mod
+
 _logger = logging.getLogger(__name__)
 
 _KNOWN_DEFAULTS = {
@@ -106,8 +108,8 @@ def get_current_user(request: Request) -> dict[str, Any] | None:
         admin_key = os.getenv("CASHPILOT_ADMIN_API_KEY", "")
         if admin_key and auth_header == f"Bearer {admin_key}":
             return {"uid": 0, "u": "api", "r": "owner"}
-        fleet_key = os.getenv("CASHPILOT_API_KEY", "")
-        if fleet_key and auth_header == f"Bearer {fleet_key}":
+        resolved_fleet_key = _fleet_key_mod.resolve_fleet_key()
+        if resolved_fleet_key and auth_header == f"Bearer {resolved_fleet_key}":
             return {"uid": 0, "u": "api", "r": "writer"}
 
     # Fall back to session cookie

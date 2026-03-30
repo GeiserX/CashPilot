@@ -188,6 +188,8 @@ class BytelixirCollector(BaseCollector):
                 data = api_resp.json()
 
                 # Response shape: {"data": {"balance": "0.0000000000", ...}}
+                # NOTE: /api/v1/user returns *withdrawable* balance only, not
+                # total earned.  Flag this so the user knows it's approximate.
                 user_data = data.get("data", {})
                 balance_str = user_data.get("balance", "0")
                 balance = float(balance_str)
@@ -196,6 +198,7 @@ class BytelixirCollector(BaseCollector):
                     platform=self.platform,
                     balance=round(balance, 4),
                     currency="USD",
+                    error="Withdrawable balance only (HTML scrape failed, using API fallback)",
                 )
         except Exception as exc:
             logger.error("Bytelixir collection failed: %s", exc)

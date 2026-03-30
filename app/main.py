@@ -66,13 +66,20 @@ async def _get_all_worker_containers() -> list[dict[str, Any]]:
     return result
 
 
-def _require_worker_id(worker_id: int | None) -> None:
-    """Raise 400 if no worker_id was provided."""
-    if worker_id is None:
-        raise HTTPException(
-            status_code=400,
-            detail="worker_id is required (specify which worker to target)",
-        )
+async def _resolve_worker_id(worker_id: int | None) -> int:
+    """Return a valid worker_id, auto-resolving when only one worker is online."""
+    if worker_id is not None:
+        return worker_id
+    workers = await database.list_workers()
+    online = [w for w in workers if w["status"] == "online"]
+    if len(online) == 1:
+        return online[0]["id"]
+    if len(online) == 0:
+        raise HTTPException(status_code=503, detail="No workers online")
+    raise HTTPException(
+        status_code=400,
+        detail="worker_id is required (multiple workers online)",
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -716,7 +723,7 @@ class DeployRequest(BaseModel):
 @app.post("/api/deploy/{slug}")
 async def api_deploy(request: Request, slug: str, body: DeployRequest, worker_id: int | None = None) -> dict[str, str]:
     _require_writer(request)
-    _require_worker_id(worker_id)
+    worker_id = await _resolve_worker_id(worker_id)
     svc = catalog.get_service(slug)
     if not svc:
         raise HTTPException(status_code=404, detail=f"Service '{slug}' not found")
@@ -738,12 +745,18 @@ async def api_deploy(request: Request, slug: str, body: DeployRequest, worker_id
         env[var["key"]] = str(default)
     env.update(body.env or {})
 
-    # Ports
+    # Ports — key is "container_port/protocol" per Docker SDK
     ports: dict[str, int] = {}
     for mapping in docker_conf.get("ports", []):
-        if ":" in str(mapping):
-            parts = str(mapping).split(":")
-            ports[parts[0]] = int(parts[1].split("/")[0]) if "/" in parts[1] else int(parts[1])
+        raw = str(mapping)
+        if ":" not in raw:
+            continue
+        parts = raw.split(":")
+        host_port = int(parts[0])
+        container_part = parts[1]  # e.g. "28967/tcp" or "28967"
+        if "/" not in container_part:
+            container_part += "/tcp"
+        ports[container_part] = host_port
 
     # Volumes: resolve ${VAR} in host paths using env
     volumes: dict[str, dict[str, str]] = {}
@@ -782,22 +795,22 @@ async def api_deploy(request: Request, slug: str, body: DeployRequest, worker_id
 @app.post("/api/stop/{slug}")
 async def api_stop(request: Request, slug: str, worker_id: int | None = None) -> dict[str, str]:
     _require_writer(request)
-    _require_worker_id(worker_id)
-    return await _proxy_worker_command(worker_id, "stop", slug)  # type: ignore[arg-type]
+    worker_id = await _resolve_worker_id(worker_id)
+    return await _proxy_worker_command(worker_id, "stop", slug)
 
 
 @app.post("/api/restart/{slug}")
 async def api_restart(request: Request, slug: str, worker_id: int | None = None) -> dict[str, str]:
     _require_writer(request)
-    _require_worker_id(worker_id)
-    return await _proxy_worker_command(worker_id, "restart", slug)  # type: ignore[arg-type]
+    worker_id = await _resolve_worker_id(worker_id)
+    return await _proxy_worker_command(worker_id, "restart", slug)
 
 
 @app.delete("/api/remove/{slug}")
 async def api_remove(request: Request, slug: str, worker_id: int | None = None) -> dict[str, str]:
     _require_writer(request)
-    _require_worker_id(worker_id)
-    result = await _proxy_worker_command(worker_id, "remove", slug)  # type: ignore[arg-type]
+    worker_id = await _resolve_worker_id(worker_id)
+    result = await _proxy_worker_command(worker_id, "remove", slug)
     await database.remove_deployment(slug)
     return result
 
@@ -912,8 +925,8 @@ async def _proxy_worker_logs(worker_id: int, slug: str, lines: int = 50) -> dict
 @app.post("/api/services/{slug}/restart")
 async def api_service_restart(request: Request, slug: str, worker_id: int | None = None) -> dict[str, str]:
     _require_writer(request)
-    _require_worker_id(worker_id)
-    result = await _proxy_worker_command(worker_id, "restart", slug)  # type: ignore[arg-type]
+    worker_id = await _resolve_worker_id(worker_id)
+    result = await _proxy_worker_command(worker_id, "restart", slug)
     await database.record_health_event(slug, "restart")
     return result
 
@@ -921,8 +934,8 @@ async def api_service_restart(request: Request, slug: str, worker_id: int | None
 @app.post("/api/services/{slug}/stop")
 async def api_service_stop(request: Request, slug: str, worker_id: int | None = None) -> dict[str, str]:
     _require_writer(request)
-    _require_worker_id(worker_id)
-    result = await _proxy_worker_command(worker_id, "stop", slug)  # type: ignore[arg-type]
+    worker_id = await _resolve_worker_id(worker_id)
+    result = await _proxy_worker_command(worker_id, "stop", slug)
     await database.record_health_event(slug, "stop")
     return result
 
@@ -930,8 +943,8 @@ async def api_service_stop(request: Request, slug: str, worker_id: int | None = 
 @app.post("/api/services/{slug}/start")
 async def api_service_start(request: Request, slug: str, worker_id: int | None = None) -> dict[str, str]:
     _require_writer(request)
-    _require_worker_id(worker_id)
-    result = await _proxy_worker_command(worker_id, "start", slug)  # type: ignore[arg-type]
+    worker_id = await _resolve_worker_id(worker_id)
+    result = await _proxy_worker_command(worker_id, "start", slug)
     await database.record_health_event(slug, "start")
     return result
 
@@ -941,15 +954,15 @@ async def api_service_logs(
     request: Request, slug: str, lines: int = 50, worker_id: int | None = None
 ) -> dict[str, str]:
     _require_writer(request)
-    _require_worker_id(worker_id)
-    return await _proxy_worker_logs(worker_id, slug, lines)  # type: ignore[arg-type]
+    worker_id = await _resolve_worker_id(worker_id)
+    return await _proxy_worker_logs(worker_id, slug, lines)
 
 
 @app.delete("/api/services/{slug}")
 async def api_service_remove(request: Request, slug: str, worker_id: int | None = None) -> dict[str, str]:
     _require_writer(request)
-    _require_worker_id(worker_id)
-    result = await _proxy_worker_command(worker_id, "remove", slug)  # type: ignore[arg-type]
+    worker_id = await _resolve_worker_id(worker_id)
+    result = await _proxy_worker_command(worker_id, "remove", slug)
     await database.remove_deployment(slug)
     return result
 
