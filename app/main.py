@@ -1271,6 +1271,7 @@ async def api_collectors_meta(request: Request) -> list[dict[str, Any]]:
         "access_token",
         "api_key",
         "session_cookie",
+        "auth_cookie",
         "oauth_token",
         "brd_sess_id",
     }
@@ -1318,6 +1319,30 @@ class ConfigUpdate(BaseModel):
 async def api_set_config(request: Request, body: ConfigUpdate) -> dict[str, str]:
     _require_owner(request)
     await database.set_config_bulk(body.data)
+
+    # Auto-create "external" deployment records for manual-only services
+    # whose collector credentials were just saved.  Without a deployment
+    # row, _run_collection() will never instantiate the collector.
+    from app.collectors import _COLLECTOR_ARGS
+
+    for slug, arg_keys in _COLLECTOR_ARGS.items():
+        required_keys = [f"{slug}_{a.lstrip('?')}" for a in arg_keys if not a.startswith("?")]
+        if not required_keys:
+            continue
+        if not all(body.data.get(k) for k in required_keys):
+            continue
+        svc = catalog.get_service(slug)
+        if not svc:
+            continue
+        docker_conf = svc.get("docker", {})
+        has_image = bool(docker_conf and docker_conf.get("image"))
+        if has_image:
+            continue  # Docker services get deployed normally
+        existing = await database.get_deployment(slug)
+        if not existing:
+            await database.save_deployment(slug=slug, container_id="", status="external")
+            logger.info("Auto-created external deployment for %s", slug)
+
     return {"status": "saved"}
 
 
