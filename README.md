@@ -250,6 +250,11 @@ CashPilot monitors container health continuously. If a service container exits u
 
 > This project contains affiliate/referral links. If you sign up through these links, the project maintainer may earn a small commission at no extra cost to you. This helps support the development of CashPilot. You are free to replace all referral codes with your own in the Settings page.
 
+## Home Assistant
+
+Monitor your CashPilot earnings and service status directly in Home Assistant with [cashpilot-ha](https://github.com/GeiserX/cashpilot-ha).
+
+
 ## Contributing
 
 Contributions are welcome. To add a new service:
