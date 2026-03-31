@@ -135,7 +135,69 @@ Broaden beyond bandwidth sharing.
 - [ ] **VPN relay nodes** — Sentinel dVPN, Mysterium (already supported), Orchid
 - [ ] **CDN/edge nodes** — Flux, Theta Edge Node
 - [ ] **New service YAML contributions** — community-submitted services via PR (12+ services found in competitors not yet in CashPilot)
-- [ ] **Mobile phone earning** — track and manage earnings from always-on Android phones running passive income apps (Honeygain, EarnApp, IPRoyal, Mysterium, etc.). Research containerized Android environments, ADB-based app management, and phone-as-a-node fleet integration
+
+## v1.5 — Multi-Platform Agents
+
+Extend CashPilot beyond Docker to monitor passive income apps on any device. Each agent is a lightweight, platform-native app that speaks the existing worker heartbeat protocol.
+
+### Architecture: One protocol, many platforms
+
+```
+CashPilot UI (fleet view)
+    ^           ^           ^           ^
+    | HTTP      | HTTP      | HTTP      | HTTP
+    |           |           |           |
+Docker Worker  Android     Windows     macOS
+(Python,       Agent       Agent       Agent
+ existing)     (Kotlin)    (Go/.NET)   (Swift)
+```
+
+All agents POST to `/api/worker/heartbeat` with a shared payload schema. The UI distinguishes workers by `device_type` and renders platform-appropriate health data.
+
+### Repos
+
+Each agent lives in its own repo (different language, build system, release artifact):
+- **`CashPilot`** — UI + Docker worker (Python, Docker image)
+- **`CashPilot-android`** — Android agent (Kotlin/Compose, APK)
+- **`CashPilot-windows`** — Windows agent (Go or .NET, tray app + MSI)
+- **`CashPilot-macos`** — macOS agent (Swift, menu bar app)
+
+### Shared protocol extensions
+
+- [ ] **`device_type` field on workers** — `docker`, `android`, `windows`, `macos` (DB + API + Fleet UI)
+- [ ] **Per-app health in heartbeat** — `apps: [{slug, running, net_tx_24h, net_rx_24h, last_active}]`
+- [ ] **`android_package` field in service YAMLs** — maps slugs to Android package names for notification matching
+- [ ] **Fleet UI: platform icons** — distinguish Docker containers from native apps in the dashboard
+- [ ] **Mixed-source earnings** — merge earnings for the same service running on Docker + Android (deduplicate or sum)
+
+### Android agent (first priority)
+
+17 services have Android apps: Honeygain, EarnApp, IPRoyal, Mysterium, PacketStream, Traffmonetizer, Repocket, Peer2Profit, Bytelixir, ByteBenefit, Grass, Gaganode, Titan, Nodle, PassiveApp, Uprock, Wipter.
+
+Detection strategy (no root required, Android 8+):
+
+| API | What it proves | Latency |
+|---|---|---|
+| **NotificationListenerService** | App's foreground service is alive (persistent notification present) | Instant callback |
+| **NetworkStatsManager** | App is transferring data (bytes tx/rx per app) | ~2h buckets |
+| **UsageStatsManager** | App was recently active (last foreground time) | ~2h buckets |
+
+User grants 3 one-time toggles: Notification Access, Usage Access, Battery Optimization exemption.
+
+- [ ] **Android app scaffold** — Kotlin/Compose, foreground service, heartbeat sender
+- [ ] **NotificationListenerService** — detect running/stopped state of monitored apps
+- [ ] **NetworkStatsManager** — per-app bandwidth as earning health proxy
+- [ ] **UsageStatsManager** — detect apps killed by battery optimizer
+- [ ] **Config UI** — CashPilot server URL, monitored apps, heartbeat interval
+- [ ] **Distribution** — F-Droid or direct APK (NotificationListener permission triggers extra Play Store scrutiny)
+
+### Windows agent (future)
+
+Many services have Windows-native clients. Detection via Win32 process enumeration + per-process network counters (no elevation needed for own-user processes). Tray app with heartbeat.
+
+### macOS agent (future)
+
+Similar to Windows — process list via `sysctl`/`proc`, network stats via `nettop`. Menu bar app.
 
 ## v2.0 — Platform
 
@@ -144,7 +206,6 @@ Transform CashPilot into a passive income operating system.
 - [ ] **Plugin system** — custom collectors, deployers, and UI widgets without forking
 - [ ] **Full REST API** — documented OpenAPI schema for external integrations and automation
 - [ ] **Helm chart** — deploy CashPilot on Kubernetes clusters
-- [ ] **Mobile app** — React Native companion for monitoring on the go
 - [ ] **Service marketplace** — community-curated service definitions with ratings and reviews
 - [ ] **Earnings export** — CSV/JSON export for tax reporting and accounting
 - [ ] **Multi-currency support** — track crypto earnings (MYST, ATH, GRASS tokens) alongside USD
