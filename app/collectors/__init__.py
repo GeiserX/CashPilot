@@ -21,6 +21,7 @@ from app.collectors.mystnodes import MystNodesCollector
 from app.collectors.packetstream import PacketStreamCollector
 from app.collectors.proxyrack import ProxyRackCollector
 from app.collectors.repocket import RepocketCollector
+from app.collectors.salad import SaladCollector
 from app.collectors.storj import StorjCollector
 from app.collectors.traffmonetizer import TraffmonetizerCollector
 
@@ -41,6 +42,7 @@ COLLECTOR_MAP: dict[str, type[BaseCollector]] = {
     "packetstream": PacketStreamCollector,
     "grass": GrassCollector,
     "bytelixir": BytelixirCollector,
+    "salad": SaladCollector,
 }
 
 # Map of slug -> list of config keys needed to instantiate the collector
@@ -58,6 +60,7 @@ _COLLECTOR_ARGS: dict[str, list[str]] = {
     "packetstream": ["auth_token"],
     "grass": ["access_token"],
     "bytelixir": ["session_cookie", "?remember_web", "?xsrf_token"],
+    "salad": ["access_token"],
 }
 
 

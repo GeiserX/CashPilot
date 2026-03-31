@@ -33,20 +33,27 @@ Salad.io lets you share your GPU for distributed AI workloads and earn Salad bal
 
 ### 1. Create an account
 
-Sign up at [Salad](https://salad.io).
+Sign up at [Salad](https://salad.io) and install the desktop application on your Windows machine.
 
-### 2. Get your credentials
+### 2. Get your session token
 
-After signing up, locate the credentials needed for Docker deployment. These are typically your email/password or an API token found in the dashboard.
+Salad runs as a native Windows app — there is no Docker image. To let CashPilot track your earnings:
 
-### 3. Deploy with CashPilot
+1. Open [app.salad.io](https://app.salad.io) in your browser and log in.
+2. Press **F12** to open DevTools.
+3. Go to **Application > Cookies > app.salad.io**.
+4. Copy the value of the `sAccessToken` cookie.
 
-In the CashPilot web UI, find **Salad** in the service catalog and click **Deploy**. Enter the required credentials and CashPilot will handle the rest.
+### 3. Configure CashPilot
+
+Add the token to your CashPilot configuration:
+
+```
+salad_access_token=<your sAccessToken value>
+```
+
+CashPilot will poll `app-api.salad.io/api/v1/profile/balance` to fetch your current and lifetime balance.
 
 ## Docker Configuration
 
-- **Image:** ``
-
-### Environment Variables
-
-No environment variables required.
+Salad is a native Windows desktop application — no Docker image is available. CashPilot monitors earnings via the Salad API only.
