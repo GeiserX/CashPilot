@@ -1,11 +1,13 @@
 """Salad earnings collector.
 
-Authenticates via Bearer token and fetches the current balance from
-the Salad API at app-api.salad.com.
+Authenticates via the ``auth`` cookie and fetches the current balance
+from the Salad API at app-api.salad.com.
+
+Salad uses ASP.NET Core anti-forgery: the ``auth`` cookie value must
+also be sent as the ``X-XSRF-TOKEN`` header (double-submit pattern).
 
 To get the token: open salad.com in your browser, log in, press F12,
-go to Network tab, find any request to app-api.salad.com, and copy
-the Authorization header value (without the "Bearer " prefix).
+go to Application > Cookies > .salad.com, and copy the ``auth`` cookie.
 """
 
 from __future__ import annotations
@@ -22,21 +24,23 @@ API_BASE = "https://app-api.salad.com/api/v1"
 
 
 class SaladCollector(BaseCollector):
-    """Collect earnings from Salad's API using a Bearer token."""
+    """Collect earnings from Salad's API using the auth cookie."""
 
     platform = "salad"
 
-    def __init__(self, access_token: str) -> None:
-        self.access_token = access_token
+    def __init__(self, auth_cookie: str) -> None:
+        self.auth_cookie = auth_cookie
 
     async def collect(self) -> EarningsResult:
         """Fetch current Salad balance."""
         try:
-            headers = {"Authorization": f"Bearer {self.access_token}"}
+            cookies = {"auth": self.auth_cookie}
+            headers = {"X-XSRF-TOKEN": self.auth_cookie}
 
             async with httpx.AsyncClient(timeout=30) as client:
                 resp = await client.get(
                     f"{API_BASE}/profile/balance",
+                    cookies=cookies,
                     headers=headers,
                 )
 
@@ -44,7 +48,7 @@ class SaladCollector(BaseCollector):
                     return EarningsResult(
                         platform=self.platform,
                         balance=0.0,
-                        error="Token expired — get a new Bearer token from salad.com Network tab",
+                        error="Auth cookie expired — get a new 'auth' cookie from salad.com",
                     )
 
                 resp.raise_for_status()
