@@ -60,7 +60,7 @@ _COLLECTOR_ARGS: dict[str, list[str]] = {
     "packetstream": ["auth_token"],
     "grass": ["access_token"],
     "bytelixir": ["session_cookie", "?remember_web", "?xsrf_token"],
-    "salad": ["access_token"],
+    "salad": ["auth_cookie"],
 }
 
 
