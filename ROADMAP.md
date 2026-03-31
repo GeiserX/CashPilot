@@ -20,28 +20,40 @@ The MVP: deploy, monitor, and manage passive income containers from a single web
 - [x] One-click container deployment via Docker SDK
 - [x] Container health monitoring (status, uptime, restart)
 - [x] Web-based setup wizard with guided account creation
-- [x] Dark responsive UI with service cards and filtering
+- [x] Dark responsive UI with service cards and filtering (synthwave theme, dark/light toggle)
 - [x] Session-based authentication with role system (owner/writer/viewer)
-- [x] Onboarding wizard for first-time users
+- [x] Onboarding wizard for first-time users (3 setup modes: fresh, monitoring, mixed)
 - [x] Credential encryption at rest (Fernet)
 - [x] Auto-generated documentation from YAML definitions
 - [x] Multi-arch Docker image (amd64 + arm64)
-- [x] 27 services across 4 categories
+- [x] 49 services across 4 categories (bandwidth: 22, DePIN: 20, compute: 6, storage: 1)
 - [x] Compose file export (per-service and bulk) for users without Docker socket access
 - [x] Monitor-only mode when Docker socket is not mounted
 - [x] CashPilot labels on all managed containers (`cashpilot.managed`, `cashpilot.service`)
+- [x] CI/CD pipeline — linting (ruff), CodeQL scanning, auto-releases with version bumping, Docker Hub sync, Dependabot
+- [x] Unraid Community Applications template
 
-## v1.1 — Earnings Intelligence
+## v1.1 — Earnings Intelligence ✅
 
-Turn CashPilot from a deployment tool into an earnings optimization platform.
+Turn CashPilot from a deployment tool into an earnings optimization platform. All core features complete; only webhook/email notifications remain.
 
-- [x] **Earnings collectors** for top services
+- [x] **Earnings collectors** — 13 services with automated balance tracking
   - [x] Honeygain (JWT auth + /v2/earnings)
   - [x] EarnApp (OAuth cookie auth + /dashboard/api/money/)
   - [x] MystNodes (Tequila API at localhost:4449)
   - [x] Traffmonetizer (Bearer token + /api/dashboard)
   - [x] IPRoyal Pawns (JWT auth + /api/v1/users/me/balance-dashboard)
-  - [x] Storj (storagenode local API at port 14002)
+  - [x] Storj (storagenode local API at port 14002, optional `api_url`)
+  - [x] Repocket (email/password auth)
+  - [x] ProxyRack (API key auth)
+  - [x] Bitping (email/password auth)
+  - [x] EarnFM (email/password auth)
+  - [x] PacketStream (auth token)
+  - [x] Grass (access token + 429 retry logic)
+  - [x] Bytelixir (session cookie + remember_web + XSRF persistent auth)
+  - [x] Dynamic credential forms in Settings page (auto-generated from collector args)
+  - [x] Startup collection trigger (collectors run immediately on container start)
+  - [x] Collector alert system — in-app notification dropdown showing failing collectors
 - [x] **Earnings dashboard** with Chart.js historical charts
   - [x] Dashboard API: /api/earnings/summary (total, today, month, change %)
   - [x] Daily chart API: /api/earnings/daily?days=N
@@ -49,21 +61,22 @@ Turn CashPilot from a deployment tool into an earnings optimization platform.
   - [x] Per-service breakdown view with progress bars toward minimum payout
   - [ ] Total portfolio value over time
 - [x] **Manual claim buttons** — per-service payout with eligibility checking
-  - [x] Each service YAML defines a `cashout` section (method, dashboard_url, min_amount, currency)
+  - [x] Each service YAML defines a `cashout` section (method, dashboard_url, min_amount, currency) — all 49 services covered
   - [x] Breakdown table shows balance vs. threshold with progress bars
   - [x] Claim modal checks eligibility, shows balance/threshold, then redirects to service dashboard
   - [x] Supports different payout methods: redirect to external dashboard, API, or manual instructions
+  - [x] Zero-threshold services (`min_amount: 0`) correctly eligible when balance > 0
 - [x] **Service health scoring** — uptime percentage, restart frequency, score 0-100
   - [x] health_events table tracks start/stop/restart/crash/check_ok/check_down
   - [x] 5-minute health check scheduler records container state
   - [x] Health score displayed on service cards (color-coded badge)
   - [x] GET /api/health/scores endpoint
-- [ ] **Notifications** — webhook/email alerts for container crashes, earnings drops, payout thresholds
+- [ ] **Notifications** — webhook/email alerts for container crashes, earnings drops, payout thresholds (collector alerts are in-app only for now)
 - ~~**Auto-claim daily rewards**~~ — deferred; manual claim button covers this (each service has different thresholds and conditions)
 
-## v1.2 — Multi-Node Fleet Management (in progress)
+## v1.2 — Multi-Node Fleet Management ✅
 
-For power users running CashPilot on multiple servers. Core federation is implemented and deployed.
+For power users running CashPilot on multiple servers. Core federation, worker architecture, and security hardening are complete. Remaining items are quality-of-life improvements.
 
 ### Architecture: Federated CashPilot Instances
 
@@ -107,6 +120,8 @@ A child in monitor-only mode is useful when containers are managed by Portainer 
 - [x] **Fleet dashboard** (master only) — all nodes, their services, live connection state, and remote commands
 - [x] **Database: `nodes` table** — id, name, token_hash, last_seen, ip, os, arch, docker_version, docker_mode, role, status
 - [x] **Federation API** — 8 endpoints for node management, token generation, fleet summary, remote commands
+- [x] **Worker URL override** — `CASHPILOT_WORKER_URL` env var for explicit worker URL
+- [x] **Auto-resolve worker_id** — single-worker setups don't need to specify `worker_id`
 - [ ] **`node_id` on deployments/earnings** — per-node tracking (nullable for backward compat)
 - [ ] **Cross-node deduplication** — warn if the same account runs on multiple nodes (some services ban this)
 - [ ] **Bulk deploy** — deploy a service across all/selected nodes with one click
@@ -114,6 +129,19 @@ A child in monitor-only mode is useful when containers are managed by Portainer 
 - [ ] **Command validation against YAML catalog** — child refuses arbitrary images
 
 > **Why WebSocket over alternatives?** Portainer Edge uses HTTP polling + reverse SSH tunnel — more complex. NATS/MQTT add an external broker. Tailscale requires separate installation on every node. SSH fails across NAT. WebSocket is a single persistent bidirectional channel built into FastAPI, works behind any firewall, and scales to 1000+ nodes trivially.
+
+### Security hardening (v0.2.49) ✅
+
+- [x] **Atomic fleet key bootstrap** — `app/fleet_key.py` resolves from env var → shared file → auto-generate with `O_CREAT | O_EXCL` (race-safe)
+- [x] **Worker port not published** — Docker Compose uses `expose` instead of `ports` (internal only)
+- [x] **Bearer auth split** — `CASHPILOT_ADMIN_API_KEY` for owner-level, fleet key for writer-level API access
+- [x] **RBAC enforcement across all UI surfaces** — dashboard controls, fleet page, settings sidebar, onboarding CTAs, service detail modal, collector alerts
+- [x] **Owner self-demotion guard** — cannot demote yourself or remove the last owner
+- [x] **Catalog cache immutability** — shallow copies prevent cross-request mutation
+- [x] **PRAGMA foreign_keys=ON** — SQLite CASCADE integrity enforced
+- [x] **Credential redaction** — `secret_key` added to secret config key list
+- [x] **Port protocol preservation** — Docker SDK format retains TCP/UDP
+- [x] **Test suite** — 425 tests (catalog validation, collector compliance, fleet key bootstrap, eligibility integration)
 
 ## v1.3 — Smart Optimization
 
