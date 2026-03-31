@@ -1,10 +1,11 @@
 """Salad earnings collector.
 
-Authenticates via session cookie and fetches the current balance from
-the Salad API.
+Authenticates via Bearer token and fetches the current balance from
+the Salad API at app-api.salad.com.
 
-To get the token: open app.salad.io in your browser, log in, press F12,
-go to Application > Cookies, and copy the `sAccessToken` value.
+To get the token: open salad.com in your browser, log in, press F12,
+go to Network tab, find any request to app-api.salad.com, and copy
+the Authorization header value (without the "Bearer " prefix).
 """
 
 from __future__ import annotations
@@ -17,11 +18,11 @@ from app.collectors.base import BaseCollector, EarningsResult
 
 logger = logging.getLogger(__name__)
 
-API_BASE = "https://app-api.salad.io/api/v1"
+API_BASE = "https://app-api.salad.com/api/v1"
 
 
 class SaladCollector(BaseCollector):
-    """Collect earnings from Salad's API using the session cookie."""
+    """Collect earnings from Salad's API using a Bearer token."""
 
     platform = "salad"
 
@@ -31,16 +32,19 @@ class SaladCollector(BaseCollector):
     async def collect(self) -> EarningsResult:
         """Fetch current Salad balance."""
         try:
-            cookies = {"sAccessToken": self.access_token}
+            headers = {"Authorization": f"Bearer {self.access_token}"}
 
-            async with httpx.AsyncClient(timeout=30, cookies=cookies) as client:
-                resp = await client.get(f"{API_BASE}/profile/balance")
+            async with httpx.AsyncClient(timeout=30) as client:
+                resp = await client.get(
+                    f"{API_BASE}/profile/balance",
+                    headers=headers,
+                )
 
                 if resp.status_code in (401, 403):
                     return EarningsResult(
                         platform=self.platform,
                         balance=0.0,
-                        error="Session expired — get a new sAccessToken cookie from app.salad.io",
+                        error="Token expired — get a new Bearer token from salad.com Network tab",
                     )
 
                 resp.raise_for_status()

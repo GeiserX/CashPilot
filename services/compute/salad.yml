@@ -53,4 +53,4 @@ platforms: [windows]
 
 collector:
   type: api
-  notes: "API at app-api.salad.io/api/v1/profile/balance. Auth via sAccessToken cookie from browser. Returns currentBalance (USD) and lifetimeBalance."
+  notes: "API at app-api.salad.com/api/v1/profile/balance. Auth via Bearer token from browser Network tab. Returns currentBalance (USD) and lifetimeBalance."
