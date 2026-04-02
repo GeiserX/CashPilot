@@ -250,10 +250,14 @@ CashPilot monitors container health continuously. If a service container exits u
 
 > This project contains affiliate/referral links. If you sign up through these links, the project maintainer may earn a small commission at no extra cost to you. This helps support the development of CashPilot. You are free to replace all referral codes with your own in the Settings page.
 
-## Home Assistant
+## Ecosystem
 
-Monitor your CashPilot earnings and service status directly in Home Assistant with [cashpilot-ha](https://github.com/GeiserX/cashpilot-ha).
-
+| Project | Type | Description |
+|---------|------|-------------|
+| [CashPilot-android](https://github.com/GeiserX/CashPilot-android) | Android Agent | Monitoring agent for passive income apps running on Android devices |
+| [cashpilot-mcp](https://github.com/GeiserX/cashpilot-mcp) | MCP Server | Monitor earnings from AI assistants via the Model Context Protocol |
+| [cashpilot-ha](https://github.com/GeiserX/cashpilot-ha) | Home Assistant Integration | Earnings and service status sensors for your smart home dashboard |
+| [n8n-nodes-cashpilot](https://github.com/GeiserX/n8n-nodes-cashpilot) | n8n Community Node | Automate earnings workflows in n8n |
 
 ## Contributing
 
