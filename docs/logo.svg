@@ -1,99 +1,42 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
   <defs>
-    <linearGradient id="blueAccent" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#3b82f6"/>
-      <stop offset="100%" stop-color="#60a5fa"/>
+    <linearGradient id="bg" x1="0%" y1="100%" x2="0%" y2="0%">
+      <stop offset="0%" style="stop-color:#0A0A1A"/>
+      <stop offset="50%" style="stop-color:#12082A"/>
+      <stop offset="100%" style="stop-color:#0E0520"/>
     </linearGradient>
-    <linearGradient id="needleGrad" x1="0%" y1="0%" x2="0%" y2="100%">
-      <stop offset="0%" stop-color="#60a5fa"/>
-      <stop offset="40%" stop-color="#3b82f6"/>
-      <stop offset="100%" stop-color="#2563eb"/>
+    <linearGradient id="sun" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#FFD54F"/>
+      <stop offset="35%" style="stop-color:#FF9800"/>
+      <stop offset="65%" style="stop-color:#E91E63"/>
+      <stop offset="100%" style="stop-color:#7B1FA2"/>
     </linearGradient>
-    <linearGradient id="needleSouth" x1="0%" y1="0%" x2="0%" y2="100%">
-      <stop offset="0%" stop-color="#1e3a5f"/>
-      <stop offset="100%" stop-color="#1a2744"/>
-    </linearGradient>
-    <linearGradient id="ringGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#3b82f6" stop-opacity="0.8"/>
-      <stop offset="50%" stop-color="#60a5fa" stop-opacity="0.6"/>
-      <stop offset="100%" stop-color="#3b82f6" stop-opacity="0.8"/>
-    </linearGradient>
-    <linearGradient id="innerRing" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#3b82f6" stop-opacity="0.15"/>
-      <stop offset="100%" stop-color="#60a5fa" stop-opacity="0.08"/>
-    </linearGradient>
-    <filter id="needleGlow">
-      <feGaussianBlur stdDeviation="4" result="blur"/>
-      <feMerge>
-        <feMergeNode in="blur"/>
-        <feMergeNode in="SourceGraphic"/>
-      </feMerge>
-    </filter>
-    <filter id="outerGlow">
-      <feGaussianBlur stdDeviation="6" result="blur"/>
-      <feMerge>
-        <feMergeNode in="blur"/>
-        <feMergeNode in="SourceGraphic"/>
-      </feMerge>
-    </filter>
+    <clipPath id="sunClip">
+      <circle cx="128" cy="112" r="72"/>
+    </clipPath>
   </defs>
-
-  <!-- Outer bezel ring -->
-  <circle cx="256" cy="256" r="240" fill="none" stroke="url(#ringGrad)" stroke-width="3" filter="url(#outerGlow)"/>
-
-  <!-- Inner filled circle (subtle background) -->
-  <circle cx="256" cy="256" r="220" fill="url(#innerRing)"/>
-
-  <!-- Tick marks - cardinal (longer) -->
-  <!-- N -->
-  <line x1="256" y1="36" x2="256" y2="76" stroke="#60a5fa" stroke-width="3" stroke-linecap="round"/>
-  <!-- E -->
-  <line x1="476" y1="256" x2="436" y2="256" stroke="#60a5fa" stroke-width="3" stroke-linecap="round" opacity="0.5"/>
-  <!-- S -->
-  <line x1="256" y1="476" x2="256" y2="436" stroke="#60a5fa" stroke-width="3" stroke-linecap="round" opacity="0.5"/>
-  <!-- W -->
-  <line x1="36" y1="256" x2="76" y2="256" stroke="#60a5fa" stroke-width="3" stroke-linecap="round" opacity="0.5"/>
-
-  <!-- Tick marks - intercardinal (shorter) -->
-  <!-- NE -->
-  <line x1="411.6" y1="100.4" x2="389.3" y2="122.7" stroke="#60a5fa" stroke-width="2" stroke-linecap="round" opacity="0.3"/>
-  <!-- SE -->
-  <line x1="411.6" y1="411.6" x2="389.3" y2="389.3" stroke="#60a5fa" stroke-width="2" stroke-linecap="round" opacity="0.3"/>
-  <!-- SW -->
-  <line x1="100.4" y1="411.6" x2="122.7" y2="389.3" stroke="#60a5fa" stroke-width="2" stroke-linecap="round" opacity="0.3"/>
-  <!-- NW -->
-  <line x1="100.4" y1="100.4" x2="122.7" y2="122.7" stroke="#60a5fa" stroke-width="2" stroke-linecap="round" opacity="0.3"/>
-
-  <!-- Minor tick marks (12 o'clock positions, subtle) -->
-  <g stroke="#3b82f6" stroke-width="1.5" stroke-linecap="round" opacity="0.2">
-    <!-- 30deg increments not already covered -->
-    <line x1="376" y1="48.3" x2="363.4" y2="75.6"/>
-    <line x1="463.7" y1="136" x2="436.4" y2="148.6"/>
-    <line x1="463.7" y1="376" x2="436.4" y2="363.4"/>
-    <line x1="376" y1="463.7" x2="363.4" y2="436.4"/>
-    <line x1="136" y1="463.7" x2="148.6" y2="436.4"/>
-    <line x1="48.3" y1="376" x2="75.6" y2="363.4"/>
-    <line x1="48.3" y1="136" x2="75.6" y2="148.6"/>
-    <line x1="136" y1="48.3" x2="148.6" y2="75.6"/>
+  <rect width="256" height="256" rx="32" fill="url(#bg)"/>
+  <circle cx="128" cy="112" r="72" fill="url(#sun)"/>
+  <g clip-path="url(#sunClip)">
+    <rect x="40" y="112" width="176" height="5" fill="#0A0A1A" opacity="0.85"/>
+    <rect x="40" y="124" width="176" height="5" fill="#0A0A1A" opacity="0.85"/>
+    <rect x="40" y="136" width="176" height="6" fill="#0A0A1A" opacity="0.85"/>
+    <rect x="40" y="149" width="176" height="7" fill="#0A0A1A" opacity="0.85"/>
+    <rect x="40" y="163" width="176" height="8" fill="#0A0A1A" opacity="0.85"/>
+    <!-- Airplane: long wings, thin fuselage, small tail -->
+    <g transform="translate(128,80) rotate(30)">
+      <path d="M0,-28 L2.5,-6 L30,2 L3,5 L4,12 L0,8 L-4,12 L-3,5 L-30,2 L-2.5,-6 Z"
+            fill="#0A0A1A" opacity="0.65"/>
+    </g>
   </g>
-
-  <!-- Heading arc (autopilot indicator) - subtle arc at top -->
-  <path d="M 186 86 A 190 190 0 0 1 326 86" fill="none" stroke="url(#blueAccent)" stroke-width="4" stroke-linecap="round" opacity="0.5"/>
-
-  <!-- Heading bug (small triangle marker at top of arc) -->
-  <polygon points="256,58 248,74 264,74" fill="url(#blueAccent)" opacity="0.7"/>
-
-  <!-- Compass needle - North (pointing up, blue) -->
-  <polygon points="256,90 232,256 256,240 280,256" fill="url(#needleGrad)" filter="url(#needleGlow)"/>
-
-  <!-- Compass needle - South (pointing down, dark) -->
-  <polygon points="256,422 232,256 256,272 280,256" fill="url(#needleSouth)" opacity="0.8"/>
-
-  <!-- Center hub -->
-  <circle cx="256" cy="256" r="14" fill="#1a1d26" stroke="url(#blueAccent)" stroke-width="2.5"/>
-  <circle cx="256" cy="256" r="5" fill="url(#blueAccent)"/>
-
-  <!-- Subtle inner ring detail -->
-  <circle cx="256" cy="256" r="180" fill="none" stroke="#3b82f6" stroke-width="0.5" opacity="0.12"/>
-  <circle cx="256" cy="256" r="120" fill="none" stroke="#3b82f6" stroke-width="0.5" opacity="0.08"/>
+  <g opacity="0.12" stroke="#8E24AA" stroke-width="0.8" fill="none">
+    <line x1="128" y1="184" x2="0" y2="256"/>
+    <line x1="128" y1="184" x2="256" y2="256"/>
+    <line x1="128" y1="184" x2="60" y2="256"/>
+    <line x1="128" y1="184" x2="196" y2="256"/>
+    <line x1="128" y1="184" x2="128" y2="256"/>
+    <line x1="20" y1="200" x2="236" y2="200"/>
+    <line x1="10" y1="220" x2="246" y2="220"/>
+    <line x1="0" y1="240" x2="256" y2="240"/>
+  </g>
 </svg>
