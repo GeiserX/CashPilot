@@ -124,10 +124,12 @@ CREATE TABLE IF NOT EXISTS users (
 
 CREATE TABLE IF NOT EXISTS workers (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
-    name            TEXT    NOT NULL UNIQUE,
+    client_id       TEXT    NOT NULL UNIQUE,
+    name            TEXT    NOT NULL DEFAULT '',
     url             TEXT    NOT NULL DEFAULT '',
     status          TEXT    NOT NULL DEFAULT 'online',
     containers      TEXT    NOT NULL DEFAULT '[]',
+    apps            TEXT    NOT NULL DEFAULT '[]',
     system_info     TEXT    NOT NULL DEFAULT '{}',
     last_heartbeat  TEXT,
     registered_at   TEXT    NOT NULL DEFAULT (datetime('now'))
@@ -177,6 +179,38 @@ async def init_db() -> None:
     db = await _get_db()
     try:
         await db.executescript(_SCHEMA)
+        # Migrate workers table: add client_id (UNIQUE) and apps columns
+        cursor = await db.execute("PRAGMA table_info(workers)")
+        cols = {row["name"] for row in await cursor.fetchall()}
+        if "client_id" not in cols:
+            # Rebuild table: UNIQUE moves from name → client_id, name becomes display-only.
+            # Existing rows get client_id = name for backward compat.
+            has_apps = "apps" in cols
+            apps_select = "apps" if has_apps else "'[]'"
+            _logger.info("Migrating workers table: adding client_id column")
+            await db.executescript(f"""
+                CREATE TABLE workers_new (
+                    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                    client_id       TEXT    NOT NULL UNIQUE,
+                    name            TEXT    NOT NULL DEFAULT '',
+                    url             TEXT    NOT NULL DEFAULT '',
+                    status          TEXT    NOT NULL DEFAULT 'online',
+                    containers      TEXT    NOT NULL DEFAULT '[]',
+                    apps            TEXT    NOT NULL DEFAULT '[]',
+                    system_info     TEXT    NOT NULL DEFAULT '{{}}',
+                    last_heartbeat  TEXT,
+                    registered_at   TEXT    NOT NULL DEFAULT (datetime('now'))
+                );
+                INSERT INTO workers_new
+                    (id, client_id, name, url, status, containers, apps, system_info, last_heartbeat, registered_at)
+                SELECT id, name, name, url, status, containers, {apps_select}, system_info, last_heartbeat, registered_at
+                FROM workers;
+                DROP TABLE workers;
+                ALTER TABLE workers_new RENAME TO workers;
+                CREATE INDEX IF NOT EXISTS idx_workers_status ON workers (status);
+            """)
+        elif "apps" not in cols:
+            await db.execute("ALTER TABLE workers ADD COLUMN apps TEXT NOT NULL DEFAULT '[]'")
         await db.commit()
     finally:
         await db.close()
@@ -697,30 +731,33 @@ async def mark_setup_completed(user_id: int) -> None:
 
 
 async def upsert_worker(
-    name: str,
+    client_id: str,
+    name: str = "",
     url: str = "",
     containers: str = "[]",
+    apps: str = "[]",
     system_info: str = "{}",
 ) -> int:
-    """Register or update a worker by name. Returns the worker ID."""
+    """Register or update a worker by client_id. Returns the worker ID."""
     db = await _get_db()
     try:
         cursor = await db.execute(
             """
-            INSERT INTO workers (name, url, containers, system_info, status, last_heartbeat)
-            VALUES (?, ?, ?, ?, 'online', datetime('now'))
-            ON CONFLICT(name) DO UPDATE SET
+            INSERT INTO workers (client_id, name, url, containers, apps, system_info, status, last_heartbeat)
+            VALUES (?, ?, ?, ?, ?, ?, 'online', datetime('now'))
+            ON CONFLICT(client_id) DO UPDATE SET
+                name = excluded.name,
                 url = excluded.url,
                 containers = excluded.containers,
+                apps = excluded.apps,
                 system_info = excluded.system_info,
                 status = 'online',
                 last_heartbeat = datetime('now')
             """,
-            (name, url, containers, system_info),
+            (client_id, name, url, containers, apps, system_info),
         )
         await db.commit()
-        # Return the worker ID (either new or existing)
-        cursor = await db.execute("SELECT id FROM workers WHERE name = ?", (name,))
+        cursor = await db.execute("SELECT id FROM workers WHERE client_id = ?", (client_id,))
         row = await cursor.fetchone()
         return row["id"]
     finally:

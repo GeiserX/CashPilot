@@ -16,7 +16,7 @@
     <div class="stat-value" id="fleet-online-workers">-</div>
   </div>
   <div class="stat-card">
-    <div class="stat-label">Containers</div>
+    <div class="stat-label">Services</div>
     <div class="stat-value" id="fleet-total-containers">-</div>
   </div>
   <div class="stat-card">
@@ -32,7 +32,9 @@
   </div>
   <div style="padding: 0 20px 20px;">
     <p style="color: var(--text-secondary); margin-bottom: 12px; font-size: 0.9rem;">
-      Deploy <code>drumsergio/cashpilot-worker</code> on each server with these environment variables:
+      Deploy <code>drumsergio/cashpilot-worker</code> on each server, or install the
+      <a href="https://github.com/GeiserX/CashPilot-android" style="color: var(--accent);">Android app</a> on your phone.
+      For Docker workers, set these environment variables:
     </p>
     <div style="background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 8px; padding: 12px;">
       <code id="worker-env" style="display: block; word-break: break-all; color: var(--text-primary); font-size: 0.85rem; white-space: pre-wrap;">CASHPILOT_UI_URL=<span id="env-ui-url"></span>
@@ -109,6 +111,8 @@ CASHPILOT_WORKER_NAME=server-name</code>
         const statusClass = isOnline ? 'running' : 'stopped';
         const borderColor = isOnline ? 'var(--success)' : 'var(--text-muted)';
         const sysInfo = w.system_info || {};
+        const isAndroid = (sysInfo.device_type === 'android');
+        const items = isAndroid ? (w.apps || []) : (w.containers || []);
         html += `
         <div class="card" style="margin-bottom: 12px; border-left: 3px solid ${borderColor};">
           <div style="padding: 16px;">
@@ -116,21 +120,46 @@ CASHPILOT_WORKER_NAME=server-name</code>
               <div style="display: flex; align-items: center; gap: 8px;">
                 <span class="status-dot ${statusClass}"></span>
                 <span style="font-weight: 600; color: var(--text-primary);">${esc(w.name)}</span>
+                ${isAndroid ? '<span style="font-size:0.7rem; padding:2px 6px; border-radius:4px; background:var(--bg-hover); color:var(--text-muted);">Android</span>' : ''}
               </div>
               ${_isOwner ? `<button class="btn btn-danger btn-sm" onclick="removeWorker(${w.id}, '${esc(w.name)}')" title="Remove worker">Remove</button>` : ''}
             </div>
             <div style="display: flex; gap: 16px; flex-wrap: wrap; font-size: 0.82rem; color: var(--text-muted);">
               <span>${esc(w.url || '-')}</span>
-              <span>${esc(sysInfo.os || '-')}</span>
+              <span>${esc(sysInfo.os || '-')}${sysInfo.os_version ? ' ' + esc(sysInfo.os_version) : ''}</span>
               <span>${esc(sysInfo.arch || '-')}</span>
               <span>Last seen: ${w.last_heartbeat || 'never'}</span>
             </div>
-            ${w.containers && w.containers.length > 0 ? renderContainers(w) : ''}
+            ${isAndroid && items.length > 0 ? renderApps(items) : ''}
+            ${!isAndroid && items.length > 0 ? renderContainers(w) : ''}
           </div>
         </div>`;
       }
     }
     container.innerHTML = html;
+  }
+
+  function fmtBytes(b) {
+    if (!b || b < 1024) return (b || 0) + ' B';
+    if (b < 1048576) return (b / 1024).toFixed(1) + ' KB';
+    if (b < 1073741824) return (b / 1048576).toFixed(1) + ' MB';
+    return (b / 1073741824).toFixed(2) + ' GB';
+  }
+
+  function renderApps(apps) {
+    let html = '<div style="margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border-color);">';
+    html += '<div style="display: flex; gap: 6px; flex-wrap: wrap;">';
+    for (const a of apps) {
+      const isRunning = a.running;
+      const color = isRunning ? 'var(--success)' : 'var(--text-muted)';
+      const bg = isRunning ? 'var(--success-soft)' : 'var(--bg-hover)';
+      const tx = a.net_tx_24h || 0;
+      const rx = a.net_rx_24h || 0;
+      const netTip = (tx || rx) ? ` title="24h: ↑${fmtBytes(tx)} ↓${fmtBytes(rx)}"` : '';
+      html += `<span style="font-size:0.75rem; padding:3px 8px; border-radius:4px; background:${bg}; color:${color}; font-weight:500;"${netTip}>${esc(a.slug)}</span>`;
+    }
+    html += '</div></div>';
+    return html;
   }
 
   function renderContainers(worker) {

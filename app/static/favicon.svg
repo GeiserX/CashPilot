@@ -7,16 +7,16 @@
       <stop offset="100%" stop-color="#7B1FA2"/>
     </linearGradient>
     <clipPath id="sc">
-      <circle cx="16" cy="14" r="11"/>
+      <circle cx="16" cy="16" r="11"/>
     </clipPath>
   </defs>
-  <circle cx="16" cy="14" r="11" fill="url(#sun)"/>
+  <circle cx="16" cy="16" r="11" fill="url(#sun)"/>
   <g clip-path="url(#sc)">
-    <rect x="4" y="14" width="24" height="1.2" fill="#0A0A1A" opacity="0.85"/>
-    <rect x="4" y="16.5" width="24" height="1.5" fill="#0A0A1A" opacity="0.85"/>
-    <rect x="4" y="19.5" width="24" height="2" fill="#0A0A1A" opacity="0.85"/>
-    <rect x="4" y="23" width="24" height="3" fill="#0A0A1A" opacity="0.85"/>
-    <g transform="translate(16,10) rotate(30) scale(0.4)">
+    <rect x="4" y="16" width="24" height="1.2" fill="#0A0A1A" opacity="0.85"/>
+    <rect x="4" y="18.5" width="24" height="1.5" fill="#0A0A1A" opacity="0.85"/>
+    <rect x="4" y="21.5" width="24" height="2" fill="#0A0A1A" opacity="0.85"/>
+    <rect x="4" y="25" width="24" height="3" fill="#0A0A1A" opacity="0.85"/>
+    <g transform="translate(16,12) rotate(30) scale(0.4)">
       <path d="M0,-28 L2.5,-6 L30,2 L3,5 L4,12 L0,8 L-4,12 L-3,5 L-30,2 L-2.5,-6 Z"
             fill="#0A0A1A" opacity="0.65"/>
     </g>
