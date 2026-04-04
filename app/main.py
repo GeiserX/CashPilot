@@ -1439,6 +1439,7 @@ def _verify_fleet_api_key(request: Request) -> None:
 class WorkerHeartbeat(BaseModel):
     name: str
     url: str = ""
+    client_id: str = ""
     containers: list[dict[str, Any]] = []
     apps: list[dict[str, Any]] = []
     system_info: dict[str, Any] = {}
@@ -1448,7 +1449,10 @@ class WorkerHeartbeat(BaseModel):
 async def api_worker_heartbeat(request: Request, body: WorkerHeartbeat) -> dict[str, Any]:
     """Receive a heartbeat from a worker. Registers or updates the worker."""
     _verify_fleet_api_key(request)
+    # Use client_id for identity; fall back to name for backward compat
+    cid = body.client_id or body.name
     worker_id = await database.upsert_worker(
+        client_id=cid,
         name=body.name,
         url=body.url,
         containers=json.dumps(body.containers),
