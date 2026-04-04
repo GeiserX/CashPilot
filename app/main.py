@@ -36,7 +36,7 @@ _collector_alerts: list[dict[str, str]] = []
 
 
 async def _get_all_worker_containers() -> list[dict[str, Any]]:
-    """Collect container data from all online workers' heartbeat data in DB."""
+    """Collect container/app data from all online workers' heartbeat data in DB."""
     workers = await database.list_workers()
     result: list[dict[str, Any]] = []
     for w in workers:
@@ -44,6 +44,10 @@ async def _get_all_worker_containers() -> list[dict[str, Any]]:
             continue
         sys_info = json.loads(w.get("system_info", "{}"))
         worker_has_docker = sys_info.get("docker_available", False)
+        is_android = sys_info.get("device_type") == "android"
+        worker_name = w.get("name", "worker")
+
+        # Docker containers (from Docker-based workers)
         containers = json.loads(w.get("containers", "[]"))
         for c in containers:
             slug = c.get("slug", "")
@@ -57,12 +61,38 @@ async def _get_all_worker_containers() -> list[dict[str, Any]]:
                         "cpu_percent": c.get("cpu_percent", 0),
                         "memory_mb": c.get("memory_mb", 0),
                         "category": "",
-                        "deployed_by": w.get("name", "worker"),
-                        "_node": w.get("name", "worker"),
+                        "deployed_by": worker_name,
+                        "_node": worker_name,
                         "_worker_id": w.get("id"),
                         "_has_docker": worker_has_docker,
+                        "_is_android": False,
                     }
                 )
+
+        # Android apps (from Android workers)
+        if is_android:
+            apps = json.loads(w.get("apps", "[]"))
+            for a in apps:
+                slug = a.get("slug", "")
+                if slug:
+                    result.append(
+                        {
+                            "slug": slug,
+                            "name": a.get("slug", slug),
+                            "status": "running" if a.get("running") else "stopped",
+                            "image": "",
+                            "cpu_percent": 0,
+                            "memory_mb": 0,
+                            "category": "",
+                            "deployed_by": worker_name,
+                            "_node": worker_name,
+                            "_worker_id": w.get("id"),
+                            "_has_docker": False,
+                            "_is_android": True,
+                            "_net_tx_24h": a.get("net_tx_24h", 0),
+                            "_net_rx_24h": a.get("net_rx_24h", 0),
+                        }
+                    )
     return result
 
 
@@ -494,34 +524,7 @@ async def api_services_deployed(request: Request) -> list[dict[str, Any]]:
     details for the expandable sub-row UI.
     """
     _require_auth_api(request)
-    statuses: list[dict[str, Any]] = []
-
-    # Collect containers from all workers
-    workers = await database.list_workers()
-    for w in workers:
-        if w.get("status") != "online":
-            continue
-        sys_info = json.loads(w.get("system_info", "{}"))
-        worker_has_docker = sys_info.get("docker_available", False)
-        containers = json.loads(w.get("containers", "[]"))
-        for c in containers:
-            slug = c.get("slug", "")
-            if slug:
-                statuses.append(
-                    {
-                        "slug": slug,
-                        "name": c.get("name", slug),
-                        "status": c.get("status", "unknown"),
-                        "image": c.get("image", ""),
-                        "cpu_percent": c.get("cpu_percent", 0),
-                        "memory_mb": c.get("memory_mb", 0),
-                        "category": "",
-                        "deployed_by": w.get("name", "worker"),
-                        "_node": w.get("name", "worker"),
-                        "_worker_id": w.get("id"),
-                        "_has_docker": worker_has_docker,
-                    }
-                )
+    statuses: list[dict[str, Any]] = await _get_all_worker_containers()
 
     # Get latest earnings per platform for balance display
     earnings = await database.get_earnings_summary()
@@ -564,17 +567,20 @@ async def api_services_deployed(request: Request) -> list[dict[str, Any]]:
         # Build per-instance detail list (local first)
         instance_details = []
         for inst in agg["instances"]:
-            instance_details.append(
-                {
-                    "node": inst.get("_node", "unknown"),
-                    "worker_id": inst.get("_worker_id"),
-                    "status": inst.get("status", "unknown"),
-                    "cpu": f"{float(inst.get('cpu_percent', 0)):.2f}",
-                    "memory": f"{float(inst.get('memory_mb', 0)):.1f} MB",
-                    "container_name": inst.get("name", ""),
-                    "has_docker": inst.get("_has_docker", False),
-                }
-            )
+            detail = {
+                "node": inst.get("_node", "unknown"),
+                "worker_id": inst.get("_worker_id"),
+                "status": inst.get("status", "unknown"),
+                "cpu": f"{float(inst.get('cpu_percent', 0)):.2f}",
+                "memory": f"{float(inst.get('memory_mb', 0)):.1f} MB",
+                "container_name": inst.get("name", ""),
+                "has_docker": inst.get("_has_docker", False),
+                "is_android": inst.get("_is_android", False),
+            }
+            if inst.get("_is_android"):
+                detail["net_tx_24h"] = inst.get("_net_tx_24h", 0)
+                detail["net_rx_24h"] = inst.get("_net_rx_24h", 0)
+            instance_details.append(detail)
         # Sort: local first, then alphabetically by node name
         instance_details.sort(key=lambda x: (0 if x["node"] == "local" else 1, x["node"]))
 
@@ -1426,6 +1432,7 @@ class WorkerHeartbeat(BaseModel):
     name: str
     url: str = ""
     containers: list[dict[str, Any]] = []
+    apps: list[dict[str, Any]] = []
     system_info: dict[str, Any] = {}
 
 
@@ -1437,6 +1444,7 @@ async def api_worker_heartbeat(request: Request, body: WorkerHeartbeat) -> dict[
         name=body.name,
         url=body.url,
         containers=json.dumps(body.containers),
+        apps=json.dumps(body.apps),
         system_info=json.dumps(body.system_info),
     )
     return {"status": "ok", "worker_id": worker_id}
@@ -1448,12 +1456,22 @@ async def api_list_workers(request: Request) -> list[dict[str, Any]]:
     _require_auth_api(request)
     workers = await database.list_workers()
     for w in workers:
-        # Parse stored JSON for the API response
-        w["containers"] = json.loads(w.get("containers", "[]"))
-        w["system_info"] = json.loads(w.get("system_info", "{}"))
+        _parse_worker_json(w)
+    return workers
+
+
+def _parse_worker_json(w: dict[str, Any]) -> None:
+    """Parse stored JSON columns and compute counts for a worker dict."""
+    w["containers"] = json.loads(w.get("containers", "[]"))
+    w["apps"] = json.loads(w.get("apps", "[]"))
+    w["system_info"] = json.loads(w.get("system_info", "{}"))
+    is_android = w["system_info"].get("device_type") == "android"
+    if is_android:
+        w["container_count"] = len(w["apps"])
+        w["running_count"] = sum(1 for a in w["apps"] if a.get("running"))
+    else:
         w["container_count"] = len(w["containers"])
         w["running_count"] = sum(1 for c in w["containers"] if c.get("status") == "running")
-    return workers
 
 
 @app.get("/api/workers/{worker_id}")
@@ -1463,10 +1481,7 @@ async def api_get_worker(request: Request, worker_id: int) -> dict[str, Any]:
     worker = await database.get_worker(worker_id)
     if not worker:
         raise HTTPException(status_code=404, detail="Worker not found")
-    worker["containers"] = json.loads(worker.get("containers", "[]"))
-    worker["system_info"] = json.loads(worker.get("system_info", "{}"))
-    worker["container_count"] = len(worker["containers"])
-    worker["running_count"] = sum(1 for c in worker["containers"] if c.get("status") == "running")
+    _parse_worker_json(worker)
     return worker
 
 
@@ -1544,9 +1559,16 @@ async def api_fleet_summary(request: Request) -> dict[str, Any]:
     online_workers = 0
 
     for w in workers:
-        containers = json.loads(w.get("containers", "[]"))
-        total_containers += len(containers)
-        total_running += sum(1 for c in containers if c.get("status") == "running")
+        sys_info = json.loads(w.get("system_info", "{}"))
+        is_android = sys_info.get("device_type") == "android"
+        if is_android:
+            apps = json.loads(w.get("apps", "[]"))
+            total_containers += len(apps)
+            total_running += sum(1 for a in apps if a.get("running"))
+        else:
+            containers = json.loads(w.get("containers", "[]"))
+            total_containers += len(containers)
+            total_running += sum(1 for c in containers if c.get("status") == "running")
         if w["status"] == "online":
             online_workers += 1
 

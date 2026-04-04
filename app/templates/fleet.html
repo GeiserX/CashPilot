@@ -109,6 +109,8 @@ CASHPILOT_WORKER_NAME=server-name</code>
         const statusClass = isOnline ? 'running' : 'stopped';
         const borderColor = isOnline ? 'var(--success)' : 'var(--text-muted)';
         const sysInfo = w.system_info || {};
+        const isAndroid = (sysInfo.device_type === 'android');
+        const items = isAndroid ? (w.apps || []) : (w.containers || []);
         html += `
         <div class="card" style="margin-bottom: 12px; border-left: 3px solid ${borderColor};">
           <div style="padding: 16px;">
@@ -116,21 +118,36 @@ CASHPILOT_WORKER_NAME=server-name</code>
               <div style="display: flex; align-items: center; gap: 8px;">
                 <span class="status-dot ${statusClass}"></span>
                 <span style="font-weight: 600; color: var(--text-primary);">${esc(w.name)}</span>
+                ${isAndroid ? '<span style="font-size:0.7rem; padding:2px 6px; border-radius:4px; background:var(--bg-hover); color:var(--text-muted);">Android</span>' : ''}
               </div>
               ${_isOwner ? `<button class="btn btn-danger btn-sm" onclick="removeWorker(${w.id}, '${esc(w.name)}')" title="Remove worker">Remove</button>` : ''}
             </div>
             <div style="display: flex; gap: 16px; flex-wrap: wrap; font-size: 0.82rem; color: var(--text-muted);">
               <span>${esc(w.url || '-')}</span>
-              <span>${esc(sysInfo.os || '-')}</span>
+              <span>${esc(sysInfo.os || '-')}${sysInfo.os_version ? ' ' + esc(sysInfo.os_version) : ''}</span>
               <span>${esc(sysInfo.arch || '-')}</span>
               <span>Last seen: ${w.last_heartbeat || 'never'}</span>
             </div>
-            ${w.containers && w.containers.length > 0 ? renderContainers(w) : ''}
+            ${isAndroid && items.length > 0 ? renderApps(items) : ''}
+            ${!isAndroid && items.length > 0 ? renderContainers(w) : ''}
           </div>
         </div>`;
       }
     }
     container.innerHTML = html;
+  }
+
+  function renderApps(apps) {
+    let html = '<div style="margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border-color);">';
+    html += '<div style="display: flex; gap: 6px; flex-wrap: wrap;">';
+    for (const a of apps) {
+      const isRunning = a.running;
+      const color = isRunning ? 'var(--success)' : 'var(--text-muted)';
+      const bg = isRunning ? 'var(--success-soft)' : 'var(--bg-hover)';
+      html += `<span style="font-size:0.75rem; padding:3px 8px; border-radius:4px; background:${bg}; color:${color}; font-weight:500;">${esc(a.slug)}</span>`;
+    }
+    html += '</div></div>';
+    return html;
   }
 
   function renderContainers(worker) {

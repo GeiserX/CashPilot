@@ -475,7 +475,8 @@ const CP = (() => {
       // Single instance — build container buttons targeting the right node
       const inst = details[0] || {};
       const wParam = inst.worker_id != null ? `', ${inst.worker_id}` : `'`;
-      const disabledAttr = !inst.has_docker ? ' disabled title="No Docker access"' : '';
+      const noDocker = !inst.has_docker || inst.is_android;
+      const disabledAttr = noDocker ? ' disabled title="No Docker access"' : '';
       actionBtns = `<div class="action-btns">
           ${claimBtn}
           ${_canWrite ? `
@@ -512,12 +513,14 @@ const CP = (() => {
         const iStatusLabel = iStatus.charAt(0).toUpperCase() + iStatus.slice(1);
         const nodeLabel = inst.node === 'local' ? 'Local' : escapeHtml(inst.node);
         const wParam = inst.worker_id != null ? `', ${inst.worker_id}` : `'`;
-        const disabledAttr = !inst.has_docker ? ' disabled title="No Docker access"' : '';
+        const iNoDocker = !inst.has_docker || inst.is_android;
+        const disabledAttr = iNoDocker ? ' disabled title="No Docker access"' : '';
+        const subLabel = inst.is_android ? '' : escapeHtml(inst.container_name);
         html += `
         <tr class="instance-row" data-parent="${escapeHtml(svc.slug)}" style="display:none;">
           <td style="padding-left:28px;">
             <span class="instance-node-label">${nodeLabel}</span>
-            <span style="font-size:0.7rem; color:var(--text-muted); margin-left:4px;">${escapeHtml(inst.container_name)}</span>
+            ${subLabel ? `<span style="font-size:0.7rem; color:var(--text-muted); margin-left:4px;">${subLabel}</span>` : ''}
           </td>
           <td style="text-align:center;"><span class="badge badge-${iStatus}"><span class="status-dot ${iStatus}"></span> ${iStatusLabel}</span></td>
           <td></td>

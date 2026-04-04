@@ -128,6 +128,7 @@ CREATE TABLE IF NOT EXISTS workers (
     url             TEXT    NOT NULL DEFAULT '',
     status          TEXT    NOT NULL DEFAULT 'online',
     containers      TEXT    NOT NULL DEFAULT '[]',
+    apps            TEXT    NOT NULL DEFAULT '[]',
     system_info     TEXT    NOT NULL DEFAULT '{}',
     last_heartbeat  TEXT,
     registered_at   TEXT    NOT NULL DEFAULT (datetime('now'))
@@ -177,6 +178,11 @@ async def init_db() -> None:
     db = await _get_db()
     try:
         await db.executescript(_SCHEMA)
+        # Migrate: add 'apps' column to workers if missing (added for Android support)
+        cursor = await db.execute("PRAGMA table_info(workers)")
+        cols = {row["name"] for row in await cursor.fetchall()}
+        if "apps" not in cols:
+            await db.execute("ALTER TABLE workers ADD COLUMN apps TEXT NOT NULL DEFAULT '[]'")
         await db.commit()
     finally:
         await db.close()
@@ -700,6 +706,7 @@ async def upsert_worker(
     name: str,
     url: str = "",
     containers: str = "[]",
+    apps: str = "[]",
     system_info: str = "{}",
 ) -> int:
     """Register or update a worker by name. Returns the worker ID."""
@@ -707,16 +714,17 @@ async def upsert_worker(
     try:
         cursor = await db.execute(
             """
-            INSERT INTO workers (name, url, containers, system_info, status, last_heartbeat)
-            VALUES (?, ?, ?, ?, 'online', datetime('now'))
+            INSERT INTO workers (name, url, containers, apps, system_info, status, last_heartbeat)
+            VALUES (?, ?, ?, ?, ?, 'online', datetime('now'))
             ON CONFLICT(name) DO UPDATE SET
                 url = excluded.url,
                 containers = excluded.containers,
+                apps = excluded.apps,
                 system_info = excluded.system_info,
                 status = 'online',
                 last_heartbeat = datetime('now')
             """,
-            (name, url, containers, system_info),
+            (name, url, containers, apps, system_info),
         )
         await db.commit()
         # Return the worker ID (either new or existing)
