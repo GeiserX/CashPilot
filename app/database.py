@@ -187,6 +187,7 @@ async def init_db() -> None:
             # Existing rows get client_id = name for backward compat.
             has_apps = "apps" in cols
             apps_select = "apps" if has_apps else "'[]'"
+            _logger.info("Migrating workers table: adding client_id column")
             await db.executescript(f"""
                 CREATE TABLE workers_new (
                     id              INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -206,6 +207,7 @@ async def init_db() -> None:
                 FROM workers;
                 DROP TABLE workers;
                 ALTER TABLE workers_new RENAME TO workers;
+                CREATE INDEX IF NOT EXISTS idx_workers_status ON workers (status);
             """)
         elif "apps" not in cols:
             await db.execute("ALTER TABLE workers ADD COLUMN apps TEXT NOT NULL DEFAULT '[]'")

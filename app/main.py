@@ -1566,7 +1566,7 @@ async def api_fleet_summary(request: Request) -> dict[str, Any]:
     _require_auth_api(request)
 
     workers = await database.list_workers()
-    total_containers = 0
+    total_services = 0
     total_running = 0
     online_workers = 0
 
@@ -1574,21 +1574,14 @@ async def api_fleet_summary(request: Request) -> dict[str, Any]:
         if w["status"] != "online":
             continue
         online_workers += 1
-        sys_info = _safe_json(w.get("system_info", "{}"), {})
-        is_android = sys_info.get("device_type") == "android"
-        if is_android:
-            apps = _safe_json(w.get("apps", "[]"))
-            total_containers += len(apps)
-            total_running += sum(1 for a in apps if a.get("running"))
-        else:
-            containers = _safe_json(w.get("containers", "[]"))
-            total_containers += len(containers)
-            total_running += sum(1 for c in containers if c.get("status") == "running")
+        _parse_worker_json(w)
+        total_services += w["container_count"]
+        total_running += w["running_count"]
 
     return {
         "total_workers": len(workers),
         "online_workers": online_workers,
-        "total_containers": total_containers,
+        "total_containers": total_services,
         "running_containers": total_running,
     }
 
