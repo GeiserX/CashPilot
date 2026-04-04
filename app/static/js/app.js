@@ -523,8 +523,8 @@ const CP = (() => {
         const iNoDocker = !inst.has_docker || inst.is_android;
         const disabledAttr = iNoDocker ? ' disabled title="No Docker access"' : '';
         const subLabel = inst.is_android ? '' : escapeHtml(inst.container_name);
-        const cpuCell = inst.is_android ? fmtNetBytes(inst.net_tx_24h) : `${inst.cpu || '0'}%`;
-        const memCell = inst.is_android ? fmtNetBytes(inst.net_rx_24h) : (inst.memory || '0 MB');
+        const cpuCell = inst.is_android ? `↑ ${fmtNetBytes(inst.net_tx_24h)}` : `${inst.cpu || '0'}%`;
+        const memCell = inst.is_android ? `↓ ${fmtNetBytes(inst.net_rx_24h)}` : (inst.memory || '0 MB');
         html += `
         <tr class="instance-row" data-parent="${escapeHtml(svc.slug)}" style="display:none;">
           <td style="padding-left:28px;">
