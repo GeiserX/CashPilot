@@ -16,7 +16,7 @@
     <div class="stat-value" id="fleet-online-workers">-</div>
   </div>
   <div class="stat-card">
-    <div class="stat-label">Containers</div>
+    <div class="stat-label">Services</div>
     <div class="stat-value" id="fleet-total-containers">-</div>
   </div>
   <div class="stat-card">
@@ -32,7 +32,9 @@
   </div>
   <div style="padding: 0 20px 20px;">
     <p style="color: var(--text-secondary); margin-bottom: 12px; font-size: 0.9rem;">
-      Deploy <code>drumsergio/cashpilot-worker</code> on each server with these environment variables:
+      Deploy <code>drumsergio/cashpilot-worker</code> on each server, or install the
+      <a href="https://github.com/GeiserX/CashPilot-android" style="color: var(--accent);">Android app</a> on your phone.
+      For Docker workers, set these environment variables:
     </p>
     <div style="background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 8px; padding: 12px;">
       <code id="worker-env" style="display: block; word-break: break-all; color: var(--text-primary); font-size: 0.85rem; white-space: pre-wrap;">CASHPILOT_UI_URL=<span id="env-ui-url"></span>
@@ -137,6 +139,13 @@ CASHPILOT_WORKER_NAME=server-name</code>
     container.innerHTML = html;
   }
 
+  function fmtBytes(b) {
+    if (!b || b < 1024) return b + ' B';
+    if (b < 1048576) return (b / 1024).toFixed(1) + ' KB';
+    if (b < 1073741824) return (b / 1048576).toFixed(1) + ' MB';
+    return (b / 1073741824).toFixed(2) + ' GB';
+  }
+
   function renderApps(apps) {
     let html = '<div style="margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border-color);">';
     html += '<div style="display: flex; gap: 6px; flex-wrap: wrap;">';
@@ -144,7 +153,10 @@ CASHPILOT_WORKER_NAME=server-name</code>
       const isRunning = a.running;
       const color = isRunning ? 'var(--success)' : 'var(--text-muted)';
       const bg = isRunning ? 'var(--success-soft)' : 'var(--bg-hover)';
-      html += `<span style="font-size:0.75rem; padding:3px 8px; border-radius:4px; background:${bg}; color:${color}; font-weight:500;">${esc(a.slug)}</span>`;
+      const tx = a.net_tx_24h || 0;
+      const rx = a.net_rx_24h || 0;
+      const netTip = (tx || rx) ? ` title="24h: ↑${fmtBytes(tx)} ↓${fmtBytes(rx)}"` : '';
+      html += `<span style="font-size:0.75rem; padding:3px 8px; border-radius:4px; background:${bg}; color:${color}; font-weight:500;"${netTip}>${esc(a.slug)}</span>`;
     }
     html += '</div></div>';
     return html;

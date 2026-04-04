@@ -73,6 +73,13 @@ const CP = (() => {
 
   function capFirst(s) { return s ? s.charAt(0).toUpperCase() + s.slice(1) : ''; }
 
+  function fmtNetBytes(b) {
+    if (!b || b < 1024) return (b || 0) + ' B';
+    if (b < 1048576) return (b / 1024).toFixed(1) + ' KB';
+    if (b < 1073741824) return (b / 1048576).toFixed(1) + ' MB';
+    return (b / 1073741824).toFixed(2) + ' GB';
+  }
+
   // -----------------------------------------------------------
   // Modal
   // -----------------------------------------------------------
@@ -516,6 +523,8 @@ const CP = (() => {
         const iNoDocker = !inst.has_docker || inst.is_android;
         const disabledAttr = iNoDocker ? ' disabled title="No Docker access"' : '';
         const subLabel = inst.is_android ? '' : escapeHtml(inst.container_name);
+        const cpuCell = inst.is_android ? fmtNetBytes(inst.net_tx_24h) : `${inst.cpu || '0'}%`;
+        const memCell = inst.is_android ? fmtNetBytes(inst.net_rx_24h) : (inst.memory || '0 MB');
         html += `
         <tr class="instance-row" data-parent="${escapeHtml(svc.slug)}" style="display:none;">
           <td style="padding-left:28px;">
@@ -526,8 +535,8 @@ const CP = (() => {
           <td></td>
           <td></td>
           <td></td>
-          <td style="text-align:right;">${inst.cpu || '0'}%</td>
-          <td style="text-align:right;">${inst.memory || '0 MB'}</td>
+          <td style="text-align:right;">${cpuCell}</td>
+          <td style="text-align:right;">${memCell}</td>
           <td></td>
           <td style="text-align:center; white-space:nowrap;">
             <div class="action-btns">

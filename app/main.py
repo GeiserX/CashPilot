@@ -35,6 +35,14 @@ scheduler = AsyncIOScheduler()
 _collector_alerts: list[dict[str, str]] = []
 
 
+def _safe_json(raw: str, fallback: Any = None) -> Any:
+    """Parse JSON with a fallback so one malformed DB row doesn't 500 the fleet."""
+    try:
+        return json.loads(raw)
+    except (json.JSONDecodeError, TypeError):
+        return fallback if fallback is not None else []
+
+
 async def _get_all_worker_containers() -> list[dict[str, Any]]:
     """Collect container/app data from all online workers' heartbeat data in DB."""
     workers = await database.list_workers()
@@ -42,13 +50,13 @@ async def _get_all_worker_containers() -> list[dict[str, Any]]:
     for w in workers:
         if w.get("status") != "online":
             continue
-        sys_info = json.loads(w.get("system_info", "{}"))
+        sys_info = _safe_json(w.get("system_info", "{}"), {})
         worker_has_docker = sys_info.get("docker_available", False)
         is_android = sys_info.get("device_type") == "android"
         worker_name = w.get("name", "worker")
 
         # Docker containers (from Docker-based workers)
-        containers = json.loads(w.get("containers", "[]"))
+        containers = _safe_json(w.get("containers", "[]"))
         for c in containers:
             slug = c.get("slug", "")
             if slug:
@@ -71,7 +79,7 @@ async def _get_all_worker_containers() -> list[dict[str, Any]]:
 
         # Android apps (from Android workers)
         if is_android:
-            apps = json.loads(w.get("apps", "[]"))
+            apps = _safe_json(w.get("apps", "[]"))
             for a in apps:
                 slug = a.get("slug", "")
                 if slug:
@@ -1462,9 +1470,9 @@ async def api_list_workers(request: Request) -> list[dict[str, Any]]:
 
 def _parse_worker_json(w: dict[str, Any]) -> None:
     """Parse stored JSON columns and compute counts for a worker dict."""
-    w["containers"] = json.loads(w.get("containers", "[]"))
-    w["apps"] = json.loads(w.get("apps", "[]"))
-    w["system_info"] = json.loads(w.get("system_info", "{}"))
+    w["containers"] = _safe_json(w.get("containers", "[]"))
+    w["apps"] = _safe_json(w.get("apps", "[]"))
+    w["system_info"] = _safe_json(w.get("system_info", "{}"), {})
     is_android = w["system_info"].get("device_type") == "android"
     if is_android:
         w["container_count"] = len(w["apps"])
@@ -1559,18 +1567,19 @@ async def api_fleet_summary(request: Request) -> dict[str, Any]:
     online_workers = 0
 
     for w in workers:
-        sys_info = json.loads(w.get("system_info", "{}"))
+        if w["status"] != "online":
+            continue
+        online_workers += 1
+        sys_info = _safe_json(w.get("system_info", "{}"), {})
         is_android = sys_info.get("device_type") == "android"
         if is_android:
-            apps = json.loads(w.get("apps", "[]"))
+            apps = _safe_json(w.get("apps", "[]"))
             total_containers += len(apps)
             total_running += sum(1 for a in apps if a.get("running"))
         else:
-            containers = json.loads(w.get("containers", "[]"))
+            containers = _safe_json(w.get("containers", "[]"))
             total_containers += len(containers)
             total_running += sum(1 for c in containers if c.get("status") == "running")
-        if w["status"] == "online":
-            online_workers += 1
 
     return {
         "total_workers": len(workers),
