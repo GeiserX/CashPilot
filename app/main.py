@@ -1303,7 +1303,7 @@ async def api_collectors_meta(request: Request) -> list[dict[str, Any]]:
         "proxyrack": "Log in at proxyrack.com, press F12 → Network, find any API request and copy the <b>api_key</b> from the query string.",
         "repocket": "Use your Repocket account email and password (same as app.repocket.com).",
         "salad": "Log in at app.salad.com, press F12 → Application → Cookies, copy the <b>auth</b> cookie value.",
-        "traffmonetizer": "Use your Traffmonetizer account email and password (same as app.traffmonetizer.com).",
+        "traffmonetizer": "Log in at app.traffmonetizer.com, press F12 \u2192 Application \u2192 Local Storage \u2192 <b>token</b> value (a long JWT starting with <code>eyJ</code>).",
     }
     meta = []
     for slug in sorted(COLLECTOR_MAP.keys()):
