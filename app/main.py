@@ -1289,6 +1289,15 @@ async def api_collectors_meta(request: Request) -> list[dict[str, Any]]:
         "oauth_token",
         "brd_sess_id",
     }
+    # Per-service hints on how to obtain the credentials
+    hints: dict[str, str] = {
+        "bytelixir": "Log in at dash.bytelixir.com, press F12 \u2192 Application \u2192 Cookies, copy the <b>bytelixir_session</b> value.",
+        "earnapp": "Log in at earnapp.com, press F12 \u2192 Application \u2192 Cookies, copy the <b>xoauth-token</b> value.",
+        "grass": "Log in at app.getgrass.io, press F12 \u2192 Application \u2192 Local Storage, copy the <b>accessToken</b> value.",
+        "packetstream": "Log in at packetstream.io, press F12 \u2192 Application \u2192 Cookies, copy the <b>auth_token</b> value.",
+        "proxyrack": "Log in at proxyrack.com/dashboard, press F12 \u2192 Network, find an API call, and copy your <b>api_key</b> from the request.",
+        "salad": "Log in at app.salad.com, press F12 \u2192 Application \u2192 Cookies, copy the <b>__Secure-next-auth.session-token</b> value.",
+    }
     meta = []
     for slug in sorted(COLLECTOR_MAP.keys()):
         args = _COLLECTOR_ARGS.get(slug, [])
@@ -1307,7 +1316,10 @@ async def api_collectors_meta(request: Request) -> list[dict[str, Any]]:
                     "required": not optional,
                 }
             )
-        meta.append({"slug": slug, "name": name, "fields": fields})
+        entry: dict[str, Any] = {"slug": slug, "name": name, "fields": fields}
+        if slug in hints:
+            entry["hint"] = hints[slug]
+        meta.append(entry)
     return meta
 
 
