@@ -1299,7 +1299,7 @@ async def api_collectors_meta(request: Request) -> list[dict[str, Any]]:
         "honeygain": "Use your Honeygain account email and password (same as dashboard.honeygain.com).",
         "iproyal": "Use your IPRoyal Pawns account email and password (same as pawns.app).",
         "mysterium": "Use your MystNodes account email and password (same as my.mystnodes.com).",
-        "packetstream": "Log in at packetstream.io, press F12 → Application → Cookies, copy the <b>auth_token</b> value.",
+        "packetstream": "Log in at packetstream.io, press F12 → Application → Cookies, copy the <b>auth</b> cookie value (it\u2019s a JWT).",
         "proxyrack": "Log in at proxyrack.com, press F12 → Network, find any API request and copy the <b>api_key</b> from the query string.",
         "repocket": "Use your Repocket account email and password (same as app.repocket.com).",
         "salad": "Log in at app.salad.com, press F12 → Application → Cookies, copy the <b>auth</b> cookie value.",

@@ -44,32 +44,43 @@ class PacketStreamCollector(BaseCollector):
                 resp.raise_for_status()
                 html = resp.text
 
-                # Extract balance from window.userData in the HTML
                 balance = 0.0
                 parsed = False
+
+                # Pattern 1: server-rendered Balance card (current)
+                # <h3>Balance</h3>...<h2 ...>$0.13</h2>
                 match = re.search(
-                    r"window\.userData\s*=\s*(\{[^}]+\})",
+                    r"<h3>Balance</h3>.*?<h2[^>]*>\$?([\d.]+)</h2>",
                     html,
+                    re.DOTALL,
                 )
                 if match:
-                    import json
+                    balance = float(match.group(1))
+                    parsed = True
 
-                    try:
-                        user_data = json.loads(match.group(1))
-                        balance = float(user_data.get("balance", 0))
-                        parsed = True
-                    except (json.JSONDecodeError, ValueError):
-                        pass
+                # Pattern 2: window.userData JSON (legacy)
+                if not parsed:
+                    match = re.search(
+                        r"window\.userData\s*=\s*(\{[^}]+\})",
+                        html,
+                    )
+                    if match:
+                        import json
 
-                # Fallback: look for balance pattern
+                        try:
+                            user_data = json.loads(match.group(1))
+                            balance = float(user_data.get("balance", 0))
+                            parsed = True
+                        except (json.JSONDecodeError, ValueError):
+                            pass
+
+                # Pattern 3: bare "balance" key in JSON
                 if not parsed:
                     match = re.search(r'"balance"\s*:\s*([\d.]+)', html)
                     if match:
                         balance = float(match.group(1))
                         parsed = True
 
-                # If no pattern matched at all, report an error rather than
-                # silently returning 0 (which hides integration breakage).
                 if not parsed:
                     return EarningsResult(
                         platform=self.platform,
