@@ -40,12 +40,13 @@ def _service(slug, cashout=None):
     return svc
 
 
-def _call_breakdown(rows, services_by_slug):
+def _call_breakdown(rows, services_by_slug, config=None):
     """Call the real handler with mocked dependencies."""
     request = MagicMock()
     with (
         patch("app.main.auth.get_current_user", return_value={"uid": 1, "u": "test", "r": "owner"}),
         patch("app.main.database.get_earnings_per_service", new_callable=AsyncMock, return_value=rows),
+        patch("app.main.database.get_config", new_callable=AsyncMock, return_value=config or {}),
         patch("app.main.catalog.get_service", side_effect=lambda slug: services_by_slug.get(slug)),
     ):
         return asyncio.run(api_earnings_breakdown(request))
@@ -142,3 +143,63 @@ class TestBreakdownEligibility:
         svcs = {"svc-a": _service("svc-a", cashout={"min_amount": min_amount, "dashboard_url": "https://x.com"})}
         result = _call_breakdown(rows, svcs)
         assert result[0]["cashout"]["eligible"] is expected
+
+
+class TestSignupBonusOffset:
+    """Signup bonus offset subtracts promotional credits from displayed balance."""
+
+    def test_no_bonus_returns_same_balance(self):
+        rows = [_earnings_row("svc-a", balance=10.0)]
+        svcs = {"svc-a": _service("svc-a", cashout={"min_amount": 5})}
+        result = _call_breakdown(rows, svcs)
+        assert result[0]["balance"] == 10.0
+        assert result[0]["balance_adjusted"] == 10.0
+        assert result[0]["signup_bonus"] == 0.0
+
+    def test_bonus_subtracts_from_adjusted(self):
+        rows = [_earnings_row("svc-a", balance=15.0)]
+        svcs = {"svc-a": _service("svc-a", cashout={"min_amount": 5})}
+        config = {"svc-a_signup_bonus": "5.0"}
+        result = _call_breakdown(rows, svcs, config=config)
+        assert result[0]["balance"] == 15.0
+        assert result[0]["balance_adjusted"] == 10.0
+        assert result[0]["signup_bonus"] == 5.0
+
+    def test_bonus_never_goes_negative(self):
+        rows = [_earnings_row("svc-a", balance=3.0)]
+        svcs = {"svc-a": _service("svc-a", cashout={"min_amount": 5})}
+        config = {"svc-a_signup_bonus": "10.0"}
+        result = _call_breakdown(rows, svcs, config=config)
+        assert result[0]["balance"] == 3.0
+        assert result[0]["balance_adjusted"] == 0.0
+
+    def test_eligibility_uses_raw_balance(self):
+        """Cashout eligibility should use raw platform balance, not adjusted."""
+        rows = [_earnings_row("svc-a", balance=10.0)]
+        svcs = {"svc-a": _service("svc-a", cashout={"min_amount": 5, "dashboard_url": "https://x.com"})}
+        config = {"svc-a_signup_bonus": "8.0"}
+        result = _call_breakdown(rows, svcs, config=config)
+        assert result[0]["balance_adjusted"] == 2.0
+        assert result[0]["cashout"]["eligible"] is True  # raw 10 >= min 5
+
+    def test_invalid_bonus_treated_as_zero(self):
+        rows = [_earnings_row("svc-a", balance=10.0)]
+        svcs = {"svc-a": _service("svc-a", cashout={"min_amount": 5})}
+        config = {"svc-a_signup_bonus": "not-a-number"}
+        result = _call_breakdown(rows, svcs, config=config)
+        assert result[0]["balance_adjusted"] == 10.0
+        assert result[0]["signup_bonus"] == 0.0
+
+    def test_multiple_services_with_bonuses(self):
+        rows = [
+            _earnings_row("svc-a", balance=20.0),
+            _earnings_row("svc-b", balance=8.0),
+        ]
+        svcs = {
+            "svc-a": _service("svc-a", cashout={"min_amount": 0}),
+            "svc-b": _service("svc-b", cashout={"min_amount": 0}),
+        }
+        config = {"svc-a_signup_bonus": "5.0", "svc-b_signup_bonus": "3.0"}
+        result = _call_breakdown(rows, svcs, config=config)
+        assert result[0]["balance_adjusted"] == 15.0
+        assert result[1]["balance_adjusted"] == 5.0
