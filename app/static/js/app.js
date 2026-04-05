@@ -813,21 +813,32 @@ const CP = (() => {
         redirect: 'You will be redirected to the service dashboard to complete the payout.',
         api: 'Payout will be triggered via the service API.',
         manual: 'Follow the instructions below to claim your earnings.',
+        auto: 'Payouts happen automatically when the minimum threshold is reached.',
       };
 
-      const actionSection = eligible && co.dashboard_url
-        ? `<div style="margin-top:20px; text-align:center;">
+      let actionSection = '';
+      if (co.method === 'auto') {
+        // Auto-settle services — always show the dashboard link (e.g. rewards page)
+        actionSection = `<div style="margin-top:20px; text-align:center;">
+             <p style="font-size:0.85rem; color:var(--text-secondary); margin-bottom:12px;">${methodLabel.auto}</p>
+             ${co.dashboard_url ? `<a href="${escapeHtml(co.dashboard_url)}" target="_blank" rel="noopener" class="btn btn-primary btn-lg" style="min-width:200px;">
+               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+               Claim Rewards
+             </a>` : ''}
+           </div>`;
+      } else if (eligible && co.dashboard_url) {
+        actionSection = `<div style="margin-top:20px; text-align:center;">
              <p style="font-size:0.85rem; color:var(--text-secondary); margin-bottom:12px;">${methodLabel[co.method] || methodLabel.redirect}</p>
              <a href="${escapeHtml(co.dashboard_url)}" target="_blank" rel="noopener" class="btn btn-success btn-lg" style="min-width:200px;">
                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
                Go to Dashboard
              </a>
-           </div>`
-        : !eligible
-          ? `<div style="margin-top:16px; text-align:center;">
+           </div>`;
+      } else if (!eligible) {
+        actionSection = `<div style="margin-top:16px; text-align:center;">
                <p style="font-size:0.85rem; color:var(--text-muted);">Keep your service running to accumulate more earnings.</p>
-             </div>`
-          : '';
+             </div>`;
+      }
 
       if (body) body.innerHTML = `
         <div style="text-align:center; padding:8px 0;">

@@ -36,9 +36,9 @@ requirements:
 
 payment:
   methods: [crypto]
-  minimum_payout: "$2"
+  minimum_payout: "4 MYST"
   currency: MYST
-  frequency: "On request"
+  frequency: "Auto-settle every 4 MYST to your beneficiary wallet"
 
 earnings:
   monthly_low: 0
@@ -48,11 +48,11 @@ earnings:
   notes: "Earnings in MYST tokens. Residential IPs earn significantly more. Node WebUI at port 4449 for management. VPS accepted. Port forwarding UDP 56000-56100 strongly recommended -- without it, nodes get Strict NAT status and many VPN sessions fail, severely reducing income. Important: after first run, set your beneficiary (settlement) wallet via the node WebUI or CLI to match your mystnodes.com account -- this links on-chain earnings to your cloud dashboard."
 
 cashout:
-  method: redirect
-  dashboard_url: "https://mystnodes.com/dashboard"
-  min_amount: 2.0
+  method: auto
+  dashboard_url: "https://my.mystnodes.com/rewards"
+  min_amount: 4.0
   currency: MYST
-  notes: "MYST tokens settle on-chain. Withdraw from MyST node dashboard to your wallet."
+  notes: "Auto-settles every 4 MYST to your beneficiary wallet. No manual cashout needed. Visit Rewards page to claim bonus MYST."
 
 platforms: [docker, windows, macos, linux, android, browser-extension]
 
