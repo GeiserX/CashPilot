@@ -44,7 +44,11 @@ def _call_summary(dashboard_total, earnings, config=None, to_usd=None):
 
     with (
         patch("app.main.auth.get_current_user", return_value={"uid": 1, "u": "test", "r": "owner"}),
-        patch("app.main.database.get_earnings_dashboard_summary", new_callable=AsyncMock, return_value=_dashboard_summary(dashboard_total)),
+        patch(
+            "app.main.database.get_earnings_dashboard_summary",
+            new_callable=AsyncMock,
+            return_value=_dashboard_summary(dashboard_total),
+        ),
         patch("app.main.database.get_earnings_summary", new_callable=AsyncMock, return_value=earnings),
         patch("app.main.database.get_config", new_callable=AsyncMock, return_value=config or {}),
         patch("app.main.exchange_rates.to_usd", side_effect=mock_to_usd),
