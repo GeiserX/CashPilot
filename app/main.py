@@ -1303,7 +1303,7 @@ async def api_collectors_meta(request: Request) -> list[dict[str, Any]]:
         "proxyrack": "Log in at proxyrack.com, press F12 → Network, find any API request and copy the <b>api_key</b> from the query string.",
         "repocket": "Use your Repocket account email and password (same as app.repocket.com).",
         "salad": "Log in at app.salad.com, press F12 → Application → Cookies, copy the <b>auth</b> cookie value.",
-        "traffmonetizer": "Find your token in the Traffmonetizer app or in your Docker container\u2019s <b>TRAFFMONETIZER_TOKEN</b> env variable.",
+        "traffmonetizer": "Use your Traffmonetizer account email and password (same as app.traffmonetizer.com).",
     }
     meta = []
     for slug in sorted(COLLECTOR_MAP.keys()):
