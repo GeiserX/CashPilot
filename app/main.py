@@ -7,6 +7,7 @@ management, and earnings tracking.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import logging
 import os
@@ -1040,13 +1041,40 @@ async def api_earnings_summary(request: Request) -> dict[str, Any]:
     _require_auth_api(request)
     summary = await database.get_earnings_dashboard_summary()
 
-    # Include non-USD balances converted to USD in the total
+    # Load config for signup bonus offsets
+    all_config = await database.get_config()
+    if not isinstance(all_config, dict):
+        all_config = {}
+
+    # Include non-USD balances converted to USD in the total.
+    # Compute total_adjusted as the sum of clamped per-service adjusted
+    # balances (converted to USD) so it always matches the breakdown view.
     all_earnings = await database.get_earnings_summary()
+    total_bonus_usd = 0.0
+    total_adjusted = 0.0
     for e in all_earnings:
-        if e["currency"] != "USD":
-            usd_val = exchange_rates.to_usd(e["balance"], e["currency"])
+        slug = e.get("platform", "")
+        balance = float(e["balance"])
+        currency = e["currency"]
+
+        bonus = 0.0
+        with contextlib.suppress(ValueError, TypeError):
+            bonus = float(all_config.get(f"{slug}_signup_bonus", "0") or "0")
+        adjusted = max(0.0, balance - bonus)
+
+        if currency != "USD":
+            usd_val = exchange_rates.to_usd(balance, currency)
             if usd_val is not None:
                 summary["total"] = round(summary["total"] + usd_val, 2)
+            adj_usd = exchange_rates.to_usd(adjusted, currency)
+            if adj_usd is not None:
+                total_adjusted += adj_usd
+            bonus_usd = exchange_rates.to_usd(bonus, currency) if bonus > 0 else 0.0
+            if bonus_usd is not None:
+                total_bonus_usd += bonus_usd
+        else:
+            total_adjusted += adjusted
+            total_bonus_usd += bonus
 
     # Count active (running) services from worker data
     active = 0
@@ -1056,6 +1084,8 @@ async def api_earnings_summary(request: Request) -> dict[str, Any]:
     except Exception:
         pass
     summary["active_services"] = active
+    summary["total_bonus"] = round(total_bonus_usd, 2)
+    summary["total_adjusted"] = round(total_adjusted, 2)
     return summary
 
 
@@ -1074,6 +1104,11 @@ async def api_earnings_breakdown(request: Request) -> list[dict[str, Any]]:
     _require_auth_api(request)
     rows = await database.get_earnings_per_service()
 
+    # Load config for per-service signup bonus offsets
+    all_config = await database.get_config()
+    if not isinstance(all_config, dict):
+        all_config = {}
+
     result = []
     for row in rows:
         slug = row["platform"]
@@ -1084,10 +1119,18 @@ async def api_earnings_breakdown(request: Request) -> list[dict[str, Any]]:
         prev_balance = float(row.get("prev_balance", 0))
         delta = balance - prev_balance
 
+        # Signup bonus offset (stored in config as {slug}_signup_bonus)
+        signup_bonus = 0.0
+        with contextlib.suppress(ValueError, TypeError):
+            signup_bonus = float(all_config.get(f"{slug}_signup_bonus", "0") or "0")
+        balance_adjusted = round(max(0.0, balance - signup_bonus), 4)
+
         entry = {
             "platform": slug,
             "name": svc["name"] if svc else slug,
             "balance": round(balance, 4),
+            "balance_adjusted": balance_adjusted,
+            "signup_bonus": round(signup_bonus, 4),
             "currency": row["currency"],
             "last_updated": row["date"],
             "delta": round(delta, 4),
@@ -1323,7 +1366,11 @@ async def api_collectors_meta(request: Request) -> list[dict[str, Any]]:
                     "required": not optional,
                 }
             )
-        entry: dict[str, Any] = {"slug": slug, "name": name, "fields": fields}
+        # Payment currency for bonus offset labeling
+        payment = (svc.get("payment", {}) if svc else {}) or {}
+        pay_currency = payment.get("currency", "USD")
+
+        entry: dict[str, Any] = {"slug": slug, "name": name, "fields": fields, "currency": pay_currency}
         if slug in hints:
             entry["hint"] = hints[slug]
         meta.append(entry)

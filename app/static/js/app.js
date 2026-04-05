@@ -194,13 +194,26 @@ const CP = (() => {
   async function loadDashboardStats() {
     try {
       const data = await api('/api/earnings/summary');
-      setTextContent('total-earnings', formatCurrency(data.total || 0));
+      const totalBonus = data.total_bonus || 0;
+      const displayTotal = totalBonus > 0 ? (data.total_adjusted || 0) : (data.total || 0);
+      setTextContent('total-earnings', formatCurrency(displayTotal));
       setTextContent('today-earnings', formatCurrency(data.today || 0));
       setTextContent('month-earnings', formatCurrency(data.month || 0));
       setTextContent('active-services', data.active_services || 0);
 
+      // Show promo offset footnote under total
+      const bonusNote = document.getElementById('total-bonus-note');
+      if (bonusNote) {
+        if (totalBonus > 0) {
+          bonusNote.textContent = `\u2212${formatCurrency(totalBonus)} promo`;
+          bonusNote.style.display = '';
+        } else {
+          bonusNote.style.display = 'none';
+        }
+      }
+
       // Update topbar
-      setTextContent('topbar-total', formatCurrency(data.total || 0));
+      setTextContent('topbar-total', formatCurrency(displayTotal));
 
       // Change indicators
       if (data.today_change !== undefined) {
@@ -242,8 +255,8 @@ const CP = (() => {
         case 'balance': {
           const ba = breakdownMap[a.slug];
           const bb = breakdownMap[b.slug];
-          va = (ba && ba.balance) || a.balance || 0;
-          vb = (bb && bb.balance) || b.balance || 0;
+          va = (ba && ba.signup_bonus) ? (ba.balance_adjusted ?? ba.balance) : ((ba && ba.balance) || a.balance || 0);
+          vb = (bb && bb.signup_bonus) ? (bb.balance_adjusted ?? bb.balance) : ((bb && bb.balance) || b.balance || 0);
           break;
         }
         case 'change': {
@@ -411,20 +424,26 @@ const CP = (() => {
 
     // Balance + delta from breakdown
     const balance = (bk && bk.balance) || svc.balance || 0;
+    const signupBonus = (bk && bk.signup_bonus) || 0;
+    const balanceAdj = signupBonus > 0 ? ((bk && bk.balance_adjusted) ?? Math.max(0, balance - signupBonus)) : balance;
     const currency = (bk && bk.currency) || svc.currency || 'USD';
     const delta = bk ? bk.delta : 0;
     const deltaSign = delta > 0 ? '+' : '';
     const deltaClass = delta > 0 ? 'positive' : delta < 0 ? 'negative' : '';
     const deltaStr = delta !== 0 ? `${deltaSign}${formatCurrency(delta, currency)}` : '--';
-    const nativeLabel = formatNative(balance, currency);
+    const displayBalance = signupBonus > 0 ? balanceAdj : balance;
+    const nativeLabel = formatNative(displayBalance, currency);
+    const bonusLabel = signupBonus > 0
+      ? `<div style="font-size:0.6rem; color:var(--text-muted);">\u2212${formatCurrency(signupBonus, currency)} promo</div>`
+      : '';
     const disconnectedLabel = svc.collector_disconnected
       ? `<div style="font-size:0.6rem; color:#ef4444; font-weight:500; display:flex; align-items:center; justify-content:flex-end; gap:4px;">disconnected${_isOwner ? ` <button class="btn btn-ghost" onclick="event.stopPropagation(); CP.openCredentialModal('${escapeHtml(svc.slug)}')" style="font-size:0.6rem; padding:1px 5px; line-height:1.2; color:#ef4444; border:1px solid #ef4444; border-radius:3px; cursor:pointer;">update</button>` : ''}</div>`
       : '';
     let balanceHtml;
     if (nativeLabel) {
-      balanceHtml = `${formatCurrency(balance, currency)}<div style="font-size:0.65rem;color:var(--text-muted);">${nativeLabel}</div>${disconnectedLabel}`;
+      balanceHtml = `${formatCurrency(displayBalance, currency)}<div style="font-size:0.65rem;color:var(--text-muted);">${nativeLabel}</div>${bonusLabel}${disconnectedLabel}`;
     } else {
-      balanceHtml = `${formatCurrency(balance, currency)}${disconnectedLabel}`;
+      balanceHtml = `${formatCurrency(displayBalance, currency)}${bonusLabel}${disconnectedLabel}`;
     }
 
     // CPU/Memory — skip for external; show avg for multi-instance
@@ -469,6 +488,12 @@ const CP = (() => {
       ? ` <span class="badge badge-instances" title="${instances} instance${instances > 1 ? 's' : ''}">${instances}x</span>`
       : '';
 
+    // Settings gear (owner-only) — opens credential + bonus modal
+    const settingsBtn = _isOwner
+      ? `<button class="btn btn-icon" onclick="event.stopPropagation(); CP.openCredentialModal('${escapeHtml(svc.slug)}')" title="Credentials &amp; settings">
+           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
+         </button>` : '';
+
     // For multi-instance: expand chevron, no container action buttons in main row
     // For single instance: show action buttons directly
     let actionBtns;
@@ -476,9 +501,9 @@ const CP = (() => {
       const chevron = `<button class="btn btn-icon expand-toggle" onclick="event.stopPropagation(); CP.toggleInstances('${svc.slug}')" title="Expand instances">
         <svg class="expand-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
       </button>`;
-      actionBtns = `<div class="action-btns">${claimBtn}${chevron}</div>`;
+      actionBtns = `<div class="action-btns">${claimBtn}${settingsBtn}${chevron}</div>`;
     } else if (isExternal) {
-      actionBtns = `<div class="action-btns">${claimBtn}</div>`;
+      actionBtns = `<div class="action-btns">${claimBtn}${settingsBtn}</div>`;
     } else {
       // Single instance — build container buttons targeting the right node
       const inst = details[0] || {};
@@ -487,6 +512,7 @@ const CP = (() => {
       const disabledAttr = noDocker ? ' disabled title="No Docker access"' : '';
       actionBtns = `<div class="action-btns">
           ${claimBtn}
+          ${settingsBtn}
           ${_canWrite ? `
           <button class="btn btn-icon" onclick="CP.restartService('${svc.slug}${wParam})" title="Restart"${disabledAttr}>
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg>
@@ -716,9 +742,28 @@ const CP = (() => {
       }).join('');
       const hint = col.hint || '';
 
+      // Signup bonus offset field — show current value from config
+      const bonusKey = `${slug}_signup_bonus`;
+      const currentBonus = config[bonusKey] || '';
+      const payCurrency = col.currency || 'USD';
+      const currencyLabel = payCurrency === 'USD' ? '$' : payCurrency;
+      const bonusHtml = `
+        <div style="margin-top:14px; padding-top:12px; border-top:1px solid var(--border);">
+          <label style="display:block; font-size:0.8rem; color:var(--text-secondary); margin-bottom:4px;">Signup Bonus Offset (${escapeHtml(currencyLabel)})</label>
+          <div style="display:flex; align-items:center; gap:6px;">
+            <input class="form-input cred-modal-input" type="number" step="0.01" min="0"
+                   data-config="${escapeHtml(bonusKey)}"
+                   value="${escapeHtml(currentBonus)}"
+                   placeholder="0.00"
+                   style="width:100px;">
+            <span style="font-size:0.75rem; color:var(--text-muted);">Subtract promotional credits from displayed balance</span>
+          </div>
+        </div>`;
+
       body.innerHTML = `
         ${hint ? `<p style="font-size:0.75rem; color:var(--text-muted); margin:0 0 12px; line-height:1.4;">${hint}</p>` : ''}
         ${fieldsHtml}
+        ${bonusHtml}
         <div style="display:flex; gap:8px; margin-top:14px;">
           <button class="btn btn-primary btn-sm" onclick="CP.saveCredentialModal()">Save</button>
           <button class="btn btn-ghost btn-sm" onclick="CP.closeModal('cred-modal')">Cancel</button>
