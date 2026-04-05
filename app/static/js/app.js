@@ -417,7 +417,7 @@ const CP = (() => {
     const deltaStr = delta !== 0 ? `${deltaSign}${formatCurrency(delta, currency)}` : '--';
     const nativeLabel = formatNative(balance, currency);
     const disconnectedLabel = svc.collector_disconnected
-      ? '<div style="font-size:0.6rem; color:#ef4444; font-weight:500;">disconnected</div>'
+      ? `<div style="font-size:0.6rem; color:#ef4444; font-weight:500; display:flex; align-items:center; gap:4px;">disconnected${_canWrite ? ` <button class="btn btn-ghost" onclick="event.stopPropagation(); CP.openCredentialModal('${escapeHtml(svc.slug)}')" style="font-size:0.6rem; padding:1px 5px; line-height:1.2; color:#ef4444; border:1px solid #ef4444; border-radius:3px; cursor:pointer;">update</button>` : ''}</div>`
       : '';
     let balanceHtml;
     if (nativeLabel) {
@@ -676,6 +676,80 @@ const CP = (() => {
   // Earnings Breakdown
   // -----------------------------------------------------------
   // loadEarningsBreakdown merged into loadServicesTable above
+
+  // -----------------------------------------------------------
+  // Credential Update Modal (inline from dashboard / notifications)
+  // -----------------------------------------------------------
+  let _collectorMetaCache = null;
+
+  async function openCredentialModal(slug) {
+    openModal('cred-modal');
+    const title = document.getElementById('cred-modal-title');
+    const body = document.getElementById('cred-modal-body');
+    if (title) title.textContent = 'Update Credentials';
+    if (body) body.innerHTML = '<div class="spinner" style="margin:24px auto;"></div>';
+
+    try {
+      if (!_collectorMetaCache) {
+        _collectorMetaCache = await api('/api/collectors/meta');
+      }
+      const config = await api('/api/config');
+      const col = _collectorMetaCache.find(c => c.slug === slug);
+      if (!col || !col.fields.length) {
+        if (body) body.innerHTML = '<p style="color:var(--text-muted);">No credentials needed for this service.</p>';
+        return;
+      }
+      if (title) title.textContent = `${col.name} — Credentials`;
+
+      const fieldsHtml = col.fields.map(f => {
+        const val = config[f.key] || '';
+        const inputType = f.secret ? 'password' : 'text';
+        return `
+        <div style="margin-bottom:10px;">
+          <label style="display:block; font-size:0.8rem; color:var(--text-secondary); margin-bottom:4px;">${escapeHtml(f.label)}${f.required ? '' : ' <span style="opacity:0.5;">(optional)</span>'}</label>
+          <input class="form-input cred-modal-input" type="${inputType}"
+                 data-config="${escapeHtml(f.key)}"
+                 value="${escapeHtml(val)}"
+                 placeholder="${escapeHtml(f.label)}"
+                 style="width:100%;">
+        </div>`;
+      }).join('');
+
+      body.innerHTML = `
+        ${fieldsHtml}
+        <div style="display:flex; gap:8px; margin-top:14px;">
+          <button class="btn btn-primary btn-sm" onclick="CP.saveCredentialModal()">Save</button>
+          <button class="btn btn-ghost btn-sm" onclick="CP.closeModal('cred-modal')">Cancel</button>
+        </div>`;
+    } catch (err) {
+      if (body) body.innerHTML = `<p style="color:#ef4444;">Failed to load: ${escapeHtml(err.message)}</p>`;
+    }
+  }
+
+  async function saveCredentialModal() {
+    const inputs = document.querySelectorAll('.cred-modal-input');
+    const data = {};
+    inputs.forEach(input => {
+      const key = input.dataset.config;
+      const val = input.value.trim();
+      if (val && val !== '********') data[key] = val;
+    });
+    if (!Object.keys(data).length) {
+      toast('Enter at least one credential', 'warning');
+      return;
+    }
+    try {
+      await api('/api/config', { method: 'POST', body: { data } });
+      toast('Credentials saved', 'success');
+      closeModal('cred-modal');
+      // Trigger a collection so it picks up new creds immediately
+      api('/api/collect', { method: 'POST' }).catch(() => {});
+      // Refresh dashboard after short delay
+      setTimeout(() => { if (typeof refreshServices === 'function') refreshServices(); }, 3000);
+    } catch (err) {
+      toast(`Save failed: ${err.message}`, 'error');
+    }
+  }
 
   // -----------------------------------------------------------
   // Claim Modal
@@ -1928,7 +2002,7 @@ const CP = (() => {
       badge.textContent = alerts.length;
       const _isOwner = window._userRole === 'owner';
       list.innerHTML = alerts.map(a => `
-        <div class="notify-item" data-platform="${escapeHtml(a.platform)}"${_isOwner ? ` onclick="CP.goToCollectorSettings('${escapeHtml(a.platform)}')" style="cursor:pointer;"` : ''}>
+        <div class="notify-item" data-platform="${escapeHtml(a.platform)}">
           <div class="notify-item-icon">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
           </div>
@@ -1936,6 +2010,7 @@ const CP = (() => {
             <div class="notify-item-platform">${escapeHtml(a.platform)}</div>
             <div class="notify-item-msg" title="${escapeHtml(a.error)}">${escapeHtml(a.error)}</div>
           </div>
+          ${_isOwner ? `<button class="btn btn-ghost btn-sm" onclick="event.stopPropagation(); CP.openCredentialModal('${escapeHtml(a.platform)}')" style="font-size:0.65rem; padding:2px 6px; white-space:nowrap; flex-shrink:0;">Update</button>` : ''}
         </div>
       `).join('');
     } catch {
@@ -2150,5 +2225,7 @@ const CP = (() => {
     deployServiceToWorkers,
     workerAction,
     loadWorkerLogs,
+    openCredentialModal,
+    saveCredentialModal,
   };
 })();
