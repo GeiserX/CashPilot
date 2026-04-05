@@ -1291,12 +1291,19 @@ async def api_collectors_meta(request: Request) -> list[dict[str, Any]]:
     }
     # Per-service hints on how to obtain the credentials
     hints: dict[str, str] = {
-        "bytelixir": "Log in at dash.bytelixir.com, press F12 \u2192 Application \u2192 Cookies, copy the <b>bytelixir_session</b> value.",
-        "earnapp": "Log in at earnapp.com, press F12 \u2192 Application \u2192 Cookies, copy the <b>xoauth-token</b> value.",
-        "grass": "Log in at app.getgrass.io, press F12 \u2192 Application \u2192 Local Storage, copy the <b>accessToken</b> value.",
-        "packetstream": "Log in at packetstream.io, press F12 \u2192 Application \u2192 Cookies, copy the <b>auth_token</b> value.",
-        "proxyrack": "Log in at proxyrack.com/dashboard, press F12 \u2192 Network, find an API call, and copy your <b>api_key</b> from the request.",
-        "salad": "Log in at app.salad.com, press F12 \u2192 Application \u2192 Cookies, copy the <b>__Secure-next-auth.session-token</b> value.",
+        "bitping": "Use your Bitping account email and password (same as nodes.bitping.com).",
+        "bytelixir": "Log in at dash.bytelixir.com (tick Remember Me), press F12 → Application → Cookies, copy the <b>bytelixir_session</b> value.",
+        "earnapp": "Log in at earnapp.com, press F12 → Application → Cookies, copy the <b>oauth-refresh-token</b> value.",
+        "earnfm": "Use your Earn.fm account email and password (same as earn.fm).",
+        "grass": "Log in at app.getgrass.io, press F12 → Application → Local Storage, copy the <b>accessToken</b> value.",
+        "honeygain": "Use your Honeygain account email and password (same as dashboard.honeygain.com).",
+        "iproyal": "Use your IPRoyal Pawns account email and password (same as pawns.app).",
+        "mysterium": "Use your MystNodes account email and password (same as my.mystnodes.com).",
+        "packetstream": "Log in at packetstream.io, press F12 → Application → Cookies, copy the <b>auth_token</b> value.",
+        "proxyrack": "Log in at proxyrack.com, press F12 → Network, find any API request and copy the <b>api_key</b> from the query string.",
+        "repocket": "Use your Repocket account email and password (same as app.repocket.com).",
+        "salad": "Log in at app.salad.com, press F12 → Application → Cookies, copy the <b>auth</b> cookie value.",
+        "traffmonetizer": "Find your token in the Traffmonetizer app or in your Docker container\u2019s <b>TRAFFMONETIZER_TOKEN</b> env variable.",
     }
     meta = []
     for slug in sorted(COLLECTOR_MAP.keys()):

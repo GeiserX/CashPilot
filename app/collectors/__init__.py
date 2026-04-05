@@ -48,11 +48,11 @@ COLLECTOR_MAP: dict[str, type[BaseCollector]] = {
 # Map of slug -> list of config keys needed to instantiate the collector
 _COLLECTOR_ARGS: dict[str, list[str]] = {
     "honeygain": ["email", "password"],
-    "earnapp": ["oauth_token", "?brd_sess_id"],
+    "earnapp": ["oauth_token"],
     "iproyal": ["email", "password"],
     "mysterium": ["email", "password"],
-    "storj": ["?api_url"],
-    "traffmonetizer": ["?token", "?email", "?password"],
+    "storj": [],
+    "traffmonetizer": ["token"],
     "repocket": ["email", "password"],
     "proxyrack": ["api_key"],
     "bitping": ["email", "password"],
