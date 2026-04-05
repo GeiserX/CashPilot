@@ -417,7 +417,7 @@ const CP = (() => {
     const deltaStr = delta !== 0 ? `${deltaSign}${formatCurrency(delta, currency)}` : '--';
     const nativeLabel = formatNative(balance, currency);
     const disconnectedLabel = svc.collector_disconnected
-      ? `<div style="font-size:0.6rem; color:#ef4444; font-weight:500; display:flex; align-items:center; gap:4px;">disconnected${_canWrite ? ` <button class="btn btn-ghost" onclick="event.stopPropagation(); CP.openCredentialModal('${escapeHtml(svc.slug)}')" style="font-size:0.6rem; padding:1px 5px; line-height:1.2; color:#ef4444; border:1px solid #ef4444; border-radius:3px; cursor:pointer;">update</button>` : ''}</div>`
+      ? `<div style="font-size:0.6rem; color:#ef4444; font-weight:500; display:flex; align-items:center; justify-content:flex-end; gap:4px;">disconnected${_canWrite ? ` <button class="btn btn-ghost" onclick="event.stopPropagation(); CP.openCredentialModal('${escapeHtml(svc.slug)}')" style="font-size:0.6rem; padding:1px 5px; line-height:1.2; color:#ef4444; border:1px solid #ef4444; border-radius:3px; cursor:pointer;">update</button>` : ''}</div>`
       : '';
     let balanceHtml;
     if (nativeLabel) {
@@ -701,21 +701,22 @@ const CP = (() => {
       }
       if (title) title.textContent = `${col.name} — Credentials`;
 
-      const fieldsHtml = col.fields.map(f => {
-        const val = config[f.key] || '';
+      const fieldsHtml = col.fields.filter(f => f.required).map(f => {
         const inputType = f.secret ? 'password' : 'text';
         return `
         <div style="margin-bottom:10px;">
-          <label style="display:block; font-size:0.8rem; color:var(--text-secondary); margin-bottom:4px;">${escapeHtml(f.label)}${f.required ? '' : ' <span style="opacity:0.5;">(optional)</span>'}</label>
+          <label style="display:block; font-size:0.8rem; color:var(--text-secondary); margin-bottom:4px;">${escapeHtml(f.label)}</label>
           <input class="form-input cred-modal-input" type="${inputType}"
                  data-config="${escapeHtml(f.key)}"
-                 value="${escapeHtml(val)}"
+                 value=""
                  placeholder="${escapeHtml(f.label)}"
                  style="width:100%;">
         </div>`;
       }).join('');
+      const hint = col.hint || '';
 
       body.innerHTML = `
+        ${hint ? `<p style="font-size:0.75rem; color:var(--text-muted); margin:0 0 12px; line-height:1.4;">${hint}</p>` : ''}
         ${fieldsHtml}
         <div style="display:flex; gap:8px; margin-top:14px;">
           <button class="btn btn-primary btn-sm" onclick="CP.saveCredentialModal()">Save</button>
