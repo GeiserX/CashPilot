@@ -741,12 +741,12 @@ const CP = (() => {
     }
     try {
       await api('/api/config', { method: 'POST', body: { data } });
-      toast('Credentials saved', 'success');
+      toast('Credentials saved — collecting now\u2026', 'success');
       closeModal('cred-modal');
       // Trigger a collection so it picks up new creds immediately
       api('/api/collect', { method: 'POST' }).catch(() => {});
-      // Refresh dashboard after short delay
-      setTimeout(() => { if (typeof refreshServices === 'function') refreshServices(); }, 3000);
+      // Silently refresh the dashboard after collection has time to finish
+      setTimeout(() => loadServicesTable(), 8000);
     } catch (err) {
       toast(`Save failed: ${err.message}`, 'error');
     }
