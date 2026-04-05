@@ -36,6 +36,7 @@ SECRET_CONFIG_KEYS = {
     "api_key",
     "secret_key",
     "session_cookie",
+    "auth_cookie",
     "oauth_token",
     "brd_sess_id",
     "remember_web",

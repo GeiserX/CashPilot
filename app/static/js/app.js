@@ -5,7 +5,8 @@
 const CP = (() => {
   'use strict';
 
-  const _canWrite = window._userRole === 'owner' || window._userRole === 'writer';
+  const _isOwner = window._userRole === 'owner';
+  const _canWrite = _isOwner || window._userRole === 'writer';
 
   // -----------------------------------------------------------
   // API helper
@@ -417,7 +418,7 @@ const CP = (() => {
     const deltaStr = delta !== 0 ? `${deltaSign}${formatCurrency(delta, currency)}` : '--';
     const nativeLabel = formatNative(balance, currency);
     const disconnectedLabel = svc.collector_disconnected
-      ? `<div style="font-size:0.6rem; color:#ef4444; font-weight:500; display:flex; align-items:center; justify-content:flex-end; gap:4px;">disconnected${_canWrite ? ` <button class="btn btn-ghost" onclick="event.stopPropagation(); CP.openCredentialModal('${escapeHtml(svc.slug)}')" style="font-size:0.6rem; padding:1px 5px; line-height:1.2; color:#ef4444; border:1px solid #ef4444; border-radius:3px; cursor:pointer;">update</button>` : ''}</div>`
+      ? `<div style="font-size:0.6rem; color:#ef4444; font-weight:500; display:flex; align-items:center; justify-content:flex-end; gap:4px;">disconnected${_isOwner ? ` <button class="btn btn-ghost" onclick="event.stopPropagation(); CP.openCredentialModal('${escapeHtml(svc.slug)}')" style="font-size:0.6rem; padding:1px 5px; line-height:1.2; color:#ef4444; border:1px solid #ef4444; border-radius:3px; cursor:pointer;">update</button>` : ''}</div>`
       : '';
     let balanceHtml;
     if (nativeLabel) {
@@ -2012,7 +2013,6 @@ const CP = (() => {
 
       badge.style.display = '';
       badge.textContent = alerts.length;
-      const _isOwner = window._userRole === 'owner';
       list.innerHTML = alerts.map(a => `
         <div class="notify-item" data-platform="${escapeHtml(a.platform)}">
           <div class="notify-item-icon">
