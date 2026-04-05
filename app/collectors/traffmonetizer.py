@@ -88,9 +88,6 @@ class TraffmonetizerCollector(BaseCollector):
                 data = resp.json()
 
                 balance = float(data.get("data", {}).get("balance", 0))
-                # m4b normalizes: if balance > 10 assume milliunits
-                if balance > 10:
-                    balance = balance / 1000
 
                 return EarningsResult(
                     platform=self.platform,
