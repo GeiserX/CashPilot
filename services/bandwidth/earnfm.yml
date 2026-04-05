@@ -37,7 +37,7 @@ requirements:
 
 payment:
   methods: [crypto]
-  minimum_payout: "$3"
+  minimum_payout: "$15"
   currency: USD
   frequency: "On request"
 
@@ -50,8 +50,8 @@ earnings:
 
 cashout:
   method: redirect
-  dashboard_url: "https://earn.fm/dashboard"
-  min_amount: 3.0
+  dashboard_url: "https://app.earn.fm/#/payout"
+  min_amount: 15.0
   currency: USD
 
 platforms: [docker, linux]

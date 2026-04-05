@@ -44,7 +44,7 @@ requirements:
 
 payment:
   methods: [paypal, amazon_giftcard, wise]
-  minimum_payout: "$2.50"
+  minimum_payout: "$10"
   currency: USD
   frequency: "On request (auto-redeem available: PayPal $10 min, Wise $10 min, Amazon $50 min)"
 
@@ -57,8 +57,8 @@ earnings:
 
 cashout:
   method: redirect
-  dashboard_url: "https://earnapp.com/dashboard"
-  min_amount: 2.5
+  dashboard_url: "https://earnapp.com/dashboard/cashout"
+  min_amount: 10.0
   currency: USD
 
 platforms: [docker, windows, macos, linux, android]
