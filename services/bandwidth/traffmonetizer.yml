@@ -47,7 +47,7 @@ requirements:
 payment:
   methods: [crypto, paypal]
   crypto_token: USDT
-  minimum_payout: "$5"
+  minimum_payout: "$10"
   currency: USD
   frequency: "On request"
 
@@ -61,7 +61,7 @@ earnings:
 cashout:
   method: redirect
   dashboard_url: "https://app.traffmonetizer.com/dashboard"
-  min_amount: 5.0
+  min_amount: 10.0
   currency: USD
 
 platforms: [docker, windows, macos, android]
