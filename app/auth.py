@@ -77,12 +77,13 @@ _serializer = URLSafeTimedSerializer(SECRET_KEY)
 
 
 def hash_password(password: str) -> str:
-    # bcrypt enforces a 72-byte limit; truncate to avoid ValueError on strict backends
-    return bcrypt.hash(password[:72])
+    # bcrypt enforces a 72-byte limit; truncate UTF-8 bytes (not characters)
+    # to avoid ValueError on strict backends and passlib/bcrypt >=4.1 compat issues
+    return bcrypt.hash(password.encode("utf-8")[:72])
 
 
 def verify_password(password: str, hashed: str) -> bool:
-    return bcrypt.verify(password[:72], hashed)
+    return bcrypt.verify(password.encode("utf-8")[:72], hashed)
 
 
 def create_session_token(user_id: int, username: str, role: str) -> str:
