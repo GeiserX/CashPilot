@@ -11,10 +11,10 @@ import secrets
 from pathlib import Path
 from typing import Any
 
+import bcrypt as _bcrypt
 from fastapi import Request
 from fastapi.responses import RedirectResponse
 from itsdangerous import BadSignature, URLSafeTimedSerializer
-from passlib.hash import bcrypt
 
 from app import fleet_key as _fleet_key_mod
 
@@ -78,12 +78,13 @@ _serializer = URLSafeTimedSerializer(SECRET_KEY)
 
 def hash_password(password: str) -> str:
     # bcrypt enforces a 72-byte limit; truncate UTF-8 bytes (not characters)
-    # to avoid ValueError on strict backends and passlib/bcrypt >=4.1 compat issues
-    return bcrypt.hash(password.encode("utf-8")[:72])
+    pw = password.encode("utf-8")[:72]
+    return _bcrypt.hashpw(pw, _bcrypt.gensalt()).decode("ascii")
 
 
 def verify_password(password: str, hashed: str) -> bool:
-    return bcrypt.verify(password.encode("utf-8")[:72], hashed)
+    pw = password.encode("utf-8")[:72]
+    return _bcrypt.checkpw(pw, hashed.encode("ascii"))
 
 
 def create_session_token(user_id: int, username: str, role: str) -> str:
@@ -120,13 +121,20 @@ def get_current_user(request: Request) -> dict[str, Any] | None:
     return decode_session_token(token)
 
 
+_SECURE_COOKIE = os.getenv("CASHPILOT_SECURE_COOKIE", "auto").lower()
+
+
 def set_session_cookie(response: RedirectResponse, token: str) -> RedirectResponse:
+    use_secure = _SECURE_COOKIE == "true" or (
+        _SECURE_COOKIE == "auto" and os.getenv("CASHPILOT_BASE_URL", "").startswith("https")
+    )
     response.set_cookie(
         SESSION_COOKIE,
         token,
         max_age=SESSION_MAX_AGE,
         httponly=True,
         samesite="lax",
+        secure=use_secure,
     )
     return response
 
