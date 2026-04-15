@@ -14,11 +14,13 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import hmac
 import logging
 import os
 import platform
 import socket
 from contextlib import asynccontextmanager
+from datetime import UTC, datetime
 from html import escape as _esc
 from typing import Any
 
@@ -64,7 +66,7 @@ def _verify_api_key(request: Request) -> None:
     if not API_KEY:
         raise HTTPException(status_code=503, detail="Fleet key not configured")
     auth = request.headers.get("Authorization", "")
-    if auth != f"Bearer {API_KEY}":
+    if not hmac.compare_digest(auth.encode(), f"Bearer {API_KEY}".encode()):
         raise HTTPException(status_code=401, detail="Invalid API key")
 
 
@@ -102,7 +104,7 @@ async def _send_heartbeat() -> None:
             )
             resp.raise_for_status()
             _ui_connected = True
-            _last_heartbeat = "just now"
+            _last_heartbeat = datetime.now(UTC).strftime("%H:%M:%S UTC")
             _last_error = ""
             logger.debug("Heartbeat sent to %s", UI_URL)
     except Exception as exc:
@@ -124,10 +126,11 @@ def _get_local_ip() -> str:
     """Best-effort local IP detection for worker URL."""
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        s.connect(("8.8.8.8", 80))
-        ip = s.getsockname()[0]
-        s.close()
-        return ip
+        try:
+            s.connect(("8.8.8.8", 80))
+            return s.getsockname()[0]
+        finally:
+            s.close()
     except Exception:
         return socket.gethostname()
 
@@ -309,8 +312,9 @@ async def api_deploy_container(request: Request, slug: str, spec: DeploySpec) ->
             labels=spec.labels,
         )
         return {"status": "deployed", "container_id": container_id}
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc))
+    except Exception:
+        logger.exception("Deploy failed for %s", slug)
+        raise HTTPException(status_code=500, detail="Container deployment failed")
 
 
 @app.post("/api/containers/{slug}/restart")
