@@ -107,7 +107,7 @@ async def _send_heartbeat() -> None:
             logger.debug("Heartbeat sent to %s", UI_URL)
     except Exception as exc:
         _ui_connected = False
-        _last_error = str(exc)
+        _last_error = "connection failed"
         logger.warning("Heartbeat failed: %s", exc)
 
 
