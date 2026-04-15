@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import hmac
 import ipaddress
 import json
 import logging
@@ -1537,7 +1538,7 @@ def _verify_fleet_api_key(request: Request) -> None:
             detail="Fleet key not configured — set CASHPILOT_API_KEY or mount shared /fleet volume",
         )
     auth_header = request.headers.get("Authorization", "")
-    if auth_header != f"Bearer {FLEET_API_KEY}":
+    if not hmac.compare_digest(auth_header.encode(), f"Bearer {FLEET_API_KEY}".encode()):
         raise HTTPException(status_code=401, detail="Invalid API key")
 
 
