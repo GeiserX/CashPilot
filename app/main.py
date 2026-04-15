@@ -207,7 +207,7 @@ async def _check_stale_workers() -> None:
         cutoff = datetime.now(datetime.UTC) - timedelta(seconds=STALE_WORKER_SECONDS)
         for w in workers:
             if w["status"] == "online" and w.get("last_heartbeat"):
-                last = datetime.fromisoformat(w["last_heartbeat"])
+                last = datetime.fromisoformat(w["last_heartbeat"]).replace(tzinfo=datetime.UTC)
                 if last < cutoff:
                     await database.set_worker_status(w["id"], "offline")
                     logger.info("Worker '%s' marked offline (last heartbeat: %s)", w["name"], w["last_heartbeat"])
