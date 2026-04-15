@@ -40,6 +40,7 @@ WORKDIR /app
 
 COPY --chown=cashpilot:root app/__init__.py ./app/
 COPY --chown=cashpilot:root app/constants.py ./app/
+COPY --chown=cashpilot:root app/fleet_key.py ./app/
 COPY --chown=cashpilot:root app/worker_api.py ./app/
 COPY --chown=cashpilot:root app/orchestrator.py ./app/
 COPY --chown=cashpilot:root app/catalog.py ./app/

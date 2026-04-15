@@ -276,6 +276,14 @@ This is how Portainer works. The worker is a dumb executor — it never decrypts
 
 **Flow:** Push to main → auto-release v0.1.x → tag triggers Docker build → versioned images on Docker Hub.
 
+> **CRITICAL: NEVER manually create tags or GitHub releases.** The `release.yml` workflow handles version bumping, tagging, and release creation automatically on merge to main. Manually creating a tag/release causes `already_exists` conflicts and skips the Docker image build job. Just merge the PR and let CI do everything.
+
+**Deployment workflow after merging a PR:**
+1. Merge PR to main
+2. Wait for `Auto Release` workflow to complete (creates tag + release)
+3. Wait for `Build and Push Docker Images` workflow to complete (pushes to Docker Hub)
+4. On the server: `docker pull drumsergio/cashpilot:latest` + recreate container
+
 **Always use tagged images in deployment** (e.g. `drumsergio/cashpilot:0.1.1`), never `:latest`.
 
 **Required GitHub Secrets:**

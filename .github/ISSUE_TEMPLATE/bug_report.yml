@@ -48,8 +48,8 @@ body:
     id: version
     attributes:
       label: CashPilot Version
-      description: "Image tag or git commit (e.g. v0.2.17, latest)"
-      placeholder: "latest"
+      description: "Exact image tag from your docker-compose.yml or `docker inspect` output (do NOT write 'latest')"
+      placeholder: "v0.2.72"
     validations:
       required: true
 
@@ -75,7 +75,7 @@ body:
     attributes:
       label: Checks
       options:
-        - label: I am using the latest version of CashPilot
+        - label: I have checked whether this is already fixed in the latest version
           required: true
         - label: I searched existing issues and this is not a duplicate
           required: true
