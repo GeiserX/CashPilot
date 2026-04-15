@@ -94,4 +94,7 @@ def to_usd(amount: float, currency: str) -> float | None:
         return amount
     if currency in _crypto_usd:
         return amount * _crypto_usd[currency]
+    # Fiat: _fiat_rates stores USD->X rates, so divide to get X->USD
+    if currency in _fiat_rates and _fiat_rates[currency] > 0:
+        return amount / _fiat_rates[currency]
     return None

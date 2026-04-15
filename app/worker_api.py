@@ -19,6 +19,7 @@ import os
 import platform
 import socket
 from contextlib import asynccontextmanager
+from html import escape as _esc
 from typing import Any
 
 import httpx
@@ -181,9 +182,9 @@ async def worker_status_page():
         status_color = "#22c55e" if c.get("status") == "running" else "#ef4444"
         container_rows += f"""
         <tr>
-            <td>{c.get("slug", "unknown")}</td>
-            <td><span style="color:{status_color}">{c.get("status", "unknown")}</span></td>
-            <td>{c.get("image", "")}</td>
+            <td>{_esc(str(c.get("slug", "unknown")))}</td>
+            <td><span style="color:{status_color}">{_esc(str(c.get("status", "unknown")))}</span></td>
+            <td>{_esc(str(c.get("image", "")))}</td>
             <td>{c.get("cpu_percent", 0)}%</td>
             <td>{c.get("memory_mb", 0)} MB</td>
         </tr>"""
@@ -192,9 +193,9 @@ async def worker_status_page():
         container_rows = '<tr><td colspan="5" style="text-align:center;color:#6b7280">No managed containers</td></tr>'
 
     ui_status = (
-        f'<span style="color:#22c55e">Connected</span> to <code>{UI_URL}</code>'
+        f'<span style="color:#22c55e">Connected</span> to <code>{_esc(UI_URL)}</code>'
         if _ui_connected
-        else '<span style="color:#ef4444">Disconnected</span>' + (f" — {_last_error}" if _last_error else "")
+        else '<span style="color:#ef4444">Disconnected</span>' + (f" — {_esc(_last_error)}" if _last_error else "")
     )
 
     return f"""<!DOCTYPE html>
@@ -202,7 +203,7 @@ async def worker_status_page():
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>CashPilot Worker — {WORKER_NAME}</title>
+    <title>CashPilot Worker — {_esc(WORKER_NAME)}</title>
     <meta http-equiv="refresh" content="30">
     <style>
         * {{ margin:0; padding:0; box-sizing:border-box; }}
@@ -225,9 +226,9 @@ async def worker_status_page():
     <div class="card">
         <h2>Worker Info</h2>
         <div class="info">
-            <div><label>Name</label><span>{WORKER_NAME}</span></div>
-            <div><label>Host</label><span>{socket.gethostname()}</span></div>
-            <div><label>Platform</label><span>{platform.system()} {platform.machine()}</span></div>
+            <div><label>Name</label><span>{_esc(WORKER_NAME)}</span></div>
+            <div><label>Host</label><span>{_esc(socket.gethostname())}</span></div>
+            <div><label>Platform</label><span>{_esc(platform.system())} {_esc(platform.machine())}</span></div>
             <div><label>Docker</label><span>{"Available" if orchestrator.docker_available() else "Not available"}</span></div>
             <div><label>UI Connection</label><span>{ui_status}</span></div>
             <div><label>Last Heartbeat</label><span>{_last_heartbeat}</span></div>

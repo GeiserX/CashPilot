@@ -8,11 +8,15 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import ipaddress
 import json
 import logging
 import os
+import re
 from contextlib import asynccontextmanager
+from datetime import datetime, timedelta
 from typing import Any
+from urllib.parse import urlparse
 
 import httpx
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -21,6 +25,7 @@ from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
+from starlette.middleware.base import BaseHTTPMiddleware
 
 from app import auth, catalog, compose_generator, database, exchange_rates, fleet_key
 
@@ -159,7 +164,9 @@ async def _run_collection() -> None:
         config = await database.get_config() or {}
         if not isinstance(config, dict):
             config = {}
-        collectors = __import__("app.collectors", fromlist=["make_collectors"]).make_collectors(deployments, config)
+        from app.collectors import make_collectors
+
+        collectors = make_collectors(deployments, config)
         alerts: list[dict[str, str]] = []
         for collector in collectors:
             result = await collector.collect()
@@ -197,12 +204,10 @@ async def _check_stale_workers() -> None:
     """Mark workers as offline if they haven't sent a heartbeat recently."""
     try:
         workers = await database.list_workers()
-        from datetime import datetime, timedelta
-
-        cutoff = datetime.utcnow() - timedelta(seconds=STALE_WORKER_SECONDS)
+        cutoff = datetime.now(datetime.UTC) - timedelta(seconds=STALE_WORKER_SECONDS)
         for w in workers:
             if w["status"] == "online" and w.get("last_heartbeat"):
-                last = datetime.fromisoformat(w["last_heartbeat"])
+                last = datetime.fromisoformat(w["last_heartbeat"]).replace(tzinfo=datetime.UTC)
                 if last < cutoff:
                     await database.set_worker_status(w["id"], "offline")
                     logger.info("Worker '%s' marked offline (last heartbeat: %s)", w["name"], w["last_heartbeat"])
@@ -244,6 +249,20 @@ app = FastAPI(
     version="0.1.0",
     lifespan=lifespan,
 )
+
+
+# Security headers middleware
+class _SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request, call_next):
+        response = await call_next(request)
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+        return response
+
+
+app.add_middleware(_SecurityHeadersMiddleware)
 
 # Static files and templates
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
@@ -384,6 +403,22 @@ async def do_register(
         if not user or user.get("r") != "owner":
             raise HTTPException(status_code=403, detail="Only owners can add users")
 
+    if not re.match(r"^[a-zA-Z0-9_-]{3,32}$", username):
+        return templates.TemplateResponse(
+            request,
+            "auth.html",
+            {
+                "title": "Create Account" if is_first else "Add User",
+                "subtitle": "Create the first admin account" if is_first else "Add a new user",
+                "mode": "register",
+                "action": "/register",
+                "button_text": "Create Account",
+                "error": "Username must be 3-32 alphanumeric characters (a-z, 0-9, _ -)",
+                "is_first": is_first,
+            },
+            status_code=400,
+        )
+
     if password != password_confirm:
         return templates.TemplateResponse(
             request,
@@ -400,7 +435,7 @@ async def do_register(
             status_code=400,
         )
 
-    if len(password) < 6:
+    if len(password) < 8:
         return templates.TemplateResponse(
             request,
             "auth.html",
@@ -410,7 +445,7 @@ async def do_register(
                 "mode": "register",
                 "action": "/register",
                 "button_text": "Create Account",
-                "error": "Password must be at least 6 characters",
+                "error": "Password must be at least 8 characters",
                 "is_first": is_first,
             },
             status_code=400,
@@ -749,8 +784,6 @@ async def api_deploy(request: Request, slug: str, body: DeployRequest, worker_id
         raise HTTPException(status_code=400, detail=f"Service '{slug}' has no Docker image")
 
     # Build full env: YAML defaults + {hostname} substitution + user overrides
-    import re
-
     hn = body.hostname or HOSTNAME_PREFIX
     env: dict[str, str] = {}
     for var in docker_conf.get("env", []):
@@ -834,21 +867,47 @@ async def api_remove(request: Request, slug: str, worker_id: int | None = None) 
 # Helpers: proxy commands / logs to worker nodes
 # ---------------------------------------------------------------------------
 
+_ALLOWED_WORKER_SCHEMES = {"http", "https"}
 
-async def _proxy_worker_command(worker_id: int, command: str, slug: str) -> dict[str, str]:
-    """Forward a container command (restart/stop/start/remove) to a worker."""
-    worker = await database.get_worker(worker_id)
+
+def _validate_worker_url(raw_url: str) -> str:
+    """Validate and return a safe worker URL; raise 400 on SSRF-risky targets."""
+    parsed = urlparse(raw_url)
+    if parsed.scheme not in _ALLOWED_WORKER_SCHEMES:
+        raise HTTPException(status_code=400, detail=f"Invalid worker URL scheme: {parsed.scheme}")
+    host = parsed.hostname or ""
+    if not host:
+        raise HTTPException(status_code=400, detail="Worker URL has no host")
+    try:
+        addr = ipaddress.ip_address(host)
+        if addr.is_loopback or addr.is_link_local:
+            raise HTTPException(status_code=400, detail="Worker URL points to loopback/link-local address")
+    except ValueError:
+        # hostname, not IP — allow (e.g. tailscale DNS names)
+        if host in ("localhost", "localhost.localdomain"):
+            raise HTTPException(status_code=400, detail="Worker URL points to localhost")
+    return raw_url.rstrip("/")
+
+
+def _get_verified_worker_url(worker: dict[str, Any]) -> tuple[str, dict[str, str]]:
+    """Validate a worker record and return (url, headers)."""
     if not worker:
         raise HTTPException(status_code=404, detail="Worker not found")
     if worker["status"] != "online":
         raise HTTPException(status_code=503, detail="Worker is offline")
     if not worker["url"]:
         raise HTTPException(status_code=503, detail="Worker URL not known")
-
-    url = worker["url"].rstrip("/")
-    headers = {}
+    url = _validate_worker_url(worker["url"])
+    headers: dict[str, str] = {}
     if FLEET_API_KEY:
         headers["Authorization"] = f"Bearer {FLEET_API_KEY}"
+    return url, headers
+
+
+async def _proxy_worker_command(worker_id: int, command: str, slug: str) -> dict[str, str]:
+    """Forward a container command (restart/stop/start/remove) to a worker."""
+    worker = await database.get_worker(worker_id)
+    url, headers = _get_verified_worker_url(worker)
 
     try:
         async with httpx.AsyncClient(timeout=30) as client:
@@ -871,17 +930,7 @@ async def _proxy_worker_command(worker_id: int, command: str, slug: str) -> dict
 async def _proxy_worker_deploy(worker_id: int, slug: str, spec: dict[str, Any]) -> dict[str, Any]:
     """Forward a deploy command with full spec to a worker."""
     worker = await database.get_worker(worker_id)
-    if not worker:
-        raise HTTPException(status_code=404, detail="Worker not found")
-    if worker["status"] != "online":
-        raise HTTPException(status_code=503, detail="Worker is offline")
-    if not worker["url"]:
-        raise HTTPException(status_code=503, detail="Worker URL not known")
-
-    url = worker["url"].rstrip("/")
-    headers = {}
-    if FLEET_API_KEY:
-        headers["Authorization"] = f"Bearer {FLEET_API_KEY}"
+    url, headers = _get_verified_worker_url(worker)
 
     try:
         async with httpx.AsyncClient(timeout=60) as client:
@@ -901,17 +950,7 @@ async def _proxy_worker_deploy(worker_id: int, slug: str, spec: dict[str, Any]) 
 async def _proxy_worker_logs(worker_id: int, slug: str, lines: int = 50) -> dict[str, str]:
     """Forward a logs request to a worker."""
     worker = await database.get_worker(worker_id)
-    if not worker:
-        raise HTTPException(status_code=404, detail="Worker not found")
-    if worker["status"] != "online":
-        raise HTTPException(status_code=503, detail="Worker is offline")
-    if not worker["url"]:
-        raise HTTPException(status_code=503, detail="Worker URL not known")
-
-    url = worker["url"].rstrip("/")
-    headers = {}
-    if FLEET_API_KEY:
-        headers["Authorization"] = f"Bearer {FLEET_API_KEY}"
+    url, headers = _get_verified_worker_url(worker)
 
     try:
         async with httpx.AsyncClient(timeout=30) as client:
