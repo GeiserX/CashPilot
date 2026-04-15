@@ -14,7 +14,7 @@ import logging
 import os
 import re
 from contextlib import asynccontextmanager
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from typing import Any
 from urllib.parse import urlparse
 
@@ -204,10 +204,10 @@ async def _check_stale_workers() -> None:
     """Mark workers as offline if they haven't sent a heartbeat recently."""
     try:
         workers = await database.list_workers()
-        cutoff = datetime.now(datetime.UTC) - timedelta(seconds=STALE_WORKER_SECONDS)
+        cutoff = datetime.now(UTC) - timedelta(seconds=STALE_WORKER_SECONDS)
         for w in workers:
             if w["status"] == "online" and w.get("last_heartbeat"):
-                last = datetime.fromisoformat(w["last_heartbeat"]).replace(tzinfo=datetime.UTC)
+                last = datetime.fromisoformat(w["last_heartbeat"]).replace(tzinfo=UTC)
                 if last < cutoff:
                     await database.set_worker_status(w["id"], "offline")
                     logger.info("Worker '%s' marked offline (last heartbeat: %s)", w["name"], w["last_heartbeat"])
