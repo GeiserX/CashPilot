@@ -227,7 +227,7 @@ async def upsert_earnings(
     date: str | None = None,
 ) -> None:
     """Insert or update an earnings record for a platform + date."""
-    date = date or datetime.utcnow().strftime("%Y-%m-%d")
+    date = date or datetime.now(datetime.UTC).strftime("%Y-%m-%d")
     db = await _get_db()
     try:
         await db.execute(
@@ -305,9 +305,9 @@ async def get_earnings_dashboard_summary() -> dict[str, Any]:
     """Return aggregated earnings stats for the dashboard."""
     db = await _get_db()
     try:
-        today = datetime.utcnow().strftime("%Y-%m-%d")
-        yesterday = (datetime.utcnow() - timedelta(days=1)).strftime("%Y-%m-%d")
-        first_of_month = datetime.utcnow().replace(day=1).strftime("%Y-%m-%d")
+        today = datetime.now(datetime.UTC).strftime("%Y-%m-%d")
+        yesterday = (datetime.now(datetime.UTC) - timedelta(days=1)).strftime("%Y-%m-%d")
+        first_of_month = datetime.now(datetime.UTC).replace(day=1).strftime("%Y-%m-%d")
 
         # Total: sum of latest balance per platform (USD only for now)
         cursor = await db.execute(
@@ -377,7 +377,7 @@ async def get_earnings_dashboard_summary() -> dict[str, Any]:
         month_earned = max(0.0, row["earned"])
 
         # Yesterday's delta for percentage change
-        day_before = (datetime.utcnow() - timedelta(days=2)).strftime("%Y-%m-%d")
+        day_before = (datetime.now(datetime.UTC) - timedelta(days=2)).strftime("%Y-%m-%d")
         cursor = await db.execute(
             """
             SELECT COALESCE(SUM(y.balance - COALESCE(dy.balance, 0)), 0) as earned
@@ -472,7 +472,7 @@ async def get_daily_earnings(days: int = 7) -> list[dict[str, Any]]:
             balance_by_date[row["date"]] = row["total_balance"]
 
         # Generate result for exactly `days` days
-        now = datetime.utcnow()
+        now = datetime.now(datetime.UTC)
         result = []
         for i in range(days - 1, -1, -1):
             d = now - timedelta(days=i)

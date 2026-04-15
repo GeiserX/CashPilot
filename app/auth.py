@@ -121,13 +121,20 @@ def get_current_user(request: Request) -> dict[str, Any] | None:
     return decode_session_token(token)
 
 
+_SECURE_COOKIE = os.getenv("CASHPILOT_SECURE_COOKIE", "auto").lower()
+
+
 def set_session_cookie(response: RedirectResponse, token: str) -> RedirectResponse:
+    use_secure = _SECURE_COOKIE == "true" or (
+        _SECURE_COOKIE == "auto" and os.getenv("CASHPILOT_BASE_URL", "").startswith("https")
+    )
     response.set_cookie(
         SESSION_COOKIE,
         token,
         max_age=SESSION_MAX_AGE,
         httponly=True,
         samesite="lax",
+        secure=use_secure,
     )
     return response
 
