@@ -1,0 +1,7 @@
+description: "Self-hosted platform to deploy, manage, and monitor 40+ passive income services from a single web UI."
+personalNote: "Born out of frustration with managing dozens of bandwidth-sharing containers by hand. CashPilot started as a personal dashboard and grew into a full deployment platform with a setup wizard, earnings tracking, and fleet management across multiple servers."
+keyFeatures:
+  - "One-click Docker deployment for 16+ passive income services"
+  - "Real-time earnings dashboard with historical charts and trend analysis"
+  - "Container health monitoring with CPU, memory, network, and uptime metrics"
+techStack: "Python, FastAPI, SQLite, Docker, HTML/CSS"
