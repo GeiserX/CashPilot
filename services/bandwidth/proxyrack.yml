@@ -49,7 +49,7 @@ requirements:
 
 payment:
   methods: [paypal, crypto]
-  minimum_payout: "$5"
+  minimum_payout: "$20"
   currency: USD
   frequency: "On request"
 
@@ -63,7 +63,7 @@ earnings:
 cashout:
   method: redirect
   dashboard_url: "https://peer.proxyrack.com/dashboard"
-  min_amount: 5.0
+  min_amount: 20.0
   currency: USD
 
 platforms: [docker, windows, macos, linux]
