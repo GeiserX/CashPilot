@@ -767,6 +767,7 @@ const CP = (() => {
         <div style="display:flex; gap:8px; margin-top:14px;">
           <button class="btn btn-primary btn-sm" onclick="CP.saveCredentialModal()">Save</button>
           <button class="btn btn-ghost btn-sm" onclick="CP.closeModal('cred-modal')">Cancel</button>
+          <button class="btn btn-ghost btn-sm" style="color:#ef4444; margin-left:auto;" onclick="CP.clearServiceCredentials('${escapeHtml(slug)}', '${escapeHtml(col.name)}'); CP.closeModal('cred-modal');">Clear</button>
         </div>`;
     } catch (err) {
       if (body) body.innerHTML = `<p style="color:#ef4444;">Failed to load: ${escapeHtml(err.message)}</p>`;
@@ -1903,6 +1904,9 @@ const CP = (() => {
           </div>
         </div>`;
       }).join('');
+      const clearBtn = configured && _isOwner
+        ? `<div style="margin-top:8px; text-align:right;"><button class="btn btn-ghost btn-sm" style="color:#ef4444; font-size:0.75rem;" onclick="CP.clearServiceCredentials('${escapeHtml(col.slug)}', '${escapeHtml(col.name)}')">Clear Credentials</button></div>`
+        : '';
       return `
       <details class="collector-section" id="collector-${col.slug}">
         <summary class="collector-header">
@@ -1911,6 +1915,7 @@ const CP = (() => {
         </summary>
         <div class="collector-body">
           ${fields}
+          ${clearBtn}
         </div>
       </details>`;
     }).join('');
@@ -1939,6 +1944,17 @@ const CP = (() => {
       loadSettings();
     } catch (err) {
       toast(`Save failed: ${err.message}`, 'error');
+    }
+  }
+
+  async function clearServiceCredentials(slug, name) {
+    if (!confirm(`Remove all credentials for ${name}? This will stop earnings collection for this service.`)) return;
+    try {
+      await api(`/api/config/${encodeURIComponent(slug)}`, { method: 'DELETE' });
+      toast(`${name} credentials cleared`, 'success');
+      loadSettings();
+    } catch (err) {
+      toast(`Clear failed: ${err.message}`, 'error');
     }
   }
 
@@ -2284,5 +2300,6 @@ const CP = (() => {
     loadWorkerLogs,
     openCredentialModal,
     saveCredentialModal,
+    clearServiceCredentials,
   };
 })();
