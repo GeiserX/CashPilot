@@ -547,6 +547,19 @@ async def set_config_bulk(data: dict[str, str]) -> None:
         await db.close()
 
 
+async def delete_config_keys(keys: list[str]) -> None:
+    """Delete one or more config entries by key."""
+    if not keys:
+        return
+    db = await _get_db()
+    try:
+        placeholders = ",".join("?" for _ in keys)
+        await db.execute(f"DELETE FROM config WHERE key IN ({placeholders})", keys)
+        await db.commit()
+    finally:
+        await db.close()
+
+
 # --- Deployments ---
 
 
