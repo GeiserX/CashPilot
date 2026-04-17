@@ -1466,6 +1466,31 @@ async def api_set_config(request: Request, body: ConfigUpdate) -> dict[str, str]
     return {"status": "saved"}
 
 
+@app.delete("/api/config/{slug}")
+async def api_clear_service_config(request: Request, slug: str) -> dict[str, str]:
+    """Remove all stored credentials (and signup bonus) for a service."""
+    _require_owner(request)
+    from app.collectors import _COLLECTOR_ARGS
+
+    arg_keys = _COLLECTOR_ARGS.get(slug)
+    if not arg_keys:
+        raise HTTPException(status_code=404, detail="Unknown service")
+
+    config_keys = [f"{slug}_{a.lstrip('?')}" for a in arg_keys]
+    config_keys.append(f"{slug}_signup_bonus")
+    await database.delete_config_keys(config_keys)
+
+    # Remove the auto-created "external" deployment record if present
+    svc = catalog.get_service(slug)
+    if svc:
+        docker_conf = svc.get("docker", {})
+        if not (docker_conf and docker_conf.get("image")):
+            await database.remove_deployment(slug)
+
+    logger.info("Cleared credentials for %s", slug)
+    return {"status": "cleared"}
+
+
 # ---------------------------------------------------------------------------
 # API: Users (owner only)
 # ---------------------------------------------------------------------------
