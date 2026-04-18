@@ -60,6 +60,7 @@ docker:
   setup: >
     Before first run, initialize the storage node config:
     docker run --rm -e SETUP="true"
+    --user $(id -u):$(id -g)
     --mount type=bind,source="<IDENTITY_DIR>",destination=/app/identity
     --mount type=bind,source="<STORAGE_DIR>",destination=/app/config
     --name storagenode storjlabs/storagenode:latest
