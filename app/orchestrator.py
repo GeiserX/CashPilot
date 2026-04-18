@@ -181,6 +181,7 @@ def deploy_service(
     network_mode = docker_conf.get("network_mode") or None
     cap_add = docker_conf.get("cap_add") or None
     privileged = docker_conf.get("privileged", False)
+    stop_timeout = docker_conf.get("stop_timeout")
 
     # Command: resolve ${VAR} placeholders from env dict
     raw_command = docker_conf.get("command") or None
@@ -208,21 +209,24 @@ def deploy_service(
         logger.warning("Failed to pull image %s: %s (trying local)", image, exc)
 
     logger.info("Creating container %s from %s", name, image)
-    container = client.containers.run(
-        image=image,
-        name=name,
-        environment=env,
-        ports=ports if ports and network_mode != "host" else None,
-        volumes=volumes if volumes else None,
-        network_mode=network_mode,
-        cap_add=cap_add,
-        privileged=privileged,
-        command=command if command else None,
-        labels=labels,
-        hostname=hostname or f"cashpilot-{slug}",
-        detach=True,
-        restart_policy={"Name": "unless-stopped"},
-    )
+    run_kwargs: dict[str, Any] = {
+        "image": image,
+        "name": name,
+        "environment": env,
+        "ports": ports if ports and network_mode != "host" else None,
+        "volumes": volumes if volumes else None,
+        "network_mode": network_mode,
+        "cap_add": cap_add,
+        "privileged": privileged,
+        "command": command if command else None,
+        "labels": labels,
+        "hostname": hostname or f"cashpilot-{slug}",
+        "detach": True,
+        "restart_policy": {"Name": "unless-stopped"},
+    }
+    if stop_timeout:
+        run_kwargs["stop_timeout"] = _parse_stop_timeout(stop_timeout)
+    container = client.containers.run(**run_kwargs)
 
     logger.info("Container %s started: %s", name, container.short_id)
     return container.id
@@ -295,17 +299,35 @@ def deploy_raw(
     return container.id
 
 
+def _parse_stop_timeout(value: Any) -> int:
+    """Parse a stop_timeout value, returning 30 on invalid input."""
+    try:
+        timeout = int(value)
+    except (TypeError, ValueError):
+        return 30
+    return timeout if timeout > 0 else 30
+
+
+def _get_stop_timeout(slug: str) -> int:
+    """Return the stop timeout from the catalog, or 30s default."""
+    if get_service:
+        svc = get_service(slug)
+        if svc:
+            return _parse_stop_timeout(svc.get("docker", {}).get("stop_timeout"))
+    return 30
+
+
 def stop_service(slug: str) -> None:
     """Stop the container for a service."""
     container = _find_container(slug)
-    container.stop(timeout=30)
+    container.stop(timeout=_get_stop_timeout(slug))
     logger.info("Stopped container %s", container.name)
 
 
 def restart_service(slug: str) -> None:
     """Restart the container for a service."""
     container = _find_container(slug)
-    container.restart(timeout=30)
+    container.restart(timeout=_get_stop_timeout(slug))
     logger.info("Restarted container %s", container.name)
 
 

@@ -16,7 +16,7 @@ referral:
   signup_url: "https://storj.dev/node/get-started/setup"
 
 docker:
-  image: storj/storagenode
+  image: storjlabs/storagenode
   platforms: [linux/amd64, linux/arm64]
   env:
     - key: WALLET
@@ -56,11 +56,20 @@ docker:
     - "${STORAGE_DIR}:/app/config"
   command: "--operator.wallet-features=zksync-era"
   network_mode: ""
+  stop_timeout: 300
+  setup: >
+    Before first run, initialize the storage node config:
+    docker run --rm -e SETUP="true"
+    --user $(id -u):$(id -g)
+    --mount type=bind,source="<IDENTITY_DIR>",destination=/app/identity
+    --mount type=bind,source="<STORAGE_DIR>",destination=/app/config
+    --name storagenode storjlabs/storagenode:latest
   notes: >
-    No signup or auth token required (permissionless since mid-2025).
+    Image is storjlabs/storagenode (not storj/storagenode).
+    A one-time setup step (SETUP=true) must be run before deploying the main container.
     Identity must be pre-generated using the identity binary (proof-of-work to difficulty 36, takes hours).
     Use spinning disks for storage. Port 28967 TCP+UDP must be forwarded.
-    Local dashboard available at port 14002.
+    Dashboard at port 14002 — use your server's LAN IP (not localhost) for the collector API URL.
 
 requirements:
   residential_ip: false

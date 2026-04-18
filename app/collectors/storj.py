@@ -62,7 +62,12 @@ class StorjCollector(BaseCollector):
             return EarningsResult(
                 platform=self.platform,
                 balance=0.0,
-                error="Storagenode API not reachable — is port 14002 accessible?",
+                error=(
+                    "Storagenode API not reachable at "
+                    f"{self.api_url} — if running in Docker, use "
+                    "the node's LAN IP instead of localhost "
+                    "(e.g. http://192.168.1.x:14002)"
+                ),
             )
         except Exception as exc:
             logger.error("Storj collection failed: %s", exc)
