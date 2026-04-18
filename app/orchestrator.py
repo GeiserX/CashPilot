@@ -225,7 +225,7 @@ def deploy_service(
         "restart_policy": {"Name": "unless-stopped"},
     }
     if stop_timeout:
-        run_kwargs["stop_timeout"] = int(stop_timeout)
+        run_kwargs["stop_timeout"] = _parse_stop_timeout(stop_timeout)
     container = client.containers.run(**run_kwargs)
 
     logger.info("Container %s started: %s", name, container.short_id)
@@ -299,12 +299,21 @@ def deploy_raw(
     return container.id
 
 
+def _parse_stop_timeout(value: Any) -> int:
+    """Parse a stop_timeout value, returning 30 on invalid input."""
+    try:
+        timeout = int(value)
+    except (TypeError, ValueError):
+        return 30
+    return timeout if timeout > 0 else 30
+
+
 def _get_stop_timeout(slug: str) -> int:
     """Return the stop timeout from the catalog, or 30s default."""
     if get_service:
         svc = get_service(slug)
         if svc:
-            return int(svc.get("docker", {}).get("stop_timeout", 30))
+            return _parse_stop_timeout(svc.get("docker", {}).get("stop_timeout"))
     return 30
 
 
