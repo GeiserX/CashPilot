@@ -31,6 +31,8 @@
 #   command: "" (optional override)
 #   network_mode: "" (optional, e.g. "host")
 #   cap_add: [] (optional)
+#   stop_timeout: 30 (optional, seconds to wait before SIGKILL on stop — default 30)
+#   setup: "" (optional, one-time setup instructions/commands to run before first deploy)
 
 # requirements:
 #   residential_ip: true/false
