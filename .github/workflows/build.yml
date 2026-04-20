@@ -30,7 +30,7 @@ concurrency:
 
 jobs:
   resolve-tags:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64]
     outputs:
       ui_tags: ${{ steps.tags.outputs.ui_tags }}
       worker_tags: ${{ steps.tags.outputs.worker_tags }}
@@ -70,7 +70,7 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
   lint:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -89,7 +89,7 @@ jobs:
   build-ui:
     needs: [lint, resolve-tags]
     if: inputs.build_ui
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64]
     permissions:
       contents: read
       packages: write
@@ -123,7 +123,7 @@ jobs:
   build-worker:
     needs: [lint, resolve-tags]
     if: inputs.build_worker
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64]
     permissions:
       contents: read
       packages: write
