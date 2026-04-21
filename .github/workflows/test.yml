@@ -19,7 +19,7 @@ jobs:
       - name: Install dependencies
         run: |
           pip install -r requirements.txt
-          pip install pytest pyyaml
+          pip install pytest pyyaml tzdata
 
       - name: Run tests
         run: pytest tests/ -v
