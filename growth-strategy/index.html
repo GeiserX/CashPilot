@@ -1,0 +1,3275 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Self-hosted passive income orchestrator. Deploy, manage, and monitor 49 services from a single dashboard.">
+      
+      
+        <meta name="author" content="Sergio Fernandez">
+      
+      
+        <link rel="canonical" href="https://geiserx.github.io/CashPilot/growth-strategy/">
+      
+      
+      
+      
+        
+      
+      
+      <link rel="icon" href="../icon.svg">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+    
+    
+      
+        <title>CashPilot Growth Strategy - CashPilot</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="slate" data-md-color-primary="deep-purple" data-md-color-accent="pink">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#cashpilot-growth-strategy" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="CashPilot" class="md-header__button md-logo" aria-label="CashPilot" data-md-component="logo">
+      
+  <img src="../logo.svg" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            CashPilot
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              CashPilot Growth Strategy
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="slate" data-md-color-primary="deep-purple" data-md-color-accent="pink"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="default" data-md-color-primary="deep-purple" data-md-color-accent="pink"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/GeiserX/CashPilot" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    GeiserX/CashPilot
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href=".." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../getting-started/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Getting Started
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../architecture/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Architecture
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../fleet/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Fleet Management
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../guides/" class="md-tabs__link">
+          
+  
+  
+  Service Guides
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="CashPilot" class="md-nav__button md-logo" aria-label="CashPilot" data-md-component="logo">
+      
+  <img src="../logo.svg" alt="logo">
+
+    </a>
+    CashPilot
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/GeiserX/CashPilot" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    GeiserX/CashPilot
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../getting-started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../fleet/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Fleet Management
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Service Guides
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Service Guides
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CashPilot Service Guides
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_5_2" id="__nav_5_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Bandwidth Sharing
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Bandwidth Sharing
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/bitping/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Bitping
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/bytebenefit/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Bytebenefit
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/bytelixir/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Bytelixir
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/earncc/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    earn.cc
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/earnfm/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Earn.fm
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/earnapp/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    EarnApp
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/ebesucher/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Ebesucher
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/honeygain/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Honeygain
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/iproyal/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    IPRoyal Pawns
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/mysterium/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    MystNodes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/packetshare/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    PacketShare
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/packetstream/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    PacketStream
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/peer2profit/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Peer2Profit
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/proxybase/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ProxyBase
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/proxylite/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ProxyLite
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/proxyrack/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ProxyRack
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/repocket/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Repocket
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/speedshare/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SpeedShare
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/spide/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Spide
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/traffmonetizer/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Traffmonetizer
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/urnetwork/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    URnetwork
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/wizardgain/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    WizardGain
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_5_3" id="__nav_5_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DePIN
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    DePIN
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/anyone-protocol/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Anyone Protocol
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/blockmesh/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    BlockMesh
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/dawn/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Dawn Internet
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/deeper-network/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Deeper Network
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/gaganode/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    GagaNode
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/gradient/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Gradient Network
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/grass/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Grass
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/helium/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Helium
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/koii/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Koii Network
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/network3/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Network3
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/nodepay/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Nodepay
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/nodle/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Nodle
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/passiveapp/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    PassiveApp
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/presearch/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Presearch
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/sentinel-dvpn/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Sentinel dVPN
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/teneo/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Teneo Protocol
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/theta-edge/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Theta Edge Node
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/titan/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Titan Network
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/uprock/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Uprock
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/wipter/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Wipter
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_5_4" id="__nav_5_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Storage
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Storage
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/storj/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Storj
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5_5" id="__nav_5_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    GPU Compute
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    GPU Compute
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/flux/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Flux
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/golem/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Golem Network
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/ionet/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    io.net
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/nosana/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Nosana
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/salad/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Salad
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/vast-ai/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Vast.ai
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#viral-content-magnets" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Viral Content Magnets
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Viral Content Magnets">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#passive-income-calculator-page" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Passive Income Calculator Page
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#monthly-transparent-earnings-reports" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Monthly Transparent Earnings Reports
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#state-of-passive-income-sharing-2026-report" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        "State of Passive Income Sharing 2026" Report
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#platform-directories" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Platform Directories
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#podcasts-shows" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Podcasts &amp; Shows
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#youtubers-mid-tier-5k-50k-subs-they-actually-respond" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        YouTubers (Mid-Tier, 5K-50K subs — they actually respond)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#reddit-passive-income-bandwidth-sharing" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Reddit — Passive Income &amp; Bandwidth Sharing
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Reddit — Passive Income &amp; Bandwidth Sharing">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#general-passive-income-subs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        General Passive Income Subs
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#service-specific-subs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Service-Specific Subs
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#tech-subs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Tech Subs
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#discord-servers-service-specific" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Discord Servers — Service-Specific
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#discord-broader-communities" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Discord — Broader Communities
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#telegram-groups" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Telegram Groups
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#forums-non-reddit" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Forums (Non-Reddit)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#facebook-groups" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Facebook Groups
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#depin-crypto-ecosystem" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        DePIN &amp; Crypto Ecosystem
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#developer-tech-communities" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Developer &amp; Tech Communities
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#seo-written-content" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        SEO &amp; Written Content
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="SEO &amp; Written Content">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#blog-posts-for-geisercloud" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Blog Posts for geiser.cloud
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#write-for-the-services" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Write for the Services
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#unconventional" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Unconventional
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#priority-order-highest-roi-first" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Priority Order (Highest ROI first)
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+    <a href="https://github.com/GeiserX/CashPilot/edit/main/docs/growth-strategy.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M10 20H6V4h7v5h5v3.1l2-2V8l-6-6H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h4zm10.2-7c.1 0 .3.1.4.2l1.3 1.3c.2.2.2.6 0 .8l-1 1-2.1-2.1 1-1c.1-.1.2-.2.4-.2m0 3.9L14.1 23H12v-2.1l6.1-6.1z"/></svg>
+    </a>
+  
+  
+
+
+<h1 id="cashpilot-growth-strategy">CashPilot Growth Strategy<a class="headerlink" href="#cashpilot-growth-strategy" title="Permanent link">&para;</a></h1>
+<p>Playbook for building CashPilot's internet presence. Track status of each action here.</p>
+<hr />
+<h2 id="viral-content-magnets">Viral Content Magnets<a class="headerlink" href="#viral-content-magnets" title="Permanent link">&para;</a></h2>
+<h3 id="passive-income-calculator-page">Passive Income Calculator Page<a class="headerlink" href="#passive-income-calculator-page" title="Permanent link">&para;</a></h3>
+<ul>
+<li>[ ] Build a page at <code>cashpilot.geiser.cloud/calculator</code> or standalone</li>
+<li>Visitors enter hardware specs (CPU, GPU model, RAM, bandwidth, residential/VPS)</li>
+<li>Estimates monthly earnings across all 40+ services</li>
+<li>Every result links to "Deploy all of these with one click using CashPilot"</li>
+<li>Pure SEO bait — people Google "how much can I earn from Honeygain" constantly</li>
+<li>Could drive more traffic than everything else combined</li>
+</ul>
+<h3 id="monthly-transparent-earnings-reports">Monthly Transparent Earnings Reports<a class="headerlink" href="#monthly-transparent-earnings-reports" title="Permanent link">&para;</a></h3>
+<ul>
+<li>[ ] Publish real numbers on geiser.cloud monthly</li>
+<li>Format: "March 2026: I earned $X from 3 servers"</li>
+<li>Include breakdowns per service, per server, electricity costs</li>
+<li>Gets shared heavily on Reddit, Twitter, and forums</li>
+<li>Data already exists in CashPilot dashboard</li>
+</ul>
+<h3 id="state-of-passive-income-sharing-2026-report">"State of Passive Income Sharing 2026" Report<a class="headerlink" href="#state-of-passive-income-sharing-2026-report" title="Permanent link">&para;</a></h3>
+<ul>
+<li>[ ] Write comprehensive 15-page PDF/blog post</li>
+<li>Compare all 40+ services: which pay, which are dead, earnings per GB, GPU model comparisons</li>
+<li>Residential vs VPS viability analysis</li>
+<li>No one has made a comprehensive one — position as the authority</li>
+<li>Gets cited and linked everywhere</li>
+</ul>
+<hr />
+<h2 id="platform-directories">Platform Directories<a class="headerlink" href="#platform-directories" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Platform</th>
+<th>URL</th>
+<th>Status</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>AlternativeTo.net</td>
+<td>alternativeto.net</td>
+<td>[ ]</td>
+<td>List as alternative to money4band, Honeygain, EarnApp. Ranks extremely well in Google</td>
+</tr>
+<tr>
+<td>Product Hunt</td>
+<td>producthunt.com</td>
+<td>[ ]</td>
+<td>Tuesday/Wednesday launch. Prepare 30s demo GIF. Get 5-10 upvotes first hour</td>
+</tr>
+<tr>
+<td>IndieHackers</td>
+<td>indiehackers.com</td>
+<td>[ ]</td>
+<td>Post in "Show IH". Frame as "I built a self-hosted passive income orchestrator"</td>
+</tr>
+<tr>
+<td>Console.dev</td>
+<td>console.dev/submit</td>
+<td>[ ]</td>
+<td>Curated newsletter featuring interesting open-source dev tools</td>
+</tr>
+<tr>
+<td>SaaSHub</td>
+<td>saashub.com</td>
+<td>[ ]</td>
+<td>Alternative discovery platform. Free listing</td>
+</tr>
+<tr>
+<td>LibHunt</td>
+<td>selfhosted.libhunt.com</td>
+<td>[ ]</td>
+<td>Free listing, links to GitHub</td>
+</tr>
+<tr>
+<td>SourceForge</td>
+<td>sourceforge.net</td>
+<td>[ ]</td>
+<td>Mirror the project. Still gets massive Google traffic</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="podcasts-shows">Podcasts &amp; Shows<a class="headerlink" href="#podcasts-shows" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Show</th>
+<th>Contact</th>
+<th>Status</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Self-Hosted Podcast (Jupiter Broadcasting)</td>
+<td>chris@jupiterbroadcasting.com</td>
+<td>[ ]</td>
+<td>Entire audience is our target market. Feature community projects regularly</td>
+</tr>
+<tr>
+<td>The Changelog</td>
+<td>changelog.com/request</td>
+<td>[ ]</td>
+<td>Premier open-source podcast. Harder, but one episode = thousands of homelabbers</td>
+</tr>
+<tr>
+<td>Linux Unplugged</td>
+<td>Same JB network</td>
+<td>[ ]</td>
+<td>Broader Linux audience</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="youtubers-mid-tier-5k-50k-subs-they-actually-respond">YouTubers (Mid-Tier, 5K-50K subs — they actually respond)<a class="headerlink" href="#youtubers-mid-tier-5k-50k-subs-they-actually-respond" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Creator</th>
+<th>Focus</th>
+<th>Status</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Raid Owl</td>
+<td>Unraid content</td>
+<td>[ ]</td>
+<td>Offer early access or co-branded guide</td>
+</tr>
+<tr>
+<td>SpaceRex</td>
+<td>Unraid, Docker</td>
+<td>[ ]</td>
+<td>Same</td>
+</tr>
+<tr>
+<td>DB Tech</td>
+<td>Docker, self-hosting</td>
+<td>[ ]</td>
+<td>Same</td>
+</tr>
+<tr>
+<td>Wolfgang's Channel</td>
+<td>Homelab</td>
+<td>[ ]</td>
+<td>Same</td>
+</tr>
+<tr>
+<td>Hardware Haven</td>
+<td>Mini PCs, homelabs</td>
+<td>[ ]</td>
+<td>Same</td>
+</tr>
+</tbody>
+</table>
+<p>Strategy: Offer them something (exclusive guide, early feature access), not just "please review."</p>
+<hr />
+<h2 id="reddit-passive-income-bandwidth-sharing">Reddit — Passive Income &amp; Bandwidth Sharing<a class="headerlink" href="#reddit-passive-income-bandwidth-sharing" title="Permanent link">&para;</a></h2>
+<h3 id="general-passive-income-subs">General Passive Income Subs<a class="headerlink" href="#general-passive-income-subs" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Subreddit</th>
+<th>Size</th>
+<th>Rules</th>
+<th>Status</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>r/passive_income</td>
+<td>~350K</td>
+<td>Rule 10 scrutinizes software. Lead with earnings, tool secondary</td>
+<td>[ ]</td>
+</tr>
+<tr>
+<td>r/beermoney</td>
+<td>~1M</td>
+<td>Hardest. 1+ month account, active history, mod vetting via Google Form. Sites &lt;6mo rejected</td>
+<td>[ ]</td>
+</tr>
+<tr>
+<td>r/beermoneyglobal</td>
+<td>~30K</td>
+<td>Less strict than r/beermoney, international focus</td>
+<td>[ ]</td>
+</tr>
+<tr>
+<td>r/SideHustle</td>
+<td>~200K</td>
+<td>Allows tools. Frame as "automate your bandwidth side hustle"</td>
+<td>[ ]</td>
+</tr>
+<tr>
+<td>r/WorkOnline</td>
+<td>~600K</td>
+<td>Passive income posts welcome</td>
+<td>[ ]</td>
+</tr>
+<tr>
+<td>r/MoneyMaking</td>
+<td>~100K</td>
+<td>Lenient moderation</td>
+<td>[ ]</td>
+</tr>
+<tr>
+<td>r/entrepreneurridealong</td>
+<td>~200K</td>
+<td>"I built an open source tool that..." format works</td>
+<td>[ ]</td>
+</tr>
+<tr>
+<td>r/InternetIsBeautiful</td>
+<td>~17M</td>
+<td>If we build the earnings calculator — that's the post</td>
+<td>[ ]</td>
+</tr>
+</tbody>
+</table>
+<h3 id="service-specific-subs">Service-Specific Subs<a class="headerlink" href="#service-specific-subs" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Subreddit</th>
+<th>Size</th>
+<th>Status</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>r/Honeygain</td>
+<td>~15K</td>
+<td>[ ]</td>
+<td>"I manage Honeygain + 14 other services with one dashboard"</td>
+</tr>
+<tr>
+<td>r/EarnApp</td>
+<td>~5K</td>
+<td>[ ]</td>
+<td>Same angle</td>
+</tr>
+<tr>
+<td>r/IPRoyal</td>
+<td>~3K</td>
+<td>[ ]</td>
+<td>Same</td>
+</tr>
+<tr>
+<td>r/Mysterium</td>
+<td>~10K</td>
+<td>[ ]</td>
+<td>DePIN angle</td>
+</tr>
+<tr>
+<td>r/GrassApp</td>
+<td>~5K</td>
+<td>[ ]</td>
+<td>Same</td>
+</tr>
+</tbody>
+</table>
+<h3 id="tech-subs">Tech Subs<a class="headerlink" href="#tech-subs" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Subreddit</th>
+<th>Rules</th>
+<th>Status</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>r/selfhosted</td>
+<td>New Project Friday only (eligible ~2026-06-25)</td>
+<td>[ ]</td>
+<td>Post rejected 2026-03-30, wait</td>
+</tr>
+<tr>
+<td>r/homelab</td>
+<td>Rule 6 no advertising — message mods first</td>
+<td>[ ]</td>
+<td>Frame as technical showcase</td>
+</tr>
+<tr>
+<td>r/unRAID</td>
+<td></td>
+<td>[ ]</td>
+<td>Mega-guide with screenshots</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="discord-servers-service-specific">Discord Servers — Service-Specific<a class="headerlink" href="#discord-servers-service-specific" title="Permanent link">&para;</a></h2>
+<p>Strategy: Don't drop links. Spend 1-2 weeks answering questions. When someone asks "how do I manage 10 services?" — that's your moment.</p>
+<table>
+<thead>
+<tr>
+<th>Service Discord</th>
+<th>Status</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Honeygain</td>
+<td>[ ]</td>
+<td>Answer questions, share dashboard screenshots</td>
+</tr>
+<tr>
+<td>EarnApp</td>
+<td>[ ]</td>
+<td>Same</td>
+</tr>
+<tr>
+<td>IPRoyal Pawns</td>
+<td>[ ]</td>
+<td>Same</td>
+</tr>
+<tr>
+<td>Mysterium</td>
+<td>[ ]</td>
+<td>Community channel, DePIN angle</td>
+</tr>
+<tr>
+<td>Grass</td>
+<td>[ ]</td>
+<td>Active Discord, many non-technical users</td>
+</tr>
+<tr>
+<td>Traffmonetizer</td>
+<td>[ ]</td>
+<td>Smaller, friendlier</td>
+</tr>
+<tr>
+<td>Repocket</td>
+<td>[ ]</td>
+<td>Same</td>
+</tr>
+<tr>
+<td>Peer2Profit</td>
+<td>[ ]</td>
+<td>Same</td>
+</tr>
+<tr>
+<td>PacketStream</td>
+<td>[ ]</td>
+<td>Same</td>
+</tr>
+<tr>
+<td>Nodle</td>
+<td>[ ]</td>
+<td>DePIN/crypto audience</td>
+</tr>
+<tr>
+<td>Titan Network</td>
+<td>[ ]</td>
+<td>Same</td>
+</tr>
+<tr>
+<td>GagaNode</td>
+<td>[ ]</td>
+<td>Same</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="discord-broader-communities">Discord — Broader Communities<a class="headerlink" href="#discord-broader-communities" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Server</th>
+<th>Status</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Self-Hosted (selfh.st)</td>
+<td>[ ]</td>
+<td>Has #showcase channel</td>
+</tr>
+<tr>
+<td>TechnoTim's Discord</td>
+<td>[ ]</td>
+<td>50K+ homelabbers</td>
+</tr>
+<tr>
+<td>Homelab Discord</td>
+<td>[ ]</td>
+<td>Large community</td>
+</tr>
+<tr>
+<td>r/unRAID Discord</td>
+<td>[ ]</td>
+<td>Unraid users who run Docker</td>
+</tr>
+<tr>
+<td>LinuxServer.io Discord</td>
+<td>[ ]</td>
+<td>Docker power users</td>
+</tr>
+<tr>
+<td>DePIN Hub Discord</td>
+<td>[ ]</td>
+<td>Cross-project DePIN community</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="telegram-groups">Telegram Groups<a class="headerlink" href="#telegram-groups" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Group</th>
+<th>Status</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Honeygain Community</td>
+<td>[ ]</td>
+<td>Official + unofficial groups</td>
+</tr>
+<tr>
+<td>EarnApp Chat</td>
+<td>[ ]</td>
+<td>Active</td>
+</tr>
+<tr>
+<td>DePIN Alpha</td>
+<td>[ ]</td>
+<td>Cross-project DePIN discussions</td>
+</tr>
+<tr>
+<td>Bandwidth Sharing groups</td>
+<td>[ ]</td>
+<td>Search "bandwidth sharing" on Telegram — several 1K-10K member groups</td>
+</tr>
+<tr>
+<td>Crypto Passive Income groups</td>
+<td>[ ]</td>
+<td>Multiple large groups</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="forums-non-reddit">Forums (Non-Reddit)<a class="headerlink" href="#forums-non-reddit" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Forum</th>
+<th>Status</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>BeerMoneyForum.com</td>
+<td>[ ]</td>
+<td>Dedicated passive income forum. "Programs" section. Very relevant</td>
+</tr>
+<tr>
+<td>MoneyMakerGroup.com</td>
+<td>[ ]</td>
+<td>Old-school GPT/passive income forum, still active</td>
+</tr>
+<tr>
+<td>Unraid Forums</td>
+<td>[ ]</td>
+<td>Mega-guide thread with screenshots. Gets indexed by Google</td>
+</tr>
+<tr>
+<td>LevelOneTechs Forum</td>
+<td>[ ]</td>
+<td>Tech-savvy, homelab adjacent</td>
+</tr>
+<tr>
+<td>ServeTheHome Forums</td>
+<td>[ ]</td>
+<td>Server hardware community</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="facebook-groups">Facebook Groups<a class="headerlink" href="#facebook-groups" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Group</th>
+<th>Status</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Honeygain Users</td>
+<td>[ ]</td>
+<td>Several groups, 5K-20K members</td>
+</tr>
+<tr>
+<td>Passive Income Ideas</td>
+<td>[ ]</td>
+<td>Multiple large groups (50K-200K)</td>
+</tr>
+<tr>
+<td>Beermoney &amp; Side Hustles</td>
+<td>[ ]</td>
+<td>Same</td>
+</tr>
+<tr>
+<td>Unraid Users</td>
+<td>[ ]</td>
+<td>~10K, very engaged</td>
+</tr>
+<tr>
+<td>Self-Hosted Apps</td>
+<td>[ ]</td>
+<td>Growing</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="depin-crypto-ecosystem">DePIN &amp; Crypto Ecosystem<a class="headerlink" href="#depin-crypto-ecosystem" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Platform</th>
+<th>Status</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>DePINscan.io</td>
+<td>[ ]</td>
+<td>Directory tracking DePIN projects. List as "tooling"</td>
+</tr>
+<tr>
+<td>DePIN.Ninja</td>
+<td>[ ]</td>
+<td>Same</td>
+</tr>
+<tr>
+<td>IoTeX ecosystem portal</td>
+<td>[ ]</td>
+<td>CashPilot managing multiple DePIN nodes fits their narrative</td>
+</tr>
+<tr>
+<td>Messari DePIN section</td>
+<td>[ ]</td>
+<td>Research aggregator</td>
+</tr>
+<tr>
+<td>CoinGecko DePIN section</td>
+<td>[ ]</td>
+<td>Same</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="developer-tech-communities">Developer &amp; Tech Communities<a class="headerlink" href="#developer-tech-communities" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Platform</th>
+<th>Status</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Lobste.rs</td>
+<td>[ ]</td>
+<td>Invite-only HN alternative. Need invite first</td>
+</tr>
+<tr>
+<td>Tildes.net</td>
+<td>[ ]</td>
+<td>Invite-only, tech-heavy</td>
+</tr>
+<tr>
+<td>Mastodon (selfhosted.social)</td>
+<td>[ ]</td>
+<td>Exact audience, less noise than Twitter</td>
+</tr>
+<tr>
+<td>Lemmy (lemmy.world/c/selfhosted)</td>
+<td>[ ]</td>
+<td>Fediverse Reddit. Growing self-hosted community. Less strict</td>
+</tr>
+<tr>
+<td>Docker Community Slack</td>
+<td>[ ]</td>
+<td>Share in #showcase</td>
+</tr>
+<tr>
+<td>Hacktoberfest</td>
+<td>[ ]</td>
+<td>Add topic + "good first issue" labels. Contributors = advocates</td>
+</tr>
+<tr>
+<td>LinuxServer.io</td>
+<td>[ ]</td>
+<td>Propose LSIO-style build or blog mention</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="seo-written-content">SEO &amp; Written Content<a class="headerlink" href="#seo-written-content" title="Permanent link">&para;</a></h2>
+<h3 id="blog-posts-for-geisercloud">Blog Posts for geiser.cloud<a class="headerlink" href="#blog-posts-for-geisercloud" title="Permanent link">&para;</a></h3>
+<ul>
+<li>[ ] "Honeygain vs EarnApp vs IPRoyal: 2026 comparison" (people search this exact query)</li>
+<li>[ ] "How to maximize passive income from a single Unraid server"</li>
+<li>[ ] "Running 15 passive income services on a Raspberry Pi — is it worth it?"</li>
+<li>[ ] "Complete guide to residential IP passive income"</li>
+<li>[ ] Cross-post to dev.to, Hashnode, Medium</li>
+</ul>
+<h3 id="write-for-the-services">Write for the Services<a class="headerlink" href="#write-for-the-services" title="Permanent link">&para;</a></h3>
+<ul>
+<li>[ ] Pitch Honeygain blog: "How power users manage 15+ bandwidth sharing services"</li>
+<li>[ ] Pitch EarnApp blog: Same angle</li>
+<li>[ ] They want content about their ecosystem — it sells their product too</li>
+</ul>
+<hr />
+<h2 id="unconventional">Unconventional<a class="headerlink" href="#unconventional" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Action</th>
+<th>Status</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Grafana dashboard on grafana.com/dashboards</td>
+<td>[ ]</td>
+<td>Beautiful template for CashPilot metrics via Prometheus exporter</td>
+</tr>
+<tr>
+<td>Mini PC vendor partnerships (Beelink, MinisForum, GMKtec)</td>
+<td>[ ]</td>
+<td>"Your hardware + CashPilot = passive income." They might feature in community/blog</td>
+</tr>
+<tr>
+<td>Docker Hub profile polish</td>
+<td>[ ]</td>
+<td>Full README, logo, categories. Docker Hub search drives discovery</td>
+</tr>
+<tr>
+<td>Unraid forum mega-thread</td>
+<td>[ ]</td>
+<td>"Complete Guide to Passive Income on Unraid with CashPilot" with screenshots</td>
+</tr>
+<tr>
+<td>r/FIRE and financial independence blogs</td>
+<td>[ ]</td>
+<td>"Automated side income from idle hardware" angle</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="priority-order-highest-roi-first">Priority Order (Highest ROI first)<a class="headerlink" href="#priority-order-highest-roi-first" title="Permanent link">&para;</a></h2>
+<ol>
+<li>Passive Income Calculator page (viral SEO magnet)</li>
+<li>Monthly earnings reports on geiser.cloud (real data = shares)</li>
+<li>Self-Hosted Podcast pitch (exact audience)</li>
+<li>AlternativeTo listing (free, high Google rank)</li>
+<li>Unraid forum mega-guide (sticky, loyal community)</li>
+<li>Service Discord presence (organic, trust-building)</li>
+<li>IndieHackers Show IH post (builder community)</li>
+<li>Service-specific subreddits (r/Honeygain, r/EarnApp, etc.)</li>
+<li>Product Hunt launch</li>
+<li>Blog post series + cross-posting</li>
+</ol>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+    <div class="md-copyright__highlight">
+      Copyright &copy; 2026 Sergio Fernandez
+    </div>
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+        
+<div class="md-social">
+  
+    
+    
+    
+    
+      
+      
+    
+    <a href="https://github.com/GeiserX/CashPilot" target="_blank" rel="noopener" title="github.com" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+    </a>
+  
+    
+    
+    
+    
+      
+      
+    
+    <a href="https://hub.docker.com/r/drumsergio/cashpilot" target="_blank" rel="noopener" title="hub.docker.com" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M349.9 236.3h-66.1v-59.4h66.1zm0-204.3h-66.1v60.7h66.1zm78.2 144.8H362v59.4h66.1zm-156.3-72.1h-66.1v60.1h66.1zm78.1 0h-66.1v60.1h66.1zm276.8 100c-14.4-9.7-47.6-13.2-73.1-8.4-3.3-24-16.7-44.9-41.1-63.7l-14-9.3-9.3 14c-18.4 27.8-23.4 73.6-3.7 103.8-8.7 4.7-25.8 11.1-48.4 10.7H2.4c-8.7 50.8 5.8 116.8 44 162.1 37.1 43.9 92.7 66.2 165.4 66.2 157.4 0 273.9-72.5 328.4-204.2 21.4.4 67.6.1 91.3-45.2 1.5-2.5 6.6-13.2 8.5-17.1zm-511.1-27.9h-66v59.4h66.1v-59.4zm78.1 0h-66.1v59.4h66.1zm78.1 0h-66.1v59.4h66.1zm-78.1-72.1h-66.1v60.1h66.1z"/></svg>
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.tabs", "navigation.sections", "navigation.expand", "navigation.top", "content.code.copy", "content.action.edit", "search.highlight", "search.suggest", "toc.follow"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>
