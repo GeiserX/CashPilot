@@ -12,8 +12,7 @@ os.environ.setdefault("CASHPILOT_API_KEY", "test-fleet-key")
 
 import pytest
 
-from app.collectors.base import BaseCollector, EarningsResult
-
+from app.collectors.base import BaseCollector
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -613,8 +612,9 @@ class TestStorjCollector:
         assert result.balance == 3.0  # (150+50+100)/100
 
     def test_collect_connect_error(self):
-        from app.collectors.storj import StorjCollector
         import httpx as _httpx
+
+        from app.collectors.storj import StorjCollector
 
         client = _make_async_client()
         client.get.side_effect = _httpx.ConnectError("Connection refused")

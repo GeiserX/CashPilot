@@ -1005,7 +1005,7 @@ class TestValidateWorkerUrl:
 
     def test_no_host(self):
         from app.main import _validate_worker_url
-        with pytest.raises(ValueError):
+        with pytest.raises(Exception, match="no host"):
             _validate_worker_url("http://")
 
     def test_loopback_blocked(self):

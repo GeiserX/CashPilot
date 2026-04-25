@@ -7,7 +7,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 os.environ.setdefault("CASHPILOT_API_KEY", "test-fleet-key")
 
-import pytest
 
 
 def _make_async_client():

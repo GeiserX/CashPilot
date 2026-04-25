@@ -5,7 +5,6 @@ from unittest.mock import MagicMock, patch
 
 os.environ.setdefault("CASHPILOT_API_KEY", "test-fleet-key")
 
-import pytest
 
 from app import auth
 
