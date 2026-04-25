@@ -1,0 +1,13 @@
+coverage:
+  status:
+    project:
+      default:
+        target: 90%
+        threshold: 2%
+    patch:
+      default:
+        target: 90%
+
+ignore:
+  - "app/orchestrator.py"
+  - "app/worker_api.py"
