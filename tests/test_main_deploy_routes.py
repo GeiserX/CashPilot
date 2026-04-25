@@ -4,7 +4,6 @@ These routes proxy commands to workers via httpx, so we mock the httpx calls
 and the database layer.
 """
 
-import asyncio
 import json
 import os
 from contextlib import asynccontextmanager
