@@ -1,4 +1,10 @@
+codecov:
+  require_ci_to_pass: true
+
 coverage:
+  precision: 2
+  round: down
+  range: "70...100"
   status:
     project:
       default:
@@ -7,7 +13,18 @@ coverage:
     patch:
       default:
         target: 90%
+        threshold: 5%
+
+comment:
+  layout: "reach,diff,flags,files"
+  behavior: default
+  require_changes: true
+  require_base: false
+  require_head: true
 
 ignore:
   - "app/orchestrator.py"
   - "app/worker_api.py"
+  - "**/*_test.py"
+  - "**/tests/**"
+  - "**/conftest.py"
