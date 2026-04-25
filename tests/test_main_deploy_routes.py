@@ -23,6 +23,7 @@ from app.main import app
 async def _noop_lifespan(a):
     yield
 
+
 app.router.lifespan_context = _noop_lifespan
 
 
@@ -73,7 +74,8 @@ def _mock_httpx_resp(status_code=200, json_data=None):
 class TestApiDeploy:
     def test_deploy_success(self, client):
         svc = {
-            "slug": "honeygain", "name": "Honeygain",
+            "slug": "honeygain",
+            "name": "Honeygain",
             "docker": {
                 "image": "honeygain/honeygain:latest",
                 "env": [{"key": "EMAIL", "default": "user@test.com"}],
@@ -91,8 +93,7 @@ class TestApiDeploy:
 
         with (
             _auth_writer(),
-            patch("app.main.database.list_workers", new_callable=AsyncMock,
-                  return_value=[worker]),
+            patch("app.main.database.list_workers", new_callable=AsyncMock, return_value=[worker]),
             patch("app.main.catalog.get_service", return_value=svc),
             patch("app.main.database.get_worker", new_callable=AsyncMock, return_value=worker),
             patch("app.main.database.save_deployment", new_callable=AsyncMock),
@@ -108,8 +109,7 @@ class TestApiDeploy:
     def test_deploy_service_not_found(self, client):
         with (
             _auth_writer(),
-            patch("app.main.database.list_workers", new_callable=AsyncMock,
-                  return_value=[_online_worker()]),
+            patch("app.main.database.list_workers", new_callable=AsyncMock, return_value=[_online_worker()]),
             patch("app.main.catalog.get_service", return_value=None),
         ):
             resp = client.post("/api/deploy/nope", json={})
@@ -119,8 +119,7 @@ class TestApiDeploy:
         svc = {"slug": "grass", "name": "Grass", "docker": {}}
         with (
             _auth_writer(),
-            patch("app.main.database.list_workers", new_callable=AsyncMock,
-                  return_value=[_online_worker()]),
+            patch("app.main.database.list_workers", new_callable=AsyncMock, return_value=[_online_worker()]),
             patch("app.main.catalog.get_service", return_value=svc),
         ):
             resp = client.post("/api/deploy/grass", json={})
@@ -356,9 +355,14 @@ class TestWorkerCommand:
             patch("app.main.httpx.AsyncClient", return_value=mock_client),
             patch("app.main.FLEET_API_KEY", "test-key"),
         ):
-            resp = client.post("/api/workers/1/command", json={
-                "command": "deploy", "slug": "honeygain", "spec": {"image": "test"},
-            })
+            resp = client.post(
+                "/api/workers/1/command",
+                json={
+                    "command": "deploy",
+                    "slug": "honeygain",
+                    "spec": {"image": "test"},
+                },
+            )
             assert resp.status_code == 200
 
     def test_command_stop(self, client):
@@ -369,9 +373,13 @@ class TestWorkerCommand:
             patch("app.main.httpx.AsyncClient", return_value=mock_client),
             patch("app.main.FLEET_API_KEY", "test-key"),
         ):
-            resp = client.post("/api/workers/1/command", json={
-                "command": "stop", "slug": "honeygain",
-            })
+            resp = client.post(
+                "/api/workers/1/command",
+                json={
+                    "command": "stop",
+                    "slug": "honeygain",
+                },
+            )
             assert resp.status_code == 200
 
     def test_command_remove(self, client):
@@ -382,9 +390,13 @@ class TestWorkerCommand:
             patch("app.main.httpx.AsyncClient", return_value=mock_client),
             patch("app.main.FLEET_API_KEY", "test-key"),
         ):
-            resp = client.post("/api/workers/1/command", json={
-                "command": "remove", "slug": "honeygain",
-            })
+            resp = client.post(
+                "/api/workers/1/command",
+                json={
+                    "command": "remove",
+                    "slug": "honeygain",
+                },
+            )
             assert resp.status_code == 200
 
     def test_command_unknown(self, client):
@@ -395,9 +407,13 @@ class TestWorkerCommand:
             patch("app.main.httpx.AsyncClient", return_value=mock_client),
             patch("app.main.FLEET_API_KEY", "test-key"),
         ):
-            resp = client.post("/api/workers/1/command", json={
-                "command": "nuke", "slug": "honeygain",
-            })
+            resp = client.post(
+                "/api/workers/1/command",
+                json={
+                    "command": "nuke",
+                    "slug": "honeygain",
+                },
+            )
             assert resp.status_code == 400
 
     def test_command_worker_offline(self, client):
@@ -406,9 +422,13 @@ class TestWorkerCommand:
             _auth_writer(),
             patch("app.main.database.get_worker", new_callable=AsyncMock, return_value=worker),
         ):
-            resp = client.post("/api/workers/1/command", json={
-                "command": "stop", "slug": "honeygain",
-            })
+            resp = client.post(
+                "/api/workers/1/command",
+                json={
+                    "command": "stop",
+                    "slug": "honeygain",
+                },
+            )
             assert resp.status_code == 503
 
     def test_command_worker_not_found(self, client):
@@ -416,9 +436,13 @@ class TestWorkerCommand:
             _auth_writer(),
             patch("app.main.database.get_worker", new_callable=AsyncMock, return_value=None),
         ):
-            resp = client.post("/api/workers/99/command", json={
-                "command": "stop", "slug": "honeygain",
-            })
+            resp = client.post(
+                "/api/workers/99/command",
+                json={
+                    "command": "stop",
+                    "slug": "honeygain",
+                },
+            )
             assert resp.status_code == 404
 
     def test_command_httpx_error(self, client):
@@ -434,9 +458,13 @@ class TestWorkerCommand:
             patch("app.main.httpx.AsyncClient", return_value=mock_client),
             patch("app.main.FLEET_API_KEY", "test-key"),
         ):
-            resp = client.post("/api/workers/1/command", json={
-                "command": "restart", "slug": "honeygain",
-            })
+            resp = client.post(
+                "/api/workers/1/command",
+                json={
+                    "command": "restart",
+                    "slug": "honeygain",
+                },
+            )
             assert resp.status_code == 503
 
 
@@ -447,17 +475,36 @@ class TestWorkerCommand:
 
 class TestDeployedServicesAggregation:
     def test_aggregation_with_workers_and_earnings(self, client):
-        workers = [{
-            "id": 1, "name": "w1", "status": "online",
-            "system_info": json.dumps({"docker_available": True}),
-            "containers": json.dumps([
-                {"slug": "honeygain", "name": "hg", "status": "running", "image": "hg:latest", "cpu_percent": 1.5, "memory_mb": 50},
-            ]),
-            "apps": "[]",
-        }]
+        workers = [
+            {
+                "id": 1,
+                "name": "w1",
+                "status": "online",
+                "system_info": json.dumps({"docker_available": True}),
+                "containers": json.dumps(
+                    [
+                        {
+                            "slug": "honeygain",
+                            "name": "hg",
+                            "status": "running",
+                            "image": "hg:latest",
+                            "cpu_percent": 1.5,
+                            "memory_mb": 50,
+                        },
+                    ]
+                ),
+                "apps": "[]",
+            }
+        ]
         earnings = [{"platform": "honeygain", "balance": 5.0, "currency": "USD"}]
         health = [{"slug": "honeygain", "score": 95, "uptime_pct": 99, "restarts": 0}]
-        svc = {"name": "Honeygain", "category": "bandwidth", "cashout": {"min_amount": 20}, "referral": {"signup_url": "https://r.hg.com"}, "website": "https://honeygain.com"}
+        svc = {
+            "name": "Honeygain",
+            "category": "bandwidth",
+            "cashout": {"min_amount": 20},
+            "referral": {"signup_url": "https://r.hg.com"},
+            "website": "https://honeygain.com",
+        }
 
         with (
             _auth_owner(),
@@ -479,19 +526,41 @@ class TestDeployedServicesAggregation:
     def test_multi_node_aggregation(self, client):
         workers = [
             {
-                "id": 1, "name": "w1", "status": "online",
+                "id": 1,
+                "name": "w1",
+                "status": "online",
                 "system_info": json.dumps({"docker_available": True}),
-                "containers": json.dumps([
-                    {"slug": "honeygain", "name": "hg-1", "status": "running", "image": "hg:latest", "cpu_percent": 1.0, "memory_mb": 30},
-                ]),
+                "containers": json.dumps(
+                    [
+                        {
+                            "slug": "honeygain",
+                            "name": "hg-1",
+                            "status": "running",
+                            "image": "hg:latest",
+                            "cpu_percent": 1.0,
+                            "memory_mb": 30,
+                        },
+                    ]
+                ),
                 "apps": "[]",
             },
             {
-                "id": 2, "name": "w2", "status": "online",
+                "id": 2,
+                "name": "w2",
+                "status": "online",
                 "system_info": json.dumps({"docker_available": True}),
-                "containers": json.dumps([
-                    {"slug": "honeygain", "name": "hg-2", "status": "running", "image": "hg:latest", "cpu_percent": 2.0, "memory_mb": 40},
-                ]),
+                "containers": json.dumps(
+                    [
+                        {
+                            "slug": "honeygain",
+                            "name": "hg-2",
+                            "status": "running",
+                            "image": "hg:latest",
+                            "cpu_percent": 2.0,
+                            "memory_mb": 40,
+                        },
+                    ]
+                ),
                 "apps": "[]",
             },
         ]

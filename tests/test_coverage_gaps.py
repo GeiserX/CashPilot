@@ -24,6 +24,7 @@ from app.collectors.base import EarningsResult
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _make_async_client():
     client = AsyncMock()
     client.__aenter__ = AsyncMock(return_value=client)
@@ -46,9 +47,14 @@ def _mock_response(status_code=200, json_data=None, text="", url="https://exampl
     return resp
 
 
-def _make_service_yaml(slug="test-svc", name="Test Service", category="bandwidth",
-                       status="active", description="A test service",
-                       docker=None):
+def _make_service_yaml(
+    slug="test-svc",
+    name="Test Service",
+    category="bandwidth",
+    status="active",
+    description="A test service",
+    docker=None,
+):
     data = {
         "name": name,
         "slug": slug,
@@ -156,6 +162,7 @@ class TestCatalogSighup:
     def test_register_sighup_on_unix(self):
         import signal
         import sys
+
         if sys.platform == "win32":
             pytest.skip("Unix only")
         with patch("signal.signal") as mock_signal:
@@ -260,10 +267,7 @@ class TestBytelixirParseBalanceEdgeCases:
     def test_parse_balance_first_zero_second_nonzero(self):
         from app.collectors.bytelixir import BytelixirCollector
 
-        html = (
-            '<span>$</span>0.00<span class="text-2xs">000</span>'
-            '<span>$</span>1.23<span class="text-2xs">456</span>'
-        )
+        html = '<span>$</span>0.00<span class="text-2xs">000</span><span>$</span>1.23<span class="text-2xs">456</span>'
         result = BytelixirCollector._parse_balance_from_html(html)
         assert result == 1.23456
 
@@ -302,8 +306,10 @@ def _no_auth():
 @pytest.fixture
 def client():
     from app.main import app
+
     app.router.lifespan_context = _noop_lifespan
     from fastapi.testclient import TestClient
+
     with TestClient(app, raise_server_exceptions=False) as c:
         yield c
 
@@ -314,15 +320,21 @@ class TestMainHealthCheckWithContainers:
     def test_health_check_records_events(self):
         from app.main import _run_health_check
 
-        workers = [{
-            "id": 1, "name": "w1", "status": "online",
-            "system_info": json.dumps({"docker_available": True}),
-            "containers": json.dumps([
-                {"slug": "honeygain", "name": "hg", "status": "running"},
-                {"slug": "earnapp", "name": "ea", "status": "stopped"},
-            ]),
-            "apps": "[]",
-        }]
+        workers = [
+            {
+                "id": 1,
+                "name": "w1",
+                "status": "online",
+                "system_info": json.dumps({"docker_available": True}),
+                "containers": json.dumps(
+                    [
+                        {"slug": "honeygain", "name": "hg", "status": "running"},
+                        {"slug": "earnapp", "name": "ea", "status": "stopped"},
+                    ]
+                ),
+                "apps": "[]",
+            }
+        ]
         mock_record = AsyncMock()
         with (
             patch("app.main.database.list_workers", new_callable=AsyncMock, return_value=workers),
@@ -359,8 +371,7 @@ class TestMainRunCollectionException:
     def test_run_collection_total_exception(self):
         from app.main import _run_collection
 
-        with patch("app.main.database.get_deployments", new_callable=AsyncMock,
-                    side_effect=Exception("DB down")):
+        with patch("app.main.database.get_deployments", new_callable=AsyncMock, side_effect=Exception("DB down")):
             asyncio.run(_run_collection())  # Should not raise
 
 
@@ -369,7 +380,8 @@ class TestMainDeployCommandEdgeCases:
 
     def test_deploy_with_command_substitution(self, client):
         svc = {
-            "slug": "test-cmd", "name": "TestCmd",
+            "slug": "test-cmd",
+            "name": "TestCmd",
             "docker": {
                 "image": "test:latest",
                 "env": [{"key": "TOKEN", "default": "abc"}],
@@ -403,7 +415,8 @@ class TestMainDeployCommandEdgeCases:
 
     def test_deploy_with_network_mode_and_cap_add(self, client):
         svc = {
-            "slug": "test-net", "name": "TestNet",
+            "slug": "test-net",
+            "name": "TestNet",
             "docker": {
                 "image": "test:latest",
                 "env": [],
@@ -443,7 +456,8 @@ class TestMainProxyWorkerDeployError:
 
     def test_proxy_deploy_error_response(self, client):
         svc = {
-            "slug": "hg", "name": "Honeygain",
+            "slug": "hg",
+            "name": "Honeygain",
             "docker": {"image": "hg:latest", "env": [], "ports": [], "volumes": []},
         }
         worker = {"id": 1, "name": "w1", "status": "online", "url": "http://192.168.1.10:8081"}
@@ -471,7 +485,8 @@ class TestMainProxyWorkerDeployError:
 
     def test_proxy_deploy_httpx_error(self, client):
         svc = {
-            "slug": "hg", "name": "Honeygain",
+            "slug": "hg",
+            "name": "Honeygain",
             "docker": {"image": "hg:latest", "env": [], "ports": [], "volumes": []},
         }
         worker = {"id": 1, "name": "w1", "status": "online", "url": "http://192.168.1.10:8081"}
@@ -546,8 +561,7 @@ class TestMainComposeSingleError:
         with (
             _auth_owner(),
             patch("app.main.catalog.get_service", return_value=svc),
-            patch("app.main.compose_generator.generate_compose_single",
-                  side_effect=ValueError("no image")),
+            patch("app.main.compose_generator.generate_compose_single", side_effect=ValueError("no image")),
         ):
             resp = client.get("/api/compose/bad")
             assert resp.status_code == 400
@@ -555,8 +569,7 @@ class TestMainComposeSingleError:
     def test_compose_multi_value_error(self, client):
         with (
             _auth_owner(),
-            patch("app.main.compose_generator.generate_compose_multi",
-                  side_effect=ValueError("no services")),
+            patch("app.main.compose_generator.generate_compose_multi", side_effect=ValueError("no services")),
         ):
             resp = client.post("/api/compose", json={"slugs": ["bad"]})
             assert resp.status_code == 400
@@ -564,8 +577,7 @@ class TestMainComposeSingleError:
     def test_compose_all_value_error(self, client):
         with (
             _auth_owner(),
-            patch("app.main.compose_generator.generate_compose_all",
-                  side_effect=ValueError("no services")),
+            patch("app.main.compose_generator.generate_compose_all", side_effect=ValueError("no services")),
         ):
             resp = client.get("/api/compose")
             assert resp.status_code == 400
@@ -576,15 +588,17 @@ class TestMainPerNodeEarnings:
 
     def test_per_node_earnings_mysterium(self, client):
         mock_collector = MagicMock()
-        mock_collector.get_per_node_earnings = AsyncMock(return_value=[
-            {"identity": "0xabc", "earnings_myst": 5.0}
-        ])
+        mock_collector.get_per_node_earnings = AsyncMock(return_value=[{"identity": "0xabc", "earnings_myst": 5.0}])
         with (
             _auth_owner(),
-            patch("app.main.database.get_config", new_callable=AsyncMock, return_value={
-                "mysterium_email": "test@test.com",
-                "mysterium_password": "pass",
-            }),
+            patch(
+                "app.main.database.get_config",
+                new_callable=AsyncMock,
+                return_value={
+                    "mysterium_email": "test@test.com",
+                    "mysterium_password": "pass",
+                },
+            ),
             patch("app.collectors.mystnodes.MystNodesCollector", return_value=mock_collector),
         ):
             resp = client.get("/api/services/mysterium/per-node-earnings")
@@ -604,10 +618,15 @@ class TestMainSetConfigExternalDeploySkip:
             patch("app.main.database.get_deployment", new_callable=AsyncMock),
             patch("app.main.database.save_deployment", new_callable=AsyncMock) as mock_save,
         ):
-            resp = client.post("/api/config", json={"data": {
-                "honeygain_email": "test@test.com",
-                "honeygain_password": "pass",
-            }})
+            resp = client.post(
+                "/api/config",
+                json={
+                    "data": {
+                        "honeygain_email": "test@test.com",
+                        "honeygain_password": "pass",
+                    }
+                },
+            )
             assert resp.status_code == 200
             mock_save.assert_not_called()
 
@@ -651,9 +670,13 @@ class TestMainWorkerCommandNoUrl:
             _auth_writer(),
             patch("app.main.database.get_worker", new_callable=AsyncMock, return_value=worker),
         ):
-            resp = client.post("/api/workers/1/command", json={
-                "command": "stop", "slug": "honeygain",
-            })
+            resp = client.post(
+                "/api/workers/1/command",
+                json={
+                    "command": "stop",
+                    "slug": "honeygain",
+                },
+            )
             assert resp.status_code == 503
 
 
@@ -678,9 +701,14 @@ class TestMainWorkerCommandHttpError:
             patch("app.main.httpx.AsyncClient", return_value=mock_client),
             patch("app.main.FLEET_API_KEY", "test-key"),
         ):
-            resp = client.post("/api/workers/1/command", json={
-                "command": "deploy", "slug": "honeygain", "spec": {"image": "test"},
-            })
+            resp = client.post(
+                "/api/workers/1/command",
+                json={
+                    "command": "deploy",
+                    "slug": "honeygain",
+                    "spec": {"image": "test"},
+                },
+            )
             assert resp.status_code == 500
 
 
@@ -691,12 +719,10 @@ class TestMainEarningsSummaryWithWorkerException:
         summary = {"total": 10.0, "today": 1.0, "month": 5.0, "today_change": 0.5}
         with (
             _auth_owner(),
-            patch("app.main.database.get_earnings_dashboard_summary", new_callable=AsyncMock,
-                  return_value=summary),
+            patch("app.main.database.get_earnings_dashboard_summary", new_callable=AsyncMock, return_value=summary),
             patch("app.main.database.get_config", new_callable=AsyncMock, return_value={}),
             patch("app.main.database.get_earnings_summary", new_callable=AsyncMock, return_value=[]),
-            patch("app.main._get_all_worker_containers", new_callable=AsyncMock,
-                  side_effect=Exception("worker error")),
+            patch("app.main._get_all_worker_containers", new_callable=AsyncMock, side_effect=Exception("worker error")),
         ):
             resp = client.get("/api/earnings/summary")
             assert resp.status_code == 200
@@ -707,19 +733,38 @@ class TestMainServicesDeployedMultiStatus:
     """Cover lines 605, 626-627: deployed services with various statuses."""
 
     def test_deployed_services_with_cashout_and_referral(self, client):
-        workers = [{
-            "id": 1, "name": "w1", "status": "online",
-            "system_info": json.dumps({"docker_available": True}),
-            "containers": json.dumps([
-                {"slug": "hg", "name": "hg", "status": "restarting", "image": "hg:latest",
-                 "cpu_percent": 0.5, "memory_mb": 25},
-                {"slug": "hg", "name": "hg-2", "status": "running", "image": "hg:latest",
-                 "cpu_percent": 1.0, "memory_mb": 30},
-            ]),
-            "apps": "[]",
-        }]
+        workers = [
+            {
+                "id": 1,
+                "name": "w1",
+                "status": "online",
+                "system_info": json.dumps({"docker_available": True}),
+                "containers": json.dumps(
+                    [
+                        {
+                            "slug": "hg",
+                            "name": "hg",
+                            "status": "restarting",
+                            "image": "hg:latest",
+                            "cpu_percent": 0.5,
+                            "memory_mb": 25,
+                        },
+                        {
+                            "slug": "hg",
+                            "name": "hg-2",
+                            "status": "running",
+                            "image": "hg:latest",
+                            "cpu_percent": 1.0,
+                            "memory_mb": 30,
+                        },
+                    ]
+                ),
+                "apps": "[]",
+            }
+        ]
         svc = {
-            "name": "Honeygain", "category": "bandwidth",
+            "name": "Honeygain",
+            "category": "bandwidth",
             "cashout": {"min_amount": 20},
             "referral": {"signup_url": "https://r.hg.com"},
             "website": "https://honeygain.com",
@@ -728,8 +773,11 @@ class TestMainServicesDeployedMultiStatus:
         with (
             _auth_owner(),
             patch("app.main.database.list_workers", new_callable=AsyncMock, return_value=workers),
-            patch("app.main.database.get_earnings_summary", new_callable=AsyncMock,
-                  return_value=[{"platform": "hg", "balance": 5.0, "currency": "USD"}]),
+            patch(
+                "app.main.database.get_earnings_summary",
+                new_callable=AsyncMock,
+                return_value=[{"platform": "hg", "balance": 5.0, "currency": "USD"}],
+            ),
             patch("app.main.database.get_health_scores", new_callable=AsyncMock, return_value=[]),
             patch("app.main.database.get_deployments", new_callable=AsyncMock, return_value=[]),
             patch("app.main.catalog.get_service", return_value=svc),
@@ -748,12 +796,16 @@ class TestMainServicesAvailableNodeCounts:
 
     def test_services_available_with_node_counts(self, client):
         svcs = [{"slug": "hg", "name": "HG", "status": "active", "docker": {"image": "test"}}]
-        workers = [{
-            "id": 1, "name": "w1", "status": "online",
-            "system_info": json.dumps({"docker_available": True}),
-            "containers": json.dumps([{"slug": "hg", "name": "hg", "status": "running"}]),
-            "apps": "[]",
-        }]
+        workers = [
+            {
+                "id": 1,
+                "name": "w1",
+                "status": "online",
+                "system_info": json.dumps({"docker_available": True}),
+                "containers": json.dumps([{"slug": "hg", "name": "hg", "status": "running"}]),
+                "apps": "[]",
+            }
+        ]
         deps = [{"slug": "hg"}]
         with (
             _auth_owner(),
@@ -773,12 +825,16 @@ class TestMainGetServiceEnriched:
 
     def test_get_service_with_worker_data(self, client):
         svc = {"slug": "hg", "name": "HG", "docker": {"image": "test"}}
-        workers = [{
-            "id": 1, "name": "w1", "status": "online",
-            "system_info": json.dumps({"docker_available": True}),
-            "containers": json.dumps([{"slug": "hg", "name": "hg", "status": "running"}]),
-            "apps": "[]",
-        }]
+        workers = [
+            {
+                "id": 1,
+                "name": "w1",
+                "status": "online",
+                "system_info": json.dumps({"docker_available": True}),
+                "containers": json.dumps([{"slug": "hg", "name": "hg", "status": "running"}]),
+                "apps": "[]",
+            }
+        ]
         with (
             _auth_owner(),
             patch("app.main.catalog.get_service", return_value=svc),
