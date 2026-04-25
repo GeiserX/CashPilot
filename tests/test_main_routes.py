@@ -8,7 +8,7 @@ import asyncio
 import json
 import os
 from contextlib import asynccontextmanager
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 os.environ.setdefault("CASHPILOT_API_KEY", "test-fleet-key")
 
@@ -104,9 +104,8 @@ class TestResolveWorkerId:
 
     def test_no_workers_raises_503(self):
         from app.main import _resolve_worker_id
-        with patch("app.main.database.list_workers", new_callable=AsyncMock, return_value=[]):
-            with pytest.raises(Exception, match="No workers online"):
-                asyncio.run(_resolve_worker_id(None))
+        with patch("app.main.database.list_workers", new_callable=AsyncMock, return_value=[]), pytest.raises(Exception, match="No workers online"):
+            asyncio.run(_resolve_worker_id(None))
 
     def test_multiple_workers_raises_400(self):
         from app.main import _resolve_worker_id
@@ -114,9 +113,8 @@ class TestResolveWorkerId:
             {"id": 1, "status": "online"},
             {"id": 2, "status": "online"},
         ]
-        with patch("app.main.database.list_workers", new_callable=AsyncMock, return_value=workers):
-            with pytest.raises(Exception, match="worker_id is required"):
-                asyncio.run(_resolve_worker_id(None))
+        with patch("app.main.database.list_workers", new_callable=AsyncMock, return_value=workers), pytest.raises(Exception, match="worker_id is required"):
+            asyncio.run(_resolve_worker_id(None))
 
 
 class TestGetAllWorkerContainers:
@@ -1007,7 +1005,7 @@ class TestValidateWorkerUrl:
 
     def test_no_host(self):
         from app.main import _validate_worker_url
-        with pytest.raises(Exception):
+        with pytest.raises(ValueError):
             _validate_worker_url("http://")
 
     def test_loopback_blocked(self):
@@ -1056,8 +1054,9 @@ class TestPeriodicTasks:
             asyncio.run(_run_data_retention())  # Should not raise
 
     def test_check_stale_workers(self):
-        from app.main import _check_stale_workers
         from datetime import UTC, datetime, timedelta
+
+        from app.main import _check_stale_workers
         old_time = (datetime.now(UTC) - timedelta(seconds=300)).isoformat()
         workers = [{"id": 1, "name": "w1", "status": "online", "last_heartbeat": old_time}]
         with (
@@ -1073,8 +1072,8 @@ class TestPeriodicTasks:
             asyncio.run(_check_stale_workers())  # Should not raise
 
     def test_run_collection(self):
-        from app.main import _run_collection
         from app.collectors.base import EarningsResult
+        from app.main import _run_collection
         mock_collector = AsyncMock()
         mock_collector.collect.return_value = EarningsResult(platform="test", balance=5.0, currency="USD")
         with (
@@ -1086,8 +1085,8 @@ class TestPeriodicTasks:
             asyncio.run(_run_collection())
 
     def test_run_collection_with_error(self):
-        from app.main import _run_collection
         from app.collectors.base import EarningsResult
+        from app.main import _run_collection
         mock_collector = AsyncMock()
         mock_collector.collect.return_value = EarningsResult(platform="test", balance=0.0, error="API failed")
         with (

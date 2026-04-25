@@ -8,7 +8,6 @@ import asyncio
 import json
 import os
 from contextlib import asynccontextmanager
-from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 os.environ.setdefault("CASHPILOT_API_KEY", "test-fleet-key")
@@ -18,9 +17,8 @@ import pytest
 import yaml
 
 from app import catalog, database
-from app.collectors import _COLLECTOR_ARGS, COLLECTOR_MAP, make_collectors
-from app.collectors.base import BaseCollector, EarningsResult
-
+from app.collectors import COLLECTOR_MAP, make_collectors
+from app.collectors.base import EarningsResult
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -603,7 +601,7 @@ class TestMainSetConfigExternalDeploySkip:
             _auth_owner(),
             patch("app.main.database.set_config_bulk", new_callable=AsyncMock),
             patch("app.main.catalog.get_service", return_value=svc),
-            patch("app.main.database.get_deployment", new_callable=AsyncMock) as mock_dep,
+            patch("app.main.database.get_deployment", new_callable=AsyncMock),
             patch("app.main.database.save_deployment", new_callable=AsyncMock) as mock_save,
         ):
             resp = client.post("/api/config", json={"data": {
