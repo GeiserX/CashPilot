@@ -18,6 +18,7 @@ from app.collectors.base import BaseCollector
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _mock_response(status_code=200, json_data=None, text="", url="https://example.com"):
     resp = MagicMock()
     resp.status_code = status_code
@@ -28,6 +29,7 @@ def _mock_response(status_code=200, json_data=None, text="", url="https://exampl
     resp.raise_for_status = MagicMock()
     if status_code >= 400:
         import httpx as _httpx
+
         resp.raise_for_status.side_effect = _httpx.HTTPStatusError(
             f"HTTP {status_code}", request=MagicMock(), response=resp
         )

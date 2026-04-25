@@ -34,9 +34,7 @@ class TestInitDb:
         async def check():
             conn = await database._get_db()
             try:
-                cursor = await conn.execute(
-                    "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name"
-                )
+                cursor = await conn.execute("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")
                 tables = {row["name"] for row in await cursor.fetchall()}
                 assert "earnings" in tables
                 assert "config" in tables

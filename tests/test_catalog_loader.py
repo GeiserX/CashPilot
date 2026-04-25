@@ -10,9 +10,14 @@ import yaml
 from app import catalog
 
 
-def _make_service_yaml(slug="test-svc", name="Test Service", category="bandwidth",
-                       status="active", description="A test service",
-                       docker=None):
+def _make_service_yaml(
+    slug="test-svc",
+    name="Test Service",
+    category="bandwidth",
+    status="active",
+    description="A test service",
+    docker=None,
+):
     data = {
         "name": name,
         "slug": slug,

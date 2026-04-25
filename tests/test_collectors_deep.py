@@ -8,7 +8,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 os.environ.setdefault("CASHPILOT_API_KEY", "test-fleet-key")
 
 
-
 def _make_async_client():
     client = AsyncMock()
     client.__aenter__ = AsyncMock(return_value=client)
@@ -26,6 +25,7 @@ def _mock_response(status_code=200, json_data=None, text="", url="https://exampl
     resp.raise_for_status = MagicMock()
     if status_code >= 400:
         import httpx
+
         resp.raise_for_status.side_effect = httpx.HTTPStatusError(
             f"HTTP {status_code}", request=MagicMock(), response=resp
         )
@@ -87,24 +87,27 @@ class TestMystNodesCollectorDeep:
         from app.collectors.mystnodes import MystNodesCollector
 
         login_resp = _mock_response(200, {"accessToken": "at", "refreshToken": "rt"})
-        nodes_resp = _mock_response(200, {
-            "nodes": [
-                {
-                    "identity": "0xabc123",
-                    "name": "node-1",
-                    "localIp": "192.168.1.10",
-                    "nodeStatus": {"online": True},
-                    "country": {"code": "US"},
-                    "version": "1.0.0",
-                    "earnings": [{"etherAmount": 0.5}, {"etherAmount": 0.3}],
-                    "lifetimeEarnings": {
-                        "totalEther": 10.0,
-                        "settledEther": 8.0,
-                        "unsettledEther": 2.0,
-                    },
-                }
-            ]
-        })
+        nodes_resp = _mock_response(
+            200,
+            {
+                "nodes": [
+                    {
+                        "identity": "0xabc123",
+                        "name": "node-1",
+                        "localIp": "192.168.1.10",
+                        "nodeStatus": {"online": True},
+                        "country": {"code": "US"},
+                        "version": "1.0.0",
+                        "earnings": [{"etherAmount": 0.5}, {"etherAmount": 0.3}],
+                        "lifetimeEarnings": {
+                            "totalEther": 10.0,
+                            "settledEther": 8.0,
+                            "unsettledEther": 2.0,
+                        },
+                    }
+                ]
+            },
+        )
 
         client = _make_async_client()
         client.post.return_value = login_resp
@@ -257,11 +260,16 @@ class TestGrassDeep:
         # First call: settled points = 0 (active epoch)
         user_resp = _mock_response(200, {"result": {"data": {"totalPoints": 0}}})
         # Second call: active devices
-        devices_resp = _mock_response(200, {
-            "result": {"data": [
-                {"aggUptime": 3600, "ipScore": 80, "multiplier": 1.0, "ipAddress": "1.2.3.4"},
-            ]}
-        })
+        devices_resp = _mock_response(
+            200,
+            {
+                "result": {
+                    "data": [
+                        {"aggUptime": 3600, "ipScore": 80, "multiplier": 1.0, "ipAddress": "1.2.3.4"},
+                    ]
+                }
+            },
+        )
 
         client = _make_async_client()
         client.get.side_effect = [user_resp, devices_resp]

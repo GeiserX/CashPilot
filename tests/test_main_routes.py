@@ -31,6 +31,7 @@ app.router.lifespan_context = _noop_lifespan
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _owner_user():
     return {"uid": 1, "u": "admin", "r": "owner"}
 
@@ -74,58 +75,78 @@ def client():
 class TestSafeJson:
     def test_valid_json(self):
         from app.main import _safe_json
+
         assert _safe_json('{"a": 1}') == {"a": 1}
 
     def test_invalid_json_fallback(self):
         from app.main import _safe_json
+
         assert _safe_json("not json") == []
 
     def test_invalid_json_custom_fallback(self):
         from app.main import _safe_json
+
         assert _safe_json("bad", {}) == {}
 
     def test_none_input(self):
         from app.main import _safe_json
+
         assert _safe_json(None) == []
 
 
 class TestResolveWorkerId:
     def test_explicit_worker_id(self):
         from app.main import _resolve_worker_id
+
         result = asyncio.run(_resolve_worker_id(42))
         assert result == 42
 
     def test_auto_resolve_single_worker(self):
         from app.main import _resolve_worker_id
-        with patch("app.main.database.list_workers", new_callable=AsyncMock,
-                    return_value=[{"id": 7, "status": "online"}]):
+
+        with patch(
+            "app.main.database.list_workers", new_callable=AsyncMock, return_value=[{"id": 7, "status": "online"}]
+        ):
             result = asyncio.run(_resolve_worker_id(None))
             assert result == 7
 
     def test_no_workers_raises_503(self):
         from app.main import _resolve_worker_id
-        with patch("app.main.database.list_workers", new_callable=AsyncMock, return_value=[]), pytest.raises(Exception, match="No workers online"):
+
+        with (
+            patch("app.main.database.list_workers", new_callable=AsyncMock, return_value=[]),
+            pytest.raises(Exception, match="No workers online"),
+        ):
             asyncio.run(_resolve_worker_id(None))
 
     def test_multiple_workers_raises_400(self):
         from app.main import _resolve_worker_id
+
         workers = [
             {"id": 1, "status": "online"},
             {"id": 2, "status": "online"},
         ]
-        with patch("app.main.database.list_workers", new_callable=AsyncMock, return_value=workers), pytest.raises(Exception, match="worker_id is required"):
+        with (
+            patch("app.main.database.list_workers", new_callable=AsyncMock, return_value=workers),
+            pytest.raises(Exception, match="worker_id is required"),
+        ):
             asyncio.run(_resolve_worker_id(None))
 
 
 class TestGetAllWorkerContainers:
     def test_docker_containers(self):
         from app.main import _get_all_worker_containers
-        workers = [{
-            "id": 1, "name": "w1", "status": "online",
-            "system_info": json.dumps({"docker_available": True}),
-            "containers": json.dumps([{"slug": "honeygain", "name": "hg", "status": "running"}]),
-            "apps": "[]",
-        }]
+
+        workers = [
+            {
+                "id": 1,
+                "name": "w1",
+                "status": "online",
+                "system_info": json.dumps({"docker_available": True}),
+                "containers": json.dumps([{"slug": "honeygain", "name": "hg", "status": "running"}]),
+                "apps": "[]",
+            }
+        ]
         with patch("app.main.database.list_workers", new_callable=AsyncMock, return_value=workers):
             result = asyncio.run(_get_all_worker_containers())
         assert len(result) == 1
@@ -134,12 +155,17 @@ class TestGetAllWorkerContainers:
 
     def test_android_apps(self):
         from app.main import _get_all_worker_containers
-        workers = [{
-            "id": 2, "name": "phone", "status": "online",
-            "system_info": json.dumps({"device_type": "android"}),
-            "containers": "[]",
-            "apps": json.dumps([{"slug": "earnapp", "running": True}]),
-        }]
+
+        workers = [
+            {
+                "id": 2,
+                "name": "phone",
+                "status": "online",
+                "system_info": json.dumps({"device_type": "android"}),
+                "containers": "[]",
+                "apps": json.dumps([{"slug": "earnapp", "running": True}]),
+            }
+        ]
         with patch("app.main.database.list_workers", new_callable=AsyncMock, return_value=workers):
             result = asyncio.run(_get_all_worker_containers())
         assert len(result) == 1
@@ -148,6 +174,7 @@ class TestGetAllWorkerContainers:
 
     def test_offline_workers_skipped(self):
         from app.main import _get_all_worker_containers
+
         workers = [{"id": 1, "name": "w1", "status": "offline", "system_info": "{}", "containers": "[]", "apps": "[]"}]
         with patch("app.main.database.list_workers", new_callable=AsyncMock, return_value=workers):
             result = asyncio.run(_get_all_worker_containers())
@@ -239,11 +266,15 @@ class TestRegisterRoute:
             patch("app.main.auth.create_session_token", return_value="tok"),
             patch("app.main.auth.set_session_cookie", side_effect=lambda r, t: r),
         ):
-            resp = client.post("/register", data={
-                "username": "admin",
-                "password": "password123",
-                "password_confirm": "password123",
-            }, follow_redirects=False)
+            resp = client.post(
+                "/register",
+                data={
+                    "username": "admin",
+                    "password": "password123",
+                    "password_confirm": "password123",
+                },
+                follow_redirects=False,
+            )
             assert resp.status_code == 303
 
     def test_register_password_mismatch(self, client):
@@ -251,11 +282,14 @@ class TestRegisterRoute:
             _no_auth(),
             patch("app.main.database.has_any_users", new_callable=AsyncMock, return_value=False),
         ):
-            resp = client.post("/register", data={
-                "username": "admin",
-                "password": "password123",
-                "password_confirm": "different",
-            })
+            resp = client.post(
+                "/register",
+                data={
+                    "username": "admin",
+                    "password": "password123",
+                    "password_confirm": "different",
+                },
+            )
             assert resp.status_code == 400
 
     def test_register_password_too_short(self, client):
@@ -263,11 +297,14 @@ class TestRegisterRoute:
             _no_auth(),
             patch("app.main.database.has_any_users", new_callable=AsyncMock, return_value=False),
         ):
-            resp = client.post("/register", data={
-                "username": "admin",
-                "password": "short",
-                "password_confirm": "short",
-            })
+            resp = client.post(
+                "/register",
+                data={
+                    "username": "admin",
+                    "password": "short",
+                    "password_confirm": "short",
+                },
+            )
             assert resp.status_code == 400
 
     def test_register_bad_username(self, client):
@@ -275,11 +312,14 @@ class TestRegisterRoute:
             _no_auth(),
             patch("app.main.database.has_any_users", new_callable=AsyncMock, return_value=False),
         ):
-            resp = client.post("/register", data={
-                "username": "a",
-                "password": "password123",
-                "password_confirm": "password123",
-            })
+            resp = client.post(
+                "/register",
+                data={
+                    "username": "a",
+                    "password": "password123",
+                    "password_confirm": "password123",
+                },
+            )
             assert resp.status_code == 400
 
     def test_register_duplicate_username(self, client):
@@ -288,11 +328,14 @@ class TestRegisterRoute:
             patch("app.main.database.has_any_users", new_callable=AsyncMock, return_value=False),
             patch("app.main.database.get_user_by_username", new_callable=AsyncMock, return_value={"id": 1}),
         ):
-            resp = client.post("/register", data={
-                "username": "admin",
-                "password": "password123",
-                "password_confirm": "password123",
-            })
+            resp = client.post(
+                "/register",
+                data={
+                    "username": "admin",
+                    "password": "password123",
+                    "password_confirm": "password123",
+                },
+            )
             assert resp.status_code == 400
 
     def test_register_non_first_user_non_owner_forbidden(self, client):
@@ -300,11 +343,14 @@ class TestRegisterRoute:
             _auth_viewer(),
             patch("app.main.database.has_any_users", new_callable=AsyncMock, return_value=True),
         ):
-            resp = client.post("/register", data={
-                "username": "new",
-                "password": "password123",
-                "password_confirm": "password123",
-            })
+            resp = client.post(
+                "/register",
+                data={
+                    "username": "new",
+                    "password": "password123",
+                    "password_confirm": "password123",
+                },
+            )
             assert resp.status_code == 403
 
 
@@ -523,8 +569,11 @@ class TestApiEarnings:
     def test_api_earnings(self, client):
         with (
             _auth_owner(),
-            patch("app.main.database.get_earnings_summary", new_callable=AsyncMock,
-                  return_value=[{"platform": "hg", "balance": 5.0, "currency": "USD"}]),
+            patch(
+                "app.main.database.get_earnings_summary",
+                new_callable=AsyncMock,
+                return_value=[{"platform": "hg", "balance": 5.0, "currency": "USD"}],
+            ),
         ):
             resp = client.get("/api/earnings")
             assert resp.status_code == 200
@@ -548,8 +597,11 @@ class TestApiEarnings:
     def test_api_earnings_daily(self, client):
         with (
             _auth_owner(),
-            patch("app.main.database.get_daily_earnings", new_callable=AsyncMock,
-                  return_value=[{"date": "2026-01-01", "amount": 1.0}]),
+            patch(
+                "app.main.database.get_daily_earnings",
+                new_callable=AsyncMock,
+                return_value=[{"date": "2026-01-01", "amount": 1.0}],
+            ),
         ):
             resp = client.get("/api/earnings/daily?days=7")
             assert resp.status_code == 200
@@ -636,7 +688,9 @@ class TestApiCompose:
         with (
             _auth_owner(),
             patch("app.main.catalog.get_service", return_value=svc),
-            patch("app.main.compose_generator.generate_compose_single", return_value="services:\n  hg:\n    image: test"),
+            patch(
+                "app.main.compose_generator.generate_compose_single", return_value="services:\n  hg:\n    image: test"
+            ),
         ):
             resp = client.get("/api/compose/hg")
             assert resp.status_code == 200
@@ -992,34 +1046,41 @@ class TestApiFleet:
 class TestValidateWorkerUrl:
     def test_valid_url(self):
         from app.main import _validate_worker_url
+
         assert _validate_worker_url("http://192.168.1.10:8081") == "http://192.168.1.10:8081"
 
     def test_trailing_slash_stripped(self):
         from app.main import _validate_worker_url
+
         assert _validate_worker_url("http://host:8081/") == "http://host:8081"
 
     def test_invalid_scheme(self):
         from app.main import _validate_worker_url
+
         with pytest.raises(Exception, match="Invalid worker URL scheme"):
             _validate_worker_url("ftp://host:21")
 
     def test_no_host(self):
         from app.main import _validate_worker_url
+
         with pytest.raises(Exception, match="no host"):
             _validate_worker_url("http://")
 
     def test_loopback_blocked(self):
         from app.main import _validate_worker_url
+
         with pytest.raises(Exception, match="loopback"):
             _validate_worker_url("http://127.0.0.1:8081")
 
     def test_localhost_blocked(self):
         from app.main import _validate_worker_url
+
         with pytest.raises(Exception, match="localhost"):
             _validate_worker_url("http://localhost:8081")
 
     def test_tailscale_dns_allowed(self):
         from app.main import _validate_worker_url
+
         result = _validate_worker_url("http://worker.mango.ts.net:8081")
         assert "worker.mango.ts.net" in result
 
@@ -1032,6 +1093,7 @@ class TestValidateWorkerUrl:
 class TestPeriodicTasks:
     def test_run_health_check(self):
         from app.main import _run_health_check
+
         with (
             patch("app.main.database.list_workers", new_callable=AsyncMock, return_value=[]),
             patch("app.main.database.record_health_event", new_callable=AsyncMock),
@@ -1040,16 +1102,19 @@ class TestPeriodicTasks:
 
     def test_run_health_check_error(self):
         from app.main import _run_health_check
+
         with patch("app.main.database.list_workers", new_callable=AsyncMock, side_effect=Exception("db error")):
             asyncio.run(_run_health_check())  # Should not raise
 
     def test_run_data_retention(self):
         from app.main import _run_data_retention
+
         with patch("app.main.database.purge_old_data", new_callable=AsyncMock, return_value=5):
             asyncio.run(_run_data_retention())
 
     def test_run_data_retention_error(self):
         from app.main import _run_data_retention
+
         with patch("app.main.database.purge_old_data", new_callable=AsyncMock, side_effect=Exception("err")):
             asyncio.run(_run_data_retention())  # Should not raise
 
@@ -1057,6 +1122,7 @@ class TestPeriodicTasks:
         from datetime import UTC, datetime, timedelta
 
         from app.main import _check_stale_workers
+
         old_time = (datetime.now(UTC) - timedelta(seconds=300)).isoformat()
         workers = [{"id": 1, "name": "w1", "status": "online", "last_heartbeat": old_time}]
         with (
@@ -1068,12 +1134,14 @@ class TestPeriodicTasks:
 
     def test_check_stale_workers_error(self):
         from app.main import _check_stale_workers
+
         with patch("app.main.database.list_workers", new_callable=AsyncMock, side_effect=Exception("err")):
             asyncio.run(_check_stale_workers())  # Should not raise
 
     def test_run_collection(self):
         from app.collectors.base import EarningsResult
         from app.main import _run_collection
+
         mock_collector = AsyncMock()
         mock_collector.collect.return_value = EarningsResult(platform="test", balance=5.0, currency="USD")
         with (
@@ -1087,6 +1155,7 @@ class TestPeriodicTasks:
     def test_run_collection_with_error(self):
         from app.collectors.base import EarningsResult
         from app.main import _run_collection
+
         mock_collector = AsyncMock()
         mock_collector.collect.return_value = EarningsResult(platform="test", balance=0.0, error="API failed")
         with (

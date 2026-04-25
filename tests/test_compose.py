@@ -11,9 +11,18 @@ import yaml
 from app import compose_generator
 
 
-def _mock_service(slug="honeygain", name="Honeygain", image="honeygain/honeygain:latest",
-                  env=None, ports=None, volumes=None, category="bandwidth",
-                  network_mode=None, cap_add=None, command=None):
+def _mock_service(
+    slug="honeygain",
+    name="Honeygain",
+    image="honeygain/honeygain:latest",
+    env=None,
+    ports=None,
+    volumes=None,
+    category="bandwidth",
+    network_mode=None,
+    cap_add=None,
+    command=None,
+):
     svc = {
         "name": name,
         "slug": slug,
@@ -57,10 +66,12 @@ class TestServiceToCompose:
         assert result is None
 
     def test_env_vars_included(self):
-        svc = _mock_service(env=[
-            {"key": "EMAIL", "default": "user@example.com"},
-            {"key": "PASSWORD", "default": ""},
-        ])
+        svc = _mock_service(
+            env=[
+                {"key": "EMAIL", "default": "user@example.com"},
+                {"key": "PASSWORD", "default": ""},
+            ]
+        )
         result = compose_generator._service_to_compose(svc)
         assert "EMAIL" in result["environment"]
         assert result["environment"]["EMAIL"] == "user@example.com"
@@ -124,12 +135,18 @@ class TestGenerateComposeSingle:
         assert "services" in parsed
 
     def test_unknown_service_raises(self):
-        with patch("app.compose_generator.get_service", return_value=None), pytest.raises(ValueError, match="Unknown service"):
+        with (
+            patch("app.compose_generator.get_service", return_value=None),
+            pytest.raises(ValueError, match="Unknown service"),
+        ):
             compose_generator.generate_compose_single("nope")
 
     def test_no_image_raises(self):
         svc = {"name": "No Image", "slug": "noimg", "docker": {}}
-        with patch("app.compose_generator.get_service", return_value=svc), pytest.raises(ValueError, match="no Docker image"):
+        with (
+            patch("app.compose_generator.get_service", return_value=svc),
+            pytest.raises(ValueError, match="no Docker image"),
+        ):
             compose_generator.generate_compose_single("noimg")
 
 
@@ -147,7 +164,10 @@ class TestGenerateComposeMulti:
         assert "cashpilot-svc2" in output
 
     def test_empty_list_raises(self):
-        with patch("app.compose_generator.get_service", return_value=None), pytest.raises(ValueError, match="No deployable"):
+        with (
+            patch("app.compose_generator.get_service", return_value=None),
+            pytest.raises(ValueError, match="No deployable"),
+        ):
             compose_generator.generate_compose_multi(["nonexistent"])
 
 
@@ -159,7 +179,10 @@ class TestGenerateComposeAll:
         ]
         with (
             patch("app.compose_generator.get_services", return_value=svcs),
-            patch("app.compose_generator.get_service", side_effect=lambda s: next((x for x in svcs if x["slug"] == s), None)),
+            patch(
+                "app.compose_generator.get_service",
+                side_effect=lambda s: next((x for x in svcs if x["slug"] == s), None),
+            ),
         ):
             output = compose_generator.generate_compose_all()
         assert "cashpilot-a" in output
