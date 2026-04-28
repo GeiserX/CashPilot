@@ -1,8 +1,8 @@
-# AGENTS.md - AI Agent Instructions for CashPilot
+# CLAUDE.md - AI Agent Instructions for CashPilot
 
 > **PLAN MODE**: Use Plan Mode frequently! Before implementing complex features, multi-step tasks, or making significant changes, switch to Plan Mode to think through the approach, consider edge cases, and outline the implementation strategy.
 
-> **IMPORTANT**: Do NOT update this file unless the user explicitly says to. Only the user can authorize changes to AGENTS.md.
+> **IMPORTANT**: Do NOT update this file unless the user explicitly says to. Only the user can authorize changes to CLAUDE.md.
 
 > **SECURITY WARNING**: This repository is PUBLIC at [github.com/GeiserX/CashPilot](https://github.com/GeiserX/CashPilot). **NEVER commit secrets, API keys, passwords, tokens, or any sensitive data.** Referral codes are NOT secrets (they are public affiliate links). All actual secrets must be stored in:
 > - GitHub Secrets (for CI/CD)
