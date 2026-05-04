@@ -1,4 +1,4 @@
-fastapi>=0.115
+fastapi>=0.136.1
 uvicorn>=0.46.0
 uvloop>=0.22.1
 httptools>=0.6
