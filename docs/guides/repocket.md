@@ -5,7 +5,7 @@
 
 ## Description
 
-Repocket lets you earn passive income by sharing your unused internet bandwidth. Residential IP required (ToS prohibits VPS, proxies, and VPNs). Max 5 devices and 5 active sessions per account. Authenticates via Firebase using email and password. The Docker image uses environment variables directly.
+Repocket lets you earn passive income by sharing your unused internet bandwidth. Residential IPs earn the most; VPS/datacenter IPs are accepted at lower rates. Max 5 devices and 5 active sessions per account. Authenticates via Firebase using email and password. The Docker image uses environment variables directly.
 
 ## Earning Estimates
 
@@ -37,7 +37,7 @@ Sign up at [Repocket](https://repocket.com/).
 
 ### 2. Get your credentials
 
-After signing up, locate the credentials needed for Docker deployment. These are typically your email/password or an API token found in the dashboard.
+After signing up, you'll use your account email and password for Docker deployment.
 
 ### 3. Deploy with CashPilot
 
