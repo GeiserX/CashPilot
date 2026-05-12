@@ -17,7 +17,7 @@ docker:
   image: presearch/node
   platforms: [linux/amd64, linux/arm64]
   env:
-    - key: PRESEARCH_REGISTRATION_CODE
+    - key: REGISTRATION_CODE
       label: "Registration Code"
       required: true
       secret: true
