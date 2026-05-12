@@ -12,4 +12,9 @@ if [ -S "$SOCK" ]; then
   fi
 fi
 
+# Ensure fleet key directory is writable by cashpilot
+if [ -d "/fleet" ]; then
+  chown cashpilot:root /fleet 2>/dev/null || true
+fi
+
 exec su-exec cashpilot "$@"

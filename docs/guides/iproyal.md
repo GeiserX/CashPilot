@@ -52,7 +52,7 @@ In the CashPilot web UI, find **IPRoyal Pawns** in the service catalog and click
 
 | Variable | Label | Required | Secret | Description |
 |----------|-------|:--------:|:------:|-------------|
-| `IPROYAL_EMAIL` | Email | Yes | No | Your IPRoyal Pawns account email (passed as -email flag) |
-| `IPROYAL_PASSWORD` | Password | Yes | Yes | Your IPRoyal Pawns account password (passed as -password flag) |
-| `IPROYAL_DEVICE_NAME` | Device name | No | No | Name shown in your Pawns dashboard (passed as -device-name flag) (default: `cashpilot-{hostname}`) |
-| `IPROYAL_DEVICE_ID` | Device ID | No | No | Unique device identifier (passed as -device-id flag) (default: `cashpilot-{hostname}`) |
+| `IPROYALPAWNS_EMAIL` | Email | Yes | No | Your IPRoyal Pawns account email (passed as -email flag) |
+| `IPROYALPAWNS_PASSWORD` | Password | Yes | Yes | Your IPRoyal Pawns account password (passed as -password flag) |
+| `IPROYALPAWNS_DEVICE_NAME` | Device name | No | No | Name shown in your Pawns dashboard (passed as -device-name flag) (default: `cashpilot-{hostname}`) |
+| `IPROYALPAWNS_DEVICE_ID` | Device ID | No | No | Unique device identifier (passed as -device-id flag) (default: `cashpilot-{hostname}`) |
