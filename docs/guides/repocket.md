@@ -5,7 +5,7 @@
 
 ## Description
 
-Repocket lets you earn passive income by sharing your unused internet bandwidth. Residential IP required (ToS prohibits VPS, proxies, and VPNs). Max 5 devices and 5 active sessions per account. Setup requires an email and API key from the dashboard. The Docker image uses environment variables directly.
+Repocket lets you earn passive income by sharing your unused internet bandwidth. Residential IP required (ToS prohibits VPS, proxies, and VPNs). Max 5 devices and 5 active sessions per account. Authenticates via Firebase using email and password. The Docker image uses environment variables directly.
 
 ## Earning Estimates
 
@@ -52,5 +52,5 @@ In the CashPilot web UI, find **Repocket** in the service catalog and click **De
 
 | Variable | Label | Required | Secret | Description |
 |----------|-------|:--------:|:------:|-------------|
-| `RP_EMAIL` | Email | Yes | No | Your Repocket account email |
-| `RP_API_KEY` | API Key | Yes | Yes | Your Repocket API key (found in Dashboard > API Key section) |
+| `REPOCKET_EMAIL` | Email | Yes | No | Your Repocket account email |
+| `REPOCKET_PASSWORD` | Password | Yes | Yes | Your Repocket account password (used for Firebase auth) |
