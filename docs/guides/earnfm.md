@@ -37,7 +37,7 @@ Sign up at [Earn.fm](https://earn.fm/ref/GEISYB91).
 
 ### 2. Get your credentials
 
-After signing up, locate the credentials needed for Docker deployment. These are typically your email/password or an API token found in the dashboard.
+After signing up, you'll use your account email and password for Docker deployment.
 
 ### 3. Deploy with CashPilot
 

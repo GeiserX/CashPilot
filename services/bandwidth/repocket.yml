@@ -5,10 +5,10 @@ status: active
 website: https://repocket.com
 description: >
   Repocket lets you earn passive income by sharing your unused internet bandwidth.
-  Residential IP required (ToS prohibits VPS, proxies, and VPNs). Max 5 devices
-  and 5 active sessions per account. Authenticates via Firebase using email and
-  password. The Docker image uses environment variables directly.
-short_description: Bandwidth sharing - residential only, max 5 devices, email/password auth
+  Residential IPs earn the most; VPS/datacenter IPs are accepted at lower rates.
+  Max 5 devices and 5 active sessions per account. Authenticates via Firebase
+  using email and password. The Docker image uses environment variables directly.
+short_description: Bandwidth sharing - max 5 devices, email/password auth
 
 referral:
   signup_url: "https://repocket.com/"
