@@ -1,4 +1,15 @@
 #!/bin/sh
+# Already running as non-root (e.g. Unraid --user flag) — skip privilege setup
+if [ "$(id -u)" != "0" ]; then
+  exec "$@"
+fi
+
+# Ensure data and fleet directories are writable by cashpilot
+chown cashpilot:root /data 2>/dev/null || true
+if [ -d "/fleet" ]; then
+  chown cashpilot:root /fleet 2>/dev/null || true
+fi
+
 # If Docker socket exists, ensure the cashpilot user can access it
 SOCK=/var/run/docker.sock
 if [ -S "$SOCK" ]; then
@@ -10,11 +21,6 @@ if [ -S "$SOCK" ]; then
     # GID 0 means root owns the socket — add cashpilot to root group
     addgroup cashpilot root 2>/dev/null || true
   fi
-fi
-
-# Ensure fleet key directory is writable by cashpilot
-if [ -d "/fleet" ]; then
-  chown cashpilot:root /fleet 2>/dev/null || true
 fi
 
 exec su-exec cashpilot "$@"
