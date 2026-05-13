@@ -52,4 +52,4 @@ In the CashPilot web UI, find **Presearch** in the service catalog and click **D
 
 | Variable | Label | Required | Secret | Description |
 |----------|-------|:--------:|:------:|-------------|
-| `PRESEARCH_REGISTRATION_CODE` | Registration Code | Yes | Yes | Your Presearch node registration code from the dashboard |
+| `REGISTRATION_CODE` | Registration Code | Yes | Yes | Your Presearch node registration code from the dashboard |

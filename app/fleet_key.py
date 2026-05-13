@@ -62,8 +62,10 @@ def resolve_fleet_key() -> str:
                 pass
             time.sleep(0.1)
     except OSError as exc:
-        _logger.warning(
-            "Could not persist fleet key to %s: %s — set CASHPILOT_API_KEY or mount a shared /fleet volume",
+        _logger.error(
+            "Cannot write fleet key to %s: %s. "
+            "Fix: set CASHPILOT_API_KEY env var explicitly, "
+            "or fix /fleet volume permissions (chown 1000:0 /fleet on the host).",
             _FLEET_KEY_FILE,
             exc,
         )

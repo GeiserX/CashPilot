@@ -122,7 +122,7 @@ CASHPILOT_WORKER_NAME=server-name</code>
                 <span style="font-weight: 600; color: var(--text-primary);">${esc(w.name)}</span>
                 ${isAndroid ? '<span style="font-size:0.7rem; padding:2px 6px; border-radius:4px; background:var(--bg-hover); color:var(--text-muted);">Android</span>' : ''}
               </div>
-              ${_isOwner ? `<button class="btn btn-danger btn-sm" onclick="removeWorker(${w.id}, '${esc(w.name)}')" title="Remove worker">Remove</button>` : ''}
+              ${_isOwner ? `<button class="btn btn-danger btn-sm btn-remove-worker" data-worker-id="${w.id}" data-worker-name="${esc(w.name)}" title="Remove worker">Remove</button>` : ''}
             </div>
             <div style="display: flex; gap: 16px; flex-wrap: wrap; font-size: 0.82rem; color: var(--text-muted);">
               <span>${esc(w.url || '-')}</span>
@@ -202,7 +202,7 @@ CASHPILOT_WORKER_NAME=server-name</code>
     }
   };
 
-  window.removeWorker = async function(workerId, name) {
+  async function removeWorker(workerId, name) {
     if (!confirm(`Remove worker "${name}"? This will unregister it from the fleet.`)) return;
     try {
       await CP.api(`/api/workers/${workerId}`, { method: 'DELETE' });
@@ -211,7 +211,16 @@ CASHPILOT_WORKER_NAME=server-name</code>
     } catch (err) {
       CP.toast('Failed: ' + err.message, 'error');
     }
-  };
+  }
+
+  document.getElementById('fleet-workers').addEventListener('click', function(e) {
+    const btn = e.target.closest('.btn-remove-worker');
+    if (!btn) return;
+    const id = parseInt(btn.dataset.workerId, 10);
+    if (isNaN(id)) return;
+    const name = btn.dataset.workerName;
+    removeWorker(id, name);
+  });
 
   window.copyWorkerEnv = async function() {
     // Auto-fetch API key if not yet revealed
