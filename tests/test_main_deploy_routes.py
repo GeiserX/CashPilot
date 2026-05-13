@@ -92,7 +92,7 @@ class TestApiDeploy:
         mock_client.post.return_value = httpx_resp
 
         with (
-            _auth_writer(),
+            _auth_owner(),
             patch("app.main.database.list_workers", new_callable=AsyncMock, return_value=[worker]),
             patch("app.main.catalog.get_service", return_value=svc),
             patch("app.main.database.get_worker", new_callable=AsyncMock, return_value=worker),
@@ -108,7 +108,7 @@ class TestApiDeploy:
 
     def test_deploy_service_not_found(self, client):
         with (
-            _auth_writer(),
+            _auth_owner(),
             patch("app.main.database.list_workers", new_callable=AsyncMock, return_value=[_online_worker()]),
             patch("app.main.catalog.get_service", return_value=None),
         ):
@@ -118,7 +118,7 @@ class TestApiDeploy:
     def test_deploy_no_image(self, client):
         svc = {"slug": "grass", "name": "Grass", "docker": {}}
         with (
-            _auth_writer(),
+            _auth_owner(),
             patch("app.main.database.list_workers", new_callable=AsyncMock, return_value=[_online_worker()]),
             patch("app.main.catalog.get_service", return_value=svc),
         ):

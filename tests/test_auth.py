@@ -15,6 +15,7 @@ try:
         create_session_token,
         decode_session_token,
         hash_password,
+        require_role,
         verify_password,
     )
 except ImportError:
@@ -102,3 +103,38 @@ class TestSessionTokens:
 
     def test_garbage_returns_none(self):
         assert decode_session_token("not-a-real-token-at-all") is None
+
+
+class TestRequireRole:
+    """Role checking including fleet escalation."""
+
+    def test_none_user_returns_false(self):
+        assert require_role(None, "owner") is False
+
+    def test_owner_satisfies_owner(self):
+        assert require_role({"r": "owner"}, "owner") is True
+
+    def test_writer_satisfies_writer(self):
+        assert require_role({"r": "writer"}, "writer") is True
+
+    def test_writer_does_not_satisfy_owner(self):
+        assert require_role({"r": "writer"}, "owner") is False
+
+    def test_fleet_satisfies_writer(self):
+        assert require_role({"r": "fleet"}, "writer") is True
+
+    def test_fleet_does_not_satisfy_owner(self):
+        assert require_role({"r": "fleet"}, "owner") is False
+
+    def test_fleet_does_not_satisfy_fleet_directly(self):
+        # fleet role only has the implicit writer grant, not self-match unless listed
+        assert require_role({"r": "fleet"}, "fleet") is True
+
+    def test_writer_does_not_satisfy_fleet(self):
+        assert require_role({"r": "writer"}, "fleet") is False
+
+    def test_multiple_roles_accepted(self):
+        assert require_role({"r": "owner"}, "writer", "owner") is True
+
+    def test_empty_roles_returns_false(self):
+        assert require_role({"r": "owner"}) is False

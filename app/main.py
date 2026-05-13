@@ -62,27 +62,28 @@ async def _get_all_worker_containers() -> list[dict[str, Any]]:
         is_android = sys_info.get("device_type") == "android"
         worker_name = w.get("name", "worker")
 
-        # Docker containers (from Docker-based workers)
-        containers = _safe_json(w.get("containers", "[]"))
-        for c in containers:
-            slug = c.get("slug", "")
-            if slug:
-                result.append(
-                    {
-                        "slug": slug,
-                        "name": c.get("name", slug),
-                        "status": c.get("status", "unknown"),
-                        "image": c.get("image", ""),
-                        "cpu_percent": c.get("cpu_percent", 0),
-                        "memory_mb": c.get("memory_mb", 0),
-                        "category": "",
-                        "deployed_by": worker_name,
-                        "_node": worker_name,
-                        "_worker_id": w.get("id"),
-                        "_has_docker": worker_has_docker,
-                        "_is_android": False,
-                    }
-                )
+        # Docker containers (from Docker-based workers only — skip for Android)
+        if not is_android:
+            containers = _safe_json(w.get("containers", "[]"))
+            for c in containers:
+                slug = c.get("slug", "")
+                if slug:
+                    result.append(
+                        {
+                            "slug": slug,
+                            "name": c.get("name", slug),
+                            "status": c.get("status", "unknown"),
+                            "image": c.get("image", ""),
+                            "cpu_percent": c.get("cpu_percent", 0),
+                            "memory_mb": c.get("memory_mb", 0),
+                            "category": "",
+                            "deployed_by": worker_name,
+                            "_node": worker_name,
+                            "_worker_id": w.get("id"),
+                            "_has_docker": worker_has_docker,
+                            "_is_android": False,
+                        }
+                    )
 
         # Android apps (from Android workers)
         if is_android:
@@ -309,6 +310,18 @@ def _require_owner(request: Request) -> dict[str, Any]:
     return user
 
 
+def _require_private_network(request: Request) -> None:
+    """Block requests from public IPs (for first-run setup)."""
+    if not request.client or not request.client.host:
+        return
+    try:
+        client_ip = ipaddress.ip_address(request.client.host)
+    except ValueError:
+        return
+    if not (client_ip.is_loopback or client_ip.is_private):
+        raise HTTPException(status_code=403, detail="First-run setup only allowed from private networks")
+
+
 # ---------------------------------------------------------------------------
 # Auth routes
 # ---------------------------------------------------------------------------
@@ -373,6 +386,8 @@ async def page_register(request: Request, error: str = ""):
         user = auth.get_current_user(request)
         if not user or user.get("r") != "owner":
             return RedirectResponse("/login", status_code=303)
+    if is_first:
+        _require_private_network(request)
 
     return templates.TemplateResponse(
         request,
@@ -403,6 +418,9 @@ async def do_register(
         user = auth.get_current_user(request)
         if not user or user.get("r") != "owner":
             raise HTTPException(status_code=403, detail="Only owners can add users")
+
+    if is_first:
+        _require_private_network(request)
 
     if not re.match(r"^[a-zA-Z0-9_-]{3,32}$", username):
         return templates.TemplateResponse(
@@ -773,7 +791,7 @@ class DeployRequest(BaseModel):
 
 @app.post("/api/deploy/{slug}")
 async def api_deploy(request: Request, slug: str, body: DeployRequest, worker_id: int | None = None) -> dict[str, str]:
-    _require_writer(request)
+    _require_owner(request)
     worker_id = await _resolve_worker_id(worker_id)
     svc = catalog.get_service(slug)
     if not svc:
@@ -793,6 +811,15 @@ async def api_deploy(request: Request, slug: str, body: DeployRequest, worker_id
             default = str(default).replace("{hostname}", hn)
         env[var["key"]] = str(default)
     env.update(body.env or {})
+
+    # Validate required env vars are not blank
+    missing = [
+        var.get("label", var["key"])
+        for var in docker_conf.get("env", [])
+        if var.get("required") and not env.get(var["key"], "").strip()
+    ]
+    if missing:
+        raise HTTPException(status_code=400, detail=f"Missing required fields: {', '.join(missing)}")
 
     # Ports — key is "container_port/protocol" per Docker SDK
     ports: dict[str, int] = {}
@@ -1651,17 +1678,7 @@ async def api_worker_command(request: Request, worker_id: int, body: WorkerComma
     _require_writer(request)
 
     worker = await database.get_worker(worker_id)
-    if not worker:
-        raise HTTPException(status_code=404, detail="Worker not found")
-    if worker["status"] != "online":
-        raise HTTPException(status_code=503, detail="Worker is offline")
-    if not worker["url"]:
-        raise HTTPException(status_code=503, detail="Worker URL not known")
-
-    url = worker["url"].rstrip("/")
-    headers = {}
-    if FLEET_API_KEY:
-        headers["Authorization"] = f"Bearer {FLEET_API_KEY}"
+    url, headers = _get_verified_worker_url(worker)
 
     try:
         async with httpx.AsyncClient(timeout=30) as client:

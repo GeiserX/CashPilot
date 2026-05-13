@@ -5,7 +5,7 @@
 
 ## Description
 
-Earn.fm pays you for sharing your internet bandwidth. It uses a simple token-based authentication via the EARNFM_TOKEN environment variable. The platform provides an API key from user settings that serves as the token. Lightweight Docker image with straightforward deployment.
+Earn.fm pays you for sharing your internet bandwidth. It authenticates via Supabase using email and password. Lightweight Docker image with straightforward deployment.
 
 ## Earning Estimates
 
@@ -37,7 +37,7 @@ Sign up at [Earn.fm](https://earn.fm/ref/GEISYB91).
 
 ### 2. Get your credentials
 
-After signing up, locate the credentials needed for Docker deployment. These are typically your email/password or an API token found in the dashboard.
+After signing up, you'll use your account email and password for Docker deployment.
 
 ### 3. Deploy with CashPilot
 
@@ -52,4 +52,5 @@ In the CashPilot web UI, find **Earn.fm** in the service catalog and click **Dep
 
 | Variable | Label | Required | Secret | Description |
 |----------|-------|:--------:|:------:|-------------|
-| `EARNFM_TOKEN` | API Token | Yes | Yes | Your Earn.fm API key (found in app.earn.fm > Settings) |
+| `EARNFM_EMAIL` | Email | Yes | No | Your Earn.fm account email |
+| `EARNFM_PASSWORD` | Password | Yes | Yes | Your Earn.fm account password (used for Supabase auth) |

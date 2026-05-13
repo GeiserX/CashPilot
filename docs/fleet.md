@@ -12,27 +12,27 @@ graph TB
     W2[Worker: server-b<br>Port 8081<br>Storj + Compute]
     W3[Worker: server-n<br>Port 8081<br>DePIN services]
 
-    W1 -->|Heartbeat / Commands| UI
-    W2 -->|Heartbeat / Commands| UI
-    W3 -->|Heartbeat / Commands| UI
+    W1 -->|Heartbeat every 60s| UI
+    W2 -->|Heartbeat every 60s| UI
+    W3 -->|Heartbeat every 60s| UI
+
+    UI -->|Deploy/Stop/Restart| W1
+    UI -->|Deploy/Stop/Restart| W2
+    UI -->|Deploy/Stop/Restart| W3
 
     W1 --- D1[Docker Engine]
     W2 --- D2[Docker Engine]
     W3 --- D3[Docker Engine]
 ```
 
-Each worker connects **outbound** to the UI via HTTP -- no port forwarding needed on the worker side. The UI's fleet dashboard shows all connected workers, their containers, and live status. The UI can push commands (deploy, stop, restart) to any worker remotely.
+## Worker Communication
 
-## Instance Modes
+Workers use **REST HTTP** to communicate with the UI:
 
-CashPilot supports a 2x2 matrix of deployment modes:
+- **Heartbeats** (worker → UI): Every 60 seconds, each worker POSTs to `/api/workers/heartbeat` with its container list, system info, and status.
+- **Commands** (UI → worker): The UI sends deploy/stop/restart/remove requests to the worker's HTTP API (port 8081).
 
-| | **Docker: direct** (socket mounted) | **Docker: monitor-only** (no socket) |
-|---|---|---|
-| **Master** | Full management + fleet aggregation | Fleet aggregation + compose export (containers managed externally) |
-| **Child** | Local management + reports to master | Earnings tracking only + reports to master |
-
-A child in monitor-only mode is useful when containers are managed by Portainer or manual compose, but you still want CashPilot's earnings collection and fleet-wide visibility.
+Workers must be reachable from the UI for commands. The UI must be reachable from workers for heartbeats.
 
 ## Setting Up the Fleet
 
@@ -76,38 +76,26 @@ volumes:
 
 ## Authentication
 
-Two authentication methods are supported:
+A single shared API key authenticates all fleet communication:
 
-- **Master key** -- Persistent, derived from the secret key. Used for long-lived worker connections.
-- **Join tokens** -- HMAC-signed, time-limited, reusable. Generated from the UI for easy worker onboarding.
+- Set `CASHPILOT_API_KEY` on both the UI and all workers.
+- Workers include this key as a Bearer token in heartbeat requests.
+- The UI includes this key when sending commands to workers.
+- If not set explicitly, the UI and co-located worker auto-generate a shared key via the `/fleet` volume.
 
-### Worker setup flow
-
-1. Generate a join token from the UI's fleet settings.
-2. Set `CASHPILOT_MASTER_URL` and `CASHPILOT_JOIN_TOKEN` on the worker.
-3. Restart the worker -- it connects and registers automatically.
-
-## Worker Communication
-
-Workers use **outbound WebSocket** connections to the master:
-
-- Heartbeats every 30 seconds: container list, OS, arch, Docker version, earnings
-- Master can push commands: deploy, stop, restart, remove, status
-- Automatic reconnect with exponential backoff (1s to 300s max)
-
-!!! tip "NAT-Friendly"
-    Workers initiate all connections outbound. No port forwarding, VPN, or reverse tunnels needed on the worker side. Works behind any firewall or NAT.
+!!! warning "Security"
+    The fleet key grants access to container management operations. Treat it as a sensitive credential. Do not expose worker APIs (port 8081) to the public internet.
 
 ## Fleet Dashboard
 
-The master's fleet dashboard shows:
+The UI's fleet dashboard shows:
 
-- All connected nodes with online/offline status and "last seen" timestamps
-- Per-node container list with health, CPU, memory, and uptime
-- Remote action buttons (deploy, stop, restart, remove) targeting any node
-- Aggregated earnings across all nodes
+- All connected workers with online/offline status and "last seen" timestamps
+- Per-worker container list with health, CPU, memory, and uptime
+- Remote action buttons (deploy, stop, restart, remove) targeting any worker
+- Aggregated earnings across all workers
 
-Services running on multiple nodes show expandable rows with per-instance details. The main row displays averaged CPU/memory (prefixed with `~`), and sub-rows show individual node values.
+Services running on multiple workers show expandable rows with per-instance details. The main row displays averaged CPU/memory (prefixed with `~`), and sub-rows show individual worker values.
 
 ## Cross-Subnet Workers
 
@@ -119,29 +107,27 @@ If the worker and UI are on different subnets (e.g., connected via Tailscale):
 
 ## Offline Handling
 
-If a worker goes offline:
+If a worker goes offline (no heartbeat for 180 seconds):
 
-- The UI shows "last seen X ago" for that server's containers
+- The UI marks the worker as offline
 - Historical earnings and health data is retained
 - The worker reconnects automatically when back online
 - Container status updates resume immediately after reconnection
 
 ## Environment Variables Reference
 
-### UI (Master)
+### UI
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `CASHPILOT_ROLE` | `master` | Set to `master` to enable fleet dashboard |
-| `CASHPILOT_API_KEY` | -- | Shared secret for worker authentication |
-| `CASHPILOT_SECRET_KEY` | *(auto-generated)* | Encryption key for credentials and master key derivation |
+| `CASHPILOT_API_KEY` | *(auto-generated via /fleet volume)* | Shared secret for worker authentication |
+| `CASHPILOT_SECRET_KEY` | *(auto-generated)* | Encryption key for stored credentials |
+| `CASHPILOT_ADMIN_API_KEY` | -- | Optional separate key granting full owner access (for integrations) |
 
-### Worker (Child)
+### Worker
 
 | Variable | Required | Default | Description |
 |----------|:--------:|---------|-------------|
 | `CASHPILOT_UI_URL` | Yes | -- | URL of the CashPilot UI (e.g. `http://192.168.10.100:8080`) |
 | `CASHPILOT_API_KEY` | Yes | -- | Must match the UI's API key |
 | `CASHPILOT_WORKER_NAME` | No | *(hostname)* | Display name for this worker in the fleet dashboard |
-| `CASHPILOT_MASTER_URL` | No | -- | WebSocket URL for federation (e.g. `ws://192.168.10.100:8080`) |
-| `CASHPILOT_JOIN_TOKEN` | No | -- | Time-limited join token from the master |

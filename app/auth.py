@@ -104,7 +104,7 @@ def get_current_user(request: Request) -> dict[str, Any] | None:
     Checks Authorization header first (for programmatic access like Home Assistant),
     then falls back to session cookie (for browser sessions).
     """
-    # Check Bearer token — admin key gets owner, fleet key gets writer
+    # Check Bearer token — admin key gets owner, fleet key gets fleet (limited)
     auth_header = request.headers.get("Authorization", "")
     if auth_header:
         admin_key = os.getenv("CASHPILOT_ADMIN_API_KEY", "")
@@ -112,7 +112,7 @@ def get_current_user(request: Request) -> dict[str, Any] | None:
             return {"uid": 0, "u": "api", "r": "owner"}
         resolved_fleet_key = _fleet_key_mod.resolve_fleet_key()
         if resolved_fleet_key and auth_header == f"Bearer {resolved_fleet_key}":
-            return {"uid": 0, "u": "api", "r": "writer"}
+            return {"uid": 0, "u": "fleet", "r": "fleet"}
 
     # Fall back to session cookie
     token = request.cookies.get(SESSION_COOKIE)
@@ -148,4 +148,8 @@ def require_role(user: dict[str, Any] | None, *roles: str) -> bool:
     """Check if user has one of the required roles."""
     if not user:
         return False
-    return user.get("r") in roles
+    role = user.get("r")
+    # fleet role implicitly satisfies writer checks (for heartbeat/status endpoints)
+    if role == "fleet" and "writer" in roles:
+        return True
+    return role in roles
