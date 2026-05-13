@@ -521,10 +521,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#instance-modes" class="md-nav__link">
+  <a href="#worker-communication" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Instance Modes
+        Worker Communication
       
     </span>
   </a>
@@ -579,34 +579,6 @@
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Authentication">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#worker-setup-flow" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Worker setup flow
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#worker-communication" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Worker Communication
-      
-    </span>
-  </a>
-  
 </li>
       
         <li class="md-nav__item">
@@ -655,10 +627,10 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#ui-master" class="md-nav__link">
+  <a href="#ui" class="md-nav__link">
     <span class="md-ellipsis">
       
-        UI (Master)
+        UI
       
     </span>
   </a>
@@ -666,10 +638,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#worker-child" class="md-nav__link">
+  <a href="#worker" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Worker (Child)
+        Worker
       
     </span>
   </a>
@@ -2436,10 +2408,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#instance-modes" class="md-nav__link">
+  <a href="#worker-communication" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Instance Modes
+        Worker Communication
       
     </span>
   </a>
@@ -2494,34 +2466,6 @@
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Authentication">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#worker-setup-flow" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Worker setup flow
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#worker-communication" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Worker Communication
-      
-    </span>
-  </a>
-  
 </li>
       
         <li class="md-nav__item">
@@ -2570,10 +2514,10 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#ui-master" class="md-nav__link">
+  <a href="#ui" class="md-nav__link">
     <span class="md-ellipsis">
       
-        UI (Master)
+        UI
       
     </span>
   </a>
@@ -2581,10 +2525,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#worker-child" class="md-nav__link">
+  <a href="#worker" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Worker (Child)
+        Worker
       
     </span>
   </a>
@@ -2631,38 +2575,24 @@
     W2[Worker: server-b&lt;br&gt;Port 8081&lt;br&gt;Storj + Compute]
     W3[Worker: server-n&lt;br&gt;Port 8081&lt;br&gt;DePIN services]
 
-    W1 --&gt;|Heartbeat / Commands| UI
-    W2 --&gt;|Heartbeat / Commands| UI
-    W3 --&gt;|Heartbeat / Commands| UI
+    W1 --&gt;|Heartbeat every 60s| UI
+    W2 --&gt;|Heartbeat every 60s| UI
+    W3 --&gt;|Heartbeat every 60s| UI
+
+    UI --&gt;|Deploy/Stop/Restart| W1
+    UI --&gt;|Deploy/Stop/Restart| W2
+    UI --&gt;|Deploy/Stop/Restart| W3
 
     W1 --- D1[Docker Engine]
     W2 --- D2[Docker Engine]
     W3 --- D3[Docker Engine]</code></pre>
-<p>Each worker connects <strong>outbound</strong> to the UI via HTTP -- no port forwarding needed on the worker side. The UI's fleet dashboard shows all connected workers, their containers, and live status. The UI can push commands (deploy, stop, restart) to any worker remotely.</p>
-<h2 id="instance-modes">Instance Modes<a class="headerlink" href="#instance-modes" title="Permanent link">&para;</a></h2>
-<p>CashPilot supports a 2x2 matrix of deployment modes:</p>
-<table>
-<thead>
-<tr>
-<th></th>
-<th><strong>Docker: direct</strong> (socket mounted)</th>
-<th><strong>Docker: monitor-only</strong> (no socket)</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><strong>Master</strong></td>
-<td>Full management + fleet aggregation</td>
-<td>Fleet aggregation + compose export (containers managed externally)</td>
-</tr>
-<tr>
-<td><strong>Child</strong></td>
-<td>Local management + reports to master</td>
-<td>Earnings tracking only + reports to master</td>
-</tr>
-</tbody>
-</table>
-<p>A child in monitor-only mode is useful when containers are managed by Portainer or manual compose, but you still want CashPilot's earnings collection and fleet-wide visibility.</p>
+<h2 id="worker-communication">Worker Communication<a class="headerlink" href="#worker-communication" title="Permanent link">&para;</a></h2>
+<p>Workers use <strong>REST HTTP</strong> to communicate with the UI:</p>
+<ul>
+<li><strong>Heartbeats</strong> (worker → UI): Every 60 seconds, each worker POSTs to <code>/api/workers/heartbeat</code> with its container list, system info, and status.</li>
+<li><strong>Commands</strong> (UI → worker): The UI sends deploy/stop/restart/remove requests to the worker's HTTP API (port 8081).</li>
+</ul>
+<p>Workers must be reachable from the UI for commands. The UI must be reachable from workers for heartbeats.</p>
 <h2 id="setting-up-the-fleet">Setting Up the Fleet<a class="headerlink" href="#setting-up-the-fleet" title="Permanent link">&para;</a></h2>
 <h3 id="main-server-ui-local-worker">Main server (UI + local worker)<a class="headerlink" href="#main-server-ui-local-worker" title="Permanent link">&para;</a></h3>
 <p>Use <code>docker-compose.fleet.yml</code> on your main server to run both the UI and a local worker:</p>
@@ -2696,37 +2626,26 @@
 <p>The <code>CASHPILOT_API_KEY</code> must be identical on the UI and all workers. This is the shared secret that authenticates worker-to-UI communication.</p>
 </div>
 <h2 id="authentication">Authentication<a class="headerlink" href="#authentication" title="Permanent link">&para;</a></h2>
-<p>Two authentication methods are supported:</p>
+<p>A single shared API key authenticates all fleet communication:</p>
 <ul>
-<li><strong>Master key</strong> -- Persistent, derived from the secret key. Used for long-lived worker connections.</li>
-<li><strong>Join tokens</strong> -- HMAC-signed, time-limited, reusable. Generated from the UI for easy worker onboarding.</li>
+<li>Set <code>CASHPILOT_API_KEY</code> on both the UI and all workers.</li>
+<li>Workers include this key as a Bearer token in heartbeat requests.</li>
+<li>The UI includes this key when sending commands to workers.</li>
+<li>If not set explicitly, the UI and co-located worker auto-generate a shared key via the <code>/fleet</code> volume.</li>
 </ul>
-<h3 id="worker-setup-flow">Worker setup flow<a class="headerlink" href="#worker-setup-flow" title="Permanent link">&para;</a></h3>
-<ol>
-<li>Generate a join token from the UI's fleet settings.</li>
-<li>Set <code>CASHPILOT_MASTER_URL</code> and <code>CASHPILOT_JOIN_TOKEN</code> on the worker.</li>
-<li>Restart the worker -- it connects and registers automatically.</li>
-</ol>
-<h2 id="worker-communication">Worker Communication<a class="headerlink" href="#worker-communication" title="Permanent link">&para;</a></h2>
-<p>Workers use <strong>outbound WebSocket</strong> connections to the master:</p>
-<ul>
-<li>Heartbeats every 30 seconds: container list, OS, arch, Docker version, earnings</li>
-<li>Master can push commands: deploy, stop, restart, remove, status</li>
-<li>Automatic reconnect with exponential backoff (1s to 300s max)</li>
-</ul>
-<div class="admonition tip">
-<p class="admonition-title">NAT-Friendly</p>
-<p>Workers initiate all connections outbound. No port forwarding, VPN, or reverse tunnels needed on the worker side. Works behind any firewall or NAT.</p>
+<div class="admonition warning">
+<p class="admonition-title">Security</p>
+<p>The fleet key grants access to container management operations. Treat it as a sensitive credential. Do not expose worker APIs (port 8081) to the public internet.</p>
 </div>
 <h2 id="fleet-dashboard">Fleet Dashboard<a class="headerlink" href="#fleet-dashboard" title="Permanent link">&para;</a></h2>
-<p>The master's fleet dashboard shows:</p>
+<p>The UI's fleet dashboard shows:</p>
 <ul>
-<li>All connected nodes with online/offline status and "last seen" timestamps</li>
-<li>Per-node container list with health, CPU, memory, and uptime</li>
-<li>Remote action buttons (deploy, stop, restart, remove) targeting any node</li>
-<li>Aggregated earnings across all nodes</li>
+<li>All connected workers with online/offline status and "last seen" timestamps</li>
+<li>Per-worker container list with health, CPU, memory, and uptime</li>
+<li>Remote action buttons (deploy, stop, restart, remove) targeting any worker</li>
+<li>Aggregated earnings across all workers</li>
 </ul>
-<p>Services running on multiple nodes show expandable rows with per-instance details. The main row displays averaged CPU/memory (prefixed with <code>~</code>), and sub-rows show individual node values.</p>
+<p>Services running on multiple workers show expandable rows with per-instance details. The main row displays averaged CPU/memory (prefixed with <code>~</code>), and sub-rows show individual worker values.</p>
 <h2 id="cross-subnet-workers">Cross-Subnet Workers<a class="headerlink" href="#cross-subnet-workers" title="Permanent link">&para;</a></h2>
 <p>If the worker and UI are on different subnets (e.g., connected via Tailscale):</p>
 <ol>
@@ -2735,15 +2654,15 @@
 <li>The worker uses the UI's LAN IP in <code>CASHPILOT_UI_URL</code> (not the Tailscale IP)</li>
 </ol>
 <h2 id="offline-handling">Offline Handling<a class="headerlink" href="#offline-handling" title="Permanent link">&para;</a></h2>
-<p>If a worker goes offline:</p>
+<p>If a worker goes offline (no heartbeat for 180 seconds):</p>
 <ul>
-<li>The UI shows "last seen X ago" for that server's containers</li>
+<li>The UI marks the worker as offline</li>
 <li>Historical earnings and health data is retained</li>
 <li>The worker reconnects automatically when back online</li>
 <li>Container status updates resume immediately after reconnection</li>
 </ul>
 <h2 id="environment-variables-reference">Environment Variables Reference<a class="headerlink" href="#environment-variables-reference" title="Permanent link">&para;</a></h2>
-<h3 id="ui-master">UI (Master)<a class="headerlink" href="#ui-master" title="Permanent link">&para;</a></h3>
+<h3 id="ui">UI<a class="headerlink" href="#ui" title="Permanent link">&para;</a></h3>
 <table>
 <thead>
 <tr>
@@ -2754,23 +2673,23 @@
 </thead>
 <tbody>
 <tr>
-<td><code>CASHPILOT_ROLE</code></td>
-<td><code>master</code></td>
-<td>Set to <code>master</code> to enable fleet dashboard</td>
-</tr>
-<tr>
 <td><code>CASHPILOT_API_KEY</code></td>
-<td>--</td>
+<td><em>(auto-generated via /fleet volume)</em></td>
 <td>Shared secret for worker authentication</td>
 </tr>
 <tr>
 <td><code>CASHPILOT_SECRET_KEY</code></td>
 <td><em>(auto-generated)</em></td>
-<td>Encryption key for credentials and master key derivation</td>
+<td>Encryption key for stored credentials</td>
+</tr>
+<tr>
+<td><code>CASHPILOT_ADMIN_API_KEY</code></td>
+<td>--</td>
+<td>Optional separate key granting full owner access (for integrations)</td>
 </tr>
 </tbody>
 </table>
-<h3 id="worker-child">Worker (Child)<a class="headerlink" href="#worker-child" title="Permanent link">&para;</a></h3>
+<h3 id="worker">Worker<a class="headerlink" href="#worker" title="Permanent link">&para;</a></h3>
 <table>
 <thead>
 <tr>
@@ -2798,18 +2717,6 @@
 <td style="text-align: center;">No</td>
 <td><em>(hostname)</em></td>
 <td>Display name for this worker in the fleet dashboard</td>
-</tr>
-<tr>
-<td><code>CASHPILOT_MASTER_URL</code></td>
-<td style="text-align: center;">No</td>
-<td>--</td>
-<td>WebSocket URL for federation (e.g. <code>ws://192.168.10.100:8080</code>)</td>
-</tr>
-<tr>
-<td><code>CASHPILOT_JOIN_TOKEN</code></td>
-<td style="text-align: center;">No</td>
-<td>--</td>
-<td>Time-limited join token from the master</td>
 </tr>
 </tbody>
 </table>
