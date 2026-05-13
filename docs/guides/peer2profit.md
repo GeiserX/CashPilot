@@ -1,5 +1,8 @@
 # Peer2Profit
 
+> [!CAUTION]
+> **Deprecated:** Peer2Profit is no longer operational and has been marked as dead in CashPilot. Deployment is blocked. This guide is kept for reference only.
+
 > **Category:** Bandwidth Sharing | **Status:** Dead
 > **Website:** [https://peer2profit.com](https://peer2profit.com)
 
