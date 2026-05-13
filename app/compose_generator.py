@@ -34,7 +34,7 @@ def _escape_interpolation(value: str) -> str:
     Skips already-escaped sequences ($${). Does not handle bare $VAR (without braces)
     since catalog YAML exclusively uses the braced form.
     """
-    return re.sub(r'(?<!\$)\$\{', '$${', value)
+    return re.sub(r"(?<!\$)\$\{", "$${", value)
 
 
 def _is_named_volume(volume_str: str) -> str | None:
