@@ -28,12 +28,13 @@ class TestGetCurrentUser:
             assert user["r"] == "owner"
             assert user["u"] == "api"
 
-    def test_fleet_key_returns_writer(self):
+    def test_fleet_key_returns_fleet(self):
         with patch("app.auth._fleet_key_mod.resolve_fleet_key", return_value="fleet-secret"):
             req = self._make_request(headers={"Authorization": "Bearer fleet-secret"})
             user = auth.get_current_user(req)
             assert user is not None
-            assert user["r"] == "writer"
+            assert user["r"] == "fleet"
+            assert user["u"] == "fleet"
 
     def test_invalid_bearer_falls_through_to_cookie(self):
         req = self._make_request(

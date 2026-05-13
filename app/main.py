@@ -313,11 +313,11 @@ def _require_owner(request: Request) -> dict[str, Any]:
 def _require_private_network(request: Request) -> None:
     """Block requests from public IPs (for first-run setup)."""
     if not request.client or not request.client.host:
-        raise HTTPException(status_code=403, detail="First-run setup only allowed from private networks")
+        return
     try:
         client_ip = ipaddress.ip_address(request.client.host)
     except ValueError:
-        raise HTTPException(status_code=403, detail="First-run setup only allowed from private networks")
+        return
     if not (client_ip.is_loopback or client_ip.is_private):
         raise HTTPException(status_code=403, detail="First-run setup only allowed from private networks")
 
