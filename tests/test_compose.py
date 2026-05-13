@@ -236,9 +236,8 @@ class TestNamedVolumeDeclaration:
         svc = _mock_service(volumes=["mydata:/app/data"])
         with patch("app.compose_generator.get_service", return_value=svc):
             output = compose_generator.generate_compose_single("honeygain")
-        parsed = yaml.safe_load("\n".join(
-            line for line in output.split("\n") if not line.startswith("#")
-        ))
+        lines = [line for line in output.split("\n") if not line.startswith("#")]
+        parsed = yaml.safe_load("\n".join(lines))
         assert "volumes" in parsed
         assert "mydata" in parsed["volumes"]
 
@@ -246,7 +245,6 @@ class TestNamedVolumeDeclaration:
         svc = _mock_service(volumes=["/host/path:/container/path"])
         with patch("app.compose_generator.get_service", return_value=svc):
             output = compose_generator.generate_compose_single("honeygain")
-        parsed = yaml.safe_load("\n".join(
-            line for line in output.split("\n") if not line.startswith("#")
-        ))
+        lines = [line for line in output.split("\n") if not line.startswith("#")]
+        parsed = yaml.safe_load("\n".join(lines))
         assert "volumes" not in parsed or parsed.get("volumes") is None
