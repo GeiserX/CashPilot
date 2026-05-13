@@ -125,6 +125,17 @@ class TestApiDeploy:
             resp = client.post("/api/deploy/grass", json={})
             assert resp.status_code == 400
 
+    def test_deploy_dead_service(self, client):
+        svc = {"slug": "peer2profit", "name": "Peer2Profit", "status": "dead", "docker": {"image": "x"}}
+        with (
+            _auth_owner(),
+            patch("app.main.database.list_workers", new_callable=AsyncMock, return_value=[_online_worker()]),
+            patch("app.main.catalog.get_service", return_value=svc),
+        ):
+            resp = client.post("/api/deploy/peer2profit", json={})
+            assert resp.status_code == 410
+            assert "no longer available" in resp.json()["detail"]
+
     def test_deploy_no_auth(self, client):
         with _no_auth():
             resp = client.post("/api/deploy/honeygain", json={})
