@@ -187,3 +187,66 @@ class TestGenerateComposeAll:
             output = compose_generator.generate_compose_all()
         assert "cashpilot-a" in output
         assert "cashpilot-b" in output
+
+
+class TestEscapeInterpolation:
+    def test_basic_escape(self):
+        assert compose_generator._escape_interpolation("${FOO}") == "$${FOO}"
+
+    def test_no_vars_unchanged(self):
+        assert compose_generator._escape_interpolation("no-vars-here") == "no-vars-here"
+
+    def test_already_escaped_not_doubled(self):
+        assert compose_generator._escape_interpolation("$${ALREADY}") == "$${ALREADY}"
+
+    def test_multiple_vars(self):
+        result = compose_generator._escape_interpolation("${A} and ${B}")
+        assert result == "$${A} and $${B}"
+
+    def test_mixed_escaped_and_unescaped(self):
+        result = compose_generator._escape_interpolation("$${OK} ${NEEDS_ESCAPE}")
+        assert result == "$${OK} $${NEEDS_ESCAPE}"
+
+    def test_empty_string(self):
+        assert compose_generator._escape_interpolation("") == ""
+
+
+class TestIsNamedVolume:
+    def test_named_volume(self):
+        assert compose_generator._is_named_volume("myvolume:/data") == "myvolume"
+
+    def test_absolute_path(self):
+        assert compose_generator._is_named_volume("/host/path:/data") is None
+
+    def test_relative_path(self):
+        assert compose_generator._is_named_volume("./relative:/data") is None
+
+    def test_home_path(self):
+        assert compose_generator._is_named_volume("~/home:/data") is None
+
+    def test_empty_string(self):
+        assert compose_generator._is_named_volume("") is None
+
+    def test_no_colon(self):
+        assert compose_generator._is_named_volume("myvolume") == "myvolume"
+
+
+class TestNamedVolumeDeclaration:
+    def test_named_volumes_declared_at_top_level(self):
+        svc = _mock_service(volumes=["mydata:/app/data"])
+        with patch("app.compose_generator.get_service", return_value=svc):
+            output = compose_generator.generate_compose_single("honeygain")
+        parsed = yaml.safe_load("\n".join(
+            line for line in output.split("\n") if not line.startswith("#")
+        ))
+        assert "volumes" in parsed
+        assert "mydata" in parsed["volumes"]
+
+    def test_bind_mounts_no_top_level_volumes(self):
+        svc = _mock_service(volumes=["/host/path:/container/path"])
+        with patch("app.compose_generator.get_service", return_value=svc):
+            output = compose_generator.generate_compose_single("honeygain")
+        parsed = yaml.safe_load("\n".join(
+            line for line in output.split("\n") if not line.startswith("#")
+        ))
+        assert "volumes" not in parsed or parsed.get("volumes") is None

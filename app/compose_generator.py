@@ -11,6 +11,7 @@ IS available, CashPilot can still discover and monitor these containers.
 
 from __future__ import annotations
 
+import re
 import socket
 from typing import Any
 
@@ -28,8 +29,12 @@ from app.constants import (
 
 
 def _escape_interpolation(value: str) -> str:
-    """Escape ${VAR} as $${VAR} so Docker Compose treats it as literal."""
-    return value.replace("${", "$${")
+    """Escape ${VAR} as $${VAR} so Docker Compose treats it as literal.
+
+    Skips already-escaped sequences ($${). Does not handle bare $VAR (without braces)
+    since catalog YAML exclusively uses the braced form.
+    """
+    return re.sub(r'(?<!\$)\$\{', '$${', value)
 
 
 def _is_named_volume(volume_str: str) -> str | None:

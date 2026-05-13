@@ -217,6 +217,7 @@ CASHPILOT_WORKER_NAME=server-name</code>
     const btn = e.target.closest('.btn-remove-worker');
     if (!btn) return;
     const id = parseInt(btn.dataset.workerId, 10);
+    if (isNaN(id)) return;
     const name = btn.dataset.workerName;
     removeWorker(id, name);
   });
