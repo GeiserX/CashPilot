@@ -797,7 +797,7 @@ async def api_deploy(request: Request, slug: str, body: DeployRequest, worker_id
     if not svc:
         raise HTTPException(status_code=404, detail=f"Service '{slug}' not found")
     if svc.get("status") == "dead":
-        raise HTTPException(status_code=400, detail=f"Service '{slug}' is no longer available (dead/discontinued)")
+        raise HTTPException(status_code=410, detail=f"Service '{slug}' is no longer available (dead/discontinued)")
 
     docker_conf = svc.get("docker", {})
     image = docker_conf.get("image")
