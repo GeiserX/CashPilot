@@ -281,8 +281,7 @@ class TestServiceManagement:
         ):
             resp = client.delete("/api/services/honeygain?delete_volumes=true")
             assert resp.status_code == 200
-            call_args = mock_client.delete.call_args
-            assert "delete_volumes" in str(call_args)
+            assert mock_client.delete.call_args.kwargs["params"] == {"delete_volumes": "true"}
 
 
 # ---------------------------------------------------------------------------
