@@ -92,7 +92,7 @@ class IPRoyalCollector(BaseCollector):
                         balance=0.0,
                         error="Re-login failed after 401",
                     )
-                resp = await self._fetch_balance(client)
+                resp = await self._retry(lambda: self._fetch_balance(client))
 
             resp.raise_for_status()
             data = resp.json()
