@@ -885,10 +885,13 @@ async def api_restart(request: Request, slug: str, worker_id: int | None = None)
 
 
 @app.delete("/api/remove/{slug}")
-async def api_remove(request: Request, slug: str, worker_id: int | None = None) -> dict[str, str]:
+async def api_remove(
+    request: Request, slug: str, worker_id: int | None = None, delete_volumes: bool = False
+) -> dict[str, Any]:
     _require_writer(request)
     worker_id = await _resolve_worker_id(worker_id)
-    result = await _proxy_worker_command(worker_id, "remove", slug)
+    params = {"delete_volumes": "true"} if delete_volumes else None
+    result = await _proxy_worker_command(worker_id, "remove", slug, params=params)
     await database.remove_deployment(slug)
     return result
 
@@ -934,7 +937,9 @@ def _get_verified_worker_url(worker: dict[str, Any]) -> tuple[str, dict[str, str
     return url, headers
 
 
-async def _proxy_worker_command(worker_id: int, command: str, slug: str) -> dict[str, str]:
+async def _proxy_worker_command(
+    worker_id: int, command: str, slug: str, *, params: dict[str, str] | None = None
+) -> dict[str, Any]:
     """Forward a container command (restart/stop/start/remove) to a worker."""
     worker = await database.get_worker(worker_id)
     url, headers = _get_verified_worker_url(worker)
@@ -942,7 +947,9 @@ async def _proxy_worker_command(worker_id: int, command: str, slug: str) -> dict
     try:
         async with httpx.AsyncClient(timeout=30) as client:
             if command == "remove":
-                resp = await client.delete(f"{url}/api/containers/{slug}", headers=headers)
+                resp = await client.delete(
+                    f"{url}/api/containers/{slug}", headers=headers, params=params
+                )
             else:
                 resp = await client.post(f"{url}/api/containers/{slug}/{command}", headers=headers)
             if resp.status_code >= 400:
@@ -1043,10 +1050,13 @@ async def api_service_logs(
 
 
 @app.delete("/api/services/{slug}")
-async def api_service_remove(request: Request, slug: str, worker_id: int | None = None) -> dict[str, str]:
+async def api_service_remove(
+    request: Request, slug: str, worker_id: int | None = None, delete_volumes: bool = False
+) -> dict[str, Any]:
     _require_writer(request)
     worker_id = await _resolve_worker_id(worker_id)
-    result = await _proxy_worker_command(worker_id, "remove", slug)
+    params = {"delete_volumes": "true"} if delete_volumes else None
+    result = await _proxy_worker_command(worker_id, "remove", slug, params=params)
     await database.remove_deployment(slug)
     return result
 

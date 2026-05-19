@@ -354,11 +354,13 @@ async def api_start_container(request: Request, slug: str) -> dict[str, str]:
 
 
 @app.delete("/api/containers/{slug}")
-async def api_remove_container(request: Request, slug: str) -> dict[str, str]:
+async def api_remove_container(
+    request: Request, slug: str, delete_volumes: bool = False
+) -> dict[str, Any]:
     _verify_api_key(request)
     try:
-        orchestrator.remove_service(slug)
-        return {"status": "removed"}
+        result = orchestrator.remove_service(slug, delete_volumes=delete_volumes)
+        return {"status": "removed", **result}
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
     except RuntimeError as exc:

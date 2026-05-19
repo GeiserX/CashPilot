@@ -914,18 +914,20 @@ class TestCollectorSmallGaps:
             result = asyncio.run(c.collect())
         assert result.error is not None
 
-    def test_traffmonetizer_login_missing_token(self):
-        """Cover traffmonetizer.py line 45: login response without token."""
+    def test_traffmonetizer_403_returns_expired_error(self):
+        """Cover traffmonetizer.py: 403 response returns token expired error."""
         from app.collectors.traffmonetizer import TraffmonetizerCollector
 
-        login_resp = _mock_response(200, {"data": {}})
+        resp_403 = MagicMock()
+        resp_403.status_code = 403
         client = _make_async_client()
-        client.post.return_value = login_resp
+        client.get.return_value = resp_403
 
         with patch("app.collectors.traffmonetizer.httpx.AsyncClient", return_value=client):
-            c = TraffmonetizerCollector(email="test@test.com", password="pass")
+            c = TraffmonetizerCollector(token="some-jwt")
             result = asyncio.run(c.collect())
         assert isinstance(result, EarningsResult)
+        assert "expired" in result.error.lower()
 
     def test_repocket_login_missing_token(self):
         """Cover repocket.py lines 49, 55: login without idToken."""

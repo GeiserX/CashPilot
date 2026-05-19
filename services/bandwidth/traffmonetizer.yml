@@ -68,4 +68,5 @@ platforms: [docker, windows, macos, android]
 
 collector:
   type: api
-  notes: "API at api.traffmonetizer.com/api/dashboard. Bearer token auth. Returns balance in USD."
+  auth: browser_jwt
+  notes: "reCAPTCHA blocks programmatic login. Extract access_token from browser Local Storage at app.traffmonetizer.com."
