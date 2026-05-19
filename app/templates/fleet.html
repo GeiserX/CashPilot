@@ -89,8 +89,9 @@ CASHPILOT_WORKER_NAME=server-name</code>
 
       renderWorkers(workers);
     } catch (err) {
+      const msg = (err.message || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]);
       document.getElementById('fleet-workers').innerHTML =
-        `<div class="empty-state"><div class="empty-state-text">Failed to load fleet data: ${err.message}</div></div>`;
+        `<div class="empty-state"><div class="empty-state-text">Failed to load fleet data: ${msg}</div></div>`;
     }
   }
 
