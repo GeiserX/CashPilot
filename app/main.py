@@ -56,7 +56,10 @@ def _check_login_rate(client_ip: str) -> None:
     _login_attempts[client_ip] = [t for t in attempts if now - t < _LOGIN_WINDOW_SECONDS]
     if len(_login_attempts[client_ip]) >= _LOGIN_MAX_ATTEMPTS:
         raise HTTPException(status_code=429, detail="Too many login attempts. Try again in a few minutes.")
-    _login_attempts[client_ip].append(now)
+
+
+def _record_failed_login(client_ip: str) -> None:
+    _login_attempts[client_ip].append(monotonic())
 
 
 def _safe_json(raw: str, fallback: Any = None) -> Any:
@@ -393,9 +396,11 @@ async def do_login(
     username: str = Form(...),
     password: str = Form(...),
 ):
-    _check_login_rate(request.client.host if request.client else "unknown")
+    client_ip = request.client.host if request.client else "unknown"
+    _check_login_rate(client_ip)
     user = await database.get_user_by_username(username)
     if not user or not auth.verify_password(password, user["password"]):
+        _record_failed_login(client_ip)
         return templates.TemplateResponse(
             request,
             "auth.html",
@@ -411,6 +416,7 @@ async def do_login(
             status_code=401,
         )
 
+    _login_attempts.pop(client_ip, None)
     token = auth.create_session_token(user["id"], user["username"], user["role"])
     response = RedirectResponse("/", status_code=303)
     return auth.set_session_cookie(response, token)

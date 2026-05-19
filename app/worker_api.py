@@ -283,8 +283,12 @@ def _validate_deploy_spec(spec: DeploySpec) -> None:
         if blocked:
             raise HTTPException(status_code=403, detail=f"Blocked capabilities: {', '.join(blocked)}")
     for source in spec.volumes:
-        if source.rstrip("/") in _BLOCKED_VOLUME_SOURCES or source == "/":
+        normalized = "/" + source.strip("/")
+        if normalized == "/":
             raise HTTPException(status_code=403, detail=f"Volume mount '{source}' is blocked")
+        for blocked in _BLOCKED_VOLUME_SOURCES:
+            if normalized == blocked or normalized.startswith(blocked + "/"):
+                raise HTTPException(status_code=403, detail=f"Volume mount '{source}' is blocked")
 
 
 @app.get("/api/status")
