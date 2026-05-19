@@ -21,8 +21,10 @@ class HoneygainCollector(BaseCollector):
     """Collect earnings from Honeygain's REST API."""
 
     platform = "honeygain"
+    _HEADERS = {"User-Agent": "Mozilla/5.0", "Referer": "https://dashboard.honeygain.com/"}
 
     def __init__(self, email: str, password: str) -> None:
+        super().__init__()
         self.email = email
         self.password = password
         self._token: str | None = None
@@ -32,10 +34,7 @@ class HoneygainCollector(BaseCollector):
         resp = await client.post(
             f"{API_BASE}/v1/users/tokens",
             json={"email": self.email, "password": self.password},
-            headers={
-                "User-Agent": "Mozilla/5.0",
-                "Referer": "https://dashboard.honeygain.com/",
-            },
+            headers=self._HEADERS,
         )
         resp.raise_for_status()
         data = resp.json()
@@ -47,11 +46,13 @@ class HoneygainCollector(BaseCollector):
     async def collect(self) -> EarningsResult:
         """Fetch current Honeygain balance."""
         try:
-            async with httpx.AsyncClient(timeout=30) as client:
-                if not self._token:
-                    self._token = await self._authenticate(client)
+            client = self._get_client(timeout=30)
 
-                headers = {"Authorization": f"Bearer {self._token}"}
+            if not self._token:
+                self._token = await self._authenticate(client)
+
+            async def _fetch_balance():
+                headers = {**self._HEADERS, "Authorization": f"Bearer {self._token}"}
                 resp = await client.get(
                     f"{API_BASE}/v1/users/balances",
                     headers=headers,
@@ -60,27 +61,30 @@ class HoneygainCollector(BaseCollector):
                 # Token may have expired — retry once
                 if resp.status_code == 401:
                     self._token = await self._authenticate(client)
-                    headers = {"Authorization": f"Bearer {self._token}"}
+                    headers = {**self._HEADERS, "Authorization": f"Bearer {self._token}"}
                     resp = await client.get(
                         f"{API_BASE}/v1/users/balances",
                         headers=headers,
                     )
 
                 resp.raise_for_status()
-                data = resp.json()
+                return resp
 
-                # Balance is in cents (usd_cents)
-                payout = data.get("data", {}).get("payout", {})
-                usd_cents = float(payout.get("usd_cents", 0))
-                balance_usd = round(usd_cents / 100, 4)
+            resp = await self._retry(_fetch_balance)
+            data = resp.json()
 
-                return EarningsResult(
-                    platform=self.platform,
-                    balance=balance_usd,
-                    currency="USD",
-                )
+            # Balance is in cents (usd_cents)
+            payout = data.get("data", {}).get("payout", {})
+            usd_cents = float(payout.get("usd_cents", 0))
+            balance_usd = round(usd_cents / 100, 4)
+
+            return EarningsResult(
+                platform=self.platform,
+                balance=balance_usd,
+                currency="USD",
+            )
         except Exception as exc:
-            logger.error("Honeygain collection failed: %s", exc)
+            logger.error("Honeygain collection failed: %s", exc, exc_info=True)
             return EarningsResult(
                 platform=self.platform,
                 balance=0.0,

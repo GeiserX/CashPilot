@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import logging
 
-import httpx
+import httpx  # noqa: F401 (used by test patches targeting this module)
 
 from app.collectors.base import BaseCollector, EarningsResult
 
@@ -28,6 +28,7 @@ class TraffmonetizerCollector(BaseCollector):
     platform = "traffmonetizer"
 
     def __init__(self, token: str = "") -> None:
+        super().__init__()
         self._token = token.strip()
 
     async def collect(self) -> EarningsResult:
@@ -40,33 +41,35 @@ class TraffmonetizerCollector(BaseCollector):
             )
 
         try:
-            async with httpx.AsyncClient(timeout=30) as client:
-                headers = {"Authorization": f"Bearer {self._token}"}
+            client = self._get_client(timeout=30)
+            headers = {"Authorization": f"Bearer {self._token}"}
 
-                resp = await client.get(
+            resp = await self._retry(
+                lambda: client.get(
                     f"{API_BASE}/app_user/get_balance",
                     headers=headers,
                 )
+            )
 
-                if resp.status_code in (401, 403):
-                    return EarningsResult(
-                        platform=self.platform,
-                        balance=0.0,
-                        error="Token expired — refresh access_token from browser Local Storage",
-                    )
-
-                resp.raise_for_status()
-                data = resp.json()
-
-                balance = float(data.get("data", {}).get("balance", 0))
-
+            if resp.status_code in (401, 403):
                 return EarningsResult(
                     platform=self.platform,
-                    balance=round(balance, 4),
-                    currency="USD",
+                    balance=0.0,
+                    error="Token expired — refresh access_token from browser Local Storage",
                 )
+
+            resp.raise_for_status()
+            data = resp.json()
+
+            balance = float(data.get("data", {}).get("balance", 0))
+
+            return EarningsResult(
+                platform=self.platform,
+                balance=round(balance, 4),
+                currency="USD",
+            )
         except Exception as exc:
-            logger.error("Traffmonetizer collection failed: %s", exc)
+            logger.error("Traffmonetizer collection failed: %s", exc, exc_info=True)
             return EarningsResult(
                 platform=self.platform,
                 balance=0.0,

@@ -400,7 +400,10 @@ class TestBytelixirDeep:
         from app.collectors.bytelixir import BytelixirCollector
 
         # HTML scrape fails (no balance pattern)
+        url_mock = MagicMock()
+        url_mock.path = "/en"
         html_resp = _mock_response(200, text="<p>no balance</p>", url="https://dash.bytelixir.com/en")
+        html_resp.url = url_mock
         html_resp.text = "<p>no balance</p>"
         # API fallback succeeds
         api_resp = _mock_response(200, {"data": {"balance": "0.5000000000"}})
@@ -408,7 +411,7 @@ class TestBytelixirDeep:
         client = _make_async_client()
         client.get.side_effect = [html_resp, api_resp]
 
-        with patch.object(BytelixirCollector, "_make_client", return_value=client):
+        with patch.object(BytelixirCollector, "_get_client", return_value=client):
             c = BytelixirCollector(session_cookie="valid")
             result = asyncio.run(c.collect())
         assert result.balance == 0.50
@@ -416,7 +419,10 @@ class TestBytelixirDeep:
     def test_collect_api_401(self):
         from app.collectors.bytelixir import BytelixirCollector
 
+        url_mock = MagicMock()
+        url_mock.path = "/en"
         html_resp = _mock_response(200, text="<p>no balance</p>", url="https://dash.bytelixir.com/en")
+        html_resp.url = url_mock
         html_resp.text = "<p>no balance</p>"
         api_resp = _mock_response(401)
         api_resp.raise_for_status = MagicMock()  # 401 handled inline
@@ -424,7 +430,7 @@ class TestBytelixirDeep:
         client = _make_async_client()
         client.get.side_effect = [html_resp, api_resp]
 
-        with patch.object(BytelixirCollector, "_make_client", return_value=client):
+        with patch.object(BytelixirCollector, "_get_client", return_value=client):
             c = BytelixirCollector(session_cookie="expired")
             result = asyncio.run(c.collect())
         assert result.error is not None

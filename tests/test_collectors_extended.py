@@ -494,11 +494,14 @@ class TestBytelixirCollector:
     def test_collect_session_expired(self):
         from app.collectors.bytelixir import BytelixirCollector
 
+        url_mock = MagicMock()
+        url_mock.path = "/login"
         resp = _mock_response(200, url="https://dash.bytelixir.com/login")
+        resp.url = url_mock
         client = _make_async_client()
         client.get.return_value = resp
 
-        with patch.object(BytelixirCollector, "_make_client", return_value=client):
+        with patch.object(BytelixirCollector, "_get_client", return_value=client):
             c = BytelixirCollector(session_cookie="expired")
             result = asyncio.run(c.collect())
         assert result.error is not None
@@ -508,12 +511,15 @@ class TestBytelixirCollector:
         from app.collectors.bytelixir import BytelixirCollector
 
         html = '<span>$</span>0.04<span class="text-2xs">025</span>'
+        url_mock = MagicMock()
+        url_mock.path = "/en"
         resp = _mock_response(200, text=html, url="https://dash.bytelixir.com/en")
+        resp.url = url_mock
         resp.text = html
         client = _make_async_client()
         client.get.return_value = resp
 
-        with patch.object(BytelixirCollector, "_make_client", return_value=client):
+        with patch.object(BytelixirCollector, "_get_client", return_value=client):
             c = BytelixirCollector(session_cookie="valid-sess")
             result = asyncio.run(c.collect())
         assert result.error is None
@@ -525,7 +531,7 @@ class TestBytelixirCollector:
         client = _make_async_client()
         client.get.side_effect = Exception("Error")
 
-        with patch.object(BytelixirCollector, "_make_client", return_value=client):
+        with patch.object(BytelixirCollector, "_get_client", return_value=client):
             c = BytelixirCollector(session_cookie="bad")
             result = asyncio.run(c.collect())
         assert result.error is not None

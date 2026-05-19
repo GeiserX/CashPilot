@@ -81,7 +81,7 @@ async def _send_heartbeat() -> None:
 
     containers = []
     try:
-        containers = orchestrator.get_status()
+        containers = await asyncio.to_thread(orchestrator.get_status)
     except Exception as exc:
         logger.warning("Failed to get container status for heartbeat: %s", exc)
 
@@ -180,7 +180,7 @@ async def worker_status_page():
     """Self-contained HTML status page for the worker."""
     containers = []
     try:
-        containers = orchestrator.get_status_cached()
+        containers = await asyncio.to_thread(orchestrator.get_status_cached)
     except Exception as exc:
         logger.warning("Failed to get container status for status page: %s", exc)
 
@@ -293,7 +293,7 @@ async def api_worker_status(request: Request) -> dict[str, Any]:
     _verify_api_key(request)
     containers = []
     try:
-        containers = orchestrator.get_status_cached()
+        containers = await asyncio.to_thread(orchestrator.get_status_cached)
     except Exception as exc:
         logger.warning("Failed to get container status: %s", exc)
     return {
@@ -310,7 +310,7 @@ async def api_list_containers(request: Request) -> list[dict[str, Any]]:
     """List all CashPilot-managed containers."""
     _verify_api_key(request)
     try:
-        return orchestrator.get_status_cached()
+        return await asyncio.to_thread(orchestrator.get_status_cached)
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc))
 
@@ -321,7 +321,8 @@ async def api_deploy_container(request: Request, slug: str, spec: DeploySpec) ->
     _verify_api_key(request)
     _validate_deploy_spec(spec)
     try:
-        container_id = orchestrator.deploy_raw(
+        container_id = await asyncio.to_thread(
+            orchestrator.deploy_raw,
             slug=slug,
             image=spec.image,
             env=spec.env,
@@ -344,7 +345,7 @@ async def api_deploy_container(request: Request, slug: str, spec: DeploySpec) ->
 async def api_restart_container(request: Request, slug: str) -> dict[str, str]:
     _verify_api_key(request)
     try:
-        orchestrator.restart_service(slug)
+        await asyncio.to_thread(orchestrator.restart_service, slug)
         return {"status": "restarted"}
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
@@ -356,7 +357,7 @@ async def api_restart_container(request: Request, slug: str) -> dict[str, str]:
 async def api_stop_container(request: Request, slug: str) -> dict[str, str]:
     _verify_api_key(request)
     try:
-        orchestrator.stop_service(slug)
+        await asyncio.to_thread(orchestrator.stop_service, slug)
         return {"status": "stopped"}
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
@@ -368,7 +369,7 @@ async def api_stop_container(request: Request, slug: str) -> dict[str, str]:
 async def api_start_container(request: Request, slug: str) -> dict[str, str]:
     _verify_api_key(request)
     try:
-        orchestrator.start_service(slug)
+        await asyncio.to_thread(orchestrator.start_service, slug)
         return {"status": "started"}
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
@@ -380,7 +381,7 @@ async def api_start_container(request: Request, slug: str) -> dict[str, str]:
 async def api_remove_container(request: Request, slug: str, delete_volumes: bool = False) -> dict[str, Any]:
     _verify_api_key(request)
     try:
-        result = orchestrator.remove_service(slug, delete_volumes=delete_volumes)
+        result = await asyncio.to_thread(orchestrator.remove_service, slug, delete_volumes=delete_volumes)
         return {"status": "removed", **result}
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
@@ -392,7 +393,7 @@ async def api_remove_container(request: Request, slug: str, delete_volumes: bool
 async def api_container_logs(request: Request, slug: str, lines: int = 50) -> dict[str, str]:
     _verify_api_key(request)
     try:
-        logs = orchestrator.get_service_logs(slug, lines=min(lines, 1000))
+        logs = await asyncio.to_thread(orchestrator.get_service_logs, slug, lines=min(lines, 1000))
         return {"logs": logs}
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc))

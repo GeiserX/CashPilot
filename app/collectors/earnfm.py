@@ -30,6 +30,7 @@ class EarnFMCollector(BaseCollector):
     platform = "earnfm"
 
     def __init__(self, email: str, password: str) -> None:
+        super().__init__()
         self.email = email
         self.password = password
         self._access_token: str | None = None
@@ -76,36 +77,37 @@ class EarnFMCollector(BaseCollector):
     async def collect(self) -> EarningsResult:
         """Fetch current Earn.fm balance."""
         try:
-            async with httpx.AsyncClient(timeout=30) as client:
-                if not self._access_token:
-                    await self._authenticate(client)
+            client = self._get_client(timeout=30)
+            if not self._access_token:
+                await self._authenticate(client)
 
-                headers = {"X-API-Key": self._access_token}
-                resp = await client.get(
+            headers = {"X-API-Key": self._access_token}
+
+            async def _fetch_balance() -> httpx.Response:
+                return await client.get(
                     f"{API_BASE}/harvester/view_balance",
                     headers=headers,
                 )
 
-                if resp.status_code == 401:
-                    await self._refresh(client)
-                    headers = {"X-API-Key": self._access_token}
-                    resp = await client.get(
-                        f"{API_BASE}/harvester/view_balance",
-                        headers=headers,
-                    )
+            resp = await self._retry(_fetch_balance)
 
-                resp.raise_for_status()
-                data = resp.json()
+            if resp.status_code == 401:
+                await self._refresh(client)
+                headers = {"X-API-Key": self._access_token}
+                resp = await self._retry(_fetch_balance)
 
-                balance = float(data.get("data", {}).get("totalBalance", 0))
+            resp.raise_for_status()
+            data = resp.json()
 
-                return EarningsResult(
-                    platform=self.platform,
-                    balance=round(balance, 4),
-                    currency="USD",
-                )
+            balance = float(data.get("data", {}).get("totalBalance", 0))
+
+            return EarningsResult(
+                platform=self.platform,
+                balance=round(balance, 4),
+                currency="USD",
+            )
         except Exception as exc:
-            logger.error("EarnFM collection failed: %s", exc)
+            logger.error("EarnFM collection failed: %s", exc, exc_info=True)
             return EarningsResult(
                 platform=self.platform,
                 balance=0.0,
