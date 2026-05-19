@@ -1089,3 +1089,113 @@ class TestAuthOSError:
             result = auth._resolve_secret_key()
             # Should generate a new key since reading failed
             assert len(result) > 20
+
+
+# ---------------------------------------------------------------------------
+# Orchestrator: volume cleanup on remove
+# ---------------------------------------------------------------------------
+
+
+class TestOrchestratorVolumeCleanup:
+    """Cover orchestrator.remove_service with delete_volumes flag."""
+
+    def test_remove_without_volumes(self):
+        from app import orchestrator
+
+        container = MagicMock()
+        container.name = "cashpilot-test"
+        container.attrs = {"Mounts": []}
+
+        with patch.object(orchestrator, "_find_container", return_value=container):
+            result = orchestrator.remove_service("test")
+
+        container.remove.assert_called_once_with(force=True)
+        assert result["container"] == "cashpilot-test"
+        assert result["deleted_volumes"] == []
+        assert result["failed_volumes"] == []
+
+    def test_remove_with_delete_volumes_named(self):
+        from app import orchestrator
+
+        container = MagicMock()
+        container.name = "cashpilot-honeygain"
+        container.attrs = {
+            "Mounts": [
+                {"Type": "volume", "Name": "honeygain_data"},
+                {"Type": "bind", "Source": "/host/path"},
+                {"Type": "volume", "Name": "honeygain_config"},
+            ]
+        }
+
+        mock_vol = MagicMock()
+        mock_client = MagicMock()
+        mock_client.volumes.get.return_value = mock_vol
+
+        with (
+            patch.object(orchestrator, "_find_container", return_value=container),
+            patch.object(orchestrator, "_get_client", return_value=mock_client),
+        ):
+            result = orchestrator.remove_service("honeygain", delete_volumes=True)
+
+        container.remove.assert_called_once_with(force=True)
+        assert "honeygain_data" in result["deleted_volumes"]
+        assert "honeygain_config" in result["deleted_volumes"]
+        assert result["failed_volumes"] == []
+        assert mock_vol.remove.call_count == 2
+
+    def test_remove_volume_not_found_counts_as_deleted(self):
+        from docker.errors import NotFound
+
+        from app import orchestrator
+
+        container = MagicMock()
+        container.name = "cashpilot-test"
+        container.attrs = {"Mounts": [{"Type": "volume", "Name": "gone_vol"}]}
+
+        mock_client = MagicMock()
+        mock_client.volumes.get.side_effect = NotFound("gone")
+
+        with (
+            patch.object(orchestrator, "_find_container", return_value=container),
+            patch.object(orchestrator, "_get_client", return_value=mock_client),
+        ):
+            result = orchestrator.remove_service("test", delete_volumes=True)
+
+        assert "gone_vol" in result["deleted_volumes"]
+        assert result["failed_volumes"] == []
+
+    def test_remove_volume_api_error_recorded(self):
+        from docker.errors import APIError
+
+        from app import orchestrator
+
+        container = MagicMock()
+        container.name = "cashpilot-test"
+        container.attrs = {"Mounts": [{"Type": "volume", "Name": "busy_vol"}]}
+
+        mock_vol = MagicMock()
+        mock_vol.remove.side_effect = APIError("volume in use")
+        mock_client = MagicMock()
+        mock_client.volumes.get.return_value = mock_vol
+
+        with (
+            patch.object(orchestrator, "_find_container", return_value=container),
+            patch.object(orchestrator, "_get_client", return_value=mock_client),
+        ):
+            result = orchestrator.remove_service("test", delete_volumes=True)
+
+        assert result["deleted_volumes"] == []
+        assert "busy_vol" in result["failed_volumes"]
+
+    def test_delete_volumes_false_skips_volume_inspection(self):
+        from app import orchestrator
+
+        container = MagicMock()
+        container.name = "cashpilot-test"
+        container.attrs = {"Mounts": [{"Type": "volume", "Name": "keep_me"}]}
+
+        with patch.object(orchestrator, "_find_container", return_value=container):
+            result = orchestrator.remove_service("test", delete_volumes=False)
+
+        assert result["deleted_volumes"] == []
+        assert result["failed_volumes"] == []
