@@ -42,7 +42,11 @@ class TraffmonetizerCollector(BaseCollector):
 
         try:
             client = self._get_client(timeout=30)
-            headers = {"Authorization": f"Bearer {self._token}"}
+            headers = {
+                "Authorization": f"Bearer {self._token}",
+                "Origin": "https://app.traffmonetizer.com",
+                "Referer": "https://app.traffmonetizer.com/",
+            }
 
             resp = await self._retry(
                 lambda: client.get(
