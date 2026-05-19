@@ -10,10 +10,11 @@ import os
 from contextlib import asynccontextmanager
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
+
 os.environ.setdefault("CASHPILOT_API_KEY", "test-fleet-key")
 
 import httpx
-import pytest
 import yaml
 
 from app import catalog, database
@@ -1094,6 +1095,9 @@ class TestAuthOSError:
 # ---------------------------------------------------------------------------
 # Orchestrator: volume cleanup on remove
 # ---------------------------------------------------------------------------
+
+
+docker = pytest.importorskip("docker")
 
 
 class TestOrchestratorVolumeCleanup:
