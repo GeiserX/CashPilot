@@ -14,8 +14,10 @@ import json
 import logging
 import os
 import re
+from collections import defaultdict
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
+from time import monotonic
 from typing import Any
 from urllib.parse import urlparse
 
@@ -40,6 +42,21 @@ scheduler = AsyncIOScheduler()
 
 # In-memory store for the latest collector alerts (errors from last run)
 _collector_alerts: list[dict[str, str]] = []
+_collection_lock = asyncio.Lock()
+
+# Login rate limiting
+_login_attempts: dict[str, list[float]] = defaultdict(list)
+_LOGIN_MAX_ATTEMPTS = 5
+_LOGIN_WINDOW_SECONDS = 300
+
+
+def _check_login_rate(client_ip: str) -> None:
+    now = monotonic()
+    attempts = _login_attempts[client_ip]
+    _login_attempts[client_ip] = [t for t in attempts if now - t < _LOGIN_WINDOW_SECONDS]
+    if len(_login_attempts[client_ip]) >= _LOGIN_MAX_ATTEMPTS:
+        raise HTTPException(status_code=429, detail="Too many login attempts. Try again in a few minutes.")
+    _login_attempts[client_ip].append(now)
 
 
 def _safe_json(raw: str, fallback: Any = None) -> Any:
@@ -155,36 +172,45 @@ async def _run_health_check() -> None:
             else:
                 await database.record_health_event(slug, "check_down", status)
     except Exception as exc:
-        logger.debug("Health check skipped: %s", exc)
+        logger.warning("Health check skipped: %s", exc)
 
 
 async def _run_collection() -> None:
     """Collect earnings from all deployed services that have collectors."""
     global _collector_alerts
-    try:
-        deployments = await database.get_deployments()
-        config = await database.get_config() or {}
-        if not isinstance(config, dict):
-            config = {}
-        from app.collectors import make_collectors
+    if _collection_lock.locked():
+        logger.info("Collection already in progress, skipping")
+        return
+    async with _collection_lock:
+        try:
+            deployments = await database.get_deployments()
+            config = await database.get_config() or {}
+            if not isinstance(config, dict):
+                config = {}
+            from app.collectors import make_collectors
 
-        collectors = make_collectors(deployments, config)
-        alerts: list[dict[str, str]] = []
-        for collector in collectors:
-            result = await collector.collect()
-            if result.error:
-                logger.warning("Collection error for %s: %s", result.platform, result.error)
-                alerts.append({"platform": result.platform, "error": result.error})
-            else:
-                await database.upsert_earnings(
-                    platform=result.platform,
-                    balance=result.balance,
-                    currency=result.currency,
-                )
-                logger.info("Collected %s: %.4f %s", result.platform, result.balance, result.currency)
-        _collector_alerts = alerts
-    except Exception as exc:
-        logger.error("Collection run failed: %s", exc)
+            collectors = make_collectors(deployments, config)
+            results = await asyncio.gather(
+                *(c.collect() for c in collectors), return_exceptions=True
+            )
+            alerts: list[dict[str, str]] = []
+            for result in results:
+                if isinstance(result, Exception):
+                    logger.warning("Collector raised exception: %s", result)
+                    continue
+                if result.error:
+                    logger.warning("Collection error for %s: %s", result.platform, result.error)
+                    alerts.append({"platform": result.platform, "error": result.error})
+                else:
+                    await database.upsert_earnings(
+                        platform=result.platform,
+                        balance=result.balance,
+                        currency=result.currency,
+                    )
+                    logger.info("Collected %s: %.4f %s", result.platform, result.balance, result.currency)
+            _collector_alerts = alerts
+        except Exception as exc:
+            logger.error("Collection run failed: %s", exc)
 
 
 # ---------------------------------------------------------------------------
@@ -199,7 +225,7 @@ async def _run_data_retention() -> None:
         if deleted:
             logger.info("Data retention: purged %d old rows", deleted)
     except Exception as exc:
-        logger.debug("Data retention error: %s", exc)
+        logger.warning("Data retention error: %s", exc)
 
 
 async def _check_stale_workers() -> None:
@@ -214,7 +240,7 @@ async def _check_stale_workers() -> None:
                     await database.set_worker_status(w["id"], "offline")
                     logger.info("Worker '%s' marked offline (last heartbeat: %s)", w["name"], w["last_heartbeat"])
     except Exception as exc:
-        logger.debug("Stale worker check error: %s", exc)
+        logger.warning("Stale worker check error: %s", exc)
 
 
 FLEET_API_KEY = fleet_key.resolve_fleet_key()
@@ -261,6 +287,15 @@ class _SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response.headers["X-Frame-Options"] = "DENY"
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
         response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+        response.headers["Content-Security-Policy"] = (
+            "default-src 'self'; "
+            "script-src 'self' https://cdn.jsdelivr.net 'unsafe-inline'; "
+            "style-src 'self' https://fonts.googleapis.com 'unsafe-inline'; "
+            "font-src 'self' https://fonts.gstatic.com; "
+            "img-src 'self' data:; "
+            "connect-src 'self'; "
+            "frame-ancestors 'none'"
+        )
         return response
 
 
@@ -356,6 +391,7 @@ async def do_login(
     username: str = Form(...),
     password: str = Form(...),
 ):
+    _check_login_rate(request.client.host if request.client else "unknown")
     user = await database.get_user_by_username(username)
     if not user or not auth.verify_password(password, user["password"]):
         return templates.TemplateResponse(

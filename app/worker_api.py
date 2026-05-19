@@ -80,8 +80,10 @@ async def _send_heartbeat() -> None:
     global _ui_connected, _last_heartbeat, _last_error
 
     containers = []
-    with contextlib.suppress(Exception):
+    try:
         containers = orchestrator.get_status()
+    except Exception as exc:
+        logger.warning("Failed to get container status for heartbeat: %s", exc)
 
     payload = {
         "name": WORKER_NAME,
@@ -177,8 +179,10 @@ app = FastAPI(title="CashPilot Worker", version="0.1.0", lifespan=lifespan)
 async def worker_status_page():
     """Self-contained HTML status page for the worker."""
     containers = []
-    with contextlib.suppress(Exception):
+    try:
         containers = orchestrator.get_status_cached()
+    except Exception as exc:
+        logger.warning("Failed to get container status for status page: %s", exc)
 
     container_rows = ""
     for c in containers:
@@ -267,13 +271,31 @@ class DeploySpec(BaseModel):
     labels: dict[str, str] = {}
 
 
+_BLOCKED_VOLUME_SOURCES = {"/", "/etc", "/var/run/docker.sock", "/root", "/proc", "/sys"}
+_BLOCKED_CAPS = {"ALL", "SYS_ADMIN", "SYS_PTRACE"}
+
+
+def _validate_deploy_spec(spec: DeploySpec) -> None:
+    if spec.privileged:
+        raise HTTPException(status_code=403, detail="Privileged containers are not allowed")
+    if spec.cap_add:
+        blocked = _BLOCKED_CAPS & {c.upper() for c in spec.cap_add}
+        if blocked:
+            raise HTTPException(status_code=403, detail=f"Blocked capabilities: {', '.join(blocked)}")
+    for source in spec.volumes:
+        if source.rstrip("/") in _BLOCKED_VOLUME_SOURCES or source == "/":
+            raise HTTPException(status_code=403, detail=f"Volume mount '{source}' is blocked")
+
+
 @app.get("/api/status")
 async def api_worker_status(request: Request) -> dict[str, Any]:
     """Return worker status summary."""
     _verify_api_key(request)
     containers = []
-    with contextlib.suppress(Exception):
+    try:
         containers = orchestrator.get_status_cached()
+    except Exception as exc:
+        logger.warning("Failed to get container status: %s", exc)
     return {
         "name": WORKER_NAME,
         "docker_available": orchestrator.docker_available(),
@@ -297,6 +319,7 @@ async def api_list_containers(request: Request) -> list[dict[str, Any]]:
 async def api_deploy_container(request: Request, slug: str, spec: DeploySpec) -> dict[str, str]:
     """Deploy a container from spec sent by UI."""
     _verify_api_key(request)
+    _validate_deploy_spec(spec)
     try:
         container_id = orchestrator.deploy_raw(
             slug=slug,
