@@ -112,9 +112,7 @@ def get_current_user(request: Request) -> dict[str, Any] | None:
         if admin_key and hmac.compare_digest(auth_header.encode(), f"Bearer {admin_key}".encode()):
             return {"uid": 0, "u": "api", "r": "owner"}
         resolved_fleet_key = _fleet_key_mod.resolve_fleet_key()
-        if resolved_fleet_key and hmac.compare_digest(
-            auth_header.encode(), f"Bearer {resolved_fleet_key}".encode()
-        ):
+        if resolved_fleet_key and hmac.compare_digest(auth_header.encode(), f"Bearer {resolved_fleet_key}".encode()):
             return {"uid": 0, "u": "fleet", "r": "fleet"}
 
     # Fall back to session cookie

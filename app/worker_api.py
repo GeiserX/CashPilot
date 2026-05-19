@@ -377,9 +377,7 @@ async def api_start_container(request: Request, slug: str) -> dict[str, str]:
 
 
 @app.delete("/api/containers/{slug}")
-async def api_remove_container(
-    request: Request, slug: str, delete_volumes: bool = False
-) -> dict[str, Any]:
+async def api_remove_container(request: Request, slug: str, delete_volumes: bool = False) -> dict[str, Any]:
     _verify_api_key(request)
     try:
         result = orchestrator.remove_service(slug, delete_volumes=delete_volumes)

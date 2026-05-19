@@ -190,9 +190,7 @@ async def _run_collection() -> None:
             from app.collectors import make_collectors
 
             collectors = make_collectors(deployments, config)
-            results = await asyncio.gather(
-                *(c.collect() for c in collectors), return_exceptions=True
-            )
+            results = await asyncio.gather(*(c.collect() for c in collectors), return_exceptions=True)
             alerts: list[dict[str, str]] = []
             for result in results:
                 if isinstance(result, Exception):
@@ -983,9 +981,7 @@ async def _proxy_worker_command(
     try:
         async with httpx.AsyncClient(timeout=30) as client:
             if command == "remove":
-                resp = await client.delete(
-                    f"{url}/api/containers/{slug}", headers=headers, params=params
-                )
+                resp = await client.delete(f"{url}/api/containers/{slug}", headers=headers, params=params)
             else:
                 resp = await client.post(f"{url}/api/containers/{slug}/{command}", headers=headers)
             if resp.status_code >= 400:
