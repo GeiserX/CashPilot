@@ -187,9 +187,10 @@ async def _run_collection() -> None:
             config = await database.get_config() or {}
             if not isinstance(config, dict):
                 config = {}
-            from app.collectors import make_collectors
+            from app.collectors import _close_stale, make_collectors
 
             collectors = make_collectors(deployments, config)
+            await _close_stale()
             results = await asyncio.gather(*(c.collect() for c in collectors), return_exceptions=True)
             alerts: list[dict[str, str]] = []
             for result in results:
@@ -267,6 +268,9 @@ async def lifespan(app: FastAPI):
 
     # Shutdown
     scheduler.shutdown(wait=False)
+    from app.collectors import close_all_collectors
+
+    await close_all_collectors()
     logger.info("CashPilot stopped")
 
 
@@ -488,7 +492,7 @@ async def do_register(
             status_code=400,
         )
 
-    if len(password) < 8:
+    if len(password) < 10:
         return templates.TemplateResponse(
             request,
             "auth.html",
@@ -498,7 +502,7 @@ async def do_register(
                 "mode": "register",
                 "action": "/register",
                 "button_text": "Create Account",
-                "error": "Password must be at least 8 characters",
+                "error": "Password must be at least 10 characters",
                 "is_first": is_first,
             },
             status_code=400,
@@ -1286,11 +1290,21 @@ async def api_collect(request: Request) -> dict[str, str]:
     return {"status": "collection_started"}
 
 
+_MAX_ALERT_ERROR_LEN = 200
+
+
 @app.get("/api/collector-alerts")
 async def api_collector_alerts(request: Request) -> list[dict[str, str]]:
-    """Return collector errors from the last collection run."""
+    """Return collector errors from the last collection run (sanitized)."""
     _require_auth_api(request)
-    return _collector_alerts
+    sanitized: list[dict[str, str]] = []
+    for alert in _collector_alerts:
+        error_msg = alert.get("error", "")
+        clean = error_msg[:_MAX_ALERT_ERROR_LEN]
+        if len(error_msg) > _MAX_ALERT_ERROR_LEN:
+            clean += "..."
+        sanitized.append({"platform": alert["platform"], "error": clean})
+    return sanitized
 
 
 @app.get("/api/exchange-rates")

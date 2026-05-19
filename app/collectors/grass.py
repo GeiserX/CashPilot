@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from enum import Enum
 
 import httpx
 
@@ -38,12 +39,18 @@ API_BASE = "https://api.getgrass.io"
 _BASE_POINTS_PER_HOUR = 50
 
 
+class _GrassStatus(Enum):
+    AUTH_FAILED = "auth_failed"
+    RATE_LIMITED = "rate_limited"
+
+
 class GrassCollector(BaseCollector):
     """Collect earnings from Grass's API using an access token."""
 
     platform = "grass"
 
     def __init__(self, access_token: str) -> None:
+        super().__init__()
         self.access_token = access_token
 
     def _make_headers(self) -> dict[str, str]:
@@ -70,16 +77,16 @@ class GrassCollector(BaseCollector):
                 await asyncio.sleep(wait)
         return resp  # Return last 429 response if all retries exhausted
 
-    async def _get_settled_points(self, client: httpx.AsyncClient) -> float:
+    async def _get_settled_points(self, client: httpx.AsyncClient) -> float | _GrassStatus:
         """Fetch totalPoints from /retrieveUser (non-zero only after epoch settles)."""
         resp = await self._request_with_retry(client, f"{API_BASE}/retrieveUser")
 
         if resp.status_code in (401, 403):
-            return -1.0  # Signal auth failure
+            return _GrassStatus.AUTH_FAILED
 
         if resp.status_code == 429:
             logger.warning("Grass API still rate-limited after retries")
-            return -2.0  # Signal rate limit
+            return _GrassStatus.RATE_LIMITED
 
         resp.raise_for_status()
         data = resp.json()
@@ -145,49 +152,49 @@ class GrassCollector(BaseCollector):
         3. Otherwise, estimate from /devices uptime data.
         """
         try:
-            async with httpx.AsyncClient(timeout=60) as client:
-                # First, check if we have settled points
-                settled = await self._get_settled_points(client)
+            client = self._get_client(timeout=60)
 
-                if settled == -1.0:
+            # First, check if we have settled points
+            settled = await self._get_settled_points(client)
+
+            if isinstance(settled, _GrassStatus):
+                if settled is _GrassStatus.AUTH_FAILED:
                     return EarningsResult(
                         platform=self.platform,
                         balance=0.0,
                         error="Token expired — get a new accessToken from app.grass.io Local Storage",
                     )
-
-                if settled == -2.0:
-                    return EarningsResult(
-                        platform=self.platform,
-                        balance=0.0,
-                        error="Cloudflare rate limit — will retry next collection cycle",
-                    )
-
-                if settled > 0:
-                    # Epoch has settled, use the official total
-                    return EarningsResult(
-                        platform=self.platform,
-                        balance=round(settled, 4),
-                        currency="GRASS",
-                    )
-
-                # Active epoch: estimate from active device uptime
-                estimated = await self._estimate_from_active_devices(client)
-
-                if estimated == -1.0:
-                    return EarningsResult(
-                        platform=self.platform,
-                        balance=0.0,
-                        error="Cloudflare rate limit — will retry next collection cycle",
-                    )
-
                 return EarningsResult(
                     platform=self.platform,
-                    balance=round(estimated, 4),
+                    balance=0.0,
+                    error="Cloudflare rate limit — will retry next collection cycle",
+                )
+
+            if settled > 0:
+                # Epoch has settled, use the official total
+                return EarningsResult(
+                    platform=self.platform,
+                    balance=round(settled, 4),
                     currency="GRASS",
                 )
+
+            # Active epoch: estimate from active device uptime
+            estimated = await self._estimate_from_active_devices(client)
+
+            if estimated == -1.0:
+                return EarningsResult(
+                    platform=self.platform,
+                    balance=0.0,
+                    error="Cloudflare rate limit — will retry next collection cycle",
+                )
+
+            return EarningsResult(
+                platform=self.platform,
+                balance=round(estimated, 4),
+                currency="GRASS",
+            )
         except Exception as exc:
-            logger.error("Grass collection failed: %s", exc)
+            logger.error("Grass collection failed: %s", exc, exc_info=True)
             return EarningsResult(
                 platform=self.platform,
                 balance=0.0,

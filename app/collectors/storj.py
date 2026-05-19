@@ -23,41 +23,42 @@ class StorjCollector(BaseCollector):
     platform = "storj"
 
     def __init__(self, api_url: str = DEFAULT_API_URL) -> None:
+        super().__init__()
         self.api_url = api_url.rstrip("/")
 
     async def collect(self) -> EarningsResult:
         """Fetch current Storj storagenode estimated payout."""
         try:
-            async with httpx.AsyncClient(timeout=15) as client:
-                resp = await client.get(f"{self.api_url}/api/sno/estimated-payout")
+            client = self._get_client(timeout=15)
+            resp = await self._retry(lambda: client.get(f"{self.api_url}/api/sno/estimated-payout"))
 
-                if resp.status_code == 404:
-                    # Older storagenode versions use different endpoint
-                    resp = await client.get(f"{self.api_url}/api/sno")
+            if resp.status_code == 404:
+                # Older storagenode versions use different endpoint
+                resp = await client.get(f"{self.api_url}/api/sno")
 
-                resp.raise_for_status()
-                data = resp.json()
+            resp.raise_for_status()
+            data = resp.json()
 
-                # estimated-payout endpoint returns cents
-                if "currentMonth" in data:
-                    # Payout values are in cents (integer)
-                    payout_cents = data["currentMonth"].get("egressBandwidthPayout", 0)
-                    payout_cents += data["currentMonth"].get("egressRepairAuditPayout", 0)
-                    payout_cents += data["currentMonth"].get("diskSpacePayout", 0)
-                    balance = payout_cents / 100.0
-                elif "estimatedPayout" in data:
-                    balance = data["estimatedPayout"] / 100.0
-                elif "currentMonthExpectations" in data:
-                    balance = data["currentMonthExpectations"] / 100.0
-                else:
-                    # Fallback: try /api/sno for totalPayout
-                    balance = 0.0
+            # estimated-payout endpoint returns cents
+            if "currentMonth" in data:
+                # Payout values are in cents (integer)
+                payout_cents = data["currentMonth"].get("egressBandwidthPayout", 0)
+                payout_cents += data["currentMonth"].get("egressRepairAuditPayout", 0)
+                payout_cents += data["currentMonth"].get("diskSpacePayout", 0)
+                balance = payout_cents / 100.0
+            elif "estimatedPayout" in data:
+                balance = data["estimatedPayout"] / 100.0
+            elif "currentMonthExpectations" in data:
+                balance = data["currentMonthExpectations"] / 100.0
+            else:
+                # Fallback: try /api/sno for totalPayout
+                balance = 0.0
 
-                return EarningsResult(
-                    platform=self.platform,
-                    balance=round(balance, 4),
-                    currency="USD",
-                )
+            return EarningsResult(
+                platform=self.platform,
+                balance=round(balance, 4),
+                currency="USD",
+            )
         except httpx.ConnectError:
             return EarningsResult(
                 platform=self.platform,
@@ -70,7 +71,7 @@ class StorjCollector(BaseCollector):
                 ),
             )
         except Exception as exc:
-            logger.error("Storj collection failed: %s", exc)
+            logger.error("Storj collection failed: %s", exc, exc_info=True)
             return EarningsResult(
                 platform=self.platform,
                 balance=0.0,

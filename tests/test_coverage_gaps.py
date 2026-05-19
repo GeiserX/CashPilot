@@ -218,14 +218,14 @@ class TestMakeCollectorsEdgeCases:
 
 
 # ---------------------------------------------------------------------------
-# bytelixir.py — _make_client, parse balance edge cases
+# bytelixir.py — _get_client, parse balance edge cases
 # ---------------------------------------------------------------------------
 
 
-class TestBytelixirMakeClient:
-    """Cover lines 59-77: _make_client with remember_web and xsrf_token."""
+class TestBytelixirGetClient:
+    """Cover _get_client with remember_web and xsrf_token."""
 
-    def test_make_client_with_all_cookies(self):
+    def test_get_client_with_all_cookies(self):
         from app.collectors.bytelixir import BytelixirCollector
 
         c = BytelixirCollector(
@@ -233,7 +233,7 @@ class TestBytelixirMakeClient:
             remember_web="remember-val",
             xsrf_token="xsrf-val",
         )
-        client = c._make_client()
+        client = c._get_client()
         assert isinstance(client, httpx.AsyncClient)
         # Verify cookies are set
         cookies = dict(client.cookies)
@@ -242,11 +242,11 @@ class TestBytelixirMakeClient:
         assert "XSRF-TOKEN" in cookies
         asyncio.run(client.aclose())
 
-    def test_make_client_session_only(self):
+    def test_get_client_session_only(self):
         from app.collectors.bytelixir import BytelixirCollector
 
         c = BytelixirCollector(session_cookie="sess-only")
-        client = c._make_client()
+        client = c._get_client()
         cookies = dict(client.cookies)
         assert "bytelixir_session" in cookies
         assert c._REMEMBER_COOKIE not in cookies

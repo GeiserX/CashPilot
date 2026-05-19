@@ -213,6 +213,13 @@ async def init_db() -> None:
             """)
         elif "apps" not in cols:
             await db.execute("ALTER TABLE workers ADD COLUMN apps TEXT NOT NULL DEFAULT '[]'")
+
+        # Migrate users table: add password_changed_at for session invalidation
+        cursor = await db.execute("PRAGMA table_info(users)")
+        user_cols = {row["name"] for row in await cursor.fetchall()}
+        if "password_changed_at" not in user_cols:
+            await db.execute("ALTER TABLE users ADD COLUMN password_changed_at REAL DEFAULT 0")
+
         await db.commit()
     finally:
         await db.close()
@@ -684,6 +691,21 @@ async def delete_user(user_id: int) -> None:
     db = await _get_db()
     try:
         await db.execute("DELETE FROM users WHERE id = ?", (user_id,))
+        await db.commit()
+    finally:
+        await db.close()
+
+
+async def update_user_password(user_id: int, hashed_password: str) -> None:
+    """Update a user's password and record the change timestamp."""
+    import time
+
+    db = await _get_db()
+    try:
+        await db.execute(
+            "UPDATE users SET password = ?, password_changed_at = ? WHERE id = ?",
+            (hashed_password, time.time(), user_id),
+        )
         await db.commit()
     finally:
         await db.close()
