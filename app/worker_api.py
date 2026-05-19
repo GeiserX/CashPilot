@@ -80,8 +80,10 @@ async def _send_heartbeat() -> None:
     global _ui_connected, _last_heartbeat, _last_error
 
     containers = []
-    with contextlib.suppress(Exception):
-        containers = orchestrator.get_status()
+    try:
+        containers = await asyncio.to_thread(orchestrator.get_status)
+    except Exception as exc:
+        logger.warning("Failed to get container status for heartbeat: %s", exc)
 
     payload = {
         "name": WORKER_NAME,
@@ -177,8 +179,10 @@ app = FastAPI(title="CashPilot Worker", version="0.1.0", lifespan=lifespan)
 async def worker_status_page():
     """Self-contained HTML status page for the worker."""
     containers = []
-    with contextlib.suppress(Exception):
-        containers = orchestrator.get_status_cached()
+    try:
+        containers = await asyncio.to_thread(orchestrator.get_status_cached)
+    except Exception as exc:
+        logger.warning("Failed to get container status for status page: %s", exc)
 
     container_rows = ""
     for c in containers:
@@ -267,13 +271,35 @@ class DeploySpec(BaseModel):
     labels: dict[str, str] = {}
 
 
+_BLOCKED_VOLUME_SOURCES = {"/", "/etc", "/var/run/docker.sock", "/root", "/proc", "/sys"}
+_BLOCKED_CAPS = {"ALL", "SYS_ADMIN", "SYS_PTRACE"}
+
+
+def _validate_deploy_spec(spec: DeploySpec) -> None:
+    if spec.privileged:
+        raise HTTPException(status_code=403, detail="Privileged containers are not allowed")
+    if spec.cap_add:
+        blocked = _BLOCKED_CAPS & {c.upper() for c in spec.cap_add}
+        if blocked:
+            raise HTTPException(status_code=403, detail=f"Blocked capabilities: {', '.join(blocked)}")
+    for source in spec.volumes:
+        normalized = "/" + source.strip("/")
+        if normalized == "/":
+            raise HTTPException(status_code=403, detail=f"Volume mount '{source}' is blocked")
+        for blocked in _BLOCKED_VOLUME_SOURCES:
+            if normalized == blocked or normalized.startswith(blocked + "/"):
+                raise HTTPException(status_code=403, detail=f"Volume mount '{source}' is blocked")
+
+
 @app.get("/api/status")
 async def api_worker_status(request: Request) -> dict[str, Any]:
     """Return worker status summary."""
     _verify_api_key(request)
     containers = []
-    with contextlib.suppress(Exception):
-        containers = orchestrator.get_status_cached()
+    try:
+        containers = await asyncio.to_thread(orchestrator.get_status_cached)
+    except Exception as exc:
+        logger.warning("Failed to get container status: %s", exc)
     return {
         "name": WORKER_NAME,
         "docker_available": orchestrator.docker_available(),
@@ -288,7 +314,7 @@ async def api_list_containers(request: Request) -> list[dict[str, Any]]:
     """List all CashPilot-managed containers."""
     _verify_api_key(request)
     try:
-        return orchestrator.get_status_cached()
+        return await asyncio.to_thread(orchestrator.get_status_cached)
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc))
 
@@ -297,8 +323,10 @@ async def api_list_containers(request: Request) -> list[dict[str, Any]]:
 async def api_deploy_container(request: Request, slug: str, spec: DeploySpec) -> dict[str, str]:
     """Deploy a container from spec sent by UI."""
     _verify_api_key(request)
+    _validate_deploy_spec(spec)
     try:
-        container_id = orchestrator.deploy_raw(
+        container_id = await asyncio.to_thread(
+            orchestrator.deploy_raw,
             slug=slug,
             image=spec.image,
             env=spec.env,
@@ -321,7 +349,7 @@ async def api_deploy_container(request: Request, slug: str, spec: DeploySpec) ->
 async def api_restart_container(request: Request, slug: str) -> dict[str, str]:
     _verify_api_key(request)
     try:
-        orchestrator.restart_service(slug)
+        await asyncio.to_thread(orchestrator.restart_service, slug)
         return {"status": "restarted"}
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
@@ -333,7 +361,7 @@ async def api_restart_container(request: Request, slug: str) -> dict[str, str]:
 async def api_stop_container(request: Request, slug: str) -> dict[str, str]:
     _verify_api_key(request)
     try:
-        orchestrator.stop_service(slug)
+        await asyncio.to_thread(orchestrator.stop_service, slug)
         return {"status": "stopped"}
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
@@ -345,7 +373,7 @@ async def api_stop_container(request: Request, slug: str) -> dict[str, str]:
 async def api_start_container(request: Request, slug: str) -> dict[str, str]:
     _verify_api_key(request)
     try:
-        orchestrator.start_service(slug)
+        await asyncio.to_thread(orchestrator.start_service, slug)
         return {"status": "started"}
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
@@ -354,11 +382,11 @@ async def api_start_container(request: Request, slug: str) -> dict[str, str]:
 
 
 @app.delete("/api/containers/{slug}")
-async def api_remove_container(request: Request, slug: str) -> dict[str, str]:
+async def api_remove_container(request: Request, slug: str, delete_volumes: bool = False) -> dict[str, Any]:
     _verify_api_key(request)
     try:
-        orchestrator.remove_service(slug)
-        return {"status": "removed"}
+        result = await asyncio.to_thread(orchestrator.remove_service, slug, delete_volumes=delete_volumes)
+        return {"status": "removed", **result}
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
     except RuntimeError as exc:
@@ -369,7 +397,7 @@ async def api_remove_container(request: Request, slug: str) -> dict[str, str]:
 async def api_container_logs(request: Request, slug: str, lines: int = 50) -> dict[str, str]:
     _verify_api_key(request)
     try:
-        logs = orchestrator.get_service_logs(slug, lines=min(lines, 1000))
+        logs = await asyncio.to_thread(orchestrator.get_service_logs, slug, lines=min(lines, 1000))
         return {"logs": logs}
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc))

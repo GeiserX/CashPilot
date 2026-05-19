@@ -146,41 +146,21 @@ class TestMystNodesCollectorDeep:
 
 
 class TestTraffmonetizerDeep:
-    def test_collect_with_email_auth(self):
+    def test_collect_with_valid_token(self):
         from app.collectors.traffmonetizer import TraffmonetizerCollector
 
-        login_resp = _mock_response(200, {"data": {"token": "jwt-tok"}})
         balance_resp = _mock_response(200, {"data": {"balance": 1.50}})
 
         client = _make_async_client()
-        client.post.return_value = login_resp
         client.get.return_value = balance_resp
 
         with patch("app.collectors.traffmonetizer.httpx.AsyncClient", return_value=client):
-            c = TraffmonetizerCollector(email="test@test.com", password="pass")
+            c = TraffmonetizerCollector(token="valid-jwt")
             result = asyncio.run(c.collect())
         assert result.error is None
         assert result.balance == 1.50
 
-    def test_collect_token_refresh_on_401(self):
-        from app.collectors.traffmonetizer import TraffmonetizerCollector
-
-        expired_resp = MagicMock()
-        expired_resp.status_code = 401
-        login_resp = _mock_response(200, {"data": {"token": "new-tok"}})
-        ok_resp = _mock_response(200, {"data": {"balance": 0.75}})
-
-        client = _make_async_client()
-        client.post.return_value = login_resp
-        client.get.side_effect = [expired_resp, ok_resp]
-
-        with patch("app.collectors.traffmonetizer.httpx.AsyncClient", return_value=client):
-            c = TraffmonetizerCollector(email="test@test.com", password="pass", token="old-tok")
-            result = asyncio.run(c.collect())
-        assert result.error is None
-        assert result.balance == 0.75
-
-    def test_collect_auth_permanently_failed(self):
+    def test_collect_token_expired(self):
         from app.collectors.traffmonetizer import TraffmonetizerCollector
 
         resp_401 = MagicMock()
@@ -188,12 +168,20 @@ class TestTraffmonetizerDeep:
 
         client = _make_async_client()
         client.get.return_value = resp_401
-        # No email set, so no re-auth possible
+
         with patch("app.collectors.traffmonetizer.httpx.AsyncClient", return_value=client):
-            c = TraffmonetizerCollector(token="expired-tok")
+            c = TraffmonetizerCollector(token="expired-jwt")
             result = asyncio.run(c.collect())
         assert result.error is not None
-        assert "Authentication" in result.error
+        assert "expired" in result.error.lower()
+
+    def test_collect_no_token(self):
+        from app.collectors.traffmonetizer import TraffmonetizerCollector
+
+        c = TraffmonetizerCollector(token="")
+        result = asyncio.run(c.collect())
+        assert result.error is not None
+        assert "No token" in result.error
 
 
 # ---------------------------------------------------------------------------
@@ -412,7 +400,10 @@ class TestBytelixirDeep:
         from app.collectors.bytelixir import BytelixirCollector
 
         # HTML scrape fails (no balance pattern)
+        url_mock = MagicMock()
+        url_mock.path = "/en"
         html_resp = _mock_response(200, text="<p>no balance</p>", url="https://dash.bytelixir.com/en")
+        html_resp.url = url_mock
         html_resp.text = "<p>no balance</p>"
         # API fallback succeeds
         api_resp = _mock_response(200, {"data": {"balance": "0.5000000000"}})
@@ -420,7 +411,7 @@ class TestBytelixirDeep:
         client = _make_async_client()
         client.get.side_effect = [html_resp, api_resp]
 
-        with patch.object(BytelixirCollector, "_make_client", return_value=client):
+        with patch.object(BytelixirCollector, "_get_client", return_value=client):
             c = BytelixirCollector(session_cookie="valid")
             result = asyncio.run(c.collect())
         assert result.balance == 0.50
@@ -428,7 +419,10 @@ class TestBytelixirDeep:
     def test_collect_api_401(self):
         from app.collectors.bytelixir import BytelixirCollector
 
+        url_mock = MagicMock()
+        url_mock.path = "/en"
         html_resp = _mock_response(200, text="<p>no balance</p>", url="https://dash.bytelixir.com/en")
+        html_resp.url = url_mock
         html_resp.text = "<p>no balance</p>"
         api_resp = _mock_response(401)
         api_resp.raise_for_status = MagicMock()  # 401 handled inline
@@ -436,7 +430,7 @@ class TestBytelixirDeep:
         client = _make_async_client()
         client.get.side_effect = [html_resp, api_resp]
 
-        with patch.object(BytelixirCollector, "_make_client", return_value=client):
+        with patch.object(BytelixirCollector, "_get_client", return_value=client):
             c = BytelixirCollector(session_cookie="expired")
             result = asyncio.run(c.collect())
         assert result.error is not None

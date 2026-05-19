@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import logging
 
-import httpx
+import httpx  # noqa: F401 — needed for test patching
 
 from app.collectors.base import BaseCollector, EarningsResult
 
@@ -23,6 +23,7 @@ class ProxyRackCollector(BaseCollector):
     platform = "proxyrack"
 
     def __init__(self, api_key: str) -> None:
+        super().__init__()
         self.api_key = api_key
 
     async def collect(self) -> EarningsResult:
@@ -35,7 +36,8 @@ class ProxyRackCollector(BaseCollector):
                 "Content-Type": "application/json",
             }
 
-            async with httpx.AsyncClient(timeout=30) as client:
+            async def _fetch_balance():
+                client = self._get_client(timeout=30)
                 resp = await client.post(
                     f"{API_BASE}/balance",
                     headers=headers,
@@ -60,8 +62,10 @@ class ProxyRackCollector(BaseCollector):
                     balance=round(balance, 4),
                     currency="USD",
                 )
+
+            return await self._retry(_fetch_balance)
         except Exception as exc:
-            logger.error("ProxyRack collection failed: %s", exc)
+            logger.error("ProxyRack collection failed: %s", exc, exc_info=True)
             return EarningsResult(
                 platform=self.platform,
                 balance=0.0,

@@ -269,6 +269,20 @@ class TestServiceManagement:
             resp = client.delete("/api/remove/honeygain")
             assert resp.status_code == 200
 
+    def test_remove_with_delete_volumes(self, client):
+        worker, mock_client = self._setup_proxy()
+        with (
+            _auth_writer(),
+            patch("app.main.database.list_workers", new_callable=AsyncMock, return_value=[worker]),
+            patch("app.main.database.get_worker", new_callable=AsyncMock, return_value=worker),
+            patch("app.main.database.remove_deployment", new_callable=AsyncMock),
+            patch("app.main.httpx.AsyncClient", return_value=mock_client),
+            patch("app.main.FLEET_API_KEY", "test-key"),
+        ):
+            resp = client.delete("/api/services/honeygain?delete_volumes=true")
+            assert resp.status_code == 200
+            assert mock_client.delete.call_args.kwargs["params"] == {"delete_volumes": "true"}
+
 
 # ---------------------------------------------------------------------------
 # Worker proxy error handling
