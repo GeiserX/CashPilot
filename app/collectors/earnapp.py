@@ -21,7 +21,7 @@ class EarnAppCollector(BaseCollector):
     """Collect earnings from EarnApp's dashboard API."""
 
     platform = "earnapp"
-    _API_VERSION = "1.613.719"
+    _API_VERSION = "1.627.783"
 
     def __init__(self, oauth_token: str, brd_sess_id: str = "") -> None:
         super().__init__()
