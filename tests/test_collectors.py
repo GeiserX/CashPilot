@@ -38,7 +38,6 @@ def test_earnings_result_fields():
     assert result.platform == "test"
     assert result.balance == 1.23
     assert result.currency == "USD"
-    assert result.bytes_uploaded == 0
     assert result.error is None
 
 

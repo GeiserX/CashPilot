@@ -28,6 +28,7 @@ class MystNodesCollector(BaseCollector):
         email: str = "",
         password: str = "",
     ) -> None:
+        super().__init__()
         self.email = email
         self.password = password
         self._access_token: str | None = None
@@ -92,21 +93,21 @@ class MystNodesCollector(BaseCollector):
                 error="MystNodes email/password not configured",
             )
         try:
-            async with httpx.AsyncClient(timeout=30) as client:
-                resp = await self._get_with_retry(client, f"{CLOUD_BASE}/node/total-earnings")
-                resp.raise_for_status()
-                data = resp.json()
+            client = self._get_client(timeout=30)
+            resp = await self._retry(lambda: self._get_with_retry(client, f"{CLOUD_BASE}/node/total-earnings"))
+            resp.raise_for_status()
+            data = resp.json()
 
-                # earningsTotal is in MYST tokens (Polygon)
-                total_myst = float(data.get("earningsTotal", 0))
+            # earningsTotal is in MYST tokens (Polygon)
+            total_myst = float(data.get("earningsTotal", 0))
 
-                return EarningsResult(
-                    platform=self.platform,
-                    balance=round(total_myst, 4),
-                    currency="MYST",
-                )
+            return EarningsResult(
+                platform=self.platform,
+                balance=round(total_myst, 4),
+                currency="MYST",
+            )
         except Exception as exc:
-            logger.error("MystNodes collection failed: %s", exc)
+            logger.error("MystNodes collection failed: %s", exc, exc_info=True)
             return EarningsResult(
                 platform=self.platform,
                 balance=0.0,
@@ -129,40 +130,42 @@ class MystNodesCollector(BaseCollector):
         if not self.email or not self.password:
             return []
         try:
-            async with httpx.AsyncClient(timeout=30) as client:
-                resp = await self._get_with_retry(
+            client = self._get_client(timeout=30)
+            resp = await self._retry(
+                lambda: self._get_with_retry(
                     client,
                     f"{CLOUD_BASE}/node",
                     params={"page": 1, "itemsPerPage": 100},
                 )
-                resp.raise_for_status()
-                data = resp.json()
+            )
+            resp.raise_for_status()
+            data = resp.json()
 
-                result = []
-                for node in data.get("nodes", []):
-                    # Sum 30-day earnings across all service types
-                    earnings_30d = sum(float(e.get("etherAmount", 0)) for e in node.get("earnings", []))
+            result = []
+            for node in data.get("nodes", []):
+                # Sum 30-day earnings across all service types
+                earnings_30d = sum(float(e.get("etherAmount", 0)) for e in node.get("earnings", []))
 
-                    lifetime = node.get("lifetimeEarnings") or {}
-                    total_ether = float(lifetime.get("totalEther", 0))
-                    settled = float(lifetime.get("settledEther", 0))
-                    unsettled = float(lifetime.get("unsettledEther", 0))
+                lifetime = node.get("lifetimeEarnings") or {}
+                total_ether = float(lifetime.get("totalEther", 0))
+                settled = float(lifetime.get("settledEther", 0))
+                unsettled = float(lifetime.get("unsettledEther", 0))
 
-                    result.append(
-                        {
-                            "identity": node.get("identity", ""),
-                            "name": node.get("name") or "",
-                            "local_ip": node.get("localIp", ""),
-                            "online": (node.get("nodeStatus", {}).get("online", False)),
-                            "country": (node.get("country", {}).get("code", "")),
-                            "version": node.get("version", ""),
-                            "earnings_myst": round(earnings_30d, 6),
-                            "lifetime_myst": round(total_ether, 6),
-                            "lifetime_settled_myst": round(settled, 6),
-                            "lifetime_unsettled_myst": round(unsettled, 6),
-                        }
-                    )
-                return result
+                result.append(
+                    {
+                        "identity": node.get("identity", ""),
+                        "name": node.get("name") or "",
+                        "local_ip": node.get("localIp", ""),
+                        "online": (node.get("nodeStatus", {}).get("online", False)),
+                        "country": (node.get("country", {}).get("code", "")),
+                        "version": node.get("version", ""),
+                        "earnings_myst": round(earnings_30d, 6),
+                        "lifetime_myst": round(total_ether, 6),
+                        "lifetime_settled_myst": round(settled, 6),
+                        "lifetime_unsettled_myst": round(unsettled, 6),
+                    }
+                )
+            return result
         except Exception as exc:
-            logger.error("MystNodes per-node fetch failed: %s", exc)
+            logger.error("MystNodes per-node fetch failed: %s", exc, exc_info=True)
             return []

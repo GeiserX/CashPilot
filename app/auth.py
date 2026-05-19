@@ -5,9 +5,11 @@ Session-based auth using signed cookies (itsdangerous) and bcrypt password hashi
 
 from __future__ import annotations
 
+import hmac
 import logging
 import os
 import secrets
+import time
 from pathlib import Path
 from typing import Any
 
@@ -75,6 +77,10 @@ SESSION_MAX_AGE = 60 * 60 * 24 * 30  # 30 days
 
 _serializer = URLSafeTimedSerializer(SECRET_KEY)
 
+# Global session epoch: tokens issued before this timestamp are rejected.
+# Bump via env var to mass-invalidate all sessions (e.g. after a credential leak).
+_SESSION_EPOCH = float(os.getenv("CASHPILOT_SESSION_EPOCH", "0"))
+
 
 def hash_password(password: str) -> str:
     # bcrypt enforces a 72-byte limit; truncate UTF-8 bytes (not characters)
@@ -88,12 +94,16 @@ def verify_password(password: str, hashed: str) -> bool:
 
 
 def create_session_token(user_id: int, username: str, role: str) -> str:
-    return _serializer.dumps({"uid": user_id, "u": username, "r": role})
+    return _serializer.dumps({"uid": user_id, "u": username, "r": role, "iat": time.time()})
 
 
 def decode_session_token(token: str) -> dict[str, Any] | None:
     try:
-        return _serializer.loads(token, max_age=SESSION_MAX_AGE)
+        data = _serializer.loads(token, max_age=SESSION_MAX_AGE)
+        # Reject tokens issued before session epoch (for mass invalidation)
+        if data.get("iat", 0) < _SESSION_EPOCH:
+            return None
+        return data
     except (BadSignature, Exception):
         return None
 
@@ -108,10 +118,10 @@ def get_current_user(request: Request) -> dict[str, Any] | None:
     auth_header = request.headers.get("Authorization", "")
     if auth_header:
         admin_key = os.getenv("CASHPILOT_ADMIN_API_KEY", "")
-        if admin_key and auth_header == f"Bearer {admin_key}":
+        if admin_key and hmac.compare_digest(auth_header.encode(), f"Bearer {admin_key}".encode()):
             return {"uid": 0, "u": "api", "r": "owner"}
         resolved_fleet_key = _fleet_key_mod.resolve_fleet_key()
-        if resolved_fleet_key and auth_header == f"Bearer {resolved_fleet_key}":
+        if resolved_fleet_key and hmac.compare_digest(auth_header.encode(), f"Bearer {resolved_fleet_key}".encode()):
             return {"uid": 0, "u": "fleet", "r": "fleet"}
 
     # Fall back to session cookie

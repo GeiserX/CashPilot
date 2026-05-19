@@ -6,6 +6,7 @@ the PacketStream web interface.
 
 from __future__ import annotations
 
+import json
 import logging
 import re
 
@@ -24,77 +25,79 @@ class PacketStreamCollector(BaseCollector):
     platform = "packetstream"
 
     def __init__(self, auth_token: str) -> None:
+        super().__init__()
         self.auth_token = auth_token
 
     async def collect(self) -> EarningsResult:
         """Fetch current PacketStream balance by scraping dashboard."""
         try:
             cookies = {"auth": self.auth_token}
+            client = self._get_client(cookies=cookies)
 
-            async with httpx.AsyncClient(timeout=30, cookies=cookies) as client:
-                resp = await client.get(f"{API_BASE}/dashboard")
+            async def _fetch() -> httpx.Response:
+                return await client.get(f"{API_BASE}/dashboard")
 
-                if resp.status_code in (401, 403) or "/login" in str(resp.url):
-                    return EarningsResult(
-                        platform=self.platform,
-                        balance=0.0,
-                        error="Authentication failed — check auth JWT cookie",
-                    )
+            resp = await self._retry(_fetch)
 
-                resp.raise_for_status()
-                html = resp.text
-
-                balance = 0.0
-                parsed = False
-
-                # Pattern 1: server-rendered Balance card (current)
-                # <h3>Balance</h3>...<h2 ...>$0.13</h2>
-                match = re.search(
-                    r"<h3>Balance</h3>.*?<h2[^>]*>\$?([\d.]+)</h2>",
-                    html,
-                    re.DOTALL,
+            if resp.status_code in (401, 403) or "/login" in str(resp.url):
+                return EarningsResult(
+                    platform=self.platform,
+                    balance=0.0,
+                    error="Authentication failed — check auth JWT cookie",
                 )
+
+            resp.raise_for_status()
+            html = resp.text
+
+            balance = 0.0
+            parsed = False
+
+            # Pattern 1: server-rendered Balance card (current)
+            # <h3>Balance</h3>...<h2 ...>$0.13</h2>
+            match = re.search(
+                r"<h3>Balance</h3>.*?<h2[^>]*>\$?([\d.]+)</h2>",
+                html,
+                re.DOTALL,
+            )
+            if match:
+                balance = float(match.group(1))
+                parsed = True
+
+            # Pattern 2: window.userData JSON (legacy)
+            if not parsed:
+                match = re.search(
+                    r"window\.userData\s*=\s*(\{[^}]+\})",
+                    html,
+                )
+                if match:
+                    try:
+                        user_data = json.loads(match.group(1))
+                        balance = float(user_data.get("balance", 0))
+                        parsed = True
+                    except (json.JSONDecodeError, ValueError):
+                        pass
+
+            # Pattern 3: bare "balance" key in JSON
+            if not parsed:
+                match = re.search(r'"balance"\s*:\s*([\d.]+)', html)
                 if match:
                     balance = float(match.group(1))
                     parsed = True
 
-                # Pattern 2: window.userData JSON (legacy)
-                if not parsed:
-                    match = re.search(
-                        r"window\.userData\s*=\s*(\{[^}]+\})",
-                        html,
-                    )
-                    if match:
-                        import json
-
-                        try:
-                            user_data = json.loads(match.group(1))
-                            balance = float(user_data.get("balance", 0))
-                            parsed = True
-                        except (json.JSONDecodeError, ValueError):
-                            pass
-
-                # Pattern 3: bare "balance" key in JSON
-                if not parsed:
-                    match = re.search(r'"balance"\s*:\s*([\d.]+)', html)
-                    if match:
-                        balance = float(match.group(1))
-                        parsed = True
-
-                if not parsed:
-                    return EarningsResult(
-                        platform=self.platform,
-                        balance=0.0,
-                        error="Could not parse balance from dashboard — page structure may have changed",
-                    )
-
+            if not parsed:
                 return EarningsResult(
                     platform=self.platform,
-                    balance=round(balance, 4),
-                    currency="USD",
+                    balance=0.0,
+                    error="Could not parse balance from dashboard — page structure may have changed",
                 )
+
+            return EarningsResult(
+                platform=self.platform,
+                balance=round(balance, 4),
+                currency="USD",
+            )
         except Exception as exc:
-            logger.error("PacketStream collection failed: %s", exc)
+            logger.error("PacketStream collection failed: %s", exc, exc_info=True)
             return EarningsResult(
                 platform=self.platform,
                 balance=0.0,

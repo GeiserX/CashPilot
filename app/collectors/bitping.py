@@ -23,6 +23,7 @@ class BitpingCollector(BaseCollector):
     platform = "bitping"
 
     def __init__(self, email: str, password: str) -> None:
+        super().__init__()
         self.email = email
         self.password = password
         self._token: str | None = None
@@ -51,36 +52,37 @@ class BitpingCollector(BaseCollector):
     async def collect(self) -> EarningsResult:
         """Fetch current Bitping earnings."""
         try:
-            async with httpx.AsyncClient(timeout=30) as client:
-                if not self._token:
-                    self._token = await self._authenticate(client)
+            client = self._get_client(timeout=30)
+            if not self._token:
+                self._token = await self._authenticate(client)
 
-                headers = {"Authorization": f"Bearer {self._token}"}
-                resp = await client.get(
+            headers = {"Authorization": f"Bearer {self._token}"}
+
+            async def _fetch_balance() -> httpx.Response:
+                return await client.get(
                     f"{API_BASE}/api/v2/payouts/earnings",
                     headers=headers,
                 )
 
-                if resp.status_code == 401:
-                    self._token = await self._authenticate(client)
-                    headers = {"Authorization": f"Bearer {self._token}"}
-                    resp = await client.get(
-                        f"{API_BASE}/api/v2/payouts/earnings",
-                        headers=headers,
-                    )
+            resp = await self._retry(_fetch_balance)
 
-                resp.raise_for_status()
-                data = resp.json()
+            if resp.status_code == 401:
+                self._token = await self._authenticate(client)
+                headers = {"Authorization": f"Bearer {self._token}"}
+                resp = await self._retry(_fetch_balance)
 
-                balance = float(data.get("usdEarnings", 0))
+            resp.raise_for_status()
+            data = resp.json()
 
-                return EarningsResult(
-                    platform=self.platform,
-                    balance=round(balance, 4),
-                    currency="USD",
-                )
+            balance = float(data.get("usdEarnings", 0))
+
+            return EarningsResult(
+                platform=self.platform,
+                balance=round(balance, 4),
+                currency="USD",
+            )
         except Exception as exc:
-            logger.error("Bitping collection failed: %s", exc)
+            logger.error("Bitping collection failed: %s", exc, exc_info=True)
             return EarningsResult(
                 platform=self.platform,
                 balance=0.0,

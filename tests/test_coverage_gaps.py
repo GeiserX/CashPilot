@@ -10,10 +10,11 @@ import os
 from contextlib import asynccontextmanager
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
+
 os.environ.setdefault("CASHPILOT_API_KEY", "test-fleet-key")
 
 import httpx
-import pytest
 import yaml
 
 from app import catalog, database
@@ -217,14 +218,14 @@ class TestMakeCollectorsEdgeCases:
 
 
 # ---------------------------------------------------------------------------
-# bytelixir.py — _make_client, parse balance edge cases
+# bytelixir.py — _get_client, parse balance edge cases
 # ---------------------------------------------------------------------------
 
 
-class TestBytelixirMakeClient:
-    """Cover lines 59-77: _make_client with remember_web and xsrf_token."""
+class TestBytelixirGetClient:
+    """Cover _get_client with remember_web and xsrf_token."""
 
-    def test_make_client_with_all_cookies(self):
+    def test_get_client_with_all_cookies(self):
         from app.collectors.bytelixir import BytelixirCollector
 
         c = BytelixirCollector(
@@ -232,7 +233,7 @@ class TestBytelixirMakeClient:
             remember_web="remember-val",
             xsrf_token="xsrf-val",
         )
-        client = c._make_client()
+        client = c._get_client()
         assert isinstance(client, httpx.AsyncClient)
         # Verify cookies are set
         cookies = dict(client.cookies)
@@ -241,11 +242,11 @@ class TestBytelixirMakeClient:
         assert "XSRF-TOKEN" in cookies
         asyncio.run(client.aclose())
 
-    def test_make_client_session_only(self):
+    def test_get_client_session_only(self):
         from app.collectors.bytelixir import BytelixirCollector
 
         c = BytelixirCollector(session_cookie="sess-only")
-        client = c._make_client()
+        client = c._get_client()
         cookies = dict(client.cookies)
         assert "bytelixir_session" in cookies
         assert c._REMEMBER_COOKIE not in cookies
@@ -914,18 +915,20 @@ class TestCollectorSmallGaps:
             result = asyncio.run(c.collect())
         assert result.error is not None
 
-    def test_traffmonetizer_login_missing_token(self):
-        """Cover traffmonetizer.py line 45: login response without token."""
+    def test_traffmonetizer_403_returns_expired_error(self):
+        """Cover traffmonetizer.py: 403 response returns token expired error."""
         from app.collectors.traffmonetizer import TraffmonetizerCollector
 
-        login_resp = _mock_response(200, {"data": {}})
+        resp_403 = MagicMock()
+        resp_403.status_code = 403
         client = _make_async_client()
-        client.post.return_value = login_resp
+        client.get.return_value = resp_403
 
         with patch("app.collectors.traffmonetizer.httpx.AsyncClient", return_value=client):
-            c = TraffmonetizerCollector(email="test@test.com", password="pass")
+            c = TraffmonetizerCollector(token="some-jwt")
             result = asyncio.run(c.collect())
         assert isinstance(result, EarningsResult)
+        assert "expired" in result.error.lower()
 
     def test_repocket_login_missing_token(self):
         """Cover repocket.py lines 49, 55: login without idToken."""
@@ -1087,3 +1090,116 @@ class TestAuthOSError:
             result = auth._resolve_secret_key()
             # Should generate a new key since reading failed
             assert len(result) > 20
+
+
+# ---------------------------------------------------------------------------
+# Orchestrator: volume cleanup on remove
+# ---------------------------------------------------------------------------
+
+
+docker = pytest.importorskip("docker")
+
+
+class TestOrchestratorVolumeCleanup:
+    """Cover orchestrator.remove_service with delete_volumes flag."""
+
+    def test_remove_without_volumes(self):
+        from app import orchestrator
+
+        container = MagicMock()
+        container.name = "cashpilot-test"
+        container.attrs = {"Mounts": []}
+
+        with patch.object(orchestrator, "_find_container", return_value=container):
+            result = orchestrator.remove_service("test")
+
+        container.remove.assert_called_once_with(force=True)
+        assert result["container"] == "cashpilot-test"
+        assert result["deleted_volumes"] == []
+        assert result["failed_volumes"] == []
+
+    def test_remove_with_delete_volumes_named(self):
+        from app import orchestrator
+
+        container = MagicMock()
+        container.name = "cashpilot-honeygain"
+        container.attrs = {
+            "Mounts": [
+                {"Type": "volume", "Name": "honeygain_data"},
+                {"Type": "bind", "Source": "/host/path"},
+                {"Type": "volume", "Name": "honeygain_config"},
+            ]
+        }
+
+        mock_vol = MagicMock()
+        mock_client = MagicMock()
+        mock_client.volumes.get.return_value = mock_vol
+
+        with (
+            patch.object(orchestrator, "_find_container", return_value=container),
+            patch.object(orchestrator, "_get_client", return_value=mock_client),
+        ):
+            result = orchestrator.remove_service("honeygain", delete_volumes=True)
+
+        container.remove.assert_called_once_with(force=True)
+        assert "honeygain_data" in result["deleted_volumes"]
+        assert "honeygain_config" in result["deleted_volumes"]
+        assert result["failed_volumes"] == []
+        assert mock_vol.remove.call_count == 2
+
+    def test_remove_volume_not_found_counts_as_deleted(self):
+        from docker.errors import NotFound
+
+        from app import orchestrator
+
+        container = MagicMock()
+        container.name = "cashpilot-test"
+        container.attrs = {"Mounts": [{"Type": "volume", "Name": "gone_vol"}]}
+
+        mock_client = MagicMock()
+        mock_client.volumes.get.side_effect = NotFound("gone")
+
+        with (
+            patch.object(orchestrator, "_find_container", return_value=container),
+            patch.object(orchestrator, "_get_client", return_value=mock_client),
+        ):
+            result = orchestrator.remove_service("test", delete_volumes=True)
+
+        assert "gone_vol" in result["deleted_volumes"]
+        assert result["failed_volumes"] == []
+
+    def test_remove_volume_api_error_recorded(self):
+        from docker.errors import APIError
+
+        from app import orchestrator
+
+        container = MagicMock()
+        container.name = "cashpilot-test"
+        container.attrs = {"Mounts": [{"Type": "volume", "Name": "busy_vol"}]}
+
+        mock_vol = MagicMock()
+        mock_vol.remove.side_effect = APIError("volume in use")
+        mock_client = MagicMock()
+        mock_client.volumes.get.return_value = mock_vol
+
+        with (
+            patch.object(orchestrator, "_find_container", return_value=container),
+            patch.object(orchestrator, "_get_client", return_value=mock_client),
+        ):
+            result = orchestrator.remove_service("test", delete_volumes=True)
+
+        assert result["deleted_volumes"] == []
+        assert "busy_vol" in result["failed_volumes"]
+
+    def test_delete_volumes_false_skips_volume_inspection(self):
+        from app import orchestrator
+
+        container = MagicMock()
+        container.name = "cashpilot-test"
+        container.attrs = {"Mounts": [{"Type": "volume", "Name": "keep_me"}]}
+
+        with patch.object(orchestrator, "_find_container", return_value=container):
+            result = orchestrator.remove_service("test", delete_volumes=False)
+
+        assert result["deleted_volumes"] == []
+        assert result["failed_volumes"] == []

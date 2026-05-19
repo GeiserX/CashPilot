@@ -29,6 +29,7 @@ class SaladCollector(BaseCollector):
     platform = "salad"
 
     def __init__(self, auth_cookie: str) -> None:
+        super().__init__()
         self.auth_cookie = auth_cookie
 
     async def collect(self) -> EarningsResult:
@@ -36,33 +37,35 @@ class SaladCollector(BaseCollector):
         try:
             cookies = {"auth": self.auth_cookie}
             headers = {"X-XSRF-TOKEN": self.auth_cookie}
+            client = self._get_client(cookies=cookies)
 
-            async with httpx.AsyncClient(timeout=30) as client:
-                resp = await client.get(
+            async def _fetch() -> httpx.Response:
+                return await client.get(
                     f"{API_BASE}/profile/balance",
-                    cookies=cookies,
                     headers=headers,
                 )
 
-                if resp.status_code in (401, 403):
-                    return EarningsResult(
-                        platform=self.platform,
-                        balance=0.0,
-                        error="Auth cookie expired — get a new 'auth' cookie from salad.com",
-                    )
+            resp = await self._retry(_fetch)
 
-                resp.raise_for_status()
-                data = resp.json()
-
-                balance = float(data.get("currentBalance", 0))
-
+            if resp.status_code in (401, 403):
                 return EarningsResult(
                     platform=self.platform,
-                    balance=round(balance, 4),
-                    currency="USD",
+                    balance=0.0,
+                    error="Auth cookie expired — get a new 'auth' cookie from salad.com",
                 )
+
+            resp.raise_for_status()
+            data = resp.json()
+
+            balance = float(data.get("currentBalance", 0))
+
+            return EarningsResult(
+                platform=self.platform,
+                balance=round(balance, 4),
+                currency="USD",
+            )
         except Exception as exc:
-            logger.error("Salad collection failed: %s", exc)
+            logger.error("Salad collection failed: %s", exc, exc_info=True)
             return EarningsResult(
                 platform=self.platform,
                 balance=0.0,

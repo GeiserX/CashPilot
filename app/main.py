@@ -14,8 +14,10 @@ import json
 import logging
 import os
 import re
+from collections import defaultdict
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
+from time import monotonic
 from typing import Any
 from urllib.parse import urlparse
 
@@ -40,6 +42,24 @@ scheduler = AsyncIOScheduler()
 
 # In-memory store for the latest collector alerts (errors from last run)
 _collector_alerts: list[dict[str, str]] = []
+_collection_lock = asyncio.Lock()
+
+# Login rate limiting
+_login_attempts: dict[str, list[float]] = defaultdict(list)
+_LOGIN_MAX_ATTEMPTS = 5
+_LOGIN_WINDOW_SECONDS = 300
+
+
+def _check_login_rate(client_ip: str) -> None:
+    now = monotonic()
+    attempts = _login_attempts[client_ip]
+    _login_attempts[client_ip] = [t for t in attempts if now - t < _LOGIN_WINDOW_SECONDS]
+    if len(_login_attempts[client_ip]) >= _LOGIN_MAX_ATTEMPTS:
+        raise HTTPException(status_code=429, detail="Too many login attempts. Try again in a few minutes.")
+
+
+def _record_failed_login(client_ip: str) -> None:
+    _login_attempts[client_ip].append(monotonic())
 
 
 def _safe_json(raw: str, fallback: Any = None) -> Any:
@@ -155,36 +175,44 @@ async def _run_health_check() -> None:
             else:
                 await database.record_health_event(slug, "check_down", status)
     except Exception as exc:
-        logger.debug("Health check skipped: %s", exc)
+        logger.warning("Health check skipped: %s", exc)
 
 
 async def _run_collection() -> None:
     """Collect earnings from all deployed services that have collectors."""
     global _collector_alerts
-    try:
-        deployments = await database.get_deployments()
-        config = await database.get_config() or {}
-        if not isinstance(config, dict):
-            config = {}
-        from app.collectors import make_collectors
+    if _collection_lock.locked():
+        logger.info("Collection already in progress, skipping")
+        return
+    async with _collection_lock:
+        try:
+            deployments = await database.get_deployments()
+            config = await database.get_config() or {}
+            if not isinstance(config, dict):
+                config = {}
+            from app.collectors import _close_stale, make_collectors
 
-        collectors = make_collectors(deployments, config)
-        alerts: list[dict[str, str]] = []
-        for collector in collectors:
-            result = await collector.collect()
-            if result.error:
-                logger.warning("Collection error for %s: %s", result.platform, result.error)
-                alerts.append({"platform": result.platform, "error": result.error})
-            else:
-                await database.upsert_earnings(
-                    platform=result.platform,
-                    balance=result.balance,
-                    currency=result.currency,
-                )
-                logger.info("Collected %s: %.4f %s", result.platform, result.balance, result.currency)
-        _collector_alerts = alerts
-    except Exception as exc:
-        logger.error("Collection run failed: %s", exc)
+            collectors = make_collectors(deployments, config)
+            await _close_stale()
+            results = await asyncio.gather(*(c.collect() for c in collectors), return_exceptions=True)
+            alerts: list[dict[str, str]] = []
+            for result in results:
+                if isinstance(result, Exception):
+                    logger.warning("Collector raised exception: %s", result)
+                    continue
+                if result.error:
+                    logger.warning("Collection error for %s: %s", result.platform, result.error)
+                    alerts.append({"platform": result.platform, "error": result.error})
+                else:
+                    await database.upsert_earnings(
+                        platform=result.platform,
+                        balance=result.balance,
+                        currency=result.currency,
+                    )
+                    logger.info("Collected %s: %.4f %s", result.platform, result.balance, result.currency)
+            _collector_alerts = alerts
+        except Exception as exc:
+            logger.error("Collection run failed: %s", exc)
 
 
 # ---------------------------------------------------------------------------
@@ -199,7 +227,7 @@ async def _run_data_retention() -> None:
         if deleted:
             logger.info("Data retention: purged %d old rows", deleted)
     except Exception as exc:
-        logger.debug("Data retention error: %s", exc)
+        logger.warning("Data retention error: %s", exc)
 
 
 async def _check_stale_workers() -> None:
@@ -214,7 +242,7 @@ async def _check_stale_workers() -> None:
                     await database.set_worker_status(w["id"], "offline")
                     logger.info("Worker '%s' marked offline (last heartbeat: %s)", w["name"], w["last_heartbeat"])
     except Exception as exc:
-        logger.debug("Stale worker check error: %s", exc)
+        logger.warning("Stale worker check error: %s", exc)
 
 
 FLEET_API_KEY = fleet_key.resolve_fleet_key()
@@ -243,6 +271,9 @@ async def lifespan(app: FastAPI):
 
     # Shutdown
     scheduler.shutdown(wait=False)
+    from app.collectors import close_all_collectors
+
+    await close_all_collectors()
     logger.info("CashPilot stopped")
 
 
@@ -261,6 +292,15 @@ class _SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response.headers["X-Frame-Options"] = "DENY"
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
         response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+        response.headers["Content-Security-Policy"] = (
+            "default-src 'self'; "
+            "script-src 'self' https://cdn.jsdelivr.net 'unsafe-inline'; "
+            "style-src 'self' https://fonts.googleapis.com 'unsafe-inline'; "
+            "font-src 'self' https://fonts.gstatic.com; "
+            "img-src 'self' data:; "
+            "connect-src 'self'; "
+            "frame-ancestors 'none'"
+        )
         return response
 
 
@@ -356,8 +396,11 @@ async def do_login(
     username: str = Form(...),
     password: str = Form(...),
 ):
+    client_ip = request.client.host if request.client else "unknown"
+    _check_login_rate(client_ip)
     user = await database.get_user_by_username(username)
     if not user or not auth.verify_password(password, user["password"]):
+        _record_failed_login(client_ip)
         return templates.TemplateResponse(
             request,
             "auth.html",
@@ -373,6 +416,7 @@ async def do_login(
             status_code=401,
         )
 
+    _login_attempts.pop(client_ip, None)
     token = auth.create_session_token(user["id"], user["username"], user["role"])
     response = RedirectResponse("/", status_code=303)
     return auth.set_session_cookie(response, token)
@@ -454,7 +498,7 @@ async def do_register(
             status_code=400,
         )
 
-    if len(password) < 8:
+    if len(password) < 10:
         return templates.TemplateResponse(
             request,
             "auth.html",
@@ -464,7 +508,7 @@ async def do_register(
                 "mode": "register",
                 "action": "/register",
                 "button_text": "Create Account",
-                "error": "Password must be at least 8 characters",
+                "error": "Password must be at least 10 characters",
                 "is_first": is_first,
             },
             status_code=400,
@@ -885,10 +929,13 @@ async def api_restart(request: Request, slug: str, worker_id: int | None = None)
 
 
 @app.delete("/api/remove/{slug}")
-async def api_remove(request: Request, slug: str, worker_id: int | None = None) -> dict[str, str]:
+async def api_remove(
+    request: Request, slug: str, worker_id: int | None = None, delete_volumes: bool = False
+) -> dict[str, Any]:
     _require_writer(request)
     worker_id = await _resolve_worker_id(worker_id)
-    result = await _proxy_worker_command(worker_id, "remove", slug)
+    params = {"delete_volumes": "true"} if delete_volumes else None
+    result = await _proxy_worker_command(worker_id, "remove", slug, params=params)
     await database.remove_deployment(slug)
     return result
 
@@ -934,7 +981,9 @@ def _get_verified_worker_url(worker: dict[str, Any]) -> tuple[str, dict[str, str
     return url, headers
 
 
-async def _proxy_worker_command(worker_id: int, command: str, slug: str) -> dict[str, str]:
+async def _proxy_worker_command(
+    worker_id: int, command: str, slug: str, *, params: dict[str, str] | None = None
+) -> dict[str, Any]:
     """Forward a container command (restart/stop/start/remove) to a worker."""
     worker = await database.get_worker(worker_id)
     url, headers = _get_verified_worker_url(worker)
@@ -942,7 +991,7 @@ async def _proxy_worker_command(worker_id: int, command: str, slug: str) -> dict
     try:
         async with httpx.AsyncClient(timeout=30) as client:
             if command == "remove":
-                resp = await client.delete(f"{url}/api/containers/{slug}", headers=headers)
+                resp = await client.delete(f"{url}/api/containers/{slug}", headers=headers, params=params)
             else:
                 resp = await client.post(f"{url}/api/containers/{slug}/{command}", headers=headers)
             if resp.status_code >= 400:
@@ -1043,10 +1092,13 @@ async def api_service_logs(
 
 
 @app.delete("/api/services/{slug}")
-async def api_service_remove(request: Request, slug: str, worker_id: int | None = None) -> dict[str, str]:
+async def api_service_remove(
+    request: Request, slug: str, worker_id: int | None = None, delete_volumes: bool = False
+) -> dict[str, Any]:
     _require_writer(request)
     worker_id = await _resolve_worker_id(worker_id)
-    result = await _proxy_worker_command(worker_id, "remove", slug)
+    params = {"delete_volumes": "true"} if delete_volumes else None
+    result = await _proxy_worker_command(worker_id, "remove", slug, params=params)
     await database.remove_deployment(slug)
     return result
 
@@ -1244,11 +1296,21 @@ async def api_collect(request: Request) -> dict[str, str]:
     return {"status": "collection_started"}
 
 
+_MAX_ALERT_ERROR_LEN = 200
+
+
 @app.get("/api/collector-alerts")
 async def api_collector_alerts(request: Request) -> list[dict[str, str]]:
-    """Return collector errors from the last collection run."""
+    """Return collector errors from the last collection run (sanitized)."""
     _require_auth_api(request)
-    return _collector_alerts
+    sanitized: list[dict[str, str]] = []
+    for alert in _collector_alerts:
+        error_msg = alert.get("error", "")
+        clean = error_msg[:_MAX_ALERT_ERROR_LEN]
+        if len(error_msg) > _MAX_ALERT_ERROR_LEN:
+            clean += "..."
+        sanitized.append({"platform": alert["platform"], "error": clean})
+    return sanitized
 
 
 @app.get("/api/exchange-rates")

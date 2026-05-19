@@ -63,22 +63,30 @@ _COLLECTOR_ARGS: dict[str, list[str]] = {
     "salad": ["auth_cookie"],
 }
 
+_cached_collectors: dict[str, BaseCollector] = {}
+_cached_kwargs: dict[str, dict[str, str]] = {}
+_stale: list[BaseCollector] = []
+
+
+async def _close_stale() -> None:
+    """Close collectors evicted from cache due to config changes."""
+    global _stale
+    for c in _stale:
+        await c.close()
+    _stale = []
+
 
 def make_collectors(
     deployments: list[dict[str, Any]],
     config: dict[str, str],
 ) -> list[BaseCollector]:
-    """Create collector instances for all deployed services that have collectors.
+    """Create or retrieve cached collector instances for deployed services.
 
-    Args:
-        deployments: List of deployment dicts (must have 'slug' key).
-        config: User config dict. Collector credentials are stored as
-                ``{slug}_email``, ``{slug}_password``, etc.
-
-    Returns:
-        List of ready-to-use collector instances.
+    Reuses a cached instance when the resolved kwargs for a slug match
+    the previous invocation. Evicts stale instances when config changes.
     """
     collectors: list[BaseCollector] = []
+    active_slugs: set[str] = set()
 
     for dep in deployments:
         slug = dep.get("slug", "")
@@ -89,7 +97,6 @@ def make_collectors(
         arg_keys = _COLLECTOR_ARGS.get(slug, [])
 
         # Resolve constructor kwargs from config
-        # Args prefixed with ? are optional
         kwargs: dict[str, str] = {}
         missing: list[str] = []
         for arg in arg_keys:
@@ -110,13 +117,44 @@ def make_collectors(
             )
             continue
 
+        active_slugs.add(slug)
+
+        # Reuse cached instance if kwargs unchanged
+        if slug in _cached_collectors and _cached_kwargs.get(slug) == kwargs:
+            collectors.append(_cached_collectors[slug])
+            logger.debug("Reusing cached collector for %s", slug)
+            continue
+
+        # Config changed or new slug — evict old instance
+        if slug in _cached_collectors:
+            _stale.append(_cached_collectors[slug])
+
         try:
-            collectors.append(cls(**kwargs))
+            instance = cls(**kwargs)
+            _cached_collectors[slug] = instance
+            _cached_kwargs[slug] = kwargs
+            collectors.append(instance)
             logger.debug("Created collector for %s", slug)
         except Exception as exc:
             logger.error("Failed to create collector for %s: %s", slug, exc)
 
+    # Evict collectors for slugs no longer deployed
+    for slug in list(_cached_collectors.keys()):
+        if slug not in active_slugs:
+            _stale.append(_cached_collectors.pop(slug))
+            _cached_kwargs.pop(slug, None)
+
     return collectors
+
+
+async def close_all_collectors() -> None:
+    """Close all cached collector HTTP clients and clear the cache."""
+    global _cached_collectors, _cached_kwargs
+    for collector in _cached_collectors.values():
+        await collector.close()
+    _cached_collectors = {}
+    _cached_kwargs = {}
+    await _close_stale()
 
 
 __all__ = [
@@ -124,4 +162,5 @@ __all__ = [
     "EarningsResult",
     "COLLECTOR_MAP",
     "make_collectors",
+    "close_all_collectors",
 ]
