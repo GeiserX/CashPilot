@@ -30,34 +30,31 @@ concurrency:
 
 jobs:
   resolve-tags:
-    runs-on: [self-hosted, linux, x64]
+    runs-on: [self-hosted, Linux, X64]
     outputs:
       ui_tags: ${{ steps.tags.outputs.ui_tags }}
       worker_tags: ${{ steps.tags.outputs.worker_tags }}
+      version: ${{ steps.tags.outputs.version }}
     steps:
-      - name: Compute Docker tags
-        id: tags
+      - id: tags
         run: |
           VERSION="${{ inputs.version }}"
           if [ -z "$VERSION" ]; then
             echo "ui_tags=drumsergio/cashpilot:latest" >> "$GITHUB_OUTPUT"
             echo "worker_tags=drumsergio/cashpilot-worker:latest" >> "$GITHUB_OUTPUT"
+            echo "version=latest" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          # Strip leading 'v'
           VER="${VERSION#v}"
           MAJOR_MINOR="$(echo "$VER" | cut -d. -f1).$(echo "$VER" | cut -d. -f2)"
+          echo "version=$VER" >> "$GITHUB_OUTPUT"
 
-          UI="drumsergio/cashpilot:latest"
-          UI="${UI}
-          drumsergio/cashpilot:${VER}"
-          UI="${UI}
+          UI="drumsergio/cashpilot:latest
+          drumsergio/cashpilot:${VER}
           drumsergio/cashpilot:${MAJOR_MINOR}"
 
-          WORKER="drumsergio/cashpilot-worker:latest"
-          WORKER="${WORKER}
-          drumsergio/cashpilot-worker:${VER}"
-          WORKER="${WORKER}
+          WORKER="drumsergio/cashpilot-worker:latest
+          drumsergio/cashpilot-worker:${VER}
           drumsergio/cashpilot-worker:${MAJOR_MINOR}"
 
           {
@@ -70,86 +67,125 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
   lint:
-    runs-on: [self-hosted, linux, x64]
+    runs-on: [self-hosted, Linux, X64]
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - run: pip install ruff
+      - run: ruff check app/ && ruff format --check app/
 
-      - name: Install ruff
-        run: pip install ruff
-
-      - name: Lint and format check
-        run: ruff check app/ && ruff format --check app/
-
-  build-ui:
+  build-ui-amd64:
     needs: [lint, resolve-tags]
     if: inputs.build_ui
-    runs-on: [self-hosted, linux, x64]
-    permissions:
-      contents: read
-      packages: write
+    runs-on: [self-hosted, Linux, X64]
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Login to Docker Hub
-        uses: docker/login-action@v3
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
-
-      - name: Build and push UI image
-        uses: docker/build-push-action@v6
+      - uses: docker/build-push-action@v6
         with:
           context: .
           file: Dockerfile
-          platforms: linux/amd64,linux/arm64
+          platforms: linux/amd64
           push: true
-          tags: ${{ needs.resolve-tags.outputs.ui_tags }}
-          cache-from: type=gha,scope=cashpilot-ui
-          cache-to: type=gha,mode=max,scope=cashpilot-ui
+          tags: drumsergio/cashpilot:${{ needs.resolve-tags.outputs.version }}-amd64
+          cache-from: type=gha,scope=ui-amd64
+          cache-to: type=gha,mode=max,scope=ui-amd64
 
-  build-worker:
+  build-ui-arm64:
     needs: [lint, resolve-tags]
-    if: inputs.build_worker
-    runs-on: [self-hosted, linux, x64]
-    permissions:
-      contents: read
-      packages: write
+    if: inputs.build_ui
+    runs-on: [self-hosted, Linux, ARM64]
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Login to Docker Hub
-        uses: docker/login-action@v3
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile
+          platforms: linux/arm64
+          push: true
+          tags: drumsergio/cashpilot:${{ needs.resolve-tags.outputs.version }}-arm64
+          cache-from: type=gha,scope=ui-arm64
+          cache-to: type=gha,mode=max,scope=ui-arm64
 
-      - name: Build and push Worker image
-        uses: docker/build-push-action@v6
+  build-worker-amd64:
+    needs: [lint, resolve-tags]
+    if: inputs.build_worker
+    runs-on: [self-hosted, Linux, X64]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
         with:
           context: .
           file: Dockerfile.worker
-          platforms: linux/amd64,linux/arm64
+          platforms: linux/amd64
           push: true
-          tags: ${{ needs.resolve-tags.outputs.worker_tags }}
-          cache-from: type=gha,scope=cashpilot-worker
-          cache-to: type=gha,mode=max,scope=cashpilot-worker
+          tags: drumsergio/cashpilot-worker:${{ needs.resolve-tags.outputs.version }}-amd64
+          cache-from: type=gha,scope=worker-amd64
+          cache-to: type=gha,mode=max,scope=worker-amd64
+
+  build-worker-arm64:
+    needs: [lint, resolve-tags]
+    if: inputs.build_worker
+    runs-on: [self-hosted, Linux, ARM64]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.worker
+          platforms: linux/arm64
+          push: true
+          tags: drumsergio/cashpilot-worker:${{ needs.resolve-tags.outputs.version }}-arm64
+          cache-from: type=gha,scope=worker-arm64
+          cache-to: type=gha,mode=max,scope=worker-arm64
+
+  manifest:
+    needs: [resolve-tags, build-ui-amd64, build-ui-arm64, build-worker-amd64, build-worker-arm64]
+    if: always() && !cancelled()
+    runs-on: [self-hosted, Linux, X64]
+    steps:
+      - uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - name: Create UI manifests
+        if: inputs.build_ui
+        run: |
+          TAGS="${{ needs.resolve-tags.outputs.ui_tags }}"
+          VER="${{ needs.resolve-tags.outputs.version }}"
+          for tag in $TAGS; do
+            docker buildx imagetools create -t "$tag" \
+              "drumsergio/cashpilot:${VER}-amd64" \
+              "drumsergio/cashpilot:${VER}-arm64"
+          done
+      - name: Create Worker manifests
+        if: inputs.build_worker
+        run: |
+          TAGS="${{ needs.resolve-tags.outputs.worker_tags }}"
+          VER="${{ needs.resolve-tags.outputs.version }}"
+          for tag in $TAGS; do
+            docker buildx imagetools create -t "$tag" \
+              "drumsergio/cashpilot-worker:${VER}-amd64" \
+              "drumsergio/cashpilot-worker:${VER}-arm64"
+          done
