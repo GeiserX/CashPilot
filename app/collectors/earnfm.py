@@ -104,4 +104,3 @@ class EarnFMCollector(BaseCollector):
                 balance=0.0,
                 error=str(exc),
             )
-
