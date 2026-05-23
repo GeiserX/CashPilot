@@ -23,7 +23,7 @@ docker:
     - "bitping-data:/root/.bitping"
   command: ""
   network_mode: ""
-  privileged: true
+  privileged: false
   notes: >
     Initial authentication is interactive via the container's web UI.
     Credentials are then persisted in the /root/.bitping volume mount.

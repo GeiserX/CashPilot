@@ -367,15 +367,13 @@ class TestEarnFMCollector:
     def test_collect_success(self):
         from app.collectors.earnfm import EarnFMCollector
 
-        login_resp = _mock_response(200, {"access_token": "auth-tok", "refresh_token": "ref-tok"})
         balance_resp = _mock_response(200, {"data": {"totalBalance": 0.50}})
 
         client = _make_async_client()
-        client.post.return_value = login_resp
         client.get.return_value = balance_resp
 
         with patch("app.collectors.earnfm.httpx.AsyncClient", return_value=client):
-            c = EarnFMCollector(email="test@test.com", password="pass")
+            c = EarnFMCollector(token="test-uuid-token")
             result = asyncio.run(c.collect())
         assert result.error is None
         assert result.balance == 0.50
@@ -384,10 +382,10 @@ class TestEarnFMCollector:
         from app.collectors.earnfm import EarnFMCollector
 
         client = _make_async_client()
-        client.post.side_effect = Exception("Failed")
+        client.get.side_effect = Exception("Failed")
 
         with patch("app.collectors.earnfm.httpx.AsyncClient", return_value=client):
-            c = EarnFMCollector(email="bad", password="bad")
+            c = EarnFMCollector(token="bad-token")
             result = asyncio.run(c.collect())
         assert result.error is not None
 
