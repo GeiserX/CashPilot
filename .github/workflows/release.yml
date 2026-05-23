@@ -104,22 +104,13 @@ jobs:
           echo "new_tag=$NEW_TAG" >> "$GITHUB_OUTPUT"
           echo "Bumping $LATEST -> $NEW_TAG"
 
-      - name: Update docker-compose version pins
-        if: steps.version.outputs.new_tag
-        run: |
-          NEW_TAG="${{ steps.version.outputs.new_tag }}"
-          sed -i "s|drumsergio/cashpilot:v[0-9]*\.[0-9]*\.[0-9]*|drumsergio/cashpilot:${NEW_TAG}|g" docker-compose.yml docker-compose.fleet.yml
-          sed -i "s|drumsergio/cashpilot-worker:v[0-9]*\.[0-9]*\.[0-9]*|drumsergio/cashpilot-worker:${NEW_TAG}|g" docker-compose.yml docker-compose.fleet.yml
-
       - name: Create and push tag
         if: steps.version.outputs.new_tag
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add docker-compose.yml docker-compose.fleet.yml
-          git diff --cached --quiet || git commit -m "chore: bump compose images to ${{ steps.version.outputs.new_tag }} [skip ci]"
           git tag -a "${{ steps.version.outputs.new_tag }}" -m "Release ${{ steps.version.outputs.new_tag }}"
-          git push origin main "${{ steps.version.outputs.new_tag }}"
+          git push origin "${{ steps.version.outputs.new_tag }}"
 
       - name: Create GitHub Release
         if: steps.version.outputs.new_tag
