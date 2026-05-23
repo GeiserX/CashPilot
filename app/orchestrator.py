@@ -436,7 +436,7 @@ def get_status() -> list[dict[str, Any]]:
                 }
             )
         except Exception as exc:
-            logger.warning("Skipping corrupted container %s: %s", getattr(c, 'short_id', '?'), exc)
+            logger.warning("Skipping corrupted container %s: %s", getattr(c, "short_id", "?"), exc)
 
     # Image-matched containers (deployed externally)
     image_map = _build_image_slug_map()
@@ -472,7 +472,7 @@ def get_status() -> list[dict[str, Any]]:
                         }
                     )
             except Exception as exc:
-                logger.warning("Skipping corrupted container %s: %s", getattr(c, 'short_id', '?'), exc)
+                logger.warning("Skipping corrupted container %s: %s", getattr(c, "short_id", "?"), exc)
 
     # Update the cache
     _status_cache = results
@@ -560,7 +560,7 @@ def get_status_light() -> list[dict[str, Any]]:
                 }
             )
         except Exception as exc:
-            logger.warning("Skipping corrupted container %s: %s", getattr(c, 'short_id', '?'), exc)
+            logger.warning("Skipping corrupted container %s: %s", getattr(c, "short_id", "?"), exc)
 
     # Second: scan all containers and match by image name
     image_map = _build_image_slug_map()
@@ -598,7 +598,7 @@ def get_status_light() -> list[dict[str, Any]]:
                         }
                     )
             except Exception as exc:
-                logger.warning("Skipping corrupted container %s: %s", getattr(c, 'short_id', '?'), exc)
+                logger.warning("Skipping corrupted container %s: %s", getattr(c, "short_id", "?"), exc)
 
     return results
 

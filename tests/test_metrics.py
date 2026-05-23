@@ -74,7 +74,9 @@ class TestMetricsEnabled:
     def test_record_container_lifecycle(self):
         metrics.record_container_lifecycle("deploy", "earnapp")
         metrics.record_container_lifecycle("stop", "earnapp")
-        assert metrics._metrics["container_lifecycle_total"].labels(action="deploy", service="earnapp")._value.get() == 1
+        assert (
+            metrics._metrics["container_lifecycle_total"].labels(action="deploy", service="earnapp")._value.get() == 1
+        )
         assert metrics._metrics["container_lifecycle_total"].labels(action="stop", service="earnapp")._value.get() == 1
 
     def test_record_login(self):
@@ -178,7 +180,9 @@ class TestRefreshGauges:
         assert m["services_available_total"]._value.get() == 3
         assert m["health_score"].labels(service="earnapp")._value.get() == 95.0
         assert m["health_uptime_percent"].labels(service="earnapp")._value.get() == 99.2
-        assert m["container_cpu_percent"].labels(service="earnapp", node="watchtower")._value.get() == pytest.approx(1.2)
+        assert m["container_cpu_percent"].labels(service="earnapp", node="watchtower")._value.get() == pytest.approx(
+            1.2
+        )
         assert m["container_memory_mb"].labels(service="earnapp", node="watchtower")._value.get() == 45
 
         metrics.METRICS_ENABLED = orig_enabled

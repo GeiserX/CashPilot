@@ -235,10 +235,12 @@ def setup(app: FastAPI) -> None:
     from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
     from starlette.middleware.base import BaseHTTPMiddleware
 
-    _metrics["build_info"].info({
-        "version": app.version,
-        "title": app.title,
-    })
+    _metrics["build_info"].info(
+        {
+            "version": app.version,
+            "title": app.title,
+        }
+    )
 
     class _MetricsMiddleware(BaseHTTPMiddleware):
         async def dispatch(self, request, call_next):
@@ -381,6 +383,7 @@ async def _refresh_gauges() -> None:
 
     with contextlib.suppress(Exception):
         from app.catalog import get_services
+
         if get_services:
             m["services_available_total"].set(len(get_services()))
 
