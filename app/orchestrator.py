@@ -435,7 +435,7 @@ def get_status() -> list[dict[str, Any]]:
                     "category": c.labels.get(LABEL_CATEGORY, ""),
                 }
             )
-        except (APIError, Exception) as exc:
+        except Exception as exc:
             logger.warning("Skipping corrupted container %s: %s", getattr(c, 'short_id', '?'), exc)
 
     # Image-matched containers (deployed externally)
@@ -443,7 +443,7 @@ def get_status() -> list[dict[str, Any]]:
     if image_map:
         try:
             all_containers = client.containers.list(all=True)
-        except (APIError, Exception) as exc:
+        except Exception as exc:
             logger.warning("Failed to list all containers: %s", exc)
             all_containers = []
         for c in all_containers:
@@ -471,7 +471,7 @@ def get_status() -> list[dict[str, Any]]:
                             "category": "",
                         }
                     )
-            except (APIError, Exception) as exc:
+            except Exception as exc:
                 logger.warning("Skipping corrupted container %s: %s", getattr(c, 'short_id', '?'), exc)
 
     # Update the cache
@@ -559,7 +559,7 @@ def get_status_light() -> list[dict[str, Any]]:
                     "category": c.labels.get(LABEL_CATEGORY, ""),
                 }
             )
-        except (APIError, Exception) as exc:
+        except Exception as exc:
             logger.warning("Skipping corrupted container %s: %s", getattr(c, 'short_id', '?'), exc)
 
     # Second: scan all containers and match by image name
@@ -567,7 +567,7 @@ def get_status_light() -> list[dict[str, Any]]:
     if image_map:
         try:
             all_containers = client.containers.list(all=True)
-        except (APIError, Exception) as exc:
+        except Exception as exc:
             logger.warning("Failed to list all containers: %s", exc)
             all_containers = []
         for c in all_containers:
@@ -597,7 +597,7 @@ def get_status_light() -> list[dict[str, Any]]:
                             "category": "",
                         }
                     )
-            except (APIError, Exception) as exc:
+            except Exception as exc:
                 logger.warning("Skipping corrupted container %s: %s", getattr(c, 'short_id', '?'), exc)
 
     return results

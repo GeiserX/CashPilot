@@ -4,9 +4,9 @@ Enable by setting CASHPILOT_METRICS_ENABLED=true. Exposes /metrics endpoint
 for Prometheus scraping (unauthenticated, standard practice).
 
 Metrics exposed:
-  - HTTP: request count, latency, response sizes by method/path/status
+  - HTTP: request count, latency by method/path/status
   - Containers: count by status/node, resource usage (CPU/memory), lifecycle events
-  - Earnings: balance per platform, total USD, daily deltas
+  - Earnings: balance per platform, total USD
   - Collection: run count, duration histogram, per-platform errors
   - Workers: count by status, heartbeat staleness, Docker availability
   - Health: per-service score, uptime percentage
@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import contextlib
 import os
+import re
 import time
 
 from fastapi import FastAPI
@@ -27,6 +28,8 @@ METRICS_ENABLED = os.getenv("CASHPILOT_METRICS_ENABLED", "").lower() in ("1", "t
 _registry = None
 _metrics: dict = {}
 _start_time: float = time.time()
+_last_refresh: float = 0.0
+_REFRESH_TTL: float = 30.0
 
 
 def _init_metrics():
@@ -78,7 +81,7 @@ def _init_metrics():
     _metrics["container_info"] = Gauge(
         "cashpilot_container_info",
         "Container presence (1=exists)",
-        ["service", "node", "status", "image"],
+        ["service", "node", "status"],
         registry=_registry,
     )
     _metrics["container_cpu_percent"] = Gauge(
@@ -272,22 +275,25 @@ def setup(app: FastAPI) -> None:
         )
 
 
+_PATH_SLUG_RE = re.compile(r"/api/(?:services|deploy|stop|restart|remove|compose)/[^/]+")
+
+
 def _normalize_path(path: str) -> str:
     """Collapse dynamic path segments to reduce cardinality."""
-    import re
-    path = re.sub(r"/api/services/[^/]+", "/api/services/{slug}", path)
-    path = re.sub(r"/api/deploy/[^/]+", "/api/deploy/{slug}", path)
-    path = re.sub(r"/api/stop/[^/]+", "/api/stop/{slug}", path)
-    path = re.sub(r"/api/restart/[^/]+", "/api/restart/{slug}", path)
-    path = re.sub(r"/api/remove/[^/]+", "/api/remove/{slug}", path)
-    path = re.sub(r"/api/compose/[^/]+", "/api/compose/{slug}", path)
+    path = _PATH_SLUG_RE.sub(lambda m: m.group(0).rsplit("/", 1)[0] + "/{slug}", path)
     if path.startswith("/static/"):
         path = "/static/{file}"
     return path
 
 
 async def _refresh_gauges() -> None:
-    """Update all gauge values from current DB/worker state."""
+    """Update all gauge values from current DB/worker state (cached 30s)."""
+    global _last_refresh
+    now = time.time()
+    if now - _last_refresh < _REFRESH_TTL:
+        return
+    _last_refresh = now
+
     import json
     from datetime import UTC, datetime
 
@@ -303,7 +309,7 @@ async def _refresh_gauges() -> None:
 
     workers = await database.list_workers()
     status_counts: dict[str, int] = {}
-    now = time.time()
+    container_counts: dict[tuple[str, str], int] = {}
 
     for w in workers:
         st = w.get("status", "unknown")
@@ -312,8 +318,10 @@ async def _refresh_gauges() -> None:
         last_seen = w.get("last_seen")
         if last_seen:
             try:
-                ts = datetime.fromisoformat(last_seen).replace(tzinfo=UTC).timestamp()
-                m["worker_last_heartbeat_seconds"].labels(worker=name).set(now - ts)
+                dt = datetime.fromisoformat(last_seen)
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=UTC)
+                m["worker_last_heartbeat_seconds"].labels(worker=name).set(now - dt.timestamp())
             except (ValueError, TypeError):
                 pass
 
@@ -332,15 +340,18 @@ async def _refresh_gauges() -> None:
             for c in containers:
                 slug = c.get("slug", "unknown")
                 c_status = c.get("status", "unknown")
-                image = c.get("image", "")
-                m["container_info"].labels(service=slug, node=name, status=c_status, image=image).set(1)
-                m["containers_total"].labels(status=c_status, node=name).inc()
+                m["container_info"].labels(service=slug, node=name, status=c_status).set(1)
+                key = (c_status, name)
+                container_counts[key] = container_counts.get(key, 0) + 1
                 cpu = c.get("cpu_percent", 0)
                 mem = c.get("memory_mb", 0)
                 if cpu or mem:
                     m["container_cpu_percent"].labels(service=slug, node=name).set(cpu)
                     m["container_memory_mb"].labels(service=slug, node=name).set(mem)
         m["worker_containers_count"].labels(worker=name).set(container_count)
+
+    for (status, node), count in container_counts.items():
+        m["containers_total"].labels(status=status, node=node).set(count)
 
     m["workers_total"]._metrics.clear()
     for st, count in status_counts.items():
@@ -366,13 +377,10 @@ async def _refresh_gauges() -> None:
     deployments = await database.get_deployments()
     m["services_deployed_total"].set(len(deployments))
 
-    try:
+    with contextlib.suppress(Exception):
         from app.catalog import get_services
         if get_services:
-            all_services = get_services()
-            m["services_available_total"].set(len(all_services))
-    except Exception:
-        pass
+            m["services_available_total"].set(len(get_services()))
 
     # -- Health --
     scores = await database.get_health_scores()
