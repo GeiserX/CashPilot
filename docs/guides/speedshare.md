@@ -3,6 +3,8 @@
 > **Category:** Bandwidth Sharing | **Status:** Dead
 > **Website:** [https://speedshare.app](https://speedshare.app)
 
+> **Deprecated:** SpeedShare authentication is completely broken — login no longer works. The project was confirmed dead in their Discord (March 2026). Deployment is blocked. This guide is kept for reference only.
+
 ## Description
 
 SpeedShare lets you earn by sharing your unused internet bandwidth. Residential IPs only - datacenter and VPS connections are not accepted. There is no official Docker image; the community image (mrcolorrain) provides container support with a referral code and UUID-based authentication.

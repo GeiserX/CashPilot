@@ -72,6 +72,22 @@ const CP = (() => {
     return d.innerHTML;
   }
 
+  function sanitizeHint(html) {
+    const el = document.createElement('div');
+    el.innerHTML = html;
+    el.querySelectorAll('*').forEach(node => {
+      if (!['A', 'B', 'CODE'].includes(node.tagName)) {
+        node.replaceWith(document.createTextNode(node.textContent));
+        return;
+      }
+      for (const attr of [...node.attributes]) {
+        if (node.tagName === 'A' && (attr.name === 'href' || attr.name === 'target')) continue;
+        node.removeAttribute(attr.name);
+      }
+    });
+    return el.innerHTML;
+  }
+
   function capFirst(s) { return s ? s.charAt(0).toUpperCase() + s.slice(1) : ''; }
 
   function fmtNetBytes(b) {
@@ -761,7 +777,7 @@ const CP = (() => {
         </div>`;
 
       body.innerHTML = `
-        ${hint ? `<p style="font-size:0.75rem; color:var(--text-muted); margin:0 0 12px; line-height:1.4;">${hint}</p>` : ''}
+        ${hint ? `<p style="font-size:0.875rem; color:var(--text-secondary); margin:0 0 14px; line-height:1.5;">${sanitizeHint(hint)}</p>` : ''}
         ${fieldsHtml}
         ${bonusHtml}
         <div style="display:flex; gap:8px; margin-top:14px;">

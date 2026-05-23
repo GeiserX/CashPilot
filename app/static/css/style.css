@@ -1305,6 +1305,17 @@ img { max-width: 100%; }
   flex: 1;
 }
 
+.modal-body a {
+  color: var(--accent-secondary);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.modal-body a:hover {
+  color: var(--accent-secondary);
+  opacity: 0.8;
+}
+
 .modal-footer {
   display: flex;
   justify-content: flex-end;

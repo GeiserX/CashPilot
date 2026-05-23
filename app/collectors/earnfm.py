@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import logging
 
-import httpx  # noqa: F401 — needed for test patching
+import httpx
 
 from app.collectors.base import BaseCollector, EarningsResult
 
@@ -57,7 +57,7 @@ class EarnFMCollector(BaseCollector):
             resp.raise_for_status()
             data = resp.json()
 
-            balance = float(data.get("data", {}).get("totalBalance", 0))
+            balance = float((data.get("data") or {}).get("totalBalance", 0))
 
             return EarningsResult(
                 platform=self.platform,
