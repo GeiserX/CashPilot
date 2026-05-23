@@ -887,18 +887,14 @@ class TestCollectorSmallGaps:
         # Should either succeed with 0 or have an error
         assert isinstance(result, EarningsResult)
 
-    def test_earnfm_login_response_missing_token(self):
-        """Cover earnfm.py lines 53, 59: login without access_token."""
+    def test_earnfm_empty_token(self):
+        """Cover earnfm.py: empty token returns error."""
         from app.collectors.earnfm import EarnFMCollector
 
-        login_resp = _mock_response(200, {})  # missing access_token
-        client = _make_async_client()
-        client.post.return_value = login_resp
-
-        with patch("app.collectors.earnfm.httpx.AsyncClient", return_value=client):
-            c = EarnFMCollector(email="test@test.com", password="pass")
-            result = asyncio.run(c.collect())
-        assert isinstance(result, EarningsResult)
+        c = EarnFMCollector(token="")
+        result = asyncio.run(c.collect())
+        assert result.error is not None
+        assert "No token" in result.error
 
     def test_bitping_login_missing_cookie(self):
         """Cover bitping.py lines 45-48: login without cookie set."""

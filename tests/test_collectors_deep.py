@@ -190,24 +190,20 @@ class TestTraffmonetizerDeep:
 
 
 class TestEarnFMDeep:
-    def test_collect_with_token_refresh(self):
+    def test_collect_401_returns_error(self):
         from app.collectors.earnfm import EarnFMCollector
 
-        login_resp = _mock_response(200, {"access_token": "at", "refresh_token": "rt"})
         expired_resp = MagicMock()
         expired_resp.status_code = 401
-        refresh_resp = _mock_response(200, {"access_token": "new-at", "refresh_token": "new-rt"})
-        ok_resp = _mock_response(200, {"data": {"totalBalance": 1.25}})
 
         client = _make_async_client()
-        client.post.side_effect = [login_resp, refresh_resp]
-        client.get.side_effect = [expired_resp, ok_resp]
+        client.get.return_value = expired_resp
 
         with patch("app.collectors.earnfm.httpx.AsyncClient", return_value=client):
-            c = EarnFMCollector(email="test@test.com", password="pass")
+            c = EarnFMCollector(token="test-uuid-token")
             result = asyncio.run(c.collect())
-        assert result.error is None
-        assert result.balance == 1.25
+        assert result.error is not None
+        assert "invalid" in result.error.lower() or "expired" in result.error.lower()
 
 
 # ---------------------------------------------------------------------------
