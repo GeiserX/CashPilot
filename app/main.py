@@ -1465,19 +1465,19 @@ async def api_collectors_meta(request: Request) -> list[dict[str, Any]]:
     }
     # Per-service hints on how to obtain the credentials
     hints: dict[str, str] = {
-        "bitping": "Use your Bitping account email and password (same as nodes.bitping.com).",
-        "bytelixir": "Log in at dash.bytelixir.com (tick Remember Me), press F12 → Application → Cookies, copy the <b>bytelixir_session</b> value.",
-        "earnapp": "Log in at earnapp.com, press F12 → Application → Cookies, copy the <b>oauth-refresh-token</b> value.",
-        "earnfm": "Copy your UUID API key from app.earn.fm → Account Settings.",
-        "grass": "Log in at app.getgrass.io, press F12 → Application → Local Storage, copy the <b>accessToken</b> value.",
-        "honeygain": "Use your Honeygain account email and password (same as dashboard.honeygain.com).",
-        "iproyal": "Use your IPRoyal Pawns account email and password (same as pawns.app).",
-        "mysterium": "Use your MystNodes account email and password (same as my.mystnodes.com).",
-        "packetstream": "Log in at packetstream.io, press F12 → Application → Cookies, copy the <b>auth</b> cookie value (it\u2019s a JWT).",
-        "proxyrack": "Log in at proxyrack.com, press F12 → Network, find any API request and copy the <b>api_key</b> from the query string.",
-        "repocket": "Use your Repocket account email and password (same as app.repocket.com).",
-        "salad": "Log in at app.salad.com, press F12 → Application → Cookies, copy the <b>auth</b> cookie value.",
-        "traffmonetizer": "Log in at app.traffmonetizer.com, press F12 \u2192 Application \u2192 Local Storage \u2192 <b>token</b> value (a long JWT starting with <code>eyJ</code>).",
+        "bitping": "Use your Bitping account email and password (same as <a href='https://nodes.bitping.com' target='_blank'>nodes.bitping.com</a>).",
+        "bytelixir": "Log in at <a href='https://dash.bytelixir.com' target='_blank'>dash.bytelixir.com</a> (tick Remember Me), press F12 → Application → Cookies, copy the <b>bytelixir_session</b> value.",
+        "earnapp": "Log in at <a href='https://earnapp.com' target='_blank'>earnapp.com</a>, press F12 → Application → Cookies, copy the <b>oauth-refresh-token</b> value.",
+        "earnfm": "Copy your UUID API key from <a href='https://app.earn.fm' target='_blank'>app.earn.fm</a> → Account Settings.",
+        "grass": "Log in at <a href='https://app.getgrass.io' target='_blank'>app.getgrass.io</a>, press F12 → Application → Local Storage, copy the <b>accessToken</b> value.",
+        "honeygain": "Use your Honeygain account email and password (same as <a href='https://dashboard.honeygain.com' target='_blank'>dashboard.honeygain.com</a>).",
+        "iproyal": "Use your IPRoyal Pawns account email and password (same as <a href='https://pawns.app' target='_blank'>pawns.app</a>).",
+        "mysterium": "Use your MystNodes account email and password (same as <a href='https://my.mystnodes.com' target='_blank'>my.mystnodes.com</a>).",
+        "packetstream": "Log in at <a href='https://packetstream.io' target='_blank'>packetstream.io</a>, press F12 → Application → Cookies, copy the <b>auth</b> cookie value (it’s a JWT).",
+        "proxyrack": "Log in at <a href='https://peer.proxyrack.com' target='_blank'>peer.proxyrack.com</a>, press F12 → Network, find any API request and copy the <b>Api-Key</b> header value.",
+        "repocket": "Use your Repocket account email and password (same as <a href='https://app.repocket.com' target='_blank'>app.repocket.com</a>).",
+        "salad": "Log in at <a href='https://app.salad.com' target='_blank'>app.salad.com</a>, press F12 → Application → Cookies, copy the <b>auth</b> cookie value.",
+        "traffmonetizer": "Log in at <a href='https://app.traffmonetizer.com' target='_blank'>app.traffmonetizer.com</a>, press F12 → Application → Local Storage → <b>token</b> value (a long JWT starting with <code>eyJ</code>).",
     }
     meta = []
     for slug in sorted(COLLECTOR_MAP.keys()):

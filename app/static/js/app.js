@@ -761,7 +761,7 @@ const CP = (() => {
         </div>`;
 
       body.innerHTML = `
-        ${hint ? `<p style="font-size:0.75rem; color:var(--text-muted); margin:0 0 12px; line-height:1.4;">${hint}</p>` : ''}
+        ${hint ? `<p style="font-size:0.875rem; color:var(--text-secondary); margin:0 0 14px; line-height:1.5;">${hint}</p>` : ''}
         ${fieldsHtml}
         ${bonusHtml}
         <div style="display:flex; gap:8px; margin-top:14px;">
