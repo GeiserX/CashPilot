@@ -6,7 +6,7 @@
 services:
   cashpilot-ui:
     build: .
-    image: drumsergio/cashpilot:v0.5.1
+    image: drumsergio/cashpilot:v0.6.1
     container_name: cashpilot-ui
     ports:
       - "8080:8080"
@@ -29,7 +29,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.worker
-    image: drumsergio/cashpilot-worker:v0.5.1
+    image: drumsergio/cashpilot-worker:v0.6.1
     container_name: cashpilot-worker
     expose:
       - "8081"

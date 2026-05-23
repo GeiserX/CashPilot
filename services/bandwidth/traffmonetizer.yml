@@ -22,7 +22,7 @@ docker:
       label: "Token"
       required: true
       secret: true
-      description: "Your Traffmonetizer account token (found in Dashboard > Docker run command)"
+      description: "Log in at <a href=\"https://app.traffmonetizer.com\">app.traffmonetizer.com</a>, press F12 → Application → Local Storage → click <code>https://app.traffmonetizer.com</code> → copy the <code>token</code> value (a long JWT starting with eyJ)"
     - key: TRAFFMONETIZER_DEVICE_NAME
       label: "Device name"
       required: false
@@ -69,4 +69,4 @@ platforms: [docker, windows, macos, android]
 collector:
   type: api
   auth: browser_jwt
-  notes: "reCAPTCHA blocks programmatic login. Extract access_token from browser Local Storage at app.traffmonetizer.com."
+  notes: "reCAPTCHA blocks programmatic login. Token extracted from browser Local Storage at app.traffmonetizer.com (same as deployment token)."

@@ -22,7 +22,7 @@ docker:
       label: "Client ID"
       required: true
       secret: false
-      description: "Your PacketStream Client ID (found in Dashboard > Setup)"
+      description: "Log in at <a href=\"https://packetstream.io/dashboard\">packetstream.io/dashboard</a> → click Setup in the sidebar → your CID is displayed in the Docker command"
   ports: []
   volumes: []
   command: ""

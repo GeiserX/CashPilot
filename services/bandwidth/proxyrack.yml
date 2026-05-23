@@ -27,7 +27,7 @@ docker:
       label: "API Key"
       required: false
       secret: true
-      description: "Your ProxyRack API key (auto-registers device in dashboard if provided)"
+      description: "Log in at <a href=\"https://peer.proxyrack.com\">peer.proxyrack.com</a> → API Key is shown on the main dashboard page (auto-registers device if provided)"
     - key: DEVICE_NAME
       label: "Device name"
       required: false

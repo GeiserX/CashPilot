@@ -21,7 +21,7 @@ docker:
       label: "Auth Token"
       required: true
       secret: true
-      description: "Your URnetwork authentication token from the dashboard"
+      description: "Log in at <a href=\"https://app.urnetwork.com\">app.urnetwork.com</a>, press F12 → Application → Local Storage → click <code>https://app.urnetwork.com</code> → copy the <code>auth_token</code> value (a JWT starting with eyJ)"
   ports: []
   volumes:
     - "urnetwork-data:/root/.urnetwork"
