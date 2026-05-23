@@ -56,7 +56,7 @@ _COLLECTOR_ARGS: dict[str, list[str]] = {
     "repocket": ["email", "password"],
     "proxyrack": ["api_key"],
     "bitping": ["email", "password"],
-    "earnfm": ["token"],
+    "earnfm": ["email", "password"],
     "packetstream": ["auth_token"],
     "grass": ["access_token"],
     "bytelixir": ["session_cookie"],

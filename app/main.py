@@ -309,7 +309,7 @@ class _SecurityHeadersMiddleware(BaseHTTPMiddleware):
             "style-src 'self' https://fonts.googleapis.com 'unsafe-inline'; "
             "font-src 'self' https://fonts.gstatic.com; "
             "img-src 'self' data:; "
-            "connect-src 'self'; "
+            "connect-src 'self' https://cdn.jsdelivr.net; "
             "frame-ancestors 'none'"
         )
         return response
@@ -1491,7 +1491,7 @@ async def api_collectors_meta(request: Request) -> list[dict[str, Any]]:
         "bitping": "Use your Bitping account email and password (same as <a href='https://nodes.bitping.com' target='_blank'>nodes.bitping.com</a>).",
         "bytelixir": "Log in at <a href='https://dash.bytelixir.com' target='_blank'>dash.bytelixir.com</a> (tick Remember Me), press F12 → Application → expand <b>Cookies</b> in the left sidebar → click <code>https://dash.bytelixir.com</code> → find <b>bytelixir_session</b> → copy its Value.",
         "earnapp": "Log in at <a href='https://earnapp.com' target='_blank'>earnapp.com</a>, press F12 → Application → Cookies, copy the <b>oauth-refresh-token</b> value.",
-        "earnfm": "Copy your UUID API key from <a href='https://app.earn.fm' target='_blank'>app.earn.fm</a> → Account Settings.",
+        "earnfm": "Use your Earn.fm account email and password (same as <a href='https://app.earn.fm' target='_blank'>app.earn.fm</a> login).",
         "grass": "Log in at <a href='https://app.getgrass.io' target='_blank'>app.getgrass.io</a>, press F12 → Application → Local Storage, copy the <b>accessToken</b> value.",
         "honeygain": "Use your Honeygain account email and password (same as <a href='https://dashboard.honeygain.com' target='_blank'>dashboard.honeygain.com</a>).",
         "iproyal": "Use your IPRoyal Pawns account email and password (same as <a href='https://pawns.app' target='_blank'>pawns.app</a>).",
