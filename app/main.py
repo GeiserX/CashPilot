@@ -30,7 +30,7 @@ from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 from starlette.middleware.base import BaseHTTPMiddleware
 
-from app import auth, catalog, compose_generator, database, exchange_rates, fleet_key
+from app import auth, catalog, compose_generator, database, exchange_rates, fleet_key, metrics
 
 logging.basicConfig(
     level=logging.INFO,
@@ -185,6 +185,8 @@ async def _run_collection() -> None:
         logger.info("Collection already in progress, skipping")
         return
     async with _collection_lock:
+        start_time = metrics.record_collection_start()
+        success = True
         try:
             deployments = await database.get_deployments()
             config = await database.get_config() or {}
@@ -196,13 +198,16 @@ async def _run_collection() -> None:
             await _close_stale()
             results = await asyncio.gather(*(c.collect() for c in collectors), return_exceptions=True)
             alerts: list[dict[str, str]] = []
+            platforms_ok = 0
             for result in results:
                 if isinstance(result, Exception):
                     logger.warning("Collector raised exception: %s", result)
+                    success = False
                     continue
                 if result.error:
                     logger.warning("Collection error for %s: %s", result.platform, result.error)
                     alerts.append({"platform": result.platform, "error": result.error})
+                    metrics.record_collection_error(result.platform)
                 else:
                     await database.upsert_earnings(
                         platform=result.platform,
@@ -210,9 +215,14 @@ async def _run_collection() -> None:
                         currency=result.currency,
                     )
                     logger.info("Collected %s: %.4f %s", result.platform, result.balance, result.currency)
+                    platforms_ok += 1
             _collector_alerts = alerts
         except Exception as exc:
             logger.error("Collection run failed: %s", exc)
+            success = False
+            platforms_ok = 0
+        finally:
+            metrics.record_collection_end(start_time, success, platforms_ok)
 
 
 # ---------------------------------------------------------------------------
@@ -282,6 +292,7 @@ app = FastAPI(
     version="0.1.0",
     lifespan=lifespan,
 )
+metrics.setup(app)
 
 
 # Security headers middleware
@@ -397,10 +408,15 @@ async def do_login(
     password: str = Form(...),
 ):
     client_ip = request.client.host if request.client else "unknown"
-    _check_login_rate(client_ip)
+    try:
+        _check_login_rate(client_ip)
+    except HTTPException:
+        metrics.record_rate_limit()
+        raise
     user = await database.get_user_by_username(username)
     if not user or not auth.verify_password(password, user["password"]):
         _record_failed_login(client_ip)
+        metrics.record_login(success=False)
         return templates.TemplateResponse(
             request,
             "auth.html",
@@ -417,6 +433,7 @@ async def do_login(
         )
 
     _login_attempts.pop(client_ip, None)
+    metrics.record_login(success=True)
     token = auth.create_session_token(user["id"], user["username"], user["role"])
     response = RedirectResponse("/", status_code=303)
     return auth.set_session_cookie(response, token)
@@ -910,6 +927,7 @@ async def api_deploy(request: Request, slug: str, body: DeployRequest, worker_id
     container_id = result.get("container_id", "remote")
     await database.save_deployment(slug=slug, container_id=container_id)
     await database.record_health_event(slug, "start", f"deployed to worker {worker_id}")
+    metrics.record_container_lifecycle("deploy", slug)
     asyncio.create_task(_run_collection())
     return {"status": "deployed", "container_id": container_id}
 
@@ -918,6 +936,7 @@ async def api_deploy(request: Request, slug: str, body: DeployRequest, worker_id
 async def api_stop(request: Request, slug: str, worker_id: int | None = None) -> dict[str, str]:
     _require_writer(request)
     worker_id = await _resolve_worker_id(worker_id)
+    metrics.record_container_lifecycle("stop", slug)
     return await _proxy_worker_command(worker_id, "stop", slug)
 
 
@@ -925,6 +944,7 @@ async def api_stop(request: Request, slug: str, worker_id: int | None = None) ->
 async def api_restart(request: Request, slug: str, worker_id: int | None = None) -> dict[str, str]:
     _require_writer(request)
     worker_id = await _resolve_worker_id(worker_id)
+    metrics.record_container_lifecycle("restart", slug)
     return await _proxy_worker_command(worker_id, "restart", slug)
 
 
@@ -937,6 +957,7 @@ async def api_remove(
     params = {"delete_volumes": "true"} if delete_volumes else None
     result = await _proxy_worker_command(worker_id, "remove", slug, params=params)
     await database.remove_deployment(slug)
+    metrics.record_container_lifecycle("remove", slug)
     return result
 
 
@@ -1681,6 +1702,7 @@ async def api_worker_heartbeat(request: Request, body: WorkerHeartbeat) -> dict[
         apps=json.dumps(body.apps),
         system_info=json.dumps(body.system_info),
     )
+    metrics.record_heartbeat(body.name)
     return {"status": "ok", "worker_id": worker_id}
 
 

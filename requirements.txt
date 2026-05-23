@@ -11,3 +11,4 @@ python-multipart>=0.0.29
 cryptography>=47.0.0
 bcrypt>=5.0.0
 itsdangerous>=2.2
+prometheus_client>=0.22.0
