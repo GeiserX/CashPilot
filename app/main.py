@@ -241,16 +241,23 @@ async def _run_data_retention() -> None:
 
 
 async def _check_stale_workers() -> None:
-    """Mark workers as offline if they haven't sent a heartbeat recently."""
+    """Mark workers as offline if stale, and purge workers offline > 1 hour."""
     try:
         workers = await database.list_workers()
-        cutoff = datetime.now(UTC) - timedelta(seconds=STALE_WORKER_SECONDS)
+        now = datetime.now(UTC)
+        cutoff = now - timedelta(seconds=STALE_WORKER_SECONDS)
+        purge_cutoff = now - timedelta(hours=1)
         for w in workers:
-            if w["status"] == "online" and w.get("last_heartbeat"):
-                last = datetime.fromisoformat(w["last_heartbeat"]).replace(tzinfo=UTC)
-                if last < cutoff:
-                    await database.set_worker_status(w["id"], "offline")
-                    logger.info("Worker '%s' marked offline (last heartbeat: %s)", w["name"], w["last_heartbeat"])
+            last_hb = w.get("last_heartbeat")
+            if not last_hb:
+                continue
+            last = datetime.fromisoformat(last_hb).replace(tzinfo=UTC)
+            if w["status"] == "online" and last < cutoff:
+                await database.set_worker_status(w["id"], "offline")
+                logger.info("Worker '%s' marked offline (last heartbeat: %s)", w["name"], last_hb)
+            elif w["status"] == "offline" and last < purge_cutoff:
+                await database.delete_worker(w["id"])
+                logger.info("Purged stale worker '%s' (offline since %s)", w["name"], last_hb)
     except Exception as exc:
         logger.warning("Stale worker check error: %s", exc)
 
