@@ -153,9 +153,9 @@ class BytelixirCollector(BaseCollector):
 
             html_resp = await self._retry(_fetch_html)
 
-            # A redirect away from a dashboard path means session expired.
+            # A redirect to /login means session expired.
             final_path = html_resp.url.path
-            if not final_path.startswith(("/en", "/es", "/dashboard", "/home")):
+            if final_path.startswith("/login"):
                 return EarningsResult(
                     platform=self.platform,
                     balance=0.0,
