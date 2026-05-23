@@ -31,7 +31,7 @@ docker:
   volumes: []
   command: ""
   network_mode: ""
-  privileged: true
+  privileged: false
 
 requirements:
   residential_ip: true

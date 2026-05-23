@@ -57,4 +57,4 @@ platforms: [docker, linux]
 
 collector:
   type: api
-  notes: "Supabase auth via email/password. Dashboard at app.earn.fm shows earnings."
+  notes: "API key auth. Dashboard at app.earn.fm shows earnings."
