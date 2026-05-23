@@ -30,7 +30,7 @@ from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 from starlette.middleware.base import BaseHTTPMiddleware
 
-from app import auth, catalog, compose_generator, database, exchange_rates, fleet_key
+from app import auth, catalog, compose_generator, database, exchange_rates, fleet_key, metrics
 
 logging.basicConfig(
     level=logging.INFO,
@@ -185,6 +185,8 @@ async def _run_collection() -> None:
         logger.info("Collection already in progress, skipping")
         return
     async with _collection_lock:
+        start_time = metrics.record_collection_start()
+        success = True
         try:
             deployments = await database.get_deployments()
             config = await database.get_config() or {}
@@ -196,13 +198,16 @@ async def _run_collection() -> None:
             await _close_stale()
             results = await asyncio.gather(*(c.collect() for c in collectors), return_exceptions=True)
             alerts: list[dict[str, str]] = []
+            platforms_ok = 0
             for result in results:
                 if isinstance(result, Exception):
                     logger.warning("Collector raised exception: %s", result)
+                    success = False
                     continue
                 if result.error:
                     logger.warning("Collection error for %s: %s", result.platform, result.error)
                     alerts.append({"platform": result.platform, "error": result.error})
+                    metrics.record_collection_error(result.platform)
                 else:
                     await database.upsert_earnings(
                         platform=result.platform,
@@ -210,9 +215,14 @@ async def _run_collection() -> None:
                         currency=result.currency,
                     )
                     logger.info("Collected %s: %.4f %s", result.platform, result.balance, result.currency)
+                    platforms_ok += 1
             _collector_alerts = alerts
         except Exception as exc:
             logger.error("Collection run failed: %s", exc)
+            success = False
+            platforms_ok = 0
+        finally:
+            metrics.record_collection_end(start_time, success, platforms_ok)
 
 
 # ---------------------------------------------------------------------------
@@ -282,6 +292,7 @@ app = FastAPI(
     version="0.1.0",
     lifespan=lifespan,
 )
+metrics.setup(app)
 
 
 # Security headers middleware
@@ -397,10 +408,15 @@ async def do_login(
     password: str = Form(...),
 ):
     client_ip = request.client.host if request.client else "unknown"
-    _check_login_rate(client_ip)
+    try:
+        _check_login_rate(client_ip)
+    except HTTPException:
+        metrics.record_rate_limit()
+        raise
     user = await database.get_user_by_username(username)
     if not user or not auth.verify_password(password, user["password"]):
         _record_failed_login(client_ip)
+        metrics.record_login(success=False)
         return templates.TemplateResponse(
             request,
             "auth.html",
@@ -417,6 +433,7 @@ async def do_login(
         )
 
     _login_attempts.pop(client_ip, None)
+    metrics.record_login(success=True)
     token = auth.create_session_token(user["id"], user["username"], user["role"])
     response = RedirectResponse("/", status_code=303)
     return auth.set_session_cookie(response, token)
@@ -910,6 +927,7 @@ async def api_deploy(request: Request, slug: str, body: DeployRequest, worker_id
     container_id = result.get("container_id", "remote")
     await database.save_deployment(slug=slug, container_id=container_id)
     await database.record_health_event(slug, "start", f"deployed to worker {worker_id}")
+    metrics.record_container_lifecycle("deploy", slug)
     asyncio.create_task(_run_collection())
     return {"status": "deployed", "container_id": container_id}
 
@@ -918,14 +936,18 @@ async def api_deploy(request: Request, slug: str, body: DeployRequest, worker_id
 async def api_stop(request: Request, slug: str, worker_id: int | None = None) -> dict[str, str]:
     _require_writer(request)
     worker_id = await _resolve_worker_id(worker_id)
-    return await _proxy_worker_command(worker_id, "stop", slug)
+    result = await _proxy_worker_command(worker_id, "stop", slug)
+    metrics.record_container_lifecycle("stop", slug)
+    return result
 
 
 @app.post("/api/restart/{slug}")
 async def api_restart(request: Request, slug: str, worker_id: int | None = None) -> dict[str, str]:
     _require_writer(request)
     worker_id = await _resolve_worker_id(worker_id)
-    return await _proxy_worker_command(worker_id, "restart", slug)
+    result = await _proxy_worker_command(worker_id, "restart", slug)
+    metrics.record_container_lifecycle("restart", slug)
+    return result
 
 
 @app.delete("/api/remove/{slug}")
@@ -937,6 +959,7 @@ async def api_remove(
     params = {"delete_volumes": "true"} if delete_volumes else None
     result = await _proxy_worker_command(worker_id, "remove", slug, params=params)
     await database.remove_deployment(slug)
+    metrics.record_container_lifecycle("remove", slug)
     return result
 
 
@@ -1465,19 +1488,19 @@ async def api_collectors_meta(request: Request) -> list[dict[str, Any]]:
     }
     # Per-service hints on how to obtain the credentials
     hints: dict[str, str] = {
-        "bitping": "Use your Bitping account email and password (same as nodes.bitping.com).",
-        "bytelixir": "Log in at dash.bytelixir.com (tick Remember Me), press F12 → Application → Cookies, copy the <b>bytelixir_session</b> value.",
-        "earnapp": "Log in at earnapp.com, press F12 → Application → Cookies, copy the <b>oauth-refresh-token</b> value.",
-        "earnfm": "Copy your UUID API key from app.earn.fm → Account Settings.",
-        "grass": "Log in at app.getgrass.io, press F12 → Application → Local Storage, copy the <b>accessToken</b> value.",
-        "honeygain": "Use your Honeygain account email and password (same as dashboard.honeygain.com).",
-        "iproyal": "Use your IPRoyal Pawns account email and password (same as pawns.app).",
-        "mysterium": "Use your MystNodes account email and password (same as my.mystnodes.com).",
-        "packetstream": "Log in at packetstream.io, press F12 → Application → Cookies, copy the <b>auth</b> cookie value (it\u2019s a JWT).",
-        "proxyrack": "Log in at proxyrack.com, press F12 → Network, find any API request and copy the <b>api_key</b> from the query string.",
-        "repocket": "Use your Repocket account email and password (same as app.repocket.com).",
-        "salad": "Log in at app.salad.com, press F12 → Application → Cookies, copy the <b>auth</b> cookie value.",
-        "traffmonetizer": "Log in at app.traffmonetizer.com, press F12 \u2192 Application \u2192 Local Storage \u2192 <b>token</b> value (a long JWT starting with <code>eyJ</code>).",
+        "bitping": "Use your Bitping account email and password (same as <a href='https://nodes.bitping.com' target='_blank'>nodes.bitping.com</a>).",
+        "bytelixir": "Log in at <a href='https://dash.bytelixir.com' target='_blank'>dash.bytelixir.com</a> (tick Remember Me), press F12 → Application → Cookies, copy the <b>bytelixir_session</b> value.",
+        "earnapp": "Log in at <a href='https://earnapp.com' target='_blank'>earnapp.com</a>, press F12 → Application → Cookies, copy the <b>oauth-refresh-token</b> value.",
+        "earnfm": "Copy your UUID API key from <a href='https://app.earn.fm' target='_blank'>app.earn.fm</a> → Account Settings.",
+        "grass": "Log in at <a href='https://app.getgrass.io' target='_blank'>app.getgrass.io</a>, press F12 → Application → Local Storage, copy the <b>accessToken</b> value.",
+        "honeygain": "Use your Honeygain account email and password (same as <a href='https://dashboard.honeygain.com' target='_blank'>dashboard.honeygain.com</a>).",
+        "iproyal": "Use your IPRoyal Pawns account email and password (same as <a href='https://pawns.app' target='_blank'>pawns.app</a>).",
+        "mysterium": "Use your MystNodes account email and password (same as <a href='https://my.mystnodes.com' target='_blank'>my.mystnodes.com</a>).",
+        "packetstream": "Log in at <a href='https://packetstream.io' target='_blank'>packetstream.io</a>, press F12 → Application → Cookies, copy the <b>auth</b> cookie value (it’s a JWT).",
+        "proxyrack": "Log in at <a href='https://peer.proxyrack.com' target='_blank'>peer.proxyrack.com</a>, press F12 → Network, find any API request and copy the <b>Api-Key</b> header value.",
+        "repocket": "Use your Repocket account email and password (same as <a href='https://app.repocket.com' target='_blank'>app.repocket.com</a>).",
+        "salad": "Log in at <a href='https://app.salad.com' target='_blank'>app.salad.com</a>, press F12 → Application → Cookies, copy the <b>auth</b> cookie value.",
+        "traffmonetizer": "Log in at <a href='https://app.traffmonetizer.com' target='_blank'>app.traffmonetizer.com</a>, press F12 → Application → Local Storage → <b>token</b> value (a long JWT starting with <code>eyJ</code>).",
     }
     meta = []
     for slug in sorted(COLLECTOR_MAP.keys()):
@@ -1681,6 +1704,7 @@ async def api_worker_heartbeat(request: Request, body: WorkerHeartbeat) -> dict[
         apps=json.dumps(body.apps),
         system_info=json.dumps(body.system_info),
     )
+    metrics.record_heartbeat(body.name)
     return {"status": "ok", "worker_id": worker_id}
 
 

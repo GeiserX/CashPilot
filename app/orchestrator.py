@@ -417,52 +417,62 @@ def get_status() -> list[dict[str, Any]]:
 
     results: list[dict[str, Any]] = []
     for c in labeled:
-        seen_ids.add(c.id)
-        slug = c.labels.get(LABEL_SERVICE, "unknown")
-        cpu_pct, mem_mb = _collect_stats(c)
-        results.append(
-            {
-                "slug": slug,
-                "name": c.name,
-                "status": c.status,
-                "image": c.image.tags[0] if c.image.tags else str(c.image.short_id),
-                "cpu_percent": cpu_pct,
-                "memory_mb": mem_mb,
-                "created": c.attrs.get("Created", ""),
-                "container_id": c.short_id,
-                "deployed_by": c.labels.get(LABEL_DEPLOYED_BY, "unknown"),
-                "category": c.labels.get(LABEL_CATEGORY, ""),
-            }
-        )
+        try:
+            seen_ids.add(c.id)
+            slug = c.labels.get(LABEL_SERVICE, "unknown")
+            cpu_pct, mem_mb = _collect_stats(c)
+            results.append(
+                {
+                    "slug": slug,
+                    "name": c.name,
+                    "status": c.status,
+                    "image": c.image.tags[0] if c.image.tags else str(c.image.short_id),
+                    "cpu_percent": cpu_pct,
+                    "memory_mb": mem_mb,
+                    "created": c.attrs.get("Created", ""),
+                    "container_id": c.short_id,
+                    "deployed_by": c.labels.get(LABEL_DEPLOYED_BY, "unknown"),
+                    "category": c.labels.get(LABEL_CATEGORY, ""),
+                }
+            )
+        except Exception as exc:
+            logger.warning("Skipping corrupted container %s: %s", getattr(c, "short_id", "?"), exc)
 
     # Image-matched containers (deployed externally)
     image_map = _build_image_slug_map()
     if image_map:
-        all_containers = client.containers.list(all=True)
+        try:
+            all_containers = client.containers.list(all=True)
+        except Exception as exc:
+            logger.warning("Failed to list all containers: %s", exc)
+            all_containers = []
         for c in all_containers:
-            if c.id in seen_ids:
-                continue
-            image_name = c.image.tags[0] if c.image.tags else ""
-            slug = image_map.get(image_name, "")
-            if not slug and image_name:
-                slug = image_map.get(image_name.split(":")[0], "")
-            if slug:
-                seen_ids.add(c.id)
-                cpu_pct, mem_mb = _collect_stats(c)
-                results.append(
-                    {
-                        "slug": slug,
-                        "name": c.name,
-                        "status": c.status,
-                        "image": image_name or str(c.image.short_id),
-                        "cpu_percent": cpu_pct,
-                        "memory_mb": mem_mb,
-                        "created": c.attrs.get("Created", ""),
-                        "container_id": c.short_id,
-                        "deployed_by": "external",
-                        "category": "",
-                    }
-                )
+            try:
+                if c.id in seen_ids:
+                    continue
+                image_name = c.image.tags[0] if c.image.tags else ""
+                slug = image_map.get(image_name, "")
+                if not slug and image_name:
+                    slug = image_map.get(image_name.split(":")[0], "")
+                if slug:
+                    seen_ids.add(c.id)
+                    cpu_pct, mem_mb = _collect_stats(c)
+                    results.append(
+                        {
+                            "slug": slug,
+                            "name": c.name,
+                            "status": c.status,
+                            "image": image_name or str(c.image.short_id),
+                            "cpu_percent": cpu_pct,
+                            "memory_mb": mem_mb,
+                            "created": c.attrs.get("Created", ""),
+                            "container_id": c.short_id,
+                            "deployed_by": "external",
+                            "category": "",
+                        }
+                    )
+            except Exception as exc:
+                logger.warning("Skipping corrupted container %s: %s", getattr(c, "short_id", "?"), exc)
 
     # Update the cache
     _status_cache = results
@@ -531,54 +541,64 @@ def get_status_light() -> list[dict[str, Any]]:
 
     results: list[dict[str, Any]] = []
     for c in labeled:
-        seen_ids.add(c.id)
-        slug = c.labels.get(LABEL_SERVICE, "unknown")
-        seen_slugs.add(slug)
-        results.append(
-            {
-                "slug": slug,
-                "name": c.name,
-                "status": c.status,
-                "image": c.image.tags[0] if c.image.tags else str(c.image.short_id),
-                "cpu_percent": 0.0,
-                "memory_mb": 0.0,
-                "created": c.attrs.get("Created", ""),
-                "container_id": c.short_id,
-                "deployed_by": c.labels.get(LABEL_DEPLOYED_BY, "unknown"),
-                "category": c.labels.get(LABEL_CATEGORY, ""),
-            }
-        )
+        try:
+            seen_ids.add(c.id)
+            slug = c.labels.get(LABEL_SERVICE, "unknown")
+            seen_slugs.add(slug)
+            results.append(
+                {
+                    "slug": slug,
+                    "name": c.name,
+                    "status": c.status,
+                    "image": c.image.tags[0] if c.image.tags else str(c.image.short_id),
+                    "cpu_percent": 0.0,
+                    "memory_mb": 0.0,
+                    "created": c.attrs.get("Created", ""),
+                    "container_id": c.short_id,
+                    "deployed_by": c.labels.get(LABEL_DEPLOYED_BY, "unknown"),
+                    "category": c.labels.get(LABEL_CATEGORY, ""),
+                }
+            )
+        except Exception as exc:
+            logger.warning("Skipping corrupted container %s: %s", getattr(c, "short_id", "?"), exc)
 
     # Second: scan all containers and match by image name
     image_map = _build_image_slug_map()
     if image_map:
-        all_containers = client.containers.list(all=True)
+        try:
+            all_containers = client.containers.list(all=True)
+        except Exception as exc:
+            logger.warning("Failed to list all containers: %s", exc)
+            all_containers = []
         for c in all_containers:
-            if c.id in seen_ids:
-                continue
-            image_name = c.image.tags[0] if c.image.tags else ""
-            slug = image_map.get(image_name, "")
-            if not slug and image_name:
-                # Try without tag
-                base = image_name.split(":")[0]
-                slug = image_map.get(base, "")
-            if slug and slug not in seen_slugs:
-                seen_ids.add(c.id)
-                seen_slugs.add(slug)
-                results.append(
-                    {
-                        "slug": slug,
-                        "name": c.name,
-                        "status": c.status,
-                        "image": image_name or str(c.image.short_id),
-                        "cpu_percent": 0.0,
-                        "memory_mb": 0.0,
-                        "created": c.attrs.get("Created", ""),
-                        "container_id": c.short_id,
-                        "deployed_by": "external",
-                        "category": "",
-                    }
-                )
+            try:
+                if c.id in seen_ids:
+                    continue
+                image_name = c.image.tags[0] if c.image.tags else ""
+                slug = image_map.get(image_name, "")
+                if not slug and image_name:
+                    # Try without tag
+                    base = image_name.split(":")[0]
+                    slug = image_map.get(base, "")
+                if slug and slug not in seen_slugs:
+                    seen_ids.add(c.id)
+                    seen_slugs.add(slug)
+                    results.append(
+                        {
+                            "slug": slug,
+                            "name": c.name,
+                            "status": c.status,
+                            "image": image_name or str(c.image.short_id),
+                            "cpu_percent": 0.0,
+                            "memory_mb": 0.0,
+                            "created": c.attrs.get("Created", ""),
+                            "container_id": c.short_id,
+                            "deployed_by": "external",
+                            "category": "",
+                        }
+                    )
+            except Exception as exc:
+                logger.warning("Skipping corrupted container %s: %s", getattr(c, "short_id", "?"), exc)
 
     return results
 

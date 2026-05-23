@@ -160,6 +160,7 @@ cashpilot/
 | `CASHPILOT_API_KEY` | -- | Shared secret between UI and workers for API authentication |
 | `CASHPILOT_COLLECTION_INTERVAL` | `3600` | Seconds between earnings collection cycles |
 | `CASHPILOT_PORT` | `8080` | Web UI port inside the container |
+| `CASHPILOT_METRICS_ENABLED` | `false` | Set to `true` to expose Prometheus metrics at `/metrics` |
 
 ### Worker Environment Variables
 
