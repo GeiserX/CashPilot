@@ -1,3 +1,6 @@
+# NOTE: pyproject.toml + uv.lock are now the primary source of truth for dependencies.
+# Docker builds use `uv sync --frozen` from the lockfile.
+# This file is kept for backward compatibility with local development.
 fastapi>=0.136.1
 uvicorn>=0.47.0
 uvloop>=0.22.1
