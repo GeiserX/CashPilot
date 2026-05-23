@@ -14,12 +14,13 @@
   --border-light: rgba(139, 92, 246, 0.22);
 
   --text-primary: #e8e6f0;
-  --text-secondary: #aca4c0;
+  --text-secondary: #bdb6cf;
   --text-muted: #a59cb5;
   --text-log: #a5d6a7;
 
   --accent: #fb7185;
   --accent-hover: #fda4af;
+  --accent-bg: #9f1239;
   --accent-soft: rgba(251, 113, 133, 0.12);
   --accent-secondary: #22d3ee;
   --accent-secondary-soft: rgba(34, 211, 238, 0.10);
@@ -29,10 +30,11 @@
   --warning: #f59e0b;
   --warning-soft: rgba(245, 158, 11, 0.10);
   --error: #f87171;
+  --error-bg: #991b1b;
   --error-soft: rgba(248, 113, 113, 0.10);
 
   /* Gradients */
-  --gradient-rose: linear-gradient(135deg, #f43f5e, #fb7185);
+  --gradient-rose: linear-gradient(135deg, #9f1239, #be123c);
   --gradient-cyan: linear-gradient(135deg, #06b6d4, #22d3ee);
   --gradient-green: linear-gradient(135deg, #22c55e, #4ade80);
   --gradient-card: linear-gradient(135deg, rgba(139, 92, 246, 0.04) 0%, rgba(6, 182, 212, 0.02) 100%);
@@ -69,6 +71,7 @@
 
   --accent: #9f1239;
   --accent-hover: #be123c;
+  --accent-bg: #9f1239;
   --accent-soft: rgba(159, 18, 57, 0.08);
   --accent-secondary: #155e75;
   --accent-secondary-soft: rgba(21, 94, 117, 0.08);
@@ -78,6 +81,7 @@
   --warning: #92400e;
   --warning-soft: rgba(146, 64, 14, 0.08);
   --error: #991b1b;
+  --error-bg: #991b1b;
   --error-soft: rgba(153, 27, 27, 0.08);
 
   --gradient-card: linear-gradient(135deg, rgba(139, 92, 246, 0.03) 0%, rgba(6, 182, 212, 0.02) 100%);
@@ -303,7 +307,7 @@ img { max-width: 100%; }
   height: 32px;
   border-radius: 50%;
   border: none;
-  background: var(--accent);
+  background: var(--accent-bg);
   color: #fff;
   font-size: 0.8rem;
   font-weight: 700;
@@ -384,7 +388,7 @@ img { max-width: 100%; }
   font-size: 0.65rem;
   font-weight: 700;
   text-align: center;
-  background: var(--error);
+  background: var(--error-bg);
   color: #fff;
   border-radius: 8px;
   padding: 0 4px;
@@ -656,7 +660,7 @@ img { max-width: 100%; }
   right: 8px;
   width: 22px;
   height: 22px;
-  background: var(--accent);
+  background: var(--accent-bg);
   border-radius: 50%;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='20 6 9 17 4 12'/%3E%3C/svg%3E");
   background-repeat: no-repeat;
@@ -858,7 +862,7 @@ img { max-width: 100%; }
 }
 
 .btn-primary {
-  background: var(--gradient-rose);
+  background: var(--accent-bg);
   color: #fff;
   border-color: transparent;
 }
@@ -878,7 +882,7 @@ img { max-width: 100%; }
 }
 
 .btn-success {
-  background: var(--gradient-green);
+  background: var(--success);
   color: #fff;
 }
 .btn-success:hover:not(:disabled) {

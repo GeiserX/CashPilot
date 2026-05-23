@@ -6,11 +6,10 @@ on:
     paths:
       - 'Dockerfile'
       - 'Dockerfile.worker'
-      - 'requirements.txt'
-      - 'requirements-worker.txt'
+      - 'pyproject.toml'
+      - 'uv.lock'
       - 'app/**'
       - 'services/**'
-      - 'docker-compose*.yml'
   workflow_dispatch:
 
 permissions:
@@ -26,13 +25,14 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-          cache: 'pip'
+      - name: Install uv
+        run: pip install uv --quiet
       - name: Install dependencies
-        run: pip install -r requirements.txt -r requirements-dev.txt --quiet
+        run: uv sync --frozen --extra dev
       - name: Lint
-        run: ruff check . && ruff format --check .
+        run: uv run ruff check . && uv run ruff format --check .
       - name: Test
-        run: pytest
+        run: uv run pytest
 
   release:
     needs: ci
@@ -58,7 +58,7 @@ jobs:
           BUILD_UI=false
           BUILD_WORKER=false
 
-          if echo "$CHANGED" | grep -qE '^(Dockerfile|requirements\.txt|app/(main|database|catalog|auth|compose_generator|exchange_rates|constants|collectors|templates|static))'; then
+          if echo "$CHANGED" | grep -qE '^(Dockerfile|pyproject\.toml|uv\.lock|app/(main|database|catalog|auth|compose_generator|exchange_rates|constants|collectors|templates|static))'; then
             BUILD_UI=true
           fi
           if echo "$CHANGED" | grep -qE '^services/'; then
@@ -66,7 +66,7 @@ jobs:
             BUILD_WORKER=true
           fi
 
-          if echo "$CHANGED" | grep -qE '^(Dockerfile\.worker|requirements-worker\.txt|app/(worker_api|orchestrator|constants|catalog|fleet_key)\.py)'; then
+          if echo "$CHANGED" | grep -qE '^(Dockerfile\.worker|pyproject\.toml|uv\.lock|app/(worker_api|orchestrator|constants|catalog|fleet_key)\.py)'; then
             BUILD_WORKER=true
           fi
 
@@ -118,9 +118,8 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add docker-compose.yml docker-compose.fleet.yml
           git diff --cached --quiet || git commit -m "chore: bump compose images to ${{ steps.version.outputs.new_tag }} [skip ci]"
-          git push origin main
           git tag -a "${{ steps.version.outputs.new_tag }}" -m "Release ${{ steps.version.outputs.new_tag }}"
-          git push origin "${{ steps.version.outputs.new_tag }}"
+          git push origin main "${{ steps.version.outputs.new_tag }}"
 
       - name: Create GitHub Release
         if: steps.version.outputs.new_tag
