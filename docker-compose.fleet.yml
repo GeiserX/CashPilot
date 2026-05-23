@@ -10,7 +10,7 @@
 # === Deploy on main server (e.g., server-a) ===
 services:
   cashpilot-ui:
-    image: drumsergio/cashpilot:latest
+    image: drumsergio/cashpilot:v0.5.1
     container_name: cashpilot-ui
     ports:
       - "8080:8080"
@@ -29,7 +29,7 @@ services:
       - /tmp:size=64M
 
   cashpilot-worker:
-    image: drumsergio/cashpilot-worker:latest
+    image: drumsergio/cashpilot-worker:v0.5.1
     container_name: cashpilot-worker
     ports:
       - "8081:8081"
@@ -55,7 +55,7 @@ services:
 #
 #  services:
 #    cashpilot-worker:
-#      image: drumsergio/cashpilot-worker:latest
+#      image: drumsergio/cashpilot-worker:v0.5.1
 #      container_name: cashpilot-worker
 #      ports:
 #        - "8081:8081"
