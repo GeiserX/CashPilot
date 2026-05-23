@@ -25,7 +25,7 @@ docker:
   command: "--ui.address=0.0.0.0 --tequilapi.address=0.0.0.0 service --agreed-terms-and-conditions"
   network_mode: "host"
   cap_add: [NET_ADMIN]
-  privileged: true
+  privileged: false
 
 requirements:
   residential_ip: false

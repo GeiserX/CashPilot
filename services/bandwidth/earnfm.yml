@@ -4,10 +4,10 @@ category: bandwidth
 status: active
 website: https://earn.fm
 description: >
-  Earn.fm pays you for sharing your internet bandwidth. It authenticates via
-  Supabase using email and password. Lightweight Docker image with
+  Earn.fm pays you for sharing your internet bandwidth. Authenticates via
+  a UUID API key from the dashboard. Lightweight Docker image with
   straightforward deployment.
-short_description: Bandwidth sharing - email/password auth, lightweight client
+short_description: Bandwidth sharing - API key auth, lightweight client
 
 referral:
   signup_url: "https://earn.fm/ref/GEISYB91"
@@ -16,21 +16,16 @@ docker:
   image: earnfm/earnfm-client
   platforms: [linux/amd64, linux/arm64]
   env:
-    - key: EARNFM_EMAIL
-      label: "Email"
-      required: true
-      secret: false
-      description: "Your Earn.fm account email"
-    - key: EARNFM_PASSWORD
-      label: "Password"
+    - key: EARNFM_TOKEN
+      label: "API Key"
       required: true
       secret: true
-      description: "Your Earn.fm account password (used for Supabase auth)"
+      description: "UUID API key from app.earn.fm > Account Settings"
   ports: []
   volumes: []
   command: ""
   network_mode: ""
-  privileged: true
+  privileged: false
 
 requirements:
   residential_ip: true
@@ -62,4 +57,4 @@ platforms: [docker, linux]
 
 collector:
   type: api
-  notes: "Supabase auth via email/password. Dashboard at app.earn.fm shows earnings."
+  notes: "API key auth. Dashboard at app.earn.fm shows earnings."

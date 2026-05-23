@@ -33,7 +33,7 @@ docker:
   volumes: []
   command: "start accept --token ${TRAFFMONETIZER_TOKEN} --device-name ${TRAFFMONETIZER_DEVICE_NAME}"
   network_mode: ""
-  privileged: true
+  privileged: false
 
 requirements:
   residential_ip: false

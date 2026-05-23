@@ -1,87 +1,43 @@
 """Earn.fm earnings collector.
 
-Authenticates via Supabase (sb.earn.fm) and fetches balance from
-the Earn.fm harvester API.
+Authenticates via a UUID API key (EARNFM_TOKEN) obtained from the
+Earn.fm dashboard at app.earn.fm > Account Settings.
 """
 
 from __future__ import annotations
 
 import logging
 
-import httpx
+import httpx  # noqa: F401 — needed for test patching
 
 from app.collectors.base import BaseCollector, EarningsResult
 
 logger = logging.getLogger(__name__)
 
-SUPABASE_URL = "https://sb.earn.fm"
-SUPABASE_ANON_KEY = (
-    "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9."
-    "ewogICJyb2xlIjogImFub24iLAogICJpc3MiOiAic3VwYWJhc2UiLAog"
-    "ICJpYXQiOiAxNjkyNjU1MjAwLAogICJleHAiOiAxODUwNTA4MDAwCn0."
-    "jp-Uj5ro0jj7MHnlE8HHZRsZAFOI1d_T9n_9tnE09vM"
-)
 API_BASE = "https://api.earn.fm/v2"
 
 
 class EarnFMCollector(BaseCollector):
-    """Collect earnings from Earn.fm's API via Supabase auth."""
+    """Collect earnings from Earn.fm's API using a token."""
 
     platform = "earnfm"
 
-    def __init__(self, email: str, password: str) -> None:
+    def __init__(self, token: str) -> None:
         super().__init__()
-        self.email = email
-        self.password = password
-        self._access_token: str | None = None
-        self._refresh_token: str | None = None
-
-    async def _authenticate(self, client: httpx.AsyncClient) -> str:
-        """Obtain Supabase access token via email/password."""
-        resp = await client.post(
-            f"{SUPABASE_URL}/auth/v1/token?grant_type=password",
-            json={"email": self.email, "password": self.password},
-            headers={
-                "apikey": SUPABASE_ANON_KEY,
-                "Content-Type": "application/json",
-            },
-        )
-        resp.raise_for_status()
-        data = resp.json()
-        self._access_token = data.get("access_token", "")
-        self._refresh_token = data.get("refresh_token", "")
-        if not self._access_token:
-            raise ValueError("No access_token in Supabase login response")
-        return self._access_token
-
-    async def _refresh(self, client: httpx.AsyncClient) -> str:
-        """Refresh Supabase access token."""
-        if not self._refresh_token:
-            return await self._authenticate(client)
-        resp = await client.post(
-            f"{SUPABASE_URL}/auth/v1/token?grant_type=refresh_token",
-            json={"refresh_token": self._refresh_token},
-            headers={
-                "apikey": SUPABASE_ANON_KEY,
-                "Content-Type": "application/json",
-            },
-        )
-        if resp.status_code in (401, 403):
-            return await self._authenticate(client)
-        resp.raise_for_status()
-        data = resp.json()
-        self._access_token = data.get("access_token", "")
-        self._refresh_token = data.get("refresh_token", self._refresh_token)
-        return self._access_token
+        self._token = token.strip()
 
     async def collect(self) -> EarningsResult:
         """Fetch current Earn.fm balance."""
+        if not self._token:
+            return EarningsResult(
+                platform=self.platform,
+                balance=0.0,
+                error="No token configured — copy API key from app.earn.fm > Settings",
+            )
+
         try:
             client = self._get_client(timeout=30)
-            if not self._access_token:
-                await self._authenticate(client)
-
-            headers = {"X-API-Key": self._access_token}
+            headers = {"X-API-Key": self._token}
 
             async def _fetch_balance() -> httpx.Response:
                 return await client.get(
@@ -91,10 +47,12 @@ class EarnFMCollector(BaseCollector):
 
             resp = await self._retry(_fetch_balance)
 
-            if resp.status_code == 401:
-                await self._refresh(client)
-                headers = {"X-API-Key": self._access_token}
-                resp = await self._retry(_fetch_balance)
+            if resp.status_code in (401, 403):
+                return EarningsResult(
+                    platform=self.platform,
+                    balance=0.0,
+                    error="Token invalid or expired — refresh API key from app.earn.fm",
+                )
 
             resp.raise_for_status()
             data = resp.json()

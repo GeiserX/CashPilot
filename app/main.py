@@ -1468,7 +1468,7 @@ async def api_collectors_meta(request: Request) -> list[dict[str, Any]]:
         "bitping": "Use your Bitping account email and password (same as nodes.bitping.com).",
         "bytelixir": "Log in at dash.bytelixir.com (tick Remember Me), press F12 → Application → Cookies, copy the <b>bytelixir_session</b> value.",
         "earnapp": "Log in at earnapp.com, press F12 → Application → Cookies, copy the <b>oauth-refresh-token</b> value.",
-        "earnfm": "Use your Earn.fm account email and password (same as earn.fm).",
+        "earnfm": "Copy your UUID API key from app.earn.fm → Account Settings.",
         "grass": "Log in at app.getgrass.io, press F12 → Application → Local Storage, copy the <b>accessToken</b> value.",
         "honeygain": "Use your Honeygain account email and password (same as dashboard.honeygain.com).",
         "iproyal": "Use your IPRoyal Pawns account email and password (same as pawns.app).",

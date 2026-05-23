@@ -33,7 +33,7 @@ docker:
     - "earnapp-data:/etc/earnapp"
   command: ""
   network_mode: ""
-  privileged: true
+  privileged: false
 
 requirements:
   residential_ip: true
