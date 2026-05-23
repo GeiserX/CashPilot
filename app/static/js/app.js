@@ -453,7 +453,7 @@ const CP = (() => {
       ? `<div style="font-size:0.6rem; color:var(--text-muted);">\u2212${formatCurrency(signupBonus, currency)} promo</div>`
       : '';
     const disconnectedLabel = svc.collector_disconnected
-      ? `<div style="font-size:0.6rem; color:#ef4444; font-weight:500; display:flex; align-items:center; justify-content:flex-end; gap:4px;">disconnected${_isOwner ? ` <button class="btn btn-ghost" onclick="event.stopPropagation(); CP.openCredentialModal('${escapeHtml(svc.slug)}')" style="font-size:0.6rem; padding:1px 5px; line-height:1.2; color:#ef4444; border:1px solid #ef4444; border-radius:3px; cursor:pointer;">update</button>` : ''}</div>`
+      ? `<div style="font-size:0.6rem; color:var(--error); font-weight:500; display:flex; align-items:center; justify-content:flex-end; gap:4px;">disconnected${_isOwner ? ` <button class="btn btn-ghost" onclick="event.stopPropagation(); CP.openCredentialModal('${escapeHtml(svc.slug)}')" style="font-size:0.6rem; padding:1px 5px; line-height:1.2; color:var(--error); border:1px solid #ef4444; border-radius:3px; cursor:pointer;">update</button>` : ''}</div>`
       : '';
     let balanceHtml;
     if (nativeLabel) {
@@ -665,6 +665,14 @@ const CP = (() => {
       return;
     }
 
+    const cs = getComputedStyle(document.documentElement);
+    const textMuted = cs.getPropertyValue('--text-muted').trim();
+    const textPrimary = cs.getPropertyValue('--text-primary').trim();
+    const textSecondary = cs.getPropertyValue('--text-secondary').trim();
+    const bgSecondary = cs.getPropertyValue('--bg-secondary').trim();
+    const borderColor = cs.getPropertyValue('--border-color').trim();
+    const accent = cs.getPropertyValue('--accent').trim();
+
     earningsChart = new Chart(ctx, {
       type: 'bar',
       data: {
@@ -672,11 +680,11 @@ const CP = (() => {
         datasets: [{
           label: 'Daily Earnings',
           data: values,
-          backgroundColor: 'rgba(244, 63, 94, 0.4)',
-          borderColor: 'rgba(244, 63, 94, 0.9)',
+          backgroundColor: accent + '66',
+          borderColor: accent,
           borderWidth: 1,
           borderRadius: 4,
-          hoverBackgroundColor: 'rgba(244, 63, 94, 0.6)',
+          hoverBackgroundColor: accent + '99',
         }],
       },
       options: {
@@ -685,10 +693,10 @@ const CP = (() => {
         plugins: {
           legend: { display: false },
           tooltip: {
-            backgroundColor: '#0e0e1a',
-            titleColor: '#e8e6f0',
-            bodyColor: '#9d95b0',
-            borderColor: 'rgba(139, 92, 246, 0.2)',
+            backgroundColor: bgSecondary,
+            titleColor: textPrimary,
+            bodyColor: textSecondary,
+            borderColor: borderColor,
             borderWidth: 1,
             padding: 10,
             callbacks: {
@@ -698,14 +706,14 @@ const CP = (() => {
         },
         scales: {
           x: {
-            grid: { color: 'rgba(139, 92, 246, 0.08)' },
-            ticks: { color: '#6b6280', font: { size: 11 } },
+            grid: { color: borderColor },
+            ticks: { color: textMuted, font: { size: 11 } },
           },
           y: {
             beginAtZero: true,
-            grid: { color: 'rgba(139, 92, 246, 0.08)' },
+            grid: { color: borderColor },
             ticks: {
-              color: '#6b6280',
+              color: textMuted,
               font: { size: 11 },
               callback: (v) => formatCurrency(v),
             },
@@ -783,10 +791,10 @@ const CP = (() => {
         <div style="display:flex; gap:8px; margin-top:14px;">
           <button class="btn btn-primary btn-sm" onclick="CP.saveCredentialModal()">Save</button>
           <button class="btn btn-ghost btn-sm" onclick="CP.closeModal('cred-modal')">Cancel</button>
-          <button class="btn btn-ghost btn-sm" style="color:#ef4444; margin-left:auto;" onclick="CP.clearServiceCredentials('${escapeHtml(slug)}', '${escapeHtml(col.name)}'); CP.closeModal('cred-modal');">Clear</button>
+          <button class="btn btn-ghost btn-sm" style="color:var(--error); margin-left:auto;" onclick="CP.clearServiceCredentials('${escapeHtml(slug)}', '${escapeHtml(col.name)}'); CP.closeModal('cred-modal');">Clear</button>
         </div>`;
     } catch (err) {
-      if (body) body.innerHTML = `<p style="color:#ef4444;">Failed to load: ${escapeHtml(err.message)}</p>`;
+      if (body) body.innerHTML = `<p style="color:var(--error);">Failed to load: ${escapeHtml(err.message)}</p>`;
     }
   }
 
@@ -1921,7 +1929,7 @@ const CP = (() => {
         </div>`;
       }).join('');
       const clearBtn = configured && _isOwner
-        ? `<div style="margin-top:8px; text-align:right;"><button class="btn btn-ghost btn-sm" style="color:#ef4444; font-size:0.75rem;" onclick="CP.clearServiceCredentials('${escapeHtml(col.slug)}', '${escapeHtml(col.name)}')">Clear Credentials</button></div>`
+        ? `<div style="margin-top:8px; text-align:right;"><button class="btn btn-ghost btn-sm" style="color:var(--error); font-size:0.75rem;" onclick="CP.clearServiceCredentials('${escapeHtml(col.slug)}', '${escapeHtml(col.name)}')">Clear Credentials</button></div>`
         : '';
       return `
       <details class="collector-section" id="collector-${col.slug}">
