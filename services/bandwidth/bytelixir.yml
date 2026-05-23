@@ -21,17 +21,17 @@ docker:
       label: "Session Cookie"
       required: true
       secret: true
-      description: "Log in at <a href=\"https://dash.bytelixir.com\">dash.bytelixir.com</a>, press F12 → Application → Cookies → click <code>https://dash.bytelixir.com</code> → copy the <code>bytelixir_session</code> value (a long JWT starting with eyJ)"
+      description: "Log in at <a href=\"https://dash.bytelixir.com\">dash.bytelixir.com</a>, press F12 → Application → expand <b>Cookies</b> in the left sidebar → click the sub-item <code>https://dash.bytelixir.com</code> → in the cookie list on the right, find <code>bytelixir_session</code> → copy its Value (a long JWT starting with eyJ)"
     - key: BYTELIXIR_REMEMBER_WEB
       label: "Remember Web Cookie"
       required: false
       secret: true
-      description: "Same location as above → copy the <code>remember_web_*</code> cookie value (optional, extends session lifetime)"
+      description: "Same location (Cookies → <code>https://dash.bytelixir.com</code>) → find the cookie named <code>remember_web_...</code> → copy its Value (optional, extends session lifetime)"
     - key: BYTELIXIR_XSRF_TOKEN
       label: "XSRF Token"
       required: false
       secret: true
-      description: "Same location → copy the <code>XSRF-TOKEN</code> cookie value (optional)"
+      description: "Same location → find <code>XSRF-TOKEN</code> → copy its Value (optional)"
   ports: []
   volumes: []
   command: ""

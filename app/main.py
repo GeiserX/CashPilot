@@ -1489,7 +1489,7 @@ async def api_collectors_meta(request: Request) -> list[dict[str, Any]]:
     # Per-service hints on how to obtain the credentials
     hints: dict[str, str] = {
         "bitping": "Use your Bitping account email and password (same as <a href='https://nodes.bitping.com' target='_blank'>nodes.bitping.com</a>).",
-        "bytelixir": "Log in at <a href='https://dash.bytelixir.com' target='_blank'>dash.bytelixir.com</a> (tick Remember Me), press F12 → Application → Cookies, copy the <b>bytelixir_session</b> value.",
+        "bytelixir": "Log in at <a href='https://dash.bytelixir.com' target='_blank'>dash.bytelixir.com</a> (tick Remember Me), press F12 → Application → expand <b>Cookies</b> in the left sidebar → click <code>https://dash.bytelixir.com</code> → find <b>bytelixir_session</b> → copy its Value.",
         "earnapp": "Log in at <a href='https://earnapp.com' target='_blank'>earnapp.com</a>, press F12 → Application → Cookies, copy the <b>oauth-refresh-token</b> value.",
         "earnfm": "Copy your UUID API key from <a href='https://app.earn.fm' target='_blank'>app.earn.fm</a> → Account Settings.",
         "grass": "Log in at <a href='https://app.getgrass.io' target='_blank'>app.getgrass.io</a>, press F12 → Application → Local Storage, copy the <b>accessToken</b> value.",
@@ -1549,10 +1549,25 @@ class ConfigUpdate(BaseModel):
     data: dict[str, str]
 
 
+def _sanitize_credential(value: str) -> str:
+    """Clean common copy-paste artifacts from credential values."""
+    from urllib.parse import unquote
+
+    v = value.strip()
+    if v.startswith('"') and v.endswith('"'):
+        v = v[1:-1]
+    if v.startswith("'") and v.endswith("'"):
+        v = v[1:-1]
+    if "%3D" in v or "%3d" in v or "%2F" in v or "%2f" in v or "%2B" in v or "%2b" in v:
+        v = unquote(v)
+    return v
+
+
 @app.post("/api/config")
 async def api_set_config(request: Request, body: ConfigUpdate) -> dict[str, str]:
     _require_owner(request)
-    await database.set_config_bulk(body.data)
+    sanitized = {k: _sanitize_credential(v) for k, v in body.data.items()}
+    await database.set_config_bulk(sanitized)
 
     # Auto-create "external" deployment records for manual-only services
     # whose collector credentials were just saved.  Without a deployment
@@ -1563,7 +1578,7 @@ async def api_set_config(request: Request, body: ConfigUpdate) -> dict[str, str]
         required_keys = [f"{slug}_{a.lstrip('?')}" for a in arg_keys if not a.startswith("?")]
         if not required_keys:
             continue
-        if not all(body.data.get(k) for k in required_keys):
+        if not all(sanitized.get(k) for k in required_keys):
             continue
         svc = catalog.get_service(slug)
         if not svc:
