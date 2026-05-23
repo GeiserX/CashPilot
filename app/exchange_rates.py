@@ -39,7 +39,7 @@ async def refresh() -> None:
     global _fiat_rates, _crypto_usd, _last_fetch
 
     try:
-        async with httpx.AsyncClient(timeout=15) as client:
+        async with httpx.AsyncClient(timeout=15, follow_redirects=True) as client:
             # --- Crypto rates from CoinGecko (free, no key) ---
             if CRYPTO_IDS:
                 ids = ",".join(CRYPTO_IDS.values())
