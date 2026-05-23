@@ -20,7 +20,7 @@ docker:
       label: "API Key"
       required: true
       secret: true
-      description: "UUID API key from app.earn.fm > Account Settings"
+      description: "Log in at <a href=\"https://app.earn.fm\">app.earn.fm</a> → click your profile icon (top right) → Account Settings → copy the API Key (UUID format)"
   ports: []
   volumes: []
   command: ""
