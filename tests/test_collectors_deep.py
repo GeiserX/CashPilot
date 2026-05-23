@@ -193,17 +193,19 @@ class TestEarnFMDeep:
     def test_collect_401_returns_error(self):
         from app.collectors.earnfm import EarnFMCollector
 
+        auth_resp = _mock_response(200, {"access_token": "tok"})
         expired_resp = MagicMock()
         expired_resp.status_code = 401
 
         client = _make_async_client()
+        client.post.return_value = auth_resp
         client.get.return_value = expired_resp
 
         with patch("app.collectors.earnfm.httpx.AsyncClient", return_value=client):
-            c = EarnFMCollector(token="test-uuid-token")
+            c = EarnFMCollector(email="a@b.com", password="pass")
             result = asyncio.run(c.collect())
         assert result.error is not None
-        assert "invalid" in result.error.lower() or "expired" in result.error.lower()
+        assert "rejected" in result.error.lower() or "credentials" in result.error.lower()
 
 
 # ---------------------------------------------------------------------------

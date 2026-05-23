@@ -887,14 +887,14 @@ class TestCollectorSmallGaps:
         # Should either succeed with 0 or have an error
         assert isinstance(result, EarningsResult)
 
-    def test_earnfm_empty_token(self):
-        """Cover earnfm.py: empty token returns error."""
+    def test_earnfm_empty_credentials(self):
+        """Cover earnfm.py: empty credentials returns error."""
         from app.collectors.earnfm import EarnFMCollector
 
-        c = EarnFMCollector(token="")
+        c = EarnFMCollector(email="", password="")
         result = asyncio.run(c.collect())
         assert result.error is not None
-        assert "No token" in result.error
+        assert "No credentials" in result.error
 
     def test_bitping_login_missing_cookie(self):
         """Cover bitping.py lines 45-48: login without cookie set."""
