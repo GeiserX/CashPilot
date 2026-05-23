@@ -23,6 +23,10 @@ on:
         description: 'Build Worker image'
         type: boolean
         default: true
+      version:
+        description: 'Version tag (e.g. v0.2.1) — leave empty for latest'
+        type: string
+        default: ''
 
 concurrency:
   group: build-${{ inputs.version || github.ref }}
