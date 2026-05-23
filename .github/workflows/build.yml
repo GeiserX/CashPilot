@@ -174,7 +174,7 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
       - name: Create UI manifests
-        if: inputs.build_ui
+        if: inputs.build_ui && needs.build-ui-amd64.result == 'success' && needs.build-ui-arm64.result == 'success'
         run: |
           TAGS="${{ needs.resolve-tags.outputs.ui_tags }}"
           VER="${{ needs.resolve-tags.outputs.version }}"
@@ -184,7 +184,7 @@ jobs:
               "drumsergio/cashpilot:${VER}-arm64"
           done
       - name: Create Worker manifests
-        if: inputs.build_worker
+        if: inputs.build_worker && needs.build-worker-amd64.result == 'success' && needs.build-worker-arm64.result == 'success'
         run: |
           TAGS="${{ needs.resolve-tags.outputs.worker_tags }}"
           VER="${{ needs.resolve-tags.outputs.version }}"

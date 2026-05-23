@@ -59,5 +59,13 @@ cashout:
 platforms: [docker, linux]
 
 collector:
-  type: manual
-  notes: "Open source relay. Earnings tracked on-chain."
+  type: auto
+  credentials:
+    - key: fingerprints
+      label: "Relay Fingerprints"
+      hint: >
+        Comma-separated relay fingerprints. Find yours with:
+        docker exec cashpilot-anyone-protocol anon --list-fingerprint
+        or check https://api.ec.anyone.tech/relays/{fingerprint}
+      type: text
+  notes: "Queries AO relay-rewards contract by fingerprint, converts ANYONE tokens to USD via CoinGecko."
