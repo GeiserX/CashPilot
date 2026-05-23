@@ -22,7 +22,7 @@ docker:
       label: "Access Token"
       required: true
       secret: true
-      description: "Session token from app.grass.io (F12 > Application > Local Storage > token)"
+      description: "Log in at <a href=\"https://app.grass.io\">app.grass.io</a>, press F12 → Application → Local Storage → click <code>https://app.grass.io</code> → copy the <code>token</code> value"
   ports: []
   volumes: []
   command: ""

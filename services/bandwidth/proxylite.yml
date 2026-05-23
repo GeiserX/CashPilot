@@ -21,7 +21,7 @@ docker:
       label: "User ID"
       required: true
       secret: false
-      description: "Your ProxyLite account ID (found in dashboard at lk.proxylite.ru after registration)"
+      description: "Log in at <a href=\"https://lk.proxylite.ru\">lk.proxylite.ru</a> → your User ID is shown on the main dashboard page next to your email"
   ports: []
   volumes: []
   command: ""

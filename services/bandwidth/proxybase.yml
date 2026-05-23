@@ -20,7 +20,7 @@ docker:
       label: "User ID"
       required: true
       secret: false
-      description: "Your ProxyBase user ID from the dashboard"
+      description: "Log in at <a href=\"https://dashboard.proxybase.io\">dashboard.proxybase.io</a> → your User ID is shown in the Docker command on the setup page"
     - key: DEVICE_NAME
       label: "Device Name"
       required: true
