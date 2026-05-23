@@ -14,12 +14,13 @@
   --border-light: rgba(139, 92, 246, 0.22);
 
   --text-primary: #e8e6f0;
-  --text-secondary: #9d95b0;
-  --text-muted: #6b6280;
+  --text-secondary: #aca4c0;
+  --text-muted: #a59cb5;
+  --text-log: #a5d6a7;
 
-  --accent: #f43f5e;
-  --accent-hover: #fb7185;
-  --accent-soft: rgba(244, 63, 94, 0.12);
+  --accent: #fb7185;
+  --accent-hover: #fda4af;
+  --accent-soft: rgba(251, 113, 133, 0.12);
   --accent-secondary: #22d3ee;
   --accent-secondary-soft: rgba(34, 211, 238, 0.10);
 
@@ -27,8 +28,8 @@
   --success-soft: rgba(34, 197, 94, 0.10);
   --warning: #f59e0b;
   --warning-soft: rgba(245, 158, 11, 0.10);
-  --error: #ef4444;
-  --error-soft: rgba(239, 68, 68, 0.10);
+  --error: #f87171;
+  --error-soft: rgba(248, 113, 113, 0.10);
 
   /* Gradients */
   --gradient-rose: linear-gradient(135deg, #f43f5e, #fb7185);
@@ -63,20 +64,21 @@
 
   --text-primary: #1a1028;
   --text-secondary: #4a3f5e;
-  --text-muted: #7a6f92;
+  --text-muted: #4a4060;
+  --text-log: #0f5020;
 
-  --accent: #e11d48;
-  --accent-hover: #f43f5e;
-  --accent-soft: rgba(225, 29, 72, 0.08);
-  --accent-secondary: #0891b2;
-  --accent-secondary-soft: rgba(8, 145, 178, 0.08);
+  --accent: #9f1239;
+  --accent-hover: #be123c;
+  --accent-soft: rgba(159, 18, 57, 0.08);
+  --accent-secondary: #155e75;
+  --accent-secondary-soft: rgba(21, 94, 117, 0.08);
 
-  --success: #16a34a;
-  --success-soft: rgba(22, 163, 74, 0.08);
-  --warning: #d97706;
-  --warning-soft: rgba(217, 119, 6, 0.08);
-  --error: #dc2626;
-  --error-soft: rgba(220, 38, 38, 0.08);
+  --success: #166534;
+  --success-soft: rgba(22, 101, 52, 0.08);
+  --warning: #92400e;
+  --warning-soft: rgba(146, 64, 14, 0.08);
+  --error: #991b1b;
+  --error-soft: rgba(153, 27, 27, 0.08);
 
   --gradient-card: linear-gradient(135deg, rgba(139, 92, 246, 0.03) 0%, rgba(6, 182, 212, 0.02) 100%);
   --gradient-sidebar: linear-gradient(180deg, #f0ecf8 0%, #e8e3f2 100%);
@@ -215,8 +217,10 @@ img { max-width: 100%; }
   transition: color var(--transition);
 }
 .sidebar-footer-links a:hover { color: var(--text-primary); }
-.sidebar-sponsor-link { color: #db61a2 !important; }
-.sidebar-sponsor-link:hover { color: #bf3984 !important; }
+.sidebar-sponsor-link { color: #e88bb8 !important; }
+.sidebar-sponsor-link:hover { color: #f0a8cc !important; }
+:root[data-theme="light"] .sidebar-sponsor-link { color: #8b1a58 !important; }
+:root[data-theme="light"] .sidebar-sponsor-link:hover { color: #7e1850 !important; }
 .sidebar-footer-version {
   font-size: 0.75rem;
   color: var(--text-muted);
@@ -1333,7 +1337,7 @@ img { max-width: 100%; }
   font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', Consolas, monospace;
   font-size: 0.8rem;
   line-height: 1.6;
-  color: #a5d6a7;
+  color: var(--text-log);
   max-height: 400px;
   overflow-y: auto;
   white-space: pre-wrap;
