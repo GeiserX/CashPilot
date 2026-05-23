@@ -304,10 +304,10 @@ async def _refresh_gauges() -> None:
     m = _metrics
 
     # -- Containers & Workers --
-    m["containers_total"]._metrics.clear()
-    m["container_info"]._metrics.clear()
-    m["container_cpu_percent"]._metrics.clear()
-    m["container_memory_mb"]._metrics.clear()
+    m["containers_total"].clear()
+    m["container_info"].clear()
+    m["container_cpu_percent"].clear()
+    m["container_memory_mb"].clear()
 
     workers = await database.list_workers()
     status_counts: dict[str, int] = {}
@@ -355,14 +355,14 @@ async def _refresh_gauges() -> None:
     for (status, node), count in container_counts.items():
         m["containers_total"].labels(status=status, node=node).set(count)
 
-    m["workers_total"]._metrics.clear()
+    m["workers_total"].clear()
     for st, count in status_counts.items():
         m["workers_total"].labels(status=st).set(count)
 
     # -- Earnings --
     summary = await database.get_earnings_summary()
-    m["earnings_balance"]._metrics.clear()
-    m["earnings_balance_usd"]._metrics.clear()
+    m["earnings_balance"].clear()
+    m["earnings_balance_usd"].clear()
     total_usd = 0.0
     for row in summary:
         platform = row.get("platform", "unknown")
@@ -386,8 +386,8 @@ async def _refresh_gauges() -> None:
 
     # -- Health --
     scores = await database.get_health_scores()
-    m["health_score"]._metrics.clear()
-    m["health_uptime_percent"]._metrics.clear()
+    m["health_score"].clear()
+    m["health_uptime_percent"].clear()
     for entry in scores:
         m["health_score"].labels(service=entry["slug"]).set(entry["score"])
         if entry.get("uptime_pct") is not None:
