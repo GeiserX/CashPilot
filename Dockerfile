@@ -5,7 +5,7 @@ WORKDIR /build
 
 RUN apk add --no-cache gcc musl-dev libffi-dev
 
-COPY --from=ghcr.io/astral-sh/uv:0.11 /uv /bin/uv
+COPY --from=ghcr.io/astral-sh/uv:0.11.16 /uv /bin/uv
 
 COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-dev --no-install-project \
