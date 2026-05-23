@@ -5,16 +5,15 @@ WORKDIR /build
 
 RUN apk add --no-cache gcc musl-dev libffi-dev
 
-COPY requirements.txt .
-RUN python -m venv /opt/venv
-ENV PATH="/opt/venv/bin:$PATH"
-RUN --mount=type=cache,target=/root/.cache/pip \
-    pip install --no-compile -r requirements.txt \
-    && find /opt/venv -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null; \
-       find /opt/venv -type f -name "*.pyc" -delete 2>/dev/null; \
-       find /opt/venv -type f -name "*.pyo" -delete 2>/dev/null; \
-       find /opt/venv -type d -name "tests" -exec rm -rf {} + 2>/dev/null; \
-       find /opt/venv -type d -name "test" -exec rm -rf {} + 2>/dev/null; true
+COPY --from=ghcr.io/astral-sh/uv:0.11 /uv /bin/uv
+
+COPY pyproject.toml uv.lock ./
+RUN uv sync --frozen --no-dev --no-install-project \
+    && find .venv -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null; \
+       find .venv -type f -name "*.pyc" -delete 2>/dev/null; \
+       find .venv -type f -name "*.pyo" -delete 2>/dev/null; \
+       find .venv -type d -name "tests" -exec rm -rf {} + 2>/dev/null; \
+       find .venv -type d -name "test" -exec rm -rf {} + 2>/dev/null; true
 
 # -- Runtime stage --
 FROM python:3.14-alpine
@@ -27,16 +26,16 @@ LABEL org.opencontainers.image.licenses="GPL-3.0"
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    PATH="/opt/venv/bin:$PATH"
+    PATH="/app/.venv/bin:$PATH"
 
 RUN apk add --no-cache su-exec
-
-COPY --from=builder /opt/venv /opt/venv
 
 RUN adduser -D -u 1000 cashpilot \
     && mkdir -p /data && chown cashpilot:root /data
 
 WORKDIR /app
+
+COPY --from=builder /build/.venv ./.venv
 
 COPY --chown=cashpilot:root app/ ./app/
 COPY --chown=cashpilot:root services/ ./services/
