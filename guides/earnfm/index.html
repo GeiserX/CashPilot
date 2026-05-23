@@ -847,10 +847,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#2-get-your-credentials" class="md-nav__link">
+  <a href="#2-get-your-api-key" class="md-nav__link">
     <span class="md-ellipsis">
       
-        2. Get your credentials
+        2. Get your API key
       
     </span>
   </a>
@@ -2435,10 +2435,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#2-get-your-credentials" class="md-nav__link">
+  <a href="#2-get-your-api-key" class="md-nav__link">
     <span class="md-ellipsis">
       
-        2. Get your credentials
+        2. Get your API key
       
     </span>
   </a>
@@ -2520,7 +2520,7 @@
 <strong>Website:</strong> <a href="https://earn.fm">https://earn.fm</a></p>
 </blockquote>
 <h2 id="description">Description<a class="headerlink" href="#description" title="Permanent link">&para;</a></h2>
-<p>Earn.fm pays you for sharing your internet bandwidth. It authenticates via Supabase using email and password. Lightweight Docker image with straightforward deployment.</p>
+<p>Earn.fm pays you for sharing your internet bandwidth. Authenticates via a UUID API key from the dashboard. Lightweight Docker image with straightforward deployment.</p>
 <h2 id="earning-estimates">Earning Estimates<a class="headerlink" href="#earning-estimates" title="Permanent link">&para;</a></h2>
 <table>
 <thead>
@@ -2589,10 +2589,10 @@
 <h2 id="setup-instructions">Setup Instructions<a class="headerlink" href="#setup-instructions" title="Permanent link">&para;</a></h2>
 <h3 id="1-create-an-account">1. Create an account<a class="headerlink" href="#1-create-an-account" title="Permanent link">&para;</a></h3>
 <p>Sign up at <a href="https://earn.fm/ref/GEISYB91">Earn.fm</a>.</p>
-<h3 id="2-get-your-credentials">2. Get your credentials<a class="headerlink" href="#2-get-your-credentials" title="Permanent link">&para;</a></h3>
-<p>After signing up, you'll use your account email and password for Docker deployment.</p>
+<h3 id="2-get-your-api-key">2. Get your API key<a class="headerlink" href="#2-get-your-api-key" title="Permanent link">&para;</a></h3>
+<p>After signing up, go to <a href="https://app.earn.fm">app.earn.fm</a> &gt; Account Settings and copy your UUID API key.</p>
 <h3 id="3-deploy-with-cashpilot">3. Deploy with CashPilot<a class="headerlink" href="#3-deploy-with-cashpilot" title="Permanent link">&para;</a></h3>
-<p>In the CashPilot web UI, find <strong>Earn.fm</strong> in the service catalog and click <strong>Deploy</strong>. Enter the required credentials and CashPilot will handle the rest.</p>
+<p>In the CashPilot web UI, find <strong>Earn.fm</strong> in the service catalog and click <strong>Deploy</strong>. Enter your API token and CashPilot will handle the rest.</p>
 <h2 id="docker-configuration">Docker Configuration<a class="headerlink" href="#docker-configuration" title="Permanent link">&para;</a></h2>
 <ul>
 <li><strong>Image:</strong> <code>earnfm/earnfm-client</code></li>
@@ -2611,18 +2611,11 @@
 </thead>
 <tbody>
 <tr>
-<td><code>EARNFM_EMAIL</code></td>
-<td>Email</td>
-<td style="text-align: center;">Yes</td>
-<td style="text-align: center;">No</td>
-<td>Your Earn.fm account email</td>
-</tr>
-<tr>
-<td><code>EARNFM_PASSWORD</code></td>
-<td>Password</td>
+<td><code>EARNFM_TOKEN</code></td>
+<td>API Key</td>
 <td style="text-align: center;">Yes</td>
 <td style="text-align: center;">Yes</td>
-<td>Your Earn.fm account password (used for Supabase auth)</td>
+<td>UUID API key from app.earn.fm &gt; Account Settings</td>
 </tr>
 </tbody>
 </table>
