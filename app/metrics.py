@@ -258,7 +258,9 @@ def setup(app: FastAPI) -> None:
                 _metrics["http_request_duration_seconds"].labels(method=method, path=path).observe(duration)
                 return response
             except Exception:
+                duration = time.time() - start
                 _metrics["http_requests_total"].labels(method=method, path=path, status="500").inc()
+                _metrics["http_request_duration_seconds"].labels(method=method, path=path).observe(duration)
                 raise
             finally:
                 _metrics["http_requests_in_progress"].labels(method=method).dec()

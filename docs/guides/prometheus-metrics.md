@@ -13,6 +13,8 @@ environment:
 
 Metrics are exposed at `GET /metrics` (unauthenticated, per Prometheus convention).
 
+> **Security:** The `/metrics` endpoint exposes operational data (earnings balances, worker hostnames, container status). Keep it accessible only from trusted networks (LAN, Tailscale, VPN) or protect it behind a reverse proxy with IP allowlist/authentication.
+
 ## Scrape Configuration
 
 Add to your `prometheus.yml`:

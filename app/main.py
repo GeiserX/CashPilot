@@ -936,16 +936,18 @@ async def api_deploy(request: Request, slug: str, body: DeployRequest, worker_id
 async def api_stop(request: Request, slug: str, worker_id: int | None = None) -> dict[str, str]:
     _require_writer(request)
     worker_id = await _resolve_worker_id(worker_id)
+    result = await _proxy_worker_command(worker_id, "stop", slug)
     metrics.record_container_lifecycle("stop", slug)
-    return await _proxy_worker_command(worker_id, "stop", slug)
+    return result
 
 
 @app.post("/api/restart/{slug}")
 async def api_restart(request: Request, slug: str, worker_id: int | None = None) -> dict[str, str]:
     _require_writer(request)
     worker_id = await _resolve_worker_id(worker_id)
+    result = await _proxy_worker_command(worker_id, "restart", slug)
     metrics.record_container_lifecycle("restart", slug)
-    return await _proxy_worker_command(worker_id, "restart", slug)
+    return result
 
 
 @app.delete("/api/remove/{slug}")
