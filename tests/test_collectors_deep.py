@@ -500,3 +500,86 @@ class TestBitpingDeep:
             result = asyncio.run(c.collect())
         assert result.error is None
         assert result.balance == 0.25
+
+
+# ---------------------------------------------------------------------------
+# Anyone Protocol — AO dry-run
+# ---------------------------------------------------------------------------
+
+
+class TestAnyoneProtocolDeep:
+    def test_collect_success(self):
+        from app.collectors.anyone import AnyoneCollector
+
+        ao_resp = _mock_response(
+            200,
+            {"Messages": [{"Data": "5000000000000000000"}]},
+        )
+        price_resp = _mock_response(200, {"airtor-protocol": {"usd": 0.10}})
+
+        client = _make_async_client()
+        client.post.return_value = ao_resp
+        client.get.return_value = price_resp
+
+        with patch("app.collectors.anyone.httpx.AsyncClient", return_value=client):
+            c = AnyoneCollector(fingerprints="ABC123")
+            result = asyncio.run(c.collect())
+        assert result.error is None
+        assert result.balance == 0.50
+        assert result.currency == "USD"
+
+    def test_collect_no_fingerprints(self):
+        from app.collectors.anyone import AnyoneCollector
+
+        c = AnyoneCollector(fingerprints="")
+        result = asyncio.run(c.collect())
+        assert result.error is not None
+        assert "fingerprints" in result.error.lower()
+
+    def test_collect_ao_error(self):
+        from app.collectors.anyone import AnyoneCollector
+
+        ao_resp = _mock_response(200, {"error": "Process scheduler not found"})
+
+        client = _make_async_client()
+        client.post.return_value = ao_resp
+
+        with patch("app.collectors.anyone.httpx.AsyncClient", return_value=client):
+            c = AnyoneCollector(fingerprints="ABC123")
+            result = asyncio.run(c.collect())
+        assert result.error is not None
+        assert "AO CU error" in result.error
+
+    def test_collect_multiple_fingerprints(self):
+        from app.collectors.anyone import AnyoneCollector
+
+        ao_resp1 = _mock_response(200, {"Messages": [{"Data": "2000000000000000000"}]})
+        ao_resp2 = _mock_response(200, {"Messages": [{"Data": "3000000000000000000"}]})
+        price_resp = _mock_response(200, {"airtor-protocol": {"usd": 0.10}})
+
+        client = _make_async_client()
+        client.post.side_effect = [ao_resp1, ao_resp2]
+        client.get.return_value = price_resp
+
+        with patch("app.collectors.anyone.httpx.AsyncClient", return_value=client):
+            c = AnyoneCollector(fingerprints="FP1,FP2")
+            result = asyncio.run(c.collect())
+        assert result.error is None
+        assert result.balance == 0.50
+
+    def test_collect_no_price_returns_tokens(self):
+        from app.collectors.anyone import AnyoneCollector
+
+        ao_resp = _mock_response(200, {"Messages": [{"Data": "1000000000000000000"}]})
+        price_resp = _mock_response(200, {})
+
+        client = _make_async_client()
+        client.post.return_value = ao_resp
+        client.get.return_value = price_resp
+
+        with patch("app.collectors.anyone.httpx.AsyncClient", return_value=client):
+            c = AnyoneCollector(fingerprints="ABC123")
+            result = asyncio.run(c.collect())
+        assert result.error is None
+        assert result.balance == 1.0
+        assert result.currency == "ANYONE"

@@ -9,6 +9,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+from app.collectors.anyone import AnyoneCollector
 from app.collectors.base import BaseCollector, EarningsResult
 from app.collectors.bitping import BitpingCollector
 from app.collectors.bytelixir import BytelixirCollector
@@ -29,6 +30,7 @@ logger = logging.getLogger(__name__)
 
 # slug -> collector class
 COLLECTOR_MAP: dict[str, type[BaseCollector]] = {
+    "anyone-protocol": AnyoneCollector,
     "honeygain": HoneygainCollector,
     "earnapp": EarnAppCollector,
     "iproyal": IPRoyalCollector,
@@ -47,6 +49,7 @@ COLLECTOR_MAP: dict[str, type[BaseCollector]] = {
 
 # Map of slug -> list of config keys needed to instantiate the collector
 _COLLECTOR_ARGS: dict[str, list[str]] = {
+    "anyone-protocol": ["fingerprints"],
     "honeygain": ["email", "password"],
     "earnapp": ["oauth_token"],
     "iproyal": ["email", "password"],
