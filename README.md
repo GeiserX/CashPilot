@@ -256,6 +256,7 @@ CashPilot monitors container health continuously. If a service container exits u
 
 | Project | Type | Description |
 |---------|------|-------------|
+| [CashPilot-Desktop](https://github.com/GeiserX/CashPilot-Desktop) | Desktop App | Native cross-platform desktop dashboard for monitoring your fleet |
 | [CashPilot-android](https://github.com/GeiserX/CashPilot-android) | Android Agent | Monitoring agent for passive income apps running on Android devices |
 | [cashpilot-mcp](https://github.com/GeiserX/cashpilot-mcp) | MCP Server | Monitor earnings from AI assistants via the Model Context Protocol |
 | [cashpilot-ha](https://github.com/GeiserX/cashpilot-ha) | Home Assistant Integration | Earnings and service status sensors for your smart home dashboard |
