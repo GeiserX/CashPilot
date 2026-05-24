@@ -96,7 +96,7 @@ class AnyoneCollector(BaseCollector):
             total_tokens = 0.0
 
             for fp in self.fingerprints:
-                tokens = await self._get_rewards_for_fingerprint(client, fp)
+                tokens = await self._retry(lambda fp=fp: self._get_rewards_for_fingerprint(client, fp))
                 total_tokens += tokens
                 logger.debug("Fingerprint %s: %.6f ANYONE", fp, tokens)
 
@@ -107,7 +107,7 @@ class AnyoneCollector(BaseCollector):
                     currency="ANYONE",
                 )
 
-            price = await self._get_token_price(client)
+            price = await self._retry(lambda: self._get_token_price(client))
             if price <= 0:
                 return EarningsResult(
                     platform=self.platform,
