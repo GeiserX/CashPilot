@@ -228,7 +228,7 @@ Bandwidth sharing services generally route legitimate traffic (market research, 
 
 **How much can I earn?**
 
-Earnings vary widely based on location, number of devices, and which services you run. A realistic expectation for a single residential server running 10-15 services is **$30 - $100/month**. Adding more servers or GPU compute services can increase this significantly. The dashboard shows your actual earnings over time so you can optimize.
+Earnings vary widely based on location, ISP, number of devices, and which services you run. The dashboard tracks your actual earnings over time so you can optimize your setup.
 
 **Can I run on a VPS or cloud server?**
 
@@ -256,7 +256,6 @@ CashPilot monitors container health continuously. If a service container exits u
 
 | Project | Type | Description |
 |---------|------|-------------|
-| [CashPilot-Desktop](https://github.com/GeiserX/CashPilot-Desktop) | Desktop App | Native cross-platform desktop dashboard for monitoring your fleet |
 | [CashPilot-android](https://github.com/GeiserX/CashPilot-android) | Android Agent | Monitoring agent for passive income apps running on Android devices |
 | [cashpilot-mcp](https://github.com/GeiserX/cashpilot-mcp) | MCP Server | Monitor earnings from AI assistants via the Model Context Protocol |
 | [cashpilot-ha](https://github.com/GeiserX/cashpilot-ha) | Home Assistant Integration | Earnings and service status sensors for your smart home dashboard |
