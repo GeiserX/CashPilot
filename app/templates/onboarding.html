@@ -1,231 +1,492 @@
-{% extends "base.html" %}
-{% block title %}Welcome - CashPilot{% endblock %}
-{% block page %}onboarding{% endblock %}
-{% block topbar_title %}Welcome to CashPilot{% endblock %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="color-scheme" content="dark">
+  <title>Welcome - CashPilot</title>
+  <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" onload="this.onload=null;this.rel='stylesheet'">
+  <noscript><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet"></noscript>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
 
-{% block content %}
-<!-- Onboarding overlay -->
-<div class="onboarding-overlay" id="onboarding">
-  <div class="onboarding-card">
-    <!-- Step indicators -->
-    <div class="onboarding-steps">
-      <div class="onboarding-step active" data-step="1">1</div>
-      <div class="onboarding-step-line"></div>
-      <div class="onboarding-step" data-step="2">2</div>
-      <div class="onboarding-step-line"></div>
-      <div class="onboarding-step" data-step="3">3</div>
-      <div class="onboarding-step-line"></div>
-      <div class="onboarding-step" data-step="4">4</div>
-    </div>
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #06060f;
+      color: #e4e4e7;
+      height: 100vh;
+      overflow: hidden;
+      position: relative;
+    }
 
-    <!-- Step 1: Welcome -->
-    <div class="onboarding-panel active" id="ob-step-1">
-      <div class="onboarding-icon">
-        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-          <line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/>
-        </svg>
-      </div>
-      <h2>Welcome to CashPilot</h2>
-      <p class="onboarding-desc">Your self-hosted passive income platform. Let's get you set up in a few quick steps.</p>
-      <button class="btn btn-primary btn-lg" onclick="CP.obNext(2)">Get Started</button>
-    </div>
+    .synthwave-bg {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 0;
+    }
 
-    <!-- Step 2: What's your situation? -->
-    <div class="onboarding-panel" id="ob-step-2">
-      <h2>What's your situation?</h2>
-      <p class="onboarding-desc">This helps us tailor the setup experience for you.</p>
-      <div class="onboarding-options">
-        <label class="onboarding-option">
-          <input type="radio" name="setup_mode" value="fresh">
-          <div class="onboarding-option-card">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/>
-            </svg>
-            <strong>Starting fresh</strong>
-            <span>I'm new to passive income services. Guide me through signing up and deploying everything.</span>
-          </div>
-        </label>
-        <label class="onboarding-option">
-          <input type="radio" name="setup_mode" value="monitoring">
-          <div class="onboarding-option-card">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
-            </svg>
-            <strong>Already running services</strong>
-            <span>I have containers running (e.g. money4band, manual Docker). I just want earnings tracking and a unified dashboard.</span>
-          </div>
-        </label>
-        <label class="onboarding-option">
-          <input type="radio" name="setup_mode" value="mixed">
-          <div class="onboarding-option-card">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/>
-            </svg>
-            <strong>Mix of both</strong>
-            <span>Some services are running, but I want to add more through CashPilot.</span>
-          </div>
-        </label>
-      </div>
-      <div class="onboarding-actions">
-        <button class="btn btn-ghost" onclick="CP.obNext(1)">Back</button>
-        <button class="btn btn-primary" onclick="CP.obNext(3)">Continue</button>
-      </div>
-    </div>
+    .content-overlay {
+      position: absolute;
+      inset: 0;
+      z-index: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 2rem;
+    }
 
-    <!-- Step 3: What do you want to share? -->
-    <div class="onboarding-panel" id="ob-step-3">
-      <h2>What would you like to share?</h2>
-      <p class="onboarding-desc">Select the resource types you're interested in. You can change this anytime.</p>
-      <div class="onboarding-options">
-        <label class="onboarding-option">
-          <input type="checkbox" name="category" value="bandwidth" checked>
-          <div class="onboarding-option-card">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M5 12.55a11 11 0 0114.08 0"/><path d="M1.42 9a16 16 0 0121.16 0"/><path d="M8.53 16.11a6 6 0 016.95 0"/><line x1="12" y1="20" x2="12.01" y2="20"/>
-            </svg>
-            <strong>Bandwidth</strong>
-            <span>Share your internet connection</span>
-            <span class="onboarding-est">$30-$80/mo across all services</span>
-          </div>
-        </label>
-        <label class="onboarding-option">
-          <input type="checkbox" name="category" value="depin">
-          <div class="onboarding-option-card">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
-            </svg>
-            <strong>DePIN Networks</strong>
-            <span>Earn crypto tokens for bandwidth</span>
-            <span class="onboarding-est">$10-$50/mo in token rewards</span>
-          </div>
-        </label>
-        <label class="onboarding-option">
-          <input type="checkbox" name="category" value="storage">
-          <div class="onboarding-option-card">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/>
-            </svg>
-            <strong>Storage</strong>
-            <span>Rent out spare disk space</span>
-            <span class="onboarding-est">$2-$15/mo per TB</span>
-          </div>
-        </label>
-        <label class="onboarding-option">
-          <input type="checkbox" name="category" value="compute">
-          <div class="onboarding-option-card">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <rect x="4" y="4" width="16" height="16" rx="2" ry="2"/><rect x="9" y="9" width="6" height="6"/><line x1="9" y1="1" x2="9" y2="4"/><line x1="15" y1="1" x2="15" y2="4"/><line x1="9" y1="20" x2="9" y2="23"/><line x1="15" y1="20" x2="15" y2="23"/><line x1="20" y1="9" x2="23" y2="9"/><line x1="20" y1="14" x2="23" y2="14"/><line x1="1" y1="9" x2="4" y2="9"/><line x1="1" y1="14" x2="4" y2="14"/>
-            </svg>
-            <strong>GPU Compute</strong>
-            <span>Rent your GPU for AI workloads</span>
-            <span class="onboarding-est">$50-$300/mo per GPU</span>
-          </div>
-        </label>
-      </div>
-      <div class="onboarding-actions">
-        <button class="btn btn-ghost" onclick="CP.obNext(2)">Back</button>
-        <button class="btn btn-primary" onclick="CP.obSaveAndFinish()">Continue</button>
-      </div>
-    </div>
+    .container {
+      max-width: 440px;
+      width: 100%;
+      text-align: center;
+      position: relative;
+    }
 
-    <!-- Step 4: Ready (dynamic based on setup_mode) -->
-    <div class="onboarding-panel" id="ob-step-4">
-      <div class="onboarding-icon">
-        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--success)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>
-        </svg>
+    .step { display: none; }
+    .step.active {
+      display: block;
+      animation: fadeIn 0.35s ease-out;
+    }
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .card {
+      background: rgba(10, 8, 20, 0.8);
+      backdrop-filter: blur(12px);
+      border: 1px solid rgba(139, 92, 246, 0.15);
+      border-radius: 16px;
+      padding: 2.5rem;
+      box-shadow: 0 16px 48px rgba(0, 0, 0, 0.5), 0 0 1px rgba(139, 92, 246, 0.2);
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+      margin-bottom: 0.5rem;
+    }
+    .brand-text {
+      font-size: 1.6rem;
+      font-weight: 700;
+      background: linear-gradient(135deg, #fb7185, #e11d48);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    h1 {
+      font-size: 1.8rem;
+      font-weight: 700;
+      margin-bottom: 0.5rem;
+      color: #e4e4e7;
+      letter-spacing: -0.02em;
+    }
+
+    .subtitle {
+      color: #a1a1aa;
+      margin-bottom: 1.5rem;
+      font-size: 1rem;
+      font-weight: 400;
+    }
+
+    .field {
+      margin-bottom: 1rem;
+      text-align: left;
+    }
+    .field label {
+      display: block;
+      color: #a1a1aa;
+      font-size: 0.85rem;
+      margin-bottom: 0.35rem;
+      font-weight: 500;
+    }
+    .field input {
+      width: 100%;
+      padding: 0.7rem 0.85rem;
+      background: rgba(6, 6, 15, 0.8);
+      border: 1px solid rgba(63, 63, 70, 0.5);
+      border-radius: 8px;
+      color: #e4e4e7;
+      font-size: 0.95rem;
+      font-family: inherit;
+      outline: none;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+    .field input:focus {
+      border-color: #fb7185;
+      box-shadow: 0 0 0 2px rgba(251, 113, 133, 0.12), 0 0 16px rgba(251, 113, 133, 0.1);
+    }
+
+    .btn {
+      display: inline-block;
+      padding: 0.8rem 2.2rem;
+      background: linear-gradient(135deg, #fb7185, #e11d48);
+      color: #fff;
+      border-radius: 50px;
+      font-weight: 600;
+      cursor: pointer;
+      border: none;
+      font-size: 1rem;
+      font-family: inherit;
+      transition: transform 0.2s, box-shadow 0.3s;
+      box-shadow: 0 4px 20px rgba(251, 113, 133, 0.3);
+      text-decoration: none;
+    }
+    .btn:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 6px 28px rgba(251, 113, 133, 0.45);
+    }
+    .btn:disabled {
+      background: #27272a;
+      color: #52525b;
+      cursor: not-allowed;
+      box-shadow: none;
+      transform: none;
+    }
+
+    .btn-ghost {
+      background: transparent;
+      border: 1px solid rgba(63, 63, 70, 0.5);
+      box-shadow: none;
+      color: #a1a1aa;
+    }
+    .btn-ghost:hover {
+      border-color: rgba(139, 92, 246, 0.4);
+      color: #e4e4e7;
+      box-shadow: none;
+      transform: none;
+    }
+
+    .error-msg {
+      background: rgba(248, 113, 113, 0.1);
+      color: #f87171;
+      padding: 0.5rem 0.75rem;
+      border-radius: 6px;
+      font-size: 0.85rem;
+      margin-bottom: 1rem;
+      display: none;
+    }
+    .error-msg.visible { display: block; }
+
+    .info-badge {
+      background: rgba(251, 113, 133, 0.1);
+      color: #fb7185;
+      padding: 0.5rem 0.75rem;
+      border-radius: 6px;
+      font-size: 0.85rem;
+      margin-bottom: 1rem;
+    }
+
+    .actions {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.75rem;
+      margin-top: 1.5rem;
+    }
+
+    .step-dots {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+      margin-bottom: 1.5rem;
+    }
+    .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #27272a;
+      transition: background 0.3s, box-shadow 0.3s;
+    }
+    .dot.active {
+      background: #fb7185;
+      box-shadow: 0 0 8px rgba(251, 113, 133, 0.4);
+    }
+
+    .success-icon {
+      width: 64px;
+      height: 64px;
+      margin: 0 auto 1rem;
+      border-radius: 50%;
+      background: rgba(34, 197, 94, 0.1);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .spinner {
+      width: 18px;
+      height: 18px;
+      border: 2px solid transparent;
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin 0.6s linear infinite;
+      display: inline-block;
+      vertical-align: middle;
+      margin-right: 0.5rem;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+  <!-- Synthwave background -->
+  <svg class="synthwave-bg" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 800" preserveAspectRatio="xMidYMid slice">
+    <defs>
+      <linearGradient id="sky" x1="0%" y1="0%" x2="0%" y2="100%">
+        <stop offset="0%" stop-color="#06060f"/>
+        <stop offset="25%" stop-color="#0d0022"/>
+        <stop offset="40%" stop-color="#1a003a"/>
+        <stop offset="50%" stop-color="#2d0055"/>
+        <stop offset="100%" stop-color="#06060f"/>
+      </linearGradient>
+      <linearGradient id="sun" x1="0%" y1="0%" x2="0%" y2="100%">
+        <stop offset="0%" stop-color="#fde68a"/>
+        <stop offset="25%" stop-color="#fbbf24"/>
+        <stop offset="45%" stop-color="#fb923c"/>
+        <stop offset="65%" stop-color="#e11d48"/>
+        <stop offset="85%" stop-color="#9f1239"/>
+        <stop offset="100%" stop-color="#6d28d9"/>
+      </linearGradient>
+      <radialGradient id="halo" cx="50%" cy="50%">
+        <stop offset="35%" stop-color="#fb923c" stop-opacity="0.2"/>
+        <stop offset="65%" stop-color="#e11d48" stop-opacity="0.08"/>
+        <stop offset="100%" stop-color="transparent"/>
+      </radialGradient>
+      <clipPath id="sun-clip"><circle cx="600" cy="240" r="120"/></clipPath>
+      <linearGradient id="reflect" x1="0%" y1="0%" x2="0%" y2="100%">
+        <stop offset="0%" stop-color="#fb923c" stop-opacity="0.12"/>
+        <stop offset="100%" stop-color="transparent"/>
+      </linearGradient>
+    </defs>
+    <rect width="1200" height="800" fill="url(#sky)"/>
+    <g fill="#fff">
+      <circle cx="80" cy="30" r="1.2" opacity="0.8"/><circle cx="220" cy="70" r="0.7" opacity="0.5"/>
+      <circle cx="370" cy="20" r="1" opacity="0.7"/><circle cx="520" cy="55" r="0.8" opacity="0.4"/>
+      <circle cx="680" cy="35" r="1.1" opacity="0.6"/><circle cx="840" cy="60" r="0.6" opacity="0.4"/>
+      <circle cx="980" cy="25" r="1.2" opacity="0.7"/><circle cx="1120" cy="50" r="0.9" opacity="0.6"/>
+    </g>
+    <rect x="0" y="237" width="1200" height="3" fill="#fb7185" opacity="0.8"/>
+    <rect x="0" y="236" width="1200" height="1" fill="#fde68a" opacity="0.3"/>
+    <circle cx="600" cy="240" r="180" fill="url(#halo)"/>
+    <circle cx="600" cy="240" r="120" fill="url(#sun)"/>
+    <g clip-path="url(#sun-clip)">
+      <rect x="475" y="240" width="250" height="3" fill="#06060f"/>
+      <rect x="475" y="249" width="250" height="5" fill="#06060f"/>
+      <rect x="475" y="260" width="250" height="7" fill="#06060f"/>
+      <rect x="475" y="273" width="250" height="9" fill="#06060f"/>
+      <rect x="475" y="288" width="250" height="11" fill="#06060f"/>
+      <rect x="475" y="306" width="250" height="14" fill="#06060f"/>
+      <rect x="475" y="328" width="250" height="18" fill="#06060f"/>
+      <g transform="translate(600,200) rotate(27)">
+        <path d="M0,-25 L2.5,-5 L27,2 L2.5,4.5 L3.5,11 L0,7.5 L-3.5,11 L-2.5,4.5 L-27,2 L-2.5,-5 Z" fill="#06060f" opacity="0.7"/>
+      </g>
+    </g>
+    <ellipse cx="600" cy="280" rx="80" ry="20" fill="url(#reflect)"/>
+    <g stroke="#8b5cf6" opacity="0.4">
+      <line x1="0" y1="280" x2="1200" y2="280" stroke-width="0.7"/>
+      <line x1="0" y1="330" x2="1200" y2="330" stroke-width="0.6"/>
+      <line x1="0" y1="390" x2="1200" y2="390" stroke-width="0.6"/>
+      <line x1="0" y1="460" x2="1200" y2="460" stroke-width="0.5"/>
+      <line x1="0" y1="540" x2="1200" y2="540" stroke-width="0.5"/>
+      <line x1="0" y1="635" x2="1200" y2="635" stroke-width="0.4"/>
+      <line x1="0" y1="740" x2="1200" y2="740" stroke-width="0.4"/>
+    </g>
+    <g stroke="#fb7185" opacity="0.15">
+      <line x1="600" y1="242" x2="-50" y2="800" stroke-width="0.6"/>
+      <line x1="600" y1="242" x2="150" y2="800" stroke-width="0.6"/>
+      <line x1="600" y1="242" x2="300" y2="800" stroke-width="0.6"/>
+      <line x1="600" y1="242" x2="450" y2="800" stroke-width="0.6"/>
+      <line x1="600" y1="242" x2="600" y2="800" stroke-width="0.6"/>
+      <line x1="600" y1="242" x2="750" y2="800" stroke-width="0.6"/>
+      <line x1="600" y1="242" x2="900" y2="800" stroke-width="0.6"/>
+      <line x1="600" y1="242" x2="1050" y2="800" stroke-width="0.6"/>
+      <line x1="600" y1="242" x2="1250" y2="800" stroke-width="0.6"/>
+    </g>
+    <rect x="0" y="3" width="1200" height="2" fill="#fb7185" opacity="0.5"/>
+    <rect x="0" y="795" width="1200" height="2" fill="#22d3ee" opacity="0.3"/>
+  </svg>
+
+  <!-- Content -->
+  <div class="content-overlay">
+    <div class="container">
+      <!-- Step 1: Welcome -->
+      <div class="step active" id="step-1">
+        <div class="card">
+          <div class="brand">
+            <svg width="28" height="28" viewBox="0 0 32 32">
+              <defs>
+                <linearGradient id="cpSun" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stop-color="#fde68a"/>
+                  <stop offset="35%" stop-color="#fb923c"/>
+                  <stop offset="65%" stop-color="#e11d48"/>
+                  <stop offset="100%" stop-color="#6d28d9"/>
+                </linearGradient>
+                <mask id="cpMask">
+                  <circle cx="16" cy="16" r="12" fill="white"/>
+                  <rect x="0" y="16" width="32" height="1" fill="black"/>
+                  <rect x="0" y="18.5" width="32" height="1.5" fill="black"/>
+                  <rect x="0" y="21.5" width="32" height="2.5" fill="black"/>
+                  <rect x="0" y="25.5" width="32" height="4" fill="black"/>
+                </mask>
+              </defs>
+              <circle cx="16" cy="16" r="12" fill="url(#cpSun)" mask="url(#cpMask)"/>
+            </svg>
+            <span class="brand-text">CashPilot</span>
+          </div>
+          <div class="step-dots">
+            <div class="dot active"></div>
+            <div class="dot"></div>
+            <div class="dot"></div>
+          </div>
+          <h1>Welcome</h1>
+          <p class="subtitle">Your self-hosted passive income platform. Deploy and monitor bandwidth, storage, and compute services via Docker.</p>
+          <button class="btn" onclick="goToStep(2)">Get Started</button>
+        </div>
       </div>
-      <h2 id="ob-finish-title">You're all set!</h2>
-      <p class="onboarding-desc" id="ob-finish-desc"></p>
-      <div class="onboarding-actions" id="ob-finish-actions"></div>
+
+      <!-- Step 2: Create Account -->
+      <div class="step" id="step-2">
+        <div class="card">
+          <div class="brand">
+            <svg width="28" height="28" viewBox="0 0 32 32">
+              <circle cx="16" cy="16" r="12" fill="url(#cpSun)" mask="url(#cpMask)"/>
+            </svg>
+            <span class="brand-text">CashPilot</span>
+          </div>
+          <div class="step-dots">
+            <div class="dot active"></div>
+            <div class="dot active"></div>
+            <div class="dot"></div>
+          </div>
+          <h1>Create Account</h1>
+          <p class="subtitle">Set up your admin account to get started.</p>
+          <div class="info-badge">This will be the owner account with full access.</div>
+          <div class="error-msg" id="reg-error"></div>
+          <form id="register-form" onsubmit="return handleRegister(event)">
+            <div class="field">
+              <label for="username">Username</label>
+              <input type="text" id="username" name="username" required autocomplete="username" autofocus>
+            </div>
+            <div class="field">
+              <label for="password">Password</label>
+              <input type="password" id="password" name="password" required autocomplete="new-password">
+            </div>
+            <div class="field">
+              <label for="password_confirm">Confirm Password</label>
+              <input type="password" id="password_confirm" name="password_confirm" required autocomplete="new-password">
+            </div>
+            <div class="actions">
+              <button type="button" class="btn btn-ghost" onclick="goToStep(1)">Back</button>
+              <button type="submit" class="btn" id="submit-btn">Create Account</button>
+            </div>
+          </form>
+        </div>
+      </div>
+
+      <!-- Step 3: Done -->
+      <div class="step" id="step-3">
+        <div class="card">
+          <div class="brand">
+            <svg width="28" height="28" viewBox="0 0 32 32">
+              <circle cx="16" cy="16" r="12" fill="url(#cpSun)" mask="url(#cpMask)"/>
+            </svg>
+            <span class="brand-text">CashPilot</span>
+          </div>
+          <div class="step-dots">
+            <div class="dot active"></div>
+            <div class="dot active"></div>
+            <div class="dot active"></div>
+          </div>
+          <div class="success-icon">
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#22c55e" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>
+            </svg>
+          </div>
+          <h1>You're all set!</h1>
+          <p class="subtitle">Your account is ready. Let's deploy your first passive income services.</p>
+          <a href="/setup" class="btn">Launch Setup Wizard</a>
+        </div>
+      </div>
     </div>
   </div>
-</div>
-{% endblock %}
 
-{% block scripts %}
-<script>
-(function() {
-  let setupMode = 'fresh';
-
-  CP.obNext = function(step) {
-    // Validation for step 2 -> 3
-    if (step === 3) {
-      const selected = document.querySelector('input[name="setup_mode"]:checked');
-      if (!selected) {
-        CP.toast('Please select your situation', 'warning');
-        return;
-      }
-      setupMode = selected.value;
-    }
-
-    document.querySelectorAll('.onboarding-panel').forEach(p => p.classList.remove('active'));
-    document.querySelectorAll('.onboarding-step').forEach(s => {
-      s.classList.remove('active');
-      if (parseInt(s.dataset.step) <= step) s.classList.add('active');
-    });
-    document.getElementById('ob-step-' + step).classList.add('active');
-  };
-
-  CP.obSaveAndFinish = function() {
-    const categories = Array.from(document.querySelectorAll('input[name="category"]:checked'))
-      .map(cb => cb.value);
-
-    if (categories.length === 0) {
-      CP.toast('Select at least one category', 'warning');
-      return;
-    }
-
-    // Save preferences to server
-    CP.api('/api/preferences', {
-      method: 'POST',
-      body: {
-        setup_mode: setupMode,
-        selected_categories: JSON.stringify(categories),
-        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
-      },
-    }).catch(() => {});
-
-    // Show appropriate finish step
-    const title = document.getElementById('ob-finish-title');
-    const desc = document.getElementById('ob-finish-desc');
-    const actions = document.getElementById('ob-finish-actions');
-
-    const _isOwner = window._userRole === 'owner';
-    if (setupMode === 'fresh') {
-      title.textContent = "Let's deploy your first services!";
-      desc.innerHTML = 'The <strong>Setup Wizard</strong> will guide you through signing up for services and deploying containers.';
-      actions.innerHTML = `
-        <a href="/catalog" class="btn btn-ghost">Browse Catalog</a>
-        <a href="/setup" class="btn btn-primary">Setup Wizard</a>`;
-    } else if (setupMode === 'monitoring') {
-      title.textContent = 'Configure earnings tracking';
-      if (_isOwner) {
-        desc.innerHTML = 'Head to <strong>Settings</strong> to enter your API tokens and credentials. CashPilot will collect your earnings automatically &mdash; no container deployment needed.';
-        actions.innerHTML = `
-          <a href="/" class="btn btn-ghost">Dashboard</a>
-          <a href="/settings" class="btn btn-primary">Configure Credentials</a>`;
-      } else {
-        desc.innerHTML = 'An owner will configure API tokens and credentials. CashPilot will collect your earnings automatically &mdash; no container deployment needed.';
-        actions.innerHTML = `<a href="/" class="btn btn-primary">Dashboard</a>`;
-      }
-    } else {
-      title.textContent = "Let's expand your portfolio!";
-      if (_isOwner) {
-        desc.innerHTML = 'Configure existing services in <strong>Settings</strong>, then use the <strong>Setup Wizard</strong> to deploy new ones.';
-        actions.innerHTML = `
-          <a href="/settings" class="btn btn-ghost">Configure Existing</a>
-          <a href="/setup" class="btn btn-primary">Deploy New Services</a>`;
-      } else {
-        desc.innerHTML = 'Use the <strong>Setup Wizard</strong> to browse and deploy new services.';
-        actions.innerHTML = `
-          <a href="/" class="btn btn-ghost">Dashboard</a>
-          <a href="/setup" class="btn btn-primary">Deploy New Services</a>`;
+  <script>
+    function goToStep(n) {
+      document.querySelectorAll('.step').forEach(s => s.classList.remove('active'));
+      document.getElementById('step-' + n).classList.add('active');
+      if (n === 2) {
+        setTimeout(() => document.getElementById('username').focus(), 100);
       }
     }
 
-    CP.obNext(4);
-  };
-})();
-</script>
-{% endblock %}
+    async function handleRegister(e) {
+      e.preventDefault();
+      const errEl = document.getElementById('reg-error');
+      const btn = document.getElementById('submit-btn');
+      errEl.classList.remove('visible');
+
+      const username = document.getElementById('username').value.trim();
+      const password = document.getElementById('password').value;
+      const passwordConfirm = document.getElementById('password_confirm').value;
+
+      if (password !== passwordConfirm) {
+        errEl.textContent = 'Passwords do not match';
+        errEl.classList.add('visible');
+        return false;
+      }
+      if (password.length < 10) {
+        errEl.textContent = 'Password must be at least 10 characters';
+        errEl.classList.add('visible');
+        return false;
+      }
+
+      btn.disabled = true;
+      btn.innerHTML = '<span class="spinner"></span>Creating...';
+
+      try {
+        const formData = new URLSearchParams();
+        formData.append('username', username);
+        formData.append('password', password);
+        formData.append('password_confirm', passwordConfirm);
+
+        const resp = await fetch('/register', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: formData.toString(),
+          redirect: 'manual',
+        });
+
+        if (resp.type === 'opaqueredirect' || resp.status === 303 || resp.status === 302) {
+          goToStep(3);
+          return false;
+        }
+
+        const html = await resp.text();
+        const match = html.match(/auth-error[^>]*>([^<]+)/);
+        if (match) {
+          errEl.textContent = match[1];
+        } else {
+          errEl.textContent = 'Registration failed. Please try again.';
+        }
+        errEl.classList.add('visible');
+      } catch (err) {
+        errEl.textContent = 'Network error. Please try again.';
+        errEl.classList.add('visible');
+      }
+
+      btn.disabled = false;
+      btn.textContent = 'Create Account';
+      return false;
+    }
+  </script>
+</body>
+</html>

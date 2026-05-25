@@ -387,9 +387,9 @@ def _require_private_network(request: Request) -> None:
 
 @app.get("/login", response_class=HTMLResponse)
 async def page_login(request: Request, error: str = ""):
-    # If no users exist, redirect to register
+    # If no users exist, redirect to onboarding
     if not await database.has_any_users():
-        return RedirectResponse("/register", status_code=303)
+        return RedirectResponse("/onboarding", status_code=303)
     # If already logged in, go to dashboard
     if auth.get_current_user(request):
         return RedirectResponse("/", status_code=303)
@@ -561,8 +561,7 @@ async def do_register(
     user_id = await database.create_user(username, hashed, role)
 
     token = auth.create_session_token(user_id, username, role)
-    # First user goes to onboarding, subsequent users go to dashboard
-    dest = "/onboarding" if is_first else "/"
+    dest = "/setup" if is_first else "/"
     response = RedirectResponse(dest, status_code=303)
     return auth.set_session_cookie(response, token)
 
@@ -580,8 +579,7 @@ async def do_logout():
 
 @app.get("/onboarding", response_class=HTMLResponse)
 async def page_onboarding(request: Request):
-    user = auth.get_current_user(request)
-    if not user:
+    if await database.has_any_users():
         return RedirectResponse("/login", status_code=303)
     return templates.TemplateResponse(request, "onboarding.html")
 
@@ -595,9 +593,8 @@ async def page_onboarding(request: Request):
 async def page_dashboard(request: Request):
     user = auth.get_current_user(request)
     if not user:
-        # Check if first run
         if not await database.has_any_users():
-            return RedirectResponse("/register", status_code=303)
+            return RedirectResponse("/onboarding", status_code=303)
         return RedirectResponse("/login", status_code=303)
     return templates.TemplateResponse(request, "dashboard.html", {"user": user})
 

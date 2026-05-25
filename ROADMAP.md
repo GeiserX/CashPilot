@@ -72,7 +72,7 @@ Turn CashPilot from a deployment tool into an earnings optimization platform. Al
   - [x] Health score displayed on service cards (color-coded badge)
   - [x] GET /api/health/scores endpoint
 - [ ] **Notifications** — webhook/email alerts for container crashes, earnings drops, payout thresholds (collector alerts are in-app only for now)
-- ~~**Auto-claim daily rewards**~~ — deferred; manual claim button covers this (each service has different thresholds and conditions)
+- [ ] **Auto-claim daily rewards** — automated daily reward collection for services that support it (Honeygain lucky pot, Grass daily check-in, etc.); per-service opt-in with schedule configuration
 
 ## v1.2 — Multi-Node Fleet Management ✅
 
