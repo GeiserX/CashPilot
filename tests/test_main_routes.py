@@ -187,14 +187,14 @@ class TestGetAllWorkerContainers:
 
 
 class TestLoginRoute:
-    def test_login_page_redirects_to_register_if_no_users(self, client):
+    def test_login_page_redirects_to_onboarding_if_no_users(self, client):
         with (
             _no_auth(),
             patch("app.main.database.has_any_users", new_callable=AsyncMock, return_value=False),
         ):
             resp = client.get("/login", follow_redirects=False)
             assert resp.status_code == 303
-            assert "/register" in resp.headers["location"]
+            assert "/onboarding" in resp.headers["location"]
 
     def test_login_page_redirects_to_home_if_logged_in(self, client):
         with (
@@ -374,7 +374,7 @@ class TestPageRoutes:
         ):
             resp = client.get("/", follow_redirects=False)
             assert resp.status_code == 303
-            assert "/register" in resp.headers["location"]
+            assert "/onboarding" in resp.headers["location"]
 
     def test_dashboard_not_logged_in_has_users(self, client):
         with (
@@ -435,15 +435,22 @@ class TestPageRoutes:
             resp = client.get("/fleet", follow_redirects=False)
             assert resp.status_code == 303
 
-    def test_onboarding_page(self, client):
-        with _auth_owner():
+    def test_onboarding_page_no_users(self, client):
+        with (
+            _no_auth(),
+            patch("app.main.database.has_any_users", new_callable=AsyncMock, return_value=False),
+        ):
             resp = client.get("/onboarding")
             assert resp.status_code == 200
 
-    def test_onboarding_no_auth(self, client):
-        with _no_auth():
+    def test_onboarding_redirects_when_users_exist(self, client):
+        with (
+            _no_auth(),
+            patch("app.main.database.has_any_users", new_callable=AsyncMock, return_value=True),
+        ):
             resp = client.get("/onboarding", follow_redirects=False)
             assert resp.status_code == 303
+            assert "/login" in resp.headers["location"]
 
 
 # ---------------------------------------------------------------------------
