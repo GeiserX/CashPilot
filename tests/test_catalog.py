@@ -88,3 +88,24 @@ def test_no_duplicate_slugs():
         slugs.append(data["slug"])
     duplicates = [s for s in slugs if slugs.count(s) > 1]
     assert not duplicates, f"Duplicate slugs found: {set(duplicates)}"
+
+
+def test_repocket_container_env_keys():
+    """Regression for #82: the repocket/repocket image reads RP_EMAIL + RP_API_KEY.
+
+    A prior 'audit' (PR #46) renamed these to REPOCKET_EMAIL/REPOCKET_PASSWORD to
+    match the earnings collector's auth model, which silently broke deployment —
+    the container ignores unknown env vars and logs 'User credentials are missing!'.
+    The container env contract is independent of the collector's Firebase login.
+    """
+    repocket = SERVICES_DIR / "bandwidth" / "repocket.yml"
+    with open(repocket) as f:
+        data = yaml.safe_load(f)
+    env_keys = {e["key"] for e in data["docker"]["env"]}
+    assert env_keys == {"RP_EMAIL", "RP_API_KEY"}, (
+        f"Repocket container env must be exactly RP_EMAIL + RP_API_KEY, got {env_keys}"
+    )
+    by_key = {e["key"]: e for e in data["docker"]["env"]}
+    assert by_key["RP_API_KEY"]["secret"] is True, "RP_API_KEY must be marked secret"
+    assert by_key["RP_API_KEY"]["required"] is True, "RP_API_KEY must be required"
+    assert by_key["RP_EMAIL"]["required"] is True, "RP_EMAIL must be required"

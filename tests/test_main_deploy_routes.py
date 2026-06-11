@@ -141,6 +141,45 @@ class TestApiDeploy:
             resp = client.post("/api/deploy/honeygain", json={})
             assert resp.status_code == 401
 
+    def test_deploy_repocket_emits_rp_env_keys(self, client):
+        """#82 guard at the deploy layer: the real repocket catalog entry must
+        produce RP_EMAIL/RP_API_KEY in the container spec sent to the worker.
+
+        Uses the real catalog (no get_service mock), so a future regression that
+        renames the YAML keys OR a refactor of api_deploy that mangles env names
+        is caught independently of the catalog-level test.
+        """
+        captured: dict = {}
+
+        async def _capture_deploy(worker_id, slug, spec):
+            captured["spec"] = spec
+            return {"container_id": "abc123"}
+
+        # Reload the real catalog from disk so this test is independent of any
+        # earlier test that swapped SERVICES_DIR and left the cache polluted.
+        from app import catalog
+
+        catalog.load_services()
+
+        with (
+            _auth_owner(),
+            patch("app.main._resolve_worker_id", new_callable=AsyncMock, return_value=1),
+            patch("app.main._proxy_worker_deploy", side_effect=_capture_deploy),
+            patch("app.main.database.save_deployment", new_callable=AsyncMock),
+            patch("app.main.database.record_health_event", new_callable=AsyncMock),
+        ):
+            resp = client.post(
+                "/api/deploy/repocket",
+                json={"env": {"RP_EMAIL": "me@example.com", "RP_API_KEY": "key123"}},
+            )
+            assert resp.status_code == 200, resp.text
+            spec_env = captured["spec"]["env"]
+            assert set(spec_env) == {"RP_EMAIL", "RP_API_KEY"}, (
+                f"repocket container spec must carry exactly RP_EMAIL + RP_API_KEY, got {set(spec_env)}"
+            )
+            assert spec_env["RP_API_KEY"] == "key123"
+            assert spec_env["RP_EMAIL"] == "me@example.com"
+
 
 # ---------------------------------------------------------------------------
 # Stop / Restart / Start / Remove (service management routes)

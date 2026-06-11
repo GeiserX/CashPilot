@@ -22,7 +22,7 @@ Individual setup and configuration guides for every supported service.
 - [ProxyBase](proxybase.md) -- Bandwidth sharing - crypto payout, user ID auth
 - [ProxyLite](proxylite.md) -- Bandwidth sharing - 15% lifetime referral, works on VPS
 - [ProxyRack](proxyrack.md) -- Bandwidth sharing - UUID per device, works on VPS
-- [Repocket](repocket.md) -- Bandwidth sharing - residential only, max 5 devices, env-based auth
+- [Repocket](repocket.md) -- Bandwidth sharing - residential only, max 5 devices, API key auth
 - [SpeedShare](speedshare.md) -- Bandwidth sharing - residential only, no official Docker
 - [Spide](spide.md) -- Bandwidth sharing - machine ID based
 - [Traffmonetizer](traffmonetizer.md) -- Bandwidth sharing - works on VPS, token-based auth

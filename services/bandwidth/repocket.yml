@@ -6,9 +6,10 @@ website: https://repocket.com
 description: >
   Repocket lets you earn passive income by sharing your unused internet bandwidth.
   Residential IPs earn the most; VPS/datacenter IPs are accepted at lower rates.
-  Max 5 devices and 5 active sessions per account. Authenticates via Firebase
-  using email and password. The Docker image uses environment variables directly.
-short_description: Bandwidth sharing - max 5 devices, email/password auth
+  Max 5 devices and 5 active sessions per account. The Docker container
+  authenticates with your account email and an API key from the Repocket
+  dashboard (not your password).
+short_description: Bandwidth sharing - max 5 devices, API key auth
 
 referral:
   signup_url: "https://repocket.com/"
@@ -17,16 +18,16 @@ docker:
   image: repocket/repocket
   platforms: [linux/amd64, linux/arm64]
   env:
-    - key: REPOCKET_EMAIL
+    - key: RP_EMAIL
       label: "Email"
       required: true
       secret: false
       description: "Your Repocket account email"
-    - key: REPOCKET_PASSWORD
-      label: "Password"
+    - key: RP_API_KEY
+      label: "API Key"
       required: true
       secret: true
-      description: "Your Repocket account password (used for Firebase auth)"
+      description: "Your Repocket API key — log in at <a href=\"https://app.repocket.com/bandwidth-earnings\">app.repocket.com</a> and copy the API key shown on the bandwidth-earnings page (this is NOT your account password)"
   ports: []
   volumes: []
   command: ""
@@ -64,4 +65,4 @@ platforms: [docker, windows, macos, linux, android]
 
 collector:
   type: api
-  notes: "Firebase auth via email/password. Per-device earnings visible."
+  notes: "Earnings collector authenticates separately via Firebase (account email/password) to read the balance — distinct from the container's RP_API_KEY. Per-device earnings visible."
