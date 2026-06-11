@@ -1183,10 +1183,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#2-get-your-credentials" class="md-nav__link">
+  <a href="#2-get-your-api-key" class="md-nav__link">
     <span class="md-ellipsis">
       
-        2. Get your credentials
+        2. Get your API key
       
     </span>
   </a>
@@ -2435,10 +2435,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#2-get-your-credentials" class="md-nav__link">
+  <a href="#2-get-your-api-key" class="md-nav__link">
     <span class="md-ellipsis">
       
-        2. Get your credentials
+        2. Get your API key
       
     </span>
   </a>
@@ -2520,7 +2520,7 @@
 <strong>Website:</strong> <a href="https://repocket.com">https://repocket.com</a></p>
 </blockquote>
 <h2 id="description">Description<a class="headerlink" href="#description" title="Permanent link">&para;</a></h2>
-<p>Repocket lets you earn passive income by sharing your unused internet bandwidth. Residential IPs earn the most; VPS/datacenter IPs are accepted at lower rates. Max 5 devices and 5 active sessions per account. Authenticates via Firebase using email and password. The Docker image uses environment variables directly.</p>
+<p>Repocket lets you earn passive income by sharing your unused internet bandwidth. Residential IPs earn the most; VPS/datacenter IPs are accepted at lower rates. Max 5 devices and 5 active sessions per account. The Docker container authenticates with your account email and an API key from the Repocket dashboard (not your password).</p>
 <h2 id="earning-estimates">Earning Estimates<a class="headerlink" href="#earning-estimates" title="Permanent link">&para;</a></h2>
 <table>
 <thead>
@@ -2589,8 +2589,8 @@
 <h2 id="setup-instructions">Setup Instructions<a class="headerlink" href="#setup-instructions" title="Permanent link">&para;</a></h2>
 <h3 id="1-create-an-account">1. Create an account<a class="headerlink" href="#1-create-an-account" title="Permanent link">&para;</a></h3>
 <p>Sign up at <a href="https://repocket.com/">Repocket</a>.</p>
-<h3 id="2-get-your-credentials">2. Get your credentials<a class="headerlink" href="#2-get-your-credentials" title="Permanent link">&para;</a></h3>
-<p>After signing up, you'll use your account email and password for Docker deployment.</p>
+<h3 id="2-get-your-api-key">2. Get your API key<a class="headerlink" href="#2-get-your-api-key" title="Permanent link">&para;</a></h3>
+<p>Log in at <a href="https://app.repocket.com/bandwidth-earnings">app.repocket.com</a> and copy the <strong>API key</strong> shown on the bandwidth-earnings page. This API key — not your account password — is what the Docker container uses to authenticate.</p>
 <h3 id="3-deploy-with-cashpilot">3. Deploy with CashPilot<a class="headerlink" href="#3-deploy-with-cashpilot" title="Permanent link">&para;</a></h3>
 <p>In the CashPilot web UI, find <strong>Repocket</strong> in the service catalog and click <strong>Deploy</strong>. Enter the required credentials and CashPilot will handle the rest.</p>
 <h2 id="docker-configuration">Docker Configuration<a class="headerlink" href="#docker-configuration" title="Permanent link">&para;</a></h2>
@@ -2611,18 +2611,18 @@
 </thead>
 <tbody>
 <tr>
-<td><code>REPOCKET_EMAIL</code></td>
+<td><code>RP_EMAIL</code></td>
 <td>Email</td>
 <td style="text-align: center;">Yes</td>
 <td style="text-align: center;">No</td>
 <td>Your Repocket account email</td>
 </tr>
 <tr>
-<td><code>REPOCKET_PASSWORD</code></td>
-<td>Password</td>
+<td><code>RP_API_KEY</code></td>
+<td>API Key</td>
 <td style="text-align: center;">Yes</td>
 <td style="text-align: center;">Yes</td>
-<td>Your Repocket account password (used for Firebase auth)</td>
+<td>Your Repocket API key from the dashboard's bandwidth-earnings page (not your account password)</td>
 </tr>
 </tbody>
 </table>
