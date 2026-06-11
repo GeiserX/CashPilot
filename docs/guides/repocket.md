@@ -5,7 +5,7 @@
 
 ## Description
 
-Repocket lets you earn passive income by sharing your unused internet bandwidth. Residential IPs earn the most; VPS/datacenter IPs are accepted at lower rates. Max 5 devices and 5 active sessions per account. Authenticates via Firebase using email and password. The Docker image uses environment variables directly.
+Repocket lets you earn passive income by sharing your unused internet bandwidth. Residential IPs earn the most; VPS/datacenter IPs are accepted at lower rates. Max 5 devices and 5 active sessions per account. The Docker container authenticates with your account email and an API key from the Repocket dashboard (not your password).
 
 ## Earning Estimates
 
@@ -35,9 +35,9 @@ Repocket lets you earn passive income by sharing your unused internet bandwidth.
 
 Sign up at [Repocket](https://repocket.com/).
 
-### 2. Get your credentials
+### 2. Get your API key
 
-After signing up, you'll use your account email and password for Docker deployment.
+Log in at [app.repocket.com](https://app.repocket.com/bandwidth-earnings) and copy the **API key** shown on the bandwidth-earnings page. This API key — not your account password — is what the Docker container uses to authenticate.
 
 ### 3. Deploy with CashPilot
 
@@ -52,5 +52,5 @@ In the CashPilot web UI, find **Repocket** in the service catalog and click **De
 
 | Variable | Label | Required | Secret | Description |
 |----------|-------|:--------:|:------:|-------------|
-| `REPOCKET_EMAIL` | Email | Yes | No | Your Repocket account email |
-| `REPOCKET_PASSWORD` | Password | Yes | Yes | Your Repocket account password (used for Firebase auth) |
+| `RP_EMAIL` | Email | Yes | No | Your Repocket account email |
+| `RP_API_KEY` | API Key | Yes | Yes | Your Repocket API key from the dashboard's bandwidth-earnings page (not your account password) |
