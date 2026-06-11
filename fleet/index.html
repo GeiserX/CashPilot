@@ -648,6 +648,17 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#worker-url-validation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Worker URL Validation
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -2535,6 +2546,17 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#worker-url-validation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Worker URL Validation
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -2633,6 +2655,7 @@
 <li>The UI includes this key when sending commands to workers.</li>
 <li>If not set explicitly, the UI and co-located worker auto-generate a shared key via the <code>/fleet</code> volume.</li>
 </ul>
+<p>The fleet key is <strong>never sent to the browser on page load</strong>. The fleet dashboard reveals it only on an explicit, owner-only action (the <strong>Reveal API Key</strong> button), and copy-to-clipboard fetches it the same way.</p>
 <div class="admonition warning">
 <p class="admonition-title">Security</p>
 <p>The fleet key grants access to container management operations. Treat it as a sensitive credential. Do not expose worker APIs (port 8081) to the public internet.</p>
@@ -2687,6 +2710,21 @@
 <td>--</td>
 <td>Optional separate key granting full owner access (for integrations)</td>
 </tr>
+<tr>
+<td><code>CASHPILOT_WORKER_URL_POLICY</code></td>
+<td><code>permissive</code></td>
+<td>Worker URL validation policy: <code>permissive</code> (LAN + Tailscale work out of the box) or <code>strict</code> (allowlist only)</td>
+</tr>
+<tr>
+<td><code>CASHPILOT_WORKER_ALLOWED_HOSTS</code></td>
+<td>--</td>
+<td>Comma-separated CIDRs and <code>*.suffix</code> hostnames allowed in <code>strict</code> mode, e.g. <code>192.168.10.0/24,100.64.0.0/10,*.ts.net</code></td>
+</tr>
+<tr>
+<td><code>CASHPILOT_WORKER_ALLOW_METADATA</code></td>
+<td><code>false</code></td>
+<td>Escape hatch to permit cloud-metadata IPs as worker targets (leave <code>false</code>)</td>
+</tr>
 </tbody>
 </table>
 <h3 id="worker">Worker<a class="headerlink" href="#worker" title="Permanent link">&para;</a></h3>
@@ -2720,6 +2758,16 @@
 </tr>
 </tbody>
 </table>
+<h3 id="worker-url-validation">Worker URL Validation<a class="headerlink" href="#worker-url-validation" title="Permanent link">&para;</a></h3>
+<p>The UI validates every worker URL before contacting it (the URL is fetched with the fleet bearer token attached, so an unchecked URL is an SSRF risk). Cloud-metadata addresses and loopback/link-local ranges are <strong>always blocked</strong>, and resolved hostnames are re-checked against the same rules to guard against DNS rebinding.</p>
+<ul>
+<li><strong><code>permissive</code></strong> (default): LAN (RFC1918) and Tailscale (CGNAT <code>100.64.0.0/10</code>) workers keep working with no configuration. Only the always-blocked ranges are rejected.</li>
+<li><strong><code>strict</code></strong>: workers must match <code>CASHPILOT_WORKER_ALLOWED_HOSTS</code>. Entries are either CIDRs (<code>192.168.10.0/24</code>) or hostname suffixes (<code>*.ts.net</code>).</li>
+</ul>
+<div class="admonition important">
+<p class="admonition-title">Tailscale in strict mode</p>
+<p>If you use Tailscale and enable <code>strict</code> mode, include <code>100.64.0.0/10</code> in <code>CASHPILOT_WORKER_ALLOWED_HOSTS</code> (and/or <code>*.ts.net</code> for MagicDNS names). Without it, Tailscale workers are rejected.</p>
+</div>
 
 
 

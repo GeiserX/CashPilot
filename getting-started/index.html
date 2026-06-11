@@ -2782,6 +2782,10 @@
 <p class="admonition-title">Secret Key Persistence</p>
 <p>If you don't set <code>CASHPILOT_SECRET_KEY</code>, one is auto-generated on first run and stored in the data volume. If you recreate the volume, stored credentials become unreadable. Set an explicit key in your compose file to avoid this.</p>
 </div>
+<div class="admonition tip">
+<p class="admonition-title">Passwords and secrets in the UI</p>
+<p>Change your own password any time from the avatar menu -&gt; <strong>Change password</strong> (available to all roles); this signs out your other sessions. In <strong>Settings</strong>, stored secrets are write-only: enter a value to change it, or leave the field blank to keep the existing one. Saved credentials are never sent back to the browser.</p>
+</div>
 <h2 id="supported-services">Supported Services<a class="headerlink" href="#supported-services" title="Permanent link">&para;</a></h2>
 <p>CashPilot tracks <strong>49 services</strong> across four categories:</p>
 <ul>
