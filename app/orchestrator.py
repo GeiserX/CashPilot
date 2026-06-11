@@ -1,21 +1,13 @@
 """Docker container orchestrator for CashPilot.
 
-Manages lifecycle (deploy, stop, restart, remove) and status inspection
-for cashpilot-managed containers via the Docker SDK.
-
-CashPilot operates in two modes:
-  - **Direct mode**: Docker socket is mounted. Full container management
-    (deploy, stop, restart, remove) and live monitoring.
-  - **Monitor-only mode**: No Docker socket. CashPilot functions as a
-    dashboard for earnings tracking and service catalog only. Container
-    management endpoints return 503 with a clear message.
+Runs inside the CashPilot Worker, which has the Docker socket mounted.
+Manages container lifecycle (deploy, stop, restart, remove) and status
+inspection for cashpilot-managed containers via the Docker SDK.
 """
 
 from __future__ import annotations
 
 import logging
-import re
-import socket
 import time
 from typing import Any
 
@@ -49,23 +41,23 @@ _status_cache_time: float = 0.0
 
 
 def docker_available() -> bool:
-    """Check whether the Docker socket is accessible. Result is cached."""
+    """Check whether the Docker socket is accessible.
+
+    Only the positive result is memoized. A negative/unknown result is
+    re-probed on every call so a transient daemon blip self-heals.
+    """
     global _docker_available
-    if _docker_available is None:
-        try:
-            client = docker.from_env()
-            client.ping()
-            _docker_available = True
-            client.close()
-        except Exception:
-            _docker_available = False
+    if _docker_available:
+        return True
+    try:
+        client = docker.from_env()
+        client.ping()
+        client.close()
+        _docker_available = True
+    except Exception as exc:
+        logger.debug("Docker ping failed: %s", exc)
+        _docker_available = False
     return _docker_available
-
-
-def reset_docker_status() -> None:
-    """Force re-check of Docker availability on next call."""
-    global _docker_available
-    _docker_available = None
 
 
 def _get_client() -> docker.DockerClient:
@@ -108,128 +100,6 @@ def _find_container(slug: str):
         if matches:
             return matches[0]
         raise ValueError(f"Container for {slug} not found")
-
-
-def deploy_service(
-    slug: str,
-    env_vars: dict[str, str] | None = None,
-    hostname: str | None = None,
-) -> str:
-    """Create and start a container for the given service slug.
-
-    Args:
-        slug: Service identifier (must exist in catalog).
-        env_vars: User-provided environment variables (override defaults).
-        hostname: Optional container hostname.
-
-    Returns:
-        Container ID.
-    """
-    svc = get_service(slug)
-    if not svc:
-        raise ValueError(f"Unknown service: {slug}")
-
-    docker_conf = svc.get("docker", {})
-    image = docker_conf.get("image")
-    if not image:
-        raise ValueError(f"Service {slug} has no Docker image defined")
-
-    client = _get_client()
-    name = _container_name(slug)
-
-    # Remove any existing container with the same name
-    try:
-        old = client.containers.get(name)
-        logger.info("Removing existing container %s", name)
-        old.remove(force=True)
-    except NotFound:
-        pass
-
-    # Build environment: defaults from YAML + user overrides
-    env: dict[str, str] = {}
-    for var in docker_conf.get("env", []):
-        default = var.get("default", "")
-        if default:
-            # Substitute {hostname} placeholder
-            default = default.replace("{hostname}", hostname or socket.gethostname())
-            env[var["key"]] = default
-    if env_vars:
-        env.update(env_vars)
-
-    # Ports: list of "host:container" strings
-    ports: dict[str, int] = {}
-    for mapping in docker_conf.get("ports", []):
-        if ":" in str(mapping):
-            container_port, host_port = str(mapping).split(":", 1)
-            ports[container_port] = int(host_port)
-
-    # Volumes: list of "host:container" strings — resolve ${VAR} in host paths
-    volumes: dict[str, dict[str, str]] = {}
-    for mapping in docker_conf.get("volumes", []):
-        if ":" in str(mapping):
-            parts = str(mapping).split(":")
-            host_path = re.sub(
-                r"\$\{(\w+)\}",
-                lambda m: env.get(m.group(1), m.group(0)),
-                parts[0],
-            )
-            container_path = parts[1]
-            mode = parts[2] if len(parts) > 2 else "rw"
-            volumes[host_path] = {"bind": container_path, "mode": mode}
-
-    # Optional settings
-    network_mode = docker_conf.get("network_mode") or None
-    cap_add = docker_conf.get("cap_add") or None
-    privileged = docker_conf.get("privileged", False)
-    stop_timeout = docker_conf.get("stop_timeout")
-
-    # Command: resolve ${VAR} placeholders from env dict
-    raw_command = docker_conf.get("command") or None
-    command = None
-    if raw_command:
-        resolved = re.sub(
-            r"\$\{(\w+)\}",
-            lambda m: env.get(m.group(1), m.group(0)),
-            raw_command,
-        )
-        command = resolved
-
-    labels = {
-        LABEL_SERVICE: slug,
-        LABEL_MANAGED: "true",
-        LABEL_VERSION: "1",
-        LABEL_CATEGORY: svc.get("category", "bandwidth"),
-        LABEL_DEPLOYED_BY: "direct",
-    }
-
-    logger.info("Pulling image %s", image)
-    try:
-        client.images.pull(image)
-    except APIError as exc:
-        logger.warning("Failed to pull image %s: %s (trying local)", image, exc)
-
-    logger.info("Creating container %s from %s", name, image)
-    run_kwargs: dict[str, Any] = {
-        "image": image,
-        "name": name,
-        "environment": env,
-        "ports": ports if ports and network_mode != "host" else None,
-        "volumes": volumes if volumes else None,
-        "network_mode": network_mode,
-        "cap_add": cap_add,
-        "privileged": privileged,
-        "command": command if command else None,
-        "labels": labels,
-        "hostname": hostname or f"cashpilot-{slug}",
-        "detach": True,
-        "restart_policy": {"Name": "unless-stopped"},
-    }
-    if stop_timeout:
-        run_kwargs["stop_timeout"] = _parse_stop_timeout(stop_timeout)
-    container = client.containers.run(**run_kwargs)
-
-    logger.info("Container %s started: %s", name, container.short_id)
-    return container.id
 
 
 def deploy_raw(

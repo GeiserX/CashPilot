@@ -95,7 +95,10 @@ class RepocketCollector(BaseCollector):
             data = resp.json()
 
             # centsCredited is in cents
-            cents = float(data.get("centsCredited", 0))
+            raw = data.get("centsCredited")
+            if raw is None:
+                raise ValueError("centsCredited field missing — API shape may have changed")
+            cents = float(raw)
             balance_usd = round(cents / 100, 4)
 
             return EarningsResult(

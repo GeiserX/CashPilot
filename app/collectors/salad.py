@@ -57,7 +57,10 @@ class SaladCollector(BaseCollector):
             resp.raise_for_status()
             data = resp.json()
 
-            balance = float(data.get("currentBalance", 0))
+            raw = data.get("currentBalance")
+            if raw is None:
+                raise ValueError("currentBalance field missing — API shape may have changed")
+            balance = float(raw)
 
             return EarningsResult(
                 platform=self.platform,

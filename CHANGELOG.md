@@ -2,6 +2,22 @@
 
 All notable changes to CashPilot are documented here.
 
+## [Unreleased]
+
+### Security
+- Write-only secrets: `GET /api/config` and `/api/env-info` no longer return stored credential values — only a set/not-set indicator. `CASHPILOT_SECRET_KEY` is never sent to the browser
+- Fleet key no longer sent on page load — revealed only via explicit owner-only action (`POST /api/fleet/api-key/reveal`)
+- Changing a password invalidates that user's existing sessions via a per-user epoch; the changer stays logged in
+- SSRF hardening on worker URLs: cloud-metadata IPs (IPv4 `169.254.169.254` + IPv6 `fd00:ec2::254`) always blocked; IPv6 loopback/link-local and IPv4-mapped bypasses closed; DNS-rebinding guard re-validates the resolved IP before each request
+- New opt-in `strict` worker-URL policy; default `permissive` keeps LAN (RFC1918) and Tailscale (CGNAT `100.64.0.0/10`) workers working with no config
+
+### Performance
+- SQLite connection sharing: a single pooled connection per event loop instead of open-per-query — faster dashboard loads and less write contention
+
+### Added
+- Self-service password change `POST /api/users/me/password` (all roles, via the avatar menu) and owner reset `POST /api/users/{id}/password`
+- `CASHPILOT_WORKER_URL_POLICY`, `CASHPILOT_WORKER_ALLOWED_HOSTS`, and `CASHPILOT_WORKER_ALLOW_METADATA` env vars for worker-URL validation
+
 ## [0.2.49] - 2026-03-31
 
 ### Security

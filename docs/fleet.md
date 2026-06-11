@@ -83,6 +83,8 @@ A single shared API key authenticates all fleet communication:
 - The UI includes this key when sending commands to workers.
 - If not set explicitly, the UI and co-located worker auto-generate a shared key via the `/fleet` volume.
 
+The fleet key is **never sent to the browser on page load**. The fleet dashboard reveals it only on an explicit, owner-only action (the **Reveal API Key** button), and copy-to-clipboard fetches it the same way.
+
 !!! warning "Security"
     The fleet key grants access to container management operations. Treat it as a sensitive credential. Do not expose worker APIs (port 8081) to the public internet.
 
@@ -123,6 +125,9 @@ If a worker goes offline (no heartbeat for 180 seconds):
 | `CASHPILOT_API_KEY` | *(auto-generated via /fleet volume)* | Shared secret for worker authentication |
 | `CASHPILOT_SECRET_KEY` | *(auto-generated)* | Encryption key for stored credentials |
 | `CASHPILOT_ADMIN_API_KEY` | -- | Optional separate key granting full owner access (for integrations) |
+| `CASHPILOT_WORKER_URL_POLICY` | `permissive` | Worker URL validation policy: `permissive` (LAN + Tailscale work out of the box) or `strict` (allowlist only) |
+| `CASHPILOT_WORKER_ALLOWED_HOSTS` | -- | Comma-separated CIDRs and `*.suffix` hostnames allowed in `strict` mode, e.g. `192.168.10.0/24,100.64.0.0/10,*.ts.net` |
+| `CASHPILOT_WORKER_ALLOW_METADATA` | `false` | Escape hatch to permit cloud-metadata IPs as worker targets (leave `false`) |
 
 ### Worker
 
@@ -131,3 +136,13 @@ If a worker goes offline (no heartbeat for 180 seconds):
 | `CASHPILOT_UI_URL` | Yes | -- | URL of the CashPilot UI (e.g. `http://192.168.10.100:8080`) |
 | `CASHPILOT_API_KEY` | Yes | -- | Must match the UI's API key |
 | `CASHPILOT_WORKER_NAME` | No | *(hostname)* | Display name for this worker in the fleet dashboard |
+
+### Worker URL Validation
+
+The UI validates every worker URL before contacting it (the URL is fetched with the fleet bearer token attached, so an unchecked URL is an SSRF risk). Cloud-metadata addresses and loopback/link-local ranges are **always blocked**, and resolved hostnames are re-checked against the same rules to guard against DNS rebinding.
+
+- **`permissive`** (default): LAN (RFC1918) and Tailscale (CGNAT `100.64.0.0/10`) workers keep working with no configuration. Only the always-blocked ranges are rejected.
+- **`strict`**: workers must match `CASHPILOT_WORKER_ALLOWED_HOSTS`. Entries are either CIDRs (`192.168.10.0/24`) or hostname suffixes (`*.ts.net`).
+
+!!! important "Tailscale in strict mode"
+    If you use Tailscale and enable `strict` mode, include `100.64.0.0/10` in `CASHPILOT_WORKER_ALLOWED_HOSTS` (and/or `*.ts.net` for MagicDNS names). Without it, Tailscale workers are rejected.

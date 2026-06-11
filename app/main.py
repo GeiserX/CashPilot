@@ -14,6 +14,7 @@ import json
 import logging
 import os
 import re
+import socket
 from collections import defaultdict
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
@@ -22,11 +23,11 @@ from typing import Any
 from urllib.parse import urlparse
 
 import httpx
+from apscheduler.events import EVENT_JOB_ERROR, EVENT_JOB_MISSED
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from fastapi import FastAPI, Form, HTTPException, Request
-from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import JSONResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
-from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 from starlette.middleware.base import BaseHTTPMiddleware
 
@@ -221,6 +222,7 @@ async def _run_collection() -> None:
             logger.error("Collection run failed: %s", exc)
             success = False
             platforms_ok = 0
+            _collector_alerts = [{"platform": "collection", "error": "Collection run failed — see server logs"}]
         finally:
             metrics.record_collection_end(start_time, success, platforms_ok)
 
@@ -272,13 +274,65 @@ STALE_WORKER_SECONDS = 180  # Mark worker offline after 3 missed heartbeats
 async def lifespan(app: FastAPI):
     # Startup
     await database.init_db()
+    await database.connect_shared()
+    # Warm the per-user password-change epoch cache so existing sessions issued
+    # before a password change are rejected without a DB hit in the request path.
+    for _u in await database.list_users_with_pwd_epoch():
+        _changed = _u.get("password_changed_at") or 0.0
+        if _changed:
+            auth.set_user_pwd_epoch(_u["id"], _changed)
     catalog.load_services()
     catalog.register_sighup()
-    scheduler.add_job(_run_collection, "interval", minutes=COLLECT_INTERVAL_MIN, id="collect")
-    scheduler.add_job(_run_health_check, "interval", minutes=5, id="health_check")
-    scheduler.add_job(_check_stale_workers, "interval", minutes=2, id="stale_workers")
-    scheduler.add_job(_run_data_retention, "interval", hours=24, id="data_retention")
-    scheduler.add_job(exchange_rates.refresh, "interval", minutes=15, id="exchange_rates")
+
+    def _on_job_event(event):
+        logger.error("Scheduler job %s failed or missed", event.job_id, exc_info=getattr(event, "exception", None))
+
+    scheduler.add_listener(_on_job_event, EVENT_JOB_ERROR | EVENT_JOB_MISSED)
+    scheduler.add_job(
+        _run_collection,
+        "interval",
+        minutes=COLLECT_INTERVAL_MIN,
+        id="collect",
+        max_instances=1,
+        coalesce=True,
+        misfire_grace_time=300,
+    )
+    scheduler.add_job(
+        _run_health_check,
+        "interval",
+        minutes=5,
+        id="health_check",
+        max_instances=1,
+        coalesce=True,
+        misfire_grace_time=300,
+    )
+    scheduler.add_job(
+        _check_stale_workers,
+        "interval",
+        minutes=2,
+        id="stale_workers",
+        max_instances=1,
+        coalesce=True,
+        misfire_grace_time=300,
+    )
+    scheduler.add_job(
+        _run_data_retention,
+        "interval",
+        hours=24,
+        id="data_retention",
+        max_instances=1,
+        coalesce=True,
+        misfire_grace_time=300,
+    )
+    scheduler.add_job(
+        exchange_rates.refresh,
+        "interval",
+        minutes=15,
+        id="exchange_rates",
+        max_instances=1,
+        coalesce=True,
+        misfire_grace_time=300,
+    )
     scheduler.start()
     await exchange_rates.refresh()
     asyncio.create_task(_run_collection())
@@ -288,6 +342,7 @@ async def lifespan(app: FastAPI):
 
     # Shutdown
     scheduler.shutdown(wait=False)
+    await database.close_shared()
     from app.collectors import close_all_collectors
 
     await close_all_collectors()
@@ -324,306 +379,25 @@ class _SecurityHeadersMiddleware(BaseHTTPMiddleware):
 
 app.add_middleware(_SecurityHeadersMiddleware)
 
-# Static files and templates
+# Static files
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
-templates = Jinja2Templates(directory="app/templates")
 
 
 # ---------------------------------------------------------------------------
-# Auth helpers
+# Auth helpers + templates (shared, defined in app.deps).
+#
+# Imported here so ``app.main._require_owner`` / ``app.main.templates`` keep
+# resolving for tests and for the split router groups, which reference them
+# through the ``app.main`` namespace (e.g. ``main._require_owner``).
 # ---------------------------------------------------------------------------
-
-
-def _login_redirect() -> RedirectResponse:
-    return RedirectResponse("/login", status_code=303)
-
-
-def _require_auth(request: Request) -> dict[str, Any]:
-    """Return user dict or raise redirect. For page routes."""
-    user = auth.get_current_user(request)
-    if not user:
-        raise HTTPException(status_code=401)
-    return user
-
-
-def _require_auth_api(request: Request) -> dict[str, Any]:
-    """Return user dict or raise 401 for API routes."""
-    user = auth.get_current_user(request)
-    if not user:
-        raise HTTPException(status_code=401, detail="Not authenticated")
-    return user
-
-
-def _require_writer(request: Request) -> dict[str, Any]:
-    user = _require_auth_api(request)
-    if not auth.require_role(user, "owner", "writer"):
-        raise HTTPException(status_code=403, detail="Insufficient permissions")
-    return user
-
-
-def _require_owner(request: Request) -> dict[str, Any]:
-    user = _require_auth_api(request)
-    if not auth.require_role(user, "owner"):
-        raise HTTPException(status_code=403, detail="Owner access required")
-    return user
-
-
-def _require_private_network(request: Request) -> None:
-    """Block requests from public IPs (for first-run setup)."""
-    if not request.client or not request.client.host:
-        return
-    try:
-        client_ip = ipaddress.ip_address(request.client.host)
-    except ValueError:
-        return
-    if not (client_ip.is_loopback or client_ip.is_private):
-        raise HTTPException(status_code=403, detail="First-run setup only allowed from private networks")
-
-
-# ---------------------------------------------------------------------------
-# Auth routes
-# ---------------------------------------------------------------------------
-
-
-@app.get("/login", response_class=HTMLResponse)
-async def page_login(request: Request, error: str = ""):
-    # If no users exist, redirect to onboarding
-    if not await database.has_any_users():
-        return RedirectResponse("/onboarding", status_code=303)
-    # If already logged in, go to dashboard
-    if auth.get_current_user(request):
-        return RedirectResponse("/", status_code=303)
-    return templates.TemplateResponse(
-        request,
-        "auth.html",
-        {
-            "title": "Sign In",
-            "subtitle": "Sign in to your CashPilot instance",
-            "mode": "login",
-            "action": "/login",
-            "button_text": "Sign In",
-            "error": error,
-            "is_first": False,
-        },
-    )
-
-
-@app.post("/login")
-async def do_login(
-    request: Request,
-    username: str = Form(...),
-    password: str = Form(...),
-):
-    client_ip = request.client.host if request.client else "unknown"
-    try:
-        _check_login_rate(client_ip)
-    except HTTPException:
-        metrics.record_rate_limit()
-        raise
-    user = await database.get_user_by_username(username)
-    if not user or not auth.verify_password(password, user["password"]):
-        _record_failed_login(client_ip)
-        metrics.record_login(success=False)
-        return templates.TemplateResponse(
-            request,
-            "auth.html",
-            {
-                "title": "Sign In",
-                "subtitle": "Sign in to your CashPilot instance",
-                "mode": "login",
-                "action": "/login",
-                "button_text": "Sign In",
-                "error": "Invalid username or password",
-                "is_first": False,
-            },
-            status_code=401,
-        )
-
-    _login_attempts.pop(client_ip, None)
-    metrics.record_login(success=True)
-    token = auth.create_session_token(user["id"], user["username"], user["role"])
-    response = RedirectResponse("/", status_code=303)
-    return auth.set_session_cookie(response, token)
-
-
-@app.get("/register", response_class=HTMLResponse)
-async def page_register(request: Request, error: str = ""):
-    is_first = not await database.has_any_users()
-    # Only allow registration if first user OR if requester is owner
-    if not is_first:
-        user = auth.get_current_user(request)
-        if not user or user.get("r") != "owner":
-            return RedirectResponse("/login", status_code=303)
-    if is_first:
-        _require_private_network(request)
-
-    return templates.TemplateResponse(
-        request,
-        "auth.html",
-        {
-            "title": "Create Account" if is_first else "Add User",
-            "subtitle": "Create the first admin account" if is_first else "Add a new user to this instance",
-            "mode": "register",
-            "action": "/register",
-            "button_text": "Create Account",
-            "error": error,
-            "is_first": is_first,
-        },
-    )
-
-
-@app.post("/register")
-async def do_register(
-    request: Request,
-    username: str = Form(...),
-    password: str = Form(...),
-    password_confirm: str = Form(...),
-):
-    is_first = not await database.has_any_users()
-
-    # Only allow registration if first user or owner
-    if not is_first:
-        user = auth.get_current_user(request)
-        if not user or user.get("r") != "owner":
-            raise HTTPException(status_code=403, detail="Only owners can add users")
-
-    if is_first:
-        _require_private_network(request)
-
-    if not re.match(r"^[a-zA-Z0-9_-]{3,32}$", username):
-        return templates.TemplateResponse(
-            request,
-            "auth.html",
-            {
-                "title": "Create Account" if is_first else "Add User",
-                "subtitle": "Create the first admin account" if is_first else "Add a new user",
-                "mode": "register",
-                "action": "/register",
-                "button_text": "Create Account",
-                "error": "Username must be 3-32 alphanumeric characters (a-z, 0-9, _ -)",
-                "is_first": is_first,
-            },
-            status_code=400,
-        )
-
-    if password != password_confirm:
-        return templates.TemplateResponse(
-            request,
-            "auth.html",
-            {
-                "title": "Create Account" if is_first else "Add User",
-                "subtitle": "Create the first admin account" if is_first else "Add a new user",
-                "mode": "register",
-                "action": "/register",
-                "button_text": "Create Account",
-                "error": "Passwords do not match",
-                "is_first": is_first,
-            },
-            status_code=400,
-        )
-
-    if len(password) < 10:
-        return templates.TemplateResponse(
-            request,
-            "auth.html",
-            {
-                "title": "Create Account" if is_first else "Add User",
-                "subtitle": "Create the first admin account" if is_first else "Add a new user",
-                "mode": "register",
-                "action": "/register",
-                "button_text": "Create Account",
-                "error": "Password must be at least 10 characters",
-                "is_first": is_first,
-            },
-            status_code=400,
-        )
-
-    existing = await database.get_user_by_username(username)
-    if existing:
-        return templates.TemplateResponse(
-            request,
-            "auth.html",
-            {
-                "title": "Create Account" if is_first else "Add User",
-                "subtitle": "Create the first admin account" if is_first else "Add a new user",
-                "mode": "register",
-                "action": "/register",
-                "button_text": "Create Account",
-                "error": "Username already taken",
-                "is_first": is_first,
-            },
-            status_code=400,
-        )
-
-    # First user is always owner
-    role = "owner" if is_first else "viewer"
-    hashed = auth.hash_password(password)
-    user_id = await database.create_user(username, hashed, role)
-
-    token = auth.create_session_token(user_id, username, role)
-    dest = "/setup" if is_first else "/"
-    response = RedirectResponse(dest, status_code=303)
-    return auth.set_session_cookie(response, token)
-
-
-@app.get("/logout")
-async def do_logout():
-    response = RedirectResponse("/login", status_code=303)
-    return auth.clear_session_cookie(response)
-
-
-# ---------------------------------------------------------------------------
-# Onboarding
-# ---------------------------------------------------------------------------
-
-
-@app.get("/onboarding", response_class=HTMLResponse)
-async def page_onboarding(request: Request):
-    if await database.has_any_users():
-        return RedirectResponse("/login", status_code=303)
-    return templates.TemplateResponse(request, "onboarding.html")
-
-
-# ---------------------------------------------------------------------------
-# Page routes (HTML) — protected
-# ---------------------------------------------------------------------------
-
-
-@app.get("/", response_class=HTMLResponse)
-async def page_dashboard(request: Request):
-    user = auth.get_current_user(request)
-    if not user:
-        if not await database.has_any_users():
-            return RedirectResponse("/onboarding", status_code=303)
-        return RedirectResponse("/login", status_code=303)
-    return templates.TemplateResponse(request, "dashboard.html", {"user": user})
-
-
-@app.get("/setup", response_class=HTMLResponse)
-async def page_setup(request: Request):
-    user = auth.get_current_user(request)
-    if not user:
-        return _login_redirect()
-    return templates.TemplateResponse(request, "setup.html", {"user": user})
-
-
-@app.get("/catalog", response_class=HTMLResponse)
-async def page_catalog(request: Request):
-    user = auth.get_current_user(request)
-    if not user:
-        return _login_redirect()
-    return templates.TemplateResponse(request, "catalog.html", {"user": user})
-
-
-@app.get("/settings", response_class=HTMLResponse)
-async def page_settings(request: Request):
-    user = auth.get_current_user(request)
-    if not user:
-        return _login_redirect()
-    if not auth.require_role(user, "owner"):
-        raise HTTPException(status_code=403, detail="Owner access required")
-    return templates.TemplateResponse(request, "settings.html", {"user": user})
-
+from app.deps import (  # noqa: E402
+    _login_redirect,  # noqa: F401  (re-exported for app.main.* test/router surface)
+    _require_auth_api,
+    _require_owner,
+    _require_private_network,  # noqa: F401  (re-exported for app.main.* router surface)
+    _require_writer,
+    templates,  # noqa: F401  (re-exported for app.main.* router/test surface)
+)
 
 # ---------------------------------------------------------------------------
 # API: Services
@@ -803,7 +577,7 @@ async def api_services_available(request: Request) -> list[dict[str, Any]]:
 
     available = []
     for svc in services:
-        if svc.get("status") in ("broken", "dead"):
+        if svc.get("status") in ("broken", "dead", "dropped"):
             continue  # Known non-functional — hide completely
         docker_conf = svc.get("docker", {})
         has_image = bool(docker_conf and docker_conf.get("image"))
@@ -973,23 +747,130 @@ async def api_remove(
 
 _ALLOWED_WORKER_SCHEMES = {"http", "https"}
 
+# SSRF guard for worker URLs. The worker `url` arrives in the (fleet-key-authed)
+# heartbeat body and is later fetched WITH the fleet bearer token attached, so an
+# attacker holding the fleet key could otherwise turn the UI into a confused-deputy
+# proxy into the internal network. Policy is OPT-IN: the default ("permissive")
+# preserves today's behaviour — LAN (RFC1918) and Tailscale (CGNAT 100.64.0.0/10)
+# workers keep working out of the box — while always closing the free gaps
+# (cloud-metadata IPs, IPv6 loopback/link-local, IPv4-mapped bypasses, DNS rebinding).
+# "strict" mode restricts to CASHPILOT_WORKER_ALLOWED_HOSTS (CIDRs + *.suffix names).
+_WORKER_URL_POLICY = os.getenv("CASHPILOT_WORKER_URL_POLICY", "permissive").strip().lower()
+_WORKER_ALLOW_METADATA = os.getenv("CASHPILOT_WORKER_ALLOW_METADATA", "false").strip().lower() == "true"
+
+# Cloud metadata endpoints — never a valid worker; always blocked (unless the
+# explicit escape hatch is set). The IPv6 one is inside ULA fd00::/8 so a
+# "permissive" policy would otherwise allow it.
+_METADATA_IPS = frozenset(
+    {
+        ipaddress.ip_address("169.254.169.254"),  # AWS/GCP/Azure IMDS (IPv4)
+        ipaddress.ip_address("fd00:ec2::254"),  # AWS IMDS over IPv6
+    }
+)
+# Loopback + link-local, IPv4 and IPv6 — always blocked.
+_BLOCKED_NETWORKS = (
+    ipaddress.ip_network("127.0.0.0/8"),
+    ipaddress.ip_network("169.254.0.0/16"),
+    ipaddress.ip_network("::1/128"),
+    ipaddress.ip_network("fe80::/10"),
+)
+
+
+def _parse_worker_allowlist() -> tuple[list[ipaddress._BaseNetwork], list[str], set[str]]:
+    """Parse CASHPILOT_WORKER_ALLOWED_HOSTS into (cidrs, host_suffixes, exact_hosts)."""
+    cidrs: list[ipaddress._BaseNetwork] = []
+    suffixes: list[str] = []
+    exact: set[str] = set()
+    for entry in os.getenv("CASHPILOT_WORKER_ALLOWED_HOSTS", "").split(","):
+        entry = entry.strip()
+        if not entry:
+            continue
+        if entry.startswith("*."):
+            suffixes.append(entry[2:].lower())
+            continue
+        try:
+            cidrs.append(ipaddress.ip_network(entry, strict=False))
+        except ValueError:
+            exact.add(entry.lower())
+    return cidrs, suffixes, exact
+
+
+_WORKER_ALLOWED_CIDRS, _WORKER_ALLOWED_SUFFIXES, _WORKER_ALLOWED_HOSTS = _parse_worker_allowlist()
+
+
+def _normalize_ip(addr: ipaddress.IPv4Address | ipaddress.IPv6Address):
+    """Collapse IPv4-mapped IPv6 (::ffff:a.b.c.d) to the underlying IPv4 address."""
+    if isinstance(addr, ipaddress.IPv6Address) and addr.ipv4_mapped is not None:
+        return addr.ipv4_mapped
+    return addr
+
+
+def _assert_ip_not_blocked(addr: ipaddress.IPv4Address | ipaddress.IPv6Address) -> None:
+    """Always-on checks: metadata + loopback/link-local, regardless of policy."""
+    addr = _normalize_ip(addr)
+    if not _WORKER_ALLOW_METADATA and addr in _METADATA_IPS:
+        raise HTTPException(status_code=400, detail="Worker URL points to a cloud metadata address")
+    for net in _BLOCKED_NETWORKS:
+        if addr.version == net.version and addr in net:
+            raise HTTPException(status_code=400, detail="Worker URL points to loopback/link-local address")
+
+
+def _assert_ip_strict_allowed(addr: ipaddress.IPv4Address | ipaddress.IPv6Address) -> None:
+    """In strict mode, the resolved IP must fall inside an allowed CIDR."""
+    addr = _normalize_ip(addr)
+    if any(addr.version == c.version and addr in c for c in _WORKER_ALLOWED_CIDRS):
+        return
+    raise HTTPException(status_code=400, detail="Worker URL not in allowed hosts (strict mode)")
+
 
 def _validate_worker_url(raw_url: str) -> str:
-    """Validate and return a safe worker URL; raise 400 on SSRF-risky targets."""
+    """Validate and return a safe worker URL; raise 400 on SSRF-risky targets.
+
+    Resolves hostnames and validates the resolved IP(s) so a DNS name that
+    points at a metadata/loopback address is rejected (DNS-rebinding guard).
+    """
     parsed = urlparse(raw_url)
     if parsed.scheme not in _ALLOWED_WORKER_SCHEMES:
         raise HTTPException(status_code=400, detail=f"Invalid worker URL scheme: {parsed.scheme}")
     host = parsed.hostname or ""
     if not host:
         raise HTTPException(status_code=400, detail="Worker URL has no host")
+    if host in ("localhost", "localhost.localdomain"):
+        raise HTTPException(status_code=400, detail="Worker URL points to localhost")
+
+    # Case A: literal IP — classify directly, no DNS needed.
     try:
         addr = ipaddress.ip_address(host)
-        if addr.is_loopback or addr.is_link_local:
-            raise HTTPException(status_code=400, detail="Worker URL points to loopback/link-local address")
     except ValueError:
-        # hostname, not IP — allow (e.g. tailscale DNS names)
-        if host in ("localhost", "localhost.localdomain"):
-            raise HTTPException(status_code=400, detail="Worker URL points to localhost")
+        addr = None
+    if addr is not None:
+        _assert_ip_not_blocked(addr)
+        if _WORKER_URL_POLICY == "strict":
+            _assert_ip_strict_allowed(addr)
+        return raw_url.rstrip("/")
+
+    # Case B: hostname. In strict mode an explicit name/suffix match short-circuits
+    # the CIDR check (so Tailscale MagicDNS names work by name), but the resolved
+    # IPs are still checked against the always-blocked set.
+    hostname_allowed = host.lower() in _WORKER_ALLOWED_HOSTS or any(
+        host.lower() == s or host.lower().endswith("." + s) for s in _WORKER_ALLOWED_SUFFIXES
+    )
+    try:
+        infos = socket.getaddrinfo(host, parsed.port, proto=socket.IPPROTO_TCP)
+        resolved = {ipaddress.ip_address(info[4][0]) for info in infos}
+    except (socket.gaierror, ValueError):
+        # Unresolvable: fatal in strict (can't prove it's allowed), non-fatal in
+        # permissive (the request itself will fail if the host is truly dead; we
+        # don't want a transiently-unresolvable worker to hard-400).
+        if _WORKER_URL_POLICY == "strict" and not hostname_allowed:
+            raise HTTPException(status_code=400, detail="Worker URL host does not resolve") from None
+        return raw_url.rstrip("/")
+
+    for addr in resolved:
+        _assert_ip_not_blocked(addr)
+    if _WORKER_URL_POLICY == "strict" and not hostname_allowed:
+        for addr in resolved:
+            _assert_ip_strict_allowed(addr)
     return raw_url.rstrip("/")
 
 
@@ -1022,15 +903,12 @@ async def _proxy_worker_command(
             else:
                 resp = await client.post(f"{url}/api/containers/{slug}/{command}", headers=headers)
             if resp.status_code >= 400:
-                detail = (
-                    resp.json().get("detail", resp.text)
-                    if resp.headers.get("content-type", "").startswith("application/json")
-                    else resp.text
-                )
-                raise HTTPException(status_code=resp.status_code, detail=f"Worker error: {detail}")
+                logger.warning("worker proxy error (%s): %s", resp.status_code, resp.text)
+                raise HTTPException(status_code=resp.status_code, detail="Worker request failed")
             return resp.json()
     except httpx.HTTPError as exc:
-        raise HTTPException(status_code=503, detail=f"Worker communication failed: {exc}")
+        logger.warning("worker proxy error: %s", exc)
+        raise HTTPException(status_code=503, detail="Worker communication failed")
 
 
 async def _proxy_worker_deploy(worker_id: int, slug: str, spec: dict[str, Any]) -> dict[str, Any]:
@@ -1042,15 +920,12 @@ async def _proxy_worker_deploy(worker_id: int, slug: str, spec: dict[str, Any]) 
         async with httpx.AsyncClient(timeout=60) as client:
             resp = await client.post(f"{url}/api/containers/{slug}/deploy", json=spec, headers=headers)
             if resp.status_code >= 400:
-                detail = (
-                    resp.json().get("detail", resp.text)
-                    if resp.headers.get("content-type", "").startswith("application/json")
-                    else resp.text
-                )
-                raise HTTPException(status_code=resp.status_code, detail=f"Worker deploy error: {detail}")
+                logger.warning("worker deploy error (%s): %s", resp.status_code, resp.text)
+                raise HTTPException(status_code=resp.status_code, detail="Worker request failed")
             return resp.json()
     except httpx.HTTPError as exc:
-        raise HTTPException(status_code=503, detail=f"Worker communication failed: {exc}")
+        logger.warning("worker proxy error: %s", exc)
+        raise HTTPException(status_code=503, detail="Worker communication failed")
 
 
 async def _proxy_worker_logs(worker_id: int, slug: str, lines: int = 50) -> dict[str, str]:
@@ -1066,15 +941,12 @@ async def _proxy_worker_logs(worker_id: int, slug: str, lines: int = 50) -> dict
                 headers=headers,
             )
             if resp.status_code >= 400:
-                detail = (
-                    resp.json().get("detail", resp.text)
-                    if resp.headers.get("content-type", "").startswith("application/json")
-                    else resp.text
-                )
-                raise HTTPException(status_code=resp.status_code, detail=f"Worker error: {detail}")
+                logger.warning("worker proxy error (%s): %s", resp.status_code, resp.text)
+                raise HTTPException(status_code=resp.status_code, detail="Worker request failed")
             return resp.json()
     except httpx.HTTPError as exc:
-        raise HTTPException(status_code=503, detail=f"Worker communication failed: {exc}")
+        logger.warning("worker proxy error: %s", exc)
+        raise HTTPException(status_code=503, detail="Worker communication failed")
 
 
 # ---------------------------------------------------------------------------
@@ -1229,8 +1101,8 @@ async def api_earnings_summary(request: Request) -> dict[str, Any]:
     try:
         worker_containers = await _get_all_worker_containers()
         active = sum(1 for s in worker_containers if s.get("status") == "running")
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("active-service count failed: %s", exc)
     summary["active_services"] = active
     summary["total_bonus"] = round(total_bonus_usd, 2)
     summary["total_adjusted"] = round(total_adjusted, 2)
@@ -1454,18 +1326,26 @@ async def api_env_info(request: Request) -> list[dict[str, Any]]:
     result = []
     for key, label, secret, read_only, default, desc in env_defs:
         raw = os.getenv(key, "")
-        val = raw or default
-        result.append(
-            {
-                "key": key,
-                "label": label,
-                "secret": secret,
-                "read_only": read_only,
-                "description": desc,
-                "set_via_env": bool(raw),
-                "value": val,
-            }
-        )
+        entry: dict[str, Any] = {
+            "key": key,
+            "label": label,
+            "secret": secret,
+            "read_only": read_only,
+            "description": desc,
+            "set_via_env": bool(raw),
+        }
+        if key == "CASHPILOT_SECRET_KEY":
+            # Auth always resolves a key at runtime (env, persisted, or generated),
+            # so it is effectively always set; never expose its value and treat as
+            # read-only in the UI.
+            entry["is_set"] = True
+            entry["read_only"] = True
+        elif secret:
+            # Drop the value for secrets — only report presence.
+            entry["is_set"] = bool(raw)
+        else:
+            entry["value"] = raw or default
+        result.append(entry)
     return result
 
 
@@ -1541,12 +1421,11 @@ async def api_collectors_meta(request: Request) -> list[dict[str, Any]]:
 
 
 @app.get("/api/config")
-async def api_get_config(request: Request) -> dict[str, str]:
+async def api_get_config(request: Request) -> dict[str, Any]:
     _require_owner(request)
-    result = await database.get_config()
-    if isinstance(result, dict):
-        return result
-    return {}
+    # Masked read path: non-secret values plus a {secret_key: is_set} map under
+    # "_secrets". Stored credentials never cross the wire in plaintext.
+    return await database.get_config_masked()
 
 
 class ConfigUpdate(BaseModel):
@@ -1625,62 +1504,62 @@ async def api_clear_service_config(request: Request, slug: str) -> dict[str, str
 
 
 # ---------------------------------------------------------------------------
-# API: Users (owner only)
+# API: Users — change password (owner-reset + self-service).
+#
+# User list/role/delete routes live in app.routers.users. The password routes
+# stay here to avoid the direct-import problem (no test imports them directly).
 # ---------------------------------------------------------------------------
 
 
-@app.get("/api/users")
-async def api_list_users(request: Request) -> list[dict[str, Any]]:
+class PasswordChange(BaseModel):
+    current_password: str
+    new_password: str
+
+
+class AdminPasswordSet(BaseModel):
+    new_password: str
+
+
+@app.post("/api/users/me/password")
+async def api_change_own_password(request: Request, body: PasswordChange) -> JSONResponse:
+    """Change the authenticated user's own password (verifies current password)."""
+    user = _require_auth_api(request)
+    uid = user["uid"]
+    if uid == 0:
+        raise HTTPException(status_code=400, detail="API-key sessions cannot change a password")
+    record = await database.get_user_by_id(uid)
+    if not record:
+        raise HTTPException(status_code=404, detail="User not found")
+    if not auth.verify_password(body.current_password, record["password"]):
+        raise HTTPException(status_code=403, detail="Current password is incorrect")
+    if len(body.new_password) < 10:
+        raise HTTPException(status_code=400, detail="Password must be at least 10 characters")
+    if body.new_password == body.current_password:
+        raise HTTPException(status_code=400, detail="New password must differ from the current password")
+
+    hashed = auth.hash_password(body.new_password)
+    await database.update_user_password(uid, hashed)
+    changed = await database.get_user_by_id(uid)
+    auth.set_user_pwd_epoch(uid, changed["password_changed_at"])
+    # Re-mint the session cookie so the caller stays logged in after the epoch bump.
+    token = auth.create_session_token(uid, user["u"], user["r"])
+    return auth.set_session_cookie(JSONResponse({"status": "password_changed"}), token)
+
+
+@app.post("/api/users/{user_id}/password")
+async def api_admin_set_password(request: Request, user_id: int, body: AdminPasswordSet) -> dict[str, str]:
+    """Owner resets another user's password (no current-password check, no re-mint)."""
     _require_owner(request)
-    return await database.list_users()
-
-
-class UserRoleUpdate(BaseModel):
-    role: str
-
-
-@app.patch("/api/users/{user_id}")
-async def api_update_user_role(request: Request, user_id: int, body: UserRoleUpdate) -> dict[str, str]:
-    current = _require_owner(request)
-    if body.role not in ("viewer", "writer", "owner"):
-        raise HTTPException(status_code=400, detail="Role must be viewer, writer, or owner")
-    user = await database.get_user_by_id(user_id)
-    if not user:
+    target = await database.get_user_by_id(user_id)
+    if not target:
         raise HTTPException(status_code=404, detail="User not found")
-    if current["uid"] == user_id and body.role != "owner":
-        raise HTTPException(status_code=400, detail="Cannot demote yourself")
-    if user["role"] == "owner" and body.role != "owner":
-        all_users = await database.list_users()
-        owner_count = sum(1 for u in all_users if u["role"] == "owner")
-        if owner_count <= 1:
-            raise HTTPException(status_code=400, detail="Cannot remove the last owner")
-    await database.update_user_role(user_id, body.role)
-    return {"status": "updated"}
-
-
-@app.delete("/api/users/{user_id}")
-async def api_delete_user(request: Request, user_id: int) -> dict[str, str]:
-    current = _require_owner(request)
-    if current["uid"] == user_id:
-        raise HTTPException(status_code=400, detail="Cannot delete yourself")
-    user = await database.get_user_by_id(user_id)
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-    await database.delete_user(user_id)
-    return {"status": "deleted"}
-
-
-# ---------------------------------------------------------------------------
-# Page: Fleet dashboard
-# ---------------------------------------------------------------------------
-
-
-@app.get("/fleet", response_class=HTMLResponse)
-async def page_fleet(request: Request):
-    user = auth.get_current_user(request)
-    if not user:
-        return _login_redirect()
-    return templates.TemplateResponse(request, "fleet.html", {"user": user})
+    if len(body.new_password) < 10:
+        raise HTTPException(status_code=400, detail="Password must be at least 10 characters")
+    hashed = auth.hash_password(body.new_password)
+    await database.update_user_password(user_id, hashed)
+    changed = await database.get_user_by_id(user_id)
+    auth.set_user_pwd_epoch(user_id, changed["password_changed_at"])
+    return {"status": "password_set"}
 
 
 # ---------------------------------------------------------------------------
@@ -1809,10 +1688,12 @@ async def api_worker_command(request: Request, worker_id: int, body: WorkerComma
                 raise HTTPException(status_code=400, detail=f"Unknown command: {body.command}")
 
             if resp.status_code >= 400:
-                raise HTTPException(status_code=resp.status_code, detail=resp.text)
+                logger.warning("worker proxy error (%s): %s", resp.status_code, resp.text)
+                raise HTTPException(status_code=resp.status_code, detail="Worker request failed")
             return resp.json()
     except httpx.HTTPError as exc:
-        raise HTTPException(status_code=503, detail=f"Worker communication failed: {exc}")
+        logger.warning("worker proxy error: %s", exc)
+        raise HTTPException(status_code=503, detail="Worker communication failed")
 
 
 @app.get("/api/fleet/summary")
@@ -1842,7 +1723,36 @@ async def api_fleet_summary(request: Request) -> dict[str, Any]:
 
 
 @app.get("/api/fleet/api-key")
-async def api_fleet_api_key(request: Request) -> dict[str, str]:
-    """Return the configured fleet API key (owner only)."""
+async def api_fleet_api_key(request: Request) -> dict[str, Any]:
+    """Report whether a fleet API key is configured (owner only).
+
+    Never returns the key value — use POST /api/fleet/api-key/reveal for that.
+    """
     _require_owner(request)
+    source = "env" if os.getenv("CASHPILOT_API_KEY") else ("file" if FLEET_API_KEY else "none")
+    return {"is_set": bool(FLEET_API_KEY), "source": source}
+
+
+@app.post("/api/fleet/api-key/reveal")
+async def api_fleet_api_key_reveal(request: Request) -> dict[str, str]:
+    """Reveal the configured fleet API key (owner only, audit-logged)."""
+    user = _require_owner(request)
+    logger.warning("Fleet key revealed by uid=%s", user.get("uid"))
     return {"api_key": FLEET_API_KEY or ""}
+
+
+# ---------------------------------------------------------------------------
+# Router groups (auth / pages / users)
+#
+# Imported and included LAST, after ``app`` and every shared symbol above is
+# defined, so the handlers (which reference state via ``app.main.*``) resolve
+# correctly. Kept here to preserve the public ``app.main`` test surface while
+# splitting the low-regression route groups into app.routers.
+# ---------------------------------------------------------------------------
+from app.routers import auth as auth_router  # noqa: E402
+from app.routers import pages as pages_router  # noqa: E402
+from app.routers import users as users_router  # noqa: E402
+
+app.include_router(auth_router.router)
+app.include_router(pages_router.router)
+app.include_router(users_router.router)

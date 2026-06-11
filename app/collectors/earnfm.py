@@ -90,7 +90,10 @@ class EarnFMCollector(BaseCollector):
             data = resp.json()
 
             balance_data = data.get("data") or {}
-            balance = float(balance_data.get("totalBalance", 0))
+            raw = balance_data.get("totalBalance")
+            if raw is None:
+                raise ValueError("totalBalance field missing — API shape may have changed")
+            balance = float(raw)
 
             return EarningsResult(
                 platform=self.platform,

@@ -7,6 +7,7 @@ fallback to ./data/cashpilot.db for development.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 from datetime import UTC, datetime, timedelta
@@ -158,22 +159,124 @@ CREATE TABLE IF NOT EXISTS health_events (
 CREATE UNIQUE INDEX IF NOT EXISTS idx_earnings_platform_date
     ON earnings (platform, date);
 
+CREATE INDEX IF NOT EXISTS idx_earnings_created
+    ON earnings (created_at);
+
 CREATE INDEX IF NOT EXISTS idx_workers_status
     ON workers (status);
 
 CREATE INDEX IF NOT EXISTS idx_health_events_slug
     ON health_events (slug, created_at);
+
+CREATE INDEX IF NOT EXISTS idx_health_events_created
+    ON health_events (created_at);
 """
 
 
-async def _get_db() -> aiosqlite.Connection:
+# ---------------------------------------------------------------------------
+# Shared connection management
+# ---------------------------------------------------------------------------
+#
+# Each event loop gets a single long-lived aiosqlite connection. In production
+# there is one uvicorn loop, so all 36 DB helpers reuse one connection instead
+# of opening (and WAL-initialising) a fresh one on every call. Tests use
+# ``asyncio.run(...)`` which creates a brand-new loop per call, so each test
+# gets its own isolated connection.
+#
+# The 36 helpers keep their ``db = await _get_db(); try: ... finally:
+# await db.close()`` shape unchanged. ``_get_db()`` hands back a
+# ``_BorrowedConnection`` proxy whose ``.close()`` is a no-op, so the borrowed
+# handle's ``finally`` never actually tears down the shared connection.
+
+_shared_conns: dict[int, aiosqlite.Connection] = {}
+
+
+class _BorrowedConnection:
+    """A borrowed view onto a shared aiosqlite connection.
+
+    Delegates every attribute (execute, commit, fetch*, row_factory, ...) to
+    the real connection, but turns ``close()`` into an async no-op and makes
+    ``async with`` a pass-through. This lets call sites keep their
+    ``finally: await db.close()`` pattern byte-for-byte while the underlying
+    connection stays open and shared for the lifetime of the event loop.
+    """
+
+    __slots__ = ("_conn",)
+
+    def __init__(self, conn: aiosqlite.Connection) -> None:
+        object.__setattr__(self, "_conn", conn)
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(object.__getattribute__(self, "_conn"), name)
+
+    def __setattr__(self, name: str, value: Any) -> None:
+        setattr(object.__getattribute__(self, "_conn"), name, value)
+
+    async def close(self) -> None:
+        """No-op: the shared connection outlives any individual borrow."""
+        return None
+
+    async def __aenter__(self) -> _BorrowedConnection:
+        return self
+
+    async def __aexit__(self, *exc: object) -> bool:
+        return False
+
+
+def _open_connection() -> aiosqlite.Connection:
+    """Create an unawaited aiosqlite connection with row factory + PRAGMAs.
+
+    The returned object is the ``aiosqlite.connect(...)`` awaitable/context
+    manager; the caller awaits it to obtain the live connection. The row
+    factory and PRAGMAs are applied once per connection in ``_get_db()``.
+    """
     DB_DIR.mkdir(parents=True, exist_ok=True)
-    db = await aiosqlite.connect(str(DB_PATH))
-    db.row_factory = aiosqlite.Row
-    await db.execute("PRAGMA journal_mode=WAL")
-    await db.execute("PRAGMA foreign_keys=ON")
-    await db.execute("PRAGMA busy_timeout=5000")
-    return db
+    return aiosqlite.connect(str(DB_PATH))
+
+
+async def _get_db() -> _BorrowedConnection:
+    """Return a borrowed handle on this event loop's shared connection.
+
+    Opens (and caches) a connection the first time it is needed on a given
+    loop, or whenever the cached connection has been closed. The returned
+    ``_BorrowedConnection`` is safe to ``close()`` — it is a no-op.
+    """
+    loop = asyncio.get_running_loop()
+    key = id(loop)
+    conn = _shared_conns.get(key)
+
+    needs_open = conn is None
+    if conn is not None:
+        try:
+            needs_open = not conn._running
+        except AttributeError:
+            needs_open = False
+
+    if needs_open:
+        conn = await _open_connection()
+        conn.row_factory = aiosqlite.Row
+        await conn.execute("PRAGMA journal_mode=WAL")
+        await conn.execute("PRAGMA foreign_keys=ON")
+        await conn.execute("PRAGMA busy_timeout=5000")
+        _shared_conns[key] = conn
+
+    return _BorrowedConnection(conn)
+
+
+async def connect_shared() -> None:
+    """Eagerly open the shared connection for the current event loop."""
+    await _get_db()
+
+
+async def close_shared() -> None:
+    """Close and forget the current event loop's shared connection."""
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        return
+    conn = _shared_conns.pop(id(loop), None)
+    if conn is not None:
+        await conn.close()
 
 
 async def init_db() -> None:
@@ -238,22 +341,20 @@ async def upsert_earnings(
     date = date or datetime.now(UTC).strftime("%Y-%m-%d")
     db = await _get_db()
     try:
+        # Insert a new reading, or update the existing platform+date row only
+        # when the balance changed (we always want the latest reading). The
+        # WHERE guard preserves created_at when the balance is unchanged.
         await db.execute(
             """
             INSERT INTO earnings (platform, balance, currency, date)
             VALUES (?, ?, ?, ?)
-            ON CONFLICT DO NOTHING
+            ON CONFLICT(platform, date) DO UPDATE SET
+                balance = excluded.balance,
+                currency = excluded.currency,
+                created_at = datetime('now')
+            WHERE earnings.balance != excluded.balance
             """,
             (platform, balance, currency, date),
-        )
-        # Update if there is already a record for this platform+date with a
-        # different balance (we always want the latest reading).
-        await db.execute(
-            """
-            UPDATE earnings SET balance = ?, currency = ?, created_at = datetime('now')
-            WHERE platform = ? AND date = ? AND balance != ?
-            """,
-            (balance, currency, platform, date, balance),
         )
         await db.commit()
     finally:
@@ -527,6 +628,30 @@ async def get_config(key: str | None = None) -> dict[str, str] | str | None:
         await db.close()
 
 
+async def get_config_masked() -> dict[str, Any]:
+    """Return non-secret config values plus a {secret_key: is_set} map.
+
+    Secret values are NEVER decrypted or returned — only their presence is
+    reported under the ``_secrets`` key. This is the read path for the UI so
+    stored credentials never cross the wire in plaintext.
+    """
+    db = await _get_db()
+    try:
+        cursor = await db.execute("SELECT key, value FROM config")
+        rows = await cursor.fetchall()
+        values: dict[str, Any] = {}
+        secrets_set: dict[str, bool] = {}
+        for r in rows:
+            if _is_secret_key(r["key"]):
+                secrets_set[r["key"]] = bool(r["value"])
+            else:
+                values[r["key"]] = r["value"]
+        values["_secrets"] = secrets_set
+        return values
+    finally:
+        await db.close()
+
+
 async def set_config(key: str, value: str) -> None:
     """Upsert a config key-value pair. Secrets are encrypted at rest."""
     stored = encrypt_value(value) if _is_secret_key(key) else value
@@ -672,6 +797,17 @@ async def list_users() -> list[dict[str, Any]]:
     db = await _get_db()
     try:
         cursor = await db.execute("SELECT id, username, role, created_at FROM users ORDER BY id")
+        rows = await cursor.fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        await db.close()
+
+
+async def list_users_with_pwd_epoch() -> list[dict[str, Any]]:
+    """Return [{id, password_changed_at}, ...] for warming the auth pwd-epoch cache."""
+    db = await _get_db()
+    try:
+        cursor = await db.execute("SELECT id, password_changed_at FROM users")
         rows = await cursor.fetchall()
         return [dict(r) for r in rows]
     finally:

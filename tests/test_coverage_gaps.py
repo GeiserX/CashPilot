@@ -370,10 +370,18 @@ class TestMainRunCollectionException:
     """Cover line 167: _run_collection total failure."""
 
     def test_run_collection_total_exception(self):
+        import app.main as main_mod
         from app.main import _run_collection
 
+        # Seed a stale clean alert state; a total crash must REPLACE it with a
+        # synthetic "collection failed" alert (not leave the bell showing green).
+        main_mod._collector_alerts = []
         with patch("app.main.database.get_deployments", new_callable=AsyncMock, side_effect=Exception("DB down")):
             asyncio.run(_run_collection())  # Should not raise
+
+        assert main_mod._collector_alerts, "crash must publish a synthetic alert"
+        assert main_mod._collector_alerts[0]["platform"] == "collection"
+        assert "failed" in main_mod._collector_alerts[0]["error"].lower()
 
 
 class TestMainDeployCommandEdgeCases:
@@ -1199,3 +1207,43 @@ class TestOrchestratorVolumeCleanup:
 
         assert result["deleted_volumes"] == []
         assert result["failed_volumes"] == []
+
+
+class TestDockerAvailable:
+    """Cover orchestrator.docker_available: cached-True fast path + re-probe on failure."""
+
+    def test_cached_true_short_circuits(self):
+        from app import orchestrator
+
+        orig = orchestrator._docker_available
+        try:
+            orchestrator._docker_available = True
+            # Must return True without touching docker.from_env at all.
+            with patch.object(orchestrator.docker, "from_env", side_effect=AssertionError("should not probe")):
+                assert orchestrator.docker_available() is True
+        finally:
+            orchestrator._docker_available = orig
+
+    def test_reprobes_and_succeeds(self):
+        from app import orchestrator
+
+        orig = orchestrator._docker_available
+        try:
+            orchestrator._docker_available = False  # negative state must re-probe
+            mock_client = MagicMock()
+            with patch.object(orchestrator.docker, "from_env", return_value=mock_client):
+                assert orchestrator.docker_available() is True
+            mock_client.ping.assert_called_once()
+        finally:
+            orchestrator._docker_available = orig
+
+    def test_reprobe_failure_stays_false(self):
+        from app import orchestrator
+
+        orig = orchestrator._docker_available
+        try:
+            orchestrator._docker_available = False
+            with patch.object(orchestrator.docker, "from_env", side_effect=Exception("no socket")):
+                assert orchestrator.docker_available() is False
+        finally:
+            orchestrator._docker_available = orig
