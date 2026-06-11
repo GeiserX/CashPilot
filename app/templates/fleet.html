@@ -38,14 +38,15 @@
     </p>
     <div style="background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 8px; padding: 12px;">
       <code id="worker-env" style="display: block; word-break: break-all; color: var(--text-primary); font-size: 0.85rem; white-space: pre-wrap;">CASHPILOT_UI_URL=<span id="env-ui-url"></span>
-CASHPILOT_API_KEY=<span id="env-api-key">********</span>
+CASHPILOT_API_KEY=<span id="env-api-key">••••••••</span>
 CASHPILOT_WORKER_NAME=server-name</code>
-      {% if user.r == 'owner' %}
-      <div style="display: flex; gap: 8px; margin-top: 8px;">
+      <div style="display: flex; gap: 8px; align-items: center; margin-top: 8px;">
+        <span id="api-key-status" class="badge badge-category" style="font-size:0.72rem;">Checking…</span>
+        {% if user.r == 'owner' %}
         <button class="btn btn-ghost btn-sm" onclick="toggleApiKey()" id="reveal-btn">Reveal API Key</button>
         <button class="btn btn-ghost btn-sm" onclick="copyWorkerEnv()">Copy</button>
+        {% endif %}
       </div>
-      {% endif %}
     </div>
     <p style="color: var(--text-muted); margin-top: 8px; font-size: 0.82rem;">
       The API key is set via <code>CASHPILOT_API_KEY</code> env var on the UI container. Use the same key on all workers.
@@ -71,9 +72,46 @@ CASHPILOT_WORKER_NAME=server-name</code>
   let fleetTimer = null;
   let _apiKeyRevealed = false;
   let _apiKey = '';
+  let _apiKeySet = false;
   const _isOwner = {{ 'true' if user.r == 'owner' else 'false' }};
 
   document.getElementById('env-ui-url').textContent = window.location.origin;
+
+  // Fetch only the API-key STATUS on load (no secret value). The plaintext key is
+  // fetched lazily via the owner-only reveal endpoint, on explicit user action.
+  async function loadApiKeyStatus() {
+    const statusEl = document.getElementById('api-key-status');
+    try {
+      const data = await CP.api('/api/fleet/api-key');
+      _apiKeySet = !!data.is_set;
+      if (statusEl) {
+        if (_apiKeySet) {
+          statusEl.textContent = 'Configured';
+          statusEl.className = 'badge badge-deployed';
+          statusEl.style.fontSize = '0.72rem';
+        } else {
+          statusEl.textContent = 'Not set';
+          statusEl.className = 'badge badge-category';
+          statusEl.style.fontSize = '0.72rem';
+        }
+      }
+    } catch {
+      if (statusEl) { statusEl.textContent = 'Unknown'; statusEl.style.fontSize = '0.72rem'; }
+    }
+  }
+
+  // Lazily fetch the plaintext key (owner-only POST). Returns the key string.
+  async function fetchApiKey() {
+    if (_apiKey) return _apiKey;
+    try {
+      const data = await CP.api('/api/fleet/api-key/reveal', { method: 'POST' });
+      _apiKey = data.api_key || '(not configured)';
+    } catch (err) {
+      _apiKey = '(error)';
+      CP.toast('Could not reveal API key: ' + (err.message || 'error'), 'error');
+    }
+    return _apiKey;
+  }
 
   async function loadFleet() {
     try {
@@ -187,16 +225,15 @@ CASHPILOT_WORKER_NAME=server-name</code>
     const el = document.getElementById('env-api-key');
     const btn = document.getElementById('reveal-btn');
     if (_apiKeyRevealed) {
-      el.textContent = '********';
+      el.textContent = '••••••••';
       btn.textContent = 'Reveal API Key';
       _apiKeyRevealed = false;
     } else {
-      if (!_apiKey) {
-        try {
-          const data = await CP.api('/api/fleet/api-key');
-          _apiKey = data.api_key || '(not configured)';
-        } catch { _apiKey = '(error)'; }
-      }
+      btn.disabled = true;
+      const prev = btn.textContent;
+      btn.textContent = 'Revealing…';
+      await fetchApiKey();
+      btn.disabled = false;
       el.textContent = _apiKey;
       btn.textContent = 'Hide API Key';
       _apiKeyRevealed = true;
@@ -224,18 +261,14 @@ CASHPILOT_WORKER_NAME=server-name</code>
   });
 
   window.copyWorkerEnv = async function() {
-    // Auto-fetch API key if not yet revealed
-    if (!_apiKey) {
-      try {
-        const data = await CP.api('/api/fleet/api-key');
-        _apiKey = data.api_key || '(not configured)';
-      } catch { _apiKey = '(error)'; }
-    }
+    // Lazily fetch the plaintext key (owner-only reveal endpoint) before copying.
+    await fetchApiKey();
     const uiUrl = document.getElementById('env-ui-url').textContent;
     const text = `CASHPILOT_UI_URL=${uiUrl}\nCASHPILOT_API_KEY=${_apiKey}\nCASHPILOT_WORKER_NAME=server-name`;
     navigator.clipboard.writeText(text).then(() => CP.toast('Copied', 'success'));
   };
 
+  loadApiKeyStatus();
   loadFleet();
   fleetTimer = setInterval(loadFleet, 60000);
 })();

@@ -75,7 +75,10 @@ class HoneygainCollector(BaseCollector):
 
             # Balance is in cents (usd_cents)
             payout = data.get("data", {}).get("payout", {})
-            usd_cents = float(payout.get("usd_cents", 0))
+            raw = payout.get("usd_cents")
+            if raw is None:
+                raise ValueError("usd_cents field missing — API shape may have changed")
+            usd_cents = float(raw)
             balance_usd = round(usd_cents / 100, 4)
 
             return EarningsResult(

@@ -138,14 +138,14 @@ class TestRefreshGauges:
             {
                 "status": "online",
                 "name": "watchtower",
-                "last_seen": "2026-01-01T00:00:00",
+                "last_heartbeat": "2026-01-01T00:00:00",
                 "system_info": '{"docker_available": true}',
                 "containers": '[{"slug": "earnapp", "status": "running", "image": "fazalfarhan01/earnapp:lite-latest", "cpu_percent": 1.2, "memory_mb": 45}]',
             },
             {
                 "status": "offline",
                 "name": "geiserback",
-                "last_seen": "2025-12-31T00:00:00",
+                "last_heartbeat": "2025-12-31T00:00:00",
                 "system_info": '{"docker_available": true}',
                 "containers": "[]",
             },
@@ -188,3 +188,69 @@ class TestRefreshGauges:
         metrics.METRICS_ENABLED = orig_enabled
         metrics._registry = orig_registry
         metrics._metrics = orig_metrics
+
+    @pytest.mark.asyncio
+    async def test_refresh_gauges_sets_worker_heartbeat_staleness(self):
+        """A recent last_heartbeat must populate the staleness gauge (dead-worker alerting)."""
+        from datetime import UTC, datetime
+
+        orig_enabled = metrics.METRICS_ENABLED
+        orig_registry = metrics._registry
+        orig_metrics = metrics._metrics.copy()
+        orig_last_refresh = metrics._last_refresh
+        metrics.METRICS_ENABLED = True
+        metrics._init_metrics()
+        metrics._last_refresh = 0.0  # bypass 30s refresh cache
+
+        # Stored exactly like database.upsert_worker via SQLite datetime('now'):
+        # a naive UTC timestamp ("YYYY-MM-DD HH:MM:SS").
+        recent = datetime.now(UTC).replace(tzinfo=None).strftime("%Y-%m-%d %H:%M:%S")
+        mock_workers = [
+            {
+                "status": "online",
+                "name": "watchtower",
+                "last_heartbeat": recent,
+                "system_info": "{}",
+                "containers": "[]",
+            }
+        ]
+
+        # A worker reporting ONLY the legacy "last_seen" key (the pre-fix bug):
+        # the gauge must NOT be populated for it, proving the fix reads the real
+        # "last_heartbeat" column rather than the never-existent "last_seen".
+        mock_workers.append(
+            {
+                "status": "online",
+                "name": "legacy_only",
+                "last_seen": recent,  # legacy key only, no last_heartbeat
+                "system_info": "{}",
+                "containers": "[]",
+            }
+        )
+
+        with (
+            patch("app.database.list_workers", new_callable=AsyncMock, return_value=mock_workers),
+            patch("app.database.get_earnings_summary", new_callable=AsyncMock, return_value=[]),
+            patch("app.database.get_deployments", new_callable=AsyncMock, return_value=[]),
+            patch("app.database.get_health_scores", new_callable=AsyncMock, return_value=[]),
+            patch("app.exchange_rates.to_usd", side_effect=lambda amt, cur: amt),
+            patch("app.catalog.get_services", return_value=[]),
+        ):
+            await metrics._refresh_gauges()
+
+        # Iterate collected samples: an UNSET gauge label produces no sample at all,
+        # whereas .labels(...)._value.get() would materialize it as a misleading 0.0.
+        # This is what makes the test fail against the old buggy "last_seen" code.
+        gauge = metrics._metrics["worker_last_heartbeat_seconds"]
+        samples = {s.labels["worker"]: s.value for s in gauge.collect()[0].samples}
+
+        # Worker with a real last_heartbeat: gauge IS populated and reflects freshness.
+        assert "watchtower" in samples, "heartbeat gauge must be set from last_heartbeat"
+        assert 0 <= samples["watchtower"] < 60
+        # Worker with only the legacy last_seen key: gauge must NOT be set.
+        assert "legacy_only" not in samples, "gauge must not populate from the legacy last_seen key"
+
+        metrics.METRICS_ENABLED = orig_enabled
+        metrics._registry = orig_registry
+        metrics._metrics = orig_metrics
+        metrics._last_refresh = orig_last_refresh

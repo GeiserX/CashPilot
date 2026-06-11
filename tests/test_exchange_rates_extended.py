@@ -56,3 +56,24 @@ class TestRefreshSuccess:
 
         with patch("app.exchange_rates.httpx.AsyncClient", return_value=client):
             asyncio.run(exchange_rates.refresh())  # Should not raise
+
+    def test_refresh_fiat_non_200_logs_warning(self):
+        """Frankfurter non-200 hits the warning branch and leaves fiat rates intact."""
+        crypto_resp = _mock_response(200, {"mysterium": {"usd": 0.10}})
+        fiat_resp = _mock_response(503)
+
+        client = AsyncMock()
+        client.__aenter__ = AsyncMock(return_value=client)
+        client.__aexit__ = AsyncMock(return_value=False)
+        client.get.side_effect = [crypto_resp, fiat_resp]
+
+        with (
+            patch("app.exchange_rates.httpx.AsyncClient", return_value=client),
+            patch("app.exchange_rates.logger.warning") as warn,
+        ):
+            asyncio.run(exchange_rates.refresh())  # Should not raise
+
+        # The Frankfurter non-200 branch must emit a warning naming the source.
+        assert any("Frankfurter" in str(c.args) for c in warn.call_args_list)
+        # Crypto still succeeded.
+        assert exchange_rates._crypto_usd.get("MYST") == 0.10

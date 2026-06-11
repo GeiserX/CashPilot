@@ -6,9 +6,10 @@ is not possible. Users must extract session cookies from their browser.
 To get the cookie: open dash.bytelixir.com, log in (tick "Remember Me"),
 press F12 > Application > Cookies, and copy the `bytelixir_session` value.
 
-Earnings are obtained by scraping the server-rendered dashboard HTML,
-which contains ``data-balance`` attributes on Alpine.js ``Balance()``
-components.  The ``/api/v1/user`` endpoint only returns the
+Earnings are obtained by scraping the server-rendered dashboard HTML.
+Balances are rendered as split ``<span>`` tags (a ``$`` span, the
+integer+decimal text, then a trailing precision span), which a regex
+extracts and reassembles.  The ``/api/v1/user`` endpoint only returns the
 *withdrawable* balance (always 0 until the payout threshold is reached),
 **not** the total earned amount shown on the dashboard.
 
@@ -135,7 +136,8 @@ class BytelixirCollector(BaseCollector):
     async def collect(self) -> EarningsResult:
         """Fetch current Bytelixir earnings.
 
-        Primary method: scrape the dashboard HTML for ``data-balance``.
+        Primary method: scrape the dashboard HTML, reassembling the balance
+        from split ``<span>`` tags via regex.
         Fallback: ``/api/v1/user`` JSON endpoint.
         """
         try:

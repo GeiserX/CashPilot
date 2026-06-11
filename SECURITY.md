@@ -106,6 +106,15 @@ CashPilot is designed to run on **private, trusted networks** (home lab, VPN, LA
 - Restrict access via firewall rules or VPN
 - Use a strong `CASHPILOT_SECRET_KEY` and `CASHPILOT_API_KEY`
 
+### Worker URL Validation (SSRF)
+
+Worker URLs arrive in the fleet-key-authenticated heartbeat and are later fetched with the fleet bearer token attached, so the UI validates every worker URL before contacting it:
+
+- **Cloud-metadata addresses** (IPv4 `169.254.169.254`, IPv6 `fd00:ec2::254`) and loopback/link-local ranges are **always blocked**, regardless of policy.
+- **DNS-rebinding guard**: hostnames are resolved and the resolved IP is re-validated before each request, so a name that points at a metadata or loopback address is rejected. IPv4-mapped IPv6 bypasses are normalized and caught.
+- **Default policy is permissive**: LAN (RFC1918) and Tailscale (CGNAT `100.64.0.0/10`) workers keep working out of the box with no configuration.
+- **Opt-in `strict` mode** restricts workers to an explicit allowlist of CIDRs and hostname suffixes. See [Fleet Management](docs/fleet.md) for `CASHPILOT_WORKER_URL_POLICY`, `CASHPILOT_WORKER_ALLOWED_HOSTS`, and `CASHPILOT_WORKER_ALLOW_METADATA`.
+
 ## Hardening Recommendations
 
 1. **Use a reverse proxy with TLS** if accessible beyond localhost
@@ -116,6 +125,7 @@ CashPilot is designed to run on **private, trusted networks** (home lab, VPN, LA
 6. **Restrict Docker socket access** — do not mount it in containers that don't need it
 7. **Review deployed service configurations** — CashPilot deploys third-party containers; review their security posture independently
 8. **Back up your SQLite database** regularly (`/data/cashpilot.db`)
+9. **Enable strict worker-URL mode** (`CASHPILOT_WORKER_URL_POLICY=strict`) for internet-exposed deployments, with `CASHPILOT_WORKER_ALLOWED_HOSTS` set to your worker subnets
 
 ## Responsible Disclosure
 

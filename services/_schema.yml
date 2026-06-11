@@ -5,16 +5,14 @@
 # name: Human-readable service name
 # slug: URL/container-safe identifier (lowercase, hyphens)
 # category: bandwidth | depin | storage | compute
-# status: active | beta | broken | dead
+# status: active | beta | broken | dead | dropped
+#   - dropped: evaluated then removed; hidden from catalog (alongside broken/dead)
 # website: Main URL
 # description: One paragraph description
 # short_description: One line (for tables)
 
 # referral:
 #   signup_url: Full signup URL with referral code already embedded
-#   bonus:
-#     referrer: What the referrer gets
-#     referee: What the new user gets
 
 # docker:
 #   image: Docker Hub image
@@ -31,6 +29,7 @@
 #   command: "" (optional override)
 #   network_mode: "" (optional, e.g. "host")
 #   cap_add: [] (optional)
+#   privileged: false (optional, security-sensitive — grants the container full host device access)
 #   stop_timeout: 30 (optional, seconds to wait before SIGKILL on stop — default 30)
 #   setup: "" (optional, one-time setup instructions/commands to run before first deploy)
 
@@ -60,10 +59,11 @@
 #   notes: ""
 
 # cashout:
-#   method: redirect | api | manual
+#   method: redirect | api | manual | auto
 #     - redirect: user clicks through to service dashboard to request payout
 #     - api: CashPilot can trigger payout via API (rare)
 #     - manual: instructions only (e.g. crypto claim, no dashboard)
+#     - auto: payouts happen automatically; no user action needed
 #   dashboard_url: "https://service.com/dashboard/earnings"
 #   min_amount: 20 (numeric, derived from payment.minimum_payout)
 #   currency: USD
@@ -72,5 +72,6 @@
 # platforms: [windows, macos, linux, android, ios, docker, browser_extension]
 
 # collector:
-#   type: api | scrape | manual
+#   type: api | scrape | manual | auto
+#     - auto: earnings accrue/settle automatically; no active collection needed
 #   notes: "Implementation hints for the earnings collector"

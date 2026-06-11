@@ -752,15 +752,23 @@ const CP = (() => {
       }
       if (title) title.textContent = `${col.name} — Credentials`;
 
+      const secrets = config._secrets || {};
       const fieldsHtml = col.fields.filter(f => f.required).map(f => {
         const inputType = f.secret ? 'password' : 'text';
+        // Secret inputs are write-only: empty, with a placeholder that reflects
+        // whether a value is already stored (per _secrets). Non-secret fields keep
+        // their plain placeholder.
+        const placeholder = f.secret
+          ? (secrets[f.key] ? '•••••••• (set — leave blank to keep)' : escapeHtml(f.label))
+          : escapeHtml(f.label);
         return `
         <div style="margin-bottom:10px;">
           <label style="display:block; font-size:0.8rem; color:var(--text-secondary); margin-bottom:4px;">${escapeHtml(f.label)}</label>
           <input class="form-input cred-modal-input" type="${inputType}"
                  data-config="${escapeHtml(f.key)}"
                  value=""
-                 placeholder="${escapeHtml(f.label)}"
+                 placeholder="${placeholder}"
+                 ${f.secret ? 'autocomplete="new-password"' : ''}
                  style="width:100%;">
         </div>`;
       }).join('');
@@ -820,6 +828,84 @@ const CP = (() => {
       setTimeout(() => loadServicesTable(), 8000);
     } catch (err) {
       toast(`Save failed: ${err.message}`, 'error');
+    }
+  }
+
+  // -----------------------------------------------------------
+  // Change Password Modal
+  // -----------------------------------------------------------
+  function openChangePasswordModal() {
+    // Reset fields and any prior error each time the modal opens.
+    ['chpw-current', 'chpw-new', 'chpw-confirm'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.value = '';
+    });
+    const err = document.getElementById('chpw-error');
+    if (err) { err.textContent = ''; err.style.display = 'none'; }
+    // Close the avatar dropdown if it was the launch point.
+    const dropdown = document.getElementById('avatar-dropdown');
+    if (dropdown) dropdown.classList.remove('open');
+    openModal('password-modal');
+    const current = document.getElementById('chpw-current');
+    if (current) setTimeout(() => current.focus(), 50);
+  }
+
+  function _setPwdError(msg) {
+    const err = document.getElementById('chpw-error');
+    if (err) {
+      err.textContent = msg;
+      err.style.display = msg ? '' : 'none';
+    }
+  }
+
+  async function submitPasswordChange() {
+    const currentEl = document.getElementById('chpw-current');
+    const newEl = document.getElementById('chpw-new');
+    const confirmEl = document.getElementById('chpw-confirm');
+    if (!currentEl || !newEl || !confirmEl) return;
+
+    const current_password = currentEl.value;
+    const new_password = newEl.value;
+    const confirm = confirmEl.value;
+
+    // Client-side validation mirrors the backend rules for instant feedback.
+    if (!current_password) {
+      _setPwdError('Enter your current password.');
+      currentEl.focus();
+      return;
+    }
+    if (new_password.length < 10) {
+      _setPwdError('New password must be at least 10 characters.');
+      newEl.focus();
+      return;
+    }
+    if (new_password !== confirm) {
+      _setPwdError('New password and confirmation do not match.');
+      confirmEl.focus();
+      return;
+    }
+    if (new_password === current_password) {
+      _setPwdError('New password must be different from the current one.');
+      newEl.focus();
+      return;
+    }
+
+    _setPwdError('');
+    const btn = document.getElementById('pwd-submit');
+    if (btn) { btn.disabled = true; btn.dataset.label = btn.textContent; btn.textContent = 'Saving…'; }
+
+    try {
+      await api('/api/users/me/password', {
+        method: 'POST',
+        body: { current_password, new_password },
+      });
+      // Cookie is re-minted server-side, so the session stays valid.
+      toast('Password changed', 'success');
+      closeModal('password-modal');
+    } catch (err) {
+      _setPwdError(err.message);
+    } finally {
+      if (btn) { btn.disabled = false; btn.textContent = btn.dataset.label || 'Change Password'; }
     }
   }
 
@@ -1131,19 +1217,6 @@ const CP = (() => {
   // Cached worker container data for wizard
   let _wizardWorkerSlugs = {};  // slug -> node count
   let _wizardWorkers = [];      // full workers array from /api/workers
-
-  // Global worker cache for detail modal
-  let _cachedWorkers = null;
-  async function getCachedWorkers() {
-    if (_cachedWorkers) return _cachedWorkers;
-    try {
-      _cachedWorkers = await api('/api/workers');
-    } catch {
-      _cachedWorkers = [];
-    }
-    return _cachedWorkers;
-  }
-  function invalidateWorkerCache() { _cachedWorkers = null; }
 
   async function loadWizardServices() {
     const container = document.getElementById('wizard-services');
@@ -1757,7 +1830,7 @@ const CP = (() => {
       // Refresh the modal
       openServiceDetail(slug);
     } catch (err) {
-      alert(`${action} failed: ${err.message}`);
+      toast(`${action} failed: ${err.message}`, 'error');
     }
   }
 
@@ -1822,7 +1895,10 @@ const CP = (() => {
       const fromEnv = v.set_via_env;
       const locked = fromEnv || v.read_only;
       const dbVal = config[v.key] || '';
-      const displayVal = dbVal || v.value;
+      // Secret rows never carry a plaintext value from the API — render empty and
+      // drive status off the is_set flag. Non-secret rows still show their value.
+      const isSet = v.secret ? !!v.is_set : !!(dbVal || v.value);
+      const displayVal = v.secret ? '' : (dbVal || v.value);
       const inputType = v.secret ? 'password' : 'text';
       const lockIcon = locked
         ? '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" stroke-width="2" style="vertical-align:middle;margin-left:6px;"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>'
@@ -1831,8 +1907,12 @@ const CP = (() => {
       if (fromEnv) badge = '<span class="badge badge-deployed" style="font-size:0.7rem;margin-left:8px;">ENV</span>';
       else if (v.read_only) badge = '<span class="badge" style="font-size:0.7rem;margin-left:8px;opacity:0.6;">Read-only</span>';
       else if (dbVal) badge = '<span class="badge badge-category" style="font-size:0.7rem;margin-left:8px;">DB</span>';
-      else if (v.value) badge = '<span class="badge" style="font-size:0.7rem;margin-left:8px;opacity:0.5;">Default</span>';
+      else if (isSet) badge = '<span class="badge" style="font-size:0.7rem;margin-left:8px;opacity:0.5;">Default</span>';
       else badge = '<span class="badge" style="font-size:0.7rem;margin-left:8px;opacity:0.5;">Not set</span>';
+      // Secret fields render empty; placeholder communicates whether a value is stored.
+      const placeholder = v.secret
+        ? (isSet ? '•••••••• (set — leave blank to keep)' : 'Not set')
+        : v.description;
       return `
       <div style="display:grid;grid-template-columns:220px 1fr;gap:12px;align-items:start;padding:10px 0;border-bottom:1px solid var(--border-color);">
         <div>
@@ -1844,12 +1924,10 @@ const CP = (() => {
             <input class="form-input env-var-input" type="${inputType}" id="env-${v.key}"
                    data-env-key="${escapeHtml(v.key)}"
                    value="${escapeHtml(displayVal)}"
-                   placeholder="${escapeHtml(v.description)}"
+                   placeholder="${escapeHtml(placeholder)}"
+                   ${v.secret ? 'autocomplete="new-password"' : ''}
                    style="flex:1;${locked ? 'opacity:0.6;cursor:not-allowed;' : ''}"
                    ${locked ? 'disabled' : ''}>
-            ${v.secret && displayVal ? `<button type="button" class="btn btn-ghost btn-sm" onclick="CP.toggleEnvSecret('env-${v.key}', this)" title="Show" style="white-space:nowrap;padding:6px 8px;">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-            </button>` : ''}
           </div>
           <div class="form-hint">${escapeHtml(v.description)}</div>
         </div>
@@ -1900,8 +1978,12 @@ const CP = (() => {
       container.innerHTML = '<p style="color:var(--text-muted);font-size:0.85rem;">No collectors available.</p>';
       return;
     }
+    const secrets = config._secrets || {};
     const items = meta.map(col => {
+      // A collector is "configured" if any secret field has a stored value
+      // (per _secrets) or any non-secret field carries a real value.
       const configured = col.fields.some(f => {
+        if (f.secret) return !!secrets[f.key];
         const val = config[f.key];
         return val && val.trim() !== '';
       });
@@ -1909,12 +1991,15 @@ const CP = (() => {
         ? '<span class="badge badge-deployed">Configured</span>'
         : '<span class="badge badge-category">Not configured</span>';
       const fields = col.fields.map(f => {
-        const savedVal = config[f.key] || '';
+        // Secret fields never receive a plaintext value from /api/config — render
+        // them empty (write-only). Submitting blank preserves the stored secret.
+        const isSecretSet = f.secret && !!secrets[f.key];
+        const savedVal = f.secret ? '' : (config[f.key] || '');
         const inputType = f.secret ? 'password' : 'text';
         const inputId = `cred-${f.key}`;
-        const showBtn = f.secret && savedVal ? `<button type="button" class="btn btn-ghost btn-sm" onclick="CP.toggleEnvSecret('${inputId}', this)" title="Show" style="white-space:nowrap;padding:6px 8px;">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-            </button>` : '';
+        const placeholder = f.secret
+          ? (isSecretSet ? '•••••••• (set — leave blank to keep)' : 'Not set')
+          : f.label;
         return `
         <div class="form-group" style="margin-bottom:8px;">
           <label class="form-label" style="font-size:0.8rem;">${escapeHtml(f.label)}${f.required ? '' : ' <span style="opacity:0.5;">(optional)</span>'}</label>
@@ -1922,9 +2007,9 @@ const CP = (() => {
             <input class="form-input collector-input" type="${inputType}" id="${inputId}"
                    data-config="${escapeHtml(f.key)}"
                    value="${escapeHtml(savedVal)}"
-                   placeholder="${escapeHtml(f.label)}"
+                   placeholder="${escapeHtml(placeholder)}"
+                   ${f.secret ? 'autocomplete="new-password"' : ''}
                    style="flex:1;">
-            ${showBtn}
           </div>
         </div>`;
       }).join('');
@@ -2115,16 +2200,6 @@ const CP = (() => {
     }
   }
 
-  function goToCollectorSettings(platform) {
-    // Navigate to settings and open the relevant collector section
-    if (window.location.pathname === '/settings') {
-      // Already on settings — just open the section
-      openCollectorSection(platform);
-    } else {
-      window.location.href = '/settings?highlight=' + encodeURIComponent(platform);
-    }
-  }
-
   function openCollectorSection(platform) {
     const details = document.getElementById('collector-' + platform);
     if (!details) return;
@@ -2201,6 +2276,20 @@ const CP = (() => {
   function initAvatarDropdown() {
     const toggle = document.getElementById('avatar-toggle');
     const dropdown = document.getElementById('avatar-dropdown');
+
+    // Submit the change-password modal on Enter from any of its fields.
+    ['chpw-current', 'chpw-new', 'chpw-confirm'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) {
+        el.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            submitPasswordChange();
+          }
+        });
+      }
+    });
+
     if (!toggle || !dropdown) return;
     toggle.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -2317,7 +2406,6 @@ const CP = (() => {
     filterCatalog,
     refreshServices,
     openClaimModal,
-    goToCollectorSettings,
     toggleInstances,
     deployServiceToWorkers,
     workerAction,
@@ -2325,5 +2413,7 @@ const CP = (() => {
     openCredentialModal,
     saveCredentialModal,
     clearServiceCredentials,
+    openChangePasswordModal,
+    submitPasswordChange,
   };
 })();

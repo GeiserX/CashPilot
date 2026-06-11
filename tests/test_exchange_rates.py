@@ -1,6 +1,7 @@
 """Tests for exchange rate service."""
 
 import os
+import time
 
 os.environ.setdefault("CASHPILOT_API_KEY", "test-fleet-key")
 
@@ -38,6 +39,32 @@ class TestToUsd:
             assert exchange_rates.to_usd(10.0, "ZZZ") is None
         finally:
             exchange_rates._fiat_rates.pop("ZZZ", None)
+
+
+class TestRatesStale:
+    def test_fresh_fetch_not_stale(self):
+        original = exchange_rates._last_fetch
+        try:
+            exchange_rates._last_fetch = time.time()
+            assert exchange_rates.rates_stale() is False
+        finally:
+            exchange_rates._last_fetch = original
+
+    def test_old_fetch_is_stale(self):
+        original = exchange_rates._last_fetch
+        try:
+            exchange_rates._last_fetch = time.time() - (exchange_rates.STALE_THRESHOLD + 1)
+            assert exchange_rates.rates_stale() is True
+        finally:
+            exchange_rates._last_fetch = original
+
+    def test_never_fetched_is_stale(self):
+        original = exchange_rates._last_fetch
+        try:
+            exchange_rates._last_fetch = 0
+            assert exchange_rates.rates_stale() is True
+        finally:
+            exchange_rates._last_fetch = original
 
 
 class TestGetAll:

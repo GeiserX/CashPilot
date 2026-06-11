@@ -124,6 +124,9 @@ volumes:
 !!! tip "Secret Key Persistence"
     If you don't set `CASHPILOT_SECRET_KEY`, one is auto-generated on first run and stored in the data volume. If you recreate the volume, stored credentials become unreadable. Set an explicit key in your compose file to avoid this.
 
+!!! tip "Passwords and secrets in the UI"
+    Change your own password any time from the avatar menu -> **Change password** (available to all roles); this signs out your other sessions. In **Settings**, stored secrets are write-only: enter a value to change it, or leave the field blank to keep the existing one. Saved credentials are never sent back to the browser.
+
 ## Supported Services
 
 CashPilot tracks **49 services** across four categories:

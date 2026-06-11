@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import abc
 import asyncio
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
@@ -22,7 +23,7 @@ class EarningsResult:
     error: str | None = None
 
 
-class BaseCollector:
+class BaseCollector(abc.ABC):
     """Abstract base for platform-specific earnings collectors.
 
     Subclasses must set `platform` and implement `collect()`.
@@ -64,5 +65,6 @@ class BaseCollector:
                     await asyncio.sleep(backoff * (2**attempt))
         raise last_exc  # type: ignore[misc]
 
+    @abc.abstractmethod
     async def collect(self) -> EarningsResult:
         raise NotImplementedError

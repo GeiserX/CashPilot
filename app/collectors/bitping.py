@@ -74,7 +74,10 @@ class BitpingCollector(BaseCollector):
             resp.raise_for_status()
             data = resp.json()
 
-            balance = float(data.get("usdEarnings", 0))
+            raw = data.get("usdEarnings")
+            if raw is None:
+                raise ValueError("usdEarnings field missing — API shape may have changed")
+            balance = float(raw)
 
             return EarningsResult(
                 platform=self.platform,

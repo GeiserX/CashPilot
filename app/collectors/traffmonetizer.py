@@ -65,7 +65,10 @@ class TraffmonetizerCollector(BaseCollector):
             resp.raise_for_status()
             data = resp.json()
 
-            balance = float(data.get("data", {}).get("balance", 0))
+            raw = data.get("data", {}).get("balance")
+            if raw is None:
+                raise ValueError("balance field missing — API shape may have changed")
+            balance = float(raw)
 
             return EarningsResult(
                 platform=self.platform,

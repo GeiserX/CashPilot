@@ -70,7 +70,10 @@ class AnyoneCollector(BaseCollector):
         if not data or data == "null":
             return 0.0
 
-        raw_tokens = int(data)
+        try:
+            raw_tokens = int(data)
+        except (ValueError, TypeError):
+            raise ValueError(f"unexpected reward format: {data!r}")
         return raw_tokens / (10**TOKEN_DECIMALS)
 
     async def _get_token_price(self, client: httpx.AsyncClient) -> float:
@@ -84,6 +87,7 @@ class AnyoneCollector(BaseCollector):
         return float(data.get(COINGECKO_ID, {}).get("usd", 0))
 
     async def collect(self) -> EarningsResult:
+        """Fetch total Anyone Protocol relay rewards and convert to USD."""
         if not self.fingerprints:
             return EarningsResult(
                 platform=self.platform,

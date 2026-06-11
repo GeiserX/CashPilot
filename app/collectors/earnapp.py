@@ -91,7 +91,10 @@ class EarnAppCollector(BaseCollector):
                     error=data["error"],
                 )
 
-            balance = float(data.get("balance", 0))
+            raw = data.get("balance")
+            if raw is None:
+                raise ValueError("balance field missing — API shape may have changed")
+            balance = float(raw)
 
             return EarningsResult(
                 platform=self.platform,
