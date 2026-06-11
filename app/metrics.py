@@ -319,10 +319,10 @@ async def _refresh_gauges() -> None:
         st = w.get("status", "unknown")
         status_counts[st] = status_counts.get(st, 0) + 1
         name = w.get("name", "worker")
-        last_seen = w.get("last_seen")
-        if last_seen:
+        last_heartbeat = w.get("last_heartbeat")
+        if last_heartbeat:
             try:
-                dt = datetime.fromisoformat(last_seen)
+                dt = datetime.fromisoformat(last_heartbeat)
                 if dt.tzinfo is None:
                     dt = dt.replace(tzinfo=UTC)
                 m["worker_last_heartbeat_seconds"].labels(worker=name).set(now - dt.timestamp())

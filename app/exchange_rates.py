@@ -27,6 +27,8 @@ CRYPTO_IDS: dict[str, str] = {
 }
 
 CACHE_TTL = 900  # 15 minutes
+# Rates are considered stale (refreshes are failing) after 2x the cache TTL.
+STALE_THRESHOLD = 2 * CACHE_TTL  # 30 minutes
 
 # In-memory caches
 _fiat_rates: dict[str, float] = {"USD": 1.0}
@@ -53,6 +55,12 @@ async def refresh() -> None:
                         price = (data.get(cg_id) or {}).get("usd")
                         if price is not None:
                             _crypto_usd[token] = float(price)
+                else:
+                    logger.warning(
+                        "exchange rate fetch got HTTP %s from %s",
+                        resp.status_code,
+                        "CoinGecko",
+                    )
 
             # --- Fiat rates from Frankfurter (free, no key) ---
             resp = await client.get(
@@ -65,6 +73,12 @@ async def refresh() -> None:
                 for code, rate in data.get("rates", {}).items():
                     new_rates[code] = float(rate)
                 _fiat_rates = new_rates
+            else:
+                logger.warning(
+                    "exchange rate fetch got HTTP %s from %s",
+                    resp.status_code,
+                    "Frankfurter",
+                )
 
         _last_fetch = time.time()
         logger.info(
@@ -74,6 +88,18 @@ async def refresh() -> None:
         )
     except Exception as exc:
         logger.error("Exchange rate fetch failed: %s", exc)
+
+
+def rates_stale() -> bool:
+    """Return True if cached rates are stale (refreshes appear to be failing).
+
+    Rates are stale once more than ``STALE_THRESHOLD`` seconds have elapsed
+    since the last successful fetch (``_last_fetch`` is only updated on
+    success).  A never-fetched cache (``_last_fetch == 0``) is also stale.
+    Callers can use this to avoid silently summing balances against rates
+    that may be badly out of date.
+    """
+    return time.time() - _last_fetch > STALE_THRESHOLD
 
 
 def get_all() -> dict[str, Any]:

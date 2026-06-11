@@ -7,8 +7,9 @@ config, users, fleet workers, and compose export.
 import asyncio
 import json
 import os
+import socket
 from contextlib import asynccontextmanager
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 os.environ.setdefault("CASHPILOT_API_KEY", "test-fleet-key")
 
@@ -735,21 +736,36 @@ class TestApiCompose:
 
 class TestApiConfig:
     def test_api_get_config(self, client):
+        masked = {"honeygain_email": "a@b.com", "_secrets": {"honeygain_password": True}}
         with (
             _auth_owner(),
-            patch("app.main.database.get_config", new_callable=AsyncMock, return_value={"k": "v"}),
+            patch("app.main.database.get_config_masked", new_callable=AsyncMock, return_value=masked),
         ):
             resp = client.get("/api/config")
             assert resp.status_code == 200
-            assert resp.json() == {"k": "v"}
+            assert resp.json() == masked
 
-    def test_api_get_config_non_dict(self, client):
+    def test_api_get_config_masks_secrets(self, client):
+        """Secret keys must be absent at top level and only present (as bool) in _secrets."""
+        masked = {
+            "honeygain_email": "a@b.com",
+            "_secrets": {"honeygain_password": True, "grass_access_token": False},
+        }
         with (
             _auth_owner(),
-            patch("app.main.database.get_config", new_callable=AsyncMock, return_value=None),
+            patch("app.main.database.get_config_masked", new_callable=AsyncMock, return_value=masked),
         ):
             resp = client.get("/api/config")
-            assert resp.json() == {}
+            assert resp.status_code == 200
+            data = resp.json()
+            # Non-secret value present at top level
+            assert data["honeygain_email"] == "a@b.com"
+            # Secret values absent from top level
+            assert "honeygain_password" not in data
+            assert "grass_access_token" not in data
+            # Presence reported as bool under _secrets
+            assert data["_secrets"]["honeygain_password"] is True
+            assert data["_secrets"]["grass_access_token"] is False
 
     def test_api_set_config(self, client):
         with (
@@ -875,6 +891,181 @@ class TestApiUsers:
 
 
 # ---------------------------------------------------------------------------
+# API: Change own password (H4)
+# ---------------------------------------------------------------------------
+
+
+class TestChangeOwnPassword:
+    def test_change_own_password_ok(self, client):
+        record = {
+            "id": 1,
+            "username": "admin",
+            "password": "x-mock-hash",
+            "role": "owner",
+            "password_changed_at": 123.0,
+        }
+        with (
+            _auth_owner(),
+            patch("app.main.database.get_user_by_id", new_callable=AsyncMock, return_value=record),
+            patch("app.main.auth.verify_password", return_value=True),
+            patch("app.main.auth.hash_password", return_value="hashed-new"),
+            patch("app.main.database.update_user_password", new_callable=AsyncMock) as mock_upd,
+            patch("app.main.auth.set_user_pwd_epoch") as mock_epoch,
+            patch("app.main.auth.create_session_token", return_value="tok"),
+            patch("app.main.auth.set_session_cookie", side_effect=lambda r, t: r),
+        ):
+            resp = client.post(
+                "/api/users/me/password",
+                json={"current_password": "oldpassword1", "new_password": "newpassword123"},
+            )
+            assert resp.status_code == 200
+            assert resp.json()["status"] == "password_changed"
+            mock_upd.assert_called_once_with(1, "hashed-new")
+            mock_epoch.assert_called_once_with(1, 123.0)
+
+    def test_change_own_password_remints_cookie(self, client):
+        # The caller must NOT be logged out by their own password change: the
+        # route re-mints the session cookie with a fresh token (iat > new epoch).
+        record = {
+            "id": 1,
+            "username": "admin",
+            "password": "x-mock-hash",
+            "role": "owner",
+            "password_changed_at": 123.0,
+        }
+        with (
+            _auth_owner(),
+            patch("app.main.database.get_user_by_id", new_callable=AsyncMock, return_value=record),
+            patch("app.main.auth.verify_password", return_value=True),
+            patch("app.main.auth.hash_password", return_value="hashed-new"),
+            patch("app.main.database.update_user_password", new_callable=AsyncMock),
+            patch("app.main.auth.set_user_pwd_epoch"),
+            patch("app.main.auth.create_session_token", return_value="fresh-tok") as mock_tok,
+            patch("app.main.auth.set_session_cookie", side_effect=lambda r, t: r) as mock_cookie,
+        ):
+            resp = client.post(
+                "/api/users/me/password",
+                json={"current_password": "oldpassword1", "new_password": "newpassword123"},
+            )
+            assert resp.status_code == 200
+            mock_tok.assert_called_once_with(1, "admin", "owner")
+            # set_session_cookie must be called with the freshly-minted token.
+            assert mock_cookie.call_args[0][1] == "fresh-tok"
+
+    def test_change_own_password_user_vanished(self, client):
+        # Authenticated session but the user row is gone → 404, no crash.
+        with (
+            _auth_owner(),
+            patch("app.main.database.get_user_by_id", new_callable=AsyncMock, return_value=None),
+        ):
+            resp = client.post(
+                "/api/users/me/password",
+                json={"current_password": "oldpassword1", "new_password": "newpassword123"},
+            )
+            assert resp.status_code == 404
+
+    def test_change_own_password_wrong_current(self, client):
+        record = {"id": 1, "username": "admin", "password": "x-mock-hash", "role": "owner"}
+        with (
+            _auth_owner(),
+            patch("app.main.database.get_user_by_id", new_callable=AsyncMock, return_value=record),
+            patch("app.main.auth.verify_password", return_value=False),
+        ):
+            resp = client.post(
+                "/api/users/me/password",
+                json={"current_password": "wrong", "new_password": "newpassword123"},
+            )
+            assert resp.status_code == 403
+
+    def test_change_own_password_too_short(self, client):
+        record = {"id": 1, "username": "admin", "password": "x-mock-hash", "role": "owner"}
+        with (
+            _auth_owner(),
+            patch("app.main.database.get_user_by_id", new_callable=AsyncMock, return_value=record),
+            patch("app.main.auth.verify_password", return_value=True),
+        ):
+            resp = client.post(
+                "/api/users/me/password",
+                json={"current_password": "oldpassword1", "new_password": "short"},
+            )
+            assert resp.status_code == 400
+
+    def test_change_own_password_same_as_old(self, client):
+        record = {"id": 1, "username": "admin", "password": "x-mock-hash", "role": "owner"}
+        with (
+            _auth_owner(),
+            patch("app.main.database.get_user_by_id", new_callable=AsyncMock, return_value=record),
+            patch("app.main.auth.verify_password", return_value=True),
+        ):
+            resp = client.post(
+                "/api/users/me/password",
+                json={"current_password": "samepassword1", "new_password": "samepassword1"},
+            )
+            assert resp.status_code == 400
+
+    def test_change_own_password_uid0_rejected(self, client):
+        """API-key sessions (uid=0) cannot change a password."""
+        with patch("app.main.auth.get_current_user", return_value={"uid": 0, "u": "api", "r": "owner"}):
+            resp = client.post(
+                "/api/users/me/password",
+                json={"current_password": "x", "new_password": "newpassword123"},
+            )
+            assert resp.status_code == 400
+
+    def test_change_own_password_unauthenticated(self, client):
+        with _no_auth():
+            resp = client.post(
+                "/api/users/me/password",
+                json={"current_password": "x", "new_password": "newpassword123"},
+            )
+            assert resp.status_code == 401
+
+
+# ---------------------------------------------------------------------------
+# API: Admin reset password (H4)
+# ---------------------------------------------------------------------------
+
+
+class TestAdminResetPassword:
+    def test_admin_reset_password_owner_ok(self, client):
+        target = {"id": 2, "username": "bob", "password": "hashed", "role": "viewer", "password_changed_at": 456.0}
+        with (
+            _auth_owner(),
+            patch("app.main.database.get_user_by_id", new_callable=AsyncMock, return_value=target),
+            patch("app.main.auth.hash_password", return_value="hashed-new"),
+            patch("app.main.database.update_user_password", new_callable=AsyncMock) as mock_upd,
+            patch("app.main.auth.set_user_pwd_epoch") as mock_epoch,
+        ):
+            resp = client.post("/api/users/2/password", json={"new_password": "newpassword123"})
+            assert resp.status_code == 200
+            assert resp.json()["status"] == "password_set"
+            mock_upd.assert_called_once_with(2, "hashed-new")
+            mock_epoch.assert_called_once_with(2, 456.0)
+
+    def test_admin_reset_password_non_owner_403(self, client):
+        with _auth_writer():
+            resp = client.post("/api/users/2/password", json={"new_password": "newpassword123"})
+            assert resp.status_code == 403
+
+    def test_admin_reset_password_user_not_found_404(self, client):
+        with (
+            _auth_owner(),
+            patch("app.main.database.get_user_by_id", new_callable=AsyncMock, return_value=None),
+        ):
+            resp = client.post("/api/users/99/password", json={"new_password": "newpassword123"})
+            assert resp.status_code == 404
+
+    def test_admin_reset_password_too_short(self, client):
+        target = {"id": 2, "username": "bob", "password": "hashed", "role": "viewer"}
+        with (
+            _auth_owner(),
+            patch("app.main.database.get_user_by_id", new_callable=AsyncMock, return_value=target),
+        ):
+            resp = client.post("/api/users/2/password", json={"new_password": "short"})
+            assert resp.status_code == 400
+
+
+# ---------------------------------------------------------------------------
 # API: Preferences
 # ---------------------------------------------------------------------------
 
@@ -933,6 +1124,41 @@ class TestApiEnvInfo:
         with _auth_viewer():
             resp = client.get("/api/env-info")
             assert resp.status_code == 403
+
+    def test_api_env_info_no_secret_value(self, client):
+        """Secret rows must drop 'value' and expose 'is_set' instead."""
+        with (
+            _auth_owner(),
+            patch.dict(os.environ, {"CASHPILOT_API_KEY": "test-placeholder-value"}, clear=False),
+        ):
+            resp = client.get("/api/env-info")
+            assert resp.status_code == 200
+            rows = {e["key"]: e for e in resp.json()}
+            fleet = rows["CASHPILOT_API_KEY"]
+            assert fleet["secret"] is True
+            assert "value" not in fleet
+            assert fleet["is_set"] is True
+            # Non-secret rows keep their real value
+            prefix = rows["CASHPILOT_HOSTNAME_PREFIX"]
+            assert "value" in prefix
+            assert "is_set" not in prefix
+
+    def test_env_info_secret_key_never_leaks(self, client):
+        """CASHPILOT_SECRET_KEY must never return a value; is_set + read_only true."""
+        sentinel = "test-placeholder-value"
+        with (
+            _auth_owner(),
+            patch.dict(os.environ, {"CASHPILOT_SECRET_KEY": sentinel}, clear=False),
+        ):
+            resp = client.get("/api/env-info")
+            assert resp.status_code == 200
+            rows = {e["key"]: e for e in resp.json()}
+            sk = rows["CASHPILOT_SECRET_KEY"]
+            assert "value" not in sk
+            assert sk["is_set"] is True
+            assert sk["read_only"] is True
+            # The plaintext must not appear anywhere in the response body
+            assert sentinel not in resp.text
 
 
 # ---------------------------------------------------------------------------
@@ -1030,18 +1256,37 @@ class TestApiFleet:
             assert data["total_workers"] == 2
             assert data["online_workers"] == 1
 
-    def test_api_fleet_api_key(self, client):
+    def test_fleet_api_key_status_only(self, client):
+        """GET returns presence only — never the key value."""
         with (
             _auth_owner(),
             patch("app.main.FLEET_API_KEY", "test-key"),
         ):
             resp = client.get("/api/fleet/api-key")
             assert resp.status_code == 200
-            assert resp.json()["api_key"] == "test-key"
+            data = resp.json()
+            assert data["is_set"] is True
+            assert "api_key" not in data
+            assert "source" in data
 
     def test_api_fleet_api_key_non_owner(self, client):
         with _auth_viewer():
             resp = client.get("/api/fleet/api-key")
+            assert resp.status_code == 403
+
+    def test_fleet_api_key_reveal_owner(self, client):
+        """POST reveal returns the actual key for an owner."""
+        with (
+            _auth_owner(),
+            patch("app.main.FLEET_API_KEY", "test-key"),
+        ):
+            resp = client.post("/api/fleet/api-key/reveal")
+            assert resp.status_code == 200
+            assert resp.json()["api_key"] == "test-key"
+
+    def test_fleet_reveal_non_owner_403(self, client):
+        with _auth_viewer():
+            resp = client.post("/api/fleet/api-key/reveal")
             assert resp.status_code == 403
 
 
@@ -1088,8 +1333,138 @@ class TestValidateWorkerUrl:
     def test_tailscale_dns_allowed(self):
         from app.main import _validate_worker_url
 
+        # Exact-match (not substring) so CodeQL's url-substring-sanitization rule
+        # isn't tripped by a test assertion.
         result = _validate_worker_url("http://worker.mango.ts.net:8081")
-        assert "worker.mango.ts.net" in result
+        assert result == "http://worker.mango.ts.net:8081"
+
+    def test_tailscale_cgnat_ip_allowed(self):
+        # 100.64.0.0/10 is neither private nor public in Python's ipaddress;
+        # permissive default must still allow Tailscale literal IPs.
+        from app.main import _validate_worker_url
+
+        assert _validate_worker_url("http://100.100.100.100:8081") == "http://100.100.100.100:8081"
+
+    def test_rfc1918_lan_allowed(self):
+        from app.main import _validate_worker_url
+
+        assert _validate_worker_url("http://192.168.10.50:8081") == "http://192.168.10.50:8081"
+
+    def test_metadata_ipv4_blocked(self):
+        from app.main import _validate_worker_url
+
+        with pytest.raises(Exception, match="metadata"):
+            _validate_worker_url("http://169.254.169.254/latest/meta-data/")
+
+    def test_metadata_ipv6_blocked(self):
+        from app.main import _validate_worker_url
+
+        with pytest.raises(Exception, match="metadata"):
+            _validate_worker_url("http://[fd00:ec2::254]:80/")
+
+    def test_ipv6_loopback_blocked(self):
+        from app.main import _validate_worker_url
+
+        with pytest.raises(Exception, match="loopback"):
+            _validate_worker_url("http://[::1]:8081")
+
+    def test_ipv4_mapped_loopback_blocked(self):
+        from app.main import _validate_worker_url
+
+        with pytest.raises(Exception, match="loopback"):
+            _validate_worker_url("http://[::ffff:127.0.0.1]:8081")
+
+    def test_dns_rebind_to_metadata_blocked(self):
+        # A hostname that resolves to the metadata IP must be rejected even in
+        # permissive mode (DNS-rebinding guard).
+        from app.main import _validate_worker_url
+
+        with (
+            patch(
+                "app.main.socket.getaddrinfo",
+                return_value=[(2, 1, 6, "", ("169.254.169.254", 80))],
+            ),
+            pytest.raises(Exception, match="metadata"),
+        ):
+            _validate_worker_url("http://evil.example.com")
+
+    def test_strict_mode_allows_listed_cidr(self):
+        import app.main as main
+
+        orig = (main._WORKER_URL_POLICY, main._WORKER_ALLOWED_CIDRS)
+        try:
+            main._WORKER_URL_POLICY = "strict"
+            main._WORKER_ALLOWED_CIDRS = [main.ipaddress.ip_network("192.168.10.0/24")]
+            assert main._validate_worker_url("http://192.168.10.50:8081") == "http://192.168.10.50:8081"
+        finally:
+            main._WORKER_URL_POLICY, main._WORKER_ALLOWED_CIDRS = orig
+
+    def test_strict_mode_blocks_unlisted_ip(self):
+        import app.main as main
+
+        orig = (main._WORKER_URL_POLICY, main._WORKER_ALLOWED_CIDRS)
+        try:
+            main._WORKER_URL_POLICY = "strict"
+            main._WORKER_ALLOWED_CIDRS = [main.ipaddress.ip_network("192.168.10.0/24")]
+            with pytest.raises(Exception, match="strict mode"):
+                main._validate_worker_url("http://10.0.0.5:8081")
+        finally:
+            main._WORKER_URL_POLICY, main._WORKER_ALLOWED_CIDRS = orig
+
+    def test_metadata_escape_hatch_allows(self):
+        # The escape hatch un-blocks the metadata check only. Use the IPv6 IMDS
+        # address (ULA fd00::/8, not link-local) so the loopback/link-local guard
+        # doesn't independently block it — proving the hatch works in isolation.
+        import app.main as main
+
+        orig = main._WORKER_ALLOW_METADATA
+        try:
+            main._WORKER_ALLOW_METADATA = True
+            assert main._validate_worker_url("http://[fd00:ec2::254]:80/") == "http://[fd00:ec2::254]:80"
+        finally:
+            main._WORKER_ALLOW_METADATA = orig
+
+    def test_strict_mode_hostname_resolves_into_allowed_cidr(self):
+        # Strict mode, Case B: hostname resolving to an allowed CIDR is accepted.
+        import app.main as main
+
+        orig = (main._WORKER_URL_POLICY, main._WORKER_ALLOWED_CIDRS)
+        try:
+            main._WORKER_URL_POLICY = "strict"
+            main._WORKER_ALLOWED_CIDRS = [main.ipaddress.ip_network("192.168.10.0/24")]
+            with patch("app.main.socket.getaddrinfo", return_value=[(2, 1, 6, "", ("192.168.10.50", 8081))]):
+                assert main._validate_worker_url("http://wk.local:8081") == "http://wk.local:8081"
+        finally:
+            main._WORKER_URL_POLICY, main._WORKER_ALLOWED_CIDRS = orig
+
+    def test_strict_mode_hostname_resolves_outside_allowed_cidr_blocked(self):
+        import app.main as main
+
+        orig = (main._WORKER_URL_POLICY, main._WORKER_ALLOWED_CIDRS)
+        try:
+            main._WORKER_URL_POLICY = "strict"
+            main._WORKER_ALLOWED_CIDRS = [main.ipaddress.ip_network("192.168.10.0/24")]
+            with (
+                patch("app.main.socket.getaddrinfo", return_value=[(2, 1, 6, "", ("10.0.0.5", 8081))]),
+                pytest.raises(Exception, match="strict mode"),
+            ):
+                main._validate_worker_url("http://wk.local:8081")
+        finally:
+            main._WORKER_URL_POLICY, main._WORKER_ALLOWED_CIDRS = orig
+
+    def test_strict_mode_unresolvable_hostname_blocked(self):
+        import app.main as main
+
+        orig = main._WORKER_URL_POLICY
+        try:
+            main._WORKER_URL_POLICY = "strict"
+            with (
+                patch("app.main.socket.getaddrinfo", side_effect=socket.gaierror),
+                pytest.raises(Exception, match="does not resolve"),
+            ):
+                main._validate_worker_url("http://nope.invalid:8081")
+        finally:
+            main._WORKER_URL_POLICY = orig
 
 
 # ---------------------------------------------------------------------------
@@ -1226,3 +1601,150 @@ class TestApiPerNodeEarnings:
             resp = client.get("/api/services/honeygain/per-node-earnings")
             assert resp.status_code == 200
             assert resp.json() == []
+
+
+# ---------------------------------------------------------------------------
+# Lifespan / scheduler wiring (audit: error listener + job hardening)
+# ---------------------------------------------------------------------------
+
+
+class TestLifespanScheduler:
+    """Exercise the real lifespan() so the scheduler wiring is actually covered.
+
+    External I/O (init_db, exchange refresh, collection) is mocked, but the real
+    AsyncIOScheduler is started so we can assert every interval job is registered
+    with the hardening kwargs and the EVENT_JOB_ERROR/MISSED listener is attached.
+    """
+
+    def test_lifespan_registers_jobs_and_error_listener(self):
+        import app.main as main_mod
+
+        async def _run():
+            with (
+                patch("app.main.database.init_db", new_callable=AsyncMock),
+                patch("app.main.database.connect_shared", new_callable=AsyncMock),
+                patch("app.main.database.close_shared", new_callable=AsyncMock),
+                patch("app.main.database.list_users_with_pwd_epoch", new_callable=AsyncMock, return_value=[]),
+                patch("app.main.catalog.load_services"),
+                patch("app.main.catalog.register_sighup"),
+                patch("app.main.exchange_rates.refresh", new_callable=AsyncMock),
+                patch("app.main._run_collection", new_callable=AsyncMock),
+                patch("app.main.close_all_collectors", new_callable=AsyncMock, create=True),
+            ):
+                async with main_mod.lifespan(main_mod.app):
+                    sched = main_mod.scheduler
+                    jobs = {j.id: j for j in sched.get_jobs()}
+                    # All five interval jobs registered.
+                    assert set(jobs) == {
+                        "collect",
+                        "health_check",
+                        "stale_workers",
+                        "data_retention",
+                        "exchange_rates",
+                    }
+                    # Every job carries the hardening kwargs (audit fix).
+                    for job in jobs.values():
+                        assert job.max_instances == 1, f"{job.id} max_instances"
+                        assert job.coalesce is True, f"{job.id} coalesce"
+                        assert job.misfire_grace_time == 300, f"{job.id} misfire_grace_time"
+                    # The error/missed listener is attached.
+                    assert len(sched._listeners) >= 1
+
+        asyncio.run(_run())
+
+    def test_on_job_event_logs_without_exception_attr(self):
+        """A MISSED event has no .exception attr — the listener must not crash."""
+        import app.main as main_mod
+
+        captured = {}
+
+        async def _run():
+            with (
+                patch("app.main.database.init_db", new_callable=AsyncMock),
+                patch("app.main.database.connect_shared", new_callable=AsyncMock),
+                patch("app.main.database.close_shared", new_callable=AsyncMock),
+                patch("app.main.database.list_users_with_pwd_epoch", new_callable=AsyncMock, return_value=[]),
+                patch("app.main.catalog.load_services"),
+                patch("app.main.catalog.register_sighup"),
+                patch("app.main.exchange_rates.refresh", new_callable=AsyncMock),
+                patch("app.main._run_collection", new_callable=AsyncMock),
+                patch("app.main.close_all_collectors", new_callable=AsyncMock, create=True),
+                patch("app.main.logger.error") as err,
+            ):
+                async with main_mod.lifespan(main_mod.app):
+                    listener = main_mod.scheduler._listeners[0][0]
+                    # Simulate a MISSED event object lacking `.exception`.
+                    event = type("Evt", (), {"job_id": "collect"})()
+                    listener(event)  # must not raise
+                    captured["called"] = err.called
+
+        asyncio.run(_run())
+        assert captured["called"] is True
+
+
+# ---------------------------------------------------------------------------
+# Shared auth deps (app/deps.py) — guard branches
+# ---------------------------------------------------------------------------
+
+
+class TestDepsGuards:
+    def test_require_writer_denies_viewer(self, client):
+        # A writer-gated route (/api/stop) must 403 for a viewer.
+        with _auth_viewer():
+            resp = client.post("/api/stop/honeygain")
+            assert resp.status_code == 403
+
+    def test_require_private_network_blocks_public_ip(self):
+        from fastapi import HTTPException
+
+        from app.deps import _require_private_network
+
+        req = MagicMock()
+        req.client.host = "8.8.8.8"
+        with pytest.raises(HTTPException) as ei:
+            _require_private_network(req)
+        assert ei.value.status_code == 403
+
+    def test_require_private_network_allows_private_ip(self):
+        from app.deps import _require_private_network
+
+        req = MagicMock()
+        req.client.host = "192.168.1.10"
+        assert _require_private_network(req) is None
+
+    def test_require_private_network_no_client_is_noop(self):
+        from app.deps import _require_private_network
+
+        req = MagicMock()
+        req.client = None
+        assert _require_private_network(req) is None
+
+
+class TestWorkerAllowlistParsing:
+    def test_parse_allowlist_mixed_entries(self):
+        import app.main as main
+
+        with patch.dict(
+            os.environ,
+            {"CASHPILOT_WORKER_ALLOWED_HOSTS": "192.168.10.0/24, *.ts.net , watchtower.local"},
+        ):
+            cidrs, suffixes, exact = main._parse_worker_allowlist()
+        assert main.ipaddress.ip_network("192.168.10.0/24") in cidrs
+        assert "ts.net" in suffixes
+        assert "watchtower.local" in exact
+
+
+class TestLoginRateLimitMetric:
+    def test_login_rate_limit_records_metric(self, client):
+        from fastapi import HTTPException
+
+        def _raise_429(_ip):
+            raise HTTPException(status_code=429, detail="Too many login attempts")
+
+        with (
+            patch("app.main._check_login_rate", side_effect=_raise_429),
+            patch("app.main.metrics.record_rate_limit") as mock_metric,
+        ):
+            resp = client.post("/login", data={"username": "x", "password": "y"}, follow_redirects=False)
+            assert resp.status_code == 429
+            mock_metric.assert_called_once()

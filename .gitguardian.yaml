@@ -1,0 +1,13 @@
+# GitGuardian configuration.
+# https://docs.gitguardian.com/ggshield-docs/reference/secret/scan
+#
+# The values flagged in the test suite are deliberate, non-functional
+# placeholders (mock passwords/tokens for unit tests that assert behaviour such
+# as "this value must NOT appear in the response"). They are not real
+# credentials and grant access to nothing. Exclude the test tree from secret
+# scanning so these fixtures don't produce false-positive incidents.
+version: 2
+
+secret:
+  ignored-paths:
+    - "tests/**"

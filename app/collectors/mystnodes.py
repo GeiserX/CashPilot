@@ -99,7 +99,10 @@ class MystNodesCollector(BaseCollector):
             data = resp.json()
 
             # earningsTotal is in MYST tokens (Polygon)
-            total_myst = float(data.get("earningsTotal", 0))
+            raw = data.get("earningsTotal")
+            if raw is None:
+                raise ValueError("earningsTotal field missing — API shape may have changed")
+            total_myst = float(raw)
 
             return EarningsResult(
                 platform=self.platform,

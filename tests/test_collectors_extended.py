@@ -51,7 +51,16 @@ def _make_async_client():
 
 class TestBaseCollector:
     def test_base_raises_not_implemented(self):
-        c = BaseCollector()
+        # BaseCollector is now an ABC, so it cannot be instantiated directly.
+        # Use a minimal concrete subclass whose collect() delegates to the
+        # base implementation to verify the NotImplementedError stub.
+        class _Dummy(BaseCollector):
+            platform = "dummy"
+
+            async def collect(self):
+                return await super().collect()
+
+        c = _Dummy()
         with pytest.raises(NotImplementedError):
             asyncio.run(c.collect())
 
@@ -659,6 +668,158 @@ class TestMystNodesCollector:
 
         with patch("app.collectors.mystnodes.httpx.AsyncClient", return_value=client):
             c = MystNodesCollector(email="bad", password="bad")
+            result = asyncio.run(c.collect())
+        assert result.error is not None
+        assert result.balance == 0.0
+
+
+# ---------------------------------------------------------------------------
+# Missing-balance-field regression (#audit): a field that is ABSENT must surface
+# an error (API shape changed), NOT silently persist a fake 0.0 reading. A
+# LEGITIMATE zero (API returns 0) must still be a valid 0.0 balance.
+# Each test mirrors the collector's success-path mock but drops the balance key.
+# ---------------------------------------------------------------------------
+
+
+class TestMissingBalanceFieldErrors:
+    def test_honeygain_missing_payout(self):
+        from app.collectors.honeygain import HoneygainCollector
+
+        client = _make_async_client()
+        client.post.return_value = _mock_response(200, {"data": {"access_token": "t"}})
+        client.get.return_value = _mock_response(200, {"data": {"payout": {}}})  # no usd_cents
+        with patch("app.collectors.honeygain.httpx.AsyncClient", return_value=client):
+            result = asyncio.run(HoneygainCollector(email="e", password="p").collect())
+        assert result.error is not None
+        assert result.balance == 0.0
+
+    def test_honeygain_legitimate_zero_ok(self):
+        from app.collectors.honeygain import HoneygainCollector
+
+        client = _make_async_client()
+        client.post.return_value = _mock_response(200, {"data": {"access_token": "t"}})
+        client.get.return_value = _mock_response(200, {"data": {"payout": {"usd_cents": 0}}})
+        with patch("app.collectors.honeygain.httpx.AsyncClient", return_value=client):
+            result = asyncio.run(HoneygainCollector(email="e", password="p").collect())
+        assert result.error is None
+        assert result.balance == 0.0
+
+    def test_iproyal_missing_balance(self):
+        from app.collectors.iproyal import IPRoyalCollector
+
+        client = _make_async_client()
+        client.post.return_value = _mock_response(200, {"access_token": "t"})
+        client.get.return_value = _mock_response(200, {})  # no balance
+        with patch("app.collectors.iproyal.httpx.AsyncClient", return_value=client):
+            result = asyncio.run(IPRoyalCollector(email="e", password="p").collect())
+        assert result.error is not None
+        assert result.balance == 0.0
+
+    def test_iproyal_legitimate_zero_ok(self):
+        from app.collectors.iproyal import IPRoyalCollector
+
+        client = _make_async_client()
+        client.post.return_value = _mock_response(200, {"access_token": "t"})
+        client.get.return_value = _mock_response(200, {"balance": 0})
+        with patch("app.collectors.iproyal.httpx.AsyncClient", return_value=client):
+            result = asyncio.run(IPRoyalCollector(email="e", password="p").collect())
+        assert result.error is None
+        assert result.balance == 0.0
+
+    def test_repocket_missing_cents(self):
+        from app.collectors.repocket import RepocketCollector
+
+        client = _make_async_client()
+        client.post.return_value = _mock_response(200, {"idToken": "t", "refreshToken": "r"})
+        client.get.return_value = _mock_response(200, {})  # no centsCredited
+        with patch("app.collectors.repocket.httpx.AsyncClient", return_value=client):
+            result = asyncio.run(RepocketCollector(email="e", password="p").collect())
+        assert result.error is not None
+        assert result.balance == 0.0
+
+    def test_repocket_legitimate_zero_ok(self):
+        from app.collectors.repocket import RepocketCollector
+
+        client = _make_async_client()
+        client.post.return_value = _mock_response(200, {"idToken": "t", "refreshToken": "r"})
+        client.get.return_value = _mock_response(200, {"centsCredited": 0})
+        with patch("app.collectors.repocket.httpx.AsyncClient", return_value=client):
+            result = asyncio.run(RepocketCollector(email="e", password="p").collect())
+        assert result.error is None
+        assert result.balance == 0.0
+
+    def test_bitping_missing_usdearnings(self):
+        from app.collectors.bitping import BitpingCollector
+
+        client = _make_async_client()
+        client.cookies = httpx_cookies_mock({"token": "t"})
+        client.post.return_value = _mock_response(200, {"token": "t"})
+        client.get.return_value = _mock_response(200, {})  # no usdEarnings
+        with patch("app.collectors.bitping.httpx.AsyncClient", return_value=client):
+            result = asyncio.run(BitpingCollector(email="e", password="p").collect())
+        assert result.error is not None
+        assert result.balance == 0.0
+
+    def test_earnfm_missing_totalbalance(self):
+        from app.collectors.earnfm import EarnFMCollector
+
+        client = _make_async_client()
+        client.post.return_value = _mock_response(200, {"access_token": "t"})
+        client.get.return_value = _mock_response(200, {"data": {}})  # no totalBalance
+        with patch("app.collectors.earnfm.httpx.AsyncClient", return_value=client):
+            result = asyncio.run(EarnFMCollector(email="e", password="p").collect())
+        assert result.error is not None
+        assert result.balance == 0.0
+
+    def test_salad_missing_currentbalance(self):
+        from app.collectors.salad import SaladCollector
+
+        client = _make_async_client()
+        client.get.return_value = _mock_response(200, {})  # no currentBalance
+        with patch("app.collectors.salad.httpx.AsyncClient", return_value=client):
+            result = asyncio.run(SaladCollector(auth_cookie="c").collect())
+        assert result.error is not None
+        assert result.balance == 0.0
+
+    def test_traffmonetizer_missing_balance(self):
+        from app.collectors.traffmonetizer import TraffmonetizerCollector
+
+        client = _make_async_client()
+        client.get.return_value = _mock_response(200, {"data": {}})  # no balance
+        with patch("app.collectors.traffmonetizer.httpx.AsyncClient", return_value=client):
+            result = asyncio.run(TraffmonetizerCollector(token="t").collect())
+        assert result.error is not None
+        assert result.balance == 0.0
+
+    def test_proxyrack_missing_balance(self):
+        from app.collectors.proxyrack import ProxyRackCollector
+
+        client = _make_async_client()
+        client.post.return_value = _mock_response(200, {"data": {}})  # no balance
+        with patch("app.collectors.proxyrack.httpx.AsyncClient", return_value=client):
+            result = asyncio.run(ProxyRackCollector(api_key="k").collect())
+        assert result.error is not None
+        assert result.balance == 0.0
+
+    def test_mystnodes_missing_earningstotal(self):
+        from app.collectors.mystnodes import MystNodesCollector
+
+        client = _make_async_client()
+        client.post.return_value = _mock_response(200, {"accessToken": "t", "refreshToken": "r"})
+        client.get.return_value = _mock_response(200, {})  # no earningsTotal
+        with patch("app.collectors.mystnodes.httpx.AsyncClient", return_value=client):
+            result = asyncio.run(MystNodesCollector(email="e", password="p").collect())
+        assert result.error is not None
+        assert result.balance == 0.0
+
+    def test_anyone_non_numeric_reward(self):
+        from app.collectors.anyone import AnyoneCollector
+
+        client = _make_async_client()
+        # AO contract returns a non-numeric Data payload → must error, not crash silently
+        client.post.return_value = _mock_response(200, {"Messages": [{"Data": "not-a-number"}]})
+        with patch("app.collectors.anyone.httpx.AsyncClient", return_value=client):
+            c = AnyoneCollector(fingerprints="ABC")
             result = asyncio.run(c.collect())
         assert result.error is not None
         assert result.balance == 0.0

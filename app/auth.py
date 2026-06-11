@@ -16,7 +16,7 @@ from typing import Any
 import bcrypt as _bcrypt
 from fastapi import Request
 from fastapi.responses import RedirectResponse
-from itsdangerous import BadSignature, URLSafeTimedSerializer
+from itsdangerous import BadData, URLSafeTimedSerializer
 
 from app import fleet_key as _fleet_key_mod
 
@@ -81,6 +81,26 @@ _serializer = URLSafeTimedSerializer(SECRET_KEY)
 # Bump via env var to mass-invalidate all sessions (e.g. after a credential leak).
 _SESSION_EPOCH = float(os.getenv("CASHPILOT_SESSION_EPOCH", "0"))
 
+# Per-user password-change epoch: tokens for a given uid issued before this
+# timestamp are rejected, invalidating only that user's existing sessions
+# (e.g. after a password change). Mirrors the global _SESSION_EPOCH pattern but
+# scoped per uid. Warmed at startup from the DB and bumped by the
+# password-change route. Read-only/in-memory in the request path (no DB call).
+_USER_PWD_EPOCH: dict[int, float] = {}
+
+
+def set_user_pwd_epoch(uid: int, changed_at: float) -> None:
+    """Record the password-change epoch for a user.
+
+    Tokens for ``uid`` with ``iat`` earlier than ``changed_at`` are rejected.
+    """
+    _USER_PWD_EPOCH[uid] = changed_at
+
+
+def _user_pwd_epoch(uid: int) -> float:
+    """Return the password-change epoch for ``uid`` (0.0 if unknown)."""
+    return _USER_PWD_EPOCH.get(uid, 0.0)
+
 
 def hash_password(password: str) -> str:
     # bcrypt enforces a 72-byte limit; truncate UTF-8 bytes (not characters)
@@ -100,12 +120,23 @@ def create_session_token(user_id: int, username: str, role: str) -> str:
 def decode_session_token(token: str) -> dict[str, Any] | None:
     try:
         data = _serializer.loads(token, max_age=SESSION_MAX_AGE)
-        # Reject tokens issued before session epoch (for mass invalidation)
-        if data.get("iat", 0) < _SESSION_EPOCH:
-            return None
-        return data
-    except (BadSignature, Exception):
+    except BadData as exc:
+        # Expected token-decode failures: tampering, expiry, malformed signed
+        # payload. BadData is the base class of BadSignature/SignatureExpired,
+        # so this covers all legitimate "bad token -> not logged in" cases.
+        # Any OTHER exception is an unexpected bug and is intentionally NOT
+        # caught here, so it surfaces instead of masquerading as a logout.
+        _logger.debug("session token rejected: %s", exc)
         return None
+    # Reject tokens issued before session epoch (for mass invalidation)
+    if data.get("iat", 0) < _SESSION_EPOCH:
+        return None
+    # Reject tokens issued before this user's password-change epoch (per-user
+    # invalidation). In-memory lookup only — no DB call in the request path.
+    uid = data.get("uid")
+    if isinstance(uid, int) and data.get("iat", 0) < _user_pwd_epoch(uid):
+        return None
+    return data
 
 
 def get_current_user(request: Request) -> dict[str, Any] | None:

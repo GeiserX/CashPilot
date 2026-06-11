@@ -132,6 +132,87 @@ class TestDecodeSessionToken:
     def test_empty_token(self):
         assert auth.decode_session_token("") is None
 
+    def test_token_before_session_epoch_rejected(self):
+        """The session kill-switch: a token issued before _SESSION_EPOCH is rejected."""
+        import time
+
+        token = auth.create_session_token(9, "carol", "owner")
+        # Bump the epoch to just after this token's iat → it must be invalidated.
+        orig_epoch = auth._SESSION_EPOCH
+        try:
+            auth._SESSION_EPOCH = time.time() + 60
+            assert auth.decode_session_token(token) is None
+        finally:
+            auth._SESSION_EPOCH = orig_epoch
+        # With the epoch restored, the same token decodes again.
+        assert auth.decode_session_token(token) is not None
+
+
+class TestPerUserPasswordEpoch:
+    """Per-user session invalidation via _USER_PWD_EPOCH."""
+
+    def test_token_rejected_after_user_epoch_bump(self):
+        """A token for a uid is rejected once that uid's pwd epoch passes its iat."""
+        import time
+
+        token = auth.create_session_token(5, "dave", "owner")
+        orig = dict(auth._USER_PWD_EPOCH)
+        try:
+            auth.set_user_pwd_epoch(5, time.time() + 1)
+            assert auth.decode_session_token(token) is None
+        finally:
+            auth._USER_PWD_EPOCH.clear()
+            auth._USER_PWD_EPOCH.update(orig)
+        # Epoch restored → token decodes again.
+        assert auth.decode_session_token(token) is not None
+
+    def test_token_survives_older_epoch(self):
+        """A pwd epoch in the past does not invalidate a newer token."""
+        import time
+
+        token = auth.create_session_token(7, "erin", "viewer")
+        orig = dict(auth._USER_PWD_EPOCH)
+        try:
+            auth.set_user_pwd_epoch(7, time.time() - 60)
+            data = auth.decode_session_token(token)
+            assert data is not None
+            assert data["uid"] == 7
+        finally:
+            auth._USER_PWD_EPOCH.clear()
+            auth._USER_PWD_EPOCH.update(orig)
+
+    def test_epoch_isolated_per_uid(self):
+        """Bumping one uid's epoch must not affect another uid's token."""
+        import time
+
+        token2 = auth.create_session_token(2, "frank", "owner")
+        orig = dict(auth._USER_PWD_EPOCH)
+        try:
+            auth.set_user_pwd_epoch(1, time.time() + 60)
+            data = auth.decode_session_token(token2)
+            assert data is not None
+            assert data["uid"] == 2
+        finally:
+            auth._USER_PWD_EPOCH.clear()
+            auth._USER_PWD_EPOCH.update(orig)
+
+    def test_global_epoch_still_works(self):
+        """The global _SESSION_EPOCH path is unaffected by the per-user mechanism."""
+        import time
+
+        token = auth.create_session_token(3, "gina", "owner")
+        orig_global = auth._SESSION_EPOCH
+        orig_users = dict(auth._USER_PWD_EPOCH)
+        try:
+            # No per-user epoch set; global bump alone must still reject.
+            auth._SESSION_EPOCH = time.time() + 60
+            assert auth.decode_session_token(token) is None
+        finally:
+            auth._SESSION_EPOCH = orig_global
+            auth._USER_PWD_EPOCH.clear()
+            auth._USER_PWD_EPOCH.update(orig_users)
+        assert auth.decode_session_token(token) is not None
+
 
 class TestResolveSecretKey:
     def test_env_var_overrides(self):
