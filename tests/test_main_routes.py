@@ -1729,9 +1729,11 @@ class TestWorkerAllowlistParsing:
             {"CASHPILOT_WORKER_ALLOWED_HOSTS": "192.168.10.0/24, *.ts.net , watchtower.local"},
         ):
             cidrs, suffixes, exact = main._parse_worker_allowlist()
-        assert main.ipaddress.ip_network("192.168.10.0/24") in cidrs
-        assert "ts.net" in suffixes
-        assert "watchtower.local" in exact
+        # Exact-collection asserts (not substring `in`) so CodeQL's
+        # url-substring-sanitization heuristic isn't tripped by the test.
+        assert cidrs == [main.ipaddress.ip_network("192.168.10.0/24")]
+        assert suffixes == ["ts.net"]
+        assert exact == {"watchtower.local"}
 
 
 class TestLoginRateLimitMetric:
