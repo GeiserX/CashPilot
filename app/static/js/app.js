@@ -452,9 +452,15 @@ const CP = (() => {
     const bonusLabel = signupBonus > 0
       ? `<div style="font-size:0.6rem; color:var(--text-muted);">\u2212${formatCurrency(signupBonus, currency)} promo</div>`
       : '';
-    const disconnectedLabel = svc.collector_disconnected
-      ? `<div style="font-size:0.6rem; color:var(--error); font-weight:500; display:flex; align-items:center; justify-content:flex-end; gap:4px;">disconnected${_isOwner ? ` <button class="btn btn-ghost" onclick="event.stopPropagation(); CP.openCredentialModal('${escapeHtml(svc.slug)}')" style="font-size:0.6rem; padding:1px 5px; line-height:1.2; color:var(--error); border:1px solid #ef4444; border-radius:3px; cursor:pointer;">update</button>` : ''}</div>`
-      : '';
+    // Earnings-collector state. "disconnected" = collector ran and failed
+    // (e.g. wrong credentials). "needs setup" = the service is deployed and
+    // earning, but its (separate) earnings-tracking credentials aren't set yet.
+    let disconnectedLabel = '';
+    if (svc.collector_disconnected) {
+      disconnectedLabel = `<div title="CashPilot couldn't read this balance — check the earnings-tracking credentials" style="font-size:0.6rem; color:var(--error); font-weight:500; display:flex; align-items:center; justify-content:flex-end; gap:4px;">can't read balance${_isOwner ? ` <button class="btn btn-ghost" onclick="event.stopPropagation(); CP.openCredentialModal('${escapeHtml(svc.slug)}')" style="font-size:0.6rem; padding:1px 5px; line-height:1.2; color:var(--error); border:1px solid #ef4444; border-radius:3px; cursor:pointer;">fix</button>` : ''}</div>`;
+    } else if (svc.collector_needs_setup) {
+      disconnectedLabel = `<div title="This service is running and earning. To show its balance here, add its earnings-tracking credentials." style="font-size:0.6rem; color:var(--text-muted); font-weight:500; display:flex; align-items:center; justify-content:flex-end; gap:4px;">tracking not set up${_isOwner ? ` <button class="btn btn-ghost" onclick="event.stopPropagation(); CP.openCredentialModal('${escapeHtml(svc.slug)}')" style="font-size:0.6rem; padding:1px 5px; line-height:1.2; color:var(--text-muted); border:1px solid var(--border); border-radius:3px; cursor:pointer;">set up</button>` : ''}</div>`;
+    }
     let balanceHtml;
     if (nativeLabel) {
       balanceHtml = `${formatCurrency(displayBalance, currency)}<div style="font-size:0.65rem;color:var(--text-muted);">${nativeLabel}</div>${bonusLabel}${disconnectedLabel}`;
@@ -1743,6 +1749,19 @@ const CP = (() => {
 
       html += `<h4 style="margin-bottom: 12px; font-size: 0.95rem;">Deploy</h4>`;
       html += envFields;
+
+      // Earnings tracking uses SEPARATE credentials (Settings → Collectors).
+      // The fields above only configure the container that earns; they don't
+      // let CashPilot read your balance. Make that explicit at deploy time.
+      if (svc.has_collector) {
+        html += `
+        <div style="font-size:0.8rem; color:var(--text-muted); background:var(--bg-subtle, rgba(255,255,255,0.03)); border:1px solid var(--border); border-radius:6px; padding:8px 10px; margin:10px 0;">
+          The credentials above run the service. To also see its <strong>balance</strong> on the dashboard,
+          add earnings-tracking credentials under
+          <a href="#" onclick="event.preventDefault(); CP.openCredentialModal('${svc.slug}')" style="color:var(--accent, #3b82f6);">Settings → Collectors</a>
+          after deploying. This is optional — the service earns either way.
+        </div>`;
+      }
 
       if (allDeployed && onlineWorkers.length > 0) {
         html += `<p style="color:var(--success); font-size:0.9rem; margin:12px 0;">Deployed on all nodes.</p>`;

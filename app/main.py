@@ -417,6 +417,25 @@ async def api_list_services(request: Request) -> list[dict[str, Any]]:
     return catalog.get_services()
 
 
+def _collector_needs_setup(slug: str, config: dict[str, str]) -> bool:
+    """True if `slug` has an earnings collector whose required config is unset.
+
+    A service can be deployed and earning while CashPilot still can't read its
+    balance because the (separate) collector credentials haven't been entered.
+    This distinguishes that "not set up yet" state from a real collector error.
+    """
+    from app.collectors import _COLLECTOR_ARGS, COLLECTOR_MAP
+
+    if slug not in COLLECTOR_MAP:
+        return False
+    for arg in _COLLECTOR_ARGS.get(slug, []):
+        if arg.startswith("?"):  # optional arg — not required for setup
+            continue
+        if not config.get(f"{slug}_{arg}", ""):
+            return True
+    return False
+
+
 @app.get("/api/services/deployed")
 async def api_services_deployed(request: Request) -> list[dict[str, Any]]:
     """Return deployed services with container status, balance, CPU, memory.
@@ -439,6 +458,16 @@ async def api_services_deployed(request: Request) -> list[dict[str, Any]]:
 
     # Build set of slugs with collector errors (disconnected)
     alert_slugs = {a["platform"] for a in _collector_alerts}
+
+    # Config (decrypted) to detect collectors whose credentials aren't set yet.
+    # A config-read failure must not blank the dashboard — degrade to "unknown".
+    config: dict[str, str] = {}
+    try:
+        cfg = await database.get_config()
+        if isinstance(cfg, dict):
+            config = cfg
+    except Exception as exc:
+        logger.warning("Could not load config for collector-setup check: %s", exc)
 
     # Aggregate by slug: one row per service
     _STATUS_PRIORITY = {"running": 0, "restarting": 1, "exited": 2, "created": 3, "dead": 4}
@@ -502,6 +531,7 @@ async def api_services_deployed(request: Request) -> list[dict[str, Any]]:
             "instances": len(agg["instances"]),
             "instance_details": instance_details,
             "collector_disconnected": slug in alert_slugs,
+            "collector_needs_setup": slug not in alert_slugs and _collector_needs_setup(slug, config),
         }
         if svc:
             cashout = svc.get("cashout", {})
@@ -540,6 +570,7 @@ async def api_services_deployed(request: Request) -> list[dict[str, Any]]:
             "instances": 0,
             "instance_details": [],
             "collector_disconnected": slug in alert_slugs,
+            "collector_needs_setup": slug not in alert_slugs and _collector_needs_setup(slug, config),
         }
         if svc:
             cashout = svc.get("cashout", {})
@@ -608,6 +639,13 @@ async def api_get_service(request: Request, slug: str) -> dict[str, Any]:
 
     svc["deployed"] = slug in deployed_slugs or slug in worker_slugs
     svc["node_count"] = len(worker_nodes)
+
+    # Flag whether earnings tracking uses separate credentials (entered in
+    # Settings → Collectors), so the deploy UI can tell users the container
+    # credentials alone won't populate the in-dashboard balance.
+    from app.collectors import COLLECTOR_MAP
+
+    svc["has_collector"] = slug in COLLECTOR_MAP
     return svc
 
 
