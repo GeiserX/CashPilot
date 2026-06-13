@@ -199,6 +199,7 @@ On each additional server, deploy only a worker pointing to the UI:
 services:
   cashpilot-worker:
     image: drumsergio/cashpilot-worker:latest
+    pull_policy: always
     container_name: cashpilot-worker
     ports:
       - "8081:8081"
