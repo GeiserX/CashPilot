@@ -494,6 +494,25 @@ class TestApiServices:
             assert resp.status_code == 200
             assert resp.json()["slug"] == "hg"
 
+    def test_api_get_service_has_collector_flag(self, client):
+        # honeygain has a collector; a service without one reports False.
+        hg = {"slug": "honeygain", "name": "Honeygain", "docker": {"image": "test"}}
+        with (
+            _auth_owner(),
+            patch("app.main.catalog.get_service", return_value=hg),
+            patch("app.main.database.get_deployments", new_callable=AsyncMock, return_value=[]),
+            patch("app.main.database.list_workers", new_callable=AsyncMock, return_value=[]),
+        ):
+            assert client.get("/api/services/honeygain").json()["has_collector"] is True
+        nocol = {"slug": "nodle", "name": "Nodle", "docker": {"image": "test"}}
+        with (
+            _auth_owner(),
+            patch("app.main.catalog.get_service", return_value=nocol),
+            patch("app.main.database.get_deployments", new_callable=AsyncMock, return_value=[]),
+            patch("app.main.database.list_workers", new_callable=AsyncMock, return_value=[]),
+        ):
+            assert client.get("/api/services/nodle").json()["has_collector"] is False
+
     def test_api_get_service_not_found(self, client):
         with (
             _auth_owner(),
@@ -566,6 +585,97 @@ class TestApiServices:
             data = resp.json()
             assert len(data) == 1
             assert data[0]["container_status"] == "external"
+
+    def test_deployed_collector_needs_setup_when_creds_missing(self, client):
+        # Repocket deployed + earning, but its collector email/password are unset
+        # → needs_setup True, disconnected False.
+        workers = [
+            {
+                "id": 1,
+                "name": "w1",
+                "status": "online",
+                "system_info": json.dumps({"docker_available": True}),
+                "containers": json.dumps([{"slug": "repocket", "name": "rp", "status": "running"}]),
+                "apps": "[]",
+            }
+        ]
+        with (
+            _auth_owner(),
+            patch("app.main.database.list_workers", new_callable=AsyncMock, return_value=workers),
+            patch("app.main.database.get_earnings_summary", new_callable=AsyncMock, return_value=[]),
+            patch("app.main.database.get_health_scores", new_callable=AsyncMock, return_value=[]),
+            patch("app.main.database.get_deployments", new_callable=AsyncMock, return_value=[]),
+            patch("app.main.database.get_config", new_callable=AsyncMock, return_value={}),
+            patch("app.main.catalog.get_service", return_value={"name": "Repocket", "category": "bandwidth"}),
+        ):
+            resp = client.get("/api/services/deployed")
+            assert resp.status_code == 200
+            row = next(r for r in resp.json() if r["slug"] == "repocket")
+            assert row["collector_needs_setup"] is True
+            assert row["collector_disconnected"] is False
+
+    def test_deployed_collector_not_needs_setup_when_creds_present(self, client):
+        workers = [
+            {
+                "id": 1,
+                "name": "w1",
+                "status": "online",
+                "system_info": json.dumps({"docker_available": True}),
+                "containers": json.dumps([{"slug": "repocket", "name": "rp", "status": "running"}]),
+                "apps": "[]",
+            }
+        ]
+        cfg = {"repocket_email": "me@example.com", "repocket_password": "secret"}
+        with (
+            _auth_owner(),
+            patch("app.main.database.list_workers", new_callable=AsyncMock, return_value=workers),
+            patch("app.main.database.get_earnings_summary", new_callable=AsyncMock, return_value=[]),
+            patch("app.main.database.get_health_scores", new_callable=AsyncMock, return_value=[]),
+            patch("app.main.database.get_deployments", new_callable=AsyncMock, return_value=[]),
+            patch("app.main.database.get_config", new_callable=AsyncMock, return_value=cfg),
+            patch("app.main.catalog.get_service", return_value={"name": "Repocket", "category": "bandwidth"}),
+        ):
+            resp = client.get("/api/services/deployed")
+            row = next(r for r in resp.json() if r["slug"] == "repocket")
+            assert row["collector_needs_setup"] is False
+
+    def test_deployed_disconnected_takes_precedence_over_needs_setup(self, client):
+        # When the collector has actually errored, show the error state, not "needs setup".
+        workers = [
+            {
+                "id": 1,
+                "name": "w1",
+                "status": "online",
+                "system_info": json.dumps({"docker_available": True}),
+                "containers": json.dumps([{"slug": "repocket", "name": "rp", "status": "running"}]),
+                "apps": "[]",
+            }
+        ]
+        with (
+            _auth_owner(),
+            patch("app.main.database.list_workers", new_callable=AsyncMock, return_value=workers),
+            patch("app.main.database.get_earnings_summary", new_callable=AsyncMock, return_value=[]),
+            patch("app.main.database.get_health_scores", new_callable=AsyncMock, return_value=[]),
+            patch("app.main.database.get_deployments", new_callable=AsyncMock, return_value=[]),
+            patch("app.main.database.get_config", new_callable=AsyncMock, return_value={}),
+            patch("app.main._collector_alerts", [{"platform": "repocket", "error": "auth failed"}]),
+            patch("app.main.catalog.get_service", return_value={"name": "Repocket", "category": "bandwidth"}),
+        ):
+            resp = client.get("/api/services/deployed")
+            row = next(r for r in resp.json() if r["slug"] == "repocket")
+            assert row["collector_disconnected"] is True
+            assert row["collector_needs_setup"] is False
+
+    def test_collector_needs_setup_helper(self):
+        # Service with no collector → never needs setup.
+        from app.main import _collector_needs_setup
+
+        assert _collector_needs_setup("not-a-service", {}) is False
+        # Optional-only collector (storj: ?api_url) → not "needs setup" when blank.
+        assert _collector_needs_setup("storj", {}) is False
+        # Required creds absent → needs setup; present → not.
+        assert _collector_needs_setup("repocket", {}) is True
+        assert _collector_needs_setup("repocket", {"repocket_email": "a", "repocket_password": "b"}) is False
 
 
 # ---------------------------------------------------------------------------
