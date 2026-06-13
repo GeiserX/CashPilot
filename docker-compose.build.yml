@@ -1,20 +1,18 @@
-# CashPilot - Self-hosted passive income orchestrator
+# CashPilot - build from source (for contributors / local development)
 # https://github.com/GeiserX/CashPilot
 #
-# UI + Worker on the same server. For multi-server fleet, see docker-compose.fleet.yml
+# This file builds the UI and worker images from the local checkout instead of
+# pulling the published releases. Use it when developing changes:
 #
-#   Start / update:  docker compose pull && docker compose up -d
+#   docker compose -f docker-compose.build.yml up -d --build
 #
-# Images track the `latest` tag (pull_policy: always), so a plain `up -d`
-# always launches the newest published release — no rebuild needed. To pin a
-# specific version instead, replace `:latest` with e.g. `:0.6.13` (see
-# https://hub.docker.com/r/drumsergio/cashpilot/tags) and drop pull_policy.
-# Building from source? Use: docker compose -f docker-compose.build.yml up -d
+# Regular users should use the default docker-compose.yml, which pulls the
+# published `latest` image (no build toolchain required).
 
 services:
   cashpilot-ui:
-    image: drumsergio/cashpilot:latest
-    pull_policy: always
+    build: .
+    image: drumsergio/cashpilot:dev
     container_name: cashpilot-ui
     ports:
       - "8080:8080"
@@ -34,8 +32,10 @@ services:
       - /tmp:size=64M
 
   cashpilot-worker:
-    image: drumsergio/cashpilot-worker:latest
-    pull_policy: always
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    image: drumsergio/cashpilot-worker:dev
     container_name: cashpilot-worker
     expose:
       - "8081"

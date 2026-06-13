@@ -86,6 +86,7 @@ graph LR
 services:
   cashpilot-ui:
     image: drumsergio/cashpilot:latest
+    pull_policy: always
     container_name: cashpilot-ui
     ports:
       - "8080:8080"
@@ -99,6 +100,7 @@ services:
 
   cashpilot-worker:
     image: drumsergio/cashpilot-worker:latest
+    pull_policy: always
     container_name: cashpilot-worker
     ports:
       - "8081:8081"
@@ -126,6 +128,49 @@ volumes:
 
 !!! tip "Passwords and secrets in the UI"
     Change your own password any time from the avatar menu -> **Change password** (available to all roles); this signs out your other sessions. In **Settings**, stored secrets are write-only: enter a value to change it, or leave the field blank to keep the existing one. Saved credentials are never sent back to the browser.
+
+## Updating CashPilot
+
+The published images use floating tags, so updating is just a pull + recreate:
+
+```bash
+docker compose pull
+docker compose up -d
+```
+
+`docker compose pull` fetches the newest published image and `up -d` recreates
+only the containers whose image changed. The shipped compose files set
+`pull_policy: always`, so even a bare `docker compose up -d` will pull the
+latest image first.
+
+!!! note "You do **not** need to rebuild"
+    CashPilot ships prebuilt multi-arch images on Docker Hub
+    ([`drumsergio/cashpilot`](https://hub.docker.com/r/drumsergio/cashpilot),
+    [`drumsergio/cashpilot-worker`](https://hub.docker.com/r/drumsergio/cashpilot-worker)).
+    `docker compose build` / `--build` is only relevant if you deliberately
+    build from source with `docker-compose.build.yml`. For normal installs,
+    `pull` + `up -d` is the complete and correct update procedure.
+
+### Pinning a specific version
+
+`:latest` always tracks the newest release. To stay on a fixed version,
+replace the tag (e.g. `drumsergio/cashpilot:0.6.13`) and remove
+`pull_policy: always`. Browse available tags on
+[Docker Hub](https://hub.docker.com/r/drumsergio/cashpilot/tags). The minor
+tag (e.g. `:0.6`) tracks the latest patch within that minor series.
+
+### Automating updates (optional)
+
+If you want hands-off updates, point a scheduler at the same two commands —
+for example a daily cron entry:
+
+```cron
+0 4 * * *  cd /path/to/cashpilot && docker compose pull && docker compose up -d
+```
+
+Or run an auto-updater such as [Watchtower](https://containrrr.dev/watchtower/)
+or [Diun](https://crazymax.dev/diun/) against the CashPilot containers. These
+are entirely optional — CashPilot does not bundle an updater.
 
 ## Supported Services
 
