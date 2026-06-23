@@ -19,7 +19,7 @@ permissions:
 jobs:
   ci:
     name: Verify CI passes
-    runs-on: [self-hosted, linux, x64]
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v6
@@ -37,7 +37,7 @@ jobs:
   release:
     needs: ci
     name: Bump version and release
-    runs-on: [self-hosted, linux, x64]
+    runs-on: ubuntu-latest
     if: "!contains(github.event.head_commit.message, '[skip ci]')"
     outputs:
       new_tag: ${{ steps.version.outputs.new_tag }}
