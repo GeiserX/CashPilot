@@ -102,6 +102,23 @@ def _find_container(slug: str):
         raise ValueError(f"Container for {slug} not found")
 
 
+def _normalize_resources(resources: Any) -> dict[str, Any]:
+    """Coerce a resources spec (Pydantic model, dict, or None) into a plain dict.
+
+    Only non-None values are kept, so callers can splat the result into
+    ``containers.run`` without clobbering Docker's own defaults.
+    """
+    if resources is None:
+        return {}
+    if hasattr(resources, "model_dump"):
+        data = resources.model_dump()
+    elif isinstance(resources, dict):
+        data = dict(resources)
+    else:
+        return {}
+    return {k: v for k, v in data.items() if v is not None}
+
+
 def deploy_raw(
     slug: str,
     image: str,
@@ -114,12 +131,14 @@ def deploy_raw(
     command: str | None = None,
     hostname: str | None = None,
     labels: dict[str, str] | None = None,
+    resources: Any = None,
     category: str = "bandwidth",
 ) -> str:
     """Deploy a container from a raw spec (no catalog lookup).
 
     Used by CashPilot Worker when the UI sends a full container spec.
-    Returns the container ID.
+    ``resources`` (mem_limit / mem_reservation / oom_score_adj) makes the
+    container's cgroup limits durable across recreates. Returns the container ID.
     """
     client = _get_client()
     name = _container_name(slug)
@@ -148,6 +167,14 @@ def deploy_raw(
     except APIError as exc:
         logger.warning("Failed to pull image %s: %s (trying local)", image, exc)
 
+    # Durable resource limits (only passed when explicitly set, so Docker
+    # defaults are preserved otherwise). memswap is deliberately left unset:
+    # at create time mem_limit alone avoids the cgroup-v2 swap validation issue.
+    res = _normalize_resources(resources)
+    resource_kwargs = {
+        key: res[key] for key in ("mem_limit", "mem_reservation", "oom_score_adj") if res.get(key) is not None
+    }
+
     logger.info("Creating container %s from %s", name, image)
     container = client.containers.run(
         image=image,
@@ -163,6 +190,7 @@ def deploy_raw(
         hostname=hostname or f"cashpilot-{slug}",
         detach=True,
         restart_policy={"Name": "unless-stopped"},
+        **resource_kwargs,
     )
 
     logger.info("Container %s started: %s", name, container.short_id)

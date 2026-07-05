@@ -739,6 +739,12 @@ async def api_deploy(request: Request, slug: str, body: DeployRequest, worker_id
     if raw_command:
         spec["command"] = re.sub(r"\$\{(\w+)\}", lambda m: env.get(m.group(1), m.group(0)), raw_command)
 
+    # Durable resource limits (mem_limit / mem_reservation / oom_score_adj),
+    # declared in the service YAML. Only forwarded when present.
+    resources = docker_conf.get("resources")
+    if resources:
+        spec["resources"] = resources
+
     result = await _proxy_worker_deploy(worker_id, slug, spec)
     container_id = result.get("container_id", "remote")
     await database.save_deployment(slug=slug, container_id=container_id)

@@ -16,6 +16,9 @@ referral:
 docker:
   image: honeygain/honeygain
   platforms: [linux/amd64]
+  resources:
+    mem_limit: "256m"
+    oom_score_adj: 200
   env:
     - key: HONEYGAIN_EMAIL
       label: "Email"
