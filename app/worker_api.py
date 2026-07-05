@@ -18,6 +18,7 @@ import hmac
 import logging
 import os
 import platform
+import re
 import socket
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
@@ -258,6 +259,18 @@ async def worker_status_page():
 # ---------------------------------------------------------------------------
 
 
+class ResourceSpec(BaseModel):
+    """Optional Docker resource limits applied when the container is created.
+
+    mem_limit / mem_reservation follow Docker's size syntax ("768m", "2g");
+    oom_score_adj biases the kernel OOM killer (-1000 = sacrificed last).
+    """
+
+    mem_limit: str | None = None
+    mem_reservation: str | None = None
+    oom_score_adj: int | None = None
+
+
 class DeploySpec(BaseModel):
     image: str
     env: dict[str, str] = {}
@@ -269,10 +282,13 @@ class DeploySpec(BaseModel):
     command: str | None = None
     hostname: str | None = None
     labels: dict[str, str] = {}
+    resources: ResourceSpec | None = None
 
 
 _BLOCKED_VOLUME_SOURCES = {"/", "/etc", "/var/run/docker.sock", "/root", "/proc", "/sys"}
 _BLOCKED_CAPS = {"ALL", "SYS_ADMIN", "SYS_PTRACE"}
+# Docker memory size syntax: a positive integer with an optional b/k/m/g unit.
+_MEM_LIMIT_RE = re.compile(r"^\d+[bkmgBKMG]?$")
 
 
 def _validate_deploy_spec(spec: DeploySpec) -> None:
@@ -289,6 +305,23 @@ def _validate_deploy_spec(spec: DeploySpec) -> None:
         for blocked in _BLOCKED_VOLUME_SOURCES:
             if normalized == blocked or normalized.startswith(blocked + "/"):
                 raise HTTPException(status_code=403, detail=f"Volume mount '{source}' is blocked")
+    _validate_resources(spec.resources)
+
+
+def _validate_resources(resources: ResourceSpec | None) -> None:
+    if resources is None:
+        return
+    for field, value in (("mem_limit", resources.mem_limit), ("mem_reservation", resources.mem_reservation)):
+        if value is not None and not _MEM_LIMIT_RE.match(value):
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid {field} '{value}': expected a size like '768m' or '2g'",
+            )
+    if resources.oom_score_adj is not None and not (-1000 <= resources.oom_score_adj <= 1000):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid oom_score_adj '{resources.oom_score_adj}': must be between -1000 and 1000",
+        )
 
 
 @app.get("/api/status")
@@ -338,6 +371,7 @@ async def api_deploy_container(request: Request, slug: str, spec: DeploySpec) ->
             command=spec.command,
             hostname=spec.hostname,
             labels=spec.labels,
+            resources=spec.resources,
         )
         return {"status": "deployed", "container_id": container_id}
     except Exception:

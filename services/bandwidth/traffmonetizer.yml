@@ -17,6 +17,9 @@ referral:
 docker:
   image: traffmonetizer/cli_v2
   platforms: [linux/amd64, linux/arm64]
+  resources:
+    mem_limit: "128m"
+    oom_score_adj: 300
   env:
     - key: TRAFFMONETIZER_TOKEN
       label: "Token"

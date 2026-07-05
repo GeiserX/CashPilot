@@ -15,6 +15,9 @@ referral:
 docker:
   image: earnfm/earnfm-client
   platforms: [linux/amd64, linux/arm64]
+  resources:
+    mem_limit: "128m"
+    oom_score_adj: 200
   env:
     - key: EARNFM_TOKEN
       label: "API Key"

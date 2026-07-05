@@ -16,6 +16,9 @@ referral:
 docker:
   image: bringyour/community-provider
   platforms: [linux/amd64, linux/arm64]
+  resources:
+    mem_limit: "128m"
+    oom_score_adj: 300
   env:
     - key: UR_AUTH_TOKEN
       label: "Auth Token"

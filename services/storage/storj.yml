@@ -18,6 +18,9 @@ referral:
 docker:
   image: storjlabs/storagenode
   platforms: [linux/amd64, linux/arm64]
+  resources:
+    mem_limit: "2g"
+    oom_score_adj: -100
   env:
     - key: WALLET
       label: "Wallet address"

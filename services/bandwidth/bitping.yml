@@ -17,6 +17,9 @@ referral:
 docker:
   image: bitping/bitpingd
   platforms: [linux/amd64, linux/arm64]
+  resources:
+    mem_limit: "128m"
+    oom_score_adj: 200
   env: []
   ports: []
   volumes:

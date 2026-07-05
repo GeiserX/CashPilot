@@ -17,6 +17,9 @@ referral:
 docker:
   image: repocket/repocket
   platforms: [linux/amd64, linux/arm64]
+  resources:
+    mem_limit: "128m"
+    oom_score_adj: 300
   env:
     - key: RP_EMAIL
       label: "Email"

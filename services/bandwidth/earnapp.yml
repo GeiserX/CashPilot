@@ -16,6 +16,9 @@ referral:
 docker:
   image: fazalfarhan01/earnapp:lite
   platforms: [linux/amd64]
+  resources:
+    mem_limit: "256m"
+    oom_score_adj: 300
   env:
     - key: EARNAPP_UUID
       label: "Node UUID"
