@@ -53,6 +53,22 @@ def client():
         yield c
 
 
+@pytest.fixture
+def deploy_capture():
+    """Capture the spec forwarded to ``_proxy_worker_deploy``.
+
+    Returns ``(captured, side_effect)``: patch ``app.main._proxy_worker_deploy``
+    with ``side_effect``, then read the forwarded spec from ``captured["spec"]``.
+    """
+    captured: dict = {}
+
+    async def _capture_deploy(worker_id, slug, spec):
+        captured["spec"] = spec
+        return {"container_id": "abc123"}
+
+    return captured, _capture_deploy
+
+
 def _online_worker(wid=1, url="http://192.168.1.10:8081"):
     return {"id": wid, "name": "w1", "status": "online", "url": url}
 
@@ -141,7 +157,7 @@ class TestApiDeploy:
             resp = client.post("/api/deploy/honeygain", json={})
             assert resp.status_code == 401
 
-    def test_deploy_repocket_emits_rp_env_keys(self, client):
+    def test_deploy_repocket_emits_rp_env_keys(self, client, deploy_capture):
         """#82 guard at the deploy layer: the real repocket catalog entry must
         produce RP_EMAIL/RP_API_KEY in the container spec sent to the worker.
 
@@ -149,11 +165,7 @@ class TestApiDeploy:
         renames the YAML keys OR a refactor of api_deploy that mangles env names
         is caught independently of the catalog-level test.
         """
-        captured: dict = {}
-
-        async def _capture_deploy(worker_id, slug, spec):
-            captured["spec"] = spec
-            return {"container_id": "abc123"}
+        captured, capture = deploy_capture
 
         # Reload the real catalog from disk so this test is independent of any
         # earlier test that swapped SERVICES_DIR and left the cache polluted.
@@ -164,7 +176,7 @@ class TestApiDeploy:
         with (
             _auth_owner(),
             patch("app.main._resolve_worker_id", new_callable=AsyncMock, return_value=1),
-            patch("app.main._proxy_worker_deploy", side_effect=_capture_deploy),
+            patch("app.main._proxy_worker_deploy", side_effect=capture),
             patch("app.main.database.save_deployment", new_callable=AsyncMock),
             patch("app.main.database.record_health_event", new_callable=AsyncMock),
         ):
@@ -180,13 +192,9 @@ class TestApiDeploy:
             assert spec_env["RP_API_KEY"] == "key123"
             assert spec_env["RP_EMAIL"] == "me@example.com"
 
-    def test_deploy_forwards_resources_from_yaml(self, client):
+    def test_deploy_forwards_resources_from_yaml(self, client, deploy_capture):
         """A resources block in the service YAML must reach the worker spec."""
-        captured: dict = {}
-
-        async def _capture_deploy(worker_id, slug, spec):
-            captured["spec"] = spec
-            return {"container_id": "abc123"}
+        captured, capture = deploy_capture
 
         svc = {
             "slug": "storj",
@@ -203,7 +211,7 @@ class TestApiDeploy:
             _auth_owner(),
             patch("app.main._resolve_worker_id", new_callable=AsyncMock, return_value=1),
             patch("app.main.catalog.get_service", return_value=svc),
-            patch("app.main._proxy_worker_deploy", side_effect=_capture_deploy),
+            patch("app.main._proxy_worker_deploy", side_effect=capture),
             patch("app.main.database.save_deployment", new_callable=AsyncMock),
             patch("app.main.database.record_health_event", new_callable=AsyncMock),
         ):
@@ -211,13 +219,9 @@ class TestApiDeploy:
             assert resp.status_code == 200, resp.text
             assert captured["spec"]["resources"] == {"mem_limit": "2g", "oom_score_adj": -100}
 
-    def test_deploy_omits_resources_when_absent(self, client):
+    def test_deploy_omits_resources_when_absent(self, client, deploy_capture):
         """A service YAML without a resources block must not add one to the spec."""
-        captured: dict = {}
-
-        async def _capture_deploy(worker_id, slug, spec):
-            captured["spec"] = spec
-            return {"container_id": "abc123"}
+        captured, capture = deploy_capture
 
         svc = {
             "slug": "nores",
@@ -228,7 +232,7 @@ class TestApiDeploy:
             _auth_owner(),
             patch("app.main._resolve_worker_id", new_callable=AsyncMock, return_value=1),
             patch("app.main.catalog.get_service", return_value=svc),
-            patch("app.main._proxy_worker_deploy", side_effect=_capture_deploy),
+            patch("app.main._proxy_worker_deploy", side_effect=capture),
             patch("app.main.database.save_deployment", new_callable=AsyncMock),
             patch("app.main.database.record_health_event", new_callable=AsyncMock),
         ):
@@ -236,17 +240,13 @@ class TestApiDeploy:
             assert resp.status_code == 200, resp.text
             assert "resources" not in captured["spec"]
 
-    def test_deploy_storj_real_catalog_carries_resources(self, client):
+    def test_deploy_storj_real_catalog_carries_resources(self, client, deploy_capture):
         """Guard: the real storj YAML resources must reach the container spec.
 
         Uses the real catalog (no get_service mock) so a rename of the YAML
         `resources` keys is caught independently of the schema-level test.
         """
-        captured: dict = {}
-
-        async def _capture_deploy(worker_id, slug, spec):
-            captured["spec"] = spec
-            return {"container_id": "abc123"}
+        captured, capture = deploy_capture
 
         from app import catalog
 
@@ -255,7 +255,7 @@ class TestApiDeploy:
         with (
             _auth_owner(),
             patch("app.main._resolve_worker_id", new_callable=AsyncMock, return_value=1),
-            patch("app.main._proxy_worker_deploy", side_effect=_capture_deploy),
+            patch("app.main._proxy_worker_deploy", side_effect=capture),
             patch("app.main.database.save_deployment", new_callable=AsyncMock),
             patch("app.main.database.record_health_event", new_callable=AsyncMock),
         ):
