@@ -180,6 +180,101 @@ class TestApiDeploy:
             assert spec_env["RP_API_KEY"] == "key123"
             assert spec_env["RP_EMAIL"] == "me@example.com"
 
+    def test_deploy_forwards_resources_from_yaml(self, client):
+        """A resources block in the service YAML must reach the worker spec."""
+        captured: dict = {}
+
+        async def _capture_deploy(worker_id, slug, spec):
+            captured["spec"] = spec
+            return {"container_id": "abc123"}
+
+        svc = {
+            "slug": "storj",
+            "name": "Storj",
+            "docker": {
+                "image": "storjlabs/storagenode",
+                "env": [],
+                "ports": [],
+                "volumes": [],
+                "resources": {"mem_limit": "2g", "oom_score_adj": -100},
+            },
+        }
+        with (
+            _auth_owner(),
+            patch("app.main._resolve_worker_id", new_callable=AsyncMock, return_value=1),
+            patch("app.main.catalog.get_service", return_value=svc),
+            patch("app.main._proxy_worker_deploy", side_effect=_capture_deploy),
+            patch("app.main.database.save_deployment", new_callable=AsyncMock),
+            patch("app.main.database.record_health_event", new_callable=AsyncMock),
+        ):
+            resp = client.post("/api/deploy/storj", json={})
+            assert resp.status_code == 200, resp.text
+            assert captured["spec"]["resources"] == {"mem_limit": "2g", "oom_score_adj": -100}
+
+    def test_deploy_omits_resources_when_absent(self, client):
+        """A service YAML without a resources block must not add one to the spec."""
+        captured: dict = {}
+
+        async def _capture_deploy(worker_id, slug, spec):
+            captured["spec"] = spec
+            return {"container_id": "abc123"}
+
+        svc = {
+            "slug": "nores",
+            "name": "NoRes",
+            "docker": {"image": "x", "env": [], "ports": [], "volumes": []},
+        }
+        with (
+            _auth_owner(),
+            patch("app.main._resolve_worker_id", new_callable=AsyncMock, return_value=1),
+            patch("app.main.catalog.get_service", return_value=svc),
+            patch("app.main._proxy_worker_deploy", side_effect=_capture_deploy),
+            patch("app.main.database.save_deployment", new_callable=AsyncMock),
+            patch("app.main.database.record_health_event", new_callable=AsyncMock),
+        ):
+            resp = client.post("/api/deploy/nores", json={})
+            assert resp.status_code == 200, resp.text
+            assert "resources" not in captured["spec"]
+
+    def test_deploy_storj_real_catalog_carries_resources(self, client):
+        """Guard: the real storj YAML resources must reach the container spec.
+
+        Uses the real catalog (no get_service mock) so a rename of the YAML
+        `resources` keys is caught independently of the schema-level test.
+        """
+        captured: dict = {}
+
+        async def _capture_deploy(worker_id, slug, spec):
+            captured["spec"] = spec
+            return {"container_id": "abc123"}
+
+        from app import catalog
+
+        catalog.load_services()
+
+        with (
+            _auth_owner(),
+            patch("app.main._resolve_worker_id", new_callable=AsyncMock, return_value=1),
+            patch("app.main._proxy_worker_deploy", side_effect=_capture_deploy),
+            patch("app.main.database.save_deployment", new_callable=AsyncMock),
+            patch("app.main.database.record_health_event", new_callable=AsyncMock),
+        ):
+            resp = client.post(
+                "/api/deploy/storj",
+                json={
+                    "env": {
+                        "WALLET": "0xabc",
+                        "EMAIL": "a@b.com",
+                        "ADDRESS": "1.2.3.4:28967",
+                        "STORAGE": "2TB",
+                        "IDENTITY_DIR": "/mnt/id",
+                        "STORAGE_DIR": "/mnt/data",
+                    }
+                },
+            )
+            assert resp.status_code == 200, resp.text
+            assert captured["spec"]["resources"] == {"mem_limit": "2g", "oom_score_adj": -100}
+
 
 # ---------------------------------------------------------------------------
 # Stop / Restart / Start / Remove (service management routes)

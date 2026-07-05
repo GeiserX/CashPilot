@@ -18,6 +18,9 @@ docker:
   image: ghcr.io/anyone-protocol/ator-protocol
   tag: latest
   platforms: [linux/amd64, linux/arm64]
+  resources:
+    mem_limit: "1536m"
+    oom_score_adj: -100
   env: []
   ports: ["9001:9001"]
   volumes:

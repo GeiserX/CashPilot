@@ -15,6 +15,9 @@ referral:
 docker:
   image: proxybase/proxybase
   platforms: [linux/amd64]
+  resources:
+    mem_limit: "128m"
+    oom_score_adj: 300
   env:
     - key: USER_ID
       label: "User ID"

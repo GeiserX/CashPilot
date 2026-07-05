@@ -17,6 +17,9 @@ referral:
 docker:
   image: packetstream/psclient
   platforms: [linux/amd64]
+  resources:
+    mem_limit: "128m"
+    oom_score_adj: 300
   env:
     - key: CID
       label: "Client ID"

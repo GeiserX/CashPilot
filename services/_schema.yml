@@ -17,6 +17,10 @@
 # docker:
 #   image: Docker Hub image
 #   platforms: [linux/amd64, linux/arm64]
+#   resources: (optional, durable Docker resource limits applied at container create)
+#     mem_limit: "768m"        # hard memory ceiling (str: <number><b|k|m|g>, e.g. "512m", "2g")
+#     mem_reservation: "512m"  # (optional) soft memory reservation, same format as mem_limit
+#     oom_score_adj: -100      # kernel OOM-killer bias, int -1000..1000 (lower = sacrificed last)
 #   env:
 #     - key: ENV_VAR_NAME
 #       label: "Human label"
