@@ -528,6 +528,10 @@ async def api_services_deployed(request: Request) -> list[dict[str, Any]]:
             "health_score": health.get("score"),
             "uptime_pct": health.get("uptime_pct"),
             "restarts_7d": health.get("restarts", 0),
+            "crashes_7d": health.get("crashes", 0),
+            # "unstable" flags a service that has crashed repeatedly in the health window
+            # so the dashboard can surface it at a glance (not just via the score number).
+            "unstable": health.get("crashes", 0) >= 3,
             "instances": len(agg["instances"]),
             "instance_details": instance_details,
             "collector_disconnected": slug in alert_slugs,
@@ -567,6 +571,8 @@ async def api_services_deployed(request: Request) -> list[dict[str, Any]]:
             "health_score": None,
             "uptime_pct": None,
             "restarts_7d": 0,
+            "crashes_7d": 0,
+            "unstable": False,
             "instances": 0,
             "instance_details": [],
             "collector_disconnected": slug in alert_slugs,
