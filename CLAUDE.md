@@ -136,7 +136,7 @@ Two separate Docker images:
 
 ### Authentication & Credential Flow
 
-- A single shared **API key** authenticates all workers to the UI (`CASHPILOT_API_KEY` env var).
+- **Per-worker fleet keys** (v1.0.0+): `CASHPILOT_API_KEY` is the shared **enrollment/bootstrap** key. On a worker's first heartbeat the UI issues it a unique key (stored encrypted on the UI, returned once, persisted on the worker under `/data/.worker_key`); thereafter each worker authenticates — in both directions — with its own key, and the shared key is rejected for an enrolled worker.
 - Credentials are Docker-native: UI sends full container spec (image, env vars, volumes, ports) to worker on deploy. Worker passes to Docker API. Docker stores env vars in container config. Restarts preserve env vars natively.
 
 ### Worker Environment Variables
