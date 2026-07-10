@@ -1800,12 +1800,13 @@ class TestLifespanScheduler:
                 async with main_mod.lifespan(main_mod.app):
                     sched = main_mod.scheduler
                     jobs = {j.id: j for j in sched.get_jobs()}
-                    # All five interval jobs registered.
+                    # All interval jobs registered.
                     assert set(jobs) == {
                         "collect",
                         "health_check",
                         "stale_workers",
                         "data_retention",
+                        "db_vacuum",
                         "exchange_rates",
                     }
                     # Every job carries the hardening kwargs (audit fix).
