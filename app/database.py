@@ -1073,13 +1073,27 @@ async def get_health_scores(days: int = 7) -> list[dict[str, Any]]:
 # --- Data Retention ---
 
 RETENTION_DAYS = 400
+# High-frequency uptime samples (check_ok / check_down, one per service every 5
+# minutes) are the dominant source of health_events growth, yet get_health_scores
+# only ever reads a bounded window. /api/health/scores caps that window at 90 days,
+# so we keep samples just past that (95d) — enough that no allowed query can
+# out-range its own samples, while still cutting the bulk sample rows ~76% versus
+# the 400-day lifecycle-event history (start/stop/restart/crash), which we keep in
+# full because those rows are rare and worth the long tail.
+HEALTH_CHECK_RETENTION_DAYS = 95
+_HEALTH_CHECK_EVENTS = ("check_ok", "check_down")
 
 
 async def purge_old_data() -> int:
-    """Delete earnings and health_events older than RETENTION_DAYS. Returns rows deleted."""
+    """Delete data past retention. Returns rows deleted.
+
+    Earnings and lifecycle health events are kept RETENTION_DAYS; the far more
+    numerous uptime-sample events are trimmed to HEALTH_CHECK_RETENTION_DAYS.
+    """
     db = await _get_db()
     try:
         cutoff = f"-{RETENTION_DAYS} days"
+        check_cutoff = f"-{HEALTH_CHECK_RETENTION_DAYS} days"
         c1 = await db.execute(
             "DELETE FROM earnings WHERE created_at < datetime('now', ?)",
             (cutoff,),
@@ -1088,7 +1102,29 @@ async def purge_old_data() -> int:
             "DELETE FROM health_events WHERE created_at < datetime('now', ?)",
             (cutoff,),
         )
+        c3 = await db.execute(
+            "DELETE FROM health_events WHERE event IN ('check_ok', 'check_down') AND created_at < datetime('now', ?)",
+            (check_cutoff,),
+        )
         await db.commit()
-        return (c1.rowcount or 0) + (c2.rowcount or 0)
+        return (c1.rowcount or 0) + (c2.rowcount or 0) + (c3.rowcount or 0)
+    finally:
+        await db.close()
+
+
+async def vacuum_database() -> None:
+    """Reclaim free pages left by retention deletes.
+
+    SQLite never shrinks the file on DELETE alone, so without a periodic VACUUM the
+    database keeps its high-water-mark size forever even as old rows are purged.
+    Run off-peak (weekly) — VACUUM rewrites the whole file and briefly locks it. We
+    commit first because VACUUM cannot run inside an open transaction, and checkpoint
+    the WAL afterwards so the freed space is actually returned to the filesystem.
+    """
+    db = await _get_db()
+    try:
+        await db.commit()
+        await db.execute("VACUUM")
+        await db.execute("PRAGMA wal_checkpoint(TRUNCATE)")
     finally:
         await db.close()

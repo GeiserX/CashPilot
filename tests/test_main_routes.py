@@ -1900,6 +1900,53 @@ class TestLifespanScheduler:
         asyncio.run(_run())
         assert captured["called"] is True
 
+    def test_lifespan_first_run_generates_setup_token(self):
+        """With no users, startup generates + persists + activates a setup token."""
+        import app.main as main_mod
+        from app import setup_token
+
+        async def _run():
+            with (
+                patch("app.main.database.init_db", new_callable=AsyncMock),
+                patch("app.main.database.connect_shared", new_callable=AsyncMock),
+                patch("app.main.database.close_shared", new_callable=AsyncMock),
+                patch("app.main.database.list_users_with_pwd_epoch", new_callable=AsyncMock, return_value=[]),
+                patch("app.main.database.has_any_users", new_callable=AsyncMock, return_value=False),
+                patch("app.main.database.get_config", new_callable=AsyncMock, return_value=None),
+                patch("app.main.database.set_config", new_callable=AsyncMock) as set_cfg,
+                patch("app.main.catalog.load_services"),
+                patch("app.main.catalog.register_sighup"),
+                patch("app.main.exchange_rates.refresh", new_callable=AsyncMock),
+                patch("app.main._run_collection", new_callable=AsyncMock),
+                patch("app.main.close_all_collectors", new_callable=AsyncMock, create=True),
+                patch("app.main.scheduler"),  # isolate from the real module scheduler
+            ):
+                async with main_mod.lifespan(main_mod.app):
+                    assert setup_token.active() is not None
+                    set_cfg.assert_awaited_once()  # persisted the freshly generated token
+
+        asyncio.run(_run())
+
+
+class TestRunVacuum:
+    def test_run_vacuum_success(self):
+        import app.main as main_mod
+
+        with patch("app.main.database.vacuum_database", new_callable=AsyncMock) as vac:
+            asyncio.run(main_mod._run_vacuum())
+            vac.assert_awaited_once()
+
+    def test_run_vacuum_swallows_error(self):
+        import app.main as main_mod
+
+        with patch(
+            "app.main.database.vacuum_database",
+            new_callable=AsyncMock,
+            side_effect=Exception("boom"),
+        ):
+            # Must not raise — a failed VACUUM is logged, not fatal.
+            asyncio.run(main_mod._run_vacuum())
+
 
 # ---------------------------------------------------------------------------
 # Shared auth deps (app/deps.py) — guard branches
