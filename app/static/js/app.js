@@ -75,13 +75,19 @@ const CP = (() => {
   function sanitizeHint(html) {
     const el = document.createElement('div');
     el.innerHTML = html;
+    const allowedSchemes = ['http:', 'https:', 'mailto:'];
     el.querySelectorAll('*').forEach(node => {
       if (!['A', 'B', 'CODE'].includes(node.tagName)) {
         node.replaceWith(document.createTextNode(node.textContent));
         return;
       }
       for (const attr of [...node.attributes]) {
-        if (node.tagName === 'A' && (attr.name === 'href' || attr.name === 'target')) continue;
+        if (node.tagName === 'A' && attr.name === 'href') {
+          const scheme = (attr.value || '').trim().toLowerCase();
+          if (!allowedSchemes.some(s => scheme.startsWith(s))) node.removeAttribute('href');
+          continue;
+        }
+        if (node.tagName === 'A' && attr.name === 'target') continue;
         node.removeAttribute(attr.name);
       }
     });
@@ -178,7 +184,9 @@ const CP = (() => {
   async function loadExchangeRates() {
     try {
       _exchangeRates = await api('/api/exchange-rates');
-    } catch { /* keep defaults */ }
+    } catch (err) {
+      console.warn('Could not refresh exchange rates, keeping previous values:', err);
+    }
   }
 
   async function loadTopbarEarnings() {
@@ -186,8 +194,9 @@ const CP = (() => {
       await loadExchangeRates();
       const data = await api('/api/earnings/summary');
       setTextContent('topbar-total', formatCurrency(data.total || 0));
-    } catch {
-      setTextContent('topbar-total', formatCurrency(0));
+    } catch (err) {
+      // Keep whatever was already shown rather than fabricating $0.
+      console.warn('Could not refresh topbar earnings, keeping previous value:', err);
     }
   }
 
@@ -239,12 +248,9 @@ const CP = (() => {
         setChangeIndicator('month-change', data.month_change);
       }
     } catch (err) {
-      // API not yet implemented — fill with placeholder
-      setTextContent('total-earnings', formatCurrency(0));
-      setTextContent('today-earnings', formatCurrency(0));
-      setTextContent('month-earnings', formatCurrency(0));
-      setTextContent('active-services', '0');
-      setTextContent('topbar-total', formatCurrency(0));
+      // Keep whatever was already displayed — a transient fetch failure
+      // must not look like the dashboard's earnings dropped to zero.
+      toast(err.message || 'Could not refresh dashboard', 'error');
     }
   }
 
@@ -401,9 +407,15 @@ const CP = (() => {
         }
       });
     } catch (err) {
-      // Keep existing table if we had one; only show spinner on truly empty state
+      // Keep the existing table on a refresh failure. Only replace the
+      // perpetual "Loading..." spinner with a clear error + retry affordance
+      // when there was nothing on screen yet.
       if (!container.querySelector('.breakdown-table')) {
-        container.innerHTML = `<div style="display:flex; align-items:center; justify-content:center; gap:8px; padding:24px 0; color:var(--text-muted);"><div class="spinner"></div> Loading services...</div>`;
+        container.innerHTML = `
+          <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; gap:8px; padding:24px 0; color:var(--text-muted); text-align:center;">
+            <span>Couldn't load services${err && err.message ? `: ${escapeHtml(err.message)}` : ''}.</span>
+            <button class="btn btn-ghost btn-sm" onclick="CP.loadServicesTable()">Retry</button>
+          </div>`;
       }
     }
   }
@@ -509,7 +521,7 @@ const CP = (() => {
       ? (eligible ? 'Cash out earnings' : 'View payout details')
       : 'No payout info available';
     const claimDisabled = !co.dashboard_url;
-    const claimBtn = `<button class="btn btn-icon ${eligible ? 'btn-success' : ''}" onclick="${claimDisabled ? '' : `CP.openClaimModal('${svc.slug}')`}" title="${claimTitle}"${claimDisabled ? ' disabled' : ''}>
+    const claimBtn = `<button class="btn btn-icon ${eligible ? 'btn-success' : ''}" onclick="${claimDisabled ? '' : `CP.openClaimModal('${escapeHtml(svc.slug)}')`}" title="${claimTitle}"${claimDisabled ? ' disabled' : ''}>
            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>
          </button>`;
 
@@ -528,7 +540,7 @@ const CP = (() => {
     // For single instance: show action buttons directly
     let actionBtns;
     if (isMulti) {
-      const chevron = `<button class="btn btn-icon expand-toggle" onclick="event.stopPropagation(); CP.toggleInstances('${svc.slug}')" title="Expand instances">
+      const chevron = `<button class="btn btn-icon expand-toggle" onclick="event.stopPropagation(); CP.toggleInstances('${escapeHtml(svc.slug)}')" title="Expand instances">
         <svg class="expand-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
       </button>`;
       actionBtns = `<div class="action-btns">${claimBtn}${settingsBtn}${chevron}</div>`;
@@ -544,13 +556,13 @@ const CP = (() => {
           ${claimBtn}
           ${settingsBtn}
           ${_canWrite ? `
-          <button class="btn btn-icon" onclick="CP.restartService('${svc.slug}${wParam})" title="Restart"${disabledAttr}>
+          <button class="btn btn-icon" onclick="CP.restartService('${escapeHtml(svc.slug)}${wParam})" title="Restart"${disabledAttr}>
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg>
           </button>
-          <button class="btn btn-icon" onclick="CP.stopService('${svc.slug}${wParam})" title="Stop"${disabledAttr}>
+          <button class="btn btn-icon" onclick="CP.stopService('${escapeHtml(svc.slug)}${wParam})" title="Stop"${disabledAttr}>
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="6" width="12" height="12" rx="1"/></svg>
           </button>
-          <button class="btn btn-icon" onclick="CP.viewLogs('${svc.slug}${wParam})" title="Logs"${disabledAttr}>
+          <button class="btn btn-icon" onclick="CP.viewLogs('${escapeHtml(svc.slug)}${wParam})" title="Logs"${disabledAttr}>
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
           </button>` : ''}
         </div>`;
@@ -598,13 +610,13 @@ const CP = (() => {
           <td style="text-align:center; white-space:nowrap;">
             <div class="action-btns">
               ${_canWrite ? `
-              <button class="btn btn-icon" onclick="CP.restartService('${svc.slug}${wParam})" title="Restart on ${nodeLabel}"${disabledAttr}>
+              <button class="btn btn-icon" onclick="CP.restartService('${escapeHtml(svc.slug)}${wParam})" title="Restart on ${nodeLabel}"${disabledAttr}>
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg>
               </button>
-              <button class="btn btn-icon" onclick="CP.stopService('${svc.slug}${wParam})" title="Stop on ${nodeLabel}"${disabledAttr}>
+              <button class="btn btn-icon" onclick="CP.stopService('${escapeHtml(svc.slug)}${wParam})" title="Stop on ${nodeLabel}"${disabledAttr}>
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="6" width="12" height="12" rx="1"/></svg>
               </button>
-              <button class="btn btn-icon" onclick="CP.viewLogs('${svc.slug}${wParam})" title="Logs on ${nodeLabel}"${disabledAttr}>
+              <button class="btn btn-icon" onclick="CP.viewLogs('${escapeHtml(svc.slug)}${wParam})" title="Logs on ${nodeLabel}"${disabledAttr}>
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
               </button>` : ''}
             </div>
@@ -826,7 +838,7 @@ const CP = (() => {
     inputs.forEach(input => {
       const key = input.dataset.config;
       const val = input.value.trim();
-      if (val && val !== '********') data[key] = val;
+      if (val) data[key] = val;
     });
     if (!Object.keys(data).length) {
       toast('Enter at least one credential', 'warning');
@@ -926,8 +938,6 @@ const CP = (() => {
   // -----------------------------------------------------------
   // Claim Modal
   // -----------------------------------------------------------
-  let _breakdownCache = [];
-
   async function openClaimModal(platform) {
     openModal('claim-modal');
     const title = document.getElementById('claim-modal-title');
@@ -1766,7 +1776,7 @@ const CP = (() => {
         <div style="font-size:0.8rem; color:var(--text-muted); background:var(--bg-subtle, rgba(255,255,255,0.03)); border:1px solid var(--border); border-radius:6px; padding:8px 10px; margin:10px 0;">
           The credentials above run the service. To also see its <strong>balance</strong> on the dashboard,
           add earnings-tracking credentials under
-          <a href="#" onclick="event.preventDefault(); CP.openCredentialModal('${svc.slug}')" style="color:var(--accent, #3b82f6);">Settings → Collectors</a>
+          <a href="#" onclick="event.preventDefault(); CP.openCredentialModal('${escapeHtml(svc.slug)}')" style="color:var(--accent, #3b82f6);">Settings → Collectors</a>
           after deploying. This is optional — the service earns either way.
         </div>`;
       }
@@ -1982,7 +1992,7 @@ const CP = (() => {
     const data = {};
     inputs.forEach(input => {
       const val = input.value.trim();
-      if (val && val !== '********') {
+      if (val) {
         data[input.dataset.envKey] = val;
       }
     });
@@ -2064,7 +2074,7 @@ const CP = (() => {
     inputs.forEach(input => {
       const key = input.dataset.config;
       const val = input.value.trim();
-      if (val && val !== '********') {
+      if (val) {
         data[key] = val;
       }
     });
@@ -2202,6 +2212,10 @@ const CP = (() => {
 
     try {
       const alerts = await api('/api/collector-alerts');
+      // Clear any muted "alerts unavailable" styling left over from a prior
+      // failed poll now that the fetch succeeded.
+      badge.style.background = '';
+      badge.title = '';
       if (!alerts || alerts.length === 0) {
         badge.style.display = 'none';
         list.innerHTML = '<div class="notify-empty">All collectors healthy</div>';
@@ -2223,7 +2237,14 @@ const CP = (() => {
         </div>
       `).join('');
     } catch {
-      badge.style.display = 'none';
+      // The bell's own fetch failed — this is unknown, not healthy. Show a
+      // neutral/muted indicator rather than hiding the badge (which would
+      // read as "all collectors healthy").
+      badge.style.display = '';
+      badge.style.background = 'var(--text-muted)';
+      badge.textContent = '?';
+      badge.title = 'Alerts unavailable';
+      list.innerHTML = '<div class="notify-empty">Alerts unavailable — could not reach the server</div>';
     }
   }
 
@@ -2433,6 +2454,7 @@ const CP = (() => {
     filterCatalog,
     refreshServices,
     openClaimModal,
+    loadServicesTable,
     toggleInstances,
     deployServiceToWorkers,
     workerAction,

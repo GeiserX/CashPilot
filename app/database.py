@@ -89,7 +89,13 @@ def decrypt_value(value: str) -> str:
     try:
         return _fernet.decrypt(value[len(_ENC_PREFIX) :].encode()).decode()
     except InvalidToken:
-        _logger.warning("Failed to decrypt config value — key may have changed")
+        _logger.warning(
+            "Failed to decrypt config value: the Fernet ENCRYPTION KEY (CASHPILOT_SECRET_KEY / "
+            "%s) does not match the key this value was encrypted with. This is NOT a bad "
+            "credential — re-enter the affected credentials, or restore the original encryption "
+            "key, to recover.",
+            _FERNET_KEY_FILE,
+        )
         return ""
 
 

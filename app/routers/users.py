@@ -7,6 +7,7 @@ avoid the direct-import problem. Handlers reference shared state through
 
 from __future__ import annotations
 
+import time
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request
@@ -43,6 +44,10 @@ async def api_update_user_role(request: Request, user_id: int, body: UserRoleUpd
         if owner_count <= 1:
             raise HTTPException(status_code=400, detail="Cannot remove the last owner")
     await main.database.update_user_role(user_id, body.role)
+    # Invalidate any outstanding session tokens for this user — they carry the
+    # old role and must not be trusted until re-issued (same mechanism used
+    # for password changes).
+    main.auth.set_user_pwd_epoch(user_id, time.time())
     return {"status": "updated"}
 
 
@@ -55,4 +60,8 @@ async def api_delete_user(request: Request, user_id: int) -> dict[str, str]:
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     await main.database.delete_user(user_id)
+    # Invalidate any outstanding session tokens for the now-deleted account.
+    # The epoch cache is in-memory keyed by uid, so it survives the row being
+    # gone from the DB — decode_session_token rejects the token on iat alone.
+    main.auth.set_user_pwd_epoch(user_id, time.time())
     return {"status": "deleted"}
