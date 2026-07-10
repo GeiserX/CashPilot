@@ -23,6 +23,7 @@ import socket
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from html import escape as _esc
+from pathlib import Path
 from typing import Any
 
 import httpx
@@ -56,6 +57,40 @@ _ui_connected = False
 _last_heartbeat: str = "never"
 _last_error: str = ""
 
+# Per-worker fleet key. On first contact the UI enrolls this worker and hands back
+# a key unique to us, which we persist here (in our own private /data, never the
+# shared /fleet volume) and use for all subsequent auth in both directions. Until
+# enrollment we authenticate with the shared bootstrap key.
+_WORKER_KEY_FILE = Path(os.getenv("CASHPILOT_DATA_DIR", "/data")) / ".worker_key"
+
+
+def _load_worker_key() -> str | None:
+    try:
+        if _WORKER_KEY_FILE.is_file():
+            return _WORKER_KEY_FILE.read_text().strip() or None
+    except OSError as exc:
+        logger.warning("Could not read per-worker key: %s", exc)
+    return None
+
+
+def _save_worker_key(key: str) -> None:
+    global _worker_key
+    _worker_key = key
+    try:
+        _WORKER_KEY_FILE.parent.mkdir(parents=True, exist_ok=True)
+        _WORKER_KEY_FILE.write_text(key)
+        _WORKER_KEY_FILE.chmod(0o600)
+    except OSError as exc:
+        logger.warning("Could not persist per-worker key: %s", exc)
+
+
+_worker_key: str | None = _load_worker_key()
+
+
+def _active_key() -> str:
+    """The key we authenticate with: our own once enrolled, else the shared key."""
+    return _worker_key or API_KEY
+
 
 # ---------------------------------------------------------------------------
 # Auth
@@ -63,11 +98,17 @@ _last_error: str = ""
 
 
 def _verify_api_key(request: Request) -> None:
-    """Verify the shared API key from Authorization header."""
-    if not API_KEY:
+    """Verify an inbound UI->worker call.
+
+    Once enrolled we require OUR OWN per-worker key; the shared bootstrap key is
+    rejected (the cutover). Before enrollment we accept the shared key so the UI
+    can reach us to enroll in the first place.
+    """
+    expected = _active_key()
+    if not expected:
         raise HTTPException(status_code=503, detail="Fleet key not configured")
     auth = request.headers.get("Authorization", "")
-    if not hmac.compare_digest(auth.encode(), f"Bearer {API_KEY}".encode()):
+    if not hmac.compare_digest(auth.encode(), f"Bearer {expected}".encode()):
         raise HTTPException(status_code=401, detail="Invalid API key")
 
 
@@ -103,9 +144,16 @@ async def _send_heartbeat() -> None:
             resp = await client.post(
                 f"{UI_URL.rstrip('/')}/api/workers/heartbeat",
                 json=payload,
-                headers={"Authorization": f"Bearer {API_KEY}"},
+                headers={"Authorization": f"Bearer {_active_key()}"},
             )
             resp.raise_for_status()
+            # Enrollment: the UI returns our own per-worker key exactly once.
+            issued = None
+            with contextlib.suppress(Exception):
+                issued = resp.json().get("worker_key")
+            if issued and issued != _worker_key:
+                _save_worker_key(issued)
+                logger.info("Enrolled: received and persisted this worker's own fleet key")
             _ui_connected = True
             _last_heartbeat = datetime.now(UTC).strftime("%H:%M:%S UTC")
             _last_error = ""
