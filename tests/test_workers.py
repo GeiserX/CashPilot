@@ -83,7 +83,10 @@ class TestHeartbeatClientId:
     def test_client_id_passed_to_upsert(self):
         """When client_id is provided, it's used as the worker identity."""
         mock_upsert = AsyncMock(return_value=42)
-        with patch("app.main.database.upsert_worker", mock_upsert):
+        with (
+            patch("app.main._authenticate_worker_heartbeat", new_callable=AsyncMock, return_value=False),
+            patch("app.main.database.upsert_worker", mock_upsert),
+        ):
             result = _run(
                 api_worker_heartbeat(
                     _request(),
@@ -105,7 +108,10 @@ class TestHeartbeatClientId:
     def test_fallback_to_name_when_no_client_id(self):
         """Old workers that don't send client_id get name used as identity."""
         mock_upsert = AsyncMock(return_value=7)
-        with patch("app.main.database.upsert_worker", mock_upsert):
+        with (
+            patch("app.main._authenticate_worker_heartbeat", new_callable=AsyncMock, return_value=False),
+            patch("app.main.database.upsert_worker", mock_upsert),
+        ):
             result = _run(
                 api_worker_heartbeat(
                     _request(),
@@ -130,7 +136,10 @@ class TestHeartbeatClientId:
             calls.append(kwargs)
             return len(calls)
 
-        with patch("app.main.database.upsert_worker", side_effect=fake_upsert):
+        with (
+            patch("app.main._authenticate_worker_heartbeat", new_callable=AsyncMock, return_value=False),
+            patch("app.main.database.upsert_worker", side_effect=fake_upsert),
+        ):
             _run(
                 api_worker_heartbeat(
                     _request(),

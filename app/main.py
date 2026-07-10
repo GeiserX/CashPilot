@@ -14,6 +14,7 @@ import json
 import logging
 import os
 import re
+import secrets
 import socket
 from collections import defaultdict
 from contextlib import asynccontextmanager
@@ -1689,16 +1690,50 @@ async def api_admin_set_password(request: Request, user_id: int, body: AdminPass
 # ---------------------------------------------------------------------------
 
 
+def _bearer_token(request: Request) -> str:
+    """Extract the bearer token from an Authorization header (empty if absent)."""
+    h = request.headers.get("Authorization", "")
+    return h[7:] if h.startswith("Bearer ") else ""
+
+
 def _verify_fleet_api_key(request: Request) -> None:
-    """Verify the shared fleet API key from a worker's request."""
+    """Verify the shared fleet (enrollment/bootstrap) API key from a worker."""
     if not FLEET_API_KEY:
         raise HTTPException(
             status_code=503,
             detail="Fleet key not configured — set CASHPILOT_API_KEY or mount shared /fleet volume",
         )
-    auth_header = request.headers.get("Authorization", "")
-    if not hmac.compare_digest(auth_header.encode(), f"Bearer {FLEET_API_KEY}".encode()):
+    if not hmac.compare_digest(_bearer_token(request).encode(), FLEET_API_KEY.encode()):
         raise HTTPException(status_code=401, detail="Invalid API key")
+
+
+async def _authenticate_worker_heartbeat(request: Request, cid: str) -> bool:
+    """Authenticate a heartbeat; return True if this is an enrollment.
+
+    Cutover model (per-worker fleet keys):
+    - A worker with NO stored per-worker key must present the shared fleet key
+      (the enrollment/bootstrap credential) → returns True so the caller mints and
+      stores this worker's own key and hands it back once.
+    - A worker that already has a per-worker key MUST present it (verified against
+      the stored hash); the shared key is rejected here → returns False. This is
+      what stops a holder of the shared key from impersonating an enrolled worker.
+    """
+    if not FLEET_API_KEY:
+        raise HTTPException(
+            status_code=503,
+            detail="Fleet key not configured — set CASHPILOT_API_KEY or mount shared /fleet volume",
+        )
+    token = _bearer_token(request)
+    stored = await database.get_worker_key_hash(cid) if cid else None
+    if stored is None:
+        # Unenrolled → shared bootstrap key required.
+        if token and hmac.compare_digest(token.encode(), FLEET_API_KEY.encode()):
+            return True
+        raise HTTPException(status_code=401, detail="Invalid API key")
+    # Enrolled → this worker's own key required; the shared key no longer works.
+    if token and hmac.compare_digest(database.hash_worker_key(token).encode(), stored.encode()):
+        return False
+    raise HTTPException(status_code=401, detail="Invalid or missing per-worker key")
 
 
 class WorkerHeartbeat(BaseModel):
@@ -1713,9 +1748,9 @@ class WorkerHeartbeat(BaseModel):
 @app.post("/api/workers/heartbeat")
 async def api_worker_heartbeat(request: Request, body: WorkerHeartbeat) -> dict[str, Any]:
     """Receive a heartbeat from a worker. Registers or updates the worker."""
-    _verify_fleet_api_key(request)
     # Use client_id for identity; fall back to name for backward compat
     cid = body.client_id or body.name
+    enrolling = await _authenticate_worker_heartbeat(request, cid)
     worker_id = await database.upsert_worker(
         client_id=cid,
         name=body.name,
@@ -1725,7 +1760,15 @@ async def api_worker_heartbeat(request: Request, body: WorkerHeartbeat) -> dict[
         system_info=json.dumps(body.system_info),
     )
     metrics.record_heartbeat(body.name)
-    return {"status": "ok", "worker_id": worker_id}
+    resp: dict[str, Any] = {"status": "ok", "worker_id": worker_id}
+    if enrolling:
+        # First contact from this worker: mint its own key, store only the hash,
+        # and return the key once so the worker can persist + use it thereafter.
+        new_key = secrets.token_urlsafe(32)
+        await database.set_worker_key_hash(cid, database.hash_worker_key(new_key))
+        resp["worker_key"] = new_key
+        logger.info("Worker '%s' enrolled with its own per-worker fleet key", cid)
+    return resp
 
 
 @app.get("/api/workers")
