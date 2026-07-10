@@ -8,7 +8,6 @@ fallback to ./data/cashpilot.db for development.
 from __future__ import annotations
 
 import asyncio
-import hashlib
 import logging
 import os
 from datetime import UTC, datetime, timedelta
@@ -141,7 +140,7 @@ CREATE TABLE IF NOT EXISTS workers (
     apps            TEXT    NOT NULL DEFAULT '[]',
     system_info     TEXT    NOT NULL DEFAULT '{}',
     last_heartbeat  TEXT,
-    api_key_hash    TEXT,
+    api_key_enc     TEXT,
     registered_at   TEXT    NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -325,11 +324,11 @@ async def init_db() -> None:
         elif "apps" not in cols:
             await db.execute("ALTER TABLE workers ADD COLUMN apps TEXT NOT NULL DEFAULT '[]'")
 
-        # Migrate workers table: add api_key_hash for per-worker fleet keys.
+        # Migrate workers table: add api_key_enc for per-worker fleet keys.
         # (cols is the pre-rebuild snapshot; on a fresh DB the column comes from
         # _SCHEMA so it is already present here and the ALTER is skipped.)
-        if "api_key_hash" not in cols:
-            await db.execute("ALTER TABLE workers ADD COLUMN api_key_hash TEXT")
+        if "api_key_enc" not in cols:
+            await db.execute("ALTER TABLE workers ADD COLUMN api_key_enc TEXT")
 
         # Migrate users table: add password_changed_at for session invalidation
         cursor = await db.execute("PRAGMA table_info(users)")
@@ -1000,41 +999,38 @@ async def delete_worker(worker_id: int) -> None:
 
 
 # --- Per-worker fleet keys ---
+#
+# The UI must both VERIFY inbound heartbeats from a worker and, for the full
+# cutover, AUTHENTICATE outbound calls TO that worker — so it needs the key
+# itself, not just a one-way hash. Keys are therefore stored encrypted at rest
+# (Fernet, the same at-rest protection as service credentials) and decrypted on
+# demand for comparison and for outbound Authorization headers.
 
 
-def hash_worker_key(key: str) -> str:
-    """Hash a per-worker fleet key for at-rest storage and comparison.
-
-    Worker keys are high-entropy random tokens (``secrets.token_urlsafe``), so a
-    fast SHA-256 is appropriate — unlike low-entropy passwords they need no slow
-    KDF, and a constant per-key hash lets us compare in constant time.
-    """
-    return hashlib.sha256(key.encode()).hexdigest()
-
-
-async def set_worker_key_hash(client_id: str, key_hash: str) -> None:
-    """Bind a per-worker key hash to a worker row (identified by client_id)."""
+async def set_worker_key(client_id: str, key: str) -> None:
+    """Store a worker's per-worker key, encrypted at rest, bound to client_id."""
     db = await _get_db()
     try:
         await db.execute(
-            "UPDATE workers SET api_key_hash = ? WHERE client_id = ?",
-            (key_hash, client_id),
+            "UPDATE workers SET api_key_enc = ? WHERE client_id = ?",
+            (encrypt_value(key), client_id),
         )
         await db.commit()
     finally:
         await db.close()
 
 
-async def get_worker_key_hash(client_id: str) -> str | None:
-    """Return a worker's stored per-worker key hash, or None if not yet enrolled."""
+async def get_worker_key(client_id: str) -> str | None:
+    """Return a worker's per-worker key (decrypted), or None if not yet enrolled."""
     db = await _get_db()
     try:
         cursor = await db.execute(
-            "SELECT api_key_hash FROM workers WHERE client_id = ?",
+            "SELECT api_key_enc FROM workers WHERE client_id = ?",
             (client_id,),
         )
         row = await cursor.fetchone()
-        return row["api_key_hash"] if row and row["api_key_hash"] else None
+        enc = row["api_key_enc"] if row else None
+        return decrypt_value(enc) if enc else None
     finally:
         await db.close()
 

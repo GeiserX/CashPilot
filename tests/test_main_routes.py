@@ -1387,8 +1387,8 @@ class TestApiFleet:
         # A brand-new worker authenticates with the shared key and is issued its own.
         with (
             patch("app.main.FLEET_API_KEY", "test-fleet-key"),
-            patch("app.main.database.get_worker_key_hash", new_callable=AsyncMock, return_value=None),
-            patch("app.main.database.set_worker_key_hash", new_callable=AsyncMock) as set_kh,
+            patch("app.main.database.get_worker_key", new_callable=AsyncMock, return_value=None),
+            patch("app.main.database.set_worker_key", new_callable=AsyncMock) as set_key,
             patch("app.main.database.upsert_worker", new_callable=AsyncMock, return_value=1),
         ):
             resp = client.post(
@@ -1400,12 +1400,12 @@ class TestApiFleet:
             body = resp.json()
             assert body["worker_id"] == 1
             assert body.get("worker_key")  # a per-worker key was issued
-            set_kh.assert_awaited_once()  # its hash was persisted
+            set_key.assert_awaited_once()  # it was persisted (encrypted)
 
     def test_api_worker_heartbeat_unenrolled_bad_key(self, client):
         with (
             patch("app.main.FLEET_API_KEY", "test-fleet-key"),
-            patch("app.main.database.get_worker_key_hash", new_callable=AsyncMock, return_value=None),
+            patch("app.main.database.get_worker_key", new_callable=AsyncMock, return_value=None),
         ):
             resp = client.post(
                 "/api/workers/heartbeat",
@@ -1425,15 +1425,13 @@ class TestApiFleet:
     def test_api_worker_heartbeat_enrolled_rejects_shared_key(self, client):
         # The cutover: an enrolled worker must use its own key; the shared key is
         # rejected, and its own key is accepted (no new key re-issued).
-        from app import database as db_mod
-
         own_key = "the-worker-key"
         with (
             patch("app.main.FLEET_API_KEY", "test-fleet-key"),
             patch(
-                "app.main.database.get_worker_key_hash",
+                "app.main.database.get_worker_key",
                 new_callable=AsyncMock,
-                return_value=db_mod.hash_worker_key(own_key),
+                return_value=own_key,
             ),
             patch("app.main.database.upsert_worker", new_callable=AsyncMock, return_value=1),
         ):

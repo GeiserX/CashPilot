@@ -1724,14 +1724,14 @@ async def _authenticate_worker_heartbeat(request: Request, cid: str) -> bool:
             detail="Fleet key not configured — set CASHPILOT_API_KEY or mount shared /fleet volume",
         )
     token = _bearer_token(request)
-    stored = await database.get_worker_key_hash(cid) if cid else None
-    if stored is None:
+    stored_key = await database.get_worker_key(cid) if cid else None
+    if stored_key is None:
         # Unenrolled → shared bootstrap key required.
         if token and hmac.compare_digest(token.encode(), FLEET_API_KEY.encode()):
             return True
         raise HTTPException(status_code=401, detail="Invalid API key")
     # Enrolled → this worker's own key required; the shared key no longer works.
-    if token and hmac.compare_digest(database.hash_worker_key(token).encode(), stored.encode()):
+    if token and hmac.compare_digest(token.encode(), stored_key.encode()):
         return False
     raise HTTPException(status_code=401, detail="Invalid or missing per-worker key")
 
@@ -1765,7 +1765,7 @@ async def api_worker_heartbeat(request: Request, body: WorkerHeartbeat) -> dict[
         # First contact from this worker: mint its own key, store only the hash,
         # and return the key once so the worker can persist + use it thereafter.
         new_key = secrets.token_urlsafe(32)
-        await database.set_worker_key_hash(cid, database.hash_worker_key(new_key))
+        await database.set_worker_key(cid, new_key)
         resp["worker_key"] = new_key
         logger.info("Worker '%s' enrolled with its own per-worker fleet key", cid)
     return resp
