@@ -434,8 +434,16 @@ const CP = (() => {
     let healthBadge = '<span style="color:var(--text-muted);">--</span>';
     if (!isExternal && svc.health_score !== null && svc.health_score !== undefined) {
       const score = svc.health_score;
-      const hClass = score >= 80 ? 'badge-running' : score >= 50 ? 'badge-error' : 'badge-stopped';
-      healthBadge = `<span class="badge ${hClass}" title="Health ${score}/100">${score}</span>`;
+      const crashes = svc.crashes_7d || 0;
+      const restarts = svc.restarts_7d || 0;
+      const unstable = svc.unstable === true;
+      // Unstable (repeated crashes in the 7-day window) takes the worst tone + an explicit
+      // label so a crash-looping service is legible at a glance, not just via a low number.
+      const hClass = (unstable || score < 50) ? 'badge-stopped' : score >= 80 ? 'badge-running' : 'badge-error';
+      const uptime = (svc.uptime_pct !== null && svc.uptime_pct !== undefined) ? `${svc.uptime_pct}% uptime · ` : '';
+      const title = `Health ${score}/100 · ${uptime}${restarts} restarts · ${crashes} crashes (7d)`;
+      const label = unstable ? `unstable · ${crashes} crashes` : String(score);
+      healthBadge = `<span class="badge ${hClass}" title="${title}">${label}</span>`;
     }
 
     // Balance + delta from breakdown
