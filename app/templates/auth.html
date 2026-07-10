@@ -151,6 +151,9 @@
     {% endif %}
 
     <form method="POST" action="{{ action }}">
+      {% if mode == "register" and is_first %}
+      <input type="hidden" name="setup_token" value="{{ setup_token }}">
+      {% endif %}
       <div class="auth-field">
         <label for="username">Username</label>
         <input type="text" id="username" name="username" required autocomplete="username" autofocus>

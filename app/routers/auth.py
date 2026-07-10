@@ -45,7 +45,7 @@ async def do_login(
     username: str = Form(...),
     password: str = Form(...),
 ):
-    client_ip = request.client.host if request.client else "unknown"
+    client_ip = main.client_ip(request) or "unknown"
     try:
         main._check_login_rate(client_ip)
     except HTTPException:
@@ -86,7 +86,7 @@ async def page_register(request: Request, error: str = ""):
         if not user or user.get("r") != "owner":
             return RedirectResponse("/login", status_code=303)
     if is_first:
-        main._require_private_network(request)
+        main._require_first_run_access(request)
 
     return main.templates.TemplateResponse(
         request,
@@ -99,6 +99,8 @@ async def page_register(request: Request, error: str = ""):
             "button_text": "Create Account",
             "error": error,
             "is_first": is_first,
+            # Carry the setup token through the form so the POST passes the same gate.
+            "setup_token": request.query_params.get("setup_token", "") if is_first else "",
         },
     )
 
@@ -109,6 +111,7 @@ async def do_register(
     username: str = Form(...),
     password: str = Form(...),
     password_confirm: str = Form(...),
+    setup_token: str = Form(""),
 ):
     is_first = not await main.database.has_any_users()
 
@@ -119,7 +122,7 @@ async def do_register(
             raise HTTPException(status_code=403, detail="Only owners can add users")
 
     if is_first:
-        main._require_private_network(request)
+        main._require_first_run_access(request, setup_token)
 
     if not re.match(r"^[a-zA-Z0-9_-]{3,32}$", username):
         return main.templates.TemplateResponse(
@@ -133,6 +136,7 @@ async def do_register(
                 "button_text": "Create Account",
                 "error": "Username must be 3-32 alphanumeric characters (a-z, 0-9, _ -)",
                 "is_first": is_first,
+                "setup_token": setup_token if is_first else "",
             },
             status_code=400,
         )
@@ -149,6 +153,7 @@ async def do_register(
                 "button_text": "Create Account",
                 "error": "Passwords do not match",
                 "is_first": is_first,
+                "setup_token": setup_token if is_first else "",
             },
             status_code=400,
         )
@@ -165,6 +170,7 @@ async def do_register(
                 "button_text": "Create Account",
                 "error": "Password must be at least 10 characters",
                 "is_first": is_first,
+                "setup_token": setup_token if is_first else "",
             },
             status_code=400,
         )
@@ -182,6 +188,7 @@ async def do_register(
                 "button_text": "Create Account",
                 "error": "Username already taken",
                 "is_first": is_first,
+                "setup_token": setup_token if is_first else "",
             },
             status_code=400,
         )
@@ -190,6 +197,11 @@ async def do_register(
     role = "owner" if is_first else "viewer"
     hashed = main.auth.hash_password(password)
     user_id = await main.database.create_user(username, hashed, role)
+
+    if is_first:
+        # Owner now exists — retire the one-time setup token permanently.
+        await main.database.delete_config_keys(["_setup_token"])
+        main.setup_token.clear()
 
     token = main.auth.create_session_token(user_id, username, role)
     dest = "/setup" if is_first else "/"

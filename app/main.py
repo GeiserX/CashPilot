@@ -31,7 +31,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from starlette.middleware.base import BaseHTTPMiddleware
 
-from app import auth, catalog, compose_generator, database, exchange_rates, fleet_key, metrics
+from app import auth, catalog, compose_generator, database, exchange_rates, fleet_key, metrics, setup_token
 
 logging.basicConfig(
     level=logging.INFO,
@@ -75,16 +75,16 @@ _LOGIN_MAX_ATTEMPTS = 5
 _LOGIN_WINDOW_SECONDS = 300
 
 
-def _check_login_rate(client_ip: str) -> None:
+def _check_login_rate(ip: str) -> None:
     now = monotonic()
-    attempts = _login_attempts[client_ip]
-    _login_attempts[client_ip] = [t for t in attempts if now - t < _LOGIN_WINDOW_SECONDS]
-    if len(_login_attempts[client_ip]) >= _LOGIN_MAX_ATTEMPTS:
+    attempts = _login_attempts[ip]
+    _login_attempts[ip] = [t for t in attempts if now - t < _LOGIN_WINDOW_SECONDS]
+    if len(_login_attempts[ip]) >= _LOGIN_MAX_ATTEMPTS:
         raise HTTPException(status_code=429, detail="Too many login attempts. Try again in a few minutes.")
 
 
-def _record_failed_login(client_ip: str) -> None:
-    _login_attempts[client_ip].append(monotonic())
+def _record_failed_login(ip: str) -> None:
+    _login_attempts[ip].append(monotonic())
 
 
 def _safe_json(raw: str, fallback: Any = None) -> Any:
@@ -273,6 +273,15 @@ async def _run_data_retention() -> None:
         logger.warning("Data retention error: %s", exc)
 
 
+async def _run_vacuum() -> None:
+    """Reclaim disk left by retention deletes (SQLite does not auto-shrink)."""
+    try:
+        await database.vacuum_database()
+        logger.info("Database VACUUM complete")
+    except Exception as exc:
+        logger.warning("Database VACUUM error: %s", exc)
+
+
 async def _check_stale_workers() -> None:
     """Mark workers as offline if stale, and purge workers offline > 1 hour."""
     try:
@@ -312,6 +321,21 @@ async def lifespan(app: FastAPI):
         _changed = _u.get("password_changed_at") or 0.0
         if _changed:
             auth.set_user_pwd_epoch(_u["id"], _changed)
+    # First-run setup token: while no users exist, require a one-time token
+    # (printed below) for /register so a proxy-exposed instance cannot be seized
+    # by the first public visitor. Persisted in config so it survives restarts;
+    # cleared once the owner account is created.
+    if not await database.has_any_users():
+        _tok = await database.get_config("_setup_token")
+        if not _tok:
+            _tok = setup_token.generate()
+            await database.set_config("_setup_token", _tok)
+        setup_token.set_active(_tok)
+        logger.warning(
+            "FIRST-RUN SETUP: no account exists yet. Create the owner account at "
+            "/register?setup_token=%s — this token is required and is shown only here.",
+            _tok,
+        )
     catalog.load_services()
     catalog.register_sighup()
 
@@ -351,6 +375,15 @@ async def lifespan(app: FastAPI):
         "interval",
         hours=24,
         id="data_retention",
+        max_instances=1,
+        coalesce=True,
+        misfire_grace_time=300,
+    )
+    scheduler.add_job(
+        _run_vacuum,
+        "interval",
+        weeks=1,
+        id="db_vacuum",
         max_instances=1,
         coalesce=True,
         misfire_grace_time=300,
@@ -424,9 +457,11 @@ app.mount("/static", StaticFiles(directory="app/static"), name="static")
 from app.deps import (  # noqa: E402
     _login_redirect,  # noqa: F401  (re-exported for app.main.* test/router surface)
     _require_auth_api,
+    _require_first_run_access,  # noqa: F401  (re-exported for app.main.* router surface)
     _require_owner,
     _require_private_network,  # noqa: F401  (re-exported for app.main.* router surface)
     _require_writer,
+    client_ip,  # noqa: F401  (re-exported for app.main.* router surface)
     templates,  # noqa: F401  (re-exported for app.main.* router/test surface)
 )
 
