@@ -44,3 +44,21 @@ def _reset_shared_db():
     # No usable loop (e.g. one is already running) — best-effort cleanup.
     with contextlib.suppress(RuntimeError):
         asyncio.run(_drain())
+
+
+@pytest.fixture(autouse=True)
+def _reset_login_attempts():
+    """Clear the in-process login rate-limit bucket before every test.
+
+    ``app.main._login_attempts`` is a module-level dict keyed by client host that
+    persists for the whole test process, and TestClient's host is a constant
+    ("testclient"), so failed-login attempts from one test would otherwise leak
+    into later tests that hit /login — an order-dependent landmine (and the reason
+    a real rate-limit test couldn't be added safely before). Start each test with
+    an empty bucket.
+    """
+    with contextlib.suppress(Exception):
+        from app import main
+
+        main._login_attempts.clear()
+    yield

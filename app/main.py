@@ -44,6 +44,30 @@ scheduler = AsyncIOScheduler()
 # In-memory store for the latest collector alerts (errors from last run)
 _collector_alerts: list[dict[str, str]] = []
 _collection_lock = asyncio.Lock()
+_collection_semaphore = asyncio.Semaphore(8)
+
+# Fire-and-forget background tasks (e.g. triggered collection runs). Keeping a
+# reference prevents the task from being garbage-collected mid-run and lets us
+# retrieve/log any exception it raised (bare `asyncio.create_task(...)` drops
+# the reference and silently swallows exceptions).
+_background_tasks: set[asyncio.Task] = set()
+
+
+def _spawn(coro) -> asyncio.Task:
+    """Fire-and-forget a coroutine while keeping a reference and logging errors."""
+    task = asyncio.create_task(coro)
+    _background_tasks.add(task)
+
+    def _on_done(t: asyncio.Task) -> None:
+        _background_tasks.discard(t)
+        if not t.cancelled():
+            exc = t.exception()
+            if exc is not None:
+                logger.error("Background task failed: %s", exc, exc_info=exc)
+
+    task.add_done_callback(_on_done)
+    return task
+
 
 # Login rate limiting
 _login_attempts: dict[str, list[float]] = defaultdict(list)
@@ -179,6 +203,12 @@ async def _run_health_check() -> None:
         logger.warning("Health check skipped: %s", exc)
 
 
+async def _collect_bounded(collector) -> Any:
+    """Run a single collector's `collect()` under the shared concurrency limit."""
+    async with _collection_semaphore:
+        return await collector.collect()
+
+
 async def _run_collection() -> None:
     """Collect earnings from all deployed services that have collectors."""
     global _collector_alerts
@@ -186,9 +216,10 @@ async def _run_collection() -> None:
         logger.info("Collection already in progress, skipping")
         return
     async with _collection_lock:
-        start_time = metrics.record_collection_start()
         success = True
+        start_time = 0.0
         try:
+            start_time = metrics.record_collection_start()
             deployments = await database.get_deployments()
             config = await database.get_config() or {}
             if not isinstance(config, dict):
@@ -197,7 +228,7 @@ async def _run_collection() -> None:
 
             collectors = make_collectors(deployments, config)
             await _close_stale()
-            results = await asyncio.gather(*(c.collect() for c in collectors), return_exceptions=True)
+            results = await asyncio.gather(*(_collect_bounded(c) for c in collectors), return_exceptions=True)
             alerts: list[dict[str, str]] = []
             platforms_ok = 0
             for result in results:
@@ -335,7 +366,7 @@ async def lifespan(app: FastAPI):
     )
     scheduler.start()
     await exchange_rates.refresh()
-    asyncio.create_task(_run_collection())
+    _spawn(_run_collection())
     logger.info("CashPilot UI started (container ops via workers)")
 
     yield
@@ -756,7 +787,7 @@ async def api_deploy(request: Request, slug: str, body: DeployRequest, worker_id
     await database.save_deployment(slug=slug, container_id=container_id)
     await database.record_health_event(slug, "start", f"deployed to worker {worker_id}")
     metrics.record_container_lifecycle("deploy", slug)
-    asyncio.create_task(_run_collection())
+    _spawn(_run_collection())
     return {"status": "deployed", "container_id": container_id}
 
 
@@ -765,6 +796,7 @@ async def api_stop(request: Request, slug: str, worker_id: int | None = None) ->
     _require_writer(request)
     worker_id = await _resolve_worker_id(worker_id)
     result = await _proxy_worker_command(worker_id, "stop", slug)
+    await database.record_health_event(slug, "stop")
     metrics.record_container_lifecycle("stop", slug)
     return result
 
@@ -774,6 +806,7 @@ async def api_restart(request: Request, slug: str, worker_id: int | None = None)
     _require_writer(request)
     worker_id = await _resolve_worker_id(worker_id)
     result = await _proxy_worker_command(worker_id, "restart", slug)
+    await database.record_health_event(slug, "restart")
     metrics.record_container_lifecycle("restart", slug)
     return result
 
@@ -787,6 +820,7 @@ async def api_remove(
     params = {"delete_volumes": "true"} if delete_volumes else None
     result = await _proxy_worker_command(worker_id, "remove", slug, params=params)
     await database.remove_deployment(slug)
+    await database.record_health_event(slug, "remove")
     metrics.record_container_lifecycle("remove", slug)
     return result
 
@@ -878,6 +912,9 @@ def _validate_worker_url(raw_url: str) -> str:
 
     Resolves hostnames and validates the resolved IP(s) so a DNS name that
     points at a metadata/loopback address is rejected (DNS-rebinding guard).
+    Synchronous — its only blocking op is DNS resolution; event-loop callers
+    MUST invoke it via ``asyncio.to_thread`` (see _get_verified_worker_url) so a
+    slow/hanging resolver never blocks the whole UI.
     """
     parsed = urlparse(raw_url)
     if parsed.scheme not in _ALLOWED_WORKER_SCHEMES:
@@ -924,7 +961,7 @@ def _validate_worker_url(raw_url: str) -> str:
     return raw_url.rstrip("/")
 
 
-def _get_verified_worker_url(worker: dict[str, Any]) -> tuple[str, dict[str, str]]:
+async def _get_verified_worker_url(worker: dict[str, Any]) -> tuple[str, dict[str, str]]:
     """Validate a worker record and return (url, headers)."""
     if not worker:
         raise HTTPException(status_code=404, detail="Worker not found")
@@ -932,7 +969,7 @@ def _get_verified_worker_url(worker: dict[str, Any]) -> tuple[str, dict[str, str
         raise HTTPException(status_code=503, detail="Worker is offline")
     if not worker["url"]:
         raise HTTPException(status_code=503, detail="Worker URL not known")
-    url = _validate_worker_url(worker["url"])
+    url = await asyncio.to_thread(_validate_worker_url, worker["url"])
     headers: dict[str, str] = {}
     if FLEET_API_KEY:
         headers["Authorization"] = f"Bearer {FLEET_API_KEY}"
@@ -944,7 +981,7 @@ async def _proxy_worker_command(
 ) -> dict[str, Any]:
     """Forward a container command (restart/stop/start/remove) to a worker."""
     worker = await database.get_worker(worker_id)
-    url, headers = _get_verified_worker_url(worker)
+    url, headers = await _get_verified_worker_url(worker)
 
     try:
         async with httpx.AsyncClient(timeout=30) as client:
@@ -964,7 +1001,7 @@ async def _proxy_worker_command(
 async def _proxy_worker_deploy(worker_id: int, slug: str, spec: dict[str, Any]) -> dict[str, Any]:
     """Forward a deploy command with full spec to a worker."""
     worker = await database.get_worker(worker_id)
-    url, headers = _get_verified_worker_url(worker)
+    url, headers = await _get_verified_worker_url(worker)
 
     try:
         async with httpx.AsyncClient(timeout=60) as client:
@@ -981,7 +1018,7 @@ async def _proxy_worker_deploy(worker_id: int, slug: str, spec: dict[str, Any]) 
 async def _proxy_worker_logs(worker_id: int, slug: str, lines: int = 50) -> dict[str, str]:
     """Forward a logs request to a worker."""
     worker = await database.get_worker(worker_id)
-    url, headers = _get_verified_worker_url(worker)
+    url, headers = await _get_verified_worker_url(worker)
 
     try:
         async with httpx.AsyncClient(timeout=30) as client:
@@ -1010,6 +1047,7 @@ async def api_service_restart(request: Request, slug: str, worker_id: int | None
     worker_id = await _resolve_worker_id(worker_id)
     result = await _proxy_worker_command(worker_id, "restart", slug)
     await database.record_health_event(slug, "restart")
+    metrics.record_container_lifecycle("restart", slug)
     return result
 
 
@@ -1019,6 +1057,7 @@ async def api_service_stop(request: Request, slug: str, worker_id: int | None = 
     worker_id = await _resolve_worker_id(worker_id)
     result = await _proxy_worker_command(worker_id, "stop", slug)
     await database.record_health_event(slug, "stop")
+    metrics.record_container_lifecycle("stop", slug)
     return result
 
 
@@ -1028,6 +1067,7 @@ async def api_service_start(request: Request, slug: str, worker_id: int | None =
     worker_id = await _resolve_worker_id(worker_id)
     result = await _proxy_worker_command(worker_id, "start", slug)
     await database.record_health_event(slug, "start")
+    metrics.record_container_lifecycle("start", slug)
     return result
 
 
@@ -1049,6 +1089,8 @@ async def api_service_remove(
     params = {"delete_volumes": "true"} if delete_volumes else None
     result = await _proxy_worker_command(worker_id, "remove", slug, params=params)
     await database.remove_deployment(slug)
+    await database.record_health_event(slug, "remove")
+    metrics.record_container_lifecycle("remove", slug)
     return result
 
 
@@ -1241,7 +1283,7 @@ async def api_health_scores(request: Request, days: int = 7) -> list[dict[str, A
 @app.post("/api/collect")
 async def api_collect(request: Request) -> dict[str, str]:
     _require_writer(request)
-    asyncio.create_task(_run_collection())
+    _spawn(_run_collection())
     return {"status": "collection_started"}
 
 
@@ -1331,7 +1373,7 @@ async def api_set_preferences(request: Request, body: PreferencesUpdate) -> dict
     )
     # If setup is completed, trigger an immediate collection
     if body.setup_completed:
-        asyncio.create_task(_run_collection())
+        _spawn(_run_collection())
     return {"status": "saved"}
 
 
@@ -1409,17 +1451,11 @@ async def api_collectors_meta(request: Request) -> list[dict[str, Any]]:
     _require_owner(request)
     from app.collectors import _COLLECTOR_ARGS, COLLECTOR_MAP
 
-    secret_args = {
-        "password",
-        "token",
-        "auth_token",
-        "access_token",
-        "api_key",
-        "session_cookie",
-        "auth_cookie",
-        "oauth_token",
-        "brd_sess_id",
-    }
+    # Single-sourced from database.SECRET_CONFIG_KEYS so this endpoint can never
+    # disagree with the encryption-at-rest / masking logic about which config
+    # keys are secret (a hand-maintained duplicate here previously missed
+    # `remember_web` and `xsrf_token`, unmasking them).
+    secret_args = database.SECRET_CONFIG_KEYS
     # Per-service hints on how to obtain the credentials
     hints: dict[str, str] = {
         "bitping": "Use your Bitping account email and password (same as <a href='https://nodes.bitping.com' target='_blank'>nodes.bitping.com</a>).",
@@ -1711,10 +1747,15 @@ class WorkerCommand(BaseModel):
 @app.post("/api/workers/{worker_id}/command")
 async def api_worker_command(request: Request, worker_id: int, body: WorkerCommand) -> dict[str, Any]:
     """Send a command to a worker by proxying to its REST API."""
-    _require_writer(request)
+    # Deploy is owner-gated everywhere else (see /api/deploy/{slug}); a writer
+    # must not be able to bypass that gate by sending command="deploy" here.
+    if body.command == "deploy":
+        _require_owner(request)
+    else:
+        _require_writer(request)
 
     worker = await database.get_worker(worker_id)
-    url, headers = _get_verified_worker_url(worker)
+    url, headers = await _get_verified_worker_url(worker)
 
     try:
         async with httpx.AsyncClient(timeout=30) as client:
