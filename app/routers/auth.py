@@ -85,8 +85,11 @@ async def page_register(request: Request, error: str = ""):
         user = main.auth.get_current_user(request)
         if not user or user.get("r") != "owner":
             return RedirectResponse("/login", status_code=303)
+    # The GET page is gated only by the network check so the operator can reach the
+    # form; the setup token is entered into a form field and verified on POST (never
+    # via URL, which would leak it into access logs / browser history).
     if is_first:
-        main._require_first_run_access(request)
+        main._require_private_network(request)
 
     return main.templates.TemplateResponse(
         request,
@@ -99,8 +102,6 @@ async def page_register(request: Request, error: str = ""):
             "button_text": "Create Account",
             "error": error,
             "is_first": is_first,
-            # Carry the setup token through the form so the POST passes the same gate.
-            "setup_token": request.query_params.get("setup_token", "") if is_first else "",
         },
     )
 

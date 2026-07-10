@@ -81,10 +81,14 @@ class TestRequireFirstRunAccess:
         with patch.object(deps, "_TRUST_PROXY", False):
             assert deps._require_first_run_access(_req("127.0.0.1"), "tok") is None
 
-    def test_token_from_query_param(self):
+    def test_query_param_token_is_rejected(self):
+        # Query-param tokens are intentionally NOT accepted — a ?setup_token= URL
+        # would leak the secret into proxy access logs / browser history. Even a
+        # correct token in the query string must be refused.
         setup_token.set_active("tok")
-        with patch.object(deps, "_TRUST_PROXY", False):
-            assert deps._require_first_run_access(_req("127.0.0.1", query={"setup_token": "tok"})) is None
+        with patch.object(deps, "_TRUST_PROXY", False), pytest.raises(HTTPException) as ei:
+            deps._require_first_run_access(_req("127.0.0.1", query={"setup_token": "tok"}))
+        assert ei.value.status_code == 403
 
     def test_token_from_header(self):
         setup_token.set_active("tok")

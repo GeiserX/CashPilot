@@ -100,11 +100,14 @@ def _require_first_run_access(request: Request, setup_token_value: str | None = 
     The network check alone is spoofable behind a reverse proxy (the peer is then
     the proxy), so the setup token — printed to the server logs, readable only
     with host access — is the real gate. The token is accepted from the explicit
-    argument (a form field), the ``setup_token`` query param, or the
-    ``X-Setup-Token`` header.
+    argument (the registration form field) or the ``X-Setup-Token`` header.
+
+    Deliberately NOT read from the query string: a ``?setup_token=`` URL leaks the
+    secret into reverse-proxy access logs and browser history. The form field
+    (typed into the setup page) and the header keep it out of URLs.
     """
     _require_private_network(request)
-    token = setup_token_value or request.query_params.get("setup_token") or request.headers.get("x-setup-token")
+    token = setup_token_value or request.headers.get("x-setup-token")
     if not setup_token.verify(token):
         raise HTTPException(
             status_code=403,

@@ -332,8 +332,9 @@ async def lifespan(app: FastAPI):
             await database.set_config("_setup_token", _tok)
         setup_token.set_active(_tok)
         logger.warning(
-            "FIRST-RUN SETUP: no account exists yet. Create the owner account at "
-            "/register?setup_token=%s — this token is required and is shown only here.",
+            "FIRST-RUN SETUP: no account exists yet. Open /register and enter this "
+            "one-time setup token to create the owner account: %s  (shown only here; "
+            "not embedded in any URL so it stays out of proxy logs and browser history)",
             _tok,
         )
     catalog.load_services()
