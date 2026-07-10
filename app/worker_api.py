@@ -94,7 +94,7 @@ async def _send_heartbeat() -> None:
             "os": f"{platform.system()} {platform.release()}",
             "arch": platform.machine(),
             "hostname": socket.gethostname(),
-            "docker_available": orchestrator.docker_available(),
+            "docker_available": await asyncio.to_thread(orchestrator.docker_available),
         },
     }
 
@@ -148,7 +148,7 @@ async def lifespan(app: FastAPI):
     global _heartbeat_task
 
     logger.info("CashPilot Worker '%s' starting", WORKER_NAME)
-    docker_mode = "direct" if orchestrator.docker_available() else "monitor-only"
+    docker_mode = "direct" if await asyncio.to_thread(orchestrator.docker_available) else "monitor-only"
     logger.info("Docker: %s", docker_mode)
 
     if UI_URL:
@@ -177,8 +177,9 @@ app = FastAPI(title="CashPilot Worker", version="0.1.0", lifespan=lifespan)
 
 
 @app.get("/", response_class=HTMLResponse)
-async def worker_status_page():
+async def worker_status_page(request: Request):
     """Self-contained HTML status page for the worker."""
+    _verify_api_key(request)
     containers = []
     try:
         containers = await asyncio.to_thread(orchestrator.get_status_cached)
@@ -237,7 +238,7 @@ async def worker_status_page():
             <div><label>Name</label><span>{_esc(WORKER_NAME)}</span></div>
             <div><label>Host</label><span>{_esc(socket.gethostname())}</span></div>
             <div><label>Platform</label><span>{_esc(platform.system())} {_esc(platform.machine())}</span></div>
-            <div><label>Docker</label><span>{"Available" if orchestrator.docker_available() else "Not available"}</span></div>
+            <div><label>Docker</label><span>{"Available" if await asyncio.to_thread(orchestrator.docker_available) else "Not available"}</span></div>
             <div><label>UI Connection</label><span>{ui_status}</span></div>
             <div><label>Last Heartbeat</label><span>{_last_heartbeat}</span></div>
         </div>
@@ -285,8 +286,29 @@ class DeploySpec(BaseModel):
     resources: ResourceSpec | None = None
 
 
-_BLOCKED_VOLUME_SOURCES = {"/", "/etc", "/var/run/docker.sock", "/root", "/proc", "/sys"}
+_BLOCKED_VOLUME_ROOTS = {
+    "/",
+    "/etc",
+    "/root",
+    "/proc",
+    "/sys",
+    "/boot",
+    "/dev",
+    "/var",
+    "/usr",
+    "/home",
+    "/lib",
+    "/lib64",
+    "/bin",
+    "/sbin",
+    "/var/run",
+    "/run",
+    "/var/lib/docker",
+}
 _BLOCKED_CAPS = {"ALL", "SYS_ADMIN", "SYS_PTRACE"}
+# Named volumes (bridge/none/unset) and mysterium's legitimate host networking are allowed;
+# `container:<id>` (namespace join) and any other value are rejected.
+_ALLOWED_NETWORK_MODES = {None, "", "bridge", "none", "host"}
 # Docker memory size syntax: a positive integer with an optional b/k/m/g unit.
 _MEM_LIMIT_RE = re.compile(r"^\d+[bkmgBKMG]?$")
 
@@ -298,12 +320,14 @@ def _validate_deploy_spec(spec: DeploySpec) -> None:
         blocked = _BLOCKED_CAPS & {c.upper() for c in spec.cap_add}
         if blocked:
             raise HTTPException(status_code=403, detail=f"Blocked capabilities: {', '.join(blocked)}")
+    if spec.network_mode not in _ALLOWED_NETWORK_MODES:
+        raise HTTPException(status_code=403, detail=f"Network mode '{spec.network_mode}' is not allowed")
     for source in spec.volumes:
-        normalized = "/" + source.strip("/")
-        if normalized == "/":
-            raise HTTPException(status_code=403, detail=f"Volume mount '{source}' is blocked")
-        for blocked in _BLOCKED_VOLUME_SOURCES:
-            if normalized == blocked or normalized.startswith(blocked + "/"):
+        if not source.startswith("/"):
+            continue  # named volume (e.g. "mysterium-data") — always allowed
+        real = os.path.realpath(source)
+        for blocked in _BLOCKED_VOLUME_ROOTS:
+            if real == blocked or real.startswith(blocked + "/"):
                 raise HTTPException(status_code=403, detail=f"Volume mount '{source}' is blocked")
     _validate_resources(spec.resources)
 
@@ -335,7 +359,7 @@ async def api_worker_status(request: Request) -> dict[str, Any]:
         logger.warning("Failed to get container status: %s", exc)
     return {
         "name": WORKER_NAME,
-        "docker_available": orchestrator.docker_available(),
+        "docker_available": await asyncio.to_thread(orchestrator.docker_available),
         "ui_connected": _ui_connected,
         "container_count": len(containers),
         "running_count": sum(1 for c in containers if c.get("status") == "running"),

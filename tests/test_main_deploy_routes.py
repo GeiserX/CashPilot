@@ -343,6 +343,7 @@ class TestServiceManagement:
             patch("app.main.database.remove_deployment", new_callable=AsyncMock),
             patch("app.main.httpx.AsyncClient", return_value=mock_client),
             patch("app.main.FLEET_API_KEY", "test-key"),
+            patch("app.main.database.record_health_event", new_callable=AsyncMock),
         ):
             resp = client.delete("/api/services/honeygain")
             assert resp.status_code == 200
@@ -374,6 +375,7 @@ class TestServiceManagement:
             patch("app.main.database.get_worker", new_callable=AsyncMock, return_value=worker),
             patch("app.main.httpx.AsyncClient", return_value=mock_client),
             patch("app.main.FLEET_API_KEY", "test-key"),
+            patch("app.main.database.record_health_event", new_callable=AsyncMock),
         ):
             resp = client.post("/api/stop/honeygain")
             assert resp.status_code == 200
@@ -386,6 +388,7 @@ class TestServiceManagement:
             patch("app.main.database.get_worker", new_callable=AsyncMock, return_value=worker),
             patch("app.main.httpx.AsyncClient", return_value=mock_client),
             patch("app.main.FLEET_API_KEY", "test-key"),
+            patch("app.main.database.record_health_event", new_callable=AsyncMock),
         ):
             resp = client.post("/api/restart/honeygain")
             assert resp.status_code == 200
@@ -399,6 +402,7 @@ class TestServiceManagement:
             patch("app.main.database.remove_deployment", new_callable=AsyncMock),
             patch("app.main.httpx.AsyncClient", return_value=mock_client),
             patch("app.main.FLEET_API_KEY", "test-key"),
+            patch("app.main.database.record_health_event", new_callable=AsyncMock),
         ):
             resp = client.delete("/api/remove/honeygain")
             assert resp.status_code == 200
@@ -412,6 +416,7 @@ class TestServiceManagement:
             patch("app.main.database.remove_deployment", new_callable=AsyncMock),
             patch("app.main.httpx.AsyncClient", return_value=mock_client),
             patch("app.main.FLEET_API_KEY", "test-key"),
+            patch("app.main.database.record_health_event", new_callable=AsyncMock),
         ):
             resp = client.delete("/api/services/honeygain?delete_volumes=true")
             assert resp.status_code == 200
@@ -507,9 +512,11 @@ class TestWorkerCommand:
         return worker, mock_client
 
     def test_command_deploy(self, client):
+        # Deploy via the command route is OWNER-gated (matching /api/deploy/{slug}),
+        # so it must not be reachable with a mere writer role — use owner here.
         worker, mock_client = self._setup()
         with (
-            _auth_writer(),
+            _auth_owner(),
             patch("app.main.database.get_worker", new_callable=AsyncMock, return_value=worker),
             patch("app.main.httpx.AsyncClient", return_value=mock_client),
             patch("app.main.FLEET_API_KEY", "test-key"),
@@ -523,6 +530,23 @@ class TestWorkerCommand:
                 },
             )
             assert resp.status_code == 200
+
+    def test_command_deploy_writer_denied(self, client):
+        """A writer must NOT be able to deploy via /api/workers/{id}/command — deploy is
+        owner-only, so this route must not become an owner-gate bypass (writer stays
+        allowed for stop/restart/remove, tested separately)."""
+        worker, mock_client = self._setup()
+        with (
+            _auth_writer(),
+            patch("app.main.database.get_worker", new_callable=AsyncMock, return_value=worker),
+            patch("app.main.httpx.AsyncClient", return_value=mock_client),
+            patch("app.main.FLEET_API_KEY", "test-key"),
+        ):
+            resp = client.post(
+                "/api/workers/1/command",
+                json={"command": "deploy", "slug": "honeygain", "spec": {"image": "test"}},
+            )
+            assert resp.status_code == 403
 
     def test_command_stop(self, client):
         worker, mock_client = self._setup()

@@ -705,7 +705,7 @@ class TestMainWorkerCommandHttpError:
         mock_client.post.return_value = error_resp
 
         with (
-            _auth_writer(),
+            _auth_owner(),  # deploy via command is owner-gated
             patch("app.main.database.get_worker", new_callable=AsyncMock, return_value=worker),
             patch("app.main.httpx.AsyncClient", return_value=mock_client),
             patch("app.main.FLEET_API_KEY", "test-key"),

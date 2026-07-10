@@ -108,6 +108,7 @@ def get_all() -> dict[str, Any]:
         "fiat": dict(_fiat_rates),
         "crypto_usd": dict(_crypto_usd),
         "last_updated": _last_fetch,
+        "stale": rates_stale(),
     }
 
 
