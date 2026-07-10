@@ -1007,9 +1007,15 @@ async def _get_verified_worker_url(worker: dict[str, Any]) -> tuple[str, dict[st
     if not worker["url"]:
         raise HTTPException(status_code=503, detail="Worker URL not known")
     url = await asyncio.to_thread(_validate_worker_url, worker["url"])
+    # Authenticate to the worker with ITS OWN key once enrolled; fall back to the
+    # shared bootstrap key only for workers that have not enrolled yet. Post-cutover
+    # an enrolled worker rejects the shared key, so the UI must present its own.
+    cid = worker.get("client_id") or ""
+    worker_key = await database.get_worker_key(cid) if cid else None
+    auth_key = worker_key or FLEET_API_KEY
     headers: dict[str, str] = {}
-    if FLEET_API_KEY:
-        headers["Authorization"] = f"Bearer {FLEET_API_KEY}"
+    if auth_key:
+        headers["Authorization"] = f"Bearer {auth_key}"
     return url, headers
 
 

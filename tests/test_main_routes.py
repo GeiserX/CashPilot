@@ -1985,6 +1985,35 @@ class TestRunVacuum:
             asyncio.run(main_mod._run_vacuum())
 
 
+class TestOutboundWorkerAuth:
+    """US-003: UI->worker calls use the worker's own key once enrolled."""
+
+    def _worker(self):
+        return {"status": "online", "url": "http://192.168.1.5:8081", "client_id": "c1"}
+
+    def test_uses_per_worker_key_when_enrolled(self):
+        import app.main as m
+
+        with (
+            patch("app.main.FLEET_API_KEY", "shared-key"),
+            patch("app.main.database.get_worker_key", new_callable=AsyncMock, return_value="worker-1-key"),
+            patch("app.main._validate_worker_url", return_value="http://192.168.1.5:8081"),
+        ):
+            _, headers = asyncio.run(m._get_verified_worker_url(self._worker()))
+        assert headers["Authorization"] == "Bearer worker-1-key"
+
+    def test_falls_back_to_shared_key_when_unenrolled(self):
+        import app.main as m
+
+        with (
+            patch("app.main.FLEET_API_KEY", "shared-key"),
+            patch("app.main.database.get_worker_key", new_callable=AsyncMock, return_value=None),
+            patch("app.main._validate_worker_url", return_value="http://192.168.1.5:8081"),
+        ):
+            _, headers = asyncio.run(m._get_verified_worker_url(self._worker()))
+        assert headers["Authorization"] == "Bearer shared-key"
+
+
 # ---------------------------------------------------------------------------
 # Shared auth deps (app/deps.py) — guard branches
 # ---------------------------------------------------------------------------
