@@ -6,10 +6,17 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 os.environ.setdefault("CASHPILOT_API_KEY", "test-fleet-key")
 
-import pytest
-from fastapi import HTTPException
+import pytest  # noqa: E402
 
-import app.worker_api as w
+try:
+    from fastapi import HTTPException  # noqa: E402
+
+    import app.worker_api as w  # noqa: E402
+except ImportError:
+    pytest.skip(
+        "Requires full app dependencies (fastapi, docker, etc.) — runs in CI",
+        allow_module_level=True,
+    )
 
 
 class TestActiveKey:
