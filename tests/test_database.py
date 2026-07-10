@@ -459,6 +459,29 @@ class TestWorkerKeys:
 
         asyncio.run(run())
 
+    def test_key_confirmation_lifecycle(self, db):
+        async def run():
+            await database.upsert_worker("c1", "w1")
+            # No key -> unenrolled + unconfirmed.
+            assert await database.get_worker_key_state("c1") == (None, False)
+            # Setting a key leaves it unconfirmed.
+            await database.set_worker_key("c1", "k1")
+            assert await database.get_worker_key_state("c1") == ("k1", False)
+            # Confirming flips the flag.
+            await database.confirm_worker_key("c1")
+            assert await database.get_worker_key_state("c1") == ("k1", True)
+            # Re-issuing a key resets confirmation.
+            await database.set_worker_key("c1", "k2")
+            assert await database.get_worker_key_state("c1") == ("k2", False)
+
+        asyncio.run(run())
+
+    def test_get_worker_key_state_missing_worker(self, db):
+        async def run():
+            assert await database.get_worker_key_state("nope") == (None, False)
+
+        asyncio.run(run())
+
 
 class TestDataRetention:
     def test_purge_returns_count(self, db):

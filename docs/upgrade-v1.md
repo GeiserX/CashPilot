@@ -63,3 +63,8 @@ single worker, and workers can no longer impersonate one another.
 
 **Breaking:** existing fleets must upgrade both UI and worker images to v1.0.0 and let
 workers re-enroll (automatic on first heartbeat). See the upgrade guide above.
+
+!!! note "The shared key is still sensitive"
+    `CASHPILOT_API_KEY` is now an *enrollment* credential, not a fleet-wide command
+    key — but it remains high-value: anyone holding it can enroll a new worker that
+    then receives deploy specs (which carry service credentials). Keep protecting it.

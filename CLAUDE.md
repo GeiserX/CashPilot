@@ -172,7 +172,7 @@ Two separate Docker images:
 
 ### `release.yml` — Auto Release
 
-Triggers on push to `main` (paths: `app/`, `services/`, `Dockerfile*`, `requirements*.txt`). Auto-increments patch version, creates annotated git tag + GitHub Release. Skips if commit message contains `[skip ci]`.
+Triggers on push to `main` (paths: `app/`, `services/`, `Dockerfile*`, `requirements*.txt`). Chooses the version bump from conventional-commit markers since the last tag — **major** on a `BREAKING CHANGE` footer or `type!:` subject, **minor** on `feat:`, else **patch** — then creates an annotated git tag + GitHub Release. Skips if commit message contains `[skip ci]`.
 
 **CRITICAL: NEVER manually create tags or GitHub releases.** The workflow handles version bumping automatically. Manual tags cause `already_exists` conflicts and skip Docker builds.
 

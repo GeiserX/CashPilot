@@ -1387,7 +1387,7 @@ class TestApiFleet:
         # A brand-new worker authenticates with the shared key and is issued its own.
         with (
             patch("app.main.FLEET_API_KEY", "test-fleet-key"),
-            patch("app.main.database.get_worker_key", new_callable=AsyncMock, return_value=None),
+            patch("app.main.database.get_worker_key_state", new_callable=AsyncMock, return_value=(None, False)),
             patch("app.main.database.set_worker_key", new_callable=AsyncMock) as set_key,
             patch("app.main.database.upsert_worker", new_callable=AsyncMock, return_value=1),
         ):
@@ -1402,10 +1402,32 @@ class TestApiFleet:
             assert body.get("worker_key")  # a per-worker key was issued
             set_key.assert_awaited_once()  # it was persisted (encrypted)
 
+    def test_api_worker_heartbeat_reissues_until_confirmed(self, client):
+        # Enrolled but unconfirmed (worker missed the enrollment response): the
+        # shared key is still accepted and the SAME key is re-delivered, so a
+        # dropped response can't permanently lock the worker out.
+        with (
+            patch("app.main.FLEET_API_KEY", "test-fleet-key"),
+            patch(
+                "app.main.database.get_worker_key_state",
+                new_callable=AsyncMock,
+                return_value=("existing-key", False),
+            ),
+            patch("app.main.database.get_worker_key", new_callable=AsyncMock, return_value="existing-key"),
+            patch("app.main.database.upsert_worker", new_callable=AsyncMock, return_value=1),
+        ):
+            resp = client.post(
+                "/api/workers/heartbeat",
+                json={"name": "w", "client_id": "c1"},
+                headers={"Authorization": "Bearer test-fleet-key"},
+            )
+            assert resp.status_code == 200
+            assert resp.json().get("worker_key") == "existing-key"  # re-delivered
+
     def test_api_worker_heartbeat_unenrolled_bad_key(self, client):
         with (
             patch("app.main.FLEET_API_KEY", "test-fleet-key"),
-            patch("app.main.database.get_worker_key", new_callable=AsyncMock, return_value=None),
+            patch("app.main.database.get_worker_key_state", new_callable=AsyncMock, return_value=(None, False)),
         ):
             resp = client.post(
                 "/api/workers/heartbeat",
@@ -1422,17 +1444,18 @@ class TestApiFleet:
             )
             assert resp.status_code == 503
 
-    def test_api_worker_heartbeat_enrolled_rejects_shared_key(self, client):
-        # The cutover: an enrolled worker must use its own key; the shared key is
-        # rejected, and its own key is accepted (no new key re-issued).
+    def test_api_worker_heartbeat_confirmed_rejects_shared_key(self, client):
+        # The finalized cutover: a CONFIRMED worker must use its own key; the shared
+        # key is rejected, its own key is accepted, and no new key is re-issued.
         own_key = "the-worker-key"
         with (
             patch("app.main.FLEET_API_KEY", "test-fleet-key"),
             patch(
-                "app.main.database.get_worker_key",
+                "app.main.database.get_worker_key_state",
                 new_callable=AsyncMock,
-                return_value=own_key,
+                return_value=(own_key, True),
             ),
+            patch("app.main.database.confirm_worker_key", new_callable=AsyncMock),
             patch("app.main.database.upsert_worker", new_callable=AsyncMock, return_value=1),
         ):
             shared = client.post(
@@ -1440,7 +1463,7 @@ class TestApiFleet:
                 json={"name": "w", "client_id": "c1"},
                 headers={"Authorization": "Bearer test-fleet-key"},
             )
-            assert shared.status_code == 401  # shared key no longer works once enrolled
+            assert shared.status_code == 401  # shared key no longer works once confirmed
 
             own = client.post(
                 "/api/workers/heartbeat",

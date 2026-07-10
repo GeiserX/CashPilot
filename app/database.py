@@ -141,6 +141,7 @@ CREATE TABLE IF NOT EXISTS workers (
     system_info     TEXT    NOT NULL DEFAULT '{}',
     last_heartbeat  TEXT,
     api_key_enc     TEXT,
+    key_confirmed   INTEGER NOT NULL DEFAULT 0,
     registered_at   TEXT    NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -329,6 +330,8 @@ async def init_db() -> None:
         # _SCHEMA so it is already present here and the ALTER is skipped.)
         if "api_key_enc" not in cols:
             await db.execute("ALTER TABLE workers ADD COLUMN api_key_enc TEXT")
+        if "key_confirmed" not in cols:
+            await db.execute("ALTER TABLE workers ADD COLUMN key_confirmed INTEGER NOT NULL DEFAULT 0")
 
         # Migrate users table: add password_changed_at for session invalidation
         cursor = await db.execute("PRAGMA table_info(users)")
@@ -1008,12 +1011,31 @@ async def delete_worker(worker_id: int) -> None:
 
 
 async def set_worker_key(client_id: str, key: str) -> None:
-    """Store a worker's per-worker key, encrypted at rest, bound to client_id."""
+    """Store a worker's per-worker key (encrypted), unconfirmed until the worker
+    proves it holds the key by using it on a later heartbeat."""
+    db = await _get_db()
+    try:
+        cursor = await db.execute(
+            "UPDATE workers SET api_key_enc = ?, key_confirmed = 0 WHERE client_id = ?",
+            (encrypt_value(key), client_id),
+        )
+        await db.commit()
+        if not cursor.rowcount:
+            # The worker row must exist first (upsert runs before this); a missing
+            # row would silently drop the key and lock the worker out.
+            _logger.warning("set_worker_key: no worker row for client_id=%s", client_id)
+    finally:
+        await db.close()
+
+
+async def confirm_worker_key(client_id: str) -> None:
+    """Mark a worker's key confirmed — it has authenticated with its own key, so the
+    shared bootstrap key is refused from now on (the cutover finalizes)."""
     db = await _get_db()
     try:
         await db.execute(
-            "UPDATE workers SET api_key_enc = ? WHERE client_id = ?",
-            (encrypt_value(key), client_id),
+            "UPDATE workers SET key_confirmed = 1 WHERE client_id = ?",
+            (client_id,),
         )
         await db.commit()
     finally:
@@ -1022,15 +1044,25 @@ async def set_worker_key(client_id: str, key: str) -> None:
 
 async def get_worker_key(client_id: str) -> str | None:
     """Return a worker's per-worker key (decrypted), or None if not yet enrolled."""
+    key, _ = await get_worker_key_state(client_id)
+    return key
+
+
+async def get_worker_key_state(client_id: str) -> tuple[str | None, bool]:
+    """Return (key, confirmed) for a worker: the decrypted per-worker key (or None
+    if unenrolled) and whether the worker has confirmed it by using it."""
     db = await _get_db()
     try:
         cursor = await db.execute(
-            "SELECT api_key_enc FROM workers WHERE client_id = ?",
+            "SELECT api_key_enc, key_confirmed FROM workers WHERE client_id = ?",
             (client_id,),
         )
         row = await cursor.fetchone()
-        enc = row["api_key_enc"] if row else None
-        return decrypt_value(enc) if enc else None
+        if not row:
+            return None, False
+        enc = row["api_key_enc"]
+        key = decrypt_value(enc) if enc else None
+        return key, bool(row["key_confirmed"])
     finally:
         await db.close()
 

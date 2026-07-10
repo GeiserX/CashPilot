@@ -1702,27 +1702,19 @@ def _bearer_token(request: Request) -> str:
     return h[7:] if h.startswith("Bearer ") else ""
 
 
-def _verify_fleet_api_key(request: Request) -> None:
-    """Verify the shared fleet (enrollment/bootstrap) API key from a worker."""
-    if not FLEET_API_KEY:
-        raise HTTPException(
-            status_code=503,
-            detail="Fleet key not configured — set CASHPILOT_API_KEY or mount shared /fleet volume",
-        )
-    if not hmac.compare_digest(_bearer_token(request).encode(), FLEET_API_KEY.encode()):
-        raise HTTPException(status_code=401, detail="Invalid API key")
+async def _authenticate_worker_heartbeat(request: Request, cid: str) -> str:
+    """Authenticate a heartbeat and classify it. Returns one of:
 
+    - ``"enroll"``  — worker has no key yet and presented the shared key: mint one.
+    - ``"reissue"`` — worker has a key that is NOT yet confirmed and presented the
+      shared key: it likely lost the enrollment response, so re-deliver the SAME
+      key (until confirmed, the shared key still works for this one worker — a
+      bounded window that closes on the worker's first own-key heartbeat).
+    - ``"ok"``      — worker presented its own key: authenticated; confirm it so the
+      shared key is refused from now on (the cutover finalizes).
 
-async def _authenticate_worker_heartbeat(request: Request, cid: str) -> bool:
-    """Authenticate a heartbeat; return True if this is an enrollment.
-
-    Cutover model (per-worker fleet keys):
-    - A worker with NO stored per-worker key must present the shared fleet key
-      (the enrollment/bootstrap credential) → returns True so the caller mints and
-      stores this worker's own key and hands it back once.
-    - A worker that already has a per-worker key MUST present it (verified against
-      the stored hash); the shared key is rejected here → returns False. This is
-      what stops a holder of the shared key from impersonating an enrolled worker.
+    Raises 401 otherwise — notably, a confirmed worker presenting the shared key is
+    rejected, which is what stops shared-key holders from impersonating a worker.
     """
     if not FLEET_API_KEY:
         raise HTTPException(
@@ -1730,15 +1722,16 @@ async def _authenticate_worker_heartbeat(request: Request, cid: str) -> bool:
             detail="Fleet key not configured — set CASHPILOT_API_KEY or mount shared /fleet volume",
         )
     token = _bearer_token(request)
-    stored_key = await database.get_worker_key(cid) if cid else None
-    if stored_key is None:
-        # Unenrolled → shared bootstrap key required.
-        if token and hmac.compare_digest(token.encode(), FLEET_API_KEY.encode()):
-            return True
+    key, confirmed = await database.get_worker_key_state(cid) if cid else (None, False)
+    shared_ok = bool(token) and hmac.compare_digest(token.encode(), FLEET_API_KEY.encode())
+    if key is None:
+        if shared_ok:
+            return "enroll"
         raise HTTPException(status_code=401, detail="Invalid API key")
-    # Enrolled → this worker's own key required; the shared key no longer works.
-    if token and hmac.compare_digest(token.encode(), stored_key.encode()):
-        return False
+    if token and hmac.compare_digest(token.encode(), key.encode()):
+        return "ok"
+    if not confirmed and shared_ok:
+        return "reissue"
     raise HTTPException(status_code=401, detail="Invalid or missing per-worker key")
 
 
@@ -1756,7 +1749,9 @@ async def api_worker_heartbeat(request: Request, body: WorkerHeartbeat) -> dict[
     """Receive a heartbeat from a worker. Registers or updates the worker."""
     # Use client_id for identity; fall back to name for backward compat
     cid = body.client_id or body.name
-    enrolling = await _authenticate_worker_heartbeat(request, cid)
+    if not cid:
+        raise HTTPException(status_code=400, detail="Worker name or client_id required")
+    state = await _authenticate_worker_heartbeat(request, cid)
     worker_id = await database.upsert_worker(
         client_id=cid,
         name=body.name,
@@ -1767,13 +1762,25 @@ async def api_worker_heartbeat(request: Request, body: WorkerHeartbeat) -> dict[
     )
     metrics.record_heartbeat(body.name)
     resp: dict[str, Any] = {"status": "ok", "worker_id": worker_id}
-    if enrolling:
-        # First contact from this worker: mint its own key, store only the hash,
-        # and return the key once so the worker can persist + use it thereafter.
+    if state == "enroll":
+        # First contact: mint this worker's own key and hand it back once. Stored
+        # unconfirmed until the worker proves receipt by using it (see "ok").
         new_key = secrets.token_urlsafe(32)
         await database.set_worker_key(cid, new_key)
         resp["worker_key"] = new_key
-        logger.info("Worker '%s' enrolled with its own per-worker fleet key", cid)
+        logger.info("Worker '%s' enrolled — per-worker key issued (awaiting confirmation)", cid)
+    elif state == "reissue":
+        # The worker still holds the shared key, so it never received/persisted its
+        # own key — re-deliver the same one so a dropped enrollment response can't
+        # lock it out.
+        existing = await database.get_worker_key(cid)
+        if existing:
+            resp["worker_key"] = existing
+        logger.info("Worker '%s' re-issued its per-worker key (not yet confirmed)", cid)
+    elif state == "ok":
+        # The worker authenticated with its own key: finalize the cutover so the
+        # shared key is refused from now on.
+        await database.confirm_worker_key(cid)
     return resp
 
 
