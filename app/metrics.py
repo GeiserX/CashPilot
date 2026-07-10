@@ -17,11 +17,14 @@ Metrics exposed:
 from __future__ import annotations
 
 import contextlib
+import logging
 import os
 import re
 import time
 
 from fastapi import FastAPI
+
+logger = logging.getLogger(__name__)
 
 METRICS_ENABLED = os.getenv("CASHPILOT_METRICS_ENABLED", "").lower() in ("1", "true", "yes")
 
@@ -230,6 +233,15 @@ def setup(app: FastAPI) -> None:
         return
 
     _init_metrics()
+
+    # /metrics is served UNAUTHENTICATED (Prometheus convention). It exposes earnings and
+    # health totals, so warn on startup: keep it behind a reverse proxy / auth and never
+    # expose the app's port directly to an untrusted network.
+    logger.warning(
+        "Prometheus /metrics is ENABLED and served UNAUTHENTICATED — it exposes your "
+        "earnings and health data to anyone who can reach this port. Keep it behind a "
+        "reverse proxy with auth; do not expose the port directly to an untrusted network."
+    )
 
     from fastapi import Response
     from prometheus_client import CONTENT_TYPE_LATEST, generate_latest

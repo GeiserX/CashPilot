@@ -639,6 +639,62 @@ class TestApiServices:
             row = next(r for r in resp.json() if r["slug"] == "repocket")
             assert row["collector_needs_setup"] is False
 
+    def test_deployed_row_flags_unstable_on_repeated_crashes(self, client):
+        """A service with >=3 crashes in the health window is flagged unstable so the
+        dashboard can surface a crash-looping earner at a glance."""
+        workers = [
+            {
+                "id": 1,
+                "name": "w1",
+                "status": "online",
+                "system_info": json.dumps({"docker_available": True}),
+                "containers": json.dumps([{"slug": "repocket", "name": "rp", "status": "running"}]),
+                "apps": "[]",
+            }
+        ]
+        scores = [{"slug": "repocket", "score": 30, "uptime_pct": 40, "restarts": 5, "crashes": 4}]
+        with (
+            _auth_owner(),
+            patch("app.main.database.list_workers", new_callable=AsyncMock, return_value=workers),
+            patch("app.main.database.get_earnings_summary", new_callable=AsyncMock, return_value=[]),
+            patch("app.main.database.get_health_scores", new_callable=AsyncMock, return_value=scores),
+            patch("app.main.database.get_deployments", new_callable=AsyncMock, return_value=[]),
+            patch("app.main.database.get_config", new_callable=AsyncMock, return_value={}),
+            patch("app.main.catalog.get_service", return_value={"name": "Repocket", "category": "bandwidth"}),
+        ):
+            resp = client.get("/api/services/deployed")
+            assert resp.status_code == 200
+            row = next(r for r in resp.json() if r["slug"] == "repocket")
+            assert row["unstable"] is True
+            assert row["crashes_7d"] == 4
+
+    def test_deployed_row_not_unstable_below_threshold(self, client):
+        """Fewer than 3 crashes is not flagged unstable (crashes_7d is still surfaced)."""
+        workers = [
+            {
+                "id": 1,
+                "name": "w1",
+                "status": "online",
+                "system_info": json.dumps({"docker_available": True}),
+                "containers": json.dumps([{"slug": "repocket", "name": "rp", "status": "running"}]),
+                "apps": "[]",
+            }
+        ]
+        scores = [{"slug": "repocket", "score": 85, "uptime_pct": 98, "restarts": 1, "crashes": 2}]
+        with (
+            _auth_owner(),
+            patch("app.main.database.list_workers", new_callable=AsyncMock, return_value=workers),
+            patch("app.main.database.get_earnings_summary", new_callable=AsyncMock, return_value=[]),
+            patch("app.main.database.get_health_scores", new_callable=AsyncMock, return_value=scores),
+            patch("app.main.database.get_deployments", new_callable=AsyncMock, return_value=[]),
+            patch("app.main.database.get_config", new_callable=AsyncMock, return_value={}),
+            patch("app.main.catalog.get_service", return_value={"name": "Repocket", "category": "bandwidth"}),
+        ):
+            resp = client.get("/api/services/deployed")
+            row = next(r for r in resp.json() if r["slug"] == "repocket")
+            assert row["unstable"] is False
+            assert row["crashes_7d"] == 2
+
     def test_deployed_disconnected_takes_precedence_over_needs_setup(self, client):
         # When the collector has actually errored, show the error state, not "needs setup".
         workers = [

@@ -112,6 +112,27 @@ class TestMetricsSetup:
         app.add_middleware.assert_not_called()
         metrics.METRICS_ENABLED = orig
 
+    def test_setup_enabled_mounts_and_warns(self):
+        """With metrics enabled, setup mounts /metrics and logs the
+        unauthenticated-exposure security warning."""
+        from fastapi import FastAPI
+
+        app = FastAPI()
+        orig_enabled = metrics.METRICS_ENABLED
+        orig_registry = metrics._registry
+        orig_metrics = metrics._metrics.copy()
+        metrics.METRICS_ENABLED = True
+        try:
+            with patch("app.metrics.logger.warning") as warn:
+                metrics.setup(app)
+            assert warn.called
+            assert "UNAUTHENTICATED" in warn.call_args[0][0]
+            assert any(getattr(r, "path", None) == "/metrics" for r in app.routes)
+        finally:
+            metrics.METRICS_ENABLED = orig_enabled
+            metrics._registry = orig_registry
+            metrics._metrics = orig_metrics
+
     def test_normalize_path(self):
         assert metrics._normalize_path("/api/services/earnapp") == "/api/services/{slug}"
         assert metrics._normalize_path("/api/deploy/honeygain") == "/api/deploy/{slug}"
