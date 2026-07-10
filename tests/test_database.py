@@ -416,6 +416,73 @@ class TestHealthEvents:
         asyncio.run(run())
 
 
+class TestWorkerKeys:
+    def test_workers_table_has_api_key_enc_column(self, db):
+        async def run():
+            conn = await database._get_db()
+            try:
+                cur = await conn.execute("PRAGMA table_info(workers)")
+                cols = {row["name"] for row in await cur.fetchall()}
+                assert "api_key_enc" in cols
+            finally:
+                await conn.close()
+
+        asyncio.run(run())
+
+    def test_set_and_get_worker_key_round_trip(self, db):
+        async def run():
+            await database.upsert_worker("c1", "w1")
+            assert await database.get_worker_key("c1") is None  # unenrolled
+            await database.set_worker_key("c1", "super-secret-key")
+            assert await database.get_worker_key("c1") == "super-secret-key"
+
+        asyncio.run(run())
+
+    def test_worker_key_stored_encrypted_at_rest(self, db):
+        async def run():
+            await database.upsert_worker("c1", "w1")
+            await database.set_worker_key("c1", "super-secret-key")
+            conn = await database._get_db()
+            try:
+                cur = await conn.execute("SELECT api_key_enc FROM workers WHERE client_id = 'c1'")
+                row = await cur.fetchone()
+                assert row["api_key_enc"].startswith("enc:")  # not stored in plaintext
+                assert "super-secret-key" not in row["api_key_enc"]
+            finally:
+                await conn.close()
+
+        asyncio.run(run())
+
+    def test_get_worker_key_missing_worker_is_none(self, db):
+        async def run():
+            assert await database.get_worker_key("nope") is None
+
+        asyncio.run(run())
+
+    def test_key_confirmation_lifecycle(self, db):
+        async def run():
+            await database.upsert_worker("c1", "w1")
+            # No key -> unenrolled + unconfirmed.
+            assert await database.get_worker_key_state("c1") == (None, False)
+            # Setting a key leaves it unconfirmed.
+            await database.set_worker_key("c1", "k1")
+            assert await database.get_worker_key_state("c1") == ("k1", False)
+            # Confirming flips the flag.
+            await database.confirm_worker_key("c1")
+            assert await database.get_worker_key_state("c1") == ("k1", True)
+            # Re-issuing a key resets confirmation.
+            await database.set_worker_key("c1", "k2")
+            assert await database.get_worker_key_state("c1") == ("k2", False)
+
+        asyncio.run(run())
+
+    def test_get_worker_key_state_missing_worker(self, db):
+        async def run():
+            assert await database.get_worker_key_state("nope") == (None, False)
+
+        asyncio.run(run())
+
+
 class TestDataRetention:
     def test_purge_returns_count(self, db):
         async def run():

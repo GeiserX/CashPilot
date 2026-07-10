@@ -75,6 +75,7 @@ nav:
   - Getting Started: getting-started.md
   - Architecture: architecture.md
   - Fleet Management: fleet.md
+  - Upgrade to v1.0.0: upgrade-v1.md
   - Service Guides:
     - guides/README.md
     - Bandwidth Sharing:

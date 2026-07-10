@@ -73,21 +73,20 @@ volumes:
 ```
 
 !!! important "API Key"
-    The `CASHPILOT_API_KEY` must be identical on the UI and all workers. This is the shared secret that authenticates worker-to-UI communication.
+    The `CASHPILOT_API_KEY` must be identical on the UI and all workers. It is the **enrollment key** each worker uses on first contact; after that, each worker uses its own automatically-issued key.
 
 ## Authentication
 
-A single shared API key authenticates all fleet communication:
+CashPilot uses **per-worker fleet keys** (since v1.0.0). The shared `CASHPILOT_API_KEY` is only a bootstrap/enrollment credential; each worker then gets its own key.
 
-- Set `CASHPILOT_API_KEY` on both the UI and all workers.
-- Workers include this key as a Bearer token in heartbeat requests.
-- The UI includes this key when sending commands to workers.
-- If not set explicitly, the UI and co-located worker auto-generate a shared key via the `/fleet` volume.
+- Set `CASHPILOT_API_KEY` on the UI and all workers (or let the UI + co-located worker auto-generate one via the `/fleet` volume).
+- **Enrollment:** a worker's first heartbeat authenticates with the shared key. The UI issues that worker its own unique key (stored encrypted on the UI, and returned once). The worker persists it under its private `/data`.
+- **After enrollment:** the worker authenticates every heartbeat with its own key, and the UI calls that worker with the same key. The shared key **no longer works** for an enrolled worker — so a leaked worker key only affects that one worker, and no worker can impersonate another.
 
 The fleet key is **never sent to the browser on page load**. The fleet dashboard reveals it only on an explicit, owner-only action (the **Reveal API Key** button), and copy-to-clipboard fetches it the same way.
 
 !!! warning "Security"
-    The fleet key grants access to container management operations. Treat it as a sensitive credential. Do not expose worker APIs (port 8081) to the public internet.
+    Keys grant container-management access — treat them as sensitive credentials, and never expose worker APIs (port 8081) to the public internet. See the [v1.0.0 upgrade guide](upgrade-v1.md) if you are moving an existing fleet.
 
 ## Fleet Dashboard
 

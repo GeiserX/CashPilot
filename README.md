@@ -157,7 +157,7 @@ cashpilot/
 |----------|---------|-------------|
 | `TZ` | `UTC` | Timezone for scheduling and display |
 | `CASHPILOT_SECRET_KEY` | *(auto-generated)* | Encryption key for stored credentials |
-| `CASHPILOT_API_KEY` | -- | Shared secret between UI and workers for API authentication |
+| `CASHPILOT_API_KEY` | -- | Enrollment/bootstrap key; each worker then gets its own key (per-worker fleet keys, v1.0.0+) |
 | `CASHPILOT_COLLECTION_INTERVAL` | `3600` | Seconds between earnings collection cycles |
 | `CASHPILOT_PORT` | `8080` | Web UI port inside the container |
 | `CASHPILOT_METRICS_ENABLED` | `false` | Set to `true` to expose Prometheus metrics at `/metrics` |

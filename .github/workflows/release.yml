@@ -99,10 +99,29 @@ jobs:
           MAJOR=$(echo "$VERSION" | cut -d. -f1)
           MINOR=$(echo "$VERSION" | cut -d. -f2)
           PATCH=$(echo "$VERSION" | cut -d. -f3)
-          NEW_PATCH=$((PATCH + 1))
-          NEW_TAG="v${MAJOR}.${MINOR}.${NEW_PATCH}"
+
+          # Choose the bump from conventional-commit markers in the commits since
+          # the last tag: a "BREAKING CHANGE" footer or a "type!:" subject -> major;
+          # a "feat:" -> minor; otherwise patch. Still fully automated — no manual tags.
+          if [ "$LATEST" = "v0.0.0" ]; then
+            RANGE="HEAD"
+          else
+            RANGE="${LATEST}..HEAD"
+          fi
+          LOG=$(git log --format='%s%n%b' "$RANGE")
+          if echo "$LOG" | grep -qE '^BREAKING CHANGE:|^[a-z]+(\([^)]*\))?!:'; then
+            MAJOR=$((MAJOR + 1)); MINOR=0; PATCH=0
+            LEVEL="major"
+          elif echo "$LOG" | grep -qE '^feat(\([^)]*\))?:'; then
+            MINOR=$((MINOR + 1)); PATCH=0
+            LEVEL="minor"
+          else
+            PATCH=$((PATCH + 1))
+            LEVEL="patch"
+          fi
+          NEW_TAG="v${MAJOR}.${MINOR}.${PATCH}"
           echo "new_tag=$NEW_TAG" >> "$GITHUB_OUTPUT"
-          echo "Bumping $LATEST -> $NEW_TAG"
+          echo "Bumping $LATEST -> $NEW_TAG ($LEVEL)"
 
       - name: Create and push tag
         if: steps.version.outputs.new_tag
