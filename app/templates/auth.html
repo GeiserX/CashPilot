@@ -151,6 +151,12 @@
     {% endif %}
 
     <form method="POST" action="{{ action }}">
+      {% if mode == "register" and is_first %}
+      <div class="auth-field">
+        <label for="setup_token">Setup token</label>
+        <input type="text" id="setup_token" name="setup_token" value="{{ setup_token | default('') }}" required autocomplete="off" placeholder="Shown in the server logs on first start">
+      </div>
+      {% endif %}
       <div class="auth-field">
         <label for="username">Username</label>
         <input type="text" id="username" name="username" required autocomplete="username" autofocus>

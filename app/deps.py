@@ -11,13 +11,14 @@ Route handlers split into ``app.routers.*`` reference these through the
 from __future__ import annotations
 
 import ipaddress
+import os
 from typing import Any
 
 from fastapi import HTTPException, Request
 from fastapi.responses import RedirectResponse
 from fastapi.templating import Jinja2Templates
 
-from app import auth
+from app import auth, setup_token
 
 __all__ = [
     "templates",
@@ -26,7 +27,14 @@ __all__ = [
     "_require_writer",
     "_require_owner",
     "_require_private_network",
+    "_require_first_run_access",
+    "client_ip",
 ]
+
+# Opt-in: set CASHPILOT_TRUSTED_PROXY=1 only when the app sits behind exactly one
+# reverse proxy you control. X-Forwarded-For is attacker-controlled, so we ignore
+# it unless the operator asserts a trusted proxy is stripping/appending it.
+_TRUST_PROXY = os.getenv("CASHPILOT_TRUSTED_PROXY", "").strip().lower() in ("1", "true", "yes", "on")
 
 templates = Jinja2Templates(directory="app/templates")
 
@@ -57,13 +65,51 @@ def _require_owner(request: Request) -> dict[str, Any]:
     return user
 
 
+def client_ip(request: Request) -> str | None:
+    """Best-effort real client IP.
+
+    Behind a trusted reverse proxy (opt-in via ``CASHPILOT_TRUSTED_PROXY``) the
+    real peer is the right-most ``X-Forwarded-For`` entry — the value appended by
+    the trusted proxy, which a client cannot forge by prepending its own. Without
+    that opt-in we never trust the header and use the direct peer.
+    """
+    if _TRUST_PROXY:
+        xff = request.headers.get("x-forwarded-for", "")
+        parts = [p.strip() for p in xff.split(",") if p.strip()]
+        if parts:
+            return parts[-1]
+    return request.client.host if request.client else None
+
+
 def _require_private_network(request: Request) -> None:
-    """Block requests from public IPs (for first-run setup)."""
-    if not request.client or not request.client.host:
+    """Block requests whose real client IP is public (first-run defense in depth)."""
+    ip_str = client_ip(request)
+    if not ip_str:
         return
     try:
-        client_ip = ipaddress.ip_address(request.client.host)
+        ip = ipaddress.ip_address(ip_str)
     except ValueError:
         return
-    if not (client_ip.is_loopback or client_ip.is_private):
+    if not (ip.is_loopback or ip.is_private):
         raise HTTPException(status_code=403, detail="First-run setup only allowed from private networks")
+
+
+def _require_first_run_access(request: Request, setup_token_value: str | None = None) -> None:
+    """Gate first-run owner creation: private network AND the one-time setup token.
+
+    The network check alone is spoofable behind a reverse proxy (the peer is then
+    the proxy), so the setup token — printed to the server logs, readable only
+    with host access — is the real gate. The token is accepted from the explicit
+    argument (the registration form field) or the ``X-Setup-Token`` header.
+
+    Deliberately NOT read from the query string: a ``?setup_token=`` URL leaks the
+    secret into reverse-proxy access logs and browser history. The form field
+    (typed into the setup page) and the header keep it out of URLs.
+    """
+    _require_private_network(request)
+    token = setup_token_value or request.headers.get("x-setup-token")
+    if not setup_token.verify(token):
+        raise HTTPException(
+            status_code=403,
+            detail="First-run setup requires the setup token printed in the server logs",
+        )

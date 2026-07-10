@@ -424,6 +424,50 @@ class TestDataRetention:
 
         asyncio.run(run())
 
+    def test_purge_trims_old_check_samples_but_keeps_lifecycle(self, db):
+        """check_ok/check_down samples are trimmed at HEALTH_CHECK_RETENTION_DAYS,
+        while lifecycle events (crash/restart/…) survive until RETENTION_DAYS and
+        recent samples are untouched."""
+
+        async def _insert(slug, event, days_ago):
+            conn = await database._get_db()
+            try:
+                await conn.execute(
+                    "INSERT INTO health_events (slug, event, created_at) VALUES (?, ?, datetime('now', ?))",
+                    (slug, event, f"-{days_ago} days"),
+                )
+                await conn.commit()
+            finally:
+                await conn.close()
+
+        async def run():
+            await _insert("hg", "check_ok", 1)  # recent sample -> kept
+            await _insert("hg", "check_ok", database.HEALTH_CHECK_RETENTION_DAYS + 10)  # old sample -> purged
+            await _insert("hg", "crash", 300)  # lifecycle < 400d -> kept
+            await _insert("hg", "crash", database.RETENTION_DAYS + 10)  # lifecycle > 400d -> purged
+
+            deleted = await database.purge_old_data()
+            assert deleted == 2  # the old sample + the ancient crash
+
+            conn = await database._get_db()
+            try:
+                cur = await conn.execute("SELECT event, COUNT(*) c FROM health_events GROUP BY event ORDER BY event")
+                rows = {r["event"]: r["c"] for r in await cur.fetchall()}
+            finally:
+                await conn.close()
+            assert rows == {"check_ok": 1, "crash": 1}  # one recent sample + the 300d crash
+
+        asyncio.run(run())
+
+    def test_vacuum_runs_clean(self, db):
+        async def run():
+            await database.record_health_event("hg", "check_ok")
+            # Must not raise (VACUUM cannot run inside a transaction — the impl
+            # commits first); a no-op-ish call on a small DB simply succeeds.
+            await database.vacuum_database()
+
+        asyncio.run(run())
+
 
 class TestEncryption:
     def test_encrypt_decrypt_round_trip(self):

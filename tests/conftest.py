@@ -62,3 +62,18 @@ def _reset_login_attempts():
 
         main._login_attempts.clear()
     yield
+
+
+@pytest.fixture(autouse=True)
+def _reset_setup_token():
+    """Clear the first-run setup-token module global before every test.
+
+    ``app.setup_token._active`` persists for the whole process; a test that runs
+    lifespan on a fresh DB (or exercises the token directly) would otherwise leak
+    an active token into later tests, making unrelated /register tests 403.
+    """
+    with contextlib.suppress(Exception):
+        from app import setup_token
+
+        setup_token.clear()
+    yield

@@ -264,6 +264,7 @@ class TestRegisterRoute:
             patch("app.main.database.get_user_by_username", new_callable=AsyncMock, return_value=None),
             patch("app.main.auth.hash_password", return_value="hashed"),
             patch("app.main.database.create_user", new_callable=AsyncMock, return_value=1),
+            patch("app.main.database.delete_config_keys", new_callable=AsyncMock),
             patch("app.main.auth.create_session_token", return_value="tok"),
             patch("app.main.auth.set_session_cookie", side_effect=lambda r, t: r),
         ):
@@ -277,6 +278,55 @@ class TestRegisterRoute:
                 follow_redirects=False,
             )
             assert resp.status_code == 303
+
+    def test_register_first_user_requires_setup_token(self, client):
+        # When a first-run setup token is active, registering without it is refused
+        # (the proxy-independent gate against a public visitor seizing the owner).
+        from app import setup_token
+
+        setup_token.set_active("the-token")
+        with (
+            _no_auth(),
+            patch("app.main.database.has_any_users", new_callable=AsyncMock, return_value=False),
+        ):
+            resp = client.post(
+                "/register",
+                data={
+                    "username": "admin",
+                    "password": "password123",
+                    "password_confirm": "password123",
+                },
+                follow_redirects=False,
+            )
+            assert resp.status_code == 403
+
+    def test_register_first_user_with_setup_token_clears_it(self, client):
+        from app import setup_token
+
+        setup_token.set_active("the-token")
+        with (
+            _no_auth(),
+            patch("app.main.database.has_any_users", new_callable=AsyncMock, return_value=False),
+            patch("app.main.database.get_user_by_username", new_callable=AsyncMock, return_value=None),
+            patch("app.main.auth.hash_password", return_value="hashed"),
+            patch("app.main.database.create_user", new_callable=AsyncMock, return_value=1),
+            patch("app.main.database.delete_config_keys", new_callable=AsyncMock) as del_keys,
+            patch("app.main.auth.create_session_token", return_value="tok"),
+            patch("app.main.auth.set_session_cookie", side_effect=lambda r, t: r),
+        ):
+            resp = client.post(
+                "/register",
+                data={
+                    "username": "admin",
+                    "password": "password123",
+                    "password_confirm": "password123",
+                    "setup_token": "the-token",
+                },
+                follow_redirects=False,
+            )
+            assert resp.status_code == 303
+            del_keys.assert_awaited_once_with(["_setup_token"])
+            assert setup_token.active() is None
 
     def test_register_password_mismatch(self, client):
         with (
@@ -1791,6 +1841,7 @@ class TestLifespanScheduler:
                 patch("app.main.database.connect_shared", new_callable=AsyncMock),
                 patch("app.main.database.close_shared", new_callable=AsyncMock),
                 patch("app.main.database.list_users_with_pwd_epoch", new_callable=AsyncMock, return_value=[]),
+                patch("app.main.database.has_any_users", new_callable=AsyncMock, return_value=True),
                 patch("app.main.catalog.load_services"),
                 patch("app.main.catalog.register_sighup"),
                 patch("app.main.exchange_rates.refresh", new_callable=AsyncMock),
@@ -1800,12 +1851,13 @@ class TestLifespanScheduler:
                 async with main_mod.lifespan(main_mod.app):
                     sched = main_mod.scheduler
                     jobs = {j.id: j for j in sched.get_jobs()}
-                    # All five interval jobs registered.
+                    # All interval jobs registered.
                     assert set(jobs) == {
                         "collect",
                         "health_check",
                         "stale_workers",
                         "data_retention",
+                        "db_vacuum",
                         "exchange_rates",
                     }
                     # Every job carries the hardening kwargs (audit fix).
@@ -1830,6 +1882,7 @@ class TestLifespanScheduler:
                 patch("app.main.database.connect_shared", new_callable=AsyncMock),
                 patch("app.main.database.close_shared", new_callable=AsyncMock),
                 patch("app.main.database.list_users_with_pwd_epoch", new_callable=AsyncMock, return_value=[]),
+                patch("app.main.database.has_any_users", new_callable=AsyncMock, return_value=True),
                 patch("app.main.catalog.load_services"),
                 patch("app.main.catalog.register_sighup"),
                 patch("app.main.exchange_rates.refresh", new_callable=AsyncMock),
@@ -1846,6 +1899,53 @@ class TestLifespanScheduler:
 
         asyncio.run(_run())
         assert captured["called"] is True
+
+    def test_lifespan_first_run_generates_setup_token(self):
+        """With no users, startup generates + persists + activates a setup token."""
+        import app.main as main_mod
+        from app import setup_token
+
+        async def _run():
+            with (
+                patch("app.main.database.init_db", new_callable=AsyncMock),
+                patch("app.main.database.connect_shared", new_callable=AsyncMock),
+                patch("app.main.database.close_shared", new_callable=AsyncMock),
+                patch("app.main.database.list_users_with_pwd_epoch", new_callable=AsyncMock, return_value=[]),
+                patch("app.main.database.has_any_users", new_callable=AsyncMock, return_value=False),
+                patch("app.main.database.get_config", new_callable=AsyncMock, return_value=None),
+                patch("app.main.database.set_config", new_callable=AsyncMock) as set_cfg,
+                patch("app.main.catalog.load_services"),
+                patch("app.main.catalog.register_sighup"),
+                patch("app.main.exchange_rates.refresh", new_callable=AsyncMock),
+                patch("app.main._run_collection", new_callable=AsyncMock),
+                patch("app.main.close_all_collectors", new_callable=AsyncMock, create=True),
+                patch("app.main.scheduler"),  # isolate from the real module scheduler
+            ):
+                async with main_mod.lifespan(main_mod.app):
+                    assert setup_token.active() is not None
+                    set_cfg.assert_awaited_once()  # persisted the freshly generated token
+
+        asyncio.run(_run())
+
+
+class TestRunVacuum:
+    def test_run_vacuum_success(self):
+        import app.main as main_mod
+
+        with patch("app.main.database.vacuum_database", new_callable=AsyncMock) as vac:
+            asyncio.run(main_mod._run_vacuum())
+            vac.assert_awaited_once()
+
+    def test_run_vacuum_swallows_error(self):
+        import app.main as main_mod
+
+        with patch(
+            "app.main.database.vacuum_database",
+            new_callable=AsyncMock,
+            side_effect=Exception("boom"),
+        ):
+            # Must not raise — a failed VACUUM is logged, not fatal.
+            asyncio.run(main_mod._run_vacuum())
 
 
 # ---------------------------------------------------------------------------
