@@ -68,6 +68,7 @@ def _spawn(coro) -> asyncio.Task:
     task.add_done_callback(_on_done)
     return task
 
+
 # Login rate limiting
 _login_attempts: dict[str, list[float]] = defaultdict(list)
 _LOGIN_MAX_ATTEMPTS = 5
