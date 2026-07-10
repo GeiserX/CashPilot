@@ -416,6 +416,43 @@ class TestHealthEvents:
         asyncio.run(run())
 
 
+class TestWorkerKeys:
+    def test_hash_worker_key_is_stable_hex(self):
+        h1 = database.hash_worker_key("abc123")
+        h2 = database.hash_worker_key("abc123")
+        assert h1 == h2
+        assert len(h1) == 64  # sha256 hex
+        assert database.hash_worker_key("different") != h1
+
+    def test_workers_table_has_api_key_hash_column(self, db):
+        async def run():
+            conn = await database._get_db()
+            try:
+                cur = await conn.execute("PRAGMA table_info(workers)")
+                cols = {row["name"] for row in await cur.fetchall()}
+                assert "api_key_hash" in cols
+            finally:
+                await conn.close()
+
+        asyncio.run(run())
+
+    def test_set_and_get_worker_key_hash_round_trip(self, db):
+        async def run():
+            await database.upsert_worker("c1", "w1")
+            assert await database.get_worker_key_hash("c1") is None  # unenrolled
+            kh = database.hash_worker_key("super-secret-key")
+            await database.set_worker_key_hash("c1", kh)
+            assert await database.get_worker_key_hash("c1") == kh
+
+        asyncio.run(run())
+
+    def test_get_worker_key_hash_missing_worker_is_none(self, db):
+        async def run():
+            assert await database.get_worker_key_hash("nope") is None
+
+        asyncio.run(run())
+
+
 class TestDataRetention:
     def test_purge_returns_count(self, db):
         async def run():
