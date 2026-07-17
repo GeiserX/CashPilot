@@ -45,9 +45,13 @@ async def api_update_user_role(request: Request, user_id: int, body: UserRoleUpd
             raise HTTPException(status_code=400, detail="Cannot remove the last owner")
     await main.database.update_user_role(user_id, body.role)
     # Invalidate any outstanding session tokens for this user — they carry the
-    # old role and must not be trusted until re-issued (same mechanism used
-    # for password changes).
-    main.auth.set_user_pwd_epoch(user_id, time.time())
+    # old role and must not be trusted until re-issued (same mechanism used for
+    # password changes). Persist it durably AND bump the in-memory epoch: the
+    # durable row is what survives a UI restart (in-memory alone resets to 0 on
+    # restart, which would let the old higher-privilege cookie back in).
+    revoked_at = time.time()
+    await main.database.revoke_user_sessions(user_id, revoked_at)
+    main.auth.set_user_pwd_epoch(user_id, revoked_at)
     return {"status": "updated"}
 
 
@@ -61,7 +65,12 @@ async def api_delete_user(request: Request, user_id: int) -> dict[str, str]:
         raise HTTPException(status_code=404, detail="User not found")
     await main.database.delete_user(user_id)
     # Invalidate any outstanding session tokens for the now-deleted account.
-    # The epoch cache is in-memory keyed by uid, so it survives the row being
-    # gone from the DB — decode_session_token rejects the token on iat alone.
-    main.auth.set_user_pwd_epoch(user_id, time.time())
+    # Persist the revocation to session_revocations (which has no FK to users, so
+    # it outlives the deleted row) AND bump the in-memory epoch for immediate
+    # effect. The durable row is restored at startup, so the deleted account's
+    # still-valid 30-day cookie keeps being rejected across UI restarts instead of
+    # regaining owner access once the in-memory epoch resets.
+    revoked_at = time.time()
+    await main.database.revoke_user_sessions(user_id, revoked_at)
+    main.auth.set_user_pwd_epoch(user_id, revoked_at)
     return {"status": "deleted"}

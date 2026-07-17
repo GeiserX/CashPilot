@@ -1045,6 +1045,7 @@ class TestApiUsers:
             _auth_owner(),
             patch("app.main.database.get_user_by_id", new_callable=AsyncMock, return_value=user),
             patch("app.main.database.update_user_role", new_callable=AsyncMock),
+            patch("app.main.database.revoke_user_sessions", new_callable=AsyncMock),
         ):
             resp = client.patch("/api/users/2", json={"role": "writer"})
             assert resp.status_code == 200
@@ -1088,6 +1089,7 @@ class TestApiUsers:
             _auth_owner(),
             patch("app.main.database.get_user_by_id", new_callable=AsyncMock, return_value=user),
             patch("app.main.database.delete_user", new_callable=AsyncMock),
+            patch("app.main.database.revoke_user_sessions", new_callable=AsyncMock),
         ):
             resp = client.delete("/api/users/2")
             assert resp.status_code == 200
@@ -1901,6 +1903,7 @@ class TestLifespanScheduler:
                 patch("app.main.database.connect_shared", new_callable=AsyncMock),
                 patch("app.main.database.close_shared", new_callable=AsyncMock),
                 patch("app.main.database.list_users_with_pwd_epoch", new_callable=AsyncMock, return_value=[]),
+                patch("app.main.database.list_session_revocations", new_callable=AsyncMock, return_value=[]),
                 patch("app.main.database.has_any_users", new_callable=AsyncMock, return_value=True),
                 patch("app.main.catalog.load_services"),
                 patch("app.main.catalog.register_sighup"),
@@ -1942,6 +1945,7 @@ class TestLifespanScheduler:
                 patch("app.main.database.connect_shared", new_callable=AsyncMock),
                 patch("app.main.database.close_shared", new_callable=AsyncMock),
                 patch("app.main.database.list_users_with_pwd_epoch", new_callable=AsyncMock, return_value=[]),
+                patch("app.main.database.list_session_revocations", new_callable=AsyncMock, return_value=[]),
                 patch("app.main.database.has_any_users", new_callable=AsyncMock, return_value=True),
                 patch("app.main.catalog.load_services"),
                 patch("app.main.catalog.register_sighup"),
@@ -1971,6 +1975,7 @@ class TestLifespanScheduler:
                 patch("app.main.database.connect_shared", new_callable=AsyncMock),
                 patch("app.main.database.close_shared", new_callable=AsyncMock),
                 patch("app.main.database.list_users_with_pwd_epoch", new_callable=AsyncMock, return_value=[]),
+                patch("app.main.database.list_session_revocations", new_callable=AsyncMock, return_value=[]),
                 patch("app.main.database.has_any_users", new_callable=AsyncMock, return_value=False),
                 patch("app.main.database.get_config", new_callable=AsyncMock, return_value=None),
                 patch("app.main.database.set_config", new_callable=AsyncMock) as set_cfg,
