@@ -164,6 +164,17 @@ CREATE TABLE IF NOT EXISTS health_events (
     created_at TEXT    NOT NULL DEFAULT (datetime('now'))
 );
 
+-- Durable per-user session-revocation epochs. A signed session cookie whose iat
+-- predates a user's revoked_before is rejected. DELIBERATELY has no FOREIGN KEY to
+-- users: when a user is deleted the revocation MUST outlive the row, so the deleted
+-- account's still-valid 30-day cookies keep being rejected across UI restarts
+-- (otherwise the in-memory epoch resets on restart and a deleted/demoted user's old
+-- cookie regains their old role). Warmed into auth's in-memory epoch cache at startup.
+CREATE TABLE IF NOT EXISTS session_revocations (
+    user_id        INTEGER PRIMARY KEY,
+    revoked_before REAL    NOT NULL
+);
+
 CREATE UNIQUE INDEX IF NOT EXISTS idx_earnings_platform_date
     ON earnings (platform, date);
 
@@ -844,6 +855,53 @@ async def delete_user(user_id: int) -> None:
     try:
         await db.execute("DELETE FROM users WHERE id = ?", (user_id,))
         await db.commit()
+    finally:
+        await db.close()
+
+
+# Kept in sync with auth.SESSION_MAX_AGE (30 days); duplicated as a plain constant
+# so this module doesn't import auth (which would create a cycle).
+_SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 30
+
+
+async def revoke_user_sessions(user_id: int, revoked_before: float) -> None:
+    """Durably invalidate a user's outstanding session cookies.
+
+    Records that any session token for ``user_id`` issued before ``revoked_before``
+    must be rejected. This table has no FK to ``users``, so the revocation outlives
+    a deleted row and is restored into auth's in-memory epoch cache at startup —
+    that is what stops a deleted/demoted account's still-valid 30-day cookie from
+    regaining access after a UI restart. The write is monotonic (an older timestamp
+    can never lower an existing revocation), and rows whose window has fully elapsed
+    are pruned since the tokens they guarded have themselves expired.
+    """
+    db = await _get_db()
+    try:
+        await db.execute(
+            """
+            INSERT INTO session_revocations (user_id, revoked_before)
+            VALUES (?, ?)
+            ON CONFLICT(user_id) DO UPDATE SET revoked_before = excluded.revoked_before
+            WHERE excluded.revoked_before > session_revocations.revoked_before
+            """,
+            (user_id, revoked_before),
+        )
+        await db.execute(
+            "DELETE FROM session_revocations WHERE revoked_before < ?",
+            (revoked_before - _SESSION_MAX_AGE_SECONDS,),
+        )
+        await db.commit()
+    finally:
+        await db.close()
+
+
+async def list_session_revocations() -> list[dict[str, Any]]:
+    """Return [{user_id, revoked_before}, ...] for warming the auth epoch cache."""
+    db = await _get_db()
+    try:
+        cursor = await db.execute("SELECT user_id, revoked_before FROM session_revocations")
+        rows = await cursor.fetchall()
+        return [dict(r) for r in rows]
     finally:
         await db.close()
 

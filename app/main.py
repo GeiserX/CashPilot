@@ -349,17 +349,40 @@ COLLECT_INTERVAL_MIN = int(os.getenv("CASHPILOT_COLLECT_INTERVAL", "60"))
 STALE_WORKER_SECONDS = 180  # Mark worker offline after 3 missed heartbeats
 
 
+async def _warm_session_epochs() -> None:
+    """Restore the in-memory per-user session-epoch cache from durable state.
+
+    Two sources are merged, taking the later timestamp per user:
+      - ``users.password_changed_at`` — a password change invalidates older sessions.
+      - ``session_revocations.revoked_before`` — a delete/demote invalidates older
+        sessions and survives the users row being deleted.
+
+    This runs at startup so those invalidations survive a UI restart. Without the
+    revocation half, a delete/demote (which only bumps the in-memory epoch) would be
+    forgotten on the next restart and the account's still-valid cookie would be
+    honored again with its old role — the bug this fixes.
+    """
+    epochs: dict[int, float] = {}
+    for _u in await database.list_users_with_pwd_epoch():
+        changed = _u.get("password_changed_at") or 0.0
+        if changed:
+            epochs[_u["id"]] = changed
+    for _r in await database.list_session_revocations():
+        uid = _r["user_id"]
+        epochs[uid] = max(epochs.get(uid, 0.0), _r["revoked_before"] or 0.0)
+    for uid, ts in epochs.items():
+        auth.set_user_pwd_epoch(uid, ts)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup
     await database.init_db()
     await database.connect_shared()
-    # Warm the per-user password-change epoch cache so existing sessions issued
-    # before a password change are rejected without a DB hit in the request path.
-    for _u in await database.list_users_with_pwd_epoch():
-        _changed = _u.get("password_changed_at") or 0.0
-        if _changed:
-            auth.set_user_pwd_epoch(_u["id"], _changed)
+    # Warm the per-user session-epoch cache (password changes + delete/demote
+    # revocations) so invalidated sessions are rejected without a DB hit in the
+    # request path — and, crucially, so those invalidations survive a restart.
+    await _warm_session_epochs()
     # First-run setup token: while no users exist, require a one-time token
     # (printed below) for /register so a proxy-exposed instance cannot be seized
     # by the first public visitor. Persisted in config so it survives restarts;
