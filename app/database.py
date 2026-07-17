@@ -1050,7 +1050,8 @@ async def get_worker_key(client_id: str) -> str | None:
 
 async def get_worker_key_state(client_id: str) -> tuple[str | None, bool]:
     """Return (key, confirmed) for a worker: the decrypted per-worker key (or None
-    if unenrolled) and whether the worker has confirmed it by using it."""
+    if unenrolled, or if the stored key can no longer be decrypted) and whether the
+    worker has confirmed it by using it."""
     db = await _get_db()
     try:
         cursor = await db.execute(
@@ -1061,7 +1062,25 @@ async def get_worker_key_state(client_id: str) -> tuple[str | None, bool]:
         if not row:
             return None, False
         enc = row["api_key_enc"]
-        key = decrypt_value(enc) if enc else None
+        if not enc:
+            return None, bool(row["key_confirmed"])
+        key = decrypt_value(enc)
+        if not key:
+            # decrypt_value() returns "" (after logging its own warning) when the
+            # Fernet key can't decrypt this value -- e.g. CASHPILOT_SECRET_KEY was
+            # rotated or restored from a different value. A real per-worker key is
+            # always a secrets.token_urlsafe(32) string and can never legitimately
+            # be empty, so "" here unambiguously means "undecryptable", not "empty
+            # key". Report it as NOT enrolled (None) rather than as a real key that
+            # can never match, so callers fall back to the shared bootstrap key and
+            # the worker can re-enroll instead of being permanently bricked.
+            _logger.error(
+                "Worker '%s' per-worker key is undecryptable (CASHPILOT_SECRET_KEY "
+                "changed?) -- treating as unenrolled so it can re-enroll via the "
+                "shared key",
+                client_id,
+            )
+            return None, False
         return key, bool(row["key_confirmed"])
     finally:
         await db.close()

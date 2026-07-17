@@ -216,9 +216,14 @@ CASHPILOT_WORKER_NAME=server-name</code>
   }
 
   function esc(str) {
-    const d = document.createElement('div');
-    d.textContent = str || '';
-    return d.innerHTML;
+    // Escape quotes too (the textContent/innerHTML trick doesn't), so values
+    // interpolated into attributes like data-worker-name="..." can't break out.
+    return String(str ?? '')
+      .replaceAll('&', '&amp;')
+      .replaceAll('<', '&lt;')
+      .replaceAll('>', '&gt;')
+      .replaceAll('"', '&quot;')
+      .replaceAll("'", '&#39;');
   }
 
   window.toggleApiKey = async function() {
