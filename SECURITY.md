@@ -87,9 +87,9 @@ CashPilot requires access to the Docker socket (`/var/run/docker.sock`) for cont
 
 ### Authentication
 
-- **UI users**: Session-based authentication with bcrypt-hashed passwords. Sessions are signed JWT tokens stored in HTTP-only cookies.
-- **Worker-to-UI**: Shared API key (`CASHPILOT_API_KEY`) sent as Bearer token. All fleet management endpoints require this key.
-- **Role-based access**: Three roles (viewer, writer, owner) with escalating permissions. Container management requires writer or owner role.
+- **UI users**: Session-based authentication with bcrypt-hashed passwords. Sessions are signed tokens stored in HTTP-only cookies.
+- **Worker-to-UI**: Per-worker fleet keys (since v1.0.0). `CASHPILOT_API_KEY` is only a shared enrollment/bootstrap credential -- on a worker's first heartbeat the UI issues it a unique key (stored encrypted, returned once), and every subsequent request in *either* direction (worker heartbeat, UI command) authenticates with that worker's own key. The shared key is rejected once a worker is enrolled, so a leaked worker key only affects that one worker.
+- **Role-based access**: Three roles (viewer, writer, owner) with escalating permissions, plus an implicit `fleet` role for authenticated worker requests. Container management requires writer or owner role.
 
 ### Data Storage
 
@@ -105,6 +105,16 @@ CashPilot is designed to run on **private, trusted networks** (home lab, VPN, LA
 - Place it behind a reverse proxy with TLS termination (e.g., Caddy, Traefik, nginx)
 - Restrict access via firewall rules or VPN
 - Use a strong `CASHPILOT_SECRET_KEY` and `CASHPILOT_API_KEY`
+- Set the reverse-proxy-aware environment variables below so cookies, client-IP logging, and session invalidation behave correctly behind TLS termination
+
+These variables only matter when CashPilot sits behind a reverse proxy; a direct/private-network deployment can leave them unset:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `CASHPILOT_TRUSTED_PROXY` | unset (off) | Opt-in. When set (`1`/`true`/`yes`/`on`), trusts the right-most `X-Forwarded-For` entry as the real client IP. Only enable this behind exactly one reverse proxy you control -- the header is otherwise attacker-controlled |
+| `CASHPILOT_BASE_URL` | -- | The externally-visible base URL (e.g. `https://cashpilot.example.com`). Used by `CASHPILOT_SECURE_COOKIE=auto` to detect HTTPS |
+| `CASHPILOT_SECURE_COOKIE` | `auto` | Controls the session cookie's `Secure` flag. `auto` sets it when `CASHPILOT_BASE_URL` starts with `https`; override with a truthy (`true`/`1`/`yes`/`on`) or falsy (`false`/`0`/`no`/`off`) value |
+| `CASHPILOT_SESSION_EPOCH` | `0` | Unix timestamp. Bump it to mass-invalidate every existing session (e.g. after a credential leak) -- any session token issued before this timestamp is rejected |
 
 ### Worker URL Validation (SSRF)
 

@@ -95,6 +95,21 @@ class TestEndpointAuthRejection:
         resp = _client().get("/api/status", headers={"Authorization": "Bearer nope"})
         assert resp.status_code == 401
 
+    def test_deploy_endpoint_rejects_missing_auth(self):
+        # api_deploy_container is the socket-privileged endpoint (host-RCE trust
+        # boundary via orchestrator/Docker) -- an unauthenticated request must
+        # be rejected before the deploy spec is even validated.
+        resp = _client().post("/api/containers/honeygain/deploy", json={"image": "img"})
+        assert resp.status_code == 401
+
+    def test_deploy_endpoint_rejects_wrong_key(self):
+        resp = _client().post(
+            "/api/containers/honeygain/deploy",
+            json={"image": "img"},
+            headers={"Authorization": "Bearer nope"},
+        )
+        assert resp.status_code == 401
+
     def test_health_endpoint_requires_no_auth(self):
         resp = _client().get("/api/health")
         assert resp.status_code == 200
@@ -125,7 +140,17 @@ class TestValidateDeploySpecRejections:
             _validate_deploy_spec(spec)
         assert ei.value.status_code == 403
 
+    @pytest.mark.parametrize("cap", ["SYS_MODULE", "DAC_READ_SEARCH", "SYS_RAWIO", "BPF", "SYS_BOOT"])
+    def test_capability_not_declared_by_any_catalog_service_rejected(self, cap):
+        # Allowlist, not a denylist: only mysterium's NET_ADMIN is in the catalog,
+        # so anything else -- including caps the old 3-entry denylist missed -- is refused.
+        spec = DeploySpec(image="x", cap_add=[cap])
+        with pytest.raises(HTTPException) as ei:
+            _validate_deploy_spec(spec)
+        assert ei.value.status_code == 403
+
     def test_allowed_capability_passes(self):
+        # NET_ADMIN is allowed because mysterium.yml declares cap_add: [NET_ADMIN].
         _validate_deploy_spec(DeploySpec(image="x", cap_add=["NET_ADMIN"]))  # must not raise
 
     def test_disallowed_network_mode_rejected(self):
@@ -134,14 +159,23 @@ class TestValidateDeploySpecRejections:
             _validate_deploy_spec(spec)
         assert ei.value.status_code == 403
 
-    def test_host_network_mode_allowed(self):
-        # mysterium legitimately needs host networking.
-        _validate_deploy_spec(DeploySpec(image="x", network_mode="host"))  # must not raise
+    def test_host_network_mode_allowed_for_mysterium(self):
+        # mysterium.yml is the only catalog service declaring network_mode: host.
+        _validate_deploy_spec(DeploySpec(image="x", network_mode="host"), slug="mysterium")  # must not raise
+
+    @pytest.mark.parametrize("slug", ["honeygain", "storj", "not-a-real-slug", None])
+    def test_host_network_mode_rejected_for_non_allowlisted_slug(self, slug):
+        spec = DeploySpec(image="x", network_mode="host")
+        with pytest.raises(HTTPException) as ei:
+            _validate_deploy_spec(spec, slug=slug)
+        assert ei.value.status_code == 403
 
     def test_bridge_network_mode_allowed(self):
         _validate_deploy_spec(DeploySpec(image="x", network_mode="bridge"))  # must not raise
 
-    @pytest.mark.parametrize("root", ["/etc", "/root", "/var/run", "/proc"])
+    @pytest.mark.parametrize(
+        "root", ["/etc", "/root", "/var/run", "/proc", "/mnt", "/data", "/opt", "/media", "/srv", "/tmp"]
+    )
     def test_blocked_volume_root_rejected(self, root):
         # Patch realpath to identity: on macOS dev machines /etc and /var/run
         # are themselves symlinks (-> /private/etc, /private/var/run), which
@@ -164,13 +198,25 @@ class TestValidateDeploySpecRejections:
             _validate_deploy_spec(spec)
         assert ei.value.status_code == 403
 
+    def test_unraid_array_bind_mount_rejected(self):
+        # The concrete attack this closes: a fleet-key holder bind-mounting the
+        # whole Unraid array to read co-located apps' secrets under /mnt/user.
+        spec = DeploySpec(image="x", volumes={"/mnt/user/appdata/some-other-app": {"bind": "/x", "mode": "ro"}})
+        with (
+            patch("app.worker_api.os.path.realpath", side_effect=lambda p: p),
+            pytest.raises(HTTPException) as ei,
+        ):
+            _validate_deploy_spec(spec)
+        assert ei.value.status_code == 403
+
     def test_named_volume_always_allowed(self):
         # Not an absolute path -> named volume (e.g. mysterium-data), always allowed.
         spec = DeploySpec(image="x", volumes={"mysterium-data": {"bind": "/data", "mode": "rw"}})
         _validate_deploy_spec(spec)  # must not raise
 
     def test_allowed_bind_mount_passes(self):
-        spec = DeploySpec(image="x", volumes={"/data/honeygain": {"bind": "/data", "mode": "rw"}})
+        # A custom absolute path that isn't under any blocked root still works.
+        spec = DeploySpec(image="x", volumes={"/storage/honeygain": {"bind": "/data", "mode": "rw"}})
         _validate_deploy_spec(spec)  # must not raise
 
 

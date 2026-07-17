@@ -51,8 +51,7 @@ class StorjCollector(BaseCollector):
             elif "currentMonthExpectations" in data:
                 balance = data["currentMonthExpectations"] / 100.0
             else:
-                # Fallback: try /api/sno for totalPayout
-                balance = 0.0
+                raise ValueError("Unrecognized storagenode API response shape — no known payout field found")
 
             return EarningsResult(
                 platform=self.platform,

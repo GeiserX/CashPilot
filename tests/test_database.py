@@ -7,6 +7,7 @@ from unittest.mock import patch
 os.environ.setdefault("CASHPILOT_API_KEY", "test-fleet-key")
 
 import pytest
+from cryptography.fernet import Fernet
 
 from app import database
 
@@ -479,6 +480,31 @@ class TestWorkerKeys:
     def test_get_worker_key_state_missing_worker(self, db):
         async def run():
             assert await database.get_worker_key_state("nope") == (None, False)
+
+        asyncio.run(run())
+
+    def test_undecryptable_key_treated_as_unenrolled_not_empty_string(self, db):
+        """Regression: if CASHPILOT_SECRET_KEY changes/rotates, a previously
+        enrolled worker's encrypted key can no longer be decrypted.
+        decrypt_value() maps that failure to "" -- get_worker_key_state() must
+        NOT pass "" through as a real (never-matching) key, which would brick
+        the worker in both directions (it can't authenticate with its old key,
+        and it can't fall back to the shared bootstrap key either since it's
+        already confirmed). It must report "no usable key" (None) so callers
+        fall back to the shared key and the worker can re-enroll."""
+
+        async def run():
+            await database.upsert_worker("c1", "w1")
+            await database.set_worker_key("c1", "real-worker-key")
+            await database.confirm_worker_key("c1")
+
+            # Simulate CASHPILOT_SECRET_KEY having changed: the stored ciphertext
+            # was encrypted with the OLD key and can no longer be decrypted.
+            with patch.object(database, "_fernet", Fernet(Fernet.generate_key())):
+                key, confirmed = await database.get_worker_key_state("c1")
+                assert key is None  # NOT "" -- "" would look like a real key
+                assert confirmed is False
+                assert await database.get_worker_key("c1") is None
 
         asyncio.run(run())
 

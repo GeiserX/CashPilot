@@ -33,6 +33,12 @@ from pydantic import BaseModel
 
 from app import fleet_key, orchestrator
 
+try:
+    from app.catalog import get_services as _catalog_get_services
+except ImportError:
+    # Worker image may not include the catalog module in some builds.
+    _catalog_get_services = None  # type: ignore[assignment]
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
@@ -73,15 +79,24 @@ def _load_worker_key() -> str | None:
     return None
 
 
-def _save_worker_key(key: str) -> None:
-    global _worker_key
-    _worker_key = key
+def _save_worker_key(key: str) -> bool:
+    """Persist the newly issued per-worker key to disk, then adopt it in memory.
+
+    Returns True once the key is durably on disk. On persistence failure the
+    key is NOT adopted -- we keep authenticating with whatever key was active
+    before, so a write failure here can never leave us relying on a key that
+    only exists in memory and vanishes on the next restart (lockout).
+    """
     try:
         _WORKER_KEY_FILE.parent.mkdir(parents=True, exist_ok=True)
         _WORKER_KEY_FILE.write_text(key)
         _WORKER_KEY_FILE.chmod(0o600)
     except OSError as exc:
-        logger.warning("Could not persist per-worker key: %s", exc)
+        logger.error("Could not persist per-worker key — NOT adopting it: %s", exc)
+        return False
+    global _worker_key
+    _worker_key = key
+    return True
 
 
 _worker_key: str | None = _load_worker_key()
@@ -152,12 +167,19 @@ async def _send_heartbeat() -> None:
             with contextlib.suppress(Exception):
                 issued = resp.json().get("worker_key")
             if issued and issued != _worker_key:
-                _save_worker_key(issued)
-                logger.info("Enrolled: received and persisted this worker's own fleet key")
+                if _save_worker_key(issued):
+                    logger.info("Enrolled: received and persisted this worker's own fleet key")
+                else:
+                    logger.error("Received per-worker key but could not persist it — staying on shared key")
             _ui_connected = True
             _last_heartbeat = datetime.now(UTC).strftime("%H:%M:%S UTC")
             _last_error = ""
             logger.debug("Heartbeat sent to %s", UI_URL)
+    except httpx.HTTPStatusError as exc:
+        _ui_connected = False
+        status = exc.response.status_code
+        _last_error = f"authentication rejected ({status})" if status in (401, 403) else "connection failed"
+        logger.warning("Heartbeat failed: %s", exc)
     except Exception as exc:
         _ui_connected = False
         _last_error = "connection failed"
@@ -350,26 +372,60 @@ _BLOCKED_VOLUME_ROOTS = {
     "/bin",
     "/sbin",
     "/var/run",
-    "/run",
+    "/run",  # also covers /run/docker.sock (modern /var/run -> /run symlink)
     "/var/lib/docker",
+    "/mnt",  # e.g. Unraid array root (/mnt/user/appdata/<app>) — co-located apps' secrets
+    "/media",
+    "/opt",
+    "/srv",
+    "/data",  # per-container app data roots, incl. this worker's own /data
+    "/tmp",
 }
-_BLOCKED_CAPS = {"ALL", "SYS_ADMIN", "SYS_PTRACE"}
-# Named volumes (bridge/none/unset) and mysterium's legitimate host networking are allowed;
-# `container:<id>` (namespace join) and any other value are rejected.
-_ALLOWED_NETWORK_MODES = {None, "", "bridge", "none", "host"}
 # Docker memory size syntax: a positive integer with an optional b/k/m/g unit.
 _MEM_LIMIT_RE = re.compile(r"^\d+[bkmgBKMG]?$")
 
 
-def _validate_deploy_spec(spec: DeploySpec) -> None:
+def _catalog_allowed_capabilities() -> set[str]:
+    """Union of cap_add values any bundled catalog service actually declares.
+
+    Derived from services/*.yml (the single source of truth) instead of a
+    hardcoded list, so it stays correct as the catalog changes. A capability
+    no catalog service asks for is refused, whatever it is.
+    """
+    if not _catalog_get_services:
+        return set()
+    caps: set[str] = set()
+    for svc in _catalog_get_services():
+        for cap in (svc.get("docker") or {}).get("cap_add") or []:
+            caps.add(str(cap).upper())
+    return caps
+
+
+def _catalog_host_network_slugs() -> set[str]:
+    """Slugs whose catalog definition legitimately declares network_mode: host."""
+    if not _catalog_get_services:
+        return set()
+    return {svc["slug"] for svc in _catalog_get_services() if (svc.get("docker") or {}).get("network_mode") == "host"}
+
+
+# Named volumes (bridge/none/unset) are always allowed. `host` is allowed only for
+# catalog services that declare it (checked separately below, by slug). `container:<id>`
+# (namespace join) and any other value are rejected outright.
+_ALLOWED_NETWORK_MODES = {None, "", "bridge", "none", "host"}
+
+
+def _validate_deploy_spec(spec: DeploySpec, slug: str | None = None) -> None:
     if spec.privileged:
         raise HTTPException(status_code=403, detail="Privileged containers are not allowed")
     if spec.cap_add:
-        blocked = _BLOCKED_CAPS & {c.upper() for c in spec.cap_add}
+        requested = {c.upper() for c in spec.cap_add}
+        blocked = requested - _catalog_allowed_capabilities()
         if blocked:
-            raise HTTPException(status_code=403, detail=f"Blocked capabilities: {', '.join(blocked)}")
+            raise HTTPException(status_code=403, detail=f"Blocked capabilities: {', '.join(sorted(blocked))}")
     if spec.network_mode not in _ALLOWED_NETWORK_MODES:
         raise HTTPException(status_code=403, detail=f"Network mode '{spec.network_mode}' is not allowed")
+    if spec.network_mode == "host" and slug not in _catalog_host_network_slugs():
+        raise HTTPException(status_code=403, detail=f"Network mode 'host' is not allowed for '{slug}'")
     for source in spec.volumes:
         if not source.startswith("/"):
             continue  # named volume (e.g. "mysterium-data") — always allowed
@@ -428,7 +484,7 @@ async def api_list_containers(request: Request) -> list[dict[str, Any]]:
 async def api_deploy_container(request: Request, slug: str, spec: DeploySpec) -> dict[str, str]:
     """Deploy a container from spec sent by UI."""
     _verify_api_key(request)
-    _validate_deploy_spec(spec)
+    _validate_deploy_spec(spec, slug=slug)
     try:
         container_id = await asyncio.to_thread(
             orchestrator.deploy_raw,
