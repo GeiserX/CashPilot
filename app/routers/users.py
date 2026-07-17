@@ -43,11 +43,15 @@ async def api_update_user_role(request: Request, user_id: int, body: UserRoleUpd
         owner_count = sum(1 for u in all_users if u["role"] == "owner")
         if owner_count <= 1:
             raise HTTPException(status_code=400, detail="Cannot remove the last owner")
+    # Revoke outstanding sessions BEFORE applying the role change, so there is no
+    # window where the demotion has committed but the old higher-privilege cookie
+    # is still valid (a crash between the two writes must not leave it usable).
+    # Persist the revocation durably (survives a UI restart) AND bump the in-memory
+    # epoch (immediate effect); a fresh login re-mints a token with the new role.
+    revoked_at = time.time()
+    await main.database.revoke_user_sessions(user_id, revoked_at)
+    main.auth.set_user_pwd_epoch(user_id, revoked_at)
     await main.database.update_user_role(user_id, body.role)
-    # Invalidate any outstanding session tokens for this user — they carry the
-    # old role and must not be trusted until re-issued (same mechanism used
-    # for password changes).
-    main.auth.set_user_pwd_epoch(user_id, time.time())
     return {"status": "updated"}
 
 
@@ -59,9 +63,14 @@ async def api_delete_user(request: Request, user_id: int) -> dict[str, str]:
     user = await main.database.get_user_by_id(user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
+    # Revoke outstanding sessions BEFORE deleting the row, so there is never a
+    # window where the account is gone but its cookie is still honored. The
+    # revocation is keyed by uid with no FK to users, so persisting it ahead of the
+    # delete is valid and it outlives the deleted row; it is restored at startup,
+    # so the deleted account's still-valid 30-day cookie keeps being rejected
+    # across UI restarts instead of regaining access once the in-memory epoch resets.
+    revoked_at = time.time()
+    await main.database.revoke_user_sessions(user_id, revoked_at)
+    main.auth.set_user_pwd_epoch(user_id, revoked_at)
     await main.database.delete_user(user_id)
-    # Invalidate any outstanding session tokens for the now-deleted account.
-    # The epoch cache is in-memory keyed by uid, so it survives the row being
-    # gone from the DB — decode_session_token rejects the token on iat alone.
-    main.auth.set_user_pwd_epoch(user_id, time.time())
     return {"status": "deleted"}
