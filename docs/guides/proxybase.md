@@ -44,11 +44,11 @@ After signing up and verifying your email, open your [dashboard](https://peer.pr
 
 In the CashPilot web UI, find **ProxyBase** in the service catalog and click **Deploy**. Enter your Access Token and a device name, and CashPilot will handle the rest.
 
-> **Upgrading from an older CashPilot?** ProxyBase moved to a new client image and renamed its credentials (the old `USER_ID`/`DEVICE_NAME` are now the **Access Token** and **Device Name**). Re-deploy ProxyBase from the catalog and re-enter your Access Token so the new client can authenticate — existing containers built on the old image will stop earning.
+> **Upgrading from an older CashPilot?** ProxyBase moved to a new client image and replaced its credentials: the old `USER_ID`/`DEVICE_NAME` values are retired and cannot be reused. Generate a fresh **Access Token** in your [dashboard](https://peer.proxybase.org/dashboard), then re-deploy ProxyBase from the catalog with it (plus a Device Name) — existing containers built on the old image have stopped earning.
 
 ## Docker Configuration
 
-- **Image:** `ghcr.io/proxybaseorg/peer-cli` (pinned by digest)
+- **Image:** `ghcr.io/proxybaseorg/peer-cli@sha256:b78dda3969019eb9e0d3ba0aeba0929148337898b00d99cf780f4d8c99b31b0e` (digest-pinned; the catalog entry is authoritative if they ever differ)
 - **Platforms:** linux/amd64, linux/arm64, linux/arm/v7
 
 ### Environment Variables
