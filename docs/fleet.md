@@ -64,6 +64,7 @@ services:
       - CASHPILOT_UI_URL=http://main-server:8080
       - CASHPILOT_API_KEY=your-shared-api-key
       - CASHPILOT_WORKER_NAME=server-b
+      - CASHPILOT_WORKER_URL=http://server-b:8081
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
@@ -71,6 +72,9 @@ services:
 volumes:
   cashpilot_worker_data:
 ```
+
+!!! important "CASHPILOT_WORKER_URL"
+    Set this to the address the UI should use to reach this worker (e.g. its LAN IP or Tailscale MagicDNS name, port 8081). Without it, the worker auto-detects its own outbound IP, which inside a container is often the Docker bridge address -- unreachable from the UI on another host.
 
 !!! important "API Key"
     The `CASHPILOT_API_KEY` must be identical on the UI and all workers. It is the **enrollment key** each worker uses on first contact; after that, each worker uses its own automatically-issued key.
@@ -136,6 +140,8 @@ If a worker goes offline (no heartbeat for 180 seconds):
 | `CASHPILOT_UI_URL` | Yes | -- | URL of the CashPilot UI (e.g. `http://192.168.10.100:8080`) |
 | `CASHPILOT_API_KEY` | Yes | -- | Must match the UI's API key |
 | `CASHPILOT_WORKER_NAME` | No | *(hostname)* | Display name for this worker in the fleet dashboard |
+| `CASHPILOT_WORKER_URL` | No | *(auto-detected)* | URL the UI uses to reach this worker. Set explicitly for remote/cross-host workers -- auto-detection can report an unreachable address |
+| `CASHPILOT_PORT` | No | `8081` | Mini-UI/API port the worker listens on |
 
 ### Worker URL Validation
 

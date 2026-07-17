@@ -17,7 +17,7 @@ There is **no standalone mode**. Every server that runs Docker containers needs 
 2. **Workers must be privileged.** A worker without Docker socket is useless. If you don't need Docker management, just run the UI alone to track earnings.
 3. **Single source of truth.** The UI instance is the only one that collects earnings, stores historical data, and serves the dashboard. Workers never collect earnings.
 4. **Earnings are never duplicated.** Since only the UI collects, there is no risk of the same account being counted twice.
-5. **Workers are stateless satellites.** A worker knows which containers to keep running and the UI URL to report to. It has a tiny local SQLite for config persistence but no earnings data.
+5. **Workers are stateless satellites.** A worker knows which containers to keep running and the UI URL to report to. It persists only its own fleet key to a local file (no database, no earnings data).
 6. **YAML is truth.** Every service lives in `services/{category}/{slug}.yml`. The UI, deployment, docs, and compose export all derive from these files.
 
 ## Directory Structure
@@ -25,12 +25,15 @@ There is **no standalone mode**. Every server that runs Docker containers needs 
 ```
 cashpilot/
   app/                      # FastAPI application
-    main.py                 # App entrypoint, lifespan, UI routes
+    main.py                 # App entrypoint, lifespan, container/fleet/earnings routes
+    deps.py                 # Shared auth guards + Jinja2 template environment
+    routers/                # Route groups split out of main.py: auth, pages, users
     catalog.py              # Loads YAML service definitions, caches, SIGHUP reload
     orchestrator.py         # Docker SDK: deploy, stop, restart, remove, logs
-    database.py             # Async SQLite: earnings, config, deployments, workers
+    database.py             # Async SQLite: earnings, config, deployments, users, workers
     worker_api.py           # Worker REST API: heartbeat, container commands, mini-UI
-    ui_api.py               # UI API: worker registration, fleet view, earnings
+    setup_token.py          # First-run setup-token gate (owner-account creation)
+    metrics.py              # Optional Prometheus metrics (/metrics)
     exchange_rates.py       # Crypto/fiat conversion via CoinGecko + Frankfurter
     collectors/             # Earnings collectors (one module per service, UI only)
       base.py               # BaseCollector ABC + EarningsResult dataclass
@@ -48,7 +51,7 @@ cashpilot/
     compute/                # GPU compute services
   docs/                     # Documentation and guides
     guides/                 # Per-service setup guides
-  Dockerfile                # UI image: multi-stage python:3.12-slim, tini, non-root
+  Dockerfile                # UI image: multi-stage python:3.14-alpine, su-exec, non-root
   Dockerfile.worker         # Worker image: minimal deps, no collectors/templates
   docker-compose.yml        # Single-server deployment
   docker-compose.fleet.yml  # Multi-server fleet deployment
@@ -89,9 +92,9 @@ sequenceDiagram
 Every 60 seconds, each worker sends:
 
 - Container list with status (running, stopped, exited)
-- Per-container resource usage (CPU, memory, network)
-- System info (OS, architecture, Docker version)
-- Health check results
+- Per-container resource usage (CPU percent, memory MB)
+- System info (OS, architecture, hostname, Docker availability)
+- Its self-reported URL (explicit `CASHPILOT_WORKER_URL` or an auto-detected fallback)
 
 The UI stores this in its SQLite database and displays it on the fleet dashboard.
 
@@ -119,7 +122,7 @@ The worker **never handles or stores credentials**:
 
 The UI runs scheduled collectors for each configured service:
 
-- **13 automated collectors** fetch balances via service APIs (JWT auth, cookie auth, API keys)
+- **15 automated collectors** fetch balances via service APIs (JWT auth, cookie auth, API keys)
 - Results stored in SQLite with native currency (USD, MYST, GRASS, STORJ, etc.)
 - Exchange rates fetched from CoinGecko (crypto) and Frankfurter (fiat), cached 15 minutes
 - Dashboard converts and displays in the user's preferred currency
@@ -128,7 +131,7 @@ The UI runs scheduled collectors for each configured service:
 
 | Technology | Purpose |
 |---|---|
-| FastAPI | Backend framework (Python 3.12, async) |
+| FastAPI | Backend framework (Python 3.14, async) |
 | Jinja2 | Server-rendered HTML templates |
 | SQLite | Database (aiosqlite, zero-config, stored in `/data`) |
 | Docker SDK for Python | Container lifecycle management via socket |
@@ -137,22 +140,24 @@ The UI runs scheduled collectors for each configured service:
 | httpx | Async HTTP client for earnings collectors |
 | cryptography (Fernet) | At-rest encryption for stored credentials |
 | Chart.js | Frontend earnings charts |
-| tini | PID 1 init (Dockerfile) |
+| su-exec | Drops root to the `cashpilot` user after entrypoint setup (Dockerfile) |
 
 ## Database
 
 SQLite with 400-day data retention. Key tables:
 
 - **earnings** -- Historical earnings per service (timestamp, slug, balance, currency)
-- **deployments** -- Active container deployments (slug, node, status, config)
+- **deployments** -- Active container deployments (slug, container ID, encrypted env vars, status)
 - **config** -- Key-value settings and encrypted credentials
+- **users** -- Accounts (username, bcrypt password hash, role)
+- **user_preferences** -- Per-user onboarding state (setup mode, selected categories, timezone)
 - **health_events** -- Container health history (start, stop, crash, check_ok, check_down)
-- **nodes** -- Fleet node registry (name, token, last_seen, system info)
+- **workers** -- Fleet worker registry (client ID, name, URL, status, last heartbeat, encrypted per-worker fleet key)
 
 ## Security Model
 
 - All credentials encrypted at rest using Fernet symmetric encryption
-- Worker-to-UI authentication via shared API key
+- Worker-to-UI authentication via per-worker fleet keys (`CASHPILOT_API_KEY` is only the enrollment/bootstrap credential)
 - Managed containers run with `--security-opt no-new-privileges`
 - Container naming convention: `cashpilot-{slug}` with labels `cashpilot.managed=true`
 - UI container has **no** Docker socket access

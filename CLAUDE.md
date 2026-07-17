@@ -7,7 +7,7 @@ Self-hosted passive income platform with a web UI that guides setup, deploys Doc
 
 | Technology | Purpose |
 |---|---|
-| FastAPI | Backend framework (Python 3.12, async) |
+| FastAPI | Backend framework (Python 3.14, async) |
 | Jinja2 | Server-rendered HTML templates |
 | SQLite | Database (aiosqlite, zero-config, stored in `/data`) |
 | Docker SDK for Python | Container lifecycle management via socket |
@@ -16,7 +16,7 @@ Self-hosted passive income platform with a web UI that guides setup, deploys Doc
 | httpx | Async HTTP client for earnings collectors |
 | cryptography (Fernet) | At-rest encryption for stored credentials |
 | Chart.js | Frontend earnings charts |
-| tini | PID 1 init (Dockerfile) |
+| su-exec | Drops root to the `cashpilot` user after entrypoint setup (Dockerfile) |
 | pytest | Testing |
 | MkDocs | Documentation |
 
@@ -56,12 +56,15 @@ Two containers: `cashpilot-ui` (port 8080, web dashboard + earnings collection) 
 ```
 cashpilot/
   app/                  # FastAPI application
-    main.py             # App entrypoint, lifespan, UI routes (no Docker dependency)
+    main.py             # App entrypoint, lifespan, container/fleet/earnings routes
+    deps.py             # Shared auth guards + Jinja2 template environment
+    routers/            # Route groups split out of main.py: auth, pages, users
     catalog.py          # Loads YAML service definitions, caches, SIGHUP reload
     orchestrator.py     # Docker SDK: deploy, stop, restart, remove, logs
-    database.py         # Async SQLite: earnings, config, deployments, workers tables
+    database.py         # Async SQLite: earnings, config, deployments, users, workers tables
     worker_api.py       # Worker REST API: heartbeat, container commands, mini-UI
-    ui_api.py           # UI API: worker registration, fleet view, earnings
+    setup_token.py      # First-run setup-token gate (owner-account creation)
+    metrics.py          # Optional Prometheus metrics (/metrics)
     exchange_rates.py   # Crypto/fiat conversion (CoinGecko + Frankfurter)
     collectors/         # Earnings collectors (one module per service, UI only)
       base.py           # BaseCollector ABC + EarningsResult dataclass
@@ -79,7 +82,7 @@ cashpilot/
     compute/            # 4 services (vast-ai, salad, nosana, golem)
   docs/guides/          # Per-service setup guides (manually maintained)
   unraid/               # Unraid-specific deployment templates
-  Dockerfile            # UI image: multi-stage python:3.12-slim, tini, non-root
+  Dockerfile            # UI image: multi-stage python:3.14-alpine, su-exec, non-root
   Dockerfile.worker     # Worker image: minimal deps, no collectors/templates
   docker-compose.yml    # Example deployment (UI + worker on same server)
   docker-compose.fleet.yml  # Multi-server example (UI + remote workers)
@@ -129,7 +132,7 @@ Two separate Docker images:
 │  Server A        │     │  Server B        │     │  Server C        │
 │  CashPilot UI    │◄────│  CashPilot Worker│     │  CashPilot Worker│
 │  CashPilot Worker│◄────│  Reports health  │     │  Reports health  │
-│  Port 8085 (UI)  │     │  Port 8081       │     │  Port 8081       │
+│  Port 8080 (UI)  │     │  Port 8081       │     │  Port 8081       │
 │  Port 8081 (wkr) │     │                  │     │                  │
 └──────────────────┘     └──────────────────┘     └──────────────────┘
 ```
@@ -204,7 +207,7 @@ Triggers on version tags (`v*`). Lints with ruff, builds multi-arch (amd64 + arm
 
 ## Collector Implementation Status
 
-Working collectors (12/12 deployed services):
+Working collectors (15 total, in `app/collectors/__init__.py` `COLLECTOR_MAP`):
 - **Honeygain** — JWT auth, `/v1/users/tokens` + `/v1/users/balances`
 - **EarnApp** — XSRF rotation + cookie auth, `/money`. Auto-redeem: Amazon ($50), Wise ($10), PayPal ($10)
 - **MystNodes** — Cloud API (`my.mystnodes.com/api/v2`), email/password auth. Per-node earnings via `GET /api/v2/node`
@@ -218,6 +221,8 @@ Working collectors (12/12 deployed services):
 - **Storj** — API URL-based
 - **Grass** — Bearer token from localStorage, `api.getgrass.io`. GRASS token converted via CoinGecko
 - **Bytelixir** — Laravel session cookie (~3.5h), `dash.bytelixir.com`. hCaptcha blocks automated login
+- **Anyone Protocol** — AO smart-contract dry-run (relay-rewards process) per relay fingerprint, ANYONE price via CoinGecko
+- **Salad** — `auth` cookie (ASP.NET Core double-submit XSRF), `app-api.salad.com/api/v1/profile/balance`
 
 ### Per-Node/Per-Device Earnings
 

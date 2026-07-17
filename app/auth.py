@@ -164,11 +164,28 @@ def get_current_user(request: Request) -> dict[str, Any] | None:
 
 _SECURE_COOKIE = os.getenv("CASHPILOT_SECURE_COOKIE", "auto").lower()
 
+# Recognized explicit values for CASHPILOT_SECURE_COOKIE. Anything else --
+# including the "auto" default and unrecognized values/typos -- falls back to
+# the https-base-url auto-detect below rather than silently forcing Secure off.
+_SECURE_COOKIE_TRUE = {"true", "1", "yes", "on"}
+_SECURE_COOKIE_FALSE = {"false", "0", "no", "off"}
+
 
 def set_session_cookie(response: RedirectResponse, token: str) -> RedirectResponse:
-    use_secure = _SECURE_COOKIE == "true" or (
-        _SECURE_COOKIE == "auto" and os.getenv("CASHPILOT_BASE_URL", "").startswith("https")
-    )
+    # Secure-flag precedence (highest wins):
+    #   1. CASHPILOT_SECURE_COOKIE explicitly truthy -> Secure on
+    #   2. CASHPILOT_SECURE_COOKIE explicitly falsy   -> Secure off (e.g. TLS is
+    #      terminated by a reverse proxy this process can't see)
+    #   3. Otherwise ("auto" / unset / unrecognized)  -> auto-detect from whether
+    #      CASHPILOT_BASE_URL starts with "https". Never hardcoded on by default,
+    #      so plain-HTTP local dev isn't broken by a Secure cookie the browser
+    #      would silently refuse to send back.
+    if _SECURE_COOKIE in _SECURE_COOKIE_TRUE:
+        use_secure = True
+    elif _SECURE_COOKIE in _SECURE_COOKIE_FALSE:
+        use_secure = False
+    else:
+        use_secure = os.getenv("CASHPILOT_BASE_URL", "").startswith("https")
     response.set_cookie(
         SESSION_COOKIE,
         token,

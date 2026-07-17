@@ -33,12 +33,26 @@ STALE_THRESHOLD = 2 * CACHE_TTL  # 30 minutes
 # In-memory caches
 _fiat_rates: dict[str, float] = {"USD": 1.0}
 _crypto_usd: dict[str, float] = {}
+# Crypto (CoinGecko) and fiat (Frankfurter) are independent sources with their own
+# staleness clocks, each advanced ONLY on that source's own HTTP 200 -- a failure
+# on one source must never mark the other source's rates stale, and must never be
+# papered over as "fresh" for the source that actually failed.
+_crypto_last_fetch: float = 0
+_fiat_last_fetch: float = 0
+# Aggregate clock kept for backward-compat callers (rates_stale()/get_all()). It
+# reflects the WORSE of the two sources (the older of the two timestamps), so a
+# partial failure is never reported as fully fresh.
 _last_fetch: float = 0
 
 
 async def refresh() -> None:
-    """Fetch latest exchange rates from external APIs."""
-    global _fiat_rates, _crypto_usd, _last_fetch
+    """Fetch latest exchange rates from external APIs.
+
+    Only a genuine HTTP 200 from a source advances THAT source's own last-fetch
+    time -- a non-200 (or an unreachable API) leaves it untouched so staleness is
+    tracked per-source and a partial failure can't mislabel the other source.
+    """
+    global _fiat_rates, _crypto_usd, _last_fetch, _crypto_last_fetch, _fiat_last_fetch
 
     try:
         async with httpx.AsyncClient(timeout=15, follow_redirects=True) as client:
@@ -55,12 +69,17 @@ async def refresh() -> None:
                         price = (data.get(cg_id) or {}).get("usd")
                         if price is not None:
                             _crypto_usd[token] = float(price)
+                    _crypto_last_fetch = time.time()
                 else:
                     logger.warning(
                         "exchange rate fetch got HTTP %s from %s",
                         resp.status_code,
                         "CoinGecko",
                     )
+            else:
+                # Nothing to fetch -- don't let an empty crypto map hold the
+                # aggregate staleness clock back forever.
+                _crypto_last_fetch = time.time()
 
             # --- Fiat rates from Frankfurter (free, no key) ---
             resp = await client.get(
@@ -73,6 +92,7 @@ async def refresh() -> None:
                 for code, rate in data.get("rates", {}).items():
                     new_rates[code] = float(rate)
                 _fiat_rates = new_rates
+                _fiat_last_fetch = time.time()
             else:
                 logger.warning(
                     "exchange rate fetch got HTTP %s from %s",
@@ -80,7 +100,7 @@ async def refresh() -> None:
                     "Frankfurter",
                 )
 
-        _last_fetch = time.time()
+        _last_fetch = min(_crypto_last_fetch, _fiat_last_fetch)
         logger.info(
             "Exchange rates updated: %d fiat currencies, %d crypto tokens",
             len(_fiat_rates),
@@ -95,11 +115,23 @@ def rates_stale() -> bool:
 
     Rates are stale once more than ``STALE_THRESHOLD`` seconds have elapsed
     since the last successful fetch (``_last_fetch`` is only updated on
-    success).  A never-fetched cache (``_last_fetch == 0``) is also stale.
-    Callers can use this to avoid silently summing balances against rates
-    that may be badly out of date.
+    success, and reflects the WORSE of the crypto/fiat sources -- see
+    ``crypto_rates_stale()``/``fiat_rates_stale()`` for the per-source signal).
+    A never-fetched cache (``_last_fetch == 0``) is also stale. Callers can use
+    this to avoid silently summing balances against rates that may be badly
+    out of date.
     """
     return time.time() - _last_fetch > STALE_THRESHOLD
+
+
+def crypto_rates_stale() -> bool:
+    """Return True if crypto rates are stale (CoinGecko refreshes are failing)."""
+    return time.time() - _crypto_last_fetch > STALE_THRESHOLD
+
+
+def fiat_rates_stale() -> bool:
+    """Return True if fiat rates are stale (Frankfurter refreshes are failing)."""
+    return time.time() - _fiat_last_fetch > STALE_THRESHOLD
 
 
 def get_all() -> dict[str, Any]:
@@ -109,6 +141,8 @@ def get_all() -> dict[str, Any]:
         "crypto_usd": dict(_crypto_usd),
         "last_updated": _last_fetch,
         "stale": rates_stale(),
+        "crypto_stale": crypto_rates_stale(),
+        "fiat_stale": fiat_rates_stale(),
     }
 
 

@@ -16,7 +16,6 @@ import os
 import re
 import secrets
 import socket
-from collections import defaultdict
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
 from time import monotonic
@@ -70,22 +69,28 @@ def _spawn(coro) -> asyncio.Task:
     return task
 
 
-# Login rate limiting
-_login_attempts: dict[str, list[float]] = defaultdict(list)
+# Login rate limiting. Plain dict (not defaultdict) so a stale/empty bucket
+# never lingers forever — every distinct client IP that ever hits /login
+# would otherwise leave a permanent key behind, even after its attempts have
+# all aged out, growing unbounded over the process lifetime.
+_login_attempts: dict[str, list[float]] = {}
 _LOGIN_MAX_ATTEMPTS = 5
 _LOGIN_WINDOW_SECONDS = 300
 
 
 def _check_login_rate(ip: str) -> None:
     now = monotonic()
-    attempts = _login_attempts[ip]
-    _login_attempts[ip] = [t for t in attempts if now - t < _LOGIN_WINDOW_SECONDS]
-    if len(_login_attempts[ip]) >= _LOGIN_MAX_ATTEMPTS:
+    attempts = [t for t in _login_attempts.get(ip, []) if now - t < _LOGIN_WINDOW_SECONDS]
+    if attempts:
+        _login_attempts[ip] = attempts
+    else:
+        _login_attempts.pop(ip, None)
+    if len(attempts) >= _LOGIN_MAX_ATTEMPTS:
         raise HTTPException(status_code=429, detail="Too many login attempts. Try again in a few minutes.")
 
 
 def _record_failed_login(ip: str) -> None:
-    _login_attempts[ip].append(monotonic())
+    _login_attempts.setdefault(ip, []).append(monotonic())
 
 
 def _safe_json(raw: str, fallback: Any = None) -> Any:
@@ -185,6 +190,16 @@ async def _run_health_check() -> None:
     Deduplicates by slug: if *any* instance of a service is running,
     record a single check_ok for that slug (avoids penalising services
     deployed on multiple nodes where one may be stopped).
+
+    A service that vanishes from the heartbeat entirely (container removed
+    outside CashPilot, crash-removed, worker's Docker daemon down) previously
+    got no health event at all — it just stopped appearing, so its score
+    stayed frozen wherever it last was (often green) forever. Any known
+    Docker-backed deployment missing from every online worker's current data
+    now gets an explicit check_down. Scoped to "at least one worker online"
+    so a fully-offline fleet (no heartbeat data to trust either way) never
+    triggers false check_downs; "external" deployments (e.g. Grass, Bytelixir)
+    have no container and are excluded since no worker ever reports them.
     """
     try:
         statuses = await _get_all_worker_containers()
@@ -200,6 +215,15 @@ async def _run_health_check() -> None:
                 await database.record_health_event(slug, "check_ok")
             else:
                 await database.record_health_event(slug, "check_down", status)
+
+        workers = await database.list_workers()
+        if any(w.get("status") == "online" for w in workers):
+            deployments = await database.get_deployments()
+            for d in deployments:
+                slug = d["slug"]
+                if d.get("status") == "external" or slug in slug_best:
+                    continue
+                await database.record_health_event(slug, "check_down", "missing from heartbeat")
     except Exception as exc:
         logger.warning("Health check skipped: %s", exc)
 
@@ -284,13 +308,27 @@ async def _run_vacuum() -> None:
 
 
 async def _check_stale_workers() -> None:
-    """Mark workers as offline if stale, and purge workers offline > 1 hour."""
+    """Mark workers as offline if stale, and purge never-enrolled workers offline > 1 hour.
+
+    A worker that HAS enrolled a per-worker key (``api_key_enc`` set) is never
+    auto-deleted here, even after a long outage: the host persists that same
+    key locally and re-presents it on its next heartbeat. Deleting the row
+    would leave no match for that key, and since a confirmed worker's shared
+    bootstrap key is refused too, it would be rejected forever with no way to
+    re-enroll — a permanent fleet lockout after a reboot/maintenance window.
+    Only a worker that never completed enrollment is purged automatically;
+    removing an enrolled worker is a deliberate action via the UI.
+    """
     try:
         workers = await database.list_workers()
-        now = datetime.now(UTC)
-        cutoff = now - timedelta(seconds=STALE_WORKER_SECONDS)
-        purge_cutoff = now - timedelta(hours=1)
-        for w in workers:
+    except Exception as exc:
+        logger.warning("Stale worker check error: %s", exc)
+        return
+    now = datetime.now(UTC)
+    cutoff = now - timedelta(seconds=STALE_WORKER_SECONDS)
+    purge_cutoff = now - timedelta(hours=1)
+    for w in workers:
+        try:
             last_hb = w.get("last_heartbeat")
             if not last_hb:
                 continue
@@ -298,11 +336,11 @@ async def _check_stale_workers() -> None:
             if w["status"] == "online" and last < cutoff:
                 await database.set_worker_status(w["id"], "offline")
                 logger.info("Worker '%s' marked offline (last heartbeat: %s)", w["name"], last_hb)
-            elif w["status"] == "offline" and last < purge_cutoff:
+            elif w["status"] == "offline" and last < purge_cutoff and not w.get("api_key_enc"):
                 await database.delete_worker(w["id"])
-                logger.info("Purged stale worker '%s' (offline since %s)", w["name"], last_hb)
-    except Exception as exc:
-        logger.warning("Stale worker check error: %s", exc)
+                logger.info("Purged stale unenrolled worker '%s' (offline since %s)", w["name"], last_hb)
+        except Exception as exc:
+            logger.warning("Stale worker check error for worker '%s': %s", w.get("name", w.get("id")), exc)
 
 
 FLEET_API_KEY = fleet_key.resolve_fleet_key()

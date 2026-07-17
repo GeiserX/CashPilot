@@ -7,8 +7,10 @@
 #
 # Images track the `latest` tag (pull_policy: always), so a plain `up -d`
 # always launches the newest published release — no rebuild needed. To pin a
-# specific version instead, replace `:latest` with e.g. `:0.6.13` (see
+# specific version instead, replace `:latest` with e.g. `:1.0.1` (see
 # https://hub.docker.com/r/drumsergio/cashpilot/tags) and drop pull_policy.
+# NOTE: versions before 1.0.0 predate the per-worker fleet-key auth cutover and
+# are not compatible with a worker running 1.x -- pin UI and worker together.
 # Building from source? Use: docker compose -f docker-compose.build.yml up -d
 
 services:
