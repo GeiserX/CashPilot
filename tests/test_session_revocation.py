@@ -77,13 +77,14 @@ class TestSessionRevocationStore:
         asyncio.run(run())
 
     def test_survives_user_deletion(self, db):
-        """No FK to users: deleting the user row must not drop the revocation."""
+        """No FK to users: deleting a real user row must not drop the revocation."""
 
         async def run():
-            await database.revoke_user_sessions(42, 1234.0)
-            await database.delete_user(42)  # DELETE FROM users — must not cascade
+            uid = await database.create_user("todelete", auth.hash_password("pw-0000000"), "viewer")
+            await database.revoke_user_sessions(uid, 1234.0)
+            await database.delete_user(uid)  # deletes a REAL row — must not cascade
             uids = {r["user_id"] for r in await database.list_session_revocations()}
-            assert 42 in uids
+            assert uid in uids
 
         asyncio.run(run())
 
