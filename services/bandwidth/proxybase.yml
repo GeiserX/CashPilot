@@ -14,7 +14,7 @@ referral:
   signup_url: "https://peer.proxybase.org?referral=nXzS3c6iTO"
 
 docker:
-  image: ghcr.io/proxybaseorg/peer-cli@sha256:b78dda3969019eb9e0d3ba0aeba0929148337898b00d99cf780f4d8c99b31b0e
+  image: "ghcr.io/proxybaseorg/peer-cli@sha256:b78dda3969019eb9e0d3ba0aeba0929148337898b00d99cf780f4d8c99b31b0e"
   platforms: [linux/amd64, linux/arm64, linux/arm/v7]
   resources:
     mem_limit: "128m"
@@ -29,7 +29,7 @@ docker:
       label: "Device Name"
       required: true
       secret: false
-      description: "Any name to identify this device in your ProxyBase dashboard (required — the client won't start without it)"
+      description: "Any name to identify this device in your ProxyBase dashboard"
       default: "cashpilot-{hostname}"
   ports: []
   volumes: []

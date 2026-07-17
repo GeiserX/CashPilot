@@ -5,7 +5,7 @@
 
 ## Description
 
-ProxyBase is a bandwidth-sharing platform that pays users in cryptocurrency for sharing their unused internet connection. You authenticate the peer client with an **Access Token** from your dashboard. Residential IPs earn the most, but datacenter IPs are also supported (at lower traffic). Official multi-arch Docker image (amd64/arm64/armv7).
+ProxyBase is a bandwidth-sharing platform that pays users in cryptocurrency for sharing their unused internet connection. You authenticate the peer client with an **Access Token** from your dashboard. Residential IPs earn the most, but datacenter IPs are also supported — they currently receive less traffic than residential. Official multi-arch Docker image (amd64/arm64/armv7).
 
 ## Earning Estimates
 
@@ -23,7 +23,8 @@ ProxyBase is a bandwidth-sharing platform that pays users in cryptocurrency for 
 
 | Requirement | Value |
 |-------------|-------|
-| Residential IP | Not required -- residential earns the most; datacenter IPs are supported at lower traffic |
+| Residential IP | No |
+| VPS/Datacenter IP | Yes -- supported, but currently receives less traffic than residential |
 | Minimum bandwidth | None |
 | GPU required | No |
 | Minimum storage | None |
@@ -55,4 +56,16 @@ In the CashPilot web UI, find **ProxyBase** in the service catalog and click **D
 | Variable | Label | Required | Secret | Description |
 |----------|-------|:--------:|:------:|-------------|
 | `ID` | Access Token | Yes | Yes | Your ProxyBase Access Token from the dashboard |
-| `NAME` | Device Name | Yes | No | Any name to identify this device in your ProxyBase dashboard -- the client won't start without it (default: `cashpilot-{hostname}`) |
+| `NAME` | Device Name | Yes | No | Any name to identify this device in your ProxyBase dashboard (default: `cashpilot-{hostname}`) |
+
+## Troubleshooting
+
+### ProxyBase shows "running" but earnings stopped (or dropped to $0)
+
+If ProxyBase was deployed before the migration to the new client, the container is still running ProxyBase's **retired** image — it looks healthy in the dashboard but no longer earns, because the old backend was shut down. The dashboard cannot tell the retired client from the current one.
+
+Fix: **Remove** the ProxyBase service, then **Deploy** it again from the catalog and paste a fresh **Access Token** from [your dashboard](https://peer.proxybase.org/dashboard). The redeploy pulls the current `ghcr.io/proxybaseorg/peer-cli` image.
+
+### Container exits immediately after deploy
+
+The client exits with `Missing ID and NAME` when it starts without credentials. CashPilot's deploy form requires both fields, so this normally can't happen — but if you deployed with an exported compose file, make sure the `ID` and `NAME` environment variables are filled in.

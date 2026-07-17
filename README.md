@@ -69,7 +69,7 @@ Services CashPilot can deploy and manage automatically via Docker.
 | [MystNodes](https://mystnodes.co/?referral_code=do7v7YOoBBpbOstKQovX2pUvZYKia4ZhH3QIdNtE) | [Guide](docs/guides/mysterium.md) | ✅ | ✅ | Unlimited | Unlimited | Crypto (MYST) |
 | [PacketStream](https://packetstream.io/?psr=7xgZ) | [Guide](docs/guides/packetstream.md) | ✅ | ❌ | Unlimited | 1 | PayPal |
 | [Presearch](https://presearch.com/signup?rid=4872322) | [Guide](docs/guides/presearch.md) | ✅ | ✅ | Unlimited | 1 | Crypto (PRE) |
-| [ProxyBase](https://peer.proxybase.org?referral=nXzS3c6iTO) | [Guide](docs/guides/proxybase.md) | ✅ | ❌ | Unlimited | 1 | Crypto |
+| [ProxyBase](https://peer.proxybase.org?referral=nXzS3c6iTO) | [Guide](docs/guides/proxybase.md) | ✅ | ✅ | Unlimited | 1 | Crypto |
 | [ProxyLite](https://proxylite.ru/?r=KMUPRZIZ) | [Guide](docs/guides/proxylite.md) | ✅ | ✅ | Unlimited | 1 | Crypto, PayPal |
 | [ProxyRack](https://peer.proxyrack.com/ref/mpwiok3xlaxeycnn5znqlg7ipjeutxyxr6xl7vmn) | [Guide](docs/guides/proxyrack.md) | ✅ | ✅ | 500 | 1 | PayPal, Crypto |
 | [Repocket](https://repocket.com/) | [Guide](docs/guides/repocket.md) | ✅ | ❌ | 5 | 2 | PayPal, Crypto |

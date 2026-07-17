@@ -129,7 +129,9 @@ def test_proxybase_container_contract():
     assert image.startswith("ghcr.io/proxybaseorg/peer-cli@sha256:"), (
         f"ProxyBase must use the digest-pinned GHCR peer-cli image, got {image}"
     )
-    assert "proxybase/proxybase" not in image, "ProxyBase must not use the retired Docker Hub image"
+    assert "linux/arm64" in data["docker"]["platforms"], (
+        "ProxyBase must keep arm64 (the peer-cli image is multi-arch; Raspberry Pi support)"
+    )
 
     env_keys = {e["key"] for e in data["docker"]["env"]}
     assert env_keys == {"ID", "NAME"}, (
@@ -137,7 +139,17 @@ def test_proxybase_container_contract():
     )
     by_key = {e["key"]: e for e in data["docker"]["env"]}
     assert by_key["ID"]["required"] is True, "ID (Access Token) must be required"
+    assert by_key["ID"]["secret"] is True, "ID (Access Token) must be marked secret (masked in the UI)"
     assert by_key["NAME"]["required"] is True, "NAME (Device Name) must be required"
+
+    # Referral revenue guard: the signup URL must keep the referral code.
+    assert data["referral"]["signup_url"] == "https://peer.proxybase.org?referral=nXzS3c6iTO", (
+        f"ProxyBase signup_url must keep the referral code, got {data['referral']['signup_url']}"
+    )
+
+    # Datacenter/VPS IPs are accepted (per the ProxyBase team); drives the UI badge.
+    assert data["requirements"]["residential_ip"] is False, "ProxyBase no longer requires a residential IP"
+    assert data["requirements"]["vps_ip"] is True, "ProxyBase must mark VPS/datacenter IPs as supported"
 
     # Domain migrated proxybase.io -> proxybase.org across every user-facing URL.
     assert "proxybase.io" not in data["website"], "website must use proxybase.org"
