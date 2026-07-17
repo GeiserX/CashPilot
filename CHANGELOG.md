@@ -4,6 +4,9 @@ All notable changes to CashPilot are documented here.
 
 ## [Unreleased]
 
+### Fixed
+- **ProxyBase migrated to the current client** (#103). ProxyBase retired its Docker Hub image and old GHCR org and moved to `proxybase.org`, so the catalog entry no longer worked. The image is now `ghcr.io/proxybaseorg/peer-cli` (digest-pinned, multi-arch amd64/arm64/armv7 — arm64/Raspberry Pi now supported), credentials are the client's current `ID` (relabelled **Access Token**, masked) and `NAME` env vars, every URL points at `proxybase.org`, and datacenter IPs are now marked as accepted (residential still earns most). Existing ProxyBase deployments must be re-deployed with a fresh Access Token — see the [updated guide](docs/guides/proxybase.md)
+
 ### Security
 - Write-only secrets: `GET /api/config` and `/api/env-info` no longer return stored credential values — only a set/not-set indicator. `CASHPILOT_SECRET_KEY` is never sent to the browser
 - Fleet key no longer sent on page load — revealed only via explicit owner-only action (`POST /api/fleet/api-key/reveal`)

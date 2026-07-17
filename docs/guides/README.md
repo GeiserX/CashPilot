@@ -19,7 +19,7 @@ Individual setup and configuration guides for every supported service.
 - [PacketShare](packetshare.md) -- Bandwidth sharing - official Docker image, email/password auth
 - [PacketStream](packetstream.md) -- Bandwidth sharing - simple CID-based setup
 - [Peer2Profit](peer2profit.md) -- Bandwidth sharing - works on residential and datacenter IPs
-- [ProxyBase](proxybase.md) -- Bandwidth sharing - crypto payout, user ID auth
+- [ProxyBase](proxybase.md) -- Bandwidth sharing - crypto payout, Access Token auth
 - [ProxyLite](proxylite.md) -- Bandwidth sharing - 15% lifetime referral, works on VPS
 - [ProxyRack](proxyrack.md) -- Bandwidth sharing - UUID per device, works on VPS
 - [Repocket](repocket.md) -- Bandwidth sharing - residential only, max 5 devices, API key auth

@@ -67,9 +67,14 @@ const CP = (() => {
   }
 
   function escapeHtml(str) {
-    const d = document.createElement('div');
-    d.textContent = str;
-    return d.innerHTML;
+    // Escape quotes too (the textContent/innerHTML trick doesn't), so values
+    // interpolated into attributes like placeholder="..." can't break out.
+    return String(str ?? '')
+      .replaceAll('&', '&amp;')
+      .replaceAll('<', '&lt;')
+      .replaceAll('>', '&gt;')
+      .replaceAll('"', '&quot;')
+      .replaceAll("'", '&#39;');
   }
 
   function sanitizeHint(html) {
