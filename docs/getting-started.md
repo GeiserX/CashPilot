@@ -25,7 +25,23 @@ This starts two containers:
 
 ### 2. Open the dashboard
 
-Navigate to [http://localhost:8080](http://localhost:8080) in your browser. The onboarding wizard will guide you through initial setup.
+Navigate to [http://localhost:8080](http://localhost:8080) in your browser. Since no account exists yet, you'll be redirected to onboarding and then to the registration form.
+
+!!! warning "First-run setup token required"
+    On first start, CashPilot generates a one-time setup token and prints it to the **cashpilot-ui** container logs:
+
+    ```bash
+    docker compose logs cashpilot-ui
+    ```
+
+    Look for a line like:
+
+    ```
+    FIRST-RUN SETUP: no account exists yet. Open /register and enter this
+    one-time setup token to create the owner account: <token>
+    ```
+
+    Copy that token into the **Setup Token** field on the registration form to create the first (owner) account. It's only ever shown in the logs — never in a URL — and is discarded permanently once the owner account exists.
 
 ### 3. Browse the service catalog
 
@@ -68,8 +84,9 @@ graph LR
 | `TZ` | `UTC` | Timezone for scheduling and display |
 | `CASHPILOT_SECRET_KEY` | *(auto-generated)* | Encryption key for stored credentials. Set this to persist encryption across container recreations |
 | `CASHPILOT_API_KEY` | -- | Shared secret between UI and workers for API authentication |
-| `CASHPILOT_COLLECTION_INTERVAL` | `3600` | Seconds between earnings collection cycles |
-| `CASHPILOT_PORT` | `8080` | Web UI port inside the container |
+| `CASHPILOT_COLLECT_INTERVAL` | `60` | Minutes between earnings collection cycles |
+
+The UI's web port is fixed at `8080` (set via the container's `CMD`, not an environment variable).
 
 ### Worker Environment Variables
 
@@ -79,6 +96,8 @@ graph LR
 | `CASHPILOT_UI_URL` | -- | URL of the UI container, e.g. `http://cashpilot-ui:8080` |
 | `CASHPILOT_API_KEY` | -- | Must match the UI's API key |
 | `CASHPILOT_WORKER_NAME` | *(hostname)* | Display name for this worker in the fleet dashboard |
+| `CASHPILOT_WORKER_URL` | *(auto-detected)* | URL the UI uses to reach this worker, e.g. `http://192.168.10.50:8081`. Set explicitly for cross-host fleets — auto-detection can report an unreachable container-internal IP |
+| `CASHPILOT_PORT` | `8081` | Mini-UI/API port the worker listens on |
 
 ### Docker Compose Example
 

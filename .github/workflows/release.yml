@@ -58,7 +58,7 @@ jobs:
           BUILD_UI=false
           BUILD_WORKER=false
 
-          if echo "$CHANGED" | grep -qE '^(Dockerfile|pyproject\.toml|uv\.lock|app/(main|database|catalog|auth|compose_generator|exchange_rates|constants|collectors|templates|static))'; then
+          if echo "$CHANGED" | grep -qE '^(Dockerfile|pyproject\.toml|uv\.lock|app/(main|database|catalog|auth|compose_generator|exchange_rates|constants|collectors|templates|static|routers|deps|metrics|setup_token))'; then
             BUILD_UI=true
           fi
           if echo "$CHANGED" | grep -qE '^services/'; then

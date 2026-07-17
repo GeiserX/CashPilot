@@ -48,7 +48,7 @@ This starts two containers:
 - **cashpilot-ui** -- Web dashboard, earnings collection, service catalog (port 8080)
 - **cashpilot-worker** -- Docker agent that deploys and monitors service containers (port 8081, requires Docker socket)
 
-Then open [http://localhost:8080](http://localhost:8080) and follow the setup wizard.
+Then open [http://localhost:8080](http://localhost:8080) and follow the setup wizard. On first start, CashPilot prints a one-time **setup token** to the `cashpilot-ui` container logs (`docker compose logs cashpilot-ui`) — enter it on the registration form to create the first (owner) account. See [Getting Started](https://geiserx.github.io/CashPilot/getting-started/) for details.
 
 > **Note:** The worker container requires access to the Docker socket (`/var/run/docker.sock`) to deploy and manage service containers. Both containers are required for full functionality.
 
@@ -158,9 +158,10 @@ cashpilot/
 | `TZ` | `UTC` | Timezone for scheduling and display |
 | `CASHPILOT_SECRET_KEY` | *(auto-generated)* | Encryption key for stored credentials |
 | `CASHPILOT_API_KEY` | -- | Enrollment/bootstrap key; each worker then gets its own key (per-worker fleet keys, v1.0.0+) |
-| `CASHPILOT_COLLECTION_INTERVAL` | `3600` | Seconds between earnings collection cycles |
-| `CASHPILOT_PORT` | `8080` | Web UI port inside the container |
+| `CASHPILOT_COLLECT_INTERVAL` | `60` | Minutes between earnings collection cycles |
 | `CASHPILOT_METRICS_ENABLED` | `false` | Set to `true` to expose Prometheus metrics at `/metrics` |
+
+The UI's web port is fixed at `8080` (set via the container's `CMD`, not an environment variable).
 
 ### Worker Environment Variables
 
@@ -170,6 +171,8 @@ cashpilot/
 | `CASHPILOT_UI_URL` | -- | URL of the UI container, e.g. `http://cashpilot-ui:8080` |
 | `CASHPILOT_API_KEY` | -- | Must match the UI's API key |
 | `CASHPILOT_WORKER_NAME` | *(hostname)* | Display name for this worker in the fleet dashboard |
+| `CASHPILOT_WORKER_URL` | *(auto-detected)* | URL the UI uses to reach this worker, e.g. `http://192.168.10.50:8081`. Set explicitly for remote/cross-host workers |
+| `CASHPILOT_PORT` | `8081` | Mini-UI/API port the worker listens on |
 
 ## Multi-Node Fleet Management
 
@@ -211,6 +214,7 @@ services:
       - CASHPILOT_UI_URL=http://main-server:8080
       - CASHPILOT_API_KEY=your-shared-api-key
       - CASHPILOT_WORKER_NAME=server-b
+      - CASHPILOT_WORKER_URL=http://server-b:8081
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
@@ -219,7 +223,7 @@ volumes:
   cashpilot_worker_data:
 ```
 
-Workers connect outbound to the UI via HTTP -- no port forwarding needed on the worker side. The UI's fleet dashboard shows all connected workers, their containers, and live status. The UI can push commands (deploy, stop, restart) to any worker remotely.
+Communication goes both ways: workers connect outbound to the UI via HTTP for heartbeats, and the UI connects outbound to each worker's `:8081` API to push commands (deploy, stop, restart). This means **the worker must be reachable from the UI** (LAN, Tailscale, or port forwarding) -- set `CASHPILOT_WORKER_URL` to the address the UI should use, since auto-detection falls back to the container's own network interface, which is often unreachable from another host. The UI's fleet dashboard shows all connected workers, their containers, and live status.
 
 ## FAQ
 
@@ -303,7 +307,7 @@ Services that were evaluated but are no longer listed in the catalog due to bein
 | Historical charts | **Yes** | No | No | No | No |
 | Multi-node fleet management | **Yes** | No | No | No | No |
 | Service catalog with guides | **49 services** | 17 | 8 | 14 | 8 |
-| Automated earnings collection | **13 collectors** | 0 | 0 | 0 | 0 |
+| Automated earnings collection | **15 collectors** | 0 | 0 | 0 | 0 |
 | Multi-arch (amd64 + arm64) | **Yes** | Yes | Yes | No | No |
 | Credential encryption | **Yes** | No | No | No | No |
 | Compose export | **Yes** | Yes | Yes | Yes | Yes |
