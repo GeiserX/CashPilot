@@ -2,33 +2,34 @@ name: ProxyBase
 slug: proxybase
 category: bandwidth
 status: active
-website: https://proxybase.io
+website: https://proxybase.org
 description: >
   ProxyBase is a bandwidth-sharing platform that pays users in cryptocurrency for
-  sharing their unused internet connection. Uses a simple user ID-based authentication
-  system. Works on residential connections. Official Docker image available.
-short_description: Bandwidth sharing - crypto payout, user ID auth
+  sharing their unused internet connection. You authenticate the peer client with an
+  Access Token from your dashboard. Residential IPs earn the most, but datacenter IPs
+  are also supported. Official multi-arch Docker image (amd64/arm64/armv7).
+short_description: Bandwidth sharing - crypto payout, Access Token auth
 
 referral:
   signup_url: "https://peer.proxybase.org?referral=nXzS3c6iTO"
 
 docker:
-  image: proxybase/proxybase
-  platforms: [linux/amd64]
+  image: ghcr.io/proxybaseorg/peer-cli@sha256:b78dda3969019eb9e0d3ba0aeba0929148337898b00d99cf780f4d8c99b31b0e
+  platforms: [linux/amd64, linux/arm64, linux/arm/v7]
   resources:
     mem_limit: "128m"
     oom_score_adj: 300
   env:
-    - key: USER_ID
-      label: "User ID"
+    - key: ID
+      label: "Access Token"
       required: true
-      secret: false
-      description: "Log in at <a href=\"https://dashboard.proxybase.io\">dashboard.proxybase.io</a> → your User ID is shown in the Docker command on the setup page"
-    - key: DEVICE_NAME
+      secret: true
+      description: "Log in at <a href=\"https://peer.proxybase.org/dashboard\">peer.proxybase.org/dashboard</a> → copy your Access Token (shown in the Docker command on the setup page)"
+    - key: NAME
       label: "Device Name"
       required: true
       secret: false
-      description: "Name shown in your ProxyBase dashboard (container crashes without it)"
+      description: "Any name to identify this device in your ProxyBase dashboard (required — the client won't start without it)"
       default: "cashpilot-{hostname}"
   ports: []
   volumes: []
@@ -36,7 +37,8 @@ docker:
   network_mode: ""
 
 requirements:
-  residential_ip: true
+  residential_ip: false
+  vps_ip: true
   min_bandwidth: ""
   gpu: false
   min_storage: ""

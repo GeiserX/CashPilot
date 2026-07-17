@@ -109,3 +109,37 @@ def test_repocket_container_env_keys():
     assert by_key["RP_API_KEY"]["secret"] is True, "RP_API_KEY must be marked secret"
     assert by_key["RP_API_KEY"]["required"] is True, "RP_API_KEY must be required"
     assert by_key["RP_EMAIL"]["required"] is True, "RP_EMAIL must be required"
+
+
+def test_proxybase_container_contract():
+    """Regression for #103: ProxyBase migrated off Docker Hub to the GHCR peer-cli.
+
+    The current client (ghcr.io/proxybaseorg/peer-cli) reads env vars ID + NAME
+    (verified against the image's own --help: 'ProxyBase-Peer [<ID> [<NAME>]]',
+    'set env var ID' / 'set env var NAME'). It does NOT read the old
+    USER_ID/DEVICE_NAME, so a container built on those silently fails with
+    'Missing ID and NAME'. Pin by digest — never fall back to the retired
+    proxybase/proxybase image or a floating tag.
+    """
+    proxybase = SERVICES_DIR / "bandwidth" / "proxybase.yml"
+    with open(proxybase) as f:
+        data = yaml.safe_load(f)
+
+    image = data["docker"]["image"]
+    assert image.startswith("ghcr.io/proxybaseorg/peer-cli@sha256:"), (
+        f"ProxyBase must use the digest-pinned GHCR peer-cli image, got {image}"
+    )
+    assert "proxybase/proxybase" not in image, "ProxyBase must not use the retired Docker Hub image"
+
+    env_keys = {e["key"] for e in data["docker"]["env"]}
+    assert env_keys == {"ID", "NAME"}, (
+        f"ProxyBase container env must be exactly ID + NAME (the peer-cli contract), got {env_keys}"
+    )
+    by_key = {e["key"]: e for e in data["docker"]["env"]}
+    assert by_key["ID"]["required"] is True, "ID (Access Token) must be required"
+    assert by_key["NAME"]["required"] is True, "NAME (Device Name) must be required"
+
+    # Domain migrated proxybase.io -> proxybase.org across every user-facing URL.
+    assert "proxybase.io" not in data["website"], "website must use proxybase.org"
+    for e in data["docker"]["env"]:
+        assert "proxybase.io" not in e.get("description", ""), f"env {e['key']} description still links proxybase.io"
