@@ -305,13 +305,24 @@ def setup(app: FastAPI) -> None:
 
 
 _PATH_SLUG_RE = re.compile(r"/api/(?:services|deploy|stop|restart|remove|compose)/[^/]+")
+_WORKER_ID_RE = re.compile(r"(/api/workers)/\d+")
+# Top-level prefixes the app actually serves. Anything else is scanner/probe noise
+# (/wp-admin, /.env, ...) and must not each become its own Prometheus label.
+_KNOWN_PREFIXES = ("/api", "/static", "/login", "/logout", "/register", "/onboarding", "/setup", "/metrics")
 
 
 def _normalize_path(path: str) -> str:
-    """Collapse dynamic path segments to reduce cardinality."""
-    path = _PATH_SLUG_RE.sub(lambda m: m.group(0).rsplit("/", 1)[0] + "/{slug}", path)
+    """Collapse dynamic path segments to bounded labels so per-id paths and scanner
+    traffic can't grow Prometheus label cardinality without limit."""
     if path.startswith("/static/"):
-        path = "/static/{file}"
+        return "/static/{file}"
+    # /api/services/{slug}[/action], /api/deploy/{slug}, /api/stop/{slug}, ...
+    path = _PATH_SLUG_RE.sub(lambda m: m.group(0).rsplit("/", 1)[0] + "/{slug}", path)
+    # /api/workers/{id}[/...]
+    path = _WORKER_ID_RE.sub(r"\1/{id}", path)
+    # Fold anything outside the app's own route space into one label.
+    if path != "/" and not path.startswith(_KNOWN_PREFIXES):
+        return "/{other}"
     return path
 
 

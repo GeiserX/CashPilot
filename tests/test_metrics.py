@@ -184,6 +184,15 @@ class TestMetricsSetup:
         assert metrics._normalize_path("/static/js/app.js") == "/static/{file}"
         assert metrics._normalize_path("/api/earnings") == "/api/earnings"
         assert metrics._normalize_path("/login") == "/login"
+        # Per-worker id is collapsed (was unbounded cardinality).
+        assert metrics._normalize_path("/api/workers/42") == "/api/workers/{id}"
+        assert metrics._normalize_path("/api/workers/42/command") == "/api/workers/{id}/command"
+        # Two-segment service actions keep the action.
+        assert metrics._normalize_path("/api/services/honeygain/stop") == "/api/services/{slug}/stop"
+        # Scanner/probe noise folds into one label instead of one per URL.
+        assert metrics._normalize_path("/wp-admin") == "/{other}"
+        assert metrics._normalize_path("/.env") == "/{other}"
+        assert metrics._normalize_path("/") == "/"
 
 
 class TestRefreshGauges:

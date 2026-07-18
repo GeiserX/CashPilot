@@ -22,6 +22,9 @@ All notable changes to CashPilot are documented here.
 
 ### Performance
 - SQLite connection sharing: a single pooled connection per event loop instead of open-per-query — faster dashboard loads and less write contention
+- bcrypt password hashing/verification now runs off the event loop (`asyncio.to_thread`), so a login or password change no longer blocks every other request on the single uvicorn loop for ~200-500ms
+- Added an index on `earnings(date)` (date-filtered history/summary queries no longer full-scan), and the "all-time" history query is defensively capped so a long-lived DB can't return an unbounded row set
+- Prometheus HTTP metrics bound their `path` label: `/api/workers/{id}` collapses per-id paths and unknown/scanner paths fold into a single `/{other}` label, so probe traffic can't grow label cardinality without limit
 
 ### Added
 - Self-service password change `POST /api/users/me/password` (all roles, via the avatar menu) and owner reset `POST /api/users/{id}/password`

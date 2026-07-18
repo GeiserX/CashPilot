@@ -138,3 +138,19 @@ class TestRequireRole:
 
     def test_empty_roles_returns_false(self):
         assert require_role({"r": "owner"}) is False
+
+
+class TestAsyncPasswordWrappers:
+    """The async wrappers run bcrypt off the event loop (apm perf)."""
+
+    def test_hash_and_verify_async_roundtrip(self):
+        import asyncio
+
+        from app.auth import hash_password_async, verify_password_async
+
+        async def run():
+            h = await hash_password_async("correct-horse-battery-staple")
+            assert await verify_password_async("correct-horse-battery-staple", h) is True
+            assert await verify_password_async("wrong-password", h) is False
+
+        asyncio.run(run())

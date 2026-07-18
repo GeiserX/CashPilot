@@ -5,6 +5,7 @@ Session-based auth using signed cookies (itsdangerous) and bcrypt password hashi
 
 from __future__ import annotations
 
+import asyncio
 import hmac
 import logging
 import os
@@ -111,6 +112,16 @@ def hash_password(password: str) -> str:
 def verify_password(password: str, hashed: str) -> bool:
     pw = password.encode("utf-8")[:72]
     return _bcrypt.checkpw(pw, hashed.encode("ascii"))
+
+
+async def hash_password_async(password: str) -> str:
+    """bcrypt is CPU-bound (~200-500ms); run it off the event loop so a login or
+    password change doesn't block every other request on the single uvicorn loop."""
+    return await asyncio.to_thread(hash_password, password)
+
+
+async def verify_password_async(password: str, hashed: str) -> bool:
+    return await asyncio.to_thread(verify_password, password, hashed)
 
 
 def create_session_token(user_id: int, username: str, role: str) -> str:
