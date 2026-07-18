@@ -220,7 +220,7 @@ class TestLoginRoute:
             patch("app.main.database.get_user_by_username", new_callable=AsyncMock, return_value=user),
             patch("app.main.auth.verify_password", return_value=True),
             patch("app.main.auth.create_session_token", return_value="tok"),
-            patch("app.main.auth.set_session_cookie", side_effect=lambda r, t: r),
+            patch("app.main.auth.set_session_cookie", side_effect=lambda r, t, req=None: r),
         ):
             resp = client.post("/login", data={"username": "admin", "password": "pass"}, follow_redirects=False)
             assert resp.status_code == 303
@@ -266,7 +266,7 @@ class TestRegisterRoute:
             patch("app.main.database.create_first_owner", new_callable=AsyncMock, return_value=1),
             patch("app.main.database.delete_config_keys", new_callable=AsyncMock),
             patch("app.main.auth.create_session_token", return_value="tok"),
-            patch("app.main.auth.set_session_cookie", side_effect=lambda r, t: r),
+            patch("app.main.auth.set_session_cookie", side_effect=lambda r, t, req=None: r),
         ):
             resp = client.post(
                 "/register",
@@ -312,7 +312,7 @@ class TestRegisterRoute:
             patch("app.main.database.create_first_owner", new_callable=AsyncMock, return_value=1),
             patch("app.main.database.delete_config_keys", new_callable=AsyncMock) as del_keys,
             patch("app.main.auth.create_session_token", return_value="tok"),
-            patch("app.main.auth.set_session_cookie", side_effect=lambda r, t: r),
+            patch("app.main.auth.set_session_cookie", side_effect=lambda r, t, req=None: r),
         ):
             resp = client.post(
                 "/register",
@@ -1130,7 +1130,7 @@ class TestChangeOwnPassword:
             patch("app.main.database.update_user_password", new_callable=AsyncMock) as mock_upd,
             patch("app.main.auth.set_user_pwd_epoch") as mock_epoch,
             patch("app.main.auth.create_session_token", return_value="tok"),
-            patch("app.main.auth.set_session_cookie", side_effect=lambda r, t: r),
+            patch("app.main.auth.set_session_cookie", side_effect=lambda r, t, req=None: r),
         ):
             resp = client.post(
                 "/api/users/me/password",
@@ -1159,7 +1159,7 @@ class TestChangeOwnPassword:
             patch("app.main.database.update_user_password", new_callable=AsyncMock),
             patch("app.main.auth.set_user_pwd_epoch"),
             patch("app.main.auth.create_session_token", return_value="fresh-tok") as mock_tok,
-            patch("app.main.auth.set_session_cookie", side_effect=lambda r, t: r) as mock_cookie,
+            patch("app.main.auth.set_session_cookie", side_effect=lambda r, t, req=None: r) as mock_cookie,
         ):
             resp = client.post(
                 "/api/users/me/password",
@@ -1880,6 +1880,71 @@ class TestSecurityHeaders:
             resp = client.get("/api/mode")
             assert resp.headers.get("X-Content-Type-Options") == "nosniff"
             assert resp.headers.get("X-Frame-Options") == "DENY"
+            csp = resp.headers.get("Content-Security-Policy", "")
+            # Additive CSP hardening (US-004); unsafe-inline stays until the guw refactor.
+            assert "base-uri 'none'" in csp
+            assert "object-src 'none'" in csp
+            assert "form-action 'self'" in csp
+
+    def test_hsts_absent_on_plain_http(self, client):
+        with _auth_owner():
+            resp = client.get("/api/mode")
+            # A plain-HTTP (dev) request must never be pinned to https.
+            assert "Strict-Transport-Security" not in resp.headers
+
+    def test_hsts_present_when_forwarded_https_and_proxy_trusted(self, client):
+        with _auth_owner(), patch("app.main._HSTS_TRUST_PROXY", True):
+            resp = client.get("/api/mode", headers={"X-Forwarded-Proto": "https"})
+            assert resp.headers.get("Strict-Transport-Security", "").startswith("max-age=")
+
+    def test_hsts_ignores_forwarded_proto_when_proxy_untrusted(self, client):
+        with _auth_owner(), patch("app.main._HSTS_TRUST_PROXY", False):
+            resp = client.get("/api/mode", headers={"X-Forwarded-Proto": "https"})
+            # An untrusted (spoofable) header must not trigger HSTS.
+            assert "Strict-Transport-Security" not in resp.headers
+
+
+class TestSessionCookieSecure:
+    """CASHPILOT_SECURE_COOKIE=auto must set Secure when TLS terminates at a trusted proxy."""
+
+    def _resp(self):
+        from starlette.responses import RedirectResponse
+
+        return RedirectResponse("/", status_code=303)
+
+    def _req(self, xf_proto=None):
+        r = MagicMock()
+        r.headers = {"x-forwarded-proto": xf_proto} if xf_proto else {}
+        return r
+
+    def test_secure_from_forwarded_proto_when_trusted(self):
+        import app.auth as a
+
+        with patch.object(a, "_SECURE_COOKIE", "auto"), patch.object(a, "_TRUST_PROXY", True):
+            resp = a.set_session_cookie(self._resp(), "tok", self._req("https"))
+        assert "Secure" in resp.headers.get("set-cookie", "")
+
+    def test_not_secure_when_proxy_untrusted(self):
+        import app.auth as a
+
+        with patch.object(a, "_SECURE_COOKIE", "auto"), patch.object(a, "_TRUST_PROXY", False):
+            resp = a.set_session_cookie(self._resp(), "tok", self._req("https"))
+        assert "Secure" not in resp.headers.get("set-cookie", "")
+
+    def test_explicit_true_overrides(self):
+        import app.auth as a
+
+        with patch.object(a, "_SECURE_COOKIE", "true"):
+            resp = a.set_session_cookie(self._resp(), "tok", self._req())
+        assert "Secure" in resp.headers.get("set-cookie", "")
+
+    def test_backward_compat_no_request_arg(self):
+        # Callers that don't pass request still work (auto falls back to BASE_URL).
+        import app.auth as a
+
+        with patch.object(a, "_SECURE_COOKIE", "auto"), patch.dict("os.environ", {"CASHPILOT_BASE_URL": ""}):
+            resp = a.set_session_cookie(self._resp(), "tok")
+        assert "Secure" not in resp.headers.get("set-cookie", "")
 
 
 # ---------------------------------------------------------------------------
