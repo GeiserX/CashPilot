@@ -50,6 +50,8 @@ This starts two containers:
 
 Then open [http://localhost:8080](http://localhost:8080) and follow the setup wizard. On first start, CashPilot prints a one-time **setup token** to the `cashpilot-ui` container logs (`docker compose logs cashpilot-ui`) — enter it on the registration form to create the first (owner) account. See [Getting Started](https://geiserx.github.io/CashPilot/getting-started/) for details.
 
+> **Security — network exposure.** By default the dashboard is published on **loopback only** (`127.0.0.1:8080`), because it can command the Docker-socket worker. To reach it from another machine, set `CASHPILOT_BIND_ADDR` to a specific interface (e.g. a Tailscale/VPN IP) or, preferably, run an authenticating reverse proxy in front. **Never publish the worker's port (`8081`) on a public interface** — it exposes a Docker-socket API equivalent to root on the host.
+
 > **Note:** The worker container requires access to the Docker socket (`/var/run/docker.sock`) to deploy and manage service containers. Both containers are required for full functionality.
 
 ## Supported Services
@@ -160,8 +162,9 @@ cashpilot/
 | `CASHPILOT_API_KEY` | -- | Enrollment/bootstrap key; each worker then gets its own key (per-worker fleet keys, v1.0.0+) |
 | `CASHPILOT_COLLECT_INTERVAL` | `60` | Minutes between earnings collection cycles |
 | `CASHPILOT_METRICS_ENABLED` | `false` | Set to `true` to expose Prometheus metrics at `/metrics` |
+| `CASHPILOT_BIND_ADDR` | `127.0.0.1` | Host interface the UI port is published on. Loopback by default; set a specific IP (e.g. a VPN address) or `0.0.0.0` to expose it — prefer a reverse proxy with auth |
 
-The UI's web port is fixed at `8080` (set via the container's `CMD`, not an environment variable).
+The UI's web port inside the container is fixed at `8080` (set via the container's `CMD`); `CASHPILOT_BIND_ADDR` controls only which host interface it is published on.
 
 ### Worker Environment Variables
 
@@ -172,6 +175,7 @@ The UI's web port is fixed at `8080` (set via the container's `CMD`, not an envi
 | `CASHPILOT_API_KEY` | -- | Must match the UI's API key |
 | `CASHPILOT_WORKER_NAME` | *(hostname)* | Display name for this worker in the fleet dashboard |
 | `CASHPILOT_WORKER_URL` | *(auto-detected)* | URL the UI uses to reach this worker, e.g. `http://192.168.10.50:8081`. Set explicitly for remote/cross-host workers |
+| `CASHPILOT_WORKER_BIND_ADDR` | `127.0.0.1` | Host interface the worker's Docker-socket API port is published on. Loopback by default — for a remote worker set a private/VPN interface, **never** a public IP |
 | `CASHPILOT_PORT` | `8081` | Mini-UI/API port the worker listens on |
 
 ## Multi-Node Fleet Management
