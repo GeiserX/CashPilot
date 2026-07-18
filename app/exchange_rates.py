@@ -9,6 +9,7 @@ No API keys required — both services are free-tier.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import time
 from typing import Any
@@ -52,53 +53,20 @@ async def refresh() -> None:
     time -- a non-200 (or an unreachable API) leaves it untouched so staleness is
     tracked per-source and a partial failure can't mislabel the other source.
     """
-    global _fiat_rates, _crypto_usd, _last_fetch, _crypto_last_fetch, _fiat_last_fetch
+    global _last_fetch
 
     try:
         async with httpx.AsyncClient(timeout=15, follow_redirects=True) as client:
-            # --- Crypto rates from CoinGecko (free, no key) ---
-            if CRYPTO_IDS:
-                ids = ",".join(CRYPTO_IDS.values())
-                resp = await client.get(
-                    "https://api.coingecko.com/api/v3/simple/price",
-                    params={"ids": ids, "vs_currencies": "usd"},
-                )
-                if resp.status_code == 200:
-                    data = resp.json()
-                    for token, cg_id in CRYPTO_IDS.items():
-                        price = (data.get(cg_id) or {}).get("usd")
-                        if price is not None:
-                            _crypto_usd[token] = float(price)
-                    _crypto_last_fetch = time.time()
-                else:
-                    logger.warning(
-                        "exchange rate fetch got HTTP %s from %s",
-                        resp.status_code,
-                        "CoinGecko",
-                    )
-            else:
-                # Nothing to fetch -- don't let an empty crypto map hold the
-                # aggregate staleness clock back forever.
-                _crypto_last_fetch = time.time()
-
-            # --- Fiat rates from Frankfurter (free, no key) ---
-            resp = await client.get(
-                "https://api.frankfurter.app/latest",
-                params={"from": "USD"},
-            )
-            if resp.status_code == 200:
-                data = resp.json()
-                new_rates: dict[str, float] = {"USD": 1.0}
-                for code, rate in data.get("rates", {}).items():
-                    new_rates[code] = float(rate)
-                _fiat_rates = new_rates
-                _fiat_last_fetch = time.time()
-            else:
-                logger.warning(
-                    "exchange rate fetch got HTTP %s from %s",
-                    resp.status_code,
-                    "Frankfurter",
-                )
+            # Fetch both sources concurrently — they update independent state, so a slow
+            # provider no longer serializes behind the other. This roughly halves the
+            # worst case (two 15s-timeout calls: 30s -> 15s), which matters most on the
+            # startup path where refresh() is awaited before the app serves requests.
+            # return_exceptions so one source's network failure can't discard the other's
+            # success (each source still tracks its own last-fetch / non-200 internally).
+            results = await asyncio.gather(_fetch_crypto(client), _fetch_fiat(client), return_exceptions=True)
+        for r in results:
+            if isinstance(r, Exception):
+                logger.error("Exchange rate fetch failed: %s", r)
 
         _last_fetch = min(_crypto_last_fetch, _fiat_last_fetch)
         logger.info(
@@ -108,6 +76,48 @@ async def refresh() -> None:
         )
     except Exception as exc:
         logger.error("Exchange rate fetch failed: %s", exc)
+
+
+async def _fetch_crypto(client: httpx.AsyncClient) -> None:
+    """Fetch crypto→USD from CoinGecko (free, no key). Updates crypto state in place."""
+    global _crypto_usd, _crypto_last_fetch
+    if not CRYPTO_IDS:
+        # Nothing to fetch -- don't let an empty crypto map hold the aggregate
+        # staleness clock back forever.
+        _crypto_last_fetch = time.time()
+        return
+    ids = ",".join(CRYPTO_IDS.values())
+    resp = await client.get(
+        "https://api.coingecko.com/api/v3/simple/price",
+        params={"ids": ids, "vs_currencies": "usd"},
+    )
+    if resp.status_code == 200:
+        data = resp.json()
+        for token, cg_id in CRYPTO_IDS.items():
+            price = (data.get(cg_id) or {}).get("usd")
+            if price is not None:
+                _crypto_usd[token] = float(price)
+        _crypto_last_fetch = time.time()
+    else:
+        logger.warning("exchange rate fetch got HTTP %s from %s", resp.status_code, "CoinGecko")
+
+
+async def _fetch_fiat(client: httpx.AsyncClient) -> None:
+    """Fetch USD→fiat from Frankfurter (free, no key). Updates fiat state in place."""
+    global _fiat_rates, _fiat_last_fetch
+    resp = await client.get(
+        "https://api.frankfurter.app/latest",
+        params={"from": "USD"},
+    )
+    if resp.status_code == 200:
+        data = resp.json()
+        new_rates: dict[str, float] = {"USD": 1.0}
+        for code, rate in data.get("rates", {}).items():
+            new_rates[code] = float(rate)
+        _fiat_rates = new_rates
+        _fiat_last_fetch = time.time()
+    else:
+        logger.warning("exchange rate fetch got HTTP %s from %s", resp.status_code, "Frankfurter")
 
 
 def rates_stale() -> bool:

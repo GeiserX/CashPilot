@@ -427,6 +427,26 @@ class TestHealthEvents:
 
         asyncio.run(run())
 
+    def test_record_health_events_batched(self, db):
+        async def run():
+            # One batched write of several events across two services (the health-check
+            # path uses this instead of a commit per service).
+            await database.record_health_events(
+                [
+                    ("honeygain", "check_ok", ""),
+                    ("honeygain", "restart", ""),
+                    ("earnapp", "check_down", "stopped"),
+                ]
+            )
+            by_slug = {s["slug"]: s for s in await database.get_health_scores(7)}
+            assert set(by_slug) == {"honeygain", "earnapp"}
+            assert by_slug["honeygain"]["restarts"] == 1
+            # An empty batch is a no-op — no crash, nothing written.
+            await database.record_health_events([])
+            assert len(await database.get_health_scores(7)) == 2
+
+        asyncio.run(run())
+
 
 class TestWorkerKeys:
     def test_workers_table_has_api_key_enc_column(self, db):
