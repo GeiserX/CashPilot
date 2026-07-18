@@ -132,6 +132,41 @@ class TestDeployRawResources:
         assert "mem_reservation" not in kwargs
         assert "oom_score_adj" not in kwargs
 
+    def test_forwards_container_spec(self):
+        client = self._mock_client()
+        with patch.object(orchestrator, "_get_client", return_value=client):
+            orchestrator.deploy_raw(
+                slug="svc",
+                image="img",
+                env={"ID": "tok", "NAME": "dev"},
+                ports={"8081/tcp": 9000},
+                volumes={"/host": {"bind": "/data", "mode": "rw"}},
+                cap_add=["NET_ADMIN"],
+                command="run",
+                hostname="myhost",
+            )
+        kwargs = client.containers.run.call_args.kwargs
+        assert kwargs["environment"] == {"ID": "tok", "NAME": "dev"}
+        assert kwargs["ports"] == {"8081/tcp": 9000}
+        assert kwargs["volumes"] == {"/host": {"bind": "/data", "mode": "rw"}}
+        assert kwargs["cap_add"] == ["NET_ADMIN"]
+        assert kwargs["command"] == "run"
+        assert kwargs["hostname"] == "myhost"
+
+    def test_ports_suppressed_in_host_network(self):
+        client = self._mock_client()
+        with patch.object(orchestrator, "_get_client", return_value=client):
+            orchestrator.deploy_raw(
+                slug="mysterium",
+                image="img",
+                ports={"4449/tcp": 4449},
+                network_mode="host",
+            )
+        kwargs = client.containers.run.call_args.kwargs
+        # Host networking ignores published ports; deploy_raw must not pass them.
+        assert kwargs["ports"] is None
+        assert kwargs["network_mode"] == "host"
+
 
 # ---------------------------------------------------------------------------
 # Worker /deploy endpoint (spec -> deploy_raw)

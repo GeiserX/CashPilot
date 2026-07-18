@@ -87,9 +87,9 @@ class TestResolveFleetKey:
             # In practice this returns "" after retries, which is the correct
             # "broken state" signal.
             key = fleet_key.resolve_fleet_key()
-        # The function tried O_EXCL on existing file, retried reads, all empty
-        # This is a degenerate state — key will be empty
-        assert isinstance(key, str)
+        # The function tried O_EXCL on existing file, retried reads, all empty —
+        # a degenerate state whose defined result is the empty string.
+        assert key == ""
 
     def test_unwritable_dir_returns_empty(self, tmp_path: Path):
         """When the fleet directory can't be created, return empty string."""

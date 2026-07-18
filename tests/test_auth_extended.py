@@ -74,7 +74,8 @@ class TestSetSessionCookie:
         result = auth.set_session_cookie(resp, "test-token")
         resp.set_cookie.assert_called_once()
         args = resp.set_cookie.call_args
-        assert args[1]["httponly"] is True or args[0][1] == "test-token"
+        assert args[1]["httponly"] is True
+        assert args[0][1] == "test-token"
         assert result is resp
 
     def test_secure_cookie_auto_https(self):

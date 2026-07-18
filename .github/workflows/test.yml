@@ -25,7 +25,7 @@ jobs:
         run: pytest tests/ -v --tb=short
 
       - name: Run tests with coverage
-        run: pytest tests/ --cov=app --cov-report=term-missing --cov-report=xml
+        run: pytest tests/ --cov=app --cov-report=term-missing --cov-report=xml --cov-fail-under=90
 
       - name: Upload coverage reports
         uses: codecov/codecov-action@v7
