@@ -596,6 +596,21 @@ def _image_outdated(deployed: str, catalog_image: str) -> bool:
     return bool(c_digest and d_digest and c_digest != d_digest)
 
 
+def _apply_service_meta(entry: dict[str, Any], svc: dict[str, Any] | None) -> None:
+    """Attach the catalog-derived cashout / referral / website fields to a deployed
+    entry. Shared by the container-backed and external paths; a no-op when the catalog
+    no longer lists the deployed slug."""
+    if not svc:
+        return
+    cashout = svc.get("cashout", {})
+    if cashout:
+        entry["cashout"] = cashout
+    referral = svc.get("referral", {})
+    if referral:
+        entry["referral_url"] = referral.get("signup_url", "")
+    entry["website"] = svc.get("website", "")
+
+
 @app.get("/api/services/deployed")
 async def api_services_deployed(request: Request) -> list[dict[str, Any]]:
     """Return deployed services with container status, balance, CPU, memory.
@@ -701,14 +716,8 @@ async def api_services_deployed(request: Request) -> list[dict[str, Any]]:
             # retired image doesn't keep looking healthy while it silently stops earning.
             "image_outdated": False,
         }
+        _apply_service_meta(entry, svc)
         if svc:
-            cashout = svc.get("cashout", {})
-            if cashout:
-                entry["cashout"] = cashout
-            referral = svc.get("referral", {})
-            if referral:
-                entry["referral_url"] = referral.get("signup_url", "")
-            entry["website"] = svc.get("website", "")
             entry["image_outdated"] = _image_outdated(agg["image"], (svc.get("docker") or {}).get("image", ""))
         result.append(entry)
 
@@ -743,14 +752,7 @@ async def api_services_deployed(request: Request) -> list[dict[str, Any]]:
             "collector_disconnected": slug in alert_slugs,
             "collector_needs_setup": slug not in alert_slugs and _collector_needs_setup(slug, config),
         }
-        if svc:
-            cashout = svc.get("cashout", {})
-            if cashout:
-                entry["cashout"] = cashout
-            referral = svc.get("referral", {})
-            if referral:
-                entry["referral_url"] = referral.get("signup_url", "")
-            entry["website"] = svc.get("website", "")
+        _apply_service_meta(entry, svc)
         result.append(entry)
 
     return result
@@ -925,8 +927,11 @@ async def api_deploy(request: Request, slug: str, body: DeployRequest, worker_id
     return {"status": "deployed", "container_id": container_id}
 
 
-@app.post("/api/stop/{slug}")
-async def api_stop(request: Request, slug: str, worker_id: int | None = None) -> dict[str, str]:
+# The stop/restart/remove lifecycle actions each have two public routes — the flat
+# /api/{action}/{slug} and the service-scoped /api/services/{slug}/... — with identical
+# behavior. Both sets of routes delegate to these helpers so the writer-guard, worker
+# resolution, proxy, and bookkeeping live in exactly one place per action.
+async def _svc_stop(request: Request, slug: str, worker_id: int | None) -> dict[str, str]:
     _require_writer(request)
     worker_id = await _resolve_worker_id(worker_id)
     result = await _proxy_worker_command(worker_id, "stop", slug)
@@ -935,8 +940,7 @@ async def api_stop(request: Request, slug: str, worker_id: int | None = None) ->
     return result
 
 
-@app.post("/api/restart/{slug}")
-async def api_restart(request: Request, slug: str, worker_id: int | None = None) -> dict[str, str]:
+async def _svc_restart(request: Request, slug: str, worker_id: int | None) -> dict[str, str]:
     _require_writer(request)
     worker_id = await _resolve_worker_id(worker_id)
     result = await _proxy_worker_command(worker_id, "restart", slug)
@@ -945,10 +949,7 @@ async def api_restart(request: Request, slug: str, worker_id: int | None = None)
     return result
 
 
-@app.delete("/api/remove/{slug}")
-async def api_remove(
-    request: Request, slug: str, worker_id: int | None = None, delete_volumes: bool = False
-) -> dict[str, Any]:
+async def _svc_remove(request: Request, slug: str, worker_id: int | None, delete_volumes: bool) -> dict[str, Any]:
     _require_writer(request)
     worker_id = await _resolve_worker_id(worker_id)
     params = {"delete_volumes": "true"} if delete_volumes else None
@@ -957,6 +958,23 @@ async def api_remove(
     await database.record_health_event(slug, "remove")
     metrics.record_container_lifecycle("remove", slug)
     return result
+
+
+@app.post("/api/stop/{slug}")
+async def api_stop(request: Request, slug: str, worker_id: int | None = None) -> dict[str, str]:
+    return await _svc_stop(request, slug, worker_id)
+
+
+@app.post("/api/restart/{slug}")
+async def api_restart(request: Request, slug: str, worker_id: int | None = None) -> dict[str, str]:
+    return await _svc_restart(request, slug, worker_id)
+
+
+@app.delete("/api/remove/{slug}")
+async def api_remove(
+    request: Request, slug: str, worker_id: int | None = None, delete_volumes: bool = False
+) -> dict[str, Any]:
+    return await _svc_remove(request, slug, worker_id, delete_volumes)
 
 
 # ---------------------------------------------------------------------------
@@ -1153,64 +1171,61 @@ async def _get_verified_worker_url(worker: dict[str, Any]) -> tuple[str, dict[st
     return url, headers
 
 
+async def _proxy_to_worker(
+    worker_id: int,
+    method: str,
+    path: str,
+    *,
+    json: dict[str, Any] | None = None,
+    params: dict[str, str] | None = None,
+    timeout: float = 30,
+) -> dict[str, Any]:
+    """Proxy one request to a worker's REST API and return its parsed JSON.
+
+    Single home for the fetch-worker -> verified-URL+auth-header -> httpx call ->
+    error-mapping sequence the deploy/command/logs paths all repeated. Dispatch uses
+    the concrete httpx verbs (never client.request) so per-verb test mocks keep
+    landing; the caller owns the timeout (deploy needs 60s, the rest 30s) and any
+    query params (the logs line clamp, remove's delete_volumes).
+    """
+    worker = await database.get_worker(worker_id)
+    url, headers = await _get_verified_worker_url(worker)
+
+    try:
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            verb = method.upper()
+            if verb == "GET":
+                resp = await client.get(f"{url}{path}", params=params, headers=headers)
+            elif verb == "DELETE":
+                resp = await client.delete(f"{url}{path}", params=params, headers=headers)
+            else:
+                resp = await client.post(f"{url}{path}", json=json, params=params, headers=headers)
+            if resp.status_code >= 400:
+                logger.warning("worker proxy error (%s): %s", resp.status_code, resp.text)
+                raise HTTPException(status_code=resp.status_code, detail="Worker request failed")
+            return resp.json()
+    except httpx.HTTPError as exc:
+        logger.warning("worker proxy error: %s", exc)
+        raise HTTPException(status_code=503, detail="Worker communication failed")
+
+
 async def _proxy_worker_command(
     worker_id: int, command: str, slug: str, *, params: dict[str, str] | None = None
 ) -> dict[str, Any]:
     """Forward a container command (restart/stop/start/remove) to a worker."""
-    worker = await database.get_worker(worker_id)
-    url, headers = await _get_verified_worker_url(worker)
-
-    try:
-        async with httpx.AsyncClient(timeout=30) as client:
-            if command == "remove":
-                resp = await client.delete(f"{url}/api/containers/{slug}", headers=headers, params=params)
-            else:
-                resp = await client.post(f"{url}/api/containers/{slug}/{command}", headers=headers)
-            if resp.status_code >= 400:
-                logger.warning("worker proxy error (%s): %s", resp.status_code, resp.text)
-                raise HTTPException(status_code=resp.status_code, detail="Worker request failed")
-            return resp.json()
-    except httpx.HTTPError as exc:
-        logger.warning("worker proxy error: %s", exc)
-        raise HTTPException(status_code=503, detail="Worker communication failed")
+    if command == "remove":
+        return await _proxy_to_worker(worker_id, "DELETE", f"/api/containers/{slug}", params=params)
+    return await _proxy_to_worker(worker_id, "POST", f"/api/containers/{slug}/{command}")
 
 
 async def _proxy_worker_deploy(worker_id: int, slug: str, spec: dict[str, Any]) -> dict[str, Any]:
     """Forward a deploy command with full spec to a worker."""
-    worker = await database.get_worker(worker_id)
-    url, headers = await _get_verified_worker_url(worker)
-
-    try:
-        async with httpx.AsyncClient(timeout=60) as client:
-            resp = await client.post(f"{url}/api/containers/{slug}/deploy", json=spec, headers=headers)
-            if resp.status_code >= 400:
-                logger.warning("worker deploy error (%s): %s", resp.status_code, resp.text)
-                raise HTTPException(status_code=resp.status_code, detail="Worker request failed")
-            return resp.json()
-    except httpx.HTTPError as exc:
-        logger.warning("worker proxy error: %s", exc)
-        raise HTTPException(status_code=503, detail="Worker communication failed")
+    return await _proxy_to_worker(worker_id, "POST", f"/api/containers/{slug}/deploy", json=spec, timeout=60)
 
 
 async def _proxy_worker_logs(worker_id: int, slug: str, lines: int = 50) -> dict[str, str]:
     """Forward a logs request to a worker."""
-    worker = await database.get_worker(worker_id)
-    url, headers = await _get_verified_worker_url(worker)
-
-    try:
-        async with httpx.AsyncClient(timeout=30) as client:
-            resp = await client.get(
-                f"{url}/api/containers/{slug}/logs",
-                params={"lines": min(lines, 1000)},
-                headers=headers,
-            )
-            if resp.status_code >= 400:
-                logger.warning("worker proxy error (%s): %s", resp.status_code, resp.text)
-                raise HTTPException(status_code=resp.status_code, detail="Worker request failed")
-            return resp.json()
-    except httpx.HTTPError as exc:
-        logger.warning("worker proxy error: %s", exc)
-        raise HTTPException(status_code=503, detail="Worker communication failed")
+    return await _proxy_to_worker(worker_id, "GET", f"/api/containers/{slug}/logs", params={"lines": min(lines, 1000)})
 
 
 # ---------------------------------------------------------------------------
@@ -1220,22 +1235,12 @@ async def _proxy_worker_logs(worker_id: int, slug: str, lines: int = 50) -> dict
 
 @app.post("/api/services/{slug}/restart")
 async def api_service_restart(request: Request, slug: str, worker_id: int | None = None) -> dict[str, str]:
-    _require_writer(request)
-    worker_id = await _resolve_worker_id(worker_id)
-    result = await _proxy_worker_command(worker_id, "restart", slug)
-    await database.record_health_event(slug, "restart")
-    metrics.record_container_lifecycle("restart", slug)
-    return result
+    return await _svc_restart(request, slug, worker_id)
 
 
 @app.post("/api/services/{slug}/stop")
 async def api_service_stop(request: Request, slug: str, worker_id: int | None = None) -> dict[str, str]:
-    _require_writer(request)
-    worker_id = await _resolve_worker_id(worker_id)
-    result = await _proxy_worker_command(worker_id, "stop", slug)
-    await database.record_health_event(slug, "stop")
-    metrics.record_container_lifecycle("stop", slug)
-    return result
+    return await _svc_stop(request, slug, worker_id)
 
 
 @app.post("/api/services/{slug}/start")
@@ -1261,14 +1266,7 @@ async def api_service_logs(
 async def api_service_remove(
     request: Request, slug: str, worker_id: int | None = None, delete_volumes: bool = False
 ) -> dict[str, Any]:
-    _require_writer(request)
-    worker_id = await _resolve_worker_id(worker_id)
-    params = {"delete_volumes": "true"} if delete_volumes else None
-    result = await _proxy_worker_command(worker_id, "remove", slug, params=params)
-    await database.remove_deployment(slug)
-    await database.record_health_event(slug, "remove")
-    metrics.record_container_lifecycle("remove", slug)
-    return result
+    return await _svc_remove(request, slug, worker_id, delete_volumes)
 
 
 # ---------------------------------------------------------------------------
@@ -1980,37 +1978,40 @@ async def api_worker_command(request: Request, worker_id: int, body: WorkerComma
     else:
         _require_writer(request)
 
-    worker = await database.get_worker(worker_id)
-    url, headers = await _get_verified_worker_url(worker)
+    if body.command == "deploy":
+        result = await _proxy_to_worker(worker_id, "POST", f"/api/containers/{body.slug}/deploy", json=body.spec)
+    elif body.command in ("stop", "restart", "start"):
+        result = await _proxy_to_worker(worker_id, "POST", f"/api/containers/{body.slug}/{body.command}")
+    elif body.command == "remove":
+        result = await _proxy_to_worker(worker_id, "DELETE", f"/api/containers/{body.slug}")
+    else:
+        raise HTTPException(status_code=400, detail=f"Unknown command: {body.command}")
 
-    try:
-        async with httpx.AsyncClient(timeout=30) as client:
-            if body.command == "deploy":
-                resp = await client.post(
-                    f"{url}/api/containers/{body.slug}/deploy",
-                    json=body.spec,
-                    headers=headers,
-                )
-            elif body.command in ("stop", "restart", "start"):
-                resp = await client.post(
-                    f"{url}/api/containers/{body.slug}/{body.command}",
-                    headers=headers,
-                )
-            elif body.command == "remove":
-                resp = await client.delete(
-                    f"{url}/api/containers/{body.slug}",
-                    headers=headers,
-                )
-            else:
-                raise HTTPException(status_code=400, detail=f"Unknown command: {body.command}")
-
-            if resp.status_code >= 400:
-                logger.warning("worker proxy error (%s): %s", resp.status_code, resp.text)
-                raise HTTPException(status_code=resp.status_code, detail="Worker request failed")
-            return resp.json()
-    except httpx.HTTPError as exc:
-        logger.warning("worker proxy error: %s", exc)
-        raise HTTPException(status_code=503, detail="Worker communication failed")
+    # The primary lifecycle routes (/api/deploy, /api/stop, ...) all run bookkeeping
+    # after a successful proxy. Without it a deploy through this raw command route never
+    # creates a deployments row — so the service earns $0 forever — and a remove leaks
+    # the row. Mirror the canonical routes exactly, keyed on the command, on success only.
+    slug = body.slug
+    if body.command == "deploy":
+        container_id = result.get("container_id", "remote")
+        await database.save_deployment(slug=slug, container_id=container_id)
+        await database.record_health_event(slug, "start", f"deployed to worker {worker_id}")
+        metrics.record_container_lifecycle("deploy", slug)
+        _spawn(_run_collection())
+    elif body.command == "stop":
+        await database.record_health_event(slug, "stop")
+        metrics.record_container_lifecycle("stop", slug)
+    elif body.command == "restart":
+        await database.record_health_event(slug, "restart")
+        metrics.record_container_lifecycle("restart", slug)
+    elif body.command == "start":
+        await database.record_health_event(slug, "start")
+        metrics.record_container_lifecycle("start", slug)
+    elif body.command == "remove":
+        await database.remove_deployment(slug)
+        await database.record_health_event(slug, "remove")
+        metrics.record_container_lifecycle("remove", slug)
+    return result
 
 
 @app.get("/api/fleet/summary")
