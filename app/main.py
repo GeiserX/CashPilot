@@ -2007,10 +2007,36 @@ async def api_worker_command(request: Request, worker_id: int, body: WorkerComma
             if resp.status_code >= 400:
                 logger.warning("worker proxy error (%s): %s", resp.status_code, resp.text)
                 raise HTTPException(status_code=resp.status_code, detail="Worker request failed")
-            return resp.json()
+            result = resp.json()
     except httpx.HTTPError as exc:
         logger.warning("worker proxy error: %s", exc)
         raise HTTPException(status_code=503, detail="Worker communication failed")
+
+    # The primary lifecycle routes (/api/deploy, /api/stop, ...) all run bookkeeping
+    # after a successful proxy. Without it a deploy through this raw command route never
+    # creates a deployments row — so the service earns $0 forever — and a remove leaks
+    # the row. Mirror the canonical routes exactly, keyed on the command, on success only.
+    slug = body.slug
+    if body.command == "deploy":
+        container_id = result.get("container_id", "remote")
+        await database.save_deployment(slug=slug, container_id=container_id)
+        await database.record_health_event(slug, "start", f"deployed to worker {worker_id}")
+        metrics.record_container_lifecycle("deploy", slug)
+        _spawn(_run_collection())
+    elif body.command == "stop":
+        await database.record_health_event(slug, "stop")
+        metrics.record_container_lifecycle("stop", slug)
+    elif body.command == "restart":
+        await database.record_health_event(slug, "restart")
+        metrics.record_container_lifecycle("restart", slug)
+    elif body.command == "start":
+        await database.record_health_event(slug, "start")
+        metrics.record_container_lifecycle("start", slug)
+    elif body.command == "remove":
+        await database.remove_deployment(slug)
+        await database.record_health_event(slug, "remove")
+        metrics.record_container_lifecycle("remove", slug)
+    return result
 
 
 @app.get("/api/fleet/summary")

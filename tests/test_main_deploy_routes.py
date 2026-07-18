@@ -518,6 +518,8 @@ class TestWorkerCommand:
         with (
             _auth_owner(),
             patch("app.main.database.get_worker", new_callable=AsyncMock, return_value=worker),
+            patch("app.main.database.save_deployment", new_callable=AsyncMock) as save_dep,
+            patch("app.main.database.record_health_event", new_callable=AsyncMock) as health_evt,
             patch("app.main.httpx.AsyncClient", return_value=mock_client),
             patch("app.main.FLEET_API_KEY", "test-key"),
         ):
@@ -530,6 +532,10 @@ class TestWorkerCommand:
                 },
             )
             assert resp.status_code == 200
+            # The bug fix: a deploy via the command route must record the deployment
+            # (so it starts earning) and a "start" health event — not silently skip both.
+            save_dep.assert_awaited_once()
+            health_evt.assert_awaited()
 
     def test_command_deploy_writer_denied(self, client):
         """A writer must NOT be able to deploy via /api/workers/{id}/command — deploy is
@@ -553,6 +559,7 @@ class TestWorkerCommand:
         with (
             _auth_writer(),
             patch("app.main.database.get_worker", new_callable=AsyncMock, return_value=worker),
+            patch("app.main.database.record_health_event", new_callable=AsyncMock) as health_evt,
             patch("app.main.httpx.AsyncClient", return_value=mock_client),
             patch("app.main.FLEET_API_KEY", "test-key"),
         ):
@@ -564,12 +571,15 @@ class TestWorkerCommand:
                 },
             )
             assert resp.status_code == 200
+            health_evt.assert_awaited_once()
 
     def test_command_remove(self, client):
         worker, mock_client = self._setup()
         with (
             _auth_writer(),
             patch("app.main.database.get_worker", new_callable=AsyncMock, return_value=worker),
+            patch("app.main.database.remove_deployment", new_callable=AsyncMock) as rm_dep,
+            patch("app.main.database.record_health_event", new_callable=AsyncMock) as health_evt,
             patch("app.main.httpx.AsyncClient", return_value=mock_client),
             patch("app.main.FLEET_API_KEY", "test-key"),
         ):
@@ -581,6 +591,9 @@ class TestWorkerCommand:
                 },
             )
             assert resp.status_code == 200
+            # A remove via the command route must clean up the deployments row.
+            rm_dep.assert_awaited_once()
+            health_evt.assert_awaited()
 
     def test_command_unknown(self, client):
         worker, mock_client = self._setup()
