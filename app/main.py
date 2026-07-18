@@ -20,7 +20,7 @@ from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
 from time import monotonic
 from typing import Any
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urlunparse
 
 import httpx
 from apscheduler.events import EVENT_JOB_ERROR, EVENT_JOB_MISSED
@@ -1005,14 +1005,21 @@ def _assert_ip_strict_allowed(addr: ipaddress.IPv4Address | ipaddress.IPv6Addres
     raise HTTPException(status_code=400, detail="Worker URL not in allowed hosts (strict mode)")
 
 
-def _validate_worker_url(raw_url: str) -> str:
-    """Validate and return a safe worker URL; raise 400 on SSRF-risky targets.
+def _validate_worker_url(raw_url: str) -> tuple[str, str | None]:
+    """Validate a worker URL; raise 400 on SSRF-risky targets.
 
-    Resolves hostnames and validates the resolved IP(s) so a DNS name that
-    points at a metadata/loopback address is rejected (DNS-rebinding guard).
-    Synchronous — its only blocking op is DNS resolution; event-loop callers
-    MUST invoke it via ``asyncio.to_thread`` (see _get_verified_worker_url) so a
-    slow/hanging resolver never blocks the whole UI.
+    Returns ``(safe_url, pinned_ip)``. ``pinned_ip`` is a validated IP the caller
+    should connect to directly instead of re-resolving the hostname — this closes
+    the DNS-rebinding TOCTOU where a name that resolved to a safe address here flips
+    to a metadata/loopback address when httpx re-resolves at request time. It is
+    ``None`` when the host is already a literal IP (nothing to re-resolve) or, in
+    permissive mode, when the host could not be resolved (best-effort).
+
+    Resolves hostnames and validates the resolved IP(s) so a DNS name that points at
+    a metadata/loopback address is rejected (DNS-rebinding guard). Synchronous — its
+    only blocking op is DNS resolution; event-loop callers MUST invoke it via
+    ``asyncio.to_thread`` (see _get_verified_worker_url) so a slow/hanging resolver
+    never blocks the whole UI.
     """
     parsed = urlparse(raw_url)
     if parsed.scheme not in _ALLOWED_WORKER_SCHEMES:
@@ -1032,7 +1039,8 @@ def _validate_worker_url(raw_url: str) -> str:
         _assert_ip_not_blocked(addr)
         if _WORKER_URL_POLICY == "strict":
             _assert_ip_strict_allowed(addr)
-        return raw_url.rstrip("/")
+        # Already a literal IP — httpx won't re-resolve, so no pinning needed.
+        return raw_url.rstrip("/"), None
 
     # Case B: hostname. In strict mode an explicit name/suffix match short-circuits
     # the CIDR check (so Tailscale MagicDNS names work by name), but the resolved
@@ -1049,25 +1057,52 @@ def _validate_worker_url(raw_url: str) -> str:
         # don't want a transiently-unresolvable worker to hard-400).
         if _WORKER_URL_POLICY == "strict" and not hostname_allowed:
             raise HTTPException(status_code=400, detail="Worker URL host does not resolve") from None
-        return raw_url.rstrip("/")
+        # Permissive + unresolvable: best-effort, nothing to pin.
+        return raw_url.rstrip("/"), None
 
     for addr in resolved:
         _assert_ip_not_blocked(addr)
     if _WORKER_URL_POLICY == "strict" and not hostname_allowed:
         for addr in resolved:
             _assert_ip_strict_allowed(addr)
-    return raw_url.rstrip("/")
+    # Pin one validated IP for the actual request so a rebinding record that
+    # resolved safe here can't flip to a blocked address when httpx re-resolves.
+    # Deterministic pick over the just-checked set.
+    return raw_url.rstrip("/"), str(min(resolved, key=str))
+
+
+def _pin_url_to_ip(url: str, ip: str) -> tuple[str, str]:
+    """Rewrite ``url``'s host to the validated ``ip`` and return (pinned_url, host_header).
+
+    Connecting to the already-checked IP (with the original hostname carried in the
+    Host header) means httpx never re-resolves the name, so a DNS-rebinding flip
+    between validation and the request cannot redirect us to a blocked address.
+    """
+    parsed = urlparse(url)
+    port = parsed.port
+    host_header = f"{parsed.hostname}:{port}" if port else (parsed.hostname or "")
+    ip_host = f"[{ip}]" if ":" in ip else ip  # bracket IPv6 literals
+    netloc = f"{ip_host}:{port}" if port else ip_host
+    return urlunparse(parsed._replace(netloc=netloc)), host_header
 
 
 async def _get_verified_worker_url(worker: dict[str, Any]) -> tuple[str, dict[str, str]]:
-    """Validate a worker record and return (url, headers)."""
+    """Validate a worker record and return (url, headers).
+
+    When the worker URL is a hostname, the returned URL is pinned to the IP that
+    passed validation and a ``Host`` header preserves the original name — closing
+    the DNS-rebinding TOCTOU between validation and the httpx request.
+    """
     if not worker:
         raise HTTPException(status_code=404, detail="Worker not found")
     if worker["status"] != "online":
         raise HTTPException(status_code=503, detail="Worker is offline")
     if not worker["url"]:
         raise HTTPException(status_code=503, detail="Worker URL not known")
-    url = await asyncio.to_thread(_validate_worker_url, worker["url"])
+    url, pinned_ip = await asyncio.to_thread(_validate_worker_url, worker["url"])
+    host_header: str | None = None
+    if pinned_ip:
+        url, host_header = _pin_url_to_ip(url, pinned_ip)
     # Authenticate to the worker with ITS OWN key once enrolled; fall back to the
     # shared bootstrap key only for workers that have not enrolled yet. Post-cutover
     # an enrolled worker rejects the shared key, so the UI must present its own.
@@ -1077,6 +1112,8 @@ async def _get_verified_worker_url(worker: dict[str, Any]) -> tuple[str, dict[st
     headers: dict[str, str] = {}
     if auth_key:
         headers["Authorization"] = f"Bearer {auth_key}"
+    if host_header:
+        headers["Host"] = host_header
     return url, headers
 
 
