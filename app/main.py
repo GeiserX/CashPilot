@@ -596,6 +596,21 @@ def _image_outdated(deployed: str, catalog_image: str) -> bool:
     return bool(c_digest and d_digest and c_digest != d_digest)
 
 
+def _apply_service_meta(entry: dict[str, Any], svc: dict[str, Any] | None) -> None:
+    """Attach the catalog-derived cashout / referral / website fields to a deployed
+    entry. Shared by the container-backed and external paths; a no-op when the catalog
+    no longer lists the deployed slug."""
+    if not svc:
+        return
+    cashout = svc.get("cashout", {})
+    if cashout:
+        entry["cashout"] = cashout
+    referral = svc.get("referral", {})
+    if referral:
+        entry["referral_url"] = referral.get("signup_url", "")
+    entry["website"] = svc.get("website", "")
+
+
 @app.get("/api/services/deployed")
 async def api_services_deployed(request: Request) -> list[dict[str, Any]]:
     """Return deployed services with container status, balance, CPU, memory.
@@ -701,14 +716,8 @@ async def api_services_deployed(request: Request) -> list[dict[str, Any]]:
             # retired image doesn't keep looking healthy while it silently stops earning.
             "image_outdated": False,
         }
+        _apply_service_meta(entry, svc)
         if svc:
-            cashout = svc.get("cashout", {})
-            if cashout:
-                entry["cashout"] = cashout
-            referral = svc.get("referral", {})
-            if referral:
-                entry["referral_url"] = referral.get("signup_url", "")
-            entry["website"] = svc.get("website", "")
             entry["image_outdated"] = _image_outdated(agg["image"], (svc.get("docker") or {}).get("image", ""))
         result.append(entry)
 
@@ -743,14 +752,7 @@ async def api_services_deployed(request: Request) -> list[dict[str, Any]]:
             "collector_disconnected": slug in alert_slugs,
             "collector_needs_setup": slug not in alert_slugs and _collector_needs_setup(slug, config),
         }
-        if svc:
-            cashout = svc.get("cashout", {})
-            if cashout:
-                entry["cashout"] = cashout
-            referral = svc.get("referral", {})
-            if referral:
-                entry["referral_url"] = referral.get("signup_url", "")
-            entry["website"] = svc.get("website", "")
+        _apply_service_meta(entry, svc)
         result.append(entry)
 
     return result
