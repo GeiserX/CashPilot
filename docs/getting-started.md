@@ -85,8 +85,9 @@ graph LR
 | `CASHPILOT_SECRET_KEY` | *(auto-generated)* | Encryption key for stored credentials. Set this to persist encryption across container recreations |
 | `CASHPILOT_API_KEY` | -- | Shared secret between UI and workers for API authentication |
 | `CASHPILOT_COLLECT_INTERVAL` | `60` | Minutes between earnings collection cycles |
+| `CASHPILOT_BIND_ADDR` | `127.0.0.1` | Host interface the UI port is published on. **Loopback by default** — the dashboard can command the Docker-socket worker, so it is not exposed to your network out of the box. Set a specific IP (e.g. a Tailscale/VPN address) or `0.0.0.0` to expose it, or (preferred) run an authenticating reverse proxy in front |
 
-The UI's web port is fixed at `8080` (set via the container's `CMD`, not an environment variable).
+The UI's web port inside the container is fixed at `8080` (set via the container's `CMD`); `CASHPILOT_BIND_ADDR` controls only which host interface it is published on.
 
 ### Worker Environment Variables
 
@@ -97,6 +98,7 @@ The UI's web port is fixed at `8080` (set via the container's `CMD`, not an envi
 | `CASHPILOT_API_KEY` | -- | Must match the UI's API key |
 | `CASHPILOT_WORKER_NAME` | *(hostname)* | Display name for this worker in the fleet dashboard |
 | `CASHPILOT_WORKER_URL` | *(auto-detected)* | URL the UI uses to reach this worker, e.g. `http://192.168.10.50:8081`. Set explicitly for cross-host fleets — auto-detection can report an unreachable container-internal IP |
+| `CASHPILOT_WORKER_BIND_ADDR` | `127.0.0.1` | Host interface the worker's Docker-socket API port is published on. **Loopback by default.** The worker API can deploy/stop any container (= root on the host), so for a remote worker bind a private/VPN interface (e.g. a Tailscale IP), **never** a public IP |
 | `CASHPILOT_PORT` | `8081` | Mini-UI/API port the worker listens on |
 
 ### Docker Compose Example
