@@ -169,3 +169,32 @@ class TestValidate:
         errors = catalog._validate(data, tmp_path / "test.yml")
         assert len(errors) == 1
         assert "missing" in errors[0]
+
+    def _base(self):
+        return {
+            "name": "Test",
+            "slug": "test",
+            "category": "bandwidth",
+            "status": "active",
+            "description": "desc",
+            "docker": {"image": "test:latest", "env": [{"key": "K"}]},
+        }
+
+    def test_validate_rejects_bad_category_and_status(self, tmp_path):
+        assert catalog._validate({**self._base(), "category": "bogus"}, tmp_path / "t.yml")
+        assert catalog._validate({**self._base(), "status": "nope"}, tmp_path / "t.yml")
+
+    def test_validate_rejects_malformed_docker_and_requirements(self, tmp_path):
+        p = tmp_path / "t.yml"
+        assert catalog._validate({**self._base(), "docker": {"image": 123}}, p)  # non-string image
+        assert catalog._validate({**self._base(), "docker": {"image": "i", "env": [{"label": "no key"}]}}, p)
+        assert catalog._validate({**self._base(), "docker": {"image": "i", "env": "notalist"}}, p)
+        assert catalog._validate({**self._base(), "requirements": {"gpu": "yes"}}, p)  # non-bool
+
+    def test_validate_allows_empty_image_for_non_deployable(self, tmp_path):
+        # Extension/app-only services list an empty image and must still load.
+        assert catalog._validate({**self._base(), "docker": {"image": ""}}, tmp_path / "t.yml") == []
+
+    def test_all_shipped_services_pass_validation(self):
+        # Guard: no real catalog entry is dropped by the loader's validation.
+        assert len(catalog.load_services()) >= 40

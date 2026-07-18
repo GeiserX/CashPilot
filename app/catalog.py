@@ -27,12 +27,52 @@ _by_slug: dict[str, dict[str, Any]] = {}
 _REQUIRED_FIELDS = {"name", "slug", "category", "status", "description", "docker"}
 
 
+_CATEGORIES = {"bandwidth", "depin", "storage", "compute"}
+_VALID_STATUSES = {"active", "beta", "broken", "dead", "dropped"}
+
+
 def _validate(data: dict[str, Any], path: Path) -> list[str]:
-    """Return a list of validation errors (empty = OK)."""
+    """Return a list of validation errors (empty = OK).
+
+    A service with ANY error is skipped at load (it silently disappears from the
+    UI), so these checks only assert invariants every real entry already satisfies
+    — they exist to catch a malformed NEW entry, not to drop valid ones.
+    """
     errors: list[str] = []
     missing = _REQUIRED_FIELDS - set(data.keys())
     if missing:
         errors.append(f"{path.name}: missing required fields: {missing}")
+
+    category = data.get("category")
+    if category is not None and category not in _CATEGORIES:
+        errors.append(f"{path.name}: invalid category {category!r} (expected one of {sorted(_CATEGORIES)})")
+
+    status = data.get("status")
+    if status is not None and status not in _VALID_STATUSES:
+        errors.append(f"{path.name}: invalid status {status!r} (expected one of {sorted(_VALID_STATUSES)})")
+
+    docker = data.get("docker")
+    if isinstance(docker, dict):
+        image = docker.get("image")
+        # Extension/app-only services legitimately have an empty (or absent) image —
+        # they are listed but not Docker-deployable. Only reject a non-string image.
+        if image is not None and not isinstance(image, str):
+            errors.append(f"{path.name}: docker.image must be a string")
+        env = docker.get("env")
+        if env is not None and not isinstance(env, list):
+            errors.append(f"{path.name}: docker.env must be a list")
+        elif isinstance(env, list):
+            for i, item in enumerate(env):
+                key = item.get("key") if isinstance(item, dict) else None
+                if not isinstance(key, str) or not key.strip():
+                    errors.append(f"{path.name}: docker.env[{i}] must have a non-empty string 'key'")
+
+    reqs = data.get("requirements")
+    if isinstance(reqs, dict):
+        for field in ("residential_ip", "vps_ip", "gpu"):
+            if field in reqs and not isinstance(reqs[field], bool):
+                errors.append(f"{path.name}: requirements.{field} must be a boolean")
+
     return errors
 
 
