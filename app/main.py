@@ -927,8 +927,11 @@ async def api_deploy(request: Request, slug: str, body: DeployRequest, worker_id
     return {"status": "deployed", "container_id": container_id}
 
 
-@app.post("/api/stop/{slug}")
-async def api_stop(request: Request, slug: str, worker_id: int | None = None) -> dict[str, str]:
+# The stop/restart/remove lifecycle actions each have two public routes — the flat
+# /api/{action}/{slug} and the service-scoped /api/services/{slug}/... — with identical
+# behavior. Both sets of routes delegate to these helpers so the writer-guard, worker
+# resolution, proxy, and bookkeeping live in exactly one place per action.
+async def _svc_stop(request: Request, slug: str, worker_id: int | None) -> dict[str, str]:
     _require_writer(request)
     worker_id = await _resolve_worker_id(worker_id)
     result = await _proxy_worker_command(worker_id, "stop", slug)
@@ -937,8 +940,7 @@ async def api_stop(request: Request, slug: str, worker_id: int | None = None) ->
     return result
 
 
-@app.post("/api/restart/{slug}")
-async def api_restart(request: Request, slug: str, worker_id: int | None = None) -> dict[str, str]:
+async def _svc_restart(request: Request, slug: str, worker_id: int | None) -> dict[str, str]:
     _require_writer(request)
     worker_id = await _resolve_worker_id(worker_id)
     result = await _proxy_worker_command(worker_id, "restart", slug)
@@ -947,10 +949,7 @@ async def api_restart(request: Request, slug: str, worker_id: int | None = None)
     return result
 
 
-@app.delete("/api/remove/{slug}")
-async def api_remove(
-    request: Request, slug: str, worker_id: int | None = None, delete_volumes: bool = False
-) -> dict[str, Any]:
+async def _svc_remove(request: Request, slug: str, worker_id: int | None, delete_volumes: bool) -> dict[str, Any]:
     _require_writer(request)
     worker_id = await _resolve_worker_id(worker_id)
     params = {"delete_volumes": "true"} if delete_volumes else None
@@ -959,6 +958,23 @@ async def api_remove(
     await database.record_health_event(slug, "remove")
     metrics.record_container_lifecycle("remove", slug)
     return result
+
+
+@app.post("/api/stop/{slug}")
+async def api_stop(request: Request, slug: str, worker_id: int | None = None) -> dict[str, str]:
+    return await _svc_stop(request, slug, worker_id)
+
+
+@app.post("/api/restart/{slug}")
+async def api_restart(request: Request, slug: str, worker_id: int | None = None) -> dict[str, str]:
+    return await _svc_restart(request, slug, worker_id)
+
+
+@app.delete("/api/remove/{slug}")
+async def api_remove(
+    request: Request, slug: str, worker_id: int | None = None, delete_volumes: bool = False
+) -> dict[str, Any]:
+    return await _svc_remove(request, slug, worker_id, delete_volumes)
 
 
 # ---------------------------------------------------------------------------
@@ -1209,9 +1225,7 @@ async def _proxy_worker_deploy(worker_id: int, slug: str, spec: dict[str, Any]) 
 
 async def _proxy_worker_logs(worker_id: int, slug: str, lines: int = 50) -> dict[str, str]:
     """Forward a logs request to a worker."""
-    return await _proxy_to_worker(
-        worker_id, "GET", f"/api/containers/{slug}/logs", params={"lines": min(lines, 1000)}
-    )
+    return await _proxy_to_worker(worker_id, "GET", f"/api/containers/{slug}/logs", params={"lines": min(lines, 1000)})
 
 
 # ---------------------------------------------------------------------------
@@ -1221,22 +1235,12 @@ async def _proxy_worker_logs(worker_id: int, slug: str, lines: int = 50) -> dict
 
 @app.post("/api/services/{slug}/restart")
 async def api_service_restart(request: Request, slug: str, worker_id: int | None = None) -> dict[str, str]:
-    _require_writer(request)
-    worker_id = await _resolve_worker_id(worker_id)
-    result = await _proxy_worker_command(worker_id, "restart", slug)
-    await database.record_health_event(slug, "restart")
-    metrics.record_container_lifecycle("restart", slug)
-    return result
+    return await _svc_restart(request, slug, worker_id)
 
 
 @app.post("/api/services/{slug}/stop")
 async def api_service_stop(request: Request, slug: str, worker_id: int | None = None) -> dict[str, str]:
-    _require_writer(request)
-    worker_id = await _resolve_worker_id(worker_id)
-    result = await _proxy_worker_command(worker_id, "stop", slug)
-    await database.record_health_event(slug, "stop")
-    metrics.record_container_lifecycle("stop", slug)
-    return result
+    return await _svc_stop(request, slug, worker_id)
 
 
 @app.post("/api/services/{slug}/start")
@@ -1262,14 +1266,7 @@ async def api_service_logs(
 async def api_service_remove(
     request: Request, slug: str, worker_id: int | None = None, delete_volumes: bool = False
 ) -> dict[str, Any]:
-    _require_writer(request)
-    worker_id = await _resolve_worker_id(worker_id)
-    params = {"delete_volumes": "true"} if delete_volumes else None
-    result = await _proxy_worker_command(worker_id, "remove", slug, params=params)
-    await database.remove_deployment(slug)
-    await database.record_health_event(slug, "remove")
-    metrics.record_container_lifecycle("remove", slug)
-    return result
+    return await _svc_remove(request, slug, worker_id, delete_volumes)
 
 
 # ---------------------------------------------------------------------------
