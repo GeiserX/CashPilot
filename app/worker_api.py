@@ -20,6 +20,7 @@ import os
 import platform
 import re
 import socket
+import uuid
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from html import escape as _esc
@@ -102,6 +103,40 @@ def _save_worker_key(key: str) -> bool:
 _worker_key: str | None = _load_worker_key()
 
 
+# Stable per-worker identity. The UI keys a worker's DB row (and its per-worker key) on
+# this client_id, NOT on the mutable display name: two hosts sharing a default hostname
+# (ubuntu/raspberrypi/docker-desktop) must not collapse onto one identity, and renaming
+# CASHPILOT_WORKER_NAME must not mint a new identity that locks the worker out.
+_WORKER_ID_FILE = Path(os.getenv("CASHPILOT_DATA_DIR", "/data")) / ".worker_id"
+
+
+def _load_or_create_client_id() -> str:
+    """Return this worker's stable client_id, generating and persisting one on first run.
+
+    Migration: a worker already enrolled under the pre-client_id scheme has a persisted
+    per-worker key but no id file. It keeps the identity the UI already knows it by --
+    its WORKER_NAME -- so upgrading never orphans its row or forces a re-enrollment that
+    its own (already cut-over) key could not complete. A brand-new worker gets a random id.
+    """
+    try:
+        existing = _WORKER_ID_FILE.read_text().strip()
+        if existing:
+            return existing
+    except OSError:
+        pass
+    cid = WORKER_NAME if _worker_key else uuid.uuid4().hex
+    try:
+        _WORKER_ID_FILE.parent.mkdir(parents=True, exist_ok=True)
+        _WORKER_ID_FILE.write_text(cid)
+        _WORKER_ID_FILE.chmod(0o600)
+    except OSError as exc:
+        logger.warning("Could not persist worker client_id — using in-memory id: %s", exc)
+    return cid
+
+
+CLIENT_ID: str = _load_or_create_client_id()
+
+
 def _active_key() -> str:
     """The key we authenticate with: our own once enrolled, else the shared key."""
     return _worker_key or API_KEY
@@ -144,6 +179,7 @@ async def _send_heartbeat() -> None:
 
     payload = {
         "name": WORKER_NAME,
+        "client_id": CLIENT_ID,
         "url": WORKER_URL or f"http://{_get_local_ip()}:{WORKER_PORT}",
         "containers": containers,
         "system_info": {
@@ -306,6 +342,7 @@ async def worker_status_page(request: Request):
         <h2>Worker Info</h2>
         <div class="info">
             <div><label>Name</label><span>{_esc(WORKER_NAME)}</span></div>
+            <div><label>ID</label><span>{_esc(CLIENT_ID)}</span></div>
             <div><label>Host</label><span>{_esc(socket.gethostname())}</span></div>
             <div><label>Platform</label><span>{_esc(platform.system())} {_esc(platform.machine())}</span></div>
             <div><label>Docker</label><span>{"Available" if await asyncio.to_thread(orchestrator.docker_available) else "Not available"}</span></div>
@@ -463,6 +500,7 @@ async def api_worker_status(request: Request) -> dict[str, Any]:
         logger.warning("Failed to get container status: %s", exc)
     return {
         "name": WORKER_NAME,
+        "client_id": CLIENT_ID,
         "docker_available": await asyncio.to_thread(orchestrator.docker_available),
         "ui_connected": _ui_connected,
         "container_count": len(containers),
