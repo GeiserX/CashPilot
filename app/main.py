@@ -482,6 +482,12 @@ app = FastAPI(
 metrics.setup(app)
 
 
+# Whether a trusted reverse proxy sits in front (opt-in). Only then do we believe an
+# X-Forwarded-Proto header for deciding HTTPS (matches app.deps._TRUST_PROXY semantics;
+# read here directly to avoid importing deps into the middleware).
+_HSTS_TRUST_PROXY = os.getenv("CASHPILOT_TRUSTED_PROXY", "").strip().lower() in ("1", "true", "yes", "on")
+
+
 # Security headers middleware
 class _SecurityHeadersMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request, call_next):
@@ -490,6 +496,10 @@ class _SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response.headers["X-Frame-Options"] = "DENY"
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
         response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+        # 'unsafe-inline' stays on script-src/style-src until the UI drops inline handlers
+        # (bead guw). base-uri/object-src/form-action are additive hardening that costs
+        # nothing today: block <base> hijack of relative script URLs, disallow plugins,
+        # and stop a form from POSTing credentials off-origin if an XSS is ever found.
         response.headers["Content-Security-Policy"] = (
             "default-src 'self'; "
             "script-src 'self' https://cdn.jsdelivr.net 'unsafe-inline'; "
@@ -497,8 +507,17 @@ class _SecurityHeadersMiddleware(BaseHTTPMiddleware):
             "font-src 'self' https://fonts.gstatic.com; "
             "img-src 'self' data:; "
             "connect-src 'self' https://cdn.jsdelivr.net; "
-            "frame-ancestors 'none'"
+            "frame-ancestors 'none'; "
+            "base-uri 'none'; "
+            "object-src 'none'; "
+            "form-action 'self'"
         )
+        # HSTS only when the request is actually HTTPS, so plain-HTTP local dev is never
+        # pinned to https (which would hard-break it). Behind a trusted proxy that
+        # terminates TLS the app sees http, so honor X-Forwarded-Proto there.
+        proto = request.headers.get("x-forwarded-proto") if _HSTS_TRUST_PROXY else request.url.scheme
+        if proto == "https":
+            response.headers["Strict-Transport-Security"] = "max-age=63072000; includeSubDomains"
         return response
 
 
@@ -1644,7 +1663,7 @@ async def api_change_own_password(request: Request, body: PasswordChange) -> JSO
     auth.set_user_pwd_epoch(uid, changed["password_changed_at"])
     # Re-mint the session cookie so the caller stays logged in after the epoch bump.
     token = auth.create_session_token(uid, user["u"], user["r"])
-    return auth.set_session_cookie(JSONResponse({"status": "password_changed"}), token)
+    return auth.set_session_cookie(JSONResponse({"status": "password_changed"}), token, request)
 
 
 @app.post("/api/users/{user_id}/password")
