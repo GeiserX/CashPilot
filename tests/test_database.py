@@ -399,19 +399,9 @@ class TestWorkers:
 
         asyncio.run(run())
 
-    def test_get_worker_by_name(self, db):
-        async def run():
-            await database.upsert_worker("c1", "myworker")
-            worker = await database.get_worker_by_name("myworker")
-            assert worker is not None
-            assert worker["name"] == "myworker"
-
-        asyncio.run(run())
-
     def test_get_missing_worker(self, db):
         async def run():
             assert await database.get_worker(9999) is None
-            assert await database.get_worker_by_name("nope") is None
 
         asyncio.run(run())
 

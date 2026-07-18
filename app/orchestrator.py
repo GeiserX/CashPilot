@@ -17,7 +17,8 @@ from docker.errors import APIError, DockerException, NotFound
 try:
     from app.catalog import get_service, get_services
 except ImportError:
-    # Worker image doesn't include catalog module
+    # Defensive fallback if the catalog module isn't importable in some context.
+    # (The worker image does ship catalog.py + services/, so this normally no-ops.)
     get_service = None  # type: ignore[assignment]
     get_services = None  # type: ignore[assignment]
 
