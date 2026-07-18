@@ -477,6 +477,13 @@ const CP = (() => {
     const bonusLabel = signupBonus > 0
       ? `<div style="font-size:0.6rem; color:var(--text-muted);">\u2212${formatCurrency(signupBonus, currency)} promo</div>`
       : '';
+    // Image drift: the running container no longer matches the catalog image
+    // (provider migrated or re-pinned). Prompt a re-deploy — otherwise a retired
+    // image keeps looking healthy while it silently stops earning.
+    const outdatedBadge = svc.image_outdated === true
+      ? ` <span class="badge badge-stopped" title="This service is running an image that no longer matches the catalog (the provider changed or re-pinned it). Re-deploy it from the catalog to update.">update available</span>`
+      : '';
+
     // Earnings-collector state. "disconnected" = collector ran and failed
     // (e.g. wrong credentials). "needs setup" = the service is deployed and
     // earning, but its (separate) earnings-tracking credentials aren't set yet.
@@ -577,7 +584,7 @@ const CP = (() => {
     let html = `
     <tr class="breakdown-row${isMulti ? ' expandable' : ''}" data-slug="${escapeHtml(svc.slug)}"${isMulti ? ` onclick="CP.toggleInstances('${escapeHtml(svc.slug)}', event)" style="cursor:pointer;"` : ''}>
       <td>${nameHtml}<div style="font-size:0.7rem; color:var(--text-muted);">${subtitle}</div></td>
-      <td style="text-align:center;"><span class="badge badge-${statusClass}"><span class="status-dot ${statusClass}"></span> ${statusLabel}</span>${instanceLabel}</td>
+      <td style="text-align:center;"><span class="badge badge-${statusClass}"><span class="status-dot ${statusClass}"></span> ${statusLabel}</span>${instanceLabel}${outdatedBadge}</td>
       <td style="text-align:center;">${healthBadge}</td>
       <td style="text-align:right; font-weight:600;">${balanceHtml}</td>
       <td style="text-align:right;"><span class="stat-change ${deltaClass}">${deltaStr}</span></td>
