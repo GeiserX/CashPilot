@@ -181,6 +181,9 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_earnings_platform_date
 CREATE INDEX IF NOT EXISTS idx_earnings_created
     ON earnings (created_at);
 
+CREATE INDEX IF NOT EXISTS idx_earnings_date
+    ON earnings (date);
+
 CREATE INDEX IF NOT EXISTS idx_workers_status
     ON workers (status);
 
@@ -428,8 +431,11 @@ async def get_earnings_history(
                 (f"-{days} days",),
             )
         else:
+            # period="all": defensively cap the result so a very long-lived DB can't
+            # return an unbounded row set into a single response/chart. Most-recent
+            # first; 50k rows spans years of daily per-service earnings.
             cursor = await db.execute(
-                "SELECT platform, balance, currency, date FROM earnings ORDER BY date DESC, platform"
+                "SELECT platform, balance, currency, date FROM earnings ORDER BY date DESC, platform LIMIT 50000"
             )
         rows = await cursor.fetchall()
         return [dict(r) for r in rows]

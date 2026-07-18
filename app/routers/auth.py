@@ -52,7 +52,7 @@ async def do_login(
         main.metrics.record_rate_limit()
         raise
     user = await main.database.get_user_by_username(username)
-    if not user or not main.auth.verify_password(password, user["password"]):
+    if not user or not await main.auth.verify_password_async(password, user["password"]):
         main._record_failed_login(client_ip)
         main.metrics.record_login(success=False)
         return main.templates.TemplateResponse(
@@ -196,7 +196,7 @@ async def do_register(
 
     # First user is always owner
     role = "owner" if is_first else "viewer"
-    hashed = main.auth.hash_password(password)
+    hashed = await main.auth.hash_password_async(password)
     if is_first:
         # Atomic: only one concurrent first-run registration can win, so a single
         # setup token can't be raced into minting two owners.

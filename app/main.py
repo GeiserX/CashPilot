@@ -1757,14 +1757,14 @@ async def api_change_own_password(request: Request, body: PasswordChange) -> JSO
     record = await database.get_user_by_id(uid)
     if not record:
         raise HTTPException(status_code=404, detail="User not found")
-    if not auth.verify_password(body.current_password, record["password"]):
+    if not await auth.verify_password_async(body.current_password, record["password"]):
         raise HTTPException(status_code=403, detail="Current password is incorrect")
     if len(body.new_password) < 10:
         raise HTTPException(status_code=400, detail="Password must be at least 10 characters")
     if body.new_password == body.current_password:
         raise HTTPException(status_code=400, detail="New password must differ from the current password")
 
-    hashed = auth.hash_password(body.new_password)
+    hashed = await auth.hash_password_async(body.new_password)
     await database.update_user_password(uid, hashed)
     changed = await database.get_user_by_id(uid)
     auth.set_user_pwd_epoch(uid, changed["password_changed_at"])
@@ -1782,7 +1782,7 @@ async def api_admin_set_password(request: Request, user_id: int, body: AdminPass
         raise HTTPException(status_code=404, detail="User not found")
     if len(body.new_password) < 10:
         raise HTTPException(status_code=400, detail="Password must be at least 10 characters")
-    hashed = auth.hash_password(body.new_password)
+    hashed = await auth.hash_password_async(body.new_password)
     await database.update_user_password(user_id, hashed)
     changed = await database.get_user_by_id(user_id)
     auth.set_user_pwd_epoch(user_id, changed["password_changed_at"])
