@@ -595,6 +595,38 @@ class TestWorkerCommand:
             rm_dep.assert_awaited_once()
             health_evt.assert_awaited()
 
+    def test_command_restart(self, client):
+        worker, mock_client = self._setup()
+        with (
+            _auth_writer(),
+            patch("app.main.database.get_worker", new_callable=AsyncMock, return_value=worker),
+            patch("app.main.database.record_health_event", new_callable=AsyncMock) as health_evt,
+            patch("app.main.httpx.AsyncClient", return_value=mock_client),
+            patch("app.main.FLEET_API_KEY", "test-key"),
+        ):
+            resp = client.post(
+                "/api/workers/1/command",
+                json={"command": "restart", "slug": "honeygain"},
+            )
+            assert resp.status_code == 200
+            health_evt.assert_awaited_once()
+
+    def test_command_start(self, client):
+        worker, mock_client = self._setup()
+        with (
+            _auth_writer(),
+            patch("app.main.database.get_worker", new_callable=AsyncMock, return_value=worker),
+            patch("app.main.database.record_health_event", new_callable=AsyncMock) as health_evt,
+            patch("app.main.httpx.AsyncClient", return_value=mock_client),
+            patch("app.main.FLEET_API_KEY", "test-key"),
+        ):
+            resp = client.post(
+                "/api/workers/1/command",
+                json={"command": "start", "slug": "honeygain"},
+            )
+            assert resp.status_code == 200
+            health_evt.assert_awaited_once()
+
     def test_command_unknown(self, client):
         worker, mock_client = self._setup()
         with (
