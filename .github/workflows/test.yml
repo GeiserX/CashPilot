@@ -19,7 +19,7 @@ jobs:
       - name: Install dependencies
         run: |
           pip install -r requirements.txt
-          pip install pytest pytest-cov pytest-asyncio pyyaml tzdata
+          pip install pytest pytest-cov pytest-asyncio pyyaml tzdata docker
 
       - name: Run tests
         run: pytest tests/ -v --tb=short
