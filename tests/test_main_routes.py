@@ -1584,7 +1584,7 @@ class TestValidateWorkerUrl:
         from app.main import _validate_worker_url
 
         # Patch DNS so the test is deterministic and never hits the real resolver.
-        with patch("app.main.socket.getaddrinfo", return_value=[(2, 1, 6, "", ("192.168.1.9", 8081))]):
+        with patch("app.worker_proxy.socket.getaddrinfo", return_value=[(2, 1, 6, "", ("192.168.1.9", 8081))]):
             assert _validate_worker_url("http://host:8081/")[0] == "http://host:8081"
 
     def test_invalid_scheme(self):
@@ -1617,7 +1617,7 @@ class TestValidateWorkerUrl:
         # Exact-match (not substring) so CodeQL's url-substring-sanitization rule
         # isn't tripped by a test assertion. Patch DNS to a Tailscale CGNAT IP so the
         # test is deterministic and never hits the real resolver.
-        with patch("app.main.socket.getaddrinfo", return_value=[(2, 1, 6, "", ("100.100.100.100", 8081))]):
+        with patch("app.worker_proxy.socket.getaddrinfo", return_value=[(2, 1, 6, "", ("100.100.100.100", 8081))]):
             result = _validate_worker_url("http://worker.mango.ts.net:8081")
         assert result[0] == "http://worker.mango.ts.net:8081"
 
@@ -1664,7 +1664,7 @@ class TestValidateWorkerUrl:
 
         with (
             patch(
-                "app.main.socket.getaddrinfo",
+                "app.worker_proxy.socket.getaddrinfo",
                 return_value=[(2, 1, 6, "", ("169.254.169.254", 80))],
             ),
             pytest.raises(Exception, match="metadata"),
@@ -1676,7 +1676,7 @@ class TestValidateWorkerUrl:
         # directly, defeating a rebinding flip between validation and the request.
         from app.main import _validate_worker_url
 
-        with patch("app.main.socket.getaddrinfo", return_value=[(2, 1, 6, "", ("192.168.20.7", 8081))]):
+        with patch("app.worker_proxy.socket.getaddrinfo", return_value=[(2, 1, 6, "", ("192.168.20.7", 8081))]):
             assert _validate_worker_url("http://wk.example:8081") == ("http://wk.example:8081", "192.168.20.7")
 
     def test_pin_url_to_ip_rewrites_host_keeps_host_header(self):
@@ -1700,7 +1700,7 @@ class TestValidateWorkerUrl:
 
         worker = {"status": "online", "url": "http://wk.example:8081", "client_id": ""}
         with (
-            patch("app.main.socket.getaddrinfo", return_value=[(2, 1, 6, "", ("192.168.30.9", 8081))]),
+            patch("app.worker_proxy.socket.getaddrinfo", return_value=[(2, 1, 6, "", ("192.168.30.9", 8081))]),
             patch("app.main.database.get_worker_key", new_callable=AsyncMock, return_value=None),
         ):
             url, headers = asyncio.run(main._get_verified_worker_url(worker))
@@ -1708,7 +1708,7 @@ class TestValidateWorkerUrl:
         assert headers["Host"] == "wk.example:8081"
 
     def test_strict_mode_allows_listed_cidr(self):
-        import app.main as main
+        import app.worker_proxy as main
 
         orig = (main._WORKER_URL_POLICY, main._WORKER_ALLOWED_CIDRS)
         try:
@@ -1719,7 +1719,7 @@ class TestValidateWorkerUrl:
             main._WORKER_URL_POLICY, main._WORKER_ALLOWED_CIDRS = orig
 
     def test_strict_mode_blocks_unlisted_ip(self):
-        import app.main as main
+        import app.worker_proxy as main
 
         orig = (main._WORKER_URL_POLICY, main._WORKER_ALLOWED_CIDRS)
         try:
@@ -1734,7 +1734,7 @@ class TestValidateWorkerUrl:
         # The escape hatch un-blocks the metadata check only. Use the IPv6 IMDS
         # address (ULA fd00::/8, not link-local) so the loopback/link-local guard
         # doesn't independently block it — proving the hatch works in isolation.
-        import app.main as main
+        import app.worker_proxy as main
 
         orig = main._WORKER_ALLOW_METADATA
         try:
@@ -1745,13 +1745,13 @@ class TestValidateWorkerUrl:
 
     def test_strict_mode_hostname_resolves_into_allowed_cidr(self):
         # Strict mode, Case B: hostname resolving to an allowed CIDR is accepted.
-        import app.main as main
+        import app.worker_proxy as main
 
         orig = (main._WORKER_URL_POLICY, main._WORKER_ALLOWED_CIDRS)
         try:
             main._WORKER_URL_POLICY = "strict"
             main._WORKER_ALLOWED_CIDRS = [main.ipaddress.ip_network("192.168.10.0/24")]
-            with patch("app.main.socket.getaddrinfo", return_value=[(2, 1, 6, "", ("192.168.10.50", 8081))]):
+            with patch("app.worker_proxy.socket.getaddrinfo", return_value=[(2, 1, 6, "", ("192.168.10.50", 8081))]):
                 # Hostname resolves into the allowed CIDR -> accepted, and the
                 # validated IP is pinned for the request (anti-rebinding).
                 assert main._validate_worker_url("http://wk.local:8081") == ("http://wk.local:8081", "192.168.10.50")
@@ -1759,14 +1759,14 @@ class TestValidateWorkerUrl:
             main._WORKER_URL_POLICY, main._WORKER_ALLOWED_CIDRS = orig
 
     def test_strict_mode_hostname_resolves_outside_allowed_cidr_blocked(self):
-        import app.main as main
+        import app.worker_proxy as main
 
         orig = (main._WORKER_URL_POLICY, main._WORKER_ALLOWED_CIDRS)
         try:
             main._WORKER_URL_POLICY = "strict"
             main._WORKER_ALLOWED_CIDRS = [main.ipaddress.ip_network("192.168.10.0/24")]
             with (
-                patch("app.main.socket.getaddrinfo", return_value=[(2, 1, 6, "", ("10.0.0.5", 8081))]),
+                patch("app.worker_proxy.socket.getaddrinfo", return_value=[(2, 1, 6, "", ("10.0.0.5", 8081))]),
                 pytest.raises(Exception, match="strict mode"),
             ):
                 main._validate_worker_url("http://wk.local:8081")
@@ -1774,13 +1774,13 @@ class TestValidateWorkerUrl:
             main._WORKER_URL_POLICY, main._WORKER_ALLOWED_CIDRS = orig
 
     def test_strict_mode_unresolvable_hostname_blocked(self):
-        import app.main as main
+        import app.worker_proxy as main
 
         orig = main._WORKER_URL_POLICY
         try:
             main._WORKER_URL_POLICY = "strict"
             with (
-                patch("app.main.socket.getaddrinfo", side_effect=socket.gaierror),
+                patch("app.worker_proxy.socket.getaddrinfo", side_effect=socket.gaierror),
                 pytest.raises(Exception, match="does not resolve"),
             ):
                 main._validate_worker_url("http://nope.invalid:8081")
@@ -2125,7 +2125,7 @@ class TestDepsGuards:
 
 class TestWorkerAllowlistParsing:
     def test_parse_allowlist_mixed_entries(self):
-        import app.main as main
+        import app.worker_proxy as main
 
         with patch.dict(
             os.environ,
