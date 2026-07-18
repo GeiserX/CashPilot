@@ -1577,12 +1577,13 @@ class TestValidateWorkerUrl:
     def test_valid_url(self):
         from app.main import _validate_worker_url
 
-        assert _validate_worker_url("http://192.168.1.10:8081") == "http://192.168.1.10:8081"
+        # Literal IP -> no pinning needed (httpx won't re-resolve).
+        assert _validate_worker_url("http://192.168.1.10:8081") == ("http://192.168.1.10:8081", None)
 
     def test_trailing_slash_stripped(self):
         from app.main import _validate_worker_url
 
-        assert _validate_worker_url("http://host:8081/") == "http://host:8081"
+        assert _validate_worker_url("http://host:8081/")[0] == "http://host:8081"
 
     def test_invalid_scheme(self):
         from app.main import _validate_worker_url
@@ -1614,19 +1615,19 @@ class TestValidateWorkerUrl:
         # Exact-match (not substring) so CodeQL's url-substring-sanitization rule
         # isn't tripped by a test assertion.
         result = _validate_worker_url("http://worker.mango.ts.net:8081")
-        assert result == "http://worker.mango.ts.net:8081"
+        assert result[0] == "http://worker.mango.ts.net:8081"
 
     def test_tailscale_cgnat_ip_allowed(self):
         # 100.64.0.0/10 is neither private nor public in Python's ipaddress;
         # permissive default must still allow Tailscale literal IPs.
         from app.main import _validate_worker_url
 
-        assert _validate_worker_url("http://100.100.100.100:8081") == "http://100.100.100.100:8081"
+        assert _validate_worker_url("http://100.100.100.100:8081") == ("http://100.100.100.100:8081", None)
 
     def test_rfc1918_lan_allowed(self):
         from app.main import _validate_worker_url
 
-        assert _validate_worker_url("http://192.168.10.50:8081") == "http://192.168.10.50:8081"
+        assert _validate_worker_url("http://192.168.10.50:8081") == ("http://192.168.10.50:8081", None)
 
     def test_metadata_ipv4_blocked(self):
         from app.main import _validate_worker_url
@@ -1666,6 +1667,42 @@ class TestValidateWorkerUrl:
         ):
             _validate_worker_url("http://evil.example.com")
 
+    def test_hostname_returns_validated_ip_to_pin(self):
+        # A resolvable hostname returns the checked IP so the caller connects to it
+        # directly, defeating a rebinding flip between validation and the request.
+        from app.main import _validate_worker_url
+
+        with patch("app.main.socket.getaddrinfo", return_value=[(2, 1, 6, "", ("192.168.20.7", 8081))]):
+            assert _validate_worker_url("http://wk.example:8081") == ("http://wk.example:8081", "192.168.20.7")
+
+    def test_pin_url_to_ip_rewrites_host_keeps_host_header(self):
+        from app.main import _pin_url_to_ip
+
+        assert _pin_url_to_ip("http://wk.example:8081/x", "192.168.20.7") == (
+            "http://192.168.20.7:8081/x",
+            "wk.example:8081",
+        )
+        # IPv6 pins are bracketed in the URL.
+        url, host = _pin_url_to_ip("http://wk.example:8081", "fd00::5")
+        assert url == "http://[fd00::5]:8081"
+        assert host == "wk.example:8081"
+
+    def test_get_verified_worker_url_pins_ip_and_sets_host_header(self):
+        # End-to-end: the URL handed to httpx uses the validated IP (so httpx never
+        # re-resolves the name) and the original host is preserved in the Host header.
+        import asyncio
+
+        import app.main as main
+
+        worker = {"status": "online", "url": "http://wk.example:8081", "client_id": ""}
+        with (
+            patch("app.main.socket.getaddrinfo", return_value=[(2, 1, 6, "", ("192.168.30.9", 8081))]),
+            patch("app.main.database.get_worker_key", new_callable=AsyncMock, return_value=None),
+        ):
+            url, headers = asyncio.run(main._get_verified_worker_url(worker))
+        assert url == "http://192.168.30.9:8081"
+        assert headers["Host"] == "wk.example:8081"
+
     def test_strict_mode_allows_listed_cidr(self):
         import app.main as main
 
@@ -1673,7 +1710,7 @@ class TestValidateWorkerUrl:
         try:
             main._WORKER_URL_POLICY = "strict"
             main._WORKER_ALLOWED_CIDRS = [main.ipaddress.ip_network("192.168.10.0/24")]
-            assert main._validate_worker_url("http://192.168.10.50:8081") == "http://192.168.10.50:8081"
+            assert main._validate_worker_url("http://192.168.10.50:8081") == ("http://192.168.10.50:8081", None)
         finally:
             main._WORKER_URL_POLICY, main._WORKER_ALLOWED_CIDRS = orig
 
@@ -1698,7 +1735,7 @@ class TestValidateWorkerUrl:
         orig = main._WORKER_ALLOW_METADATA
         try:
             main._WORKER_ALLOW_METADATA = True
-            assert main._validate_worker_url("http://[fd00:ec2::254]:80/") == "http://[fd00:ec2::254]:80"
+            assert main._validate_worker_url("http://[fd00:ec2::254]:80/") == ("http://[fd00:ec2::254]:80", None)
         finally:
             main._WORKER_ALLOW_METADATA = orig
 
@@ -1711,7 +1748,9 @@ class TestValidateWorkerUrl:
             main._WORKER_URL_POLICY = "strict"
             main._WORKER_ALLOWED_CIDRS = [main.ipaddress.ip_network("192.168.10.0/24")]
             with patch("app.main.socket.getaddrinfo", return_value=[(2, 1, 6, "", ("192.168.10.50", 8081))]):
-                assert main._validate_worker_url("http://wk.local:8081") == "http://wk.local:8081"
+                # Hostname resolves into the allowed CIDR -> accepted, and the
+                # validated IP is pinned for the request (anti-rebinding).
+                assert main._validate_worker_url("http://wk.local:8081") == ("http://wk.local:8081", "192.168.10.50")
         finally:
             main._WORKER_URL_POLICY, main._WORKER_ALLOWED_CIDRS = orig
 
@@ -2025,7 +2064,7 @@ class TestOutboundWorkerAuth:
         with (
             patch("app.main.FLEET_API_KEY", "shared-key"),
             patch("app.main.database.get_worker_key", new_callable=AsyncMock, return_value="worker-1-key"),
-            patch("app.main._validate_worker_url", return_value="http://192.168.1.5:8081"),
+            patch("app.main._validate_worker_url", return_value=("http://192.168.1.5:8081", None)),
         ):
             _, headers = asyncio.run(m._get_verified_worker_url(self._worker()))
         assert headers["Authorization"] == "Bearer worker-1-key"
@@ -2036,7 +2075,7 @@ class TestOutboundWorkerAuth:
         with (
             patch("app.main.FLEET_API_KEY", "shared-key"),
             patch("app.main.database.get_worker_key", new_callable=AsyncMock, return_value=None),
-            patch("app.main._validate_worker_url", return_value="http://192.168.1.5:8081"),
+            patch("app.main._validate_worker_url", return_value=("http://192.168.1.5:8081", None)),
         ):
             _, headers = asyncio.run(m._get_verified_worker_url(self._worker()))
         assert headers["Authorization"] == "Bearer shared-key"
