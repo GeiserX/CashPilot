@@ -74,7 +74,7 @@ async def do_login(
     main.metrics.record_login(success=True)
     token = main.auth.create_session_token(user["id"], user["username"], user["role"])
     response = RedirectResponse("/", status_code=303)
-    return main.auth.set_session_cookie(response, token)
+    return main.auth.set_session_cookie(response, token, request)
 
 
 @router.get("/register", response_class=HTMLResponse)
@@ -228,7 +228,7 @@ async def do_register(
     token = main.auth.create_session_token(user_id, username, role)
     dest = "/setup" if is_first else "/"
     response = RedirectResponse(dest, status_code=303)
-    return main.auth.set_session_cookie(response, token)
+    return main.auth.set_session_cookie(response, token, request)
 
 
 @router.get("/logout")
