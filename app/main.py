@@ -565,6 +565,37 @@ def _collector_needs_setup(slug: str, config: dict[str, str]) -> bool:
     return False
 
 
+def _split_image(ref: str) -> tuple[str, str, str]:
+    """Split a Docker image reference into (repository, tag, digest)."""
+    digest = ""
+    if "@" in ref:
+        ref, digest = ref.split("@", 1)
+    repo, tag = ref, ""
+    # A ':' is a tag only if it comes after the last '/', else it's a registry port.
+    last_colon = ref.rfind(":")
+    if last_colon > ref.rfind("/"):
+        repo, tag = ref[:last_colon], ref[last_colon + 1 :]
+    return repo, tag, digest
+
+
+def _image_outdated(deployed: str, catalog_image: str) -> bool:
+    """True when a running container's image no longer matches the catalog entry.
+
+    Flags the case a provider changed its image path (the ProxyBase migration) or the
+    catalog re-pinned to a new digest — so the dashboard can prompt a re-deploy instead
+    of showing a healthy-looking container that is silently running a retired image.
+    Deliberately conservative: unknown/empty images and a pure tag-vs-digest difference
+    of the same repository are NOT flagged.
+    """
+    if not deployed or not catalog_image:
+        return False
+    d_repo, _, d_digest = _split_image(deployed)
+    c_repo, _, c_digest = _split_image(catalog_image)
+    if d_repo != c_repo:
+        return True
+    return bool(c_digest and d_digest and c_digest != d_digest)
+
+
 @app.get("/api/services/deployed")
 async def api_services_deployed(request: Request) -> list[dict[str, Any]]:
     """Return deployed services with container status, balance, CPU, memory.
@@ -665,6 +696,10 @@ async def api_services_deployed(request: Request) -> list[dict[str, Any]]:
             "instance_details": instance_details,
             "collector_disconnected": slug in alert_slugs,
             "collector_needs_setup": slug not in alert_slugs and _collector_needs_setup(slug, config),
+            # True when the running container's image no longer matches the catalog
+            # (provider migrated / re-pinned) — the dashboard prompts a re-deploy so a
+            # retired image doesn't keep looking healthy while it silently stops earning.
+            "image_outdated": False,
         }
         if svc:
             cashout = svc.get("cashout", {})
@@ -674,6 +709,7 @@ async def api_services_deployed(request: Request) -> list[dict[str, Any]]:
             if referral:
                 entry["referral_url"] = referral.get("signup_url", "")
             entry["website"] = svc.get("website", "")
+            entry["image_outdated"] = _image_outdated(agg["image"], (svc.get("docker") or {}).get("image", ""))
         result.append(entry)
 
     # Include external services (no Docker container, e.g. Grass, Bytelixir)

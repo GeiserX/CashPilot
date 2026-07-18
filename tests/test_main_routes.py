@@ -2153,3 +2153,35 @@ class TestLoginRateLimitMetric:
             resp = client.post("/login", data={"username": "x", "password": "y"}, follow_redirects=False)
             assert resp.status_code == 429
             mock_metric.assert_called_once()
+
+
+class TestImageDrift:
+    """CashPilot-5wi: flag a deployed container whose image drifted from the catalog."""
+
+    def test_split_image(self):
+        from app.main import _split_image
+
+        assert _split_image("ghcr.io/proxybaseorg/peer-cli@sha256:abc") == (
+            "ghcr.io/proxybaseorg/peer-cli",
+            "",
+            "sha256:abc",
+        )
+        assert _split_image("proxybase/proxybase:latest") == ("proxybase/proxybase", "latest", "")
+        assert _split_image("repo") == ("repo", "", "")
+        # A registry:port is not mistaken for a tag.
+        assert _split_image("localhost:5000/img:1.0")[0] == "localhost:5000/img"
+
+    def test_image_outdated(self):
+        from app.main import _image_outdated
+
+        # Provider migrated the image path (the ProxyBase case) -> outdated.
+        assert _image_outdated("proxybase/proxybase@sha256:old", "ghcr.io/proxybaseorg/peer-cli@sha256:new") is True
+        # Same repo, re-pinned to a new digest -> outdated.
+        assert _image_outdated("repo@sha256:aaa", "repo@sha256:bbb") is True
+        # Same image -> not flagged.
+        assert _image_outdated("repo@sha256:aaa", "repo@sha256:aaa") is False
+        # Missing/empty images -> conservative, not flagged.
+        assert _image_outdated("", "repo@sha256:x") is False
+        assert _image_outdated("repo:1.0", "") is False
+        # Same repo, tag vs digest (unresolvable) -> not flagged.
+        assert _image_outdated("repo:1.0", "repo@sha256:x") is False
