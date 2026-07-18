@@ -390,6 +390,11 @@ class TestStaleWorkerPurge:
 # ---------------------------------------------------------------------------
 
 
+def _batched_events(mock):
+    """The single batched event list passed to record_health_events ([] if uncalled)."""
+    return list(mock.call_args.args[0]) if mock.call_args else []
+
+
 class TestHealthCheckVanishedService:
     def test_known_deployment_missing_from_heartbeat_gets_check_down(self):
         """A Docker-backed deployment absent from every online worker's
@@ -402,10 +407,10 @@ class TestHealthCheckVanishedService:
         with (
             patch("app.main.database.list_workers", new_callable=AsyncMock, return_value=workers),
             patch("app.main.database.get_deployments", new_callable=AsyncMock, return_value=deployments),
-            patch("app.main.database.record_health_event", mock_record),
+            patch("app.main.database.record_health_events", mock_record),
         ):
             _run(_run_health_check())
-        mock_record.assert_any_call("honeygain", "check_down", "missing from heartbeat")
+        assert ("honeygain", "check_down", "missing from heartbeat") in _batched_events(mock_record)
 
     def test_external_deployment_never_flagged_missing(self):
         """External (no-container) deployments like Grass/Bytelixir are never
@@ -417,10 +422,10 @@ class TestHealthCheckVanishedService:
         with (
             patch("app.main.database.list_workers", new_callable=AsyncMock, return_value=workers),
             patch("app.main.database.get_deployments", new_callable=AsyncMock, return_value=deployments),
-            patch("app.main.database.record_health_event", mock_record),
+            patch("app.main.database.record_health_events", mock_record),
         ):
             _run(_run_health_check())
-        mock_record.assert_not_called()
+        assert all(e[0] != "grass" for e in _batched_events(mock_record))
 
     def test_fully_offline_fleet_does_not_flag_missing(self):
         """With no worker online there is no heartbeat data to trust either
@@ -432,10 +437,10 @@ class TestHealthCheckVanishedService:
         with (
             patch("app.main.database.list_workers", new_callable=AsyncMock, return_value=workers),
             patch("app.main.database.get_deployments", new_callable=AsyncMock, return_value=deployments),
-            patch("app.main.database.record_health_event", mock_record),
+            patch("app.main.database.record_health_events", mock_record),
         ):
             _run(_run_health_check())
-        mock_record.assert_not_called()
+        assert _batched_events(mock_record) == []
 
     def test_service_present_in_heartbeat_not_double_flagged(self):
         """A service still reported by a worker must get exactly one health
@@ -453,10 +458,11 @@ class TestHealthCheckVanishedService:
         with (
             patch("app.main.database.list_workers", new_callable=AsyncMock, return_value=workers),
             patch("app.main.database.get_deployments", new_callable=AsyncMock, return_value=deployments),
-            patch("app.main.database.record_health_event", mock_record),
+            patch("app.main.database.record_health_events", mock_record),
         ):
             _run(_run_health_check())
-        mock_record.assert_called_once_with("honeygain", "check_ok")
+        # Exactly one event (the normal check_ok), never a second "missing" on top.
+        assert _batched_events(mock_record) == [("honeygain", "check_ok", "")]
 
 
 # ---------------------------------------------------------------------------

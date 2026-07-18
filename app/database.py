@@ -280,6 +280,10 @@ async def _get_db() -> _BorrowedConnection:
         await conn.execute("PRAGMA journal_mode=WAL")
         await conn.execute("PRAGMA foreign_keys=ON")
         await conn.execute("PRAGMA busy_timeout=5000")
+        # In WAL mode NORMAL is durable across app crashes (only a power loss can lose
+        # the last transactions) and skips an fsync on every commit — a large win on the
+        # write-heavy health-check path that commits per service each cycle.
+        await conn.execute("PRAGMA synchronous=NORMAL")
         _shared_conns[key] = conn
 
     return _BorrowedConnection(conn)
@@ -1172,6 +1176,26 @@ async def record_health_event(slug: str, event: str, detail: str = "") -> None:
         await db.execute(
             "INSERT INTO health_events (slug, event, detail) VALUES (?, ?, ?)",
             (slug, event, detail),
+        )
+        await db.commit()
+    finally:
+        await db.close()
+
+
+async def record_health_events(events: list[tuple[str, str, str]]) -> None:
+    """Record many health events in ONE transaction/commit.
+
+    The health-check cycle writes one event per deployed service; committing each
+    separately fsync'd the WAL up to ~49 times per cycle. One executemany + one commit
+    collapses that to a single write — the dominant fix for that path's I/O.
+    """
+    if not events:
+        return
+    db = await _get_db()
+    try:
+        await db.executemany(
+            "INSERT INTO health_events (slug, event, detail) VALUES (?, ?, ?)",
+            events,
         )
         await db.commit()
     finally:

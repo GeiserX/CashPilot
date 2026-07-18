@@ -339,15 +339,18 @@ class TestMainHealthCheckWithContainers:
         mock_record = AsyncMock()
         with (
             patch("app.main.database.list_workers", new_callable=AsyncMock, return_value=workers),
-            patch("app.main.database.record_health_event", mock_record),
+            patch("app.main.database.get_deployments", new_callable=AsyncMock, return_value=[]),
+            patch("app.main.database.record_health_events", mock_record),
         ):
             asyncio.run(_run_health_check())
 
-        # Should record check_ok for honeygain (running) and check_down for earnapp (stopped)
-        calls = mock_record.call_args_list
-        slugs_events = [(c.args[0], c.args[1]) for c in calls]
-        assert ("honeygain", "check_ok") in slugs_events
-        assert ("earnapp", "check_down") in slugs_events
+        # One batched write carrying check_ok for honeygain (running) and check_down for
+        # earnapp (stopped).
+        mock_record.assert_awaited_once()
+        events = mock_record.call_args.args[0]
+        pairs = [(e[0], e[1]) for e in events]
+        assert ("honeygain", "check_ok") in pairs
+        assert ("earnapp", "check_down") in pairs
 
 
 class TestMainStaleWorkers:

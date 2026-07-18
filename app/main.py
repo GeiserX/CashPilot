@@ -208,11 +208,14 @@ async def _run_health_check() -> None:
             status = s.get("status", "unknown")
             if slug_best.get(slug) != "running":
                 slug_best[slug] = status
+        # Collect every event for this cycle and write them in a single transaction
+        # rather than one fsync'd commit per service (see database.record_health_events).
+        events: list[tuple[str, str, str]] = []
         for slug, status in slug_best.items():
             if status == "running":
-                await database.record_health_event(slug, "check_ok")
+                events.append((slug, "check_ok", ""))
             else:
-                await database.record_health_event(slug, "check_down", status)
+                events.append((slug, "check_down", status))
 
         workers = await database.list_workers()
         if any(w.get("status") == "online" for w in workers):
@@ -221,7 +224,9 @@ async def _run_health_check() -> None:
                 slug = d["slug"]
                 if d.get("status") == "external" or slug in slug_best:
                     continue
-                await database.record_health_event(slug, "check_down", "missing from heartbeat")
+                events.append((slug, "check_down", "missing from heartbeat"))
+
+        await database.record_health_events(events)
     except Exception as exc:
         logger.warning("Health check skipped: %s", exc)
 
