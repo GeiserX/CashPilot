@@ -197,7 +197,28 @@ async def do_register(
     # First user is always owner
     role = "owner" if is_first else "viewer"
     hashed = main.auth.hash_password(password)
-    user_id = await main.database.create_user(username, hashed, role)
+    if is_first:
+        # Atomic: only one concurrent first-run registration can win, so a single
+        # setup token can't be raced into minting two owners.
+        user_id = await main.database.create_first_owner(username, hashed)
+        if user_id is None:
+            return main.templates.TemplateResponse(
+                request,
+                "auth.html",
+                {
+                    "title": "Create Account",
+                    "subtitle": "Create the first admin account",
+                    "mode": "register",
+                    "action": "/register",
+                    "button_text": "Create Account",
+                    "error": "An account already exists on this instance — please log in.",
+                    "is_first": False,
+                    "setup_token": "",
+                },
+                status_code=409,
+            )
+    else:
+        user_id = await main.database.create_user(username, hashed, role)
 
     if is_first:
         # Owner now exists — retire the one-time setup token permanently.

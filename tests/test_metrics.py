@@ -133,6 +133,48 @@ class TestMetricsSetup:
             metrics._registry = orig_registry
             metrics._metrics = orig_metrics
 
+    def test_metrics_auth_gate(self):
+        """With CASHPILOT_METRICS_TOKEN set, /metrics requires a matching bearer."""
+        from unittest.mock import AsyncMock
+
+        from fastapi import FastAPI
+        from fastapi.testclient import TestClient
+
+        orig = (metrics.METRICS_ENABLED, metrics.METRICS_TOKEN, metrics._registry, metrics._metrics.copy())
+        metrics.METRICS_ENABLED = True
+        metrics.METRICS_TOKEN = "sekret"
+        try:
+            app = FastAPI()
+            metrics.setup(app)
+            client = TestClient(app)
+            # No / wrong token -> 401 (rejected before any gauge/DB work).
+            assert client.get("/metrics").status_code == 401
+            assert client.get("/metrics", headers={"Authorization": "Bearer wrong"}).status_code == 401
+            # Correct token -> 200 (stub the gauge refresh to avoid DB).
+            with patch("app.metrics._refresh_gauges", new_callable=AsyncMock):
+                ok = client.get("/metrics", headers={"Authorization": "Bearer sekret"})
+            assert ok.status_code == 200
+        finally:
+            metrics.METRICS_ENABLED, metrics.METRICS_TOKEN, metrics._registry, metrics._metrics = orig
+
+    def test_metrics_unauthenticated_when_no_token(self):
+        """With no token configured, /metrics stays open (Prometheus convention)."""
+        from unittest.mock import AsyncMock
+
+        from fastapi import FastAPI
+        from fastapi.testclient import TestClient
+
+        orig = (metrics.METRICS_ENABLED, metrics.METRICS_TOKEN, metrics._registry, metrics._metrics.copy())
+        metrics.METRICS_ENABLED = True
+        metrics.METRICS_TOKEN = ""
+        try:
+            app = FastAPI()
+            metrics.setup(app)
+            with patch("app.metrics._refresh_gauges", new_callable=AsyncMock):
+                assert TestClient(app).get("/metrics").status_code == 200
+        finally:
+            metrics.METRICS_ENABLED, metrics.METRICS_TOKEN, metrics._registry, metrics._metrics = orig
+
     def test_normalize_path(self):
         assert metrics._normalize_path("/api/services/earnapp") == "/api/services/{slug}"
         assert metrics._normalize_path("/api/deploy/honeygain") == "/api/deploy/{slug}"
