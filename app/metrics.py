@@ -17,16 +17,21 @@ Metrics exposed:
 from __future__ import annotations
 
 import contextlib
+import hmac
 import logging
 import os
 import re
 import time
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 
 logger = logging.getLogger(__name__)
 
 METRICS_ENABLED = os.getenv("CASHPILOT_METRICS_ENABLED", "").lower() in ("1", "true", "yes")
+# Optional bearer token for /metrics. When set, scrapers must send
+# `Authorization: Bearer <token>`; when empty, /metrics stays unauthenticated
+# (Prometheus convention) and relies on network isolation / a reverse proxy.
+METRICS_TOKEN = os.getenv("CASHPILOT_METRICS_TOKEN", "")
 
 _registry = None
 _metrics: dict = {}
@@ -234,14 +239,18 @@ def setup(app: FastAPI) -> None:
 
     _init_metrics()
 
-    # /metrics is served UNAUTHENTICATED (Prometheus convention). It exposes earnings and
-    # health totals, so warn on startup: keep it behind a reverse proxy / auth and never
-    # expose the app's port directly to an untrusted network.
-    logger.warning(
-        "Prometheus /metrics is ENABLED and served UNAUTHENTICATED — it exposes your "
-        "earnings and health data to anyone who can reach this port. Keep it behind a "
-        "reverse proxy with auth; do not expose the port directly to an untrusted network."
-    )
+    # /metrics exposes earnings and health totals. It requires a bearer token when
+    # CASHPILOT_METRICS_TOKEN is set; otherwise it is served UNAUTHENTICATED
+    # (Prometheus convention) and must be protected by network isolation / a proxy.
+    if METRICS_TOKEN:
+        logger.info("Prometheus /metrics is ENABLED and requires a bearer token (CASHPILOT_METRICS_TOKEN).")
+    else:
+        logger.warning(
+            "Prometheus /metrics is ENABLED and served UNAUTHENTICATED — it exposes your "
+            "earnings and health data to anyone who can reach this port. Set "
+            "CASHPILOT_METRICS_TOKEN to require a bearer token, and/or keep it behind a "
+            "reverse proxy with auth; do not expose the port directly to an untrusted network."
+        )
 
     from fastapi import Response
     from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
@@ -282,7 +291,11 @@ def setup(app: FastAPI) -> None:
     app.add_middleware(_MetricsMiddleware)
 
     @app.get("/metrics", include_in_schema=False)
-    async def prometheus_metrics():
+    async def prometheus_metrics(request: Request):
+        if METRICS_TOKEN and not hmac.compare_digest(
+            request.headers.get("Authorization", "").encode(), f"Bearer {METRICS_TOKEN}".encode()
+        ):
+            return Response(status_code=401, content="Unauthorized")
         _metrics["uptime_seconds"].set(time.time() - _start_time)
         await _refresh_gauges()
         return Response(

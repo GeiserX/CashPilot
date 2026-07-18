@@ -301,6 +301,27 @@ class TestUsers:
 
         asyncio.run(run())
 
+    def test_create_first_owner_when_empty(self, db):
+        async def run():
+            uid = await database.create_first_owner("alice", "pw")
+            assert uid is not None
+            assert (await database.get_user_by_id(uid))["role"] == "owner"
+
+        asyncio.run(run())
+
+    def test_create_first_owner_loses_race_when_account_exists(self, db):
+        # The atomic INSERT ... WHERE NOT EXISTS makes a second first-run attempt a
+        # no-op (returns None) even with a different username — so a raced setup
+        # token cannot mint two owners.
+        async def run():
+            first = await database.create_first_owner("alice", "pw")
+            assert first is not None
+            second = await database.create_first_owner("bob", "pw")
+            assert second is None
+            assert len(await database.list_users()) == 1
+
+        asyncio.run(run())
+
 
 class TestUserPreferences:
     def test_save_and_get_preferences(self, db):

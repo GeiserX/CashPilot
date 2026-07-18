@@ -800,6 +800,28 @@ async def create_user(username: str, hashed_password: str, role: str = "viewer")
         await db.close()
 
 
+async def create_first_owner(username: str, hashed_password: str) -> int | None:
+    """Atomically create the first owner account.
+
+    Returns the new id, or ``None`` if any account already exists (lost the
+    first-run race). The ``INSERT ... WHERE NOT EXISTS`` makes the "one owner per
+    setup token" guarantee safe against two concurrent first-run registrations,
+    which a check-then-act (``has_any_users()`` then ``create_user()``) could not.
+    """
+    db = await _get_db()
+    try:
+        cursor = await db.execute(
+            "INSERT INTO users (username, password, role) SELECT ?, ?, 'owner' WHERE NOT EXISTS (SELECT 1 FROM users)",
+            (username, hashed_password),
+        )
+        await db.commit()
+        if cursor.rowcount != 1:
+            return None
+        return cursor.lastrowid
+    finally:
+        await db.close()
+
+
 async def get_user_by_username(username: str) -> dict[str, Any] | None:
     db = await _get_db()
     try:
