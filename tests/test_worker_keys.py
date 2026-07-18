@@ -187,3 +187,79 @@ class TestHeartbeatErrorClassification:
         mock_client.post = AsyncMock(side_effect=httpx.ConnectError("connection refused"))
         self._run_heartbeat_with(mock_client)
         assert w._last_error == "connection failed"
+
+
+class TestClientId:
+    """CashPilot-ng1: stable worker identity (client_id) decoupled from the display name."""
+
+    def test_returns_existing_id_file(self, tmp_path):
+        f = tmp_path / ".worker_id"
+        f.write_text("stable-123\n")
+        with patch.object(w, "_WORKER_ID_FILE", f):
+            assert w._load_or_create_client_id() == "stable-123"
+
+    def test_mints_random_id_for_brand_new_worker(self, tmp_path):
+        f = tmp_path / ".worker_id"
+        with patch.object(w, "_WORKER_ID_FILE", f), patch.object(w, "_worker_key", None):
+            cid = w._load_or_create_client_id()
+            assert cid == f.read_text()  # persisted
+            # A fresh random id, never the mutable display name.
+            assert cid != w.WORKER_NAME
+            assert len(cid) >= 16
+
+    def test_preserves_name_identity_for_already_enrolled_worker(self, tmp_path):
+        # Migration: an already-enrolled worker (has a key) with no id file yet keeps the
+        # identity the UI knows it by (WORKER_NAME), so the upgrade never re-enrolls it.
+        f = tmp_path / ".worker_id"
+        with (
+            patch.object(w, "_WORKER_ID_FILE", f),
+            patch.object(w, "_worker_key", "already-enrolled-key"),
+            patch.object(w, "WORKER_NAME", "my-host"),
+        ):
+            assert w._load_or_create_client_id() == "my-host"
+            assert f.read_text() == "my-host"
+
+    def test_id_is_stable_across_calls(self, tmp_path):
+        f = tmp_path / ".worker_id"
+        with patch.object(w, "_WORKER_ID_FILE", f), patch.object(w, "_worker_key", None):
+            first = w._load_or_create_client_id()
+            assert w._load_or_create_client_id() == first
+
+    def test_persist_failure_falls_back_to_in_memory_id(self):
+        fake = MagicMock()
+        fake.parent.mkdir = MagicMock()
+        fake.write_text = MagicMock(side_effect=OSError("read-only fs"))
+        fake.read_text = MagicMock(side_effect=OSError("missing"))
+        with patch.object(w, "_WORKER_ID_FILE", fake), patch.object(w, "_worker_key", None):
+            cid = w._load_or_create_client_id()
+            # A usable id is still returned even though it could not be persisted.
+            assert len(cid) >= 16
+
+    def test_heartbeat_payload_includes_client_id(self, tmp_path):
+        captured: dict = {}
+        resp = MagicMock()
+        resp.raise_for_status = MagicMock()
+        resp.json = MagicMock(return_value={"status": "ok", "worker_id": 1})
+        mock_client = MagicMock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+
+        async def _post(_url, **kwargs):
+            captured.update(kwargs.get("json", {}))
+            return resp
+
+        mock_client.post = AsyncMock(side_effect=_post)
+        with (
+            patch.object(w, "_WORKER_KEY_FILE", tmp_path / ".worker_key"),
+            patch.object(w, "_worker_key", None),
+            patch.object(w, "CLIENT_ID", "cid-abc"),
+            patch.object(w, "UI_URL", "http://ui:8080"),
+            patch.object(w, "API_KEY", "shared"),
+            patch("app.worker_api.orchestrator.get_status", return_value=[]),
+            patch("app.worker_api.orchestrator.docker_available", return_value=True),
+            patch("app.worker_api.httpx.AsyncClient", return_value=mock_client),
+        ):
+            asyncio.run(w._send_heartbeat())
+        # Identity travels as client_id; name remains present but display-only.
+        assert captured.get("client_id") == "cid-abc"
+        assert captured.get("name") == w.WORKER_NAME
