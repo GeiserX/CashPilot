@@ -1043,16 +1043,6 @@ async def get_worker(worker_id: int) -> dict[str, Any] | None:
         await db.close()
 
 
-async def get_worker_by_name(name: str) -> dict[str, Any] | None:
-    db = await _get_db()
-    try:
-        cursor = await db.execute("SELECT * FROM workers WHERE name = ?", (name,))
-        row = await cursor.fetchone()
-        return dict(row) if row else None
-    finally:
-        await db.close()
-
-
 async def list_workers() -> list[dict[str, Any]]:
     db = await _get_db()
     try:
