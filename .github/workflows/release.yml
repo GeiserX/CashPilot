@@ -133,7 +133,7 @@ jobs:
 
       - name: Create GitHub Release
         if: steps.version.outputs.new_tag
-        uses: softprops/action-gh-release@v3
+        uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228 # v3
         with:
           tag_name: ${{ steps.version.outputs.new_tag }}
           generate_release_notes: true

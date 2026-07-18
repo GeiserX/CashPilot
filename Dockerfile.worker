@@ -51,4 +51,7 @@ VOLUME /data
 EXPOSE 8081
 
 ENTRYPOINT ["/entrypoint.sh"]
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
+    CMD ["python", "-c", "import socket; socket.create_connection(('127.0.0.1', 8081), timeout=3).close()"]
+
 CMD ["python", "-m", "uvicorn", "app.worker_api:app", "--host", "0.0.0.0", "--port", "8081", "--no-access-log"]
