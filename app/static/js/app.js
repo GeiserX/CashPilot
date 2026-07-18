@@ -1491,18 +1491,20 @@ const CP = (() => {
     </div>`;
   }
 
-  async function deployService(slug) {
+  // Deploy `slug` to the given worker node ids: collect the env inputs, validate the
+  // required fields, POST per worker, and surface each per-worker failure. Shared by both
+  // deploy entry points (the setup wizard and the catalog/detail view) so validation and
+  // error reporting are identical — the detail view previously skipped validation and
+  // swallowed server errors silently.
+  async function _deployToWorkers(slug, workerIds) {
     const statusEl = document.getElementById(`deploy-status-${slug}`);
-    const checkboxes = document.querySelectorAll(`.setup-deploy-worker-cb[data-slug="${slug}"]:checked:not(:disabled)`);
-    const workerIds = Array.from(checkboxes).map(cb => parseInt(cb.dataset.wid));
-
     if (workerIds.length === 0) {
       toast('Select at least one worker node', 'warning');
       if (statusEl) statusEl.textContent = 'Select at least one node.';
       return;
     }
 
-    // Collect env vars (only env inputs, not worker checkboxes)
+    // Collect env vars (only env inputs carry data-key, not the worker checkboxes).
     const envInputs = document.querySelectorAll(`input[data-slug="${slug}"][data-key]`);
     const env = {};
     let missingRequired = false;
@@ -1547,6 +1549,17 @@ const CP = (() => {
         wizardState.deployed.push(slug);
       }
     }
+  }
+
+  // Parse the checked worker ids from a checkbox selector (dropping any unparseable id).
+  function _selectedWorkerIds(selector) {
+    return Array.from(document.querySelectorAll(selector))
+      .map(cb => parseInt(cb.dataset.wid))
+      .filter(id => !Number.isNaN(id));
+  }
+
+  async function deployService(slug) {
+    await _deployToWorkers(slug, _selectedWorkerIds(`.setup-deploy-worker-cb[data-slug="${slug}"]:checked:not(:disabled)`));
   }
 
   // -----------------------------------------------------------
@@ -1767,7 +1780,7 @@ const CP = (() => {
         if (!deployed) allDeployed = false;
         workerRows += `
         <label style="display:flex; align-items:center; gap:8px; padding:6px 0; ${deployed ? 'opacity:0.5;' : ''}">
-          <input type="checkbox" class="deploy-worker-cb" data-wid="${w.id}" ${deployed ? 'disabled checked' : ''}>
+          <input type="checkbox" class="deploy-worker-cb" data-slug="${svc.slug}" data-wid="${w.id}" ${deployed ? 'disabled checked' : ''}>
           <span>${escapeHtml(w.name)}</span>
           ${deployed ? '<span class="badge badge-deployed" style="font-size:0.75rem;">Deployed</span>' : '<span class="badge badge-available" style="font-size:0.75rem;">Available</span>'}
         </label>`;
@@ -1842,35 +1855,7 @@ const CP = (() => {
   }
 
   async function deployServiceToWorkers(slug) {
-    const statusEl = document.getElementById(`deploy-status-${slug}`);
-    const checkboxes = document.querySelectorAll('.deploy-worker-cb:checked:not(:disabled)');
-    const workerIds = Array.from(checkboxes).map(cb => parseInt(cb.dataset.wid));
-
-    if (workerIds.length === 0) {
-      if (statusEl) statusEl.textContent = 'Select at least one node.';
-      return;
-    }
-
-    // Collect env vars
-    const envInputs = document.querySelectorAll(`input[data-slug="${slug}"]`);
-    const env = {};
-    envInputs.forEach(input => { if (input.dataset.key) env[input.dataset.key] = input.value; });
-
-    if (statusEl) statusEl.innerHTML = '<span class="spinner" style="display:inline-block;width:14px;height:14px;vertical-align:middle;"></span> Deploying...';
-
-    let ok = 0, fail = 0;
-    for (const wid of workerIds) {
-      try {
-        await api(`/api/deploy/${slug}?worker_id=${wid}`, { method: 'POST', body: { env } });
-        ok++;
-      } catch (err) {
-        fail++;
-      }
-    }
-    if (statusEl) {
-      statusEl.textContent = fail === 0 ? `Deployed to ${ok} node(s)` : `${ok} ok, ${fail} failed`;
-      statusEl.style.color = fail === 0 ? 'var(--success)' : 'var(--error)';
-    }
+    await _deployToWorkers(slug, _selectedWorkerIds(`.deploy-worker-cb[data-slug="${slug}"]:checked:not(:disabled)`));
   }
 
   async function workerAction(slug, action, workerId) {
