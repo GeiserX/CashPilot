@@ -14,8 +14,11 @@ services:
     build: .
     image: drumsergio/cashpilot:dev
     container_name: cashpilot-ui
+    # Loopback by default (the UI can command the Docker-socket worker). Set
+    # CASHPILOT_BIND_ADDR to a specific interface to reach it from another machine,
+    # or 0.0.0.0 to publish on all interfaces (prefer a reverse proxy with auth).
     ports:
-      - "8080:8080"
+      - "${CASHPILOT_BIND_ADDR:-127.0.0.1}:8080:8080"
     volumes:
       - cashpilot_data:/data
       - cashpilot_fleet:/fleet

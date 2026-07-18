@@ -54,8 +54,11 @@ services:
     image: drumsergio/cashpilot-worker:latest
     pull_policy: always
     container_name: cashpilot-worker
+    # The worker's API is Docker-socket-backed (= root on the host). Bind it to a
+    # PRIVATE/VPN interface the UI can reach (e.g. this server's Tailscale IP),
+    # never 0.0.0.0 or a public IP. Defaults to loopback if left unset.
     ports:
-      - "8081:8081"
+      - "${CASHPILOT_WORKER_BIND_ADDR:-127.0.0.1}:8081:8081"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - cashpilot_worker_data:/data

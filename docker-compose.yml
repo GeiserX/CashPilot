@@ -18,8 +18,13 @@ services:
     image: drumsergio/cashpilot:latest
     pull_policy: always
     container_name: cashpilot-ui
+    # Published on loopback by default: the dashboard can command the Docker-socket
+    # worker, so it must not be exposed to your LAN/the internet out of the box.
+    # To reach it from another machine, point CASHPILOT_BIND_ADDR at a specific
+    # interface (e.g. a Tailscale/VPN IP) or, better, run an authenticating reverse
+    # proxy in front. CASHPILOT_BIND_ADDR=0.0.0.0 publishes on all interfaces.
     ports:
-      - "8080:8080"
+      - "${CASHPILOT_BIND_ADDR:-127.0.0.1}:8080:8080"
     volumes:
       - cashpilot_data:/data
       - cashpilot_fleet:/fleet

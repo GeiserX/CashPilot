@@ -13,8 +13,12 @@ services:
     image: drumsergio/cashpilot:latest
     pull_policy: always
     container_name: cashpilot-ui
+    # Loopback by default (the UI commands the Docker-socket worker). Set
+    # CASHPILOT_BIND_ADDR to a specific interface (e.g. a Tailscale/VPN IP) to reach
+    # it from another machine, or 0.0.0.0 to publish on all interfaces. Prefer an
+    # authenticating reverse proxy over binding the raw port publicly.
     ports:
-      - "8080:8080"
+      - "${CASHPILOT_BIND_ADDR:-127.0.0.1}:8080:8080"
     volumes:
       - cashpilot_data:/data
       - cashpilot_fleet:/fleet
@@ -33,8 +37,15 @@ services:
     image: drumsergio/cashpilot-worker:latest
     pull_policy: always
     container_name: cashpilot-worker
+    # The worker exposes a Docker-socket-backed API (deploy/stop/remove any
+    # container = full host control), so it is bound to LOOPBACK by default and must
+    # NEVER be published on 0.0.0.0. On this main server the co-located UI reaches it
+    # over the compose network (cashpilot-worker:8081), not this published port —
+    # only a REMOTE UI needs it published. If you must, set CASHPILOT_WORKER_BIND_ADDR
+    # to a private/VPN interface (e.g. a Tailscale IP), never a public one, and keep
+    # CASHPILOT_API_KEY secret.
     ports:
-      - "8081:8081"
+      - "${CASHPILOT_WORKER_BIND_ADDR:-127.0.0.1}:8081:8081"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - cashpilot_worker_data:/data
@@ -60,8 +71,12 @@ services:
 #      image: drumsergio/cashpilot-worker:latest
 #      pull_policy: always
 #      container_name: cashpilot-worker
+#      # Docker-socket-backed API = full host control. Bind a PRIVATE/VPN interface
+#      # (e.g. the server's Tailscale IP), NEVER 0.0.0.0 or a public IP. The UI
+#      # authenticates with the fleet key, but the socket API must not be internet-
+#      # reachable. CASHPILOT_WORKER_BIND_ADDR defaults to loopback.
 #      ports:
-#        - "8081:8081"
+#        - "${CASHPILOT_WORKER_BIND_ADDR:-100.x.y.z}:8081:8081"  # this server's private/VPN IP
 #      volumes:
 #        - /var/run/docker.sock:/var/run/docker.sock
 #        - cashpilot_worker_data:/data
