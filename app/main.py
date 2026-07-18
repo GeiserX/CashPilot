@@ -1153,64 +1153,63 @@ async def _get_verified_worker_url(worker: dict[str, Any]) -> tuple[str, dict[st
     return url, headers
 
 
+async def _proxy_to_worker(
+    worker_id: int,
+    method: str,
+    path: str,
+    *,
+    json: dict[str, Any] | None = None,
+    params: dict[str, str] | None = None,
+    timeout: float = 30,
+) -> dict[str, Any]:
+    """Proxy one request to a worker's REST API and return its parsed JSON.
+
+    Single home for the fetch-worker -> verified-URL+auth-header -> httpx call ->
+    error-mapping sequence the deploy/command/logs paths all repeated. Dispatch uses
+    the concrete httpx verbs (never client.request) so per-verb test mocks keep
+    landing; the caller owns the timeout (deploy needs 60s, the rest 30s) and any
+    query params (the logs line clamp, remove's delete_volumes).
+    """
+    worker = await database.get_worker(worker_id)
+    url, headers = await _get_verified_worker_url(worker)
+
+    try:
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            verb = method.upper()
+            if verb == "GET":
+                resp = await client.get(f"{url}{path}", params=params, headers=headers)
+            elif verb == "DELETE":
+                resp = await client.delete(f"{url}{path}", params=params, headers=headers)
+            else:
+                resp = await client.post(f"{url}{path}", json=json, params=params, headers=headers)
+            if resp.status_code >= 400:
+                logger.warning("worker proxy error (%s): %s", resp.status_code, resp.text)
+                raise HTTPException(status_code=resp.status_code, detail="Worker request failed")
+            return resp.json()
+    except httpx.HTTPError as exc:
+        logger.warning("worker proxy error: %s", exc)
+        raise HTTPException(status_code=503, detail="Worker communication failed")
+
+
 async def _proxy_worker_command(
     worker_id: int, command: str, slug: str, *, params: dict[str, str] | None = None
 ) -> dict[str, Any]:
     """Forward a container command (restart/stop/start/remove) to a worker."""
-    worker = await database.get_worker(worker_id)
-    url, headers = await _get_verified_worker_url(worker)
-
-    try:
-        async with httpx.AsyncClient(timeout=30) as client:
-            if command == "remove":
-                resp = await client.delete(f"{url}/api/containers/{slug}", headers=headers, params=params)
-            else:
-                resp = await client.post(f"{url}/api/containers/{slug}/{command}", headers=headers)
-            if resp.status_code >= 400:
-                logger.warning("worker proxy error (%s): %s", resp.status_code, resp.text)
-                raise HTTPException(status_code=resp.status_code, detail="Worker request failed")
-            return resp.json()
-    except httpx.HTTPError as exc:
-        logger.warning("worker proxy error: %s", exc)
-        raise HTTPException(status_code=503, detail="Worker communication failed")
+    if command == "remove":
+        return await _proxy_to_worker(worker_id, "DELETE", f"/api/containers/{slug}", params=params)
+    return await _proxy_to_worker(worker_id, "POST", f"/api/containers/{slug}/{command}")
 
 
 async def _proxy_worker_deploy(worker_id: int, slug: str, spec: dict[str, Any]) -> dict[str, Any]:
     """Forward a deploy command with full spec to a worker."""
-    worker = await database.get_worker(worker_id)
-    url, headers = await _get_verified_worker_url(worker)
-
-    try:
-        async with httpx.AsyncClient(timeout=60) as client:
-            resp = await client.post(f"{url}/api/containers/{slug}/deploy", json=spec, headers=headers)
-            if resp.status_code >= 400:
-                logger.warning("worker deploy error (%s): %s", resp.status_code, resp.text)
-                raise HTTPException(status_code=resp.status_code, detail="Worker request failed")
-            return resp.json()
-    except httpx.HTTPError as exc:
-        logger.warning("worker proxy error: %s", exc)
-        raise HTTPException(status_code=503, detail="Worker communication failed")
+    return await _proxy_to_worker(worker_id, "POST", f"/api/containers/{slug}/deploy", json=spec, timeout=60)
 
 
 async def _proxy_worker_logs(worker_id: int, slug: str, lines: int = 50) -> dict[str, str]:
     """Forward a logs request to a worker."""
-    worker = await database.get_worker(worker_id)
-    url, headers = await _get_verified_worker_url(worker)
-
-    try:
-        async with httpx.AsyncClient(timeout=30) as client:
-            resp = await client.get(
-                f"{url}/api/containers/{slug}/logs",
-                params={"lines": min(lines, 1000)},
-                headers=headers,
-            )
-            if resp.status_code >= 400:
-                logger.warning("worker proxy error (%s): %s", resp.status_code, resp.text)
-                raise HTTPException(status_code=resp.status_code, detail="Worker request failed")
-            return resp.json()
-    except httpx.HTTPError as exc:
-        logger.warning("worker proxy error: %s", exc)
-        raise HTTPException(status_code=503, detail="Worker communication failed")
+    return await _proxy_to_worker(
+        worker_id, "GET", f"/api/containers/{slug}/logs", params={"lines": min(lines, 1000)}
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -1980,37 +1979,14 @@ async def api_worker_command(request: Request, worker_id: int, body: WorkerComma
     else:
         _require_writer(request)
 
-    worker = await database.get_worker(worker_id)
-    url, headers = await _get_verified_worker_url(worker)
-
-    try:
-        async with httpx.AsyncClient(timeout=30) as client:
-            if body.command == "deploy":
-                resp = await client.post(
-                    f"{url}/api/containers/{body.slug}/deploy",
-                    json=body.spec,
-                    headers=headers,
-                )
-            elif body.command in ("stop", "restart", "start"):
-                resp = await client.post(
-                    f"{url}/api/containers/{body.slug}/{body.command}",
-                    headers=headers,
-                )
-            elif body.command == "remove":
-                resp = await client.delete(
-                    f"{url}/api/containers/{body.slug}",
-                    headers=headers,
-                )
-            else:
-                raise HTTPException(status_code=400, detail=f"Unknown command: {body.command}")
-
-            if resp.status_code >= 400:
-                logger.warning("worker proxy error (%s): %s", resp.status_code, resp.text)
-                raise HTTPException(status_code=resp.status_code, detail="Worker request failed")
-            result = resp.json()
-    except httpx.HTTPError as exc:
-        logger.warning("worker proxy error: %s", exc)
-        raise HTTPException(status_code=503, detail="Worker communication failed")
+    if body.command == "deploy":
+        result = await _proxy_to_worker(worker_id, "POST", f"/api/containers/{body.slug}/deploy", json=body.spec)
+    elif body.command in ("stop", "restart", "start"):
+        result = await _proxy_to_worker(worker_id, "POST", f"/api/containers/{body.slug}/{body.command}")
+    elif body.command == "remove":
+        result = await _proxy_to_worker(worker_id, "DELETE", f"/api/containers/{body.slug}")
+    else:
+        raise HTTPException(status_code=400, detail=f"Unknown command: {body.command}")
 
     # The primary lifecycle routes (/api/deploy, /api/stop, ...) all run bookkeeping
     # after a successful proxy. Without it a deploy through this raw command route never
