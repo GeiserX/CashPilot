@@ -1583,7 +1583,9 @@ class TestValidateWorkerUrl:
     def test_trailing_slash_stripped(self):
         from app.main import _validate_worker_url
 
-        assert _validate_worker_url("http://host:8081/")[0] == "http://host:8081"
+        # Patch DNS so the test is deterministic and never hits the real resolver.
+        with patch("app.main.socket.getaddrinfo", return_value=[(2, 1, 6, "", ("192.168.1.9", 8081))]):
+            assert _validate_worker_url("http://host:8081/")[0] == "http://host:8081"
 
     def test_invalid_scheme(self):
         from app.main import _validate_worker_url
@@ -1613,8 +1615,10 @@ class TestValidateWorkerUrl:
         from app.main import _validate_worker_url
 
         # Exact-match (not substring) so CodeQL's url-substring-sanitization rule
-        # isn't tripped by a test assertion.
-        result = _validate_worker_url("http://worker.mango.ts.net:8081")
+        # isn't tripped by a test assertion. Patch DNS to a Tailscale CGNAT IP so the
+        # test is deterministic and never hits the real resolver.
+        with patch("app.main.socket.getaddrinfo", return_value=[(2, 1, 6, "", ("100.100.100.100", 8081))]):
+            result = _validate_worker_url("http://worker.mango.ts.net:8081")
         assert result[0] == "http://worker.mango.ts.net:8081"
 
     def test_tailscale_cgnat_ip_allowed(self):

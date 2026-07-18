@@ -23,8 +23,6 @@ comment:
   require_head: true
 
 ignore:
-  - "app/orchestrator.py"
-  - "app/worker_api.py"
   - "**/*_test.py"
   - "**/tests/**"
   - "**/conftest.py"
