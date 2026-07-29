@@ -40,7 +40,7 @@ In the CashPilot web UI, find **ProxyBase Markets** in the service catalog and c
 
 On first start, check the container logs for your wallet address:
 
-```
+```text
 ==> No wallet found — creating one...
 Wallet created successfully!
 Address: 0xb956cb455901fba57a330221bb1caa00c3ec7acb
@@ -54,7 +54,7 @@ To resell external SOCKS5 proxies alongside your own bandwidth, run the containe
 
 ```bash
 docker run --rm -v proxybase-data:/home/proxybase/.proxybase \
-  ghcr.io/proxybasehq/proxybase-cli:latest \
+  ghcr.io/proxybasehq/proxybase-cli@sha256:9c96a1d149a1d5b18360110be5caf7164a98656e4bb2c25f6b373b91f1c79802 \
   seller start --foreground \
   --upstream proxy-host:1080 --upstream-user user --upstream-pass pass
 ```
