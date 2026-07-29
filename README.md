@@ -72,6 +72,7 @@ Services CashPilot can deploy and manage automatically via Docker.
 | [PacketStream](https://packetstream.io/?psr=7xgZ) | [Guide](docs/guides/packetstream.md) | ✅ | ❌ | Unlimited | 1 | PayPal |
 | [Presearch](https://presearch.com/signup?rid=4872322) | [Guide](docs/guides/presearch.md) | ✅ | ✅ | Unlimited | 1 | Crypto (PRE) |
 | [ProxyBase](https://peer.proxybase.org?referral=nXzS3c6iTO) | [Guide](docs/guides/proxybase.md) | ✅ | ✅ | Unlimited | 1 | Crypto |
+| [ProxyBase Markets](https://proxybase.xyz) | [Guide](docs/guides/proxybase-xyz.md) | ❌ | ✅ | Unlimited | 1 | Crypto (USDC) |
 | [ProxyLite](https://proxylite.ru/?r=KMUPRZIZ) | [Guide](docs/guides/proxylite.md) | ✅ | ✅ | Unlimited | 1 | Crypto, PayPal |
 | [ProxyRack](https://peer.proxyrack.com/ref/mpwiok3xlaxeycnn5znqlg7ipjeutxyxr6xl7vmn) | [Guide](docs/guides/proxyrack.md) | ✅ | ✅ | 500 | 1 | PayPal, Crypto |
 | [Repocket](https://repocket.com/) | [Guide](docs/guides/repocket.md) | ✅ | ❌ | 5 | 2 | PayPal, Crypto |
@@ -310,7 +311,7 @@ Services that were evaluated but are no longer listed in the catalog due to bein
 | Earnings dashboard | **Yes** | No | No | No | No |
 | Historical charts | **Yes** | No | No | No | No |
 | Multi-node fleet management | **Yes** | No | No | No | No |
-| Service catalog with guides | **49 services** | 17 | 8 | 14 | 8 |
+| Service catalog with guides | **50 services** | 17 | 8 | 14 | 8 |
 | Automated earnings collection | **15 collectors** | 0 | 0 | 0 | 0 |
 | Multi-arch (amd64 + arm64) | **Yes** | Yes | Yes | No | No |
 | Credential encryption | **Yes** | No | No | No | No |
