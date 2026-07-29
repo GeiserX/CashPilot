@@ -15,7 +15,7 @@ ProxyBase Markets is a SOCKS5 proxy marketplace built for AI agents. Sellers run
 | Per | device |
 | Minimum payout | $1 |
 | Payout frequency | On request |
-| Payment methods | Crypto (USDC on Solana) |
+| Payment methods | Crypto (USDC on Tempo Chain) |
 
 > Earnings are based on GB sold at market rates. VPS/datacenter IPs typically earn less than residential. Multi-upstream mode can combine your own bandwidth with external proxies for additional throughput.
 
@@ -89,16 +89,16 @@ Payouts are managed via the CLI:
 docker run --rm -v proxybase-data:/home/proxybase/.proxybase \
   ghcr.io/proxybasehq/proxybase-cli:latest seller status
 
-# Lock earnings for payout (amount in microcredits, tempo_address = your Solana wallet)
+# Lock earnings for payout (amount in microcredits, tempo_address = your Tempo wallet)
 docker run --rm -v proxybase-data:/home/proxybase/.proxybase \
-  ghcr.io/proxybasehq/proxybase-cli:latest seller payout create --amount 1000000 --tempo-address <your-solana-address>
+  ghcr.io/proxybasehq/proxybase-cli:latest seller payout create --amount 1000000 --tempo-address <your-tempo-address>
 
 # List payout history
 docker run --rm -v proxybase-data:/home/proxybase/.proxybase \
   ghcr.io/proxybasehq/proxybase-cli:latest seller payout list
 ```
 
-Payments settle in USDC on Solana via the Micropayments Protocol (MPP / Tempo). Minimum payout is $1.
+Payments settle in USDC on Tempo via the Micropayments Protocol (MPP / Tempo). Minimum payout is $1.
 
 ## Troubleshooting
 
