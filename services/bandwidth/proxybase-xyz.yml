@@ -6,10 +6,10 @@ website: https://proxybase.xyz
 description: >
   ProxyBase Markets is a SOCKS5 proxy marketplace built for AI agents. Sellers run
   a lightweight Rust CLI daemon that connects via WebSocket to relay buyer traffic
-  through their internet connection, earning USDC on Solana per GB sold. Supports
+  through their internet connection, earning USDC on Tempo Chain per GB sold. Supports
   both direct (own bandwidth) and upstream (resell external proxies) modes with
   auto-reconnect. Buyers purchase proxy sessions by country, ISP, and bandwidth.
-  Payments flow through the Micropayments Protocol (MPP) on Solana.
+  Payments flow through the Micropayments Protocol (MPP) on Tempo Chain.
 short_description: SOCKS5 proxy marketplace for AI agents - USDC payout, CLI daemon
 
 referral:
@@ -66,7 +66,7 @@ cashout:
   dashboard_url: "https://proxybase.xyz"
   min_amount: 1.0
   currency: USDC
-  notes: "Lock earnings via <code>proxybase-cli seller payout create</code>, received as USDC on Solana (Tempo MPP). Requires a Solana wallet address."
+  notes: "Lock earnings via <code>proxybase-cli seller payout create</code>, received as USDC on Tempo Chain (Tempo MPP). Requires a Tempo wallet address."
 
 platforms: [docker, linux, macos, windows]
 
