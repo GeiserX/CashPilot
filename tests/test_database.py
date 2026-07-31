@@ -556,6 +556,55 @@ class TestEarningsFxMigration:
         asyncio.run(run())
 
 
+class TestAlerts:
+    """Alerts must survive a restart and must not re-notify every hour."""
+
+    def test_first_alert_is_new_duplicate_is_not(self, db):
+        async def run():
+            assert await database.record_alert("collector", "honeygain", "login failed") is True
+            # Same failure an hour later: stored once, reported as not-new so the
+            # caller doesn't re-notify.
+            assert await database.record_alert("collector", "honeygain", "login failed") is False
+            assert len(await database.list_alerts()) == 1
+
+        asyncio.run(run())
+
+    def test_changed_message_counts_as_new(self, db):
+        async def run():
+            await database.record_alert("collector", "honeygain", "login failed")
+            assert await database.record_alert("collector", "honeygain", "429 rate limited") is True
+            assert len(await database.list_alerts()) == 2
+
+        asyncio.run(run())
+
+    def test_list_alerts_is_newest_first(self, db):
+        async def run():
+            await database.record_alert("collector", "a", "first")
+            await database.record_alert("collector", "b", "second")
+            alerts = await database.list_alerts()
+            assert [a["subject"] for a in alerts] == ["b", "a"]
+
+        asyncio.run(run())
+
+    def test_clear_by_subject_only_clears_that_subject(self, db):
+        async def run():
+            await database.record_alert("collector", "honeygain", "boom")
+            await database.record_alert("collector", "earnapp", "boom")
+            await database.clear_alerts("collector", "honeygain")
+            assert [a["subject"] for a in await database.list_alerts()] == ["earnapp"]
+
+        asyncio.run(run())
+
+    def test_recovery_then_failure_notifies_again(self, db):
+        # The point of clearing on recovery: the next failure must count as new.
+        async def run():
+            assert await database.record_alert("collector", "hg", "boom") is True
+            await database.clear_alerts("collector", "hg")
+            assert await database.record_alert("collector", "hg", "boom") is True
+
+        asyncio.run(run())
+
+
 class TestHealthEvents:
     def test_record_and_get_scores(self, db):
         async def run():

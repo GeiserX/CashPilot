@@ -28,7 +28,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from starlette.middleware.base import BaseHTTPMiddleware
 
-from app import auth, catalog, compose_generator, database, exchange_rates, fleet_key, metrics, setup_token
+from app import auth, catalog, compose_generator, database, exchange_rates, fleet_key, metrics, notify, setup_token
 from app.worker_proxy import _pin_url_to_ip, _validate_worker_url
 
 logging.basicConfig(
@@ -237,6 +237,21 @@ async def _collect_bounded(collector) -> Any:
         return await collector.collect()
 
 
+async def _warm_collector_alerts() -> None:
+    """Restore persisted collector alerts into the in-memory list the UI bell reads.
+
+    Without this, a restart clears the bell while the collector is still broken, and
+    the operator is told everything is fine until the next hourly run.
+    """
+    global _collector_alerts
+    try:
+        stored = await database.list_alerts(limit=100)
+    except Exception as exc:
+        logger.warning("Could not restore persisted alerts: %s", exc)
+        return
+    _collector_alerts = [{"platform": a["subject"], "error": a["message"]} for a in stored if a["kind"] == "collector"]
+
+
 async def _run_collection() -> None:
     """Collect earnings from all deployed services that have collectors."""
     global _collector_alerts
@@ -258,6 +273,10 @@ async def _run_collection() -> None:
             await _close_stale()
             results = await asyncio.gather(*(_collect_bounded(c) for c in collectors), return_exceptions=True)
             alerts: list[dict[str, str]] = []
+            # Platforms that were already failing before this run: used to detect a
+            # recovery, so a service that breaks again later notifies again rather
+            # than being deduped into silence forever.
+            previously_alerting = {a["platform"] for a in _collector_alerts}
             platforms_ok = 0
             for result in results:
                 if isinstance(result, Exception):
@@ -268,6 +287,18 @@ async def _run_collection() -> None:
                     logger.warning("Collection error for %s: %s", result.platform, result.error)
                     alerts.append({"platform": result.platform, "error": result.error})
                     metrics.record_collection_error(result.platform)
+                    # Persist so the alert outlives a restart, and push it out-of-band
+                    # only the FIRST time this particular failure appears — a collector
+                    # broken for a week must not notify every single hour.
+                    if await database.record_alert("collector", result.platform, result.error):
+                        _spawn(
+                            notify.send(
+                                f"CashPilot: {result.platform} collector failed",
+                                result.error,
+                                kind="collector",
+                                subject=result.platform,
+                            )
+                        )
                 else:
                     await database.upsert_earnings(
                         platform=result.platform,
@@ -281,6 +312,10 @@ async def _run_collection() -> None:
                     )
                     logger.info("Collected %s: %.4f %s", result.platform, result.balance, result.currency)
                     platforms_ok += 1
+                    if result.platform in previously_alerting:
+                        # Recovered — drop the stored alert so a future failure counts
+                        # as new and notifies again.
+                        await database.clear_alerts("collector", result.platform)
             _collector_alerts = alerts
         except Exception as exc:
             logger.error("Collection run failed: %s", exc)
@@ -391,6 +426,10 @@ async def lifespan(app: FastAPI):
     # revocations) so invalidated sessions are rejected without a DB hit in the
     # request path — and, crucially, so those invalidations survive a restart.
     await _warm_session_epochs()
+    # Restore the collector alerts persisted by earlier runs, so a restart doesn't
+    # silently clear the notification bell while the underlying collector is still
+    # broken (previously these lived only in memory).
+    await _warm_collector_alerts()
     # First-run setup token: while no users exist, require a one-time token
     # (printed below) for /register so a proxy-exposed instance cannot be seized
     # by the first public visitor. Persisted in config so it survives restarts;
