@@ -78,6 +78,96 @@ class TestEarnings:
 
         asyncio.run(run())
 
+    def test_fx_rate_is_stored_with_the_reading(self, db):
+        # Rates are only cached live, so the rate at collection time must be stored
+        # alongside the balance or the historical USD value is unrecoverable.
+        async def run():
+            await database.upsert_earnings("mysterium", 8.0, "MYST", "2026-01-01", fx_rate_usd=0.25)
+            conn = await database._get_db()
+            try:
+                cur = await conn.execute(
+                    "SELECT balance, currency, fx_rate_usd FROM earnings WHERE platform = 'mysterium'"
+                )
+                row = await cur.fetchone()
+            finally:
+                await conn.close()
+            assert row["balance"] == 8.0
+            assert row["currency"] == "MYST"
+            assert row["fx_rate_usd"] == 0.25
+
+        asyncio.run(run())
+
+    def test_fx_rate_updates_on_conflict(self, db):
+        async def run():
+            await database.upsert_earnings("mysterium", 8.0, "MYST", "2026-01-01", fx_rate_usd=0.25)
+            await database.upsert_earnings("mysterium", 9.0, "MYST", "2026-01-01", fx_rate_usd=0.30)
+            conn = await database._get_db()
+            try:
+                cur = await conn.execute("SELECT balance, fx_rate_usd FROM earnings WHERE platform = 'mysterium'")
+                row = await cur.fetchone()
+            finally:
+                await conn.close()
+            assert row["balance"] == 9.0
+            assert row["fx_rate_usd"] == 0.30
+
+        asyncio.run(run())
+
+    def test_a_missing_rate_never_overwrites_a_known_one(self, db):
+        """Regression: the UPDATE assigned the new rate unconditionally.
+
+        If the rate lookup failed this cycle (provider outage after a restart cleared
+        the cache) the incoming value is None — and overwriting a good rate with NULL
+        would destroy the only record of what that reading was worth.
+        """
+
+        async def run():
+            await database.upsert_earnings("mysterium", 8.0, "MYST", "2026-01-01", fx_rate_usd=0.25)
+            await database.upsert_earnings("mysterium", 9.0, "MYST", "2026-01-01", fx_rate_usd=None)
+            conn = await database._get_db()
+            try:
+                cur = await conn.execute("SELECT balance, fx_rate_usd FROM earnings WHERE platform = 'mysterium'")
+                row = await cur.fetchone()
+            finally:
+                await conn.close()
+            assert row["balance"] == 9.0  # balance still advances
+            assert row["fx_rate_usd"] == 0.25  # rate preserved
+
+        asyncio.run(run())
+
+    def test_a_null_rate_can_still_be_back_filled(self, db):
+        """Regression: the balance guard skipped the whole UPDATE when the balance was
+        unchanged, so a row stored with a NULL rate could never gain one — for a
+        service whose balance moves once a day, that meant never."""
+
+        async def run():
+            await database.upsert_earnings("mysterium", 8.0, "MYST", "2026-01-01", fx_rate_usd=None)
+            # Same balance, rate now available.
+            await database.upsert_earnings("mysterium", 8.0, "MYST", "2026-01-01", fx_rate_usd=0.25)
+            conn = await database._get_db()
+            try:
+                cur = await conn.execute("SELECT fx_rate_usd FROM earnings WHERE platform = 'mysterium'")
+                row = await cur.fetchone()
+            finally:
+                await conn.close()
+            assert row["fx_rate_usd"] == 0.25
+
+        asyncio.run(run())
+
+    def test_fx_rate_defaults_to_null(self, db):
+        # Callers that don't supply a rate (or an unknown currency) store NULL rather
+        # than a wrong number.
+        async def run():
+            await database.upsert_earnings("hg", 1.0, "USD")
+            conn = await database._get_db()
+            try:
+                cur = await conn.execute("SELECT fx_rate_usd FROM earnings WHERE platform = 'hg'")
+                row = await cur.fetchone()
+            finally:
+                await conn.close()
+            assert row["fx_rate_usd"] is None
+
+        asyncio.run(run())
+
     def test_get_earnings_history_week(self, db):
         async def run():
             await database.upsert_earnings("hg", 1.0, "USD")
@@ -402,6 +492,66 @@ class TestWorkers:
     def test_get_missing_worker(self, db):
         async def run():
             assert await database.get_worker(9999) is None
+
+        asyncio.run(run())
+
+
+class TestEarningsFxMigration:
+    def test_migration_adds_fx_column_to_existing_db(self, db_dir):
+        """An existing DB predating the column gains it, keeping its rows."""
+
+        async def run():
+            conn = await database._get_db()
+            try:
+                # Recreate the pre-migration shape (no fx_rate_usd) with a row in it.
+                await conn.executescript("""
+                    DROP TABLE IF EXISTS earnings;
+                    CREATE TABLE earnings (
+                        id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                        platform   TEXT    NOT NULL,
+                        balance    REAL    NOT NULL,
+                        currency   TEXT    NOT NULL DEFAULT 'USD',
+                        date       TEXT    NOT NULL,
+                        created_at TEXT    NOT NULL DEFAULT (datetime('now'))
+                    );
+                    INSERT INTO earnings (platform, balance, currency, date)
+                    VALUES ('legacy', 4.2, 'USD', '2026-01-01');
+                """)
+                await conn.commit()
+                cur = await conn.execute("PRAGMA table_info(earnings)")
+                before = {row["name"] for row in await cur.fetchall()}
+            finally:
+                await conn.close()
+            assert "fx_rate_usd" not in before
+
+            await database.init_db()
+
+            conn = await database._get_db()
+            try:
+                cur = await conn.execute("PRAGMA table_info(earnings)")
+                after = {row["name"] for row in await cur.fetchall()}
+                cur = await conn.execute("SELECT balance, fx_rate_usd FROM earnings WHERE platform = 'legacy'")
+                row = await cur.fetchone()
+            finally:
+                await conn.close()
+            assert "fx_rate_usd" in after
+            # The pre-existing row survives; its unknown historical rate stays NULL
+            # rather than being back-filled with today's (wrong) rate.
+            assert row["balance"] == 4.2
+            assert row["fx_rate_usd"] is None
+
+        asyncio.run(run())
+
+    def test_migration_is_idempotent(self, db):
+        async def run():
+            await database.init_db()  # already migrated by the fixture
+            conn = await database._get_db()
+            try:
+                cur = await conn.execute("PRAGMA table_info(earnings)")
+                cols = [row["name"] for row in await cur.fetchall()]
+            finally:
+                await conn.close()
+            assert cols.count("fx_rate_usd") == 1
 
         asyncio.run(run())
 

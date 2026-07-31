@@ -273,6 +273,11 @@ async def _run_collection() -> None:
                         platform=result.platform,
                         balance=result.balance,
                         currency=result.currency,
+                        # Snapshot the rate now. to_usd(1.0, cur) is the cur -> USD
+                        # rate (1.0 for USD, None if unknown); rates are only cached
+                        # live, so this is the only chance to record what this reading
+                        # was actually worth.
+                        fx_rate_usd=exchange_rates.to_usd(1.0, result.currency),
                     )
                     logger.info("Collected %s: %.4f %s", result.platform, result.balance, result.currency)
                     platforms_ok += 1
