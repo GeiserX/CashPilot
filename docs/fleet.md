@@ -145,6 +145,20 @@ If a worker goes offline (no heartbeat for 180 seconds):
 | `CASHPILOT_WORKER_NAME` | No | *(hostname)* | Display name for this worker in the fleet dashboard |
 | `CASHPILOT_WORKER_URL` | No | *(auto-detected)* | URL the UI uses to reach this worker. Set explicitly for remote/cross-host workers -- auto-detection can report an unreachable address |
 | `CASHPILOT_PORT` | No | `8081` | Mini-UI/API port the worker listens on |
+| `CASHPILOT_ALLOWED_VOLUME_ROOTS` | No | *(none)* | Colon-separated host directories this worker may bind-mount despite sitting under a blocked system root -- see [Volume mounts](#volume-mounts) |
+
+### Volume mounts
+
+A worker refuses to bind-mount host paths under system roots such as `/`, `/etc`, `/var/run` (which covers the Docker socket), `/var/lib/docker` and `/mnt`, so a fleet-key holder cannot mount the host filesystem or a co-located app's secrets into a service container.
+
+A few services legitimately need a directory under one of those roots -- most notably **Storj**, which wants a large data directory, and on Unraid the only such path is under `/mnt/user/...`. Opt in exactly that directory:
+
+```yaml
+environment:
+  - CASHPILOT_ALLOWED_VOLUME_ROOTS=/mnt/user/storj
+```
+
+Only specific subdirectories can be opted in: an entry that is itself a whole system root (`/`, `/mnt`, `/var/run`, ...) is ignored with a warning, so a careless value can never re-expose the Docker socket or an entire array. Multiple paths are colon-separated.
 
 ### Worker URL Validation
 

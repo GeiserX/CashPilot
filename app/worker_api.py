@@ -418,6 +418,41 @@ _BLOCKED_VOLUME_ROOTS = {
     "/data",  # per-container app data roots, incl. this worker's own /data
     "/tmp",
 }
+
+def _parse_allowed_volume_roots(raw: str) -> frozenset[str]:
+    """Parse CASHPILOT_ALLOWED_VOLUME_ROOTS into a set of opted-in real paths.
+
+    Escape hatch for the blocked roots above. Some legitimate service volumes live
+    under one: Storj needs a large data directory, and on Unraid the only such path
+    is under /mnt/user/... — so a blanket /mnt deny made Storj undeployable through
+    the worker on the platform most users run, pushing them to bypass CashPilot
+    entirely (strictly worse for security than a scoped exception).
+
+    Deny-by-default is unchanged; the operator must name the exact directories they
+    accept, colon-separated, e.g. CASHPILOT_ALLOWED_VOLUME_ROOTS=/mnt/user/storj.
+    An entry that IS a blocked root (or "/") is refused, so only a specific
+    subdirectory can ever be opted in — this can never re-expose /var/run/docker.sock,
+    /etc or a whole array through a careless value.
+    """
+    allowed: set[str] = set()
+    for entry in raw.split(":"):
+        entry = entry.strip()
+        if not entry:
+            continue
+        real = os.path.realpath(entry)
+        if real == "/" or real in _BLOCKED_VOLUME_ROOTS:
+            logger.warning(
+                "Ignoring CASHPILOT_ALLOWED_VOLUME_ROOTS entry %r: allow a specific "
+                "subdirectory (e.g. /mnt/user/storj), not a whole system root",
+                entry,
+            )
+            continue
+        allowed.add(real)
+    return frozenset(allowed)
+
+
+_ALLOWED_VOLUME_ROOTS = _parse_allowed_volume_roots(os.getenv("CASHPILOT_ALLOWED_VOLUME_ROOTS", ""))
+
 # Docker memory size syntax: a positive integer with an optional b/k/m/g unit.
 _MEM_LIMIT_RE = re.compile(r"^\d+[bkmgBKMG]?$")
 
@@ -467,6 +502,8 @@ def _validate_deploy_spec(spec: DeploySpec, slug: str | None = None) -> None:
         if not source.startswith("/"):
             continue  # named volume (e.g. "mysterium-data") — always allowed
         real = os.path.realpath(source)
+        if any(real == root or real.startswith(root + "/") for root in _ALLOWED_VOLUME_ROOTS):
+            continue  # explicitly opted in by the operator (see _parse_allowed_volume_roots)
         for blocked in _BLOCKED_VOLUME_ROOTS:
             if real == blocked or real.startswith(blocked + "/"):
                 raise HTTPException(status_code=403, detail=f"Volume mount '{source}' is blocked")
