@@ -55,7 +55,19 @@ class Finding:
 
     @property
     def is_problem(self) -> bool:
-        return self.status not in (OK, SKIPPED)
+        """Actionable: the catalog itself is wrong and a human should change it.
+
+        UNREACHABLE deliberately does NOT count. It means "we could not tell" —
+        a provider having a bad afternoon, a registry rate-limit, a timeout. If
+        those raised the problem count, the weekly issue would cry wolf most
+        weeks and get ignored, which costs us the one week it is real. They are
+        still reported, just in their own section.
+        """
+        return self.status == DEAD
+
+    @property
+    def is_inconclusive(self) -> bool:
+        return self.status == UNREACHABLE
 
 
 def classify_status(status_code: int) -> str:
@@ -119,7 +131,7 @@ def check_image(image: str) -> tuple[str, str]:
         return SKIPPED, "no image (not Docker-deployable)"
     try:
         proc = subprocess.run(  # noqa: S603
-            ["docker", "manifest", "inspect", image],  # noqa: S607
+            ["docker", "manifest", "inspect", "--", image],  # noqa: S607
             capture_output=True,
             text=True,
             timeout=90,
@@ -137,20 +149,33 @@ def check_image(image: str) -> tuple[str, str]:
     return DEAD, lines[-1][:160] if lines else "manifest not found"
 
 
-def load_services(services_dir: Path) -> list[dict]:
-    """Load every service YAML, sorted by slug."""
+def load_services(services_dir: Path) -> tuple[list[dict], list[Finding]]:
+    """Load every service YAML, sorted by slug.
+
+    Returns the services AND a finding per file that could not be read. A file
+    that fails to parse was previously only a stderr warning, so a catalog with
+    a broken YAML silently checked fewer services and still reported "All good"
+    — the one case where the report is confidently wrong. An unparseable
+    catalog file is a real defect, so it is surfaced as a problem.
+    """
     services = []
+    errors: list[Finding] = []
     for path in sorted(services_dir.rglob("*.y*ml")):
         if path.name.startswith("_"):
             continue
         try:
             data = yaml.safe_load(path.read_text())
-        except yaml.YAMLError as exc:
-            print(f"::warning::could not parse {path}: {exc}", file=sys.stderr)
+        except (yaml.YAMLError, OSError) as exc:
+            # Flattened: a YAML error spans several lines, and a raw newline
+            # inside a markdown table cell breaks the rest of the table.
+            reason = " ".join(str(exc).split())
+            errors.append(Finding(path.stem, "catalog", str(path), DEAD, f"could not parse: {reason[:160]}"))
             continue
         if isinstance(data, dict) and data.get("slug"):
             services.append(data)
-    return sorted(services, key=lambda s: s["slug"])
+        else:
+            errors.append(Finding(path.stem, "catalog", str(path), DEAD, "no slug — not a valid service definition"))
+    return sorted(services, key=lambda s: s["slug"]), errors
 
 
 def check_service(client: httpx.Client, svc: dict, *, check_images: bool) -> list[Finding]:
@@ -188,13 +213,38 @@ def check_service(client: httpx.Client, svc: dict, *, check_images: bool) -> lis
 
 def build_report(findings: list[Finding]) -> str:
     problems = [f for f in findings if f.is_problem]
+    unknown = [f for f in findings if f.is_inconclusive]
     checked = len({f.slug for f in findings})
     lines = ["# Catalog liveness report", ""]
+
+    def _unknown_section() -> list[str]:
+        if not unknown:
+            return []
+        out = [
+            "## Could not verify (not necessarily broken)",
+            "",
+            "| Service | What | Detail | Target |",
+            "|---|---|---|---|",
+        ]
+        out += [f"| `{f.slug}` | {f.kind} | {f.detail} | {f.target} |" for f in unknown]
+        return out + [""]
+
     if not problems:
         lines += [f"All good — {checked} services checked, no dead references."]
+        if unknown:
+            lines += ["", f"{len(unknown)} check(s) were inconclusive and are listed below.", ""]
+            lines += _unknown_section()
         return "\n".join(lines)
 
     lines += [f"**{len(problems)} problem(s)** across {checked} services checked.", ""]
+
+    broken_yaml = [f for f in problems if f.kind == "catalog"]
+    if broken_yaml:
+        # First: if the catalog itself won't parse, every other number here is
+        # computed over an incomplete set and can't be trusted.
+        lines += ["## Catalog files that could not be read", "", "| File | Detail |", "|---|---|"]
+        lines += [f"| `{f.target}` | {f.detail} |" for f in broken_yaml]
+        lines += [""]
 
     referral = [f for f in problems if f.kind == "referral"]
     if referral:
@@ -203,7 +253,7 @@ def build_report(findings: list[Finding]) -> str:
         lines += [f"| `{f.slug}` | {f.status} | {f.detail} | {f.target} |" for f in referral]
         lines += [""]
 
-    rest = [f for f in problems if f.kind != "referral"]
+    rest = [f for f in problems if f.kind not in ("referral", "catalog")]
     if rest:
         lines += [
             "## Websites and images",
@@ -214,9 +264,12 @@ def build_report(findings: list[Finding]) -> str:
         lines += [f"| `{f.slug}` | {f.kind} | {f.status} | {f.detail} | {f.target} |" for f in rest]
         lines += [""]
 
+    lines += _unknown_section()
+
     lines += [
-        "_`unreachable` may be a transient provider outage; `dead` means the reference "
-        "answered with a client error or the referral link collapsed to a bare homepage._",
+        "_`unreachable` may be a transient provider outage or a registry rate-limit, so it is "
+        "reported but not counted as a problem; `dead` means the reference answered with a "
+        "client error or the referral link collapsed to a bare homepage._",
     ]
     return "\n".join(lines)
 
@@ -233,12 +286,12 @@ def main() -> int:
         print(f"services dir not found: {args.services_dir}", file=sys.stderr)
         return 2
 
-    services = load_services(args.services_dir)
+    services, parse_errors = load_services(args.services_dir)
     if not services:
         print("no services found — refusing to report an empty catalog as healthy", file=sys.stderr)
         return 2
 
-    findings: list[Finding] = []
+    findings: list[Finding] = list(parse_errors)
     headers = {"User-Agent": _UA}
     with httpx.Client(follow_redirects=True, timeout=args.timeout, headers=headers) as client:
         for svc in services:

@@ -94,13 +94,36 @@ class TestLoadServices:
         self._write(tmp_path, "b.yml", "slug: bravo\nname: B\n")
         self._write(tmp_path, "a.yml", "slug: alpha\nname: A\n")
         self._write(tmp_path, "_schema.yml", "slug: schema\nname: S\n")
-        slugs = [s["slug"] for s in liveness.load_services(tmp_path)]
-        assert slugs == ["alpha", "bravo"]
+        services, errors = liveness.load_services(tmp_path)
+        assert [s["slug"] for s in services] == ["alpha", "bravo"]
+        assert errors == []
 
-    def test_unparseable_file_is_skipped_not_fatal(self, tmp_path):
+    def test_unparseable_file_is_reported_not_silently_skipped(self, tmp_path):
+        """A broken YAML must not let the run claim 'All good'.
+
+        Skipping it quietly means fewer services are checked and the report is
+        confidently wrong — the worst failure mode for a check like this.
+        """
         self._write(tmp_path, "bad.yml", "{{{ not yaml")
         self._write(tmp_path, "good.yml", "slug: good\nname: G\n")
-        assert [s["slug"] for s in liveness.load_services(tmp_path)] == ["good"]
+        services, errors = liveness.load_services(tmp_path)
+        assert [s["slug"] for s in services] == ["good"]
+        assert len(errors) == 1
+        assert errors[0].kind == "catalog"
+        assert errors[0].is_problem
+        assert "bad.yml" in errors[0].target
+        # A raw newline in a markdown table cell breaks the rest of the table.
+        assert "\n" not in errors[0].detail
+        # ...and it must reach the report, which is what the CI gate greps.
+        report = liveness.build_report(errors)
+        assert not report.startswith("# Catalog liveness report\n\nAll good")
+        assert "could not be read" in report
+
+    def test_file_without_slug_is_reported(self, tmp_path):
+        self._write(tmp_path, "nope.yml", "name: no slug here\n")
+        services, errors = liveness.load_services(tmp_path)
+        assert services == []
+        assert len(errors) == 1 and errors[0].is_problem
 
 
 class TestCheckService:
@@ -151,3 +174,44 @@ class TestBuildReport:
 
 def build_starts_ok(report: str) -> bool:
     return "All good" in report
+
+
+class TestInconclusiveIsNotAProblem:
+    """A weekly auto-issue that cries wolf gets ignored — so 'can't tell' != 'broken'."""
+
+    def test_unreachable_does_not_open_an_issue(self):
+        findings = [
+            liveness.Finding("a", "website", "https://a.com", liveness.UNREACHABLE, "ServerError"),
+            liveness.Finding("b", "image", "repo/img", liveness.UNREACHABLE, "registry rate-limited or auth-gated"),
+        ]
+        report = liveness.build_report(findings)
+        # The CI step greps for a leading "All good" to decide whether to file.
+        assert report.splitlines()[2].startswith("All good")
+        # ...but the detail is still visible to a human reading the run.
+        assert "Could not verify" in report
+        assert "rate-limited" in report
+
+    def test_dead_still_opens_an_issue(self):
+        findings = [
+            liveness.Finding("a", "website", "https://a.com", liveness.UNREACHABLE, "ServerError"),
+            liveness.Finding("b", "referral", "https://b.com/?r=X", liveness.DEAD, "referral code lost"),
+        ]
+        report = liveness.build_report(findings)
+        assert not report.splitlines()[2].startswith("All good")
+        assert "**1 problem(s)**" in report
+        # The unreachable one is still shown, just not counted.
+        assert "Could not verify" in report
+
+    def test_image_arg_cannot_be_read_as_a_flag(self):
+        import subprocess
+
+        captured = {}
+
+        def fake_run(cmd, **kw):
+            captured["cmd"] = cmd
+            return MagicMock(returncode=0, stderr="")
+
+        with patch.object(subprocess, "run", side_effect=fake_run):
+            liveness.check_image("repo/img:1")
+        assert "--" in captured["cmd"]
+        assert captured["cmd"].index("--") == captured["cmd"].index("repo/img:1") - 1
