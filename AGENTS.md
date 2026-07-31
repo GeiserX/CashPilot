@@ -47,6 +47,143 @@ cp -rf source dest          # NOT: cp -r source dest
 - `apt-get` - use `-y` flag
 - `brew` - use `HOMEBREW_NO_AUTO_UPDATE=1` env var
 
+## Operating a live fleet — hazards that look fine from outside
+
+Failure modes that are easy to trigger, expensive or impossible to undo, and
+invisible from the dashboard: in each case the earning containers keep running, so
+nothing prompts you to look. Read this before changing anything on a running fleet.
+
+### Never bulk-redeploy services to "apply" new container settings
+
+A release that adds container hardening (`cap_drop`, `no-new-privileges`,
+`pids_limit`, ...) only affects containers created **after** it, because Docker
+fixes `HostConfig` at creation time. The obvious next step — redeploy everything so
+it takes effect — can permanently destroy node identities.
+
+A redeploy rebuilds the spec from the **catalog YAML**. If a service was originally
+deployed with different storage than its catalog entry declares, redeploying
+silently swaps it. The common case: a service running on a **bind mount** whose
+catalog entry declares a **named volume**. The new container gets a fresh, empty
+volume and the old data is simply no longer attached.
+
+Harmless for stateless bandwidth services. Not harmless for anything holding an
+identity:
+
+| Service kind | What is lost | Recoverable? |
+|---|---|---|
+| Mysterium / MystNodes | node keystore -> new identity | No: re-registration, reputation reset |
+| Storj | node identity -> forfeits held amount | No |
+| Anyone Protocol | relay keys -> new relay, reputation reset | No |
+| URnetwork and similar | persisted auth / JWT | Only by logging in again |
+
+Catalog entries that interpolate environment variables (e.g.
+`${IDENTITY_DIR}:/app/identity`) are equally dangerous: if the variable is unset at
+deploy time the mount does not resolve to the original location.
+
+**Always compare before redeploying:**
+
+```bash
+# What is mounted right now
+docker inspect cashpilot-<slug> \
+  --format '{{range .Mounts}}{{.Type}} {{if eq .Type "volume"}}{{.Name}}{{else}}{{.Source}}{{end}} -> {{.Destination}}
+{{end}}'
+
+# What the catalog would create instead
+docker exec cashpilot-ui python -c "
+from app import catalog; catalog.load_services()
+print((catalog.get_service('<slug>').get('docker') or {}).get('volumes'))"
+```
+
+A `bind` on the left against a bare `name:/path` on the right means **do not
+redeploy that slug**. Same for any `${VAR}` you cannot prove is set.
+
+**Safe remedy:** recreate the container *in place* rather than redeploying from the
+catalog. Read the running container's image, env, mounts, ports, labels and restart
+policy from `docker inspect`, then recreate it identically, adding only the new
+security flags. The original mounts stay attached and no UI login is needed. Canary
+one stateless service and confirm it returns healthy before continuing.
+
+The durable fix is to make deployed storage and catalog agree — either redeploy that
+service deliberately once, where an identity reset is acceptable, or keep the bind
+mount and never redeploy that slug from the catalog.
+
+### A recreated worker can lose its identity (fixed in 1.4.2)
+
+**Symptom:** after an image bump, every heartbeat returns `401 Unauthorized` and the
+worker disappears from the fleet view — while its service containers keep earning.
+
+**Cause:** the UI keys a worker's row and its per-worker key on a `client_id`
+persisted at `/data/.worker_id`. Before 1.4.2 a worker without that file fell back to
+`CASHPILOT_WORKER_NAME`, which defaults to `socket.gethostname()` — inside Docker,
+the container short ID, regenerated on every recreate. The worker then presents a
+valid key under an id the UI never enrolled, and the UI refuses it. It cannot
+self-recover: it authenticates with its existing key, so it can never re-enroll.
+
+**Recovery** (needed on <=1.4.1, or whenever `/data/.worker_id` is missing):
+
+```bash
+# The id the UI knows this worker by
+docker exec cashpilot-ui python -c "
+import sqlite3; c=sqlite3.connect('/data/cashpilot.db')
+print([(r[0], r[1]) for r in c.execute('select client_id, name from workers')])"
+
+# Restore it, matching the key file's ownership so the app user can read it
+d=<worker /data dir>
+printf '<client_id>' > "$d/.worker_id"
+chown --reference="$d/.worker_key" "$d/.worker_id"
+chmod  --reference="$d/.worker_key" "$d/.worker_id"
+docker compose restart cashpilot-worker
+```
+
+`docker compose up -d` will **not** reload it while the container is merely
+"Running" — the id is read at startup, so restart the container.
+
+Seeding `/data/.worker_id` *before* recreating an older worker avoids the outage
+entirely. When diagnosing, note that `workers.name` is the container hostname and
+legitimately changes on every recreate — that is cosmetic. Judge identity by
+`client_id`, health by `key_confirmed = 1` plus a `200` heartbeat. The column is
+`last_heartbeat`, not `last_seen`.
+
+### A green release does not mean both images were published
+
+`release.yml` bumps one tag, but builds the UI and the worker **independently** based
+on which paths a merge touched. A worker-only release publishes
+`cashpilot-worker:<version>` and no `cashpilot:<version>`. `build-ui: skipped` is a
+normal, silent outcome, so the newest git tag may have no image for one component and
+the two images legitimately sit on different versions.
+
+Verify against the registry — not the Docker Hub web API, which lags by hours:
+
+```bash
+docker manifest inspect -- drumsergio/cashpilot:<version>
+docker manifest inspect -- drumsergio/cashpilot-worker:<version>
+```
+
+To confirm a fix actually shipped, grep inside the image rather than trusting a green
+run: `docker run --rm --entrypoint sh <image> -c "grep -c cap_drop /app/app/orchestrator.py"`.
+
+### Catalog liveness: "could not verify" is not "broken"
+
+`scripts/check_catalog_liveness.py` separates **problems** (`dead` — the catalog is
+wrong) from **inconclusive** (`unreachable` — we could not tell). Only problems open
+the weekly rollup issue.
+
+A referral link that redirects to the provider's bare homepage is reported
+inconclusive **on purpose**: it is indistinguishable from a working link that reads
+`?ref=CODE`, stores it in the session, sets a cookie and redirects to a clean URL.
+Confirming either way needs an account with that provider.
+
+Never retire a service on that signal alone. Check whether the referral URL is
+handled specially first:
+
+```bash
+curl -s -o /dev/null -w '%{http_code}\n' 'https://provider.example/'       # bare page
+curl -s -D - -o /dev/null 'https://provider.example/?ref=CODE' | head -5    # with code
+```
+
+A `302` + `Set-Cookie` on the referral URL where the bare page returns `200` means
+the code **is** captured — the link works.
+
 <!-- BEGIN BEADS INTEGRATION v:1 profile:minimal hash:970c3bf2 -->
 ## Beads Issue Tracker
 
