@@ -158,7 +158,15 @@ environment:
   - CASHPILOT_ALLOWED_VOLUME_ROOTS=/mnt/user/storj
 ```
 
-Only specific subdirectories can be opted in: an entry that is itself a whole system root (`/`, `/mnt`, `/var/run`, ...) is ignored with a warning, so a careless value can never re-expose the Docker socket or an entire array. Multiple paths are colon-separated.
+Multiple paths are colon-separated. An entry must clear two gates:
+
+- **Never a system path.** Anything resolving under `/etc`, `/root`, `/proc`, `/sys`, `/dev`, `/boot`, `/usr`, `/bin`, `/sbin`, `/lib`, `/run` or `/var` is refused **at any depth** — so `/run/docker.sock`, `/var/lib/docker/...` and `/etc/shadow` cannot be opted in.
+- **Specific enough to be a service directory.** It must sit at least two components below the root it belongs to, so `/mnt/user/storj` is accepted while `/mnt` and `/mnt/user` (the entire Unraid array) are not.
+
+Relative paths are refused, and refusals are logged with the reason.
+
+!!! warning "Residual risk — allowlist only directories you trust"
+    The worker resolves paths in its **own** mount namespace and cannot see the host filesystem, so a symlink created *inside* an allowlisted directory by the service that owns it resolves differently here than in the Docker daemon. Only allowlist a directory whose contents you are willing to treat as trusted, and prefer a dedicated path (`/mnt/user/storj`) over a shared one.
 
 ### Worker URL Validation
 
