@@ -87,6 +87,23 @@ class TestRedaction:
         # Non-secret params survive, so the message stays useful for debugging.
         assert "page=2" in out
 
+    @pytest.mark.parametrize(
+        "secret",
+        [
+            "eyJhbGciOiJSUzI1NiIsFIREBASE_ID_TOKEN.abc",  # repocket Auth-Token
+            "efm_live_SECRETAPIKEY_9f3a",  # earnfm X-API-Key
+            "SALAD_AUTH_COOKIE_SECRET_VALUE",  # salad X-XSRF-TOKEN
+            "XSRF_SECRET_TOKEN_VALUE",  # earnapp xsrf-token
+        ],
+    )
+    def test_bare_header_value_secrets_are_redacted(self, secret):
+        """httpx/h11 report a rejected header as the WHOLE value, with no name= and
+        no Bearer prefix — several collectors send raw secrets exactly that way, so
+        matching the error's shape is the only thing that catches them."""
+        out = notify.redact(f"httpx.LocalProtocolError: Illegal header value b'{secret}'")
+        assert secret not in out
+        assert "<redacted>" in out
+
     def test_bearer_token_is_redacted(self):
         out = notify.redact("rejected header Authorization: Bearer abc.DEF-123_xyz")
         assert "abc.DEF-123_xyz" not in out

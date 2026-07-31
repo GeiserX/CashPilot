@@ -249,7 +249,17 @@ async def _warm_collector_alerts() -> None:
     except Exception as exc:
         logger.warning("Could not restore persisted alerts: %s", exc)
         return
-    _collector_alerts = [{"platform": a["subject"], "error": a["message"]} for a in stored if a["kind"] == "collector"]
+    # Newest-first, keeping only the most recent row per subject: a normal run puts
+    # exactly one entry per failing platform in this list, and the restored bell must
+    # look the same rather than showing one row per historical message.
+    seen: set[str] = set()
+    restored: list[dict[str, str]] = []
+    for alert in stored:
+        if alert["kind"] != "collector" or alert["subject"] in seen:
+            continue
+        seen.add(alert["subject"])
+        restored.append({"platform": alert["subject"], "error": alert["message"]})
+    _collector_alerts = restored
 
 
 async def _run_collection() -> None:
@@ -285,16 +295,21 @@ async def _run_collection() -> None:
                     continue
                 if result.error:
                     logger.warning("Collection error for %s: %s", result.platform, result.error)
-                    alerts.append({"platform": result.platform, "error": result.error})
+                    # Redact ONCE, here, so the same sanitized string is what gets shown,
+                    # stored and sent. Collector errors are usually str(exc), and an httpx
+                    # exception embeds the offending header or URL — which for several
+                    # providers is a live credential. The alert is now durable and readable
+                    # by any authenticated role, so it must never hold a secret.
+                    safe_error = notify.redact(result.error)
+                    alerts.append({"platform": result.platform, "error": safe_error})
                     metrics.record_collection_error(result.platform)
-                    # Persist so the alert outlives a restart, and push it out-of-band
-                    # only the FIRST time this particular failure appears — a collector
-                    # broken for a week must not notify every single hour.
-                    if await database.record_alert("collector", result.platform, result.error):
+                    # Push out-of-band only the FIRST time this failure appears — a
+                    # collector broken for a week must not notify every single hour.
+                    if await database.record_alert("collector", result.platform, safe_error):
                         _spawn(
                             notify.send(
                                 f"CashPilot: {result.platform} collector failed",
-                                result.error,
+                                safe_error,
                                 kind="collector",
                                 subject=result.platform,
                             )
@@ -321,7 +336,14 @@ async def _run_collection() -> None:
             logger.error("Collection run failed: %s", exc)
             success = False
             platforms_ok = 0
-            _collector_alerts = [{"platform": "collection", "error": "Collection run failed — see server logs"}]
+            # Keep the per-platform entries: the next run derives "which platforms were
+            # failing" from this list, so clobbering it would make every platform
+            # permanently unrecoverable — its stored alert would never be cleared and
+            # its next real failure would be deduped into silence.
+            _collector_alerts = [
+                *(a for a in _collector_alerts if a.get("platform") != "collection"),
+                {"platform": "collection", "error": "Collection run failed — see server logs"},
+            ]
         finally:
             metrics.record_collection_end(start_time, success, platforms_ok)
 

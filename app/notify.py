@@ -41,12 +41,26 @@ _SECRET_PARAM_RE = re.compile(
 )
 _BEARER_RE = re.compile(r"((?:bearer|basic)\s+)[A-Za-z0-9._\-+/=]+", re.IGNORECASE)
 
+# httpx/h11 report a rejected header as `Illegal header value b'<the whole value>'`.
+# Several collectors send a raw secret as a bare header value with no `name=` and no
+# `Bearer ` prefix (grass Authorization, repocket Auth-Token, earnfm X-API-Key,
+# salad/earnapp XSRF, proxyrack Api-Key), so those match neither pattern above.
+# Match the ERROR's shape instead of trying to recognise every secret's shape, and
+# drop the entire quoted value.
+_ILLEGAL_HEADER_RE = re.compile(r"(Illegal header value\s*)b?['\"].*?['\"]", re.IGNORECASE | re.DOTALL)
+
 # Notifications are a summary, not a log: keep them short enough for a phone banner.
 _MAX_MESSAGE_LEN = 400
 
 
 def redact(text: str) -> str:
-    """Strip credential-looking values out of an outbound alert body."""
+    """Strip credential-looking values out of an alert body.
+
+    Applied wherever an alert is created — not only on the way out — because the
+    same string is persisted to SQLite and served by /api/collector-alerts to every
+    authenticated role, while config credentials are owner-only and encrypted.
+    """
+    text = _ILLEGAL_HEADER_RE.sub(r"\1<redacted>", text)
     text = _SECRET_PARAM_RE.sub(r"\1<redacted>", text)
     text = _BEARER_RE.sub(r"\1<redacted>", text)
     if len(text) > _MAX_MESSAGE_LEN:

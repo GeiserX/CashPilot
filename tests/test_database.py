@@ -569,11 +569,27 @@ class TestAlerts:
 
         asyncio.run(run())
 
-    def test_changed_message_counts_as_new(self, db):
+    def test_alternating_messages_do_not_defeat_the_cooldown(self, db):
+        """Regression: dedupe used to compare only against the LAST message.
+
+        Several collectors alternate between two error strings for one underlying
+        fault (grass flips between an expired token and a Cloudflare rate-limit), so
+        message-equality dedupe re-notified every hour and grew the table forever.
+        """
+
         async def run():
-            await database.record_alert("collector", "honeygain", "login failed")
-            assert await database.record_alert("collector", "honeygain", "429 rate limited") is True
-            assert len(await database.list_alerts()) == 2
+            assert await database.record_alert("collector", "grass", "Token expired") is True
+            assert await database.record_alert("collector", "grass", "Cloudflare rate limit") is False
+            assert await database.record_alert("collector", "grass", "Token expired") is False
+            assert len(await database.list_alerts()) == 1
+
+        asyncio.run(run())
+
+    def test_alerts_again_once_the_cooldown_has_passed(self, db):
+        async def run():
+            assert await database.record_alert("collector", "hg", "boom") is True
+            # A zero-length window models the cooldown having elapsed.
+            assert await database.record_alert("collector", "hg", "boom", cooldown_hours=0) is True
 
         asyncio.run(run())
 

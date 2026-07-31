@@ -1247,22 +1247,38 @@ async def record_health_events(events: list[tuple[str, str, str]]) -> None:
         await db.close()
 
 
-async def record_alert(kind: str, subject: str, message: str) -> bool:
-    """Persist an alert, returning True only when it is NEW for this kind+subject.
+# How long a subject stays quiet after alerting. A collector broken for a week must
+# not notify every hour: the first failure is news, the 168th is noise.
+ALERT_COOLDOWN_HOURS = 24
 
-    "New" means the latest stored alert for the same kind+subject carried a different
-    message. A collector that has been broken for a week must not re-notify every
-    hour: the first failure is news, the 168th is noise. Duplicates are therefore not
-    stored either, which also keeps the table naturally bounded.
+
+async def record_alert(
+    kind: str,
+    subject: str,
+    message: str,
+    *,
+    cooldown_hours: int = ALERT_COOLDOWN_HOURS,
+) -> bool:
+    """Persist an alert, returning True only when the caller should notify.
+
+    Suppression is by TIME WINDOW per kind+subject, not by message equality. Message
+    equality alone is not enough: several collectors alternate between two error
+    strings for the same underlying fault (grass flips between an expired-token error
+    and a Cloudflare rate-limit depending on which request tripped first), so a
+    "changed message means new" rule would notify every single hour and grow the
+    table without bound — exactly what this is meant to prevent.
+
+    Nothing is stored while a subject is in cooldown, which keeps the table bounded.
+    Call ``clear_alerts`` when a subject recovers so the next failure alerts again
+    immediately instead of waiting out the window.
     """
     db = await _get_db()
     try:
         cursor = await db.execute(
-            "SELECT message FROM alerts WHERE kind = ? AND subject = ? ORDER BY id DESC LIMIT 1",
-            (kind, subject),
+            "SELECT id FROM alerts WHERE kind = ? AND subject = ? AND created_at > datetime('now', ?) LIMIT 1",
+            (kind, subject, f"-{int(cooldown_hours)} hours"),
         )
-        row = await cursor.fetchone()
-        if row is not None and row["message"] == message:
+        if await cursor.fetchone() is not None:
             return False
         await db.execute(
             "INSERT INTO alerts (kind, subject, message) VALUES (?, ?, ?)",
