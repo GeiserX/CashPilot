@@ -587,6 +587,14 @@ def _collector_needs_setup(slug: str, config: dict[str, str]) -> bool:
     return False
 
 
+# Catalog statuses a service must never be deployed with. Shared by the catalog
+# listing (which hides them) and the deploy gate (which refuses them) so the two
+# can't drift apart again — previously the listing hid all three but deploy only
+# refused "dead", so a direct link or a stale page could still deploy a broken or
+# dropped service and then silently earn nothing.
+_UNDEPLOYABLE_STATUSES = frozenset({"broken", "dead", "dropped"})
+
+
 def _split_image(ref: str) -> tuple[str, str, str]:
     """Split a Docker image reference into (repository, tag, digest)."""
     digest = ""
@@ -803,7 +811,7 @@ async def api_services_available(request: Request) -> list[dict[str, Any]]:
 
     available = []
     for svc in services:
-        if svc.get("status") in ("broken", "dead", "dropped"):
+        if svc.get("status") in _UNDEPLOYABLE_STATUSES:
             continue  # Known non-functional — hide completely
         docker_conf = svc.get("docker", {})
         has_image = bool(docker_conf and docker_conf.get("image"))
@@ -868,8 +876,15 @@ async def api_deploy(request: Request, slug: str, body: DeployRequest, worker_id
     svc = catalog.get_service(slug)
     if not svc:
         raise HTTPException(status_code=404, detail=f"Service '{slug}' not found")
-    if svc.get("status") == "dead":
-        raise HTTPException(status_code=410, detail=f"Service '{slug}' is no longer available (dead/discontinued)")
+    status = svc.get("status")
+    if status in _UNDEPLOYABLE_STATUSES:
+        # 410 for a service that is permanently gone, 409 for one that is merely
+        # broken right now and may come back. Both are hidden from the catalog
+        # listing, so reaching here means a direct link, a stale page or an API client.
+        raise HTTPException(
+            status_code=409 if status == "broken" else 410,
+            detail=f"Service '{slug}' is no longer available for deployment ({status})",
+        )
 
     docker_conf = svc.get("docker", {})
     image = docker_conf.get("image")

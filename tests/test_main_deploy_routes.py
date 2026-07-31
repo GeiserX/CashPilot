@@ -152,6 +152,30 @@ class TestApiDeploy:
             assert resp.status_code == 410
             assert "no longer available" in resp.json()["detail"]
 
+    def test_deploy_broken_service_refused(self, client):
+        # The catalog listing already hides broken services; the deploy gate used to
+        # let them through, so a direct link or stale page could still deploy one.
+        svc = {"slug": "speedshare", "name": "SpeedShare", "status": "broken", "docker": {"image": "x"}}
+        with (
+            _auth_owner(),
+            patch("app.main.database.list_workers", new_callable=AsyncMock, return_value=[_online_worker()]),
+            patch("app.main.catalog.get_service", return_value=svc),
+        ):
+            resp = client.post("/api/deploy/speedshare", json={})
+            assert resp.status_code == 409  # broken may come back; not "gone"
+            assert "broken" in resp.json()["detail"]
+
+    def test_deploy_dropped_service_refused(self, client):
+        svc = {"slug": "gone", "name": "Gone", "status": "dropped", "docker": {"image": "x"}}
+        with (
+            _auth_owner(),
+            patch("app.main.database.list_workers", new_callable=AsyncMock, return_value=[_online_worker()]),
+            patch("app.main.catalog.get_service", return_value=svc),
+        ):
+            resp = client.post("/api/deploy/gone", json={})
+            assert resp.status_code == 410
+            assert "dropped" in resp.json()["detail"]
+
     def test_deploy_no_auth(self, client):
         with _no_auth():
             resp = client.post("/api/deploy/honeygain", json={})
