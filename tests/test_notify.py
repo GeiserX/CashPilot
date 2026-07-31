@@ -64,8 +64,55 @@ class TestConfiguration:
             assert notify.configured_targets() == []
 
 
+class TestRedaction:
+    """Alert bodies are built from collector errors, most of which are str(exc).
+
+    For an httpx error that string embeds the full request URL — and several
+    providers put a token in the query. The destination can be a PUBLIC ntfy topic,
+    so nothing credential-shaped may leave this module.
+    """
+
+    def test_token_in_a_url_query_is_redacted(self):
+        raw = "Client error '401 Unauthorized' for url 'https://api.example.com/v1/me?token=SUPERSECRET123'"
+        out = notify.redact(raw)
+        assert "SUPERSECRET123" not in out
+        assert "token=<redacted>" in out
+
+    @pytest.mark.parametrize(
+        "param", ["api_key", "api-key", "key", "secret", "password", "auth", "session", "cookie", "signature"]
+    )
+    def test_common_credential_params_are_redacted(self, param):
+        out = notify.redact(f"failed https://x.com/a?{param}=LEAKME&page=2")
+        assert "LEAKME" not in out
+        # Non-secret params survive, so the message stays useful for debugging.
+        assert "page=2" in out
+
+    def test_bearer_token_is_redacted(self):
+        out = notify.redact("rejected header Authorization: Bearer abc.DEF-123_xyz")
+        assert "abc.DEF-123_xyz" not in out
+
+    def test_ordinary_message_is_untouched(self):
+        msg = "Session expired — refresh bytelixir_session cookie in Settings"
+        assert notify.redact(msg) == msg
+
+    def test_long_message_is_truncated(self):
+        assert len(notify.redact("x" * 5000)) <= notify._MAX_MESSAGE_LEN + 3
+
+
 @pytest.mark.asyncio
 class TestSend:
+    async def test_secrets_never_reach_a_target(self):
+        # End-to-end guard: even if a caller passes a raw exception string through.
+        client = _mock_client()
+        with (
+            _env(CASHPILOT_NTFY_URL="https://ntfy.sh/topic"),
+            patch("app.notify.httpx.AsyncClient", return_value=client),
+        ):
+            await notify.send("collector failed", "GET https://api.x.com/v1?token=LEAKME 401")
+        body = client.post.call_args.kwargs["content"].decode()
+        assert "LEAKME" not in body
+        assert "<redacted>" in body
+
     async def test_inert_send_makes_no_request(self):
         client = _mock_client()
         with _env(), patch("app.notify.httpx.AsyncClient", return_value=client):

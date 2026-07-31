@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 
 import httpx
 
@@ -28,6 +29,29 @@ logger = logging.getLogger(__name__)
 # Deliberately short: this runs inside the collection cycle, and a hanging notifier
 # must not stretch it.
 _TIMEOUT = 10.0
+
+# Alert bodies are built from collector errors, and most collectors report
+# ``str(exc)`` — for an httpx error that string embeds the full request URL, which
+# for several providers carries a token in the query string. The destination may be
+# a PUBLIC ntfy topic, so secrets are stripped here, at the boundary, rather than
+# trusting every caller to have done it.
+_SECRET_PARAM_RE = re.compile(
+    r"((?:token|api[_-]?key|key|secret|password|passwd|pwd|auth|session|sess|cookie|sig|signature)=)[^&\s\"']+",
+    re.IGNORECASE,
+)
+_BEARER_RE = re.compile(r"((?:bearer|basic)\s+)[A-Za-z0-9._\-+/=]+", re.IGNORECASE)
+
+# Notifications are a summary, not a log: keep them short enough for a phone banner.
+_MAX_MESSAGE_LEN = 400
+
+
+def redact(text: str) -> str:
+    """Strip credential-looking values out of an outbound alert body."""
+    text = _SECRET_PARAM_RE.sub(r"\1<redacted>", text)
+    text = _BEARER_RE.sub(r"\1<redacted>", text)
+    if len(text) > _MAX_MESSAGE_LEN:
+        text = text[:_MAX_MESSAGE_LEN] + "..."
+    return text
 
 
 def configured_targets() -> list[str]:
@@ -75,6 +99,11 @@ async def send(title: str, message: str, *, kind: str = "alert", subject: str = 
     targets = configured_targets()
     if not targets:
         return 0
+
+    # Redact at the boundary: every target below is off-box and one of them
+    # (ntfy) is public by default.
+    title = redact(title)
+    message = redact(message)
 
     delivered = 0
     async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
