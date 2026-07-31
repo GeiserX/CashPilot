@@ -419,6 +419,7 @@ _BLOCKED_VOLUME_ROOTS = {
     "/tmp",
 }
 
+
 def _parse_allowed_volume_roots(raw: str) -> frozenset[str]:
     """Parse CASHPILOT_ALLOWED_VOLUME_ROOTS into a set of opted-in real paths.
 
