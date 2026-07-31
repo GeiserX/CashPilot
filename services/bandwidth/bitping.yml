@@ -27,6 +27,15 @@ docker:
   command: ""
   network_mode: ""
   privileged: false
+  # Containers run with cap_drop: ALL, which also drops NET_RAW — one of the
+  # capabilities Docker grants by default. This service earns by running network
+  # probes, and raw-socket probes (traceroute-style) need NET_RAW. Measured: plain
+  # ICMP echo still works without it, because Docker sets a permissive
+  # ping_group_range, so this is not proven to be load-bearing for every probe
+  # type. It is declared to restore exactly what this container had before the
+  # hardening, rather than risk a probe silently failing and earning nothing.
+  # Scoped per-slug, so it grants nothing to any other service.
+  cap_add: [NET_RAW]
   notes: >
     Initial authentication is interactive via the container's web UI.
     Credentials are then persisted in the /root/.bitping volume mount.

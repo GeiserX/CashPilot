@@ -168,6 +168,46 @@ class TestDeployRawResources:
         assert kwargs["network_mode"] == "host"
 
 
+class TestDeployRawHardening:
+    """Third-party images must get the minimum kernel surface (CashPilot-a5p)."""
+
+    def _mock_client(self):
+        container = MagicMock()
+        container.id = "cid"
+        container.short_id = "short"
+        client = MagicMock()
+        client.containers.get.side_effect = orchestrator.NotFound("nope")
+        client.containers.run.return_value = container
+        return client
+
+    def _run_kwargs(self, **deploy_kwargs):
+        client = self._mock_client()
+        with patch.object(orchestrator, "_get_client", return_value=client):
+            orchestrator.deploy_raw(**deploy_kwargs)
+        return client.containers.run.call_args.kwargs
+
+    def test_hardening_flags_always_applied(self):
+        kwargs = self._run_kwargs(slug="honeygain", image="img")
+        assert kwargs["cap_drop"] == ["ALL"]
+        assert kwargs["security_opt"] == ["no-new-privileges:true"]
+        assert kwargs["privileged"] is False
+        assert kwargs["pids_limit"] == orchestrator._PIDS_LIMIT
+        # Nothing declared any capability, so none is added back.
+        assert kwargs["cap_add"] is None
+
+    def test_catalog_declared_capability_is_added_back(self):
+        # mysterium is the only catalog service declaring a cap; dropping ALL must not
+        # break it — NET_ADMIN is re-added on top of the drop.
+        kwargs = self._run_kwargs(slug="mysterium", image="img", cap_add=["NET_ADMIN"])
+        assert kwargs["cap_drop"] == ["ALL"]
+        assert kwargs["cap_add"] == ["NET_ADMIN"]
+
+    def test_privileged_is_not_an_accepted_argument(self):
+        # The dangerous state is unrepresentable, not merely refused upstream.
+        with pytest.raises(TypeError):
+            orchestrator.deploy_raw(slug="x", image="i", privileged=True)
+
+
 # ---------------------------------------------------------------------------
 # Worker /deploy endpoint (spec -> deploy_raw)
 # ---------------------------------------------------------------------------
@@ -237,3 +277,58 @@ class TestWorkerDeployEndpoint:
             headers=self._auth(),
         )
         assert resp.status_code == 400
+
+
+class TestPidsLimitParsing:
+    """CASHPILOT_PIDS_LIMIT is read at import time — a typo must not kill the worker."""
+
+    @pytest.mark.parametrize("raw", ["512m", "", "abc", "1.5", "0", "-1"])
+    def test_bad_values_fall_back_to_default(self, raw, monkeypatch):
+        from app import orchestrator
+
+        monkeypatch.setenv("CASHPILOT_PIDS_LIMIT", raw)
+        assert orchestrator._read_pids_limit() == orchestrator._PIDS_LIMIT_DEFAULT
+
+    def test_unset_uses_default(self, monkeypatch):
+        from app import orchestrator
+
+        monkeypatch.delenv("CASHPILOT_PIDS_LIMIT", raising=False)
+        assert orchestrator._read_pids_limit() == orchestrator._PIDS_LIMIT_DEFAULT
+
+    def test_valid_override_is_honoured(self, monkeypatch):
+        from app import orchestrator
+
+        monkeypatch.setenv("CASHPILOT_PIDS_LIMIT", "2048")
+        assert orchestrator._read_pids_limit() == 2048
+
+
+class TestCapabilitiesArePerSlug:
+    """One service declaring a capability must not grant it to every other slug."""
+
+    def test_bitping_may_request_net_raw(self):
+        from app import worker_api
+
+        assert "NET_RAW" in worker_api._catalog_allowed_capabilities("bitping")
+
+    def test_another_slug_may_not_request_net_raw(self):
+        from app import worker_api
+
+        assert "NET_RAW" not in worker_api._catalog_allowed_capabilities("honeygain")
+
+    def test_unknown_slug_gets_nothing(self):
+        from app import worker_api
+
+        assert worker_api._catalog_allowed_capabilities("not-a-real-service") == set()
+
+    def test_deploy_spec_rejects_borrowed_capability(self):
+        from fastapi import HTTPException
+
+        from app import worker_api
+
+        spec = worker_api.DeploySpec(image="x", cap_add=["NET_RAW"])
+        # honeygain does not declare NET_RAW; borrowing bitping's must be refused.
+        with pytest.raises(HTTPException) as exc:
+            worker_api._validate_deploy_spec(spec, slug="honeygain")
+        assert exc.value.status_code == 403
+        # ...while bitping's own declaration is accepted.
+        worker_api._validate_deploy_spec(spec, slug="bitping")

@@ -8,6 +8,7 @@ inspection for cashpilot-managed containers via the Docker SDK.
 from __future__ import annotations
 
 import logging
+import os
 import time
 from typing import Any
 
@@ -120,6 +121,38 @@ def _normalize_resources(resources: Any) -> dict[str, Any]:
     return {k: v for k, v in data.items() if v is not None}
 
 
+# A hostile or runaway image must not be able to exhaust the host's PID namespace.
+# Generous for a real earner (these run a single process tree); raise it with
+# CASHPILOT_PIDS_LIMIT if a service legitimately needs more.
+_PIDS_LIMIT_DEFAULT = 512
+
+
+def _read_pids_limit() -> int:
+    """Parse CASHPILOT_PIDS_LIMIT, falling back to the default on bad input.
+
+    This is read at import time, so a bare int() would turn a typo like "512m"
+    into a ValueError that stops the worker from starting at all — a container
+    limit knob must never be able to take the whole worker down. A non-positive
+    value is also rejected: Docker reads 0/-1 as "unlimited", which would
+    silently disable the very limit this exists to enforce.
+    """
+    raw = os.getenv("CASHPILOT_PIDS_LIMIT")
+    if not raw:
+        return _PIDS_LIMIT_DEFAULT
+    try:
+        value = int(raw)
+    except ValueError:
+        logger.warning("Invalid CASHPILOT_PIDS_LIMIT=%r (not an integer); using %d", raw, _PIDS_LIMIT_DEFAULT)
+        return _PIDS_LIMIT_DEFAULT
+    if value <= 0:
+        logger.warning("CASHPILOT_PIDS_LIMIT=%d would disable the PID limit; using %d", value, _PIDS_LIMIT_DEFAULT)
+        return _PIDS_LIMIT_DEFAULT
+    return value
+
+
+_PIDS_LIMIT = _read_pids_limit()
+
+
 def deploy_raw(
     slug: str,
     image: str,
@@ -128,7 +161,6 @@ def deploy_raw(
     volumes: dict[str, dict[str, str]] | None = None,
     network_mode: str | None = None,
     cap_add: list[str] | None = None,
-    privileged: bool = False,
     command: str | None = None,
     hostname: str | None = None,
     labels: dict[str, str] | None = None,
@@ -184,8 +216,20 @@ def deploy_raw(
         ports=ports if ports and network_mode != "host" else None,
         volumes=volumes if volumes else None,
         network_mode=network_mode,
-        cap_add=cap_add,
-        privileged=privileged,
+        # These images are third-party and closed-source, so they get the minimum
+        # kernel surface: every capability dropped, then only the ones the service's
+        # own catalog entry declares added back (today that is mysterium's NET_ADMIN
+        # alone — the rest are plain outbound TCP clients). Without this they ran as
+        # in-container root with Docker's full default set, which includes NET_RAW
+        # (ARP/DNS spoofing on the bridge), MKNOD, SETUID and SYS_CHROOT.
+        cap_drop=["ALL"],
+        cap_add=cap_add or None,
+        # no-new-privileges blocks privilege escalation via setuid binaries; privileged
+        # is hardcoded off so the dangerous state is unrepresentable here rather than
+        # merely refused upstream by the worker's spec validation.
+        security_opt=["no-new-privileges:true"],
+        privileged=False,
+        pids_limit=_PIDS_LIMIT,
         command=command if command else None,
         labels=all_labels,
         hostname=hostname or f"cashpilot-{slug}",

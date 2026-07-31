@@ -146,6 +146,7 @@ If a worker goes offline (no heartbeat for 180 seconds):
 | `CASHPILOT_WORKER_URL` | No | *(auto-detected)* | URL the UI uses to reach this worker. Set explicitly for remote/cross-host workers -- auto-detection can report an unreachable address |
 | `CASHPILOT_PORT` | No | `8081` | Mini-UI/API port the worker listens on |
 | `CASHPILOT_ALLOWED_VOLUME_ROOTS` | No | *(none)* | Colon-separated host directories this worker may bind-mount despite sitting under a blocked system root -- see [Volume mounts](#volume-mounts) |
+| `CASHPILOT_PIDS_LIMIT` | No | `512` | Max processes a deployed service container may create. Raise only if a service legitimately needs more. An unparseable or non-positive value falls back to the default |
 
 ### Volume mounts
 
@@ -167,6 +168,12 @@ Relative paths are refused, and refusals are logged with the reason.
 
 !!! warning "Residual risk — allowlist only directories you trust"
     The worker resolves paths in its **own** mount namespace and cannot see the host filesystem, so a symlink created *inside* an allowlisted directory by the service that owns it resolves differently here than in the Docker daemon. Only allowlist a directory whose contents you are willing to treat as trusted, and prefer a dedicated path (`/mnt/user/storj`) over a shared one.
+
+### Deployed-container hardening
+
+Service containers are third-party and closed-source, so the worker deploys them with the minimum kernel surface: **all capabilities dropped**, then only the ones that service's own catalog entry declares added back. They also get `no-new-privileges`, a PID limit, and are **never** privileged — `privileged` is refused by spec validation and is not an accepted argument in the deploy path at all.
+
+If you add a service that genuinely needs a capability, declare it in that service's YAML (`docker.cap_add`). The check is **per service**: a slug may only request the capabilities its own catalog entry declares, so adding one to one service grants nothing to the others. Today that is Mysterium's `NET_ADMIN` and Bitping's `NET_RAW`.
 
 ### Worker URL Validation
 
