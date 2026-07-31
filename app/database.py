@@ -162,6 +162,18 @@ CREATE TABLE IF NOT EXISTS user_preferences (
     FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
+-- Alerts worth a human's attention (collector failures today; container crashes and
+-- earnings flatlines later). Persisted rather than kept in memory so they survive a
+-- restart: passive income is unattended, and an alert that only exists in a running
+-- process is an alert nobody ever sees.
+CREATE TABLE IF NOT EXISTS alerts (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    kind       TEXT    NOT NULL,
+    subject    TEXT    NOT NULL,
+    message    TEXT    NOT NULL DEFAULT '',
+    created_at TEXT    NOT NULL DEFAULT (datetime('now'))
+);
+
 CREATE TABLE IF NOT EXISTS health_events (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
     slug       TEXT    NOT NULL,
@@ -198,6 +210,9 @@ CREATE INDEX IF NOT EXISTS idx_health_events_slug
 
 CREATE INDEX IF NOT EXISTS idx_health_events_created
     ON health_events (created_at);
+
+CREATE INDEX IF NOT EXISTS idx_alerts_created
+    ON alerts (created_at);
 """
 
 
@@ -1232,6 +1247,84 @@ async def record_health_events(events: list[tuple[str, str, str]]) -> None:
         await db.close()
 
 
+# How long a subject stays quiet after alerting. A collector broken for a week must
+# not notify every hour: the first failure is news, the 168th is noise.
+ALERT_COOLDOWN_HOURS = 24
+
+
+async def record_alert(
+    kind: str,
+    subject: str,
+    message: str,
+    *,
+    cooldown_hours: int = ALERT_COOLDOWN_HOURS,
+) -> bool:
+    """Persist an alert, returning True only when the caller should notify.
+
+    Suppression is by TIME WINDOW per kind+subject, not by message equality. Message
+    equality alone is not enough: several collectors alternate between two error
+    strings for the same underlying fault (grass flips between an expired-token error
+    and a Cloudflare rate-limit depending on which request tripped first), so a
+    "changed message means new" rule would notify every single hour and grow the
+    table without bound — exactly what this is meant to prevent.
+
+    Nothing is stored while a subject is in cooldown, which keeps the table bounded.
+    Call ``clear_alerts`` when a subject recovers so the next failure alerts again
+    immediately instead of waiting out the window.
+    """
+    db = await _get_db()
+    try:
+        cursor = await db.execute(
+            "SELECT id FROM alerts WHERE kind = ? AND subject = ? AND created_at > datetime('now', ?) LIMIT 1",
+            (kind, subject, f"-{int(cooldown_hours)} hours"),
+        )
+        if await cursor.fetchone() is not None:
+            return False
+        await db.execute(
+            "INSERT INTO alerts (kind, subject, message) VALUES (?, ?, ?)",
+            (kind, subject, message),
+        )
+        await db.commit()
+        return True
+    finally:
+        await db.close()
+
+
+async def list_alerts(limit: int = 50) -> list[dict[str, Any]]:
+    """Return the most recent alerts, newest first."""
+    db = await _get_db()
+    try:
+        cursor = await db.execute(
+            "SELECT kind, subject, message, created_at FROM alerts ORDER BY id DESC LIMIT ?",
+            (limit,),
+        )
+        return [dict(row) for row in await cursor.fetchall()]
+    finally:
+        await db.close()
+
+
+async def clear_alerts(kind: str | None = None, subject: str | None = None) -> None:
+    """Drop stored alerts (all, one kind, or one subject within a kind).
+
+    Called when a subject recovers, so that if it breaks again later the failure
+    counts as new and notifies again instead of being deduped into silence.
+    """
+    clauses, params = [], []
+    if kind is not None:
+        clauses.append("kind = ?")
+        params.append(kind)
+    if subject is not None:
+        clauses.append("subject = ?")
+        params.append(subject)
+    where = f" WHERE {' AND '.join(clauses)}" if clauses else ""
+    db = await _get_db()
+    try:
+        await db.execute(f"DELETE FROM alerts{where}", tuple(params))  # noqa: S608 - clauses are literals
+        await db.commit()
+    finally:
+        await db.close()
+
+
 async def get_health_scores(days: int = 7) -> list[dict[str, Any]]:
     """Compute health score per service over the last N days.
 
@@ -1331,8 +1424,14 @@ async def purge_old_data() -> int:
             "DELETE FROM health_events WHERE event IN ('check_ok', 'check_down') AND created_at < datetime('now', ?)",
             (check_cutoff,),
         )
+        # Alerts are deduped on write so the table stays small, but a service that
+        # was removed long ago should not leave its last failure sitting there forever.
+        c4 = await db.execute(
+            "DELETE FROM alerts WHERE created_at < datetime('now', ?)",
+            (cutoff,),
+        )
         await db.commit()
-        return (c1.rowcount or 0) + (c2.rowcount or 0) + (c3.rowcount or 0)
+        return (c1.rowcount or 0) + (c2.rowcount or 0) + (c3.rowcount or 0) + (c4.rowcount or 0)
     finally:
         await db.close()
 
