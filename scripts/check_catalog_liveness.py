@@ -91,9 +91,15 @@ def referral_code_lost(original: str, final: str) -> bool:
     """True when a referral link redirected to a bare homepage, dropping its code.
 
     The classic symptom of a retired referral programme: ``…/signup?ref=CODE`` ends
-    up at ``https://provider.com/``. Only that specific collapse is reported -- many
-    healthy links legitimately drop the query after setting a cookie, so anything
-    looser would be noise.
+    up at ``https://provider.com/``.
+
+    This detects the *collapse*, which is NOT the same as proving the code was
+    lost. A very common healthy pattern looks identical from outside: the site
+    reads ``?ref=CODE``, stores it in the session, sets a cookie and 302s to a
+    clean URL. ProxyLite does exactly that -- ``?r=CODE`` returns 302 + a
+    PHPSESSID cookie while the bare homepage returns 200. Telling the two apart
+    needs an account, so callers must report this as inconclusive, never as a
+    confirmed dead link.
     """
     orig = urlparse(original)
     fin = urlparse(final)
@@ -198,7 +204,14 @@ def check_service(client: httpx.Client, svc: dict, *, check_images: bool) -> lis
             try:
                 final = str(client.head(signup).url)
                 if referral_code_lost(signup, final):
-                    status, detail = DEAD, f"referral code lost -> {final}"
+                    # Inconclusive, not dead: a site that captures the code into
+                    # the session and redirects to a clean URL is indistinguishable
+                    # from one that dropped it. Verified against ProxyLite, where
+                    # this exact shape is a WORKING referral link.
+                    status, detail = (
+                        UNREACHABLE,
+                        f"referral code not visible after redirect -> {final} (verify manually)",
+                    )
             except httpx.HTTPError:
                 pass
         findings.append(Finding(slug, "referral", signup, status, detail))
@@ -209,6 +222,10 @@ def check_service(client: httpx.Client, svc: dict, *, check_images: bool) -> lis
         findings.append(Finding(slug, "image", image, status, detail))
 
     return findings
+
+
+# One legend, rendered by every report shape so the two can never drift apart.
+_LEGEND = "_`unreachable` means we could not tell -- a transient provider outage, a registry rate-limit, or a referral link that redirected somewhere its code is no longer visible (which is also what a working session-capture link looks like). Reported, but not counted as a problem. `dead` means the reference answered with a client error, or a catalog file could not be read._"
 
 
 def build_report(findings: list[Finding]) -> str:
@@ -234,6 +251,9 @@ def build_report(findings: list[Finding]) -> str:
         if unknown:
             lines += ["", f"{len(unknown)} check(s) were inconclusive and are listed below.", ""]
             lines += _unknown_section()
+            # The legend belongs here too: an all-inconclusive run is exactly when
+            # a reader needs to know that "unreachable" is not "broken".
+            lines += [_LEGEND]
         return "\n".join(lines)
 
     lines += [f"**{len(problems)} problem(s)** across {checked} services checked.", ""]
@@ -266,11 +286,7 @@ def build_report(findings: list[Finding]) -> str:
 
     lines += _unknown_section()
 
-    lines += [
-        "_`unreachable` may be a transient provider outage or a registry rate-limit, so it is "
-        "reported but not counted as a problem; `dead` means the reference answered with a "
-        "client error or the referral link collapsed to a bare homepage._",
-    ]
+    lines += [_LEGEND]
     return "\n".join(lines)
 
 
