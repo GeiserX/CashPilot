@@ -1,0 +1,135 @@
+"""Out-of-band alert delivery for CashPilot.
+
+Passive income is unattended by definition, so an alert that only appears in an
+open browser tab is an alert nobody sees. This module pushes the ones that matter
+somewhere a person actually looks.
+
+Every target is opt-in through an environment variable and the module is entirely
+inert until one is set, so existing deployments are unaffected. Delivery is
+best-effort and never raises: a misconfigured or unreachable notifier must not be
+able to break an earnings-collection run.
+
+Configure any combination of:
+
+* ``CASHPILOT_NTFY_URL``          -- full topic URL, e.g. ``https://ntfy.sh/my-topic``
+* ``CASHPILOT_WEBHOOK_URL``       -- generic endpoint; receives a small JSON body
+* ``CASHPILOT_TELEGRAM_BOT_TOKEN`` + ``CASHPILOT_TELEGRAM_CHAT_ID``
+"""
+
+from __future__ import annotations
+
+import logging
+import os
+import re
+
+import httpx
+
+logger = logging.getLogger(__name__)
+
+# Deliberately short: this runs inside the collection cycle, and a hanging notifier
+# must not stretch it.
+_TIMEOUT = 10.0
+
+# Alert bodies are built from collector errors, and most collectors report
+# ``str(exc)`` — for an httpx error that string embeds the full request URL, which
+# for several providers carries a token in the query string. The destination may be
+# a PUBLIC ntfy topic, so secrets are stripped here, at the boundary, rather than
+# trusting every caller to have done it.
+_SECRET_PARAM_RE = re.compile(
+    r"((?:token|api[_-]?key|key|secret|password|passwd|pwd|auth|session|sess|cookie|sig|signature)=)[^&\s\"']+",
+    re.IGNORECASE,
+)
+_BEARER_RE = re.compile(r"((?:bearer|basic)\s+)[A-Za-z0-9._\-+/=]+", re.IGNORECASE)
+
+# httpx/h11 report a rejected header as `Illegal header value b'<the whole value>'`.
+# Several collectors send a raw secret as a bare header value with no `name=` and no
+# `Bearer ` prefix (grass Authorization, repocket Auth-Token, earnfm X-API-Key,
+# salad/earnapp XSRF, proxyrack Api-Key), so those match neither pattern above.
+# Match the ERROR's shape instead of trying to recognise every secret's shape, and
+# drop the entire quoted value.
+_ILLEGAL_HEADER_RE = re.compile(r"(Illegal header value\s*)b?['\"].*?['\"]", re.IGNORECASE | re.DOTALL)
+
+# Notifications are a summary, not a log: keep them short enough for a phone banner.
+_MAX_MESSAGE_LEN = 400
+
+
+def redact(text: str) -> str:
+    """Strip credential-looking values out of an alert body.
+
+    Applied wherever an alert is created — not only on the way out — because the
+    same string is persisted to SQLite and served by /api/collector-alerts to every
+    authenticated role, while config credentials are owner-only and encrypted.
+    """
+    text = _ILLEGAL_HEADER_RE.sub(r"\1<redacted>", text)
+    text = _SECRET_PARAM_RE.sub(r"\1<redacted>", text)
+    text = _BEARER_RE.sub(r"\1<redacted>", text)
+    if len(text) > _MAX_MESSAGE_LEN:
+        text = text[:_MAX_MESSAGE_LEN] + "..."
+    return text
+
+
+def configured_targets() -> list[str]:
+    """Names of the notification targets currently configured (empty = inert)."""
+    targets = []
+    if os.getenv("CASHPILOT_NTFY_URL", "").strip():
+        targets.append("ntfy")
+    if os.getenv("CASHPILOT_WEBHOOK_URL", "").strip():
+        targets.append("webhook")
+    if os.getenv("CASHPILOT_TELEGRAM_BOT_TOKEN", "").strip() and os.getenv("CASHPILOT_TELEGRAM_CHAT_ID", "").strip():
+        targets.append("telegram")
+    return targets
+
+
+def is_enabled() -> bool:
+    return bool(configured_targets())
+
+
+async def _post_ntfy(client: httpx.AsyncClient, title: str, message: str) -> None:
+    url = os.getenv("CASHPILOT_NTFY_URL", "").strip()
+    # ntfy takes the body as the message and the title as a header.
+    await client.post(url, content=message.encode("utf-8"), headers={"Title": title})
+
+
+async def _post_webhook(client: httpx.AsyncClient, title: str, message: str, kind: str, subject: str) -> None:
+    url = os.getenv("CASHPILOT_WEBHOOK_URL", "").strip()
+    await client.post(url, json={"title": title, "message": message, "kind": kind, "subject": subject})
+
+
+async def _post_telegram(client: httpx.AsyncClient, title: str, message: str) -> None:
+    token = os.getenv("CASHPILOT_TELEGRAM_BOT_TOKEN", "").strip()
+    chat_id = os.getenv("CASHPILOT_TELEGRAM_CHAT_ID", "").strip()
+    await client.post(
+        f"https://api.telegram.org/bot{token}/sendMessage",
+        json={"chat_id": chat_id, "text": f"{title}\n\n{message}"},
+    )
+
+
+async def send(title: str, message: str, *, kind: str = "alert", subject: str = "") -> int:
+    """Deliver one alert to every configured target.
+
+    Returns how many targets accepted it. Failures are logged and swallowed --
+    the caller is a background job whose real work must continue regardless.
+    """
+    targets = configured_targets()
+    if not targets:
+        return 0
+
+    # Redact at the boundary: every target below is off-box and one of them
+    # (ntfy) is public by default.
+    title = redact(title)
+    message = redact(message)
+
+    delivered = 0
+    async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
+        for target in targets:
+            try:
+                if target == "ntfy":
+                    await _post_ntfy(client, title, message)
+                elif target == "webhook":
+                    await _post_webhook(client, title, message, kind, subject)
+                elif target == "telegram":
+                    await _post_telegram(client, title, message)
+                delivered += 1
+            except Exception as exc:  # noqa: BLE001 - notifier failure is never fatal
+                logger.warning("Alert delivery to %s failed: %s", target, exc)
+    return delivered

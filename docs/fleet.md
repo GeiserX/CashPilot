@@ -135,6 +135,16 @@ If a worker goes offline (no heartbeat for 180 seconds):
 | `CASHPILOT_WORKER_URL_POLICY` | `permissive` | Worker URL validation policy: `permissive` (LAN + Tailscale work out of the box) or `strict` (allowlist only) |
 | `CASHPILOT_WORKER_ALLOWED_HOSTS` | -- | Comma-separated CIDRs and `*.suffix` hostnames allowed in `strict` mode, e.g. `192.168.10.0/24,100.64.0.0/10,*.ts.net` |
 | `CASHPILOT_WORKER_ALLOW_METADATA` | `false` | Escape hatch to permit cloud-metadata IPs as worker targets (leave `false`) |
+| `CASHPILOT_NTFY_URL` | -- | ntfy topic URL for out-of-band alerts, e.g. `https://ntfy.sh/my-topic` |
+| `CASHPILOT_WEBHOOK_URL` | -- | Generic endpoint receiving alert JSON (`title`, `message`, `kind`, `subject`) |
+| `CASHPILOT_TELEGRAM_BOT_TOKEN` | -- | Telegram bot token (needs `CASHPILOT_TELEGRAM_CHAT_ID` too) |
+| `CASHPILOT_TELEGRAM_CHAT_ID` | -- | Telegram chat to send alerts to |
+
+### Alerts
+
+Passive income is unattended, so an alert that only appears in an open browser tab is an alert nobody sees. Collector failures are **persisted** (they survive a restart and repopulate the notification bell) and, if any target above is configured, pushed out-of-band.
+
+Notifications fire **only the first time** a particular failure appears — a collector that has been broken for a week does not notify every hour. When the service recovers, its stored alert is cleared, so a later failure counts as new and notifies again. With no target configured the feature is entirely inert.
 
 ### Worker
 
