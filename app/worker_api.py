@@ -491,16 +491,14 @@ def _parse_allowed_volume_roots(raw: str) -> frozenset[str]:
             for sys_root in _NEVER_ALLOWLISTABLE
         ):
             logger.warning(
-                "Refusing CASHPILOT_ALLOWED_VOLUME_ROOTS entry %r: %s is a system path "
-                "and can never be opted in",
+                "Refusing CASHPILOT_ALLOWED_VOLUME_ROOTS entry %r: %s is a system path and can never be opted in",
                 entry,
                 real,
             )
             continue
         if real == "/" or real in _BLOCKED_VOLUME_ROOTS:
             logger.warning(
-                "Refusing CASHPILOT_ALLOWED_VOLUME_ROOTS entry %r: that is a whole root, "
-                "not a service directory",
+                "Refusing CASHPILOT_ALLOWED_VOLUME_ROOTS entry %r: that is a whole root, not a service directory",
                 entry,
             )
             continue
