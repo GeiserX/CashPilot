@@ -152,6 +152,30 @@ class TestApiDeploy:
             assert resp.status_code == 410
             assert "no longer available" in resp.json()["detail"]
 
+    def test_deploy_broken_service_refused(self, client):
+        # The catalog listing already hides broken services; the deploy gate used to
+        # let them through, so a direct link or stale page could still deploy one.
+        svc = {"slug": "speedshare", "name": "SpeedShare", "status": "broken", "docker": {"image": "x"}}
+        with (
+            _auth_owner(),
+            patch("app.main.database.list_workers", new_callable=AsyncMock, return_value=[_online_worker()]),
+            patch("app.main.catalog.get_service", return_value=svc),
+        ):
+            resp = client.post("/api/deploy/speedshare", json={})
+            assert resp.status_code == 409  # broken may come back; not "gone"
+            assert "broken" in resp.json()["detail"]
+
+    def test_deploy_dropped_service_refused(self, client):
+        svc = {"slug": "gone", "name": "Gone", "status": "dropped", "docker": {"image": "x"}}
+        with (
+            _auth_owner(),
+            patch("app.main.database.list_workers", new_callable=AsyncMock, return_value=[_online_worker()]),
+            patch("app.main.catalog.get_service", return_value=svc),
+        ):
+            resp = client.post("/api/deploy/gone", json={})
+            assert resp.status_code == 410
+            assert "dropped" in resp.json()["detail"]
+
     def test_deploy_no_auth(self, client):
         with _no_auth():
             resp = client.post("/api/deploy/honeygain", json={})
@@ -626,6 +650,50 @@ class TestWorkerCommand:
             )
             assert resp.status_code == 200
             health_evt.assert_awaited_once()
+
+    def test_command_deploy_refuses_broken_service(self, client):
+        """The raw worker-command route is a THIRD deploy path.
+
+        It proxies straight to the worker and then runs the full bookkeeping, so
+        without the same status gate a broken service would look deployed while
+        earning nothing — the exact drift the shared constant exists to prevent.
+        """
+        worker, mock_client = self._setup()
+        svc = {"slug": "speedshare", "name": "SpeedShare", "status": "broken", "docker": {"image": "x"}}
+        with (
+            _auth_owner(),
+            patch("app.main.catalog.get_service", return_value=svc),
+            patch("app.main.database.get_worker", new_callable=AsyncMock, return_value=worker),
+            patch("app.main.httpx.AsyncClient", return_value=mock_client),
+            patch("app.main.FLEET_API_KEY", "test-key"),
+        ):
+            resp = client.post(
+                "/api/workers/1/command",
+                json={"command": "deploy", "slug": "speedshare", "spec": {"image": "x"}},
+            )
+            assert resp.status_code == 409
+        # Refused before the worker was ever contacted.
+        mock_client.post.assert_not_called()
+
+    def test_command_stop_still_allowed_for_broken_service(self, client):
+        # You must still be able to STOP a running service that has since been
+        # marked broken — only deploy is gated.
+        worker, mock_client = self._setup()
+        svc = {"slug": "speedshare", "name": "SpeedShare", "status": "broken", "docker": {"image": "x"}}
+        with (
+            _auth_writer(),
+            patch("app.main.catalog.get_service", return_value=svc),
+            patch("app.main.database.get_worker", new_callable=AsyncMock, return_value=worker),
+            patch("app.main.database.record_health_event", new_callable=AsyncMock),
+            patch("app.main.httpx.AsyncClient", return_value=mock_client),
+            patch("app.main.FLEET_API_KEY", "test-key"),
+        ):
+            resp = client.post("/api/workers/1/command", json={"command": "stop", "slug": "speedshare"})
+            assert resp.status_code == 200
+        # A 200 alone would also pass if the route silently did nothing, so assert
+        # the stop actually reached the worker at the right path.
+        assert mock_client.post.call_count == 1
+        assert mock_client.post.call_args.args[0].endswith("/api/containers/speedshare/stop")
 
     def test_command_unknown(self, client):
         worker, mock_client = self._setup()
