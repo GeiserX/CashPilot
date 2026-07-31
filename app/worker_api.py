@@ -418,6 +418,108 @@ _BLOCKED_VOLUME_ROOTS = {
     "/data",  # per-container app data roots, incl. this worker's own /data
     "/tmp",
 }
+
+
+# System roots that may never be opened up, at ANY depth. An allowlist entry under
+# one of these would hand a third-party container the Docker socket (/run,
+# /var/run), the host's secrets (/etc, /root) or its devices (/dev) — so unlike the
+# data roots below, no subdirectory of these is ever acceptable.
+_NEVER_ALLOWLISTABLE = (
+    "/etc",
+    "/root",
+    "/proc",
+    "/sys",
+    "/dev",
+    "/boot",
+    "/usr",
+    "/bin",
+    "/sbin",
+    "/lib",
+    "/lib64",
+    "/run",
+    "/var",  # covers /var/run (docker.sock) and /var/lib/docker
+)
+
+# How many path components an entry must have below the blocked root it sits under.
+# 2 means /mnt/user/storj is allowed but /mnt/user — the whole Unraid array — is not.
+_MIN_DEPTH_BELOW_ROOT = 2
+
+
+def _parse_allowed_volume_roots(raw: str) -> frozenset[str]:
+    """Parse CASHPILOT_ALLOWED_VOLUME_ROOTS into a set of opted-in real paths.
+
+    Escape hatch for the blocked roots above. Some legitimate service volumes live
+    under one: Storj needs a large data directory, and on Unraid the only such path
+    is under /mnt/user/... — so a blanket /mnt deny made Storj undeployable through
+    the worker on the platform most users run, pushing them to bypass CashPilot
+    entirely (strictly worse for security than a scoped exception).
+
+    Deny-by-default is unchanged, and an entry must clear BOTH gates:
+
+    * it may not resolve under a system root (``_NEVER_ALLOWLISTABLE``) at any depth,
+      so /run/docker.sock, /var/lib/docker/... and /etc/shadow are refused; and
+    * it must sit at least ``_MIN_DEPTH_BELOW_ROOT`` components below the blocked
+      root it belongs to, so /mnt/user/storj is accepted but /mnt and /mnt/user
+      (the entire array) are not.
+
+    RESIDUAL RISK, stated plainly rather than papered over: this worker resolves
+    paths in its OWN mount namespace and cannot see the host filesystem, so a
+    symlink created *inside* an allowlisted directory by the service that owns it
+    resolves differently here than in the Docker daemon. Only allowlist a directory
+    whose contents you are willing to treat as trusted.
+    """
+    allowed: set[str] = set()
+    for entry in raw.split(":"):
+        entry = entry.strip()
+        if not entry:
+            continue
+        if not entry.startswith("/"):
+            logger.warning(
+                "Ignoring CASHPILOT_ALLOWED_VOLUME_ROOTS entry %r: must be an absolute path",
+                entry,
+            )
+            continue
+        # Check the resolved path AND the lexical one: resolving can move a path out
+        # of a blocked prefix (on macOS /etc -> /private/etc), and a system path must
+        # be refused under either spelling rather than relying on one platform's
+        # symlink layout.
+        real = os.path.realpath(entry)
+        lexical = os.path.normpath(entry)
+        if any(
+            candidate == sys_root or candidate.startswith(sys_root + "/")
+            for candidate in (real, lexical)
+            for sys_root in _NEVER_ALLOWLISTABLE
+        ):
+            logger.warning(
+                "Refusing CASHPILOT_ALLOWED_VOLUME_ROOTS entry %r: %s is a system path and can never be opted in",
+                entry,
+                real,
+            )
+            continue
+        if real == "/" or real in _BLOCKED_VOLUME_ROOTS:
+            logger.warning(
+                "Refusing CASHPILOT_ALLOWED_VOLUME_ROOTS entry %r: that is a whole root, not a service directory",
+                entry,
+            )
+            continue
+        depth_ok = True  # not under any blocked root -> the deny list never applied anyway
+        for blocked in _BLOCKED_VOLUME_ROOTS:
+            if blocked != "/" and real.startswith(blocked + "/"):
+                depth_ok = real[len(blocked) + 1 :].count("/") >= _MIN_DEPTH_BELOW_ROOT - 1
+                break
+        if not depth_ok:
+            logger.warning(
+                "Refusing CASHPILOT_ALLOWED_VOLUME_ROOTS entry %r: name a specific service "
+                "directory (e.g. /mnt/user/storj), not a whole root like /mnt or /mnt/user",
+                entry,
+            )
+            continue
+        allowed.add(real)
+    return frozenset(allowed)
+
+
+_ALLOWED_VOLUME_ROOTS = _parse_allowed_volume_roots(os.getenv("CASHPILOT_ALLOWED_VOLUME_ROOTS", ""))
+
 # Docker memory size syntax: a positive integer with an optional b/k/m/g unit.
 _MEM_LIMIT_RE = re.compile(r"^\d+[bkmgBKMG]?$")
 
@@ -467,6 +569,8 @@ def _validate_deploy_spec(spec: DeploySpec, slug: str | None = None) -> None:
         if not source.startswith("/"):
             continue  # named volume (e.g. "mysterium-data") — always allowed
         real = os.path.realpath(source)
+        if any(real == root or real.startswith(root + "/") for root in _ALLOWED_VOLUME_ROOTS):
+            continue  # explicitly opted in by the operator (see _parse_allowed_volume_roots)
         for blocked in _BLOCKED_VOLUME_ROOTS:
             if real == blocked or real.startswith(blocked + "/"):
                 raise HTTPException(status_code=403, detail=f"Volume mount '{source}' is blocked")

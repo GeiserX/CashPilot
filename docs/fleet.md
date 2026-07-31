@@ -145,6 +145,28 @@ If a worker goes offline (no heartbeat for 180 seconds):
 | `CASHPILOT_WORKER_NAME` | No | *(hostname)* | Display name for this worker in the fleet dashboard |
 | `CASHPILOT_WORKER_URL` | No | *(auto-detected)* | URL the UI uses to reach this worker. Set explicitly for remote/cross-host workers -- auto-detection can report an unreachable address |
 | `CASHPILOT_PORT` | No | `8081` | Mini-UI/API port the worker listens on |
+| `CASHPILOT_ALLOWED_VOLUME_ROOTS` | No | *(none)* | Colon-separated host directories this worker may bind-mount despite sitting under a blocked system root -- see [Volume mounts](#volume-mounts) |
+
+### Volume mounts
+
+A worker refuses to bind-mount host paths under system roots such as `/`, `/etc`, `/var/run` (which covers the Docker socket), `/var/lib/docker` and `/mnt`, so a fleet-key holder cannot mount the host filesystem or a co-located app's secrets into a service container.
+
+A few services legitimately need a directory under one of those roots -- most notably **Storj**, which wants a large data directory, and on Unraid the only such path is under `/mnt/user/...`. Opt in exactly that directory:
+
+```yaml
+environment:
+  - CASHPILOT_ALLOWED_VOLUME_ROOTS=/mnt/user/storj
+```
+
+Multiple paths are colon-separated. An entry must clear two gates:
+
+- **Never a system path.** Anything resolving under `/etc`, `/root`, `/proc`, `/sys`, `/dev`, `/boot`, `/usr`, `/bin`, `/sbin`, `/lib`, `/run` or `/var` is refused **at any depth** — so `/run/docker.sock`, `/var/lib/docker/...` and `/etc/shadow` cannot be opted in.
+- **Specific enough to be a service directory.** It must sit at least two components below the root it belongs to, so `/mnt/user/storj` is accepted while `/mnt` and `/mnt/user` (the entire Unraid array) are not.
+
+Relative paths are refused, and refusals are logged with the reason.
+
+!!! warning "Residual risk — allowlist only directories you trust"
+    The worker resolves paths in its **own** mount namespace and cannot see the host filesystem, so a symlink created *inside* an allowlisted directory by the service that owns it resolves differently here than in the Docker daemon. Only allowlist a directory whose contents you are willing to treat as trusted, and prefer a dedicated path (`/mnt/user/storj`) over a shared one.
 
 ### Worker URL Validation
 
