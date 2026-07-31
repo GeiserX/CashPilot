@@ -1,0 +1,64 @@
+name: Catalog Liveness
+
+# Catalog rot is the most common user-facing failure in this project: a provider
+# changes its backend, drops its image or ends its referral programme, and a user
+# finds out before the maintainer does. This checks every service's external
+# references weekly and keeps ONE rollup issue up to date.
+
+on:
+  schedule:
+    - cron: "17 6 * * 1" # Mondays, 06:17 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: catalog-liveness
+  cancel-in-progress: false
+
+jobs:
+  check:
+    # Public repo -> GitHub-hosted runners are free and ephemeral.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.14"
+
+      - name: Install dependencies
+        run: pip install httpx pyyaml
+
+      - name: Check catalog liveness
+        # Never fails the run on a dead link — a job that is red every week is a
+        # job nobody reads. Findings go to the summary and the rollup issue.
+        run: python scripts/check_catalog_liveness.py --output report.md
+
+      - name: Open or update the rollup issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if grep -q '^All good' report.md; then
+            echo "No dead references found."
+            exit 0
+          fi
+
+          # Label may not exist yet on a fresh repo.
+          gh label create catalog-liveness \
+            --description "Automated weekly catalog liveness findings" \
+            --color ededed 2>/dev/null || true
+
+          existing=$(gh issue list --state open --label catalog-liveness --limit 1 --json number --jq '.[0].number // empty')
+          if [ -n "$existing" ]; then
+            gh issue edit "$existing" --body-file report.md
+            echo "Updated issue #$existing"
+          else
+            gh issue create \
+              --title "Catalog liveness: dead references detected" \
+              --label catalog-liveness \
+              --body-file report.md
+          fi
