@@ -1858,6 +1858,16 @@ async def api_worker_command(request: Request, worker_id: int, body: WorkerComma
         _require_writer(request)
 
     if body.command == "deploy":
+        # This is a THIRD deploy path. Without the same status gate, a broken or
+        # dropped service could still be deployed here — and this route then runs the
+        # full bookkeeping below, so it would look deployed while earning nothing.
+        # An unknown slug is left alone: this raw route is not catalog-only.
+        deploy_status = (catalog.get_service(body.slug) or {}).get("status")
+        if deploy_status in _UNDEPLOYABLE_STATUSES:
+            raise HTTPException(
+                status_code=409 if deploy_status == "broken" else 410,
+                detail=f"Service '{body.slug}' is no longer available for deployment ({deploy_status})",
+            )
         result = await _proxy_to_worker(worker_id, "POST", f"/api/containers/{body.slug}/deploy", json=body.spec)
     elif body.command in ("stop", "restart", "start"):
         result = await _proxy_to_worker(worker_id, "POST", f"/api/containers/{body.slug}/{body.command}")
