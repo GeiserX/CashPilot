@@ -152,7 +152,7 @@ Notifications fire **only the first time** a particular failure appears — a co
 |----------|:--------:|---------|-------------|
 | `CASHPILOT_UI_URL` | Yes | -- | URL of the CashPilot UI (e.g. `http://192.168.10.100:8080`) |
 | `CASHPILOT_API_KEY` | Yes | -- | Must match the UI's API key |
-| `CASHPILOT_WORKER_NAME` | No | *(hostname)* | Display name for this worker. **Set this on Docker workers.** Without it the worker's identity falls back to the container hostname, which Docker regenerates on every recreate -- see [Worker identity](#worker-identity) |
+| `CASHPILOT_WORKER_NAME` | No | *(hostname)* | Display name for this worker. Recommended on Docker workers: without it the name is the container hostname, so it changes on every recreate and the dashboard label churns -- see [Worker identity](#worker-identity) |
 | `CASHPILOT_WORKER_URL` | No | *(auto-detected)* | URL the UI uses to reach this worker. Set explicitly for remote/cross-host workers -- auto-detection can report an unreachable address |
 | `CASHPILOT_PORT` | No | `8081` | Mini-UI/API port the worker listens on |
 | `CASHPILOT_ALLOWED_VOLUME_ROOTS` | No | *(none)* | Colon-separated host directories this worker may bind-mount despite sitting under a blocked system root -- see [Volume mounts](#volume-mounts) |
@@ -191,11 +191,14 @@ The UI keys each worker's row -- and its per-worker fleet key -- on a `client_id
 persisted at `/data/.worker_id`. That file is written on first run and reused forever,
 so a worker keeps its row across restarts and upgrades.
 
-Set **`CASHPILOT_WORKER_NAME`** on every Docker worker. Without it the name defaults to
-`socket.gethostname()`, which inside a container is the first 12 hex characters of the
-container ID -- regenerated every time the container is recreated, which is exactly what
-an image bump does. A worker that first enrolled under such a name has no durable identity
-to fall back on if `/data/.worker_id` is missing.
+Inside a container `socket.gethostname()` is the first 12 hex characters of the container
+ID, regenerated every time the container is recreated -- which is exactly what an image
+bump does. A name of that shape is therefore never adopted as an identity: a worker that
+finds no `/data/.worker_id` generates and persists a random one instead.
+
+Setting **`CASHPILOT_WORKER_NAME`** keeps the dashboard label stable across recreates
+(otherwise it follows the container hostname and churns on every upgrade), and gives a
+worker enrolled before `/data/.worker_id` existed a durable identity to migrate on.
 
 !!! warning "Symptom: heartbeats 401 after an upgrade"
     If a worker's identity changes, it keeps its valid per-worker key but presents it

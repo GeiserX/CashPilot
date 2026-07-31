@@ -337,3 +337,46 @@ class TestClientIdIsNotTheContainerHostname:
             assert not w._name_is_ephemeral("watchtower")
             assert not w._name_is_ephemeral("515CCBC46CD9")
             assert not w._name_is_ephemeral("515ccbc46cd")
+
+
+class TestAuthFailureAlarmCounter:
+    """ "Consecutive" must mean consecutive, or the alarm fires on a flaky link."""
+
+    def _run(self, statuses):
+        """Drive _send_heartbeat once per status. None = network failure."""
+        w._consecutive_auth_failures = 0
+        for st in statuses:
+            if st is None:
+                client = MagicMock()
+                client.__aenter__ = AsyncMock(return_value=client)
+                client.__aexit__ = AsyncMock(return_value=False)
+                client.post = AsyncMock(side_effect=httpx.ConnectError("boom"))
+            else:
+                request = httpx.Request("POST", "http://ui:8080/api/workers/heartbeat")
+                response = httpx.Response(st, request=request, json={})
+                client = MagicMock()
+                client.__aenter__ = AsyncMock(return_value=client)
+                client.__aexit__ = AsyncMock(return_value=False)
+                client.post = AsyncMock(return_value=response)
+            with (
+                patch.object(w, "_worker_key", "own"),
+                patch.object(w, "UI_URL", "http://ui:8080"),
+                patch("app.worker_api.orchestrator.get_status", return_value=[]),
+                patch("app.worker_api.orchestrator.docker_available", return_value=True),
+                patch("app.worker_api.httpx.AsyncClient", return_value=client),
+            ):
+                asyncio.run(w._send_heartbeat())
+        return w._consecutive_auth_failures
+
+    def test_three_straight_401s_reach_the_alarm(self):
+        assert self._run([401, 401, 401]) == w._AUTH_FAILURE_ALARM_AFTER
+
+    def test_a_timeout_between_401s_breaks_the_run(self):
+        # 401 -> timeout -> 401 -> 500 -> 401 is a flaky link, not an identity mismatch.
+        assert self._run([401, None, 401, 500, 401]) == 1
+
+    def test_a_non_401_status_breaks_the_run(self):
+        assert self._run([401, 401, 503, 401]) == 1
+
+    def test_success_resets(self):
+        assert self._run([401, 401, 200]) == 0

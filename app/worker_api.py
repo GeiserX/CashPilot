@@ -159,14 +159,18 @@ def _load_or_create_client_id() -> str:
         cid = uuid.uuid4().hex
         if _worker_key:
             # Enrolled already, but our only clue to which row is ours was an
-            # ephemeral container ID. Say so loudly: the symptom (401 on every
-            # heartbeat) is otherwise very hard to trace back to this decision.
-            logger.warning(
+            # ephemeral container ID. This is NOT recoverable by re-enrolling:
+            # we still send our own per-worker key (see _active_key), and the UI
+            # refuses it under an id it never enrolled, so every heartbeat 401s
+            # until the id is restored by hand. Say exactly that -- the symptom
+            # is otherwise very hard to trace back to this decision.
+            logger.error(
                 "This worker holds a per-worker key but no persisted client_id, and its "
-                "name (%s) is a container ID that changes on every recreate. It will "
-                "enroll as a NEW worker (%s). To keep its existing identity instead, stop "
-                "it, write the client_id the UI shows for this worker into %s, start it "
-                "again, and set CASHPILOT_WORKER_NAME so this cannot recur.",
+                "name (%s) is a container ID that changes on every recreate. Heartbeats "
+                "will be REJECTED (401) under the generated id %s, because we authenticate "
+                "with our existing key and the UI does not know that id. To recover: stop "
+                "this container, write the client_id the UI lists for this worker into %s, "
+                "start it again, and set CASHPILOT_WORKER_NAME so this cannot recur.",
                 WORKER_NAME,
                 cid,
                 _WORKER_ID_FILE,
@@ -265,6 +269,11 @@ async def _send_heartbeat() -> None:
         logger.warning("Heartbeat failed: %s", exc)
         if status == 401 and _worker_key:
             _consecutive_auth_failures += 1
+        else:
+            # Any other outcome breaks the run. "Consecutive" has to mean it:
+            # 401 -> timeout -> 401 -> 500 -> 401 is a flaky link, not an
+            # identity mismatch, and must not raise the alarm.
+            _consecutive_auth_failures = 0
             if _consecutive_auth_failures == _AUTH_FAILURE_ALARM_AFTER:
                 # A per-worker key rejected repeatedly almost always means our
                 # client_id no longer matches the row the UI enrolled — usually
@@ -283,6 +292,8 @@ async def _send_heartbeat() -> None:
     except Exception as exc:
         _ui_connected = False
         _last_error = "connection failed"
+        # A network failure is not an auth rejection, so it breaks the run too.
+        _consecutive_auth_failures = 0
         logger.warning("Heartbeat failed: %s", exc)
 
 
