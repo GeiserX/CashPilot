@@ -124,7 +124,33 @@ def _normalize_resources(resources: Any) -> dict[str, Any]:
 # A hostile or runaway image must not be able to exhaust the host's PID namespace.
 # Generous for a real earner (these run a single process tree); raise it with
 # CASHPILOT_PIDS_LIMIT if a service legitimately needs more.
-_PIDS_LIMIT = int(os.getenv("CASHPILOT_PIDS_LIMIT", "512"))
+_PIDS_LIMIT_DEFAULT = 512
+
+
+def _read_pids_limit() -> int:
+    """Parse CASHPILOT_PIDS_LIMIT, falling back to the default on bad input.
+
+    This is read at import time, so a bare int() would turn a typo like "512m"
+    into a ValueError that stops the worker from starting at all — a container
+    limit knob must never be able to take the whole worker down. A non-positive
+    value is also rejected: Docker reads 0/-1 as "unlimited", which would
+    silently disable the very limit this exists to enforce.
+    """
+    raw = os.getenv("CASHPILOT_PIDS_LIMIT")
+    if not raw:
+        return _PIDS_LIMIT_DEFAULT
+    try:
+        value = int(raw)
+    except ValueError:
+        logger.warning("Invalid CASHPILOT_PIDS_LIMIT=%r (not an integer); using %d", raw, _PIDS_LIMIT_DEFAULT)
+        return _PIDS_LIMIT_DEFAULT
+    if value <= 0:
+        logger.warning("CASHPILOT_PIDS_LIMIT=%d would disable the PID limit; using %d", value, _PIDS_LIMIT_DEFAULT)
+        return _PIDS_LIMIT_DEFAULT
+    return value
+
+
+_PIDS_LIMIT = _read_pids_limit()
 
 
 def deploy_raw(

@@ -277,3 +277,58 @@ class TestWorkerDeployEndpoint:
             headers=self._auth(),
         )
         assert resp.status_code == 400
+
+
+class TestPidsLimitParsing:
+    """CASHPILOT_PIDS_LIMIT is read at import time — a typo must not kill the worker."""
+
+    @pytest.mark.parametrize("raw", ["512m", "", "abc", "1.5", "0", "-1"])
+    def test_bad_values_fall_back_to_default(self, raw, monkeypatch):
+        from app import orchestrator
+
+        monkeypatch.setenv("CASHPILOT_PIDS_LIMIT", raw)
+        assert orchestrator._read_pids_limit() == orchestrator._PIDS_LIMIT_DEFAULT
+
+    def test_unset_uses_default(self, monkeypatch):
+        from app import orchestrator
+
+        monkeypatch.delenv("CASHPILOT_PIDS_LIMIT", raising=False)
+        assert orchestrator._read_pids_limit() == orchestrator._PIDS_LIMIT_DEFAULT
+
+    def test_valid_override_is_honoured(self, monkeypatch):
+        from app import orchestrator
+
+        monkeypatch.setenv("CASHPILOT_PIDS_LIMIT", "2048")
+        assert orchestrator._read_pids_limit() == 2048
+
+
+class TestCapabilitiesArePerSlug:
+    """One service declaring a capability must not grant it to every other slug."""
+
+    def test_bitping_may_request_net_raw(self):
+        from app import worker_api
+
+        assert "NET_RAW" in worker_api._catalog_allowed_capabilities("bitping")
+
+    def test_another_slug_may_not_request_net_raw(self):
+        from app import worker_api
+
+        assert "NET_RAW" not in worker_api._catalog_allowed_capabilities("honeygain")
+
+    def test_unknown_slug_gets_nothing(self):
+        from app import worker_api
+
+        assert worker_api._catalog_allowed_capabilities("not-a-real-service") == set()
+
+    def test_deploy_spec_rejects_borrowed_capability(self):
+        from fastapi import HTTPException
+
+        from app import worker_api
+
+        spec = worker_api.DeploySpec(image="x", cap_add=["NET_RAW"])
+        # honeygain does not declare NET_RAW; borrowing bitping's must be refused.
+        with pytest.raises(HTTPException) as exc:
+            worker_api._validate_deploy_spec(spec, slug="honeygain")
+        assert exc.value.status_code == 403
+        # ...while bitping's own declaration is accepted.
+        worker_api._validate_deploy_spec(spec, slug="bitping")

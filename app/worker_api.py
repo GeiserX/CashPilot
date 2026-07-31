@@ -524,17 +524,25 @@ _ALLOWED_VOLUME_ROOTS = _parse_allowed_volume_roots(os.getenv("CASHPILOT_ALLOWED
 _MEM_LIMIT_RE = re.compile(r"^\d+[bkmgBKMG]?$")
 
 
-def _catalog_allowed_capabilities() -> set[str]:
-    """Union of cap_add values any bundled catalog service actually declares.
+def _catalog_allowed_capabilities(slug: str | None = None) -> set[str]:
+    """cap_add values the catalog declares — for one slug, or the union.
 
     Derived from services/*.yml (the single source of truth) instead of a
     hardcoded list, so it stays correct as the catalog changes. A capability
     no catalog service asks for is refused, whatever it is.
+
+    Pass ``slug`` to scope the answer to that one service. That matters: with a
+    union, a single service declaring NET_RAW would let *every* slug request
+    NET_RAW, so adding one capability to one YAML quietly widens the allowlist
+    for all 49. Per-slug keeps each service to exactly what its own YAML asks
+    for. An unknown slug gets the empty set — deny, not fall back to the union.
     """
     if not _catalog_get_services:
         return set()
     caps: set[str] = set()
     for svc in _catalog_get_services():
+        if slug is not None and svc.get("slug") != slug:
+            continue
         for cap in (svc.get("docker") or {}).get("cap_add") or []:
             caps.add(str(cap).upper())
     return caps
@@ -558,7 +566,7 @@ def _validate_deploy_spec(spec: DeploySpec, slug: str | None = None) -> None:
         raise HTTPException(status_code=403, detail="Privileged containers are not allowed")
     if spec.cap_add:
         requested = {c.upper() for c in spec.cap_add}
-        blocked = requested - _catalog_allowed_capabilities()
+        blocked = requested - _catalog_allowed_capabilities(slug)
         if blocked:
             raise HTTPException(status_code=403, detail=f"Blocked capabilities: {', '.join(sorted(blocked))}")
     if spec.network_mode not in _ALLOWED_NETWORK_MODES:
