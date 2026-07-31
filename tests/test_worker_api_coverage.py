@@ -219,6 +219,100 @@ class TestValidateDeploySpecRejections:
         spec = DeploySpec(image="x", volumes={"/storage/honeygain": {"bind": "/data", "mode": "rw"}})
         _validate_deploy_spec(spec)  # must not raise
 
+    def test_operator_allowlisted_subdir_permitted(self):
+        # The Storj-on-Unraid case: /mnt is blocked wholesale, but the operator can
+        # opt in the one directory Storj actually needs.
+        spec = DeploySpec(image="x", volumes={"/mnt/user/storj/data": {"bind": "/app/config", "mode": "rw"}})
+        with (
+            patch("app.worker_api.os.path.realpath", side_effect=lambda p: p),
+            patch("app.worker_api._ALLOWED_VOLUME_ROOTS", frozenset({"/mnt/user/storj"})),
+        ):
+            _validate_deploy_spec(spec)  # must not raise
+
+    def test_allowlist_does_not_leak_to_sibling_paths(self):
+        # Opting in /mnt/user/storj must NOT unblock the rest of the array.
+        spec = DeploySpec(image="x", volumes={"/mnt/user/appdata/some-other-app": {"bind": "/x", "mode": "ro"}})
+        with (
+            patch("app.worker_api.os.path.realpath", side_effect=lambda p: p),
+            patch("app.worker_api._ALLOWED_VOLUME_ROOTS", frozenset({"/mnt/user/storj"})),
+            pytest.raises(HTTPException) as ei,
+        ):
+            _validate_deploy_spec(spec)
+        assert ei.value.status_code == 403
+
+    def test_allowlist_prefix_is_path_aware(self):
+        # /mnt/user/storj must not accidentally allow /mnt/user/storjevil.
+        spec = DeploySpec(image="x", volumes={"/mnt/user/storjevil": {"bind": "/x", "mode": "ro"}})
+        with (
+            patch("app.worker_api.os.path.realpath", side_effect=lambda p: p),
+            patch("app.worker_api._ALLOWED_VOLUME_ROOTS", frozenset({"/mnt/user/storj"})),
+            pytest.raises(HTTPException) as ei,
+        ):
+            _validate_deploy_spec(spec)
+        assert ei.value.status_code == 403
+
+    @pytest.mark.parametrize("entry", ["/", "/mnt", "/var/run", "/etc", "/data", "/tmp", "/opt"])
+    def test_allowlist_refuses_whole_system_roots(self, entry):
+        from app.worker_api import _parse_allowed_volume_roots
+
+        with patch("app.worker_api.os.path.realpath", side_effect=lambda p: p):
+            assert _parse_allowed_volume_roots(entry) == frozenset()
+
+    @pytest.mark.parametrize(
+        "entry",
+        [
+            "/run/docker.sock",  # the Docker socket == host root
+            "/var/run/docker.sock",
+            "/var/lib/docker/volumes",
+            "/etc/shadow",
+            "/root/.ssh",
+            "/dev/sda",
+            "/proc/self",
+            "/usr/bin",
+        ],
+    )
+    def test_allowlist_refuses_system_paths_at_any_depth(self, entry):
+        """A CHILD of a blocked root must not sneak past the guard.
+
+        Regression: the first version tested exact membership only, so
+        `/run/docker.sock` was accepted (only `/run` was in the blocked set) and a
+        deploy mounting `/var/run/docker.sock` then matched the allowlist and skipped
+        the deny list entirely — handing a third-party container host root.
+        """
+        from app.worker_api import _parse_allowed_volume_roots
+
+        with patch("app.worker_api.os.path.realpath", side_effect=lambda p: p):
+            assert _parse_allowed_volume_roots(entry) == frozenset()
+
+    @pytest.mark.parametrize("entry", ["/mnt/user", "/mnt/disks", "/data/x"])
+    def test_allowlist_refuses_paths_too_shallow_to_be_a_service_dir(self, entry):
+        # /mnt/user IS the whole Unraid array — too broad to be a "specific directory".
+        from app.worker_api import _parse_allowed_volume_roots
+
+        with patch("app.worker_api.os.path.realpath", side_effect=lambda p: p):
+            assert _parse_allowed_volume_roots(entry) == frozenset()
+
+    @pytest.mark.parametrize("entry", ["/mnt/user/storj", "/mnt/disks/ssd/storj", "/srv/data/storj"])
+    def test_allowlist_accepts_a_specific_service_directory(self, entry):
+        from app.worker_api import _parse_allowed_volume_roots
+
+        with patch("app.worker_api.os.path.realpath", side_effect=lambda p: p):
+            assert _parse_allowed_volume_roots(entry) == frozenset({entry})
+
+    def test_allowlist_refuses_relative_entries(self):
+        # The natural missing-leading-slash typo would otherwise anchor to the
+        # worker's CWD and be accepted silently.
+        from app.worker_api import _parse_allowed_volume_roots
+
+        assert _parse_allowed_volume_roots("mnt/user/storj") == frozenset()
+
+    def test_allowlist_parses_multiple_entries(self):
+        from app.worker_api import _parse_allowed_volume_roots
+
+        with patch("app.worker_api.os.path.realpath", side_effect=lambda p: p):
+            parsed = _parse_allowed_volume_roots("/mnt/user/storj: /srv/data/storj :")
+        assert parsed == frozenset({"/mnt/user/storj", "/srv/data/storj"})
+
 
 # ---------------------------------------------------------------------------
 # Container command endpoints — success + docker-error paths

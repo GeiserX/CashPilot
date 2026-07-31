@@ -28,3 +28,6 @@ Keep the shared `CASHPILOT_API_KEY` as the **enrollment/bootstrap** credential o
 - CI runs BOTH `ruff check` and `ruff format --check` — run `ruff format` before every commit.
 - Never manually create tags — the release workflow bumps + tags on push to main.
 - Full `pytest` must stay green.
+
+## 2026-07-18 — continuation
+Test yourself in this mac whatever you need, /research! what to improve, what to unblock... /sergio-loop with ralph then
