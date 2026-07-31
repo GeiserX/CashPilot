@@ -1,0 +1,75 @@
+name: ProxyBase Markets
+slug: proxybase-xyz
+category: bandwidth
+status: active
+website: https://proxybase.xyz
+description: >
+  ProxyBase Markets is a SOCKS5 proxy marketplace built for AI agents. Sellers run
+  a lightweight Rust CLI daemon that connects via WebSocket to relay buyer traffic
+  through their internet connection, earning USDC on Tempo Chain per GB sold. Supports
+  both direct (own bandwidth) and upstream (resell external proxies) modes with
+  auto-reconnect. Buyers purchase proxy sessions by country, ISP, and bandwidth.
+  Payments flow through the Micropayments Protocol (MPP) on Tempo Chain.
+short_description: SOCKS5 proxy marketplace for AI agents - USDC payout, CLI daemon
+
+referral:
+  signup_url: "https://proxybase.xyz?referral=nXzS3c6iTO"
+
+docker:
+  image: "ghcr.io/proxybasehq/proxybase-cli@sha256:9c96a1d149a1d5b18360110be5caf7164a98656e4bb2c25f6b373b91f1c79802"
+  platforms: [linux/amd64, linux/arm64]
+  resources:
+    mem_limit: "128m"
+    oom_score_adj: 300
+  env:
+    - key: BACKEND_URL
+      label: "Backend API URL"
+      required: false
+      secret: false
+      description: "Override the backend API URL (defaults to https://api.proxybase.xyz)"
+      default: "https://api.proxybase.xyz"
+  ports: []
+  volumes:
+    - "proxybase-data:/home/proxybase/.proxybase"
+  command: "seller start --foreground"
+  network_mode: ""
+  setup: >
+    The container auto-bootstraps on first start: generates a secp256k1 wallet (BIP-39),
+    authenticates via ECDSA challenge-response, and starts selling bandwidth in direct-only
+    mode. All state (wallet, session token, seller config) is persisted in the
+    <code>proxybase-data</code> volume. Check container logs on first run for the wallet
+    address. Use <code>--upstream</code> to add external proxy resell paths.
+
+requirements:
+  residential_ip: false
+  vps_ip: true
+  min_bandwidth: ""
+  gpu: false
+  min_storage: ""
+
+payment:
+  methods: [crypto]
+  crypto_token: "USDC"
+  minimum_payout: "$1"
+  currency: USDC
+  frequency: "On request"
+
+earnings:
+  monthly_low: 0
+  monthly_high: 15
+  currency: USD
+  per: "device"
+  notes: "Earnings based on GB sold at market rates. VPS/datacenter IPs earn less than residential. Multi-upstream mode can combine your own bandwidth with external proxies."
+
+cashout:
+  method: manual
+  dashboard_url: "https://proxybase.xyz"
+  min_amount: 1.0
+  currency: USDC
+  notes: "Lock earnings via <code>proxybase-cli seller payout create</code>, received as USDC on Tempo Chain (Tempo MPP). Requires a Tempo wallet address."
+
+platforms: [docker, linux, macos, windows]
+
+collector:
+  type: manual
+  notes: "REST API at api.proxybase.xyz (GET /v2/seller/status, GET /v2/wallet/balance). Auth uses ECDSA challenge-response with secp256k1 wallet — feasible to automate but non-trivial."

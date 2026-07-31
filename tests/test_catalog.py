@@ -155,3 +155,34 @@ def test_proxybase_container_contract():
     assert "proxybase.io" not in data["website"], "website must use proxybase.org"
     for e in data["docker"]["env"]:
         assert "proxybase.io" not in e.get("description", ""), f"env {e['key']} description still links proxybase.io"
+
+
+def test_proxybase_markets_referral_and_image_contract():
+    """Revenue + supply-chain guard for the ProxyBase Markets entry.
+
+    This service was contributed by the vendor, so the two things a vendor has
+    an incentive to change are pinned here:
+
+    - The signup URL must keep OUR referral code. It is the same code as the
+      sibling ProxyBase entry; a contributor swapping in their own code would
+      silently redirect every CashPilot signup's commission.
+    - The image must stay digest-pinned. A floating tag on a third-party image
+      that proxies traffic would let the published content change under us.
+    """
+    with open(SERVICES_DIR / "bandwidth" / "proxybase-xyz.yml") as f:
+        data = yaml.safe_load(f)
+
+    assert data["referral"]["signup_url"] == "https://proxybase.xyz?referral=nXzS3c6iTO", (
+        f"ProxyBase Markets signup_url must keep our referral code, got {data['referral']['signup_url']}"
+    )
+
+    image = data["docker"]["image"]
+    assert image.startswith("ghcr.io/proxybasehq/proxybase-cli@sha256:"), (
+        f"ProxyBase Markets must stay digest-pinned to the GHCR image, got {image}"
+    )
+    assert "linux/arm64" in data["docker"]["platforms"], (
+        "ProxyBase Markets must keep arm64 (the image is multi-arch; Raspberry Pi support)"
+    )
+
+    # Every service must tell the user how to get paid (contribution rule).
+    assert data["cashout"]["method"], "ProxyBase Markets must declare a cashout method"
