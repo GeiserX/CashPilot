@@ -263,3 +263,77 @@ class TestClientId:
         # Identity travels as client_id; name remains present but display-only.
         assert captured.get("client_id") == "cid-abc"
         assert captured.get("name") == w.WORKER_NAME
+
+
+class TestClientIdIsNotTheContainerHostname:
+    """Regression: a worker's identity must survive a container recreate.
+
+    Docker names a container after the first 12 hex chars of its ID, and that
+    changes on every recreate — which is what an image bump does. Reusing it as
+    the identity minted a new client_id each upgrade; the UI then refused the
+    worker's still-valid per-worker key as coming from an unknown client, so
+    every heartbeat 401'd while the service containers kept earning — a silent
+    fleet outage. Hit in production upgrading 1.0.0 -> 1.4.1.
+    """
+
+    def test_container_id_name_is_rejected_as_identity(self, tmp_path):
+        f = tmp_path / ".worker_id"
+        with (
+            patch.object(w, "_WORKER_ID_FILE", f),
+            patch.object(w, "_worker_key", "already-enrolled-key"),
+            patch.object(w, "WORKER_NAME", "515ccbc46cd9"),
+            patch.object(w.Path, "exists", lambda self: True),
+        ):
+            cid = w._load_or_create_client_id()
+        assert cid != "515ccbc46cd9", "must not adopt an ephemeral container ID"
+        assert len(cid) == 32
+
+    def test_real_hostname_still_migrates(self, tmp_path):
+        # Bare metal / VM: gethostname() is stable, so the migration is correct
+        # and must keep working — this is the row-preserving path.
+        f = tmp_path / ".worker_id"
+        with (
+            patch.object(w, "_WORKER_ID_FILE", f),
+            patch.object(w, "_worker_key", "already-enrolled-key"),
+            patch.object(w, "WORKER_NAME", "watchtower"),
+        ):
+            assert w._load_or_create_client_id() == "watchtower"
+
+    def test_container_id_shape_outside_docker_still_migrates(self, tmp_path):
+        # A host legitimately named like a hex string is not a container.
+        f = tmp_path / ".worker_id"
+        with (
+            patch.object(w, "_WORKER_ID_FILE", f),
+            patch.object(w, "_worker_key", "already-enrolled-key"),
+            patch.object(w, "WORKER_NAME", "515ccbc46cd9"),
+            patch.object(w.Path, "exists", lambda self: False),
+        ):
+            assert w._load_or_create_client_id() == "515ccbc46cd9"
+
+    def test_persisted_id_wins_over_everything(self, tmp_path):
+        f = tmp_path / ".worker_id"
+        f.write_text("159d39365879")
+        with (
+            patch.object(w, "_WORKER_ID_FILE", f),
+            patch.object(w, "WORKER_NAME", "something-else"),
+        ):
+            assert w._load_or_create_client_id() == "159d39365879"
+
+    def test_first_run_persists_id_so_next_recreate_reuses_it(self, tmp_path):
+        f = tmp_path / ".worker_id"
+        with (
+            patch.object(w, "_WORKER_ID_FILE", f),
+            patch.object(w, "_worker_key", None),
+            patch.object(w, "WORKER_NAME", "aaaaaaaaaaaa"),
+            patch.object(w.Path, "exists", lambda self: True),
+        ):
+            first = w._load_or_create_client_id()
+            assert f.read_text() == first
+            assert w._load_or_create_client_id() == first
+
+    def test_ephemeral_detection(self):
+        with patch.object(w.Path, "exists", lambda self: True):
+            assert w._name_is_ephemeral("515ccbc46cd9")
+            assert not w._name_is_ephemeral("watchtower")
+            assert not w._name_is_ephemeral("515CCBC46CD9")
+            assert not w._name_is_ephemeral("515ccbc46cd")

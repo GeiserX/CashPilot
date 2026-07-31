@@ -152,7 +152,7 @@ Notifications fire **only the first time** a particular failure appears — a co
 |----------|:--------:|---------|-------------|
 | `CASHPILOT_UI_URL` | Yes | -- | URL of the CashPilot UI (e.g. `http://192.168.10.100:8080`) |
 | `CASHPILOT_API_KEY` | Yes | -- | Must match the UI's API key |
-| `CASHPILOT_WORKER_NAME` | No | *(hostname)* | Display name for this worker in the fleet dashboard |
+| `CASHPILOT_WORKER_NAME` | No | *(hostname)* | Display name for this worker. **Set this on Docker workers.** Without it the worker's identity falls back to the container hostname, which Docker regenerates on every recreate -- see [Worker identity](#worker-identity) |
 | `CASHPILOT_WORKER_URL` | No | *(auto-detected)* | URL the UI uses to reach this worker. Set explicitly for remote/cross-host workers -- auto-detection can report an unreachable address |
 | `CASHPILOT_PORT` | No | `8081` | Mini-UI/API port the worker listens on |
 | `CASHPILOT_ALLOWED_VOLUME_ROOTS` | No | *(none)* | Colon-separated host directories this worker may bind-mount despite sitting under a blocked system root -- see [Volume mounts](#volume-mounts) |
@@ -184,6 +184,29 @@ Relative paths are refused, and refusals are logged with the reason.
 Service containers are third-party and closed-source, so the worker deploys them with the minimum kernel surface: **all capabilities dropped**, then only the ones that service's own catalog entry declares added back. They also get `no-new-privileges`, a PID limit, and are **never** privileged — `privileged` is refused by spec validation and is not an accepted argument in the deploy path at all.
 
 If you add a service that genuinely needs a capability, declare it in that service's YAML (`docker.cap_add`). The check is **per service**: a slug may only request the capabilities its own catalog entry declares, so adding one to one service grants nothing to the others. Today that is Mysterium's `NET_ADMIN` and Bitping's `NET_RAW`.
+
+### Worker identity
+
+The UI keys each worker's row -- and its per-worker fleet key -- on a `client_id`,
+persisted at `/data/.worker_id`. That file is written on first run and reused forever,
+so a worker keeps its row across restarts and upgrades.
+
+Set **`CASHPILOT_WORKER_NAME`** on every Docker worker. Without it the name defaults to
+`socket.gethostname()`, which inside a container is the first 12 hex characters of the
+container ID -- regenerated every time the container is recreated, which is exactly what
+an image bump does. A worker that first enrolled under such a name has no durable identity
+to fall back on if `/data/.worker_id` is missing.
+
+!!! warning "Symptom: heartbeats 401 after an upgrade"
+    If a worker's identity changes, it keeps its valid per-worker key but presents it
+    under an unknown `client_id`, and the UI correctly refuses it. Every heartbeat then
+    returns `401 Unauthorized` and the worker drops out of the fleet -- while its service
+    containers keep running and earning, so nothing else looks wrong.
+
+    To reclaim the existing row: stop the worker, write the `client_id` the UI lists for
+    it into `/data/.worker_id` (owned/readable by the container user), start it again,
+    and set `CASHPILOT_WORKER_NAME` so it cannot recur. The worker logs this remediation
+    itself after three consecutive rejections.
 
 ### Worker URL Validation
 
