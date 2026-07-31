@@ -64,6 +64,11 @@ _ui_connected = False
 _last_heartbeat: str = "never"
 _last_error: str = ""
 
+# Consecutive 401s while holding our own per-worker key. One is unremarkable (the UI
+# may be restarting); a run of them means our identity no longer matches our key.
+_consecutive_auth_failures = 0
+_AUTH_FAILURE_ALARM_AFTER = 3
+
 # Per-worker fleet key. On first contact the UI enrolls this worker and hands back
 # a key unique to us, which we persist here (in our own private /data, never the
 # shared /fleet volume) and use for all subsequent auth in both directions. Until
@@ -110,13 +115,37 @@ _worker_key: str | None = _load_worker_key()
 _WORKER_ID_FILE = Path(os.getenv("CASHPILOT_DATA_DIR", "/data")) / ".worker_id"
 
 
+_DOCKER_CONTAINER_ID_RE = re.compile(r"^[0-9a-f]{12}$")
+
+
+def _name_is_ephemeral(name: str) -> bool:
+    """True when WORKER_NAME is really a Docker-assigned container ID.
+
+    Docker defaults a container's hostname to the first 12 hex characters of its
+    ID, and that ID changes every time the container is recreated -- which is
+    exactly what an image bump does. Treating such a name as a durable identity
+    mints a new client_id on every upgrade; the UI then sees a still-valid
+    per-worker key arriving from an unknown client and correctly refuses it, so
+    every heartbeat 401s while the service containers keep earning. The outage
+    is silent. Observed in production upgrading 1.0.0 -> 1.4.1.
+
+    A real host name (bare metal, a VM, or an explicit `hostname:`/
+    CASHPILOT_WORKER_NAME) stays stable across restarts and remains a perfectly
+    good identity, so only the container-ID shape is rejected, and only when we
+    are actually inside a container.
+    """
+    return bool(_DOCKER_CONTAINER_ID_RE.match(name)) and Path("/.dockerenv").exists()
+
+
 def _load_or_create_client_id() -> str:
     """Return this worker's stable client_id, generating and persisting one on first run.
 
     Migration: a worker already enrolled under the pre-client_id scheme has a persisted
     per-worker key but no id file. It keeps the identity the UI already knows it by --
-    its WORKER_NAME -- so upgrading never orphans its row or forces a re-enrollment that
-    its own (already cut-over) key could not complete. A brand-new worker gets a random id.
+    its WORKER_NAME -- so upgrading never orphans its row. The one exception is a name
+    that is really a Docker container ID: that is regenerated on every recreate, so
+    reusing it would mint a new identity and lock the worker out (see _name_is_ephemeral).
+    A brand-new worker gets a random id.
     """
     try:
         existing = _WORKER_ID_FILE.read_text().strip()
@@ -124,7 +153,28 @@ def _load_or_create_client_id() -> str:
             return existing
     except OSError:
         pass
-    cid = WORKER_NAME if _worker_key else uuid.uuid4().hex
+    if _worker_key and not _name_is_ephemeral(WORKER_NAME):
+        cid = WORKER_NAME
+    else:
+        cid = uuid.uuid4().hex
+        if _worker_key:
+            # Enrolled already, but our only clue to which row is ours was an
+            # ephemeral container ID. This is NOT recoverable by re-enrolling:
+            # we still send our own per-worker key (see _active_key), and the UI
+            # refuses it under an id it never enrolled, so every heartbeat 401s
+            # until the id is restored by hand. Say exactly that -- the symptom
+            # is otherwise very hard to trace back to this decision.
+            logger.error(
+                "This worker holds a per-worker key but no persisted client_id, and its "
+                "name (%s) is a container ID that changes on every recreate. Heartbeats "
+                "will be REJECTED (401) under the generated id %s, because we authenticate "
+                "with our existing key and the UI does not know that id. To recover: stop "
+                "this container, write the client_id the UI lists for this worker into %s, "
+                "start it again, and set CASHPILOT_WORKER_NAME so this cannot recur.",
+                WORKER_NAME,
+                cid,
+                _WORKER_ID_FILE,
+            )
     try:
         _WORKER_ID_FILE.parent.mkdir(parents=True, exist_ok=True)
         _WORKER_ID_FILE.write_text(cid)
@@ -169,7 +219,7 @@ def _verify_api_key(request: Request) -> None:
 
 async def _send_heartbeat() -> None:
     """Send a single heartbeat to the UI."""
-    global _ui_connected, _last_heartbeat, _last_error
+    global _ui_connected, _last_heartbeat, _last_error, _consecutive_auth_failures
 
     containers = []
     try:
@@ -210,15 +260,40 @@ async def _send_heartbeat() -> None:
             _ui_connected = True
             _last_heartbeat = datetime.now(UTC).strftime("%H:%M:%S UTC")
             _last_error = ""
+            _consecutive_auth_failures = 0
             logger.debug("Heartbeat sent to %s", UI_URL)
     except httpx.HTTPStatusError as exc:
         _ui_connected = False
         status = exc.response.status_code
         _last_error = f"authentication rejected ({status})" if status in (401, 403) else "connection failed"
         logger.warning("Heartbeat failed: %s", exc)
+        if status == 401 and _worker_key:
+            _consecutive_auth_failures += 1
+        else:
+            # Any other outcome breaks the run. "Consecutive" has to mean it:
+            # 401 -> timeout -> 401 -> 500 -> 401 is a flaky link, not an
+            # identity mismatch, and must not raise the alarm.
+            _consecutive_auth_failures = 0
+            if _consecutive_auth_failures == _AUTH_FAILURE_ALARM_AFTER:
+                # A per-worker key rejected repeatedly almost always means our
+                # client_id no longer matches the row the UI enrolled — usually
+                # because the id was derived from a container hostname that
+                # changed on recreate. Service containers keep earning through
+                # this, so nothing else surfaces the problem: say it plainly once.
+                logger.error(
+                    "Rejected %d times with this worker's own key. The UI does not "
+                    "recognise client_id %r. If the UI still lists this worker under a "
+                    "different id, stop this container, write that id into %s, and start "
+                    "it again to reclaim the existing row.",
+                    _consecutive_auth_failures,
+                    CLIENT_ID,
+                    _WORKER_ID_FILE,
+                )
     except Exception as exc:
         _ui_connected = False
         _last_error = "connection failed"
+        # A network failure is not an auth rejection, so it breaks the run too.
+        _consecutive_auth_failures = 0
         logger.warning("Heartbeat failed: %s", exc)
 
 
