@@ -106,6 +106,12 @@ CREATE TABLE IF NOT EXISTS earnings (
     balance    REAL    NOT NULL,
     currency   TEXT    NOT NULL DEFAULT 'USD',
     date       TEXT    NOT NULL,
+    -- Currency -> USD rate at the moment this reading was taken. Rates are only
+    -- cached live, so without storing it here the historical value of a non-USD
+    -- balance (MYST, GRASS, ...) cannot be reconstructed later at any accuracy —
+    -- which is what a net-profit or tax export needs. NULL for USD or when the
+    -- rate was unavailable.
+    fx_rate_usd REAL,
     created_at TEXT    NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -351,6 +357,13 @@ async def init_db() -> None:
         if "key_confirmed" not in cols:
             await db.execute("ALTER TABLE workers ADD COLUMN key_confirmed INTEGER NOT NULL DEFAULT 0")
 
+        # Migrate earnings table: add fx_rate_usd so a non-USD balance's value at the
+        # time it was recorded stays reconstructable (rates are only cached live).
+        cursor = await db.execute("PRAGMA table_info(earnings)")
+        earnings_cols = {row["name"] for row in await cursor.fetchall()}
+        if "fx_rate_usd" not in earnings_cols:
+            await db.execute("ALTER TABLE earnings ADD COLUMN fx_rate_usd REAL")
+
         # Migrate users table: add password_changed_at for session invalidation
         cursor = await db.execute("PRAGMA table_info(users)")
         user_cols = {row["name"] for row in await cursor.fetchall()}
@@ -370,8 +383,14 @@ async def upsert_earnings(
     balance: float,
     currency: str = "USD",
     date: str | None = None,
+    fx_rate_usd: float | None = None,
 ) -> None:
-    """Insert or update an earnings record for a platform + date."""
+    """Insert or update an earnings record for a platform + date.
+
+    ``fx_rate_usd`` is the currency -> USD rate at collection time. It is stored
+    alongside the balance because exchange rates are only cached live: without it,
+    the USD value of a historical non-USD reading cannot be reconstructed later.
+    """
     date = date or datetime.now(UTC).strftime("%Y-%m-%d")
     db = await _get_db()
     try:
@@ -380,15 +399,16 @@ async def upsert_earnings(
         # WHERE guard preserves created_at when the balance is unchanged.
         await db.execute(
             """
-            INSERT INTO earnings (platform, balance, currency, date)
-            VALUES (?, ?, ?, ?)
+            INSERT INTO earnings (platform, balance, currency, date, fx_rate_usd)
+            VALUES (?, ?, ?, ?, ?)
             ON CONFLICT(platform, date) DO UPDATE SET
                 balance = excluded.balance,
                 currency = excluded.currency,
+                fx_rate_usd = excluded.fx_rate_usd,
                 created_at = datetime('now')
             WHERE earnings.balance != excluded.balance
             """,
-            (platform, balance, currency, date),
+            (platform, balance, currency, date, fx_rate_usd),
         )
         await db.commit()
     finally:
