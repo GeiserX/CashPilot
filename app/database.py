@@ -106,11 +106,11 @@ CREATE TABLE IF NOT EXISTS earnings (
     balance    REAL    NOT NULL,
     currency   TEXT    NOT NULL DEFAULT 'USD',
     date       TEXT    NOT NULL,
-    -- Currency -> USD rate at the moment this reading was taken. Rates are only
-    -- cached live, so without storing it here the historical value of a non-USD
-    -- balance (MYST, GRASS, ...) cannot be reconstructed later at any accuracy —
-    -- which is what a net-profit or tax export needs. NULL for USD or when the
-    -- rate was unavailable.
+    -- USD per 1 unit of `currency` when this reading was taken (so USD rows store
+    -- 1.0). Rates are only cached live, so without storing it here the historical
+    -- value of a non-USD balance (MYST, GRASS, ...) cannot be reconstructed later at
+    -- any accuracy — which is what a net-profit or tax export needs. NULL only when
+    -- the rate was genuinely unavailable, never a guess.
     fx_rate_usd REAL,
     created_at TEXT    NOT NULL DEFAULT (datetime('now'))
 );
@@ -404,9 +404,19 @@ async def upsert_earnings(
             ON CONFLICT(platform, date) DO UPDATE SET
                 balance = excluded.balance,
                 currency = excluded.currency,
-                fx_rate_usd = excluded.fx_rate_usd,
+                -- COALESCE, not a plain assignment: if the rate lookup failed this
+                -- cycle (provider outage after a restart cleared the cache) the new
+                -- value is NULL, and overwriting a known-good rate with it would
+                -- destroy the very data this column exists to preserve.
+                fx_rate_usd = COALESCE(excluded.fx_rate_usd, earnings.fx_rate_usd),
                 created_at = datetime('now')
+            -- The balance guard preserves created_at when nothing changed, but it also
+            -- meant a row already stored with a NULL rate (written pre-upgrade, or when
+            -- the rate was briefly unavailable) could never be back-filled: for a
+            -- service whose balance moves once a day, every later run in that day was
+            -- skipped entirely. Allow the update through in that one case.
             WHERE earnings.balance != excluded.balance
+               OR earnings.fx_rate_usd IS NULL
             """,
             (platform, balance, currency, date, fx_rate_usd),
         )

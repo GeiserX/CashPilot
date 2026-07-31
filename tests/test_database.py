@@ -112,6 +112,47 @@ class TestEarnings:
 
         asyncio.run(run())
 
+    def test_a_missing_rate_never_overwrites_a_known_one(self, db):
+        """Regression: the UPDATE assigned the new rate unconditionally.
+
+        If the rate lookup failed this cycle (provider outage after a restart cleared
+        the cache) the incoming value is None — and overwriting a good rate with NULL
+        would destroy the only record of what that reading was worth.
+        """
+
+        async def run():
+            await database.upsert_earnings("mysterium", 8.0, "MYST", "2026-01-01", fx_rate_usd=0.25)
+            await database.upsert_earnings("mysterium", 9.0, "MYST", "2026-01-01", fx_rate_usd=None)
+            conn = await database._get_db()
+            try:
+                cur = await conn.execute("SELECT balance, fx_rate_usd FROM earnings WHERE platform = 'mysterium'")
+                row = await cur.fetchone()
+            finally:
+                await conn.close()
+            assert row["balance"] == 9.0  # balance still advances
+            assert row["fx_rate_usd"] == 0.25  # rate preserved
+
+        asyncio.run(run())
+
+    def test_a_null_rate_can_still_be_back_filled(self, db):
+        """Regression: the balance guard skipped the whole UPDATE when the balance was
+        unchanged, so a row stored with a NULL rate could never gain one — for a
+        service whose balance moves once a day, that meant never."""
+
+        async def run():
+            await database.upsert_earnings("mysterium", 8.0, "MYST", "2026-01-01", fx_rate_usd=None)
+            # Same balance, rate now available.
+            await database.upsert_earnings("mysterium", 8.0, "MYST", "2026-01-01", fx_rate_usd=0.25)
+            conn = await database._get_db()
+            try:
+                cur = await conn.execute("SELECT fx_rate_usd FROM earnings WHERE platform = 'mysterium'")
+                row = await cur.fetchone()
+            finally:
+                await conn.close()
+            assert row["fx_rate_usd"] == 0.25
+
+        asyncio.run(run())
+
     def test_fx_rate_defaults_to_null(self, db):
         # Callers that don't supply a rate (or an unknown currency) store NULL rather
         # than a wrong number.
