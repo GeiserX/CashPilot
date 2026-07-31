@@ -215,3 +215,33 @@ class TestInconclusiveIsNotAProblem:
             liveness.check_image("repo/img:1")
         assert "--" in captured["cmd"]
         assert captured["cmd"].index("--") == captured["cmd"].index("repo/img:1") - 1
+
+
+class TestReferralCollapseIsInconclusive:
+    """A collapsed referral URL must not be reported as a confirmed dead link.
+
+    Regression for a real false positive: ProxyLite's `?r=CODE` returns 302 +
+    a session cookie and lands on the bare homepage, which is a WORKING referral
+    capture. Calling that "dead" sent us to retire a live, earning service.
+    """
+
+    def test_collapse_is_reported_but_not_counted_as_a_problem(self):
+        client = MagicMock()
+        client.head.return_value = MagicMock(status_code=200, url="https://p.com/")
+        findings = liveness.check_service(
+            client,
+            {
+                "slug": "p",
+                "status": "active",
+                "website": "https://p.com",
+                "referral": {"signup_url": "https://p.com/?r=CODE"},
+            },
+            check_images=False,
+        )
+        ref = [f for f in findings if f.kind == "referral"][0]
+        assert ref.status == liveness.UNREACHABLE
+        assert not ref.is_problem, "a session-capture referral must not be called dead"
+        assert ref.is_inconclusive
+        report = liveness.build_report(findings)
+        assert report.splitlines()[2].startswith("All good")
+        assert "verify manually" in report
