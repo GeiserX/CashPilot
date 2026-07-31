@@ -224,6 +224,10 @@ def check_service(client: httpx.Client, svc: dict, *, check_images: bool) -> lis
     return findings
 
 
+# One legend, rendered by every report shape so the two can never drift apart.
+_LEGEND = "_`unreachable` means we could not tell -- a transient provider outage, a registry rate-limit, or a referral link that redirected somewhere its code is no longer visible (which is also what a working session-capture link looks like). Reported, but not counted as a problem. `dead` means the reference answered with a client error, or a catalog file could not be read._"
+
+
 def build_report(findings: list[Finding]) -> str:
     problems = [f for f in findings if f.is_problem]
     unknown = [f for f in findings if f.is_inconclusive]
@@ -247,6 +251,9 @@ def build_report(findings: list[Finding]) -> str:
         if unknown:
             lines += ["", f"{len(unknown)} check(s) were inconclusive and are listed below.", ""]
             lines += _unknown_section()
+            # The legend belongs here too: an all-inconclusive run is exactly when
+            # a reader needs to know that "unreachable" is not "broken".
+            lines += [_LEGEND]
         return "\n".join(lines)
 
     lines += [f"**{len(problems)} problem(s)** across {checked} services checked.", ""]
@@ -279,11 +286,7 @@ def build_report(findings: list[Finding]) -> str:
 
     lines += _unknown_section()
 
-    lines += [
-        "_`unreachable` may be a transient provider outage or a registry rate-limit, so it is "
-        "reported but not counted as a problem; `dead` means the reference answered with a "
-        "client error or the referral link collapsed to a bare homepage._",
-    ]
+    lines += [_LEGEND]
     return "\n".join(lines)
 
 

@@ -245,3 +245,11 @@ class TestReferralCollapseIsInconclusive:
         report = liveness.build_report(findings)
         assert report.splitlines()[2].startswith("All good")
         assert "verify manually" in report
+
+    def test_footer_does_not_call_a_collapse_dead(self):
+        """The footer must match the classification, or it teaches the wrong lesson."""
+        findings = [liveness.Finding("a", "referral", "https://p.com/?r=X", liveness.UNREACHABLE, "not visible")]
+        report = liveness.build_report(findings)
+        tail = report.rsplit("_`unreachable`", 1)[-1]
+        assert "referral link collapsed" not in tail
+        assert "no longer visible" in tail
