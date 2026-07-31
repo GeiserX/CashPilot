@@ -637,7 +637,8 @@ async def api_deploy_container(request: Request, slug: str, spec: DeploySpec) ->
             volumes=spec.volumes,
             network_mode=spec.network_mode,
             cap_add=spec.cap_add,
-            privileged=spec.privileged,
+            # spec.privileged is rejected outright by _validate_deploy_spec above, and
+            # deploy_raw no longer accepts it at all — containers are never privileged.
             command=spec.command,
             hostname=spec.hostname,
             labels=spec.labels,

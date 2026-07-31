@@ -168,6 +168,46 @@ class TestDeployRawResources:
         assert kwargs["network_mode"] == "host"
 
 
+class TestDeployRawHardening:
+    """Third-party images must get the minimum kernel surface (CashPilot-a5p)."""
+
+    def _mock_client(self):
+        container = MagicMock()
+        container.id = "cid"
+        container.short_id = "short"
+        client = MagicMock()
+        client.containers.get.side_effect = orchestrator.NotFound("nope")
+        client.containers.run.return_value = container
+        return client
+
+    def _run_kwargs(self, **deploy_kwargs):
+        client = self._mock_client()
+        with patch.object(orchestrator, "_get_client", return_value=client):
+            orchestrator.deploy_raw(**deploy_kwargs)
+        return client.containers.run.call_args.kwargs
+
+    def test_hardening_flags_always_applied(self):
+        kwargs = self._run_kwargs(slug="honeygain", image="img")
+        assert kwargs["cap_drop"] == ["ALL"]
+        assert kwargs["security_opt"] == ["no-new-privileges:true"]
+        assert kwargs["privileged"] is False
+        assert kwargs["pids_limit"] == orchestrator._PIDS_LIMIT
+        # Nothing declared any capability, so none is added back.
+        assert kwargs["cap_add"] is None
+
+    def test_catalog_declared_capability_is_added_back(self):
+        # mysterium is the only catalog service declaring a cap; dropping ALL must not
+        # break it — NET_ADMIN is re-added on top of the drop.
+        kwargs = self._run_kwargs(slug="mysterium", image="img", cap_add=["NET_ADMIN"])
+        assert kwargs["cap_drop"] == ["ALL"]
+        assert kwargs["cap_add"] == ["NET_ADMIN"]
+
+    def test_privileged_is_not_an_accepted_argument(self):
+        # The dangerous state is unrepresentable, not merely refused upstream.
+        with pytest.raises(TypeError):
+            orchestrator.deploy_raw(slug="x", image="i", privileged=True)
+
+
 # ---------------------------------------------------------------------------
 # Worker /deploy endpoint (spec -> deploy_raw)
 # ---------------------------------------------------------------------------

@@ -8,6 +8,7 @@ inspection for cashpilot-managed containers via the Docker SDK.
 from __future__ import annotations
 
 import logging
+import os
 import time
 from typing import Any
 
@@ -120,6 +121,12 @@ def _normalize_resources(resources: Any) -> dict[str, Any]:
     return {k: v for k, v in data.items() if v is not None}
 
 
+# A hostile or runaway image must not be able to exhaust the host's PID namespace.
+# Generous for a real earner (these run a single process tree); raise it with
+# CASHPILOT_PIDS_LIMIT if a service legitimately needs more.
+_PIDS_LIMIT = int(os.getenv("CASHPILOT_PIDS_LIMIT", "512"))
+
+
 def deploy_raw(
     slug: str,
     image: str,
@@ -128,7 +135,6 @@ def deploy_raw(
     volumes: dict[str, dict[str, str]] | None = None,
     network_mode: str | None = None,
     cap_add: list[str] | None = None,
-    privileged: bool = False,
     command: str | None = None,
     hostname: str | None = None,
     labels: dict[str, str] | None = None,
@@ -184,8 +190,20 @@ def deploy_raw(
         ports=ports if ports and network_mode != "host" else None,
         volumes=volumes if volumes else None,
         network_mode=network_mode,
-        cap_add=cap_add,
-        privileged=privileged,
+        # These images are third-party and closed-source, so they get the minimum
+        # kernel surface: every capability dropped, then only the ones the service's
+        # own catalog entry declares added back (today that is mysterium's NET_ADMIN
+        # alone — the rest are plain outbound TCP clients). Without this they ran as
+        # in-container root with Docker's full default set, which includes NET_RAW
+        # (ARP/DNS spoofing on the bridge), MKNOD, SETUID and SYS_CHROOT.
+        cap_drop=["ALL"],
+        cap_add=cap_add or None,
+        # no-new-privileges blocks privilege escalation via setuid binaries; privileged
+        # is hardcoded off so the dangerous state is unrepresentable here rather than
+        # merely refused upstream by the worker's spec validation.
+        security_opt=["no-new-privileges:true"],
+        privileged=False,
+        pids_limit=_PIDS_LIMIT,
         command=command if command else None,
         labels=all_labels,
         hostname=hostname or f"cashpilot-{slug}",
