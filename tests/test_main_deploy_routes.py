@@ -690,6 +690,10 @@ class TestWorkerCommand:
         ):
             resp = client.post("/api/workers/1/command", json={"command": "stop", "slug": "speedshare"})
             assert resp.status_code == 200
+        # A 200 alone would also pass if the route silently did nothing, so assert
+        # the stop actually reached the worker at the right path.
+        assert mock_client.post.call_count == 1
+        assert mock_client.post.call_args.args[0].endswith("/api/containers/speedshare/stop")
 
     def test_command_unknown(self, client):
         worker, mock_client = self._setup()
