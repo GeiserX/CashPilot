@@ -9,7 +9,9 @@ CashPilot takes security seriously. This document describes how to report vulner
 | Latest release (`latest` Docker tag) | Yes |
 | Previous releases | No |
 
-Only the latest published Docker images (`drumsergio/cashpilot:latest` and `drumsergio/cashpilot-worker:latest`) receive security patches. There are no LTS branches.
+Only the most recent release line receives security patches. There are no LTS branches.
+
+The example compose files pin the **major.minor** tag (e.g. `drumsergio/cashpilot:1.4`), so a `docker compose pull` picks up patch fixes automatically but never moves you to a new minor or major without an explicit edit. `:latest` is published but deliberately not used in the quickstart: it makes what you are running unknowable and can carry a breaking change into a routine pull.
 
 ## Reporting a Vulnerability
 
