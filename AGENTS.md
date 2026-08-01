@@ -115,7 +115,7 @@ Verified by hardening a live 40-container fleet in place.
 `/var/lib/anon` before dropping privileges, which needs capabilities the blanket drop
 removes:
 
-```
+```text
 chown: cannot read directory '/var/lib/anon': Permission denied
 failed to change ownership of '/var/lib/anon' to anond:anond
 ```
@@ -127,7 +127,7 @@ listener returning on port 9001; that is the part that earns.
 **honeygain restart-loops after ANY recreate, and it is not the hardening.** The log
 is:
 
-```
+```text
 Please choose a different device name. Device with this name is already active.
 ```
 
