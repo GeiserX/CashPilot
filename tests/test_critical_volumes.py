@@ -10,7 +10,7 @@ nothing is destroyed when the guard fires.
 from __future__ import annotations
 
 import os
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 # Must be set before app.worker_api is imported: with no key configured the
 # worker refuses every request, so this module would otherwise pass only when
@@ -246,3 +246,62 @@ class TestSafeWorkerDetail:
         from app.main import _safe_worker_detail
 
         assert _safe_worker_detail(self._resp({"detail": {"error": "critical_volume", "blocked": "nope"}})) is None
+
+
+class TestOverrideAuthorization:
+    """Destroying irreplaceable state must not be easier than deploying."""
+
+    def test_override_requires_owner_not_merely_writer(self):
+        from fastapi import HTTPException
+
+        from app import main
+
+        calls = []
+
+        def _writer_ok(request):
+            calls.append("writer")
+
+        def _owner_denied(request):
+            calls.append("owner")
+            raise HTTPException(status_code=403, detail="owner required")
+
+        with (
+            patch.object(main, "_require_writer", _writer_ok),
+            patch.object(main, "_require_owner", _owner_denied),
+            pytest.raises(HTTPException) as exc,
+        ):
+            import asyncio
+
+            asyncio.run(
+                main._svc_remove(
+                    request=MagicMock(), slug="storj", worker_id=1, delete_volumes=True, allow_delete_critical=True
+                )
+            )
+
+        assert exc.value.status_code == 403
+        assert "owner" in calls
+
+    def test_ordinary_removal_still_only_needs_writer(self):
+        from app import main
+
+        owner_checked = []
+
+        async def _resolve(worker_id):
+            return 1
+
+        async def _proxy(worker_id, command, slug, params=None):
+            return {"status": "removed"}
+
+        with (
+            patch.object(main, "_require_writer", lambda r: None),
+            patch.object(main, "_require_owner", lambda r: owner_checked.append(1)),
+            patch.object(main, "_resolve_worker_id", _resolve),
+            patch.object(main, "_proxy_worker_command", _proxy),
+            patch.object(main.database, "remove_deployment", AsyncMock()),
+            patch.object(main.database, "record_health_event", AsyncMock()),
+        ):
+            import asyncio
+
+            asyncio.run(main._svc_remove(request=MagicMock(), slug="honeygain", worker_id=1, delete_volumes=True))
+
+        assert owner_checked == [], "a normal delete must not suddenly require owner"

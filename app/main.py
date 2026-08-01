@@ -1060,6 +1060,11 @@ async def _svc_remove(
     allow_delete_critical: bool = False,
 ) -> dict[str, Any]:
     _require_writer(request)
+    if allow_delete_critical:
+        # Overriding the critical-volume guard destroys state with no server-side
+        # copy - a node identity, a generated wallet. Deploying already requires
+        # owner; permanently destroying the money must not be the easier action.
+        _require_owner(request)
     worker_id = await _resolve_worker_id(worker_id)
     params: dict[str, str] | None = None
     if delete_volumes:
