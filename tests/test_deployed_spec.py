@@ -217,7 +217,10 @@ class TestMergeRecordedSpec:
         }
 
         merged, _ = _merge_recorded_spec(
-            catalog_spec, recorded, user_env={"PASSWORD": "new"}, volume_env_keys={"IDENTITY_DIR"}
+            catalog_spec,
+            recorded,
+            user_env={"PASSWORD": "new"},
+            volume_env_keys_by_target={"/app/identity": {"IDENTITY_DIR"}},
         )
 
         assert merged["volumes"] == recorded["volumes"], "a password change must not move the data"
@@ -237,8 +240,68 @@ class TestMergeRecordedSpec:
         }
 
         merged, divergence = _merge_recorded_spec(
-            catalog_spec, recorded, user_env={"IDENTITY_DIR": "/mnt/new"}, volume_env_keys={"IDENTITY_DIR"}
+            catalog_spec,
+            recorded,
+            user_env={"IDENTITY_DIR": "/mnt/new"},
+            volume_env_keys_by_target={"/app/identity": {"IDENTITY_DIR"}},
         )
 
         assert merged["volumes"] == {"/mnt/new": {"bind": "/app/identity", "mode": "rw"}}
         assert any("supplied this deploy" in d for d in divergence)
+
+    def test_moving_one_path_does_not_reset_the_others(self):
+        """Storj has two independent path variables.
+
+        Regression: the relocation check was computed once for the whole volumes
+        block, so supplying IDENTITY_DIR silently dropped the STORAGE_DIR mount
+        back to the catalog's unsubstituted template - losing a mount the
+        operator never mentioned.
+        """
+        catalog_spec = {
+            "image": "i",
+            "env": {"IDENTITY_DIR": "/mnt/new-identity", "STORAGE_DIR": ""},
+            "volumes": {
+                "/mnt/new-identity": {"bind": "/app/identity", "mode": "rw"},
+                "${STORAGE_DIR}": {"bind": "/app/config", "mode": "rw"},
+            },
+        }
+        recorded = {
+            "image": "i",
+            "env": {"IDENTITY_DIR": "/mnt/old-identity", "STORAGE_DIR": "/mnt/storage"},
+            "volumes": {
+                "/mnt/old-identity": {"bind": "/app/identity", "mode": "rw"},
+                "/mnt/storage": {"bind": "/app/config", "mode": "rw"},
+            },
+        }
+
+        merged, divergence = _merge_recorded_spec(
+            catalog_spec,
+            recorded,
+            user_env={"IDENTITY_DIR": "/mnt/new-identity"},
+            volume_env_keys_by_target={
+                "/app/identity": {"IDENTITY_DIR"},
+                "/app/config": {"STORAGE_DIR"},
+            },
+        )
+
+        assert merged["volumes"] == {
+            "/mnt/new-identity": {"bind": "/app/identity", "mode": "rw"},
+            "/mnt/storage": {"bind": "/app/config", "mode": "rw"},
+        }, "only the mount whose variable was supplied may move"
+        assert any("/app/identity" in d for d in divergence)
+
+    def test_a_mount_added_to_the_catalog_since_deployment_still_appears(self):
+        merged, _ = _merge_recorded_spec(
+            {
+                "image": "i",
+                "env": {},
+                "volumes": {
+                    "/old": {"bind": "/app/data", "mode": "rw"},
+                    "newvol": {"bind": "/app/cache", "mode": "rw"},
+                },
+            },
+            {"image": "i", "env": {}, "volumes": {"/old": {"bind": "/app/data", "mode": "rw"}}},
+            user_env={},
+        )
+        assert merged["volumes"]["newvol"] == {"bind": "/app/cache", "mode": "rw"}
+        assert merged["volumes"]["/old"] == {"bind": "/app/data", "mode": "rw"}

@@ -1026,10 +1026,16 @@ async def api_deploy(request: Request, slug: str, body: DeployRequest, worker_id
     recorded = await database.get_deployment_spec(slug)
     divergence: list[str] = []
     if recorded:
-        volume_env_keys = {
-            m.group(1) for mapping in docker_conf.get("volumes", []) for m in re.finditer(r"\$\{(\w+)\}", str(mapping))
-        }
-        spec, divergence = _merge_recorded_spec(spec, recorded, body.env or {}, volume_env_keys)
+        # Which env vars feed which mount, so a relocation applies only to the
+        # mount it actually names.
+        keys_by_target: dict[str, set[str]] = {}
+        for mapping in docker_conf.get("volumes", []):
+            raw = str(mapping)
+            if ":" not in raw:
+                continue
+            host_part, target = raw.split(":")[0], raw.split(":")[1]
+            keys_by_target.setdefault(target, set()).update(m.group(1) for m in re.finditer(r"\$\{(\w+)\}", host_part))
+        spec, divergence = _merge_recorded_spec(spec, recorded, body.env or {}, keys_by_target)
         if divergence:
             logger.info("Redeploying %s from its recorded spec: %s", slug, "; ".join(divergence))
 
@@ -1049,7 +1055,7 @@ def _merge_recorded_spec(
     catalog_spec: dict[str, Any],
     recorded: dict[str, Any],
     user_env: dict[str, str],
-    volume_env_keys: set[str] | None = None,
+    volume_env_keys_by_target: dict[str, set[str]] | None = None,
 ) -> tuple[dict[str, Any], list[str]]:
     """Rebuild an EXISTING deployment from what it actually ran.
 
@@ -1071,31 +1077,61 @@ def _merge_recorded_spec(
     merged = dict(catalog_spec)
     divergence: list[str] = []
 
-    # Mounts and ports define the container's identity on disk and on the
-    # network. Reproduce them exactly.
-    #
-    # One deliberate exception for mounts: if the operator typed a value this
-    # deploy that the catalog substitutes INTO a host path - Storj's
-    # ${IDENTITY_DIR}, say - they are moving the data on purpose, and honouring
-    # the old path would ignore what they just asked for. Note this is keyed on
-    # the volume-substituting keys only: retyping a password must never cost the
-    # service its mounts, which is the very bug this function exists to fix.
-    moving_paths = bool(volume_env_keys and (set(user_env) & volume_env_keys))
-    if moving_paths:
-        divergence.append("mounts: using the paths you supplied this deploy rather than the previously deployed ones")
-
-    for field, label in (("volumes", "mounts"), ("ports", "ports")):
-        if field == "volumes" and moving_paths:
-            continue
-        stored = recorded.get(field)
-        if not stored:
-            continue
-        if stored != catalog_spec.get(field):
+    # Ports define the container's identity on the network. Reproduce them.
+    stored_ports = recorded.get("ports")
+    if stored_ports:
+        if stored_ports != catalog_spec.get("ports"):
             divergence.append(
-                f"{label}: keeping the {label} this service was deployed with; "
-                f"the catalog now declares different {label}"
+                "ports: keeping the ports this service was deployed with; the catalog now declares different ports"
             )
-        merged[field] = stored
+        merged["ports"] = stored_ports
+
+    # Mounts are decided PER MOUNT, not for the volumes block as a whole.
+    #
+    # If the operator typed a value this deploy that the catalog substitutes into
+    # a host path - Storj's ${IDENTITY_DIR}, say - they are moving that data on
+    # purpose and the new path wins. Every OTHER mount is still reproduced from
+    # the record: a service can have several independent path variables (Storj
+    # has IDENTITY_DIR and STORAGE_DIR), and supplying one must not silently
+    # reset the others.
+    #
+    # The trigger is the volume-substituting keys alone. Retyping a password must
+    # never cost a service its mounts, which is the bug this function exists to
+    # fix in the first place.
+    stored_volumes = recorded.get("volumes")
+    if stored_volumes:
+        by_target = volume_env_keys_by_target or {}
+        catalog_volumes = catalog_spec.get("volumes") or {}
+        catalog_by_target = {spec.get("bind"): (host, spec) for host, spec in catalog_volumes.items()}
+        recorded_targets = {spec.get("bind") for spec in stored_volumes.values()}
+
+        merged_volumes: dict[str, Any] = {}
+        moved: list[str] = []
+        kept = False
+
+        for host, spec in stored_volumes.items():
+            target = spec.get("bind")
+            if set(user_env) & by_target.get(target, set()):
+                new_host, new_spec = catalog_by_target.get(target, (host, spec))
+                merged_volumes[new_host] = new_spec
+                moved.append(target)
+            else:
+                merged_volumes[host] = spec
+                if catalog_by_target.get(target, (host, spec)) != (host, spec):
+                    kept = True
+
+        # Mounts the catalog has added since this service was deployed.
+        for target, (host, spec) in catalog_by_target.items():
+            if target not in recorded_targets:
+                merged_volumes[host] = spec
+
+        if moved:
+            divergence.append(f"mounts: using the paths you supplied this deploy for {', '.join(sorted(moved))}")
+        if kept:
+            divergence.append(
+                "mounts: keeping the mounts this service was deployed with; the catalog now declares different mounts"
+            )
+        merged["volumes"] = merged_volumes
 
     # Runtime shape that the catalog may since have changed underneath a
     # running service.
@@ -1148,6 +1184,11 @@ async def _svc_remove(
     allow_delete_critical: bool = False,
 ) -> dict[str, Any]:
     _require_writer(request)
+    if allow_delete_critical:
+        # Overriding the critical-volume guard destroys state with no server-side
+        # copy - a node identity, a generated wallet. Deploying already requires
+        # owner; permanently destroying the money must not be the easier action.
+        _require_owner(request)
     worker_id = await _resolve_worker_id(worker_id)
     params: dict[str, str] | None = None
     if delete_volumes:
