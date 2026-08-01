@@ -74,6 +74,7 @@ nav:
   - Home: index.md
   - Getting Started: getting-started.md
   - Architecture: architecture.md
+  - Direction and Roadmap: roadmap.md
   - Fleet Management: fleet.md
   - Prometheus Metrics: guides/prometheus-metrics.md
   - Upgrade to v1.0.0: upgrade-v1.md
