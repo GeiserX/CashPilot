@@ -1410,6 +1410,66 @@ async def api_collect(request: Request) -> dict[str, str]:
 _MAX_ALERT_ERROR_LEN = 200
 
 
+@app.get("/api/credentials/health")
+async def api_credential_health(request: Request) -> list[dict[str, Any]]:
+    """Report how old each stored credential is and when it is expected to die.
+
+    Never returns credential VALUES - only which key it is, how old, and what
+    that means. The point is that "this will stop working tonight" is visible
+    BEFORE it happens, rather than the user discovering it because earnings
+    quietly stopped being recorded.
+    """
+    _require_auth_api(request)
+
+    from app.collectors import _COLLECTOR_ARGS, credential_lifetime, durable_alternative
+
+    updated = await database.get_config_updated_at()
+    now = datetime.now(UTC)
+    report: list[dict[str, Any]] = []
+
+    for slug, args in _COLLECTOR_ARGS.items():
+        missing_durable = [field for field in durable_alternative(slug) if f"{slug}_{field}" not in updated]
+        for arg in args:
+            field = arg.lstrip("?")
+            key = f"{slug}_{field}"
+            stamp = updated.get(key)
+            if not stamp:
+                continue  # not configured; nothing to report an age for
+
+            meta = credential_lifetime(slug, field) or {}
+            hours_total = meta.get("hours")
+            try:
+                age_hours = (now - datetime.fromisoformat(stamp).replace(tzinfo=UTC)).total_seconds() / 3600
+            except ValueError:
+                continue
+
+            if hours_total is None:
+                status = "no_known_expiry"
+            elif age_hours >= hours_total:
+                status = "likely_expired"
+            elif age_hours >= hours_total * 0.75:
+                status = "expiring_soon"
+            else:
+                status = "fresh"
+
+            entry: dict[str, Any] = {
+                "service": slug,
+                "field": field,
+                "age_hours": round(age_hours, 1),
+                "expected_lifetime_hours": hours_total,
+                "status": status,
+            }
+            if meta.get("why"):
+                entry["why"] = meta["why"]
+            # Only nag about a durable alternative when the short-lived credential
+            # is the one actually at risk.
+            if missing_durable and hours_total is not None and not meta.get("durable"):
+                entry["durable_alternative_missing"] = missing_durable
+            report.append(entry)
+
+    return report
+
+
 @app.get("/api/collector-alerts")
 async def api_collector_alerts(request: Request) -> list[dict[str, str]]:
     """Return collector errors from the last collection run (sanitized)."""
