@@ -1250,3 +1250,55 @@ class TestDockerAvailable:
                 assert orchestrator.docker_available() is False
         finally:
             orchestrator._docker_available = orig
+
+
+class TestBytelixirCookieFieldsAreOffered:
+    """The durable cookies must be declared, or they are silently unusable.
+
+    BytelixirCollector already accepted remember_web and xsrf_token, but the
+    registry declared only session_cookie — so the settings UI never asked for
+    them and make_collectors() never passed them. Since bytelixir_session
+    expires ~2h after issue, that made the collector die the same afternoon it
+    was configured, with the fix (remember_web, a year-long cookie) sitting
+    unreachable in the code.
+    """
+
+    def test_optional_cookies_are_declared(self):
+        from app.collectors import _COLLECTOR_ARGS
+
+        args = _COLLECTOR_ARGS["bytelixir"]
+        assert "session_cookie" in args
+        assert "?remember_web" in args, "durable cookie must be offered in the UI"
+        assert "?xsrf_token" in args
+
+    def test_they_are_optional_so_setup_is_not_blocked(self):
+        from app.main import _collector_needs_setup
+
+        cfg = {"bytelixir_session_cookie": "abc"}
+        assert _collector_needs_setup("bytelixir", cfg) is False
+
+    def test_missing_required_cookie_still_flags_setup(self):
+        from app.main import _collector_needs_setup
+
+        assert _collector_needs_setup("bytelixir", {}) is True
+
+    def test_declared_cookies_reach_the_collector(self):
+        from app.collectors import make_collectors
+
+        cols = make_collectors(
+            [{"slug": "bytelixir"}],
+            {
+                "bytelixir_session_cookie": "sess",
+                "bytelixir_remember_web": "rem",
+                "bytelixir_xsrf_token": "xsrf",
+            },
+        )
+        c = next(c for c in cols if c.platform == "bytelixir")
+        assert c.remember_web == "rem", "remember_web must be passed through, not dropped"
+        assert c.xsrf_token == "xsrf"
+
+    def test_all_three_are_encrypted_at_rest(self):
+        from app.database import _is_secret_key
+
+        for k in ("bytelixir_session_cookie", "bytelixir_remember_web", "bytelixir_xsrf_token"):
+            assert _is_secret_key(k), f"{k} must be encrypted and masked"

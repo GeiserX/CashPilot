@@ -1579,7 +1579,15 @@ async def api_collectors_meta(request: Request) -> list[dict[str, Any]]:
     # Per-service hints on how to obtain the credentials
     hints: dict[str, str] = {
         "bitping": "Use your Bitping account email and password (same as <a href='https://nodes.bitping.com' target='_blank'>nodes.bitping.com</a>).",
-        "bytelixir": "Log in at <a href='https://dash.bytelixir.com' target='_blank'>dash.bytelixir.com</a> (tick Remember Me), press F12 → Application → expand <b>Cookies</b> in the left sidebar → click <code>https://dash.bytelixir.com</code> → find <b>bytelixir_session</b> → copy its Value.",
+        "bytelixir": (
+            "Log in at <a href='https://dash.bytelixir.com' target='_blank'>dash.bytelixir.com</a> "
+            "<b>ticking Remember Me</b>, press F12 → Application → expand <b>Cookies</b> in the left "
+            "sidebar → click <code>https://dash.bytelixir.com</code>, then copy three values: "
+            "<b>bytelixir_session</b>, <b>remember_web_…</b> (the long one starting with that prefix) "
+            "and <b>XSRF-TOKEN</b>. "
+            "The session cookie alone expires about two hours after you copy it, so collection stops "
+            "the same afternoon; the remember_web cookie lasts a year and is what keeps it working."
+        ),
         "earnapp": "Log in at <a href='https://earnapp.com' target='_blank'>earnapp.com</a>, press F12 → Application → Cookies, copy the <b>oauth-refresh-token</b> value.",
         "earnfm": "Use your Earn.fm account email and password (same as <a href='https://app.earn.fm' target='_blank'>app.earn.fm</a> login).",
         "grass": "Log in at <a href='https://app.getgrass.io' target='_blank'>app.getgrass.io</a>, press F12 → Application → Local Storage, copy the <b>accessToken</b> value.",
