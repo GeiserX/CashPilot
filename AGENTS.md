@@ -107,6 +107,48 @@ The durable fix is to make deployed storage and catalog agree — either redeplo
 service deliberately once, where an identity reset is acceptable, or keep the bind
 mount and never redeploy that slug from the catalog.
 
+### Applying the hardening: two services fight back
+
+Verified by hardening a live 40-container fleet in place.
+
+**anyone-protocol crash-loops under `cap_drop: ALL`.** Its entrypoint chowns
+`/var/lib/anon` before dropping privileges, which needs capabilities the blanket drop
+removes:
+
+```
+chown: cannot read directory '/var/lib/anon': Permission denied
+failed to change ownership of '/var/lib/anon' to anond:anond
+```
+
+Add back the minimum set — `CHOWN`, `DAC_OVERRIDE`, `FOWNER`, `SETUID`, `SETGID` —
+which is still far stricter than Docker's ~14 defaults. Confirm recovery by the OR
+listener returning on port 9001; that is the part that earns.
+
+**honeygain restart-loops after ANY recreate, and it is not the hardening.** The log
+is:
+
+```
+Please choose a different device name. Device with this name is already active.
+```
+
+Honeygain's server still holds the previous container's session for that device name.
+It clears itself once the session expires — roughly ten restarts, then "Honeygain
+service is connected and running". Do **not** add capabilities to "fix" this: it runs
+correctly on plain `cap_drop: ALL` with no `cap_add`, and capabilities granted during
+a panic tend to stick, because a sensible recreate tool preserves the existing
+`CapAdd` on every later run.
+
+That stickiness is worth designing for: give any such tool a way to *ignore* the
+current `CapAdd` so capabilities added during one bad diagnosis can be taken back.
+
+Two more details that matter when recreating containers by hand:
+
+- `docker rm -f` is SIGKILL. Storage nodes then log `unclean shutdown detected:
+  reconciling logs` on the way back up. Stop with a timeout first.
+- `Config.User` usually comes from the image's `USER` directive, not a `--user` flag,
+  so it survives a recreate without being passed explicitly — a container that ran as
+  a non-root user still does.
+
 ### A recreated worker can lose its identity (fixed in 1.4.2)
 
 **Symptom:** after an image bump, every heartbeat returns `401 Unauthorized` and the
