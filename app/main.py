@@ -237,6 +237,37 @@ async def _collect_bounded(collector) -> Any:
         return await collector.collect()
 
 
+async def _flatline_check() -> None:
+    """Alert on services that are running but whose balance has stopped moving.
+
+    A container can be up and a collector can authenticate happily while the
+    balance never moves. Every other view of the system looks healthy, so
+    nothing else would surface it.
+
+    Never raises: this is a diagnostic, and a diagnostic must not be able to
+    take down the collection run it is diagnosing. record_alert's per-kind
+    cooldown keeps this to one notification per service rather than one per
+    collection cycle.
+    """
+    try:
+        for flat in await database.get_flatlined_services():
+            message = (
+                f"Balance has not moved in {flat['days_flat']} days "
+                f"(still {flat['balance']}). The service is running but not earning."
+            )
+            if await database.record_alert("flatline", flat["platform"], message):
+                _spawn(
+                    notify.send(
+                        f"CashPilot: {flat['platform']} is running but not earning",
+                        message,
+                        kind="flatline",
+                        subject=flat["platform"],
+                    )
+                )
+    except Exception as exc:
+        logger.warning("Flatline check failed: %s", exc)
+
+
 async def _warm_collector_alerts() -> None:
     """Restore persisted collector alerts into the in-memory list the UI bell reads.
 
@@ -333,28 +364,7 @@ async def _run_collection() -> None:
                         await database.clear_alerts("collector", result.platform)
             _collector_alerts = alerts
 
-            # Running is not earning. A container can be up and a collector can
-            # authenticate happily while the balance never moves - and every
-            # other view of the system looks healthy, so nothing else would ever
-            # surface it. The cooldown in record_alert keeps this to one
-            # notification per service rather than one per collection cycle.
-            try:
-                for flat in await database.get_flatlined_services():
-                    message = (
-                        f"Balance has not moved in {flat['days_flat']} days "
-                        f"(still {flat['balance']}). The service is running but not earning."
-                    )
-                    if await database.record_alert("flatline", flat["platform"], message):
-                        _spawn(
-                            notify.send(
-                                f"CashPilot: {flat['platform']} is running but not earning",
-                                message,
-                                kind="flatline",
-                                subject=flat["platform"],
-                            )
-                        )
-            except Exception as exc:  # never let a diagnostic break collection
-                logger.warning("Flatline check failed: %s", exc)
+            await _flatline_check()
         except Exception as exc:
             logger.error("Collection run failed: %s", exc)
             success = False

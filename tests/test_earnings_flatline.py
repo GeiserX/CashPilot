@@ -116,3 +116,91 @@ class TestFlatlineRestraint:
 
         flat = asyncio.run(run())
         assert [f["platform"] for f in flat] == ["bad"]
+
+
+class TestFlatlineReachesTheUser:
+    """Detection is useless if it never surfaces."""
+
+    def test_the_endpoint_returns_the_flatlined_services(self):
+        from unittest.mock import AsyncMock, MagicMock
+
+        from app import main
+
+        async def run():
+            with (
+                patch.object(
+                    main.database,
+                    "get_flatlined_services",
+                    AsyncMock(return_value=[{"platform": "stuck", "days_flat": 9}]),
+                ),
+                patch.object(main, "_require_auth_api", lambda r: None),
+            ):
+                return await main.api_earnings_flatlines(MagicMock())
+
+        assert asyncio.run(run()) == [{"platform": "stuck", "days_flat": 9}]
+
+    def test_a_flatline_notifies_once_and_says_how_long(self):
+        """record_alert's cooldown gates it; the message must carry the duration."""
+        from unittest.mock import AsyncMock
+
+        from app import main
+
+        sent: list[tuple[str, str]] = []
+
+        async def _fake_send(title, message, **kwargs):
+            sent.append((title, message))
+
+        async def run():
+            with (
+                patch.object(
+                    main.database,
+                    "get_flatlined_services",
+                    AsyncMock(return_value=[{"platform": "stuck", "days_flat": 9, "balance": 4.25}]),
+                ),
+                patch.object(main.database, "record_alert", AsyncMock(return_value=True)),
+                patch.object(main.notify, "send", _fake_send),
+                patch.object(main, "_spawn", lambda coro: asyncio.get_event_loop().create_task(coro)),
+            ):
+                await main._flatline_check()
+                await asyncio.sleep(0)
+
+        asyncio.run(run())
+        assert sent, "a newly detected flatline must notify"
+        title, message = sent[0]
+        assert "stuck" in title
+        assert "9 days" in message
+
+    def test_a_flatline_already_in_cooldown_does_not_notify_again(self):
+        from unittest.mock import AsyncMock
+
+        from app import main
+
+        sent = []
+
+        async def run():
+            with (
+                patch.object(
+                    main.database,
+                    "get_flatlined_services",
+                    AsyncMock(return_value=[{"platform": "stuck", "days_flat": 9, "balance": 4.25}]),
+                ),
+                # record_alert returns False while the subject is in cooldown
+                patch.object(main.database, "record_alert", AsyncMock(return_value=False)),
+                patch.object(main.notify, "send", AsyncMock(side_effect=lambda *a, **k: sent.append(a))),
+            ):
+                await main._flatline_check()
+
+        asyncio.run(run())
+        assert sent == [], "one notification per service, not one per collection cycle"
+
+    def test_a_failing_flatline_check_never_breaks_collection(self):
+        """A diagnostic must not be able to take down the thing it diagnoses."""
+        from unittest.mock import AsyncMock
+
+        from app import main
+
+        async def run():
+            with patch.object(main.database, "get_flatlined_services", AsyncMock(side_effect=RuntimeError("db down"))):
+                await main._flatline_check()  # must not raise
+
+        asyncio.run(run())
