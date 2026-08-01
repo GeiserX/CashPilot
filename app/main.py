@@ -1021,13 +1021,101 @@ async def api_deploy(request: Request, slug: str, body: DeployRequest, worker_id
     if resources:
         spec["resources"] = resources
 
+    # An existing deployment is rebuilt from what it actually ran, not from the
+    # catalog - see _merge_recorded_spec.
+    recorded = await database.get_deployment_spec(slug)
+    divergence: list[str] = []
+    if recorded:
+        volume_env_keys = {
+            m.group(1) for mapping in docker_conf.get("volumes", []) for m in re.finditer(r"\$\{(\w+)\}", str(mapping))
+        }
+        spec, divergence = _merge_recorded_spec(spec, recorded, body.env or {}, volume_env_keys)
+        if divergence:
+            logger.info("Redeploying %s from its recorded spec: %s", slug, "; ".join(divergence))
+
     result = await _proxy_worker_deploy(worker_id, slug, spec)
     container_id = result.get("container_id", "remote")
-    await database.save_deployment(slug=slug, container_id=container_id)
+    await database.save_deployment(slug=slug, container_id=container_id, spec=spec)
     await database.record_health_event(slug, "start", f"deployed to worker {worker_id}")
     metrics.record_container_lifecycle("deploy", slug)
     _spawn(_run_collection())
-    return {"status": "deployed", "container_id": container_id}
+    response: dict[str, Any] = {"status": "deployed", "container_id": container_id}
+    if divergence:
+        response["kept_from_previous_deployment"] = divergence
+    return response
+
+
+def _merge_recorded_spec(
+    catalog_spec: dict[str, Any],
+    recorded: dict[str, Any],
+    user_env: dict[str, str],
+    volume_env_keys: set[str] | None = None,
+) -> tuple[dict[str, Any], list[str]]:
+    """Rebuild an EXISTING deployment from what it actually ran.
+
+    The catalog describes what a NEW deployment looks like. It does not describe
+    what this one looks like: the running container may sit on a bind mount
+    where the catalog declares a named volume, or on a host path that only
+    existed because of an env substitution. Rebuilding from the catalog silently
+    produces a different container, and the worker destroys the old one before
+    anything can compare them - which is how a node identity gets orphaned.
+
+    So for an existing service the record wins, with two deliberate exceptions:
+    the image always comes from the catalog (otherwise upgrades could never
+    land), and anything the user explicitly typed on this deploy wins over the
+    stored value (otherwise a credential could never be corrected).
+
+    Returns the merged spec and a list of human-readable divergences, which are
+    information for the operator rather than something to resolve silently.
+    """
+    merged = dict(catalog_spec)
+    divergence: list[str] = []
+
+    # Mounts and ports define the container's identity on disk and on the
+    # network. Reproduce them exactly.
+    #
+    # One deliberate exception for mounts: if the operator typed a value this
+    # deploy that the catalog substitutes INTO a host path - Storj's
+    # ${IDENTITY_DIR}, say - they are moving the data on purpose, and honouring
+    # the old path would ignore what they just asked for. Note this is keyed on
+    # the volume-substituting keys only: retyping a password must never cost the
+    # service its mounts, which is the very bug this function exists to fix.
+    moving_paths = bool(volume_env_keys and (set(user_env) & volume_env_keys))
+    if moving_paths:
+        divergence.append("mounts: using the paths you supplied this deploy rather than the previously deployed ones")
+
+    for field, label in (("volumes", "mounts"), ("ports", "ports")):
+        if field == "volumes" and moving_paths:
+            continue
+        stored = recorded.get(field)
+        if not stored:
+            continue
+        if stored != catalog_spec.get(field):
+            divergence.append(
+                f"{label}: keeping the {label} this service was deployed with; "
+                f"the catalog now declares different {label}"
+            )
+        merged[field] = stored
+
+    # Runtime shape that the catalog may since have changed underneath a
+    # running service.
+    for field in ("command", "network_mode", "cap_add", "resources"):
+        if field in recorded and recorded.get(field) != catalog_spec.get(field):
+            divergence.append(f"{field}: keeping the deployed value")
+            merged[field] = recorded[field]
+
+    # env: catalog defaults provide any newly added keys, the record provides
+    # what this deployment actually used, and an explicit entry from the user
+    # overrides both.
+    stored_env = recorded.get("env")
+    if isinstance(stored_env, dict):
+        env = dict(catalog_spec.get("env") or {})
+        for key, value in stored_env.items():
+            if key not in user_env:
+                env[key] = value
+        merged["env"] = env
+
+    return merged, divergence
 
 
 # The stop/restart/remove lifecycle actions each have two public routes — the flat
@@ -2016,7 +2104,14 @@ async def api_worker_command(request: Request, worker_id: int, body: WorkerComma
     slug = body.slug
     if body.command == "deploy":
         container_id = result.get("container_id", "remote")
-        await database.save_deployment(slug=slug, container_id=container_id)
+        # Record the spec this route actually deployed. It is supplied raw by the
+        # caller rather than built from the catalog, so it is the only description
+        # of this container that will ever exist.
+        await database.save_deployment(
+            slug=slug,
+            container_id=container_id,
+            spec=body.spec if isinstance(body.spec, dict) else None,
+        )
         await database.record_health_event(slug, "start", f"deployed to worker {worker_id}")
         metrics.record_container_lifecycle("deploy", slug)
         _spawn(_run_collection())

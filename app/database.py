@@ -8,6 +8,7 @@ fallback to ./data/cashpilot.db for development.
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import os
 from datetime import UTC, datetime, timedelta
@@ -120,10 +121,18 @@ CREATE TABLE IF NOT EXISTS config (
     value TEXT NOT NULL
 );
 
+-- spec_encrypted holds the FULL resolved container spec as it was actually
+-- deployed (image, env, volumes, ports, command, resources), Fernet-encrypted
+-- because env carries credentials. Without it a redeploy has to rebuild the
+-- spec from the catalog and silently produces a different container whenever
+-- the running one diverged - which is how node identities get orphaned.
+-- env_vars_encrypted predates this and was never written; spec_encrypted
+-- supersedes it.
 CREATE TABLE IF NOT EXISTS deployments (
     slug               TEXT PRIMARY KEY,
     container_id       TEXT NOT NULL,
     env_vars_encrypted TEXT NOT NULL DEFAULT '',
+    spec_encrypted     TEXT NOT NULL DEFAULT '',
     deployed_at        TEXT NOT NULL DEFAULT (datetime('now')),
     status             TEXT NOT NULL DEFAULT 'running'
 );
@@ -378,6 +387,14 @@ async def init_db() -> None:
         earnings_cols = {row["name"] for row in await cursor.fetchall()}
         if "fx_rate_usd" not in earnings_cols:
             await db.execute("ALTER TABLE earnings ADD COLUMN fx_rate_usd REAL")
+
+        # Migrate deployments table: add spec_encrypted so an existing install starts
+        # remembering what it deployed. Rows written before this stay empty and fall
+        # back to the catalog, exactly as they do today.
+        cursor = await db.execute("PRAGMA table_info(deployments)")
+        deployment_cols = {row["name"] for row in await cursor.fetchall()}
+        if "spec_encrypted" not in deployment_cols:
+            await db.execute("ALTER TABLE deployments ADD COLUMN spec_encrypted TEXT NOT NULL DEFAULT ''")
 
         # Migrate users table: add password_changed_at for session invalidation
         cursor = await db.execute("PRAGMA table_info(users)")
@@ -783,20 +800,76 @@ async def save_deployment(
     container_id: str,
     env_vars_encrypted: str = "",
     status: str = "running",
+    spec: dict[str, Any] | None = None,
 ) -> None:
+    """Record a deployment, including the spec that was actually used.
+
+    ``spec`` is serialised and encrypted at rest because it embeds the service's
+    environment, which carries credentials. Passing None preserves any spec
+    already recorded for this slug rather than blanking it, so a caller that
+    only knows the container id (an external service, a status update) cannot
+    erase the deployment's memory of itself.
+    """
+    spec_encrypted = ""
+    if spec is not None:
+        try:
+            spec_encrypted = encrypt_value(json.dumps(spec, sort_keys=True))
+        except (TypeError, ValueError):
+            # A deploy must not fail because the bookkeeping did. Degrade to
+            # today's behaviour - no record, so the next redeploy rebuilds from
+            # the catalog - but say so loudly, because that redeploy is then the
+            # one that can silently change the container.
+            _logger.error(
+                "Could not serialise the deployed spec for %s; it will NOT be recorded, "
+                "so a later redeploy will fall back to the catalog",
+                slug,
+                exc_info=True,
+            )
+    else:
+        existing = await get_deployment(slug)
+        if existing:
+            spec_encrypted = existing.get("spec_encrypted") or ""
+
     db = await _get_db()
     try:
         await db.execute(
             """
             INSERT OR REPLACE INTO deployments
-                (slug, container_id, env_vars_encrypted, deployed_at, status)
-            VALUES (?, ?, ?, datetime('now'), ?)
+                (slug, container_id, env_vars_encrypted, spec_encrypted, deployed_at, status)
+            VALUES (?, ?, ?, ?, datetime('now'), ?)
             """,
-            (slug, container_id, env_vars_encrypted, status),
+            (slug, container_id, env_vars_encrypted, spec_encrypted, status),
         )
         await db.commit()
     finally:
         await db.close()
+
+
+async def get_deployment_spec(slug: str) -> dict[str, Any] | None:
+    """Return the spec this service was actually deployed with, or None.
+
+    None means "no record" - a deployment made before this existed, or one whose
+    stored spec can no longer be decrypted. Callers must fall back to the
+    catalog in that case rather than deploying a half-remembered spec, which
+    would be worse than deploying a fresh one.
+    """
+    row = await get_deployment(slug)
+    if not row:
+        return None
+    blob = row.get("spec_encrypted") or ""
+    if not blob:
+        return None
+    raw = decrypt_value(blob)
+    if not raw:
+        # decrypt_value returns "" on a key mismatch and has already logged it.
+        _logger.warning("Recorded spec for %s could not be decrypted; falling back to the catalog", slug)
+        return None
+    try:
+        spec = json.loads(raw)
+    except ValueError:
+        _logger.warning("Recorded spec for %s is not valid JSON; falling back to the catalog", slug)
+        return None
+    return spec if isinstance(spec, dict) else None
 
 
 async def get_deployments() -> list[dict[str, Any]]:
