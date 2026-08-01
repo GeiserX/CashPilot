@@ -9,7 +9,13 @@ nothing is destroyed when the guard fires.
 
 from __future__ import annotations
 
+import os
 from unittest.mock import MagicMock, patch
+
+# Must be set before app.worker_api is imported: with no key configured the
+# worker refuses every request, so this module would otherwise pass only when
+# some other test module happened to be collected first and set it.
+os.environ.setdefault("CASHPILOT_API_KEY", "test-fleet-key")
 
 import pytest
 
@@ -135,3 +141,108 @@ class TestRemoveGuard:
 
         container.remove.assert_called_once()
         assert result["deleted_volumes"] == []
+
+
+class TestCatalogRobustness:
+    def test_malformed_entries_are_skipped_not_crashed_on(self):
+        """A hand-edited YAML must not take the worker down."""
+        bad = {
+            "slug": "bad-svc",
+            "docker": {"critical_volumes": ["not-a-mapping", {"holds": "no target"}, {"target": "/keep"}]},
+        }
+        with patch.object(catalog, "get_service", return_value=bad):
+            assert catalog.critical_volume_targets("bad-svc") == {"/keep": "Irreplaceable service state."}
+
+
+class TestWorkerEndpoint:
+    """The refusal must reach the caller as a 409 carrying the reason."""
+
+    def _client(self):
+        from contextlib import asynccontextmanager
+
+        from fastapi.testclient import TestClient
+
+        from app import worker_api
+
+        @asynccontextmanager
+        async def _noop(app):
+            yield
+
+        worker_api.app.router.lifespan_context = _noop
+        return TestClient(worker_api.app, raise_server_exceptions=False), worker_api
+
+    def test_blocked_delete_returns_409_with_the_reason(self):
+        client, worker_api = self._client()
+        blocked = [{"volume": "storj-identity", "target": "/app/identity", "holds": "Node identity."}]
+        err = orchestrator.CriticalVolumeError("storj", blocked)
+
+        with patch("app.worker_api.orchestrator.remove_service", side_effect=err):
+            resp = client.delete(
+                "/api/containers/storj?delete_volumes=true",
+                headers={"Authorization": f"Bearer {worker_api.API_KEY}"},
+            )
+
+        assert resp.status_code == 409
+        detail = resp.json()["detail"]
+        assert detail["error"] == "critical_volume"
+        assert detail["blocked"] == blocked
+        assert "allow_delete_critical" in detail["hint"]
+
+    def test_override_is_forwarded_to_the_orchestrator(self):
+        client, worker_api = self._client()
+        removal = {"container": "cashpilot-storj", "deleted_volumes": [], "failed_volumes": []}
+
+        with patch("app.worker_api.orchestrator.remove_service", return_value=removal) as mock:
+            resp = client.delete(
+                "/api/containers/storj?delete_volumes=true&allow_delete_critical=true",
+                headers={"Authorization": f"Bearer {worker_api.API_KEY}"},
+            )
+
+        assert resp.status_code == 200
+        mock.assert_called_once_with("storj", delete_volumes=True, allow_delete_critical=True)
+
+
+class TestSafeWorkerDetail:
+    """The UI must forward the reason without becoming a generic error relay."""
+
+    def _resp(self, payload):
+        r = MagicMock()
+        r.json.return_value = payload
+        return r
+
+    def test_critical_volume_detail_is_forwarded_and_sanitised(self):
+        from app.main import _safe_worker_detail
+
+        detail = _safe_worker_detail(
+            self._resp(
+                {
+                    "detail": {
+                        "error": "critical_volume",
+                        "message": "no",
+                        "hint": "back up first",
+                        "blocked": [{"volume": "v", "target": "/t", "holds": "h", "secret": "leak"}],
+                    }
+                }
+            )
+        )
+        assert detail["blocked"] == [{"volume": "v", "target": "/t", "holds": "h"}]
+        assert "secret" not in detail["blocked"][0]
+
+    def test_other_worker_errors_stay_generic(self):
+        from app.main import _safe_worker_detail
+
+        assert _safe_worker_detail(self._resp({"detail": {"error": "something_else", "blocked": []}})) is None
+        assert _safe_worker_detail(self._resp({"detail": "plain string"})) is None
+        assert _safe_worker_detail(self._resp({})) is None
+
+    def test_non_json_body_is_not_forwarded(self):
+        from app.main import _safe_worker_detail
+
+        r = MagicMock()
+        r.json.side_effect = ValueError("not json")
+        assert _safe_worker_detail(r) is None
+
+    def test_malformed_blocked_list_is_not_forwarded(self):
+        from app.main import _safe_worker_detail
+
+        assert _safe_worker_detail(self._resp({"detail": {"error": "critical_volume", "blocked": "nope"}})) is None
