@@ -116,3 +116,48 @@ _SEEN = {
     preflight.REDUCED,
     preflight.EARNS_NOTHING,
 }
+
+
+class TestPreflightEndpoint:
+    def _call(self, slug, worker_id=None, worker=None, deployments=None):
+        import asyncio
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        from app import main
+
+        async def run():
+            with (
+                patch.object(main, "_require_auth_api", lambda r: None),
+                patch.object(main.database, "get_deployments", AsyncMock(return_value=deployments or [])),
+                patch.object(main.database, "get_worker", AsyncMock(return_value=worker)),
+            ):
+                return await main.api_service_preflight(MagicMock(), slug, worker_id=worker_id)
+
+        return asyncio.run(run())
+
+    def test_an_unknown_service_is_a_404(self):
+        from fastapi import HTTPException
+
+        with pytest.raises(HTTPException) as exc:
+            self._call("no-such-service")
+        assert exc.value.status_code == 404
+
+    def test_it_returns_a_verdict_for_a_real_service(self):
+        result = self._call("storj")
+        assert result["slug"] == "storj"
+        assert result["verdict"] in _SEEN
+        assert result["blocking"] is False
+
+    def test_a_duplicate_on_the_named_worker_is_detected(self):
+        """Scoped to that worker: a per-IP limit is about ONE machine."""
+        worker = {
+            "containers": [{"service": "honeygain"}],
+            "system_info": {"arch": "x86_64"},
+        }
+        result = self._call("honeygain", worker_id=1, worker=worker)
+        assert result["verdict"] in {preflight.REDUCED, preflight.EARNS_NOTHING}
+        assert result["worker_arch"] == "x86_64"
+
+    def test_without_a_worker_it_falls_back_to_all_deployments(self):
+        result = self._call("honeygain", deployments=[{"slug": "honeygain"}])
+        assert result["verdict"] in {preflight.REDUCED, preflight.EARNS_NOTHING}
