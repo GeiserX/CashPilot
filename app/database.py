@@ -43,6 +43,22 @@ SECRET_CONFIG_KEYS = {
     "brd_sess_id",
     "remember_web",
     "xsrf_token",
+    # Added after an audit found that the at-rest boundary was a naming
+    # convention with nothing enforcing it: a collector argument called
+    # "cookie" or "seed" was silently stored in plaintext. Matching is by
+    # suffix, and reads are backward compatible (a value without the "enc:"
+    # prefix is returned as-is), so widening this list only affects new writes.
+    "cookie",
+    "credential",
+    "bearer",
+    "jwt",
+    "passphrase",
+    "secret",
+    "seed",
+    "mnemonic",
+    "private_key",
+    "keyfile",
+    "refresh_token",
 }
 
 
