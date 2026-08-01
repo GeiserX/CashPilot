@@ -27,6 +27,11 @@ docker:
     - "anon-data:/var/lib/anon"
     - "anon-config:/etc/anon"
     - "anon-run:/run/anon"
+  critical_volumes:
+    - target: "/var/lib/anon"
+      holds: >-
+        Relay ed25519 identity key. Destroying it retires the relay's reputation
+        and restarts its earning history from zero.
   command: ""
   network_mode: ""
   notes: >

@@ -1052,10 +1052,20 @@ async def _svc_restart(request: Request, slug: str, worker_id: int | None) -> di
     return result
 
 
-async def _svc_remove(request: Request, slug: str, worker_id: int | None, delete_volumes: bool) -> dict[str, Any]:
+async def _svc_remove(
+    request: Request,
+    slug: str,
+    worker_id: int | None,
+    delete_volumes: bool,
+    allow_delete_critical: bool = False,
+) -> dict[str, Any]:
     _require_writer(request)
     worker_id = await _resolve_worker_id(worker_id)
-    params = {"delete_volumes": "true"} if delete_volumes else None
+    params: dict[str, str] | None = None
+    if delete_volumes:
+        params = {"delete_volumes": "true"}
+        if allow_delete_critical:
+            params["allow_delete_critical"] = "true"
     result = await _proxy_worker_command(worker_id, "remove", slug, params=params)
     await database.remove_deployment(slug)
     await database.record_health_event(slug, "remove")
@@ -1075,9 +1085,13 @@ async def api_restart(request: Request, slug: str, worker_id: int | None = None)
 
 @app.delete("/api/remove/{slug}")
 async def api_remove(
-    request: Request, slug: str, worker_id: int | None = None, delete_volumes: bool = False
+    request: Request,
+    slug: str,
+    worker_id: int | None = None,
+    delete_volumes: bool = False,
+    allow_delete_critical: bool = False,
 ) -> dict[str, Any]:
-    return await _svc_remove(request, slug, worker_id, delete_volumes)
+    return await _svc_remove(request, slug, worker_id, delete_volumes, allow_delete_critical)
 
 
 # ---------------------------------------------------------------------------
@@ -1116,6 +1130,44 @@ async def _get_verified_worker_url(worker: dict[str, Any]) -> tuple[str, dict[st
     return url, headers
 
 
+# Worker error bodies are not forwarded verbatim: they can carry internal paths
+# and hostnames. Only errors the worker deliberately structures for the operator
+# are passed through, and only the fields we expect.
+_FORWARDABLE_WORKER_ERRORS = {"critical_volume"}
+
+
+def _safe_worker_detail(resp: Any) -> dict[str, Any] | None:
+    """Return a worker error detail that is safe to show, or None.
+
+    A refusal to destroy irreplaceable data is useless to the operator without
+    the reason - "409" alone does not say which volume, or what is in it - so
+    that specific shape is forwarded. Everything else stays generic.
+    """
+    try:
+        detail = (resp.json() or {}).get("detail")
+    except (ValueError, AttributeError):
+        return None
+    if not isinstance(detail, dict) or detail.get("error") not in _FORWARDABLE_WORKER_ERRORS:
+        return None
+    blocked = detail.get("blocked")
+    if not isinstance(blocked, list):
+        return None
+    return {
+        "error": detail["error"],
+        "message": str(detail.get("message") or ""),
+        "hint": str(detail.get("hint") or ""),
+        "blocked": [
+            {
+                "volume": str(b.get("volume", "")),
+                "target": str(b.get("target", "")),
+                "holds": str(b.get("holds", "")),
+            }
+            for b in blocked
+            if isinstance(b, dict)
+        ],
+    }
+
+
 async def _proxy_to_worker(
     worker_id: int,
     method: str,
@@ -1147,7 +1199,10 @@ async def _proxy_to_worker(
                 resp = await client.post(f"{url}{path}", json=json, params=params, headers=headers)
             if resp.status_code >= 400:
                 logger.warning("worker proxy error (%s): %s", resp.status_code, resp.text)
-                raise HTTPException(status_code=resp.status_code, detail="Worker request failed")
+                raise HTTPException(
+                    status_code=resp.status_code,
+                    detail=_safe_worker_detail(resp) or "Worker request failed",
+                )
             return resp.json()
     except httpx.HTTPError as exc:
         logger.warning("worker proxy error: %s", exc)
@@ -1209,9 +1264,13 @@ async def api_service_logs(
 
 @app.delete("/api/services/{slug}")
 async def api_service_remove(
-    request: Request, slug: str, worker_id: int | None = None, delete_volumes: bool = False
+    request: Request,
+    slug: str,
+    worker_id: int | None = None,
+    delete_volumes: bool = False,
+    allow_delete_critical: bool = False,
 ) -> dict[str, Any]:
-    return await _svc_remove(request, slug, worker_id, delete_volumes)
+    return await _svc_remove(request, slug, worker_id, delete_volumes, allow_delete_critical)
 
 
 # ---------------------------------------------------------------------------

@@ -16,12 +16,13 @@ import docker
 from docker.errors import APIError, DockerException, NotFound
 
 try:
-    from app.catalog import get_service, get_services
+    from app.catalog import critical_volume_targets, get_service, get_services
 except ImportError:
     # Defensive fallback if the catalog module isn't importable in some context.
     # (The worker image does ship catalog.py + services/, so this normally no-ops.)
     get_service = None  # type: ignore[assignment]
     get_services = None  # type: ignore[assignment]
+    critical_volume_targets = None  # type: ignore[assignment]
 
 logger = logging.getLogger(__name__)
 
@@ -274,20 +275,87 @@ def restart_service(slug: str) -> None:
     logger.info("Restarted container %s", container.name)
 
 
-def remove_service(slug: str, delete_volumes: bool = False) -> dict[str, Any]:
+class CriticalVolumeError(Exception):
+    """Raised when a delete would destroy state the catalog marks irreplaceable.
+
+    Carries the blocked mounts so the caller can tell the operator exactly what
+    would have been lost, rather than just refusing.
+    """
+
+    def __init__(self, slug: str, blocked: list[dict[str, str]]) -> None:
+        self.slug = slug
+        self.blocked = blocked
+        targets = ", ".join(b["target"] for b in blocked)
+        super().__init__(f"Refusing to delete critical volume(s) for {slug}: {targets}")
+
+
+def _critical_volume_targets(slug: str) -> dict[str, str] | None:
+    """Look up critical mounts, returning None when it cannot be determined.
+
+    The worker image ships the catalog, but a trimmed build might not. Import
+    failure is treated as "unknown", which the caller refuses on, so a missing
+    catalog can never quietly permit an irreversible delete.
+    """
+    if critical_volume_targets is None:
+        return None
+    try:
+        return critical_volume_targets(slug)
+    except Exception:  # pragma: no cover - defensive
+        logger.exception("Could not resolve critical volumes for %s", slug)
+        return None
+
+
+def remove_service(slug: str, delete_volumes: bool = False, allow_delete_critical: bool = False) -> dict[str, Any]:
     """Stop and remove the container for a service.
 
     When delete_volumes is True, also remove named volumes that were
     mounted into the container. Bind mounts and anonymous volumes are skipped.
+
+    Volumes the catalog marks as critical are refused unless
+    ``allow_delete_critical`` is set. This is the only irreversible path in the
+    codebase: the data behind these mounts — node identities, keystores,
+    generated wallets — has no server-side copy and no backup, so a mistake here
+    cannot be undone by redeploying.
     """
     container = _find_container(slug)
     name = container.name
 
     volume_names: list[str] = []
     if delete_volumes:
+        critical = _critical_volume_targets(slug)
+        blocked: list[dict[str, str]] = []
         for m in container.attrs.get("Mounts", []) or []:
             if m.get("Type") == "volume" and m.get("Name"):
                 volume_names.append(m["Name"])
+                destination = m.get("Destination") or ""
+                if critical is None:
+                    # Criticality could not be determined. Refuse rather than
+                    # guess: an unknown slug or a catalog-less build must not
+                    # silently unlock an irreversible delete.
+                    blocked.append(
+                        {
+                            "volume": m["Name"],
+                            "target": destination,
+                            "holds": (
+                                f"Cannot determine whether this volume is critical: {slug!r} "
+                                "is not in the catalog on this worker. Refusing to delete "
+                                "something that might be irreplaceable."
+                            ),
+                        }
+                    )
+                elif destination in critical:
+                    blocked.append(
+                        {
+                            "volume": m["Name"],
+                            "target": destination,
+                            "holds": critical[destination],
+                        }
+                    )
+
+        # Check BEFORE removing the container: refusing after that point would
+        # already have destroyed something.
+        if blocked and not allow_delete_critical:
+            raise CriticalVolumeError(slug, blocked)
 
     container.remove(force=True)
     logger.info("Removed container %s", name)

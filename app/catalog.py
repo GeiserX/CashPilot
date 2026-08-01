@@ -166,3 +166,28 @@ def register_sighup() -> None:
     """Register SIGHUP handler for catalog reload (Unix only)."""
     if sys.platform != "win32":
         signal.signal(signal.SIGHUP, _sighup_handler)
+
+
+def critical_volume_targets(slug: str) -> dict[str, str] | None:
+    """Return {container_path: why_it_matters} for a service's irreplaceable mounts.
+
+    Returns ``None`` when criticality cannot be determined at all — an unknown
+    slug, or a build whose image does not ship the catalog. Callers must treat
+    ``None`` as "unsafe to destroy", not as "nothing is critical": silently
+    allowing deletion because the catalog was missing is exactly the kind of
+    fail-open this guard exists to prevent. An empty dict means the catalog was
+    read and the service genuinely declares nothing critical.
+    """
+    svc = get_service(slug)
+    if svc is None:
+        return None
+    docker = svc.get("docker") or {}
+    entries = docker.get("critical_volumes") or []
+    targets: dict[str, str] = {}
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        target = entry.get("target")
+        if target:
+            targets[str(target)] = str(entry.get("holds") or "Irreplaceable service state.")
+    return targets

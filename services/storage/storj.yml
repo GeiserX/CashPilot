@@ -57,6 +57,16 @@ docker:
   volumes:
     - "${IDENTITY_DIR}:/app/identity"
     - "${STORAGE_DIR}:/app/config"
+  critical_volumes:
+    - target: "/app/identity"
+      holds: >-
+        Node identity. Its ID is proof-of-work bound and takes hours to
+        regenerate, and it cannot be recreated from a backup of anything else.
+        Losing it forfeits the held payout balance.
+    - target: "/app/config"
+      holds: >-
+        Stored customer data and the node's held amount. Losing it disqualifies
+        the node and forfeits the held balance.
   command: "--operator.wallet-features=zksync-era"
   network_mode: ""
   stop_timeout: 300
