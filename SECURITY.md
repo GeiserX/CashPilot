@@ -125,6 +125,29 @@ Worker URLs arrive in the fleet-key-authenticated heartbeat and are later fetche
 - **Default policy is permissive**: LAN (RFC1918) and Tailscale (CGNAT `100.64.0.0/10`) workers keep working out of the box with no configuration.
 - **Opt-in `strict` mode** restricts workers to an explicit allowlist of CIDRs and hostname suffixes. See [Fleet Management](docs/fleet.md) for `CASHPILOT_WORKER_URL_POLICY`, `CASHPILOT_WORKER_ALLOWED_HOSTS`, and `CASHPILOT_WORKER_ALLOW_METADATA`.
 
+## What CashPilot will never do
+
+Three constraints are deliberate design decisions, not gaps waiting to be filled. They are recorded here because this is the file someone reads just before proposing to cross one of them.
+
+**We will never hold your keys on a server we control.** Software that runs on your own machine — where key material never leaves it and the maintainers cannot read it — is a fundamentally different thing from a service that holds other people's secrets. The second is a regulated activity carrying licensing, capital and anti-money-laundering obligations. Staying on the self-hosted side of that line is a constraint we design around, not an oversight.
+
+**We will never offer key recovery.** If you lose your encryption key or your passphrase, the data encrypted under it is gone. There is no reset link and no support route, because a recovery path we could operate would mean we could decrypt your data — which is the thing we just said we will not do. Saying this plainly is more honest than implying a safety net that does not exist. Back up `/data/.fernet_key`.
+
+**We will never ship tooling that eases multi-account evasion.** Several providers forbid more than one account per household. Making evasion easy would put users at risk of forfeited balances for the sake of a feature we cannot make safe.
+
+### For contributors
+
+A pull request that adds any of the following will be declined with a link to this section:
+
+- a server-held key, passphrase, or seed — including "remember it for convenience"
+- a cloud sync or hosted-backup path for credentials or wallet material
+- an automatic off-machine backup timer
+- anything whose purpose is to make one household look like several accounts
+
+The tempting version of the first one is real and will come up: once encrypted backup and restore exists, "just let the server remember the passphrase so restore is easier" is the obvious next request. The answer is no, for the reason above. Convenience that requires us to be able to decrypt your data is the exact thing this boundary exists to prevent.
+
+The reasoning in full is in [Direction and Roadmap](https://geiserx.github.io/CashPilot/roadmap/).
+
 ## Hardening Recommendations
 
 1. **Use a reverse proxy with TLS** if accessible beyond localhost
