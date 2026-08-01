@@ -174,7 +174,7 @@ class TestConfigCiphertext:
                 patch.object(database, "DB_PATH", tmp_path / "cashpilot.db"),
             ):
                 await database.init_db()
-                await database.set_config("honeygain_password", "s3cr3t-value")
+                await database.set_config("honeygain_password", "PLACEHOLDER-not-a-real-secret")
                 conn = await database._get_db()
                 try:
                     cur = await conn.execute("SELECT value FROM config WHERE key = 'honeygain_password'")
@@ -184,4 +184,4 @@ class TestConfigCiphertext:
 
         stored = asyncio.run(run())
         assert stored.startswith("enc:"), "a collector secret must not be stored in plaintext"
-        assert "s3cr3t-value" not in stored
+        assert "PLACEHOLDER-not-a-real-secret" not in stored
