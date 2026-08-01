@@ -47,6 +47,10 @@ class TestCredentialEncryptionBoundary:
             for arg in args:
                 name = arg.lstrip("?")
                 if name in PUBLIC_COLLECTOR_FIELDS:
+                    assert PUBLIC_COLLECTOR_FIELDS[name].strip(), (
+                        f"{name} is exempted from encryption but gives no reason; "
+                        "an empty reason must not permit plaintext storage"
+                    )
                     continue
                 if not _is_secret_key(f"{slug}_{name}"):
                     unprotected.append(f"{slug}_{name}")
@@ -60,7 +64,20 @@ class TestCredentialEncryptionBoundary:
 
     @pytest.mark.parametrize(
         "field",
-        ["cookie", "seed", "mnemonic", "private_key", "passphrase", "jwt", "bearer", "api_key", "password"],
+        [
+            "cookie",
+            "seed",
+            "mnemonic",
+            "private_key",
+            "passphrase",
+            "jwt",
+            "bearer",
+            "credential",
+            "api_key",
+            "password",
+            "keyfile",
+            "refresh_token",
+        ],
     )
     def test_obvious_secret_names_are_covered(self, field):
         """Guards the wallet work: a seed phrase must never land in plaintext."""
@@ -76,19 +93,36 @@ class TestSecureByDefault:
 
         from app import metrics
 
-        for value in ("", "false", "0", "no"):
-            os.environ["CASHPILOT_METRICS_ENABLED"] = value
-            try:
+        saved = os.environ.pop("CASHPILOT_METRICS_ENABLED", None)
+        try:
+            # The real fresh-install case: the variable is not set at all.
+            assert not importlib.reload(metrics).METRICS_ENABLED, "must be off when unset"
+            # And explicitly falsy values do not enable it either.
+            for value in ("", "false", "0", "no"):
+                os.environ["CASHPILOT_METRICS_ENABLED"] = value
                 assert not importlib.reload(metrics).METRICS_ENABLED, f"enabled by {value!r}"
-            finally:
                 os.environ.pop("CASHPILOT_METRICS_ENABLED", None)
-        importlib.reload(metrics)
+            # Sanity: it CAN be turned on, so the test is not vacuous.
+            os.environ["CASHPILOT_METRICS_ENABLED"] = "true"
+            assert importlib.reload(metrics).METRICS_ENABLED
+        finally:
+            os.environ.pop("CASHPILOT_METRICS_ENABLED", None)
+            if saved is not None:
+                os.environ["CASHPILOT_METRICS_ENABLED"] = saved
+            importlib.reload(metrics)
 
     def test_alerting_is_inert_until_configured(self):
         """No delivery target configured must mean nothing is sent anywhere."""
+        # notify.py reads CASHPILOT_TELEGRAM_BOT_TOKEN + _CHAT_ID, not _TOKEN;
+        # clearing the wrong name left the test unable to isolate the check.
         saved = {
             k: os.environ.pop(k, None)
-            for k in ("CASHPILOT_NTFY_URL", "CASHPILOT_WEBHOOK_URL", "CASHPILOT_TELEGRAM_TOKEN")
+            for k in (
+                "CASHPILOT_NTFY_URL",
+                "CASHPILOT_WEBHOOK_URL",
+                "CASHPILOT_TELEGRAM_BOT_TOKEN",
+                "CASHPILOT_TELEGRAM_CHAT_ID",
+            )
         }
         try:
             assert notify.configured_targets() == []
@@ -123,3 +157,31 @@ class TestNoTelemetry:
             lowered = path.read_text().lower()
             offenders += [f"{path.name}:{n}" for n in needles if n in lowered]
         assert not offenders, f"telemetry-shaped code found: {offenders}"
+
+
+class TestConfigCiphertext:
+    """A collector secret written through the config layer must land encrypted."""
+
+    def test_a_collector_password_is_stored_with_the_enc_prefix(self, tmp_path):
+        import asyncio
+        from unittest.mock import patch
+
+        from app import database
+
+        async def run():
+            with (
+                patch.object(database, "DB_DIR", tmp_path),
+                patch.object(database, "DB_PATH", tmp_path / "cashpilot.db"),
+            ):
+                await database.init_db()
+                await database.set_config("honeygain_password", "s3cr3t-value")
+                conn = await database._get_db()
+                try:
+                    cur = await conn.execute("SELECT value FROM config WHERE key = 'honeygain_password'")
+                    return (await cur.fetchone())["value"]
+                finally:
+                    await conn.close()
+
+        stored = asyncio.run(run())
+        assert stored.startswith("enc:"), "a collector secret must not be stored in plaintext"
+        assert "s3cr3t-value" not in stored
