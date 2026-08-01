@@ -1134,11 +1134,21 @@ def _merge_recorded_spec(
         merged["volumes"] = merged_volumes
 
     # Runtime shape that the catalog may since have changed underneath a
-    # running service.
+    # running service. hostname is included because several bandwidth services
+    # key their device identity to the container hostname: on a redeploy where
+    # the operator leaves the hostname field empty, catalog_spec["hostname"] is
+    # None, and rebuilding from that would silently give the service a new
+    # identity. As with env, a hostname the operator typed THIS deploy still
+    # wins - a non-empty catalog_spec value is what they just asked for.
     for field in ("command", "network_mode", "cap_add", "resources"):
         if field in recorded and recorded.get(field) != catalog_spec.get(field):
             divergence.append(f"{field}: keeping the deployed value")
             merged[field] = recorded[field]
+
+    stored_hostname = recorded.get("hostname")
+    if stored_hostname and not catalog_spec.get("hostname") and stored_hostname != catalog_spec.get("hostname"):
+        divergence.append("hostname: keeping the hostname this service was deployed with")
+        merged["hostname"] = stored_hostname
 
     # env: catalog defaults provide any newly added keys, the record provides
     # what this deployment actually used, and an explicit entry from the user
