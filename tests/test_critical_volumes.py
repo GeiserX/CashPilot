@@ -305,3 +305,27 @@ class TestOverrideAuthorization:
             asyncio.run(main._svc_remove(request=MagicMock(), slug="honeygain", worker_id=1, delete_volumes=True))
 
         assert owner_checked == [], "a normal delete must not suddenly require owner"
+
+
+class TestSafeWorkerDetailRobustness:
+    def test_a_non_string_error_does_not_crash_the_sanitiser(self):
+        """A hostile/garbled worker body must degrade to generic, not 500."""
+        from unittest.mock import MagicMock as MM
+
+        from app.main import _safe_worker_detail
+
+        r = MM()
+        r.json.return_value = {"detail": {"error": ["a", "list"], "blocked": []}}
+        assert _safe_worker_detail(r) is None
+
+    def test_a_path_with_a_trailing_slash_still_matches_a_critical_target(self):
+        from unittest.mock import patch as _p
+
+        bad = {"slug": "s", "docker": {"critical_volumes": [{"target": "/app/identity/", "holds": "x"}]}}
+        container = _container([_volume_mount("v", "/app/identity")])
+        with (
+            _p.object(catalog, "get_service", return_value=bad),
+            _p.object(orchestrator, "_find_container", return_value=container),
+            pytest.raises(orchestrator.CriticalVolumeError),
+        ):
+            orchestrator.remove_service("s", delete_volumes=True)

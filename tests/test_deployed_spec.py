@@ -305,3 +305,21 @@ class TestMergeRecordedSpec:
         )
         assert merged["volumes"]["newvol"] == {"bind": "/app/cache", "mode": "rw"}
         assert merged["volumes"]["/old"] == {"bind": "/app/data", "mode": "rw"}
+
+    def test_hostname_is_preserved_when_the_operator_leaves_it_blank(self):
+        """Several services key device identity to the hostname."""
+        merged, divergence = _merge_recorded_spec(
+            {"image": "i", "env": {}, "hostname": None},
+            {"image": "i", "env": {}, "hostname": "cashpilot-node-7"},
+            user_env={},
+        )
+        assert merged["hostname"] == "cashpilot-node-7"
+        assert any("hostname" in d for d in divergence)
+
+    def test_a_hostname_typed_this_deploy_wins(self):
+        merged, _ = _merge_recorded_spec(
+            {"image": "i", "env": {}, "hostname": "new-name"},
+            {"image": "i", "env": {}, "hostname": "old-name"},
+            user_env={},
+        )
+        assert merged["hostname"] == "new-name"
