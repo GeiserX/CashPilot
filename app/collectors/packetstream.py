@@ -52,18 +52,36 @@ class PacketStreamCollector(BaseCollector):
             balance = 0.0
             parsed = False
 
-            # Pattern 1: server-rendered Balance card (current)
-            # <h3>Balance</h3>...<h2 ...>$0.13</h2>
+            # Pattern 1: the Balance metric card (current layout).
+            #   <div class="card metric-card metric-card-balance">
+            #     <h2 class=metric-title>Balance</h2>
+            #     <p class="card-subtitle ...">Available Funds
+            #     <h2 class="default-font fw-600">$2.12</h2>
+            # Anchored on the semantic class, NOT a heading level: the heading has
+            # already moved once (<h3>Balance</h3> -> <h2 class=metric-title>), which
+            # is what silently broke this collector. The markup is also minified with
+            # unquoted attributes, so do not require quotes around class values.
             match = re.search(
-                r"<h3>Balance</h3>.*?<h2[^>]*>\$?([\d.]+)</h2>",
+                r"metric-card-balance.{0,400}?\$\s*([\d,]+(?:\.\d+)?)",
                 html,
                 re.DOTALL,
             )
             if match:
-                balance = float(match.group(1))
+                balance = float(match.group(1).replace(",", ""))
                 parsed = True
 
-            # Pattern 2: window.userData JSON (legacy)
+            # Pattern 2: the older Balance card layout.
+            if not parsed:
+                match = re.search(
+                    r"<h3>Balance</h3>.*?<h2[^>]*>\$?([\d.]+)</h2>",
+                    html,
+                    re.DOTALL,
+                )
+                if match:
+                    balance = float(match.group(1))
+                    parsed = True
+
+            # Pattern 3: window.userData JSON (legacy)
             if not parsed:
                 match = re.search(
                     r"window\.userData\s*=\s*(\{[^}]+\})",
@@ -77,7 +95,7 @@ class PacketStreamCollector(BaseCollector):
                     except (json.JSONDecodeError, ValueError):
                         pass
 
-            # Pattern 3: bare "balance" key in JSON
+            # Pattern 4: bare "balance" key in JSON
             if not parsed:
                 match = re.search(r'"balance"\s*:\s*([\d.]+)', html)
                 if match:
