@@ -159,7 +159,9 @@ cashpilot/
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `TZ` | `UTC` | Timezone for scheduling and display |
-| `CASHPILOT_SECRET_KEY` | *(auto-generated)* | Encryption key for stored credentials |
+| `CASHPILOT_SECRET_KEY` | *(auto-generated)* | Signing key for login sessions. Persisted at `/data/.secret_key`. **Does not encrypt credentials** |
+| `CASHPILOT_ENCRYPTION_KEY` | *(auto-generated)* | Fernet key encrypting stored credentials at rest. Persisted at `/data/.fernet_key`. Set this only to restore a backup — see [Backing up the encryption key](#backing-up-the-encryption-key) |
+| `CASHPILOT_ALLOW_EPHEMERAL_KEY` | `false` | Allow startup when the encryption key cannot be written to disk. Credentials are then lost on restart, so this is off by default |
 | `CASHPILOT_API_KEY` | -- | Enrollment/bootstrap key; each worker then gets its own key (per-worker fleet keys, v1.0.0+) |
 | `CASHPILOT_COLLECT_INTERVAL` | `60` | Minutes between earnings collection cycles |
 | `CASHPILOT_METRICS_ENABLED` | `false` | Set to `true` to expose Prometheus metrics at `/metrics` |
@@ -246,7 +248,25 @@ Some services require a residential IP and will not pay (or will ban) VPS/datace
 
 **How are credentials stored?**
 
-All service credentials are encrypted at rest in the SQLite database using your `CASHPILOT_SECRET_KEY`. The database file lives in the mounted Docker volume (`cashpilot_data:/data`). No credentials are ever sent anywhere except to the service containers themselves.
+All service credentials are encrypted at rest in the SQLite database using a Fernet key stored at `/data/.fernet_key`, which is generated automatically on first run. The database file lives in the mounted Docker volume (`cashpilot_data:/data`). No credentials are ever sent anywhere except to the service containers themselves.
+
+Note that this is a different key from `CASHPILOT_SECRET_KEY`, which only signs login sessions.
+
+### Backing up the encryption key
+
+Your credentials are only as recoverable as `/data/.fernet_key`. If you lose that file you will have to re-enter every credential, because there is no way to decrypt the stored values without it.
+
+```bash
+# Back it up
+docker exec cashpilot-ui cat /data/.fernet_key
+
+# Restore onto a fresh volume: set the saved value and start CashPilot
+CASHPILOT_ENCRYPTION_KEY=<the value you saved>
+```
+
+The file always takes precedence over the environment variable, so setting `CASHPILOT_ENCRYPTION_KEY` on an instance that already has a key changes nothing and is safe. It is adopted only when no key file exists, which is exactly the restore case.
+
+If the key cannot be written to disk at all — an unwritable or unmounted `/data` — CashPilot refuses to start rather than encrypting your credentials under a key that disappears on the next restart. Set `CASHPILOT_ALLOW_EPHEMERAL_KEY=true` if that is genuinely what you want.
 
 **What about security?**
 

@@ -96,7 +96,7 @@ cashpilot/
 - **YAML is the source of truth.** Every service lives in `services/{category}/{slug}.yml`. The web UI, container deployment, earnings collection, and documentation ALL derive from these files. Never hardcode service-specific logic in `app/`.
 - **Container naming:** All managed containers are `cashpilot-{slug}` with labels `cashpilot.managed=true` and `cashpilot.service={slug}`.
 - **Data directory:** `/data` volume holds SQLite DB and persistent config. Never write outside `/data` at runtime.
-- **Credentials:** Encrypted at rest via `CASHPILOT_SECRET_KEY` (Fernet). The key is auto-generated if not provided.
+- **Credentials:** Encrypted at rest with Fernet using a key at `/data/.fernet_key`, auto-generated on first run and overridable via `CASHPILOT_ENCRYPTION_KEY` (file wins, so the env var is only adopted on restore). This is NOT `CASHPILOT_SECRET_KEY`, which signs sessions (`/data/.secret_key`).
 - **README table is manually maintained.** Update the tables in README.md directly when adding/changing services.
 
 ## UI + Worker Architecture
