@@ -62,7 +62,13 @@ _COLLECTOR_ARGS: dict[str, list[str]] = {
     "earnfm": ["email", "password"],
     "packetstream": ["auth_token"],
     "grass": ["access_token"],
-    "bytelixir": ["session_cookie"],
+    # bytelixir_session expires ~2h after issue, so on its own this collector
+    # dies the same afternoon it is set up. remember_web is the durable cookie
+    # (a year) that lets the session be re-established, and xsrf_token is needed
+    # alongside it. Both are optional so a session-only setup still works, but
+    # they must be declared here or the UI never asks for them and the values
+    # are never passed to the collector — which accepts them already.
+    "bytelixir": ["session_cookie", "?remember_web", "?xsrf_token"],
     "salad": ["auth_cookie"],
 }
 
