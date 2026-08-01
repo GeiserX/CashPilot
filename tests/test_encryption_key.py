@@ -203,3 +203,27 @@ def test_key_file_is_created_private(tmp_path: Path):
     _reload({"CASHPILOT_DATA_DIR": str(tmp_path)})
     mode = (tmp_path / ".fernet_key").stat().st_mode & 0o777
     assert mode == 0o600, f"key file must not be group/world readable, got {mode:o}"
+
+
+def test_malformed_env_key_is_ignored_when_a_valid_file_key_exists(tmp_path: Path, caplog):
+    """Regression: a stale malformed env value must not block startup.
+
+    The file wins, so a malformed CASHPILOT_ENCRYPTION_KEY is exactly as moot as
+    a valid-but-different one - which only warns. An earlier revision set the
+    error flag before the file-precedence check and refused to start forever.
+    """
+    file_key = Fernet.generate_key().decode()
+    (tmp_path / ".fernet_key").write_text(file_key)
+    ciphertext = "enc:" + Fernet(file_key.encode()).encrypt(b"kept").decode()
+
+    with caplog.at_level("WARNING"):
+        db = _reload(
+            {
+                "CASHPILOT_DATA_DIR": str(tmp_path),
+                "CASHPILOT_ENCRYPTION_KEY": "not-a-key",
+            }
+        )
+
+    db.verify_encryption_key_persisted()  # must not raise
+    assert db.decrypt_value(ciphertext) == "kept"
+    assert any("Ignoring it" in r.message for r in caplog.records)

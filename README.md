@@ -260,8 +260,10 @@ Your credentials are only as recoverable as `/data/.fernet_key`. If you lose tha
 # Back it up
 docker exec cashpilot-ui cat /data/.fernet_key
 
-# Restore onto a fresh volume: set the saved value and start CashPilot
-CASHPILOT_ENCRYPTION_KEY=<the value you saved>
+# Restore onto a fresh volume: pass the saved value when starting CashPilot.
+# It must reach the container, so put it on the same command line (or export it,
+# or set it in your .env) - a bare shell assignment on its own line does nothing.
+CASHPILOT_ENCRYPTION_KEY=<the value you saved> docker compose up -d
 ```
 
 The file always takes precedence over the environment variable, so setting `CASHPILOT_ENCRYPTION_KEY` on an instance that already has a key changes nothing and is safe. It is adopted only when no key file exists, which is exactly the restore case.

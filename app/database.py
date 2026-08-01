@@ -82,6 +82,7 @@ def _load_or_create_fernet() -> Fernet:
 
     env_raw = os.getenv("CASHPILOT_ENCRYPTION_KEY", "").strip()
     env_key: bytes | None = None
+    env_invalid: str | None = None
     if env_raw:
         try:
             Fernet(env_raw.encode())
@@ -90,13 +91,16 @@ def _load_or_create_fernet() -> Fernet:
             # Do not quietly generate a replacement: that is the same silent
             # failure this function exists to remove. Record it and let startup
             # refuse.
-            _fernet_key_error = (
+            # Recorded, not raised yet: if a valid key file exists it wins, and a
+            # malformed env value is then just as moot as a valid-but-different
+            # one. Only promote this to a startup failure if we would actually
+            # have to fall back to the environment.
+            env_invalid = (
                 f"CASHPILOT_ENCRYPTION_KEY is set but is not a valid Fernet key "
                 f"({exc or 'malformed'}). It must be a urlsafe-base64 32-byte key, as "
                 'produced by `python -c "from cryptography.fernet import Fernet; '
                 'print(Fernet.generate_key().decode())"`.'
             )
-            _logger.error("%s", _fernet_key_error)
 
     # 1. An existing key file always wins.
     unusable: str | None = None
@@ -109,6 +113,12 @@ def _load_or_create_fernet() -> Fernet:
                 except (ValueError, TypeError) as exc:
                     unusable = f"it is not a valid Fernet key ({exc})"
                 else:
+                    if env_invalid:
+                        _logger.warning(
+                            "%s Ignoring it: the key already stored at %s wins.",
+                            env_invalid,
+                            _FERNET_KEY_FILE,
+                        )
                     if env_key and env_key != raw.encode():
                         _logger.warning(
                             "CASHPILOT_ENCRYPTION_KEY differs from the key already stored "
@@ -137,6 +147,14 @@ def _load_or_create_fernet() -> Fernet:
         _logger.error("%s", _fernet_key_error)
         # Return a working cipher so importing this module stays side-effect free;
         # startup refuses via verify_encryption_key_persisted().
+        return Fernet(Fernet.generate_key())
+
+    if env_invalid:
+        # No usable file key, so the supplied value was the one that mattered.
+        # Generating a replacement would silently discard whatever the user was
+        # trying to restore.
+        _fernet_key_error = env_invalid
+        _logger.error("%s", _fernet_key_error)
         return Fernet(Fernet.generate_key())
 
     # 2/3. Adopt the supplied key, or mint one.
