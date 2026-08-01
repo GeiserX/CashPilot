@@ -275,6 +275,17 @@ def restart_service(slug: str) -> None:
     logger.info("Restarted container %s", container.name)
 
 
+def _norm_mount(path: str) -> str:
+    """Normalise a container mount path for comparison.
+
+    Only a trailing slash is stripped (root "/" is left alone). Docker reports
+    destinations without one, but a hand-written catalog entry might include it,
+    and an exact-string mismatch on this comparison fails OPEN on the only
+    irreversible operation in the codebase.
+    """
+    return path.rstrip("/") or "/"
+
+
 class CriticalVolumeError(Exception):
     """Raised when a delete would destroy state the catalog marks irreplaceable.
 
@@ -322,12 +333,16 @@ def remove_service(slug: str, delete_volumes: bool = False, allow_delete_critica
 
     volume_names: list[str] = []
     if delete_volumes:
-        critical = _critical_volume_targets(slug)
+        raw_critical = _critical_volume_targets(slug)
+        # Normalise a trailing slash on both sides: a catalog entry written as
+        # "/app/identity/" must still match Docker's "/app/identity", or the
+        # guard silently fails open on the only irreversible path there is.
+        critical = None if raw_critical is None else {_norm_mount(k): v for k, v in raw_critical.items()}
         blocked: list[dict[str, str]] = []
         for m in container.attrs.get("Mounts", []) or []:
             if m.get("Type") == "volume" and m.get("Name"):
                 volume_names.append(m["Name"])
-                destination = m.get("Destination") or ""
+                destination = _norm_mount(m.get("Destination") or "")
                 if critical is None:
                     # Criticality could not be determined. Refuse rather than
                     # guess: an unknown slug or a catalog-less build must not

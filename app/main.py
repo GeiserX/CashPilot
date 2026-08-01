@@ -1276,7 +1276,10 @@ def _safe_worker_detail(resp: Any) -> dict[str, Any] | None:
         detail = (resp.json() or {}).get("detail")
     except (ValueError, AttributeError):
         return None
-    if not isinstance(detail, dict) or detail.get("error") not in _FORWARDABLE_WORKER_ERRORS:
+    error = detail.get("error") if isinstance(detail, dict) else None
+    # error comes from a remote worker body; a list/dict would make the `not in`
+    # test raise TypeError and turn a 409 into a 500. Require a string.
+    if not isinstance(error, str) or error not in _FORWARDABLE_WORKER_ERRORS:
         return None
     blocked = detail.get("blocked")
     if not isinstance(blocked, list):
