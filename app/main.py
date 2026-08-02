@@ -1816,30 +1816,55 @@ async def api_earnings_net(request: Request, days: int = 30) -> dict[str, Any]:
         logger.warning("Worker status unavailable for the power estimate: %s", exc)
         statuses = []
     # Only RUNNING containers. A stopped one draws nothing, and counting it
-    # inflates container_count, which shrinks every running service's share of
-    # the idle floor and understates the fleet's real cost.
+    # inflates a worker's container count, which shrinks every running service's
+    # share of that host's idle floor and understates the fleet's real cost.
     running = [c for c in statuses if c.get("service") and str(c.get("status", "")).lower() == "running"]
-    count = max(1, len(running))
-    cpu_by_service: dict[str, float] = {}
+
+    # Group by WORKER and keep it that way through the watt calculation. Each
+    # host pays its own idle draw, so collapsing a multi-host fleet into one
+    # count charges a single idle floor for the whole estate. Keeping the group
+    # is also the only way power.is_metered can be applied: a VPS bill does not
+    # move with CPU, and billing it like a home server invents a cost.
+    by_worker: dict[Any, list[dict[str, Any]]] = {}
     for c in running:
-        cpu_by_service[c["service"]] = cpu_by_service.get(c["service"], 0.0) + float(c.get("cpu_percent") or 0.0)
+        by_worker.setdefault(c.get("_worker_id"), []).append(c)
+
+    worker_meta = {w.get("id"): w for w in await database.list_workers()}
 
     hours = max(1, int(days)) * 24.0
     # Earned OVER THE WINDOW, not the latest balance: subtracting a window's
     # electricity from a running total would be meaningless arithmetic.
     earned = await database.get_earned_by_platform(max(1, int(days)))
+
+    watts_by_service: dict[str, float] = {}
+    unmetered_services: set[str] = set()
+    for wid, containers in by_worker.items():
+        meta = worker_meta.get(wid) or {}
+        info = _safe_json(meta.get("system_info", "{}"), {})
+        metered = power.is_metered(info)
+        try:
+            tdp = float(info.get("host_tdp_watts") or host_tdp)
+        except (TypeError, ValueError):
+            tdp = host_tdp
+        count = max(1, len(containers))
+        for c in containers:
+            svc = c["service"]
+            if not metered:
+                # No marginal power cost to the user on this host, so charge
+                # nothing rather than computing watts and multiplying by zero.
+                unmetered_services.add(svc)
+                continue
+            watts_by_service[svc] = watts_by_service.get(svc, 0.0) + power.estimate_watts(
+                float(c.get("cpu_percent") or 0.0), host_tdp_watts=tdp, container_count=count
+            )
+
     rows = []
     for platform, gross in earned.items():
-        watts = (
-            power.estimate_watts(cpu_by_service.get(platform, 0.0), host_tdp_watts=host_tdp, container_count=count)
-            if platform in cpu_by_service
-            else 0.0
-        )
         rows.append(
             {
                 "platform": platform,
                 "gross": float(gross),
-                "watts": watts,
+                "watts": watts_by_service.get(platform, 0.0),
                 "hours": hours,
                 "cost_quality": power.ESTIMATED,
             }
