@@ -84,6 +84,7 @@ nav:
   - Architecture: architecture.md
   - Direction and Roadmap: roadmap.md
   - Security Defaults: security-defaults.md
+  - Network Isolation: isolation.md
   - Fleet Management: fleet.md
   - Backing Up Node Identities: backup.md
   - Prometheus Metrics: guides/prometheus-metrics.md

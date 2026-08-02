@@ -38,6 +38,7 @@ from app import (
     egress,
     exchange_rates,
     fleet_key,
+    lan_isolation,
     login_rate_limit,
     machine_economics,
     metrics,
@@ -2264,6 +2265,52 @@ async def api_fleet_economics(request: Request) -> dict[str, Any]:
         )
 
     return machine_economics.fleet_summary(assessed)
+
+
+@app.get("/api/services/{slug}/deploy-risk")
+async def api_deploy_risk(request: Request, slug: str) -> dict[str, Any]:
+    """What the user should know BEFORE deploying this, in plain words.
+
+    The documented risk of proxyware is not container escape — it is that
+    someone else's traffic exits the user's address and is attributed to them.
+    That belongs at the deploy step, not buried in an FAQ: a self-hosting
+    audience is persuaded by a project that owns the downside.
+
+    The notice is driven by the service's own disclosure entry, so it fires
+    where strangers really do route through the user's IP and stays silent for a
+    storage node, where it would be false and would train people to click past
+    warnings that matter.
+    """
+    _require_auth_api(request)
+    service = catalog.get_service(slug)
+    if not service:
+        raise HTTPException(status_code=404, detail=f"Unknown service '{slug}'")
+
+    return {
+        "slug": slug,
+        "attribution": lan_isolation.attribution_notice(service),
+        "isolation": lan_isolation.assess(service),
+    }
+
+
+@app.get("/api/fleet/isolation-guide")
+async def api_isolation_guide(request: Request) -> dict[str, Any]:
+    """Which services can be LAN-isolated, and what each one needs allowed.
+
+    Returns the recipe rather than applying it. Creating bridges and firewall
+    rules on someone's host is a change with real blast radius, and several
+    services break in ways that cost money when the exceptions are missed.
+    """
+    _require_auth_api(request)
+    assessed = [lan_isolation.assess(s) for s in catalog.get_services()]
+    return {
+        "network_name": lan_isolation.DEFAULT_NETWORK_NAME,
+        "blocked_destinations": list(lan_isolation.RFC1918 + lan_isolation.LINK_LOCAL),
+        "compose_snippet": lan_isolation.compose_snippet(),
+        "isolatable": [a["slug"] for a in assessed if a["verdict"] == lan_isolation.ISOLATABLE],
+        "needs_exceptions": [a for a in assessed if a["verdict"] == lan_isolation.NEEDS_EXCEPTIONS],
+        "not_isolatable": [a for a in assessed if a["verdict"] == lan_isolation.NOT_ISOLATABLE],
+    }
 
 
 @app.get("/api/disclosure/coverage")
