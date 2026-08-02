@@ -393,3 +393,50 @@ written up front (the omission that failed codecov/patch on four earlier PRs).
 **Counters:** iteration 4, no_progress 0, failures 0.
 
 **Next action:** CashPilot-5qc.
+
+## 2026-08-02T17:35:00Z — sergio-loop segment 2, iteration 5
+
+**Slice:** CashPilot-5qc — egress-IP conflict detection, on `feat/egress-conflicts`.
+
+**Changed:** `app/egress.py` (new), `app/preflight.py` (fleet half + hosting verdict),
+`app/main.py` (`_decoded_worker`, rewritten preflight endpoint, `/api/fleet/egress-groups`),
+`app/worker_api.py` (egress + hosting detection in the heartbeat), `Dockerfile.worker`,
+`services/_schema.yml`, `README.md`, `docs/fleet.md`, `CLAUDE.md`, and three test files.
+
+**Two defects found while wiring it, both with passing tests:**
+
+1. `/api/services/{slug}/preflight?worker_id=N` returned **500 in production**. Confirmed on the
+   live 1.7.0 UI on watchtower against its own worker rows: `AttributeError 'str' object has no
+   attribute 'get'`. `list_workers` returns raw rows, so `containers`/`system_info` arrive as JSON
+   TEXT. Every reader now goes through `_decoded_worker`, which delegates to the pre-existing
+   `_parse_worker_json` so there is exactly one decode path.
+2. `/api/services/{slug}/producer-state` (b4e, merged yesterday) filtered on `c["service"]` while
+   heartbeats emit `slug`, so `container_running` was always false and every service reported
+   UNKNOWN — the feature was inert. Not yet released, so it never reached the fleet.
+
+Both fixtures hand-fed a shape production never produces. That is the transferable lesson and it
+is now recorded in `CLAUDE.md`.
+
+**Independent review:** 22 findings, 2 HIGH. Every finding acted on was reproduced by execution
+first. The serious ones: a stalled IP lookup could stall the serial heartbeat loop and take a
+worker offline (httpx's timeout is per-operation, not a deadline), and `not_checked` claimed the
+connection type was checked while a finding in the same payload said it could not be. Also fixed:
+an off-by-one that under-warned, Android workers invisible to the check, a custom IP endpoint
+silently falling back to third parties, and a unit test making a **real network request**.
+
+**Verified against real hardware:** watchtower and geiserback both report `ASUSTeK COMPUTER INC.`
+and classify as *not* hosting (no false ban warnings on home servers); the DMI path is readable
+from inside the worker container; the two hosts have genuinely different public IPs (ER605
+dual-WAN), so no conflict is reported between them — correct.
+
+**Verification:** `ruff check .` + `ruff format --check .` clean · `pytest --cov=app
+--cov-fail-under=90` → **1671 passed**, coverage **94.59%** · worker image module set simulated to
+prove `app/egress.py` adds no import the worker lacks.
+
+**Counters:** iteration 5, no_progress 0, failures 0.
+
+**Blocker worth naming:** CodeRabbit rate-limited on #165 and now returns "review finished" with
+zero comments — the failed attempt marked the commit reviewed, so re-triggering is a no-op. Its
+green check is a SKIPPED review, not a pass. Independent reviews substituted; not merging on it.
+
+**Next action:** merge #165 once its review returns, then open the 5qc PR off main.
