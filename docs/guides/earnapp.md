@@ -3,9 +3,27 @@
 > **Category:** Bandwidth Sharing | **Status:** Active
 > **Website:** [https://earnapp.com](https://earnapp.com)
 
+!!! danger "EarnApp prohibits the way CashPilot runs it — read this first"
+
+    EarnApp's help centre states: **"Installing EarnApp on Virtual Machines
+    (VMs), Docker containers, or hosting services is strictly prohibited."** It
+    names **personal or home servers** and **"any device used for business or
+    monetization purposes"** as prohibited environments, and says the penalty is
+    that your **account is terminated without prior notice** and any **pending
+    payments are cancelled**.
+
+    CashPilot deploys every service as a Docker container, usually on a home
+    server. **Deploying EarnApp through CashPilot means knowingly accepting that
+    risk.** This guide is kept so the decision is an informed one, not so the
+    risk is hidden behind a signup link.
+
+    EarnApp does support ordinary desktops, laptops, phones and Raspberry Pi via
+    its own installer. If you want to earn with it, that is the route that does
+    not put your account and balance at risk — and CashPilot cannot manage it.
+
 ## Description
 
-EarnApp by Bright Data lets you sell your unused bandwidth for passive income. Bright Data is the world's largest proxy network, powering data collection for Fortune 500 companies. The community Docker image (fazalfarhan01) makes headless deployment easy with a lite mode that requires only a UUID.
+EarnApp by Bright Data lets you sell your unused bandwidth for passive income. Bright Data is the world's largest proxy network, powering data collection for Fortune 500 companies.
 
 ## Earning Estimates
 

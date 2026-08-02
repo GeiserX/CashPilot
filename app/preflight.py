@@ -225,6 +225,14 @@ def assess(
 
 def _summary(verdict: str, service: dict[str, Any]) -> str:
     name = service.get("name") or service.get("slug") or "This service"
+    if (service.get("requirements") or {}).get("container_prohibited"):
+        # "will earn nothing" is the right severity but the wrong words: the
+        # outcome here is a closed account and a cancelled balance, not a
+        # disappointing month.
+        return (
+            f"{name} forbids being run this way. The risk is not low earnings — it is a "
+            "terminated account with any pending payment cancelled. You can still deploy it."
+        )
     if verdict == EARNS_NOTHING:
         return f"{name} will most likely earn nothing here. You can deploy it anyway."
     if verdict == REDUCED:
