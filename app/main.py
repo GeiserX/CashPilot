@@ -16,7 +16,6 @@ import re
 import secrets
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
-from time import monotonic
 from typing import Any
 
 import httpx
@@ -37,6 +36,7 @@ from app import (
     egress,
     exchange_rates,
     fleet_key,
+    login_rate_limit,
     metrics,
     notify,
     power,
@@ -82,28 +82,19 @@ def _spawn(coro) -> asyncio.Task:
     return task
 
 
-# Login rate limiting. Plain dict (not defaultdict) so a stale/empty bucket
-# never lingers forever — every distinct client IP that ever hits /login
-# would otherwise leave a permanent key behind, even after its attempts have
-# all aged out, growing unbounded over the process lifetime.
-_login_attempts: dict[str, list[float]] = {}
-_LOGIN_MAX_ATTEMPTS = 5
-_LOGIN_WINDOW_SECONDS = 300
-
-
-def _check_login_rate(ip: str) -> None:
-    now = monotonic()
-    attempts = [t for t in _login_attempts.get(ip, []) if now - t < _LOGIN_WINDOW_SECONDS]
-    if attempts:
-        _login_attempts[ip] = attempts
-    else:
-        _login_attempts.pop(ip, None)
-    if len(attempts) >= _LOGIN_MAX_ATTEMPTS:
-        raise HTTPException(status_code=429, detail="Too many login attempts. Try again in a few minutes.")
-
-
-def _record_failed_login(ip: str) -> None:
-    _login_attempts.setdefault(ip, []).append(monotonic())
+# Login rate limiting moved to app.login_rate_limit (bead sux) — it was the last
+# thing the routers genuinely needed from this module, and extracting it is what
+# breaks the main -> routers -> main import cycle.
+#
+# Re-exported by REFERENCE, not copied: tests patch app.main._check_login_rate
+# and a conftest fixture clears app.main._login_attempts between tests. Binding a
+# copy here would leave both pointing at an object nothing reads, and the fixture
+# would silently stop isolating tests.
+_login_attempts = login_rate_limit._login_attempts
+_LOGIN_MAX_ATTEMPTS = login_rate_limit.MAX_ATTEMPTS
+_LOGIN_WINDOW_SECONDS = login_rate_limit.WINDOW_SECONDS
+_check_login_rate = login_rate_limit.check_login_rate
+_record_failed_login = login_rate_limit.record_failed_login
 
 
 def _safe_json(raw: str, fallback: Any = None) -> Any:
