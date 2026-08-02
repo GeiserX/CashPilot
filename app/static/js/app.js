@@ -419,7 +419,7 @@ const CP = (() => {
         container.innerHTML = `
           <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; gap:8px; padding:24px 0; color:var(--text-muted); text-align:center;">
             <span>Couldn't load services${err && err.message ? `: ${escapeHtml(err.message)}` : ''}.</span>
-            <button class="btn btn-ghost btn-sm" onclick="CP.loadServicesTable()">Retry</button>
+            <button class="btn btn-ghost btn-sm" data-action="loadServicesTable">Retry</button>
           </div>`;
       }
     }
@@ -495,9 +495,9 @@ const CP = (() => {
     // earning, but its (separate) earnings-tracking credentials aren't set yet.
     let disconnectedLabel = '';
     if (svc.collector_disconnected) {
-      disconnectedLabel = `<div title="CashPilot couldn't read this balance — check the earnings-tracking credentials" style="font-size:0.6rem; color:var(--error); font-weight:500; display:flex; align-items:center; justify-content:flex-end; gap:4px;">can't read balance${_isOwner ? ` <button class="btn btn-ghost" onclick="event.stopPropagation(); CP.openCredentialModal('${escapeHtml(svc.slug)}')" style="font-size:0.6rem; padding:1px 5px; line-height:1.2; color:var(--error); border:1px solid #ef4444; border-radius:3px; cursor:pointer;">fix</button>` : ''}</div>`;
+      disconnectedLabel = `<div title="CashPilot couldn't read this balance — check the earnings-tracking credentials" style="font-size:0.6rem; color:var(--error); font-weight:500; display:flex; align-items:center; justify-content:flex-end; gap:4px;">can't read balance${_isOwner ? ` <button class="btn btn-ghost" data-action="openCredentialModal" data-stop="1" data-a1="${escapeHtml(svc.slug)}" style="font-size:0.6rem; padding:1px 5px; line-height:1.2; color:var(--error); border:1px solid #ef4444; border-radius:3px; cursor:pointer;">fix</button>` : ''}</div>`;
     } else if (svc.collector_needs_setup) {
-      disconnectedLabel = `<div title="This service is running and earning. To show its balance here, add its earnings-tracking credentials." style="font-size:0.6rem; color:var(--text-muted); font-weight:500; display:flex; align-items:center; justify-content:flex-end; gap:4px;">tracking not set up${_isOwner ? ` <button class="btn btn-ghost" onclick="event.stopPropagation(); CP.openCredentialModal('${escapeHtml(svc.slug)}')" style="font-size:0.6rem; padding:1px 5px; line-height:1.2; color:var(--text-muted); border:1px solid var(--border); border-radius:3px; cursor:pointer;">set up</button>` : ''}</div>`;
+      disconnectedLabel = `<div title="This service is running and earning. To show its balance here, add its earnings-tracking credentials." style="font-size:0.6rem; color:var(--text-muted); font-weight:500; display:flex; align-items:center; justify-content:flex-end; gap:4px;">tracking not set up${_isOwner ? ` <button class="btn btn-ghost" data-action="openCredentialModal" data-stop="1" data-a1="${escapeHtml(svc.slug)}" style="font-size:0.6rem; padding:1px 5px; line-height:1.2; color:var(--text-muted); border:1px solid var(--border); border-radius:3px; cursor:pointer;">set up</button>` : ''}</div>`;
     }
     let balanceHtml;
     if (nativeLabel) {
@@ -539,7 +539,7 @@ const CP = (() => {
       ? (eligible ? 'Cash out earnings' : 'View payout details')
       : 'No payout info available';
     const claimDisabled = !co.dashboard_url;
-    const claimBtn = `<button class="btn btn-icon ${eligible ? 'btn-success' : ''}" onclick="${claimDisabled ? '' : `CP.openClaimModal('${escapeHtml(svc.slug)}')`}" title="${claimTitle}"${claimDisabled ? ' disabled' : ''}>
+    const claimBtn = `<button class="btn btn-icon ${eligible ? 'btn-success' : ''}" data-action="openClaimModal" data-a1="${escapeHtml(svc.slug)}" title="${claimTitle}"${claimDisabled ? ' disabled' : ''}>
            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>
          </button>`;
 
@@ -550,7 +550,7 @@ const CP = (() => {
 
     // Settings gear (owner-only) — opens credential + bonus modal
     const settingsBtn = _isOwner
-      ? `<button class="btn btn-icon" onclick="event.stopPropagation(); CP.openCredentialModal('${escapeHtml(svc.slug)}')" title="Credentials &amp; settings">
+      ? `<button class="btn btn-icon" data-action="openCredentialModal" data-stop="1" data-a1="${escapeHtml(svc.slug)}" title="Credentials &amp; settings">
            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
          </button>` : '';
 
@@ -558,7 +558,7 @@ const CP = (() => {
     // For single instance: show action buttons directly
     let actionBtns;
     if (isMulti) {
-      const chevron = `<button class="btn btn-icon expand-toggle" onclick="event.stopPropagation(); CP.toggleInstances('${escapeHtml(svc.slug)}')" title="Expand instances">
+      const chevron = `<button class="btn btn-icon expand-toggle" data-action="toggleInstances" data-stop="1" data-a1="${escapeHtml(svc.slug)}" title="Expand instances">
         <svg class="expand-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
       </button>`;
       actionBtns = `<div class="action-btns">${claimBtn}${settingsBtn}${chevron}</div>`;
@@ -574,13 +574,13 @@ const CP = (() => {
           ${claimBtn}
           ${settingsBtn}
           ${_canWrite ? `
-          <button class="btn btn-icon" onclick="CP.restartService('${escapeHtml(svc.slug)}${wParam})" title="Restart"${disabledAttr}>
+          <button class="btn btn-icon" data-action="restartService" data-a1="'${escapeHtml(svc.slug)}${wParam}" title="Restart"${disabledAttr}>
             ${ICON_RESTART}
           </button>
-          <button class="btn btn-icon" onclick="CP.stopService('${escapeHtml(svc.slug)}${wParam})" title="Stop"${disabledAttr}>
+          <button class="btn btn-icon" data-action="stopService" data-a1="'${escapeHtml(svc.slug)}${wParam}" title="Stop"${disabledAttr}>
             ${ICON_STOP}
           </button>
-          <button class="btn btn-icon" onclick="CP.viewLogs('${escapeHtml(svc.slug)}${wParam})" title="Logs"${disabledAttr}>
+          <button class="btn btn-icon" data-action="viewLogs" data-a1="'${escapeHtml(svc.slug)}${wParam}" title="Logs"${disabledAttr}>
             ${ICON_LOGS}
           </button>` : ''}
         </div>`;
@@ -588,7 +588,7 @@ const CP = (() => {
 
     // Main row
     let html = `
-    <tr class="breakdown-row${isMulti ? ' expandable' : ''}" data-slug="${escapeHtml(svc.slug)}"${isMulti ? ` onclick="CP.toggleInstances('${escapeHtml(svc.slug)}', event)" style="cursor:pointer;"` : ''}>
+    <tr class="breakdown-row${isMulti ? ' expandable' : ''}" data-slug="${escapeHtml(svc.slug)}"${isMulti ? ` data-action="toggleInstances" data-a1="${escapeHtml(svc.slug)}" data-a2="event" style="cursor:pointer;"` : ''}>
       <td>${nameHtml}<div style="font-size:0.7rem; color:var(--text-muted);">${subtitle}</div></td>
       <td style="text-align:center;"><span class="badge badge-${statusClass}"><span class="status-dot ${statusClass}"></span> ${statusLabel}</span>${instanceLabel}${outdatedBadge}</td>
       <td style="text-align:center;">${healthBadge}</td>
@@ -628,13 +628,13 @@ const CP = (() => {
           <td style="text-align:center; white-space:nowrap;">
             <div class="action-btns">
               ${_canWrite ? `
-              <button class="btn btn-icon" onclick="CP.restartService('${escapeHtml(svc.slug)}${wParam})" title="Restart on ${nodeLabel}"${disabledAttr}>
+              <button class="btn btn-icon" data-action="restartService" data-a1="'${escapeHtml(svc.slug)}${wParam}" title="Restart on ${nodeLabel}"${disabledAttr}>
                 ${ICON_RESTART}
               </button>
-              <button class="btn btn-icon" onclick="CP.stopService('${escapeHtml(svc.slug)}${wParam})" title="Stop on ${nodeLabel}"${disabledAttr}>
+              <button class="btn btn-icon" data-action="stopService" data-a1="'${escapeHtml(svc.slug)}${wParam}" title="Stop on ${nodeLabel}"${disabledAttr}>
                 ${ICON_STOP}
               </button>
-              <button class="btn btn-icon" onclick="CP.viewLogs('${escapeHtml(svc.slug)}${wParam})" title="Logs on ${nodeLabel}"${disabledAttr}>
+              <button class="btn btn-icon" data-action="viewLogs" data-a1="'${escapeHtml(svc.slug)}${wParam}" title="Logs on ${nodeLabel}"${disabledAttr}>
                 ${ICON_LOGS}
               </button>` : ''}
             </div>
@@ -841,9 +841,9 @@ const CP = (() => {
         ${fieldsHtml}
         ${bonusHtml}
         <div style="display:flex; gap:8px; margin-top:14px;">
-          <button class="btn btn-primary btn-sm" onclick="CP.saveCredentialModal()">Save</button>
-          <button class="btn btn-ghost btn-sm" onclick="CP.closeModal('cred-modal')">Cancel</button>
-          <button class="btn btn-ghost btn-sm" style="color:var(--error); margin-left:auto;" onclick="CP.clearServiceCredentials('${escapeHtml(slug)}', '${escapeHtml(col.name)}'); CP.closeModal('cred-modal');">Clear</button>
+          <button class="btn btn-primary btn-sm" data-action="saveCredentialModal">Save</button>
+          <button class="btn btn-ghost btn-sm" data-action="closeModal" data-a1="cred-modal">Cancel</button>
+          <button class="btn btn-ghost btn-sm" style="color:var(--error); margin-left:auto;" data-action="clearServiceCredentials" data-a1="${escapeHtml(slug)}" data-a2="${escapeHtml(col.name)}">Clear</button>
         </div>`;
     } catch (err) {
       if (body) body.innerHTML = `<p style="color:var(--error);">Failed to load: ${escapeHtml(err.message)}</p>`;
@@ -1319,7 +1319,7 @@ const CP = (() => {
     }
 
     return `
-    <div class="${classes.join(' ')}" data-slug="${svc.slug}" onclick="CP.toggleWizardService('${svc.slug}', this)">
+    <div class="${classes.join(' ')}" data-slug="${svc.slug}" data-action="toggleWizardService" data-a1="${svc.slug}" data-a2="this">
       <div class="service-card-header">
         <div class="service-icon">${(svc.name || '?')[0]}</div>
         <div>
@@ -1488,7 +1488,7 @@ const CP = (() => {
           <div id="setup-worker-list-${svc.slug}">${workerRows}</div>
         </div>
         <div style="display:flex; gap:8px; align-items:center;">
-          <button class="btn btn-success" onclick="CP.deployService('${svc.slug}')"${_canWrite ? '' : ' disabled title="Writer access required"'}>
+          <button class="btn btn-success" data-action="deployService" data-a1="${svc.slug}"${_canWrite ? '' : ' disabled title="Writer access required"'}>
             Deploy ${escapeHtml(svc.name)}
           </button>
           <span class="deploy-status" id="deploy-status-${svc.slug}" style="margin-left: 4px; font-size: 0.85rem;"></span>
@@ -1624,9 +1624,9 @@ const CP = (() => {
     const hasDocker = svc.docker && svc.docker.image;
     let actionBtn;
     if (isDeployed) {
-      actionBtn = `<button class="btn btn-secondary btn-sm" onclick="CP.openServiceDetail('${svc.slug}')">Manage</button>`;
+      actionBtn = `<button class="btn btn-secondary btn-sm" data-action="openServiceDetail" data-a1="${svc.slug}">Manage</button>`;
     } else if (hasDocker) {
-      actionBtn = `<button class="btn btn-primary btn-sm" onclick="CP.openServiceDetail('${svc.slug}')">Deploy</button>`;
+      actionBtn = `<button class="btn btn-primary btn-sm" data-action="openServiceDetail" data-a1="${svc.slug}">Deploy</button>`;
     } else {
       const url = (svc.referral && svc.referral.signup_url) || svc.website || '#';
       actionBtn = `<a href="${escapeHtml(url)}" target="_blank" rel="noopener" class="btn btn-ghost btn-sm">Visit</a>`;
@@ -1807,7 +1807,7 @@ const CP = (() => {
         <div style="font-size:0.8rem; color:var(--text-muted); background:var(--bg-subtle, rgba(255,255,255,0.03)); border:1px solid var(--border); border-radius:6px; padding:8px 10px; margin:10px 0;">
           The credentials above run the service. To also see its <strong>balance</strong> on the dashboard,
           add earnings-tracking credentials under
-          <a href="#" onclick="event.preventDefault(); CP.openCredentialModal('${escapeHtml(svc.slug)}')" style="color:var(--accent, #3b82f6);">Settings → Collectors</a>
+          <a href="#" data-action="openCredentialModal" data-prevent="1" data-a1="${escapeHtml(svc.slug)}" style="color:var(--accent, #3b82f6);">Settings → Collectors</a>
           after deploying. This is optional — the service earns either way.
         </div>`;
       }
@@ -1821,7 +1821,7 @@ const CP = (() => {
           <div id="deploy-worker-list">${workerRows}</div>
         </div>
         <div style="display:flex; gap:8px; align-items:center;">
-          <button class="btn btn-success" onclick="CP.deployServiceToWorkers('${svc.slug}')"${_canWrite ? '' : ' disabled title="Writer access required"'}>Deploy</button>
+          <button class="btn btn-success" data-action="deployServiceToWorkers" data-a1="${svc.slug}"${_canWrite ? '' : ' disabled title="Writer access required"'}>Deploy</button>
           <span id="deploy-status-${svc.slug}" style="font-size:0.85rem;"></span>
         </div>`;
       }
@@ -1847,9 +1847,9 @@ const CP = (() => {
           <strong style="min-width:100px;">${escapeHtml(inst.worker.name)}</strong>
           <span class="badge ${badgeClass}" style="font-size:0.75rem;">${escapeHtml(s)}</span>
           ${_canWrite ? `<div style="margin-left:auto; display:flex; gap:4px;">
-            <button class="btn btn-secondary btn-sm" onclick="CP.workerAction('${svc.slug}','restart',${inst.worker.id})">Restart</button>
-            <button class="btn btn-secondary btn-sm" onclick="CP.workerAction('${svc.slug}','stop',${inst.worker.id})">Stop</button>
-            <button class="btn btn-ghost btn-sm" onclick="CP.loadWorkerLogs('${svc.slug}',${inst.worker.id},'logs-${svc.slug}-${inst.worker.id}')">Logs</button>
+            <button class="btn btn-secondary btn-sm" data-action="workerAction" data-a1="${svc.slug}" data-a2="restart" data-a3="${inst.worker.id}">Restart</button>
+            <button class="btn btn-secondary btn-sm" data-action="workerAction" data-a1="${svc.slug}" data-a2="stop" data-a3="${inst.worker.id}">Stop</button>
+            <button class="btn btn-ghost btn-sm" data-action="loadWorkerLogs" data-a1="${svc.slug}" data-a2="${inst.worker.id}" data-a3="logs-${svc.slug}-${inst.worker.id}">Logs</button>
           </div>` : ''}
         </div>
         <div class="log-viewer" id="logs-${svc.slug}-${inst.worker.id}" style="display:none; max-height:200px;"></div>`;
@@ -1975,7 +1975,7 @@ const CP = (() => {
     }).join('');
     container.innerHTML = rows + `
     <div style="display:flex;justify-content:flex-end;margin-top:12px;">
-      <button class="btn btn-primary" onclick="CP.saveEnvSettings()">Save Variables</button>
+      <button class="btn btn-primary" data-action="saveEnvSettings">Save Variables</button>
     </div>`;
   }
 
@@ -2054,7 +2054,7 @@ const CP = (() => {
         </div>`;
       }).join('');
       const clearBtn = configured && _isOwner
-        ? `<div style="margin-top:8px; text-align:right;"><button class="btn btn-ghost btn-sm" style="color:var(--error); font-size:0.75rem;" onclick="CP.clearServiceCredentials('${escapeHtml(col.slug)}', '${escapeHtml(col.name)}')">Clear Credentials</button></div>`
+        ? `<div style="margin-top:8px; text-align:right;"><button class="btn btn-ghost btn-sm" style="color:var(--error); font-size:0.75rem;" data-action="clearServiceCredentials" data-a1="${escapeHtml(col.slug)}" data-a2="${escapeHtml(col.name)}">Clear Credentials</button></div>`
         : '';
       return `
       <details class="collector-section" id="collector-${col.slug}">
@@ -2101,6 +2101,9 @@ const CP = (() => {
     try {
       await api(`/api/config/${encodeURIComponent(slug)}`, { method: 'DELETE' });
       toast(`${name} credentials cleared`, 'success');
+      // The caller used to close the modal in a second inline call; folded in
+      // here so the button declares one action rather than two.
+      closeModal('cred-modal');
       loadSettings();
     } catch (err) {
       toast(`Clear failed: ${err.message}`, 'error');
@@ -2236,7 +2239,7 @@ const CP = (() => {
             <div class="notify-item-platform">${escapeHtml(a.platform)}</div>
             <div class="notify-item-msg" title="${escapeHtml(a.error)}">${escapeHtml(a.error)}</div>
           </div>
-          ${_isOwner ? `<button class="btn btn-ghost btn-sm" onclick="event.stopPropagation(); CP.openCredentialModal('${escapeHtml(a.platform)}')" style="font-size:0.65rem; padding:2px 6px; white-space:nowrap; flex-shrink:0;">Update</button>` : ''}
+          ${_isOwner ? `<button class="btn btn-ghost btn-sm" data-action="openCredentialModal" data-stop="1" data-a1="${escapeHtml(a.platform)}" style="font-size:0.65rem; padding:2px 6px; white-space:nowrap; flex-shrink:0;">Update</button>` : ''}
         </div>
       `).join('');
     } catch {

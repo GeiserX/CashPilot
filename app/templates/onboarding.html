@@ -8,7 +8,7 @@
   <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" onload="this.onload=null;this.rel='stylesheet'">
+  <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" data-async-style>
   <noscript><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet"></noscript>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -236,6 +236,12 @@
     }
     @keyframes spin { to { transform: rotate(360deg); } }
   </style>
+  <script nonce="{{ csp_nonce(request) }}">
+    document.querySelectorAll('link[data-async-style]').forEach((link) => {
+      link.addEventListener('load', () => { link.rel = 'stylesheet'; }, { once: true });
+      if (link.sheet) link.rel = 'stylesheet';
+    });
+  </script>
 </head>
 <body>
   <!-- Synthwave background -->
@@ -349,7 +355,7 @@
           </div>
           <h1>Welcome</h1>
           <p class="subtitle">Your self-hosted passive income platform. Deploy and monitor bandwidth, storage, and compute services via Docker.</p>
-          <button class="btn" onclick="goToStep(2)">Get Started</button>
+          <button class="btn" data-action="goToStep" data-a1="2">Get Started</button>
         </div>
       </div>
 
@@ -371,7 +377,7 @@
           <p class="subtitle">Set up your admin account to get started.</p>
           <div class="info-badge">This will be the owner account with full access.</div>
           <div class="error-msg" id="reg-error"></div>
-          <form id="register-form" onsubmit="return handleRegister(event)">
+          <form id="register-form">
             <div class="field">
               <label for="username">Username</label>
               <input type="text" id="username" name="username" required autocomplete="username" autofocus>
@@ -385,7 +391,7 @@
               <input type="password" id="password_confirm" name="password_confirm" required autocomplete="new-password">
             </div>
             <div class="actions">
-              <button type="button" class="btn btn-ghost" onclick="goToStep(1)">Back</button>
+              <button type="button" class="btn btn-ghost" data-action="goToStep" data-a1="1">Back</button>
               <button type="submit" class="btn" id="submit-btn">Create Account</button>
             </div>
           </form>
@@ -419,7 +425,9 @@
     </div>
   </div>
 
-  <script>
+  <script nonce="{{ csp_nonce(request) }}">
+    document.getElementById('register-form')?.addEventListener('submit', handleRegister);
+
     function goToStep(n) {
       document.querySelectorAll('.step').forEach(s => s.classList.remove('active'));
       document.getElementById('step-' + n).classList.add('active');
@@ -488,5 +496,6 @@
       return false;
     }
   </script>
+  <script src="/static/js/delegate.js"></script>
 </body>
 </html>

@@ -152,7 +152,7 @@
       {% endif %}
 
       <div style="display: flex; gap: 8px; align-items: center;">
-        <button class="btn btn-success" onclick="CP.deployService('{{ service.slug }}')">Deploy</button>
+        <button class="btn btn-success" data-action="deployService" data-a1="{{ service.slug }}">Deploy</button>
         <span id="deploy-status-{{ service.slug }}" style="font-size: 0.85rem;"></span>
       </div>
     </div>
@@ -161,15 +161,15 @@
     <div class="card" style="margin-bottom: 16px;">
       <h3 class="card-title" style="margin-bottom: 12px;">Container</h3>
       <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px;">
-        <button class="btn btn-secondary btn-sm" onclick="CP.startService('{{ service.slug }}')">Start</button>
-        <button class="btn btn-secondary btn-sm" onclick="CP.restartService('{{ service.slug }}')">Restart</button>
-        <button class="btn btn-secondary btn-sm" onclick="CP.stopService('{{ service.slug }}')">Stop</button>
-        <button class="btn btn-danger btn-sm" onclick="CP.removeService('{{ service.slug }}')">Remove</button>
+        <button class="btn btn-secondary btn-sm" data-action="startService" data-a1="{{ service.slug }}">Start</button>
+        <button class="btn btn-secondary btn-sm" data-action="restartService" data-a1="{{ service.slug }}">Restart</button>
+        <button class="btn btn-secondary btn-sm" data-action="stopService" data-a1="{{ service.slug }}">Stop</button>
+        <button class="btn btn-danger btn-sm" data-action="removeService" data-a1="{{ service.slug }}">Remove</button>
       </div>
 
       <h4 style="font-size: 0.9rem; margin-bottom: 8px; color: var(--text-secondary);">Logs</h4>
       <div class="log-viewer" id="detail-logs-{{ service.slug }}">(Click Load Logs to view)</div>
-      <button class="btn btn-ghost btn-sm" style="margin-top: 8px;" onclick="CP.loadDetailLogs('{{ service.slug }}')">Load Logs</button>
+      <button class="btn btn-ghost btn-sm" style="margin-top: 8px;" data-action="loadDetailLogs" data-a1="{{ service.slug }}">Load Logs</button>
     </div>
   </div>
 </div>

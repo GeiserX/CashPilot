@@ -640,18 +640,34 @@ _HSTS_TRUST_PROXY = os.getenv("CASHPILOT_TRUSTED_PROXY", "").strip().lower() in 
 # Security headers middleware
 class _SecurityHeadersMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request, call_next):
+        # A fresh nonce per response. Templates read it via request.state so the
+        # value in the header and the value in the markup can never disagree —
+        # if they did, every inline script would be blocked and the UI would
+        # simply stop working.
+        nonce = secrets.token_urlsafe(16)
+        request.state.csp_nonce = nonce
         response = await call_next(request)
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["X-Frame-Options"] = "DENY"
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
         response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
-        # 'unsafe-inline' stays on script-src/style-src until the UI drops inline handlers
-        # (bead guw). base-uri/object-src/form-action are additive hardening that costs
-        # nothing today: block <base> hijack of relative script URLs, disallow plugins,
-        # and stop a form from POSTing credentials off-origin if an XSS is ever found.
+        # script-src no longer allows 'unsafe-inline' (bead guw). Inline event
+        # handlers are gone — every control goes through one delegated listener —
+        # and the few remaining inline <script> blocks carry a per-response
+        # nonce. That matters because this UI renders provider-supplied strings:
+        # with 'unsafe-inline', any markup an attacker gets into one of those
+        # executes.
+        #
+        # style-src keeps 'unsafe-inline' for now: the templates carry inline
+        # style= attributes, which a nonce cannot cover, and a style injection
+        # cannot execute script. Narrower than script, and honest about staying.
+        #
+        # base-uri/object-src/form-action are additive hardening that costs
+        # nothing: block <base> hijack of relative script URLs, disallow plugins,
+        # and stop a form POSTing credentials off-origin if an XSS is ever found.
         response.headers["Content-Security-Policy"] = (
             "default-src 'self'; "
-            "script-src 'self' https://cdn.jsdelivr.net 'unsafe-inline'; "
+            f"script-src 'self' https://cdn.jsdelivr.net 'nonce-{nonce}'; "
             "style-src 'self' https://fonts.googleapis.com 'unsafe-inline'; "
             "font-src 'self' https://fonts.gstatic.com; "
             "img-src 'self' data:; "
