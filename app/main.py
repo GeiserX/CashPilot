@@ -982,11 +982,21 @@ async def api_deploy(request: Request, slug: str, body: DeployRequest, worker_id
         env[var["key"]] = str(default)
     env.update(body.env or {})
 
-    # Validate required env vars are not blank
+    # What this service was ACTUALLY deployed with, if anything. Loaded before
+    # the required-field check because a redeploy must not demand values the
+    # deployment already has: rejecting here would mean the operator has to
+    # retype Storj's IDENTITY_DIR/STORAGE_DIR on every redeploy, which is
+    # precisely what recording the spec exists to avoid.
+    recorded = await database.get_deployment_spec(slug)
+    recorded_env = (recorded or {}).get("env") or {}
+
+    # Validate required env vars are not blank.
     missing = [
         var.get("label", var["key"])
         for var in docker_conf.get("env", [])
-        if var.get("required") and not env.get(var["key"], "").strip()
+        if var.get("required")
+        and not env.get(var["key"], "").strip()
+        and not str(recorded_env.get(var["key"], "")).strip()
     ]
     if missing:
         raise HTTPException(status_code=400, detail=f"Missing required fields: {', '.join(missing)}")
@@ -1037,8 +1047,8 @@ async def api_deploy(request: Request, slug: str, body: DeployRequest, worker_id
         spec["resources"] = resources
 
     # An existing deployment is rebuilt from what it actually ran, not from the
-    # catalog - see _merge_recorded_spec.
-    recorded = await database.get_deployment_spec(slug)
+    # catalog - see _merge_recorded_spec. `recorded` was loaded above, before the
+    # required-field check.
     divergence: list[str] = []
     if recorded:
         # Which env vars feed which mount, so a relocation applies only to the

@@ -323,3 +323,99 @@ class TestMergeRecordedSpec:
             user_env={},
         )
         assert merged["hostname"] == "new-name"
+
+
+class TestRedeployUsesTheRecordedSpec:
+    """The endpoint wiring, not just the merge function.
+
+    This is where keys_by_target is built from the catalog volume templates and
+    handed to _merge_recorded_spec, and where the required-field check has to
+    honour what the deployment already has - otherwise a redeploy demands the
+    operator retype values the record already holds, which is exactly what
+    recording the spec exists to prevent.
+    """
+
+    SERVICE = {
+        "slug": "demo",
+        "name": "Demo",
+        "status": "active",
+        "category": "storage",
+        "docker": {
+            "image": "demo:2",
+            "env": [{"key": "DATA_DIR", "required": True, "label": "Data directory"}],
+            "volumes": ["${DATA_DIR}:/app/data"],
+            "ports": [],
+        },
+    }
+
+    def _deploy(self, recorded, body_env=None):
+        import asyncio
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        from app import main
+
+        captured = {}
+
+        async def _capture(worker_id, s, spec):
+            captured["spec"] = spec
+            return {"container_id": "abc"}
+
+        body = MagicMock()
+        body.env = body_env or {}
+        body.hostname = None
+
+        async def run():
+            with (
+                patch.object(main, "_require_owner", lambda r: None),
+                patch.object(main.catalog, "get_service", return_value=self.SERVICE),
+                patch.object(main, "_resolve_worker_id", AsyncMock(return_value=1)),
+                patch.object(main, "_proxy_worker_deploy", _capture),
+                patch.object(main.database, "get_deployment_spec", AsyncMock(return_value=recorded)),
+                patch.object(main.database, "save_deployment", AsyncMock()),
+                patch.object(main.database, "record_health_event", AsyncMock()),
+                patch.object(main, "_spawn", lambda coro: coro.close()),
+                patch.object(main.metrics, "record_container_lifecycle", lambda *a: None),
+            ):
+                result = await main.api_deploy(MagicMock(), "demo", body)
+            return result, captured.get("spec")
+
+        return asyncio.run(run())
+
+    RECORDED = {
+        "image": "demo:1",
+        "env": {"DATA_DIR": "/mnt/user/data"},
+        "volumes": {"/mnt/user/data": {"bind": "/app/data", "mode": "rw"}},
+    }
+
+    def test_a_redeploy_does_not_demand_values_the_record_already_has(self):
+        """The acceptance case: no retyping of the path on every redeploy."""
+        result, spec = self._deploy(self.RECORDED)
+        assert result["status"] == "deployed"
+        assert spec["env"]["DATA_DIR"] == "/mnt/user/data"
+
+    def test_a_redeploy_reproduces_the_recorded_mounts(self):
+        _, spec = self._deploy(self.RECORDED)
+        assert spec["volumes"] == self.RECORDED["volumes"]
+        assert "${DATA_DIR}" not in str(spec["volumes"])
+
+    def test_the_image_still_comes_from_the_catalog(self):
+        _, spec = self._deploy(self.RECORDED)
+        assert spec["image"] == "demo:2", "upgrades must still land"
+
+    def test_supplying_the_path_this_deploy_relocates_it(self):
+        _, spec = self._deploy(self.RECORDED, body_env={"DATA_DIR": "/mnt/user/moved"})
+        assert "/mnt/user/moved" in spec["volumes"]
+
+    def test_a_first_deploy_still_requires_its_fields(self):
+        """No record means the required-field check must still bite."""
+        from fastapi import HTTPException
+
+        with pytest.raises(HTTPException) as exc:
+            self._deploy(None)
+        assert exc.value.status_code == 400
+        assert "Data directory" in exc.value.detail
+
+    def test_a_first_deploy_with_the_field_supplied_succeeds(self):
+        result, spec = self._deploy(None, body_env={"DATA_DIR": "/mnt/user/new"})
+        assert result["status"] == "deployed"
+        assert "kept_from_previous_deployment" not in result
