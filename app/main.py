@@ -39,6 +39,7 @@ from app import (
     notify,
     power,
     preflight,
+    producer_state,
     setup_token,
 )
 from app.worker_proxy import _pin_url_to_ip, _validate_worker_url
@@ -1874,6 +1875,56 @@ async def api_earnings_net(request: Request, days: int = 30) -> dict[str, Any]:
     result["window_days"] = max(1, int(days))
     result["host_tdp_watts"] = host_tdp
     return result
+
+
+@app.get("/api/services/{slug}/producer-state")
+async def api_producer_state(request: Request, slug: str, worker_id: int | None = None) -> dict[str, Any]:
+    """Is this service actually EARNING, as distinct from merely running?
+
+    Container health is computed from restarts and crashes, so a service that
+    has produced nothing for a month still scores full marks. This is a separate
+    verdict, and it says "unknown" rather than guessing when the earnings cannot
+    be seen at all.
+    """
+    _require_auth_api(request)
+    service = catalog.get_service(slug)
+    if not service:
+        raise HTTPException(status_code=404, detail=f"Unknown service '{slug}'")
+
+    from app.collectors import COLLECTOR_MAP
+
+    has_collector = slug in COLLECTOR_MAP
+
+    earned_recently: bool | None = None
+    if has_collector:
+        earned = await database.get_earned_by_platform(days=7)
+        if slug in earned:
+            earned_recently = earned[slug] > 0
+
+    running = True
+    log_hits: list[dict[str, str]] = []
+    signals = producer_state.signals_for(service)
+    try:
+        containers = await _get_all_worker_containers()
+        matches = [c for c in containers if c.get("service") == slug]
+        running = any(str(c.get("status", "")).lower() == "running" for c in matches)
+        if signals and running:
+            wid = worker_id if worker_id is not None else (matches[0].get("_worker_id") if matches else None)
+            if wid is not None:
+                logs = (await _proxy_worker_logs(wid, slug, lines=200)).get("logs", "")
+                log_hits = producer_state.match_log_signals(logs, signals)
+    except Exception as exc:
+        # Never let a log or worker problem turn "is it earning?" into a 500;
+        # the earnings signal alone is still worth reporting.
+        logger.warning("Producer-state signals unavailable for %s: %s", slug, exc)
+
+    return producer_state.assess(
+        slug=slug,
+        has_collector=has_collector,
+        earned_recently=earned_recently,
+        log_hits=log_hits,
+        container_running=running,
+    )
 
 
 @app.get("/api/collector-alerts")

@@ -42,6 +42,15 @@
 #   command: "" (optional override)
 #   network_mode: "" (optional, e.g. "host")
 #   cap_add: [] (optional)
+#   health_signals: [] (optional) log patterns that say whether the service is EARNING,
+#     which container health cannot see. The only signal available for the services with
+#     no collector.
+#       - pattern: "login failed"       regex, matched case-insensitively against logs
+#         means:   "The service rejected the stored credentials."   shown to the user
+#         state:   failing              failing (default) | idle
+#     Only add a pattern you have actually seen in that service's logs. A guessed regex
+#     that never matches is dead weight; one that matches the wrong line tells the user
+#     something false.
 #   devices: [] (optional) host devices to map in, e.g. ["/dev/net/tun"]
 #     Only devices on the worker's allow-list may be requested, and only by the
 #     service whose own YAML declares them. A device is a direct line to the
