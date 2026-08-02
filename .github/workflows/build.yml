@@ -105,6 +105,48 @@ jobs:
           cache-from: type=gha,scope=ui
           cache-to: type=gha,mode=max,scope=ui
 
+  # A release must publish BOTH images even when only one changed. The compose
+  # files pin them to the same tag, so a version that exists for one and not the
+  # other makes the documented quickstart reference a tag that is not there —
+  # `docker compose pull` then fails for anyone following the README.
+  #
+  # This is a manifest re-point, not a rebuild: imagetools copies the existing
+  # multi-arch descriptor to the new tags in seconds, so an unchanged image is
+  # never rebuilt just to satisfy a naming convention.
+  retag-ui:
+    needs: [lint, resolve-tags]
+    if: ${{ !inputs.build_ui && inputs.version != '' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - name: Re-point the unchanged UI image at this release's tags
+        run: |
+          for tag in ${{ needs.resolve-tags.outputs.ui_tags }}; do
+            echo "retagging -> $tag"
+            docker buildx imagetools create -t "$tag" drumsergio/cashpilot:latest
+          done
+
+  retag-worker:
+    needs: [lint, resolve-tags]
+    if: ${{ !inputs.build_worker && inputs.version != '' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - name: Re-point the unchanged worker image at this release's tags
+        run: |
+          for tag in ${{ needs.resolve-tags.outputs.worker_tags }}; do
+            echo "retagging -> $tag"
+            docker buildx imagetools create -t "$tag" drumsergio/cashpilot-worker:latest
+          done
+
   build-worker:
     needs: [lint, resolve-tags]
     if: inputs.build_worker
@@ -126,3 +168,27 @@ jobs:
           tags: ${{ needs.resolve-tags.outputs.worker_tags }}
           cache-from: type=gha,scope=worker
           cache-to: type=gha,mode=max,scope=worker
+
+  # CI passed happily while cashpilot:1.7.0 existed and cashpilot-worker:1.7.0
+  # did not — the gap was only found by deploying. This closes that: if a tag
+  # this release claims to have published does not resolve, the run fails.
+  verify-tags:
+    needs: [resolve-tags, build-ui, build-worker, retag-ui, retag-worker]
+    if: ${{ always() && inputs.version != '' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Every published tag must resolve
+        run: |
+          missing=0
+          for tag in ${{ needs.resolve-tags.outputs.ui_tags }} ${{ needs.resolve-tags.outputs.worker_tags }}; do
+            if docker manifest inspect "$tag" >/dev/null 2>&1; then
+              echo "ok      $tag"
+            else
+              echo "MISSING $tag"
+              missing=1
+            fi
+          done
+          if [ "$missing" -ne 0 ]; then
+            echo "::error::A release tag is missing. The compose files pin both images to the same tag, so a partial release breaks the documented quickstart."
+            exit 1
+          fi
