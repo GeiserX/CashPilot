@@ -42,6 +42,7 @@ from app import (
     metrics,
     net_activity,
     notify,
+    payouts,
     power,
     preflight,
     producer_state,
@@ -299,6 +300,36 @@ async def _run_health_check() -> None:
         logger.warning("Health check skipped: %s", exc)
 
 
+async def _detect_payout(result: Any) -> None:
+    """Notice a balance drop that looks like a cashout, and ask.
+
+    Never records income on its own. A balance also falls for a provider
+    correction or a reset session, and an unconfirmed guess written as earnings
+    corrupts lifetime-earned permanently and invisibly.
+    """
+    try:
+        previous = await database.get_latest_balance(result.platform)
+        if previous is None:
+            return
+        probable = payouts.detect(previous, result.balance, catalog.get_service(result.platform))
+        if not probable:
+            return
+        payout_id = await database.record_probable_payout(
+            platform=result.platform,
+            amount=probable["amount"],
+            currency=result.currency,
+            fx_rate_usd=exchange_rates.to_usd(1.0, result.currency),
+        )
+        if payout_id is None:
+            # One already pending for this platform; a second prompt for the
+            # same event teaches the user to dismiss them.
+            return
+        await database.record_alert("payout", result.platform, probable["reason"])
+    except Exception as exc:
+        # Earnings collection must not fail because payout detection did.
+        logger.warning("Payout detection failed for %s: %s", getattr(result, "platform", "?"), exc)
+
+
 async def _collect_bounded(collector) -> Any:
     """Run a single collector's `collect()` under the shared concurrency limit."""
     async with _collection_semaphore:
@@ -425,6 +456,9 @@ async def _run_collection() -> None:
                             )
                         )
                 else:
+                    # Compare against the last reading BEFORE writing the new one:
+                    # a payout is only visible as the step between two snapshots.
+                    await _detect_payout(result)
                     await database.upsert_earnings(
                         platform=result.platform,
                         balance=result.balance,
@@ -2109,6 +2143,66 @@ async def api_test_credentials(request: Request, slug: str) -> dict[str, Any]:
         return credential_test.result(outcome, name, balance=result.balance, currency=result.currency)
     logger.debug("Credential test for %s failed: %s", slug, result.error)
     return credential_test.result(outcome, name)
+
+
+@app.get("/api/earnings/payouts")
+async def api_payouts(request: Request, platform: str | None = None) -> dict[str, Any]:
+    """Payouts, split into confirmed income and drops still awaiting a human."""
+    _require_auth_api(request)
+    rows = await database.get_payouts(platform=platform)
+    return {
+        "confirmed": [r for r in rows if r.get("confirmed")],
+        "probable": [r for r in rows if not r.get("confirmed")],
+    }
+
+
+@app.post("/api/earnings/payouts/{payout_id}/confirm")
+async def api_confirm_payout(request: Request, payout_id: int, method: str = "") -> dict[str, Any]:
+    """Confirm a drop really was a payout. Only a human reaches this."""
+    _require_auth_api(request)
+    if not await database.confirm_payout(payout_id):
+        raise HTTPException(status_code=404, detail="No unconfirmed payout with that id")
+    return {"ok": True, "id": payout_id, "confirmed": True}
+
+
+@app.post("/api/earnings/payouts/{payout_id}/reject")
+async def api_reject_payout(request: Request, payout_id: int) -> dict[str, Any]:
+    """This drop was not a payout — forget it entirely."""
+    _require_auth_api(request)
+    if not await database.reject_payout(payout_id):
+        raise HTTPException(status_code=404, detail="No unconfirmed payout with that id")
+    return {"ok": True, "id": payout_id, "removed": True}
+
+
+@app.get("/api/services/{slug}/payout-progress")
+async def api_payout_progress(request: Request, slug: str) -> dict[str, Any]:
+    """Current balance, lifetime earned, and how far off the payout is.
+
+    These are three different questions and were previously one number that went
+    DOWN when the user got paid. The projection is the answer to the most
+    demotivating unknown in this category — a 20 USD minimum can be months on
+    one device, and not knowing that is what makes people give up.
+    """
+    _require_auth_api(request)
+    service = catalog.get_service(slug)
+    if not service:
+        raise HTTPException(status_code=404, detail=f"Unknown service '{slug}'")
+
+    balance = await database.get_latest_balance(slug)
+    history = await database.get_balance_history(slug, days=30)
+    confirmed = await database.get_payouts(platform=slug, confirmed_only=True)
+
+    current = float(balance or 0.0)
+    return {
+        "slug": slug,
+        "current_balance": round(current, 6),
+        # Lifetime counts CONFIRMED payouts only. A probable one folded in here
+        # would let a single misread drop inflate earnings forever, invisibly.
+        "lifetime_earned": payouts.lifetime_earned(current, confirmed),
+        "confirmed_payout_count": len(confirmed),
+        "balance_known": balance is not None,
+        "projection": payouts.project(current, service, history),
+    }
 
 
 @app.get("/api/disclosure/coverage")
