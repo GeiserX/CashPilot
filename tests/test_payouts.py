@@ -322,3 +322,150 @@ class TestDetectionIsHookedIntoCollectionSafely:
 
         with patch.object(main.database, "get_latest_balance", AsyncMock(side_effect=RuntimeError("db down"))):
             asyncio.run(main._detect_payout(self._result()))
+
+
+class TestThePayoutTableAgainstRealSqlite:
+    """The SQL, executed rather than mocked.
+
+    Everything above mocks the database, which proves the logic and nothing
+    about whether the statements are valid. These are new tables, new indexes
+    and new queries; a typo in one would pass every test above and fail the
+    first time a real payout was recorded.
+    """
+
+    @pytest.fixture
+    def db(self, tmp_path):
+        import asyncio
+        from unittest.mock import patch
+
+        from app import database
+
+        with (
+            patch.object(database, "DB_DIR", tmp_path),
+            patch.object(database, "DB_PATH", tmp_path / "cashpilot.db"),
+        ):
+            asyncio.run(database.init_db())
+            yield database
+
+    def _run(self, coro):
+        import asyncio
+
+        return asyncio.run(coro)
+
+    def test_the_table_and_index_are_created(self, db):
+        async def check():
+            conn = await db._get_db()
+            try:
+                cur = await conn.execute("SELECT name FROM sqlite_master WHERE type IN ('table','index')")
+                return {r["name"] for r in await cur.fetchall()}
+            finally:
+                await conn.close()
+
+        names = self._run(check())
+        assert "payouts" in names
+        assert "idx_payouts_platform" in names
+
+    def test_a_probable_payout_round_trips(self, db):
+        payout_id = self._run(db.record_probable_payout("honeygain", 20.0, "USD", 1.0))
+        assert payout_id
+        rows = self._run(db.get_payouts(platform="honeygain"))
+        assert len(rows) == 1
+        assert rows[0]["amount"] == 20.0
+        assert rows[0]["confirmed"] == 0, "a detected drop must never start confirmed"
+
+    def test_a_second_probable_payout_is_not_filed_while_one_is_pending(self, db):
+        """One event must not become a growing pile of identical prompts."""
+        assert self._run(db.record_probable_payout("honeygain", 20.0))
+        assert self._run(db.record_probable_payout("honeygain", 20.0)) is None
+        assert len(self._run(db.get_payouts(platform="honeygain"))) == 1
+
+    def test_confirming_marks_it_and_stamps_the_time(self, db):
+        payout_id = self._run(db.record_probable_payout("honeygain", 20.0))
+        assert self._run(db.confirm_payout(payout_id, method="paypal")) is True
+        row = self._run(db.get_payouts(platform="honeygain"))[0]
+        assert row["confirmed"] == 1
+        assert row["method"] == "paypal"
+        assert row["confirmed_at"]
+
+    def test_confirming_twice_is_refused(self, db):
+        payout_id = self._run(db.record_probable_payout("honeygain", 20.0))
+        assert self._run(db.confirm_payout(payout_id)) is True
+        assert self._run(db.confirm_payout(payout_id)) is False
+
+    def test_a_confirmed_payout_cannot_be_rejected(self, db):
+        """Rejection deletes; allowing it after confirmation would erase income."""
+        payout_id = self._run(db.record_probable_payout("honeygain", 20.0))
+        self._run(db.confirm_payout(payout_id))
+        assert self._run(db.reject_payout(payout_id)) is False
+        assert len(self._run(db.get_payouts(platform="honeygain"))) == 1
+
+    def test_rejecting_removes_it_entirely(self, db):
+        payout_id = self._run(db.record_probable_payout("honeygain", 20.0))
+        assert self._run(db.reject_payout(payout_id)) is True
+        assert self._run(db.get_payouts(platform="honeygain")) == []
+
+    def test_confirmed_only_filters_out_the_probable(self, db):
+        confirmed = self._run(db.record_probable_payout("honeygain", 20.0))
+        self._run(db.confirm_payout(confirmed))
+        self._run(db.record_probable_payout("iproyal", 5.0))
+        rows = self._run(db.get_payouts(confirmed_only=True))
+        assert [r["platform"] for r in rows] == ["honeygain"]
+
+    def test_totals_use_the_rate_recorded_when_the_payout_landed(self, db):
+        """A token payout must not be restated by today's price."""
+        payout_id = self._run(db.record_probable_payout("mysterium", 10.0, "MYST", 0.25))
+        self._run(db.confirm_payout(payout_id))
+        totals = self._run(db.get_confirmed_payout_totals())
+        assert totals["mysterium"] == pytest.approx(2.5)
+
+    def test_a_missing_rate_is_treated_as_one_to_one(self, db):
+        payout_id = self._run(db.record_probable_payout("honeygain", 7.0, "USD", None))
+        self._run(db.confirm_payout(payout_id))
+        assert self._run(db.get_confirmed_payout_totals())["honeygain"] == pytest.approx(7.0)
+
+    def test_unconfirmed_payouts_are_excluded_from_totals(self, db):
+        self._run(db.record_probable_payout("honeygain", 99.0, "USD", 1.0))
+        assert self._run(db.get_confirmed_payout_totals()) == {}
+
+
+class TestBalanceHistoryAgainstRealSqlite:
+    @pytest.fixture
+    def db(self, tmp_path):
+        import asyncio
+        from unittest.mock import patch
+
+        from app import database
+
+        with (
+            patch.object(database, "DB_DIR", tmp_path),
+            patch.object(database, "DB_PATH", tmp_path / "cashpilot.db"),
+        ):
+            asyncio.run(database.init_db())
+            yield database
+
+    def _run(self, coro):
+        import asyncio
+
+        return asyncio.run(coro)
+
+    def test_a_platform_never_seen_has_no_balance(self, db):
+        """None, not zero: a first reading has nothing to compare against."""
+        assert self._run(db.get_latest_balance("honeygain")) is None
+
+    def test_the_latest_balance_is_the_most_recent_reading(self, db):
+        self._run(db.upsert_earnings("honeygain", 1.0, "USD", date="2026-01-01"))
+        self._run(db.upsert_earnings("honeygain", 5.0, "USD", date="2026-01-02"))
+        assert self._run(db.get_latest_balance("honeygain")) == 5.0
+
+    def test_history_comes_back_oldest_first(self, db):
+        from datetime import UTC, datetime, timedelta
+
+        today = datetime.now(UTC)
+        for offset, balance in ((2, 1.0), (1, 2.0), (0, 3.0)):
+            day = (today - timedelta(days=offset)).strftime("%Y-%m-%d")
+            self._run(db.upsert_earnings("honeygain", balance, "USD", date=day))
+        history = self._run(db.get_balance_history("honeygain", days=30))
+        assert [row["balance"] for row in history] == [1.0, 2.0, 3.0]
+
+    def test_history_for_an_unknown_platform_is_empty(self, db):
+        assert self._run(db.get_balance_history("nope")) == []
