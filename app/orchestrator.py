@@ -155,6 +155,23 @@ def _read_pids_limit() -> int:
 _PIDS_LIMIT = _read_pids_limit()
 
 
+def available_runtimes() -> set[str]:
+    """Runtimes the local Docker daemon actually reports.
+
+    The allowlist is derived from the daemon rather than hardcoded, because a
+    runtime CashPilot has heard of but the host has not installed would fail at
+    container-create time with a Docker error the user cannot act on. Asking the
+    daemon means the only runtimes offered are ones that exist here.
+    """
+    try:
+        info = _get_client().info()
+    except Exception:
+        logger.warning("Could not read Docker runtimes; treating none as available")
+        return set()
+    runtimes = info.get("Runtimes")
+    return set(runtimes) if isinstance(runtimes, dict) else set()
+
+
 def deploy_raw(
     slug: str,
     image: str,
@@ -169,6 +186,7 @@ def deploy_raw(
     labels: dict[str, str] | None = None,
     resources: Any = None,
     category: str = "bandwidth",
+    runtime: str | None = None,
 ) -> str:
     """Deploy a container from a raw spec (no catalog lookup).
 
@@ -239,6 +257,9 @@ def deploy_raw(
         hostname=hostname or f"cashpilot-{slug}",
         detach=True,
         restart_policy={"Name": "unless-stopped"},
+        # None means Docker's default runtime, which is what every service uses
+        # unless an advanced user has deliberately opted one into another.
+        runtime=runtime or None,
         **resource_kwargs,
     )
 
