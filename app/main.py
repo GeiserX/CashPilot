@@ -261,7 +261,18 @@ async def _flatline_check() -> None:
     collection cycle.
     """
     try:
-        for flat in await database.get_flatlined_services():
+        flat_services = await database.get_flatlined_services()
+        flat_now = {f["platform"] for f in flat_services}
+
+        # Clear the cooldown for anything that has started earning again.
+        # record_alert suppresses a repeat within the quiet window, so without
+        # this a service that recovered and then went flat again inside that
+        # window would be silently swallowed - the alert nobody gets.
+        for recovered in await database.get_alert_subjects("flatline") - flat_now:
+            await database.clear_alerts("flatline", recovered)
+            logger.info("%s is earning again; cleared its flatline alert", recovered)
+
+        for flat in flat_services:
             message = (
                 f"Balance has not moved in {flat['days_flat']} days "
                 f"(still {flat['balance']}). The service is running but not earning."
