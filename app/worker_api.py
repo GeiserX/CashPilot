@@ -461,6 +461,7 @@ class DeploySpec(BaseModel):
     volumes: dict[str, dict[str, str]] = {}
     network_mode: str | None = None
     cap_add: list[str] | None = None
+    devices: list[str] | None = None
     privileged: bool = False
     command: str | None = None
     hostname: str | None = None
@@ -599,6 +600,34 @@ _ALLOWED_VOLUME_ROOTS = _parse_allowed_volume_roots(os.getenv("CASHPILOT_ALLOWED
 _MEM_LIMIT_RE = re.compile(r"^\d+[bkmgBKMG]?$")
 
 
+# Devices a service may ever request. A device is a direct line to the kernel,
+# so this is a hard ceiling that the catalog cannot widen: adding an entry here
+# is a deliberate maintainer decision, not something a service YAML can do on
+# its own. /dev/net/tun is here because Mysterium genuinely cannot carry
+# wireguard traffic without it — deployed without the device the node starts,
+# registers and earns nothing, which is exactly the failure this closes.
+_ALLOWED_DEVICES = frozenset({"/dev/net/tun"})
+
+
+def _catalog_allowed_devices(slug: str | None = None) -> set[str]:
+    """Devices the catalog declares for one slug, intersected with the ceiling.
+
+    Scoped per-slug for the same reason capabilities are: with a union, one
+    service declaring a device would let every other slug request it too. An
+    unknown slug gets the empty set — deny rather than fall back to the union.
+    """
+    if not _catalog_get_services:
+        return set()
+    devices: set[str] = set()
+    for svc in _catalog_get_services():
+        if slug is not None and svc.get("slug") != slug:
+            continue
+        for dev in (svc.get("docker") or {}).get("devices") or []:
+            devices.add(str(dev).split(":")[0].rstrip("/"))
+    # Never return anything outside the ceiling, even if a YAML asks for it.
+    return devices & set(_ALLOWED_DEVICES)
+
+
 def _catalog_allowed_capabilities(slug: str | None = None) -> set[str]:
     """cap_add values the catalog declares — for one slug, or the union.
 
@@ -644,6 +673,14 @@ def _validate_deploy_spec(spec: DeploySpec, slug: str | None = None) -> None:
         blocked = requested - _catalog_allowed_capabilities(slug)
         if blocked:
             raise HTTPException(status_code=403, detail=f"Blocked capabilities: {', '.join(sorted(blocked))}")
+    if spec.devices:
+        requested_devices = {str(d).split(":")[0].rstrip("/") for d in spec.devices}
+        blocked_devices = requested_devices - _catalog_allowed_devices(slug)
+        if blocked_devices:
+            raise HTTPException(
+                status_code=403,
+                detail=f"Blocked devices: {', '.join(sorted(blocked_devices))}",
+            )
     if spec.network_mode not in _ALLOWED_NETWORK_MODES:
         raise HTTPException(status_code=403, detail=f"Network mode '{spec.network_mode}' is not allowed")
     if spec.network_mode == "host" and slug not in _catalog_host_network_slugs():
@@ -720,6 +757,7 @@ async def api_deploy_container(request: Request, slug: str, spec: DeploySpec) ->
             volumes=spec.volumes,
             network_mode=spec.network_mode,
             cap_add=spec.cap_add,
+            devices=spec.devices,
             # spec.privileged is rejected outright by _validate_deploy_spec above, and
             # deploy_raw no longer accepts it at all — containers are never privileged.
             command=spec.command,

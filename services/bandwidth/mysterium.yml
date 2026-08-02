@@ -33,6 +33,11 @@ docker:
   command: "--ui.address=0.0.0.0 --tequilapi.address=0.0.0.0 service --agreed-terms-and-conditions"
   network_mode: "host"
   cap_add: [NET_ADMIN]
+  # Wireguard/dvpn need a TUN device. Without it the node starts, registers and
+  # advertises itself to the network but carries no traffic - it looks healthy
+  # and earns nothing. See docs/guides/mysterium.md.
+  devices:
+    - "/dev/net/tun"
   privileged: false
 
 requirements:

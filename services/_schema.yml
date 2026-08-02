@@ -42,6 +42,10 @@
 #   command: "" (optional override)
 #   network_mode: "" (optional, e.g. "host")
 #   cap_add: [] (optional)
+#   devices: [] (optional) host devices to map in, e.g. ["/dev/net/tun"]
+#     Only devices on the worker's allow-list may be requested, and only by the
+#     service whose own YAML declares them. A device is a direct line to the
+#     kernel, so the catalog cannot widen that ceiling on its own.
 #   privileged: false (optional, security-sensitive — grants the container full host device access)
 #   stop_timeout: 30 (optional, seconds to wait before SIGKILL on stop — default 30)
 #   setup: "" (optional, one-time setup instructions/commands to run before first deploy)
