@@ -39,6 +39,7 @@ from app import (
     exchange_rates,
     fleet_key,
     login_rate_limit,
+    machine_economics,
     metrics,
     net_activity,
     notify,
@@ -2203,6 +2204,66 @@ async def api_payout_progress(request: Request, slug: str) -> dict[str, Any]:
         "balance_known": balance is not None,
         "projection": payouts.project(current, service, history),
     }
+
+
+@app.get("/api/fleet/economics")
+async def api_fleet_economics(request: Request) -> dict[str, Any]:
+    """Is each machine worth keeping powered on for what it earns?
+
+    Deliberately per-MACHINE. Adding a bandwidth container to a box that is
+    already on costs 1-3 W — below what a consumer smart plug can measure — so a
+    per-service net figure would be fabricated precision. The machine-level
+    question is the one with an answer: a dedicated 65 W node at 0.20/kWh costs
+    about 9.50 a month against a typical 3-6 gross.
+
+    Nothing is ever stopped or throttled on the strength of this. The
+    electricity is the operator's and so is the decision.
+    """
+    _require_auth_api(request)
+    config = await database.get_config() or {}
+    try:
+        price = float(config.get("electricity_price_per_kwh") or 0.0)
+    except (TypeError, ValueError):
+        price = 0.0
+
+    workers = [_decoded_worker(w) for w in await database.list_workers()]
+    earned = await database.get_earned_by_platform(days=30)
+    containers = await _get_all_worker_containers()
+
+    # Attribute each service's gross to the worker running it. A service on two
+    # machines splits evenly: without per-node earnings there is no better
+    # answer, and pretending otherwise would be invented precision again.
+    per_worker_gross: dict[Any, float] = {}
+    hosts: dict[str, list[Any]] = {}
+    for container in containers:
+        slug = egress.container_slug(container)
+        if slug:
+            hosts.setdefault(slug, []).append(container.get("_worker_id"))
+    for slug, worker_ids in hosts.items():
+        share = float(earned.get(slug) or 0.0) / max(1, len(worker_ids))
+        for worker_id in worker_ids:
+            per_worker_gross[worker_id] = per_worker_gross.get(worker_id, 0.0) + share
+
+    assessed = []
+    for worker in workers:
+        info = worker.get("system_info") or {}
+        raw_watts = config.get(f"worker_{worker.get('id')}_watts")
+        try:
+            watts = float(raw_watts) if raw_watts else None
+        except (TypeError, ValueError):
+            watts = None
+        assessed.append(
+            machine_economics.assess_machine(
+                name=worker.get("name") or f"worker {worker.get('id')}",
+                monthly_gross=per_worker_gross.get(worker.get("id"), 0.0),
+                watts=watts,
+                price_per_kwh=price or None,
+                metered=power.is_metered(info),
+                dedicated=bool(config.get(f"worker_{worker.get('id')}_dedicated")),
+            )
+        )
+
+    return machine_economics.fleet_summary(assessed)
 
 
 @app.get("/api/disclosure/coverage")
