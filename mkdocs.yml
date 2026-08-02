@@ -85,6 +85,7 @@ nav:
   - Direction and Roadmap: roadmap.md
   - Security Defaults: security-defaults.md
   - Fleet Management: fleet.md
+  - Backing Up Node Identities: backup.md
   - Prometheus Metrics: guides/prometheus-metrics.md
   - Upgrade to v1.0.0: upgrade-v1.md
   - Service Guides:
