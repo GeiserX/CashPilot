@@ -5,6 +5,7 @@ All notable changes to CashPilot are documented here.
 ## [Unreleased]
 
 ### Fixed
+- **A payout on one platform no longer erases earnings on another** (CashPilot-glc). Daily and summary earnings were computed by summing every platform's balance delta and only then clamping the total at zero. On a day a payout landed, that platform's balance fell, and the drop cancelled real earnings on other platforms before the clamp ever ran — so a day you actually earned could report zero. Each platform's delta is now clamped at zero *before* summing, so a payout counts as 'nothing earned there today' and never eats into the rest. A pure payout day reads as zero, never negative. The remaining half of the ledger work — a payouts table, drop detection, a lifetime-earned vs current-balance split, and a projected payout date — is tracked as a follow-on
 - **ProxyBase migrated to the current client** (#103). ProxyBase retired its Docker Hub image and old GHCR org and moved to `proxybase.org`, so the catalog entry no longer worked. The image is now `ghcr.io/proxybaseorg/peer-cli` (digest-pinned, multi-arch amd64/arm64/armv7 — arm64/Raspberry Pi now supported), credentials are the client's current `ID` (relabelled **Access Token**, masked) and `NAME` env vars, every URL points at `proxybase.org`, and datacenter IPs are now marked as accepted (residential still earns most). Existing ProxyBase deployments must be re-deployed with a fresh Access Token — see the [updated guide](docs/guides/proxybase.md)
 
 ### Security
