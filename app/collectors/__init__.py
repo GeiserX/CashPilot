@@ -232,6 +232,40 @@ def make_collectors(
     return collectors
 
 
+def build_one(slug: str, config: dict[str, str]) -> tuple[Any | None, list[str]]:
+    """Build a single, UNCACHED collector for an on-demand credential test.
+
+    Returns ``(collector, missing_config_keys)``. Uncached on purpose: the test
+    button exists to check credentials the user just changed, and handing back a
+    cached instance built from the previous values would validate the wrong
+    thing and report success for a credential that no longer exists.
+
+    Resolution reuses the same ``_COLLECTOR_ARGS`` table as ``make_collectors``
+    so the two can never disagree about which keys a service needs.
+    """
+    cls = COLLECTOR_MAP.get(slug)
+    if cls is None:
+        return None, []
+
+    kwargs: dict[str, str] = {}
+    missing: list[str] = []
+    for arg in _COLLECTOR_ARGS.get(slug, []):
+        optional = arg.startswith("?")
+        name = arg.lstrip("?")
+        value = config.get(f"{slug}_{name}", "")
+        if value:
+            kwargs[name] = value
+        elif not optional:
+            missing.append(f"{slug}_{name}")
+    if missing:
+        return None, missing
+    try:
+        return cls(**kwargs), []
+    except Exception as exc:
+        logger.error("Could not construct collector for %s: %s", slug, exc)
+        return None, []
+
+
 async def close_all_collectors() -> None:
     """Close all cached collector HTTP clients and clear the cache."""
     global _cached_collectors, _cached_kwargs

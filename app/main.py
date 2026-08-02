@@ -33,6 +33,7 @@ from app import (
     auth,
     catalog,
     compose_generator,
+    credential_test,
     database,
     disclosure,
     egress,
@@ -2049,6 +2050,58 @@ async def api_service_disclosure(request: Request, slug: str) -> dict[str, Any]:
     if not service:
         raise HTTPException(status_code=404, detail=f"Unknown service '{slug}'")
     return disclosure.for_service(service)
+
+
+@app.post("/api/services/{slug}/test-credentials")
+async def api_test_credentials(request: Request, slug: str) -> dict[str, Any]:
+    """Check the saved credentials for one service, right now.
+
+    Without this a user waits up to a full collection interval — an hour — to
+    find out a pasted token had a typo, and learns it from a notification bell.
+
+    The response deliberately has no field that could carry a secret: outcomes
+    are classified, and neither the credential nor the provider's raw body is
+    returned. A failed provider login frequently echoes the submitted payload.
+    """
+    from app import collectors
+    from app.collectors import COLLECTOR_MAP
+
+    _require_auth_api(request)
+    service = catalog.get_service(slug)
+    if not service:
+        raise HTTPException(status_code=404, detail=f"Unknown service '{slug}'")
+    name = service.get("name") or slug
+
+    if slug not in COLLECTOR_MAP:
+        return credential_test.result(credential_test.UNSUPPORTED, name)
+
+    remaining = credential_test.cooldown_remaining(slug)
+    if remaining > 0:
+        # Retrying a rejected login in a tight loop is how accounts get flagged,
+        # and a button invites exactly that.
+        return credential_test.result(credential_test.RATE_LIMITED, name, retry_after=round(remaining))
+
+    config = await database.get_config() or {}
+    collector, missing = collectors.build_one(slug, config)
+    if collector is None:
+        outcome = credential_test.NOT_CONFIGURED if missing else credential_test.UNSUPPORTED
+        return credential_test.result(outcome, name)
+
+    credential_test.note_attempt(slug)
+    try:
+        result = await collector.collect()
+    except Exception as exc:
+        logger.debug("Credential test for %s raised: %s", slug, exc)
+        return credential_test.result(credential_test.classify(str(exc)), name)
+    finally:
+        with contextlib.suppress(Exception):
+            await collector.close()
+
+    outcome = credential_test.classify(result.error)
+    if outcome == credential_test.OK:
+        return credential_test.result(outcome, name, balance=result.balance, currency=result.currency)
+    logger.debug("Credential test for %s failed: %s", slug, result.error)
+    return credential_test.result(outcome, name)
 
 
 @app.get("/api/disclosure/coverage")

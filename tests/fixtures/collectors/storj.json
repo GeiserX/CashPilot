@@ -1,0 +1,20 @@
+{
+  "currency": "USD",
+  "fields": [
+    "currentMonth.diskSpacePayout",
+    "currentMonth.egressBandwidthPayout",
+    "currentMonth.egressRepairAuditPayout",
+    "estimatedPayout",
+    "currentMonthExpectations"
+  ],
+  "note": "cents summed then / 100",
+  "parsed": 2.5,
+  "sample": {
+    "currentMonth": {
+      "diskSpacePayout": 150,
+      "egressBandwidthPayout": 75,
+      "egressRepairAuditPayout": 25
+    }
+  },
+  "slug": "storj"
+}

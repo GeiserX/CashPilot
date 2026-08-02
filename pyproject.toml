@@ -80,3 +80,11 @@ indent-style = "space"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# `live` tests call real provider APIs with real credentials. They are excluded
+# by default so PR CI never depends on a third party being up, and are run only
+# by the nightly collector-live-check workflow, which is the one thing here that
+# can notice a provider changed its API.
+addopts = "-m 'not live'"
+markers = [
+    "live: hits a real provider API; needs credentials; excluded from normal runs",
+]
