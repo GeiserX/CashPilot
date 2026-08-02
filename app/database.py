@@ -275,9 +275,14 @@ CREATE TABLE IF NOT EXISTS earnings (
     created_at TEXT    NOT NULL DEFAULT (datetime('now'))
 );
 
+-- updated_at exists so a credential's AGE is knowable. Several collectors use
+-- values copied out of a browser and some expire in hours; without a timestamp
+-- the UI cannot say "this will stop working tonight" before it does, and a dead
+-- collector looks identical to a provider outage.
 CREATE TABLE IF NOT EXISTS config (
-    key   TEXT PRIMARY KEY,
-    value TEXT NOT NULL
+    key        TEXT PRIMARY KEY,
+    value      TEXT NOT NULL,
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 -- spec_encrypted holds the FULL resolved container spec as it was actually
@@ -554,6 +559,14 @@ async def init_db() -> None:
         deployment_cols = {row["name"] for row in await cursor.fetchall()}
         if "spec_encrypted" not in deployment_cols:
             await db.execute("ALTER TABLE deployments ADD COLUMN spec_encrypted TEXT NOT NULL DEFAULT ''")
+        # Migrate config table: add updated_at so credential age is knowable.
+        # Existing rows get the migration time, which is the earliest we can
+        # honestly claim to know about them - never a fabricated older date.
+        cursor = await db.execute("PRAGMA table_info(config)")
+        config_cols = {row["name"] for row in await cursor.fetchall()}
+        if "updated_at" not in config_cols:
+            await db.execute("ALTER TABLE config ADD COLUMN updated_at TEXT")
+            await db.execute("UPDATE config SET updated_at = datetime('now') WHERE updated_at IS NULL")
 
         # Migrate users table: add password_changed_at for session invalidation
         cursor = await db.execute("PRAGMA table_info(users)")
@@ -695,7 +708,10 @@ async def get_earnings_dashboard_summary() -> dict[str, Any]:
         # Today's earnings: delta from yesterday per platform
         cursor = await db.execute(
             """
-            SELECT COALESCE(SUM(t.balance - COALESCE(y.balance, 0)), 0) as earned
+            -- MAX(delta, 0) per platform BEFORE summing: a payout on one
+            -- platform drops its balance, and without the per-platform clamp
+            -- that drop cancels real earnings on another platform in the sum.
+            SELECT COALESCE(SUM(MAX(t.balance - COALESCE(y.balance, 0), 0)), 0) as earned
             FROM (
                 SELECT platform, balance FROM earnings
                 WHERE date = ? AND currency = 'USD'
@@ -714,7 +730,7 @@ async def get_earnings_dashboard_summary() -> dict[str, Any]:
         cursor = await db.execute(
             """
             SELECT COALESCE(SUM(
-                latest.balance - COALESCE(month_start.balance, 0)
+                MAX(latest.balance - COALESCE(month_start.balance, 0), 0)
             ), 0) as earned
             FROM (
                 SELECT e.platform, e.balance
@@ -747,7 +763,7 @@ async def get_earnings_dashboard_summary() -> dict[str, Any]:
         day_before = (datetime.now(UTC) - timedelta(days=2)).strftime("%Y-%m-%d")
         cursor = await db.execute(
             """
-            SELECT COALESCE(SUM(y.balance - COALESCE(dy.balance, 0)), 0) as earned
+            SELECT COALESCE(SUM(MAX(y.balance - COALESCE(dy.balance, 0), 0)), 0) as earned
             FROM (
                 SELECT platform, balance FROM earnings
                 WHERE date = ? AND currency = 'USD'
@@ -818,27 +834,28 @@ async def get_daily_earnings(days: int = 7) -> list[dict[str, Any]]:
     """Return daily aggregated earnings for charting (delta per day)."""
     db = await _get_db()
     try:
-        # Get daily total balance (sum across platforms) for the range
-        # Include one extra day before the range so we can compute the first delta
+        # Per-platform balances, not a cross-platform sum. Summing first and
+        # diffing the total lets a payout drop on one platform cancel real
+        # earnings on another (see get_earnings_dashboard_summary). We clamp each
+        # platform's daily delta at zero, then sum - so a payout counts as zero
+        # earned on that platform, never as a negative eating the rest.
+        # One extra day before the range so the first delta has a predecessor.
         cursor = await db.execute(
             """
-            SELECT date, SUM(balance) as total_balance
+            SELECT date, platform, balance
             FROM earnings
             WHERE date >= date('now', ?) AND currency = 'USD'
-            GROUP BY date
             ORDER BY date
             """,
             (f"-{days + 1} days",),
         )
         rows = await cursor.fetchall()
-        data = [dict(r) for r in rows]
 
-        # Build a map of date -> total_balance
-        balance_by_date: dict[str, float] = {}
-        for row in data:
-            balance_by_date[row["date"]] = row["total_balance"]
+        # date -> {platform -> balance}
+        by_date: dict[str, dict[str, float]] = {}
+        for row in rows:
+            by_date.setdefault(row["date"], {})[row["platform"]] = row["balance"]
 
-        # Generate result for exactly `days` days
         now = datetime.now(UTC)
         result = []
         for i in range(days - 1, -1, -1):
@@ -846,14 +863,14 @@ async def get_daily_earnings(days: int = 7) -> list[dict[str, Any]]:
             date_str = d.strftime("%Y-%m-%d")
             prev_str = (d - timedelta(days=1)).strftime("%Y-%m-%d")
 
-            current = balance_by_date.get(date_str, 0.0)
-            previous = balance_by_date.get(prev_str, 0.0)
-            delta = max(0.0, current - previous) if current > 0 else 0.0
+            current = by_date.get(date_str, {})
+            previous = by_date.get(prev_str, {})
+            earned = sum(max(0.0, bal - previous.get(platform, 0.0)) for platform, bal in current.items())
 
             result.append(
                 {
                     "date": d.strftime("%b %d"),
-                    "amount": round(delta, 2),
+                    "amount": round(earned, 2),
                 }
             )
 
@@ -916,7 +933,7 @@ async def set_config(key: str, value: str) -> None:
     db = await _get_db()
     try:
         await db.execute(
-            "INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)",
+            "INSERT OR REPLACE INTO config (key, value, updated_at) VALUES (?, ?, datetime('now'))",
             (key, stored),
         )
         await db.commit()
@@ -930,10 +947,24 @@ async def set_config_bulk(data: dict[str, str]) -> None:
     db = await _get_db()
     try:
         await db.executemany(
-            "INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)",
+            "INSERT OR REPLACE INTO config (key, value, updated_at) VALUES (?, ?, datetime('now'))",
             pairs,
         )
         await db.commit()
+    finally:
+        await db.close()
+
+
+async def get_config_updated_at() -> dict[str, str]:
+    """Return {config_key: ISO timestamp of last write}.
+
+    Values are never returned here - only when each key was last set - so this
+    is safe to drive a UI that shows credential age without touching secrets.
+    """
+    db = await _get_db()
+    try:
+        cursor = await db.execute("SELECT key, updated_at FROM config WHERE updated_at IS NOT NULL")
+        return {row["key"]: row["updated_at"] for row in await cursor.fetchall()}
     finally:
         await db.close()
 

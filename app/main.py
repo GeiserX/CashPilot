@@ -28,7 +28,18 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from starlette.middleware.base import BaseHTTPMiddleware
 
-from app import auth, catalog, compose_generator, database, exchange_rates, fleet_key, metrics, notify, setup_token
+from app import (
+    auth,
+    catalog,
+    compose_generator,
+    database,
+    exchange_rates,
+    fleet_key,
+    metrics,
+    notify,
+    preflight,
+    setup_token,
+)
 from app.worker_proxy import _pin_url_to_ip, _validate_worker_url
 
 logging.basicConfig(
@@ -1344,10 +1355,16 @@ async def _proxy_to_worker(
             else:
                 resp = await client.post(f"{url}{path}", json=json, params=params, headers=headers)
             if resp.status_code >= 400:
-                logger.warning("worker proxy error (%s): %s", resp.status_code, resp.text)
+                # NOT resp.text at warning level: withholding the raw body from the
+                # caller (see _safe_worker_detail) is pointless if it goes straight
+                # into the log instead. A deploy failure can echo env values, which
+                # for several providers are live credentials.
+                safe = _safe_worker_detail(resp)
+                logger.warning("worker proxy error (%s): %s", resp.status_code, safe or "unstructured error body")
+                logger.debug("worker proxy error body (%s): %s", resp.status_code, resp.text)
                 raise HTTPException(
                     status_code=resp.status_code,
-                    detail=_safe_worker_detail(resp) or "Worker request failed",
+                    detail=safe or "Worker request failed",
                 )
             return resp.json()
     except httpx.HTTPError as exc:
@@ -1613,6 +1630,94 @@ async def api_collect(request: Request) -> dict[str, str]:
 
 
 _MAX_ALERT_ERROR_LEN = 200
+
+
+@app.get("/api/credentials/health")
+async def api_credential_health(request: Request) -> list[dict[str, Any]]:
+    """Report how old each stored credential is and when it is expected to die.
+
+    Never returns credential VALUES - only which key it is, how old, and what
+    that means. The point is that "this will stop working tonight" is visible
+    BEFORE it happens, rather than the user discovering it because earnings
+    quietly stopped being recorded.
+    """
+    _require_auth_api(request)
+
+    from app.collectors import _COLLECTOR_ARGS, credential_lifetime, durable_alternative
+
+    updated = await database.get_config_updated_at()
+    now = datetime.now(UTC)
+    report: list[dict[str, Any]] = []
+
+    for slug, args in _COLLECTOR_ARGS.items():
+        missing_durable = [field for field in durable_alternative(slug) if f"{slug}_{field}" not in updated]
+        for arg in args:
+            field = arg.lstrip("?")
+            key = f"{slug}_{field}"
+            stamp = updated.get(key)
+            if not stamp:
+                continue  # not configured; nothing to report an age for
+
+            meta = credential_lifetime(slug, field) or {}
+            hours_total = meta.get("hours")
+            try:
+                age_hours = (now - datetime.fromisoformat(stamp).replace(tzinfo=UTC)).total_seconds() / 3600
+            except ValueError:
+                continue
+
+            if hours_total is None:
+                status = "no_known_expiry"
+            elif age_hours >= hours_total:
+                status = "likely_expired"
+            elif age_hours >= hours_total * 0.75:
+                status = "expiring_soon"
+            else:
+                status = "fresh"
+
+            entry: dict[str, Any] = {
+                "service": slug,
+                "field": field,
+                "age_hours": round(age_hours, 1),
+                "expected_lifetime_hours": hours_total,
+                "status": status,
+            }
+            if meta.get("why"):
+                entry["why"] = meta["why"]
+            # Only nag about a durable alternative when the short-lived credential
+            # is the one actually at risk.
+            if missing_durable and hours_total is not None and not meta.get("durable"):
+                entry["durable_alternative_missing"] = missing_durable
+            report.append(entry)
+
+    return report
+
+
+@app.get("/api/services/{slug}/preflight")
+async def api_service_preflight(request: Request, slug: str, worker_id: int | None = None) -> dict[str, Any]:
+    """What this service will realistically do for THIS user, before deploying.
+
+    Never blocks a deploy: the goal is informed consent, not a nanny.
+    """
+    _require_auth_api(request)
+    service = catalog.get_service(slug)
+    if not service:
+        raise HTTPException(status_code=404, detail=f"Unknown service '{slug}'")
+
+    # What is already running on the SAME machine is what makes a per-IP limit
+    # checkable at all, so scope to that worker when we know which one.
+    deployed = await database.get_deployments()
+    if worker_id is not None:
+        worker = await database.get_worker(worker_id)
+        running = {c.get("service") for c in (worker or {}).get("containers", []) if c.get("service")}
+    else:
+        running = {d["slug"] for d in deployed}
+
+    system_info = {}
+    if worker_id is not None:
+        worker = await database.get_worker(worker_id)
+        system_info = (worker or {}).get("system_info") or {}
+
+    return preflight.assess(service, already_deployed_slugs=running, system_info=system_info)
 
 
 @app.get("/api/collector-alerts")

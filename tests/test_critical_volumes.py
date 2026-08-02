@@ -17,9 +17,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 # some other test module happened to be collected first and set it.
 os.environ.setdefault("CASHPILOT_API_KEY", "test-fleet-key")
 
-import pytest
+import pytest  # noqa: E402
 
-from app import catalog, orchestrator
+from app import catalog, orchestrator  # noqa: E402
 
 
 def _container(mounts):
@@ -157,7 +157,14 @@ class TestCatalogRobustness:
 class TestWorkerEndpoint:
     """The refusal must reach the caller as a 409 carrying the reason."""
 
-    def _client(self):
+    @pytest.fixture
+    def client(self):
+        """Disable the heartbeat lifespan, then put it back.
+
+        worker_api.app is module-level and shared across the whole session, so
+        replacing its lifespan permanently would leak into every later test that
+        builds a client from it.
+        """
         from contextlib import asynccontextmanager
 
         from fastapi.testclient import TestClient
@@ -168,11 +175,15 @@ class TestWorkerEndpoint:
         async def _noop(app):
             yield
 
+        original = worker_api.app.router.lifespan_context
         worker_api.app.router.lifespan_context = _noop
-        return TestClient(worker_api.app, raise_server_exceptions=False), worker_api
+        try:
+            yield TestClient(worker_api.app, raise_server_exceptions=False), worker_api
+        finally:
+            worker_api.app.router.lifespan_context = original
 
-    def test_blocked_delete_returns_409_with_the_reason(self):
-        client, worker_api = self._client()
+    def test_blocked_delete_returns_409_with_the_reason(self, client):
+        client, worker_api = client
         blocked = [{"volume": "storj-identity", "target": "/app/identity", "holds": "Node identity."}]
         err = orchestrator.CriticalVolumeError("storj", blocked)
 
@@ -188,8 +199,8 @@ class TestWorkerEndpoint:
         assert detail["blocked"] == blocked
         assert "allow_delete_critical" in detail["hint"]
 
-    def test_override_is_forwarded_to_the_orchestrator(self):
-        client, worker_api = self._client()
+    def test_override_is_forwarded_to_the_orchestrator(self, client):
+        client, worker_api = client
         removal = {"container": "cashpilot-storj", "deleted_volumes": [], "failed_volumes": []}
 
         with patch("app.worker_api.orchestrator.remove_service", return_value=removal) as mock:
@@ -329,3 +340,45 @@ class TestSafeWorkerDetailRobustness:
             pytest.raises(orchestrator.CriticalVolumeError),
         ):
             orchestrator.remove_service("s", delete_volumes=True)
+
+
+class TestWorkerErrorsAreNotLeakedToLogs:
+    """Withholding a body from the caller is pointless if it lands in the log."""
+
+    def test_the_raw_worker_body_is_not_logged_at_warning(self, caplog):
+        import asyncio
+        import contextlib
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        import httpx
+
+        from app import main
+
+        secret = "AKIA-PRETEND-CREDENTIAL-IN-ENV-ECHO"
+        resp = MagicMock()
+        resp.status_code = 500
+        resp.text = f"deploy failed: env WALLET={secret} path=/mnt/user/appdata"
+        resp.json.side_effect = ValueError("not json")
+
+        class _Client:
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *a):
+                return False
+
+            async def post(self, *a, **k):
+                return resp
+
+        async def run():
+            with (
+                patch.object(main, "_get_verified_worker_url", AsyncMock(return_value=("http://w", {}))),
+                patch.object(main.database, "get_worker", AsyncMock(return_value={"id": 1, "url": "http://w"})),
+                patch.object(httpx, "AsyncClient", lambda **kw: _Client()),
+                caplog.at_level("WARNING"),
+                contextlib.suppress(Exception),
+            ):
+                await main._proxy_to_worker(1, "POST", "/api/containers/x/deploy", json={})
+
+        asyncio.run(run())
+        assert secret not in caplog.text, "a worker error body must not reach the warning log"
