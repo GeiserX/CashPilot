@@ -355,6 +355,26 @@ CREATE TABLE IF NOT EXISTS user_preferences (
 -- earnings flatlines later). Persisted rather than kept in memory so they survive a
 -- restart: passive income is unattended, and an alert that only exists in a running
 -- process is an alert nobody ever sees.
+CREATE TABLE IF NOT EXISTS payouts (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    platform     TEXT    NOT NULL,
+    amount       REAL    NOT NULL,
+    currency     TEXT    NOT NULL DEFAULT 'USD',
+    -- USD per 1 unit of `currency` WHEN THE PAYOUT LANDED, mirroring the
+    -- earnings table. A MYST payout valued at today's rate would silently
+    -- restate history every time the token moves.
+    fx_rate_usd  REAL,
+    -- 0 until a human says this really was a payout. A balance also falls for
+    -- provider corrections and reset sessions, and recording a guess as income
+    -- corrupts lifetime-earned in a way the user cannot see.
+    confirmed    INTEGER NOT NULL DEFAULT 0,
+    method       TEXT    NOT NULL DEFAULT '',
+    detected_at  TEXT    NOT NULL DEFAULT (datetime('now')),
+    confirmed_at TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_payouts_platform ON payouts(platform, confirmed);
+
 CREATE TABLE IF NOT EXISTS alerts (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
     kind       TEXT    NOT NULL,
@@ -1844,5 +1864,145 @@ async def vacuum_database() -> None:
         await db.commit()
         await db.execute("VACUUM")
         await db.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+    finally:
+        await db.close()
+
+
+# ---------------------------------------------------------------------------
+# Payouts (CashPilot-1og)
+# ---------------------------------------------------------------------------
+
+
+async def record_probable_payout(
+    platform: str,
+    amount: float,
+    currency: str = "USD",
+    fx_rate_usd: float | None = None,
+) -> int | None:
+    """Record a balance drop that LOOKS like a payout, unconfirmed.
+
+    Returns the row id, or None when an unconfirmed one is already pending for
+    this platform. Without that guard every collection cycle would file another
+    copy of the same drop, and the user would face a growing pile of duplicate
+    prompts for one event.
+    """
+    db = await _get_db()
+    try:
+        cursor = await db.execute(
+            "SELECT id FROM payouts WHERE platform = ? AND confirmed = 0 LIMIT 1",
+            (platform,),
+        )
+        if await cursor.fetchone():
+            return None
+        cursor = await db.execute(
+            "INSERT INTO payouts (platform, amount, currency, fx_rate_usd) VALUES (?, ?, ?, ?)",
+            (platform, float(amount), currency, fx_rate_usd),
+        )
+        await db.commit()
+        return cursor.lastrowid
+    finally:
+        await db.close()
+
+
+async def confirm_payout(payout_id: int, method: str = "") -> bool:
+    """Mark a probable payout as real. Only a human should reach this."""
+    db = await _get_db()
+    try:
+        cursor = await db.execute(
+            "UPDATE payouts SET confirmed = 1, method = ?, confirmed_at = datetime('now') "
+            "WHERE id = ? AND confirmed = 0",
+            (method, payout_id),
+        )
+        await db.commit()
+        return cursor.rowcount > 0
+    finally:
+        await db.close()
+
+
+async def reject_payout(payout_id: int) -> bool:
+    """Delete a probable payout the user says was not one.
+
+    Deleted rather than flagged: a rejected guess is not data about earnings,
+    and keeping it invites some later query from counting it.
+    """
+    db = await _get_db()
+    try:
+        cursor = await db.execute("DELETE FROM payouts WHERE id = ? AND confirmed = 0", (payout_id,))
+        await db.commit()
+        return cursor.rowcount > 0
+    finally:
+        await db.close()
+
+
+async def get_payouts(platform: str | None = None, confirmed_only: bool = False) -> list[dict[str, Any]]:
+    """Payout rows, newest first."""
+    query = "SELECT * FROM payouts"
+    clauses: list[str] = []
+    params: list[Any] = []
+    if platform:
+        clauses.append("platform = ?")
+        params.append(platform)
+    if confirmed_only:
+        clauses.append("confirmed = 1")
+    if clauses:
+        query += " WHERE " + " AND ".join(clauses)
+    query += " ORDER BY detected_at DESC"
+
+    db = await _get_db()
+    try:
+        cursor = await db.execute(query, params)
+        rows = await cursor.fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        await db.close()
+
+
+async def get_confirmed_payout_totals() -> dict[str, float]:
+    """Confirmed payout total per platform, in USD.
+
+    Uses the fx rate recorded when the payout landed, so a token payout keeps
+    the value it actually had rather than being restated by today's price.
+    """
+    db = await _get_db()
+    try:
+        cursor = await db.execute(
+            "SELECT platform, SUM(amount * COALESCE(fx_rate_usd, 1.0)) AS total "
+            "FROM payouts WHERE confirmed = 1 GROUP BY platform"
+        )
+        return {row["platform"]: float(row["total"] or 0.0) for row in await cursor.fetchall()}
+    finally:
+        await db.close()
+
+
+async def get_latest_balance(platform: str) -> float | None:
+    """The most recent recorded balance for a platform, or None if never seen.
+
+    None matters: a first-ever reading has nothing to compare against, and
+    treating an absent history as zero would make every initial collection look
+    like a huge gain — or, for payout detection, make the first reading after a
+    fresh install look like a drop.
+    """
+    db = await _get_db()
+    try:
+        cursor = await db.execute(
+            "SELECT balance FROM earnings WHERE platform = ? ORDER BY date DESC, id DESC LIMIT 1",
+            (platform,),
+        )
+        row = await cursor.fetchone()
+        return float(row["balance"]) if row else None
+    finally:
+        await db.close()
+
+
+async def get_balance_history(platform: str, days: int = 30) -> list[dict[str, Any]]:
+    """Oldest-first balance readings for a platform, for rate projection."""
+    db = await _get_db()
+    try:
+        cursor = await db.execute(
+            "SELECT date, balance, currency, fx_rate_usd FROM earnings "
+            "WHERE platform = ? AND date >= date('now', ?) ORDER BY date ASC",
+            (platform, f"-{int(days)} days"),
+        )
+        return [dict(r) for r in await cursor.fetchall()]
     finally:
         await db.close()
