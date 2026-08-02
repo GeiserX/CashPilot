@@ -304,6 +304,19 @@ def _no_auth():
     return patch("app.main.auth.get_current_user", return_value=None)
 
 
+@pytest.fixture(autouse=True)
+def _no_recorded_deployment_spec():
+    """Default these tests to "this service has never been deployed".
+
+    The deploy route now reads the previously recorded spec so a redeploy
+    reproduces the container that is actually running. Returning None keeps the
+    pre-existing behaviour these tests assert on - build the spec from the
+    catalog - without each of them having to mock the database.
+    """
+    with patch("app.main.database.get_deployment_spec", new_callable=AsyncMock, return_value=None):
+        yield
+
+
 @pytest.fixture
 def client():
     from app.main import app
