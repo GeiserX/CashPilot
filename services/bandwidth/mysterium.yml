@@ -25,6 +25,11 @@ docker:
     - "4449:4449"
   volumes:
     - "mysterium-data:/var/lib/mysterium-node"
+  critical_volumes:
+    - target: "/var/lib/mysterium-node"
+      holds: >-
+        Node identity keystore. Destroying it creates a brand-new identity: the
+        node loses its reputation and any earnings still held against the old one.
   command: "--ui.address=0.0.0.0 --tequilapi.address=0.0.0.0 service --agreed-terms-and-conditions"
   network_mode: "host"
   cap_add: [NET_ADMIN]

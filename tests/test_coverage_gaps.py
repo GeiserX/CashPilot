@@ -1160,8 +1160,11 @@ class TestOrchestratorVolumeCleanup:
         from app import orchestrator
 
         container = MagicMock()
-        container.name = "cashpilot-test"
-        container.attrs = {"Mounts": [{"Type": "volume", "Name": "gone_vol"}]}
+        container.name = "cashpilot-honeygain"
+        # A real, non-critical slug: remove_service refuses to delete volumes for a
+        # slug it cannot find in the catalog, since it cannot tell whether the data
+        # is irreplaceable. That guard is covered in test_critical_volumes.py.
+        container.attrs = {"Mounts": [{"Type": "volume", "Name": "gone_vol", "Destination": "/data"}]}
 
         mock_client = MagicMock()
         mock_client.volumes.get.side_effect = NotFound("gone")
@@ -1170,7 +1173,7 @@ class TestOrchestratorVolumeCleanup:
             patch.object(orchestrator, "_find_container", return_value=container),
             patch.object(orchestrator, "_get_client", return_value=mock_client),
         ):
-            result = orchestrator.remove_service("test", delete_volumes=True)
+            result = orchestrator.remove_service("honeygain", delete_volumes=True)
 
         assert "gone_vol" in result["deleted_volumes"]
         assert result["failed_volumes"] == []
@@ -1181,8 +1184,8 @@ class TestOrchestratorVolumeCleanup:
         from app import orchestrator
 
         container = MagicMock()
-        container.name = "cashpilot-test"
-        container.attrs = {"Mounts": [{"Type": "volume", "Name": "busy_vol"}]}
+        container.name = "cashpilot-honeygain"
+        container.attrs = {"Mounts": [{"Type": "volume", "Name": "busy_vol", "Destination": "/data"}]}
 
         mock_vol = MagicMock()
         mock_vol.remove.side_effect = APIError("volume in use")
@@ -1193,7 +1196,7 @@ class TestOrchestratorVolumeCleanup:
             patch.object(orchestrator, "_find_container", return_value=container),
             patch.object(orchestrator, "_get_client", return_value=mock_client),
         ):
-            result = orchestrator.remove_service("test", delete_volumes=True)
+            result = orchestrator.remove_service("honeygain", delete_volumes=True)
 
         assert result["deleted_volumes"] == []
         assert "busy_vol" in result["failed_volumes"]
