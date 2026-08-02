@@ -1,0 +1,12 @@
+{
+  "currency": "USD",
+  "fields": [
+    "balance"
+  ],
+  "note": "also scraped from window.userData HTML",
+  "parsed": 5.0,
+  "sample": {
+    "balance": 5.0
+  },
+  "slug": "packetstream"
+}

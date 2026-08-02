@@ -1,0 +1,14 @@
+{
+  "currency": "USD",
+  "fields": [
+    "centsCredited",
+    "idToken",
+    "refreshToken"
+  ],
+  "note": "balance = centsCredited / 100",
+  "parsed": 42.5,
+  "sample": {
+    "centsCredited": 4250
+  },
+  "slug": "repocket"
+}

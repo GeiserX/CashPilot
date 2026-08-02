@@ -1,0 +1,14 @@
+{
+  "currency": "USD",
+  "fields": [
+    "data.balance"
+  ],
+  "note": "strips a leading $",
+  "parsed": 1.75,
+  "sample": {
+    "data": {
+      "balance": "$1.75"
+    }
+  },
+  "slug": "proxyrack"
+}

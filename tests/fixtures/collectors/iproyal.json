@@ -1,0 +1,12 @@
+{
+  "currency": "USD",
+  "fields": [
+    "balance",
+    "access_token"
+  ],
+  "parsed": 2.4,
+  "sample": {
+    "balance": 2.4
+  },
+  "slug": "iproyal"
+}

@@ -1,0 +1,15 @@
+{
+  "currency": "MYST",
+  "fields": [
+    "accessToken",
+    "earningsTotal",
+    "earnings",
+    "lifetimeEarnings",
+    "identity"
+  ],
+  "parsed": 12.5,
+  "sample": {
+    "earningsTotal": 12.5
+  },
+  "slug": "mysterium"
+}

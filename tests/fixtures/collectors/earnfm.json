@@ -1,0 +1,14 @@
+{
+  "currency": "USD",
+  "fields": [
+    "data.totalBalance",
+    "access_token"
+  ],
+  "parsed": 8.4,
+  "sample": {
+    "data": {
+      "totalBalance": 8.4
+    }
+  },
+  "slug": "earnfm"
+}

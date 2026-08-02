@@ -1,0 +1,13 @@
+{
+  "currency": "USD",
+  "fields": [
+    "usdEarnings",
+    "token"
+  ],
+  "note": "balance = float(usdEarnings)",
+  "parsed": 7.25,
+  "sample": {
+    "usdEarnings": "7.25"
+  },
+  "slug": "bitping"
+}

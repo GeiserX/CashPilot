@@ -1,0 +1,13 @@
+{
+  "currency": "USD",
+  "fields": [
+    "data.balance"
+  ],
+  "parsed": 9.99,
+  "sample": {
+    "data": {
+      "balance": 9.99
+    }
+  },
+  "slug": "traffmonetizer"
+}
