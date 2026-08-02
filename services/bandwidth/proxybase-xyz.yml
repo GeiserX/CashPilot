@@ -91,7 +91,11 @@ disclosure:
     A wallet address generated on your machine, plus the traffic volume you
     relay.
   isp_risk: >-
-    Real. Proxy traffic from unknown buyers exits your connection under your
-    IP. The catalog marks this service as datacentre/VPS-only for that reason.
+    Real, and it applies directly to home connections. Proxy traffic from
+    unknown buyers exits under your IP, so abuse complaints arrive at your
+    door. Nothing in this catalog restricts the service to datacentre
+    addresses, and residential IPs earn more, so the incentive points the
+    wrong way here: read your ISP's terms before running it at home.
   account_rules: >-
-    Unlimited devices per account, one per IP.
+    unknown - the provider does not publish a per-account or per-IP device
+    limit, and the catalog does not declare one.

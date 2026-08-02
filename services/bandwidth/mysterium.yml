@@ -77,8 +77,10 @@ collector:
 # Written to be read by someone deciding whether to trust it.
 disclosure:
   sells: >-
-    Bandwidth. Your connection is used as an exit node for the Mysterium dVPN
-    network.
+    Bandwidth. Your connection is used as an exit node for the Mysterium
+    network, which sells VPN, proxy AND data-scraping services. Scraping
+    traffic leaving a residential IP is the use most likely to draw complaints,
+    and you cannot choose which of the three your node carries.
   third_party_traffic: >-
     Yes. Strangers route their traffic through your IP address — that is the
     product.
