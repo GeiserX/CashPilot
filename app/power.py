@@ -71,7 +71,7 @@ def energy_cost(watts: float, hours: float, price_per_kwh: float) -> float:
 
 def net_for_service(
     gross: float,
-    cost: float,
+    cost: float | None,
     *,
     quality: str = ESTIMATED,
 ) -> dict[str, Any]:
@@ -82,6 +82,18 @@ def net_for_service(
     is to say so rather than let it sit in a dashboard looking like income.
     """
     gross = float(gross)
+    if cost is None:
+        # No tariff, so the cost is genuinely unknown. Reporting cost 0 here
+        # would make net equal gross and present earnings as profit - the exact
+        # dishonesty this module exists to prevent, and it must not creep back in
+        # at the per-service level just because the totals get it right.
+        return {
+            "gross": round(gross, 4),
+            "cost": None,
+            "net": None,
+            "cost_quality": "unknown",
+            "negative": False,
+        }
     cost = max(0.0, float(cost))
     net = gross - cost
     return {
@@ -132,13 +144,13 @@ def summarise(
         cost = (
             energy_cost(float(svc.get("watts") or 0.0), float(svc.get("hours") or 0.0), price_per_kwh)
             if configured
-            else 0.0
+            else None
         )
         row = net_for_service(gross, cost, quality=str(svc.get("cost_quality") or ESTIMATED))
         row["platform"] = svc.get("platform")
         rows.append(row)
         total_gross += gross
-        total_cost += cost
+        total_cost += cost or 0.0
 
     return {
         "currency": currency,

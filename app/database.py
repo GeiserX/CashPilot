@@ -1538,6 +1538,44 @@ ALERT_COOLDOWN_HOURS = 24
 FLATLINE_MIN_DAYS = 7
 
 
+async def get_earned_by_platform(days: int = 30) -> dict[str, float]:
+    """USD earned per platform over the trailing window.
+
+    Deliberately NOT the latest balance. A balance is a running total; charging
+    a window's electricity against it would subtract 30 days of cost from a
+    lifetime of earnings and produce a number that means nothing.
+
+    Deltas are clamped per platform before summing, the same rule the dashboard
+    uses (CashPilot-glc): a payout drops a balance, and an unclamped drop would
+    read as negative earnings and understate what the service actually paid.
+    """
+    db = await _get_db()
+    try:
+        cursor = await db.execute(
+            """
+            SELECT platform, date, balance
+            FROM earnings
+            WHERE date >= date('now', ?) AND currency = 'USD'
+            ORDER BY platform, date
+            """,
+            (f"-{max(1, int(days))} days",),
+        )
+        rows = await cursor.fetchall()
+
+        earned: dict[str, float] = {}
+        previous: dict[str, float] = {}
+        for row in rows:
+            platform, balance = row["platform"], float(row["balance"])
+            if platform in previous:
+                earned[platform] = earned.get(platform, 0.0) + max(0.0, balance - previous[platform])
+            else:
+                earned.setdefault(platform, 0.0)
+            previous[platform] = balance
+        return earned
+    finally:
+        await db.close()
+
+
 async def get_flatlined_services(min_days: int = FLATLINE_MIN_DAYS) -> list[dict[str, Any]]:
     """Services whose recorded balance has not moved for at least ``min_days``.
 

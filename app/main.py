@@ -1808,18 +1808,28 @@ async def api_earnings_net(request: Request, days: int = 30) -> dict[str, Any]:
     except (TypeError, ValueError):
         host_tdp = power.DEFAULT_HOST_TDP_WATTS
 
-    statuses = await _get_all_worker_containers()
-    running = [c for c in statuses if c.get("service")]
+    try:
+        statuses = await _get_all_worker_containers()
+    except Exception as exc:
+        # A worker status problem must not take out the earnings figures, which
+        # come from the database and are still perfectly reportable.
+        logger.warning("Worker status unavailable for the power estimate: %s", exc)
+        statuses = []
+    # Only RUNNING containers. A stopped one draws nothing, and counting it
+    # inflates container_count, which shrinks every running service's share of
+    # the idle floor and understates the fleet's real cost.
+    running = [c for c in statuses if c.get("service") and str(c.get("status", "")).lower() == "running"]
     count = max(1, len(running))
     cpu_by_service: dict[str, float] = {}
     for c in running:
         cpu_by_service[c["service"]] = cpu_by_service.get(c["service"], 0.0) + float(c.get("cpu_percent") or 0.0)
 
     hours = max(1, int(days)) * 24.0
-    per_service = await database.get_earnings_per_service()
+    # Earned OVER THE WINDOW, not the latest balance: subtracting a window's
+    # electricity from a running total would be meaningless arithmetic.
+    earned = await database.get_earned_by_platform(max(1, int(days)))
     rows = []
-    for svc in per_service:
-        platform = svc.get("platform")
+    for platform, gross in earned.items():
         watts = (
             power.estimate_watts(cpu_by_service.get(platform, 0.0), host_tdp_watts=host_tdp, container_count=count)
             if platform in cpu_by_service
@@ -1828,7 +1838,7 @@ async def api_earnings_net(request: Request, days: int = 30) -> dict[str, Any]:
         rows.append(
             {
                 "platform": platform,
-                "gross": float(svc.get("earned") or svc.get("balance") or 0.0),
+                "gross": float(gross),
                 "watts": watts,
                 "hours": hours,
                 "cost_quality": power.ESTIMATED,

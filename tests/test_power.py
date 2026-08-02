@@ -114,3 +114,93 @@ class TestSummary:
 
     def test_the_currency_is_carried_through(self):
         assert power.summarise([], price_per_kwh=0.3, currency="GBP")["currency"] == "GBP"
+
+
+class TestUnknownTariffIsNotZero:
+    """The honesty rule, at the PER-SERVICE level.
+
+    Regression: the totals correctly reported cost_known false and total_net
+    None, while each service row still reported net == gross — presenting
+    earnings as profit, which is exactly what this module exists to prevent.
+    """
+
+    def test_a_service_row_reports_unknown_not_gross_as_net(self):
+        out = power.summarise(
+            [{"platform": "x", "gross": 5.0, "watts": 15.0, "hours": 730.0}],
+            price_per_kwh=0.0,
+        )
+        row = out["services"][0]
+        assert row["gross"] == 5.0
+        assert row["cost"] is None, "an unknown cost must not be reported as zero"
+        assert row["net"] is None, "net must not equal gross when the cost is unknown"
+        assert row["cost_quality"] == "unknown"
+        assert row["negative"] is False
+
+    def test_nothing_is_flagged_negative_when_the_cost_is_unknown(self):
+        out = power.summarise(
+            [{"platform": "x", "gross": 0.01, "watts": 99.0, "hours": 730.0}],
+            price_per_kwh=0.0,
+        )
+        assert out["negative_services"] == []
+
+    def test_a_configured_tariff_still_reports_real_numbers(self):
+        row = power.summarise(
+            [{"platform": "x", "gross": 2.0, "watts": 15.0, "hours": 730.0}],
+            price_per_kwh=0.30,
+        )["services"][0]
+        assert row["cost"] is not None and row["net"] is not None
+        assert row["negative"] is True
+
+
+class TestEarnedOverTheWindow:
+    """Net must subtract a window's cost from that window's EARNINGS.
+
+    Regression: the endpoint used the latest balance — a running total — so a
+    30-day electricity cost was charged against a lifetime of earnings.
+    """
+
+    def test_earned_is_the_window_delta_not_the_balance(self, tmp_path):
+        import asyncio
+        from datetime import UTC, datetime, timedelta
+        from unittest.mock import patch
+
+        from app import database
+
+        def day(n):
+            return (datetime.now(UTC) - timedelta(days=n)).strftime("%Y-%m-%d")
+
+        async def run():
+            with (
+                patch.object(database, "DB_DIR", tmp_path),
+                patch.object(database, "DB_PATH", tmp_path / "t.db"),
+            ):
+                await database.init_db()
+                # Balance climbs 100 -> 103 over the window: earned 3, not 103.
+                for i, bal in ((3, 100.0), (2, 101.0), (1, 103.0)):
+                    await database.upsert_earnings("svc", bal, date=day(i))
+                return await database.get_earned_by_platform(days=30)
+
+        assert asyncio.run(run())["svc"] == pytest.approx(3.0)
+
+    def test_a_payout_does_not_read_as_negative_earnings(self, tmp_path):
+        """Same clamping rule as the dashboard (CashPilot-glc)."""
+        import asyncio
+        from datetime import UTC, datetime, timedelta
+        from unittest.mock import patch
+
+        from app import database
+
+        def day(n):
+            return (datetime.now(UTC) - timedelta(days=n)).strftime("%Y-%m-%d")
+
+        async def run():
+            with (
+                patch.object(database, "DB_DIR", tmp_path),
+                patch.object(database, "DB_PATH", tmp_path / "t2.db"),
+            ):
+                await database.init_db()
+                for i, bal in ((3, 20.0), (2, 0.10), (1, 1.10)):  # payout then earning
+                    await database.upsert_earnings("svc", bal, date=day(i))
+                return await database.get_earned_by_platform(days=30)
+
+        assert asyncio.run(run())["svc"] == pytest.approx(1.0), "payout must not go negative"
