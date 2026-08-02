@@ -123,9 +123,9 @@ def _decoded_worker(worker: dict[str, Any]) -> dict[str, Any]:
     that reads inside them goes through here.
     """
     decoded = dict(worker)
-    decoded["containers"] = _safe_json(worker.get("containers", "[]"), [])
-    decoded["apps"] = _safe_json(worker.get("apps", "[]"), [])
-    decoded["system_info"] = _safe_json(worker.get("system_info", "{}"), {})
+    # Deliberately delegates rather than repeating the three _safe_json calls:
+    # a second copy of the decoding is how one caller ends up forgetting it.
+    _parse_worker_json(decoded)
     return decoded
 
 
