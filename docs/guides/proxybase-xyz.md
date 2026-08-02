@@ -87,15 +87,15 @@ Payouts are managed via the CLI:
 ```bash
 # Check your seller credit balance
 docker run --rm -v proxybase-data:/home/proxybase/.proxybase \
-  ghcr.io/proxybasehq/proxybase-cli:latest seller status
+  ghcr.io/proxybasehq/proxybase-cli@sha256:9c96a1d149a1d5b18360110be5caf7164a98656e4bb2c25f6b373b91f1c79802 seller status
 
 # Lock earnings for payout (amount in microcredits, tempo_address = your Tempo wallet)
 docker run --rm -v proxybase-data:/home/proxybase/.proxybase \
-  ghcr.io/proxybasehq/proxybase-cli:latest seller payout create --amount 1000000 --tempo-address <your-tempo-address>
+  ghcr.io/proxybasehq/proxybase-cli@sha256:9c96a1d149a1d5b18360110be5caf7164a98656e4bb2c25f6b373b91f1c79802 seller payout create --amount 1000000 --tempo-address <your-tempo-address>
 
 # List payout history
 docker run --rm -v proxybase-data:/home/proxybase/.proxybase \
-  ghcr.io/proxybasehq/proxybase-cli:latest seller payout list
+  ghcr.io/proxybasehq/proxybase-cli@sha256:9c96a1d149a1d5b18360110be5caf7164a98656e4bb2c25f6b373b91f1c79802 seller payout list
 ```
 
 Payments settle in USDC on Tempo via the Micropayments Protocol (MPP / Tempo). Minimum payout is $1.
@@ -108,7 +108,7 @@ The entrypoint creates a default `seller_config.json` on first run. If you see t
 
 ```bash
 docker run --rm -v proxybase-data:/home/proxybase/.proxybase \
-  --entrypoint /bin/bash ghcr.io/proxybasehq/proxybase-cli:latest \
+  --entrypoint /bin/bash ghcr.io/proxybasehq/proxybase-cli@sha256:9c96a1d149a1d5b18360110be5caf7164a98656e4bb2c25f6b373b91f1c79802 \
   -c 'echo "{\"upstream_proxies\":[],\"no_direct\":false}" > /home/proxybase/.proxybase/seller_config.json && chown proxybase:proxybase /home/proxybase/.proxybase/seller_config.json'
 ```
 
