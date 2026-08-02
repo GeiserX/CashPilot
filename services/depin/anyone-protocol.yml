@@ -77,3 +77,25 @@ collector:
         or check https://api.ec.anyone.tech/relays/{fingerprint}
       type: text
   notes: "Queries AO relay-rewards contract by fingerprint, converts ANYONE tokens to USD via CoinGecko."
+
+# What this service does with the user's machine (CashPilot-66x).
+# Written to be read by someone deciding whether to trust it.
+disclosure:
+  sells: >-
+    Bandwidth, as a relay in the Anyone network (a Tor fork).
+  third_party_traffic: >-
+    Yes. It relays other people's traffic. Whether your IP is the final hop
+    depends on whether the relay is configured as an exit.
+  data_collected: >-
+    The relay's public identity key, your IP and port, and uptime statistics,
+    all published to the network directory by design. If you set ContactInfo in
+    your anonrc it is published there too and is permanently, publicly
+    indexed — it is usually an email address, so leave it empty unless you want
+    it public.
+  isp_risk: >-
+    Real. Relay traffic is attributed to your connection. Exit relays in
+    particular attract abuse complaints; many consumer ISPs prohibit them.
+  account_rules: >-
+    No account is needed at all, so there is nothing to limit per account. The
+    project does not publish a per-IP relay limit, and the catalog does not
+    declare one.

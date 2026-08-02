@@ -117,3 +117,25 @@ platforms: [docker, windows, linux]
 collector:
   type: api
   notes: "Local dashboard at port 14002. API at /api/sno for node stats, earnings, bandwidth. No auth needed on local interface."
+
+# What this service does with the user's machine (CashPilot-66x).
+# Written to be read by someone deciding whether to trust it.
+disclosure:
+  sells: >-
+    Disk space and the bandwidth to serve it.
+  third_party_traffic: >-
+    No. You store encrypted, erasure-coded fragments of customer data. Other
+    people do not route their own traffic through your IP.
+  data_collected: >-
+    Node identity, your wallet address, the email address the node requires for
+    operator notifications, and your IP and port, which must be reachable for
+    the node to serve data.
+  isp_risk: >-
+    Mainly a data-cap question rather than a liability one: a node serves and
+    ingests customer data continuously, which is real sustained traffic on your
+    line. Unlike a proxy or a relay, though, it is not anonymised third-party
+    traffic attributed to you as its origin, so it does not attract the abuse
+    complaints those do.
+  account_rules: >-
+    Unlimited nodes, but nodes on the same /24 subnet share allocation, so
+    several on one connection earn less each.

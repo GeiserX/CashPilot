@@ -51,6 +51,12 @@ def _validate(data: dict[str, Any], path: Path) -> list[str]:
     if status is not None and status not in _VALID_STATUSES:
         errors.append(f"{path.name}: invalid status {status!r} (expected one of {sorted(_VALID_STATUSES)})")
 
+    disclosure = data.get("disclosure")
+    if disclosure is not None and not isinstance(disclosure, dict):
+        # `disclosure: TODO` loaded fine and then 500'd the endpoint at request
+        # time, so the fault was invisible until someone opened that one service.
+        errors.append(f"{path.name}: disclosure must be a mapping, not {type(disclosure).__name__}")
+
     docker = data.get("docker")
     if isinstance(docker, dict):
         image = docker.get("image")
