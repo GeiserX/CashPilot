@@ -30,6 +30,7 @@ All notable changes to CashPilot are documented here.
 - Prometheus HTTP metrics bound their `path` label: `/api/workers/{id}` collapses per-id paths and unknown/scanner paths fold into a single `/{other}` label, so probe traffic can't grow label cardinality without limit
 
 ### Added
+- **A pre-deploy reality check tells you what a service will actually do for you** (CashPilot-w58). The catalog shows one generic earnings range, so there was no way to tell before deploying whether a service would work in *your* situation — and several will not. Users found out weeks later, when it had earned nothing. `GET /api/services/{slug}/preflight` now answers that in one or two plain sentences with a clear verdict: a duplicate deployment where only one device per IP is allowed says so and warns that some providers forfeit the balance; a storage node states the disk commitment and that part of the balance is held back and forfeited if the node is abandoned early; GPU and residential-IP requirements are named as preconditions. It **never blocks a deploy** — the goal is informed consent, not a nanny — and it lists what it did *not* check (egress IP type, connection speed, free disk) so a clean result is never mistaken for a guarantee about things nobody looked at
 - Self-service password change `POST /api/users/me/password` (all roles, via the avatar menu) and owner reset `POST /api/users/{id}/password`
 - `CASHPILOT_WORKER_URL_POLICY`, `CASHPILOT_WORKER_ALLOWED_HOSTS`, and `CASHPILOT_WORKER_ALLOW_METADATA` env vars for worker-URL validation
 
