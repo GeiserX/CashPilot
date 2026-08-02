@@ -253,3 +253,26 @@ class TestProducerStateEndpointCarriesTraffic:
         out = self._call([{"slug": "demo", "status": "running", "_worker_id": 1}])
         assert out["traffic"] == na.UNKNOWN
         assert not any("no data" in r for r in out["reasons"])
+
+
+class TestRateFormatting:
+    @pytest.mark.parametrize(
+        ("rate_bps", "expected"),
+        [
+            (0.0, "0.0 B/s"),
+            (5.5, "5.5 B/s"),
+            (1023.0, "1023.0 B/s"),
+            (1024.0, "1.0 KB/s"),
+            (6708.6, "6.6 KB/s"),
+            (1024.0 * 1024, "1.0 MB/s"),
+            (15_275_715.3, "14.6 MB/s"),
+        ],
+    )
+    def test_it_picks_the_unit_that_keeps_the_number_readable(self, rate_bps, expected):
+        assert na._human(rate_bps) == expected
+
+    def test_a_missing_rate_formats_as_zero_rather_than_raising(self):
+        assert na._human(None) == "0.0 B/s"
+
+    def test_the_moving_description_includes_the_rate(self):
+        assert "14.6 MB/s" in na.describe(na.MOVING, 15_275_715.3)

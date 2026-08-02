@@ -117,9 +117,15 @@ def describe(state: str, bytes_per_second: float | None) -> str:
 
 
 def _human(bytes_per_second: float | None) -> str:
+    """A rate in the largest unit that keeps it readable.
+
+    MB/s is the last unit, so the loop always returns from inside it — there is
+    no trailing fallback, because a line that cannot execute is not a safety
+    net, it is just a line nobody can ever check.
+    """
     value = float(bytes_per_second or 0.0)
-    for unit in ("B/s", "KB/s", "MB/s"):
-        if value < 1024 or unit == "MB/s":
+    for unit in ("B/s", "KB/s"):
+        if value < 1024:
             return f"{value:.1f} {unit}"
         value /= 1024
     return f"{value:.1f} MB/s"
