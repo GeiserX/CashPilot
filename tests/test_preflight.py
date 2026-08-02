@@ -171,3 +171,156 @@ class TestPreflightEndpoint:
     def test_without_a_worker_it_falls_back_to_all_deployments(self):
         result = self._call("honeygain", deployments=[{"slug": "honeygain"}])
         assert result["verdict"] in {preflight.REDUCED, preflight.EARNS_NOTHING}
+
+
+class TestProviderForbidsWhatCashPilotDoes:
+    """The strongest verdict: the tool causes the breach on the user's behalf.
+
+    EarnApp's own help centre forbids "Virtual Machines (VMs), Docker
+    containers, ... personal or home servers" and states the penalty as
+    termination without notice plus cancellation of pending payments. CashPilot
+    deploys every service as a Docker container, so shipping EarnApp silently
+    would make the tool the cause of the ban.
+    """
+
+    def test_it_is_reported_and_says_what_actually_happens(self):
+        svc = {"slug": "x", "name": "X", "requirements": {"container_prohibited": True}}
+        out = preflight.assess(svc)
+        assert out["verdict"] == preflight.EARNS_NOTHING
+        message = " ".join(f["message"] for f in out["findings"])
+        assert "Docker containers" in message
+        assert "termination without notice" in message.lower() or "without notice" in message
+
+    def test_it_still_does_not_block_the_deploy(self):
+        """Informed consent: the user may accept the risk knowingly."""
+        svc = {"slug": "x", "requirements": {"container_prohibited": True}}
+        assert preflight.assess(svc)["blocking"] is False
+
+    def test_a_service_without_the_flag_is_unaffected(self):
+        out = preflight.assess({"slug": "x", "requirements": {}})
+        assert not any("Docker containers" in f["message"] for f in out["findings"])
+
+    def test_the_real_catalog_flags_earnapp(self):
+        from app import catalog
+
+        assert preflight.assess(catalog.get_service("earnapp"))["verdict"] == preflight.EARNS_NOTHING
+
+    def test_the_flag_is_not_set_on_services_merely_wanting_a_residential_ip(self):
+        """It requires a first-party source, never an inference from residential_ip."""
+        from app import catalog
+
+        allowed = {"earnapp"}
+        for svc in catalog.get_services():
+            if (svc.get("requirements") or {}).get("container_prohibited"):
+                assert svc["slug"] in allowed, (
+                    f"{svc['slug']} declares container_prohibited — confirm a first-party source "
+                    "and add it to docs/research/per-ip-device-limits.md before allowing it here"
+                )
+
+
+class TestSourcedPerIpLimits:
+    """Values must trace to a provider statement; see docs/research/per-ip-device-limits.md."""
+
+    @pytest.mark.parametrize("slug", ["honeygain", "iproyal", "spide", "earnfm", "ebesucher"])
+    def test_the_documented_services_declare_one_per_ip(self, slug):
+        """spide was MISSING from this list, and that is how the bug shipped.
+
+        Its Terms say "Spide Network limits the number of devices per single IP
+        address to one", but the catalog asserted the opposite, because the
+        research quoted the sharing sentence beside the limit sentence and
+        nobody opened the page. A hardcoded list cements whatever it omits, so
+        the note-consistency test below guards the shape of that failure too.
+        """
+        from app import catalog
+
+        svc = catalog.get_service(slug)
+        assert svc is not None, f"{slug} is not in the catalog"
+        assert (svc.get("requirements") or {}).get("devices_per_ip") == 1
+
+    def test_no_note_claims_a_provider_states_no_limit(self):
+        """The Spide failure in one assertion.
+
+        Claiming a provider states there is NO limit is an assertion about their
+        terms, and asserting it wrongly walks the user into a breach. If we
+        cannot find a limit, the honest phrasing is that none was found — never
+        that none exists.
+        """
+        from app import catalog
+
+        banned = ("states no device-count limit", "no device limit", "imposes no limit")
+        for svc in catalog.get_services():
+            note = str((svc.get("requirements") or {}).get("note") or "").lower()
+            for phrase in banned:
+                assert phrase not in note, (
+                    f"{svc['slug']}: note asserts a provider states no limit ({phrase!r}). "
+                    "Verify against their terms and record the URL in "
+                    "docs/research/per-ip-device-limits.md before claiming this."
+                )
+
+    @pytest.mark.parametrize("slug", ["repocket", "proxyrack", "packetstream", "bitping", "urnetwork"])
+    def test_services_with_no_provider_source_stay_absent(self, slug):
+        """A widely-repeated review-site number is not a source.
+
+        repocket previously declared devices_per_ip: 2 on exactly that basis.
+        """
+        from app import catalog
+
+        svc = catalog.get_service(slug)
+        assert svc is not None, f"{slug} is not in the catalog"
+        assert "devices_per_ip" not in (svc.get("requirements") or {})
+
+    def test_a_second_device_behind_one_ip_now_gets_the_strongest_verdict(self):
+        """The point of the bead: the verdict was weak exactly where the
+        mistake is most likely, because the limit was never recorded."""
+        from app import catalog
+
+        out = preflight.assess(catalog.get_service("honeygain"), already_deployed_slugs={"honeygain"})
+        assert out["verdict"] == preflight.EARNS_NOTHING
+        assert "one device per IP" in " ".join(f["message"] for f in out["findings"])
+
+
+class TestReadmeMatchesTheCatalog:
+    """The README table is hand-maintained, so it drifts silently.
+
+    It kept publishing Repocket's unsourced "2 devices per IP" after the catalog
+    dropped it, which is the same wrong number in a more visible place. Only
+    services that DECLARE a limit are checked — the rows showing an unsourced 1
+    are a known, documented gap, not something to assert as correct.
+    """
+
+    def _row_for(self, readme: str, slug: str) -> str | None:
+        for line in readme.splitlines():
+            if f"docs/guides/{slug}.md" in line and line.startswith("|"):
+                return line
+        return None
+
+    def test_every_declared_limit_matches_its_readme_cell(self):
+        from pathlib import Path
+
+        from app import catalog
+
+        readme = Path("README.md").read_text(encoding="utf-8")
+        checked = 0
+        for svc in catalog.get_services():
+            limit = (svc.get("requirements") or {}).get("devices_per_ip")
+            if limit is None:
+                continue
+            row = self._row_for(readme, svc["slug"])
+            if row is None:
+                continue
+            cells = [c.strip() for c in row.split("|")]
+            expected = "Unlimited" if limit == 0 else str(limit)
+            assert expected in cells, (
+                f"{svc['slug']}: catalog says devices_per_ip={limit} but the README row has "
+                f"no matching cell -> {row.strip()}"
+            )
+            checked += 1
+        assert checked >= 5, "expected the documented services to be covered"
+
+    def test_the_readme_no_longer_publishes_the_unsourced_repocket_figure(self):
+        from pathlib import Path
+
+        row = self._row_for(Path("README.md").read_text(encoding="utf-8"), "repocket")
+        assert row is not None
+        cells = [c.strip() for c in row.split("|")]
+        assert "2" not in cells, "the README still asserts a per-IP limit the catalog dropped"
