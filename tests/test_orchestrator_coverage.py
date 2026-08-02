@@ -75,7 +75,7 @@ class TestCollectStats:
             },
             "memory_stats": {"usage": 209_715_200},  # 200 MB
         }
-        cpu_pct, mem_mb = orchestrator._collect_stats(c)
+        cpu_pct, mem_mb, _, _ = orchestrator._collect_stats(c)
         assert cpu_pct == 20.0
         assert mem_mb == 200.0
 
@@ -86,7 +86,7 @@ class TestCollectStats:
             "precpu_stats": {"cpu_usage": {"total_usage": 500}, "system_cpu_usage": 500},
             "memory_stats": {"usage": 0},
         }
-        cpu_pct, mem_mb = orchestrator._collect_stats(c)
+        cpu_pct, mem_mb, _, _ = orchestrator._collect_stats(c)
         assert cpu_pct == 0.0
         assert mem_mb == 0.0
 
@@ -97,18 +97,18 @@ class TestCollectStats:
             "precpu_stats": {"cpu_usage": {"total_usage": 50}, "system_cpu_usage": 400},
             "memory_stats": {},  # no "usage" key
         }
-        _, mem_mb = orchestrator._collect_stats(c)
+        _, mem_mb, _, _ = orchestrator._collect_stats(c)
         assert mem_mb == 0.0
 
     def test_missing_key_returns_zero_tuple(self):
         c = MagicMock()
         c.stats.return_value = {"cpu_stats": {}}  # precpu_stats missing -> KeyError
-        assert orchestrator._collect_stats(c) == (0.0, 0.0)
+        assert orchestrator._collect_stats(c) == (0.0, 0.0, None, None)
 
     def test_stats_api_error_returns_zero_tuple(self):
         c = MagicMock()
         c.stats.side_effect = APIError("stats unavailable")
-        assert orchestrator._collect_stats(c) == (0.0, 0.0)
+        assert orchestrator._collect_stats(c) == (0.0, 0.0, None, None)
 
 
 # ---------------------------------------------------------------------------

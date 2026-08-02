@@ -18,14 +18,19 @@ Three signals feed it. Two are implemented here:
   and keeping the patterns in YAML follows the rule that service-specific
   knowledge never lives in ``app/``.
 
-The third, container network counters, needs the rx/tx figures wired through the
-Docker worker heartbeat and is tracked separately.
+* **Network counters** (CashPilot-t6y) — every container has them, so this is
+  the only signal that needs neither a collector nor a hand-written pattern.
+  It can only ever WEAKEN confidence, never condemn: bandwidth resale is
+  buyer-driven, so a healthy node moves nothing while nobody is buying. See
+  ``app/net_activity.py``.
 """
 
 from __future__ import annotations
 
 import re
 from typing import Any
+
+from app import net_activity
 
 # States, best to worst. FAILING beats IDLE: a log line saying "login failed" is
 # a concrete, actionable diagnosis, whereas idleness is only an observation.
@@ -82,6 +87,7 @@ def assess(
     earned_recently: bool | None,
     log_hits: list[dict[str, str]] | None = None,
     container_running: bool = True,
+    traffic: str | None = None,
 ) -> dict[str, Any]:
     """Combine the available signals into one producer state.
 
@@ -123,8 +129,29 @@ def assess(
             "Only declared log signals can say anything about it."
         )
 
+    # Network traffic. Deliberately the weakest of the three: it can support an
+    # idle reading and it can rescue a collector-less service from UNKNOWN, but
+    # it never condemns. Silence is not proof of breakage when demand is what
+    # drives the traffic, and it never outranks a real earnings observation.
+    if traffic == net_activity.SILENT and earned_recently is not True:
+        candidates.append(IDLE)
+        reasons.append(net_activity.describe(net_activity.SILENT, None))
+    elif traffic == net_activity.MOVING:
+        reasons.append("The container is moving data over the network.")
+        if earned_recently is None and not has_collector:
+            # Not PRODUCING: bytes on the wire are not money. But a service we
+            # otherwise know nothing about is at least demonstrably alive, which
+            # is worth saying rather than leaving a bare "unknown".
+            reasons.append("That does not prove it is earning, only that it is not inert.")
+
     state = max(candidates, key=lambda s: _RANK[s]) if candidates else UNKNOWN
-    return {"slug": slug, "state": state, "reasons": reasons, "log_hits": log_hits}
+    return {
+        "slug": slug,
+        "state": state,
+        "reasons": reasons,
+        "log_hits": log_hits,
+        "traffic": traffic or net_activity.UNKNOWN,
+    }
 
 
 def signals_for(service: dict[str, Any] | None) -> list[dict[str, Any]]:
