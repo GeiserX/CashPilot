@@ -440,3 +440,50 @@ zero comments — the failed attempt marked the commit reviewed, so re-triggerin
 green check is a SKIPPED review, not a pass. Independent reviews substituted; not merging on it.
 
 **Next action:** merge #165 once its review returns, then open the 5qc PR off main.
+
+## 2026-08-03 — SUCCESS: v1.10.0 merged, released and live (segment 2 terminal)
+
+**Goal:** work every remaining 1.x bead as an open PR, then merge them all and release
+1.10.0 as the final 1.x minor before 2.0.0, deployed and verified on the fleet.
+
+**Outcome:** done. 11 beads shipped, merged and closed; v1.10.0 tagged; both images
+published; UI + 3 workers live on 1.10.0, healthy, zero auth errors.
+
+**Beads:** t6y bfl qqo 1og 9q1 l01 q0o 54q guw sux cyc — PRs #168-#177, #179.
+Only the v2.0.0 wallet tiers (luj, dv6, e8u) remain open, correctly untouched.
+
+**Versioning worked as planned:** `[skip ci]` on every squash except the last meant a
+single release fired and bumped 1.9.1 -> 1.10.0 exactly, rather than walking to 1.11/1.12.
+
+**Every pre-merge CI failure was a real defect, not noise:**
+- A HIGH-severity CodeQL finding: the new inline-script guard was case-sensitive, so a
+  `<SCRIPT>` block with no nonce would have walked straight past a test whose only job was
+  to catch that.
+- Cross-branch contamination in #168: an earlier `git add -A` had swept `payouts.py` and
+  `machine_economics.py` into the t6y branch WITHOUT their tests. Codecov exposed it.
+- Two genuine coverage gaps: the payout SQL was entirely mocked (now exercised against
+  real SQLite), and `build_one` — the function the credential button calls — was untested.
+- One unreachable line, deleted rather than covered by a test pretending to reach it.
+
+**Near-miss worth remembering:** PR #178 (cyc) was stacked on #176 and GitHub AUTO-CLOSED
+it, unmerged, when that base branch was deleted on merge. The work would have been silently
+lost. Caught by checking whether the code was actually on main rather than trusting the
+merge command's output; reopened as #179.
+
+**Merge mechanics:** ten PRs all touched `main.py`, so each merge invalidated the next.
+Git split functions across conflict boundaries, and an automated "keep both sides" resolver
+spliced the payouts endpoints into the MIDDLE of `api_test_credentials` — ruff caught it.
+The reliable technique was extracting each branch's endpoint block by its decorator and
+re-applying it to main's file, which is deterministic.
+
+**Live verification (watchtower, 1.10.0):** egress grouping shows 3 distinct WAN IPs with
+the two phones honestly `undetermined`; preflight(honeygain) -> `will_earn_nothing` from the
+newly sourced 1-per-IP limit; producer-state(honeygain) -> `producing`; disclosure coverage
+4/50; payout-progress(honeygain) -> `reached`; fleet economics -> "costs known for 0 of 5",
+correctly refusing to invent figures.
+
+**Counters:** segment 2, iteration 20, no_progress 0, failures 0. Status: SUCCESS.
+
+**Outstanding, needs Sergio:** Repocket's `signup_url` is a bare `https://repocket.com/`
+with no referral code, in both the catalog and the README. Every other service carries one.
+Lost revenue on every signup; a code cannot be invented.
