@@ -227,3 +227,51 @@ class TestProducerStateEndpoint:
 
         out = asyncio.run(run())
         assert out["state"] == ps.PRODUCING
+
+
+class TestItReadsTheShapeWorkersActuallySend:
+    """Regression: this matched on ``service`` while heartbeats emit ``slug``.
+
+    Every service therefore reported "the container is not running" in
+    production — the feature was inert — and the tests above passed because they
+    hand-fed the key the code was looking for rather than the key it would get.
+    """
+
+    def _call(self, containers, logs=""):
+        import asyncio
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        from app import main
+
+        svc = {"slug": "demo", "docker": {"health_signals": [FAILED_LOGIN]}}
+
+        async def run():
+            with (
+                patch.object(main, "_require_auth_api", lambda r: None),
+                patch.object(main.catalog, "get_service", return_value=svc),
+                patch.dict("app.collectors.COLLECTOR_MAP", {"demo": object()}, clear=True),
+                patch.object(main.database, "get_earned_by_platform", AsyncMock(return_value={"demo": 0.0})),
+                patch.object(main, "_get_all_worker_containers", AsyncMock(return_value=containers)),
+                patch.object(main, "_proxy_worker_logs", AsyncMock(return_value={"logs": logs})),
+            ):
+                return await main.api_producer_state(MagicMock(), "demo")
+
+        return asyncio.run(run())
+
+    REAL = [{"slug": "demo", "status": "running", "_worker_id": 1, "name": "cashpilot-demo"}]
+
+    def test_a_container_keyed_by_slug_is_found(self):
+        assert self._call(self.REAL)["state"] == ps.IDLE
+
+    def test_its_logs_are_actually_fetched_and_matched(self):
+        """Not finding the container also meant never reading its logs."""
+        out = self._call(self.REAL, logs="ERROR login failed")
+        assert out["state"] == ps.FAILING
+
+    def test_the_legacy_service_key_still_matches(self):
+        legacy = [{"service": "demo", "status": "running", "_worker_id": 1}]
+        assert self._call(legacy)["state"] == ps.IDLE
+
+    def test_an_unrelated_container_is_not_matched(self):
+        other = [{"slug": "something-else", "status": "running", "_worker_id": 1}]
+        assert self._call(other)["state"] == ps.UNKNOWN

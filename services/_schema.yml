@@ -87,6 +87,15 @@
 #   vps_ip: true/false  (default: opposite of residential_ip)
 #   devices_per_account: 0  (0 = unlimited)
 #   devices_per_ip: 1  (0 = unlimited)
+#
+#   devices_per_ip drives the egress-conflict warning (app/egress.py), so the
+#   distinction between OMITTING it and setting it to 0 is load-bearing:
+#     - omitted -> "nobody has documented this", and the user is told to check
+#       the provider's terms before running a second instance behind one IP;
+#     - 0       -> a verified statement that the provider imposes no per-IP
+#       limit, which suppresses that warning.
+#   Only write 0 when the provider actually says so. Writing it to silence a
+#   warning turns a cautious message into a wrong one.
 #   note: ""  (footnote text for special cases in README table)
 #   note_column: ""  (which column footnote applies to: vps_ip, devices_per_ip)
 #   min_bandwidth: ""

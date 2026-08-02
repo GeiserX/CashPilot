@@ -32,7 +32,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 
-from app import fleet_key, orchestrator
+from app import egress, fleet_key, orchestrator
 
 try:
     from app.catalog import get_services as _catalog_get_services
@@ -217,6 +217,94 @@ def _verify_api_key(request: Request) -> None:
 # ---------------------------------------------------------------------------
 
 
+# ---------------------------------------------------------------------------
+# Egress identity (CashPilot-5qc)
+# ---------------------------------------------------------------------------
+
+# Every provider in the catalog caps per IP address, so the UI cannot warn about
+# two workers behind one connection unless each worker knows its own exit.
+#
+# This is the one outbound call CashPilot makes purely to learn about the user,
+# so it is opt-outable and endpoint-overridable. The privacy cost is genuinely
+# small — a worker's whole purpose is to route traffic for these providers, all
+# of whom already see this address — but "small" is not "none", and defaults
+# that quietly phone somewhere are how trust is lost in this category.
+_EGRESS_ENDPOINTS = ("https://api.ipify.org", "https://ifconfig.me/ip", "https://icanhazip.com")
+
+# Local, network-free hosting hint. Read from DMI rather than an ASN lookup so
+# nothing is disclosed to a third party and it still works offline.
+_DMI_PATHS = ("/sys/class/dmi/id/sys_vendor", "/sys/class/dmi/id/product_name", "/sys/class/dmi/id/chassis_vendor")
+
+_egress_cache: tuple[str | None, float] = (None, 0.0)
+_EGRESS_TTL_SECONDS = 3600.0
+
+
+def _detect_network_type() -> str:
+    """residential / hosting / unknown, from local hardware identifiers only.
+
+    An explicit ``CASHPILOT_WORKER_NETWORK`` always wins: the user knows their
+    own connection better than any heuristic, and a wrong "hosting" verdict
+    fires ban warnings at people who are fine.
+    """
+    declared = egress.normalise_network_type(os.getenv("CASHPILOT_WORKER_NETWORK"))
+    if declared != egress.UNKNOWN:
+        return declared
+    for path in _DMI_PATHS:
+        try:
+            vendor = Path(path).read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        detected = egress.classify_vendor(vendor)
+        if detected != egress.UNKNOWN:
+            return detected
+    return egress.UNKNOWN
+
+
+async def _detect_egress_ip() -> str | None:
+    """This worker's public IP, cached for an hour, or None.
+
+    Every failure mode returns None rather than a guess: a wrong address would
+    group unrelated machines together, which is worse than the fleet view simply
+    saying it does not know.
+    """
+    global _egress_cache
+
+    if os.getenv("CASHPILOT_EGRESS_DETECT", "").strip().lower() in {"0", "off", "false", "no"}:
+        return None
+
+    cached, fetched_at = _egress_cache
+    now = asyncio.get_running_loop().time()
+    if cached and (now - fetched_at) < _EGRESS_TTL_SECONDS:
+        return cached
+
+    override = os.getenv("CASHPILOT_EGRESS_IP", "").strip()
+    if override:
+        # A user behind a proxy or split tunnel can state the truth directly.
+        confirmed = egress.public_ip(override)
+        if confirmed:
+            _egress_cache = (confirmed, now)
+        return confirmed
+
+    endpoints = [os.getenv("CASHPILOT_EGRESS_IP_URL", "").strip()] if os.getenv("CASHPILOT_EGRESS_IP_URL") else []
+    endpoints.extend(_EGRESS_ENDPOINTS)
+
+    for url in endpoints:
+        if not url:
+            continue
+        try:
+            async with httpx.AsyncClient(timeout=5) as client:
+                resp = await client.get(url)
+            if resp.status_code != 200:
+                continue
+            found = egress.public_ip(resp.text.strip()[:64])
+            if found:
+                _egress_cache = (found, now)
+                return found
+        except Exception as exc:  # noqa: BLE001 — never let this break a heartbeat
+            logger.debug("Egress IP lookup via %s failed: %s", url, exc)
+    return None
+
+
 async def _send_heartbeat() -> None:
     """Send a single heartbeat to the UI."""
     global _ui_connected, _last_heartbeat, _last_error, _consecutive_auth_failures
@@ -237,6 +325,10 @@ async def _send_heartbeat() -> None:
             "arch": platform.machine(),
             "hostname": socket.gethostname(),
             "docker_available": await asyncio.to_thread(orchestrator.docker_available),
+            # Providers count devices per public IP, so the UI needs the address
+            # the provider sees — not this container's LAN or tailnet address.
+            "egress_ip": await _detect_egress_ip(),
+            "egress_network_type": _detect_network_type(),
         },
     }
 
