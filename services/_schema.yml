@@ -59,6 +59,29 @@
 #   stop_timeout: 30 (optional, seconds to wait before SIGKILL on stop — default 30)
 #   setup: "" (optional, one-time setup instructions/commands to run before first deploy)
 
+# disclosure: (optional but strongly encouraged) what this service does with the
+#   user's machine. "Is this malware?" is a fair question about closed-source
+#   containers that route traffic through someone's home connection, and an
+#   earnings range does not answer it.
+#     sells:                what is actually sold (bandwidth / disk / compute / attention)
+#     third_party_traffic:  do strangers route traffic through the user's IP? The value
+#                           must OPEN with a standalone yes / no / unknown followed by
+#                           punctuation, so it can be read programmatically:
+#                             third_party_traffic: >-
+#                               Yes. Buyers route their traffic through your connection.
+#                           Use a >- block (as above) or quote the string. A BARE `yes`/`no`
+#                           is parsed by YAML as a boolean, not text.
+#                           "No longer - they route traffic now" does NOT parse as a verdict
+#                           and is reported as undocumented, which is deliberate: a phrase
+#                           beginning with "no" that means "yes" is the worst possible
+#                           silent answer, so anything ambiguous falls back to unknown.
+#     data_collected:       what identifying data leaves the machine
+#     isp_risk:             what this could mean for their ISP contract, in plain words
+#     account_rules:        account and multi-account rules
+#   Write it honestly, including where the answer is unflattering. "unknown - the
+#   provider does not say" is a legitimate and useful entry. Do NOT guess: an absent
+#   block is reported as undocumented, which is safer than a confident wrong answer.
+
 # requirements:
 #   residential_ip: true/false
 #   vps_ip: true/false  (default: opposite of residential_ip)
