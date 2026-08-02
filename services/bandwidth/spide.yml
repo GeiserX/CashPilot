@@ -2,7 +2,7 @@ name: Spide
 slug: spide
 category: bandwidth
 status: active
-website: https://spide.io
+website: https://spide.network
 description: >
   Spide is a bandwidth-sharing service that lets you monetize unused internet
   bandwidth. Uses an optional machine ID for device tracking. Available through
@@ -28,6 +28,10 @@ docker:
 
 requirements:
   residential_ip: true
+  vps_ip: false
+  devices_per_ip: 1
+  note: "Traffic through one public IP is split between the devices sharing it, so a second device on the same connection adds nothing."
+  note_column: devices_per_ip
   min_bandwidth: ""
   gpu: false
   min_storage: ""

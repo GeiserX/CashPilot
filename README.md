@@ -65,7 +65,7 @@ Services CashPilot can deploy and manage automatically via Docker.
 | [Anyone Protocol](https://anyone.io) | [Guide](docs/guides/anyone-protocol.md) | ✅ | ✅ | Unlimited | 1 | Crypto (ANYONE) |
 | [Bitping](https://app.bitping.com) | [Guide](docs/guides/bitping.md) | ✅ | ✅ | Unlimited | 1 | Crypto (SOL) |
 | [Earn.fm](https://earn.fm/ref/GEISYB91) | [Guide](docs/guides/earnfm.md) | ✅ | ✅ | Unlimited | 1 | Crypto |
-| [EarnApp](https://earnapp.com/i/TSMD9wSm) | [Guide](docs/guides/earnapp.md) | ✅ | ❌ | 15 | 1 | PayPal, Gift Cards, Wise |
+| [EarnApp](https://earnapp.com/i/TSMD9wSm) \*\*\*\* | [Guide](docs/guides/earnapp.md) | ✅ | ❌ | 15 | 1 | PayPal, Gift Cards, Wise |
 | [Honeygain](https://dashboard.honeygain.com/ref/SERGIB4014) | [Guide](docs/guides/honeygain.md) | ✅ | ❌ | 10 | 1 | PayPal, Crypto |
 | [IPRoyal Pawns](https://pawns.app?r=19266874) | [Guide](docs/guides/iproyal.md) | ✅ | ❌ | Unlimited | 1 | PayPal, Crypto, Bank Transfer |
 | [MystNodes](https://mystnodes.co/?referral_code=do7v7YOoBBpbOstKQovX2pUvZYKia4ZhH3QIdNtE) | [Guide](docs/guides/mysterium.md) | ✅ | ✅ | Unlimited | Unlimited | Crypto (MYST) |
@@ -74,8 +74,8 @@ Services CashPilot can deploy and manage automatically via Docker.
 | [ProxyBase](https://peer.proxybase.org?referral=nXzS3c6iTO) | [Guide](docs/guides/proxybase.md) | ✅ | ✅ | Unlimited | 1 | Crypto |
 | [ProxyBase Markets](https://proxybase.xyz) | [Guide](docs/guides/proxybase-xyz.md) | ❌ | ✅ | Unlimited | 1 | Crypto (USDC) |
 | [ProxyLite](https://proxylite.ru/?r=KMUPRZIZ) | [Guide](docs/guides/proxylite.md) | ✅ | ✅ | Unlimited | 1 | Crypto, PayPal |
-| [ProxyRack](https://peer.proxyrack.com/ref/mpwiok3xlaxeycnn5znqlg7ipjeutxyxr6xl7vmn) | [Guide](docs/guides/proxyrack.md) | ✅ | ✅ | 500 | 1 | PayPal, Crypto |
-| [Repocket](https://repocket.com/) | [Guide](docs/guides/repocket.md) | ✅ | ❌ | 5 | 2 | PayPal, Crypto |
+| [ProxyRack](https://peer.proxyrack.com/ref/mpwiok3xlaxeycnn5znqlg7ipjeutxyxr6xl7vmn) | [Guide](docs/guides/proxyrack.md) | ✅ | ✅ | 500 | ? \*\*\* | PayPal, Crypto |
+| [Repocket](https://repocket.com/) | [Guide](docs/guides/repocket.md) | ✅ | ❌ | 5 | ? \*\*\* | PayPal, Crypto |
 | [Storj](https://www.storj.io/node) | [Guide](docs/guides/storj.md) | ✅ | ✅ | Unlimited | 1 \* | Crypto (STORJ) |
 | [Traffmonetizer](https://traffmonetizer.com/?aff=2111758) | [Guide](docs/guides/traffmonetizer.md) | ✅ | ✅ \*\* | Unlimited | Unlimited | Crypto (USDT), PayPal |
 | [URnetwork](https://ur.io/?referral_code=1Q3G19) | [Guide](docs/guides/urnetwork.md) | ✅ | ✅ | Unlimited | 1 | Crypto |
@@ -83,6 +83,10 @@ Services CashPilot can deploy and manage automatically via Docker.
 > \* Storj nodes on the same /24 subnet share data allocation, reducing per-node earnings.
 >
 > \*\* Traffmonetizer ToS requires residential IP, but VPS nodes are accepted in practice.
+>
+> \*\*\*\* EarnApp's help centre **prohibits** Docker containers, VMs, hosting services and home servers, with account termination and cancellation of pending payments as the stated penalty — which is exactly how CashPilot deploys it. Read the [guide](docs/guides/earnapp.md) before deploying.
+>
+> \*\*\* `?` means the provider does not publish a per-IP device limit. A number widely repeated on review sites is not a source — see [per-IP device limits](docs/research/per-ip-device-limits.md). Rows showing `1` without a citation there have not been re-verified against the provider's terms.
 
 ### Browser Extension / Desktop Only
 
@@ -93,7 +97,7 @@ These services have no Docker image. CashPilot lists them in the catalog with si
 | [Bytelixir](https://bytelixir.com/r/OYEIRE0VSZBZ) | [Guide](docs/guides/bytelixir.md) | ✅ | ❌ | Unlimited | 1 | Crypto | Active |
 | [Dawn Internet](https://dawninternet.com/?code=2QLQV97F) | [Guide](docs/guides/dawn.md) | ✅ | ❌ | Unlimited | 1 | Crypto (DAWN) | Active |
 | [Deeper Network](https://deeper.network) | [Guide](docs/guides/deeper-network.md) | ✅ | ❌ | Unlimited | 1 | Crypto (DPR) | Active |
-| [Ebesucher](https://www.ebesucher.com/?ref=geiserx) | [Guide](docs/guides/ebesucher.md) | ✅ | ✅ | Unlimited | 1 | PayPal | Active |
+| [Ebesucher](https://www.ebesucher.com/?ref=geiserx) | [Guide](docs/guides/ebesucher.md) | ✅ | ❌ | Unlimited | 1 | PayPal | Active |
 | [Gradient Network](https://app.gradient.network/signup?referralCode=YSKMY7) | [Guide](docs/guides/gradient.md) | ✅ | ❌ | Unlimited | 1 | Crypto (GRADIENT) | Active |
 | [Grass](https://app.grass.io/register?referralCode=kn8FNEPnUr2tMqE) | [Guide](docs/guides/grass.md) | ✅ | ❌ | Unlimited | 1 | Crypto (GRASS) | Active |
 | [Helium](https://helium.com) | [Guide](docs/guides/helium.md) | ✅ | ❌ | Unlimited | 1 | Crypto (HNT) | Active |

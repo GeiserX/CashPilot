@@ -40,6 +40,8 @@ docker:
 
 requirements:
   residential_ip: true
+  vps_ip: false
+  container_prohibited: true
   devices_per_account: 15
   min_bandwidth: ""
   gpu: false

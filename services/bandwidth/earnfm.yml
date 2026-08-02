@@ -33,6 +33,7 @@ docker:
 requirements:
   residential_ip: true
   vps_ip: true
+  devices_per_ip: 1
   min_bandwidth: ""
   gpu: false
   min_storage: ""

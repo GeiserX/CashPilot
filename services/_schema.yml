@@ -99,6 +99,12 @@
 #       real effect regardless of what the provider permits.
 #   Only write 0 when the provider actually says so. Writing it to quieten a
 #   warning turns a cautious message into a wrong one.
+#   container_prohibited: true/false  (default false)
+#     Set ONLY when the provider explicitly forbids containers/VMs/servers for
+#     its own software. This is the strongest verdict the preflight can give:
+#     the outcome is a terminated account with the pending balance cancelled,
+#     and CashPilot deploying the service as a container IS the violation.
+#     Requires a first-party source; never infer it from a residential-IP rule.
 #   note: ""  (footnote text for special cases in README table)
 #   note_column: ""  (which column footnote applies to: vps_ip, devices_per_ip)
 #   min_bandwidth: ""

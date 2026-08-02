@@ -23,7 +23,9 @@ docker:
   network_mode: ""
 
 requirements:
-  residential_ip: false
+  residential_ip: true
+  vps_ip: false
+  devices_per_ip: 1
   min_bandwidth: ""
   gpu: false
   min_storage: ""
