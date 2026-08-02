@@ -13,6 +13,7 @@ Configure via environment variables:
 from __future__ import annotations
 
 import asyncio
+import base64
 import contextlib
 import hmac
 import logging
@@ -33,7 +34,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 
-from app import egress, fleet_key, orchestrator
+from app import egress, fleet_key, orchestrator, state_backup
 
 try:
     from app.catalog import get_services as _catalog_get_services
@@ -1008,6 +1009,103 @@ async def api_container_logs(request: Request, slug: str, lines: int = 50) -> di
         raise HTTPException(status_code=404, detail=str(exc))
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc))
+
+
+class BackupRequest(BaseModel):
+    """Target for an export. Exactly one of the two must be supplied.
+
+    A passphrase arrives, is used to derive a key, and is discarded with the
+    request. It is never written to disk, never logged, and never returned.
+    """
+
+    passphrase: str | None = None
+    recipient_public_key: str | None = None
+
+
+class VerifyRequest(BackupRequest):
+    """A bundle to check against the state currently on disk."""
+
+    bundle_b64: str = ""
+
+
+@app.post("/api/containers/{slug}/backup")
+async def api_backup(slug: str, body: BackupRequest, request: Request) -> dict[str, Any]:
+    """Export this service's irreplaceable state, encrypted HERE.
+
+    Encryption happens on the worker so the UI only ever handles ciphertext:
+    plaintext key material must not cross the wire even inside the fleet, and it
+    must not sit in the UI's memory where a different compromise would reach it.
+
+    The bundle is returned in THIS response and nowhere else. There is
+    deliberately no upload, sync or webhook path in the code — the absence is
+    what makes the guarantee checkable, rather than a policy nobody audits.
+    """
+    _verify_api_key(request)
+    try:
+        payload, targets = await asyncio.to_thread(orchestrator.read_critical_state, slug)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.error("Backup read failed for %s: %s", slug, exc)
+        raise HTTPException(status_code=500, detail="Could not read this service's state") from exc
+
+    try:
+        bundle = await asyncio.to_thread(
+            lambda: state_backup.seal(
+                payload,
+                passphrase=body.passphrase,
+                recipient_public_key=body.recipient_public_key,
+                metadata={"slug": slug, "worker": WORKER_NAME, "targets": targets},
+            )
+        )
+    except state_backup.BackupError as exc:
+        # Safe to surface: these messages are about the CALLER's inputs and
+        # deliberately contain neither the passphrase nor any state.
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    return {
+        "slug": slug,
+        "targets": targets,
+        "bytes": len(bundle),
+        "bundle_b64": base64.b64encode(bundle).decode("ascii"),
+    }
+
+
+@app.post("/api/containers/{slug}/backup/verify")
+async def api_backup_verify(slug: str, body: VerifyRequest, request: Request) -> dict[str, Any]:
+    """Does this bundle still match what is on disk?
+
+    "I have a backup file" and "I have a backup that works" are different
+    claims. Believing the first is how people find a dead node and an unusable
+    file on the same afternoon.
+
+    Decryption happens in memory on the worker and nothing is written anywhere;
+    only digests are compared, so no plaintext is produced for the caller.
+    """
+    _verify_api_key(request)
+    try:
+        bundle = base64.b64decode(body.bundle_b64 or "", validate=True)
+    except (ValueError, TypeError) as exc:
+        raise HTTPException(status_code=400, detail="Bundle is not valid base64") from exc
+    if not state_backup.looks_like_bundle(bundle):
+        raise HTTPException(status_code=400, detail="That file is not a CashPilot backup bundle")
+
+    try:
+        payload, _targets = await asyncio.to_thread(orchestrator.read_critical_state, slug)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.error("Backup verify read failed for %s: %s", slug, exc)
+        raise HTTPException(status_code=500, detail="Could not read this service's state") from exc
+
+    return await asyncio.to_thread(
+        lambda: state_backup.verify(
+            bundle,
+            payload,
+            passphrase=body.passphrase,
+            recipient_private_key=body.recipient_public_key,
+        )
+    )
 
 
 @app.get("/api/health")
