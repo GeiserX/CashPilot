@@ -1548,6 +1548,14 @@ async def get_flatlined_services(min_days: int = FLATLINE_MIN_DAYS) -> list[dict
             FROM earnings
             WHERE date >= date('now', ?)
             GROUP BY platform
+            -- Only platforms that recorded a reading TODAY. A collector that is
+            -- failing stops writing rows, but its earlier readings are still
+            -- there and are, of course, unchanged - so without this a broken
+            -- collector reads as a flatline, and so does a service that was
+            -- removed but kept its history. Those are different faults with
+            -- different fixes, and reporting them as "running but not earning"
+            -- is exactly the crying wolf this feature must avoid.
+            HAVING MAX(date) >= date('now')
             """,
             (f"-{min_days} days",),
         )
@@ -1621,6 +1629,16 @@ async def list_alerts(limit: int = 50) -> list[dict[str, Any]]:
             (limit,),
         )
         return [dict(row) for row in await cursor.fetchall()]
+    finally:
+        await db.close()
+
+
+async def get_alert_subjects(kind: str) -> set[str]:
+    """Subjects currently holding a stored alert of this kind."""
+    db = await _get_db()
+    try:
+        cursor = await db.execute("SELECT DISTINCT subject FROM alerts WHERE kind = ?", (kind,))
+        return {row["subject"] for row in await cursor.fetchall()}
     finally:
         await db.close()
 
