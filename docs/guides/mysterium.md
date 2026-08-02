@@ -126,7 +126,8 @@ MystNodes' own monitoring takes a while to re-score a node after the fix — all
 several hours before judging it by the dashboard rather than by the node's own
 `monitoring-agent-statuses`.
 
-> **Note.** CashPilot cannot yet declare a device in the service catalog, so a
-> Mysterium container it deploys does not get `/dev/net/tun` automatically. Until
-> that lands you have to add `--device /dev/net/tun` yourself, as above.
+> **Fixed in v1.5.1+.** The catalog now declares `/dev/net/tun` for Mysterium, so
+> a container CashPilot deploys gets the device automatically. The manual steps
+> above are only needed for a container deployed before that, or one created
+> outside CashPilot. Redeploy from the UI and the device comes with it.
 
