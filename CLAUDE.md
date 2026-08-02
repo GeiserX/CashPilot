@@ -171,8 +171,8 @@ Three invariants that must not be "simplified" away:
   the tailnet range every reference-fleet worker uses; grouping on it would put
   the whole fleet into one fabricated conflict.
 - **An absent `devices_per_ip` is undocumented, not unlimited.** `0` is a
-  verified no-limit and suppresses the warning; only write it when the provider
-  actually says so.
+  verified no-limit and *downgrades* the warning to a shared-bandwidth note (it
+  does not silence it); only write it when the provider actually says so.
 
 Note that heartbeat container entries key the service as **`slug`**; code that
 filtered on `service` silently matched nothing in production. Use

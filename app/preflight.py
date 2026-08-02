@@ -55,7 +55,13 @@ def assess(
     single-machine checks and keeps saying that the egress IP was not examined.
     """
     already_deployed = already_deployed_slugs or set()
-    info = system_info or {}
+    # Derived from the worker when not passed explicitly. Reading this from a
+    # separate kwarg while the fleet half read worker["system_info"] meant the
+    # SAME worker produced different verdicts depending on whether the caller
+    # remembered a redundant argument.
+    info = system_info if system_info is not None else ((worker or {}).get("system_info") or {})
+    if not isinstance(info, dict):
+        info = {}
     reqs = service.get("requirements") or {}
     slug = service.get("slug", "")
 
@@ -175,7 +181,11 @@ def assess(
 
     verdict = _worst(verdicts)
     not_checked = ["connection speed", "available disk"]
-    if egress.egress_of(worker) is None:
+    # Gated on the connection TYPE, not on the address. Knowing the IP says
+    # nothing about whether it is residential, and dropping the label because we
+    # learned the address produced a response that claimed the type was checked
+    # while a finding in the same payload said it could not be.
+    if egress.network_type_of(worker) == egress.UNKNOWN:
         not_checked.insert(0, "egress IP type")
     return {
         "slug": slug,
@@ -234,8 +244,9 @@ def _fleet_findings(
     if not peers:
         return findings
 
+    conflicting = [w for w in peers if slug in egress.running_slugs(w)]
     running_elsewhere = sorted(
-        w.get("name") or w.get("client_id") or "another machine" for w in peers if slug in egress.running_slugs(w)
+        {w.get("name") or w.get("client_id") or f"machine {w.get('id', '?')}" for w in conflicting}
     )
     if not running_elsewhere:
         return findings
@@ -281,7 +292,10 @@ def _fleet_findings(
             }
         )
     else:
-        instances = len(running_elsewhere) + 1
+        # Peers + the one already running here + the prospective deploy. Omitting
+        # the local one under-counts by exactly the case the feature is for.
+        local = 1 if slug in egress.running_slugs(worker) else 0
+        instances = len(running_elsewhere) + local + 1
         verdict = EARNS_NOTHING if instances > limit else REDUCED
         findings.append(
             {

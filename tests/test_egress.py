@@ -220,10 +220,46 @@ class TestPreflightSeesTheRestOfTheFleet:
         out = preflight.assess(ONE_PER_IP, worker=HOME_B, fleet_workers=[stopped, HOME_B])
         assert out["findings"] == []
 
-    def test_a_known_egress_ip_stops_advertising_it_as_unchecked(self):
+    def test_knowing_the_address_does_not_mean_knowing_the_type(self):
+        """The label is about the connection TYPE. An IP says nothing about it.
+
+        Dropping it because the address was found produced a response that
+        claimed the type was checked while a finding beside it said it could not
+        be — the exact self-contradiction the module forbids.
+        """
         out = preflight.assess(UNLIMITED, worker=HOME_B, fleet_workers=[HOME_B])
+        assert "egress IP type" in out["not_checked"]
+
+    def test_a_known_connection_type_stops_advertising_it_as_unchecked(self):
+        out = preflight.assess(UNLIMITED, worker=REMOTE, fleet_workers=[REMOTE])
         assert "egress IP type" not in out["not_checked"]
         assert "connection speed" in out["not_checked"]
+
+    def test_the_local_instance_counts_towards_a_documented_limit(self):
+        """Peers + the one already here + the new one. Omitting the local one
+        under-warns in exactly the situation this feature exists for."""
+        two = {"slug": "honeygain", "name": "Honeygain", "requirements": {"devices_per_ip": 2}}
+        here = worker(7, "here", "81.61.1.9", running=["honeygain"])
+        out = preflight.assess(
+            two,
+            already_deployed_slugs=egress.running_slugs(here),
+            worker=here,
+            fleet_workers=[here, HOME_A],
+        )
+        assert out["verdict"] == preflight.EARNS_NOTHING
+
+    def test_two_unnamed_peers_do_not_render_as_a_repeated_phrase(self):
+        anon = [
+            {
+                "id": i,
+                "system_info": {"egress_ip": "81.61.1.9"},
+                "containers": [{"slug": "honeygain", "status": "running"}],
+            }
+            for i in (20, 21)
+        ]
+        out = preflight.assess(ONE_PER_IP, worker=HOME_B, fleet_workers=[*anon, HOME_B])
+        joined = " ".join(f["message"] for f in out["findings"])
+        assert "machine 20" in joined and "machine 21" in joined
 
     def test_it_still_never_blocks(self):
         out = preflight.assess(ONE_PER_IP, worker=HOME_B, fleet_workers=[HOME_A, HOME_B])
@@ -233,6 +269,61 @@ class TestPreflightSeesTheRestOfTheFleet:
         out = preflight.assess(ONE_PER_IP)
         assert out["verdict"] == preflight.LOOKS_FINE
         assert "egress IP type" in out["not_checked"]
+
+
+class TestOneFactOneSource:
+    """The hosting verdict must not depend on a redundant kwarg."""
+
+    RESI = {"slug": "honeygain", "name": "Honeygain", "requirements": {"residential_ip": True, "vps_ip": False}}
+
+    def test_the_verdict_is_the_same_with_and_without_system_info(self):
+        with_kwarg = preflight.assess(
+            self.RESI, worker=REMOTE, fleet_workers=[REMOTE], system_info=REMOTE["system_info"]
+        )
+        without = preflight.assess(self.RESI, worker=REMOTE, fleet_workers=[REMOTE])
+        assert with_kwarg["verdict"] == without["verdict"] == preflight.EARNS_NOTHING
+
+    def test_an_explicit_system_info_still_wins(self):
+        out = preflight.assess(self.RESI, worker=REMOTE, fleet_workers=[REMOTE], system_info={})
+        assert out["verdict"] == preflight.CHECK_YOURSELF
+
+    def test_a_malformed_system_info_does_not_raise(self):
+        assert preflight.assess(self.RESI, worker={"system_info": "junk"})["blocking"] is False
+
+
+class TestAndroidWorkersAreCounted:
+    """A phone on the home WiFi plus a server is two devices on ONE public IP."""
+
+    PHONE = {
+        "id": 30,
+        "client_id": "cid-30",
+        "name": "phone",
+        "system_info": {"egress_ip": "81.61.1.9", "device_type": "android"},
+        "containers": [],
+        "apps": [{"slug": "honeygain", "running": True}, {"slug": "grass", "running": False}],
+    }
+
+    def test_a_running_android_app_counts_as_a_device(self):
+        assert egress.running_slugs(self.PHONE) == {"honeygain"}
+
+    def test_a_phone_behind_the_same_ip_is_a_conflict(self):
+        out = preflight.assess(ONE_PER_IP, worker=HOME_B, fleet_workers=[self.PHONE, HOME_B])
+        assert out["verdict"] == preflight.EARNS_NOTHING
+        assert "phone" in " ".join(f["message"] for f in out["findings"])
+
+
+class TestSelfExclusion:
+    def test_two_legacy_rows_with_no_client_id_do_not_cancel_each_other(self):
+        """`None != None` is False, so keying on client_id hid real conflicts."""
+        a = {
+            "id": 40,
+            "client_id": None,
+            "name": "a",
+            "system_info": {"egress_ip": "81.61.1.9"},
+            "containers": [{"slug": "honeygain", "status": "running"}],
+        }
+        b = {"id": 41, "client_id": None, "name": "b", "system_info": {"egress_ip": "81.61.1.9"}, "containers": []}
+        assert [w["id"] for w in egress.peers_sharing_egress(b, [a, b])] == [40]
 
 
 class TestResidentialOnlyOnAHostedMachine:
@@ -255,6 +346,62 @@ class TestResidentialOnlyOnAHostedMachine:
     def test_it_is_stated_once_not_twice(self):
         out = preflight.assess(self.RESI, worker=REMOTE, fleet_workers=[REMOTE], system_info=REMOTE["system_info"])
         assert len([f for f in out["findings"] if "residential" in f["message"].lower()]) == 1
+
+
+class _FakeStream:
+    """Stands in for httpx's streaming response so no test touches the network."""
+
+    def __init__(self, body=b"", status=200, exc=None):
+        self.body, self.status_code, self.exc = body, status, exc
+
+    async def __aenter__(self):
+        if self.exc:
+            raise self.exc
+        return self
+
+    async def __aexit__(self, *a):
+        return False
+
+    async def aiter_bytes(self):
+        yield self.body
+
+
+class _FakeClient:
+    def __init__(self, resp, seen):
+        self._resp, self._seen = resp, seen
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *a):
+        return False
+
+    def stream(self, method, url):
+        self._seen.append(url)
+        return self._resp
+
+
+@pytest.fixture
+def no_network(monkeypatch):
+    """Fail loudly if anything here would really reach the internet."""
+    from app import worker_api
+
+    for var in (
+        "CASHPILOT_EGRESS_DETECT",
+        "CASHPILOT_EGRESS_IP",
+        "CASHPILOT_EGRESS_IP_URL",
+        "CASHPILOT_WORKER_NETWORK",
+    ):
+        monkeypatch.delenv(var, raising=False)
+    monkeypatch.setattr(worker_api, "_egress_cache", (None, 0.0))
+    seen: list[str] = []
+
+    def install(resp):
+        monkeypatch.setattr(worker_api.httpx, "AsyncClient", lambda **kw: _FakeClient(resp, seen))
+        return seen
+
+    install(_FakeStream(exc=AssertionError("a test tried to reach the network")))
+    return install, seen
 
 
 class TestWorkerSideDetection:
@@ -280,71 +427,125 @@ class TestWorkerSideDetection:
         monkeypatch.setattr(worker_api, "_DMI_PATHS", (str(tmp_path / "missing"), str(vendor)))
         assert worker_api._detect_network_type() == egress.HOSTING
 
+    def test_a_home_server_vendor_is_not_flagged_as_hosting(self, monkeypatch, tmp_path):
+        """Verified against the real reference fleet, which reports this string."""
+        from app import worker_api
+
+        monkeypatch.delenv("CASHPILOT_WORKER_NETWORK", raising=False)
+        vendor = tmp_path / "sys_vendor"
+        vendor.write_text("ASUSTeK COMPUTER INC.\n")
+        monkeypatch.setattr(worker_api, "_DMI_PATHS", (str(vendor),))
+        assert worker_api._detect_network_type() == egress.UNKNOWN
+
     @pytest.mark.asyncio
-    async def test_detection_can_be_switched_off(self, monkeypatch):
+    async def test_detection_can_be_switched_off(self, monkeypatch, no_network):
         from app import worker_api
 
         monkeypatch.setenv("CASHPILOT_EGRESS_DETECT", "off")
         assert await worker_api._detect_egress_ip() is None
 
     @pytest.mark.asyncio
-    async def test_an_override_is_honoured_and_still_validated(self, monkeypatch):
+    async def test_a_valid_override_skips_the_lookup_entirely(self, monkeypatch, no_network):
         from app import worker_api
 
-        monkeypatch.delenv("CASHPILOT_EGRESS_DETECT", raising=False)
-        monkeypatch.setattr(worker_api, "_egress_cache", (None, 0.0))
         monkeypatch.setenv("CASHPILOT_EGRESS_IP", "81.61.1.9")
         assert await worker_api._detect_egress_ip() == "81.61.1.9"
+        assert no_network[1] == [], "an override must not cause any request"
 
-        monkeypatch.setattr(worker_api, "_egress_cache", (None, 0.0))
+    @pytest.mark.asyncio
+    async def test_an_invalid_override_warns_and_falls_back_to_lookup(self, monkeypatch, no_network, caplog):
+        """192.168.x is what most people would call 'my IP'; silence is cruel."""
+        from app import worker_api
+
+        install, seen = no_network
+        install(_FakeStream(b"81.61.1.9\n"))
         monkeypatch.setenv("CASHPILOT_EGRESS_IP", "192.168.1.5")
-        assert await worker_api._detect_egress_ip() is None, "a LAN override is still a LAN address"
+        with caplog.at_level("WARNING"):
+            assert await worker_api._detect_egress_ip() == "81.61.1.9"
+        assert "not a public address" in caplog.text
+        assert seen, "it should still look the address up"
 
     @pytest.mark.asyncio
-    async def test_every_endpoint_failing_yields_none_not_a_guess(self, monkeypatch):
+    async def test_a_custom_endpoint_is_used_alone_and_never_falls_back(self, monkeypatch, no_network):
+        """Naming your own endpoint IS the opt-out; a quiet fallback undoes it."""
         from app import worker_api
 
-        for var in ("CASHPILOT_EGRESS_DETECT", "CASHPILOT_EGRESS_IP", "CASHPILOT_EGRESS_IP_URL"):
-            monkeypatch.delenv(var, raising=False)
-        monkeypatch.setattr(worker_api, "_egress_cache", (None, 0.0))
+        install, seen = no_network
+        install(_FakeStream(b"not-an-ip"))
+        monkeypatch.setenv("CASHPILOT_EGRESS_IP_URL", "https://my-own.example/ip")
+        assert await worker_api._detect_egress_ip() is None
+        assert seen == ["https://my-own.example/ip"], f"leaked to a third party: {seen}"
 
-        class Boom:
-            async def __aenter__(self):
-                return self
+    @pytest.mark.asyncio
+    async def test_a_response_is_validated_before_it_is_trusted(self, monkeypatch, no_network):
+        from app import worker_api
 
-            async def __aexit__(self, *a):
-                return False
-
-            async def get(self, url):
-                raise OSError("no network")
-
-        monkeypatch.setattr(worker_api.httpx, "AsyncClient", lambda **kw: Boom())
+        install, _ = no_network
+        install(_FakeStream(b"<html>error page</html>"))
         assert await worker_api._detect_egress_ip() is None
 
     @pytest.mark.asyncio
-    async def test_a_lookup_response_is_validated_before_it_is_trusted(self, monkeypatch):
+    async def test_a_non_200_is_not_parsed(self, monkeypatch, no_network):
         from app import worker_api
 
-        for var in ("CASHPILOT_EGRESS_DETECT", "CASHPILOT_EGRESS_IP", "CASHPILOT_EGRESS_IP_URL"):
-            monkeypatch.delenv(var, raising=False)
-        monkeypatch.setattr(worker_api, "_egress_cache", (None, 0.0))
-
-        class Resp:
-            status_code = 200
-            text = "<html>error page</html>"
-
-        class Client:
-            async def __aenter__(self):
-                return self
-
-            async def __aexit__(self, *a):
-                return False
-
-            async def get(self, url):
-                return Resp()
-
-        monkeypatch.setattr(worker_api.httpx, "AsyncClient", lambda **kw: Client())
+        install, _ = no_network
+        install(_FakeStream(b"81.61.1.9", status=503))
         assert await worker_api._detect_egress_ip() is None
+
+    @pytest.mark.asyncio
+    async def test_an_oversized_body_cannot_exhaust_memory(self, monkeypatch, no_network):
+        from app import worker_api
+
+        install, _ = no_network
+        install(_FakeStream(b"81.61.1.9" + b"x" * 10_000_000))
+        assert await worker_api._detect_egress_ip() is None, "truncated garbage is not an IP"
+
+    @pytest.mark.asyncio
+    async def test_a_stalled_endpoint_cannot_hang_the_heartbeat(self, monkeypatch, no_network):
+        """A serial heartbeat loop means a hung lookup takes the worker offline."""
+        import asyncio
+
+        from app import worker_api
+
+        async def never_returns(url):
+            await asyncio.sleep(3600)
+
+        monkeypatch.setattr(worker_api, "_fetch_egress_ip", never_returns)
+        monkeypatch.setattr(worker_api, "_EGRESS_TOTAL_TIMEOUT", 0.05)
+        assert await worker_api._detect_egress_ip() is None
+
+    @pytest.mark.asyncio
+    async def test_a_successful_lookup_is_cached(self, monkeypatch, no_network):
+        from app import worker_api
+
+        install, seen = no_network
+        install(_FakeStream(b"81.61.1.9"))
+        assert await worker_api._detect_egress_ip() == "81.61.1.9"
+        assert await worker_api._detect_egress_ip() == "81.61.1.9"
+        assert len(seen) == 1, "the second call must come from cache"
+
+    @pytest.mark.asyncio
+    async def test_a_failure_is_cached_too_so_a_blackhole_is_not_retried_every_minute(self, monkeypatch, no_network):
+        from app import worker_api
+
+        install, seen = no_network
+        install(_FakeStream(b"nope"))
+        assert await worker_api._detect_egress_ip() is None
+        tried = len(seen)
+        assert tried == len(worker_api._EGRESS_ENDPOINTS), "the first attempt should try each fallback"
+        assert await worker_api._detect_egress_ip() is None
+        assert len(seen) == tried, "a DROPped network would otherwise cost the timeout every heartbeat"
+
+    @pytest.mark.asyncio
+    async def test_the_cache_expires(self, monkeypatch, no_network):
+        from app import worker_api
+
+        install, seen = no_network
+        install(_FakeStream(b"81.61.1.9"))
+        assert await worker_api._detect_egress_ip() == "81.61.1.9"
+        monkeypatch.setattr(worker_api, "_EGRESS_TTL_SECONDS", -1.0)
+        assert await worker_api._detect_egress_ip() == "81.61.1.9"
+        assert len(seen) == 2
 
 
 class TestEndpoints:

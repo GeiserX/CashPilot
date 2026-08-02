@@ -123,7 +123,6 @@ _SEEN = {
 class TestPreflightEndpoint:
     def _call(self, slug, worker_id=None, worker=None, deployments=None):
         import asyncio
-        import json  # noqa: F401 — used by callers building realistic rows
         from unittest.mock import AsyncMock, MagicMock, patch
 
         from app import main

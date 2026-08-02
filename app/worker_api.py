@@ -20,6 +20,7 @@ import os
 import platform
 import re
 import socket
+import time
 import uuid
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
@@ -237,6 +238,19 @@ _DMI_PATHS = ("/sys/class/dmi/id/sys_vendor", "/sys/class/dmi/id/product_name", 
 
 _egress_cache: tuple[str | None, float] = (None, 0.0)
 _EGRESS_TTL_SECONDS = 3600.0
+# A failed lookup is cached too, and briefly. Without it a blackholed network
+# (DROP, not REJECT) costs the full timeout on EVERY heartbeat, forever.
+_EGRESS_FAILURE_TTL_SECONDS = 300.0
+# Total wall-clock budget for the whole attempt. httpx's timeout is PER
+# OPERATION — its read timeout is the maximum gap between chunks, not a deadline
+# — so an endpoint dribbling one byte every few seconds would hold the request
+# open indefinitely. That matters here because the heartbeat loop is serial: a
+# stalled lookup stops heartbeats entirely and the UI marks this worker offline
+# after 180s, so deploys and restarts for this host start failing. A diagnostic
+# nicety must never be able to take the control plane down.
+_EGRESS_TOTAL_TIMEOUT = 10.0
+# Enough for any textual IP form; the body is never read past this.
+_EGRESS_MAX_BYTES = 128
 
 
 def _detect_network_type() -> str:
@@ -260,6 +274,19 @@ def _detect_network_type() -> str:
     return egress.UNKNOWN
 
 
+async def _fetch_egress_ip(url: str) -> str | None:
+    """One IP-echo request, with the response body capped while streaming."""
+    async with httpx.AsyncClient(timeout=5) as client, client.stream("GET", url) as resp:
+        if resp.status_code != 200:
+            return None
+        body = b""
+        async for chunk in resp.aiter_bytes():
+            body += chunk
+            if len(body) >= _EGRESS_MAX_BYTES:
+                break
+    return egress.public_ip(body[:_EGRESS_MAX_BYTES].decode("utf-8", "replace").strip())
+
+
 async def _detect_egress_ip() -> str | None:
     """This worker's public IP, cached for an hour, or None.
 
@@ -273,9 +300,15 @@ async def _detect_egress_ip() -> str | None:
         return None
 
     cached, fetched_at = _egress_cache
-    now = asyncio.get_running_loop().time()
-    if cached and (now - fetched_at) < _EGRESS_TTL_SECONDS:
+    # time.monotonic(), not the event loop's clock: the loop's epoch is
+    # unspecified, and one starting near zero would make this difference
+    # negative — always under the TTL — pinning a stale address forever.
+    now = time.monotonic()
+    age = now - fetched_at
+    if cached and age < _EGRESS_TTL_SECONDS:
         return cached
+    if not cached and fetched_at and age < _EGRESS_FAILURE_TTL_SECONDS:
+        return None
 
     override = os.getenv("CASHPILOT_EGRESS_IP", "").strip()
     if override:
@@ -283,25 +316,32 @@ async def _detect_egress_ip() -> str | None:
         confirmed = egress.public_ip(override)
         if confirmed:
             _egress_cache = (confirmed, now)
-        return confirmed
+            return confirmed
+        # Ignoring this silently would be cruel: "192.168.1.5" is what most
+        # people would call their IP, and the only symptom is nothing happening.
+        logger.warning(
+            "CASHPILOT_EGRESS_IP=%r is not a public address, so it cannot be this worker's "
+            "egress IP — ignoring it and looking the address up instead.",
+            override,
+        )
 
-    endpoints = [os.getenv("CASHPILOT_EGRESS_IP_URL", "").strip()] if os.getenv("CASHPILOT_EGRESS_IP_URL") else []
-    endpoints.extend(_EGRESS_ENDPOINTS)
+    custom = os.getenv("CASHPILOT_EGRESS_IP_URL", "").strip()
+    # An operator who names their own endpoint did so to avoid disclosing to a
+    # third party. Falling back to the public ones on a transient failure would
+    # quietly undo exactly that choice, so a custom endpoint is used ALONE.
+    endpoints = [custom] if custom else list(_EGRESS_ENDPOINTS)
 
     for url in endpoints:
-        if not url:
-            continue
         try:
-            async with httpx.AsyncClient(timeout=5) as client:
-                resp = await client.get(url)
-            if resp.status_code != 200:
-                continue
-            found = egress.public_ip(resp.text.strip()[:64])
-            if found:
-                _egress_cache = (found, now)
-                return found
+            found = await asyncio.wait_for(_fetch_egress_ip(url), timeout=_EGRESS_TOTAL_TIMEOUT)
         except Exception as exc:  # noqa: BLE001 — never let this break a heartbeat
             logger.debug("Egress IP lookup via %s failed: %s", url, exc)
+            continue
+        if found:
+            _egress_cache = (found, now)
+            return found
+
+    _egress_cache = (None, now)
     return None
 
 

@@ -28,6 +28,13 @@ than saying nothing:
   or a tailnet 100.64/10 address, has told us about its LAN, not its egress.
   Grouping on it would invent a shared IP that does not exist — and on a
   tailnet, would group the *entire* fleet into one false conflict.
+
+Known limitation, stated rather than hidden: grouping is exact-address equality,
+so on a **native-IPv6** connection every machine has its own global /128 and two
+hosts on one physical line never match. Detecting that properly means grouping
+on the delegated prefix, which is a separate design decision. The consequence is
+a missed conflict, never a fabricated one — which is the right way round for
+this to fail, and the reason it ships as-is.
 """
 
 from __future__ import annotations
@@ -47,13 +54,17 @@ _NETWORK_TYPES = {RESIDENTIAL, HOSTING, UNKNOWN}
 # Vendor strings that appear in DMI/product identifiers on hosted machines.
 # Deliberately a *local* signal: no third party is asked to profile the user's
 # address, and nothing breaks when the machine is offline.
+# Deliberately NOT here: "microsoft corporation". Azure guests do report it,
+# but so do Surface hardware and Hyper-V guests — including Hyper-V on a home
+# Windows desktop. A false "hosting" verdict escalates a residential-IP note
+# into a ban warning, fired at a user who is fine, which is the exact failure
+# classify_vendor exists to avoid. A missed VPS costs far less than that.
 HOSTING_VENDOR_HINTS = (
     "amazon ec2",
     "digitalocean",
     "google compute engine",
     "hetzner",
     "linode",
-    "microsoft corporation",  # Azure reports this as the chassis vendor
     "openstack",
     "oracle",
     "ovh",
@@ -82,12 +93,27 @@ def normalise_network_type(value: Any) -> str:
     return text if text in _NETWORK_TYPES else UNKNOWN
 
 
+# Address families that Python reports as global but that carry, or translate,
+# an address belonging to someone else. NAT64 (64:ff9b::/96) embeds an arbitrary
+# IPv4 address in its low bits — including a private one — and 6to4 (2002::/16)
+# embeds one likewise, so both can smuggle a LAN address past an is_global check.
+_TRANSLATION_PREFIXES = tuple(ipaddress.ip_network(n) for n in ("64:ff9b::/96", "64:ff9b:1::/48", "2002::/16"))
+
+
 def public_ip(value: Any) -> str | None:
     """Return ``value`` only if it is a usable public egress address.
 
     Private, loopback, link-local, multicast, reserved and shared-CGNAT
     (100.64/10 — which is also the tailnet range) addresses all mean the
     detection failed and we are looking at an interface, not an exit.
+
+    An IPv4-mapped IPv6 address is unwrapped to its IPv4 form rather than
+    returned verbatim. Two things depend on that: grouping is string equality,
+    so the same host reported as ``81.61.1.9`` and ``::ffff:81.61.1.9`` would
+    never match itself; and older 3.12 patch releases — which this project's
+    ``requires-python`` still permits for a source install — got ``is_global``
+    wrong for the mapped form, so unwrapping first makes the check correct
+    independently of the interpreter version.
     """
     text = str(value or "").strip()
     if not text:
@@ -95,6 +121,11 @@ def public_ip(value: Any) -> str | None:
     try:
         addr = ipaddress.ip_address(text)
     except ValueError:
+        return None
+    mapped = getattr(addr, "ipv4_mapped", None)
+    if mapped is not None:
+        addr = mapped
+    if any(addr in net for net in _TRANSLATION_PREFIXES if net.version == addr.version):
         return None
     if not addr.is_global or addr.is_multicast:
         return None
@@ -172,7 +203,7 @@ def group_by_egress(workers: list[dict[str, Any]]) -> list[dict[str, Any]]:
         }
         for ip, members in groups.items()
     ]
-    out.sort(key=lambda g: (-g["worker_count"], g["egress_ip"]))
+    out.sort(key=lambda g: (-g["worker_count"], g["egress_ip"] or ""))
 
     if unknown:
         out.append(
@@ -204,8 +235,17 @@ def peers_sharing_egress(worker: dict[str, Any], workers: list[dict[str, Any]]) 
     ip = egress_of(worker)
     if ip is None:
         return []
-    own_id = worker.get("client_id")
-    return [w for w in workers or [] if w.get("client_id") != own_id and egress_of(w) == ip]
+    # Identity on the primary key, not client_id: two legacy rows can both hold
+    # a NULL client_id, and `None != None` is False, so they would silently
+    # exclude each other and under-report a real conflict.
+    own = (worker.get("id"), worker.get("client_id"))
+
+    def _same(w: dict[str, Any]) -> bool:
+        if own[0] is not None and w.get("id") is not None:
+            return w.get("id") == own[0]
+        return own[1] is not None and w.get("client_id") == own[1]
+
+    return [w for w in workers or [] if not _same(w) and egress_of(w) == ip]
 
 
 def container_slug(container: dict[str, Any] | None) -> str:
@@ -223,7 +263,7 @@ def container_slug(container: dict[str, Any] | None) -> str:
 
 
 def running_slugs(worker: dict[str, Any] | None) -> set[str]:
-    """Slugs of the containers a worker reports as running."""
+    """Slugs a worker reports as running, from Docker containers AND Android apps."""
     if not worker:
         return set()
     containers = worker.get("containers")
@@ -232,4 +272,11 @@ def running_slugs(worker: dict[str, Any] | None) -> set[str]:
     found = {
         container_slug(c) for c in containers if isinstance(c, dict) and str(c.get("status", "")).lower() == "running"
     }
+    # Android workers report `apps` with a boolean `running` instead of Docker
+    # containers. A phone on the home WiFi plus a server is two devices on ONE
+    # public IP — the canonical case for this whole feature — so leaving them
+    # out would blind it to the very conflict it exists to catch.
+    apps = worker.get("apps")
+    if isinstance(apps, list):
+        found |= {container_slug(a) for a in apps if isinstance(a, dict) and a.get("running")}
     return found - {""}

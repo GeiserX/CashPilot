@@ -93,8 +93,11 @@
 #     - omitted -> "nobody has documented this", and the user is told to check
 #       the provider's terms before running a second instance behind one IP;
 #     - 0       -> a verified statement that the provider imposes no per-IP
-#       limit, which suppresses that warning.
-#   Only write 0 when the provider actually says so. Writing it to silence a
+#       limit. The "check the terms" warning is then replaced by a milder note
+#       that two instances still share one connection, so the pair earns roughly
+#       what one does. It is downgraded, NOT silenced -- shared bandwidth is a
+#       real effect regardless of what the provider permits.
+#   Only write 0 when the provider actually says so. Writing it to quieten a
 #   warning turns a cautious message into a wrong one.
 #   note: ""  (footnote text for special cases in README table)
 #   note_column: ""  (which column footnote applies to: vps_ip, devices_per_ip)
