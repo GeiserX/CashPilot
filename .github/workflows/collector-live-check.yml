@@ -45,7 +45,11 @@ jobs:
           CASHPILOT_LIVE_CREDENTIALS: ${{ secrets.CASHPILOT_LIVE_CREDENTIALS }}
         run: |
           set -o pipefail
-          python -m pytest tests/ -m live -q 2>&1 | tee live.log
+          # Exit 5 is pytest's "no tests collected". No test carries the `live`
+          # marker yet, so without this the job fails EVERY night and files a
+          # false drift alert — which trains the maintainer to ignore the one
+          # alert designed to catch a real provider change.
+          python -m pytest tests/ -m live -q 2>&1 | tee live.log || [ "${PIPESTATUS[0]}" = "5" ]
 
       - name: Open an issue when a provider's shape changed
         if: failure()

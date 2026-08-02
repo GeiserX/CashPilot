@@ -192,7 +192,11 @@ class TestEndpoints:
         from app import main
 
         with (
+            # Stand in for an authorized caller. Reads need auth; confirm/reject
+            # need writer. Which guard each endpoint actually enforces is the
+            # subject of tests/test_audit_guards.py, not of these.
             patch.object(main, "_require_auth_api", lambda r: None),
+            patch.object(main, "_require_writer", lambda r: None),
             patch.object(main.database, "get_latest_balance", AsyncMock(return_value=patches.get("balance"))),
             patch.object(main.database, "get_balance_history", AsyncMock(return_value=patches.get("history", []))),
             patch.object(main.database, "get_payouts", AsyncMock(return_value=patches.get("payouts", []))),

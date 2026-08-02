@@ -29,6 +29,7 @@ Two rules run through everything below:
 
 from __future__ import annotations
 
+from datetime import date
 from typing import Any
 
 # Minimum history before a trailing rate means anything. Below this a single
@@ -142,8 +143,28 @@ def daily_rate(history: list[dict[str, Any]] | None) -> float | None:
         step = float(newer["balance"]) - float(older["balance"])
         if step > 0:
             gained += step
-    days = len(points) - 1
-    return gained / days if days > 0 else None
+
+    # Divide by ELAPSED CALENDAR DAYS, not by the number of readings. A day the
+    # collector failed produces no row at all, so counting intervals treats a
+    # ten-day gap as one day and inflates the rate by that factor — which then
+    # tells the user their payout is ten times nearer than it is.
+    days = _elapsed_days(points)
+    return gained / days if days and days > 0 else None
+
+
+def _elapsed_days(points: list[dict[str, Any]]) -> float | None:
+    """Calendar days between the first and last reading, when datable."""
+    first, last = points[0].get("date"), points[-1].get("date")
+    if first and last:
+        try:
+            span = (date.fromisoformat(str(last)) - date.fromisoformat(str(first))).days
+        except ValueError:
+            span = None
+        if span:
+            return float(span)
+    # No usable dates: fall back to the interval count, which is correct when
+    # readings really are daily and is the best available otherwise.
+    return float(len(points) - 1) or None
 
 
 def project(

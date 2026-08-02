@@ -7,7 +7,6 @@ inspection for cashpilot-managed containers via the Docker SDK.
 
 from __future__ import annotations
 
-import contextlib
 import logging
 import os
 import time
@@ -377,8 +376,20 @@ def read_critical_state(slug: str) -> tuple[bytes, list[str]]:
         if was_running:
             # Unpause even if the read failed: leaving a paused earner behind
             # would silently stop the income this feature exists to protect.
-            with contextlib.suppress(Exception):
+            try:
                 container.unpause()
+            except Exception as exc:
+                # Swallowed so it cannot mask the original error, but NEVER
+                # silent. A paused container renders normally and earns nothing,
+                # and nothing else in the system reports that state, so an
+                # unlogged failure here is an invisible, indefinite revenue stop.
+                logger.error(
+                    "CRITICAL: %s is still PAUSED — unpause failed (%s). It is earning "
+                    "NOTHING until it is unpaused by hand: docker unpause %s",
+                    slug,
+                    exc,
+                    container.name,
+                )
 
     return b"".join(chunks), read
 

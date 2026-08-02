@@ -2109,7 +2109,12 @@ async def api_test_credentials(request: Request, slug: str) -> dict[str, Any]:
     from app import collectors
     from app.collectors import COLLECTOR_MAP
 
-    _require_auth_api(request)
+    # Owner, not merely authenticated: this fires an authenticated login to a
+    # third party using the OWNER's stored credentials and reads the balance
+    # back. /api/collectors/meta already requires owner for the same material,
+    # and POST /api/collect — which is strictly less privileged — requires
+    # writer. A viewer must not be able to reach any of it.
+    _require_owner(request)
     service = catalog.get_service(slug)
     if not service:
         raise HTTPException(status_code=404, detail=f"Unknown service '{slug}'")
@@ -2161,7 +2166,9 @@ async def api_payouts(request: Request, platform: str | None = None) -> dict[str
 @app.post("/api/earnings/payouts/{payout_id}/confirm")
 async def api_confirm_payout(request: Request, payout_id: int, method: str = "") -> dict[str, Any]:
     """Confirm a drop really was a payout. Only a human reaches this."""
-    _require_auth_api(request)
+    # Writer, not viewer: this mutates financial records, and rejection is a
+    # hard DELETE. A read-only account must not be able to destroy them.
+    _require_writer(request)
     if not await database.confirm_payout(payout_id):
         raise HTTPException(status_code=404, detail="No unconfirmed payout with that id")
     return {"ok": True, "id": payout_id, "confirmed": True}
@@ -2170,7 +2177,9 @@ async def api_confirm_payout(request: Request, payout_id: int, method: str = "")
 @app.post("/api/earnings/payouts/{payout_id}/reject")
 async def api_reject_payout(request: Request, payout_id: int) -> dict[str, Any]:
     """This drop was not a payout — forget it entirely."""
-    _require_auth_api(request)
+    # Writer, not viewer: this mutates financial records, and rejection is a
+    # hard DELETE. A read-only account must not be able to destroy them.
+    _require_writer(request)
     if not await database.reject_payout(payout_id):
         raise HTTPException(status_code=404, detail="No unconfirmed payout with that id")
     return {"ok": True, "id": payout_id, "removed": True}
@@ -2223,7 +2232,12 @@ async def api_fleet_economics(request: Request) -> dict[str, Any]:
     _require_auth_api(request)
     config = await database.get_config() or {}
     try:
-        price = float(config.get("electricity_price_per_kwh") or 0.0)
+        # Two features shipped in one release reading DIFFERENT keys for the
+        # same tariff, so setting one left the other reporting "cost unknown"
+        # forever — and both unknown-paths are deliberately quiet, which is
+        # exactly what hid it. power_price_per_kwh is canonical (it shipped
+        # first); the newer name is honoured so nobody's existing config breaks.
+        price = float(config.get("power_price_per_kwh") or config.get("electricity_price_per_kwh") or 0.0)
     except (TypeError, ValueError):
         price = 0.0
 

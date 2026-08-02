@@ -1573,9 +1573,11 @@ async def get_earned_by_platform(days: int = 30) -> dict[str, float]:
     try:
         cursor = await db.execute(
             """
-            SELECT platform, date, balance
+            SELECT platform, date,
+                   balance * COALESCE(fx_rate_usd, 1.0) AS balance
             FROM earnings
-            WHERE date >= date('now', ?) AND currency = 'USD'
+            WHERE date >= date('now', ?)
+              AND (currency = 'USD' OR fx_rate_usd IS NOT NULL)
             ORDER BY platform, date
             """,
             (f"-{max(1, int(days))} days",),
@@ -1966,10 +1968,32 @@ async def get_confirmed_payout_totals() -> dict[str, float]:
     db = await _get_db()
     try:
         cursor = await db.execute(
-            "SELECT platform, SUM(amount * COALESCE(fx_rate_usd, 1.0)) AS total "
+            # COALESCE(fx_rate_usd, 1.0) would price an unrated token payout at
+            # PARITY WITH USD — a 500 MYST payout becomes $500 instead of ~$15.
+            # A payout whose rate was never captured is not worth "the same
+            # number of dollars"; it is worth an unknown amount, so it is
+            # excluded and counted separately rather than silently invented.
+            "SELECT platform, "
+            "  SUM(CASE WHEN currency = 'USD' THEN amount "
+            "           WHEN fx_rate_usd IS NOT NULL THEN amount * fx_rate_usd "
+            "           ELSE 0 END) AS total, "
+            "  SUM(CASE WHEN currency != 'USD' AND fx_rate_usd IS NULL THEN 1 ELSE 0 END) AS unpriced "
             "FROM payouts WHERE confirmed = 1 GROUP BY platform"
         )
-        return {row["platform"]: float(row["total"] or 0.0) for row in await cursor.fetchall()}
+        totals: dict[str, float] = {}
+        for row in await cursor.fetchall():
+            totals[row["platform"]] = float(row["total"] or 0.0)
+            if row["unpriced"]:
+                # Say it rather than let the total quietly read low. The
+                # alternative — pricing them at parity — reads high by roughly
+                # the token's price, which is far worse.
+                _logger.warning(
+                    "%s: %d confirmed payout(s) have no recorded exchange rate and are "
+                    "excluded from the total, which is therefore an UNDERSTATEMENT.",
+                    row["platform"],
+                    row["unpriced"],
+                )
+        return totals
     finally:
         await db.close()
 

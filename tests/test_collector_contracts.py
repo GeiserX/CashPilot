@@ -213,7 +213,7 @@ class TestCredentialSelfTest:
 
         async def run():
             with (
-                patch.object(main, "_require_auth_api", lambda r: None),
+                patch.object(main, "_require_owner", lambda r: None),
                 patch.object(main.database, "get_config", AsyncMock(return_value=config or {})),
                 patch("app.collectors.build_one", return_value=build),
             ):
@@ -275,7 +275,7 @@ class TestCredentialSelfTest:
 
         async def run():
             with (
-                patch.object(main, "_require_auth_api", lambda r: None),
+                patch.object(main, "_require_owner", lambda r: None),
                 patch.object(main.database, "get_config", AsyncMock(return_value={})),
                 patch("app.collectors.build_one", return_value=(collector, [])),
             ):
@@ -301,7 +301,7 @@ class TestCredentialSelfTest:
 
         async def run():
             with (
-                patch.object(main, "_require_auth_api", lambda r: None),
+                patch.object(main, "_require_owner", lambda r: None),
                 patch.object(main.database, "get_config", AsyncMock(return_value={})),
                 patch("app.collectors.build_one", return_value=(collector, [])),
             ):
