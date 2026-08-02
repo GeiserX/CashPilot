@@ -28,6 +28,9 @@ docker:
 
 requirements:
   residential_ip: true
+  vps_ip: false
+  note: "Traffic through one public IP is split between the devices sharing it, so a second device on the same connection does not add earnings. Spide states no device-count limit."
+  note_column: devices_per_ip
   min_bandwidth: ""
   gpu: false
   min_storage: ""

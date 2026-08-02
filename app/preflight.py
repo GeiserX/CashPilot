@@ -97,6 +97,26 @@ def assess(
             )
             verdicts.append(REDUCED)
 
+    # The provider forbids the very thing CashPilot does. This outranks every
+    # other finding: the outcome is not "earns less", it is a terminated account
+    # with the pending balance cancelled, and CashPilot deploying it as a
+    # container is itself the violation. Saying nothing here would be the worst
+    # possible silence, because the tool causes the breach on the user's behalf.
+    if reqs.get("container_prohibited"):
+        findings.append(
+            {
+                "verdict": EARNS_NOTHING,
+                "message": (
+                    "This provider forbids running its software in Docker containers, on virtual "
+                    "machines, on home servers, or for monetisation — which is exactly what "
+                    "CashPilot does. Their stated penalty is termination without notice and "
+                    "cancellation of any pending payment. Deploying this here means accepting "
+                    "that risk knowingly."
+                ),
+            }
+        )
+        verdicts.append(EARNS_NOTHING)
+
     # Hardware the container cannot conjure.
     if reqs.get("gpu"):
         findings.append(

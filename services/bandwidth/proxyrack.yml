@@ -46,6 +46,8 @@ docker:
 requirements:
   residential_ip: false
   devices_per_account: 500
+  note: "Proxyrack documents a 500-device limit per ACCOUNT and no per-IP limit. Datacentre IPs are accepted but reclassified to a lower rate."
+  note_column: devices_per_ip
   min_bandwidth: ""
   gpu: false
   min_storage: ""

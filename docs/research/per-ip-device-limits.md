@@ -49,6 +49,31 @@ source at all**:
 - **proxyrack — "2 devices per IP"**. Same pattern. Proxyrack's two device-limit
   help articles (the newer dated 2026-02-23) mention only a 500-per-account cap.
 
+## EarnApp prohibits containers outright
+
+Verified first-party (help centre, "Can I install EarnApp on Hosting Services,
+Virtual Machines or Dockers?", updated 2025):
+
+> **No. Installing EarnApp on Virtual Machines (VMs), Docker containers, or
+> hosting services is strictly prohibited.**
+>
+> Prohibited environments: Virtual Machines (VMs) · Docker containers · Cloud
+> hosting services · **Personal or home servers** · Any device used for business
+> or monetization purposes.
+>
+> If our system detects that EarnApp is running in a virtualized or unauthorized
+> environment: your account will be **terminated without prior notice**, any
+> **pending payments will be canceled**.
+
+CashPilot deploys every service as a Docker container, so shipping EarnApp
+without saying this would make the tool the cause of the ban. It is recorded as
+`requirements.container_prohibited: true`, which the preflight reports as its
+strongest verdict. The deploy is still allowed — informed consent, not a block.
+
+No other catalogued service has been found to name containers this way. The flag
+requires a first-party source and must never be inferred from a residential-IP
+rule; a test enforces that only sourced services carry it.
+
 ## VPS / datacenter acceptance
 
 | Service | Policy |

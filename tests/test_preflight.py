@@ -171,3 +171,77 @@ class TestPreflightEndpoint:
     def test_without_a_worker_it_falls_back_to_all_deployments(self):
         result = self._call("honeygain", deployments=[{"slug": "honeygain"}])
         assert result["verdict"] in {preflight.REDUCED, preflight.EARNS_NOTHING}
+
+
+class TestProviderForbidsWhatCashPilotDoes:
+    """The strongest verdict: the tool causes the breach on the user's behalf.
+
+    EarnApp's own help centre forbids "Virtual Machines (VMs), Docker
+    containers, ... personal or home servers" and states the penalty as
+    termination without notice plus cancellation of pending payments. CashPilot
+    deploys every service as a Docker container, so shipping EarnApp silently
+    would make the tool the cause of the ban.
+    """
+
+    def test_it_is_reported_and_says_what_actually_happens(self):
+        svc = {"slug": "x", "name": "X", "requirements": {"container_prohibited": True}}
+        out = preflight.assess(svc)
+        assert out["verdict"] == preflight.EARNS_NOTHING
+        message = " ".join(f["message"] for f in out["findings"])
+        assert "Docker containers" in message
+        assert "termination without notice" in message.lower() or "without notice" in message
+
+    def test_it_still_does_not_block_the_deploy(self):
+        """Informed consent: the user may accept the risk knowingly."""
+        svc = {"slug": "x", "requirements": {"container_prohibited": True}}
+        assert preflight.assess(svc)["blocking"] is False
+
+    def test_a_service_without_the_flag_is_unaffected(self):
+        out = preflight.assess({"slug": "x", "requirements": {}})
+        assert not any("Docker containers" in f["message"] for f in out["findings"])
+
+    def test_the_real_catalog_flags_earnapp(self):
+        from app import catalog
+
+        assert preflight.assess(catalog.get_service("earnapp"))["verdict"] == preflight.EARNS_NOTHING
+
+    def test_the_flag_is_not_set_on_services_merely_wanting_a_residential_ip(self):
+        """It requires a first-party source, never an inference from residential_ip."""
+        from app import catalog
+
+        allowed = {"earnapp"}
+        for svc in catalog.get_services():
+            if (svc.get("requirements") or {}).get("container_prohibited"):
+                assert svc["slug"] in allowed, (
+                    f"{svc['slug']} declares container_prohibited — confirm a first-party source "
+                    "and add it to docs/research/per-ip-device-limits.md before allowing it here"
+                )
+
+
+class TestSourcedPerIpLimits:
+    """Values must trace to a provider statement; see docs/research/per-ip-device-limits.md."""
+
+    @pytest.mark.parametrize("slug", ["honeygain", "iproyal", "earnfm", "ebesucher"])
+    def test_the_four_documented_services_declare_one_per_ip(self, slug):
+        from app import catalog
+
+        assert (catalog.get_service(slug)["requirements"] or {}).get("devices_per_ip") == 1
+
+    @pytest.mark.parametrize("slug", ["repocket", "proxyrack", "packetstream", "bitping", "urnetwork"])
+    def test_services_with_no_provider_source_stay_absent(self, slug):
+        """A widely-repeated review-site number is not a source.
+
+        repocket previously declared devices_per_ip: 2 on exactly that basis.
+        """
+        from app import catalog
+
+        assert "devices_per_ip" not in (catalog.get_service(slug)["requirements"] or {})
+
+    def test_a_second_device_behind_one_ip_now_gets_the_strongest_verdict(self):
+        """The point of the bead: the verdict was weak exactly where the
+        mistake is most likely, because the limit was never recorded."""
+        from app import catalog
+
+        out = preflight.assess(catalog.get_service("honeygain"), already_deployed_slugs={"honeygain"})
+        assert out["verdict"] == preflight.EARNS_NOTHING
+        assert "one device per IP" in " ".join(f["message"] for f in out["findings"])
