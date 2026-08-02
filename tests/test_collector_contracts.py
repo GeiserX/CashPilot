@@ -344,3 +344,96 @@ class TestOutcomeClassification:
         ):
             msg = credential_test.message(outcome, "Honeygain")
             assert len(msg) > 20 and msg.endswith((".", "!"))
+
+
+class TestBuildingASingleCollector:
+    """`build_one` is what the credential self-test runs.
+
+    Deliberately UNCACHED: the button exists to check credentials the user just
+    changed, and handing back a cached instance built from the previous values
+    would validate the wrong thing and report success for a credential that no
+    longer exists.
+    """
+
+    def test_it_builds_a_collector_when_every_required_key_is_present(self):
+        from app import collectors
+
+        collector, missing = collectors.build_one("honeygain", {"honeygain_email": "a@b.c", "honeygain_password": "pw"})
+        assert collector is not None
+        assert missing == []
+        assert collector.platform == "honeygain"
+
+    def test_it_names_the_missing_keys_rather_than_failing_vaguely(self):
+        from app import collectors
+
+        collector, missing = collectors.build_one("honeygain", {})
+        assert collector is None
+        assert missing == ["honeygain_email", "honeygain_password"]
+
+    def test_a_partially_configured_service_names_only_what_is_absent(self):
+        from app import collectors
+
+        _, missing = collectors.build_one("honeygain", {"honeygain_email": "a@b.c"})
+        assert missing == ["honeygain_password"]
+
+    def test_an_unknown_slug_yields_nothing_and_no_missing_keys(self):
+        """Nothing is missing because nothing was ever required."""
+        from app import collectors
+
+        assert collectors.build_one("no-such-service", {}) == (None, [])
+
+    def test_each_call_returns_a_fresh_instance(self):
+        """A cached one would validate the credentials the user just replaced."""
+        from app import collectors
+
+        config = {"honeygain_email": "a@b.c", "honeygain_password": "pw"}
+        first, _ = collectors.build_one("honeygain", config)
+        second, _ = collectors.build_one("honeygain", config)
+        assert first is not second
+
+    def test_it_never_populates_the_shared_collector_cache(self):
+        from app import collectors
+
+        collectors._cached_collectors.pop("honeygain", None)
+        collectors.build_one("honeygain", {"honeygain_email": "a@b.c", "honeygain_password": "pw"})
+        assert "honeygain" not in collectors._cached_collectors
+
+    def test_optional_arguments_are_not_required(self):
+        """A '?'-prefixed argument must not block construction when absent."""
+        from app import collectors
+
+        optional_slugs = [
+            slug for slug, args in collectors._COLLECTOR_ARGS.items() if any(a.startswith("?") for a in args)
+        ]
+        if not optional_slugs:
+            pytest.skip("no collector declares an optional argument")
+        slug = optional_slugs[0]
+        required = {f"{slug}_{a}": "x" for a in collectors._COLLECTOR_ARGS[slug] if not a.startswith("?")}
+        collector, missing = collectors.build_one(slug, required)
+        assert missing == []
+        assert collector is not None
+
+    def test_a_constructor_that_raises_is_reported_as_no_collector(self):
+        from unittest.mock import patch
+
+        from app import collectors
+
+        with patch.dict(
+            collectors.COLLECTOR_MAP, {"honeygain": lambda **kw: (_ for _ in ()).throw(ValueError("nope"))}
+        ):
+            collector, missing = collectors.build_one(
+                "honeygain", {"honeygain_email": "a@b.c", "honeygain_password": "pw"}
+            )
+        assert collector is None
+        assert missing == []
+
+    def test_it_resolves_the_same_keys_as_the_scheduled_factory(self):
+        """Two resolvers that disagree would validate different credentials."""
+        from app import collectors
+
+        for slug, args in collectors._COLLECTOR_ARGS.items():
+            if slug not in collectors.COLLECTOR_MAP:
+                continue
+            _, missing = collectors.build_one(slug, {})
+            expected = sorted(f"{slug}_{a}" for a in args if not a.startswith("?"))
+            assert sorted(missing) == expected, f"{slug}: build_one disagrees with _COLLECTOR_ARGS"
