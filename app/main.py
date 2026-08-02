@@ -14,6 +14,7 @@ import logging
 import os
 import re
 import secrets
+import time
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
 from time import monotonic
@@ -38,6 +39,7 @@ from app import (
     exchange_rates,
     fleet_key,
     metrics,
+    net_activity,
     notify,
     power,
     preflight,
@@ -129,6 +131,48 @@ def _decoded_worker(worker: dict[str, Any]) -> dict[str, Any]:
     return decoded
 
 
+# Previous network counter reading per (worker, slug), for turning Docker's
+# CUMULATIVE totals into a rate. In memory on purpose: losing it on restart
+# costs one unknown reading, whereas persisting a stale baseline across a
+# restart risks pairing it with counters that reset in the meantime.
+_net_baselines: dict[tuple[Any, str], tuple[int, float]] = {}
+
+
+def _traffic_state(slug: str, containers: list[dict[str, Any]]) -> str | None:
+    """MOVING/SILENT/UNKNOWN for a service, from two counter readings.
+
+    Returns None when there is nothing to say at all, so the caller can leave
+    the signal out entirely rather than assert "unknown" about a service whose
+    containers were never seen.
+    """
+    now = time.monotonic()
+    rates: list[float] = []
+    measured = False
+
+    for container in containers:
+        total = net_activity.totals(container)
+        if total is None:
+            continue
+        measured = True
+        key = (container.get("_worker_id"), slug)
+        previous = _net_baselines.get(key)
+        _net_baselines[key] = (total, now)
+        if previous is None:
+            continue
+        value = net_activity.rate(previous[0], total, now - previous[1])
+        if value is not None:
+            rates.append(value)
+
+    if not measured:
+        return None
+    if not rates:
+        # Counters exist but no usable interval yet — first sight of this
+        # container, or its counters reset. Saying "unknown" is the point.
+        return net_activity.UNKNOWN
+    # Any instance moving data means the service is not silent.
+    return net_activity.classify(max(rates))
+
+
 async def _get_all_worker_containers() -> list[dict[str, Any]]:
     """Collect container/app data from all online workers' heartbeat data in DB."""
     workers = await database.list_workers()
@@ -155,6 +199,8 @@ async def _get_all_worker_containers() -> list[dict[str, Any]]:
                             "image": c.get("image", ""),
                             "cpu_percent": c.get("cpu_percent", 0),
                             "memory_mb": c.get("memory_mb", 0),
+                            "net_rx_bytes": c.get("net_rx_bytes"),
+                            "net_tx_bytes": c.get("net_tx_bytes"),
                             "category": "",
                             "deployed_by": worker_name,
                             "_node": worker_name,
@@ -1965,6 +2011,7 @@ async def api_producer_state(request: Request, slug: str, worker_id: int | None 
 
     running = True
     log_hits: list[dict[str, str]] = []
+    traffic: str | None = None
     signals = producer_state.signals_for(service)
     try:
         containers = await _get_all_worker_containers()
@@ -1973,6 +2020,7 @@ async def api_producer_state(request: Request, slug: str, worker_id: int | None 
         # the wrong shape, passed.
         matches = [c for c in containers if egress.container_slug(c) == slug]
         running = any(str(c.get("status", "")).lower() == "running" for c in matches)
+        traffic = _traffic_state(slug, matches)
         if signals and running:
             wid = worker_id if worker_id is not None else (matches[0].get("_worker_id") if matches else None)
             if wid is not None:
@@ -1988,6 +2036,7 @@ async def api_producer_state(request: Request, slug: str, worker_id: int | None 
         has_collector=has_collector,
         earned_recently=earned_recently,
         log_hits=log_hits,
+        traffic=traffic,
         container_running=running,
     )
 
