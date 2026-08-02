@@ -1065,6 +1065,10 @@ async def api_deploy(request: Request, slug: str, body: DeployRequest, worker_id
         "volumes": volumes,
         "network_mode": docker_conf.get("network_mode") or None,
         "cap_add": docker_conf.get("cap_add") or None,
+        # Some services need a device, not just a capability: Mysterium cannot
+        # carry wireguard traffic without /dev/net/tun, and without it the node
+        # starts, registers and earns nothing.
+        "devices": docker_conf.get("devices") or None,
         "privileged": docker_conf.get("privileged", False),
     }
 
