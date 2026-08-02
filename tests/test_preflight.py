@@ -11,6 +11,8 @@ implies a check that was not run.
 
 from __future__ import annotations
 
+import json
+
 import pytest
 
 from app import catalog, preflight
@@ -129,7 +131,7 @@ class TestPreflightEndpoint:
             with (
                 patch.object(main, "_require_auth_api", lambda r: None),
                 patch.object(main.database, "get_deployments", AsyncMock(return_value=deployments or [])),
-                patch.object(main.database, "get_worker", AsyncMock(return_value=worker)),
+                patch.object(main.database, "list_workers", AsyncMock(return_value=[worker] if worker else [])),
             ):
                 return await main.api_service_preflight(MagicMock(), slug, worker_id=worker_id)
 
@@ -149,10 +151,18 @@ class TestPreflightEndpoint:
         assert result["blocking"] is False
 
     def test_a_duplicate_on_the_named_worker_is_detected(self):
-        """Scoped to that worker: a per-IP limit is about ONE machine."""
+        """Scoped to that worker: a per-IP limit is about ONE machine.
+
+        The worker row is built the way SQLite actually returns one — JSON TEXT
+        columns, and the container keyed by ``slug`` as the heartbeat emits it.
+        Fixtures that used dicts and ``service`` are why a 500 and a
+        never-matching filter both shipped green.
+        """
         worker = {
-            "containers": [{"service": "honeygain"}],
-            "system_info": {"arch": "x86_64"},
+            "id": 1,
+            "client_id": "cid-1",
+            "containers": json.dumps([{"slug": "honeygain", "status": "running"}]),
+            "system_info": json.dumps({"arch": "x86_64"}),
         }
         result = self._call("honeygain", worker_id=1, worker=worker)
         assert result["verdict"] in {preflight.REDUCED, preflight.EARNS_NOTHING}

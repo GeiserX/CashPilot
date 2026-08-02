@@ -34,6 +34,7 @@ from app import (
     compose_generator,
     database,
     disclosure,
+    egress,
     exchange_rates,
     fleet_key,
     metrics,
@@ -111,6 +112,21 @@ def _safe_json(raw: str, fallback: Any = None) -> Any:
         return json.loads(raw)
     except (json.JSONDecodeError, TypeError):
         return fallback if fallback is not None else []
+
+
+def _decoded_worker(worker: dict[str, Any]) -> dict[str, Any]:
+    """A worker row with its JSON-TEXT columns decoded into real structures.
+
+    ``list_workers``/``get_worker`` return raw rows, so ``containers`` and
+    ``system_info`` arrive as strings. Passing one of those straight to code
+    expecting a mapping is an AttributeError at request time, so every caller
+    that reads inside them goes through here.
+    """
+    decoded = dict(worker)
+    # Deliberately delegates rather than repeating the three _safe_json calls:
+    # a second copy of the decoding is how one caller ends up forgetting it.
+    _parse_worker_json(decoded)
+    return decoded
 
 
 async def _get_all_worker_containers() -> list[dict[str, Any]]:
@@ -1773,19 +1789,64 @@ async def api_service_preflight(request: Request, slug: str, worker_id: int | No
 
     # What is already running on the SAME machine is what makes a per-IP limit
     # checkable at all, so scope to that worker when we know which one.
-    deployed = await database.get_deployments()
-    if worker_id is not None:
-        worker = await database.get_worker(worker_id)
-        running = {c.get("service") for c in (worker or {}).get("containers", []) if c.get("service")}
-    else:
-        running = {d["slug"] for d in deployed}
+    if worker_id is None:
+        deployed = await database.get_deployments()
+        return preflight.assess(service, already_deployed_slugs={d["slug"] for d in deployed})
 
-    system_info = {}
-    if worker_id is not None:
-        worker = await database.get_worker(worker_id)
-        system_info = (worker or {}).get("system_info") or {}
+    # Only ONLINE workers count as peers. A worker that is merely switched off
+    # keeps its row forever once enrolled (the purge spares enrolled rows), and
+    # its last heartbeat still lists every container as running — so a retired
+    # machine would fabricate a conflict against a live one. This module
+    # promises the opposite failure direction: a missed conflict, never an
+    # invented one. The worker being deployed to is looked up separately so a
+    # freshly-restarted one can still be assessed.
+    all_workers = [_decoded_worker(w) for w in await database.list_workers()]
+    workers = [w for w in all_workers if w.get("status") == "online"]
+    worker = next((w for w in all_workers if w.get("id") == worker_id), None)
+    if worker is None:
+        raise HTTPException(status_code=404, detail=f"Unknown worker {worker_id}")
 
-    return preflight.assess(service, already_deployed_slugs=running, system_info=system_info)
+    return preflight.assess(
+        service,
+        already_deployed_slugs=egress.running_slugs(worker),
+        system_info=worker.get("system_info") or {},
+        # The cross-machine half: providers cap per IP, so a sibling worker
+        # behind the same public address is the case a single-host tool cannot
+        # see at all.
+        worker=worker,
+        fleet_workers=workers,
+    )
+
+
+@app.get("/api/fleet/egress-groups")
+async def api_fleet_egress_groups(request: Request) -> dict[str, Any]:
+    """The fleet grouped by the public address providers actually see.
+
+    The normal fleet view is by machine, which is the wrong unit: two machines
+    in one house are two rows here and one customer to every provider.
+    """
+    _require_auth_api(request)
+    workers = [_decoded_worker(w) for w in await database.list_workers()]
+    groups = egress.group_by_egress(workers)
+    return {
+        "groups": [
+            {
+                "egress_ip": g["egress_ip"],
+                "known": g["known"],
+                "network_type": g["network_type"],
+                "shared": g["shared"],
+                "worker_count": g["worker_count"],
+                "workers": [
+                    {"id": w.get("id"), "name": w.get("name"), "client_id": w.get("client_id")} for w in g["workers"]
+                ],
+            }
+            for g in groups
+        ],
+        "shared_groups": sum(1 for g in groups if g["shared"]),
+        # Reported separately and never folded into the groups above: these are
+        # machines whose exit we could not determine, not machines we checked.
+        "undetermined": sum(g["worker_count"] for g in groups if not g["known"]),
+    }
 
 
 @app.get("/api/earnings/net")
@@ -1907,7 +1968,10 @@ async def api_producer_state(request: Request, slug: str, worker_id: int | None 
     signals = producer_state.signals_for(service)
     try:
         containers = await _get_all_worker_containers()
-        matches = [c for c in containers if c.get("service") == slug]
+        # Heartbeat entries key the service as "slug"; matching on "service"
+        # here found nothing in production while the tests, which hand-fed
+        # the wrong shape, passed.
+        matches = [c for c in containers if egress.container_slug(c) == slug]
         running = any(str(c.get("status", "")).lower() == "running" for c in matches)
         if signals and running:
             wid = worker_id if worker_id is not None else (matches[0].get("_worker_id") if matches else None)

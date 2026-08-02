@@ -149,6 +149,34 @@ Two separate Docker images:
 | `CASHPILOT_UI_URL` | Yes | -- | URL of the CashPilot UI |
 | `CASHPILOT_API_KEY` | Yes | -- | Shared API key for worker-to-UI auth |
 | `CASHPILOT_WORKER_NAME` | No | hostname | Human-readable name for this worker |
+| `CASHPILOT_WORKER_NETWORK` | No | detected | `residential`/`hosting`; overrides the DMI-vendor guess |
+| `CASHPILOT_EGRESS_DETECT` | No | on | `off` disables the hourly public-IP lookup |
+| `CASHPILOT_EGRESS_IP` | No | -- | State the public IP directly (validated; a LAN/tailnet address is rejected) |
+| `CASHPILOT_EGRESS_IP_URL` | No | -- | Custom IP-echo endpoint returning a bare IP |
+
+### Egress IP awareness (CashPilot-5qc)
+
+Providers cap per **IP**, not per device, so two workers behind one home
+connection are one customer to the provider and the second earns nothing. Each
+worker reports its public egress IP (`system_info.egress_ip`) and a
+hosting/residential hint (`system_info.egress_network_type`); `app/egress.py`
+groups the fleet by exit and `app/preflight.py` warns before a conflicting
+deploy.
+
+Three invariants that must not be "simplified" away:
+
+- **Undetected is not shared.** A worker with no detected IP produces no
+  conflict finding and is bucketed as undetermined.
+- **Private addresses are detection failures.** `100.64/10` is both CGNAT and
+  the tailnet range every reference-fleet worker uses; grouping on it would put
+  the whole fleet into one fabricated conflict.
+- **An absent `devices_per_ip` is undocumented, not unlimited.** `0` is a
+  verified no-limit and *downgrades* the warning to a shared-bandwidth note (it
+  does not silence it); only write it when the provider actually says so.
+
+Note that heartbeat container entries key the service as **`slug`**; code that
+filtered on `service` silently matched nothing in production. Use
+`egress.container_slug()`.
 
 ### Dashboard UI Features
 
