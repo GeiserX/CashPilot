@@ -43,8 +43,8 @@ CASHPILOT_WORKER_NAME=server-name</code>
       <div style="display: flex; gap: 8px; align-items: center; margin-top: 8px;">
         <span id="api-key-status" class="badge badge-category" style="font-size:0.72rem;">Checking…</span>
         {% if user.r == 'owner' %}
-        <button class="btn btn-ghost btn-sm" onclick="toggleApiKey()" id="reveal-btn">Reveal API Key</button>
-        <button class="btn btn-ghost btn-sm" onclick="copyWorkerEnv()">Copy</button>
+        <button class="btn btn-ghost btn-sm" data-action="toggleApiKey" id="reveal-btn">Reveal API Key</button>
+        <button class="btn btn-ghost btn-sm" data-action="copyWorkerEnv">Copy</button>
         {% endif %}
       </div>
     </div>
@@ -67,7 +67,7 @@ CASHPILOT_WORKER_NAME=server-name</code>
 {% endblock %}
 
 {% block scripts %}
-<script>
+<script nonce="{{ csp_nonce(request) }}">
 (function() {
   let fleetTimer = null;
   let _apiKeyRevealed = false;

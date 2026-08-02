@@ -9,12 +9,25 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="/static/css/style.css">
-  <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" onload="this.onload=null;this.rel='stylesheet'">
+  <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" data-async-style>
   <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"></noscript>
-  <script>
+  <script nonce="{{ csp_nonce(request) }}">
     (function(){var t=localStorage.getItem('cp-theme')||'dark';document.documentElement.setAttribute('data-theme',t)})();
   </script>
   {% block head %}{% endblock %}
+  <script nonce="{{ csp_nonce(request) }}">
+    // Async font loading used an inline onload= handler, which a nonce cannot
+    // cover — a nonce applies to a script element, never to an inline event
+    // attribute. Same effect, one listener, no 'unsafe-inline'.
+    function asyncStyleSwap() {
+      document.querySelectorAll('link[data-async-style]').forEach((link) => {
+        if (link.rel === 'stylesheet') return;
+        link.addEventListener('load', () => { link.rel = 'stylesheet'; }, { once: true });
+        if (link.sheet) link.rel = 'stylesheet';
+      });
+    }
+    asyncStyleSwap();
+  </script>
 </head>
 <body data-page="{% block page %}{% endblock %}">
 
@@ -134,7 +147,7 @@
               <span class="theme-label">Light mode</span>
             </button>
             <div class="avatar-dropdown-divider"></div>
-            <button class="avatar-dropdown-item" id="change-password-btn" onclick="CP.openChangePasswordModal()">
+            <button class="avatar-dropdown-item" id="change-password-btn" data-action="openChangePasswordModal">
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
               Change password
             </button>
@@ -160,7 +173,7 @@
     <div class="modal" style="max-width: 800px;">
       <div class="modal-header">
         <h3 class="modal-title" id="logs-modal-title">Logs</h3>
-        <button class="modal-close" onclick="CP.closeModal('logs-modal'); CP.stopLogPolling();" aria-label="Close">
+        <button class="modal-close" data-action="closeModal" data-a1="logs-modal" data-then="stopLogPolling" aria-label="Close">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
         </button>
       </div>
@@ -175,7 +188,7 @@
     <div class="modal" style="max-width: 700px;">
       <div class="modal-header">
         <h3 class="modal-title" id="service-detail-title">Service</h3>
-        <button class="modal-close" onclick="CP.closeModal('service-detail-modal')" aria-label="Close">
+        <button class="modal-close" data-action="closeModal" data-a1="service-detail-modal" aria-label="Close">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
         </button>
       </div>
@@ -190,7 +203,7 @@
     <div class="modal" style="max-width: 420px;">
       <div class="modal-header">
         <h3 class="modal-title">Change Password</h3>
-        <button class="modal-close" onclick="CP.closeModal('password-modal')" aria-label="Close">
+        <button class="modal-close" data-action="closeModal" data-a1="password-modal" aria-label="Close">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
         </button>
       </div>
@@ -210,8 +223,8 @@
         </div>
         <div id="chpw-error" style="display:none; color:var(--error); font-size:0.82rem; margin-bottom:12px;"></div>
         <div style="display:flex; gap:8px; justify-content:flex-end;">
-          <button class="btn btn-ghost btn-sm" onclick="CP.closeModal('password-modal')">Cancel</button>
-          <button class="btn btn-primary btn-sm" id="pwd-submit" onclick="CP.submitPasswordChange()">Change Password</button>
+          <button class="btn btn-ghost btn-sm" data-action="closeModal" data-a1="password-modal">Cancel</button>
+          <button class="btn btn-primary btn-sm" id="pwd-submit" data-action="submitPasswordChange">Change Password</button>
         </div>
       </div>
     </div>
@@ -219,10 +232,11 @@
   {% endif %}
 
   {% if user %}
-  <script>window._userRole = '{{ user.r }}';</script>
+  <script nonce="{{ csp_nonce(request) }}">window._userRole = '{{ user.r }}';</script>
   {% endif %}
   <script async src="https://cdn.jsdelivr.net/npm/chart.js@4.4.8/dist/chart.umd.min.js" integrity="sha384-T/4KgSWuZEPozpPz7rnnp/5lDSnpY1VPJCojf1S81uTHS1E38qgLfMgVsAeRCWc4" crossorigin="anonymous"></script>
   <script src="/static/js/app.js"></script>
   {% block scripts %}{% endblock %}
+  <script src="/static/js/delegate.js"></script>
 </body>
 </html>

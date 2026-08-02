@@ -39,6 +39,20 @@ _TRUST_PROXY = os.getenv("CASHPILOT_TRUSTED_PROXY", "").strip().lower() in ("1",
 templates = Jinja2Templates(directory="app/templates")
 
 
+def _csp_nonce(request) -> str:
+    """The per-response CSP nonce, for stamping inline <script> blocks.
+
+    Read from request.state so the value in the markup always matches the one in
+    the header. If they ever diverged every inline script would be blocked and
+    the UI would silently stop working, which is exactly the failure a template
+    author would not think to test for.
+    """
+    return getattr(getattr(request, "state", None), "csp_nonce", "")
+
+
+templates.env.globals["csp_nonce"] = _csp_nonce
+
+
 def _login_redirect() -> RedirectResponse:
     return RedirectResponse("/login", status_code=303)
 
