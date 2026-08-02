@@ -204,6 +204,8 @@ Triggers on version tags (`v*`). Lints with ruff, builds multi-arch (amd64 + arm
 - Node identity lives in Docker volume (`mysterium-data:/var/lib/mysterium-node/keystore/`). Deleting volume = new identity.
 - Registration is blockchain-based (Polygon). Hermes "internal error" = temporary server issue.
 - Image: `mysteriumnetwork/myst` (NOT `mysteriumnet/myst`).
+- **Needs `/dev/net/tun`, not just `NET_ADMIN`.** Without the device the node starts, registers and advertises normally but cannot carry wireguard/dvpn traffic — so it looks healthy, earns nothing, and MystNodes emails "unable to track its status". Diagnose with `curl -s http://127.0.0.1:4050/node/monitoring-agent-statuses` (look for `tun_device_problem`) and `docker exec <container> ls -l /dev/net/tun`. The catalog cannot declare devices yet, so a CashPilot-deployed Mysterium container does not get it automatically. See `docs/guides/mysterium.md` for the full runbook.
+- A container recreate is safe: the identity lives in the mounted data dir, not the container. Always confirm the address is unchanged afterwards via `curl -s http://127.0.0.1:4050/identities`.
 
 ## Collector Implementation Status
 

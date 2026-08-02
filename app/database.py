@@ -1515,6 +1515,65 @@ async def record_health_events(events: list[tuple[str, str, str]]) -> None:
 ALERT_COOLDOWN_HOURS = 24
 
 
+# A service can be "running" and earning nothing at all - the container is up,
+# the collector authenticates, and the balance simply never moves. That gap
+# between running and earning is invisible in every other view, because
+# everything it touches looks healthy.
+FLATLINE_MIN_DAYS = 7
+
+
+async def get_flatlined_services(min_days: int = FLATLINE_MIN_DAYS) -> list[dict[str, Any]]:
+    """Services whose recorded balance has not moved for at least ``min_days``.
+
+    Deliberately conservative, because a report that cries wolf is a report
+    nobody reads:
+
+    * A service with fewer than ``min_days`` of history is NOT reported. A new
+      deployment has not had time to earn anything yet.
+    * A balance of exactly zero throughout is NOT reported either. That is a
+      service that has never paid rather than one that stopped, and it is
+      usually a setup problem the user already knows about.
+    * The window is measured over distinct recorded days, so a collection outage
+      (which records nothing) cannot masquerade as a flat balance.
+    """
+    db = await _get_db()
+    try:
+        cursor = await db.execute(
+            """
+            SELECT platform,
+                   COUNT(DISTINCT date) AS days_recorded,
+                   MIN(balance)         AS min_balance,
+                   MAX(balance)         AS max_balance,
+                   MAX(date)            AS last_date
+            FROM earnings
+            WHERE date >= date('now', ?)
+            GROUP BY platform
+            """,
+            (f"-{min_days} days",),
+        )
+        rows = await cursor.fetchall()
+
+        flat: list[dict[str, Any]] = []
+        for row in rows:
+            if row["days_recorded"] < min_days:
+                continue  # not enough history to call it a flatline
+            if row["max_balance"] != row["min_balance"]:
+                continue  # it moved
+            if row["max_balance"] == 0:
+                continue  # never earned rather than stopped earning
+            flat.append(
+                {
+                    "platform": row["platform"],
+                    "days_flat": row["days_recorded"],
+                    "balance": row["max_balance"],
+                    "last_recorded": row["last_date"],
+                }
+            )
+        return flat
+    finally:
+        await db.close()
+
+
 async def record_alert(
     kind: str,
     subject: str,

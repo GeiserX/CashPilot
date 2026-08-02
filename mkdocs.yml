@@ -59,6 +59,11 @@ markdown_extensions:
   - pymdownx.mark
   - attr_list
   - md_in_html
+  # Renders :material-xxx: shortcodes as real icons. Without this the feature
+  # cards on the home page print the literal shortcode text instead.
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
   - tables
   - toc:
       permalink: true
