@@ -112,6 +112,20 @@ Each avenue below is a direction we could take, with the case for and against.
 Record the specification that was actually deployed, and redeploy from that record —
 with the catalog supplying only the image and defaults.
 
+The precedence is worth stating exactly, because "the catalog is the source of truth"
+is true of a *new* deployment and not of an existing one:
+
+- **The catalog owns what a new deployment looks like**, and always owns the image, so
+  upgrades still land.
+- **The record owns what an existing deployment looks like** — its mounts, ports,
+  hostname and env — because that is what is actually running.
+- **Anything the operator supplies on this deploy wins over both**, or a rotated
+  credential could never be corrected.
+- **A missing or unreadable record falls back to the catalog**, which is exactly
+  today's behaviour, and is logged rather than silently assumed.
+- Where the record and the catalog disagree, the difference is **reported back**, not
+  resolved quietly.
+
 **For.** Removes the root cause of accidental state loss rather than detecting it.
 Smaller than most alternatives. Fixes the related annoyance where a user must retype
 paths from memory on every redeploy. Gives an audit trail of what was deployed when.
@@ -158,6 +172,22 @@ must be designed so that a compromised installation cannot decrypt past exports.
 **Risk.** The highest of any avenue, in two directions. Technically, it creates a
 path by which secrets can leave the machine. Structurally, a tool that holds keys
 invites the assumption that it can recover them.
+
+**Where the passphrase lives, and where encryption runs.** The two supported modes put
+the plaintext in different trust boundaries, so this has to be settled before the
+constraints below mean anything:
+
+- **Passphrase mode** — the passphrase is supplied by the operator at export time and
+  never stored. Encryption happens on the Worker holding the volume, so plaintext key
+  material exists only in that process, for the duration of the export.
+- **Public-key mode** — the operator supplies only a public key. The Worker encrypts to
+  it and never possesses anything that can decrypt the result, so a later compromise of
+  the installation cannot read past exports. This is the stronger guarantee and the
+  reason the mode exists.
+
+Neither mode may send the passphrase or private key anywhere, and neither may persist
+it. A compromised installation must be able to produce new exports it cannot itself
+read.
 
 **Design constraints, non-negotiable if we build it:**
 
@@ -243,8 +273,18 @@ activity with capital, licensing and anti-money-laundering obligations, and it i
 not what this project is for. We stay on the side of the line where the user holds
 everything.
 
-**Any key recovery service.** If a user loses their passphrase, the data is gone.
-Saying so plainly is more honest than implying a safety net that does not exist.
+To be precise rather than sweeping: the obligations that attach to holding other
+people's keys depend on jurisdiction and on the activity. US FinCEN guidance
+distinguishes a *user* from an *administrator* or *exchanger*, and in the EU, MiCA
+regulates custody and administration of crypto-assets on behalf of clients as its own
+service. The point is not that every hosted-key design is unlawful everywhere — it is
+that it moves the project into a regulated category we have no intention of entering,
+and that the design constraint is therefore deliberate rather than an oversight.
+
+**Any key recovery service.** If a user loses the secret that protects an export —
+the passphrase, or the private key matching the public key it was encrypted to — the
+data is gone. Both recovery secrets are the user's alone. Saying so plainly is more
+honest than implying a safety net that does not exist.
 
 **Automatic multi-account setups.** Several providers forbid multiple accounts per
 household, and tooling that makes evasion easy would put users at risk of forfeited
