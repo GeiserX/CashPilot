@@ -770,11 +770,36 @@ async def api_start_container(request: Request, slug: str) -> dict[str, str]:
 
 
 @app.delete("/api/containers/{slug}")
-async def api_remove_container(request: Request, slug: str, delete_volumes: bool = False) -> dict[str, Any]:
+async def api_remove_container(
+    request: Request,
+    slug: str,
+    delete_volumes: bool = False,
+    allow_delete_critical: bool = False,
+) -> dict[str, Any]:
     _verify_api_key(request)
     try:
-        result = await asyncio.to_thread(orchestrator.remove_service, slug, delete_volumes=delete_volumes)
+        result = await asyncio.to_thread(
+            orchestrator.remove_service,
+            slug,
+            delete_volumes=delete_volumes,
+            allow_delete_critical=allow_delete_critical,
+        )
         return {"status": "removed", **result}
+    except orchestrator.CriticalVolumeError as exc:
+        # 409, not 400: the request is well-formed, the state is what refuses.
+        # The container is left running - nothing has been destroyed yet.
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "error": "critical_volume",
+                "message": str(exc),
+                "blocked": exc.blocked,
+                "hint": (
+                    "Nothing was removed. Back up the listed volumes first. To proceed "
+                    "anyway, repeat the request with allow_delete_critical=true."
+                ),
+            },
+        )
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
     except RuntimeError as exc:

@@ -28,7 +28,18 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from starlette.middleware.base import BaseHTTPMiddleware
 
-from app import auth, catalog, compose_generator, database, exchange_rates, fleet_key, metrics, notify, setup_token
+from app import (
+    auth,
+    catalog,
+    compose_generator,
+    database,
+    exchange_rates,
+    fleet_key,
+    metrics,
+    notify,
+    preflight,
+    setup_token,
+)
 from app.worker_proxy import _pin_url_to_ip, _validate_worker_url
 
 logging.basicConfig(
@@ -475,6 +486,10 @@ async def _warm_session_epochs() -> None:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup
+    # Before anything touches credentials: refuse to run when the encryption key
+    # cannot survive a restart. Continuing would encrypt every credential entered
+    # during this run under a key that dies with the process.
+    database.verify_encryption_key_persisted()
     await database.init_db()
     await database.connect_shared()
     # Warm the per-user session-epoch cache (password changes + delete/demote
@@ -1085,10 +1100,25 @@ async def _svc_restart(request: Request, slug: str, worker_id: int | None) -> di
     return result
 
 
-async def _svc_remove(request: Request, slug: str, worker_id: int | None, delete_volumes: bool) -> dict[str, Any]:
+async def _svc_remove(
+    request: Request,
+    slug: str,
+    worker_id: int | None,
+    delete_volumes: bool,
+    allow_delete_critical: bool = False,
+) -> dict[str, Any]:
     _require_writer(request)
+    if allow_delete_critical:
+        # Overriding the critical-volume guard destroys state with no server-side
+        # copy - a node identity, a generated wallet. Deploying already requires
+        # owner; permanently destroying the money must not be the easier action.
+        _require_owner(request)
     worker_id = await _resolve_worker_id(worker_id)
-    params = {"delete_volumes": "true"} if delete_volumes else None
+    params: dict[str, str] | None = None
+    if delete_volumes:
+        params = {"delete_volumes": "true"}
+        if allow_delete_critical:
+            params["allow_delete_critical"] = "true"
     result = await _proxy_worker_command(worker_id, "remove", slug, params=params)
     await database.remove_deployment(slug)
     await database.record_health_event(slug, "remove")
@@ -1108,9 +1138,13 @@ async def api_restart(request: Request, slug: str, worker_id: int | None = None)
 
 @app.delete("/api/remove/{slug}")
 async def api_remove(
-    request: Request, slug: str, worker_id: int | None = None, delete_volumes: bool = False
+    request: Request,
+    slug: str,
+    worker_id: int | None = None,
+    delete_volumes: bool = False,
+    allow_delete_critical: bool = False,
 ) -> dict[str, Any]:
-    return await _svc_remove(request, slug, worker_id, delete_volumes)
+    return await _svc_remove(request, slug, worker_id, delete_volumes, allow_delete_critical)
 
 
 # ---------------------------------------------------------------------------
@@ -1149,6 +1183,47 @@ async def _get_verified_worker_url(worker: dict[str, Any]) -> tuple[str, dict[st
     return url, headers
 
 
+# Worker error bodies are not forwarded verbatim: they can carry internal paths
+# and hostnames. Only errors the worker deliberately structures for the operator
+# are passed through, and only the fields we expect.
+_FORWARDABLE_WORKER_ERRORS = {"critical_volume"}
+
+
+def _safe_worker_detail(resp: Any) -> dict[str, Any] | None:
+    """Return a worker error detail that is safe to show, or None.
+
+    A refusal to destroy irreplaceable data is useless to the operator without
+    the reason - "409" alone does not say which volume, or what is in it - so
+    that specific shape is forwarded. Everything else stays generic.
+    """
+    try:
+        detail = (resp.json() or {}).get("detail")
+    except (ValueError, AttributeError):
+        return None
+    error = detail.get("error") if isinstance(detail, dict) else None
+    # error comes from a remote worker body; a list/dict would make the `not in`
+    # test raise TypeError and turn a 409 into a 500. Require a string.
+    if not isinstance(error, str) or error not in _FORWARDABLE_WORKER_ERRORS:
+        return None
+    blocked = detail.get("blocked")
+    if not isinstance(blocked, list):
+        return None
+    return {
+        "error": detail["error"],
+        "message": str(detail.get("message") or ""),
+        "hint": str(detail.get("hint") or ""),
+        "blocked": [
+            {
+                "volume": str(b.get("volume", "")),
+                "target": str(b.get("target", "")),
+                "holds": str(b.get("holds", "")),
+            }
+            for b in blocked
+            if isinstance(b, dict)
+        ],
+    }
+
+
 async def _proxy_to_worker(
     worker_id: int,
     method: str,
@@ -1180,7 +1255,10 @@ async def _proxy_to_worker(
                 resp = await client.post(f"{url}{path}", json=json, params=params, headers=headers)
             if resp.status_code >= 400:
                 logger.warning("worker proxy error (%s): %s", resp.status_code, resp.text)
-                raise HTTPException(status_code=resp.status_code, detail="Worker request failed")
+                raise HTTPException(
+                    status_code=resp.status_code,
+                    detail=_safe_worker_detail(resp) or "Worker request failed",
+                )
             return resp.json()
     except httpx.HTTPError as exc:
         logger.warning("worker proxy error: %s", exc)
@@ -1242,9 +1320,13 @@ async def api_service_logs(
 
 @app.delete("/api/services/{slug}")
 async def api_service_remove(
-    request: Request, slug: str, worker_id: int | None = None, delete_volumes: bool = False
+    request: Request,
+    slug: str,
+    worker_id: int | None = None,
+    delete_volumes: bool = False,
+    allow_delete_critical: bool = False,
 ) -> dict[str, Any]:
-    return await _svc_remove(request, slug, worker_id, delete_volumes)
+    return await _svc_remove(request, slug, worker_id, delete_volumes, allow_delete_critical)
 
 
 # ---------------------------------------------------------------------------
@@ -1448,6 +1530,34 @@ async def api_earnings_flatlines(request: Request) -> list[dict[str, Any]]:
     """Services that are running but whose balance has stopped moving."""
     _require_auth_api(request)
     return await database.get_flatlined_services()
+
+
+@app.get("/api/services/{slug}/preflight")
+async def api_service_preflight(request: Request, slug: str, worker_id: int | None = None) -> dict[str, Any]:
+    """What this service will realistically do for THIS user, before deploying.
+
+    Never blocks a deploy: the goal is informed consent, not a nanny.
+    """
+    _require_auth_api(request)
+    service = catalog.get_service(slug)
+    if not service:
+        raise HTTPException(status_code=404, detail=f"Unknown service '{slug}'")
+
+    # What is already running on the SAME machine is what makes a per-IP limit
+    # checkable at all, so scope to that worker when we know which one.
+    deployed = await database.get_deployments()
+    if worker_id is not None:
+        worker = await database.get_worker(worker_id)
+        running = {c.get("service") for c in (worker or {}).get("containers", []) if c.get("service")}
+    else:
+        running = {d["slug"] for d in deployed}
+
+    system_info = {}
+    if worker_id is not None:
+        worker = await database.get_worker(worker_id)
+        system_info = (worker or {}).get("system_info") or {}
+
+    return preflight.assess(service, already_deployed_slugs=running, system_info=system_info)
 
 
 @app.get("/api/collector-alerts")

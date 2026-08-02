@@ -51,28 +51,183 @@ def _is_secret_key(key: str) -> bool:
     return any(lower.endswith(s) for s in SECRET_CONFIG_KEYS)
 
 
+_TRUTHY = {"1", "true", "yes", "on"}
+
+# Set when CASHPILOT_ENCRYPTION_KEY is present but not a usable Fernet key.
+_fernet_key_error: str | None = None
+# Set when the key could not be written to disk, i.e. it dies with this process.
+_fernet_key_persist_error: str | None = None
+_fernet_key_is_ephemeral = False
+
+
 def _load_or_create_fernet() -> Fernet:
-    """Load or generate the Fernet encryption key."""
+    """Resolve the key used to encrypt stored credentials.
+
+    Precedence is deliberate, and file-first:
+
+      1. ``<data>/.fernet_key`` always wins when it exists.
+      2. Otherwise ``CASHPILOT_ENCRYPTION_KEY``, which is then persisted.
+      3. Otherwise a fresh key is generated and persisted.
+
+    Reading the file first is what makes the environment variable safe to
+    introduce. Env-first would mean anyone who sets it on a running instance
+    instantly loses every credential already encrypted under the file key. The
+    restore case is unaffected, because a wiped volume has no file for the
+    environment value to lose to.
+
+    Note this is NOT ``CASHPILOT_SECRET_KEY``, which signs sessions and lives at
+    ``<data>/.secret_key``. They are separate keys with separate jobs.
+    """
+    global _fernet_key_error, _fernet_key_persist_error, _fernet_key_is_ephemeral
+
+    env_raw = os.getenv("CASHPILOT_ENCRYPTION_KEY", "").strip()
+    env_key: bytes | None = None
+    env_invalid: str | None = None
+    if env_raw:
+        try:
+            Fernet(env_raw.encode())
+            env_key = env_raw.encode()
+        except (ValueError, TypeError) as exc:
+            # Do not quietly generate a replacement: that is the same silent
+            # failure this function exists to remove. Record it and let startup
+            # refuse.
+            # Recorded, not raised yet: if a valid key file exists it wins, and a
+            # malformed env value is then just as moot as a valid-but-different
+            # one. Only promote this to a startup failure if we would actually
+            # have to fall back to the environment.
+            env_invalid = (
+                f"CASHPILOT_ENCRYPTION_KEY is set but is not a valid Fernet key "
+                f"({exc or 'malformed'}). It must be a urlsafe-base64 32-byte key, as "
+                'produced by `python -c "from cryptography.fernet import Fernet; '
+                'print(Fernet.generate_key().decode())"`.'
+            )
+
+    # 1. An existing key file always wins.
+    unusable: str | None = None
     try:
         if _FERNET_KEY_FILE.is_file():
             raw = _FERNET_KEY_FILE.read_text().strip()
             if raw:
-                return Fernet(raw.encode())
-    except (OSError, ValueError):
-        pass
+                try:
+                    fernet = Fernet(raw.encode())
+                except (ValueError, TypeError) as exc:
+                    unusable = f"it is not a valid Fernet key ({exc})"
+                else:
+                    if env_invalid:
+                        _logger.warning(
+                            "%s Ignoring it: the key already stored at %s wins.",
+                            env_invalid,
+                            _FERNET_KEY_FILE,
+                        )
+                    if env_key and env_key != raw.encode():
+                        _logger.warning(
+                            "CASHPILOT_ENCRYPTION_KEY differs from the key already stored "
+                            "at %s. The stored key wins, because switching keys would make "
+                            "every existing credential unreadable. To adopt the environment "
+                            "key instead, remove the file and re-enter your credentials.",
+                            _FERNET_KEY_FILE,
+                        )
+                    return fernet
+            # An empty file means no key was ever stored, so replacing it loses
+            # nothing. Fall through and mint one.
+    except OSError as exc:
+        unusable = f"it could not be read ({exc})"
 
-    key = Fernet.generate_key()
+    if unusable:
+        # Refuse rather than overwrite. Credentials already in the database were
+        # encrypted under the key this file was meant to hold, so replacing it
+        # destroys the only artifact that could still decrypt them.
+        _fernet_key_error = (
+            f"the key file {_FERNET_KEY_FILE} exists but {unusable}. Refusing to "
+            "overwrite it: any credential already stored was encrypted under that "
+            "key, and replacing the file would make them permanently unreadable. "
+            "Restore the file from backup, or move it aside and re-enter your "
+            "credentials."
+        )
+        _logger.error("%s", _fernet_key_error)
+        # Return a working cipher so importing this module stays side-effect free;
+        # startup refuses via verify_encryption_key_persisted().
+        return Fernet(Fernet.generate_key())
+
+    if env_invalid:
+        # No usable file key, so the supplied value was the one that mattered.
+        # Generating a replacement would silently discard whatever the user was
+        # trying to restore.
+        _fernet_key_error = env_invalid
+        _logger.error("%s", _fernet_key_error)
+        return Fernet(Fernet.generate_key())
+
+    # 2/3. Adopt the supplied key, or mint one.
+    key = env_key if env_key else Fernet.generate_key()
     try:
         DB_DIR.mkdir(parents=True, exist_ok=True)
-        _FERNET_KEY_FILE.write_text(key.decode())
+        # Create with 0o600 up front rather than chmod-ing afterwards: writing
+        # first would leave the key briefly readable to anyone, depending on umask.
+        fd = os.open(_FERNET_KEY_FILE, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        try:
+            os.write(fd, key)
+        finally:
+            os.close(fd)
+        # An existing file keeps its old mode, so tighten it regardless.
         _FERNET_KEY_FILE.chmod(0o600)
-        _logger.info("Generated new Fernet key at %s", _FERNET_KEY_FILE)
+        _logger.info(
+            "%s credential-encryption key at %s",
+            "Adopted the supplied" if env_key else "Generated a new",
+            _FERNET_KEY_FILE,
+        )
     except OSError as exc:
-        _logger.warning("Could not persist Fernet key: %s", exc)
+        _fernet_key_persist_error = str(exc)
+        _fernet_key_is_ephemeral = True
+        _logger.error(
+            "Could not persist the credential-encryption key to %s: %s. "
+            "Credentials encrypted now will be unreadable after a restart.",
+            _FERNET_KEY_FILE,
+            exc,
+        )
     return Fernet(key)
 
 
 _fernet = _load_or_create_fernet()
+
+
+def verify_encryption_key_persisted() -> None:
+    """Raise unless the credential-encryption key will survive a restart.
+
+    Call this from application startup, never at import time: ``app.database``
+    is imported by the test suite with the default ``/data``, which does not
+    exist on a development machine, so importing must stay side-effect free.
+
+    Continuing with a key that cannot be persisted is not a kindness. Every
+    credential stored during this run becomes undecryptable the moment the
+    process restarts, and the symptom the user eventually sees is a provider
+    auth failure, which points nowhere near the real cause.
+    """
+    if _fernet_key_error:
+        raise RuntimeError(
+            f"{_fernet_key_error} Refusing to start rather than encrypting credentials under a throwaway key."
+        )
+
+    if not _fernet_key_is_ephemeral:
+        return
+
+    if os.getenv("CASHPILOT_ALLOW_EPHEMERAL_KEY", "").strip().lower() in _TRUTHY:
+        _logger.warning(
+            "Running with an EPHEMERAL credential-encryption key because "
+            "CASHPILOT_ALLOW_EPHEMERAL_KEY is set. Every stored credential will "
+            "become unreadable when this process restarts."
+        )
+        return
+
+    raise RuntimeError(
+        f"Cannot persist the credential-encryption key to {_FERNET_KEY_FILE}: "
+        f"{_fernet_key_persist_error}. Credentials encrypted now would be "
+        "permanently unreadable after a restart, so CashPilot is refusing to "
+        "start. Fix the permissions or the volume mount for the data directory "
+        "(CASHPILOT_DATA_DIR), supply a key via CASHPILOT_ENCRYPTION_KEY on a "
+        "writable volume, or set CASHPILOT_ALLOW_EPHEMERAL_KEY=true if you "
+        "genuinely want a throwaway instance."
+    )
+
 
 _ENC_PREFIX = "enc:"
 
@@ -89,11 +244,15 @@ def decrypt_value(value: str) -> str:
     try:
         return _fernet.decrypt(value[len(_ENC_PREFIX) :].encode()).decode()
     except InvalidToken:
-        _logger.warning(
-            "Failed to decrypt config value: the Fernet ENCRYPTION KEY (CASHPILOT_SECRET_KEY / "
-            "%s) does not match the key this value was encrypted with. This is NOT a bad "
-            "credential — re-enter the affected credentials, or restore the original encryption "
-            "key, to recover.",
+        # Deliberately ERROR, not WARNING: this is unattended software, and the
+        # downstream symptom is a provider auth failure that points nowhere near
+        # the real cause.
+        _logger.error(
+            "Failed to decrypt a stored credential: the credential-encryption key "
+            "(CASHPILOT_ENCRYPTION_KEY / %s) does not match the key this value was "
+            "encrypted with. This is NOT a bad credential and NOT CASHPILOT_SECRET_KEY, "
+            "which only signs sessions. Restore the original encryption key to recover, "
+            "or re-enter the affected credentials.",
             _FERNET_KEY_FILE,
         )
         return ""
@@ -519,7 +678,10 @@ async def get_earnings_dashboard_summary() -> dict[str, Any]:
         # Today's earnings: delta from yesterday per platform
         cursor = await db.execute(
             """
-            SELECT COALESCE(SUM(t.balance - COALESCE(y.balance, 0)), 0) as earned
+            -- MAX(delta, 0) per platform BEFORE summing: a payout on one
+            -- platform drops its balance, and without the per-platform clamp
+            -- that drop cancels real earnings on another platform in the sum.
+            SELECT COALESCE(SUM(MAX(t.balance - COALESCE(y.balance, 0), 0)), 0) as earned
             FROM (
                 SELECT platform, balance FROM earnings
                 WHERE date = ? AND currency = 'USD'
@@ -538,7 +700,7 @@ async def get_earnings_dashboard_summary() -> dict[str, Any]:
         cursor = await db.execute(
             """
             SELECT COALESCE(SUM(
-                latest.balance - COALESCE(month_start.balance, 0)
+                MAX(latest.balance - COALESCE(month_start.balance, 0), 0)
             ), 0) as earned
             FROM (
                 SELECT e.platform, e.balance
@@ -571,7 +733,7 @@ async def get_earnings_dashboard_summary() -> dict[str, Any]:
         day_before = (datetime.now(UTC) - timedelta(days=2)).strftime("%Y-%m-%d")
         cursor = await db.execute(
             """
-            SELECT COALESCE(SUM(y.balance - COALESCE(dy.balance, 0)), 0) as earned
+            SELECT COALESCE(SUM(MAX(y.balance - COALESCE(dy.balance, 0), 0)), 0) as earned
             FROM (
                 SELECT platform, balance FROM earnings
                 WHERE date = ? AND currency = 'USD'
@@ -642,27 +804,28 @@ async def get_daily_earnings(days: int = 7) -> list[dict[str, Any]]:
     """Return daily aggregated earnings for charting (delta per day)."""
     db = await _get_db()
     try:
-        # Get daily total balance (sum across platforms) for the range
-        # Include one extra day before the range so we can compute the first delta
+        # Per-platform balances, not a cross-platform sum. Summing first and
+        # diffing the total lets a payout drop on one platform cancel real
+        # earnings on another (see get_earnings_dashboard_summary). We clamp each
+        # platform's daily delta at zero, then sum - so a payout counts as zero
+        # earned on that platform, never as a negative eating the rest.
+        # One extra day before the range so the first delta has a predecessor.
         cursor = await db.execute(
             """
-            SELECT date, SUM(balance) as total_balance
+            SELECT date, platform, balance
             FROM earnings
             WHERE date >= date('now', ?) AND currency = 'USD'
-            GROUP BY date
             ORDER BY date
             """,
             (f"-{days + 1} days",),
         )
         rows = await cursor.fetchall()
-        data = [dict(r) for r in rows]
 
-        # Build a map of date -> total_balance
-        balance_by_date: dict[str, float] = {}
-        for row in data:
-            balance_by_date[row["date"]] = row["total_balance"]
+        # date -> {platform -> balance}
+        by_date: dict[str, dict[str, float]] = {}
+        for row in rows:
+            by_date.setdefault(row["date"], {})[row["platform"]] = row["balance"]
 
-        # Generate result for exactly `days` days
         now = datetime.now(UTC)
         result = []
         for i in range(days - 1, -1, -1):
@@ -670,14 +833,14 @@ async def get_daily_earnings(days: int = 7) -> list[dict[str, Any]]:
             date_str = d.strftime("%Y-%m-%d")
             prev_str = (d - timedelta(days=1)).strftime("%Y-%m-%d")
 
-            current = balance_by_date.get(date_str, 0.0)
-            previous = balance_by_date.get(prev_str, 0.0)
-            delta = max(0.0, current - previous) if current > 0 else 0.0
+            current = by_date.get(date_str, {})
+            previous = by_date.get(prev_str, {})
+            earned = sum(max(0.0, bal - previous.get(platform, 0.0)) for platform, bal in current.items())
 
             result.append(
                 {
                     "date": d.strftime("%b %d"),
-                    "amount": round(delta, 2),
+                    "amount": round(earned, 2),
                 }
             )
 
