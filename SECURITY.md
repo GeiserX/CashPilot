@@ -94,7 +94,8 @@ CashPilot requires access to the Docker socket (`/var/run/docker.sock`) for cont
 ### Data Storage
 
 - SQLite database stored in a Docker volume (`/data/cashpilot.db`)
-- Service credentials are encrypted at rest using Fernet symmetric encryption (`CASHPILOT_SECRET_KEY`)
+- Service credentials are encrypted at rest using Fernet symmetric encryption. The key is generated on first run and stored at `/data/.fernet_key`; it can be supplied via `CASHPILOT_ENCRYPTION_KEY` to restore a backup. This is **not** `CASHPILOT_SECRET_KEY`, which signs login sessions and lives at `/data/.secret_key` — two separate keys with separate jobs
+- If the encryption key cannot be persisted, CashPilot refuses to start rather than continuing with a key that dies with the process (override with `CASHPILOT_ALLOW_EPHEMERAL_KEY`)
 - Database is not network-accessible (local file only)
 - 400-day data retention with automatic purging
 
@@ -104,7 +105,7 @@ CashPilot is designed to run on **private, trusted networks** (home lab, VPN, LA
 
 - Place it behind a reverse proxy with TLS termination (e.g., Caddy, Traefik, nginx)
 - Restrict access via firewall rules or VPN
-- Use a strong `CASHPILOT_SECRET_KEY` and `CASHPILOT_API_KEY`
+- Use a strong `CASHPILOT_SECRET_KEY` and `CASHPILOT_API_KEY`, and back up `/data/.fernet_key`
 - Set the reverse-proxy-aware environment variables below so cookies, client-IP logging, and session invalidation behave correctly behind TLS termination
 
 These variables only matter when CashPilot sits behind a reverse proxy; a direct/private-network deployment can leave them unset:
@@ -128,7 +129,7 @@ Worker URLs arrive in the fleet-key-authenticated heartbeat and are later fetche
 ## Hardening Recommendations
 
 1. **Use a reverse proxy with TLS** if accessible beyond localhost
-2. **Set strong, unique values** for `CASHPILOT_SECRET_KEY` and `CASHPILOT_API_KEY`
+2. **Set strong, unique values** for `CASHPILOT_SECRET_KEY` and `CASHPILOT_API_KEY`, and **back up `/data/.fernet_key`** — without it, stored credentials cannot be decrypted
 3. **Do not use `--privileged`** for the CashPilot container itself
 4. **Keep Docker Engine updated** on all hosts
 5. **Use `--network host` only when necessary** (e.g., cross-subnet worker communication)
