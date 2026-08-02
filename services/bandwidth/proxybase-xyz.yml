@@ -31,6 +31,11 @@ docker:
   ports: []
   volumes:
     - "proxybase-data:/home/proxybase/.proxybase"
+  critical_volumes:
+    - target: "/home/proxybase/.proxybase"
+      holds: >-
+        The generated wallet keyfile. This volume IS the money: there is no
+        server-side copy, so deleting it destroys the funds with it.
   command: "seller start --foreground"
   network_mode: ""
   setup: >

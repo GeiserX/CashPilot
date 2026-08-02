@@ -31,6 +31,10 @@ services:
     environment:
       - TZ=${TZ:-UTC}
       - CASHPILOT_SECRET_KEY=${CASHPILOT_SECRET_KEY:-}
+      # Optional: only needed to RESTORE credentials onto a fresh volume.
+      # An existing /data/.fernet_key always wins, so setting this is safe.
+      - CASHPILOT_ENCRYPTION_KEY=${CASHPILOT_ENCRYPTION_KEY:-}
+      - CASHPILOT_ALLOW_EPHEMERAL_KEY=${CASHPILOT_ALLOW_EPHEMERAL_KEY:-false}
       - CASHPILOT_API_KEY=${CASHPILOT_API_KEY:-}
       - CASHPILOT_ADMIN_API_KEY=${CASHPILOT_ADMIN_API_KEY:-}
     init: true
