@@ -7,6 +7,7 @@ inspection for cashpilot-managed containers via the Docker SDK.
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import os
 import time
@@ -316,6 +317,49 @@ def _critical_volume_targets(slug: str) -> dict[str, str] | None:
     except Exception:  # pragma: no cover - defensive
         logger.exception("Could not resolve critical volumes for %s", slug)
         return None
+
+
+def read_critical_state(slug: str) -> tuple[bytes, list[str]]:
+    """Read a service's irreplaceable state as a deterministic tar archive.
+
+    Returns ``(tar_bytes, targets)``. Only the mounts the catalog marks
+    ``critical_volumes`` are read — never the whole container. That list is the
+    same inventory the delete guard refuses on, so "what is irreplaceable" has
+    one definition rather than two that can drift apart.
+
+    The container is PAUSED for the duration when it is running. A keystore or
+    sqlite file copied while it is being written produces a backup that opens
+    perfectly and restores a corrupt node — the worst possible outcome, because
+    it fails only when it is finally needed. Pause is used rather than stop so a
+    node does not lose its uptime score for a backup.
+    """
+    targets = _critical_volume_targets(slug)
+    if not targets:
+        raise ValueError(
+            f"{slug} declares no critical_volumes, so there is no irreplaceable state to export. "
+            "Adding a backup for a service whose state is re-downloadable would teach a false habit."
+        )
+
+    container = _find_container(slug)
+    was_running = container.status == "running"
+    chunks: list[bytes] = []
+    read: list[str] = []
+
+    if was_running:
+        container.pause()
+    try:
+        for target in sorted(targets):
+            stream, _stat = container.get_archive(target)
+            chunks.append(b"".join(stream))
+            read.append(target)
+    finally:
+        if was_running:
+            # Unpause even if the read failed: leaving a paused earner behind
+            # would silently stop the income this feature exists to protect.
+            with contextlib.suppress(Exception):
+                container.unpause()
+
+    return b"".join(chunks), read
 
 
 def remove_service(slug: str, delete_volumes: bool = False, allow_delete_critical: bool = False) -> dict[str, Any]:
