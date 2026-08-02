@@ -1254,10 +1254,16 @@ async def _proxy_to_worker(
             else:
                 resp = await client.post(f"{url}{path}", json=json, params=params, headers=headers)
             if resp.status_code >= 400:
-                logger.warning("worker proxy error (%s): %s", resp.status_code, resp.text)
+                # NOT resp.text at warning level: withholding the raw body from the
+                # caller (see _safe_worker_detail) is pointless if it goes straight
+                # into the log instead. A deploy failure can echo env values, which
+                # for several providers are live credentials.
+                safe = _safe_worker_detail(resp)
+                logger.warning("worker proxy error (%s): %s", resp.status_code, safe or "unstructured error body")
+                logger.debug("worker proxy error body (%s): %s", resp.status_code, resp.text)
                 raise HTTPException(
                     status_code=resp.status_code,
-                    detail=_safe_worker_detail(resp) or "Worker request failed",
+                    detail=safe or "Worker request failed",
                 )
             return resp.json()
     except httpx.HTTPError as exc:
@@ -1530,6 +1536,66 @@ async def api_earnings_flatlines(request: Request) -> list[dict[str, Any]]:
     """Services that are running but whose balance has stopped moving."""
     _require_auth_api(request)
     return await database.get_flatlined_services()
+
+
+@app.get("/api/credentials/health")
+async def api_credential_health(request: Request) -> list[dict[str, Any]]:
+    """Report how old each stored credential is and when it is expected to die.
+
+    Never returns credential VALUES - only which key it is, how old, and what
+    that means. The point is that "this will stop working tonight" is visible
+    BEFORE it happens, rather than the user discovering it because earnings
+    quietly stopped being recorded.
+    """
+    _require_auth_api(request)
+
+    from app.collectors import _COLLECTOR_ARGS, credential_lifetime, durable_alternative
+
+    updated = await database.get_config_updated_at()
+    now = datetime.now(UTC)
+    report: list[dict[str, Any]] = []
+
+    for slug, args in _COLLECTOR_ARGS.items():
+        missing_durable = [field for field in durable_alternative(slug) if f"{slug}_{field}" not in updated]
+        for arg in args:
+            field = arg.lstrip("?")
+            key = f"{slug}_{field}"
+            stamp = updated.get(key)
+            if not stamp:
+                continue  # not configured; nothing to report an age for
+
+            meta = credential_lifetime(slug, field) or {}
+            hours_total = meta.get("hours")
+            try:
+                age_hours = (now - datetime.fromisoformat(stamp).replace(tzinfo=UTC)).total_seconds() / 3600
+            except ValueError:
+                continue
+
+            if hours_total is None:
+                status = "no_known_expiry"
+            elif age_hours >= hours_total:
+                status = "likely_expired"
+            elif age_hours >= hours_total * 0.75:
+                status = "expiring_soon"
+            else:
+                status = "fresh"
+
+            entry: dict[str, Any] = {
+                "service": slug,
+                "field": field,
+                "age_hours": round(age_hours, 1),
+                "expected_lifetime_hours": hours_total,
+                "status": status,
+            }
+            if meta.get("why"):
+                entry["why"] = meta["why"]
+            # Only nag about a durable alternative when the short-lived credential
+            # is the one actually at risk.
+            if missing_durable and hours_total is not None and not meta.get("durable"):
+                entry["durable_alternative_missing"] = missing_durable
+            report.append(entry)
+
+    return report
 
 
 @app.get("/api/services/{slug}/preflight")

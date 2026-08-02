@@ -274,9 +274,14 @@ CREATE TABLE IF NOT EXISTS earnings (
     created_at TEXT    NOT NULL DEFAULT (datetime('now'))
 );
 
+-- updated_at exists so a credential's AGE is knowable. Several collectors use
+-- values copied out of a browser and some expire in hours; without a timestamp
+-- the UI cannot say "this will stop working tonight" before it does, and a dead
+-- collector looks identical to a provider outage.
 CREATE TABLE IF NOT EXISTS config (
-    key   TEXT PRIMARY KEY,
-    value TEXT NOT NULL
+    key        TEXT PRIMARY KEY,
+    value      TEXT NOT NULL,
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 CREATE TABLE IF NOT EXISTS deployments (
@@ -537,6 +542,15 @@ async def init_db() -> None:
         earnings_cols = {row["name"] for row in await cursor.fetchall()}
         if "fx_rate_usd" not in earnings_cols:
             await db.execute("ALTER TABLE earnings ADD COLUMN fx_rate_usd REAL")
+
+        # Migrate config table: add updated_at so credential age is knowable.
+        # Existing rows get the migration time, which is the earliest we can
+        # honestly claim to know about them - never a fabricated older date.
+        cursor = await db.execute("PRAGMA table_info(config)")
+        config_cols = {row["name"] for row in await cursor.fetchall()}
+        if "updated_at" not in config_cols:
+            await db.execute("ALTER TABLE config ADD COLUMN updated_at TEXT")
+            await db.execute("UPDATE config SET updated_at = datetime('now') WHERE updated_at IS NULL")
 
         # Migrate users table: add password_changed_at for session invalidation
         cursor = await db.execute("PRAGMA table_info(users)")
@@ -903,7 +917,7 @@ async def set_config(key: str, value: str) -> None:
     db = await _get_db()
     try:
         await db.execute(
-            "INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)",
+            "INSERT OR REPLACE INTO config (key, value, updated_at) VALUES (?, ?, datetime('now'))",
             (key, stored),
         )
         await db.commit()
@@ -917,10 +931,24 @@ async def set_config_bulk(data: dict[str, str]) -> None:
     db = await _get_db()
     try:
         await db.executemany(
-            "INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)",
+            "INSERT OR REPLACE INTO config (key, value, updated_at) VALUES (?, ?, datetime('now'))",
             pairs,
         )
         await db.commit()
+    finally:
+        await db.close()
+
+
+async def get_config_updated_at() -> dict[str, str]:
+    """Return {config_key: ISO timestamp of last write}.
+
+    Values are never returned here - only when each key was last set - so this
+    is safe to drive a UI that shows credential age without touching secrets.
+    """
+    db = await _get_db()
+    try:
+        cursor = await db.execute("SELECT key, updated_at FROM config WHERE updated_at IS NOT NULL")
+        return {row["key"]: row["updated_at"] for row in await cursor.fetchall()}
     finally:
         await db.close()
 
