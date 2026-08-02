@@ -241,7 +241,11 @@ _EGRESS_TTL_SECONDS = 3600.0
 # A failed lookup is cached too, and briefly. Without it a blackholed network
 # (DROP, not REJECT) costs the full timeout on EVERY heartbeat, forever.
 _EGRESS_FAILURE_TTL_SECONDS = 300.0
-# Total wall-clock budget for the whole attempt. httpx's timeout is PER
+# Wall-clock budget for the WHOLE attempt, shared across every endpoint tried
+# (see the deadline in _detect_egress_ip). Per-endpoint would multiply by the
+# endpoint count: at 3 endpoints plus the 15s heartbeat POST that is already 45s
+# on a 60s serial cycle, and a longer list would breach the 180s offline
+# threshold — the exact failure this bound exists to prevent. httpx's timeout is PER
 # OPERATION — its read timeout is the maximum gap between chunks, not a deadline
 # — so an endpoint dribbling one byte every few seconds would hold the request
 # open indefinitely. That matters here because the heartbeat loop is serial: a
@@ -331,9 +335,14 @@ async def _detect_egress_ip() -> str | None:
     # quietly undo exactly that choice, so a custom endpoint is used ALONE.
     endpoints = [custom] if custom else list(_EGRESS_ENDPOINTS)
 
+    deadline = time.monotonic() + _EGRESS_TOTAL_TIMEOUT
     for url in endpoints:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            logger.debug("Egress IP lookup budget exhausted before trying %s", url)
+            break
         try:
-            found = await asyncio.wait_for(_fetch_egress_ip(url), timeout=_EGRESS_TOTAL_TIMEOUT)
+            found = await asyncio.wait_for(_fetch_egress_ip(url), timeout=remaining)
         except Exception as exc:  # noqa: BLE001 — never let this break a heartbeat
             logger.debug("Egress IP lookup via %s failed: %s", url, exc)
             continue
@@ -430,12 +439,25 @@ async def _send_heartbeat() -> None:
 
 
 async def _heartbeat_loop() -> None:
-    """Send heartbeats to the UI at regular intervals."""
-    # Send first heartbeat immediately
-    await _send_heartbeat()
+    """Send heartbeats to the UI at regular intervals.
+
+    Every cycle is guarded. _send_heartbeat builds its payload OUTSIDE its own
+    try (docker_available, the egress lookup and the network-type probe all run
+    while the dict literal is evaluated), so an exception there would otherwise
+    propagate out of this loop and kill the task silently and permanently.
+    That is strictly worse than any single failed heartbeat: a missed cycle
+    costs one 180s offline window and self-heals, whereas a dead task means
+    offline until someone restarts the container — while the service containers
+    keep earning and nothing surfaces the problem.
+    """
     while True:
+        try:
+            await _send_heartbeat()
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.exception("Heartbeat cycle failed — continuing")
         await asyncio.sleep(HEARTBEAT_INTERVAL)
-        await _send_heartbeat()
 
 
 def _get_local_ip() -> str:

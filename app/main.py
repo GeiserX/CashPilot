@@ -1793,8 +1793,16 @@ async def api_service_preflight(request: Request, slug: str, worker_id: int | No
         deployed = await database.get_deployments()
         return preflight.assess(service, already_deployed_slugs={d["slug"] for d in deployed})
 
-    workers = [_decoded_worker(w) for w in await database.list_workers()]
-    worker = next((w for w in workers if w.get("id") == worker_id), None)
+    # Only ONLINE workers count as peers. A worker that is merely switched off
+    # keeps its row forever once enrolled (the purge spares enrolled rows), and
+    # its last heartbeat still lists every container as running — so a retired
+    # machine would fabricate a conflict against a live one. This module
+    # promises the opposite failure direction: a missed conflict, never an
+    # invented one. The worker being deployed to is looked up separately so a
+    # freshly-restarted one can still be assessed.
+    all_workers = [_decoded_worker(w) for w in await database.list_workers()]
+    workers = [w for w in all_workers if w.get("status") == "online"]
+    worker = next((w for w in all_workers if w.get("id") == worker_id), None)
     if worker is None:
         raise HTTPException(status_code=404, detail=f"Unknown worker {worker_id}")
 

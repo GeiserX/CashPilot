@@ -130,7 +130,7 @@ def assess(
     # cannot, this stays an explicitly unverified precondition rather than being
     # dressed up as a check.
     if reqs.get("residential_ip") and reqs.get("vps_ip") is False:
-        if str(info.get("egress_network_type") or "").lower() == "hosting":
+        if egress.normalise_network_type(info.get("egress_network_type")) == egress.HOSTING:
             findings.append(
                 {
                     "verdict": EARNS_NOTHING,
@@ -185,7 +185,10 @@ def assess(
     # nothing about whether it is residential, and dropping the label because we
     # learned the address produced a response that claimed the type was checked
     # while a finding in the same payload said it could not be.
-    if egress.network_type_of(worker) == egress.UNKNOWN:
+    # Read from `info`, the same source the residential finding uses. Gating this
+    # on the worker while that finding reads the kwarg is exactly the two-source
+    # divergence this function was just fixed to remove, mirrored.
+    if egress.normalise_network_type(info.get("egress_network_type")) == egress.UNKNOWN:
         not_checked.insert(0, "egress IP type")
     return {
         "slug": slug,
@@ -245,8 +248,13 @@ def _fleet_findings(
         return findings
 
     conflicting = [w for w in peers if slug in egress.running_slugs(w)]
+    # Deduplicated for DISPLAY ONLY. Two different machines can share a display
+    # name — WORKER_NAME defaults to the hostname, and duplicate hostnames in a
+    # home fleet are ordinary — so counting the deduplicated names would merge
+    # two real instances into one and under-warn, which is the failure this
+    # whole module exists to remove. The arithmetic below uses `conflicting`.
     running_elsewhere = sorted(
-        {w.get("name") or w.get("client_id") or f"machine {w.get('id', '?')}" for w in conflicting}
+        {w.get("name") or w.get("client_id") or f"machine {w.get('id') or '?'}" for w in conflicting}
     )
     if not running_elsewhere:
         return findings
@@ -295,7 +303,7 @@ def _fleet_findings(
         # Peers + the one already running here + the prospective deploy. Omitting
         # the local one under-counts by exactly the case the feature is for.
         local = 1 if slug in egress.running_slugs(worker) else 0
-        instances = len(running_elsewhere) + local + 1
+        instances = len(conflicting) + local + 1
         verdict = EARNS_NOTHING if instances > limit else REDUCED
         findings.append(
             {

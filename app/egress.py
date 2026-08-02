@@ -97,7 +97,15 @@ def normalise_network_type(value: Any) -> str:
 # an address belonging to someone else. NAT64 (64:ff9b::/96) embeds an arbitrary
 # IPv4 address in its low bits — including a private one — and 6to4 (2002::/16)
 # embeds one likewise, so both can smuggle a LAN address past an is_global check.
-_TRANSLATION_PREFIXES = tuple(ipaddress.ip_network(n) for n in ("64:ff9b::/96", "64:ff9b:1::/48", "2002::/16"))
+_TRANSLATION_PREFIXES = tuple(
+    ipaddress.ip_network(n)
+    for n in (
+        "64:ff9b::/96",  # NAT64
+        "64:ff9b:1::/48",  # NAT64, local-use prefix
+        "2002::/16",  # 6to4
+        "fec0::/10",  # deprecated site-local — a LAN address Python calls global
+    )
+)
 
 
 def public_ip(value: Any) -> str | None:
@@ -107,8 +115,9 @@ def public_ip(value: Any) -> str | None:
     (100.64/10 — which is also the tailnet range) addresses all mean the
     detection failed and we are looking at an interface, not an exit.
 
-    An IPv4-mapped IPv6 address is unwrapped to its IPv4 form rather than
-    returned verbatim. Two things depend on that: grouping is string equality,
+    An IPv6 address carrying an IPv4 one — mapped ``::ffff:a.b.c.d`` or the
+    deprecated compatible ``::a.b.c.d`` — is unwrapped to that IPv4 form rather
+    than returned verbatim. Two things depend on that: grouping is string equality,
     so the same host reported as ``81.61.1.9`` and ``::ffff:81.61.1.9`` would
     never match itself; and older 3.12 patch releases — which this project's
     ``requires-python`` still permits for a source install — got ``is_global``
@@ -122,14 +131,29 @@ def public_ip(value: Any) -> str | None:
         addr = ipaddress.ip_address(text)
     except ValueError:
         return None
-    mapped = getattr(addr, "ipv4_mapped", None)
-    if mapped is not None:
-        addr = mapped
+    addr = _unwrap_v4(addr)
     if any(addr in net for net in _TRANSLATION_PREFIXES if net.version == addr.version):
         return None
     if not addr.is_global or addr.is_multicast:
         return None
     return str(addr)
+
+
+def _unwrap_v4(addr: Any) -> Any:
+    """Reduce an IPv6 form that carries an IPv4 address to that IPv4 address.
+
+    Covers BOTH ``::ffff:a.b.c.d`` (mapped) and the deprecated ``::a.b.c.d``
+    (compatible). Python exposes a helper only for the first, and the second is
+    just as dangerous: ``::192.168.1.5`` is reported global, so an unwrapped LAN
+    address would become a grouping key. It also breaks self-matching, since a
+    host seen once as 81.61.1.9 and once as ::81.61.1.9 would never match.
+    """
+    mapped = getattr(addr, "ipv4_mapped", None)
+    if mapped is not None:
+        return mapped
+    if getattr(addr, "version", None) == 6 and int(addr) >> 32 == 0 and int(addr) > 1:
+        return ipaddress.ip_address(int(addr) & 0xFFFFFFFF)
+    return addr
 
 
 def egress_of(worker: dict[str, Any] | None) -> str | None:
@@ -235,12 +259,16 @@ def peers_sharing_egress(worker: dict[str, Any], workers: list[dict[str, Any]]) 
     ip = egress_of(worker)
     if ip is None:
         return []
-    # Identity on the primary key, not client_id: two legacy rows can both hold
-    # a NULL client_id, and `None != None` is False, so they would silently
-    # exclude each other and under-report a real conflict.
+    # Identity on the primary key. client_id is a secondary key (NOT NULL in the
+    # schema, but backfilled from the display name by an old migration, so it is
+    # the weaker identity of the two); `id` is what the row actually is.
     own = (worker.get("id"), worker.get("client_id"))
 
     def _same(w: dict[str, Any]) -> bool:
+        if own == (None, None):
+            # No identity to compare on; only object identity can exclude it,
+            # and without this a caller's worker becomes its own peer.
+            return w is worker
         if own[0] is not None and w.get("id") is not None:
             return w.get("id") == own[0]
         return own[1] is not None and w.get("client_id") == own[1]
@@ -268,7 +296,7 @@ def running_slugs(worker: dict[str, Any] | None) -> set[str]:
         return set()
     containers = worker.get("containers")
     if not isinstance(containers, list):
-        return set()
+        containers = []
     found = {
         container_slug(c) for c in containers if isinstance(c, dict) and str(c.get("status", "")).lower() == "running"
     }

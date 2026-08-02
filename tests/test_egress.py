@@ -20,7 +20,7 @@ import pytest
 from app import egress, preflight
 
 
-def worker(wid, name, ip=None, network=None, running=(), status="running"):
+def worker(wid, name, ip=None, network=None, running=(), status="running", worker_status="online"):
     info = {"arch": "x86_64"}
     if ip is not None:
         info["egress_ip"] = ip
@@ -30,6 +30,7 @@ def worker(wid, name, ip=None, network=None, running=(), status="running"):
         "id": wid,
         "client_id": f"cid-{wid}",
         "name": name,
+        "status": worker_status,
         "system_info": info,
         "containers": [{"service": s, "status": status} for s in running],
     }
@@ -615,3 +616,115 @@ def main_groups():
     from app import main
 
     return main.api_fleet_egress_groups
+
+
+class TestARetiredMachineMustNotFabricateAConflict:
+    """An enrolled worker's row survives being switched off, forever.
+
+    The stale-worker purge deliberately spares enrolled rows, and the last
+    heartbeat it left behind still lists every container as running with its
+    last-known egress IP. Counting those as peers would invent a conflict
+    against a live machine — the opposite of this module's stated failure
+    direction, which is to miss a conflict and never to invent one.
+    """
+
+    OFFLINE_PEER = worker(50, "old-server", "81.61.1.9", running=["honeygain"], worker_status="offline")
+    LIVE = worker(51, "survivor", "81.61.1.9")
+
+    def _preflight(self, workers, worker_id):
+        import asyncio
+        import json
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        from app import main
+
+        rows = [
+            {**w, "containers": json.dumps(w["containers"]), "system_info": json.dumps(w["system_info"])}
+            for w in workers
+        ]
+
+        async def run():
+            with (
+                patch.object(main, "_require_auth_api", lambda r: None),
+                patch.object(main.database, "list_workers", AsyncMock(return_value=rows)),
+                patch.object(main.database, "get_deployments", AsyncMock(return_value=[])),
+                patch.object(main.catalog, "get_service", return_value=ONE_PER_IP),
+            ):
+                return await main.api_service_preflight(MagicMock(), "honeygain", worker_id)
+
+        return asyncio.run(run())
+
+    def test_an_offline_peer_raises_no_conflict(self):
+        out = self._preflight([self.OFFLINE_PEER, self.LIVE], 51)
+        assert out["findings"] == [], "a machine that is switched off is not competing for the IP"
+
+    def test_the_same_peer_online_does_raise_one(self):
+        online = {**self.OFFLINE_PEER, "status": "online"}
+        out = self._preflight([online, self.LIVE], 51)
+        assert out["verdict"] == "will_earn_nothing"
+
+    def test_an_offline_worker_can_still_be_assessed_itself(self):
+        """A worker that just restarted must not 404 while its status catches up."""
+        out = self._preflight([self.OFFLINE_PEER, self.LIVE], 50)
+        assert out["blocking"] is False
+
+
+class TestTheInstanceCountUsesMachinesNotNames:
+    def test_two_distinct_peers_sharing_a_hostname_both_count(self):
+        """WORKER_NAME defaults to the hostname; duplicate hostnames are ordinary."""
+        two = {"slug": "honeygain", "name": "Honeygain", "requirements": {"devices_per_ip": 2}}
+        me = worker(60, "me", "81.61.1.9")
+        peers = [
+            worker(61, "raspberrypi", "81.61.1.9", running=["honeygain"]),
+            worker(62, "raspberrypi", "81.61.1.9", running=["honeygain"]),
+        ]
+        out = preflight.assess(two, worker=me, fleet_workers=[me, *peers])
+        assert out["verdict"] == preflight.EARNS_NOTHING, "3 instances against a limit of 2"
+
+    def test_the_message_still_names_each_machine_once(self):
+        me = worker(63, "me", "81.61.1.9")
+        peers = [
+            worker(64, "pi", "81.61.1.9", running=["honeygain"]),
+            worker(65, "pi", "81.61.1.9", running=["honeygain"]),
+        ]
+        out = preflight.assess(ONE_PER_IP, worker=me, fleet_workers=[me, *peers])
+        message = " ".join(f["message"] for f in out["findings"])
+        assert "pi, pi" not in message, "the display list should collapse duplicate names"
+
+
+class TestAddressFormsThatCarrySomeoneElsesAddress:
+    @pytest.mark.parametrize(
+        "addr", ["::192.168.1.5", "::10.0.0.1", "fec0::1", "2002:c0a8:101::1", "64:ff9b::c0a8:101"]
+    )
+    def test_they_are_all_rejected(self, addr):
+        assert egress.public_ip(addr) is None
+
+    def test_the_compatible_form_of_a_public_address_matches_itself(self):
+        """Grouping is string equality, so both forms must reduce to one key."""
+        assert egress.public_ip("::81.61.1.9") == egress.public_ip("81.61.1.9") == "81.61.1.9"
+
+
+class TestTheHeartbeatSurvivesABadCycle:
+    @pytest.mark.asyncio
+    async def test_one_failing_cycle_does_not_end_the_loop(self, monkeypatch):
+        """A dead task means offline until someone restarts the container."""
+        import asyncio
+
+        from app import worker_api
+
+        calls = []
+
+        async def flaky():
+            calls.append(1)
+            if len(calls) == 1:
+                raise RuntimeError("docker_available blew up")
+
+        monkeypatch.setattr(worker_api, "_send_heartbeat", flaky)
+        monkeypatch.setattr(worker_api, "HEARTBEAT_INTERVAL", 0)
+        task = asyncio.create_task(worker_api._heartbeat_loop())
+        for _ in range(20):
+            await asyncio.sleep(0)
+            if len(calls) >= 3:
+                break
+        task.cancel()
+        assert len(calls) >= 3, "the loop stopped after the first exception"
