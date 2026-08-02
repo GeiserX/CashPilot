@@ -180,6 +180,30 @@ The UI's web port inside the container is fixed at `8080` (set via the container
 | `CASHPILOT_WORKER_URL` | *(auto-detected)* | URL the UI uses to reach this worker, e.g. `http://192.168.10.50:8081`. Set explicitly for remote/cross-host workers |
 | `CASHPILOT_WORKER_BIND_ADDR` | `127.0.0.1` | Host interface the worker's Docker-socket API port is published on. Loopback by default — for a remote worker set a private/VPN interface, **never** a public IP |
 | `CASHPILOT_PORT` | `8081` | Mini-UI/API port the worker listens on |
+| `CASHPILOT_WORKER_NETWORK` | *(detected)* | `residential` or `hosting`. Overrides the hardware-based guess used to warn about residential-only services |
+| `CASHPILOT_EGRESS_DETECT` | on | Set to `off` to stop this worker looking up its own public IP (see below) |
+| `CASHPILOT_EGRESS_IP` | -- | State this worker's public IP directly instead of looking it up. Must be a public address |
+| `CASHPILOT_EGRESS_IP_URL` | -- | Use your own IP-echo endpoint (returning a bare IP) instead of the public ones. Used **exclusively** — no fallback |
+
+#### Why the worker looks up its public IP
+
+Bandwidth providers cap earnings **per IP address, not per machine**. Two
+workers behind one home connection are two rows on your dashboard and *one*
+customer to the provider, so the second one usually earns nothing. To warn you
+before that happens, each worker asks a public IP-echo service what address it
+comes from — one request per hour.
+
+That is the only outbound call CashPilot makes purely to learn about your setup.
+Turn it off with `CASHPILOT_EGRESS_DETECT=off`, point it at your own endpoint
+with `CASHPILOT_EGRESS_IP_URL`, or skip the lookup entirely by stating the
+address with `CASHPILOT_EGRESS_IP`. With detection off, the fleet simply reports
+that worker's exit as undetermined and raises no conflict warnings for it.
+
+Known limitation: grouping matches on the exact address, so on a **native-IPv6**
+connection each machine has its own global address and no conflict is detected.
+The check is therefore best-effort — it can miss a conflict, but it will not
+invent one.
+
 
 ## Multi-Node Fleet Management
 
