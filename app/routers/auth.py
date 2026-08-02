@@ -1,7 +1,13 @@
 """Authentication + onboarding routes (login, register, logout, onboarding).
 
-Handlers reference shared state through ``app.main`` so test patches on
-``app.main.database.*`` / ``app.main.auth.*`` continue to land.
+Imports its dependencies directly from ``app.deps`` and friends rather than
+reaching through ``app.main``. That is what removes the main -> routers -> main
+import cycle (bead sux): everything these handlers used from ``app.main`` was
+already a re-export of something in ``app.deps``, except the login rate limiter,
+which now lives in ``app.login_rate_limit``.
+
+Test patches on ``app.database.*`` and ``app.auth.*`` still land, because those
+name the same module objects this module holds references to.
 """
 
 from __future__ import annotations
@@ -11,7 +17,11 @@ import re
 from fastapi import APIRouter, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
-import app.main as main
+# setup_token is aliased because it is ALSO a Form parameter name inside
+# do_register, so importing it bare would be shadowed exactly where it is used.
+from app import auth as auth_module
+from app import database, deps, login_rate_limit, metrics
+from app import setup_token as setup_token_module
 
 router = APIRouter()
 
@@ -19,12 +29,12 @@ router = APIRouter()
 @router.get("/login", response_class=HTMLResponse)
 async def page_login(request: Request, error: str = ""):
     # If no users exist, redirect to onboarding
-    if not await main.database.has_any_users():
+    if not await database.has_any_users():
         return RedirectResponse("/onboarding", status_code=303)
     # If already logged in, go to dashboard
-    if main.auth.get_current_user(request):
+    if auth_module.get_current_user(request):
         return RedirectResponse("/", status_code=303)
-    return main.templates.TemplateResponse(
+    return deps.templates.TemplateResponse(
         request,
         "auth.html",
         {
@@ -45,17 +55,17 @@ async def do_login(
     username: str = Form(...),
     password: str = Form(...),
 ):
-    client_ip = main.client_ip(request) or "unknown"
+    client_ip = deps.client_ip(request) or "unknown"
     try:
-        main._check_login_rate(client_ip)
+        login_rate_limit.check_login_rate(client_ip)
     except HTTPException:
-        main.metrics.record_rate_limit()
+        metrics.record_rate_limit()
         raise
-    user = await main.database.get_user_by_username(username)
-    if not user or not await main.auth.verify_password_async(password, user["password"]):
-        main._record_failed_login(client_ip)
-        main.metrics.record_login(success=False)
-        return main.templates.TemplateResponse(
+    user = await database.get_user_by_username(username)
+    if not user or not await auth_module.verify_password_async(password, user["password"]):
+        login_rate_limit.record_failed_login(client_ip)
+        metrics.record_login(success=False)
+        return deps.templates.TemplateResponse(
             request,
             "auth.html",
             {
@@ -70,28 +80,28 @@ async def do_login(
             status_code=401,
         )
 
-    main._login_attempts.pop(client_ip, None)
-    main.metrics.record_login(success=True)
-    token = main.auth.create_session_token(user["id"], user["username"], user["role"])
+    login_rate_limit.clear(client_ip)
+    metrics.record_login(success=True)
+    token = auth_module.create_session_token(user["id"], user["username"], user["role"])
     response = RedirectResponse("/", status_code=303)
-    return main.auth.set_session_cookie(response, token, request)
+    return auth_module.set_session_cookie(response, token, request)
 
 
 @router.get("/register", response_class=HTMLResponse)
 async def page_register(request: Request, error: str = ""):
-    is_first = not await main.database.has_any_users()
+    is_first = not await database.has_any_users()
     # Only allow registration if first user OR if requester is owner
     if not is_first:
-        user = main.auth.get_current_user(request)
+        user = auth_module.get_current_user(request)
         if not user or user.get("r") != "owner":
             return RedirectResponse("/login", status_code=303)
     # The GET page is gated only by the network check so the operator can reach the
     # form; the setup token is entered into a form field and verified on POST (never
     # via URL, which would leak it into access logs / browser history).
     if is_first:
-        main._require_private_network(request)
+        deps._require_private_network(request)
 
-    return main.templates.TemplateResponse(
+    return deps.templates.TemplateResponse(
         request,
         "auth.html",
         {
@@ -114,19 +124,19 @@ async def do_register(
     password_confirm: str = Form(...),
     setup_token: str = Form(""),
 ):
-    is_first = not await main.database.has_any_users()
+    is_first = not await database.has_any_users()
 
     # Only allow registration if first user or owner
     if not is_first:
-        user = main.auth.get_current_user(request)
+        user = auth_module.get_current_user(request)
         if not user or user.get("r") != "owner":
             raise HTTPException(status_code=403, detail="Only owners can add users")
 
     if is_first:
-        main._require_first_run_access(request, setup_token)
+        deps._require_first_run_access(request, setup_token)
 
     if not re.match(r"^[a-zA-Z0-9_-]{3,32}$", username):
-        return main.templates.TemplateResponse(
+        return deps.templates.TemplateResponse(
             request,
             "auth.html",
             {
@@ -143,7 +153,7 @@ async def do_register(
         )
 
     if password != password_confirm:
-        return main.templates.TemplateResponse(
+        return deps.templates.TemplateResponse(
             request,
             "auth.html",
             {
@@ -160,7 +170,7 @@ async def do_register(
         )
 
     if len(password) < 10:
-        return main.templates.TemplateResponse(
+        return deps.templates.TemplateResponse(
             request,
             "auth.html",
             {
@@ -176,9 +186,9 @@ async def do_register(
             status_code=400,
         )
 
-    existing = await main.database.get_user_by_username(username)
+    existing = await database.get_user_by_username(username)
     if existing:
-        return main.templates.TemplateResponse(
+        return deps.templates.TemplateResponse(
             request,
             "auth.html",
             {
@@ -196,13 +206,13 @@ async def do_register(
 
     # First user is always owner
     role = "owner" if is_first else "viewer"
-    hashed = await main.auth.hash_password_async(password)
+    hashed = await auth_module.hash_password_async(password)
     if is_first:
         # Atomic: only one concurrent first-run registration can win, so a single
         # setup token can't be raced into minting two owners.
-        user_id = await main.database.create_first_owner(username, hashed)
+        user_id = await database.create_first_owner(username, hashed)
         if user_id is None:
-            return main.templates.TemplateResponse(
+            return deps.templates.TemplateResponse(
                 request,
                 "auth.html",
                 {
@@ -218,27 +228,27 @@ async def do_register(
                 status_code=409,
             )
     else:
-        user_id = await main.database.create_user(username, hashed, role)
+        user_id = await database.create_user(username, hashed, role)
 
     if is_first:
         # Owner now exists — retire the one-time setup token permanently.
-        await main.database.delete_config_keys(["_setup_token"])
-        main.setup_token.clear()
+        await database.delete_config_keys(["_setup_token"])
+        setup_token_module.clear()
 
-    token = main.auth.create_session_token(user_id, username, role)
+    token = auth_module.create_session_token(user_id, username, role)
     dest = "/setup" if is_first else "/"
     response = RedirectResponse(dest, status_code=303)
-    return main.auth.set_session_cookie(response, token, request)
+    return auth_module.set_session_cookie(response, token, request)
 
 
 @router.get("/logout")
 async def do_logout():
     response = RedirectResponse("/login", status_code=303)
-    return main.auth.clear_session_cookie(response)
+    return auth_module.clear_session_cookie(response)
 
 
 @router.get("/onboarding", response_class=HTMLResponse)
 async def page_onboarding(request: Request):
-    if await main.database.has_any_users():
+    if await database.has_any_users():
         return RedirectResponse("/login", status_code=303)
-    return main.templates.TemplateResponse(request, "onboarding.html")
+    return deps.templates.TemplateResponse(request, "onboarding.html")
