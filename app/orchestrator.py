@@ -406,8 +406,15 @@ def start_service(slug: str) -> None:
     logger.info("Started container %s", container.name)
 
 
-def _collect_stats(c) -> tuple[float, float]:
-    """Collect CPU% and memory for a single container. Returns (cpu_pct, mem_mb)."""
+def _collect_stats(c) -> tuple[float, float, int | None, int | None]:
+    """Collect CPU%, memory and cumulative network counters for one container.
+
+    Returns ``(cpu_pct, mem_mb, rx_bytes, tx_bytes)``. The counters are None
+    when Docker reports no interfaces — which is what happens for a container on
+    the HOST network, where the ``networks`` key is absent entirely. That is not
+    zero traffic and must never be reported as such: on a real fleet the single
+    busiest service is host-networked.
+    """
     try:
         stats = c.stats(stream=False)
         cpu_delta = stats["cpu_stats"]["cpu_usage"]["total_usage"] - stats["precpu_stats"]["cpu_usage"]["total_usage"]
@@ -418,9 +425,24 @@ def _collect_stats(c) -> tuple[float, float]:
         )
         cpu_pct = round((cpu_delta / system_delta) * num_cpus * 100, 2) if system_delta > 0 else 0.0
         mem_mb = round(stats["memory_stats"].get("usage", 0) / (1024 * 1024), 1)
-        return cpu_pct, mem_mb
+        rx, tx = _network_totals(stats)
+        return cpu_pct, mem_mb, rx, tx
     except (KeyError, ZeroDivisionError, APIError):
-        return 0.0, 0.0
+        return 0.0, 0.0, None, None
+
+
+def _network_totals(stats: dict[str, Any]) -> tuple[int | None, int | None]:
+    """Cumulative rx/tx across every interface, or (None, None) if unreported."""
+    networks = stats.get("networks")
+    if not isinstance(networks, dict) or not networks:
+        return None, None
+    rx = tx = 0
+    for iface in networks.values():
+        if not isinstance(iface, dict):
+            continue
+        rx += int(iface.get("rx_bytes") or 0)
+        tx += int(iface.get("tx_bytes") or 0)
+    return rx, tx
 
 
 def get_status() -> list[dict[str, Any]]:
@@ -448,7 +470,7 @@ def get_status() -> list[dict[str, Any]]:
         try:
             seen_ids.add(c.id)
             slug = c.labels.get(LABEL_SERVICE, "unknown")
-            cpu_pct, mem_mb = _collect_stats(c)
+            cpu_pct, mem_mb, net_rx, net_tx = _collect_stats(c)
             results.append(
                 {
                     "slug": slug,
@@ -457,6 +479,9 @@ def get_status() -> list[dict[str, Any]]:
                     "image": c.image.tags[0] if c.image.tags else str(c.image.short_id),
                     "cpu_percent": cpu_pct,
                     "memory_mb": mem_mb,
+                    # Cumulative since container start; None when unavailable.
+                    "net_rx_bytes": net_rx,
+                    "net_tx_bytes": net_tx,
                     "created": c.attrs.get("Created", ""),
                     "container_id": c.short_id,
                     "deployed_by": c.labels.get(LABEL_DEPLOYED_BY, "unknown"),
@@ -484,7 +509,7 @@ def get_status() -> list[dict[str, Any]]:
                     slug = image_map.get(image_name.split(":")[0], "")
                 if slug:
                     seen_ids.add(c.id)
-                    cpu_pct, mem_mb = _collect_stats(c)
+                    cpu_pct, mem_mb, net_rx, net_tx = _collect_stats(c)
                     results.append(
                         {
                             "slug": slug,
@@ -493,6 +518,8 @@ def get_status() -> list[dict[str, Any]]:
                             "image": image_name or str(c.image.short_id),
                             "cpu_percent": cpu_pct,
                             "memory_mb": mem_mb,
+                            "net_rx_bytes": net_rx,
+                            "net_tx_bytes": net_tx,
                             "created": c.attrs.get("Created", ""),
                             "container_id": c.short_id,
                             "deployed_by": "external",
