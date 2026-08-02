@@ -75,7 +75,11 @@ class TestEveryInlineScriptIsNonced:
     def test_no_unnonced_inline_script_block(self, path):
         """An unnonced block is silently blocked and the page half-works."""
         text = path.read_text(encoding="utf-8")
-        bare = re.findall(r"<script(?![^>]*(?:src=|nonce=))[^>]*>", text)
+        # Case-insensitive: HTML tag and attribute names are, so a <SCRIPT>
+        # or NONCE= would otherwise walk straight past a guard whose whole job
+        # is to catch exactly that. CodeQL flagged this as a bad HTML filter,
+        # and it was right — a case-sensitive check here is security theatre.
+        bare = re.findall(r"<script(?![^>]*(?:src=|nonce=))[^>]*>", text, re.I)
         assert not bare, f"{path.name} has an inline <script> with no nonce: {bare[:2]}"
 
 
@@ -113,7 +117,11 @@ class TestEveryDeclaredActionExists:
         actions: set[str] = set()
         for path in TEMPLATES + JS:
             actions |= set(
-                re.findall(r'data-(?:action|then)="([A-Za-z_][A-Za-z0-9_]*)"', path.read_text(encoding="utf-8"))
+                re.findall(
+                    r'data-(?:action|then)="([A-Za-z_][A-Za-z0-9_]*)"',
+                    path.read_text(encoding="utf-8"),
+                    re.I,
+                )
             )
         assert actions, "no data-action attributes found at all — the migration did not happen"
 
