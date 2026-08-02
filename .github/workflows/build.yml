@@ -124,8 +124,15 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
       - name: Re-point the unchanged UI image at this release's tags
+        # Tags derive from inputs.version, which workflow_dispatch lets a caller
+        # set freely. Interpolating that straight into `for tag in ...` would let
+        # a malformed value break Bash parsing in a step that runs AFTER the
+        # registry login, so it goes through the environment and is read as data.
+        env:
+          TAGS: ${{ needs.resolve-tags.outputs.ui_tags }}
         run: |
-          for tag in ${{ needs.resolve-tags.outputs.ui_tags }}; do
+          printf '%s\n' "$TAGS" | while IFS= read -r tag; do
+            [ -n "$tag" ] || continue
             echo "retagging -> $tag"
             docker buildx imagetools create -t "$tag" drumsergio/cashpilot:latest
           done
@@ -141,8 +148,11 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
       - name: Re-point the unchanged worker image at this release's tags
+        env:
+          TAGS: ${{ needs.resolve-tags.outputs.worker_tags }}
         run: |
-          for tag in ${{ needs.resolve-tags.outputs.worker_tags }}; do
+          printf '%s\n' "$TAGS" | while IFS= read -r tag; do
+            [ -n "$tag" ] || continue
             echo "retagging -> $tag"
             docker buildx imagetools create -t "$tag" drumsergio/cashpilot-worker:latest
           done
@@ -178,16 +188,25 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Every published tag must resolve
+        env:
+          UI_TAGS: ${{ needs.resolve-tags.outputs.ui_tags }}
+          WORKER_TAGS: ${{ needs.resolve-tags.outputs.worker_tags }}
         run: |
+          # Written to a file and read WITHOUT a pipe: a `while` on the right of
+          # a pipe runs in a subshell, so a counter set inside it is lost. And
+          # the step runs under `bash -e`, where a plain `[ -s f ] && x=1` fails
+          # the whole step on the happy path when the file is absent.
+          printf '%s\n%s\n' "$UI_TAGS" "$WORKER_TAGS" > /tmp/tags.txt
           missing=0
-          for tag in ${{ needs.resolve-tags.outputs.ui_tags }} ${{ needs.resolve-tags.outputs.worker_tags }}; do
+          while IFS= read -r tag; do
+            [ -n "$tag" ] || continue
             if docker manifest inspect "$tag" >/dev/null 2>&1; then
               echo "ok      $tag"
             else
               echo "MISSING $tag"
               missing=1
             fi
-          done
+          done < /tmp/tags.txt
           if [ "$missing" -ne 0 ]; then
             echo "::error::A release tag is missing. The compose files pin both images to the same tag, so a partial release breaks the documented quickstart."
             exit 1
