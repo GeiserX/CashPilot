@@ -33,6 +33,7 @@ from app import (
     catalog,
     compose_generator,
     database,
+    disclosure,
     exchange_rates,
     fleet_key,
     metrics,
@@ -1925,6 +1926,27 @@ async def api_producer_state(request: Request, slug: str, worker_id: int | None 
         log_hits=log_hits,
         container_running=running,
     )
+
+
+@app.get("/api/services/{slug}/disclosure")
+async def api_service_disclosure(request: Request, slug: str) -> dict[str, Any]:
+    """What this service does with your machine, and what nobody has answered yet."""
+    _require_auth_api(request)
+    service = catalog.get_service(slug)
+    if not service:
+        raise HTTPException(status_code=404, detail=f"Unknown service '{slug}'")
+    return disclosure.for_service(service)
+
+
+@app.get("/api/disclosure/coverage")
+async def api_disclosure_coverage(request: Request) -> dict[str, Any]:
+    """How much of the catalog is documented, and which services are not.
+
+    Deliberately reports the gap: presenting the documented subset without
+    saying what is missing would imply a completeness the catalog does not have.
+    """
+    _require_auth_api(request)
+    return disclosure.coverage(catalog.get_services())
 
 
 @app.get("/api/collector-alerts")

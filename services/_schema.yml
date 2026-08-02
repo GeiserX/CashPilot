@@ -59,6 +59,20 @@
 #   stop_timeout: 30 (optional, seconds to wait before SIGKILL on stop — default 30)
 #   setup: "" (optional, one-time setup instructions/commands to run before first deploy)
 
+# disclosure: (optional but strongly encouraged) what this service does with the
+#   user's machine. "Is this malware?" is a fair question about closed-source
+#   containers that route traffic through someone's home connection, and an
+#   earnings range does not answer it.
+#     sells:                what is actually sold (bandwidth / disk / compute / attention)
+#     third_party_traffic:  do strangers route traffic through the user's IP? Start the
+#                           value with yes / no / unknown so it can be read programmatically
+#     data_collected:       what identifying data leaves the machine
+#     isp_risk:             what this could mean for their ISP contract, in plain words
+#     account_rules:        account and multi-account rules
+#   Write it honestly, including where the answer is unflattering. "unknown - the
+#   provider does not say" is a legitimate and useful entry. Do NOT guess: an absent
+#   block is reported as undocumented, which is safer than a confident wrong answer.
+
 # requirements:
 #   residential_ip: true/false
 #   vps_ip: true/false  (default: opposite of residential_ip)

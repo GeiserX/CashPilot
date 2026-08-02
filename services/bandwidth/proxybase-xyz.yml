@@ -78,3 +78,20 @@ platforms: [docker, linux, macos, windows]
 collector:
   type: manual
   notes: "REST API at api.proxybase.xyz (GET /v2/seller/status, GET /v2/wallet/balance). Auth uses ECDSA challenge-response with secp256k1 wallet — feasible to automate but non-trivial."
+
+# What this service does with the user's machine (CashPilot-66x).
+# Written to be read by someone deciding whether to trust it.
+disclosure:
+  sells: >-
+    Bandwidth, as a SOCKS5 proxy sold to buyers on the ProxyBase marketplace.
+  third_party_traffic: >-
+    Yes. Buyers route their traffic through your connection — that is exactly
+    what is being sold.
+  data_collected: >-
+    A wallet address generated on your machine, plus the traffic volume you
+    relay.
+  isp_risk: >-
+    Real. Proxy traffic from unknown buyers exits your connection under your
+    IP. The catalog marks this service as datacentre/VPS-only for that reason.
+  account_rules: >-
+    Unlimited devices per account, one per IP.
