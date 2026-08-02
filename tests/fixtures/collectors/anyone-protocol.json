@@ -1,0 +1,14 @@
+{
+  "currency": "ANYONE",
+  "fields": [
+    "Data",
+    "Messages",
+    "usd"
+  ],
+  "note": "AO smart-contract dry-run per relay fingerprint",
+  "parsed": 0.0,
+  "sample": {
+    "Messages": []
+  },
+  "slug": "anyone-protocol"
+}

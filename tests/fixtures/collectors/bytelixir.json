@@ -1,0 +1,14 @@
+{
+  "currency": "USD",
+  "fields": [
+    "data.balance"
+  ],
+  "note": "falls back to HTML scraping",
+  "parsed": 0.55,
+  "sample": {
+    "data": {
+      "balance": 0.55
+    }
+  },
+  "slug": "bytelixir"
+}

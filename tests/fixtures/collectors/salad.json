@@ -1,0 +1,12 @@
+{
+  "currency": "USD",
+  "fields": [
+    "currentBalance"
+  ],
+  "note": "balance = float(currentBalance)",
+  "parsed": 3.5,
+  "sample": {
+    "currentBalance": 3.5
+  },
+  "slug": "salad"
+}

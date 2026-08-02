@@ -1,0 +1,19 @@
+{
+  "currency": "GRASS",
+  "fields": [
+    "result.data.aggUptime",
+    "result.data.ipScore",
+    "result.data.multiplier",
+    "result.data.totalPoints"
+  ],
+  "note": "points, or estimated from uptime x ipScore x multiplier",
+  "parsed": 420.0,
+  "sample": {
+    "result": {
+      "data": {
+        "totalPoints": 420.0
+      }
+    }
+  },
+  "slug": "grass"
+}

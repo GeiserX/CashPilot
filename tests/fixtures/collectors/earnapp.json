@@ -1,0 +1,12 @@
+{
+  "currency": "USD",
+  "fields": [
+    "balance"
+  ],
+  "note": "auth via oauth-refresh + brd_sess_id cookie",
+  "parsed": 1.23,
+  "sample": {
+    "balance": 1.23
+  },
+  "slug": "earnapp"
+}

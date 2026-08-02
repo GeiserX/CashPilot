@@ -1,0 +1,17 @@
+{
+  "currency": "USD",
+  "fields": [
+    "data.payout.usd_cents",
+    "data.access_token"
+  ],
+  "note": "balance = payout.usd_cents / 100",
+  "parsed": 123.45,
+  "sample": {
+    "data": {
+      "payout": {
+        "usd_cents": 12345
+      }
+    }
+  },
+  "slug": "honeygain"
+}
