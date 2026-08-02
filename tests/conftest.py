@@ -1,8 +1,17 @@
 import asyncio
 import contextlib
+import os
+import tempfile
 from pathlib import Path
 
 import pytest
+
+# Point the suite at a writable data directory BEFORE any app module is imported:
+# app.database resolves DB_PATH and the encryption-key path once, at import time.
+# Without this the suite runs against the default /data, which on a developer Mac
+# is a read-only filesystem and in CI is not creatable — so the encryption key
+# could not be persisted and the app now (correctly) refuses to start.
+os.environ.setdefault("CASHPILOT_DATA_DIR", tempfile.mkdtemp(prefix="cashpilot-tests-"))
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 

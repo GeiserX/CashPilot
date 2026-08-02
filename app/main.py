@@ -442,6 +442,10 @@ async def _warm_session_epochs() -> None:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup
+    # Before anything touches credentials: refuse to run when the encryption key
+    # cannot survive a restart. Continuing would encrypt every credential entered
+    # during this run under a key that dies with the process.
+    database.verify_encryption_key_persisted()
     await database.init_db()
     await database.connect_shared()
     # Warm the per-user session-epoch cache (password changes + delete/demote
