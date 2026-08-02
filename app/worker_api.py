@@ -622,6 +622,9 @@ class DeploySpec(BaseModel):
     hostname: str | None = None
     labels: dict[str, str] = {}
     resources: ResourceSpec | None = None
+    # Advanced and unsupported. Absent means Docker's default runtime, which is
+    # what everything uses and what everything is tested against.
+    runtime: str | None = None
 
 
 _BLOCKED_VOLUME_ROOTS = {
@@ -820,7 +823,35 @@ def _catalog_host_network_slugs() -> set[str]:
 _ALLOWED_NETWORK_MODES = {None, "", "bridge", "none", "host"}
 
 
+def _validate_runtime(runtime: str | None) -> None:
+    """Allow only a runtime this daemon actually reports.
+
+    Deliberately NOT a hardcoded list. A runtime CashPilot recognises but the
+    host has not installed would fail at container-create time with a Docker
+    error the user cannot act on; asking the daemon means the only runtimes
+    accepted are ones that exist here.
+
+    Nothing selects a non-default runtime on its own. See docs/isolation.md for
+    why gVisor is not adopted as a default or as a supported profile: it costs
+    roughly 1.7x network throughput on a workload that is pure network I/O, it
+    breaks host-networked services outright, and it does not address the risks
+    that actually occur in this category.
+    """
+    if not runtime:
+        return
+    available = orchestrator.available_runtimes()
+    if runtime not in available:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"This host's Docker daemon does not provide a {runtime!r} runtime. "
+                f"Available: {sorted(available) or 'none reported'}."
+            ),
+        )
+
+
 def _validate_deploy_spec(spec: DeploySpec, slug: str | None = None) -> None:
+    _validate_runtime(spec.runtime)
     if spec.privileged:
         raise HTTPException(status_code=403, detail="Privileged containers are not allowed")
     if spec.cap_add:
@@ -919,6 +950,7 @@ async def api_deploy_container(request: Request, slug: str, spec: DeploySpec) ->
             hostname=spec.hostname,
             labels=spec.labels,
             resources=spec.resources,
+            runtime=spec.runtime,
         )
         return {"status": "deployed", "container_id": container_id}
     except Exception:
@@ -1106,6 +1138,27 @@ async def api_backup_verify(slug: str, body: VerifyRequest, request: Request) ->
             recipient_private_key=body.recipient_public_key,
         )
     )
+
+
+@app.get("/api/runtimes")
+async def api_runtimes(request: Request) -> dict[str, Any]:
+    """Container runtimes this host actually provides.
+
+    Advanced and unsupported. CashPilot never selects one: the default runtime
+    is what every service is tested against, and the alternatives cost real
+    throughput on a workload that is pure network I/O.
+    """
+    _verify_api_key(request)
+    available = sorted(await asyncio.to_thread(orchestrator.available_runtimes))
+    return {
+        "available": available,
+        "default": None,
+        "supported": False,
+        "note": (
+            "Selecting a non-default runtime is an advanced, unsupported choice. It is not a "
+            "hardening recommendation — see the docs for why."
+        ),
+    }
 
 
 @app.get("/api/health")
