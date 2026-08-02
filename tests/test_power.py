@@ -209,7 +209,7 @@ class TestEarnedOverTheWindow:
 class TestNetEndpoint:
     """The endpoint wiring: config parsing, windowing, and the honesty rules end to end."""
 
-    def _call(self, cfg, earned, containers, days=30):
+    def _call(self, cfg, earned, containers, days=30, workers=None):
         import asyncio
         from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -221,6 +221,7 @@ class TestNetEndpoint:
                 patch.object(main.database, "get_config", AsyncMock(return_value=cfg)),
                 patch.object(main.database, "get_earned_by_platform", AsyncMock(return_value=earned)),
                 patch.object(main, "_get_all_worker_containers", AsyncMock(return_value=containers)),
+                patch.object(main.database, "list_workers", AsyncMock(return_value=workers or [])),
             ):
                 return await main.api_earnings_net(MagicMock(), days=days)
 
@@ -272,6 +273,7 @@ class TestNetEndpoint:
                 patch.object(main.database, "get_config", AsyncMock(return_value={"power_price_per_kwh": "0.30"})),
                 patch.object(main.database, "get_earned_by_platform", AsyncMock(return_value={"svc": 7.0})),
                 patch.object(main, "_get_all_worker_containers", AsyncMock(side_effect=RuntimeError("worker down"))),
+                patch.object(main.database, "list_workers", AsyncMock(return_value=[])),
             ):
                 return await main.api_earnings_net(MagicMock(), days=30)
 
@@ -281,3 +283,97 @@ class TestNetEndpoint:
     def test_a_malformed_tariff_is_treated_as_unset_rather_than_crashing(self):
         out = self._call({"power_price_per_kwh": "not-a-number"}, {"svc": 1.0}, [])
         assert out["cost_known"] is False
+
+
+class TestPerWorkerAttribution:
+    """Each host pays its own idle draw (CashPilot-yh5).
+
+    Collapsing a fleet into one count charged a single idle floor for the whole
+    estate, and left no per-worker context for power.is_metered — so a VPS was
+    billed like a home server.
+    """
+
+    def _call(self, containers, workers, price="0.30"):
+        import asyncio
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        from app import main
+
+        async def run():
+            with (
+                patch.object(main, "_require_auth_api", lambda r: None),
+                patch.object(main.database, "get_config", AsyncMock(return_value={"power_price_per_kwh": price})),
+                patch.object(
+                    main.database,
+                    "get_earned_by_platform",
+                    AsyncMock(return_value={c["service"]: 10.0 for c in containers}),
+                ),
+                patch.object(main, "_get_all_worker_containers", AsyncMock(return_value=containers)),
+                patch.object(main.database, "list_workers", AsyncMock(return_value=workers)),
+            ):
+                return await main.api_earnings_net(MagicMock(), days=30)
+
+        return asyncio.run(run())
+
+    def test_two_hosts_are_charged_two_idle_floors(self):
+        """One container on each of two hosts costs more than two on one host."""
+        two_hosts = self._call(
+            [
+                {"service": "a", "status": "running", "cpu_percent": 0.0, "_worker_id": 1},
+                {"service": "b", "status": "running", "cpu_percent": 0.0, "_worker_id": 2},
+            ],
+            [{"id": 1, "system_info": "{}"}, {"id": 2, "system_info": "{}"}],
+        )
+        one_host = self._call(
+            [
+                {"service": "a", "status": "running", "cpu_percent": 0.0, "_worker_id": 1},
+                {"service": "b", "status": "running", "cpu_percent": 0.0, "_worker_id": 1},
+            ],
+            [{"id": 1, "system_info": "{}"}],
+        )
+        assert two_hosts["total_cost"] > one_host["total_cost"], (
+            "two machines burn two idle floors; collapsing them charged only one"
+        )
+        assert two_hosts["total_cost"] == pytest.approx(one_host["total_cost"] * 2, rel=0.01)
+
+    def test_an_unmetered_host_contributes_no_cost(self):
+        """A VPS bill does not move with CPU."""
+        out = self._call(
+            [
+                {"service": "home", "status": "running", "cpu_percent": 10.0, "_worker_id": 1},
+                {"service": "vps", "status": "running", "cpu_percent": 10.0, "_worker_id": 2},
+            ],
+            [
+                {"id": 1, "system_info": "{}"},
+                {"id": 2, "system_info": '{"metered": false}'},
+            ],
+        )
+        rows = {r["platform"]: r for r in out["services"]}
+        assert rows["vps"]["cost"] == 0.0, "an unmetered host must not be charged"
+        assert rows["home"]["cost"] > 0.0
+
+    def test_a_per_worker_tdp_is_honoured(self):
+        """A 200W server must not be costed as a 65W mini PC."""
+        big = self._call(
+            [{"service": "a", "status": "running", "cpu_percent": 50.0, "_worker_id": 1}],
+            [{"id": 1, "system_info": '{"host_tdp_watts": 200}'}],
+        )
+        small = self._call(
+            [{"service": "a", "status": "running", "cpu_percent": 50.0, "_worker_id": 1}],
+            [{"id": 1, "system_info": '{"host_tdp_watts": 65}'}],
+        )
+        assert big["total_cost"] > small["total_cost"]
+
+    def test_a_service_spread_over_two_hosts_accumulates_both(self):
+        one = self._call(
+            [{"service": "a", "status": "running", "cpu_percent": 20.0, "_worker_id": 1}],
+            [{"id": 1, "system_info": "{}"}],
+        )
+        two = self._call(
+            [
+                {"service": "a", "status": "running", "cpu_percent": 20.0, "_worker_id": 1},
+                {"service": "a", "status": "running", "cpu_percent": 20.0, "_worker_id": 2},
+            ],
+            [{"id": 1, "system_info": "{}"}, {"id": 2, "system_info": "{}"}],
+        )
+        assert two["services"][0]["cost"] > one["services"][0]["cost"]
