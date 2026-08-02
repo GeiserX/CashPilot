@@ -84,3 +84,34 @@ Account emails, API URLs, and public relay fingerprints are stored as-is. Emails
 ## Reporting a problem
 
 See [SECURITY.md](https://github.com/GeiserX/CashPilot/blob/main/SECURITY.md). Please do not open a public issue for a vulnerability.
+
+## Container runtimes: why gVisor is not the answer here
+
+CashPilot supports an optional `runtime` on a deploy spec, allowlisted to
+runtimes your Docker daemon actually reports. **It is advanced, unsupported, and
+nothing selects it for you.** That is a deliberate position, not an oversight.
+
+gVisor (`runsc`) defends against container escape. That is not the risk in this
+category:
+
+- **The escape path is already closed.** Deploys refuse `privileged`, drop every
+  capability and add back only what a service's own catalog entry declares,
+  allowlist `network_mode`, and block host bind mounts including the Docker
+  socket. There is no documented case of a mainstream proxyware image escaping
+  its container.
+- **It does not address what actually happens.** The evidenced risks are IP
+  attribution and lateral movement into your LAN. gVisor addresses neither. See
+  [Network isolation](isolation.md), which does.
+- **It costs about 1.7x network throughput** on a workload that is *pure network
+  I/O* — you would pay for it in the exact dimension you are being paid for.
+- **It breaks things.** `runsc` only simulates `NET_ADMIN`, and host networking
+  negates the isolation anyway, so a host-networked service either fails or
+  gains nothing.
+- **It does not install cleanly** where this runs: Unraid has no package manager
+  and is not systemd, a Raspberry Pi needs a custom 48-bit-VA kernel, and on
+  macOS Docker Desktop already runs everything inside a Linux VM.
+
+If you have already installed a runtime and want a specific service in it, set
+`runtime` on that service and own the outcome. The allowlist is read from your
+daemon, so you cannot select something the host does not have — that would only
+fail later with an error you could not act on.
