@@ -2212,7 +2212,7 @@ class TestLoginRateLimitMetric:
             raise HTTPException(status_code=429, detail="Too many login attempts")
 
         with (
-            patch("app.main._check_login_rate", side_effect=_raise_429),
+            patch("app.login_rate_limit.check_login_rate", side_effect=_raise_429),
             patch("app.main.metrics.record_rate_limit") as mock_metric,
         ):
             resp = client.post("/login", data={"username": "x", "password": "y"}, follow_redirects=False)
