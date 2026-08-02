@@ -1210,10 +1210,16 @@ async def _proxy_to_worker(
             else:
                 resp = await client.post(f"{url}{path}", json=json, params=params, headers=headers)
             if resp.status_code >= 400:
-                logger.warning("worker proxy error (%s): %s", resp.status_code, resp.text)
+                # NOT resp.text at warning level: withholding the raw body from the
+                # caller (see _safe_worker_detail) is pointless if it goes straight
+                # into the log instead. A deploy failure can echo env values, which
+                # for several providers are live credentials.
+                safe = _safe_worker_detail(resp)
+                logger.warning("worker proxy error (%s): %s", resp.status_code, safe or "unstructured error body")
+                logger.debug("worker proxy error body (%s): %s", resp.status_code, resp.text)
                 raise HTTPException(
                     status_code=resp.status_code,
-                    detail=_safe_worker_detail(resp) or "Worker request failed",
+                    detail=safe or "Worker request failed",
                 )
             return resp.json()
     except httpx.HTTPError as exc:
