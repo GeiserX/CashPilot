@@ -431,6 +431,61 @@ const CP = (() => {
   const ICON_STOP = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="6" width="12" height="12" rx="1"/></svg>';
   const ICON_LOGS = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>';
 
+  // -------------------------------------------------------------------------
+  // Shared fragment builders (CashPilot-cyc)
+  //
+  // These markup blocks were written out three and two times respectively, and
+  // had already drifted: one env-input copy omitted the label's `for` and the
+  // hint, and the two worker lists differed only in a class name. Duplicated
+  // markup does not stay identical — it stays ALMOST identical, which is worse,
+  // because a fix applied to one copy silently misses the others.
+  // -------------------------------------------------------------------------
+
+  function envInputFields(svc, envs, { withId = true, withHint = true } = {}) {
+    return (envs || []).map((env) => {
+      const inputType = env.secret ? 'password' : 'text';
+      const id = withId ? `env-${svc.slug}-${env.key}` : '';
+      const label = withId
+        ? `<label class="form-label" for="${id}">${escapeHtml(env.label)}</label>`
+        : `<label class="form-label">${escapeHtml(env.label)}</label>`;
+      const hint = withHint && env.description
+        ? `<div class="form-hint">${escapeHtml(env.description)}</div>`
+        : '';
+      return `
+      <div class="form-group">
+        ${label}
+        <input class="form-input" type="${inputType}"${withId ? ` id="${id}"` : ''}
+               data-slug="${svc.slug}" data-key="${env.key}"
+               placeholder="${escapeHtml(env.description || '')}"
+               value="${escapeHtml(env.default || '')}"
+               ${env.required ? 'required' : ''}>
+        ${hint}
+      </div>`;
+    }).join('');
+  }
+
+  // The class is a parameter rather than unified, deliberately: the setup wizard
+  // and the detail view can both be in the DOM at once, and their deploy
+  // handlers select by class. One shared class would make each pick up the
+  // other's checkboxes.
+  function workerCheckboxList(svc, onlineWorkers, checkboxClass) {
+    let rows = '';
+    let allDeployed = true;
+    for (const w of onlineWorkers) {
+      const deployed = (w.containers || []).map((c) => c.slug).includes(svc.slug);
+      if (!deployed) allDeployed = false;
+      rows += `
+      <label style="display:flex; align-items:center; gap:8px; padding:6px 0; ${deployed ? 'opacity:0.5;' : ''}">
+        <input type="checkbox" class="${checkboxClass}" data-slug="${svc.slug}" data-wid="${w.id}" ${deployed ? 'disabled checked' : ''}>
+        <span>${escapeHtml(w.name)}</span>
+        ${deployed
+          ? '<span class="badge badge-deployed" style="font-size:0.75rem;">Deployed</span>'
+          : '<span class="badge badge-available" style="font-size:0.75rem;">Available</span>'}
+      </label>`;
+    }
+    return { rows, allDeployed };
+  }
+
   function renderServiceRow(svc, bk) {
     const isExternal = svc.container_status === 'external';
     const statusClass = isExternal ? 'external' : (svc.container_status || 'stopped').toLowerCase();
@@ -1378,19 +1433,7 @@ const CP = (() => {
     // Manual-only services: show signup link + earnings tracking notice + any env fields
     if (svc.manual_only) {
       const platforms = (svc.platforms || []).map(p => p.charAt(0).toUpperCase() + p.slice(1)).join(', ');
-      const manualEnvFields = (svc.docker && svc.docker.env || []).map(env => {
-        const inputType = env.secret ? 'password' : 'text';
-        return `
-        <div class="form-group">
-          <label class="form-label" for="env-${svc.slug}-${env.key}">${escapeHtml(env.label)}</label>
-          <input class="form-input" type="${inputType}" id="env-${svc.slug}-${env.key}"
-                 data-slug="${svc.slug}" data-key="${env.key}"
-                 placeholder="${escapeHtml(env.description || '')}"
-                 value="${escapeHtml(env.default || '')}"
-                 ${env.required ? 'required' : ''}>
-          ${env.description ? `<div class="form-hint">${escapeHtml(env.description)}</div>` : ''}
-        </div>`;
-      }).join('');
+      const manualEnvFields = envInputFields(svc, svc.docker && svc.docker.env);
       const manualBtnLabel = isDeployed && dashboardUrl
         ? `Dashboard for ${escapeHtml(svc.name)}`
         : `Sign Up for ${escapeHtml(svc.name)}`;
@@ -1420,19 +1463,7 @@ const CP = (() => {
       </div>`;
     }
 
-    const envFields = (svc.docker && svc.docker.env || []).map(env => {
-      const inputType = env.secret ? 'password' : 'text';
-      return `
-      <div class="form-group">
-        <label class="form-label" for="env-${svc.slug}-${env.key}">${escapeHtml(env.label)}</label>
-        <input class="form-input" type="${inputType}" id="env-${svc.slug}-${env.key}"
-               data-slug="${svc.slug}" data-key="${env.key}"
-               placeholder="${escapeHtml(env.description || '')}"
-               value="${escapeHtml(env.default || '')}"
-               ${env.required ? 'required' : ''}>
-        ${env.description ? `<div class="form-hint">${escapeHtml(env.description)}</div>` : ''}
-      </div>`;
-    }).join('');
+    const envFields = envInputFields(svc, svc.docker && svc.docker.env);
 
     return `
     <div class="card" style="margin-bottom: 16px;" id="setup-${svc.slug}">
@@ -1460,19 +1491,7 @@ const CP = (() => {
 
       ${(() => {
         const onlineWorkers = (workers || []).filter(w => w.status === 'online');
-        let workerRows = '';
-        let allDeployed = true;
-        for (const w of onlineWorkers) {
-          const slugs = (w.containers || []).map(c => c.slug);
-          const deployed = slugs.includes(svc.slug);
-          if (!deployed) allDeployed = false;
-          workerRows += `
-          <label style="display:flex; align-items:center; gap:8px; padding:6px 0; ${deployed ? 'opacity:0.5;' : ''}">
-            <input type="checkbox" class="setup-deploy-worker-cb" data-slug="${svc.slug}" data-wid="${w.id}" ${deployed ? 'disabled checked' : ''}>
-            <span>${escapeHtml(w.name)}</span>
-            ${deployed ? '<span class="badge badge-deployed" style="font-size:0.75rem;">Deployed</span>' : '<span class="badge badge-available" style="font-size:0.75rem;">Available</span>'}
-          </label>`;
-        }
+        const { rows: workerRows, allDeployed } = workerCheckboxList(svc, onlineWorkers, 'setup-deploy-worker-cb');
 
         if (onlineWorkers.length === 0) {
           return `<p style="color:var(--text-muted); font-size:0.85rem; margin-bottom:12px;">No workers online.</p>`;
@@ -1765,32 +1784,13 @@ const CP = (() => {
     // --- Deploy section (worker-aware) ---
     const hasDocker = svc.docker && svc.docker.image;
     if (hasDocker) {
-      const envFields = (svc.docker.env || []).map(env => {
-        const inputType = env.secret ? 'password' : 'text';
-        return `
-        <div class="form-group">
-          <label class="form-label">${escapeHtml(env.label)}</label>
-          <input class="form-input" type="${inputType}" data-slug="${svc.slug}" data-key="${env.key}"
-                 placeholder="${escapeHtml(env.description || '')}" value="${escapeHtml(env.default || '')}"
-                 ${env.required ? 'required' : ''}>
-        </div>`;
-      }).join('');
+      const envFields = envInputFields(svc, svc.docker.env, { withId: false, withHint: false });
 
       // Worker deploy targets
       const onlineWorkers = (workers || []).filter(w => w.status === 'online');
       let workerRows = '';
       let allDeployed = true;
-      for (const w of onlineWorkers) {
-        const slugs = (w.containers || []).map(c => c.slug);
-        const deployed = slugs.includes(svc.slug);
-        if (!deployed) allDeployed = false;
-        workerRows += `
-        <label style="display:flex; align-items:center; gap:8px; padding:6px 0; ${deployed ? 'opacity:0.5;' : ''}">
-          <input type="checkbox" class="deploy-worker-cb" data-slug="${svc.slug}" data-wid="${w.id}" ${deployed ? 'disabled checked' : ''}>
-          <span>${escapeHtml(w.name)}</span>
-          ${deployed ? '<span class="badge badge-deployed" style="font-size:0.75rem;">Deployed</span>' : '<span class="badge badge-available" style="font-size:0.75rem;">Available</span>'}
-        </label>`;
-      }
+      ({ rows: workerRows, allDeployed } = workerCheckboxList(svc, onlineWorkers, 'deploy-worker-cb'));
 
       if (onlineWorkers.length === 0) {
         workerRows = '<p style="color:var(--text-muted); font-size:0.85rem;">No workers online.</p>';
