@@ -15,14 +15,14 @@ theme:
   favicon: icon.svg
   palette:
     - scheme: slate
-      primary: deep purple
-      accent: pink
+      primary: custom
+      accent: custom
       toggle:
         icon: material/brightness-4
         name: Switch to light mode
     - scheme: default
-      primary: deep purple
-      accent: pink
+      primary: custom
+      accent: custom
       toggle:
         icon: material/brightness-7
         name: Switch to dark mode
@@ -59,6 +59,11 @@ markdown_extensions:
   - pymdownx.mark
   - attr_list
   - md_in_html
+  # Renders :material-xxx: shortcodes as real icons. Without this the feature
+  # cards on the home page print the literal shortcode text instead.
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
   - tables
   - toc:
       permalink: true
@@ -69,6 +74,9 @@ extra:
       link: https://github.com/GeiserX/CashPilot
     - icon: fontawesome/brands/docker
       link: https://hub.docker.com/r/drumsergio/cashpilot
+
+extra_css:
+  - stylesheets/theme.css
 
 nav:
   - Home: index.md

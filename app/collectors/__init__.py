@@ -72,6 +72,82 @@ _COLLECTOR_ARGS: dict[str, list[str]] = {
     "salad": ["auth_cookie"],
 }
 
+# How long each credential actually lasts, and why it matters.
+#
+# Several collectors need a value copied out of a browser, and some of those die
+# within hours. Without this the UI cannot warn before a collector goes silent,
+# and the user only finds out when earnings stop being recorded - by which point
+# the failure looks the same as a provider outage.
+#
+# `hours` is the expected usable lifetime (None = no known expiry, e.g. an
+# account password or an API key that lasts until revoked). `durable` marks the
+# long-lived alternative where a service offers both. `why` is shown to the user.
+CREDENTIAL_LIFETIMES: dict[str, dict[str, dict[str, object]]] = {
+    "bytelixir": {
+        "session_cookie": {
+            "hours": 2,
+            "durable": False,
+            "why": (
+                "Bytelixir's session cookie expires about 2 hours after it is issued. "
+                "On its own this collector stops working the same afternoon you set it up."
+            ),
+        },
+        "remember_web": {
+            "hours": 24 * 365,
+            "durable": True,
+            "why": (
+                "The durable 'remember me' cookie, good for about a year. Supply this "
+                "alongside the session cookie so the session can be re-established "
+                "instead of dying in a couple of hours."
+            ),
+        },
+        "xsrf_token": {
+            "hours": 24 * 365,
+            "durable": True,
+            "why": "Needed alongside the remember-me cookie to re-establish a session.",
+        },
+    },
+    "earnapp": {
+        "oauth_token": {
+            "hours": None,
+            "durable": True,
+            "why": "Lasts until you sign out of EarnApp or revoke the session.",
+        },
+    },
+    "packetstream": {
+        "auth_token": {
+            "hours": None,
+            "durable": True,
+            "why": "A browser session JWT. Lasts until you log out of PacketStream.",
+        },
+    },
+    "grass": {
+        "access_token": {
+            "hours": None,
+            "durable": True,
+            "why": "Bearer token from browser localStorage. Re-copy it if Grass signs you out.",
+        },
+    },
+    "salad": {
+        "auth_cookie": {
+            "hours": None,
+            "durable": True,
+            "why": "Salad's auth cookie. Lasts until you log out.",
+        },
+    },
+}
+
+
+def credential_lifetime(slug: str, field: str) -> dict[str, object] | None:
+    """Return the lifetime metadata for one credential field, if known."""
+    return CREDENTIAL_LIFETIMES.get(slug, {}).get(field)
+
+
+def durable_alternative(slug: str) -> list[str]:
+    """Fields for this service that outlive its short-lived credential."""
+    return [f for f, meta in CREDENTIAL_LIFETIMES.get(slug, {}).items() if meta.get("durable")]
+
+
 _cached_collectors: dict[str, BaseCollector] = {}
 _cached_kwargs: dict[str, dict[str, str]] = {}
 _stale: list[BaseCollector] = []

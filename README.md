@@ -159,7 +159,9 @@ cashpilot/
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `TZ` | `UTC` | Timezone for scheduling and display |
-| `CASHPILOT_SECRET_KEY` | *(auto-generated)* | Encryption key for stored credentials |
+| `CASHPILOT_SECRET_KEY` | *(auto-generated)* | Signing key for login sessions. Persisted at `/data/.secret_key`. **Does not encrypt credentials** |
+| `CASHPILOT_ENCRYPTION_KEY` | *(auto-generated)* | Fernet key encrypting stored credentials at rest. Persisted at `/data/.fernet_key`. Set this only to restore a backup — see [Backing up the encryption key](#backing-up-the-encryption-key) |
+| `CASHPILOT_ALLOW_EPHEMERAL_KEY` | `false` | Allow startup when the encryption key cannot be written to disk. Credentials are then lost on restart, so this is off by default |
 | `CASHPILOT_API_KEY` | -- | Enrollment/bootstrap key; each worker then gets its own key (per-worker fleet keys, v1.0.0+) |
 | `CASHPILOT_COLLECT_INTERVAL` | `60` | Minutes between earnings collection cycles |
 | `CASHPILOT_METRICS_ENABLED` | `false` | Set to `true` to expose Prometheus metrics at `/metrics` |
@@ -246,7 +248,27 @@ Some services require a residential IP and will not pay (or will ban) VPS/datace
 
 **How are credentials stored?**
 
-All service credentials are encrypted at rest in the SQLite database using your `CASHPILOT_SECRET_KEY`. The database file lives in the mounted Docker volume (`cashpilot_data:/data`). No credentials are ever sent anywhere except to the service containers themselves.
+All service credentials are encrypted at rest in the SQLite database using a Fernet key stored at `/data/.fernet_key`, which is generated automatically on first run. The database file lives in the mounted Docker volume (`cashpilot_data:/data`). No credentials are ever sent anywhere except to the service containers themselves.
+
+Note that this is a different key from `CASHPILOT_SECRET_KEY`, which only signs login sessions.
+
+### Backing up the encryption key
+
+Your credentials are only as recoverable as `/data/.fernet_key`. If you lose that file you will have to re-enter every credential, because there is no way to decrypt the stored values without it.
+
+```bash
+# Back it up
+docker exec cashpilot-ui cat /data/.fernet_key
+
+# Restore onto a fresh volume: pass the saved value when starting CashPilot.
+# It must reach the container, so put it on the same command line (or export it,
+# or set it in your .env) - a bare shell assignment on its own line does nothing.
+CASHPILOT_ENCRYPTION_KEY=<the value you saved> docker compose up -d
+```
+
+The file always takes precedence over the environment variable, so setting `CASHPILOT_ENCRYPTION_KEY` on an instance that already has a key changes nothing and is safe. It is adopted only when no key file exists, which is exactly the restore case.
+
+If the key cannot be written to disk at all — an unwritable or unmounted `/data` — CashPilot refuses to start rather than encrypting your credentials under a key that disappears on the next restart. Set `CASHPILOT_ALLOW_EPHEMERAL_KEY=true` if that is genuinely what you want.
 
 **What about security?**
 
@@ -304,18 +326,17 @@ Services that were evaluated but are no longer listed in the catalog due to bein
 
 ## How CashPilot Compares
 
-| Feature | CashPilot | money4band | CashFactory | income-generator | InternetIncome |
-|---------|:---------:|:----------:|:-----------:|:----------------:|:--------------:|
-| Web UI with guided setup | **Yes** | No (CLI) | Partial (links only) | No (CLI) | No (CLI) |
-| One-click container deploy | **Yes** | No (compose) | No (compose) | No | No (compose) |
-| Earnings dashboard | **Yes** | No | No | No | No |
-| Historical charts | **Yes** | No | No | No | No |
-| Multi-node fleet management | **Yes** | No | No | No | No |
-| Service catalog with guides | **50 services** | 17 | 8 | 14 | 8 |
-| Automated earnings collection | **15 collectors** | 0 | 0 | 0 | 0 |
-| Multi-arch (amd64 + arm64) | **Yes** | Yes | Yes | No | No |
-| Credential encryption | **Yes** | No | No | No | No |
-| Compose export | **Yes** | Yes | Yes | Yes | Yes |
+There are several good open-source projects in this space, and the honest summary is that they overlap more than they differ. [money4band](https://github.com/MRColorR/money4band) is the most mature of them: it supports 20+ apps, ships a web dashboard, and is actively developed. If you want to run a handful of bandwidth-sharing apps on one machine, it is a perfectly good choice and has been doing this longer than CashPilot has.
+
+CashPilot is built around three things that shape its whole design:
+
+- **A fleet, not a machine.** One dashboard holds the state for many servers, each running a worker. Earnings are collected centrally exactly once, so nothing is double-counted, and every figure drills down per server and per service.
+- **Earnings pulled from the providers themselves.** 15 collectors authenticate against provider APIs and dashboards and record real balances into a local history, rather than reporting that a container is running. That is what makes "running but not earning" detectable at all.
+- **Breadth beyond bandwidth.** 50 catalogued services spanning bandwidth sharing, DePIN, storage and GPU compute, each with a setup guide, a payout method, and a status that is re-checked weekly in CI.
+
+If none of those matter to you, use whichever tool you prefer — they will all start the same containers.
+
+> **On this section.** It deliberately avoids a feature matrix claiming what other projects lack. Those tables go stale the moment someone ships a release, and a comparison a reader can falsify in thirty seconds is worse than no comparison at all. If anything above is out of date, please open an issue.
 
 ## License
 

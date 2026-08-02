@@ -96,7 +96,7 @@ cashpilot/
 - **YAML is the source of truth.** Every service lives in `services/{category}/{slug}.yml`. The web UI, container deployment, earnings collection, and documentation ALL derive from these files. Never hardcode service-specific logic in `app/`.
 - **Container naming:** All managed containers are `cashpilot-{slug}` with labels `cashpilot.managed=true` and `cashpilot.service={slug}`.
 - **Data directory:** `/data` volume holds SQLite DB and persistent config. Never write outside `/data` at runtime.
-- **Credentials:** Encrypted at rest via `CASHPILOT_SECRET_KEY` (Fernet). The key is auto-generated if not provided.
+- **Credentials:** Encrypted at rest with Fernet using a key at `/data/.fernet_key`, auto-generated when absent and overridable via `CASHPILOT_ENCRYPTION_KEY` (the file wins; the env var is adopted whenever no key file exists, which covers both a fresh install and a restore). This is NOT `CASHPILOT_SECRET_KEY`, which signs sessions (`/data/.secret_key`).
 - **README table is manually maintained.** Update the tables in README.md directly when adding/changing services.
 
 ## UI + Worker Architecture
@@ -204,6 +204,8 @@ Triggers on version tags (`v*`). Lints with ruff, builds multi-arch (amd64 + arm
 - Node identity lives in Docker volume (`mysterium-data:/var/lib/mysterium-node/keystore/`). Deleting volume = new identity.
 - Registration is blockchain-based (Polygon). Hermes "internal error" = temporary server issue.
 - Image: `mysteriumnetwork/myst` (NOT `mysteriumnet/myst`).
+- **Needs `/dev/net/tun`, not just `NET_ADMIN`.** Without the device the node starts, registers and advertises normally but cannot carry wireguard/dvpn traffic — so it looks healthy, earns nothing, and MystNodes emails "unable to track its status". Diagnose with `curl -s http://127.0.0.1:4050/node/monitoring-agent-statuses` (look for `tun_device_problem`) and `docker exec <container> ls -l /dev/net/tun`. The catalog cannot declare devices yet, so a CashPilot-deployed Mysterium container does not get it automatically. See `docs/guides/mysterium.md` for the full runbook.
+- A container recreate is safe: the identity lives in the mounted data dir, not the container. Always confirm the address is unchanged afterwards via `curl -s http://127.0.0.1:4050/identities`.
 
 ## Collector Implementation Status
 

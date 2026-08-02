@@ -33,13 +33,19 @@
 #   critical_volumes:          (optional) mounts holding state that CANNOT be recovered
 #     - target: "/container/path"   must match the container-side path in `volumes`
 #       holds: "what is lost, in one or two sentences shown to the operator"
-#     Declaring a mount here makes the worker REFUSE to delete that volume, and
-#     refuse a redeploy that would drop it, unless the caller passes an explicit
-#     override. Use it only for genuinely irreplaceable state — node identities,
+#     Declaring a mount here makes the worker REFUSE to delete that volume unless
+#     the caller passes an explicit override (owner role required).
+#     NOTE: redeploy protection — refusing a redeploy that would drop or retype a
+#     critical mount — is NOT implemented yet; only the delete guard is.
+#     Use it only for genuinely irreplaceable state — node identities,
 #     keystores, generated wallets — not for caches or re-downloadable data.
 #   command: "" (optional override)
 #   network_mode: "" (optional, e.g. "host")
 #   cap_add: [] (optional)
+#   devices: [] (optional) host devices to map in, e.g. ["/dev/net/tun"]
+#     Only devices on the worker's allow-list may be requested, and only by the
+#     service whose own YAML declares them. A device is a direct line to the
+#     kernel, so the catalog cannot widen that ceiling on its own.
 #   privileged: false (optional, security-sensitive — grants the container full host device access)
 #   stop_timeout: 30 (optional, seconds to wait before SIGKILL on stop — default 30)
 #   setup: "" (optional, one-time setup instructions/commands to run before first deploy)

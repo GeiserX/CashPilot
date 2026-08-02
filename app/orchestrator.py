@@ -162,6 +162,7 @@ def deploy_raw(
     volumes: dict[str, dict[str, str]] | None = None,
     network_mode: str | None = None,
     cap_add: list[str] | None = None,
+    devices: list[str] | None = None,
     command: str | None = None,
     hostname: str | None = None,
     labels: dict[str, str] | None = None,
@@ -223,6 +224,7 @@ def deploy_raw(
         # alone — the rest are plain outbound TCP clients). Without this they ran as
         # in-container root with Docker's full default set, which includes NET_RAW
         # (ARP/DNS spoofing on the bridge), MKNOD, SETUID and SYS_CHROOT.
+        devices=devices or None,
         cap_drop=["ALL"],
         cap_add=cap_add or None,
         # no-new-privileges blocks privilege escalation via setuid binaries; privileged

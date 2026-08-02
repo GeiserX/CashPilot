@@ -28,7 +28,18 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from starlette.middleware.base import BaseHTTPMiddleware
 
-from app import auth, catalog, compose_generator, database, exchange_rates, fleet_key, metrics, notify, setup_token
+from app import (
+    auth,
+    catalog,
+    compose_generator,
+    database,
+    exchange_rates,
+    fleet_key,
+    metrics,
+    notify,
+    preflight,
+    setup_token,
+)
 from app.worker_proxy import _pin_url_to_ip, _validate_worker_url
 
 logging.basicConfig(
@@ -237,6 +248,48 @@ async def _collect_bounded(collector) -> Any:
         return await collector.collect()
 
 
+async def _flatline_check() -> None:
+    """Alert on services that are running but whose balance has stopped moving.
+
+    A container can be up and a collector can authenticate happily while the
+    balance never moves. Every other view of the system looks healthy, so
+    nothing else would surface it.
+
+    Never raises: this is a diagnostic, and a diagnostic must not be able to
+    take down the collection run it is diagnosing. record_alert's per-kind
+    cooldown keeps this to one notification per service rather than one per
+    collection cycle.
+    """
+    try:
+        flat_services = await database.get_flatlined_services()
+        flat_now = {f["platform"] for f in flat_services}
+
+        # Clear the cooldown for anything that has started earning again.
+        # record_alert suppresses a repeat within the quiet window, so without
+        # this a service that recovered and then went flat again inside that
+        # window would be silently swallowed - the alert nobody gets.
+        for recovered in await database.get_alert_subjects("flatline") - flat_now:
+            await database.clear_alerts("flatline", recovered)
+            logger.info("%s is earning again; cleared its flatline alert", recovered)
+
+        for flat in flat_services:
+            message = (
+                f"Balance has not moved in {flat['days_flat']} days "
+                f"(still {flat['balance']}). The service is running but not earning."
+            )
+            if await database.record_alert("flatline", flat["platform"], message):
+                _spawn(
+                    notify.send(
+                        f"CashPilot: {flat['platform']} is running but not earning",
+                        message,
+                        kind="flatline",
+                        subject=flat["platform"],
+                    )
+                )
+    except Exception as exc:
+        logger.warning("Flatline check failed: %s", exc)
+
+
 async def _warm_collector_alerts() -> None:
     """Restore persisted collector alerts into the in-memory list the UI bell reads.
 
@@ -332,6 +385,8 @@ async def _run_collection() -> None:
                         # as new and notifies again.
                         await database.clear_alerts("collector", result.platform)
             _collector_alerts = alerts
+
+            await _flatline_check()
         except Exception as exc:
             logger.error("Collection run failed: %s", exc)
             success = False
@@ -442,6 +497,10 @@ async def _warm_session_epochs() -> None:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup
+    # Before anything touches credentials: refuse to run when the encryption key
+    # cannot survive a restart. Continuing would encrypt every credential entered
+    # during this run under a key that dies with the process.
+    database.verify_encryption_key_persisted()
     await database.init_db()
     await database.connect_shared()
     # Warm the per-user session-epoch cache (password changes + delete/demote
@@ -967,11 +1026,21 @@ async def api_deploy(request: Request, slug: str, body: DeployRequest, worker_id
         env[var["key"]] = str(default)
     env.update(body.env or {})
 
-    # Validate required env vars are not blank
+    # What this service was ACTUALLY deployed with, if anything. Loaded before
+    # the required-field check because a redeploy must not demand values the
+    # deployment already has: rejecting here would mean the operator has to
+    # retype Storj's IDENTITY_DIR/STORAGE_DIR on every redeploy, which is
+    # precisely what recording the spec exists to avoid.
+    recorded = await database.get_deployment_spec(slug)
+    recorded_env = (recorded or {}).get("env") or {}
+
+    # Validate required env vars are not blank.
     missing = [
         var.get("label", var["key"])
         for var in docker_conf.get("env", [])
-        if var.get("required") and not env.get(var["key"], "").strip()
+        if var.get("required")
+        and not env.get(var["key"], "").strip()
+        and not str(recorded_env.get(var["key"], "")).strip()
     ]
     if missing:
         raise HTTPException(status_code=400, detail=f"Missing required fields: {', '.join(missing)}")
@@ -1007,6 +1076,10 @@ async def api_deploy(request: Request, slug: str, body: DeployRequest, worker_id
         "volumes": volumes,
         "network_mode": docker_conf.get("network_mode") or None,
         "cap_add": docker_conf.get("cap_add") or None,
+        # Some services need a device, not just a capability: Mysterium cannot
+        # carry wireguard traffic without /dev/net/tun, and without it the node
+        # starts, registers and earns nothing.
+        "devices": docker_conf.get("devices") or None,
         "privileged": docker_conf.get("privileged", False),
     }
 
@@ -1022,8 +1095,8 @@ async def api_deploy(request: Request, slug: str, body: DeployRequest, worker_id
         spec["resources"] = resources
 
     # An existing deployment is rebuilt from what it actually ran, not from the
-    # catalog - see _merge_recorded_spec.
-    recorded = await database.get_deployment_spec(slug)
+    # catalog - see _merge_recorded_spec. `recorded` was loaded above, before the
+    # required-field check.
     divergence: list[str] = []
     if recorded:
         # Which env vars feed which mount, so a relocation applies only to the
@@ -1340,10 +1413,16 @@ async def _proxy_to_worker(
             else:
                 resp = await client.post(f"{url}{path}", json=json, params=params, headers=headers)
             if resp.status_code >= 400:
-                logger.warning("worker proxy error (%s): %s", resp.status_code, resp.text)
+                # NOT resp.text at warning level: withholding the raw body from the
+                # caller (see _safe_worker_detail) is pointless if it goes straight
+                # into the log instead. A deploy failure can echo env values, which
+                # for several providers are live credentials.
+                safe = _safe_worker_detail(resp)
+                logger.warning("worker proxy error (%s): %s", resp.status_code, safe or "unstructured error body")
+                logger.debug("worker proxy error body (%s): %s", resp.status_code, resp.text)
                 raise HTTPException(
                     status_code=resp.status_code,
-                    detail=_safe_worker_detail(resp) or "Worker request failed",
+                    detail=safe or "Worker request failed",
                 )
             return resp.json()
     except httpx.HTTPError as exc:
@@ -1609,6 +1688,101 @@ async def api_collect(request: Request) -> dict[str, str]:
 
 
 _MAX_ALERT_ERROR_LEN = 200
+
+
+@app.get("/api/earnings/flatlines")
+async def api_earnings_flatlines(request: Request) -> list[dict[str, Any]]:
+    """Services that are running but whose balance has stopped moving."""
+    _require_auth_api(request)
+    return await database.get_flatlined_services()
+
+
+@app.get("/api/credentials/health")
+async def api_credential_health(request: Request) -> list[dict[str, Any]]:
+    """Report how old each stored credential is and when it is expected to die.
+
+    Never returns credential VALUES - only which key it is, how old, and what
+    that means. The point is that "this will stop working tonight" is visible
+    BEFORE it happens, rather than the user discovering it because earnings
+    quietly stopped being recorded.
+    """
+    _require_auth_api(request)
+
+    from app.collectors import _COLLECTOR_ARGS, credential_lifetime, durable_alternative
+
+    updated = await database.get_config_updated_at()
+    now = datetime.now(UTC)
+    report: list[dict[str, Any]] = []
+
+    for slug, args in _COLLECTOR_ARGS.items():
+        missing_durable = [field for field in durable_alternative(slug) if f"{slug}_{field}" not in updated]
+        for arg in args:
+            field = arg.lstrip("?")
+            key = f"{slug}_{field}"
+            stamp = updated.get(key)
+            if not stamp:
+                continue  # not configured; nothing to report an age for
+
+            meta = credential_lifetime(slug, field) or {}
+            hours_total = meta.get("hours")
+            try:
+                age_hours = (now - datetime.fromisoformat(stamp).replace(tzinfo=UTC)).total_seconds() / 3600
+            except ValueError:
+                continue
+
+            if hours_total is None:
+                status = "no_known_expiry"
+            elif age_hours >= hours_total:
+                status = "likely_expired"
+            elif age_hours >= hours_total * 0.75:
+                status = "expiring_soon"
+            else:
+                status = "fresh"
+
+            entry: dict[str, Any] = {
+                "service": slug,
+                "field": field,
+                "age_hours": round(age_hours, 1),
+                "expected_lifetime_hours": hours_total,
+                "status": status,
+            }
+            if meta.get("why"):
+                entry["why"] = meta["why"]
+            # Only nag about a durable alternative when the short-lived credential
+            # is the one actually at risk.
+            if missing_durable and hours_total is not None and not meta.get("durable"):
+                entry["durable_alternative_missing"] = missing_durable
+            report.append(entry)
+
+    return report
+
+
+@app.get("/api/services/{slug}/preflight")
+async def api_service_preflight(request: Request, slug: str, worker_id: int | None = None) -> dict[str, Any]:
+    """What this service will realistically do for THIS user, before deploying.
+
+    Never blocks a deploy: the goal is informed consent, not a nanny.
+    """
+    _require_auth_api(request)
+    service = catalog.get_service(slug)
+    if not service:
+        raise HTTPException(status_code=404, detail=f"Unknown service '{slug}'")
+
+    # What is already running on the SAME machine is what makes a per-IP limit
+    # checkable at all, so scope to that worker when we know which one.
+    deployed = await database.get_deployments()
+    if worker_id is not None:
+        worker = await database.get_worker(worker_id)
+        running = {c.get("service") for c in (worker or {}).get("containers", []) if c.get("service")}
+    else:
+        running = {d["slug"] for d in deployed}
+
+    system_info = {}
+    if worker_id is not None:
+        worker = await database.get_worker(worker_id)
+        system_info = (worker or {}).get("system_info") or {}
+
+    return preflight.assess(service, already_deployed_slugs=running, system_info=system_info)
 
 
 @app.get("/api/collector-alerts")
