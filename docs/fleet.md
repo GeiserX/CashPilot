@@ -157,6 +157,44 @@ Notifications fire **only the first time** a particular failure appears — a co
 | `CASHPILOT_PORT` | No | `8081` | Mini-UI/API port the worker listens on |
 | `CASHPILOT_ALLOWED_VOLUME_ROOTS` | No | *(none)* | Colon-separated host directories this worker may bind-mount despite sitting under a blocked system root -- see [Volume mounts](#volume-mounts) |
 | `CASHPILOT_PIDS_LIMIT` | No | `512` | Max processes a deployed service container may create. Raise only if a service legitimately needs more. An unparseable or non-positive value falls back to the default |
+| `CASHPILOT_WORKER_NETWORK` | No | *(detected)* | `residential` or `hosting`. Overrides the hardware-based guess -- see [Egress IP and per-IP limits](#egress-ip-and-per-ip-limits) |
+| `CASHPILOT_EGRESS_DETECT` | No | on | Set to `off` to stop this worker looking up its own public IP. The fleet then reports its exit as undetermined |
+| `CASHPILOT_EGRESS_IP` | No | -- | State this worker's public IP directly instead of looking it up. Must be a public address; a LAN or tailnet address is rejected |
+| `CASHPILOT_EGRESS_IP_URL` | No | -- | Use your own IP-echo endpoint (must return a bare IP) instead of the public ones |
+
+### Egress IP and per-IP limits
+
+Providers count devices per **IP address**, not per machine. Honeygain treats a
+second active device on a network as "network overused", and EarnApp documents
+that extra devices behind one IP share a single daily cap. Two workers in one
+house are two machines on your dashboard and **one customer** to the provider,
+so the second one usually earns nothing.
+
+Each worker therefore reports the public address it leaves the internet through,
+and the UI can group the fleet by that address (`/api/fleet/egress-groups`)
+rather than by host. Deploying a service to a machine that shares an address
+with one already running it is called out before the deploy, by name.
+
+Three things worth knowing about how this behaves:
+
+- **A worker whose exit could not be determined is reported as undetermined,
+  never as sharing.** No warning is produced for it at all. That is deliberate:
+  a wrong conflict warning is worse than none.
+- **Private addresses are ignored.** A LAN or tailnet (`100.64/10`) address means
+  detection failed, not that the machine exits there.
+- **A service with no documented per-IP limit is treated as unknown, not
+  unlimited.** You are told to check the provider's terms rather than reassured.
+
+Detection is local where it can be. The "is this a hosted machine?" hint comes
+from the machine's own hardware identifiers, so nothing is sent anywhere and it
+works offline; a plain hypervisor such as QEMU or VMware is **not** treated as
+hosting, because a VM on a home server is a residential connection.
+
+The public-IP lookup is the one outbound call CashPilot makes purely to learn
+about your setup. It is a single request per hour to a public IP-echo service.
+Turn it off with `CASHPILOT_EGRESS_DETECT=off`, point it at your own endpoint
+with `CASHPILOT_EGRESS_IP_URL`, or skip it entirely by stating the address with
+`CASHPILOT_EGRESS_IP`.
 
 ### Volume mounts
 
