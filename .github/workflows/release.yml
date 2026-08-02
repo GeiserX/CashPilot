@@ -52,7 +52,21 @@ jobs:
       - name: Detect what changed
         id: changes
         run: |
-          CHANGED=$(git diff --name-only HEAD~1 HEAD 2>/dev/null || echo "")
+          # Diff across everything since the last RELEASE, not just the last
+          # commit. A release contains every commit since the previous tag, and
+          # HEAD~1 only sees the newest one -- so a release whose app changes
+          # landed in earlier commits (anything merged with [skip ci], or a
+          # workflow_dispatch run) detected "nothing to build", skipped the
+          # version step, and silently produced no tag and no image while the
+          # run still reported success.
+          LAST_TAG=$(git tag -l 'v*.*.*' --sort=-v:refname | head -1)
+          if [ -n "$LAST_TAG" ]; then
+            CHANGED=$(git diff --name-only "$LAST_TAG"..HEAD 2>/dev/null || echo "")
+            echo "Comparing $LAST_TAG..HEAD"
+          else
+            CHANGED=$(git diff --name-only HEAD~1 HEAD 2>/dev/null || echo "")
+            echo "No previous tag; comparing HEAD~1..HEAD"
+          fi
           echo "Changed files: $CHANGED"
 
           BUILD_UI=false
