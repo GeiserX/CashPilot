@@ -154,6 +154,77 @@ class TestTheWorkerImageShipsEveryModuleItImports:
         assert {"worker_api", "orchestrator", "egress"} <= closure, closure
 
 
+class TestNoConditionIsStaticallyImpossible:
+    """Generalises the dead 401 alarm rather than just fixing it.
+
+    That block compared a counter to 3 in the branch that had just set it to 0
+    — `0 == 3`, never true, so the alarm was unreachable while a test named for
+    it passed. A misplaced block is invisible to every check that asks whether
+    code survived: a line moved into the wrong branch still survives.
+
+    So this asks a different question — is any comparison decidable at parse
+    time? A hand-written condition should not be.
+    """
+
+    def _impossible(self, path: Path) -> list[str]:
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        # A name assigned a constant in the same branch, then compared against
+        # a different constant, is the shape that hid the alarm.
+        found = []
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.If):
+                continue
+            for branch in (node.body, node.orelse):
+                assigned: dict[str, object] = {}
+                for stmt in branch:
+                    if (
+                        isinstance(stmt, ast.Assign)
+                        and len(stmt.targets) == 1
+                        and isinstance(stmt.targets[0], ast.Name)
+                        and isinstance(stmt.value, ast.Constant)
+                    ):
+                        assigned[stmt.targets[0].id] = stmt.value.value
+                    elif isinstance(stmt, ast.If):
+                        test = stmt.test
+                        if (
+                            isinstance(test, ast.Compare)
+                            and isinstance(test.left, ast.Name)
+                            and test.left.id in assigned
+                            and len(test.ops) == 1
+                            and isinstance(test.ops[0], ast.Eq)
+                            and isinstance(test.comparators[0], ast.Constant)
+                            and assigned[test.left.id] != test.comparators[0].value
+                        ):
+                            found.append(f"{path.name}:{stmt.lineno} `{test.left.id}` is always != here")
+        return found
+
+    def test_no_module_contains_an_unreachable_branch(self):
+        offenders = [f for p in sorted((ROOT / "app").rglob("*.py")) for f in self._impossible(p)]
+        assert not offenders, "condition can never be true — the block is dead code: " + "; ".join(offenders)
+
+    def test_the_detector_catches_the_defect_it_was_written_for(self):
+        """A checker nobody proved is a checker that quietly passes forever.
+
+        My first version of this scanned only `body` and missed the real bug,
+        which lived in `orelse`.
+        """
+        import tempfile
+
+        source = (
+            "def f(s):\n"
+            "    if s == 401:\n"
+            "        n += 1\n"
+            "    else:\n"
+            "        n = 0\n"
+            "        if n == 3:\n"
+            "            alarm()\n"
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "regression.py"
+            path.write_text(source, encoding="utf-8")
+            assert self._impossible(path), "the detector cannot see the bug it exists for"
+
+
 class TestOneTariffKey:
     """Two features shipped reading different config keys for one tariff.
 
