@@ -28,7 +28,18 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from starlette.middleware.base import BaseHTTPMiddleware
 
-from app import auth, catalog, compose_generator, database, exchange_rates, fleet_key, metrics, notify, setup_token
+from app import (
+    auth,
+    catalog,
+    compose_generator,
+    database,
+    exchange_rates,
+    fleet_key,
+    metrics,
+    notify,
+    preflight,
+    setup_token,
+)
 from app.worker_proxy import _pin_url_to_ip, _validate_worker_url
 
 logging.basicConfig(
@@ -1485,6 +1496,34 @@ async def api_collect(request: Request) -> dict[str, str]:
 
 
 _MAX_ALERT_ERROR_LEN = 200
+
+
+@app.get("/api/services/{slug}/preflight")
+async def api_service_preflight(request: Request, slug: str, worker_id: int | None = None) -> dict[str, Any]:
+    """What this service will realistically do for THIS user, before deploying.
+
+    Never blocks a deploy: the goal is informed consent, not a nanny.
+    """
+    _require_auth_api(request)
+    service = catalog.get_service(slug)
+    if not service:
+        raise HTTPException(status_code=404, detail=f"Unknown service '{slug}'")
+
+    # What is already running on the SAME machine is what makes a per-IP limit
+    # checkable at all, so scope to that worker when we know which one.
+    deployed = await database.get_deployments()
+    if worker_id is not None:
+        worker = await database.get_worker(worker_id)
+        running = {c.get("service") for c in (worker or {}).get("containers", []) if c.get("service")}
+    else:
+        running = {d["slug"] for d in deployed}
+
+    system_info = {}
+    if worker_id is not None:
+        worker = await database.get_worker(worker_id)
+        system_info = (worker or {}).get("system_info") or {}
+
+    return preflight.assess(service, already_deployed_slugs=running, system_info=system_info)
 
 
 @app.get("/api/collector-alerts")

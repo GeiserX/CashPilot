@@ -5,6 +5,7 @@ All notable changes to CashPilot are documented here.
 ## [Unreleased]
 
 ### Fixed
+- **A payout on one platform no longer erases earnings on another** (CashPilot-glc). Daily and summary earnings were computed by summing every platform's balance delta and only then clamping the total at zero. On a day a payout landed, that platform's balance fell, and the drop cancelled real earnings on other platforms before the clamp ever ran — so a day you actually earned could report zero. Each platform's delta is now clamped at zero *before* summing, so a payout counts as 'nothing earned there today' and never eats into the rest. A pure payout day reads as zero, never negative. The remaining half of the ledger work — a payouts table, drop detection, a lifetime-earned vs current-balance split, and a projected payout date — is tracked as a follow-on
 - **ProxyBase migrated to the current client** (#103). ProxyBase retired its Docker Hub image and old GHCR org and moved to `proxybase.org`, so the catalog entry no longer worked. The image is now `ghcr.io/proxybaseorg/peer-cli` (digest-pinned, multi-arch amd64/arm64/armv7 — arm64/Raspberry Pi now supported), credentials are the client's current `ID` (relabelled **Access Token**, masked) and `NAME` env vars, every URL points at `proxybase.org`, and datacenter IPs are now marked as accepted (residential still earns most). Existing ProxyBase deployments must be re-deployed with a fresh Access Token — see the [updated guide](docs/guides/proxybase.md)
 
 ### Security
@@ -29,6 +30,7 @@ All notable changes to CashPilot are documented here.
 - Prometheus HTTP metrics bound their `path` label: `/api/workers/{id}` collapses per-id paths and unknown/scanner paths fold into a single `/{other}` label, so probe traffic can't grow label cardinality without limit
 
 ### Added
+- **A pre-deploy reality check tells you what a service will actually do for you** (CashPilot-w58). The catalog shows one generic earnings range, so there was no way to tell before deploying whether a service would work in *your* situation — and several will not. Users found out weeks later, when it had earned nothing. `GET /api/services/{slug}/preflight` now answers that in one or two plain sentences with a clear verdict: a duplicate deployment where only one device per IP is allowed says so and warns that some providers forfeit the balance; a storage node states the disk commitment and that part of the balance is held back and forfeited if the node is abandoned early; GPU and residential-IP requirements are named as preconditions. It **never blocks a deploy** — the goal is informed consent, not a nanny — and it lists what it did *not* check (egress IP type, connection speed, free disk) so a clean result is never mistaken for a guarantee about things nobody looked at
 - Self-service password change `POST /api/users/me/password` (all roles, via the avatar menu) and owner reset `POST /api/users/{id}/password`
 - `CASHPILOT_WORKER_URL_POLICY`, `CASHPILOT_WORKER_ALLOWED_HOSTS`, and `CASHPILOT_WORKER_ALLOW_METADATA` env vars for worker-URL validation
 
