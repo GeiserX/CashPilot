@@ -1601,6 +1601,16 @@ async def get_earned_by_platform(days: int = 30) -> dict[str, float]:
             rate = 1.0 if currency == "USD" else row["fx_rate_usd"]
             earned.setdefault(platform, 0.0)
 
+            # A rate of zero or less is not a price, it is bad data, and it must
+            # be treated as unpriced rather than believed. Zero would silently
+            # report the platform as having earned nothing, which is
+            # indistinguishable from a real flat balance; a negative rate is
+            # worse, because the clamp above applies to the delta and the sign
+            # is applied after it, so the total would come out NEGATIVE and
+            # drag down every figure computed from it.
+            if rate is not None and float(rate) <= 0:
+                rate = None
+
             if rate is None:
                 # No rate means this reading cannot be priced, so it can neither
                 # contribute earnings nor anchor the next delta. Dropping the

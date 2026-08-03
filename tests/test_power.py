@@ -470,3 +470,50 @@ class TestNonUsdEarningsArePricedOnTheDeltaNotTheBalance:
         with caplog.at_level(logging.WARNING, logger="app.database"):
             self._earned(tmp_path, "warn", [(2, 100.0, "GRASS", None), (1, 110.0, "GRASS", None)])
         assert any("understated" in r.getMessage() for r in caplog.records)
+
+
+class TestAnImpossibleRateIsNotBelieved:
+    """Zero and negative are not prices, they are corrupt rows.
+
+    Believing them is worse than dropping them. Zero silently reports the
+    platform as having earned nothing, which reads exactly like a real flat
+    balance. Negative is worse still: the clamp applies to the delta and the
+    sign is applied afterwards, so the platform total goes NEGATIVE and drags
+    down every figure derived from it.
+    """
+
+    def _earned(self, tmp_path, name, rate):
+        import asyncio
+        from unittest.mock import patch
+
+        from app import database
+
+        async def run():
+            with (
+                patch.object(database, "DB_DIR", tmp_path),
+                patch.object(database, "DB_PATH", tmp_path / f"{name}.db"),
+            ):
+                await database.init_db()
+                await database.upsert_earnings("svc", 100.0, currency="MYST", date="2026-01-01", fx_rate_usd=rate)
+                await database.upsert_earnings("svc", 110.0, currency="MYST", date="2026-01-02", fx_rate_usd=rate)
+                return await database.get_earned_by_platform(days=99999)
+
+        return asyncio.run(run())
+
+    def test_a_zero_rate_is_unpriced_not_worthless(self, tmp_path):
+        assert self._earned(tmp_path, "zero", 0.0)["svc"] == pytest.approx(0.0)
+
+    def test_a_negative_rate_never_produces_negative_earnings(self, tmp_path):
+        """Verified reachable before the fix: this returned -20.0."""
+        assert self._earned(tmp_path, "neg", -2.0)["svc"] >= 0.0
+
+    def test_an_impossible_rate_is_reported_like_any_other_unpriced_row(self, tmp_path, caplog):
+        import logging
+
+        with caplog.at_level(logging.WARNING, logger="app.database"):
+            self._earned(tmp_path, "warn2", 0.0)
+        assert any("understated" in r.getMessage() for r in caplog.records)
+
+    def test_a_normal_rate_still_works(self, tmp_path):
+        """The guard must not swallow legitimate small rates."""
+        assert self._earned(tmp_path, "small", 0.0001)["svc"] == pytest.approx(0.001)
