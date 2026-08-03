@@ -502,9 +502,7 @@ async def _run_collection() -> None:
                     # sanitised; this line used to log the raw string one step
                     # earlier and put the credential in the container log
                     # anyway, defeating the whole exercise.
-                    logger.warning(
-                        "Collection error for %s: %s", result.platform, notify.redact(result.error)
-                    )
+                    logger.warning("Collection error for %s: %s", result.platform, notify.redact(result.error))
                     # Redact ONCE, here, so the same sanitized string is what gets shown,
                     # stored and sent. Collector errors are usually str(exc), and an httpx
                     # exception embeds the offending header or URL — which for several
