@@ -235,9 +235,20 @@ async def do_register(
         await database.delete_config_keys(["_setup_token"])
         setup_token_module.clear()
 
+    if not is_first:
+        # An owner adding a user must STAY the owner.
+        #
+        # This minted a session for the account just created and set it as the
+        # caller's cookie, so an owner who added a viewer was silently demoted
+        # into that viewer's session — losing their own access, with no sign
+        # anything had happened beyond landing on the dashboard.
+        #
+        # Only the first-run owner gets signed in here, which is the case this
+        # code was written for.
+        return RedirectResponse("/users", status_code=303)
+
     token = auth_module.create_session_token(user_id, username, role)
-    dest = "/setup" if is_first else "/"
-    response = RedirectResponse(dest, status_code=303)
+    response = RedirectResponse("/setup", status_code=303)
     return auth_module.set_session_cookie(response, token, request)
 
 

@@ -1555,8 +1555,17 @@ async def _get_verified_worker_url(worker: dict[str, Any]) -> tuple[str, dict[st
     # shared bootstrap key only for workers that have not enrolled yet. Post-cutover
     # an enrolled worker rejects the shared key, so the UI must present its own.
     cid = worker.get("client_id") or ""
-    worker_key = await database.get_worker_key(cid) if cid else None
-    auth_key = worker_key or FLEET_API_KEY
+    # Use the per-worker key only once the worker has CONFIRMED it.
+    #
+    # get_worker_key discards the confirmed flag, so the UI signed outbound
+    # commands with a key the worker may never have received — reachable
+    # whenever _save_worker_key failed on the worker ("staying on shared key").
+    # The worker then read as online from its heartbeats while every deploy,
+    # start, stop, restart and logs call failed 401, with nothing connecting
+    # the two symptoms.
+    key_state = await database.get_worker_key_state(cid) if cid else (None, False)
+    stored_key, key_confirmed = key_state if isinstance(key_state, tuple) else (key_state, False)
+    auth_key = stored_key if (stored_key and key_confirmed) else FLEET_API_KEY
     headers: dict[str, str] = {}
     if auth_key:
         headers["Authorization"] = f"Bearer {auth_key}"
@@ -2490,7 +2499,16 @@ async def api_fleet_economics(request: Request) -> dict[str, Any]:
     assessed = []
     for worker in workers:
         info = worker.get("system_info") or {}
-        raw_watts = config.get(f"worker_{worker.get('id')}_watts")
+        # Keyed on client_id, not the autoincrement row id.
+        #
+        # delete_worker removes the row and nothing else, so a host that is
+        # removed and re-enrols gets a fresh id — orphaning its watts and
+        # dedicated settings silently, while the old keys linger forever. The
+        # id is also read from the row-id fallback for volumes written before
+        # this change.
+        raw_watts = config.get(f"worker_{_worker_config_key(worker)}_watts") or config.get(
+            f"worker_{worker.get('id')}_watts"
+        )
         try:
             watts = float(raw_watts) if raw_watts else None
         except (TypeError, ValueError):
@@ -2502,12 +2520,7 @@ async def api_fleet_economics(request: Request) -> dict[str, Any]:
                 watts=watts,
                 price_per_kwh=price or None,
                 metered=power.is_metered(info),
-                # Config values are TEXT, so bool() made "false", "0" and "no"
-                # all mean dedicated=True — and dedicated flips the advice from
-                # "this machine would be on anyway" to "turning it off would
-                # save that". database._TRUTHY is the parser the rest of the
-                # codebase already uses for exactly this.
-                dedicated=_config_flag(config, f"worker_{worker.get('id')}_dedicated"),
+                dedicated=_worker_flag(config, worker, "dedicated"),
             )
         )
 
@@ -2694,6 +2707,35 @@ def _to_usd_with_stored(amount: float, currency: str, stored_rate: float | None)
     if live is not None:
         return live
     return amount * stored_rate if stored_rate is not None else None
+
+
+def _worker_flag(config: dict[str, Any], worker: dict[str, Any], suffix: str) -> bool:
+    """A per-worker boolean setting, read by client_id with a row-id fallback.
+
+    Two problems in one place. Config values are TEXT, so ``bool("false")`` is
+    True and a user who set a flag to "false" got the opposite of what they
+    asked for; ``database._TRUTHY`` is the parser the rest of the app already
+    uses. And the key was built from the AUTOINCREMENT row id, which changes
+    when a host is removed and re-enrolled — silently orphaning the setting —
+    so ``client_id`` is preferred, with the old id-based key still honoured for
+    volumes written before this change.
+    """
+    for key in (f"worker_{_worker_config_key(worker)}_{suffix}", f"worker_{worker.get('id')}_{suffix}"):
+        if str(config.get(key, "") or "").strip():
+            return _config_flag(config, key)
+    return False
+
+
+def _worker_config_key(worker: dict[str, Any]) -> str:
+    """The stable identifier for per-worker config keys.
+
+    The row id is an AUTOINCREMENT primary key and ``delete_worker`` deletes the
+    row without touching config, so a host removed and re-enrolled comes back
+    under a new id — silently orphaning its watts and dedicated settings while
+    the old keys linger. ``client_id`` is UNIQUE and survives re-enrolment,
+    which is what these settings should have been keyed on.
+    """
+    return str(worker.get("client_id") or worker.get("id") or "")
 
 
 # ---------------------------------------------------------------------------
