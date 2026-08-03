@@ -2085,13 +2085,27 @@ async def api_earnings_net(request: Request, days: int = 30) -> dict[str, Any]:
 
     rows = []
     for platform, gross in earned.items():
+        watts = watts_by_service.get(platform, 0.0)
         rows.append(
             {
                 "platform": platform,
                 "gross": float(gross),
-                "watts": watts_by_service.get(platform, 0.0),
+                "watts": watts,
                 "hours": hours,
                 "cost_quality": power.ESTIMATED,
+                # Whether a PER-SERVICE cost means anything, as opposed to
+                # whether the machine costs anything. A bandwidth container adds
+                # roughly 1-3 W to a host that is already on, which is below
+                # what a consumer smart plug can resolve, so the share-out is
+                # arithmetic rather than measurement.
+                #
+                # The cost itself is still reported and still counted in the
+                # fleet total — the machine really does draw that power, and
+                # dropping it would understate what the fleet costs. What is
+                # unreliable is which service to blame, so that is what gets
+                # flagged. machine_economics has held this rule since it was
+                # written and nothing had ever asked it.
+                "cost_attributable": machine_economics.per_service_is_meaningful(watts),
             }
         )
 

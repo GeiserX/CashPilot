@@ -148,6 +148,13 @@ def summarise(
         )
         row = net_for_service(gross, cost, quality=str(svc.get("cost_quality") or ESTIMATED))
         row["platform"] = svc.get("platform")
+        # Carried through rather than recomputed. Whether a per-service cost can
+        # be ATTRIBUTED is a different question from whether it is known: the
+        # host really does draw the power, so the figure stays in the total, but
+        # the share-out is below smart-plug resolution and a consumer should not
+        # render it as if it were measured. Defaults to True so a caller that
+        # does not care is unaffected.
+        row["cost_attributable"] = bool(svc.get("cost_attributable", True))
         rows.append(row)
         total_gross += gross
         total_cost += cost or 0.0

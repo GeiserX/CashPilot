@@ -31,9 +31,12 @@ from __future__ import annotations
 
 from typing import Any
 
-# What a machine draws when it is on but doing nothing much. A small always-on
-# server — NUC, mini PC, Pi 5 — sits around here. A guess, and labelled one.
-DEFAULT_IDLE_WATTS = 65.0
+# DEFAULT_IDLE_WATTS used to live here: 65.0, described as what a small
+# always-on server draws. It was never referenced by anything, and
+# `power.DEFAULT_HOST_TDP_WATTS` is the SAME number with the same meaning and
+# an actual consumer. Two constants for one quantity in two modules is worse
+# than an unused one — they can drift apart silently, and the next person to
+# need it has to guess which is authoritative. Import it from `power`.
 
 HOURS_PER_MONTH = 730.0
 

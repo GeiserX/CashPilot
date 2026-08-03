@@ -178,3 +178,75 @@ class TestPerNodeEarningsIsDeclaredNotBranchedOn:
         schema = (SERVICES / "_schema.yml").read_text(encoding="utf-8")
         assert "credential_hint" in schema
         assert "per_node_earnings" in schema
+
+
+class TestTheDeadCodeDecisionsHold:
+    """Two half-alive things in machine_economics, decided rather than ignored.
+
+    `per_service_is_meaningful` was called only by its own tests while the one
+    code path that needed it — per-service electricity attribution in
+    `api_earnings_net` — did without it. That is not dead code; it is a guard
+    that was never connected.
+
+    `DEFAULT_IDLE_WATTS` genuinely was dead, and worse than dead: the same
+    number (65.0) with the same meaning as `power.DEFAULT_HOST_TDP_WATTS`,
+    which has a real consumer. Two constants for one quantity drift apart
+    silently and force the next reader to guess which is authoritative.
+    """
+
+    def test_the_guard_is_wired_into_the_path_that_needed_it(self):
+        source = (ROOT / "app" / "main.py").read_text(encoding="utf-8")
+        assert "machine_economics.per_service_is_meaningful(watts)" in source
+
+    def test_the_duplicate_constant_is_gone(self):
+        from app import machine_economics
+
+        assert not hasattr(machine_economics, "DEFAULT_IDLE_WATTS"), (
+            "a second source of truth for host draw is back; power.DEFAULT_HOST_TDP_WATTS is the one"
+        )
+
+    def test_the_surviving_constant_still_exists_and_is_used(self):
+        """Deleting the duplicate must not have removed the real one."""
+        from app import power
+
+        assert power.DEFAULT_HOST_TDP_WATTS == 65.0
+        assert "power.DEFAULT_HOST_TDP_WATTS" in (ROOT / "app" / "main.py").read_text(encoding="utf-8")
+
+    def test_a_sub_resolution_cost_is_flagged_but_still_counted(self):
+        """The host draws the power even when we cannot say which service.
+
+        Dropping the cost would understate what the fleet actually costs, so
+        only the ATTRIBUTION is flagged, not the figure.
+        """
+        from app import machine_economics, power
+
+        rows = [
+            {
+                "platform": "small",
+                "gross": 3.0,
+                "watts": 2.0,
+                "hours": 720,
+                "cost_attributable": machine_economics.per_service_is_meaningful(2.0),
+            },
+            {
+                "platform": "big",
+                "gross": 40.0,
+                "watts": 120.0,
+                "hours": 720,
+                "cost_attributable": machine_economics.per_service_is_meaningful(120.0),
+            },
+        ]
+        out = power.summarise(rows, price_per_kwh=0.20, currency="EUR")
+        by = {r["platform"]: r for r in out["services"]}
+        assert by["small"]["cost_attributable"] is False
+        assert by["big"]["cost_attributable"] is True
+        assert by["small"]["cost"] > 0, "the cost must still be reported, only its attribution is doubted"
+        assert out["total_cost"] == pytest.approx(by["small"]["cost"] + by["big"]["cost"]), (
+            "a flagged row must still count toward the fleet total"
+        )
+
+    def test_a_caller_that_says_nothing_is_unaffected(self):
+        from app import power
+
+        out = power.summarise([{"platform": "x", "gross": 1.0, "watts": 10.0, "hours": 720}], price_per_kwh=0.2)
+        assert out["services"][0]["cost_attributable"] is True
