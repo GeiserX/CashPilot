@@ -769,7 +769,12 @@ async def get_earnings_summary() -> list[dict[str, Any]]:
     try:
         cursor = await db.execute(
             """
-            SELECT platform, balance, currency, date
+            -- fx_rate_usd is selected because the dashboard total needs a
+            -- fallback when no LIVE rate is cached. Without it a crypto
+            -- balance whose rate lookup is merely stale gets dropped from the
+            -- headline figure entirely, even though the rate it was recorded
+            -- at is sitting right here in the row.
+            SELECT platform, balance, currency, date, fx_rate_usd
             FROM earnings
             WHERE (platform, date) IN (
                 SELECT platform, MAX(date) FROM earnings GROUP BY platform
@@ -942,7 +947,11 @@ async def get_earnings_dashboard_summary() -> dict[str, Any]:
             "today": round(today_earned, 2),
             "month": round(month_earned, 2),
             "today_change": round(today_change, 1),
-            "month_change": 0.0,
+            # None, not 0.0. This was a literal that nothing computed, and the
+            # dashboard rendered it as "+0.0%" in the positive style forever —
+            # a month-over-month figure that had never been measured, presented
+            # with the same confidence as one that had.
+            "month_change": None,
         }
     finally:
         await db.close()
