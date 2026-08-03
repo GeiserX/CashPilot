@@ -66,7 +66,18 @@ class AnyoneCollector(BaseCollector):
             logger.debug("No messages returned for fingerprint %s", fingerprint)
             return 0.0
 
-        data = messages[0].get("Data", "0")
+        # A missing Data key is a shape change, not zero rewards. Defaulting
+        # to "0" made an unparseable AO contract response indistinguishable
+        # from a relay that genuinely earned nothing — and the resulting 0.0
+        # was written as a real reading with no error, so no alert, no
+        # flatline warning (that detector skips zero balances), and no way for
+        # the user to tell.
+        if "Data" not in messages[0]:
+            raise ValueError(
+                f"AO response for {fingerprint} has no Data field "
+                f"(saw: {sorted(messages[0])[:6]}) — the contract shape may have changed"
+            )
+        data = messages[0]["Data"]
         if not data or data == "null":
             return 0.0
 

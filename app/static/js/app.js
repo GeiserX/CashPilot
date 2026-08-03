@@ -1792,7 +1792,7 @@ const CP = (() => {
           <div id="setup-worker-list-${svc.slug}">${workerRows}</div>
         </div>
         <div style="display:flex; gap:8px; align-items:center;">
-          <button class="btn btn-success" data-action="deployService" data-a1="${svc.slug}"${_canWrite ? '' : ' disabled title="Writer access required"'}>
+          <button class="btn btn-success" data-action="deployService" data-a1="${svc.slug}"${_isOwner ? '' : ' disabled title="Owner access required"'}>
             Deploy ${escapeHtml(svc.name)}
           </button>
           <span class="deploy-status" id="deploy-status-${svc.slug}" style="margin-left: 4px; font-size: 0.85rem;"></span>
@@ -2176,7 +2176,7 @@ const CP = (() => {
           <div id="deploy-worker-list">${workerRows}</div>
         </div>
         <div style="display:flex; gap:8px; align-items:center;">
-          <button class="btn btn-success" data-action="deployServiceToWorkers" data-a1="${svc.slug}"${_canWrite ? '' : ' disabled title="Writer access required"'}>Deploy</button>
+          <button class="btn btn-success" data-action="deployServiceToWorkers" data-a1="${svc.slug}"${_isOwner ? '' : ' disabled title="Owner access required"'}>Deploy</button>
           <span id="deploy-status-${svc.slug}" style="font-size:0.85rem;"></span>
         </div>`;
       }

@@ -2686,8 +2686,14 @@ async def api_set_preferences(request: Request, body: PreferencesUpdate) -> dict
         if body.setup_completed is not None
         else existing.get("setup_completed", False),
     )
-    # If setup is completed, trigger an immediate collection
-    if body.setup_completed:
+    # Saving the preference is a viewer-safe act; triggering a fleet-wide
+    # collection is not. /api/collect gates the identical call behind
+    # _require_writer, so this was the same side effect through a weaker door —
+    # a viewer could hit every provider API on demand.
+    #
+    # The preference itself still saves for any authenticated user; only the
+    # collection is gated, so a viewer completing setup is not blocked.
+    if body.setup_completed and auth.require_role(user, "owner", "writer"):
         _spawn(_run_collection())
     return {"status": "saved"}
 
