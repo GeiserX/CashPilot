@@ -380,3 +380,43 @@ class TestAuthFailureAlarmCounter:
 
     def test_success_resets(self):
         assert self._run([401, 401, 200]) == 0
+
+
+class TestTheAlarmActuallyFires(TestAuthFailureAlarmCounter):
+    """The counter reaching three is not the point — the operator being told is.
+
+    The tests above assert only the counter, so the alarm block sat in the
+    branch that had just zeroed the counter (`0 == 3`) and was unreachable dead
+    code, while a test named for it passed. This is the failure it exists for:
+    a worker recreated under a new container hostname gets a new client_id, the
+    UI rejects its key forever, and the service containers keep earning — so
+    nothing else surfaces it.
+    """
+
+    def _alarms(self, statuses, caplog):
+        import logging
+
+        with caplog.at_level(logging.ERROR, logger="app.worker_api"):
+            caplog.clear()
+            self._run(statuses)
+        return [r for r in caplog.records if "does not recognise client_id" in r.getMessage()]
+
+    def test_three_straight_401s_tell_the_operator(self, caplog):
+        assert len(self._alarms([401, 401, 401], caplog)) == 1
+
+    def test_it_names_the_id_and_the_file_needed_to_fix_it(self, caplog):
+        message = self._alarms([401, 401, 401], caplog)[0].getMessage()
+        assert w.CLIENT_ID in message, "an alarm without the id cannot be acted on"
+        assert str(w._WORKER_ID_FILE) in message, "the operator needs to know where to write it"
+
+    def test_it_stays_quiet_below_the_threshold(self, caplog):
+        """Two 401s across a restart are ordinary, not an identity mismatch."""
+        assert self._alarms([401, 401], caplog) == []
+
+    def test_it_says_it_once_and_not_on_every_subsequent_failure(self, caplog):
+        """`==`, not `>=`: an hourly heartbeat would otherwise log this forever."""
+        assert len(self._alarms([401] * 8, caplog)) == 1
+
+    def test_a_broken_run_never_raises_it(self, caplog):
+        """A flaky link is not a lockout, and must not be reported as one."""
+        assert self._alarms([401, None, 401, 500, 401], caplog) == []

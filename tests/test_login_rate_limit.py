@@ -14,6 +14,7 @@ much later as flakiness nobody can place.
 
 from __future__ import annotations
 
+import ast
 from time import monotonic
 
 import pytest
@@ -30,18 +31,35 @@ def _clean():
     rl._login_attempts.clear()
 
 
+def imports_main(node) -> bool:
+    """Does this AST node import ``app.main``, written any of the usual ways?
+
+    The original version of this check tested only ``node.module.endswith("main")``,
+    which misses ``from app import main`` entirely — that node's *module* is
+    "app" and "main" is an alias NAME. Proven with a negative control: planting
+    `from app import main` in a router left the guard green, and that is the
+    idiomatic form everywhere else in this codebase (`from app import database,
+    deps`). The guard that certifies the cycle is gone was blind to the most
+    likely way of bringing it back.
+    """
+    if isinstance(node, ast.Import):
+        # import app.main / import main
+        return any(alias.name == "main" or alias.name.endswith(".main") for alias in node.names)
+    if isinstance(node, ast.ImportFrom):
+        module = node.module or ""
+        # from app.main import X / from .main import X
+        if module == "main" or module.endswith(".main"):
+            return True
+        # from app import main / from . import main
+        return any(alias.name == "main" for alias in node.names)
+    return False
+
+
 class TestTheCycleIsGone:
     def test_no_router_imports_main(self):
         """This is the whole reason the module exists."""
         import ast
         import pathlib
-
-        def imports_main(node) -> bool:
-            if isinstance(node, ast.Import):
-                return any(alias.name.endswith("main") for alias in node.names)
-            if isinstance(node, ast.ImportFrom):
-                return (node.module or "").endswith("main")
-            return False
 
         offenders = sorted(
             path.name
@@ -49,6 +67,43 @@ class TestTheCycleIsGone:
             if any(imports_main(node) for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))))
         )
         assert not offenders, f"routers still import main: {offenders}"
+
+    def test_no_module_anywhere_under_app_imports_main(self):
+        """The guard above globs ONLY ``routers/*.py``.
+
+        A new top-level module — ``app/fleet_state.py``, ``app/jobs.py``, the
+        next extraction someone reaches for — falls entirely outside that glob
+        and would reintroduce the cycle completely unguarded. Widening it costs
+        nothing and is what makes the next extraction cheap, whether or not one
+        ever happens.
+
+        ``app.main`` itself is excluded for the obvious reason, and so are the
+        routers, which the test above reports with a clearer message.
+        """
+        import ast
+        import pathlib
+
+        app_dir = pathlib.Path(main.__file__).parent
+        offenders = sorted(
+            str(path.relative_to(app_dir))
+            for path in app_dir.rglob("*.py")
+            if path.name != "main.py"
+            and any(imports_main(node) for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))))
+        )
+        assert not offenders, f"these import app.main and would recreate the cycle: {offenders}"
+
+    def test_that_guard_actually_looks_beyond_the_routers(self):
+        """A checker that silently scans nothing passes forever.
+
+        The first version of the widened guard could have kept the old glob by
+        accident and still gone green, so this asserts it reaches modules the
+        routers glob never covered.
+        """
+        import pathlib
+
+        app_dir = pathlib.Path(main.__file__).parent
+        scanned = {str(p.relative_to(app_dir)) for p in app_dir.rglob("*.py") if p.name != "main.py"}
+        assert {"database.py", "orchestrator.py", "worker_api.py"} <= scanned, scanned
 
     def test_the_rate_limiter_imports_nothing_from_the_app(self):
         """Otherwise it could be pulled back into a cycle later."""

@@ -377,3 +377,151 @@ class TestPerWorkerAttribution:
             [{"id": 1, "system_info": "{}"}, {"id": 2, "system_info": "{}"}],
         )
         assert two["services"][0]["cost"] > one["services"][0]["cost"]
+
+
+class TestNonUsdEarningsArePricedOnTheDeltaNotTheBalance:
+    """A rate move must not, by itself, move reported earnings.
+
+    Converting each cumulative balance to USD and subtracting afterwards is the
+    intuitive order and it is wrong: the balance is a running total, so the
+    subtraction spans two different rates and the difference between them is
+    reported as income that never happened — or hides income that did.
+    """
+
+    @staticmethod
+    def _day(n):
+        from datetime import UTC, datetime, timedelta
+
+        return (datetime.now(UTC) - timedelta(days=n)).strftime("%Y-%m-%d")
+
+    def _earned(self, tmp_path, name, readings):
+        import asyncio
+        from unittest.mock import patch
+
+        from app import database
+
+        async def run():
+            with (
+                patch.object(database, "DB_DIR", tmp_path),
+                patch.object(database, "DB_PATH", tmp_path / f"{name}.db"),
+            ):
+                await database.init_db()
+                for days_ago, balance, currency, rate in readings:
+                    await database.upsert_earnings(
+                        "svc", balance, currency=currency, date=self._day(days_ago), fx_rate_usd=rate
+                    )
+                return await database.get_earned_by_platform(days=30)
+
+        return asyncio.run(run())
+
+    def test_a_falling_rate_does_not_erase_real_earnings(self, tmp_path):
+        """10 MYST really was earned; the token price merely dropped.
+
+        Converted-then-subtracted this is $50 -> $44, a loss, clamped to zero.
+        """
+        earned = self._earned(tmp_path, "fall", [(2, 100.0, "MYST", 0.50), (1, 110.0, "MYST", 0.40)])
+        assert earned["svc"] == pytest.approx(4.0), "10 MYST priced at the later rate"
+
+    def test_a_rising_rate_alone_invents_no_earnings(self, tmp_path):
+        """The balance never moved. Nothing was earned, whatever the rate did."""
+        earned = self._earned(tmp_path, "rise", [(2, 100.0, "MYST", 0.50), (1, 100.0, "MYST", 0.60)])
+        assert earned["svc"] == pytest.approx(0.0), "a rate move is not income"
+
+    def test_a_steady_rate_prices_the_delta(self, tmp_path):
+        earned = self._earned(tmp_path, "flat", [(2, 100.0, "MYST", 0.50), (1, 110.0, "MYST", 0.50)])
+        assert earned["svc"] == pytest.approx(5.0)
+
+    def test_usd_rows_are_parity_even_if_a_rate_was_stored(self, tmp_path):
+        """The collector reported dollars. A stray rate must not rewrite them."""
+        earned = self._earned(tmp_path, "usd", [(2, 10.0, "USD", 0.25), (1, 12.0, "USD", 0.25)])
+        assert earned["svc"] == pytest.approx(2.0)
+
+    def test_an_unpriced_reading_is_left_out_rather_than_counted_at_parity(self, tmp_path):
+        """Treating 1 GRASS as $1 is not a conservative default, it is a wrong number."""
+        earned = self._earned(tmp_path, "unp", [(2, 100.0, "GRASS", None), (1, 110.0, "GRASS", None)])
+        assert earned["svc"] == pytest.approx(0.0)
+
+    def test_an_unpriced_gap_does_not_get_differenced_across(self, tmp_path):
+        """The 100 -> 130 jump spans a reading that could not be priced.
+
+        Counting it whole would bill the unpriced period as if it had been
+        priced all along. Only the 130 -> 140 step is known, so only it counts.
+        """
+        earned = self._earned(
+            tmp_path,
+            "gap",
+            [(3, 100.0, "MYST", 1.0), (2, 130.0, "MYST", None), (1, 140.0, "MYST", 1.0)],
+        )
+        assert earned["svc"] == pytest.approx(0.0), "no priced pair brackets the gap"
+
+    def test_a_currency_switch_does_not_subtract_across_it(self, tmp_path):
+        """Balances in different units are not comparable at all."""
+        earned = self._earned(
+            tmp_path,
+            "switch",
+            [(3, 1000.0, "GRASS", 0.001), (2, 5.0, "USD", None), (1, 7.0, "USD", None)],
+        )
+        assert earned["svc"] == pytest.approx(2.0), "only the USD pair is a real delta"
+
+    def test_the_understatement_is_reported(self, tmp_path, caplog):
+        """A total quietly missing rows reads as a total that is simply low."""
+        import logging
+
+        with caplog.at_level(logging.WARNING, logger="app.database"):
+            self._earned(tmp_path, "warn", [(2, 100.0, "GRASS", None), (1, 110.0, "GRASS", None)])
+        assert any("understated" in r.getMessage() for r in caplog.records)
+
+
+class TestAnImpossibleRateIsNotBelieved:
+    """Zero and negative are not prices, they are corrupt rows.
+
+    Believing them is worse than dropping them. Zero silently reports the
+    platform as having earned nothing, which reads exactly like a real flat
+    balance. Negative is worse still: the clamp applies to the delta and the
+    sign is applied afterwards, so the platform total goes NEGATIVE and drags
+    down every figure derived from it.
+    """
+
+    def _earned(self, tmp_path, name, rate):
+        import asyncio
+        from unittest.mock import patch
+
+        from app import database
+
+        async def run():
+            with (
+                patch.object(database, "DB_DIR", tmp_path),
+                patch.object(database, "DB_PATH", tmp_path / f"{name}.db"),
+            ):
+                await database.init_db()
+                await database.upsert_earnings("svc", 100.0, currency="MYST", date="2026-01-01", fx_rate_usd=rate)
+                await database.upsert_earnings("svc", 110.0, currency="MYST", date="2026-01-02", fx_rate_usd=rate)
+                return await database.get_earned_by_platform(days=99999)
+
+        return asyncio.run(run())
+
+    def test_a_zero_rate_is_unpriced_not_worthless(self, tmp_path):
+        assert self._earned(tmp_path, "zero", 0.0)["svc"] == pytest.approx(0.0)
+
+    def test_a_negative_rate_never_produces_negative_earnings(self, tmp_path):
+        """Verified reachable before the fix: this returned -20.0."""
+        assert self._earned(tmp_path, "neg", -2.0)["svc"] >= 0.0
+
+    def test_an_impossible_rate_is_reported_like_any_other_unpriced_row(self, tmp_path, caplog):
+        import logging
+
+        with caplog.at_level(logging.WARNING, logger="app.database"):
+            self._earned(tmp_path, "warn2", 0.0)
+        assert any("understated" in r.getMessage() for r in caplog.records)
+
+    def test_an_infinite_rate_does_not_produce_infinite_earnings(self, tmp_path):
+        """Verified reachable before the fix: this returned inf."""
+        assert self._earned(tmp_path, "inf", float("inf"))["svc"] == pytest.approx(0.0)
+
+    def test_a_nan_rate_is_unpriced(self, tmp_path):
+        """SQLite stores NaN as NULL today; the guard must not depend on that."""
+        assert self._earned(tmp_path, "nan", float("nan"))["svc"] == pytest.approx(0.0)
+
+    def test_a_normal_rate_still_works(self, tmp_path):
+        """The guard must not swallow legitimate small rates."""
+        assert self._earned(tmp_path, "small", 0.0001)["svc"] == pytest.approx(0.001)

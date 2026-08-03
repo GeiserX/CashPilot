@@ -84,7 +84,11 @@ def exceptions_for(service: dict[str, Any] | None) -> list[dict[str, str]]:
                 "detail": f"Port {port} must accept inbound connections, or the node cannot do its job.",
             }
         )
-    if (service or {}).get("collector") or (service or {}).get("slug") == "storj":
+    # Keyed on HAVING a collector, not on being one particular service. The
+    # `or slug == "storj"` this replaces never changed an outcome — storj
+    # declares a collector, so the first clause already matched — while
+    # hardcoding a slug in app/ is exactly what the catalog exists to avoid.
+    if (service or {}).get("collector"):
         api_url_env = [
             e.get("key")
             for e in (_docker(service).get("env") or [])

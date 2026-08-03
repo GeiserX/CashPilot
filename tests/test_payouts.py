@@ -192,7 +192,11 @@ class TestEndpoints:
         from app import main
 
         with (
+            # Stand in for an authorized caller. Reads need auth; confirm/reject
+            # need writer. Which guard each endpoint actually enforces is the
+            # subject of tests/test_audit_guards.py, not of these.
             patch.object(main, "_require_auth_api", lambda r: None),
+            patch.object(main, "_require_writer", lambda r: None),
             patch.object(main.database, "get_latest_balance", AsyncMock(return_value=patches.get("balance"))),
             patch.object(main.database, "get_balance_history", AsyncMock(return_value=patches.get("history", []))),
             patch.object(main.database, "get_payouts", AsyncMock(return_value=patches.get("payouts", []))),
@@ -418,10 +422,31 @@ class TestThePayoutTableAgainstRealSqlite:
         totals = self._run(db.get_confirmed_payout_totals())
         assert totals["mysterium"] == pytest.approx(2.5)
 
-    def test_a_missing_rate_is_treated_as_one_to_one(self, db):
+    def test_a_usd_payout_needs_no_rate(self, db):
+        """Parity applies because the currency IS USD — not because a rate is absent."""
         payout_id = self._run(db.record_probable_payout("honeygain", 7.0, "USD", None))
         self._run(db.confirm_payout(payout_id))
         assert self._run(db.get_confirmed_payout_totals())["honeygain"] == pytest.approx(7.0)
+
+    def test_an_unpriced_token_payout_counts_as_nothing_rather_than_as_dollars(self, db):
+        """500 MYST is not $500.
+
+        Pricing an unrated payout at parity inflates the total by the token's
+        whole price. Excluding it understates by a knowable amount instead —
+        wrong in the direction that does not invent income.
+        """
+        payout_id = self._run(db.record_probable_payout("mysterium", 500.0, "MYST", None))
+        self._run(db.confirm_payout(payout_id))
+        assert self._run(db.get_confirmed_payout_totals())["mysterium"] == pytest.approx(0.0)
+
+    def test_the_understatement_is_reported_rather_than_left_to_look_low(self, db, caplog):
+        import logging
+
+        payout_id = self._run(db.record_probable_payout("mysterium", 500.0, "MYST", None))
+        self._run(db.confirm_payout(payout_id))
+        with caplog.at_level(logging.WARNING, logger="app.database"):
+            self._run(db.get_confirmed_payout_totals())
+        assert any("UNDERSTATEMENT" in r.getMessage() for r in caplog.records)
 
     def test_unconfirmed_payouts_are_excluded_from_totals(self, db):
         self._run(db.record_probable_payout("honeygain", 99.0, "USD", 1.0))
@@ -469,3 +494,50 @@ class TestBalanceHistoryAgainstRealSqlite:
 
     def test_history_for_an_unknown_platform_is_empty(self, db):
         assert self._run(db.get_balance_history("nope")) == []
+
+
+class TestElapsedDaysEdgeCases:
+    """The divisor in the payout rate. Every one of these is a division risk.
+
+    A wrong rate is not a cosmetic error: it is what tells someone their payout
+    is days away when it is weeks away.
+    """
+
+    @staticmethod
+    def _points(*dates, start=100.0, step=1.0):
+        return [{"date": d, "balance": start + i * step} for i, d in enumerate(dates)]
+
+    def test_real_dates_are_used_in_preference_to_the_reading_count(self):
+        from app import payouts
+
+        # Three readings, ten days apart: 1/day, not 5/day.
+        points = self._points("2026-01-01", "2026-01-05", "2026-01-11", step=5.0)
+        assert payouts.daily_rate(points) == pytest.approx(1.0)
+
+    def test_an_unparseable_date_falls_back_to_the_interval_count(self):
+        from app import payouts
+
+        assert payouts._elapsed_days(self._points("not-a-date", "also-not")) == pytest.approx(1.0)
+
+    def test_two_readings_on_the_same_day_do_not_divide_by_zero(self):
+        from app import payouts
+
+        rate = payouts.daily_rate(self._points("2026-01-01", "2026-01-01"))
+        assert rate is None or rate == pytest.approx(1.0), "a zero span must never divide"
+
+    def test_a_single_reading_yields_no_rate_rather_than_a_wrong_one(self):
+        from app import payouts
+
+        assert payouts.daily_rate(self._points("2026-01-01")) is None
+
+    def test_a_missing_date_field_falls_back_rather_than_raising(self):
+        from app import payouts
+
+        assert payouts._elapsed_days([{"balance": 1.0}, {"balance": 2.0}]) == pytest.approx(1.0)
+
+    def test_out_of_order_dates_never_produce_a_negative_divisor(self):
+        """A negative divisor would flip the rate's sign and project backwards."""
+        from app import payouts
+
+        days = payouts._elapsed_days(self._points("2026-01-11", "2026-01-01"))
+        assert days is None or days > 0

@@ -226,7 +226,39 @@ class TestProducerStateEndpoint:
                 return await main.api_producer_state(MagicMock(), "demo")
 
         out = asyncio.run(run())
-        assert out["state"] == ps.PRODUCING
+        # Not a 500 — that part was always the point of this test. But not
+        # PRODUCING either, which is what it used to assert.
+        #
+        # The container lookup is what just failed, so we do not know whether
+        # the container is even running. Reporting PRODUCING on the strength of
+        # a cached earnings figure tells the user a service is actively earning
+        # at the one moment we cannot see it at all, which is the false
+        # confidence this whole module exists to remove.
+        assert out["state"] == ps.UNKNOWN
+        assert "Could not determine" in out["reasons"][0]
+
+    def test_an_unknown_container_is_not_reported_as_stopped(self):
+        """ "Not running" is a different claim from "could not check".
+
+        Telling someone their container is stopped sends them to restart
+        something that may well be up.
+        """
+        import asyncio
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        from app import main
+
+        async def run():
+            with (
+                patch.object(main, "_require_auth_api", lambda r: None),
+                patch.object(main.catalog, "get_service", return_value=self.SVC),
+                patch.dict("app.collectors.COLLECTOR_MAP", {"demo": object()}, clear=True),
+                patch.object(main.database, "get_earned_by_platform", AsyncMock(return_value={"demo": 2.0})),
+                patch.object(main, "_get_all_worker_containers", AsyncMock(side_effect=RuntimeError("down"))),
+            ):
+                return await main.api_producer_state(MagicMock(), "demo")
+
+        assert "is not running" not in asyncio.run(run())["reasons"][0]
 
 
 class TestItReadsTheShapeWorkersActuallySend:

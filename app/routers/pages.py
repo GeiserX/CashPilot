@@ -1,7 +1,10 @@
 """Protected HTML page routes (dashboard, setup, catalog, settings, fleet).
 
-Handlers reference shared state through ``app.main`` so test patches on
-``app.auth_module.*`` / ``app.database.*`` continue to land.
+Handlers reach shared state through ``app.deps``, ``app.auth`` and
+``app.database`` directly — NOT through ``app.main``, which is what breaks the
+``main -> routers -> main`` import cycle. Test patches therefore target
+``app.auth.*`` / ``app.database.*``. ``app.auth`` is bound locally as
+``auth_module`` only to avoid shadowing the route helpers.
 """
 
 from __future__ import annotations

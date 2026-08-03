@@ -7,10 +7,10 @@ inspection for cashpilot-managed containers via the Docker SDK.
 
 from __future__ import annotations
 
-import contextlib
 import logging
 import os
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any
 
 import docker
@@ -368,17 +368,42 @@ def read_critical_state(slug: str) -> tuple[bytes, list[str]]:
 
     if was_running:
         container.pause()
+    read_failure: BaseException | None = None
     try:
         for target in sorted(targets):
             stream, _stat = container.get_archive(target)
             chunks.append(b"".join(stream))
             read.append(target)
+    except BaseException as exc:
+        read_failure = exc
+        raise
     finally:
         if was_running:
             # Unpause even if the read failed: leaving a paused earner behind
             # would silently stop the income this feature exists to protect.
-            with contextlib.suppress(Exception):
+            try:
                 container.unpause()
+            except Exception as exc:
+                # Never silent. A paused container renders normally and earns
+                # nothing, and nothing else in the system reports that state,
+                # so an unlogged failure here is an invisible revenue stop.
+                logger.error(
+                    "CRITICAL: %s is still PAUSED — unpause failed (%s). It is earning "
+                    "NOTHING until it is unpaused by hand: docker unpause %s",
+                    slug,
+                    exc,
+                    container.name,
+                )
+                # Only swallow this while a read error is already on its way
+                # up, where re-raising would replace the real cause with a
+                # downstream symptom. When the read SUCCEEDED, staying quiet is
+                # worse than losing the archive: the caller would hand back a
+                # perfectly good backup, verification would report success, and
+                # the container would sit paused indefinitely with nothing
+                # anywhere contradicting the green result. The backup can be
+                # taken again; an unnoticed paused earner just stops paying.
+                if read_failure is None:
+                    raise
 
     return b"".join(chunks), read
 
@@ -510,11 +535,53 @@ def _network_totals(stats: dict[str, Any]) -> tuple[int | None, int | None]:
     return rx, tx
 
 
+#: Concurrent `stats` calls. Bounded because the aim is to stop the heartbeat
+#: growing with the container count, not to flood the Docker daemon — an
+#: unbounded fan-out on a busy host trades one problem for another.
+_STATS_CONCURRENCY = 8
+
+
+def _collect_stats_bulk(containers: list[Any]) -> dict[str, tuple[float, float, int | None, int | None]]:
+    """Stats for many containers at once, keyed by container id.
+
+    `stats(stream=False)` costs ~1-2s per container and was called in a serial
+    loop, so a heartbeat took time proportional to the number of containers on
+    the host. The loop sleeps AFTER sending, so this stretches the real
+    heartbeat interval rather than skipping cycles: at 60s nominal and 180s
+    before the UI marks a worker offline, a host would start flapping somewhere
+    past 60-80 containers. Today's reference fleet runs ~14 on its busiest
+    host, so this is a margin that shrinks as people add services, not a fire.
+
+    The calls are read-only GETs issued through the shared client, which is a
+    `requests.Session` subclass backed by urllib3's lock-protected connection
+    pool. docker-py has never published a thread-safety guarantee — the
+    question is open in their tracker — so this is a deliberate, bounded bet on
+    widely-relied-upon behaviour rather than a documented contract.
+    """
+    if not containers:
+        return {}
+    results: dict[str, tuple[float, float, int | None, int | None]] = {}
+    with ThreadPoolExecutor(max_workers=min(_STATS_CONCURRENCY, len(containers))) as pool:
+        futures = {pool.submit(_collect_stats, c): c for c in containers}
+        for future in as_completed(futures):
+            container = futures[future]
+            try:
+                results[container.id] = future.result()
+            except Exception as exc:
+                # One unreadable container must not cost us the whole fleet's
+                # stats; _collect_stats already degrades to zeros itself.
+                logger.warning("Stats unavailable for %s: %s", getattr(container, "short_id", "?"), exc)
+                results[container.id] = (0.0, 0.0, None, None)
+    return results
+
+
 def get_status() -> list[dict[str, Any]]:
     """Return live status of all known containers (labeled + image-matched).
 
-    This is SLOW (~1-2s per container) because it calls Docker stats API.
-    Use get_status_cached() for page loads; this is for background refresh.
+    Calls the Docker stats API for every container, which is slow per container
+    (~1-2s); the calls are issued concurrently, but this is still far heavier
+    than a plain list. Use get_status_cached() for page loads; this is for
+    background refresh.
     """
     global _status_cache, _status_cache_time
 
@@ -531,11 +598,12 @@ def get_status() -> list[dict[str, Any]]:
     seen_ids: set[str] = set()
 
     results: list[dict[str, Any]] = []
+    labeled_stats = _collect_stats_bulk(list(labeled))
     for c in labeled:
         try:
             seen_ids.add(c.id)
             slug = c.labels.get(LABEL_SERVICE, "unknown")
-            cpu_pct, mem_mb, net_rx, net_tx = _collect_stats(c)
+            cpu_pct, mem_mb, net_rx, net_tx = labeled_stats.get(c.id, (0.0, 0.0, None, None))
             results.append(
                 {
                     "slug": slug,
@@ -564,6 +632,9 @@ def get_status() -> list[dict[str, Any]]:
         except Exception as exc:
             logger.warning("Failed to list all containers: %s", exc)
             all_containers = []
+        # Resolve which externally-deployed containers we actually care about
+        # BEFORE fetching stats, so nothing is paid for a container we skip.
+        matched: list[tuple[Any, str, str]] = []
         for c in all_containers:
             try:
                 if c.id in seen_ids:
@@ -574,23 +645,30 @@ def get_status() -> list[dict[str, Any]]:
                     slug = image_map.get(image_name.split(":")[0], "")
                 if slug:
                     seen_ids.add(c.id)
-                    cpu_pct, mem_mb, net_rx, net_tx = _collect_stats(c)
-                    results.append(
-                        {
-                            "slug": slug,
-                            "name": c.name,
-                            "status": c.status,
-                            "image": image_name or str(c.image.short_id),
-                            "cpu_percent": cpu_pct,
-                            "memory_mb": mem_mb,
-                            "net_rx_bytes": net_rx,
-                            "net_tx_bytes": net_tx,
-                            "created": c.attrs.get("Created", ""),
-                            "container_id": c.short_id,
-                            "deployed_by": "external",
-                            "category": "",
-                        }
-                    )
+                    matched.append((c, slug, image_name))
+            except Exception as exc:
+                logger.warning("Skipping corrupted container %s: %s", getattr(c, "short_id", "?"), exc)
+
+        matched_stats = _collect_stats_bulk([c for c, _, _ in matched])
+        for c, slug, image_name in matched:
+            try:
+                cpu_pct, mem_mb, net_rx, net_tx = matched_stats.get(c.id, (0.0, 0.0, None, None))
+                results.append(
+                    {
+                        "slug": slug,
+                        "name": c.name,
+                        "status": c.status,
+                        "image": image_name or str(c.image.short_id),
+                        "cpu_percent": cpu_pct,
+                        "memory_mb": mem_mb,
+                        "net_rx_bytes": net_rx,
+                        "net_tx_bytes": net_tx,
+                        "created": c.attrs.get("Created", ""),
+                        "container_id": c.short_id,
+                        "deployed_by": "external",
+                        "category": "",
+                    }
+                )
             except Exception as exc:
                 logger.warning("Skipping corrupted container %s: %s", getattr(c, "short_id", "?"), exc)
 

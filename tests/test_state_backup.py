@@ -480,3 +480,126 @@ class TestTheWorkerEndpoints:
             }
             leaked = attrs & forbidden
             assert not leaked, f"{fn.__name__} calls {leaked}, which could send a bundle somewhere"
+
+
+class TestAFailedUnpauseIsNeverReportedAsSuccess:
+    """A paused container looks normal and earns nothing.
+
+    Nothing else in the system reports that state, so if the archive reads
+    succeed and only the unpause fails, a quiet handler hands back a perfectly
+    good backup, verification goes green, and the container sits paused
+    indefinitely with no signal anywhere. The backup can always be taken again;
+    an unnoticed paused earner just stops paying.
+    """
+
+    def _container(self, status="running"):
+        from unittest.mock import MagicMock
+
+        container = MagicMock()
+        container.status = status
+        container.name = "cashpilot-storj"
+        container.get_archive.return_value = (iter([b"data"]), {})
+        return container
+
+    def _read(self, container):
+        from unittest.mock import patch
+
+        from app import orchestrator
+
+        with (
+            patch.object(orchestrator, "_critical_volume_targets", return_value={"/data": "x"}),
+            patch.object(orchestrator, "_find_container", return_value=container),
+        ):
+            return orchestrator.read_critical_state("storj")
+
+    def test_a_successful_read_with_a_failed_unpause_raises(self):
+        container = self._container()
+        container.unpause.side_effect = RuntimeError("daemon said no")
+        with pytest.raises(RuntimeError, match="daemon said no"):
+            self._read(container)
+
+    def test_it_says_which_container_and_how_to_fix_it(self, caplog):
+        import logging
+
+        container = self._container()
+        container.unpause.side_effect = RuntimeError("daemon said no")
+        with caplog.at_level(logging.ERROR, logger="app.orchestrator"), pytest.raises(RuntimeError):
+            self._read(container)
+        message = next(r.getMessage() for r in caplog.records if "still PAUSED" in r.getMessage())
+        assert "docker unpause cashpilot-storj" in message, "an alarm the operator cannot act on"
+
+    def test_a_read_failure_still_wins_over_the_unpause_failure(self):
+        """Re-raising here would replace the real cause with a symptom."""
+        container = self._container()
+        container.get_archive.side_effect = RuntimeError("the actual problem")
+        container.unpause.side_effect = RuntimeError("daemon said no")
+        with pytest.raises(RuntimeError, match="the actual problem"):
+            self._read(container)
+        container.unpause.assert_called_once()
+
+    def test_the_ordinary_path_is_untouched(self):
+        container = self._container()
+        payload, read = self._read(container)
+        assert payload == b"data" and read == ["/data"]
+        container.unpause.assert_called_once()
+
+
+class TestAnUnusableKeyIsRejectedNotCrashed:
+    """A well-formed 32-byte key can still be a low-order point.
+
+    OpenSSL refuses the exchange with a bare ValueError, and that call sat
+    OUTSIDE the try block that classifies bad input — so a key that is the
+    right length but unusable produced an unhandled 500 instead of the 400 it
+    is. On the restore side the offending key comes out of the BUNDLE, so a
+    crafted file could crash the verify endpoint.
+    """
+
+    LOW_ORDER = "00" * 32
+
+    def test_sealing_to_a_low_order_recipient_is_a_clean_error(self):
+        from app import state_backup
+
+        with pytest.raises(state_backup.BackupError) as exc:
+            state_backup.seal(b"payload", recipient_public_key=self.LOW_ORDER)
+        assert "not a usable X25519 point" in str(exc.value)
+
+    def test_the_error_never_echoes_the_key(self):
+        from app import state_backup
+
+        with pytest.raises(state_backup.BackupError) as exc:
+            state_backup.seal(b"payload", recipient_public_key=self.LOW_ORDER)
+        assert self.LOW_ORDER not in str(exc.value)
+
+    def _bundle_with_ephemeral(self, ephemeral_hex):
+        """Rebuild a bundle whose header carries a chosen ephemeral key."""
+        import json
+
+        from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PrivateKey
+
+        from app import state_backup
+
+        recipient = X25519PrivateKey.generate()
+        bundle = state_backup.seal(b"payload", recipient_public_key=recipient.public_key().public_bytes_raw().hex())
+        length = int.from_bytes(bundle[:4], "big")
+        header = json.loads(bundle[4 : 4 + length])
+        header["ephemeral_public_key"] = ephemeral_hex
+        forged = json.dumps(header, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        return len(forged).to_bytes(4, "big") + forged + bundle[4 + length :], recipient
+
+    def test_opening_a_bundle_with_a_low_order_ephemeral_key_is_a_clean_error(self):
+        """The ephemeral key is attacker-controlled: it comes from the file."""
+        from app import state_backup
+
+        forged, recipient = self._bundle_with_ephemeral(self.LOW_ORDER)
+        with pytest.raises(state_backup.BackupError):
+            state_backup.open_bundle(forged, recipient_private_key=recipient.private_bytes_raw().hex())
+
+    def test_a_legitimate_recipient_key_still_round_trips(self):
+        """The guard must not reject real keys."""
+        from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PrivateKey
+
+        from app import state_backup
+
+        recipient = X25519PrivateKey.generate()
+        bundle = state_backup.seal(b"payload", recipient_public_key=recipient.public_key().public_bytes_raw().hex())
+        assert state_backup.open_bundle(bundle, recipient_private_key=recipient.private_bytes_raw().hex()) == b"payload"
