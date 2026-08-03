@@ -718,6 +718,80 @@ async def get_earnings_history(
         await db.close()
 
 
+def _usd_rate(currency: str, raw: Any) -> float | None:
+    """The USD price of one unit, or None when the reading cannot be priced.
+
+    USD is parity BY DEFINITION — trusting a stored rate on a USD row would let
+    a bad rate rewrite money the collector reported exactly. For anything else
+    only a finite positive number is a price:
+
+    * ``0`` reports the platform as having earned nothing, which is
+      indistinguishable from a genuinely flat balance;
+    * a negative defeats the payout clamp, which applies to the delta while the
+      sign is applied after it, so the total comes out NEGATIVE;
+    * ``inf``/``nan`` poison the total outright.
+
+    Anything rejected here is treated as unpriced — excluded and reported —
+    rather than believed.
+    """
+    if currency == "USD":
+        return 1.0
+    if raw is None:
+        return None
+    value = float(raw)
+    return value if math.isfinite(value) and value > 0 else None
+
+
+async def _usd_earned_per_date(db: Any) -> tuple[dict[str, float], int]:
+    """USD earned per calendar date, summed across platforms.
+
+    ONE implementation behind both the dashboard cards and the trend chart.
+    They previously carried separate copies of the arithmetic and both filtered
+    ``currency = 'USD'``, so an installation earning MYST, GRASS or ANYONE saw
+    "$0.00 today", "$0.00 this month" and a flat-zero chart while its balances
+    climbed — verified against a MystNodes-only fixture, which reported 0.00
+    where the correct figure was 0.20.
+
+    Same rules as :func:`get_earned_by_platform`, and deliberately so:
+
+    * the delta is taken in the NATIVE currency and only then priced, because a
+      balance is a running total and converting before subtracting puts the
+      movement of the exchange rate inside the earnings figure;
+    * a platform with no predecessor reading contributes nothing, rather than
+      counting its whole opening balance as one day's earnings;
+    * a reading that cannot be priced drops the baseline instead of anchoring
+      the next delta, so an unpriced stretch is not silently counted whole.
+    """
+    cursor = await db.execute(
+        """
+        SELECT platform, date, balance, currency, fx_rate_usd
+        FROM earnings
+        ORDER BY platform, date
+        """
+    )
+    per_date: dict[str, float] = {}
+    previous: dict[str, tuple[str, float]] = {}
+    unpriced = 0
+    for row in await cursor.fetchall():
+        platform = row["platform"]
+        currency = (row["currency"] or "USD").upper()
+        rate = _usd_rate(currency, row["fx_rate_usd"])
+        if rate is None:
+            previous.pop(platform, None)
+            unpriced += 1
+            continue
+        balance = float(row["balance"] or 0.0)
+        before = previous.get(platform)
+        if before is not None and before[0] == currency:
+            # Clamped per platform BEFORE summing: a payout drops one
+            # platform's balance, and an unclamped drop would cancel real
+            # earnings on another platform in the same day's total.
+            gained = max(0.0, balance - before[1]) * rate
+            per_date[row["date"]] = per_date.get(row["date"], 0.0) + gained
+        previous[platform] = (currency, balance)
+    return per_date, unpriced
+
+
 async def get_earnings_dashboard_summary() -> dict[str, Any]:
     """Return aggregated earnings stats for the dashboard."""
     db = await _get_db()
@@ -742,78 +816,25 @@ async def get_earnings_dashboard_summary() -> dict[str, Any]:
         row = await cursor.fetchone()
         total = row["total"]
 
-        # Today's earnings: delta from yesterday per platform
-        cursor = await db.execute(
-            """
-            -- MAX(delta, 0) per platform BEFORE summing: a payout on one
-            -- platform drops its balance, and without the per-platform clamp
-            -- that drop cancels real earnings on another platform in the sum.
-            SELECT COALESCE(SUM(MAX(t.balance - COALESCE(y.balance, 0), 0)), 0) as earned
-            FROM (
-                SELECT platform, balance FROM earnings
-                WHERE date = ? AND currency = 'USD'
-            ) t
-            LEFT JOIN (
-                SELECT platform, balance FROM earnings
-                WHERE date = ? AND currency = 'USD'
-            ) y ON t.platform = y.platform
-            """,
-            (today, yesterday),
-        )
-        row = await cursor.fetchone()
-        today_earned = max(0.0, row["earned"])
+        # Today, this month and yesterday all come from one priced series.
+        # They used to be three separate SQL aggregates that each filtered
+        # currency = 'USD', so every non-USD platform was missing from all
+        # three at once and the cards read $0.00 while balances climbed.
+        per_date, unpriced = await _usd_earned_per_date(db)
+        if unpriced:
+            _logger.warning(
+                "%d earnings reading(s) have no usable USD rate and are left out of the "
+                "dashboard totals, which are therefore understated.",
+                unpriced,
+            )
 
-        # This month's earnings: latest balance minus first-of-month balance
-        cursor = await db.execute(
-            """
-            SELECT COALESCE(SUM(
-                MAX(latest.balance - COALESCE(month_start.balance, 0), 0)
-            ), 0) as earned
-            FROM (
-                SELECT e.platform, e.balance
-                FROM earnings e
-                INNER JOIN (
-                    SELECT platform, MAX(date) as max_date
-                    FROM earnings WHERE currency = 'USD'
-                    GROUP BY platform
-                ) m ON e.platform = m.platform AND e.date = m.max_date
-                WHERE e.currency = 'USD'
-            ) latest
-            LEFT JOIN (
-                SELECT e.platform, e.balance
-                FROM earnings e
-                INNER JOIN (
-                    SELECT platform, MIN(date) as min_date
-                    FROM earnings
-                    WHERE date >= ? AND currency = 'USD'
-                    GROUP BY platform
-                ) m ON e.platform = m.platform AND e.date = m.min_date
-                WHERE e.currency = 'USD'
-            ) month_start ON latest.platform = month_start.platform
-            """,
-            (first_of_month,),
-        )
-        row = await cursor.fetchone()
-        month_earned = max(0.0, row["earned"])
+        today_earned = per_date.get(today, 0.0)
+        # The month is the sum of clamped daily deltas rather than one delta
+        # from the first of the month, so a mid-month payout counts as zero on
+        # its own day instead of erasing the whole month's earnings.
+        month_earned = sum(earned for day, earned in per_date.items() if day >= first_of_month)
 
-        # Yesterday's delta for percentage change
-        day_before = (datetime.now(UTC) - timedelta(days=2)).strftime("%Y-%m-%d")
-        cursor = await db.execute(
-            """
-            SELECT COALESCE(SUM(MAX(y.balance - COALESCE(dy.balance, 0), 0)), 0) as earned
-            FROM (
-                SELECT platform, balance FROM earnings
-                WHERE date = ? AND currency = 'USD'
-            ) y
-            LEFT JOIN (
-                SELECT platform, balance FROM earnings
-                WHERE date = ? AND currency = 'USD'
-            ) dy ON y.platform = dy.platform
-            """,
-            (yesterday, day_before),
-        )
-        row = await cursor.fetchone()
-        yesterday_earned = max(0.0, row["earned"])
+        yesterday_earned = per_date.get(yesterday, 0.0)
 
         today_change = 0.0
         if yesterday_earned > 0:
@@ -871,43 +892,30 @@ async def get_daily_earnings(days: int = 7) -> list[dict[str, Any]]:
     """Return daily aggregated earnings for charting (delta per day)."""
     db = await _get_db()
     try:
-        # Per-platform balances, not a cross-platform sum. Summing first and
-        # diffing the total lets a payout drop on one platform cancel real
-        # earnings on another (see get_earnings_dashboard_summary). We clamp each
-        # platform's daily delta at zero, then sum - so a payout counts as zero
-        # earned on that platform, never as a negative eating the rest.
-        # One extra day before the range so the first delta has a predecessor.
-        cursor = await db.execute(
-            """
-            SELECT date, platform, balance
-            FROM earnings
-            WHERE date >= date('now', ?) AND currency = 'USD'
-            ORDER BY date
-            """,
-            (f"-{days + 1} days",),
-        )
-        rows = await cursor.fetchall()
-
-        # date -> {platform -> balance}
-        by_date: dict[str, dict[str, float]] = {}
-        for row in rows:
-            by_date.setdefault(row["date"], {})[row["platform"]] = row["balance"]
+        # Shares the priced series with the dashboard cards, so the chart and
+        # the "Today" card can no longer disagree. The previous version built
+        # its own per-date balance map filtered to currency = 'USD', which drew
+        # a flat-zero line for a fleet earning MYST, GRASS or ANYONE.
+        #
+        # It also treated a platform's FIRST-EVER reading as a delta against
+        # zero, so a newly added service drew a spike the size of its whole
+        # opening balance. The shared helper requires a predecessor.
+        per_date, unpriced = await _usd_earned_per_date(db)
+        if unpriced:
+            _logger.warning(
+                "%d earnings reading(s) have no usable USD rate and are left out of the "
+                "daily chart, which is therefore understated.",
+                unpriced,
+            )
 
         now = datetime.now(UTC)
         result = []
         for i in range(days - 1, -1, -1):
             d = now - timedelta(days=i)
-            date_str = d.strftime("%Y-%m-%d")
-            prev_str = (d - timedelta(days=1)).strftime("%Y-%m-%d")
-
-            current = by_date.get(date_str, {})
-            previous = by_date.get(prev_str, {})
-            earned = sum(max(0.0, bal - previous.get(platform, 0.0)) for platform, bal in current.items())
-
             result.append(
                 {
                     "date": d.strftime("%b %d"),
-                    "amount": round(earned, 2),
+                    "amount": round(per_date.get(d.strftime("%Y-%m-%d"), 0.0), 2),
                 }
             )
 
@@ -1599,24 +1607,8 @@ async def get_earned_by_platform(days: int = 30) -> dict[str, float]:
             balance = float(row["balance"] or 0.0)
             # USD is parity by definition. Trusting a stored rate on a USD row
             # would let a bad rate rewrite money the collector reported exactly.
-            rate = 1.0 if currency == "USD" else row["fx_rate_usd"]
+            rate = _usd_rate(currency, row["fx_rate_usd"])
             earned.setdefault(platform, 0.0)
-
-            # Only a finite positive number is a price. Everything else is bad
-            # data and must be treated as unpriced rather than believed:
-            #   0        reports the platform as having earned nothing, which
-            #            is indistinguishable from a genuinely flat balance;
-            #   negative defeats the payout clamp, which applies to the delta
-            #            while the sign is applied after it, so the platform
-            #            total comes out NEGATIVE and drags down every figure
-            #            derived from it;
-            #   inf/nan  poison the total outright — inf earnings, or a NaN
-            #            that compares false against every threshold it later
-            #            meets. (SQLite happens to store NaN as NULL today, so
-            #            only inf is reachable through the database; the check
-            #            does not depend on that continuing to be true.)
-            if rate is not None and not (math.isfinite(float(rate)) and float(rate) > 0):
-                rate = None
 
             if rate is None:
                 # No rate means this reading cannot be priced, so it can neither
