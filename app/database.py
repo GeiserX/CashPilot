@@ -599,6 +599,19 @@ async def init_db() -> None:
             apps_select = "apps" if has_apps else "'[]'"
             _logger.info("Migrating workers table: adding client_id column")
             await db.executescript(f"""
+                -- executescript COMMITS PER STATEMENT, so an interruption
+                -- between CREATE and RENAME leaves workers_new behind
+                -- permanently. The guard above ("client_id" not in cols) is
+                -- still true on the next boot, so the rebuild re-runs, the
+                -- CREATE fails with "table already exists", init_db raises, and
+                -- the app never starts again. Reproduced: a leftover
+                -- workers_new plus a pre-client_id workers table bricks startup
+                -- on every subsequent restart.
+                --
+                -- Dropping any leftover first makes the rebuild re-entrant. The
+                -- leftover is always disposable: it is only ever a partial copy
+                -- of workers, which is still intact until the DROP below.
+                DROP TABLE IF EXISTS workers_new;
                 CREATE TABLE workers_new (
                     id              INTEGER PRIMARY KEY AUTOINCREMENT,
                     client_id       TEXT    NOT NULL UNIQUE,
