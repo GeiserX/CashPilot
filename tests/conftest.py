@@ -88,6 +88,37 @@ def _reset_setup_token():
     yield
 
 
+@pytest.fixture(autouse=True)
+def _reset_process_wide_caches():
+    """Clear the remaining module-level state that outlives a single test.
+
+    These are process-wide and were each being reset by hand at the top of the
+    tests that happened to know about them — `_last_attempt` in three separate
+    places in test_collector_contracts.py, `_net_baselines` in two more. That
+    works only for as long as every future test author remembers the
+    boilerplate, and the failure when someone forgets is an order-dependent
+    flake in a DIFFERENT file, which is about the most expensive kind of test
+    bug to track down.
+
+    `_last_attempt` in particular is a live trap: it holds a real cooldown, so
+    a test that triggers a credential test leaves the next one rate-limited.
+    """
+    for module_name, attr in (
+        ("app.main", "_net_baselines"),
+        ("app.credential_test", "_last_attempt"),
+    ):
+        with contextlib.suppress(Exception):
+            import importlib
+
+            getattr(importlib.import_module(module_name), attr).clear()
+    with contextlib.suppress(Exception):
+        from app import orchestrator
+
+        orchestrator._status_cache = []
+        orchestrator._status_cache_time = 0.0
+    yield
+
+
 @pytest.fixture(scope="session")
 def _real_catalog_slugs():
     from app import catalog

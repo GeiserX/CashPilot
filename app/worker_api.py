@@ -411,11 +411,6 @@ async def _send_heartbeat() -> None:
         logger.warning("Heartbeat failed: %s", exc)
         if status == 401 and _worker_key:
             _consecutive_auth_failures += 1
-        else:
-            # Any other outcome breaks the run. "Consecutive" has to mean it:
-            # 401 -> timeout -> 401 -> 500 -> 401 is a flaky link, not an
-            # identity mismatch, and must not raise the alarm.
-            _consecutive_auth_failures = 0
             if _consecutive_auth_failures == _AUTH_FAILURE_ALARM_AFTER:
                 # A per-worker key rejected repeatedly almost always means our
                 # client_id no longer matches the row the UI enrolled — usually
@@ -431,6 +426,11 @@ async def _send_heartbeat() -> None:
                     CLIENT_ID,
                     _WORKER_ID_FILE,
                 )
+        else:
+            # Any other outcome breaks the run. "Consecutive" has to mean it:
+            # 401 -> timeout -> 401 -> 500 -> 401 is a flaky link, not an
+            # identity mismatch, and must not raise the alarm.
+            _consecutive_auth_failures = 0
     except Exception as exc:
         _ui_connected = False
         _last_error = "connection failed"
@@ -831,7 +831,7 @@ def _validate_runtime(runtime: str | None) -> None:
     error the user cannot act on; asking the daemon means the only runtimes
     accepted are ones that exist here.
 
-    Nothing selects a non-default runtime on its own. See docs/isolation.md for
+    Nothing selects a non-default runtime on its own. See docs/security-defaults.md for
     why gVisor is not adopted as a default or as a supported profile: it costs
     roughly 1.7x network throughput on a workload that is pure network I/O, it
     breaks host-networked services outright, and it does not address the risks
@@ -1055,9 +1055,18 @@ class BackupRequest(BaseModel):
 
 
 class VerifyRequest(BackupRequest):
-    """A bundle to check against the state currently on disk."""
+    """A bundle to check against the state currently on disk.
+
+    Recipient-mode verification needs the PRIVATE half — decryption happens in
+    memory on the worker and the key is discarded with the request. This is the
+    one moment recipient mode is not key-free, so the field says so rather than
+    letting someone paste a private key into something named `_public_key`
+    without noticing what they just did. Verify from a host you trust, or use
+    passphrase mode if that is not acceptable.
+    """
 
     bundle_b64: str = ""
+    recipient_private_key: str | None = None
 
 
 @app.post("/api/containers/{slug}/backup")
@@ -1135,7 +1144,7 @@ async def api_backup_verify(slug: str, body: VerifyRequest, request: Request) ->
             bundle,
             payload,
             passphrase=body.passphrase,
-            recipient_private_key=body.recipient_public_key,
+            recipient_private_key=body.recipient_private_key,
         )
     )
 

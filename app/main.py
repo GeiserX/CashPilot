@@ -168,9 +168,16 @@ def _traffic_state(slug: str, containers: list[dict[str, Any]]) -> str | None:
     return net_activity.classify(max(rates))
 
 
-async def _get_all_worker_containers() -> list[dict[str, Any]]:
-    """Collect container/app data from all online workers' heartbeat data in DB."""
-    workers = await database.list_workers()
+async def _get_all_worker_containers(workers: list[dict[str, Any]] | None = None) -> list[dict[str, Any]]:
+    """Collect container/app data from all online workers' heartbeat data in DB.
+
+    ``workers`` lets a caller that has ALREADY fetched the worker list hand it
+    in rather than causing a second `SELECT *` and a second full JSON decode of
+    every row in the same request. Everyone else keeps calling this with no
+    arguments and gets the fetch for free.
+    """
+    if workers is None:
+        workers = await database.list_workers()
     result: list[dict[str, Any]] = []
     for w in workers:
         if w.get("status") != "online":
@@ -302,20 +309,26 @@ async def _run_health_check() -> None:
         logger.warning("Health check skipped: %s", exc)
 
 
-async def _detect_payout(result: Any) -> None:
+async def _detect_payout(result: Any) -> dict[str, str] | None:
     """Notice a balance drop that looks like a cashout, and ask.
 
     Never records income on its own. A balance also falls for a provider
     correction or a reset session, and an unconfirmed guess written as earnings
     corrupts lifetime-earned permanently and invisibly.
+
+    Returns the alert to show the user, or None. It has to be RETURNED rather
+    than filed and forgotten: the bell renders one in-memory list built during
+    the collection run, and this function runs in the success branch that never
+    touched that list — so a detected payout was written to the database and
+    then never shown to anybody, which defeats the point of asking.
     """
     try:
         previous = await database.get_latest_balance(result.platform)
         if previous is None:
-            return
+            return None
         probable = payouts.detect(previous, result.balance, catalog.get_service(result.platform))
         if not probable:
-            return
+            return None
         payout_id = await database.record_probable_payout(
             platform=result.platform,
             amount=probable["amount"],
@@ -325,11 +338,48 @@ async def _detect_payout(result: Any) -> None:
         if payout_id is None:
             # One already pending for this platform; a second prompt for the
             # same event teaches the user to dismiss them.
-            return
+            return None
         await database.record_alert("payout", result.platform, probable["reason"])
+        return {"kind": "payout", "platform": result.platform, "error": probable["reason"]}
     except Exception as exc:
         # Earnings collection must not fail because payout detection did.
         logger.warning("Payout detection failed for %s: %s", getattr(result, "platform", "?"), exc)
+    return None
+
+
+async def _pending_payout_alerts(seen: set[str] | None = None) -> list[dict[str, str]]:
+    """One alert per payout still waiting for a yes or no.
+
+    The question outlives the collection run that noticed it. Rebuilding the
+    bell only from what was just detected made the prompt disappear on the next
+    run, which is the one thing a prompt must not do — an unanswered payout is
+    unanswered until the user answers it.
+    """
+    seen = seen or set()
+    try:
+        rows = await database.get_payouts()
+    except Exception as exc:
+        logger.warning("Could not load pending payouts for the alert bell: %s", exc)
+        return []
+    pending: list[dict[str, str]] = []
+    for row in rows:
+        platform = row.get("platform", "")
+        if row.get("confirmed") or platform in seen:
+            continue
+        seen.add(platform)
+        amount = row.get("amount")
+        currency = row.get("currency") or ""
+        pending.append(
+            {
+                "kind": "payout",
+                "platform": platform,
+                "error": f"Balance dropped by {amount:.2f} {currency}".rstrip()
+                + " — was this a payout? Confirm or reject it."
+                if isinstance(amount, int | float)
+                else "A balance drop looks like a payout — confirm or reject it.",
+            }
+        )
+    return pending
 
 
 async def _collect_bounded(collector) -> Any:
@@ -398,10 +448,18 @@ async def _warm_collector_alerts() -> None:
     seen: set[str] = set()
     restored: list[dict[str, str]] = []
     for alert in stored:
-        if alert["kind"] != "collector" or alert["subject"] in seen:
+        # Payouts belong here too. Dropping every non-collector kind meant a
+        # detected payout was recorded and then never shown, so the prompt the
+        # user is supposed to answer never appeared. Dedup by kind AND subject:
+        # a platform can legitimately have both a failing collector and a
+        # pending payout, and they are different things to tell someone.
+        if alert["kind"] not in ("collector", "payout"):
             continue
-        seen.add(alert["subject"])
-        restored.append({"platform": alert["subject"], "error": alert["message"]})
+        key = f"{alert['kind']}:{alert['subject']}"
+        if key in seen:
+            continue
+        seen.add(key)
+        restored.append({"kind": alert["kind"], "platform": alert["subject"], "error": alert["message"]})
     _collector_alerts = restored
 
 
@@ -444,7 +502,7 @@ async def _run_collection() -> None:
                     # providers is a live credential. The alert is now durable and readable
                     # by any authenticated role, so it must never hold a secret.
                     safe_error = notify.redact(result.error)
-                    alerts.append({"platform": result.platform, "error": safe_error})
+                    alerts.append({"kind": "collector", "platform": result.platform, "error": safe_error})
                     metrics.record_collection_error(result.platform)
                     # Push out-of-band only the FIRST time this failure appears — a
                     # collector broken for a week must not notify every single hour.
@@ -460,7 +518,9 @@ async def _run_collection() -> None:
                 else:
                     # Compare against the last reading BEFORE writing the new one:
                     # a payout is only visible as the step between two snapshots.
-                    await _detect_payout(result)
+                    payout_alert = await _detect_payout(result)
+                    if payout_alert:
+                        alerts.append(payout_alert)
                     await database.upsert_earnings(
                         platform=result.platform,
                         balance=result.balance,
@@ -477,6 +537,18 @@ async def _run_collection() -> None:
                         # Recovered — drop the stored alert so a future failure counts
                         # as new and notifies again.
                         await database.clear_alerts("collector", result.platform)
+            # Re-add every payout still awaiting an answer, not just ones
+            # detected on THIS run. `record_probable_payout` returns None while
+            # one is already pending, so a freshly detected payout produced an
+            # alert once and then vanished from the bell on the very next
+            # collection — before the user had a chance to confirm or reject
+            # it. The pending rows in the database are the real source of
+            # truth for "there is still a question outstanding", so the bell is
+            # rebuilt from them rather than from what happened to be noticed in
+            # the last few seconds.
+            alerts.extend(
+                await _pending_payout_alerts(seen={a["platform"] for a in alerts if a.get("kind") == "payout"})
+            )
             _collector_alerts = alerts
 
             await _flatline_check()
@@ -2053,7 +2125,12 @@ async def api_producer_state(request: Request, slug: str, worker_id: int | None 
         if slug in earned:
             earned_recently = earned[slug] > 0
 
-    running = True
+    # None, not True. If the container lookup below throws, this value is what
+    # survives, and claiming "running" on no evidence is exactly the assumption
+    # this whole module exists to refuse: assess() would skip its unknown path
+    # and, on a still-cached earnings figure, report the service as PRODUCING
+    # at a moment when we cannot tell whether the container is even up.
+    running: bool | None = None
     log_hits: list[dict[str, str]] = []
     traffic: str | None = None
     signals = producer_state.signals_for(service)
@@ -2109,7 +2186,12 @@ async def api_test_credentials(request: Request, slug: str) -> dict[str, Any]:
     from app import collectors
     from app.collectors import COLLECTOR_MAP
 
-    _require_auth_api(request)
+    # Owner, not merely authenticated: this fires an authenticated login to a
+    # third party using the OWNER's stored credentials and reads the balance
+    # back. /api/collectors/meta already requires owner for the same material,
+    # and POST /api/collect — which is strictly less privileged — requires
+    # writer. A viewer must not be able to reach any of it.
+    _require_owner(request)
     service = catalog.get_service(slug)
     if not service:
         raise HTTPException(status_code=404, detail=f"Unknown service '{slug}'")
@@ -2130,6 +2212,17 @@ async def api_test_credentials(request: Request, slug: str) -> dict[str, Any]:
         outcome = credential_test.NOT_CONFIGURED if missing else credential_test.UNSUPPORTED
         return credential_test.result(outcome, name)
 
+    # Re-check immediately before claiming the slot. The first check above is
+    # separated from this point by `await database.get_config()`, and an await
+    # is where the event loop can run the other request: two clicks could both
+    # pass the cooldown, both build a collector, and both reach the provider.
+    # Hammering a provider with repeated logins is what gets accounts flagged,
+    # which is the entire reason the cooldown exists. `build_one` is
+    # synchronous, so re-check and claim are adjacent with no await between
+    # them and the window is closed without needing a lock.
+    remaining = credential_test.cooldown_remaining(slug)
+    if remaining > 0:
+        return credential_test.result(credential_test.RATE_LIMITED, name, retry_after=round(remaining))
     credential_test.note_attempt(slug)
     try:
         result = await collector.collect()
@@ -2158,21 +2251,57 @@ async def api_payouts(request: Request, platform: str | None = None) -> dict[str
     }
 
 
+async def _payout_platform(payout_id: int) -> str | None:
+    """Which platform a payout row belongs to, before it is deleted."""
+    with contextlib.suppress(Exception):
+        for row in await database.get_payouts():
+            if row.get("id") == payout_id:
+                return row.get("platform")
+    return None
+
+
+async def _retire_payout_alert(payout_id: int, platform: str | None = None) -> None:
+    """Drop the bell entry for a payout that has now been answered."""
+    global _collector_alerts
+    if platform is None:
+        platform = await _payout_platform(payout_id)
+    if not platform:
+        return
+    with contextlib.suppress(Exception):
+        await database.clear_alerts("payout", platform)
+    _collector_alerts = [
+        a for a in _collector_alerts if not (a.get("kind") == "payout" and a.get("platform") == platform)
+    ]
+
+
 @app.post("/api/earnings/payouts/{payout_id}/confirm")
 async def api_confirm_payout(request: Request, payout_id: int, method: str = "") -> dict[str, Any]:
     """Confirm a drop really was a payout. Only a human reaches this."""
-    _require_auth_api(request)
-    if not await database.confirm_payout(payout_id):
+    # Writer, not viewer: this mutates financial records, and rejection is a
+    # hard DELETE. A read-only account must not be able to destroy them.
+    _require_writer(request)
+    # Forward `method`. The endpoint has always accepted it and the database
+    # has always had a column for it, but it was never passed along, so every
+    # confirmation recorded an empty method however the caller was paid.
+    if not await database.confirm_payout(payout_id, method=method):
         raise HTTPException(status_code=404, detail="No unconfirmed payout with that id")
+    # The question has been answered, so retire the prompt. Left behind, the
+    # stored alert would be restored on the next restart and ask again about a
+    # payout the user already confirmed.
+    await _retire_payout_alert(payout_id)
     return {"ok": True, "id": payout_id, "confirmed": True}
 
 
 @app.post("/api/earnings/payouts/{payout_id}/reject")
 async def api_reject_payout(request: Request, payout_id: int) -> dict[str, Any]:
     """This drop was not a payout — forget it entirely."""
-    _require_auth_api(request)
+    # Writer, not viewer: this mutates financial records, and rejection is a
+    # hard DELETE. A read-only account must not be able to destroy them.
+    _require_writer(request)
+    platform = await _payout_platform(payout_id)
     if not await database.reject_payout(payout_id):
         raise HTTPException(status_code=404, detail="No unconfirmed payout with that id")
+    await _retire_payout_alert(payout_id, platform=platform)
     return {"ok": True, "id": payout_id, "removed": True}
 
 
@@ -2223,13 +2352,22 @@ async def api_fleet_economics(request: Request) -> dict[str, Any]:
     _require_auth_api(request)
     config = await database.get_config() or {}
     try:
-        price = float(config.get("electricity_price_per_kwh") or 0.0)
+        # Two features shipped in one release reading DIFFERENT keys for the
+        # same tariff, so setting one left the other reporting "cost unknown"
+        # forever — and both unknown-paths are deliberately quiet, which is
+        # exactly what hid it. power_price_per_kwh is canonical (it shipped
+        # first); the newer name is honoured so nobody's existing config breaks.
+        price = float(config.get("power_price_per_kwh") or config.get("electricity_price_per_kwh") or 0.0)
     except (TypeError, ValueError):
         price = 0.0
 
-    workers = [_decoded_worker(w) for w in await database.list_workers()]
+    # Fetched once and reused: this used to query the worker table here and
+    # then again inside _get_all_worker_containers, decoding every row twice
+    # to build the same list in a single request.
+    raw_workers = await database.list_workers()
+    workers = [_decoded_worker(w) for w in raw_workers]
     earned = await database.get_earned_by_platform(days=30)
-    containers = await _get_all_worker_containers()
+    containers = await _get_all_worker_containers(raw_workers)
 
     # Attribute each service's gross to the worker running it. A service on two
     # machines splits evenly: without per-node earnings there is no better
@@ -2334,7 +2472,9 @@ async def api_collector_alerts(request: Request) -> list[dict[str, str]]:
         clean = error_msg[:_MAX_ALERT_ERROR_LEN]
         if len(error_msg) > _MAX_ALERT_ERROR_LEN:
             clean += "..."
-        sanitized.append({"platform": alert["platform"], "error": clean})
+        # `kind` is additive and defaults to "collector", so a frontend that
+        # does not read it behaves exactly as before.
+        sanitized.append({"kind": alert.get("kind", "collector"), "platform": alert["platform"], "error": clean})
     return sanitized
 
 
@@ -2794,7 +2934,21 @@ async def api_list_workers(request: Request) -> list[dict[str, Any]]:
 
 
 def _parse_worker_json(w: dict[str, Any]) -> None:
-    """Parse stored JSON columns and compute counts for a worker dict."""
+    """Parse stored JSON columns and compute counts for a worker dict.
+
+    Also drops the worker's encrypted fleet key, because ``list_workers`` is a
+    ``SELECT *`` and every path that renders a worker to a client goes through
+    here. The key is a credential: it is what a worker authenticates with, and
+    it has no use in a dashboard. Encrypted at rest is not a reason to hand the
+    ciphertext to every logged-in viewer — it makes the Fernet key the only
+    thing standing between a read-only account and the whole fleet's
+    credentials, when nothing needed to publish it at all.
+
+    Stripped here rather than in ``list_workers`` on purpose: the stale-worker
+    purge legitimately reads ``api_key_enc`` to tell an enrolled worker from one
+    that never enrolled, and it does not go through this function.
+    """
+    w.pop("api_key_enc", None)
     w["containers"] = _safe_json(w.get("containers", "[]"))
     w["apps"] = _safe_json(w.get("apps", "[]"))
     w["system_info"] = _safe_json(w.get("system_info", "{}"), {})

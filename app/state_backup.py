@@ -147,7 +147,16 @@ def seal(
             raise BackupError("Recipient public key must be 32 bytes of hex (an X25519 public key).") from exc
         ephemeral = X25519PrivateKey.generate()
         header["ephemeral_public_key"] = ephemeral.public_key().public_bytes_raw().hex()
-        key = _derive_shared(ephemeral.exchange(recipient), salt)
+        try:
+            # A well-formed 32-byte key can still be a low-order point, for
+            # which the shared secret is all zeros and OpenSSL refuses the
+            # exchange with a bare ValueError. That is a 400 — the caller gave
+            # us an unusable key — not the 500 an escaping exception produces.
+            key = _derive_shared(ephemeral.exchange(recipient), salt)
+        except ValueError as exc:
+            raise BackupError(
+                "Recipient public key is not a usable X25519 point, so no shared key can be derived."
+            ) from exc
 
     header_bytes = json.dumps(header, sort_keys=True, separators=(",", ":")).encode("utf-8")
     # The header is authenticated, not encrypted: swapping the metadata that
@@ -209,7 +218,16 @@ def open_bundle(
             ephemeral = X25519PublicKey.from_public_bytes(bytes.fromhex(header["ephemeral_public_key"]))
         except (KeyError, ValueError, TypeError) as exc:
             raise BackupError("Bundle header is malformed, or the private key is not valid X25519.") from exc
-        key = _derive_shared(private.exchange(ephemeral), salt)
+        try:
+            # The ephemeral key here comes out of the BUNDLE, so it is
+            # attacker-controlled on a restore: a crafted bundle carrying a
+            # low-order point would otherwise crash the verify endpoint with an
+            # unhandled 500 instead of being rejected as the bad input it is.
+            key = _derive_shared(private.exchange(ephemeral), salt)
+        except ValueError as exc:
+            raise BackupError(
+                "Bundle's ephemeral public key is not a usable X25519 point, so it cannot be opened."
+            ) from exc
     else:
         raise BackupError(f"Unknown bundle mode {mode!r}.")
 

@@ -86,7 +86,7 @@ def assess(
     has_collector: bool,
     earned_recently: bool | None,
     log_hits: list[dict[str, str]] | None = None,
-    container_running: bool = True,
+    container_running: bool | None = True,
     traffic: str | None = None,
 ) -> dict[str, Any]:
     """Combine the available signals into one producer state.
@@ -95,10 +95,23 @@ def assess(
     not enough history. That is reported as UNKNOWN rather than guessed, because
     telling a user their service is idle when we simply cannot see its earnings
     is the same false confidence this module exists to remove.
+
+    ``container_running`` follows the same three-valued rule. None means the
+    lookup itself failed, which is NOT the same claim as "it is stopped" —
+    saying the container is not running when we simply could not ask sends the
+    user to restart something that may well be up.
     """
     log_hits = log_hits or []
     reasons: list[str] = []
     candidates: list[str] = []
+
+    if container_running is None:
+        return {
+            "slug": slug,
+            "state": UNKNOWN,
+            "reasons": ["Could not determine whether the container is running, so nothing here is judged."],
+            "log_hits": [],
+        }
 
     if not container_running:
         return {
