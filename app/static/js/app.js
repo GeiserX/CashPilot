@@ -211,6 +211,7 @@ const CP = (() => {
       loadDashboardStats(),
       loadServicesTable(),
       loadEarningsChart('7'),
+      loadPayoutQueue(),
     ]);
 
     // Auto-refresh every hour
@@ -218,7 +219,89 @@ const CP = (() => {
     refreshTimer = setInterval(() => {
       loadDashboardStats();
       loadServicesTable();
+      loadPayoutQueue();
     }, 3600000);
+  }
+
+  // Payouts awaiting an answer.
+  //
+  // The backend has detected these for a while and had nowhere to ask: a
+  // balance drop was recorded as a PROBABLE payout, and without an answer it
+  // never counts toward lifetime earnings. So a real payout quietly looked like
+  // a loss, which is the opposite of what the feature is for.
+  async function loadPayoutQueue() {
+    const card = document.getElementById('payout-queue-card');
+    const list = document.getElementById('payout-queue-list');
+    if (!card || !list) return;
+
+    let pending;
+    try {
+      pending = (await api('/api/earnings/payouts')).probable || [];
+    } catch (err) {
+      // Unknown is not "nothing pending". Leave whatever is on screen rather
+      // than hiding a question the user still owes an answer to.
+      console.warn('Could not load pending payouts:', err);
+      return;
+    }
+
+    if (!pending.length) {
+      card.style.display = 'none';
+      list.innerHTML = '';
+      return;
+    }
+
+    card.style.display = '';
+    list.innerHTML = pending.map(p => {
+      // The NATIVE amount leads, because it is what the provider actually paid
+      // and it is what the user will see on the provider's own page when they
+      // go to check. Everywhere else on the dashboard the display currency is
+      // the right answer; here it is a converted approximation of a specific
+      // real transaction, so it is shown second and marked as approximate.
+      // A browser check caught this: a 24.90 USD payout rendered as "£18.55",
+      // which is not a figure the user can match against anything.
+      const nativeCurrency = p.currency || 'USD';
+      const native = `${Number(p.amount).toFixed(2)} ${nativeCurrency}`;
+      const converted = formatCurrency(p.amount, nativeCurrency);
+      const approx = converted && converted !== native
+        ? ` <span style="color:var(--text-muted);">(≈ ${escapeHtml(converted)})</span>`
+        : '';
+      return `
+        <div class="payout-queue-item" data-payout-id="${escapeHtml(String(p.id))}">
+          <div class="payout-queue-body">
+            <div class="payout-queue-platform">${escapeHtml(p.platform || '')}</div>
+            <div class="payout-queue-detail">Balance dropped by ${escapeHtml(native)}${approx}${p.detected_at ? ` on ${escapeHtml(String(p.detected_at).slice(0, 10))}` : ''}</div>
+          </div>
+          <div class="payout-queue-actions">
+            <button class="btn btn-primary btn-sm" data-action="confirmPayout" data-a1="${escapeHtml(String(p.id))}" data-a2="${escapeHtml(p.platform || '')}">Yes, I was paid</button>
+            <button class="btn btn-ghost btn-sm" data-action="rejectPayout" data-a1="${escapeHtml(String(p.id))}" data-a2="${escapeHtml(p.platform || '')}">No, not a payout</button>
+          </div>
+        </div>
+      `;
+    }).join('');
+  }
+
+  async function confirmPayout(payoutId, platform) {
+    try {
+      await api(`/api/earnings/payouts/${encodeURIComponent(payoutId)}/confirm`, { method: 'POST' });
+      toast(`Recorded the ${platform || 'payout'} as paid.`, 'success');
+      // The totals move as a direct result, so refresh them alongside the queue
+      // rather than leaving the user to wonder whether it took effect.
+      await Promise.all([loadPayoutQueue(), loadDashboardStats(), loadCollectorAlerts()]);
+    } catch (err) {
+      toast(err.message, 'error');
+    }
+  }
+
+  async function rejectPayout(payoutId, platform) {
+    // Rejection DELETES the row, and there is no undo, so it asks first.
+    if (!window.confirm(`Discard the detected ${platform || ''} payout? This cannot be undone.`)) return;
+    try {
+      await api(`/api/earnings/payouts/${encodeURIComponent(payoutId)}/reject`, { method: 'POST' });
+      toast('Discarded — it will not count as earnings.', 'success');
+      await Promise.all([loadPayoutQueue(), loadCollectorAlerts()]);
+    } catch (err) {
+      toast(err.message, 'error');
+    }
   }
 
   async function loadDashboardStats() {
@@ -2478,5 +2561,8 @@ const CP = (() => {
     clearServiceCredentials,
     openChangePasswordModal,
     submitPasswordChange,
+    loadPayoutQueue,
+    confirmPayout,
+    rejectPayout,
   };
 })();

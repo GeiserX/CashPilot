@@ -1965,3 +1965,37 @@ img { max-width: 100%; }
     grid-template-columns: 1fr;
   }
 }
+
+/* Payouts awaiting an answer (dashboard).
+   Deliberately not styled as an alert: this is a question, not a fault. The
+   row wraps rather than truncating because the amount and the date are the
+   two things the user needs in order to answer it. */
+.payout-queue-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border-color);
+}
+.payout-queue-item:last-child {
+  border-bottom: none;
+}
+.payout-queue-body {
+  min-width: 0;
+}
+.payout-queue-platform {
+  font-weight: 600;
+  text-transform: capitalize;
+}
+.payout-queue-detail {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+.payout-queue-actions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
