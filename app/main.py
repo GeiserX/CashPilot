@@ -347,6 +347,41 @@ async def _detect_payout(result: Any) -> dict[str, str] | None:
     return None
 
 
+async def _pending_payout_alerts(seen: set[str] | None = None) -> list[dict[str, str]]:
+    """One alert per payout still waiting for a yes or no.
+
+    The question outlives the collection run that noticed it. Rebuilding the
+    bell only from what was just detected made the prompt disappear on the next
+    run, which is the one thing a prompt must not do — an unanswered payout is
+    unanswered until the user answers it.
+    """
+    seen = seen or set()
+    try:
+        rows = await database.get_payouts()
+    except Exception as exc:
+        logger.warning("Could not load pending payouts for the alert bell: %s", exc)
+        return []
+    pending: list[dict[str, str]] = []
+    for row in rows:
+        platform = row.get("platform", "")
+        if row.get("confirmed") or platform in seen:
+            continue
+        seen.add(platform)
+        amount = row.get("amount")
+        currency = row.get("currency") or ""
+        pending.append(
+            {
+                "kind": "payout",
+                "platform": platform,
+                "error": f"Balance dropped by {amount:.2f} {currency}".rstrip()
+                + " — was this a payout? Confirm or reject it."
+                if isinstance(amount, int | float)
+                else "A balance drop looks like a payout — confirm or reject it.",
+            }
+        )
+    return pending
+
+
 async def _collect_bounded(collector) -> Any:
     """Run a single collector's `collect()` under the shared concurrency limit."""
     async with _collection_semaphore:
@@ -502,6 +537,18 @@ async def _run_collection() -> None:
                         # Recovered — drop the stored alert so a future failure counts
                         # as new and notifies again.
                         await database.clear_alerts("collector", result.platform)
+            # Re-add every payout still awaiting an answer, not just ones
+            # detected on THIS run. `record_probable_payout` returns None while
+            # one is already pending, so a freshly detected payout produced an
+            # alert once and then vanished from the bell on the very next
+            # collection — before the user had a chance to confirm or reject
+            # it. The pending rows in the database are the real source of
+            # truth for "there is still a question outstanding", so the bell is
+            # rebuilt from them rather than from what happened to be noticed in
+            # the last few seconds.
+            alerts.extend(
+                await _pending_payout_alerts(seen={a["platform"] for a in alerts if a.get("kind") == "payout"})
+            )
             _collector_alerts = alerts
 
             await _flatline_check()
@@ -2204,6 +2251,29 @@ async def api_payouts(request: Request, platform: str | None = None) -> dict[str
     }
 
 
+async def _payout_platform(payout_id: int) -> str | None:
+    """Which platform a payout row belongs to, before it is deleted."""
+    with contextlib.suppress(Exception):
+        for row in await database.get_payouts():
+            if row.get("id") == payout_id:
+                return row.get("platform")
+    return None
+
+
+async def _retire_payout_alert(payout_id: int, platform: str | None = None) -> None:
+    """Drop the bell entry for a payout that has now been answered."""
+    global _collector_alerts
+    if platform is None:
+        platform = await _payout_platform(payout_id)
+    if not platform:
+        return
+    with contextlib.suppress(Exception):
+        await database.clear_alerts("payout", platform)
+    _collector_alerts = [
+        a for a in _collector_alerts if not (a.get("kind") == "payout" and a.get("platform") == platform)
+    ]
+
+
 @app.post("/api/earnings/payouts/{payout_id}/confirm")
 async def api_confirm_payout(request: Request, payout_id: int, method: str = "") -> dict[str, Any]:
     """Confirm a drop really was a payout. Only a human reaches this."""
@@ -2215,6 +2285,10 @@ async def api_confirm_payout(request: Request, payout_id: int, method: str = "")
     # confirmation recorded an empty method however the caller was paid.
     if not await database.confirm_payout(payout_id, method=method):
         raise HTTPException(status_code=404, detail="No unconfirmed payout with that id")
+    # The question has been answered, so retire the prompt. Left behind, the
+    # stored alert would be restored on the next restart and ask again about a
+    # payout the user already confirmed.
+    await _retire_payout_alert(payout_id)
     return {"ok": True, "id": payout_id, "confirmed": True}
 
 
@@ -2224,8 +2298,10 @@ async def api_reject_payout(request: Request, payout_id: int) -> dict[str, Any]:
     # Writer, not viewer: this mutates financial records, and rejection is a
     # hard DELETE. A read-only account must not be able to destroy them.
     _require_writer(request)
+    platform = await _payout_platform(payout_id)
     if not await database.reject_payout(payout_id):
         raise HTTPException(status_code=404, detail="No unconfirmed payout with that id")
+    await _retire_payout_alert(payout_id, platform=platform)
     return {"ok": True, "id": payout_id, "removed": True}
 
 

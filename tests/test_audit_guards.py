@@ -485,3 +485,87 @@ class TestTheCredentialCooldownCannotBeRaced:
             "an await sits between the cooldown check and note_attempt, so two "
             "concurrent requests can both pass the check and both hit the provider"
         )
+
+
+class TestAPayoutPromptSurvivesUntilItIsAnswered:
+    """A prompt that vanishes on its own is worse than no prompt.
+
+    `record_probable_payout` returns None while one is already pending, so
+    `_detect_payout` reported a payout on the run that noticed it and None
+    forever after. Rebuilding the bell from that alone made the question
+    disappear on the very next collection — before the user could answer it.
+    """
+
+    PENDING = [
+        {"id": 1, "platform": "honeygain", "amount": 25.0, "currency": "USD", "confirmed": 0},
+        {"id": 2, "platform": "iproyal", "amount": 5.0, "currency": "USD", "confirmed": 1},
+    ]
+
+    def test_an_unanswered_payout_is_re_added_on_a_later_run(self):
+        import asyncio
+        from unittest.mock import AsyncMock, patch
+
+        from app import main
+
+        with patch.object(main.database, "get_payouts", AsyncMock(return_value=self.PENDING)):
+            alerts = asyncio.run(main._pending_payout_alerts())
+        assert [a["platform"] for a in alerts] == ["honeygain"], "the pending question must persist"
+        assert alerts[0]["kind"] == "payout"
+
+    def test_an_already_confirmed_payout_is_not_asked_about_again(self):
+        import asyncio
+        from unittest.mock import AsyncMock, patch
+
+        from app import main
+
+        with patch.object(main.database, "get_payouts", AsyncMock(return_value=self.PENDING)):
+            alerts = asyncio.run(main._pending_payout_alerts())
+        assert all(a["platform"] != "iproyal" for a in alerts)
+
+    def test_it_does_not_duplicate_one_detected_in_this_run(self):
+        import asyncio
+        from unittest.mock import AsyncMock, patch
+
+        from app import main
+
+        with patch.object(main.database, "get_payouts", AsyncMock(return_value=self.PENDING)):
+            alerts = asyncio.run(main._pending_payout_alerts(seen={"honeygain"}))
+        assert alerts == [], "the same payout would appear twice in the bell"
+
+    def test_the_message_tells_the_user_what_to_do(self):
+        import asyncio
+        from unittest.mock import AsyncMock, patch
+
+        from app import main
+
+        with patch.object(main.database, "get_payouts", AsyncMock(return_value=self.PENDING)):
+            message = asyncio.run(main._pending_payout_alerts())[0]["error"]
+        assert "Confirm or reject" in message
+
+    def test_a_database_failure_does_not_break_the_collection_run(self):
+        import asyncio
+        from unittest.mock import AsyncMock, patch
+
+        from app import main
+
+        with patch.object(main.database, "get_payouts", AsyncMock(side_effect=RuntimeError("db down"))):
+            assert asyncio.run(main._pending_payout_alerts()) == []
+
+    def test_answering_a_payout_retires_its_prompt(self):
+        """Otherwise a restart restores it and asks again about a settled payout."""
+        import asyncio
+        from unittest.mock import AsyncMock, patch
+
+        from app import main
+
+        with (
+            patch.object(main.database, "get_payouts", AsyncMock(return_value=self.PENDING)),
+            patch.object(main.database, "clear_alerts", AsyncMock()) as cleared,
+            patch.object(main, "_collector_alerts", [{"kind": "payout", "platform": "honeygain", "error": "x"}]),
+        ):
+            asyncio.run(main._retire_payout_alert(1))
+            cleared.assert_awaited_once_with("payout", "honeygain")
+            # Inside the patch: _retire_payout_alert REBINDS the module global,
+            # and patch.object restores it on exit, so asserting afterwards
+            # would read the original list and pass for the wrong reason.
+            assert main._collector_alerts == []
