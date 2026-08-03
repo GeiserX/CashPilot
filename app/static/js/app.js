@@ -980,15 +980,31 @@ const CP = (() => {
       labels = data.map(d => d.date);
       values = data.map(d => d.amount);
     } catch (err) {
-      // Generate placeholder data
-      const now = new Date();
-      const count = parseInt(days) || 7;
-      for (let i = count - 1; i >= 0; i--) {
-        const d = new Date(now);
-        d.setDate(d.getDate() - i);
-        labels.push(d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }));
-        values.push(0);
+      // A failed fetch is NOT a month of zero earnings.
+      //
+      // This used to fabricate one bar per day at exactly 0.00, drawn with the
+      // same axis and tooltips as real money. The user read "I earned nothing
+      // every day for the last month" when the truth was that the browser could
+      // not reach the server. Of every place in this app that could turn
+      // unknown into a number, this was the loudest: a full-width chart of
+      // confident zeros.
+      //
+      // Leave whatever is on screen alone if a chart already exists — stale
+      // real data beats invented data — and say so plainly when there is not.
+      console.warn('Could not load earnings for the chart:', err);
+      if (!earningsChart && ctx) {
+        const holder = ctx.parentElement;
+        if (holder) {
+          holder.innerHTML =
+            '<div class="empty-state" style="padding:32px 0;">'
+            + '<div class="empty-state-text">Could not load earnings. This is not a reading of zero — '
+            + 'the figures could not be fetched.</div>'
+            + '<button class="btn btn-ghost btn-sm" data-action="loadEarningsChart" data-a1="'
+            + escapeHtml(String(days)) + '" style="margin-top:10px;">Retry</button>'
+            + '</div>';
+        }
       }
+      return;
     }
 
     if (earningsChart) {
@@ -1608,7 +1624,7 @@ const CP = (() => {
     }
 
     return `
-    <div class="${classes.join(' ')}" data-slug="${svc.slug}" data-action="toggleWizardService" data-a1="${svc.slug}" data-a2="this">
+    <div class="${classes.join(' ')}" data-slug="${svc.slug}" data-action="toggleWizardService" data-a1="${svc.slug}">
       <div class="service-card-header">
         <div class="service-icon">${(svc.name || '?')[0]}</div>
         <div>
@@ -1625,14 +1641,27 @@ const CP = (() => {
     </div>`;
   }
 
-  function toggleWizardService(slug, el) {
+  function toggleWizardService(slug) {
+    // Resolves its own element. It used to take one as a second argument, fed
+    // by `data-a2="this"` — a leftover from the inline-handler migration, where
+    // `this` really was the element. delegate.js reads arguments out of
+    // `dataset`, and dataset values are ALWAYS strings, so the handler received
+    // the literal string "this" and threw on `.classList`.
+    //
+    // The throw was the harmless half. The selection is mutated BEFORE the
+    // line that throws, so a click updated wizardState and then died before
+    // highlighting anything: no visual feedback, and a second click silently
+    // deselected a service the user could not see was selected. They then
+    // pressed Next and were told to select something.
+    const card = document.querySelector(`#wizard-services .service-card[data-slug="${CSS.escape(slug)}"]`)
+      || document.querySelector(`.service-card[data-slug="${CSS.escape(slug)}"]`);
     const idx = wizardState.selectedServices.indexOf(slug);
     if (idx >= 0) {
       wizardState.selectedServices.splice(idx, 1);
-      el.classList.remove('selected');
+      card?.classList.remove('selected');
     } else {
       wizardState.selectedServices.push(slug);
-      el.classList.add('selected');
+      card?.classList.add('selected');
     }
   }
 

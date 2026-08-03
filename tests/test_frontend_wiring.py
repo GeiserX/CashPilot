@@ -47,6 +47,26 @@ def js_function(name: str) -> str:
     return body
 
 
+def without_comments(text: str) -> str:
+    """Source with comments removed, for guards that scan raw text.
+
+    Written after the FOURTH time in one session that a text-matching check
+    fired on the comment explaining the very thing it forbids. A guard that
+    reads comments punishes documenting the fix, and the reflex response —
+    rewording the comment — makes the code worse to read in order to keep a
+    weak test green. Strip the comments instead.
+
+    Deliberately crude: it removes `//` line comments, `/* */` blocks and HTML
+    comments. It is not a parser and does not need to be — it only has to stop
+    prose from being mistaken for code.
+    """
+    import re
+
+    text = re.sub(r"/\*.*?\*/", "", text, flags=re.S)
+    text = re.sub(r"<!--.*?-->", "", text, flags=re.S)
+    return "\n".join(re.sub(r"(^|\s)//.*$", "", line) for line in text.splitlines())
+
+
 def frontend_text() -> str:
     return "\n".join(p.read_text(encoding="utf-8") for p in [*JS, *TEMPLATES])
 
@@ -491,3 +511,74 @@ class TestTheDeployStepWarnsBeforeItActs:
         source = js_function("_confirmPreflight")
         assert "window.confirm" in source
         assert "Deploy anyway?" in source
+
+
+class TestTheUiNeverInventsDataItCouldNotFetch:
+    """Two places turned a failed request into a confident number or a dead click.
+
+    Both were found by the user-story audit and both are the same mistake in
+    different costumes: the code had no value, so it made one up.
+    """
+
+    def test_a_failed_chart_fetch_does_not_draw_a_month_of_zeros(self):
+        """It fabricated one bar per day at 0.00, with real-money axes.
+
+        The user read "I earned nothing every day for a month" when the browser
+        simply could not reach the server. Of everywhere in this app that could
+        render unknown as a number, this was the largest on screen.
+        """
+        source = js_function("loadEarningsChart")
+        catch = source[source.index("} catch (err) {") :]
+        assert "values.push(0)" not in catch, "the chart still fabricates zeros on failure"
+        assert "Generate placeholder data" not in catch
+
+    def test_it_says_the_figures_are_missing_rather_than_zero(self):
+        source = js_function("loadEarningsChart")
+        assert "not a reading of zero" in source
+
+    def test_an_existing_chart_is_left_alone_rather_than_zeroed(self):
+        """Stale real data beats invented data."""
+        source = js_function("loadEarningsChart")
+        catch = source[source.index("} catch (err) {") :]
+        assert "if (!earningsChart" in catch, "a failed refresh must not wipe a chart that already has real data"
+
+    def test_the_retry_uses_a_delegated_action(self):
+        """CSP forbids inline handlers; an onclick here would never fire."""
+        source = js_function("loadEarningsChart")
+        assert 'data-action="loadEarningsChart"' in source
+        assert "onclick=" not in source
+
+
+class TestTheWizardSelectionIsVisible:
+    """`data-a2="this"` passed the literal STRING "this".
+
+    A leftover from the inline-handler migration, where `this` really was the
+    element. delegate.js reads arguments from `dataset`, whose values are always
+    strings, so the handler threw on `.classList` — AFTER mutating the
+    selection. A click therefore selected a service invisibly, and a second
+    click deselected it just as invisibly, leaving the user staring at cards
+    that never highlight and a Next button that says nothing is selected.
+    """
+
+    def test_the_handler_resolves_its_own_element(self):
+        source = js_function("toggleWizardService")
+        assert "document.querySelector" in source
+
+    def test_it_no_longer_takes_an_element_argument(self):
+        source = js_function("toggleWizardService")
+        first_line = source.split("\n")[0]
+        assert "el)" not in first_line and "elem)" not in first_line, (
+            "an element cannot be passed through a data-* attribute; only strings survive"
+        )
+
+    def test_the_markup_no_longer_pretends_to_pass_one(self):
+        app_js = without_comments((ROOT / "app" / "static" / "js" / "app.js").read_text(encoding="utf-8"))
+        assert 'data-a2="this"' not in app_js
+
+    def test_no_data_action_anywhere_tries_to_pass_this(self):
+        """The whole class, not just the one instance."""
+        import re
+
+        for path in [*JS, *TEMPLATES]:
+            text = without_comments(path.read_text(encoding="utf-8"))
+            assert not re.search(r'data-a[123]="this"', text), f"{path.name} passes the string 'this' as an argument"
