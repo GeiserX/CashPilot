@@ -280,6 +280,80 @@ const CP = (() => {
     }).join('');
   }
 
+  // How far off is the next payout for this one service.
+  //
+  // Three separate questions that used to be one number which went DOWN when
+  // the user got paid: what is sitting there now, what has this service earned
+  // in total, and when can it be cashed out. The backend already answers all
+  // three and states its own uncertainty precisely — "not enough history yet"
+  // and "this is not earning" are different problems with different fixes — so
+  // this renders that sentence rather than inventing a cheerier one.
+  async function loadPayoutProgress() {
+    const card = document.getElementById('payout-progress-card');
+    const body = document.getElementById('payout-progress-body');
+    if (!card || !body) return;
+    const slug = card.dataset.slug;
+    if (!slug) return;
+
+    let data;
+    try {
+      data = await api(`/api/services/${encodeURIComponent(slug)}/payout-progress`);
+    } catch (err) {
+      // Leave the card hidden rather than showing a fabricated zero.
+      console.warn('Could not load payout progress:', err);
+      return;
+    }
+
+    const projection = data.projection || {};
+    const balance = Number(data.current_balance || 0);
+
+    // The endpoint reports what is LEFT, not the target, so the target is
+    // derived. A service with no documented minimum omits `remaining`
+    // entirely — checked against payouts.project() rather than assumed — and
+    // that absence is what suppresses the bar. "No documented minimum" is not
+    // "0% of the way there", and a bar stuck at zero would say the wrong thing
+    // far more loudly than no bar at all.
+    let bar = '';
+    const remaining = projection.remaining;
+    if (typeof remaining === 'number') {
+      const threshold = balance + remaining;
+      const pct = threshold > 0 ? Math.max(0, Math.min(100, (balance / threshold) * 100)) : 100;
+      bar = `
+        <div class="payout-progress-track" role="img"
+             aria-label="${escapeHtml(pct.toFixed(0))}% of the ${escapeHtml(threshold.toFixed(2))} minimum">
+          <div class="payout-progress-fill" style="width:${pct.toFixed(1)}%;"></div>
+        </div>`;
+    }
+
+    // Everything in this card is stated in the CASHOUT currency — the unit the
+    // provider's own minimum is declared in — and deliberately not converted to
+    // the dashboard's display currency. A browser check caught why: the balance
+    // rendered as "£3.73" directly above "to the 20 minimum", so the two halves
+    // of a single comparison were in different units and the progress bar
+    // agreed with neither. Here the numbers exist to be compared against that
+    // threshold, so they have to share its unit.
+    const unit = card.dataset.currency || '';
+    const money = value => (unit ? `${Number(value).toFixed(2)} ${unit}` : formatCurrency(value));
+
+    const paid = data.confirmed_payout_count || 0;
+    card.style.display = '';
+    body.innerHTML = `
+      <div class="detail-grid">
+        <div class="detail-item">
+          <div class="detail-label">Balance now</div>
+          <div class="detail-value">${data.balance_known ? escapeHtml(money(balance)) : '<span style="color:var(--text-muted);">not collected yet</span>'}</div>
+        </div>
+        <div class="detail-item">
+          <div class="detail-label">Earned in total</div>
+          <div class="detail-value">${escapeHtml(money(data.lifetime_earned || 0))}</div>
+          ${paid ? `<div style="font-size:0.7rem; color:var(--text-muted);">includes ${escapeHtml(String(paid))} confirmed payout${paid === 1 ? '' : 's'}</div>` : ''}
+        </div>
+      </div>
+      ${bar}
+      <p style="margin-top:12px; color:var(--text-secondary); font-size:0.85rem;">${escapeHtml(projection.summary || '')}</p>
+    `;
+  }
+
   async function confirmPayout(payoutId, platform) {
     try {
       await api(`/api/earnings/payouts/${encodeURIComponent(payoutId)}/confirm`, { method: 'POST' });
@@ -1801,6 +1875,10 @@ const CP = (() => {
       _detailWorkers = workers;
       if (title) title.textContent = svc.name;
       if (body) body.innerHTML = renderServiceDetail(svc, workers);
+      // After the markup is in the DOM, not before: the container it fills is
+      // created by the line above. Not awaited, so a slow earnings query never
+      // holds up the rest of the modal.
+      loadPayoutProgress();
     } catch (err) {
       if (body) body.innerHTML = `<p class="empty-state-text">Could not load service: ${escapeHtml(err.message)}</p>`;
     }
@@ -1820,6 +1898,14 @@ const CP = (() => {
     // --- Info grid (no referral bonus) ---
     let html = `
     <p style="color: var(--text-secondary); margin-bottom: 16px;">${escapeHtml(svc.description || svc.short_description || '')}</p>
+    <!-- Filled in by loadPayoutProgress once the modal is in the DOM. Hidden
+         until it has a real answer: an empty "Payout progress" heading on a
+         service that has never been collected is worse than no heading. -->
+    <div id="payout-progress-card" data-slug="${escapeHtml(svc.slug || '')}"
+         data-currency="${escapeHtml(svc.cashout?.currency || '')}" style="display:none; margin-bottom:20px;">
+      <div class="detail-label" style="margin-bottom:8px;">Payout progress</div>
+      <div id="payout-progress-body"></div>
+    </div>
     <div class="detail-grid" style="margin-bottom: 20px;">
       <div class="detail-item">
         <div class="detail-label">Category</div>
@@ -2562,6 +2648,7 @@ const CP = (() => {
     openChangePasswordModal,
     submitPasswordChange,
     loadPayoutQueue,
+    loadPayoutProgress,
     confirmPayout,
     rejectPayout,
   };

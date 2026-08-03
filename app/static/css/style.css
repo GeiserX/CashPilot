@@ -1999,3 +1999,19 @@ img { max-width: 100%; }
   gap: 8px;
   flex-shrink: 0;
 }
+
+/* Payout progress bar (service detail). Rendered only when there is a real
+   minimum to count down to — see loadPayoutProgress. */
+.payout-progress-track {
+  margin-top: 14px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--bg-tertiary);
+  overflow: hidden;
+}
+.payout-progress-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: var(--accent);
+  transition: width var(--transition);
+}

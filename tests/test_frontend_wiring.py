@@ -148,3 +148,70 @@ class TestAFailedLookupDoesNotHideThePrompt:
         catch_block = queue[queue.index("} catch (err) {") : queue.index("if (!pending.length)")]
         assert "return" in catch_block, "a failed fetch must bail out, not fall through"
         assert "display = 'none'" not in catch_block, "hiding the card on an error drops a pending question"
+
+
+class TestPayoutProgressIsShownWhereTheUserLooks:
+    """The "how far off is my payout" number, previously computed for nobody.
+
+    It nearly went into `app/templates/service_detail.html`, which turns out to
+    be a DEAD template: no route renders it and nothing references it. The real
+    detail view is a modal built by `renderServiceDetail`. A card added to that
+    template would have passed every string test in this file and never once
+    appeared on screen.
+    """
+
+    def test_the_dead_template_is_still_dead(self):
+        """If someone wires it up later, this test should fail and be deleted."""
+        py = "\n".join(p.read_text(encoding="utf-8") for p in [*(ROOT / "app").rglob("*.py")] if "test" not in p.name)
+        assert "service_detail.html" not in py, (
+            "service_detail.html is now rendered by something — the payout progress card "
+            "should probably live there too, and this test has served its purpose"
+        )
+
+    def test_the_card_is_built_by_the_modal_renderer(self):
+        render = js_function("renderServiceDetail")
+        assert 'id="payout-progress-card"' in render
+        assert 'id="payout-progress-body"' in render
+
+    def test_the_modal_asks_for_the_data_after_building_the_container(self):
+        """Called before the innerHTML assignment, it would find nothing to fill."""
+        detail = js_function("openServiceDetail")
+        assert "loadPayoutProgress()" in detail
+        assert detail.index("renderServiceDetail") < detail.index("loadPayoutProgress()")
+
+    def test_it_is_exported_so_the_modal_can_reach_it(self):
+        app_js = (ROOT / "app" / "static" / "js" / "app.js").read_text(encoding="utf-8")
+        exported = set(re.findall(r"^\s{4}([A-Za-z_][A-Za-z0-9_]*),\s*$", app_js, re.M))
+        assert "loadPayoutProgress" in exported
+
+
+class TestTheProgressCardKeepsItsUnitsStraight:
+    """Caught in a browser: "£3.73" rendered directly above "to the 20 minimum".
+
+    Two halves of one comparison in different units, with a progress bar that
+    agreed with neither. Everything in this card is stated in the cashout
+    currency the provider's own minimum is declared in.
+    """
+
+    def test_it_uses_the_cashout_currency_rather_than_the_display_currency(self):
+        source = js_function("loadPayoutProgress")
+        assert "card.dataset.currency" in source
+        assert "const money =" in source
+
+    def test_the_renderer_passes_that_currency_through(self):
+        assert "data-currency=" in js_function("renderServiceDetail")
+
+    def test_it_falls_back_when_a_service_declares_no_cashout_currency(self):
+        """Not every catalogued service declares one; the card must still render."""
+        assert "unit ?" in js_function("loadPayoutProgress")
+
+    def test_the_bar_is_derived_from_remaining_not_from_a_threshold_key(self):
+        """`project()` returns `remaining`, never `threshold` — verified against it."""
+        source = js_function("loadPayoutProgress")
+        assert "projection.remaining" in source
+        assert "projection.threshold" not in source, "that key does not exist in the API response"
+
+    def test_no_bar_is_drawn_when_there_is_no_minimum_to_reach(self):
+        """A bar stuck at zero says the wrong thing more loudly than no bar."""
+        source = js_function("loadPayoutProgress")
+        assert "typeof remaining === 'number'" in source
