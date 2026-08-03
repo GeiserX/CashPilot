@@ -119,8 +119,39 @@ class TestTheAmountShownIsTheOneTheProviderPaid:
         assert "≈" in self._queue_source(), "a converted figure presented as exact invites a false mismatch"
 
     def test_it_does_not_repeat_itself_when_both_are_the_same(self):
-        """A USD payout on a USD dashboard must not read '24.90 USD (≈ $24.90)'."""
-        assert "converted !== native" in self._queue_source()
+        """A USD payout on a USD dashboard must not read '24.90 USD (≈ $24.90)'.
+
+        The first version of this test asserted the literal source text
+        `converted !== native` — the implementation, not the behaviour — and so
+        passed while that very comparison produced the duplication it claims to
+        prevent: `formatCurrency` returns "$24.90" through Intl, `native` is
+        "24.90 USD", the two strings differ, and the approximation rendered
+        anyway. Asserting on the currency CODES is asserting the thing that
+        actually decides whether a conversion happened.
+        """
+        source = self._queue_source()
+        # Superseded once more: comparing against _displayCurrency was still
+        # wrong when that currency has NO rate, because the amount then stays
+        # in USD while the preference says GBP. The effective currency is the
+        # one the formatter will actually use.
+        assert "effectiveDisplayCurrency(nativeCurrency) !== nativeCurrency" in source
+        assert "converted !== native" not in source, "comparing formatted strings re-introduces the duplicate amount"
+
+
+class TestPayoutActionsRespectTheRoleLadder:
+    """The backend requires writer for confirm and reject.
+
+    Showing a viewer buttons that can only ever return 403 teaches them the app
+    is broken. The repo already has the idiom for this — `_canWrite` gates the
+    deploy button — so the queue follows it.
+    """
+
+    def test_the_buttons_are_gated_on_write_access(self):
+        assert "_canWrite ?" in js_function("loadPayoutQueue")
+
+    def test_a_viewer_is_told_why_rather_than_shown_nothing(self):
+        """A row with no explanation reads as a rendering bug."""
+        assert "Writer access required" in js_function("loadPayoutQueue")
 
 
 class TestRejectionAsksFirst:
@@ -215,3 +246,58 @@ class TestTheProgressCardKeepsItsUnitsStraight:
         """A bar stuck at zero says the wrong thing more loudly than no bar."""
         source = js_function("loadPayoutProgress")
         assert "typeof remaining === 'number'" in source
+
+
+class TestAConvertedFigureIsNeverFabricated:
+    """formatCurrency labelled unconverted USD with the display currency's sign.
+
+    With no rate for the display currency the amount was left in USD and then
+    formatted AS that currency, so $24.90 rendered as "£24.90" — not a
+    conversion, the same number wearing a different sign. Rates are fetched
+    asynchronously, so this hit every figure on the dashboard on every page load
+    until they arrived, and hit permanently for any currency with no rate.
+
+    Found by driving a freshly restarted server in a browser. The behavioural
+    proof lives in scripts/currency_check.mjs, which exercises the real function
+    against controlled rate state; these assert the shape that makes it hold.
+    """
+
+    def _format_currency(self) -> str:
+        return js_function("formatCurrency")
+
+    def test_the_label_follows_the_conversion_rather_than_the_preference(self):
+        source = self._format_currency()
+        assert "let currency = 'USD'" in source, "the label must be derived, not assumed"
+        assert "currency: _displayCurrency" not in source, (
+            "labelling with the preferred currency regardless of whether a rate was applied "
+            "is exactly the bug: it prints a USD amount as if it were converted"
+        )
+
+    def test_the_currency_is_only_upgraded_when_a_rate_was_actually_applied(self):
+        source = self._format_currency()
+        applied = source.index("displayAmount = usdAmount * _exchangeRates.fiat[_displayCurrency]")
+        assigned = source.index("currency = _displayCurrency")
+        assert applied < assigned, "the label is set before the conversion it claims to describe"
+
+    def test_there_is_a_committed_harness_that_proves_the_behaviour(self):
+        harness = ROOT / "scripts" / "currency_check.mjs"
+        assert harness.exists()
+        text = harness.read_text(encoding="utf-8")
+        assert "NO rate" in text, "the no-rate case is the one that regressed"
+        assert "process.exit" in text, "a harness that cannot fail gates nothing"
+
+
+class TestTheApproximationIsSuppressedWhenNothingWasConverted:
+    def test_the_decision_uses_the_effective_currency(self):
+        assert "effectiveDisplayCurrency(nativeCurrency) !== nativeCurrency" in js_function("loadPayoutQueue")
+
+    def test_the_effective_currency_accounts_for_a_missing_fiat_rate(self):
+        """A GBP preference with no GBP rate resolves to USD, not GBP."""
+        source = js_function("effectiveDisplayCurrency")
+        assert "_exchangeRates.fiat[_displayCurrency]" in source
+        assert "return 'USD'" in source
+
+    def test_an_unpriced_token_is_left_in_its_own_units(self):
+        source = js_function("effectiveDisplayCurrency")
+        assert "crypto_usd" in source
+        assert "if (!priced) return nativeCurrency" in source

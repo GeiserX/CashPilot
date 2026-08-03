@@ -261,9 +261,14 @@ const CP = (() => {
       // which is not a figure the user can match against anything.
       const nativeCurrency = p.currency || 'USD';
       const native = `${Number(p.amount).toFixed(2)} ${nativeCurrency}`;
-      const converted = formatCurrency(p.amount, nativeCurrency);
-      const approx = converted && converted !== native
-        ? ` <span style="color:var(--text-muted);">(≈ ${escapeHtml(converted)})</span>`
+      // Compare CURRENCY CODES, not the formatted strings. formatCurrency
+      // returns "$24.90" via Intl while `native` is "24.90 USD", so a string
+      // comparison finds them different for a USD payout on a USD dashboard
+      // and renders "24.90 USD (≈ $24.90)" — the duplication this is meant to
+      // suppress. The codes are the thing that actually decides whether a
+      // conversion happened.
+      const approx = effectiveDisplayCurrency(nativeCurrency) !== nativeCurrency
+        ? ` <span style="color:var(--text-muted);">(≈ ${escapeHtml(formatCurrency(p.amount, nativeCurrency))})</span>`
         : '';
       return `
         <div class="payout-queue-item" data-payout-id="${escapeHtml(String(p.id))}">
@@ -272,8 +277,10 @@ const CP = (() => {
             <div class="payout-queue-detail">Balance dropped by ${escapeHtml(native)}${approx}${p.detected_at ? ` on ${escapeHtml(String(p.detected_at).slice(0, 10))}` : ''}</div>
           </div>
           <div class="payout-queue-actions">
+            ${_canWrite ? `
             <button class="btn btn-primary btn-sm" data-action="confirmPayout" data-a1="${escapeHtml(String(p.id))}" data-a2="${escapeHtml(p.platform || '')}">Yes, I was paid</button>
             <button class="btn btn-ghost btn-sm" data-action="rejectPayout" data-a1="${escapeHtml(String(p.id))}" data-a2="${escapeHtml(p.platform || '')}">No, not a payout</button>
+            ` : `<span style="font-size:0.72rem; color:var(--text-muted);">Writer access required to answer this.</span>`}
           </div>
         </div>
       `;
@@ -2295,6 +2302,24 @@ const CP = (() => {
   // -----------------------------------------------------------
   // Utility
   // -----------------------------------------------------------
+  // Which currency formatCurrency will ACTUALLY label its result as.
+  //
+  // Not the same question as "what is the display currency": an unpriced token
+  // is shown raw, and a display currency with no fiat rate falls back to USD.
+  // Callers that want to avoid printing the same figure twice need the answer
+  // to this, not to the simpler question — comparing against _displayCurrency
+  // printed "24.90 USD (≈ $24.90)" whenever the rate was missing.
+  function effectiveDisplayCurrency(nativeCurrency) {
+    nativeCurrency = nativeCurrency || 'USD';
+    const priced = nativeCurrency === 'USD'
+      || (_exchangeRates.crypto_usd && _exchangeRates.crypto_usd[nativeCurrency]);
+    if (!priced) return nativeCurrency;
+    if (_displayCurrency !== 'USD' && _exchangeRates.fiat && _exchangeRates.fiat[_displayCurrency]) {
+      return _displayCurrency;
+    }
+    return 'USD';
+  }
+
   function formatCurrency(val, nativeCurrency) {
     nativeCurrency = nativeCurrency || 'USD';
     const amount = parseFloat(val || 0);
@@ -2310,21 +2335,35 @@ const CP = (() => {
       return amount.toFixed(2) + ' ' + nativeCurrency;
     }
 
-    // Convert USD to display currency
+    // Convert USD to the display currency — but ONLY label it as the display
+    // currency if a rate was actually applied.
+    //
+    // This used to stamp the display currency's symbol on an unconverted USD
+    // figure whenever its rate was missing, so $24.90 rendered as "£24.90": not
+    // a conversion, the same number wearing a different sign. Caught in a
+    // browser against a freshly restarted server, which is exactly when it
+    // bites — rates are fetched asynchronously, so on every page load before
+    // they arrive EVERY figure on the dashboard was mislabelled, and a user
+    // whose currency simply has no rate saw it permanently.
     let displayAmount = usdAmount;
-    if (_displayCurrency !== 'USD' && _exchangeRates.fiat && _exchangeRates.fiat[_displayCurrency]) {
+    let currency = 'USD';
+    if (_displayCurrency === 'USD') {
+      currency = 'USD';
+    } else if (_exchangeRates.fiat && _exchangeRates.fiat[_displayCurrency]) {
       displayAmount = usdAmount * _exchangeRates.fiat[_displayCurrency];
+      currency = _displayCurrency;
     }
+    // else: no rate, so the value stays in USD and says so.
 
     try {
       return new Intl.NumberFormat(undefined, {
         style: 'currency',
-        currency: _displayCurrency,
+        currency,
         minimumFractionDigits: 2,
         maximumFractionDigits: 2,
       }).format(displayAmount);
     } catch {
-      return displayAmount.toFixed(2) + ' ' + _displayCurrency;
+      return displayAmount.toFixed(2) + ' ' + currency;
     }
   }
 
