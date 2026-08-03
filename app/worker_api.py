@@ -831,7 +831,7 @@ def _validate_runtime(runtime: str | None) -> None:
     error the user cannot act on; asking the daemon means the only runtimes
     accepted are ones that exist here.
 
-    Nothing selects a non-default runtime on its own. See docs/isolation.md for
+    Nothing selects a non-default runtime on its own. See docs/security-defaults.md for
     why gVisor is not adopted as a default or as a supported profile: it costs
     roughly 1.7x network throughput on a workload that is pure network I/O, it
     breaks host-networked services outright, and it does not address the risks
