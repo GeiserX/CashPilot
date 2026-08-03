@@ -443,3 +443,51 @@ class TestRunningCostsAreShownWithoutBeingInvented:
         page = self._fleet()
         block = page[page.index("async function loadFleetEconomics()") :][:1400]
         assert "Leave hidden" in block or "return;   // Leave hidden" in block
+
+
+class TestTheDeployStepWarnsBeforeItActs:
+    """deploy-risk and preflight, the last two orphaned endpoints.
+
+    Both were computed since 1.10.x and asked by nothing, which is the worst
+    place for them: the backend knew that a second instance behind one IP can
+    make a provider forfeit the account balance, and the deploy button never
+    mentioned it.
+    """
+
+    def test_the_risk_notice_is_built_into_the_service_modal(self):
+        render = js_function("renderServiceDetail")
+        assert 'id="deploy-risk-card"' in render
+        assert 'id="deploy-risk-body"' in render
+
+    def test_the_modal_asks_for_it(self):
+        assert "loadDeployRisk()" in js_function("openServiceDetail")
+
+    def test_undocumented_is_not_rendered_as_safe(self):
+        """`documented: false` means nobody checked, not that there is no risk.
+
+        Collapsing that distinction would undo the whole design of
+        app/lan_isolation.py, which goes out of its way to preserve it.
+        """
+        assert "attribution.documented ?" in js_function("loadDeployRisk")
+
+    def test_every_deploy_path_goes_through_the_preflight_gate(self):
+        """_deployToWorkers is the single chokepoint for both deploy buttons."""
+        assert "_confirmPreflight(slug, workerIds)" in js_function("_deployToWorkers")
+
+    def test_only_serious_findings_interrupt(self):
+        """Advisory notes on every deploy would train people to click through."""
+        source = js_function("_confirmPreflight")
+        assert "will_earn_nothing" in source
+        assert "check_these" not in source.split("//")[0] or "check_these" in source
+
+    def test_an_unreachable_preflight_does_not_block_the_deploy(self):
+        """The check is advice. Failing to fetch advice is not grounds to refuse."""
+        source = js_function("_confirmPreflight")
+        catch = source[source.index("} catch (err) {") :][:220]
+        assert "return true" in catch
+
+    def test_it_warns_rather_than_blocks(self):
+        """The assessment itself reports blocking=false and says so."""
+        source = js_function("_confirmPreflight")
+        assert "window.confirm" in source
+        assert "Deploy anyway?" in source

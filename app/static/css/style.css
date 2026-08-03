@@ -2051,3 +2051,14 @@ img { max-width: 100%; }
   font-size: 0.82rem; padding: 3px 0; font-variant-numeric: tabular-nums;
 }
 .economics-note { margin-top: 10px; font-size: 0.75rem; color: var(--text-muted); max-width: 72ch; }
+
+/* Deploy risk (service modal). Bordered rather than boxed-in-red: this is
+   information the user needs to weigh, not an error they have made. */
+.deploy-risk-block {
+  border-left: 3px solid var(--border-color);
+  padding: 8px 0 8px 12px;
+  margin-bottom: 10px;
+}
+.deploy-risk-headline { font-weight: 600; font-size: 0.85rem; }
+.deploy-risk-body-text { font-size: 0.8rem; color: var(--text-secondary); margin-top: 4px; max-width: 70ch; }
+.deploy-risk-source { font-size: 0.7rem; color: var(--text-muted); margin-top: 4px; }

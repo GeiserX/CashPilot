@@ -361,6 +361,60 @@ const CP = (() => {
     `;
   }
 
+  // What running this service actually does with the machine and connection.
+  //
+  // Two questions the deploy step never asked: whether strangers route traffic
+  // through the user's IP under their name, and whether the container can be
+  // kept off the home LAN. Both are answered by the backend already, and both
+  // are things a person deserves to know BEFORE they click deploy rather than
+  // after an ISP letter.
+  //
+  // "Nobody has documented this" is rendered as loudly as a known risk,
+  // because unknown is not safe — that distinction is the whole design of
+  // app/lan_isolation.py and dropping it here would undo it.
+  async function loadDeployRisk() {
+    const card = document.getElementById('deploy-risk-card');
+    const body = document.getElementById('deploy-risk-body');
+    if (!card || !body) return;
+    const slug = card.dataset.slug;
+    if (!slug) return;
+
+    let risk;
+    try {
+      risk = await api(`/api/services/${encodeURIComponent(slug)}/deploy-risk`);
+    } catch (err) {
+      console.warn('Could not load deploy risk:', err);
+      return;
+    }
+
+    const attribution = risk.attribution;
+    const isolation = risk.isolation || {};
+    if (!attribution && !isolation.summary) { card.style.display = 'none'; return; }
+
+    let html = '';
+    if (attribution) {
+      // documented === false means nobody checked, which is a different claim
+      // from "no risk" and is styled to say so rather than to reassure.
+      const tone = attribution.documented ? 'var(--warning)' : 'var(--text-muted)';
+      html += `
+        <div class="deploy-risk-block" style="border-left-color:${tone};">
+          <div class="deploy-risk-headline">${escapeHtml(attribution.headline || '')}</div>
+          <div class="deploy-risk-body-text">${escapeHtml(attribution.body || '')}</div>
+          ${attribution.lateral_note ? `<div class="deploy-risk-body-text">${escapeHtml(attribution.lateral_note)}</div>` : ''}
+          ${attribution.source ? `<div class="deploy-risk-source">Source: ${escapeHtml(attribution.source)}</div>` : ''}
+        </div>`;
+    }
+    if (isolation.summary) {
+      html += `
+        <div class="deploy-risk-block" style="border-left-color:var(--border-color);">
+          <div class="deploy-risk-headline">Keeping it off your LAN</div>
+          <div class="deploy-risk-body-text">${escapeHtml(isolation.summary)}</div>
+        </div>`;
+    }
+    card.style.display = '';
+    body.innerHTML = html;
+  }
+
   async function confirmPayout(payoutId, platform) {
     try {
       await api(`/api/earnings/payouts/${encodeURIComponent(payoutId)}/confirm`, { method: 'POST' });
@@ -1685,6 +1739,41 @@ const CP = (() => {
   // deploy entry points (the setup wizard and the catalog/detail view) so validation and
   // error reporting are identical — the detail view previously skipped validation and
   // swallowed server errors silently.
+  // Ask preflight about every target node, and put anything it objects to in
+  // front of the user before the deploy rather than after.
+  //
+  // Returns true to proceed. A preflight that cannot be reached returns TRUE:
+  // the check is advice, and failing to fetch advice is not grounds for
+  // blocking a deploy the user asked for. Silence here means "no opinion", not
+  // "no risk", which is why nothing is displayed in that case either.
+  async function _confirmPreflight(slug, workerIds) {
+    let assessments;
+    try {
+      assessments = await Promise.all(
+        workerIds.map(id => api(`/api/services/${slug}/preflight?worker_id=${encodeURIComponent(id)}`))
+      );
+    } catch (err) {
+      console.warn('Preflight unavailable, proceeding:', err);
+      return true;
+    }
+
+    // Only the findings worth interrupting for. "check_these" is advisory —
+    // surfacing it as a modal on every deploy would train people to click
+    // through the one that matters.
+    const serious = [];
+    assessments.forEach((a, i) => {
+      (a && a.findings ? a.findings : [])
+        .filter(f => f.verdict === 'will_earn_nothing' || a.blocking)
+        .forEach(f => serious.push({worker: workerIds[i], message: f.message}));
+    });
+    if (!serious.length) return true;
+
+    const lines = serious.map(s => `• ${s.message}`).join('\n\n');
+    return window.confirm(
+      `${slug}: this may not work as expected.\n\n${lines}\n\nDeploy anyway?`
+    );
+  }
+
   async function _deployToWorkers(slug, workerIds) {
     const statusEl = document.getElementById(`deploy-status-${slug}`);
     if (workerIds.length === 0) {
@@ -1709,6 +1798,21 @@ const CP = (() => {
 
     if (missingRequired) {
       toast('Fill in all required fields', 'warning');
+      if (statusEl) statusEl.textContent = '';
+      return;
+    }
+
+    // Preflight, at the deploy step — which is where the backend's own comments
+    // say it belongs, "not buried in an FAQ". It has been computed since 1.10.x
+    // and asked by nothing.
+    //
+    // WARNS, never blocks: the assessment itself reports blocking=false and
+    // says "you can deploy it anyway", and the machine running this knows
+    // things CashPilot does not. But the findings include cases like a second
+    // instance behind one IP, where some providers forfeit the account balance
+    // — a real loss, and worth one question before it happens rather than an
+    // explanation afterwards.
+    if (!await _confirmPreflight(slug, workerIds)) {
       if (statusEl) statusEl.textContent = '';
       return;
     }
@@ -1886,6 +1990,7 @@ const CP = (() => {
       // created by the line above. Not awaited, so a slow earnings query never
       // holds up the rest of the modal.
       loadPayoutProgress();
+      loadDeployRisk();
     } catch (err) {
       if (body) body.innerHTML = `<p class="empty-state-text">Could not load service: ${escapeHtml(err.message)}</p>`;
     }
@@ -1912,6 +2017,13 @@ const CP = (() => {
          data-currency="${escapeHtml(svc.cashout?.currency || '')}" style="display:none; margin-bottom:20px;">
       <div class="detail-label" style="margin-bottom:8px;">Payout progress</div>
       <div id="payout-progress-body"></div>
+    </div>
+    <!-- What running this actually does with the machine and the connection.
+         Filled by loadDeployRisk once the modal exists. This belongs at the
+         deploy step rather than in a FAQ nobody opens, which is what the
+         backend's own comments say and what it never got. -->
+    <div id="deploy-risk-card" data-slug="${escapeHtml(svc.slug || '')}" style="display:none; margin-bottom:20px;">
+      <div id="deploy-risk-body"></div>
     </div>
     <div class="detail-grid" style="margin-bottom: 20px;">
       <div class="detail-item">
@@ -2761,6 +2873,7 @@ const CP = (() => {
     loadPayoutQueue,
     loadCredentialHealth,
     loadPayoutProgress,
+    loadDeployRisk,
     confirmPayout,
     rejectPayout,
   };
