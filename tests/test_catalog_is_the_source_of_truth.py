@@ -352,3 +352,101 @@ class TestTheCatalogDrivenPathsActuallyRun:
             meta = asyncio.run(main.api_collectors_meta(MagicMock()))
         for entry in meta:
             assert entry.get("hint") is None or entry["hint"].strip(), f"{entry['slug']} has an empty hint"
+
+    def test_a_provider_failure_degrades_instead_of_500ing(self):
+        """This call reaches a third-party API, so it fails for their reasons.
+
+        A timeout or an HTML error page from the provider is not a fault in
+        CashPilot and must not surface as a broken page. Every other collector
+        call in main.py degrades; this one did not.
+        """
+        import asyncio
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        from app import main
+
+        fake = MagicMock()
+        fake.close = AsyncMock()
+        fake.get_per_node_earnings = AsyncMock(side_effect=TimeoutError("provider timed out"))
+
+        async def run():
+            with (
+                patch.object(main, "_require_auth_api", lambda r: None),
+                patch.object(main.database, "get_config", AsyncMock(return_value={})),
+                patch("app.collectors.build_one", return_value=(fake, [])),
+            ):
+                return await main.api_per_node_earnings(MagicMock(), "mysterium")
+
+        assert asyncio.run(run()) == []
+
+    def test_the_collector_is_still_closed_when_the_provider_fails(self):
+        """Otherwise a flaky provider leaks an HTTP session per request."""
+        import asyncio
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        from app import main
+
+        fake = MagicMock()
+        fake.close = AsyncMock()
+        fake.get_per_node_earnings = AsyncMock(side_effect=RuntimeError("boom"))
+
+        async def run():
+            with (
+                patch.object(main, "_require_auth_api", lambda r: None),
+                patch.object(main.database, "get_config", AsyncMock(return_value={})),
+                patch("app.collectors.build_one", return_value=(fake, [])),
+            ):
+                await main.api_per_node_earnings(MagicMock(), "mysterium")
+
+        asyncio.run(run())
+        fake.close.assert_awaited_once()
+
+
+class TestCredentialHintLinksCannotBeUsedForTabnabbing:
+    """The rel has to be applied by the SANITISER, not written in the YAML.
+
+    An external review asked for `rel="noopener noreferrer"` on the 13 anchors
+    in the credential hints. Applying it there would have done nothing:
+    `sanitizeHint` strips every attribute it does not explicitly keep, so the
+    rel would have been removed on its way to the DOM. The fix would have
+    looked applied, passed review, and had no effect.
+
+    It is also 13 files, not the 5 the review listed — every migrated hint has
+    a `target='_blank'` anchor.
+    """
+
+    def _sanitizer(self) -> str:
+        app_js = (ROOT / "app" / "static" / "js" / "app.js").read_text(encoding="utf-8")
+        start = app_js.index("function sanitizeHint(")
+        return app_js[start : app_js.index("\n  function capFirst")]
+
+    def test_the_sanitiser_adds_rel_to_anything_that_opens_a_new_tab(self):
+        source = self._sanitizer()
+        assert "setAttribute('rel', 'noopener noreferrer')" in source
+
+    def test_it_is_applied_after_the_attribute_stripping_not_before(self):
+        """Set before the strip loop, it would be removed by it."""
+        source = self._sanitizer()
+        assert source.index("node.removeAttribute(attr.name)") < source.index("setAttribute('rel'")
+
+    def test_the_yaml_is_not_relied_on_for_it(self):
+        """A per-file rel is exactly the fix that silently does nothing here."""
+        hints = [
+            p
+            for p in SERVICES.rglob("*.yml")
+            if not p.name.startswith("_") and "credential_hint" in p.read_text(encoding="utf-8")
+        ]
+        assert len(hints) == 13, f"expected 13 hint-bearing services, found {len(hints)}"
+
+    def test_every_hint_anchor_is_covered_by_that_rule(self):
+        """If a hint ever uses target without the sanitiser seeing it, this fails."""
+        import re
+
+        for path in SERVICES.rglob("*.yml"):
+            if path.name.startswith("_"):
+                continue
+            text = path.read_text(encoding="utf-8")
+            for hint in re.findall(r"credential_hint: \"(.*)\"", text):
+                for anchor in re.findall(r"<a [^>]*>", hint):
+                    if "target=" in anchor:
+                        assert "href=" in anchor, f"{path.name}: target without href in {anchor}"

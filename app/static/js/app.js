@@ -95,6 +95,22 @@ const CP = (() => {
         if (node.tagName === 'A' && attr.name === 'target') continue;
         node.removeAttribute(attr.name);
       }
+      // Anything opening a new tab gets rel="noopener noreferrer", set HERE
+      // rather than in the YAML.
+      //
+      // The loop above strips every attribute it does not explicitly keep, so a
+      // rel written into a service's credential_hint would be removed on its
+      // way to the DOM — the fix would look applied, pass review, and do
+      // nothing. Setting it after sanitising covers all 13 existing hints and
+      // every future one, and cannot be forgotten by whoever writes the next.
+      //
+      // Modern browsers imply noopener for target=_blank, so this is defence in
+      // depth rather than a live hole; noreferrer is the part still worth
+      // having, since these links point at a provider's dashboard and the
+      // referrer would name the user's CashPilot host.
+      if (node.tagName === 'A' && node.getAttribute('target')) {
+        node.setAttribute('rel', 'noopener noreferrer');
+      }
     });
     return el.innerHTML;
   }

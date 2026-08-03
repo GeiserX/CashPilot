@@ -2532,7 +2532,17 @@ async def api_per_node_earnings(request: Request, slug: str) -> list[dict[str, A
         if getter is None:
             logger.warning("%s declares per_node_earnings but its collector does not implement it", slug)
             return []
-        return await getter()
+        try:
+            return await getter()
+        except Exception as exc:
+            # This call reaches a THIRD-PARTY API: it times out, rate-limits,
+            # and returns HTML instead of JSON on a bad day. None of that is a
+            # fault in CashPilot, and none of it should reach the user as a raw
+            # 500 — every other collector call in this file degrades instead.
+            # An empty per-node breakdown alongside the account total is a
+            # smaller loss than a broken page.
+            logger.warning("Per-node earnings unavailable for %s: %s", slug, exc)
+            return []
     finally:
         with contextlib.suppress(Exception):
             await collector.close()
