@@ -542,3 +542,64 @@ class TestAFailedUnpauseIsNeverReportedAsSuccess:
         payload, read = self._read(container)
         assert payload == b"data" and read == ["/data"]
         container.unpause.assert_called_once()
+
+
+class TestAnUnusableKeyIsRejectedNotCrashed:
+    """A well-formed 32-byte key can still be a low-order point.
+
+    OpenSSL refuses the exchange with a bare ValueError, and that call sat
+    OUTSIDE the try block that classifies bad input — so a key that is the
+    right length but unusable produced an unhandled 500 instead of the 400 it
+    is. On the restore side the offending key comes out of the BUNDLE, so a
+    crafted file could crash the verify endpoint.
+    """
+
+    LOW_ORDER = "00" * 32
+
+    def test_sealing_to_a_low_order_recipient_is_a_clean_error(self):
+        from app import state_backup
+
+        with pytest.raises(state_backup.BackupError) as exc:
+            state_backup.seal(b"payload", recipient_public_key=self.LOW_ORDER)
+        assert "not a usable X25519 point" in str(exc.value)
+
+    def test_the_error_never_echoes_the_key(self):
+        from app import state_backup
+
+        with pytest.raises(state_backup.BackupError) as exc:
+            state_backup.seal(b"payload", recipient_public_key=self.LOW_ORDER)
+        assert self.LOW_ORDER not in str(exc.value)
+
+    def _bundle_with_ephemeral(self, ephemeral_hex):
+        """Rebuild a bundle whose header carries a chosen ephemeral key."""
+        import json
+
+        from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PrivateKey
+
+        from app import state_backup
+
+        recipient = X25519PrivateKey.generate()
+        bundle = state_backup.seal(b"payload", recipient_public_key=recipient.public_key().public_bytes_raw().hex())
+        length = int.from_bytes(bundle[:4], "big")
+        header = json.loads(bundle[4 : 4 + length])
+        header["ephemeral_public_key"] = ephemeral_hex
+        forged = json.dumps(header, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        return len(forged).to_bytes(4, "big") + forged + bundle[4 + length :], recipient
+
+    def test_opening_a_bundle_with_a_low_order_ephemeral_key_is_a_clean_error(self):
+        """The ephemeral key is attacker-controlled: it comes from the file."""
+        from app import state_backup
+
+        forged, recipient = self._bundle_with_ephemeral(self.LOW_ORDER)
+        with pytest.raises(state_backup.BackupError):
+            state_backup.open_bundle(forged, recipient_private_key=recipient.private_bytes_raw().hex())
+
+    def test_a_legitimate_recipient_key_still_round_trips(self):
+        """The guard must not reject real keys."""
+        from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PrivateKey
+
+        from app import state_backup
+
+        recipient = X25519PrivateKey.generate()
+        bundle = state_backup.seal(b"payload", recipient_public_key=recipient.public_key().public_bytes_raw().hex())
+        assert state_backup.open_bundle(bundle, recipient_private_key=recipient.private_bytes_raw().hex()) == b"payload"

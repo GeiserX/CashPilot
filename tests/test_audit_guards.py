@@ -332,3 +332,156 @@ class TestWorkerCredentialsNeverReachAResponse:
         one, _ = self._worker_endpoints(tmp_path)
         assert one["name"] == "host"
         assert "containers" in one and "system_info" in one
+
+
+class TestADetectedPayoutActuallyReachesTheUser:
+    """The prompt is the entire feature. Filing it silently is the same as not detecting it.
+
+    `_detect_payout` ran in the collection SUCCESS branch and wrote to the
+    database; the bell renders the in-memory list built by the FAILURE branch;
+    and the startup restore dropped every alert whose kind was not "collector".
+    So a detected payout was recorded and then shown to nobody, live or after a
+    restart — the user was never asked the question the feature exists to ask.
+    """
+
+    def test_a_detected_payout_is_returned_so_the_bell_can_show_it(self):
+        import asyncio
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        from app import main
+
+        result = MagicMock(platform="honeygain", balance=0.10, currency="USD")
+
+        async def run():
+            with (
+                patch.object(main.database, "get_latest_balance", AsyncMock(return_value=25.0)),
+                patch.object(main.database, "record_probable_payout", AsyncMock(return_value=7)),
+                patch.object(main.database, "record_alert", AsyncMock()),
+                patch.object(
+                    main.catalog, "get_service", return_value={"slug": "honeygain", "cashout": {"min_amount": 20.0}}
+                ),
+            ):
+                return await main._detect_payout(result)
+
+        alert = asyncio.run(run())
+        assert alert is not None, "detected and then dropped on the floor"
+        assert alert["kind"] == "payout"
+        assert alert["platform"] == "honeygain"
+
+    def test_nothing_is_returned_when_there_is_no_payout(self):
+        import asyncio
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        from app import main
+
+        result = MagicMock(platform="honeygain", balance=26.0, currency="USD")
+
+        async def run():
+            with (
+                patch.object(main.database, "get_latest_balance", AsyncMock(return_value=25.0)),
+                patch.object(
+                    main.catalog, "get_service", return_value={"slug": "honeygain", "cashout": {"min_amount": 20.0}}
+                ),
+            ):
+                return await main._detect_payout(result)
+
+        assert asyncio.run(run()) is None
+
+    def test_a_restart_does_not_lose_the_pending_question(self):
+        import asyncio
+        from unittest.mock import AsyncMock, patch
+
+        from app import main
+
+        stored = [
+            {"kind": "payout", "subject": "honeygain", "message": "Balance dropped by 25.00"},
+            {"kind": "collector", "subject": "grass", "message": "login failed"},
+        ]
+
+        async def run():
+            with patch.object(main.database, "list_alerts", AsyncMock(return_value=stored)):
+                await main._warm_collector_alerts()
+
+        asyncio.run(run())
+        kinds = {a.get("kind") for a in main._collector_alerts}
+        assert "payout" in kinds, "the payout prompt was dropped on restart"
+        assert "collector" in kinds, "restoring payouts must not cost us collector alerts"
+
+    def test_a_platform_can_have_both_a_broken_collector_and_a_payout(self):
+        """Deduping by subject alone would silently hide one of them."""
+        import asyncio
+        from unittest.mock import AsyncMock, patch
+
+        from app import main
+
+        stored = [
+            {"kind": "payout", "subject": "honeygain", "message": "Balance dropped"},
+            {"kind": "collector", "subject": "honeygain", "message": "login failed"},
+        ]
+
+        async def run():
+            with patch.object(main.database, "list_alerts", AsyncMock(return_value=stored)):
+                await main._warm_collector_alerts()
+
+        asyncio.run(run())
+        assert len(main._collector_alerts) == 2, main._collector_alerts
+
+    def test_the_endpoint_tags_every_alert_so_the_bell_can_tell_them_apart(self):
+        import asyncio
+        from unittest.mock import MagicMock, patch
+
+        from app import main
+
+        with (
+            patch.object(main, "_collector_alerts", [{"platform": "grass", "error": "boom"}]),
+            patch.object(main, "_require_auth_api", lambda r: None),
+        ):
+            out = asyncio.run(main.api_collector_alerts(MagicMock()))
+        assert out[0]["kind"] == "collector", "an untagged alert must default to collector, not vanish"
+
+
+class TestTheCredentialCooldownCannotBeRaced:
+    """Two clicks must not both reach the provider.
+
+    Repeated logins are what get an account flagged, which is the only reason
+    the cooldown exists. The check and the claim were separated by
+    `await database.get_config()`, and an await is exactly where the event loop
+    runs the other request.
+    """
+
+    def test_the_claim_is_not_separated_from_its_check_by_an_await(self):
+        import ast
+        import inspect
+        import textwrap
+
+        from app import main
+
+        tree = ast.parse(textwrap.dedent(inspect.getsource(main.api_test_credentials)))
+        body = next(n for n in ast.walk(tree) if isinstance(n, ast.AsyncFunctionDef)).body
+
+        def flatten(nodes):
+            for node in nodes:
+                yield node
+                for field in ("body", "orelse", "finalbody"):
+                    yield from flatten(getattr(node, field, []) or [])
+
+        order = []
+        for node in flatten(body):
+            for sub in ast.walk(node):
+                if isinstance(sub, ast.Await):
+                    order.append(("await", node.lineno))
+                elif (
+                    isinstance(sub, ast.Call)
+                    and isinstance(sub.func, ast.Attribute)
+                    and sub.func.attr in ("cooldown_remaining", "note_attempt")
+                ):
+                    order.append((sub.func.attr, node.lineno))
+        sequence = [name for name, _ in sorted(set(order), key=lambda p: p[1])]
+        claim = sequence.index("note_attempt")
+        preceding = sequence[:claim]
+        assert "cooldown_remaining" in preceding, "nothing checks the cooldown before claiming it"
+        last_check = len(preceding) - 1 - preceding[::-1].index("cooldown_remaining")
+        assert "await" not in sequence[last_check:claim], (
+            "an await sits between the cooldown check and note_attempt, so two "
+            "concurrent requests can both pass the check and both hit the provider"
+        )
