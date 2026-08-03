@@ -250,3 +250,105 @@ class TestTheDeadCodeDecisionsHold:
 
         out = power.summarise([{"platform": "x", "gross": 1.0, "watts": 10.0, "hours": 720}], price_per_kwh=0.2)
         assert out["services"][0]["cost_attributable"] is True
+
+
+class TestTheCatalogDrivenPathsActuallyRun:
+    """These were verified by hand when written and never committed as tests.
+
+    Coverage caught exactly that gap: four lines reachable only through the
+    catalog-driven branches. A path proven once in a scratch script and never
+    again is a path that silently rots.
+    """
+
+    def _per_node(self, slug, per_node_result=None, has_method=True):
+        import asyncio
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        from app import main
+
+        fake = MagicMock()
+        fake.close = AsyncMock()
+        if has_method:
+            fake.get_per_node_earnings = AsyncMock(return_value=per_node_result or [])
+        else:
+            del fake.get_per_node_earnings
+
+        async def run():
+            with (
+                patch.object(main, "_require_auth_api", lambda r: None),
+                patch.object(main.database, "get_config", AsyncMock(return_value={})),
+                patch("app.collectors.build_one", return_value=(fake, [])),
+            ):
+                return await main.api_per_node_earnings(MagicMock(), slug)
+
+        return asyncio.run(run())
+
+    def test_a_service_that_declares_it_gets_its_per_node_rows(self):
+        rows = [{"node": "alpha", "earnings": 1.25}]
+        assert self._per_node("mysterium", rows) == rows
+
+    def test_a_service_that_does_not_declare_it_returns_nothing(self):
+        """Honeygain has no per-node concept; asking must not invent one."""
+        assert self._per_node("honeygain", [{"node": "x"}]) == []
+
+    def test_an_unknown_slug_returns_nothing(self):
+        assert self._per_node("no-such-service", [{"node": "x"}]) == []
+
+    def test_declaring_it_without_implementing_it_warns_instead_of_500ing(self, caplog):
+        """The capability lives in YAML, so a service can claim it prematurely.
+
+        That is a packaging mistake, not a user error — it should be visible in
+        the log and invisible in the response, never a stack trace.
+        """
+        import logging
+
+        with caplog.at_level(logging.WARNING, logger="app.main"):
+            assert self._per_node("mysterium", has_method=False) == []
+        assert any("does not implement" in r.getMessage() for r in caplog.records)
+
+    def test_missing_credentials_return_nothing_rather_than_a_broken_collector(self):
+        """The user declared the service but has not entered its credentials.
+
+        build_one reports what is missing; proceeding would call a collector
+        with empty auth and surface a provider error as if the feature itself
+        were broken.
+        """
+        import asyncio
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        from app import main
+
+        async def run():
+            with (
+                patch.object(main, "_require_auth_api", lambda r: None),
+                patch.object(main.database, "get_config", AsyncMock(return_value={})),
+                patch("app.collectors.build_one", return_value=(None, ["mysterium_email"])),
+            ):
+                return await main.api_per_node_earnings(MagicMock(), "mysterium")
+
+        assert asyncio.run(run()) == []
+
+    def test_the_credential_hint_reaches_the_endpoint_from_yaml(self):
+        """The whole point of the migration: the hint must still be served."""
+        import asyncio
+        from unittest.mock import MagicMock, patch
+
+        from app import main
+
+        with patch.object(main, "_require_owner", lambda r: None):
+            meta = asyncio.run(main.api_collectors_meta(MagicMock()))
+        hints = {e["slug"]: e.get("hint") for e in meta if e.get("hint")}
+        assert len(hints) == 13, f"expected 13 services to serve a hint, got {sorted(hints)}"
+        assert "F12" in hints["earnapp"], "the hint text itself did not survive the move to YAML"
+
+    def test_a_service_without_a_hint_simply_omits_the_key(self):
+        """An empty string would render as a blank help line under the input."""
+        import asyncio
+        from unittest.mock import MagicMock, patch
+
+        from app import main
+
+        with patch.object(main, "_require_owner", lambda r: None):
+            meta = asyncio.run(main.api_collectors_meta(MagicMock()))
+        for entry in meta:
+            assert entry.get("hint") is None or entry["hint"].strip(), f"{entry['slug']} has an empty hint"
