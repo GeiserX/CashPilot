@@ -536,10 +536,58 @@ async def close_shared() -> None:
         await conn.close()
 
 
+async def _dedupe_earnings_before_indexing(db: Any) -> None:
+    """Clear the way for the unique earnings index on an old volume.
+
+    ``_SCHEMA`` is replayed on EVERY startup, and it contains
+    ``CREATE UNIQUE INDEX IF NOT EXISTS idx_earnings_platform_date``. On an
+    installation whose ``/data`` predates that index and that accumulated two
+    rows for the same platform and date, creating it raises IntegrityError —
+    inside ``executescript``, which nothing catches, during ``lifespan`` — and
+    the application does not start AT ALL. Verified: a two-duplicate-row
+    database fails ``init_db`` with "UNIQUE constraint failed".
+
+    That is the one piece of schema evolution here without a defensive
+    migration; every other column change is guarded by a ``PRAGMA table_info``
+    check. Recovering by hand means opening SQLite on a container that will not
+    boot, which is a bad thing to ask of someone whose dashboard just died.
+
+    Deliberately conservative: this touches nothing unless the index is genuinely
+    absent AND duplicates genuinely exist, and it keeps the HIGHEST id per
+    (platform, date) — the most recently written row, which is what an upsert
+    would have left behind had the index been there all along.
+    """
+    cursor = await db.execute(
+        "SELECT 1 FROM sqlite_master WHERE type = 'index' AND name = 'idx_earnings_platform_date'"
+    )
+    if await cursor.fetchone():
+        return  # Index already present, so duplicates cannot exist.
+
+    cursor = await db.execute("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'earnings'")
+    if not await cursor.fetchone():
+        return  # Fresh install; the table is about to be created cleanly.
+
+    cursor = await db.execute("SELECT COUNT(*) - COUNT(DISTINCT platform || '|' || date) AS extra FROM earnings")
+    row = await cursor.fetchone()
+    extra = int(row["extra"] or 0)
+    if extra <= 0:
+        return
+
+    _logger.warning(
+        "Found %d duplicate earnings row(s) predating the unique index. Keeping the most recent "
+        "reading for each platform and date and removing the rest, so the index can be created "
+        "and the application can start.",
+        extra,
+    )
+    await db.execute("DELETE FROM earnings WHERE id NOT IN (SELECT MAX(id) FROM earnings GROUP BY platform, date)")
+    await db.commit()
+
+
 async def init_db() -> None:
     """Create tables if they don't exist."""
     db = await _get_db()
     try:
+        await _dedupe_earnings_before_indexing(db)
         await db.executescript(_SCHEMA)
         # Migrate workers table: add client_id (UNIQUE) and apps columns
         cursor = await db.execute("PRAGMA table_info(workers)")

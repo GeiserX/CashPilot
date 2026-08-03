@@ -168,9 +168,16 @@ def _traffic_state(slug: str, containers: list[dict[str, Any]]) -> str | None:
     return net_activity.classify(max(rates))
 
 
-async def _get_all_worker_containers() -> list[dict[str, Any]]:
-    """Collect container/app data from all online workers' heartbeat data in DB."""
-    workers = await database.list_workers()
+async def _get_all_worker_containers(workers: list[dict[str, Any]] | None = None) -> list[dict[str, Any]]:
+    """Collect container/app data from all online workers' heartbeat data in DB.
+
+    ``workers`` lets a caller that has ALREADY fetched the worker list hand it
+    in rather than causing a second `SELECT *` and a second full JSON decode of
+    every row in the same request. Everyone else keeps calling this with no
+    arguments and gets the fetch for free.
+    """
+    if workers is None:
+        workers = await database.list_workers()
     result: list[dict[str, Any]] = []
     for w in workers:
         if w.get("status") != "online":
@@ -2278,9 +2285,13 @@ async def api_fleet_economics(request: Request) -> dict[str, Any]:
     except (TypeError, ValueError):
         price = 0.0
 
-    workers = [_decoded_worker(w) for w in await database.list_workers()]
+    # Fetched once and reused: this used to query the worker table here and
+    # then again inside _get_all_worker_containers, decoding every row twice
+    # to build the same list in a single request.
+    raw_workers = await database.list_workers()
+    workers = [_decoded_worker(w) for w in raw_workers]
     earned = await database.get_earned_by_platform(days=30)
-    containers = await _get_all_worker_containers()
+    containers = await _get_all_worker_containers(raw_workers)
 
     # Attribute each service's gross to the worker running it. A service on two
     # machines splits evenly: without per-node earnings there is no better
