@@ -367,11 +367,15 @@ def read_critical_state(slug: str) -> tuple[bytes, list[str]]:
 
     if was_running:
         container.pause()
+    read_failure: BaseException | None = None
     try:
         for target in sorted(targets):
             stream, _stat = container.get_archive(target)
             chunks.append(b"".join(stream))
             read.append(target)
+    except BaseException as exc:
+        read_failure = exc
+        raise
     finally:
         if was_running:
             # Unpause even if the read failed: leaving a paused earner behind
@@ -379,10 +383,9 @@ def read_critical_state(slug: str) -> tuple[bytes, list[str]]:
             try:
                 container.unpause()
             except Exception as exc:
-                # Swallowed so it cannot mask the original error, but NEVER
-                # silent. A paused container renders normally and earns nothing,
-                # and nothing else in the system reports that state, so an
-                # unlogged failure here is an invisible, indefinite revenue stop.
+                # Never silent. A paused container renders normally and earns
+                # nothing, and nothing else in the system reports that state,
+                # so an unlogged failure here is an invisible revenue stop.
                 logger.error(
                     "CRITICAL: %s is still PAUSED — unpause failed (%s). It is earning "
                     "NOTHING until it is unpaused by hand: docker unpause %s",
@@ -390,6 +393,16 @@ def read_critical_state(slug: str) -> tuple[bytes, list[str]]:
                     exc,
                     container.name,
                 )
+                # Only swallow this while a read error is already on its way
+                # up, where re-raising would replace the real cause with a
+                # downstream symptom. When the read SUCCEEDED, staying quiet is
+                # worse than losing the archive: the caller would hand back a
+                # perfectly good backup, verification would report success, and
+                # the container would sit paused indefinitely with nothing
+                # anywhere contradicting the green result. The backup can be
+                # taken again; an unnoticed paused earner just stops paying.
+                if read_failure is None:
+                    raise
 
     return b"".join(chunks), read
 

@@ -161,7 +161,11 @@ def _elapsed_days(points: list[dict[str, Any]]) -> float | None:
         except ValueError:
             span = None
         if span:
-            return float(span)
+            # Callers pass date-ordered history, but the distance between two
+            # dates does not depend on which end you start from, and a negative
+            # divisor here would invert the rate and project the payout into
+            # the past rather than the future.
+            return float(abs(span))
     # No usable dates: fall back to the interval count, which is correct when
     # readings really are daily and is the best available otherwise.
     return float(len(points) - 1) or None

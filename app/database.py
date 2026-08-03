@@ -1568,16 +1568,21 @@ async def get_earned_by_platform(days: int = 30) -> dict[str, float]:
     Deltas are clamped per platform before summing, the same rule the dashboard
     uses (CashPilot-glc): a payout drops a balance, and an unclamped drop would
     read as negative earnings and understate what the service actually paid.
+
+    The delta is taken in the NATIVE currency and only then priced. Converting
+    each cumulative balance to USD first and subtracting afterwards would let a
+    rate move alone move the earnings figure: 100 MYST at $0.50 followed by 110
+    MYST at $0.40 subtracts to a loss and clamps to zero, hiding 10 MYST that
+    really was earned, while an unchanged balance at a risen rate invents
+    earnings out of nothing.
     """
     db = await _get_db()
     try:
         cursor = await db.execute(
             """
-            SELECT platform, date,
-                   balance * COALESCE(fx_rate_usd, 1.0) AS balance
+            SELECT platform, date, balance, currency, fx_rate_usd
             FROM earnings
             WHERE date >= date('now', ?)
-              AND (currency = 'USD' OR fx_rate_usd IS NOT NULL)
             ORDER BY platform, date
             """,
             (f"-{max(1, int(days))} days",),
@@ -1585,14 +1590,38 @@ async def get_earned_by_platform(days: int = 30) -> dict[str, float]:
         rows = await cursor.fetchall()
 
         earned: dict[str, float] = {}
-        previous: dict[str, float] = {}
+        previous: dict[str, tuple[str, float]] = {}
+        unpriced = 0
         for row in rows:
-            platform, balance = row["platform"], float(row["balance"])
-            if platform in previous:
-                earned[platform] = earned.get(platform, 0.0) + max(0.0, balance - previous[platform])
-            else:
-                earned.setdefault(platform, 0.0)
-            previous[platform] = balance
+            platform = row["platform"]
+            currency = (row["currency"] or "USD").upper()
+            balance = float(row["balance"] or 0.0)
+            # USD is parity by definition. Trusting a stored rate on a USD row
+            # would let a bad rate rewrite money the collector reported exactly.
+            rate = 1.0 if currency == "USD" else row["fx_rate_usd"]
+            earned.setdefault(platform, 0.0)
+
+            if rate is None:
+                # No rate means this reading cannot be priced, so it can neither
+                # contribute earnings nor anchor the next delta. Dropping the
+                # baseline is what stops a later reading from being differenced
+                # across the gap and counting the unpriced period twice.
+                previous.pop(platform, None)
+                unpriced += 1
+                continue
+
+            before = previous.get(platform)
+            if before is not None and before[0] == currency:
+                earned[platform] += max(0.0, balance - before[1]) * float(rate)
+            previous[platform] = (currency, balance)
+
+        if unpriced:
+            _logger.warning(
+                "%d earnings reading(s) in the last %d days have no USD rate and were left out "
+                "of the per-platform totals, which are therefore understated.",
+                unpriced,
+                days,
+            )
         return earned
     finally:
         await db.close()

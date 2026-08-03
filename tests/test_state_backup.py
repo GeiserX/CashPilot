@@ -480,3 +480,65 @@ class TestTheWorkerEndpoints:
             }
             leaked = attrs & forbidden
             assert not leaked, f"{fn.__name__} calls {leaked}, which could send a bundle somewhere"
+
+
+class TestAFailedUnpauseIsNeverReportedAsSuccess:
+    """A paused container looks normal and earns nothing.
+
+    Nothing else in the system reports that state, so if the archive reads
+    succeed and only the unpause fails, a quiet handler hands back a perfectly
+    good backup, verification goes green, and the container sits paused
+    indefinitely with no signal anywhere. The backup can always be taken again;
+    an unnoticed paused earner just stops paying.
+    """
+
+    def _container(self, status="running"):
+        from unittest.mock import MagicMock
+
+        container = MagicMock()
+        container.status = status
+        container.name = "cashpilot-storj"
+        container.get_archive.return_value = (iter([b"data"]), {})
+        return container
+
+    def _read(self, container):
+        from unittest.mock import patch
+
+        from app import orchestrator
+
+        with (
+            patch.object(orchestrator, "_critical_volume_targets", return_value={"/data": "x"}),
+            patch.object(orchestrator, "_find_container", return_value=container),
+        ):
+            return orchestrator.read_critical_state("storj")
+
+    def test_a_successful_read_with_a_failed_unpause_raises(self):
+        container = self._container()
+        container.unpause.side_effect = RuntimeError("daemon said no")
+        with pytest.raises(RuntimeError, match="daemon said no"):
+            self._read(container)
+
+    def test_it_says_which_container_and_how_to_fix_it(self, caplog):
+        import logging
+
+        container = self._container()
+        container.unpause.side_effect = RuntimeError("daemon said no")
+        with caplog.at_level(logging.ERROR, logger="app.orchestrator"), pytest.raises(RuntimeError):
+            self._read(container)
+        message = next(r.getMessage() for r in caplog.records if "still PAUSED" in r.getMessage())
+        assert "docker unpause cashpilot-storj" in message, "an alarm the operator cannot act on"
+
+    def test_a_read_failure_still_wins_over_the_unpause_failure(self):
+        """Re-raising here would replace the real cause with a symptom."""
+        container = self._container()
+        container.get_archive.side_effect = RuntimeError("the actual problem")
+        container.unpause.side_effect = RuntimeError("daemon said no")
+        with pytest.raises(RuntimeError, match="the actual problem"):
+            self._read(container)
+        container.unpause.assert_called_once()
+
+    def test_the_ordinary_path_is_untouched(self):
+        container = self._container()
+        payload, read = self._read(container)
+        assert payload == b"data" and read == ["/data"]
+        container.unpause.assert_called_once()
