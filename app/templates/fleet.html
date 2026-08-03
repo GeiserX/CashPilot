@@ -59,6 +59,19 @@ CASHPILOT_WORKER_NAME=server-name</code>
   <h2 class="section-title">Workers</h2>
 </div>
 
+<!-- Is this fleet worth running?
+     Hidden until there is a tariff to answer it with: with no electricity price
+     configured the honest answer is "unknown", and a card saying so on every
+     visit is noise. The backend computes all of this and, until now, nothing
+     asked it. -->
+<div class="card" style="margin-bottom: 24px; display:none;" id="fleet-economics-card">
+  <div class="card-header">
+    <span class="card-title">Running costs</span>
+    <span style="font-size:0.72rem; color:var(--text-muted);" id="fleet-economics-quality"></span>
+  </div>
+  <div id="fleet-economics-body"></div>
+</div>
+
 <div id="fleet-workers">
   <div class="empty-state">
     <div class="empty-state-title">Loading fleet...</div>
@@ -126,11 +139,95 @@ CASHPILOT_WORKER_NAME=server-name</code>
       document.getElementById('fleet-running-containers').textContent = summary.running_containers || 0;
 
       renderWorkers(workers);
+      loadFleetEconomics();
     } catch (err) {
       const msg = (err.message || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]);
       document.getElementById('fleet-workers').innerHTML =
         `<div class="empty-state"><div class="empty-state-text">Failed to load fleet data: ${msg}</div></div>`;
     }
+  }
+
+  // Running costs: per machine, and per service where that can be said honestly.
+  //
+  // Both endpoints already return a finished sentence for every branch —
+  // "not billed by the kilowatt-hour", "costs are known for 1 of 2 machines" —
+  // so this renders those rather than inventing cheerier wording. The verdicts
+  // exist because the answer is often "this machine is not worth leaving on",
+  // and softening that would defeat the point of computing it.
+  async function loadFleetEconomics() {
+    const card = document.getElementById('fleet-economics-card');
+    const body = document.getElementById('fleet-economics-body');
+    const quality = document.getElementById('fleet-economics-quality');
+    if (!card || !body) return;
+
+    let economics, net;
+    try {
+      [economics, net] = await Promise.all([
+        CP.api('/api/fleet/economics'),
+        CP.api('/api/earnings/net?days=30').catch(() => null),
+      ]);
+    } catch (err) {
+      console.warn('Could not load running costs:', err);
+      return;   // Leave hidden; unknown is not "free".
+    }
+
+    const machines = (economics && economics.machines) || [];
+    if (!machines.length) { card.style.display = 'none'; return; }
+
+    const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c =>
+      ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]);
+    const money = v => (v == null ? '—' : Number(v).toFixed(2));
+
+    const rows = machines.map(m => {
+      const losing = m.verdict === 'losing_money';
+      return `
+        <div class="economics-row">
+          <div>
+            <div class="economics-machine">${esc(m.machine)}</div>
+            <div class="economics-summary">${esc(m.summary)}</div>
+          </div>
+          <div class="economics-figures">
+            <span title="gross earnings per month">${money(m.monthly_gross)}</span>
+            <span style="color:var(--text-muted);">−</span>
+            <span title="estimated electricity per month">${money(m.monthly_cost)}</span>
+            <span style="color:${losing ? 'var(--danger)' : 'var(--success)'}; font-weight:700;"
+                  title="net per month">${money(m.monthly_net)}</span>
+          </div>
+        </div>`;
+    }).join('');
+
+    // Per-service net, but ONLY the rows whose cost can honestly be attributed.
+    // A container adding 1-3 W to a host that is already on is below what a
+    // smart plug can resolve, so its share is arithmetic, not measurement. The
+    // count of what was withheld is shown rather than the rows being dropped
+    // silently.
+    let services = '';
+    if (net && Array.isArray(net.services) && net.cost_known) {
+      const attributable = net.services.filter(s => s.cost_attributable && s.cost != null);
+      const withheld = net.services.length - attributable.length;
+      if (attributable.length) {
+        services = `
+          <div class="economics-services">
+            <div class="detail-label" style="margin-bottom:6px;">Per service, where the cost can be attributed</div>
+            ${attributable.map(s => `
+              <div class="economics-service-row">
+                <span>${esc(s.platform)}</span>
+                <span style="color:${s.negative ? 'var(--danger)' : 'var(--text-secondary)'};">
+                  ${money(s.gross)} − ${money(s.cost)} = ${money(s.net)}
+                </span>
+              </div>`).join('')}
+          </div>`;
+      }
+      if (withheld > 0) {
+        services += `<div class="economics-note">${withheld} service(s) draw too little on a machine that is already on for their share of the bill to mean anything, so no per-service figure is shown for them. Their cost is still counted in the machine totals above.</div>`;
+      }
+    }
+
+    if (quality) {
+      quality.textContent = economics.summary || '';
+    }
+    card.style.display = '';
+    body.innerHTML = rows + services;
   }
 
   function renderWorkers(workers) {

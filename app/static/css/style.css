@@ -2033,3 +2033,21 @@ img { max-width: 100%; }
 .credential-health-hint { font-size: 0.75rem; color: var(--text-secondary); margin-top: 4px; max-width: 62ch; }
 .credential-health-actions { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
 .credential-health-status { font-size: 0.78rem; font-weight: 600; white-space: nowrap; }
+
+/* Running costs (fleet). The verdict colour is the only thing that must read
+   at a glance; the sentence underneath carries the actual reasoning. */
+.economics-row {
+  display: flex; align-items: flex-start; justify-content: space-between;
+  gap: 16px; flex-wrap: wrap; padding: 12px 0;
+  border-bottom: 1px solid var(--border-color);
+}
+.economics-row:last-of-type { border-bottom: none; }
+.economics-machine { font-weight: 600; text-transform: capitalize; }
+.economics-summary { font-size: 0.78rem; color: var(--text-muted); margin-top: 3px; max-width: 68ch; }
+.economics-figures { display: flex; align-items: baseline; gap: 8px; font-variant-numeric: tabular-nums; flex-shrink: 0; }
+.economics-services { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border-color); }
+.economics-service-row {
+  display: flex; justify-content: space-between; gap: 12px;
+  font-size: 0.82rem; padding: 3px 0; font-variant-numeric: tabular-nums;
+}
+.economics-note { margin-top: 10px; font-size: 0.75rem; color: var(--text-muted); max-width: 72ch; }

@@ -392,3 +392,54 @@ class TestCredentialHealthWarnsBeforeCollectionStops:
         source = self._source()
         for forbidden in ("row.value", "row.secret", "row.password", "row.token"):
             assert forbidden not in source, f"the renderer reads {forbidden}"
+
+
+class TestRunningCostsAreShownWithoutBeingInvented:
+    """fleet/economics and earnings/net, both orphaned since 1.10.x.
+
+    The whole point of these endpoints is that the answer is often "this
+    machine is not worth leaving on" or "we cannot tell". Rendering them at all
+    is only useful if the uncertainty survives the trip to the screen — a zero
+    where the cost is unknown would turn gross into apparent profit, which is
+    the exact dishonesty app/power.py exists to prevent.
+    """
+
+    def _fleet(self) -> str:
+        return (ROOT / "app" / "templates" / "fleet.html").read_text(encoding="utf-8")
+
+    def test_the_fleet_page_has_somewhere_to_show_it(self):
+        page = self._fleet()
+        assert 'id="fleet-economics-card"' in page
+        assert 'id="fleet-economics-body"' in page
+
+    def test_it_starts_hidden(self):
+        """With no tariff the answer is "unknown", and saying so daily is noise."""
+        page = self._fleet()
+        card = page[page.index('id="fleet-economics-card"') - 120 :][:260]
+        assert "display:none" in card.replace(" ", "")
+
+    def test_it_loads_with_the_rest_of_the_fleet_page(self):
+        assert "loadFleetEconomics()" in self._fleet()
+
+    def test_an_unknown_cost_renders_as_unknown_not_as_zero(self):
+        """A zero cost makes gross look like profit."""
+        page = self._fleet()
+        assert "v == null ? '—'" in page.replace('"', "'"), "money() must distinguish null from 0"
+
+    def test_the_backend_sentence_is_rendered_rather_than_reworded(self):
+        """Every branch already states its own uncertainty precisely."""
+        assert "esc(m.summary)" in self._fleet()
+
+    def test_only_attributable_service_costs_are_listed(self):
+        assert "s.cost_attributable" in self._fleet()
+
+    def test_what_was_withheld_is_counted_out_loud(self):
+        """Dropping rows silently would read as "these services cost nothing"."""
+        page = self._fleet()
+        assert "withheld" in page
+        assert "still counted in the machine totals" in page
+
+    def test_a_failed_fetch_leaves_the_card_hidden(self):
+        page = self._fleet()
+        block = page[page.index("async function loadFleetEconomics()") :][:1400]
+        assert "Leave hidden" in block or "return;   // Leave hidden" in block
