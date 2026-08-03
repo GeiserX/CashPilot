@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import math
 import os
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -1601,14 +1602,20 @@ async def get_earned_by_platform(days: int = 30) -> dict[str, float]:
             rate = 1.0 if currency == "USD" else row["fx_rate_usd"]
             earned.setdefault(platform, 0.0)
 
-            # A rate of zero or less is not a price, it is bad data, and it must
-            # be treated as unpriced rather than believed. Zero would silently
-            # report the platform as having earned nothing, which is
-            # indistinguishable from a real flat balance; a negative rate is
-            # worse, because the clamp above applies to the delta and the sign
-            # is applied after it, so the total would come out NEGATIVE and
-            # drag down every figure computed from it.
-            if rate is not None and float(rate) <= 0:
+            # Only a finite positive number is a price. Everything else is bad
+            # data and must be treated as unpriced rather than believed:
+            #   0        reports the platform as having earned nothing, which
+            #            is indistinguishable from a genuinely flat balance;
+            #   negative defeats the payout clamp, which applies to the delta
+            #            while the sign is applied after it, so the platform
+            #            total comes out NEGATIVE and drags down every figure
+            #            derived from it;
+            #   inf/nan  poison the total outright — inf earnings, or a NaN
+            #            that compares false against every threshold it later
+            #            meets. (SQLite happens to store NaN as NULL today, so
+            #            only inf is reachable through the database; the check
+            #            does not depend on that continuing to be true.)
+            if rate is not None and not (math.isfinite(float(rate)) and float(rate) > 0):
                 rate = None
 
             if rate is None:

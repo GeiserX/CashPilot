@@ -514,6 +514,14 @@ class TestAnImpossibleRateIsNotBelieved:
             self._earned(tmp_path, "warn2", 0.0)
         assert any("understated" in r.getMessage() for r in caplog.records)
 
+    def test_an_infinite_rate_does_not_produce_infinite_earnings(self, tmp_path):
+        """Verified reachable before the fix: this returned inf."""
+        assert self._earned(tmp_path, "inf", float("inf"))["svc"] == pytest.approx(0.0)
+
+    def test_a_nan_rate_is_unpriced(self, tmp_path):
+        """SQLite stores NaN as NULL today; the guard must not depend on that."""
+        assert self._earned(tmp_path, "nan", float("nan"))["svc"] == pytest.approx(0.0)
+
     def test_a_normal_rate_still_works(self, tmp_path):
         """The guard must not swallow legitimate small rates."""
         assert self._earned(tmp_path, "small", 0.0001)["svc"] == pytest.approx(0.001)
