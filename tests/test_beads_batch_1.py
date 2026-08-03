@@ -242,18 +242,39 @@ class TestASuppliedEncryptionKeyIsNotTreatedAsEphemeral:
 
 
 class TestTheSaladHintPointsAtAHostThatExists:
-    """CashPilot-ecc: app.salad.com does not resolve. The dashboard is app.salad.io."""
+    """CashPilot-ecc: app.salad.com does not resolve. The dashboard is app.salad.io.
 
-    def test_the_hint_uses_the_working_host(self):
+    Asserted on the parsed HOST, not on a substring of the file.
+
+    The first version of these tests did `"app.salad.io" in text`, which CodeQL
+    flagged as incomplete URL sanitization — correctly, and not only formally:
+    that assertion also passes for ``app.salad.io.evil.com`` and for
+    ``evil.com/?next=app.salad.io``. A test meant to pin which host we send
+    users to should not accept a host that merely contains the right string.
+    """
+
+    def _hosts(self) -> list[str]:
+        from urllib.parse import urlparse
+
         text = (ROOT / "services" / "compute" / "salad.yml").read_text(encoding="utf-8")
-        assert "app.salad.com" not in text
-        assert "app.salad.io" in text
+        return [urlparse(u).hostname or "" for u in re.findall(r"https?://[^\s'\"<>]+", text)]
+
+    def test_no_url_points_at_the_dead_host(self):
+        assert "app.salad.com" not in self._hosts()
+
+    def test_the_hint_links_to_the_live_dashboard_host(self):
+        from urllib.parse import urlparse
+
+        text = (ROOT / "services" / "compute" / "salad.yml").read_text(encoding="utf-8")
+        hint = re.search(r"credential_hint: \"(.*)\"", text)
+        assert hint, "salad.yml has no credential_hint"
+        hosts = [urlparse(u).hostname or "" for u in re.findall(r"https?://[^\s'\"<>]+", hint.group(1))]
+        assert hosts, "the hint contains no link"
+        assert all(h == "app.salad.io" for h in hosts), hosts
 
     def test_it_matches_the_dashboard_url_in_the_same_file(self):
         """The right host was already in the file, three lines away."""
-        text = (ROOT / "services" / "compute" / "salad.yml").read_text(encoding="utf-8")
-        hint = re.search(r"credential_hint: \"(.*)\"", text)
-        assert hint and "app.salad.io" in hint.group(1)
+        assert "app.salad.io" in self._hosts()
 
 
 class TestTheDocsDescribeTheCodeThatExists:
