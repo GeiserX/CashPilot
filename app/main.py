@@ -2043,7 +2043,20 @@ async def api_earnings_net(request: Request, days: int = 30) -> dict[str, Any]:
     # Only RUNNING containers. A stopped one draws nothing, and counting it
     # inflates a worker's container count, which shrinks every running service's
     # share of that host's idle floor and understates the fleet's real cost.
-    running = [c for c in statuses if c.get("service") and str(c.get("status", "")).lower() == "running"]
+    # egress.container_slug, NOT c["service"].
+    #
+    # _get_all_worker_containers emits "slug"; this filtered on "service" and so
+    # matched NOTHING in production, every time. The consequence was not a
+    # missing panel — it was that every service was charged 0 W, so cost came
+    # out 0.00 and net was reported EQUAL TO GROSS with cost_known: true. The
+    # endpoint's own docstring promises it never presents gross as profit, and
+    # that is exactly what it did.
+    #
+    # This is the second time this key has bitten the project. container_slug()
+    # exists because of the first time and accepts both spellings; its docstring
+    # says code reading "service" matched nothing in production while its tests
+    # passed, which is precisely what happened here again.
+    running = [c for c in statuses if egress.container_slug(c) and str(c.get("status", "")).lower() == "running"]
 
     # Group by WORKER and keep it that way through the watt calculation. Each
     # host pays its own idle draw, so collapsing a multi-host fleet into one
@@ -2073,7 +2086,7 @@ async def api_earnings_net(request: Request, days: int = 30) -> dict[str, Any]:
             tdp = host_tdp
         count = max(1, len(containers))
         for c in containers:
-            svc = c["service"]
+            svc = egress.container_slug(c)
             if not metered:
                 # No marginal power cost to the user on this host, so charge
                 # nothing rather than computing watts and multiplying by zero.
