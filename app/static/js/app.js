@@ -359,6 +359,21 @@ const CP = (() => {
     const money = value => (unit ? `${Number(value).toFixed(2)} ${unit}` : formatCurrency(value));
 
     const paid = data.confirmed_payout_count || 0;
+
+    // Nothing read and nothing ever paid out: there is no progress to show.
+    //
+    // The card used to appear anyway, asserting a definite 0.00 lifetime and a
+    // 0%-of-minimum bar for a service CashPilot had never once looked at. It
+    // already got "Balance now" right (`balance_known`), which made the two
+    // fabricated figures beside it read as corroborated.
+    //
+    // Confirmed payouts alone are worth showing, so this hides the card only
+    // when BOTH are absent. Same defect filed three times: CashPilot-3oa
+    // (the API), -s2b (the lifetime figure), -jkd (the card and bar).
+    if (!data.balance_known && !paid) {
+      card.style.display = 'none';
+      return;
+    }
     card.style.display = '';
     body.innerHTML = `
       <div class="detail-grid">
@@ -368,7 +383,7 @@ const CP = (() => {
         </div>
         <div class="detail-item">
           <div class="detail-label">Earned in total</div>
-          <div class="detail-value">${escapeHtml(money(data.lifetime_earned || 0))}</div>
+          <div class="detail-value">${data.balance_known || paid ? escapeHtml(money(data.lifetime_earned || 0)) : '<span style="color:var(--text-muted);">not collected yet</span>'}</div>
           ${paid ? `<div style="font-size:0.7rem; color:var(--text-muted);">includes ${escapeHtml(String(paid))} confirmed payout${paid === 1 ? '' : 's'}</div>` : ''}
         </div>
       </div>
@@ -759,7 +774,10 @@ const CP = (() => {
     }
 
     // Balance + delta from breakdown
-    const balance = (bk && bk.balance) || svc.balance || 0;
+    // `|| 0` would defeat the whole fix: it coerces a null balance — which now
+    // explicitly means "never read" — straight back into a confident zero.
+    const balanceKnown = (bk ? bk.balance != null : null) ?? svc.balance_known ?? (svc.balance != null);
+    const balance = (bk && bk.balance != null ? bk.balance : svc.balance) ?? 0;
     const signupBonus = (bk && bk.signup_bonus) || 0;
     const balanceAdj = signupBonus > 0 ? ((bk && bk.balance_adjusted) ?? Math.max(0, balance - signupBonus)) : balance;
     const currency = (bk && bk.currency) || svc.currency || 'USD';
@@ -789,7 +807,11 @@ const CP = (() => {
       disconnectedLabel = `<div title="This service is running and earning. To show its balance here, add its earnings-tracking credentials." style="font-size:0.6rem; color:var(--text-muted); font-weight:500; display:flex; align-items:center; justify-content:flex-end; gap:4px;">tracking not set up${_isOwner ? ` <button class="btn btn-ghost" data-action="openCredentialModal" data-stop="1" data-a1="${escapeHtml(svc.slug)}" style="font-size:0.6rem; padding:1px 5px; line-height:1.2; color:var(--text-muted); border:1px solid var(--border); border-radius:3px; cursor:pointer;">set up</button>` : ''}</div>`;
     }
     let balanceHtml;
-    if (nativeLabel) {
+    if (!balanceKnown) {
+      // Never read. An em dash, not a number — the user must be able to tell
+      // "nothing has looked at this" from "this earned nothing".
+      balanceHtml = `<span style="color:var(--text-muted);" title="CashPilot has not read a balance for this service yet">&mdash;</span>${disconnectedLabel}`;
+    } else if (nativeLabel) {
       balanceHtml = `${formatCurrency(displayBalance, currency)}<div style="font-size:0.65rem;color:var(--text-muted);">${nativeLabel}</div>${bonusLabel}${disconnectedLabel}`;
     } else {
       balanceHtml = `${formatCurrency(displayBalance, currency)}${bonusLabel}${disconnectedLabel}`;
