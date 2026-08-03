@@ -2085,6 +2085,77 @@ const CP = (() => {
   // -----------------------------------------------------------
   // Settings
   // -----------------------------------------------------------
+  // Which stored credentials are about to stop working.
+  //
+  // Several providers issue session cookies measured in hours. When one dies,
+  // collection stops and nothing says so — the dashboard keeps showing the last
+  // balance it managed to read, which is indistinguishable from a service that
+  // simply is not earning. This is the warning before that, not after.
+  //
+  // Worst first, because the only rows that need acting on are the bad ones.
+  const CREDENTIAL_STATUS = {
+    likely_expired: {rank: 0, label: 'Likely expired', tone: 'var(--danger)'},
+    expiring_soon: {rank: 1, label: 'Expiring soon', tone: 'var(--warning)'},
+    no_known_expiry: {rank: 2, label: 'No known expiry', tone: 'var(--text-muted)'},
+    fresh: {rank: 3, label: 'Fresh', tone: 'var(--success)'},
+  };
+
+  async function loadCredentialHealth() {
+    const card = document.getElementById('credential-health-card');
+    const body = document.getElementById('credential-health-body');
+    if (!card || !body) return;
+
+    let rows;
+    try {
+      rows = await api('/api/credentials/health');
+    } catch (err) {
+      // Leave it hidden. An empty "Credential health" heading would read as
+      // "nothing is configured", which is a different and reassuring claim.
+      console.warn('Could not load credential health:', err);
+      return;
+    }
+    if (!Array.isArray(rows) || !rows.length) {
+      card.style.display = 'none';
+      return;
+    }
+
+    const meta = status => CREDENTIAL_STATUS[status] || CREDENTIAL_STATUS.no_known_expiry;
+    rows.sort((a, b) => meta(a.status).rank - meta(b.status).rank);
+
+    card.style.display = '';
+    body.innerHTML = rows.map(row => {
+      const info = meta(row.status);
+      const age = row.age_hours >= 48
+        ? `${Math.round(row.age_hours / 24)} days old`
+        : `${Math.round(row.age_hours)} hours old`;
+      const lifetime = row.expected_lifetime_hours
+        ? ` · expected to last about ${row.expected_lifetime_hours >= 48
+            ? `${Math.round(row.expected_lifetime_hours / 24)} days`
+            : `${row.expected_lifetime_hours} hours`}`
+        : '';
+      // The durable alternative is the actual fix, not a nag: swapping to it
+      // ends the expiry cycle instead of restarting it.
+      const durable = (row.durable_alternative_missing || []).length
+        ? `<div class="credential-health-hint">A longer-lived credential exists for this service (${escapeHtml(row.durable_alternative_missing.join(', '))}) — setting it means not having to do this again.</div>`
+        : '';
+      const why = row.why ? `<div class="credential-health-hint">${escapeHtml(row.why)}</div>` : '';
+      const needsAction = row.status === 'likely_expired' || row.status === 'expiring_soon';
+      return `
+        <div class="credential-health-item">
+          <div>
+            <div class="credential-health-name">${escapeHtml(row.service)} <span style="color:var(--text-muted); font-weight:400;">· ${escapeHtml(String(row.field).replace(/_/g, ' '))}</span></div>
+            <div class="credential-health-detail">${escapeHtml(age)}${escapeHtml(lifetime)}</div>
+            ${why}${durable}
+          </div>
+          <div class="credential-health-actions">
+            <span class="credential-health-status" style="color:${info.tone};">${escapeHtml(info.label)}</span>
+            ${needsAction && _isOwner ? `<button class="btn btn-ghost btn-sm" data-action="openCredentialModal" data-a1="${escapeHtml(row.service)}">Update</button>` : ''}
+          </div>
+        </div>
+      `;
+    }).join('');
+  }
+
   async function loadSettings() {
     populateCurrencyDropdown();
     try {
@@ -2095,6 +2166,7 @@ const CP = (() => {
       ]);
       renderEnvVars(envInfo, config);
       renderCollectors(collectorsMeta, config);
+      loadCredentialHealth();
     } catch (err) {
       // Settings may not be available yet
     }
@@ -2687,6 +2759,7 @@ const CP = (() => {
     openChangePasswordModal,
     submitPasswordChange,
     loadPayoutQueue,
+    loadCredentialHealth,
     loadPayoutProgress,
     confirmPayout,
     rejectPayout,

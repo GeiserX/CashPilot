@@ -301,3 +301,94 @@ class TestTheApproximationIsSuppressedWhenNothingWasConverted:
         source = js_function("effectiveDisplayCurrency")
         assert "crypto_usd" in source
         assert "if (!priced) return nativeCurrency" in source
+
+
+class TestTheChartLabelsAndItsBarsAgree:
+    """Reported as a bug; it is not one, and the reason is worth pinning down.
+
+    The dataset holds raw USD, which looks wrong on a euro dashboard until you
+    notice the y-axis ticks are formatted through the SAME converter as the
+    tooltip. Bars and ticks therefore live in one space and the reading is
+    consistent: a bar at raw 24.90 sits against a tick labelled in the display
+    currency.
+
+    That consistency is entirely accidental-looking and one line from breaking.
+    Converting the data without the ticks — or the ticks without the data —
+    would silently misplace every bar against its own axis, which is far harder
+    to notice than an obviously wrong number.
+    """
+
+    def _chart(self) -> str:
+        return js_function("loadEarningsChart")
+
+    def test_the_tooltip_formats_through_the_shared_converter(self):
+        assert "formatCurrency(ctx.parsed.y)" in self._chart()
+
+    def test_the_axis_ticks_format_through_the_same_one(self):
+        assert "callback: (v) => formatCurrency(v)" in self._chart()
+
+    def test_the_data_is_not_pre_converted_behind_the_labels_back(self):
+        """Converting the values while the ticks also convert would double it."""
+        chart = self._chart()
+        assert "values = data.map(d => d.amount)" in chart, (
+            "if the data is converted here, the axis callback must stop converting too, "
+            "or every figure is converted twice"
+        )
+
+
+class TestCredentialHealthWarnsBeforeCollectionStops:
+    """Several providers issue session cookies measured in hours.
+
+    When one dies, collection stops and nothing says so — the dashboard keeps
+    showing the last balance it managed to read, which is indistinguishable
+    from a service that simply is not earning. The endpoint computing this
+    shipped in 1.10.x with no consumer, so the warning existed and nobody ever
+    saw it.
+    """
+
+    def _source(self) -> str:
+        return js_function("loadCredentialHealth")
+
+    def test_settings_has_somewhere_to_show_it(self):
+        settings = (ROOT / "app" / "templates" / "settings.html").read_text(encoding="utf-8")
+        assert 'id="credential-health-card"' in settings
+        assert 'id="credential-health-body"' in settings
+
+    def test_it_loads_with_the_rest_of_settings(self):
+        assert "loadCredentialHealth()" in js_function("loadSettings")
+
+    def test_it_is_exported(self):
+        app_js = (ROOT / "app" / "static" / "js" / "app.js").read_text(encoding="utf-8")
+        exported = set(re.findall(r"^\s{4}([A-Za-z_][A-Za-z0-9_]*),\s*$", app_js, re.M))
+        assert "loadCredentialHealth" in exported
+
+    def test_the_worst_rows_come_first(self):
+        """The only rows worth acting on are the bad ones."""
+        source = self._source()
+        assert "rows.sort(" in source
+        assert "likely_expired" in source
+
+    def test_a_failed_fetch_leaves_the_card_hidden_rather_than_empty(self):
+        """An empty "Credential health" heading reads as "nothing configured"."""
+        source = self._source()
+        catch = source[source.index("} catch (err) {") : source.index("if (!Array.isArray(rows)")]
+        assert "return" in catch
+        assert "display = ''" not in catch
+
+    def test_it_offers_the_durable_alternative_as_the_actual_fix(self):
+        """Re-pasting a 2-hour cookie restarts the cycle; the alternative ends it."""
+        assert "durable_alternative_missing" in self._source()
+
+    def test_the_update_button_is_owner_only(self):
+        """Credentials are owner-gated everywhere else."""
+        assert "_isOwner ?" in self._source()
+
+    def test_it_renders_no_credential_value(self):
+        """Verified in a browser too: the seeded placeholder never reached the DOM.
+
+        The endpoint is documented as never returning values; this asserts the
+        renderer does not start printing one if that ever changes.
+        """
+        source = self._source()
+        for forbidden in ("row.value", "row.secret", "row.password", "row.token"):
+            assert forbidden not in source, f"the renderer reads {forbidden}"

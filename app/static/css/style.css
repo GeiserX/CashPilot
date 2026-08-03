@@ -2015,3 +2015,21 @@ img { max-width: 100%; }
   background: var(--accent);
   transition: width var(--transition);
 }
+
+/* Credential health (settings). Worst-first list; the status colour is the
+   only thing that needs to be readable at a glance. */
+.credential-health-item {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border-color);
+}
+.credential-health-item:last-child { border-bottom: none; }
+.credential-health-name { font-weight: 600; text-transform: capitalize; }
+.credential-health-detail { font-size: 0.78rem; color: var(--text-muted); margin-top: 2px; }
+.credential-health-hint { font-size: 0.75rem; color: var(--text-secondary); margin-top: 4px; max-width: 62ch; }
+.credential-health-actions { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+.credential-health-status { font-size: 0.78rem; font-weight: 600; white-space: nowrap; }

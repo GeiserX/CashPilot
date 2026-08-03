@@ -18,6 +18,20 @@
   </div>
 </div>
 
+<!-- Credential health.
+     Several providers issue short-lived session cookies — a few hours in the
+     worst case. When one dies, collection stops and NOTHING says so: the
+     dashboard keeps showing the last balance it managed to read. This is the
+     warning that arrives before that happens rather than after. -->
+<div class="card settings-section" id="credential-health-card" style="display:none;">
+  <h3 class="settings-section-title">Credential health</h3>
+  <p class="settings-section-desc">
+    How old each stored credential is, and when it is expected to stop working.
+    Credential values are never shown here &mdash; only which one it is and how it is doing.
+  </p>
+  <div id="credential-health-body"></div>
+</div>
+
 <!-- Earnings Collection -->
 <div class="card settings-section">
   <h3 class="settings-section-title">Earnings Collection</h3>
