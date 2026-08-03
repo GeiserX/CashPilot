@@ -525,8 +525,12 @@ class TestAnyoneProtocolDeep:
             c = AnyoneCollector(fingerprints="ABC123")
             result = asyncio.run(c.collect())
         assert result.error is None
-        assert result.balance == 0.50
-        assert result.currency == "USD"
+        # 5 tokens, reported as 5 tokens. This used to assert 0.50 — the USD
+        # value at a $0.10 price — which is precisely the bug: balance is
+        # CUMULATIVE, so pricing it before the delta made a token price move
+        # read as earnings. The delta is taken natively and priced after.
+        assert result.balance == 5.0
+        assert result.currency == "ANYONE"
 
     def test_collect_no_fingerprints(self):
         from app.collectors.anyone import AnyoneCollector
@@ -565,7 +569,12 @@ class TestAnyoneProtocolDeep:
             c = AnyoneCollector(fingerprints="FP1,FP2")
             result = asyncio.run(c.collect())
         assert result.error is None
-        assert result.balance == 0.50
+        # 5 tokens, reported as 5 tokens. This used to assert 0.50 — the USD
+        # value at a $0.10 price — which is precisely the bug: balance is
+        # CUMULATIVE, so pricing it before the delta made a token price move
+        # read as earnings. The delta is taken natively and priced after.
+        assert result.balance == 5.0
+        assert result.currency == "ANYONE"
 
     def test_collect_no_price_returns_tokens(self):
         from app.collectors.anyone import AnyoneCollector

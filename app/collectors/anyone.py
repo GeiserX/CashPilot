@@ -19,7 +19,6 @@ logger = logging.getLogger(__name__)
 RELAY_REWARDS_PROCESS_ID = "QZJTY63XZtHOHo_qPaEX7VdtemZh4rpj821xcanPGXA"
 AO_CU_URL = "https://cu.anyone.tech"
 RELAY_API = "https://api.ec.anyone.tech"
-COINGECKO_ID = "airtor-protocol"
 TOKEN_DECIMALS = 18
 
 
@@ -77,16 +76,6 @@ class AnyoneCollector(BaseCollector):
             raise ValueError(f"unexpected reward format: {data!r}")
         return raw_tokens / (10**TOKEN_DECIMALS)
 
-    async def _get_token_price(self, client: httpx.AsyncClient) -> float:
-        """Fetch ANYONE token price in USD from CoinGecko."""
-        resp = await client.get(
-            "https://api.coingecko.com/api/v3/simple/price",
-            params={"ids": COINGECKO_ID, "vs_currencies": "usd"},
-        )
-        resp.raise_for_status()
-        data = resp.json()
-        return float(data.get(COINGECKO_ID, {}).get("usd", 0))
-
     async def collect(self) -> EarningsResult:
         """Fetch total Anyone Protocol relay rewards and convert to USD."""
         if not self.fingerprints:
@@ -112,19 +101,25 @@ class AnyoneCollector(BaseCollector):
                     currency="ANYONE",
                 )
 
-            price = await self._retry(lambda: self._get_token_price(client))
-            if price <= 0:
-                return EarningsResult(
-                    platform=self.platform,
-                    balance=round(total_tokens, 6),
-                    currency="ANYONE",
-                )
-
-            usd_value = total_tokens * price
+            # Report the NATIVE token count, never a USD conversion of it.
+            #
+            # balance here is CUMULATIVE lifetime rewards, and earnings are the
+            # delta between two readings. Converting the cumulative figure first
+            # meant a token price move fabricated earnings out of nothing: the
+            # same 1000 ANYONE read at $0.10 and then at $0.12 produced $20 of
+            # "earned today" without a single token being paid out.
+            #
+            # get_daily_earnings takes the delta in the native currency and only
+            # then prices it, which is the whole reason that code is written
+            # that way. Handing it USD defeated it for this one service.
+            #
+            # Safe to change mid-history: the delta is only computed when the
+            # stored currency matches the previous reading (database.py), so the
+            # USD-to-ANYONE switchover is skipped rather than counted as a gain.
             return EarningsResult(
                 platform=self.platform,
-                balance=round(usd_value, 2),
-                currency="USD",
+                balance=round(total_tokens, 6),
+                currency="ANYONE",
             )
         except Exception as exc:
             base.log_failure(logger, "Anyone Protocol", exc)
