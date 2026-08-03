@@ -165,6 +165,19 @@
       transform: none;
     }
 
+    .field-hint {
+      color: #71717a;
+      font-size: 0.75rem;
+      margin-top: 0.35rem;
+      line-height: 1.45;
+    }
+    .field-hint code {
+      background: rgba(63, 63, 70, 0.4);
+      padding: 0.05rem 0.3rem;
+      border-radius: 4px;
+      font-size: 0.72rem;
+    }
+
     .error-msg {
       background: rgba(248, 113, 113, 0.1);
       color: #f87171;
@@ -390,6 +403,22 @@
               <label for="password_confirm">Confirm Password</label>
               <input type="password" id="password_confirm" name="password_confirm" required autocomplete="new-password">
             </div>
+            <!-- Without this the owner account cannot be created AT ALL.
+                 /register requires the one-time setup token on first run, and
+                 this page — the default landing page of a fresh install — did
+                 not ask for it, so every new installation answered the form
+                 with a 403 and a message that did not say why. -->
+            <div class="field">
+              <label for="setup_token">Setup token</label>
+              <input type="text" id="setup_token" name="setup_token" required autocomplete="off"
+                     spellcheck="false" placeholder="Printed in the server logs on first start">
+              <div class="field-hint">
+                Shown once in the container logs when CashPilot first started, on a line beginning
+                &ldquo;Setup token to create the owner account&rdquo;. Run
+                <code>docker logs cashpilot-ui</code> to see it. It proves you are the person who
+                installed this, so nobody else can claim the owner account first.
+              </div>
+            </div>
             <div class="actions">
               <button type="button" class="btn btn-ghost" data-action="goToStep" data-a1="1">Back</button>
               <button type="submit" class="btn" id="submit-btn">Create Account</button>
@@ -445,6 +474,7 @@
       const username = document.getElementById('username').value.trim();
       const password = document.getElementById('password').value;
       const passwordConfirm = document.getElementById('password_confirm').value;
+      const setupToken = (document.getElementById('setup_token')?.value || '').trim();
 
       if (password !== passwordConfirm) {
         errEl.textContent = 'Passwords do not match';
@@ -465,6 +495,8 @@
         formData.append('username', username);
         formData.append('password', password);
         formData.append('password_confirm', passwordConfirm);
+        // The first-run gate. Omitting it is a guaranteed 403.
+        formData.append('setup_token', setupToken);
 
         const resp = await fetch('/register', {
           method: 'POST',
@@ -480,7 +512,13 @@
 
         const html = await resp.text();
         const match = html.match(/auth-error[^>]*>([^<]+)/);
-        if (match) {
+        if (resp.status === 403) {
+          // "Please try again" is the worst possible message here: trying again
+          // with the same empty token fails identically, forever.
+          errEl.textContent = setupToken
+            ? 'That setup token was not accepted. Copy it from the server logs (docker logs cashpilot-ui) — the line beginning "Setup token to create the owner account".'
+            : 'The setup token is required. Find it in the server logs (docker logs cashpilot-ui) on the line beginning "Setup token to create the owner account".';
+        } else if (match) {
           errEl.textContent = match[1];
         } else {
           errEl.textContent = 'Registration failed. Please try again.';
