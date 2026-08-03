@@ -1787,6 +1787,10 @@ async def api_earnings_summary(request: Request) -> dict[str, Any]:
     all_earnings = await database.get_earnings_summary()
     total_bonus_usd = 0.0
     total_adjusted = 0.0
+    # CashPilot-oj4: the count was computed deep in database.py and only ever
+    # logged. A total that silently omits holdings is indistinguishable from a
+    # correct one, so the number of omissions has to reach the response.
+    unpriced_platforms: list[str] = []
     for e in all_earnings:
         slug = e.get("platform", "")
         balance = float(e["balance"])
@@ -1798,13 +1802,27 @@ async def api_earnings_summary(request: Request) -> dict[str, Any]:
         adjusted = max(0.0, balance - bonus)
 
         if currency != "USD":
-            usd_val = exchange_rates.to_usd(balance, currency)
+            # Fall back to the rate the reading was RECORDED at.
+            #
+            # to_usd consults only the live caches, so a crypto whose rate
+            # lookup is merely stale was dropped from the headline total
+            # entirely — silently, with nothing on screen saying the figure was
+            # incomplete. upsert_earnings preserves fx_rate_usd on every row
+            # precisely so a later reader is not left guessing.
+            #
+            # A stored rate is imperfect (it is the rate at collection time,
+            # not now) but it is enormously better than omitting the holding,
+            # and the count below says how many rows needed it.
+            stored_rate = database._usd_rate(currency, e.get("fx_rate_usd"))
+            usd_val = _to_usd_with_stored(balance, currency, stored_rate)
             if usd_val is not None:
                 summary["total"] = round(summary["total"] + usd_val, 2)
-            adj_usd = exchange_rates.to_usd(adjusted, currency)
+            else:
+                unpriced_platforms.append(slug)
+            adj_usd = _to_usd_with_stored(adjusted, currency, stored_rate)
             if adj_usd is not None:
                 total_adjusted += adj_usd
-            bonus_usd = exchange_rates.to_usd(bonus, currency) if bonus > 0 else 0.0
+            bonus_usd = _to_usd_with_stored(bonus, currency, stored_rate) if bonus > 0 else 0.0
             if bonus_usd is not None:
                 total_bonus_usd += bonus_usd
         else:
@@ -1819,6 +1837,10 @@ async def api_earnings_summary(request: Request) -> dict[str, Any]:
     except Exception as exc:
         logger.debug("active-service count failed: %s", exc)
     summary["active_services"] = active
+    # A total that silently omits holdings is indistinguishable from a correct
+    # one. The count was already being computed in database.py and only logged;
+    # it now reaches the caller so the card can say the figure is partial.
+    summary["unpriced_platforms"] = sorted(set(unpriced_platforms))
     summary["total_bonus"] = round(total_bonus_usd, 2)
     summary["total_adjusted"] = round(total_adjusted, 2)
     return summary
@@ -2644,6 +2666,34 @@ def _tariff_price(config: dict[str, Any]) -> float:
     resolve through here.
     """
     return float(config.get("power_price_per_kwh") or config.get("electricity_price_per_kwh") or 0.0)
+
+
+def _to_usd_with_stored(amount: float, currency: str, stored_rate: float | None) -> float | None:
+    """Convert to USD, falling back to the rate the reading was RECORDED at.
+
+    ``exchange_rates.to_usd`` consults only the live caches, so a crypto whose
+    rate lookup is merely stale was dropped from the dashboard total entirely —
+    silently, with nothing on screen saying the headline figure was incomplete.
+
+    This is not a new rule. ``get_earnings_dashboard_summary`` and
+    ``get_earned_by_platform`` already price rows this way, and
+    ``upsert_earnings`` stores ``fx_rate_usd`` on every row specifically so
+    "the USD value of a historical non-USD reading cannot be reconstructed
+    later" without it. The Total was the one figure applying a stricter rule
+    than the cards beside it, which is why they disagreed.
+
+    A stored rate is the rate at collection time rather than now — imperfect,
+    and much better than omitting the holding. Callers count what still cannot
+    be priced so the response can say so.
+
+    Module-level rather than a closure: defined inside the loop it captured
+    ``currency`` late, so every conversion would have used the LAST currency
+    seen (ruff B023).
+    """
+    live = exchange_rates.to_usd(amount, currency)
+    if live is not None:
+        return live
+    return amount * stored_rate if stored_rate is not None else None
 
 
 # ---------------------------------------------------------------------------

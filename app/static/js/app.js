@@ -2641,6 +2641,15 @@ const CP = (() => {
   function setChangeIndicator(id, pct) {
     const el = document.getElementById(id);
     if (!el) return;
+    // null means the comparison was never computed — not "no change".
+    // month_change used to be a hardcoded 0.0, so this rendered "+0.0%" in the
+    // positive style forever, and `pct.toFixed` would now throw on the honest
+    // null. Blank is the only truthful rendering of an unmeasured figure.
+    if (pct === null || pct === undefined || Number.isNaN(Number(pct))) {
+      el.textContent = '';
+      el.className = 'stat-change';
+      return;
+    }
     const sign = pct >= 0 ? '+' : '';
     el.textContent = `${sign}${pct.toFixed(1)}%`;
     el.className = `stat-change ${pct >= 0 ? 'positive' : 'negative'}`;
