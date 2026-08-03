@@ -1044,7 +1044,21 @@ async def api_services_deployed(request: Request) -> list[dict[str, Any]]:
             "slug": slug,
             "name": svc["name"] if svc else slug,
             "container_status": agg["best_status"],
-            "balance": balance_map.get(slug, 0.0),
+            # None, not 0.0, when CashPilot has never read this service.
+            #
+            # A missing earnings row means "no reading", and rendering it as
+            # $0.00 told the user a service was running and earning nothing —
+            # when the truth was that nothing had ever looked. Neither
+            # suppressor fires in that state: collector_disconnected needs an
+            # alert (none was raised, because no collector ran) and
+            # collector_needs_setup only checks whether config keys are filled.
+            # The flatline detector cannot catch it either: it skips rows whose
+            # max balance is 0.
+            #
+            # This is the same defect filed three times by the audit
+            # (CashPilot-vp6, -ikh, -7qk) from three different areas.
+            "balance": balance_map.get(slug),
+            "balance_known": slug in balance_map,
             "currency": currency_map.get(slug, "USD"),
             "cpu": f"{agg['total_cpu']:.2f}",
             "memory": f"{agg['total_mem']:.1f} MB",
@@ -1086,7 +1100,21 @@ async def api_services_deployed(request: Request) -> list[dict[str, Any]]:
             "slug": slug,
             "name": svc["name"] if svc else slug,
             "container_status": "external",
-            "balance": balance_map.get(slug, 0.0),
+            # None, not 0.0, when CashPilot has never read this service.
+            #
+            # A missing earnings row means "no reading", and rendering it as
+            # $0.00 told the user a service was running and earning nothing —
+            # when the truth was that nothing had ever looked. Neither
+            # suppressor fires in that state: collector_disconnected needs an
+            # alert (none was raised, because no collector ran) and
+            # collector_needs_setup only checks whether config keys are filled.
+            # The flatline detector cannot catch it either: it skips rows whose
+            # max balance is 0.
+            #
+            # This is the same defect filed three times by the audit
+            # (CashPilot-vp6, -ikh, -7qk) from three different areas.
+            "balance": balance_map.get(slug),
+            "balance_known": slug in balance_map,
             "currency": currency_map.get(slug, "USD"),
             "cpu": "",
             "memory": "",
@@ -2364,15 +2392,28 @@ async def api_payout_progress(request: Request, slug: str) -> dict[str, Any]:
     history = await database.get_balance_history(slug, days=30)
     confirmed = await database.get_payouts(platform=slug, confirmed_only=True)
 
+    known = balance is not None
     current = float(balance or 0.0)
     return {
         "slug": slug,
-        "current_balance": round(current, 6),
+        "current_balance": round(current, 6) if known else None,
         # Lifetime counts CONFIRMED payouts only. A probable one folded in here
         # would let a single misread drop inflate earnings forever, invisibly.
-        "lifetime_earned": payouts.lifetime_earned(current, confirmed),
+        #
+        # None when the balance is unknown AND nothing has been paid out:
+        # `float(balance or 0.0)` folded "never read" into a real zero, so the
+        # card stated a definite 0.00 lifetime for a service nothing had ever
+        # looked at. Confirmed payouts are still a real lower bound, so they
+        # keep a figure.
+        "lifetime_earned": payouts.lifetime_earned(current, confirmed) if (known or confirmed) else None,
         "confirmed_payout_count": len(confirmed),
-        "balance_known": balance is not None,
+        "balance_known": known,
+        # Projection stays. payouts.project already returns an explicit
+        # NOT_ENOUGH_DATA state, which is a more useful answer than null — it
+        # says WHY there is no estimate. Nulling it discarded that and pushed a
+        # null-check onto every caller. The misleading part was never this
+        # field; it was the card rendering a 0%-of-minimum bar from it, which
+        # is fixed where the card is drawn.
         "projection": payouts.project(current, service, history),
     }
 
