@@ -62,3 +62,4 @@ platforms: [docker, linux]
 collector:
   type: api
   notes: "Supabase email/password auth. Docker client uses separate EARNFM_TOKEN (UUID) for bandwidth sharing only."
+  credential_hint: "Use your Earn.fm account email and password (same as <a href='https://app.earn.fm' target='_blank'>app.earn.fm</a> login)."

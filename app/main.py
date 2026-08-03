@@ -2493,16 +2493,35 @@ async def api_per_node_earnings(request: Request, slug: str) -> list[dict[str, A
     if not isinstance(config, dict):
         config = {}
 
-    if slug == "mysterium":
-        from app.collectors.mystnodes import MystNodesCollector
+    # Driven by the catalog, not by a slug comparison. This used to read
+    # `if slug == "mysterium"` and import that collector class by name — two
+    # pieces of service-specific knowledge in app/, where the repo's own rule
+    # says neither belongs. Adding a second service that reports per-node
+    # figures meant editing this function; now it means one line of YAML.
+    service = catalog.get_service(slug)
+    declares_per_node = bool((service.get("collector") or {}).get("per_node_earnings")) if service else False
+    if not declares_per_node:
+        return []
 
-        collector = MystNodesCollector(
-            email=config.get("mysterium_email", ""),
-            password=config.get("mysterium_password", ""),
-        )
-        return await collector.get_per_node_earnings()
+    # Imported here, matching api_test_credentials: app.collectors pulls in every
+    # collector module, and importing it at module scope would drag that whole
+    # tree into any process that imports app.main.
+    from app import collectors
 
-    return []
+    collector, missing = collectors.build_one(slug, config)
+    if collector is None or missing:
+        return []
+    try:
+        # The capability is declared in YAML, so a service can claim it without
+        # its collector implementing it yet. Refuse rather than 500.
+        getter = getattr(collector, "get_per_node_earnings", None)
+        if getter is None:
+            logger.warning("%s declares per_node_earnings but its collector does not implement it", slug)
+            return []
+        return await getter()
+    finally:
+        with contextlib.suppress(Exception):
+            await collector.close()
 
 
 # ---------------------------------------------------------------------------
@@ -2630,30 +2649,12 @@ async def api_collectors_meta(request: Request) -> list[dict[str, Any]]:
     # keys are secret (a hand-maintained duplicate here previously missed
     # `remember_web` and `xsrf_token`, unmasking them).
     secret_args = database.SECRET_CONFIG_KEYS
-    # Per-service hints on how to obtain the credentials
-    hints: dict[str, str] = {
-        "bitping": "Use your Bitping account email and password (same as <a href='https://nodes.bitping.com' target='_blank'>nodes.bitping.com</a>).",
-        "bytelixir": (
-            "Log in at <a href='https://dash.bytelixir.com' target='_blank'>dash.bytelixir.com</a> "
-            "<b>ticking Remember Me</b>, press F12 → Application → expand <b>Cookies</b> in the left "
-            "sidebar → click <code>https://dash.bytelixir.com</code>, then copy three values: "
-            "<b>bytelixir_session</b>, <b>remember_web_…</b> (the long one starting with that prefix) "
-            "and <b>XSRF-TOKEN</b>. "
-            "The session cookie alone expires about two hours after you copy it, so collection stops "
-            "the same afternoon; the remember_web cookie lasts a year and is what keeps it working."
-        ),
-        "earnapp": "Log in at <a href='https://earnapp.com' target='_blank'>earnapp.com</a>, press F12 → Application → Cookies, copy the <b>oauth-refresh-token</b> value.",
-        "earnfm": "Use your Earn.fm account email and password (same as <a href='https://app.earn.fm' target='_blank'>app.earn.fm</a> login).",
-        "grass": "Log in at <a href='https://app.getgrass.io' target='_blank'>app.getgrass.io</a>, press F12 → Application → Local Storage, copy the <b>accessToken</b> value.",
-        "honeygain": "Use your Honeygain account email and password (same as <a href='https://dashboard.honeygain.com' target='_blank'>dashboard.honeygain.com</a>).",
-        "iproyal": "Use your IPRoyal Pawns account email and password (same as <a href='https://pawns.app' target='_blank'>pawns.app</a>).",
-        "mysterium": "Use your MystNodes account email and password (same as <a href='https://my.mystnodes.com' target='_blank'>my.mystnodes.com</a>).",
-        "packetstream": "Log in at <a href='https://packetstream.io' target='_blank'>packetstream.io</a>, press F12 → Application → Cookies, copy the <b>auth</b> cookie value (it’s a JWT).",
-        "proxyrack": "Log in at <a href='https://peer.proxyrack.com' target='_blank'>peer.proxyrack.com</a>, press F12 → Network, find any API request and copy the <b>Api-Key</b> header value.",
-        "repocket": "Use your Repocket account email and password (same as <a href='https://app.repocket.com' target='_blank'>app.repocket.com</a>).",
-        "salad": "Log in at <a href='https://app.salad.com' target='_blank'>app.salad.com</a>, press F12 → Application → Cookies, copy the <b>auth</b> cookie value.",
-        "traffmonetizer": "Log in at <a href='https://app.traffmonetizer.com' target='_blank'>app.traffmonetizer.com</a>, press F12 → Application → Local Storage → <b>token</b> value (a long JWT starting with <code>eyJ</code>).",
-    }
+    # Credential hints live in the service YAML (collector.credential_hint),
+    # not here. They are per-service prose about where to find a token in a
+    # provider's UI, which is exactly the service-specific knowledge the
+    # catalog exists to hold — 'never hardcode service-specific logic in
+    # app/'. Kept in app/ they also drifted out of reach of anyone editing
+    # the service they describe.
     meta = []
     for slug in sorted(COLLECTOR_MAP.keys()):
         args = _COLLECTOR_ARGS.get(slug, [])
@@ -2677,8 +2678,9 @@ async def api_collectors_meta(request: Request) -> list[dict[str, Any]]:
         pay_currency = payment.get("currency", "USD")
 
         entry: dict[str, Any] = {"slug": slug, "name": name, "fields": fields, "currency": pay_currency}
-        if slug in hints:
-            entry["hint"] = hints[slug]
+        hint = (svc.get("collector") or {}).get("credential_hint") if svc else None
+        if hint:
+            entry["hint"] = hint
         meta.append(entry)
     return meta
 

@@ -67,3 +67,4 @@ platforms: [windows, macos, linux, android]
 collector:
   type: manual
   notes: "No public API. Dashboard at dash.bytelixir.com uses email/password auth. Scraping possible."
+  credential_hint: "Log in at <a href='https://dash.bytelixir.com' target='_blank'>dash.bytelixir.com</a> <b>ticking Remember Me</b>, press F12 → Application → expand <b>Cookies</b> in the left sidebar → click <code>https://dash.bytelixir.com</code>, then copy three values: <b>bytelixir_session</b>, <b>remember_web_…</b> (the long one starting with that prefix) and <b>XSRF-TOKEN</b>. The session cookie alone expires about two hours after you copy it, so collection stops the same afternoon; the remember_web cookie lasts a year and is what keeps it working."

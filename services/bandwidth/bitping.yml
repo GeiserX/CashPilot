@@ -72,3 +72,4 @@ platforms: [docker, windows, macos, linux]
 collector:
   type: api
   notes: "Dashboard at app.bitping.com. Credentials persisted in /root/.bitping volume."
+  credential_hint: "Use your Bitping account email and password (same as <a href='https://nodes.bitping.com' target='_blank'>nodes.bitping.com</a>)."

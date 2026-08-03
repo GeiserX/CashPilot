@@ -76,3 +76,4 @@ platforms: [docker, windows, macos, linux, android]
 collector:
   type: api
   notes: "JWT auth via /v1/users/me and /v2/earnings endpoints"
+  credential_hint: "Use your Honeygain account email and password (same as <a href='https://dashboard.honeygain.com' target='_blank'>dashboard.honeygain.com</a>)."
