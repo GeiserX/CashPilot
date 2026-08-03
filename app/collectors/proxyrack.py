@@ -10,6 +10,7 @@ import logging
 
 import httpx  # noqa: F401 — needed for test patching
 
+from app.collectors import base
 from app.collectors.base import BaseCollector, EarningsResult
 
 logger = logging.getLogger(__name__)
@@ -67,7 +68,7 @@ class ProxyRackCollector(BaseCollector):
                 currency="USD",
             )
         except Exception as exc:
-            logger.error("ProxyRack collection failed: %s", exc, exc_info=True)
+            base.log_failure(logger, "ProxyRack", exc)
             return EarningsResult(
                 platform=self.platform,
                 balance=0.0,

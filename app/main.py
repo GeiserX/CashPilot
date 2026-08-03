@@ -491,11 +491,20 @@ async def _run_collection() -> None:
             platforms_ok = 0
             for result in results:
                 if isinstance(result, Exception):
-                    logger.warning("Collector raised exception: %s", result)
+                    # Redacted BEFORE it is logged. A collector exception is
+                    # usually an httpx error that embeds the offending header,
+                    # which for several providers IS the live credential.
+                    logger.warning("Collector raised exception: %s", notify.redact(str(result)))
                     success = False
                     continue
                 if result.error:
-                    logger.warning("Collection error for %s: %s", result.platform, result.error)
+                    # Redact FIRST. The comment below explains why the alert is
+                    # sanitised; this line used to log the raw string one step
+                    # earlier and put the credential in the container log
+                    # anyway, defeating the whole exercise.
+                    logger.warning(
+                        "Collection error for %s: %s", result.platform, notify.redact(result.error)
+                    )
                     # Redact ONCE, here, so the same sanitized string is what gets shown,
                     # stored and sent. Collector errors are usually str(exc), and an httpx
                     # exception embeds the offending header or URL — which for several

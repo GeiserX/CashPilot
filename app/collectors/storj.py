@@ -10,6 +10,7 @@ import logging
 
 import httpx
 
+from app.collectors import base
 from app.collectors.base import BaseCollector, EarningsResult
 
 logger = logging.getLogger(__name__)
@@ -70,7 +71,7 @@ class StorjCollector(BaseCollector):
                 ),
             )
         except Exception as exc:
-            logger.error("Storj collection failed: %s", exc, exc_info=True)
+            base.log_failure(logger, "Storj", exc)
             return EarningsResult(
                 platform=self.platform,
                 balance=0.0,

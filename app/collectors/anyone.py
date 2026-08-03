@@ -11,6 +11,7 @@ import logging
 
 import httpx
 
+from app.collectors import base
 from app.collectors.base import BaseCollector, EarningsResult
 
 logger = logging.getLogger(__name__)
@@ -126,7 +127,7 @@ class AnyoneCollector(BaseCollector):
                 currency="USD",
             )
         except Exception as exc:
-            logger.error("Anyone Protocol collection failed: %s", exc, exc_info=True)
+            base.log_failure(logger, "Anyone Protocol", exc)
             return EarningsResult(
                 platform=self.platform,
                 balance=0.0,

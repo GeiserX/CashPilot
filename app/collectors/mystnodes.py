@@ -11,6 +11,7 @@ from typing import Any
 
 import httpx
 
+from app.collectors import base
 from app.collectors.base import BaseCollector, EarningsResult
 
 logger = logging.getLogger(__name__)
@@ -110,7 +111,7 @@ class MystNodesCollector(BaseCollector):
                 currency="MYST",
             )
         except Exception as exc:
-            logger.error("MystNodes collection failed: %s", exc, exc_info=True)
+            base.log_failure(logger, "MystNodes", exc)
             return EarningsResult(
                 platform=self.platform,
                 balance=0.0,
@@ -170,5 +171,5 @@ class MystNodesCollector(BaseCollector):
                 )
             return result
         except Exception as exc:
-            logger.error("MystNodes per-node fetch failed: %s", exc, exc_info=True)
+            base.log_failure(logger, "MystNodes per-node", exc)
             return []
