@@ -780,6 +780,13 @@ app = FastAPI(
     title="CashPilot",
     version="0.1.0",
     lifespan=lifespan,
+    # Off by default. FastAPI serves these unauthenticated, and this app's
+    # schema is a map of its own admin surface — every route, parameter and
+    # body shape, including the worker and payout endpoints. Nothing here
+    # needs them in a self-hosted deployment.
+    docs_url=None,
+    redoc_url=None,
+    openapi_url=None,
 )
 metrics.setup(app)
 
@@ -2031,7 +2038,7 @@ async def api_earnings_net(request: Request, days: int = 30) -> dict[str, Any]:
 
     cfg = await database.get_config()
     try:
-        price = float(cfg.get("power_price_per_kwh") or 0)
+        price = _tariff_price(cfg)
     except (TypeError, ValueError):
         price = 0.0
     currency = str(cfg.get("power_currency") or "EUR")
@@ -2391,7 +2398,7 @@ async def api_fleet_economics(request: Request) -> dict[str, Any]:
         # forever — and both unknown-paths are deliberately quiet, which is
         # exactly what hid it. power_price_per_kwh is canonical (it shipped
         # first); the newer name is honoured so nobody's existing config breaks.
-        price = float(config.get("power_price_per_kwh") or config.get("electricity_price_per_kwh") or 0.0)
+        price = _tariff_price(config)
     except (TypeError, ValueError):
         price = 0.0
 
@@ -2432,7 +2439,12 @@ async def api_fleet_economics(request: Request) -> dict[str, Any]:
                 watts=watts,
                 price_per_kwh=price or None,
                 metered=power.is_metered(info),
-                dedicated=bool(config.get(f"worker_{worker.get('id')}_dedicated")),
+                # Config values are TEXT, so bool() made "false", "0" and "no"
+                # all mean dedicated=True — and dedicated flips the advice from
+                # "this machine would be on anyway" to "turning it off would
+                # save that". database._TRUTHY is the parser the rest of the
+                # codebase already uses for exactly this.
+                dedicated=_config_flag(config, f"worker_{worker.get('id')}_dedicated"),
             )
         )
 
@@ -2566,6 +2578,31 @@ async def api_per_node_earnings(request: Request, slug: str) -> list[dict[str, A
     finally:
         with contextlib.suppress(Exception):
             await collector.close()
+
+
+def _config_flag(config: dict[str, Any], key: str) -> bool:
+    """A stored config value read as a boolean.
+
+    Config values are TEXT. `bool("false")` is True, so a user who set a flag
+    to "false", "0" or "no" got the opposite of what they asked for. Uses the
+    same truthy set as database.set_config so a value written by one half of
+    the app means the same thing to the other.
+    """
+    from app.database import _TRUTHY
+
+    return str(config.get(key, "") or "").strip().lower() in _TRUTHY
+
+
+def _tariff_price(config: dict[str, Any]) -> float:
+    """The electricity price per kWh, honouring the legacy key name.
+
+    `electricity_price_per_kwh` was renamed to `power_price_per_kwh`. One
+    endpoint accepted both and the other accepted only the new name, so an
+    upgrading user who had set the old key saw running costs on the fleet page
+    and "cost unknown" on the dashboard, from the same stored value. Both now
+    resolve through here.
+    """
+    return float(config.get("power_price_per_kwh") or config.get("electricity_price_per_kwh") or 0.0)
 
 
 # ---------------------------------------------------------------------------

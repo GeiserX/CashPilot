@@ -2427,12 +2427,20 @@ const CP = (() => {
     const items = meta.map(col => {
       // A collector is "configured" if any secret field has a stored value
       // (per _secrets) or any non-secret field carries a real value.
-      const configured = col.fields.some(f => {
-        if (f.secret) return !!secrets[f.key];
-        const val = config[f.key];
-        return val && val.trim() !== '';
-      });
-      const statusBadge = configured
+      // EVERY required field, not any field.
+      //
+      // `.some` meant a service needing an email AND a password showed
+      // "Configured" with only the email set — while the server's own
+      // make_collectors skipped it for the missing one, so it silently never
+      // collected. The badge asserted the opposite of what was happening.
+      const isSet = f => (f.secret ? !!secrets[f.key] : !!(config[f.key] || '').trim());
+      const required = col.fields.filter(f => f.required);
+      const setCount = required.filter(isSet).length;
+      const configured = required.length > 0 && setCount === required.length;
+      const partial = setCount > 0 && setCount < required.length;
+      const statusBadge = partial
+        ? '<span class="badge badge-warning" title="Some required credentials are missing, so this service is not being collected">Incomplete</span>'
+        : configured
         ? '<span class="badge badge-deployed">Configured</span>'
         : '<span class="badge badge-category">Not configured</span>';
       const fields = col.fields.map(f => {
@@ -2468,6 +2476,7 @@ const CP = (() => {
           ${statusBadge}
         </summary>
         <div class="collector-body">
+          ${col.hint ? `<div class="form-hint" style="margin-bottom:12px;">${sanitizeHint(col.hint)}</div>` : ''}
           ${fields}
           ${clearBtn}
         </div>

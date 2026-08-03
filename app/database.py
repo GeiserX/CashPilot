@@ -195,13 +195,37 @@ def _load_or_create_fernet() -> Fernet:
         )
     except OSError as exc:
         _fernet_key_persist_error = str(exc)
-        _fernet_key_is_ephemeral = True
-        _logger.error(
-            "Could not persist the credential-encryption key to %s: %s. "
-            "Credentials encrypted now will be unreadable after a restart.",
-            _FERNET_KEY_FILE,
-            exc,
-        )
+        # Ephemeral only when the key was MINTED here. A key supplied through
+        # CASHPILOT_ENCRYPTION_KEY is identical on every restart, so failing to
+        # cache it to disk loses nothing — the hazard this flag exists for
+        # (a fresh random key on next boot, silently orphaning every stored
+        # credential) cannot happen.
+        #
+        # Treating both cases the same made startup refuse to continue and told
+        # the user to "supply a key via CASHPILOT_ENCRYPTION_KEY" — which is
+        # exactly what they had already done.
+        _fernet_key_is_ephemeral = env_key is None
+        if env_key is None:
+            _logger.error(
+                "Could not persist the credential-encryption key to %s: %s. "
+                "Credentials encrypted now will be unreadable after a restart.",
+                _FERNET_KEY_FILE,
+                exc,
+            )
+        else:
+            # Same failure, different consequence. The key came from the
+            # environment, so the next boot gets the identical key and nothing
+            # is lost — as long as the variable stays set. Saying "unreadable
+            # after a restart" here would be simply untrue, and it is the sort
+            # of false alarm that teaches people to ignore the real one.
+            _logger.warning(
+                "Could not cache the credential-encryption key to %s: %s. "
+                "This is not data loss: the key came from CASHPILOT_ENCRYPTION_KEY and will be "
+                "read from there again on the next start. Keep that variable set — without the "
+                "cached file it is now the only copy.",
+                _FERNET_KEY_FILE,
+                exc,
+            )
     return Fernet(key)
 
 
@@ -645,13 +669,25 @@ async def init_db() -> None:
         if "spec_encrypted" not in deployment_cols:
             await db.execute("ALTER TABLE deployments ADD COLUMN spec_encrypted TEXT NOT NULL DEFAULT ''")
         # Migrate config table: add updated_at so credential age is knowable.
-        # Existing rows get the migration time, which is the earliest we can
-        # honestly claim to know about them - never a fabricated older date.
+        # Existing rows are left NULL — see the note on the back-fill below.
+        # (This comment used to say they receive the migration time, which is
+        # exactly the behaviour that was removed; leaving it would have invited
+        # someone to restore the back-fill.)
         cursor = await db.execute("PRAGMA table_info(config)")
         config_cols = {row["name"] for row in await cursor.fetchall()}
         if "updated_at" not in config_cols:
             await db.execute("ALTER TABLE config ADD COLUMN updated_at TEXT")
-            await db.execute("UPDATE config SET updated_at = datetime('now') WHERE updated_at IS NULL")
+            # Deliberately NOT back-filled with datetime('now').
+            #
+            # Doing so stamped every credential on an upgraded volume with the
+            # moment of the upgrade, so the credential-health page reported all
+            # of them "fresh" — including a Bytelixir session cookie that
+            # expires after two hours and had in fact expired days earlier. An
+            # unknown age was rendered as the most favourable known age.
+            #
+            # NULL is the honest value, and both consumers already handle it:
+            # get_config_updated_at filters WHERE updated_at IS NOT NULL, and
+            # the health endpoint skips unstamped keys.
 
         # Migrate users table: add password_changed_at for session invalidation
         cursor = await db.execute("PRAGMA table_info(users)")

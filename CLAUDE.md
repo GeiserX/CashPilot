@@ -224,7 +224,7 @@ Triggers on version tags (`v*`). Lints with ruff, builds multi-arch (amd64 + arm
 - **Collection interval**: 1 hour. Earnings cached in SQLite, served instantly.
 - **Health check deduplication**: Multi-instance services record only one health event per slug per check cycle (best status wins).
 - **Google Fonts**: Use async preload pattern to avoid blocking page render.
-- **First earnings baseline**: On onboarding, insert synthetic baseline record for prior day so first delta is 0.
+- **First earnings baseline**: a platform's FIRST reading has no predecessor, so it contributes nothing to any earned figure — the delta is only taken when a previous reading exists in the same currency. No synthetic row is written, and none should be: inventing a prior-day balance would make the first real reading look like a gain.
 
 ### Service-Specific: MystNodes / Mysterium
 
