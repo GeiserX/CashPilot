@@ -273,7 +273,60 @@ class TestTheDocsDescribeTheCodeThatExists:
             assert "synthetic" not in path.read_text(encoding="utf-8").lower(), path.name
 
 
+#: Classes that answer review feedback rather than closing a bead. Kept
+#: separate so the bead count below stays a meaningful check on dropped fixes.
+REVIEW_RESPONSE_CLASSES = {"TestThePersistenceFailureMessageMatchesTheConsequence"}
+
+
 def test_the_batch_touched_ten_beads():
-    """A count, so a silently dropped fix is visible in review."""
-    classes = [name for name, obj in globals().items() if name.startswith("Test") and isinstance(obj, type)]
+    """A count, so a silently dropped fix is visible in review.
+
+    It fired once already, on the class added to answer CodeRabbit — which is
+    the guard doing its job, not a nuisance. Review-response classes are
+    excluded by name rather than by raising the number, so dropping a bead fix
+    still shows up.
+    """
+    classes = [
+        name
+        for name, obj in globals().items()
+        if name.startswith("Test") and isinstance(obj, type) and name not in REVIEW_RESPONSE_CLASSES
+    ]
     assert len(classes) == 10, f"expected 10 bead classes, found {len(classes)}: {sorted(classes)}"
+
+
+class TestThePersistenceFailureMessageMatchesTheConsequence:
+    """From CodeRabbit on this PR, and correct.
+
+    The fix stopped treating a supplied key as ephemeral but left the error
+    text saying "credentials encrypted now will be unreadable after a restart"
+    — untrue while CASHPILOT_ENCRYPTION_KEY is set, and exactly the kind of
+    false alarm that teaches people to ignore the real one.
+    """
+
+    def _source(self) -> str:
+        return (ROOT / "app" / "database.py").read_text(encoding="utf-8")
+
+    def test_a_minted_key_still_gets_the_data_loss_error(self):
+        """The dangerous case must keep its loud message."""
+        source = self._source()
+        assert "Credentials encrypted now will be unreadable after a restart." in source
+        assert "if env_key is None:" in source
+
+    def test_a_supplied_key_gets_a_warning_not_a_data_loss_error(self):
+        source = self._source()
+        assert "This is not data loss" in source
+
+    def test_the_supplied_key_message_says_what_to_do(self):
+        """The user's only real risk is unsetting the variable."""
+        source = self._source()
+        assert "Keep that variable set" in source
+
+    def test_the_migration_comment_matches_the_code_below_it(self):
+        """It said existing rows get the migration time — the removed behaviour.
+
+        Left as it was, it invited someone to restore the back-fill this PR
+        deletes.
+        """
+        source = self._source()
+        assert "Existing rows get the migration time" not in source
+        assert "Existing rows are left NULL" in source

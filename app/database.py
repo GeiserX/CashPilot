@@ -205,12 +205,27 @@ def _load_or_create_fernet() -> Fernet:
         # the user to "supply a key via CASHPILOT_ENCRYPTION_KEY" — which is
         # exactly what they had already done.
         _fernet_key_is_ephemeral = env_key is None
-        _logger.error(
-            "Could not persist the credential-encryption key to %s: %s. "
-            "Credentials encrypted now will be unreadable after a restart.",
-            _FERNET_KEY_FILE,
-            exc,
-        )
+        if env_key is None:
+            _logger.error(
+                "Could not persist the credential-encryption key to %s: %s. "
+                "Credentials encrypted now will be unreadable after a restart.",
+                _FERNET_KEY_FILE,
+                exc,
+            )
+        else:
+            # Same failure, different consequence. The key came from the
+            # environment, so the next boot gets the identical key and nothing
+            # is lost — as long as the variable stays set. Saying "unreadable
+            # after a restart" here would be simply untrue, and it is the sort
+            # of false alarm that teaches people to ignore the real one.
+            _logger.warning(
+                "Could not cache the credential-encryption key to %s: %s. "
+                "This is not data loss: the key came from CASHPILOT_ENCRYPTION_KEY and will be "
+                "read from there again on the next start. Keep that variable set — without the "
+                "cached file it is now the only copy.",
+                _FERNET_KEY_FILE,
+                exc,
+            )
     return Fernet(key)
 
 
@@ -654,8 +669,10 @@ async def init_db() -> None:
         if "spec_encrypted" not in deployment_cols:
             await db.execute("ALTER TABLE deployments ADD COLUMN spec_encrypted TEXT NOT NULL DEFAULT ''")
         # Migrate config table: add updated_at so credential age is knowable.
-        # Existing rows get the migration time, which is the earliest we can
-        # honestly claim to know about them - never a fabricated older date.
+        # Existing rows are left NULL — see the note on the back-fill below.
+        # (This comment used to say they receive the migration time, which is
+        # exactly the behaviour that was removed; leaving it would have invited
+        # someone to restore the back-fill.)
         cursor = await db.execute("PRAGMA table_info(config)")
         config_cols = {row["name"] for row in await cursor.fetchall()}
         if "updated_at" not in config_cols:
