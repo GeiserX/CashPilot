@@ -278,3 +278,57 @@ class TestNoRouteIsShadowedByAnEarlierParameterisedOne:
                 f"{method} {route.path} is shadowed by {getattr(winner, 'path', None)} "
                 "— it is declared after a parameterised route that swallows it"
             )
+
+
+class TestWorkerCredentialsNeverReachAResponse:
+    """`list_workers` is a `SELECT *`, so the fleet key rides along by default.
+
+    Verified against the running handlers before the fix: GET /api/workers and
+    GET /api/workers/{id} both returned `api_key_enc` to any authenticated
+    caller, viewers included. Encryption at rest is not a reason to publish the
+    ciphertext — doing so makes the Fernet key the only thing between a
+    read-only account and every worker's credential.
+    """
+
+    def _worker_endpoints(self, tmp_path):
+        import asyncio
+        from unittest.mock import MagicMock, patch
+
+        from app import database, main
+
+        async def run():
+            with (
+                patch.object(database, "DB_DIR", tmp_path),
+                patch.object(database, "DB_PATH", tmp_path / "w.db"),
+            ):
+                await database.init_db()
+                await database.upsert_worker(client_id="w1", name="host", url="http://w:8081")
+                await database.set_worker_key("w1", "a-real-fleet-key")
+                rows = await database.list_workers()
+                assert rows[0].get("api_key_enc"), "fixture must actually store a key"
+                with patch.object(main, "_require_auth_api", lambda r: None):
+                    one = await main.api_get_worker(MagicMock(), rows[0]["id"])
+                    many = await main.api_list_workers(MagicMock())
+                return one, many
+
+        return asyncio.run(run())
+
+    def test_the_single_worker_endpoint_omits_the_key(self, tmp_path):
+        one, _ = self._worker_endpoints(tmp_path)
+        assert "api_key_enc" not in one
+
+    def test_the_list_endpoint_omits_the_key(self, tmp_path):
+        _, many = self._worker_endpoints(tmp_path)
+        assert all("api_key_enc" not in w for w in many)
+
+    def test_no_response_field_carries_the_ciphertext_under_another_name(self, tmp_path):
+        """Renaming the column must not quietly restore the leak."""
+        one, _ = self._worker_endpoints(tmp_path)
+        blob = repr(one)
+        assert "gAAAAA" not in blob, "a Fernet token appears in the response"
+
+    def test_the_worker_is_still_usable_without_it(self, tmp_path):
+        """A stripping fix that empties the payload is not a fix."""
+        one, _ = self._worker_endpoints(tmp_path)
+        assert one["name"] == "host"
+        assert "containers" in one and "system_info" in one

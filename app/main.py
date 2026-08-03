@@ -2808,7 +2808,21 @@ async def api_list_workers(request: Request) -> list[dict[str, Any]]:
 
 
 def _parse_worker_json(w: dict[str, Any]) -> None:
-    """Parse stored JSON columns and compute counts for a worker dict."""
+    """Parse stored JSON columns and compute counts for a worker dict.
+
+    Also drops the worker's encrypted fleet key, because ``list_workers`` is a
+    ``SELECT *`` and every path that renders a worker to a client goes through
+    here. The key is a credential: it is what a worker authenticates with, and
+    it has no use in a dashboard. Encrypted at rest is not a reason to hand the
+    ciphertext to every logged-in viewer — it makes the Fernet key the only
+    thing standing between a read-only account and the whole fleet's
+    credentials, when nothing needed to publish it at all.
+
+    Stripped here rather than in ``list_workers`` on purpose: the stale-worker
+    purge legitimately reads ``api_key_enc`` to tell an enrolled worker from one
+    that never enrolled, and it does not go through this function.
+    """
+    w.pop("api_key_enc", None)
     w["containers"] = _safe_json(w.get("containers", "[]"))
     w["apps"] = _safe_json(w.get("apps", "[]"))
     w["system_info"] = _safe_json(w.get("system_info", "{}"), {})
