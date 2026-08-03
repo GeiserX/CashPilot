@@ -2127,27 +2127,35 @@ class TestOutboundWorkerAuth:
     def _worker(self):
         return {"status": "online", "url": "http://192.168.1.5:8081", "client_id": "c1"}
 
-    def test_uses_per_worker_key_when_enrolled(self):
+    def _auth(self, key_state):
+        """key_state is (key, confirmed) — the shape get_worker_key_state returns."""
         import app.main as m
 
         with (
             patch("app.main.FLEET_API_KEY", "shared-key"),
-            patch("app.main.database.get_worker_key", new_callable=AsyncMock, return_value="worker-1-key"),
+            patch("app.main.database.get_worker_key_state", new_callable=AsyncMock, return_value=key_state),
             patch("app.main._validate_worker_url", return_value=("http://192.168.1.5:8081", None)),
         ):
             _, headers = asyncio.run(m._get_verified_worker_url(self._worker()))
-        assert headers["Authorization"] == "Bearer worker-1-key"
+        return headers["Authorization"]
+
+    def test_uses_per_worker_key_when_enrolled_and_confirmed(self):
+        assert self._auth(("worker-1-key", True)) == "Bearer worker-1-key"
 
     def test_falls_back_to_shared_key_when_unenrolled(self):
-        import app.main as m
+        assert self._auth((None, False)) == "Bearer shared-key"
 
-        with (
-            patch("app.main.FLEET_API_KEY", "shared-key"),
-            patch("app.main.database.get_worker_key", new_callable=AsyncMock, return_value=None),
-            patch("app.main._validate_worker_url", return_value=("http://192.168.1.5:8081", None)),
-        ):
-            _, headers = asyncio.run(m._get_verified_worker_url(self._worker()))
-        assert headers["Authorization"] == "Bearer shared-key"
+    def test_an_unconfirmed_key_is_not_used(self):
+        """CashPilot-zcc: the worker may never have received this key.
+
+        get_worker_key discarded the confirmed flag, so the UI signed outbound
+        commands with a key the worker might not hold — reachable whenever the
+        worker failed to persist it and logged "staying on shared key". The
+        worker then read as ONLINE from its heartbeats while every deploy,
+        start, stop, restart and logs call failed 401, with nothing on screen
+        connecting the two.
+        """
+        assert self._auth(("worker-1-key", False)) == "Bearer shared-key"
 
 
 # ---------------------------------------------------------------------------
@@ -2250,3 +2258,60 @@ class TestImageDrift:
         assert _image_outdated("repo:1.0", "") is False
         # Same repo, tag vs digest (unresolvable) -> not flagged.
         assert _image_outdated("repo:1.0", "repo@sha256:x") is False
+
+
+class TestAddingAUserDoesNotStealTheOwnersSession:
+    """CashPilot-5e6: do_register signed the caller into the account it created.
+
+    An owner adding a viewer was silently demoted into that viewer's session —
+    losing their own access with no sign anything had happened beyond landing
+    on a page with fewer controls. Only the first-run owner should be signed in
+    here, which is the case the code was written for.
+    """
+
+    def _register(self, tmp_path, is_first):
+        import app.auth as auth_module
+        from app import database, setup_token
+        from app.routers import auth as auth_router
+
+        async def run():
+            with (
+                patch.object(database, "DB_DIR", tmp_path),
+                patch.object(database, "DB_PATH", tmp_path / "u.db"),
+            ):
+                await database.init_db()
+                setup_token.set_active("tok")
+                if not is_first:
+                    await database.create_user("owner", auth_module.hash_password("x" * 12), role="owner")
+                request = MagicMock()
+                request.session = {}
+                request.headers = {}
+                request.cookies = {}
+                request.client = MagicMock(host="127.0.0.1")
+                with patch.object(auth_module, "get_current_user", lambda r: {"uid": 1, "u": "owner", "r": "owner"}):
+                    return await auth_router.do_register(
+                        request,
+                        username="newviewer",
+                        password="A-real-passphrase-123",
+                        password_confirm="A-real-passphrase-123",
+                        setup_token="tok",
+                    )
+
+        return asyncio.run(run())
+
+    def test_the_owner_keeps_their_own_session(self, tmp_path):
+        resp = self._register(tmp_path, is_first=False)
+        cookies = resp.raw_headers if hasattr(resp, "raw_headers") else []
+        set_cookie = [v for k, v in cookies if k.lower() == b"set-cookie"]
+        assert not set_cookie, "adding a user replaced the caller's session cookie"
+
+    def test_the_owner_is_not_sent_to_the_dashboard_as_someone_else(self, tmp_path):
+        resp = self._register(tmp_path, is_first=False)
+        assert resp.headers["location"] == "/users"
+
+    def test_the_first_run_owner_is_still_signed_in(self, tmp_path):
+        """The case this code exists for must keep working."""
+        resp = self._register(tmp_path, is_first=True)
+        set_cookie = [v for k, v in resp.raw_headers if k.lower() == b"set-cookie"]
+        assert set_cookie, "the first owner was not signed in"
+        assert resp.headers["location"] == "/setup"
