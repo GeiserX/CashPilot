@@ -273,8 +273,17 @@ class TestTheSaladHintPointsAtAHostThatExists:
         assert all(h == "app.salad.io" for h in hosts), hosts
 
     def test_it_matches_the_dashboard_url_in_the_same_file(self):
-        """The right host was already in the file, three lines away."""
-        assert "app.salad.io" in self._hosts()
+        """The right host was already in the file, three lines away.
+
+        Counted with an explicit equality comparison rather than `x in hosts`.
+        Membership on a list IS exact, but CodeQL cannot distinguish it from a
+        substring test against a string and flags the shape either way. Written
+        as a count, the intent is unambiguous to both the reader and the
+        scanner — and it additionally asserts that the host appears, rather
+        than merely that something matched.
+        """
+        matching = [h for h in self._hosts() if h == "app.salad.io"]
+        assert len(matching) >= 1, f"no URL in salad.yml points at the live dashboard host: {self._hosts()}"
 
 
 class TestTheDocsDescribeTheCodeThatExists:
