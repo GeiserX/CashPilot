@@ -43,11 +43,19 @@ def assess(
     system_info: dict[str, Any] | None = None,
     worker: dict[str, Any] | None = None,
     fleet_workers: list[dict[str, Any]] | None = None,
+    also_deploying_to: set[Any] | None = None,
 ) -> dict[str, Any]:
     """Answer "what will this realistically do for me?" before the deploy runs.
 
     ``already_deployed_slugs`` is what is already running on the SAME worker,
     which is what makes a per-IP limit checkable at all.
+
+    ``also_deploying_to`` is the set of worker ids receiving this service in the
+    SAME action. Without it the cross-machine check only sees what is already
+    running, so ticking two boxes behind one connection in the wizard produced
+    no warning at all: neither worker had the service yet, so neither counted
+    against the other. The warning then appeared the NEXT time, after the
+    account was already at risk (CashPilot-3tr).
 
     ``worker`` and ``fleet_workers`` add the cross-machine half (CashPilot-5qc):
     providers cap per IP, so a sibling worker behind the same public address
@@ -195,7 +203,9 @@ def assess(
         verdicts.append(CHECK_YOURSELF)
 
     # The cross-machine half: what the REST of the fleet implies about this.
-    for finding in _fleet_findings(service, worker=worker, fleet_workers=fleet_workers):
+    for finding in _fleet_findings(
+        service, worker=worker, fleet_workers=fleet_workers, also_deploying_to=also_deploying_to
+    ):
         findings.append(finding)
         verdicts.append(finding["verdict"])
 
@@ -247,6 +257,7 @@ def _fleet_findings(
     *,
     worker: dict[str, Any] | None,
     fleet_workers: list[dict[str, Any]] | None,
+    also_deploying_to: set[Any] | None = None,
 ) -> list[dict[str, str]]:
     """What the *rest of the fleet* implies about deploying this here.
 
@@ -275,7 +286,12 @@ def _fleet_findings(
     if not peers:
         return findings
 
-    conflicting = [w for w in peers if slug in egress.running_slugs(w)]
+    # A peer counts if it is ALREADY running this service or is about to receive
+    # it in the same action. Only the first half existed, so a single wizard
+    # deploy to two machines behind one connection warned about nothing — each
+    # was assessed as though the other were not getting it.
+    planned = also_deploying_to or set()
+    conflicting = [w for w in peers if slug in egress.running_slugs(w) or w.get("id") in planned]
     # Deduplicated for DISPLAY ONLY. Two different machines can share a display
     # name — WORKER_NAME defaults to the hostname, and duplicate hostnames in a
     # home fleet are ordinary — so counting the deduplicated names would merge

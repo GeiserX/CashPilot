@@ -2018,8 +2018,15 @@ const CP = (() => {
   async function _confirmPreflight(slug, workerIds) {
     let assessments;
     try {
+      // Every worker in THIS deploy is passed along, so each assessment can see
+      // the others. Asking per worker in isolation meant two machines behind one
+      // connection warned about nothing — neither had the service yet, so
+      // neither counted against the other (CashPilot-3tr).
+      const planned = workerIds.join(',');
       assessments = await Promise.all(
-        workerIds.map(id => api(`/api/services/${slug}/preflight?worker_id=${encodeURIComponent(id)}`))
+        workerIds.map(id => api(
+          `/api/services/${slug}/preflight?worker_id=${encodeURIComponent(id)}&planned=${encodeURIComponent(planned)}`
+        ))
       );
     } catch (err) {
       console.warn('Preflight unavailable, proceeding:', err);
