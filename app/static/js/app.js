@@ -1886,6 +1886,26 @@ const CP = (() => {
     }
   }
 
+  // Earnings tracking takes a SECOND set of credentials.
+  //
+  // The container credentials only configure the container; the dashboard shows
+  // no balance until the same values are entered again under Settings →
+  // Collectors. The service-detail view said so; the setup wizard — the one
+  // screen a new user actually sees — did not, so the expected end state of
+  // onboarding was a dashboard reading zero (CashPilot-p6s).
+  //
+  // One function rather than two copies: a notice that exists twice drifts, and
+  // the wizard's version is the one that matters most.
+  function collectorCredentialsNotice(slug) {
+    return `
+        <div style="font-size:0.8rem; color:var(--text-muted); background:var(--bg-subtle, rgba(255,255,255,0.03)); border:1px solid var(--border); border-radius:6px; padding:8px 10px; margin:10px 0;">
+          The credentials above run the service. To also see its <strong>balance</strong> on the dashboard,
+          add earnings-tracking credentials under
+          <a href="#" data-action="openCredentialModal" data-prevent="1" data-a1="${escapeHtml(slug)}" style="color:var(--accent, #3b82f6);">Settings → Collectors</a>
+          after deploying. This is optional — the service earns either way.
+        </div>`;
+  }
+
   function renderServiceSetupForm(svc, workers) {
     const isDeployed = svc.deployed || false;
     const dashboardUrl = (svc.cashout && svc.cashout.dashboard_url) || svc.website || '';
@@ -1953,6 +1973,8 @@ const CP = (() => {
       </div>
 
       ${envFields}
+
+      ${svc.has_collector ? collectorCredentialsNotice(svc.slug) : ''}
 
       ${(() => {
         const onlineWorkers = (workers || []).filter(w => w.status === 'online');
@@ -2343,13 +2365,7 @@ const CP = (() => {
       // The fields above only configure the container that earns; they don't
       // let CashPilot read your balance. Make that explicit at deploy time.
       if (svc.has_collector) {
-        html += `
-        <div style="font-size:0.8rem; color:var(--text-muted); background:var(--bg-subtle, rgba(255,255,255,0.03)); border:1px solid var(--border); border-radius:6px; padding:8px 10px; margin:10px 0;">
-          The credentials above run the service. To also see its <strong>balance</strong> on the dashboard,
-          add earnings-tracking credentials under
-          <a href="#" data-action="openCredentialModal" data-prevent="1" data-a1="${escapeHtml(svc.slug)}" style="color:var(--accent, #3b82f6);">Settings → Collectors</a>
-          after deploying. This is optional — the service earns either way.
-        </div>`;
+        html += collectorCredentialsNotice(svc.slug);
       }
 
       if (allDeployed && onlineWorkers.length > 0) {
