@@ -987,6 +987,9 @@ class TestApiConfig:
         with (
             _auth_owner(),
             patch("app.main.database.set_config_bulk", new_callable=AsyncMock),
+            # Completeness is judged against the MERGED config, so the endpoint
+            # reads it back after writing.
+            patch("app.main.database.get_config", new_callable=AsyncMock, return_value={}),
             patch("app.main.catalog.get_service", return_value=None),
         ):
             resp = client.post("/api/config", json={"data": {"key": "value"}})
@@ -998,6 +1001,11 @@ class TestApiConfig:
         with (
             _auth_owner(),
             patch("app.main.database.set_config_bulk", new_callable=AsyncMock),
+            patch(
+                "app.main.database.get_config",
+                new_callable=AsyncMock,
+                return_value={"grass_access_token": "tok"},
+            ),
             patch("app.main.catalog.get_service", return_value=svc),
             patch("app.main.database.get_deployment", new_callable=AsyncMock, return_value=None),
             patch("app.main.database.save_deployment", new_callable=AsyncMock) as mock_save,
