@@ -25,9 +25,13 @@
 
   <circle cx="128" cy="132" r="96" fill="url(#cpSun)" mask="url(#cpBands)"/>
 
-  <!-- Plane: solid, single colour, sized to still be recognisable when small. -->
+  <!-- Plane: the official dark silhouette, matching banner.svg (#000010 at 0.65).
+       It was white, which is the one colour that disappears here: the top of the
+       sun gradient is #FFD54F, so a white plane on it is near-invisible and read
+       as a smudge rather than an aircraft. The banner has always drawn it dark
+       against the sun; this is the same mark at header size. -->
   <g transform="translate(128,104) rotate(28)">
     <path d="M0,-46 L4,-10 L50,3 L5,8 L6.5,20 L0,13 L-6.5,20 L-5,8 L-50,3 L-4,-10 Z"
-          fill="#FFFFFF"/>
+          fill="#000010" opacity="0.65"/>
   </g>
 </svg>
