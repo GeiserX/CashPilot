@@ -2529,6 +2529,21 @@ async def api_fleet_economics(request: Request) -> dict[str, Any]:
     except (TypeError, ValueError):
         price = 0.0
 
+    # The tariff is in the user's own currency; every gross here comes from
+    # get_earned_by_platform, which is USD by contract. Subtracting one from the
+    # other produced a "losing money — turning it off would save that" verdict
+    # off by the whole FX spread, on a payload that carried no currency label at
+    # all. Convert the TARIFF, so the endpoint stays canonical USD like the rest
+    # of the API and the frontend's display-currency layer can render it.
+    tariff_currency = str(config.get("power_currency") or "EUR")
+    fx_ok = True
+    if price and tariff_currency != "USD":
+        converted = exchange_rates.to_usd(price, tariff_currency)
+        if converted is None:
+            fx_ok = False
+        else:
+            price = converted
+
     # Fetched once and reused: this used to query the worker table here and
     # then again inside _get_all_worker_containers, decoding every row twice
     # to build the same list in a single request.
@@ -2580,13 +2595,30 @@ async def api_fleet_economics(request: Request) -> dict[str, Any]:
                     per_worker_gross.get(worker.get("id"), 0.0) if str(worker.get("status") or "") == "online" else None
                 ),
                 watts=watts,
-                price_per_kwh=price or None,
+                # No rate means the tariff cannot be expressed in the same unit
+                # as the earnings, so there is no honest cost. None is already
+                # this module's "unknown", and it reports that rather than
+                # inventing a net.
+                price_per_kwh=(price or None) if fx_ok else None,
                 metered=power.is_metered(info),
                 dedicated=_worker_flag(config, worker, "dedicated"),
             )
         )
 
-    return machine_economics.fleet_summary(assessed)
+    summary = machine_economics.fleet_summary(assessed)
+    # Every figure in this payload is USD. It previously carried no currency at
+    # all, so fleet.html printed bare numbers the user could not attribute to a
+    # unit — and the numbers themselves mixed two.
+    summary["currency"] = "USD"
+    if not fx_ok:
+        summary["fx_unavailable"] = True
+        summary["tariff_currency"] = tariff_currency
+        summary["cost_unavailable_reason"] = (
+            f"Your electricity tariff is in {tariff_currency} and earnings are recorded in "
+            f"USD. No {tariff_currency}-to-USD rate is available right now, so a running "
+            "cost would be two different currencies subtracted from each other."
+        )
+    return summary
 
 
 @app.get("/api/services/{slug}/deploy-risk")
