@@ -27,6 +27,34 @@ def schema_path():
 
 
 @pytest.fixture(autouse=True)
+def _seed_fiat_rates():
+    """Give every test the exchange rates a RUNNING CashPilot always has.
+
+    ``exchange_rates.refresh()`` populates these at startup and every 15
+    minutes, so in production a fiat rate is available essentially always. The
+    test process never calls it, so ``_fiat_rates`` was empty everywhere.
+
+    That mattered once ``/api/earnings/net`` started converting the tariff into
+    USD before subtracting it from a USD gross: ten tests configure a EUR tariff
+    and expect a cost, and with no rate the endpoint correctly refuses to
+    produce a net — so they failed for a reason that had nothing to do with what
+    they were testing.
+
+    Seeded rather than mocked per-test, because "a rate exists" is the normal
+    state of the system. Tests that need the no-rate path clear this themselves.
+    """
+    from app import exchange_rates
+
+    saved = dict(exchange_rates._fiat_rates)
+    exchange_rates._fiat_rates.update({"EUR": 0.92, "GBP": 0.79, "USD": 1.0})
+    try:
+        yield
+    finally:
+        exchange_rates._fiat_rates.clear()
+        exchange_rates._fiat_rates.update(saved)
+
+
+@pytest.fixture(autouse=True)
 def _reset_shared_db():
     """Drain the per-loop shared SQLite connections after every test.
 
