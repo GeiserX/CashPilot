@@ -45,11 +45,15 @@ survives restarts.
 ## Recovery & rollback
 
 - **A worker's `/data` was wiped** (lost its key): it will try the shared key, which
-  the UI now rejects for an enrolled worker. Re-enroll it by removing the worker in
-  the fleet dashboard — it re-registers and enrolls fresh on its next heartbeat.
-- **Rolling a worker back to a 0.x image:** first remove that worker in the dashboard
-  (clears its enrollment) so the shared key is accepted again, then redeploy the old
-  image.
+  the UI now rejects for an enrolled worker. Remove the worker in the fleet
+  dashboard and it re-enrols on its own: the worker keeps sending the key it
+  persisted, and after roughly ten consecutive rejections it discards that key
+  and re-enrols with the shared one. Expect a few minutes of 401s in the worker
+  log while that plays out. To skip the wait, delete `/data/.worker_key` on that
+  host and restart the container.
+- **Rolling a worker back to a 0.x image:** remove that worker in the dashboard,
+  wait for it to re-enrol (or delete `/data/.worker_key` on the host), then
+  redeploy the old image.
 
 ---
 
