@@ -607,6 +607,57 @@ async def _dedupe_earnings_before_indexing(db: Any) -> None:
     await db.commit()
 
 
+async def _encrypt_legacy_plaintext_credentials(db: Any) -> int:
+    """Re-encrypt secret config values written before at-rest encryption existed.
+
+    Reads are backward compatible — decrypt_value returns an unprefixed value
+    as-is — which is what makes an upgrade work at all, and also what left the
+    plaintext sitting there forever. Two users on identical code end up with
+    different at-rest protection for the same secret, and nothing tells the
+    upgraded one: a copied backup, a Duplicacy snapshot or a shared /data hands
+    over the live provider password. It stays plaintext until the user happens
+    to re-enter it.
+
+    This also covers keys that only BECAME secret later. The suffix list was
+    widened after an audit found the boundary was a naming convention with
+    nothing enforcing it, and values written before that widening are plaintext
+    under a key that is now recognised as a credential.
+
+    Never runs under an ephemeral key. Encrypting with a key that vanishes on
+    restart would turn a readable credential into a permanently unrecoverable
+    one — strictly worse than the plaintext this is meant to fix.
+    """
+    if _fernet_key_is_ephemeral:
+        _logger.warning(
+            "Not re-encrypting stored credentials: the credential-encryption key is "
+            "ephemeral, so anything encrypted now would be unreadable after a restart. "
+            "Set CASHPILOT_ENCRYPTION_KEY or fix the data directory, then restart."
+        )
+        return 0
+
+    cursor = await db.execute("SELECT key, value FROM config")
+    rows = await cursor.fetchall()
+    stale = [
+        (r["key"], r["value"])
+        for r in rows
+        if r["value"] and _is_secret_key(r["key"]) and not str(r["value"]).startswith(_ENC_PREFIX)
+    ]
+    if not stale:
+        return 0
+
+    for key, value in stale:
+        await db.execute("UPDATE config SET value = ? WHERE key = ?", (encrypt_value(str(value)), key))
+    await db.commit()
+    # The key NAMES are safe to log and are what an operator needs to confirm the
+    # pass did what they expect. The values are exactly what must never appear.
+    _logger.info(
+        "Encrypted %d stored credential(s) that predated at-rest encryption: %s",
+        len(stale),
+        ", ".join(sorted(k for k, _ in stale)),
+    )
+    return len(stale)
+
+
 async def init_db() -> None:
     """Create tables if they don't exist."""
     db = await _get_db()
@@ -709,6 +760,9 @@ async def init_db() -> None:
             await db.execute("ALTER TABLE users ADD COLUMN password_changed_at REAL DEFAULT 0")
 
         await db.commit()
+
+        # After the schema is settled, so the config table certainly exists.
+        await _encrypt_legacy_plaintext_credentials(db)
     finally:
         await db.close()
 
