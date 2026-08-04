@@ -15,6 +15,26 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 
 
+@pytest.fixture(autouse=True)
+def _isolate_fiat_rates():
+    """Save and restore exchange_rates._fiat_rates around every test here.
+
+    These tests set a rate to exercise the conversion. Without restoring it the
+    rate leaks into the rest of the suite, where unrelated endpoints then
+    convert a gross they were never meant to convert — test_power.py started
+    seeing 6.44 where it expected 7.0, failing for a reason that had nothing to
+    do with it.
+    """
+    from app import exchange_rates as fx
+
+    saved = dict(fx._fiat_rates)
+    try:
+        yield
+    finally:
+        fx._fiat_rates.clear()
+        fx._fiat_rates.update(saved)
+
+
 class TestACryptoPriceMoveCannotFabricateEarnings:
     """anyone-protocol priced a CUMULATIVE balance before the delta was taken.
 
@@ -145,12 +165,22 @@ class TestNetEarningsSubtractLikeFromLike:
 
         return asyncio.run(run())
 
-    def test_gross_is_converted_into_the_tariff_currency(self):
+    def test_the_tariff_is_converted_into_usd(self):
+        """The TARIFF moves, not the gross.
+
+        My first attempt converted gross into the tariff currency. Converting
+        the price instead keeps this endpoint canonical USD like every other
+        money figure in the API, and the frontend's display-currency layer
+        renders it in whatever the user reads in — converting the other way
+        would have made this one endpoint the exception.
+        """
         out = self._net(rate=0.92)
-        assert out["total_gross"] == pytest.approx(92.0), "gross was not converted, so net mixes two currencies"
-        assert out["currency"] == "EUR"
+        assert out["currency"] == "USD"
+        assert out["total_gross"] == pytest.approx(100.0), "gross is USD by contract and should not move"
+        assert out["cost_known"] is True
 
     def test_net_is_then_a_real_subtraction(self):
+        """Both sides in USD, so the subtraction means something."""
         out = self._net(rate=0.92)
         assert out["total_net"] == pytest.approx(out["total_gross"] - out["total_cost"])
 
@@ -158,13 +188,15 @@ class TestNetEarningsSubtractLikeFromLike:
         """Mixing silently is the failure; reporting one currency honestly is not."""
         out = self._net(rate=None)
         assert out["total_gross"] == pytest.approx(100.0)
-        assert out["currency"] == "USD"
+        assert out["cost_known"] is False, "a net here would subtract EUR from USD"
         assert out["fx_unavailable"] is True
         assert out["tariff_currency"] == "EUR"
+        assert "no" in out["cost_unavailable_reason"].lower()
 
     def test_a_usd_tariff_needs_no_conversion(self):
         out = self._net(rate=None, currency="USD")
         assert out["currency"] == "USD"
+        assert out["cost_known"] is True
         assert "fx_unavailable" not in out
 
     def test_the_inverse_rate_direction_is_right(self):
