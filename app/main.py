@@ -2373,9 +2373,27 @@ async def api_producer_state(request: Request, slug: str, worker_id: int | None 
 
     earned_recently: bool | None = None
     if has_collector:
-        earned = await database.get_earned_by_platform(days=7)
-        if slug in earned:
-            earned_recently = earned[slug] > 0
+        # A zero here has three possible causes and only one of them is "idle".
+        #
+        # get_earned_by_platform sums DELTAS, so a service with a single reading
+        # contributes nothing — within an hour of a healthy first install this
+        # reported "Recorded earnings have not moved recently" about a service
+        # that had produced one perfectly good reading and had had no chance to
+        # move. And the sum is in USD, so a platform whose readings cannot be
+        # priced sums to zero forever: a MystNodes balance climbing 40 -> 55 ->
+        # 70 MYST with no rate available was reported idle indefinitely.
+        #
+        # Both are "we cannot see", not "it is not earning" — and this module's
+        # own docstring says reporting the second when the truth is the first is
+        # exactly the false confidence it exists to remove.
+        history = await database.get_balance_history(slug, days=7)
+        if len(history) >= 2:
+            priceable = all(
+                str(row.get("currency") or "USD").upper() == "USD" or row.get("fx_rate_usd") for row in history
+            )
+            if priceable:
+                earned = await database.get_earned_by_platform(days=7)
+                earned_recently = float(earned.get(slug) or 0.0) > 0
 
     # None, not True. If the container lookup below throws, this value is what
     # survives, and claiming "running" on no evidence is exactly the assumption

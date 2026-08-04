@@ -160,7 +160,7 @@ class TestCatalogIntegration:
 class TestProducerStateEndpoint:
     """The wiring: collector detection, log fetching, and never 500-ing."""
 
-    def _call(self, slug, service, earned=None, containers=None, logs="", collector=True):
+    def _call(self, slug, service, earned=None, containers=None, logs="", collector=True, history=None):
         import asyncio
         from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -174,6 +174,22 @@ class TestProducerStateEndpoint:
                 patch.object(main.catalog, "get_service", return_value=service),
                 patch.dict("app.collectors.COLLECTOR_MAP", cmap, clear=True),
                 patch.object(main.database, "get_earned_by_platform", AsyncMock(return_value=earned or {})),
+                # Two priced readings by default: enough for a delta to exist, so
+                # a zero from get_earned_by_platform means "did not earn" rather
+                # than "nothing to compare yet". Tests about the second case pass
+                # their own history. (CashPilot-1bz)
+                patch.object(
+                    main.database,
+                    "get_balance_history",
+                    AsyncMock(
+                        return_value=history
+                        if history is not None
+                        else [
+                            {"date": "2026-07-30", "balance": 1.0, "currency": "USD", "fx_rate_usd": 1.0},
+                            {"date": "2026-07-31", "balance": 2.0, "currency": "USD", "fx_rate_usd": 1.0},
+                        ]
+                    ),
+                ),
                 patch.object(main, "_get_all_worker_containers", AsyncMock(return_value=containers or [])),
                 patch.object(main, "_proxy_worker_logs", AsyncMock(return_value={"logs": logs})),
             ):
@@ -221,6 +237,16 @@ class TestProducerStateEndpoint:
                 patch.object(main.catalog, "get_service", return_value=self.SVC),
                 patch.dict("app.collectors.COLLECTOR_MAP", {"demo": object()}, clear=True),
                 patch.object(main.database, "get_earned_by_platform", AsyncMock(return_value={"demo": 2.0})),
+                patch.object(
+                    main.database,
+                    "get_balance_history",
+                    AsyncMock(
+                        return_value=[
+                            {"date": "2026-07-30", "balance": 1.0, "currency": "USD", "fx_rate_usd": 1.0},
+                            {"date": "2026-07-31", "balance": 3.0, "currency": "USD", "fx_rate_usd": 1.0},
+                        ]
+                    ),
+                ),
                 patch.object(main, "_get_all_worker_containers", AsyncMock(side_effect=RuntimeError("down"))),
             ):
                 return await main.api_producer_state(MagicMock(), "demo")
@@ -254,6 +280,16 @@ class TestProducerStateEndpoint:
                 patch.object(main.catalog, "get_service", return_value=self.SVC),
                 patch.dict("app.collectors.COLLECTOR_MAP", {"demo": object()}, clear=True),
                 patch.object(main.database, "get_earned_by_platform", AsyncMock(return_value={"demo": 2.0})),
+                patch.object(
+                    main.database,
+                    "get_balance_history",
+                    AsyncMock(
+                        return_value=[
+                            {"date": "2026-07-30", "balance": 1.0, "currency": "USD", "fx_rate_usd": 1.0},
+                            {"date": "2026-07-31", "balance": 3.0, "currency": "USD", "fx_rate_usd": 1.0},
+                        ]
+                    ),
+                ),
                 patch.object(main, "_get_all_worker_containers", AsyncMock(side_effect=RuntimeError("down"))),
             ):
                 return await main.api_producer_state(MagicMock(), "demo")
@@ -283,6 +319,16 @@ class TestItReadsTheShapeWorkersActuallySend:
                 patch.object(main.catalog, "get_service", return_value=svc),
                 patch.dict("app.collectors.COLLECTOR_MAP", {"demo": object()}, clear=True),
                 patch.object(main.database, "get_earned_by_platform", AsyncMock(return_value={"demo": 0.0})),
+                patch.object(
+                    main.database,
+                    "get_balance_history",
+                    AsyncMock(
+                        return_value=[
+                            {"date": "2026-07-30", "balance": 1.0, "currency": "USD", "fx_rate_usd": 1.0},
+                            {"date": "2026-07-31", "balance": 1.0, "currency": "USD", "fx_rate_usd": 1.0},
+                        ]
+                    ),
+                ),
                 patch.object(main, "_get_all_worker_containers", AsyncMock(return_value=containers)),
                 patch.object(main, "_proxy_worker_logs", AsyncMock(return_value={"logs": logs})),
             ):
