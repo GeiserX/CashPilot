@@ -255,21 +255,36 @@ CASHPILOT_WORKER_NAME=server-name</code>
     body.innerHTML = rows + services;
   }
 
+  // How many workers share each display name.
+  //
+  // A worker redeployed with a new or empty /data registers under a fresh
+  // client_id, and the old row stays forever — offline, same display name,
+  // last-known container pills. The operator then picks one to Remove by
+  // guesswork, and removing the LIVE one takes that host out of the fleet.
+  // Naming the duplicates and showing the id is what makes that choice safe
+  // (CashPilot-3fr).
+  //
+  // Object.create(null), not {}. A worker name is user-controlled
+  // (CASHPILOT_WORKER_NAME), so it can be "__proto__" or "toString". On a plain
+  // object `counts["__proto__"] = ...` hits a setter and the count never
+  // sticks, and `counts["toString"] || 0` reads the inherited FUNCTION —
+  // producing the string "function toString() { [native code] }11" as a count.
+  // Either way two workers with that name are never flagged as duplicates,
+  // which is the one case this whole feature exists for. (CodeRabbit, PR #220.)
+  function countWorkerNames(workers) {
+    const counts = Object.create(null);
+    for (const w of workers || []) {
+      const key = String(w.name || '');
+      counts[key] = (counts[key] || 0) + 1;
+    }
+    return counts;
+  }
+
   function renderWorkers(workers) {
     const container = document.getElementById('fleet-workers');
     if (!container) return;
 
-    // A worker redeployed with a new or empty /data registers under a fresh
-    // client_id, and the old row stays forever — offline, same display name,
-    // last-known container pills. The operator then picks one to Remove by
-    // guesswork, and removing the LIVE one used to lock that host out
-    // permanently. Naming the duplicates and showing the id is what makes that
-    // choice safe (CashPilot-3fr).
-    const nameCounts = {};
-    for (const w of workers) {
-      const key = String(w.name || '');
-      nameCounts[key] = (nameCounts[key] || 0) + 1;
-    }
+    const nameCounts = countWorkerNames(workers);
 
     let html = '';
 

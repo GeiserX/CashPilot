@@ -33,9 +33,9 @@ function extract(name) {
 
 const esc = s => String(s).replace(/[&<>"']/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]));
 const fmtBytes = b => `${b}B`;
-const source = [extract('staleNote'), extract('renderContainers'), extract('renderApps')].join('\n');
-const build = new Function('esc', 'fmtBytes', `${source}; return {renderContainers, renderApps, staleNote};`);
-const {renderContainers, renderApps} = build(esc, fmtBytes);
+const source = [extract('staleNote'), extract('renderContainers'), extract('renderApps'), extract('countWorkerNames')].join('\n');
+const build = new Function('esc', 'fmtBytes', `${source}; return {renderContainers, renderApps, staleNote, countWorkerNames};`);
+const {renderContainers, renderApps, countWorkerNames} = build(esc, fmtBytes);
 
 const WORKER = {
   name: 'geiserback',
@@ -86,9 +86,31 @@ check('app traffic tooltip survives', appsOnline.includes('24h:'),
 check('offline apps keep both tooltips', appsOffline.includes('Last reported') && appsOffline.includes('24h:'),
   'the staleness note replaced the traffic figures instead of joining them');
 
+// 6. Duplicate display names, including names that collide with Object's own
+//    keys. A worker name is user-controlled (CASHPILOT_WORKER_NAME), and on a
+//    plain {} a name of "__proto__" or "toString" makes the count unusable —
+//    so two such workers are never flagged, which is the one case the feature
+//    exists for. This cannot be seen from the source; it has to be run.
+const named = names => names.map(n => ({name: n}));
+const ordinary = countWorkerNames(named(['watchtower', 'watchtower', 'geiserback']));
+check('an ordinary duplicate is counted', ordinary['watchtower'] === 2,
+  `expected 2, got ${JSON.stringify(ordinary['watchtower'])}`);
+check('a unique name is counted once', ordinary['geiserback'] === 1,
+  `expected 1, got ${JSON.stringify(ordinary['geiserback'])}`);
+
+for (const hostile of ['__proto__', 'toString', 'constructor', 'valueOf', 'hasOwnProperty']) {
+  const counts = countWorkerNames(named([hostile, hostile]));
+  check(`duplicate "${hostile}" is flagged`, counts[hostile] === 2,
+    `count was ${JSON.stringify(counts[hostile])} — a plain {} makes this unusable`);
+}
+check('a single hostile name is not flagged', countWorkerNames(named(['__proto__']))['__proto__'] === 1,
+  'a lone worker was reported as a duplicate');
+check('no workers is not a crash', Object.keys(countWorkerNames([])).length === 0, 'empty input misbehaved');
+check('undefined is not a crash', Object.keys(countWorkerNames(undefined)).length === 0, 'undefined misbehaved');
+
 if (failures.length) {
   console.error('fleet staleness check FAILED:');
   for (const f of failures) console.error(`  - ${f}`);
   process.exit(1);
 }
-console.log(`fleet staleness check passed (${11} assertions)`);
+console.log(`fleet staleness check passed (${20} assertions)`);
