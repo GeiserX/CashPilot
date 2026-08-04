@@ -534,6 +534,13 @@ async def _run_collection() -> None:
                             )
                         )
                 else:
+                    # A caveat on a SUCCESSFUL reading. It is shown, because the
+                    # figure is partial and the user should know, but it is not
+                    # a failure: the balance below is stored exactly as any other.
+                    if getattr(result, "warning", None):
+                        safe_warning = notify.redact(result.warning)
+                        logger.info("Collector notice for %s: %s", result.platform, safe_warning)
+                        alerts.append({"kind": "notice", "platform": result.platform, "error": safe_warning})
                     # Compare against the last reading BEFORE writing the new one:
                     # a payout is only visible as the step between two snapshots.
                     payout_alert = await _detect_payout(result)

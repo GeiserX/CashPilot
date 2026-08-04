@@ -21,6 +21,13 @@ class EarningsResult:
     balance: float
     currency: str = "USD"
     error: str | None = None
+    # A caveat about a reading that SUCCEEDED. `error` used to carry both, and
+    # the collection loop stores a balance only when `error` is unset — so a
+    # collector reporting a real figure with a note attached had that figure
+    # silently discarded and the user was told the collector had failed.
+    # Bytelixir's API fallback did exactly this: a valid withdrawable balance,
+    # thrown away, reported as a failure.
+    warning: str | None = None
 
 
 class BaseCollector(abc.ABC):
