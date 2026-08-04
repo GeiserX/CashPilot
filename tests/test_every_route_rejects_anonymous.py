@@ -88,6 +88,9 @@ def _routes():
     This function was written here first, for CashPilot-zfd. Two other modules
     then turned out to walk app.routes with the same blind spot, so the logic
     moved to one place rather than being copied a third time. (CashPilot-33h)
+
+    The blind spot is FastAPI 0.141.1, not Starlette 1.3 as first recorded —
+    measured by moving FastAPI alone with Starlette held at 1.3.1.
     """
     from tests.route_enumeration import all_routes
 
@@ -156,12 +159,12 @@ class TestEveryRegisteredRouteRefusesAnAnonymousCaller:
     def test_the_page_routes_are_enumerated(self, path):
         """The under-count guard, and it has already fired once.
 
-        On Starlette 1.3 — what CI installs, since requirements.txt pins only
-        fastapi>=0.136.1 — include_router stops adding its routes to app.routes.
-        The whole HTML surface silently dropped out of this sweep while it still
-        reported 65 routes and passed. A sweep that quietly stops sweeping is
-        worse than the hand-written list it replaced, because it still looks
-        thorough.
+        On FastAPI 0.141.1 — which CI resolved, because requirements.txt
+        pinned only fastapi>=0.136.1 — include_router stops adding its routes to
+        app.routes. The whole HTML surface silently dropped out of this sweep
+        while it still reported 62 routes and passed. A sweep that quietly stops
+        sweeping is worse than the hand-written list it replaced, because it
+        still looks thorough.
         """
         assert path in {p for _m, p, _u, _b in ALL_REQUESTS}, (
             f"{path} is served but not enumerated — the sweep is missing a whole router"

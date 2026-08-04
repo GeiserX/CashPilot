@@ -149,7 +149,7 @@ class TestTheAdminSchemaIsNotPublished:
 
     def test_no_route_serves_them(self):
         # A NEGATIVE assertion over an incomplete set is true by omission. On
-        # Starlette 1.3 app.routes drops every include_router route, so this
+        # FastAPI 0.141.1 app.routes drops every include_router route, so this
         # would have kept passing while enumerating less and less.
         # (CashPilot-33h)
         from tests.route_enumeration import all_paths

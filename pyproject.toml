@@ -41,6 +41,11 @@ dev = [
     "pytest-asyncio>=1.3.0",
     "pytest-cov>=7.1.0",
     "ruff>=0.15.13",
+    # Imported by the suite and previously installed ad hoc in test.yml, which
+    # meant the test environment was assembled by hand rather than resolved from
+    # the lockfile that ships.
+    "docker>=7.1.0",
+    "tzdata>=2025.1",
 ]
 
 [project.urls]

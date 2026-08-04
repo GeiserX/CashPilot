@@ -262,8 +262,8 @@ class TestNoRouteIsShadowedByAnEarlierParameterisedOne:
 
         from tests.route_enumeration import all_routes
 
-        # all_routes(), not app.routes: on Starlette 1.3 the latter omits every
-        # route added by include_router, so this shadowing sweep silently
+        # all_routes(), not app.routes: on FastAPI 0.141.1 the latter omits
+        # every route added by include_router, so this shadowing sweep silently
         # covered fewer paths than it claimed. (CashPilot-33h)
         #
         # BOTH sides have to use it. Widening only the literals made /api/users

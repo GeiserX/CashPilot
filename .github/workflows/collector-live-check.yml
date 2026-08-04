@@ -33,11 +33,13 @@ jobs:
         with:
           python-version: "3.13"
 
+      # Same lockfile as the test job and the shipped image. A live check that
+      # runs against a different resolution than production can pass or fail for
+      # reasons that have nothing to do with the provider it is checking.
       - name: Install dependencies
         run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-          pip install pytest pytest-asyncio
+          python -m pip install --upgrade pip uv
+          uv sync --frozen --extra dev
 
       - name: Run live collector checks
         id: live
@@ -49,7 +51,7 @@ jobs:
           # marker yet, so without this the job fails EVERY night and files a
           # false drift alert — which trains the maintainer to ignore the one
           # alert designed to catch a real provider change.
-          python -m pytest tests/ -m live -q 2>&1 | tee live.log || [ "${PIPESTATUS[0]}" = "5" ]
+          uv run pytest tests/ -m live -q 2>&1 | tee live.log || [ "${PIPESTATUS[0]}" = "5" ]
 
       - name: Open an issue when a provider's shape changed
         if: failure()
