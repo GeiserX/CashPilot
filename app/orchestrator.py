@@ -518,7 +518,12 @@ def _collect_stats(c) -> tuple[float, float, int | None, int | None]:
         rx, tx = _network_totals(stats)
         return cpu_pct, mem_mb, rx, tx
     except (KeyError, ZeroDivisionError, APIError):
-        return 0.0, 0.0, None, None
+        # None, not 0.0. A stats call that FAILED tells us nothing about the
+        # container's CPU or memory, and 0.00% / 0.0 MB is a measurement — one
+        # that reads as "idle" for a container that may be working hard. The
+        # network counters on the line above were already None for exactly this
+        # reason; the same failure was being reported two different ways.
+        return None, None, None, None
 
 
 def _network_totals(stats: dict[str, Any]) -> tuple[int | None, int | None]:

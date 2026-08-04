@@ -100,15 +100,22 @@ class TestCollectStats:
         _, mem_mb, _, _ = orchestrator._collect_stats(c)
         assert mem_mb == 0.0
 
-    def test_missing_key_returns_zero_tuple(self):
+    def test_missing_key_reports_unknown(self):
+        """A malformed stats payload measured nothing (CashPilot-zdi).
+
+        This asserted (0.0, 0.0, None, None). The network counters were already
+        None because a failed read is not evidence of no traffic — and exactly
+        the same argument applies to CPU and memory, which were reporting a
+        confident 0.00% for a container nobody could measure.
+        """
         c = MagicMock()
         c.stats.return_value = {"cpu_stats": {}}  # precpu_stats missing -> KeyError
-        assert orchestrator._collect_stats(c) == (0.0, 0.0, None, None)
+        assert orchestrator._collect_stats(c) == (None, None, None, None)
 
-    def test_stats_api_error_returns_zero_tuple(self):
+    def test_stats_api_error_reports_unknown(self):
         c = MagicMock()
         c.stats.side_effect = APIError("stats unavailable")
-        assert orchestrator._collect_stats(c) == (0.0, 0.0, None, None)
+        assert orchestrator._collect_stats(c) == (None, None, None, None)
 
 
 # ---------------------------------------------------------------------------
@@ -193,8 +200,10 @@ class TestGetStatus:
         ):
             results = orchestrator.get_status()
         assert results[0]["status"] == "exited"
-        assert results[0]["cpu_percent"] == 0.0
-        assert results[0]["memory_mb"] == 0.0
+        # Unknown, not zero: the stats call failed, so nothing was measured.
+        # The status above is what says the container is not running.
+        assert results[0]["cpu_percent"] is None
+        assert results[0]["memory_mb"] is None
 
     def test_corrupted_container_is_skipped_not_crashed(self):
         good = _mock_container(name="cashpilot-honeygain", status="running", slug="honeygain")
