@@ -40,6 +40,12 @@ class TestEveryEndpointRejectsAnAnonymousCaller:
 
     Every other endpoint test patches `_require_auth_api` to a no-op before
     calling the handler, so nothing anywhere noticed the guard was gone.
+
+    The class name overstates what a hand-written list can do — it covered 14 of
+    75 routes, and a guard deleted from any of the other 61 kept the suite green.
+    tests/test_every_route_rejects_anonymous.py now sweeps every registered route
+    instead. This is kept because it calls the handlers directly, which catches a
+    guard that is present but unreachable behind an earlier return.
     """
 
     @pytest.mark.parametrize(
