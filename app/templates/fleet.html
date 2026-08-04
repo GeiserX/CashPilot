@@ -259,6 +259,18 @@ CASHPILOT_WORKER_NAME=server-name</code>
     const container = document.getElementById('fleet-workers');
     if (!container) return;
 
+    // A worker redeployed with a new or empty /data registers under a fresh
+    // client_id, and the old row stays forever — offline, same display name,
+    // last-known container pills. The operator then picks one to Remove by
+    // guesswork, and removing the LIVE one used to lock that host out
+    // permanently. Naming the duplicates and showing the id is what makes that
+    // choice safe (CashPilot-3fr).
+    const nameCounts = {};
+    for (const w of workers) {
+      const key = String(w.name || '');
+      nameCounts[key] = (nameCounts[key] || 0) + 1;
+    }
+
     let html = '';
 
     if (workers.length === 0) {
@@ -282,8 +294,10 @@ CASHPILOT_WORKER_NAME=server-name</code>
                 <span class="status-dot ${statusClass}"></span>
                 <span style="font-weight: 600; color: var(--text-primary);">${esc(w.name)}</span>
                 ${isAndroid ? '<span style="font-size:0.7rem; padding:2px 6px; border-radius:4px; background:var(--bg-hover); color:var(--text-muted);">Android</span>' : ''}
+                ${nameCounts[String(w.name || '')] > 1 ? `<span style="font-size:0.7rem; padding:2px 6px; border-radius:4px; background:var(--warning-soft, var(--bg-hover)); color:var(--warning);" title="More than one worker is registered under this name. That usually means this host was redeployed with a new or empty /data, so it re-registered under a new id and the old row stayed behind. Compare the ids and the last-seen times before removing one.">duplicate name</span>` : ''}
+                <code style="font-size:0.68rem; color:var(--text-muted); background:var(--bg-hover); padding:1px 5px; border-radius:3px;" title="This worker's client_id — the id CashPilot keys it on. Two rows with the same name always have different ids; this is how to tell which is which.">${esc(w.client_id || ('#' + w.id))}</code>
               </div>
-              ${_isOwner ? `<button class="btn btn-danger btn-sm btn-remove-worker" data-worker-id="${w.id}" data-worker-name="${esc(w.name)}" title="Remove worker">Remove</button>` : ''}
+              ${_isOwner ? `<button class="btn btn-danger btn-sm btn-remove-worker" data-worker-id="${w.id}" data-worker-name="${esc(w.name)}" data-worker-client="${esc(w.client_id || '')}" title="Remove worker">Remove</button>` : ''}
             </div>
             <div style="display: flex; gap: 16px; flex-wrap: wrap; font-size: 0.82rem; color: var(--text-muted);">
               <span>${esc(w.url || '-')}</span>
@@ -407,8 +421,12 @@ CASHPILOT_WORKER_NAME=server-name</code>
     }
   };
 
-  async function removeWorker(workerId, name) {
-    if (!confirm(`Remove worker "${name}"?\n\nIt is removed from the fleet here, but the worker itself keeps running. It will re-enrol on its own after a few minutes of rejected heartbeats. To bring it back immediately, delete /data/.worker_key on that host and restart the container.`)) return;
+  async function removeWorker(workerId, name, clientId) {
+    // The id is in the prompt because two rows can share a display name — a
+    // host redeployed with a new /data leaves its old row behind — and picking
+    // the wrong one takes the LIVE host out of the fleet (CashPilot-3fr).
+    const which = clientId ? `\n\nId: ${clientId}` : '';
+    if (!confirm(`Remove worker "${name}"?${which}\n\nIt is removed from the fleet here, but the worker itself keeps running. It will re-enrol on its own after a few minutes of rejected heartbeats. To bring it back immediately, delete /data/.worker_key on that host and restart the container.`)) return;
     try {
       await CP.api(`/api/workers/${workerId}`, { method: 'DELETE' });
       CP.toast(`Worker "${name}" removed`, 'success');
@@ -501,7 +519,7 @@ CASHPILOT_WORKER_NAME=server-name</code>
     const id = parseInt(btn.dataset.workerId, 10);
     if (isNaN(id)) return;
     const name = btn.dataset.workerName;
-    removeWorker(id, name);
+    removeWorker(id, name, btn.dataset.workerClient);
   });
 
   window.copyWorkerEnv = async function() {
