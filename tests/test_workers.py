@@ -64,7 +64,11 @@ def _worker_row(
     status: str = "online",
     containers: str = "[]",
     apps: str = "[]",
-    system_info: str = "{}",
+    # Every real worker reports docker_available on every heartbeat
+    # (worker_api.py builds it into system_info), so the DEFAULT row is one that
+    # can see Docker. An empty {} now means "cannot read Docker", which is a
+    # distinct and much rarer state — tests for it pass it explicitly.
+    system_info: str = '{"docker_available": true}',
     last_heartbeat: str = "2026-04-04T12:00:00",
     registered_at: str = "2026-04-01T00:00:00",
     api_key_enc: str | None = None,
