@@ -87,3 +87,32 @@ class TestTheCommittedBrowserHarnessesStillRun:
         )
         assert result.returncode == 0, f"currency harness failed:\n{result.stdout}\n{result.stderr}"
         assert "RESULT: PASS" in result.stdout
+
+
+class TestTheBrowserHarnessesActuallyRun:
+    """The .mjs checks are only worth having if something runs them.
+
+    CI runs them as separate steps, which is right — but a harness that only
+    ever runs on CI is one a local `pytest` run will not catch before a push.
+    Shelling out here keeps them in the same gate as everything else.
+    """
+
+    @pytest.mark.parametrize("script", ["currency_check.mjs", "fleet_staleness_check.mjs"])
+    def test_the_harness_passes(self, script):
+        node = shutil.which("node")
+        if node is None:
+            pytest.skip("node is not installed; CI runs these as their own step")
+        result = subprocess.run(
+            [node, f"scripts/{script}"],
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+        assert result.returncode == 0, f"{script} failed:\n{result.stdout}\n{result.stderr}"
+
+    def test_ci_runs_every_browser_free_harness(self):
+        """A new harness that CI never invokes is decoration."""
+        workflow = (ROOT / ".github" / "workflows" / "test.yml").read_text(encoding="utf-8")
+        for script in ("currency_check.mjs", "fleet_staleness_check.mjs"):
+            assert script in workflow, f"scripts/{script} is never run by CI"

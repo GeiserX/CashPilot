@@ -44,6 +44,13 @@ jobs:
       - name: Currency formatting behaviour
         run: node scripts/currency_check.mjs
 
+      # Also behaviour pytest cannot reach, and for the same reason: these
+      # renderers live in a <script> block inside a Jinja template, so a Python
+      # assertion could only prove the source mentions a variable — never what
+      # colour a given worker actually produces.
+      - name: Fleet staleness behaviour
+        run: node scripts/fleet_staleness_check.mjs
+
       - name: Install dependencies
         run: |
           pip install -r requirements.txt
