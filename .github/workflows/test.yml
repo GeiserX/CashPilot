@@ -11,6 +11,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          # Tags are needed by the compose-pin drift test, which compares the
+          # pinned image tag against the newest RELEASED version. checkout does
+          # not fetch tags by default, so without this the test finds none and
+          # skips — decorative in the one place it is meant to run.
+          fetch-depth: 0
+          fetch-tags: true
 
       - uses: actions/setup-python@v7
         with:

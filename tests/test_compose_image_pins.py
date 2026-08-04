@@ -12,6 +12,7 @@ still arrive automatically, but a new minor or major needs a deliberate edit.
 
 from __future__ import annotations
 
+import os
 import re
 from pathlib import Path
 
@@ -83,15 +84,22 @@ class TestTheComposePinTracksReleases:
             m = re.fullmatch(r"v(\d+)\.(\d+)\.(\d+)", line.strip())
             if m:
                 return f"{m.group(1)}.{m.group(2)}"
-        pytest.skip("no semver tags available in this checkout")
+        if os.environ.get("CI"):
+            pytest.fail(
+                "no semver tags in this checkout — CI must fetch tags (fetch-tags: true), "
+                "otherwise this drift test silently passes and the pin can rot again"
+            )
+        pytest.skip("no semver tags available in this local checkout")
 
     @pytest.mark.parametrize("name", ["docker-compose.yml", "docker-compose.fleet.yml"])
     def test_the_pin_matches_the_newest_released_series(self, name):
         import re
 
         text = (PROJECT_ROOT / name).read_text(encoding="utf-8")
-        live = "\n".join(line for line in text.splitlines() if not line.lstrip().startswith("#"))
-        pins = set(re.findall(r"image: drumsergio/cashpilot(?:-worker)?:(\S+)", live))
+        # Comments included on purpose. docker-compose.fleet.yml's commented
+        # remote-worker block is a template users uncomment and run, so a stale
+        # pin there ships an old image just as surely as a live one.
+        pins = set(re.findall(r"image: drumsergio/cashpilot(?:-worker)?:(\S+)", text))
         assert pins, f"{name} pins no cashpilot image"
         newest = self._newest_series()
         assert pins == {newest}, (
