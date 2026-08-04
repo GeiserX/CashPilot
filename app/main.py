@@ -1880,7 +1880,16 @@ async def api_earnings_breakdown(request: Request) -> list[dict[str, Any]]:
         slug = row["platform"]
         svc = catalog.get_service(slug)
         cashout = (svc.get("cashout", {}) if svc else {}) or {}
-        min_amount = float(cashout.get("min_amount", 0))
+        # Three-valued, matching payouts.min_payout: a positive number is a
+        # real minimum, 0 is a documented "no minimum", and None means nobody
+        # published one. float(..., 0) collapsed the last two, so 21 services
+        # with no published minimum reported the user as eligible to cash out
+        # any balance above zero.
+        raw_min = cashout.get("min_amount")
+        try:
+            min_amount = float(raw_min) if raw_min is not None else None
+        except (TypeError, ValueError):
+            min_amount = None
         balance = float(row["balance"])
         prev_balance = float(row.get("prev_balance", 0))
         delta = balance - prev_balance
@@ -1901,7 +1910,19 @@ async def api_earnings_breakdown(request: Request) -> list[dict[str, Any]]:
             "last_updated": row["date"],
             "delta": round(delta, 4),
             "cashout": {
-                "eligible": bool(cashout) and balance > 0 and balance >= min_amount,
+                # None, not True, when the minimum is unknown. Claiming
+                # eligibility we cannot establish sends the user to a withdrawal
+                # page that will refuse them.
+                # False and None mean different things here, and the existing
+                # tests were right to insist on the distinction:
+                #   no cashout section  -> False. There is no withdrawal route
+                #                          at all; that is a real answer.
+                #   route but no known  -> None. We cannot say, and claiming
+                #   minimum                eligibility would send the user to a
+                #                          page that refuses them.
+                "eligible": (
+                    False if not cashout else (None if min_amount is None else (balance > 0 and balance >= min_amount))
+                ),
                 "min_amount": min_amount,
                 "method": cashout.get("method", "redirect"),
                 "dashboard_url": cashout.get("dashboard_url", ""),

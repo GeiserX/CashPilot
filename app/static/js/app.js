@@ -2454,7 +2454,12 @@ const CP = (() => {
       let badge;
       if (fromEnv) badge = '<span class="badge badge-deployed" style="font-size:0.7rem;margin-left:8px;">ENV</span>';
       else if (v.read_only) badge = '<span class="badge" style="font-size:0.7rem;margin-left:8px;opacity:0.6;">Read-only</span>';
-      else if (dbVal) badge = '<span class="badge badge-category" style="font-size:0.7rem;margin-left:8px;">DB</span>';
+      // No "DB" badge. It asserted that a stored value was in force, and
+      // nothing reads these from the database: every one is resolved once from
+      // the environment at import (main.py:639-640, auth.py, fleet_key.py), so
+      // a saved value could never take effect. A stored-but-inert value is
+      // worth flagging as exactly that.
+      else if (dbVal) badge = '<span class="badge badge-warning" style="font-size:0.7rem;margin-left:8px;" title="Stored in the database but NOT in use — these are read from the environment at startup">Stored, not applied</span>';
       else if (isSet) badge = '<span class="badge" style="font-size:0.7rem;margin-left:8px;opacity:0.5;">Default</span>';
       else badge = '<span class="badge" style="font-size:0.7rem;margin-left:8px;opacity:0.5;">Not set</span>';
       // Secret fields render empty; placeholder communicates whether a value is stored.
@@ -2482,8 +2487,15 @@ const CP = (() => {
       </div>`;
     }).join('');
     container.innerHTML = rows + `
+    <div class="form-hint" style="margin-top:12px;">
+      These are read from the environment when CashPilot starts, so changing one
+      here does not take effect. Set it in your <code>docker-compose.yml</code>
+      (or Unraid template) and restart the container. Saving stores the value but
+      nothing reads it back — the field is kept so an existing stored value stays
+      visible rather than disappearing.
+    </div>
     <div style="display:flex;justify-content:flex-end;margin-top:12px;">
-      <button class="btn btn-primary" data-action="saveEnvSettings">Save Variables</button>
+      <button class="btn btn-ghost" data-action="saveEnvSettings" title="Stores the value; it will not take effect until it is set in the environment and the container restarts">Save anyway</button>
     </div>`;
   }
 

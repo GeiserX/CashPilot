@@ -50,7 +50,10 @@ earnings:
 cashout:
   method: redirect
   dashboard_url: "https://app.grass.io/dashboard"
-  min_amount: 0
+  # Undocumented: the provider does not publish a minimum. NOT 0 —
+  # 0 means 'no minimum, cash out anything', which would tell the
+  # user they can withdraw now and disables payout detection.
+  min_amount: null
   currency: GRASS
   notes: "GRASS token airdrop-based. Claim from dashboard when eligible."
 

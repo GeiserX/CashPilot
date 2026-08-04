@@ -11,7 +11,7 @@
 <div class="card settings-section">
   <h3 class="settings-section-title">Environment Variables</h3>
   <p class="settings-section-desc">
-    Variables set via Docker <code>-e</code> flags are locked. Unset variables can be configured here and saved to the database.
+    These are read from the environment when CashPilot starts. Variables set via Docker <code>-e</code> flags are shown locked; the rest can be stored here, but <strong>a stored value does not take effect</strong> &mdash; set it in your compose file or Unraid template and restart. Several of them cannot change at runtime at all: the session key signs logins already in use, the data directory is where the open database lives, and the fleet key is what enrolled workers already hold.
   </p>
   <div id="env-vars-container">
     <p style="color: var(--text-muted); font-size: 0.85rem;">Loading...</p>
