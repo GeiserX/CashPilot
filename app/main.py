@@ -1849,6 +1849,13 @@ async def api_earnings_summary(request: Request) -> dict[str, Any]:
     # A total that silently omits holdings is indistinguishable from a correct
     # one. The count was already being computed in database.py and only logged;
     # it now reaches the caller so the card can say the figure is partial.
+    # Whether anything has ever been read at all. Without this the payload is
+    # identical on a fresh install and on an install whose collection has
+    # silently stopped — an expired cookie, deleted credentials, a wedged
+    # scheduler — and the dashboard states "$0.00" as a measurement in both.
+    # A new user's very first view of CashPilot asserted three zero balances in
+    # the same typeface those cards will later carry real money in.
+    summary["has_readings"] = bool(all_earnings)
     summary["unpriced_platforms"] = sorted(set(unpriced_platforms))
     summary["total_bonus"] = round(total_bonus_usd, 2)
     summary["total_adjusted"] = round(total_adjusted, 2)
