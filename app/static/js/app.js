@@ -3054,5 +3054,10 @@ const CP = (() => {
     loadDeployRisk,
     confirmPayout,
     rejectPayout,
+    // Exposed for fleet.html, which rendered running costs with a bare
+    // Number(v).toFixed(2) — no unit at all, on figures that mixed USD earnings
+    // with a tariff in the user's own currency. The API is canonical USD now,
+    // and this is the one place that knows the viewer's display currency.
+    formatCurrency,
   };
 })();
