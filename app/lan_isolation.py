@@ -84,23 +84,39 @@ def exceptions_for(service: dict[str, Any] | None) -> list[dict[str, str]]:
                 "detail": f"Port {port} must accept inbound connections, or the node cannot do its job.",
             }
         )
-    # Keyed on HAVING a collector, not on being one particular service. The
-    # `or slug == "storj"` this replaces never changed an outcome — storj
-    # declares a collector, so the first clause already matched — while
-    # hardcoding a slug in app/ is exactly what the catalog exists to avoid.
-    if (service or {}).get("collector"):
-        api_url_env = [
-            e.get("key")
-            for e in (_docker(service).get("env") or [])
-            if isinstance(e, dict) and "URL" in str(e.get("key", ""))
-        ]
-        if api_url_env:
+    # Gated on CashPilot actually having a collector for this slug, and on that
+    # collector reading from an address the user configures.
+    #
+    # It used to be `if service.get("collector")` plus "any docker env whose key
+    # contains URL". Every one of the 50 YAMLs carries a collector: block
+    # whether or not a collector exists, so the first half was always true; and
+    # the second half matched proxybase-xyz's BACKEND_URL, which is the
+    # PROVIDER'S REMOTE endpoint (https://api.proxybase.xyz), not a local
+    # dashboard. So the page told users that a service with no collector at all
+    # — collector.type is manual, the slug is absent from COLLECTOR_MAP — needed
+    # a network exception for a remote URL, and said CashPilot read its earnings
+    # from a local dashboard. Both halves were false.
+    #
+    # Meanwhile storj, the one service that genuinely serves its earnings from a
+    # local dashboard on port 14002, got no exception at all — so a user
+    # isolating their containers lost Storj collection with no warning.
+    #
+    # Imported lazily: app.collectors pulls in every collector module, and this
+    # module is imported by anything that assesses a service.
+    from app.collectors import _COLLECTOR_ARGS, COLLECTOR_MAP
+
+    slug = str((service or {}).get("slug") or "")
+    if slug in COLLECTOR_MAP:
+        # The collector's own configured address, not an arbitrary env var. A
+        # leading "?" marks the argument optional in the registry.
+        url_args = [a.lstrip("?") for a in _COLLECTOR_ARGS.get(slug, []) if "url" in a.lower()]
+        if url_args:
             found.append(
                 {
                     "kind": "collector_reachability",
                     "detail": (
-                        "CashPilot reads this service's earnings from its own local dashboard, so that "
-                        f"address ({', '.join(str(k) for k in api_url_env)}) must stay reachable from the UI."
+                        "CashPilot reads this service's earnings from an address you configure "
+                        f"({', '.join(url_args)}), so that address must stay reachable from the UI."
                     ),
                 }
             )
