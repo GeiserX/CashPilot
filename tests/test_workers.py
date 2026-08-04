@@ -281,6 +281,9 @@ class TestWorkerList:
         ]
         with (
             patch("app.main.database.list_workers", new_callable=AsyncMock, return_value=workers),
+            # api_list_workers reads config for the per-machine power settings
+            # the running-costs card shows (CashPilot-jm6).
+            patch("app.main.database.get_config", new_callable=AsyncMock, return_value={}),
             patch("app.main.auth.get_current_user", return_value={"uid": 1, "u": "t", "r": "owner"}),
         ):
             result = _run(api_list_workers(_request()))
@@ -303,6 +306,9 @@ class TestWorkerList:
         ]
         with (
             patch("app.main.database.list_workers", new_callable=AsyncMock, return_value=workers),
+            # api_list_workers reads config for the per-machine power settings
+            # the running-costs card shows (CashPilot-jm6).
+            patch("app.main.database.get_config", new_callable=AsyncMock, return_value={}),
             patch("app.main.auth.get_current_user", return_value={"uid": 1, "u": "t", "r": "owner"}),
         ):
             result = _run(api_list_workers(_request()))

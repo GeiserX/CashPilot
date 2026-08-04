@@ -1545,9 +1545,14 @@ class TestApiFleet:
         with (
             _auth_owner(),
             patch("app.main.database.list_workers", new_callable=AsyncMock, return_value=workers),
+            # The endpoint reads config for the per-machine power settings the
+            # running-costs card shows (CashPilot-jm6).
+            patch("app.main.database.get_config", new_callable=AsyncMock, return_value={}),
         ):
             resp = client.get("/api/workers")
             assert resp.status_code == 200
+            body = resp.json()
+            assert "watts" in body[0] and "dedicated" in body[0]
 
     def test_api_get_worker(self, client):
         worker = {"id": 1, "name": "w1", "status": "online", "containers": "[]", "apps": "[]", "system_info": "{}"}
