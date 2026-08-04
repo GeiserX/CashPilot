@@ -18,6 +18,13 @@ RUN uv sync --frozen --no-dev --no-install-project \
 # -- Runtime stage --
 FROM python:3.14-alpine
 
+# The release tag this image was built from, so the app can report what it is.
+# Both apps used to hardcode "0.1.0" while releases were tag-driven and past
+# 1.11, which made UI/worker skew undetectable (CashPilot-l6c). Defaults to dev
+# so a local `docker build` says so rather than claiming a release.
+ARG CASHPILOT_VERSION=dev
+ENV CASHPILOT_VERSION=$CASHPILOT_VERSION
+
 LABEL maintainer="Sergio Fernandez <9169332+GeiserX@users.noreply.github.com>"
 LABEL org.opencontainers.image.description="CashPilot Worker - Lightweight Docker container orchestration agent"
 LABEL org.opencontainers.image.url="https://github.com/GeiserX/CashPilot"
@@ -46,6 +53,10 @@ COPY --chown=cashpilot:root app/egress.py ./app/
 # Encrypted state export: encryption happens on the WORKER so the UI only
 # ever handles ciphertext.
 COPY --chown=cashpilot:root app/state_backup.py ./app/
+# worker_api imports this to report which release it is; without it the worker
+# crashes on import. The two tests that caught the omission compare this list
+# against worker_api's actual imports.
+COPY --chown=cashpilot:root app/version.py ./app/
 COPY --chown=cashpilot:root app/worker_api.py ./app/
 COPY --chown=cashpilot:root app/orchestrator.py ./app/
 COPY --chown=cashpilot:root app/catalog.py ./app/
