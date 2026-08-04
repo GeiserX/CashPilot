@@ -90,14 +90,23 @@ class TestTheMinimumIsLabelledWithTheUnitItWasDerivedFrom:
 
         A provider genuinely quoting its minimum in a token is legitimate; the
         rule is only that the LABEL must match what min_amount was derived from.
+
+        The predicate reads cashout.currency, which is what this class is about.
+        It first read payment.currency — a different field that this change does
+        not touch, so the guard would have held even if every cashout minimum HAD
+        been flattened to USD, which is precisely what it exists to catch.
+        (CodeRabbit, PR #207.)
         """
-        non_usd = {
+        non_usd_cashout = {
             slug: (data.get("cashout") or {}).get("currency")
             for slug, data in catalog().items()
-            if (data.get("payment") or {}).get("currency")
-            and str((data.get("payment") or {}).get("currency")).upper() != "USD"
+            if (data.get("cashout") or {}).get("currency")
+            and str((data.get("cashout") or {}).get("currency")).upper() != "USD"
         }
-        assert non_usd, "no service records a non-USD payout currency at all — payment.currency was flattened"
+        assert non_usd_cashout, "no service declares a non-USD cashout minimum — cashout.currency was flattened"
+        # Twenty-one do today (mysterium MYST, grass GRASS, helium HNT, ...), so
+        # a single stray edit cannot satisfy this by accident either.
+        assert len(non_usd_cashout) >= 10, f"only {sorted(non_usd_cashout)} still declare a token minimum"
 
 
 class TestTheReconciledThresholdIsNowRight:
