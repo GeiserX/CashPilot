@@ -103,6 +103,21 @@ class TestEligibilityDistinguishesItsThreeCases:
     def test_a_documented_no_minimum_is_eligible(self):
         assert self._eligible({"min_amount": 0}, balance=5.0) is True
 
+    def test_an_unparseable_minimum_is_unknown_not_a_crash(self):
+        """A catalog typo must not 500 the dashboard.
+
+        min_amount comes from YAML a human edits, so "4.00 USD" or an empty
+        string are realistic. float() raises on both; treating that as unknown
+        matches how every other unparseable value in this codebase is handled,
+        and is the branch codecov flagged as untested.
+        """
+        assert self._eligible({"min_amount": "not a number"}) is None
+
+    def test_a_numeric_string_still_parses(self):
+        """YAML quoting is common and should not silently disable a threshold."""
+        assert self._eligible({"min_amount": "20"}, balance=25.0) is True
+        assert self._eligible({"min_amount": "20"}, balance=5.0) is False
+
     def test_a_real_threshold_is_compared(self):
         assert self._eligible({"min_amount": 20.0}, balance=5.0) is False
         assert self._eligible({"min_amount": 20.0}, balance=25.0) is True
