@@ -70,7 +70,7 @@ cashout:
   method: manual
   dashboard_url: "https://proxybase.xyz"
   min_amount: 1.0
-  currency: USDC
+  currency: USD
   notes: "Lock earnings via <code>proxybase-cli seller payout create</code>, received as USDC on Tempo Chain (Tempo MPP). Requires a Tempo wallet address."
 
 platforms: [docker, linux, macos, windows]
