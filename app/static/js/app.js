@@ -585,11 +585,34 @@ const CP = (() => {
       ]);
 
       if (!services || services.length === 0) {
-        container.innerHTML = `
+        // An empty list means one of two very different things, and saying the
+        // wrong one is worse than saying nothing.
+        //
+        // /api/services/deployed is built only from ONLINE workers, so three
+        // minutes after a host stops heartbeating — a reboot, a network blip, a
+        // worker container restart — the table emptied and the dashboard stated
+        // as fact that the user had no services and should start over. The
+        // containers were still running and still earning.
+        let unreachable = 0;
+        try {
+          const workers = await api('/api/workers');
+          unreachable = (workers || []).filter(w => w.status !== 'online').length;
+        } catch (err) {
+          // Cannot tell which case this is; say so rather than guess.
+          unreachable = -1;
+        }
+        container.innerHTML = unreachable === 0
+          ? `
           <div class="empty-state" style="padding:32px 0; text-align:center;">
             <div class="empty-state-title">No services deployed yet</div>
             <div class="empty-state-text">Get started by deploying your first passive income service.</div>
             <a href="/setup" class="btn btn-primary" style="margin-top:12px;">Setup Wizard</a>
+          </div>`
+          : `
+          <div class="empty-state" style="padding:32px 0; text-align:center;">
+            <div class="empty-state-title">Can't reach ${unreachable > 0 ? escapeHtml(String(unreachable)) + ' worker' + (unreachable === 1 ? '' : 's') : 'the workers'}</div>
+            <div class="empty-state-text">Services running on ${unreachable === 1 ? 'it' : 'them'} are not shown here — this does not mean they stopped. Containers keep running and earning while a worker is offline.</div>
+            <a href="/fleet" class="btn btn-ghost" style="margin-top:12px;">Check the fleet</a>
           </div>`;
         return;
       }
