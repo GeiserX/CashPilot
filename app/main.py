@@ -296,13 +296,36 @@ async def _run_health_check() -> None:
                 events.append((slug, "check_down", status))
 
         workers = await database.list_workers()
-        if any(w.get("status") == "online" for w in workers):
+        online = [w for w in workers if w.get("status") == "online"]
+        # "Missing from a heartbeat" is only evidence of being DOWN if every
+        # online worker could actually look. A worker whose Docker socket became
+        # unreadable — unmounted by a host update, permissions changed, daemon
+        # erroring — keeps heartbeating happily and reports zero containers, so
+        # this loop wrote a durable check_down for EVERY deployment every five
+        # minutes while those containers were up and earning. The user watched
+        # each service's Health column fall and its uptime read 0%, and the
+        # events kept dragging the 7-day score long after the socket was fixed.
+        #
+        # The deployments table has no worker column, so a missing container
+        # cannot be attributed to a particular host: if any online worker is
+        # blind, the container might be on that one. Unknown is not down, so
+        # nothing is recorded — the score is left untouched rather than
+        # invented.
+        blind = [w for w in online if not _safe_json(w.get("system_info", "{}"), {}).get("docker_available", False)]
+        if online and not blind:
             deployments = await database.get_deployments()
             for d in deployments:
                 slug = d["slug"]
                 if d.get("status") == "external" or slug in slug_best:
                     continue
                 events.append((slug, "check_down", "missing from heartbeat"))
+        elif blind:
+            logger.warning(
+                "Not recording missing-container downtime: %d online worker(s) cannot read Docker (%s). "
+                "Their containers may be running; recording them as down would be a guess.",
+                len(blind),
+                ", ".join(sorted(str(w.get("name") or w.get("id")) for w in blind)),
+            )
 
         await database.record_health_events(events)
     except Exception as exc:
