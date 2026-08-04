@@ -3412,6 +3412,7 @@ async def api_list_workers(request: Request) -> list[dict[str, Any]]:
     """List all registered workers."""
     _require_auth_api(request)
     workers = await database.list_workers()
+    config = await database.get_config() or {}
     ui_version = version.current()
     for w in workers:
         _parse_worker_json(w)
@@ -3422,6 +3423,14 @@ async def api_list_workers(request: Request) -> list[dict[str, Any]]:
         # version reporting reads as unknown, not as a mismatch.
         w["ui_version"] = ui_version
         w["version_skew"] = version.skewed(ui_version, (w.get("system_info") or {}).get("version"))
+        # The per-machine power settings the running-costs card needs, read the
+        # SAME way api_fleet_economics reads them — client_id first, row id as
+        # the fallback for values written before that changed. Returning them
+        # here is what lets the fleet page show the current value in its input
+        # rather than an empty box that silently overwrites what is stored.
+        raw_watts = config.get(f"worker_{_worker_config_key(w)}_watts") or config.get(f"worker_{w.get('id')}_watts")
+        w["watts"] = raw_watts or ""
+        w["dedicated"] = _worker_flag(config, w, "dedicated")
     return workers
 
 

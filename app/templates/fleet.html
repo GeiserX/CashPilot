@@ -60,15 +60,33 @@ CASHPILOT_WORKER_NAME=server-name</code>
 </div>
 
 <!-- Is this fleet worth running?
-     Hidden until there is a tariff to answer it with: with no electricity price
-     configured the honest answer is "unknown", and a card saying so on every
-     visit is noise. The backend computes all of this and, until now, nothing
-     asked it. -->
+     The card needs an electricity price to answer that, and until now there was
+     no way to enter one: the keys existed, the backend read them, and nothing
+     in the app ever wrote them. A user who only uses the app saw "unknown"
+     forever with no route out of it (CashPilot-jm6). The inputs below are that
+     route. The verdict area stays hidden until there is something to say. -->
 <div class="card" style="margin-bottom: 24px; display:none;" id="fleet-economics-card">
   <div class="card-header">
     <span class="card-title">Running costs</span>
     <span style="font-size:0.72rem; color:var(--text-muted);" id="fleet-economics-quality"></span>
   </div>
+
+  <div id="power-settings" style="display:flex; gap:12px; flex-wrap:wrap; align-items:flex-end; padding:12px 0; border-bottom:1px solid var(--border-color); margin-bottom:12px;">
+    <div>
+      <label for="power-price" style="display:block; font-size:0.7rem; color:var(--text-muted); margin-bottom:4px;">Electricity price per kWh</label>
+      <input id="power-price" class="form-input" type="number" step="0.001" min="0" style="width:9rem;"
+             placeholder="0.30" aria-describedby="power-help">
+    </div>
+    <div>
+      <label for="power-currency" style="display:block; font-size:0.7rem; color:var(--text-muted); margin-bottom:4px;">Currency</label>
+      <input id="power-currency" class="form-input" type="text" maxlength="4" style="width:5.5rem;" placeholder="EUR">
+    </div>
+    <button class="btn btn-primary btn-sm" id="power-save">Save</button>
+    <span id="power-help" style="font-size:0.7rem; color:var(--text-muted);">
+      Your tariff, as it appears on your bill. Figures below are converted to USD.
+    </span>
+  </div>
+
   <div id="fleet-economics-body"></div>
 </div>
 
@@ -140,6 +158,7 @@ CASHPILOT_WORKER_NAME=server-name</code>
 
       renderWorkers(workers);
       loadFleetEconomics();
+      loadPowerSettings();
     } catch (err) {
       const msg = (err.message || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]);
       document.getElementById('fleet-workers').innerHTML =
@@ -173,6 +192,9 @@ CASHPILOT_WORKER_NAME=server-name</code>
 
     const machines = (economics && economics.machines) || [];
     if (!machines.length) { card.style.display = 'none'; return; }
+    // Shown as soon as there are machines, not once a tariff exists. Hiding it
+    // until configured made the one control that configures it unreachable.
+    card.style.display = '';
 
     const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c =>
       ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]);
@@ -268,6 +290,19 @@ CASHPILOT_WORKER_NAME=server-name</code>
               <span>${esc(sysInfo.os || '-')}${sysInfo.os_version ? ' ' + esc(sysInfo.os_version) : ''}</span>
               <span>${esc(sysInfo.arch || '-')}</span>
               <span>Last seen: ${w.last_heartbeat || 'never'}</span>
+              <span>
+                <label for="watts-${esc(w.client_id || w.id)}" style="color:var(--text-muted);">Draw</label>
+                <input id="watts-${esc(w.client_id || w.id)}" class="power-watts form-input" type="number" min="0" step="1"
+                       data-client-id="${esc(w.client_id || w.id)}" value="${esc(w.watts ?? '')}"
+                       placeholder="65" style="width:5rem; padding:2px 6px; font-size:0.78rem;"
+                       title="Wall power this machine draws, in watts. Without it CashPilot cannot say what the machine costs to run.">W
+                <label style="color:var(--text-muted); margin-left:8px;">
+                  <input type="checkbox" class="power-dedicated" data-client-id="${esc(w.client_id || w.id)}" ${w.dedicated ? 'checked' : ''}>
+                  dedicated
+                </label>
+                <button class="btn btn-ghost btn-sm power-save-worker" data-client-id="${esc(w.client_id || w.id)}"
+                        style="font-size:0.7rem; padding:1px 6px;">Save</button>
+              </span>
               ${sysInfo.version
                 ? `<span${w.version_skew ? ` style="color:var(--warning); font-weight:600;" title="This worker is on a different release series from the UI (${esc(w.ui_version || '?')}). Update whichever is behind — on Unraid the UI and the worker are two separate apps, so updating one leaves the other."` : ''}>v${esc(sysInfo.version)}${w.version_skew ? ` \u2260 UI v${esc(w.ui_version || '?')}` : ''}</span>`
                 : `<span title="This worker predates version reporting, so CashPilot cannot tell which release it is. Update it to find out.">version unknown</span>`}
@@ -383,7 +418,84 @@ CASHPILOT_WORKER_NAME=server-name</code>
     }
   }
 
-  document.getElementById('fleet-workers').addEventListener('click', function(e) {
+  // The tariff the running-costs card needs. These keys were read by
+  // app/main.py and written by nothing: no field, no docs, no route short of
+  // hand-crafting a POST /api/config (CashPilot-jm6).
+  async function loadPowerSettings() {
+    const price = document.getElementById('power-price');
+    const currency = document.getElementById('power-currency');
+    if (!price || !currency) return;
+    try {
+      const config = await CP.api('/api/config');
+      // power_price_per_kwh is canonical; electricity_price_per_kwh is the older
+      // name main.py still honours, so an existing setting shows up here rather
+      // than looking unset and being silently overwritten.
+      const stored = config.power_price_per_kwh ?? config.electricity_price_per_kwh;
+      if (stored != null && stored !== '') price.value = stored;
+      if (config.power_currency) currency.value = config.power_currency;
+    } catch (err) {
+      console.warn('Could not read the power settings:', err);
+    }
+  }
+
+  async function savePowerSettings() {
+    const price = document.getElementById('power-price');
+    const currency = document.getElementById('power-currency');
+    const raw = (price.value || '').trim();
+    if (raw === '') {
+      CP.toast('Enter your price per kWh first', 'warning');
+      return;
+    }
+    const value = Number(raw);
+    if (!Number.isFinite(value) || value < 0) {
+      CP.toast('That is not a price per kWh', 'error');
+      return;
+    }
+    const code = (currency.value || 'EUR').trim().toUpperCase();
+    try {
+      await CP.api('/api/config', { method: 'POST', body: { data: {
+        power_price_per_kwh: String(value),
+        power_currency: code,
+      } } });
+      CP.toast('Electricity price saved', 'success');
+      loadFleetEconomics();
+    } catch (err) {
+      CP.toast('Could not save: ' + err.message, 'error');
+    }
+  }
+
+  document.getElementById('power-save').addEventListener('click', savePowerSettings);
+
+  document.getElementById('fleet-workers').addEventListener('click', async function(e) {
+    // Per-machine power. machine_economics needs BOTH a tariff and a wattage;
+    // with either missing every machine reports UNKNOWN, which is what the card
+    // did forever because neither had an input (CashPilot-jm6).
+    const powerBtn = e.target.closest('.power-save-worker');
+    if (powerBtn) {
+      const id = powerBtn.dataset.clientId;
+      const watts = document.querySelector(`.power-watts[data-client-id="${CSS.escape(id)}"]`);
+      const dedicated = document.querySelector(`.power-dedicated[data-client-id="${CSS.escape(id)}"]`);
+      const raw = (watts?.value || '').trim();
+      const value = Number(raw);
+      if (raw !== '' && (!Number.isFinite(value) || value < 0)) {
+        CP.toast('That is not a wattage', 'error');
+        return;
+      }
+      try {
+        await CP.api('/api/config', { method: 'POST', body: { data: {
+          // Keyed on client_id, which survives re-enrolment — the row id does
+          // not, and settings keyed on it are orphaned when a host re-enrols.
+          [`worker_${id}_watts`]: raw,
+          [`worker_${id}_dedicated`]: dedicated?.checked ? 'true' : 'false',
+        } } });
+        CP.toast('Machine power saved', 'success');
+        loadFleetEconomics();
+      } catch (err) {
+        CP.toast('Could not save: ' + err.message, 'error');
+      }
+      return;
+    }
+
     const btn = e.target.closest('.btn-remove-worker');
     if (!btn) return;
     const id = parseInt(btn.dataset.workerId, 10);
