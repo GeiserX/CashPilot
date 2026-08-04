@@ -148,9 +148,14 @@ class TestTheAdminSchemaIsNotPublished:
         assert app.openapi_url is None
 
     def test_no_route_serves_them(self):
-        from app.main import app
+        # A NEGATIVE assertion over an incomplete set is true by omission. On
+        # Starlette 1.3 app.routes drops every include_router route, so this
+        # would have kept passing while enumerating less and less.
+        # (CashPilot-33h)
+        from tests.route_enumeration import all_paths
 
-        paths = {getattr(r, "path", "") for r in app.routes}
+        paths = all_paths()
+        assert paths, "no routes enumerated at all — this assertion would pass vacuously"
         assert not paths & {"/docs", "/redoc", "/openapi.json"}
 
 

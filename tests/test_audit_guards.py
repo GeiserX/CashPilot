@@ -260,11 +260,19 @@ class TestNoRouteIsShadowedByAnEarlierParameterisedOne:
     def test_every_literal_path_resolves_to_its_own_handler(self):
         from fastapi.routing import APIRoute
 
-        from app.main import app
+        from tests.route_enumeration import all_routes
 
-        literals = [
-            r for r in app.routes if isinstance(r, APIRoute) and "{" not in r.path and r.path.startswith("/api/")
-        ]
+        # all_routes(), not app.routes: on Starlette 1.3 the latter omits every
+        # route added by include_router, so this shadowing sweep silently
+        # covered fewer paths than it claimed. (CashPilot-33h)
+        #
+        # BOTH sides have to use it. Widening only the literals made /api/users
+        # report "shadowed by None" — the route was now being checked, but the
+        # list searched for its winner still could not see it. The order is the
+        # real one either way: main.py includes its routers last, and all_routes
+        # appends them last.
+        registered = [r for r in all_routes() if isinstance(r, APIRoute)]
+        literals = [r for r in registered if "{" not in r.path and r.path.startswith("/api/")]
         for route in literals:
             method = next(iter(route.methods - {"HEAD", "OPTIONS"}), "GET")
             scope = {
@@ -277,7 +285,7 @@ class TestNoRouteIsShadowedByAnEarlierParameterisedOne:
                 "root_path": "",
             }
             winner = next(
-                (r for r in app.routes if isinstance(r, APIRoute) and r.matches(scope)[0].name == "FULL"),
+                (r for r in registered if r.matches(scope)[0].name == "FULL"),
                 None,
             )
             assert winner is route, (

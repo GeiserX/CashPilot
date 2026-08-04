@@ -83,37 +83,15 @@ def _body_for(route):
 
 
 def _routes():
-    """Every route the app serves, on any supported Starlette version.
+    """Delegates to tests/route_enumeration.py.
 
-    ``app.routes`` is NOT a complete enumeration. Under Starlette 1.3 (which CI
-    installs, because requirements.txt pins only ``fastapi>=0.136.1``)
-    ``include_router`` stops adding its routes there: re-including a 6-route
-    router grew ``app.routes`` by one, and /login never appeared at all. Routing
-    itself is unaffected — every one of those paths still serves — but anything
-    that ENUMERATES routes silently sees 65 of 76.
-
-    That is exactly the failure this file exists to prevent, reappearing as a
-    quiet under-count, and it is why the page routes are unioned back in from
-    the routers themselves. test_the_page_routes_are_enumerated below fails if
-    this ever stops working, rather than letting the sweep shrink in silence.
+    This function was written here first, for CashPilot-zfd. Two other modules
+    then turned out to walk app.routes with the same blind spot, so the logic
+    moved to one place rather than being copied a third time. (CashPilot-33h)
     """
-    from fastapi import APIRouter
+    from tests.route_enumeration import all_routes
 
-    from app import main
-
-    routes = list(main.app.routes)
-    seen = {(getattr(r, "path", ""), frozenset(getattr(r, "methods", None) or ())) for r in routes}
-    for value in vars(main).values():
-        # main binds them as MODULES (`from app.routers import auth as
-        # auth_router`), so the APIRouter is one attribute further in.
-        candidate = value if isinstance(value, APIRouter) else getattr(value, "router", None)
-        if isinstance(candidate, APIRouter):
-            for route in candidate.routes:
-                key = (getattr(route, "path", ""), frozenset(getattr(route, "methods", None) or ()))
-                if key not in seen:
-                    seen.add(key)
-                    routes.append(route)
-    return routes
+    return all_routes()
 
 
 def _requests():
