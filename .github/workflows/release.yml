@@ -166,24 +166,7 @@ jobs:
           echo "new_tag=$NEW_TAG" >> "$GITHUB_OUTPUT"
           echo "Bumping $LATEST -> $NEW_TAG ($LEVEL)"
 
-      - name: Create and push tag
-        if: steps.version.outputs.new_tag
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git tag -a "${{ steps.version.outputs.new_tag }}" -m "Release ${{ steps.version.outputs.new_tag }}"
-          git push origin "${{ steps.version.outputs.new_tag }}"
 
-      - name: Create GitHub Release
-        if: steps.version.outputs.new_tag
-        uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228 # v3
-        with:
-          tag_name: ${{ steps.version.outputs.new_tag }}
-          generate_release_notes: true
-          draft: false
-          prerelease: false
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   build:
     needs: release
@@ -194,3 +177,58 @@ jobs:
       build_worker: ${{ needs.release.outputs.build_worker == 'true' }}
       version: ${{ needs.release.outputs.new_tag }}
     secrets: inherit
+
+  # Nothing is announced until the images exist.
+  #
+  # The tag was pushed and the GitHub Release published BEFORE this build ran,
+  # so any failure in it — a Docker Hub outage, a rate limit, or the arm64 QEMU
+  # emulation, which is the slowest and most failure-prone step — left an
+  # announced version with no images. A user saw the release notification,
+  # edited their compose, ran docker compose pull and got "manifest unknown".
+  #
+  # Recovery was manual and the repo's own CLAUDE.md flags the trap: re-running
+  # release.yml fails at `git tag -a` with already_exists, so someone had to
+  # hand-dispatch build.yml with the version. Publishing last removes the whole
+  # failure mode, and the tag step below is idempotent so a re-run after a
+  # partial failure works rather than erroring on a tag it created itself.
+  # (CashPilot-85s)
+  publish:
+    needs: [release, build]
+    if: needs.release.outputs.new_tag
+    name: Tag and announce
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Create and push tag
+        run: |
+          TAG="${{ needs.release.outputs.new_tag }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          # Idempotent: a re-run after a failed build must not die on the tag it
+          # pushed the first time round.
+          if git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
+            echo "Tag $TAG already exists locally; not recreating it."
+          else
+            git tag -a "$TAG" -m "Release $TAG"
+          fi
+          if git ls-remote --exit-code --tags origin "$TAG" >/dev/null 2>&1; then
+            echo "Tag $TAG is already on the remote."
+          else
+            git push origin "$TAG"
+          fi
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228 # v3
+        with:
+          tag_name: ${{ needs.release.outputs.new_tag }}
+          generate_release_notes: true
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
