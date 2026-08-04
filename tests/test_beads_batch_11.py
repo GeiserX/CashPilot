@@ -52,6 +52,35 @@ class TestTheWizardSaysWhatActuallyHappened:
         idx = source.index("if (wizardState.step === 4)")
         assert "renderWizardOutcome()" in source[idx : idx + 300]
 
+    def test_a_skipped_setup_is_not_reported_as_a_failure(self):
+        """From CodeRabbit on this PR, and a real gap in the first fix.
+
+        Step 3 offers "Skip to Summary", so a user can select services and reach
+        step 4 having deployed nothing. My first version keyed only on
+        `deployed.length === 0`, so it told them "None of the selected services
+        could be deployed" — sending them to hunt a failure that never happened.
+
+        The distinction is whether a deploy was ATTEMPTED, which is why
+        deployService now records it.
+        """
+        source = without_comments(APP_JS.read_text(encoding="utf-8"))
+        assert "deployAttempted" in source, "the attempt is not tracked at all"
+        block = source[source.index("function renderWizardOutcome()") :][:1600]
+        assert "!wizardState.deployAttempted" in block, "the skip case is not distinguished"
+
+    def test_the_attempt_is_recorded_where_deploying_happens(self):
+        """A flag nothing sets is worse than no flag — it is always false."""
+        source = without_comments(APP_JS.read_text(encoding="utf-8"))
+        block = source[source.index("async function deployService(") :][:400]
+        assert "wizardState.deployAttempted = true" in block
+
+    def test_the_flag_starts_false_on_a_fresh_wizard(self):
+        """Otherwise a second run of the wizard inherits the first run's state."""
+        source = without_comments(APP_JS.read_text(encoding="utf-8"))
+        assert source.count("deployAttempted: false") >= 2, (
+            "deployAttempted must be initialised in both the declaration and the reset"
+        )
+
     def test_deployed_is_now_read_not_just_written(self):
         """The bead's core evidence: the field had no reader at all."""
         source = without_comments(APP_JS.read_text(encoding="utf-8"))

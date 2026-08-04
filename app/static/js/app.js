@@ -1507,10 +1507,11 @@ const CP = (() => {
     categories: [],
     selectedServices: [],
     deployed: [],
+    deployAttempted: false,
   };
 
   async function initWizard() {
-    wizardState = { step: 1, categories: [], selectedServices: [], deployed: [] };
+    wizardState = { step: 1, categories: [], selectedServices: [], deployed: [], deployAttempted: false };
 
     // Pre-populate from saved preferences
     try {
@@ -1590,10 +1591,21 @@ const CP = (() => {
     const done = wizardState.deployed || [];
     const wanted = wizardState.selectedServices || [];
     if (done.length === 0) {
-      title.textContent = wanted.length ? 'Nothing was deployed' : 'Setup saved';
-      text.textContent = wanted.length
-        ? 'None of the selected services could be deployed. Your choices are saved — check the Fleet page for a worker that is online, then deploy from the catalog.'
-        : 'Your preferences are saved. Nothing was deployed, because no services were selected.';
+      // Three different nothings, and only one is a failure. Skipping step 3
+      // reaches here with services selected and no deploy attempted, which is
+      // not the same as every deploy failing — telling someone their deploys
+      // failed when none were tried sends them hunting a problem that is not
+      // there.
+      if (!wizardState.deployAttempted) {
+        title.textContent = 'Setup saved';
+        text.textContent = wanted.length
+          ? 'Your choices are saved. Nothing was deployed yet — deploy them from the catalog whenever you are ready.'
+          : 'Your preferences are saved. Nothing was deployed, because no services were selected.';
+        return;
+      }
+      title.textContent = 'Nothing was deployed';
+      text.textContent =
+        'None of the selected services could be deployed. Your choices are saved — check the Fleet page for a worker that is online, then deploy from the catalog.';
       return;
     }
     const missed = wanted.filter(s => !done.includes(s));
@@ -1983,6 +1995,11 @@ const CP = (() => {
   }
 
   async function deployService(slug) {
+    // Record that a deploy was ATTEMPTED, separately from whether it worked.
+    // Step 3 offers "Skip to Summary", so a user can select services and reach
+    // the final screen having deployed nothing — and an empty `deployed` list
+    // then looks identical to every deploy having failed.
+    wizardState.deployAttempted = true;
     await _deployToWorkers(slug, _selectedWorkerIds(`.setup-deploy-worker-cb[data-slug="${slug}"]:checked:not(:disabled)`));
   }
 
