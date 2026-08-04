@@ -2858,18 +2858,26 @@ const CP = (() => {
       // something is broken at the exact moment they got paid.
       const WARNING_ICON = '<path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>';
       const PAYOUT_ICON = '<circle cx="12" cy="12" r="10"/><path d="M12 6v12M15 9.5a2.5 2.5 0 00-2.5-1.5h-1a2 2 0 000 4h1a2 2 0 010 4h-1A2.5 2.5 0 019 14.5"/>';
+      // A notice is a caveat about a reading that WORKED — "this figure is
+      // withdrawable balance only", not "this is broken". Same reasoning as the
+      // payout case above: the warning triangle and an "Update credentials"
+      // button would tell the user something is wrong and point them at the one
+      // action that cannot help.
+      const NOTICE_ICON = '<circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/>';
       list.innerHTML = alerts.map(a => {
         const isPayout = a.kind === 'payout';
+        const isNotice = a.kind === 'notice';
+        const icon = isPayout ? PAYOUT_ICON : isNotice ? NOTICE_ICON : WARNING_ICON;
         return `
         <div class="notify-item" data-platform="${escapeHtml(a.platform)}" data-kind="${escapeHtml(a.kind || 'collector')}">
-          <div class="notify-item-icon">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">${isPayout ? PAYOUT_ICON : WARNING_ICON}</svg>
+          <div class="notify-item-icon"${isNotice ? ' style="color:var(--text-muted);"' : ''}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">${icon}</svg>
           </div>
           <div class="notify-item-body">
-            <div class="notify-item-platform">${escapeHtml(a.platform)}${isPayout ? ' — payout?' : ''}</div>
+            <div class="notify-item-platform">${escapeHtml(a.platform)}${isPayout ? ' — payout?' : ''}${isNotice ? ' — note' : ''}</div>
             <div class="notify-item-msg" title="${escapeHtml(a.error)}">${escapeHtml(a.error)}</div>
           </div>
-          ${!isPayout && _isOwner ? `<button class="btn btn-ghost btn-sm" data-action="openCredentialModal" data-stop="1" data-a1="${escapeHtml(a.platform)}" style="font-size:0.65rem; padding:2px 6px; white-space:nowrap; flex-shrink:0;">Update</button>` : ''}
+          ${!isPayout && !isNotice && _isOwner ? `<button class="btn btn-ghost btn-sm" data-action="openCredentialModal" data-stop="1" data-a1="${escapeHtml(a.platform)}" style="font-size:0.65rem; padding:2px 6px; white-space:nowrap; flex-shrink:0;">Update</button>` : ''}
         </div>
       `;
       }).join('');
