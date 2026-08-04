@@ -987,6 +987,9 @@ class TestApiConfig:
         with (
             _auth_owner(),
             patch("app.main.database.set_config_bulk", new_callable=AsyncMock),
+            # Completeness is judged against the MERGED config, so the endpoint
+            # reads it back after writing.
+            patch("app.main.database.get_config", new_callable=AsyncMock, return_value={}),
             patch("app.main.catalog.get_service", return_value=None),
         ):
             resp = client.post("/api/config", json={"data": {"key": "value"}})
@@ -998,6 +1001,11 @@ class TestApiConfig:
         with (
             _auth_owner(),
             patch("app.main.database.set_config_bulk", new_callable=AsyncMock),
+            patch(
+                "app.main.database.get_config",
+                new_callable=AsyncMock,
+                return_value={"grass_access_token": "tok"},
+            ),
             patch("app.main.catalog.get_service", return_value=svc),
             patch("app.main.database.get_deployment", new_callable=AsyncMock, return_value=None),
             patch("app.main.database.save_deployment", new_callable=AsyncMock) as mock_save,
@@ -1012,6 +1020,7 @@ class TestApiConfig:
             _auth_owner(),
             patch("app.main.database.delete_config_keys", new_callable=AsyncMock),
             patch("app.main.catalog.get_service", return_value=svc),
+            patch("app.main.database.get_deployment", new_callable=AsyncMock, return_value=None),
             patch("app.main.database.remove_deployment", new_callable=AsyncMock),
         ):
             resp = client.delete("/api/config/grass")
@@ -1842,6 +1851,13 @@ class TestPeriodicTasks:
             asyncio.run(_check_stale_workers())  # Should not raise
 
     def test_run_collection(self):
+        """CashPilot-55m / -rhn: this test had NO assertions at all.
+
+        It ran _run_collection and checked nothing, so the entire success path
+        — the payout check, the upsert, and the fx-rate snapshot taken with it
+        — could be deleted and the suite would stay green. The only thing it
+        proved was that the function did not raise.
+        """
         from app.collectors.base import EarningsResult
         from app.main import _run_collection
 
@@ -1851,9 +1867,65 @@ class TestPeriodicTasks:
             patch("app.main.database.get_deployments", new_callable=AsyncMock, return_value=[{"slug": "test"}]),
             patch("app.main.database.get_config", new_callable=AsyncMock, return_value={}),
             patch("app.collectors.make_collectors", return_value=[mock_collector]),
-            patch("app.main.database.upsert_earnings", new_callable=AsyncMock),
+            patch("app.main.database.upsert_earnings", new_callable=AsyncMock) as mock_upsert,
+            patch("app.main._detect_payout", new_callable=AsyncMock) as mock_payout,
         ):
             asyncio.run(_run_collection())
+
+        # The reading is actually stored, with the values the collector returned.
+        mock_upsert.assert_awaited_once()
+        kwargs = mock_upsert.await_args.kwargs
+        assert kwargs["platform"] == "test"
+        assert kwargs["balance"] == 5.0
+        assert kwargs["currency"] == "USD"
+        # USD is parity by definition — a stored rate here would let a bad rate
+        # rewrite money the collector reported exactly.
+        assert kwargs["fx_rate_usd"] == 1.0
+        # And the payout branch is on the success path, so it must be reached.
+        mock_payout.assert_awaited_once()
+
+    def test_run_collection_snapshots_the_rate_for_a_non_usd_reading(self):
+        """CashPilot-rhn: nothing asserted what fx_rate_usd was computed as.
+
+        The snapshot is what makes a historical non-USD reading reconstructable
+        later; forcing it to parity for every currency would have gone
+        unnoticed.
+        """
+        from app.collectors.base import EarningsResult
+        from app.main import _run_collection
+
+        mock_collector = AsyncMock()
+        mock_collector.collect.return_value = EarningsResult(platform="test", balance=10.0, currency="MYST")
+        with (
+            patch("app.main.database.get_deployments", new_callable=AsyncMock, return_value=[{"slug": "test"}]),
+            patch("app.main.database.get_config", new_callable=AsyncMock, return_value={}),
+            patch("app.collectors.make_collectors", return_value=[mock_collector]),
+            patch("app.main.database.upsert_earnings", new_callable=AsyncMock) as mock_upsert,
+            patch("app.main._detect_payout", new_callable=AsyncMock),
+            patch("app.main.exchange_rates.to_usd", lambda amount, currency: 0.25 * amount),
+        ):
+            asyncio.run(_run_collection())
+
+        assert mock_upsert.await_args.kwargs["fx_rate_usd"] == 0.25
+
+    def test_run_collection_records_no_rate_when_the_currency_is_unpriced(self):
+        """None, not 1.0. Parity would silently value an unpriced token as USD."""
+        from app.collectors.base import EarningsResult
+        from app.main import _run_collection
+
+        mock_collector = AsyncMock()
+        mock_collector.collect.return_value = EarningsResult(platform="test", balance=10.0, currency="GRASS")
+        with (
+            patch("app.main.database.get_deployments", new_callable=AsyncMock, return_value=[{"slug": "test"}]),
+            patch("app.main.database.get_config", new_callable=AsyncMock, return_value={}),
+            patch("app.collectors.make_collectors", return_value=[mock_collector]),
+            patch("app.main.database.upsert_earnings", new_callable=AsyncMock) as mock_upsert,
+            patch("app.main._detect_payout", new_callable=AsyncMock),
+            patch("app.main.exchange_rates.to_usd", lambda amount, currency: None),
+        ):
+            asyncio.run(_run_collection())
+
+        assert mock_upsert.await_args.kwargs["fx_rate_usd"] is None
 
     def test_run_collection_with_error(self):
         from app.collectors.base import EarningsResult

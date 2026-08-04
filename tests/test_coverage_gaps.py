@@ -630,46 +630,115 @@ class TestMainPerNodeEarnings:
             assert resp.status_code == 200
 
 
-class TestMainSetConfigExternalDeploySkip:
-    """Cover lines 1456, 1460: config set that skips services with images."""
+class TestMainSetConfigCreatesTrackingRows:
+    """An image-backed service DOES get a tracking row from credentials alone.
 
-    def test_set_config_skips_docker_service(self, client):
-        """When all required keys are provided for a docker-image service, don't auto-deploy."""
+    This class previously asserted the opposite — "for a docker-image service,
+    don't auto-deploy" — which is the defect CashPilot-1f8 describes. Collection
+    is driven by deployment rows, so skipping image-backed services meant
+    saving credentials for 12 of the 15 collectors did nothing at all, while
+    Settings promised it was enough.
+
+    The row is a placeholder with an empty container id and status "external".
+    It does not deploy anything; api_deploy replaces it if the user later
+    deploys through CashPilot.
+    """
+
+    def test_an_image_backed_service_gets_a_tracking_row(self, client):
         svc = {"slug": "honeygain", "docker": {"image": "hg:latest"}}
+        merged = {"honeygain_email": "test@test.com", "honeygain_password": "pass"}
         with (
             _auth_owner(),
             patch("app.main.database.set_config_bulk", new_callable=AsyncMock),
+            patch("app.main.database.get_config", new_callable=AsyncMock, return_value=merged),
             patch("app.main.catalog.get_service", return_value=svc),
-            patch("app.main.database.get_deployment", new_callable=AsyncMock),
+            patch("app.main.database.get_deployment", new_callable=AsyncMock, return_value=None),
             patch("app.main.database.save_deployment", new_callable=AsyncMock) as mock_save,
         ):
-            resp = client.post(
-                "/api/config",
-                json={
-                    "data": {
-                        "honeygain_email": "test@test.com",
-                        "honeygain_password": "pass",
-                    }
-                },
-            )
+            resp = client.post("/api/config", json={"data": merged})
+            assert resp.status_code == 200
+            mock_save.assert_called_once()
+            assert mock_save.await_args.kwargs["status"] == "external"
+            assert mock_save.await_args.kwargs["container_id"] == ""
+
+    def test_an_existing_deployment_is_not_overwritten(self, client):
+        """A real deployment must keep its container id and status."""
+        svc = {"slug": "honeygain", "docker": {"image": "hg:latest"}}
+        merged = {"honeygain_email": "test@test.com", "honeygain_password": "pass"}
+        with (
+            _auth_owner(),
+            patch("app.main.database.set_config_bulk", new_callable=AsyncMock),
+            patch("app.main.database.get_config", new_callable=AsyncMock, return_value=merged),
+            patch("app.main.catalog.get_service", return_value=svc),
+            patch(
+                "app.main.database.get_deployment",
+                new_callable=AsyncMock,
+                return_value={"slug": "honeygain", "status": "running", "container_id": "abc"},
+            ),
+            patch("app.main.database.save_deployment", new_callable=AsyncMock) as mock_save,
+        ):
+            resp = client.post("/api/config", json={"data": merged})
             assert resp.status_code == 200
             mock_save.assert_not_called()
 
 
 class TestMainClearConfigWithDockerService:
-    """Cover main.py clear config for docker-based service."""
+    """Clearing credentials removes the tracking placeholder — and nothing else.
 
-    def test_clear_config_docker_service_no_deployment_removed(self, client):
+    The rule is now the deployment's STATUS, not whether the service has an
+    image. Image-backed services DO get an auto-created "external" row when
+    their credentials are saved (that is what makes tracking-only work), so
+    gating on the image would either leave placeholders behind or, worse,
+    delete the row of a container the user really deployed.
+    """
+
+    def test_a_real_deployment_is_never_removed(self, client):
+        """Clearing credentials must not orphan a running container."""
         svc = {"slug": "honeygain", "docker": {"image": "hg:latest"}}
         with (
             _auth_owner(),
             patch("app.main.database.delete_config_keys", new_callable=AsyncMock),
             patch("app.main.catalog.get_service", return_value=svc),
+            patch(
+                "app.main.database.get_deployment",
+                new_callable=AsyncMock,
+                return_value={"slug": "honeygain", "status": "running", "container_id": "abc123"},
+            ),
             patch("app.main.database.remove_deployment", new_callable=AsyncMock) as mock_rm,
         ):
             resp = client.delete("/api/config/honeygain")
             assert resp.status_code == 200
-            # Docker services don't auto-create external deployments, so no removal
+            mock_rm.assert_not_called()
+
+    def test_the_tracking_placeholder_is_removed(self, client):
+        """An "external" row exists only because credentials were saved."""
+        svc = {"slug": "honeygain", "docker": {"image": "hg:latest"}}
+        with (
+            _auth_owner(),
+            patch("app.main.database.delete_config_keys", new_callable=AsyncMock),
+            patch("app.main.catalog.get_service", return_value=svc),
+            patch(
+                "app.main.database.get_deployment",
+                new_callable=AsyncMock,
+                return_value={"slug": "honeygain", "status": "external", "container_id": ""},
+            ),
+            patch("app.main.database.remove_deployment", new_callable=AsyncMock) as mock_rm,
+        ):
+            resp = client.delete("/api/config/honeygain")
+            assert resp.status_code == 200
+            mock_rm.assert_called_once()
+
+    def test_no_deployment_at_all_is_a_no_op(self, client):
+        svc = {"slug": "honeygain", "docker": {"image": "hg:latest"}}
+        with (
+            _auth_owner(),
+            patch("app.main.database.delete_config_keys", new_callable=AsyncMock),
+            patch("app.main.catalog.get_service", return_value=svc),
+            patch("app.main.database.get_deployment", new_callable=AsyncMock, return_value=None),
+            patch("app.main.database.remove_deployment", new_callable=AsyncMock) as mock_rm,
+        ):
+            resp = client.delete("/api/config/honeygain")
+            assert resp.status_code == 200
             mock_rm.assert_not_called()
 
 
