@@ -917,6 +917,11 @@ const CP = (() => {
       ? ` <span class="badge badge-instances" title="${instances} instance${instances > 1 ? 's' : ''}">${instances}x</span>`
       : '';
 
+    // Say why the buttons are dead rather than leaving the user to click one.
+    const unmanagedLabel = svc.unmanaged
+      ? ` <span class="badge badge-category" title="This container was started outside CashPilot, so CashPilot cannot stop, restart or read the logs of it.">Unmanaged</span>`
+      : '';
+
     // Settings gear (owner-only) — opens credential + bonus modal
     const settingsBtn = _isOwner
       ? `<button class="btn btn-icon" data-action="openCredentialModal" data-stop="1" data-a1="${escapeHtml(svc.slug)}" title="Credentials &amp; settings">
@@ -938,7 +943,15 @@ const CP = (() => {
       const inst = details[0] || {};
       const wParam = inst.worker_id != null ? `', ${inst.worker_id}` : `'`;
       const noDocker = !inst.has_docker || inst.is_android;
-      const disabledAttr = noDocker ? ' disabled title="No Docker access"' : '';
+      // Started outside CashPilot — matched by IMAGE, not by a CashPilot label,
+      // so every container command targets a name that does not exist and
+      // answers "404 Container not found" for a row this same screen calls
+      // Running. Offering the button at all is the bug; the disabled title says
+      // why rather than leaving it looking broken.
+      const unmanaged = inst.unmanaged || svc.unmanaged;
+      const disabledAttr = unmanaged
+        ? ' disabled title="Started outside CashPilot — manage it where you started it"'
+        : (noDocker ? ' disabled title="No Docker access"' : '');
       actionBtns = `<div class="action-btns">
           ${claimBtn}
           ${settingsBtn}
@@ -959,7 +972,7 @@ const CP = (() => {
     let html = `
     <tr class="breakdown-row${isMulti ? ' expandable' : ''}" data-slug="${escapeHtml(svc.slug)}"${isMulti ? ` data-action="toggleInstances" data-a1="${escapeHtml(svc.slug)}" data-a2="event" style="cursor:pointer;"` : ''}>
       <td>${nameHtml}<div style="font-size:0.7rem; color:var(--text-muted);">${subtitle}</div></td>
-      <td style="text-align:center;"><span class="badge badge-${statusClass}"><span class="status-dot ${statusClass}"></span> ${statusLabel}</span>${instanceLabel}${outdatedBadge}</td>
+      <td style="text-align:center;"><span class="badge badge-${statusClass}"><span class="status-dot ${statusClass}"></span> ${statusLabel}</span>${instanceLabel}${unmanagedLabel}${outdatedBadge}</td>
       <td style="text-align:center;">${healthBadge}</td>
       <td style="text-align:right; font-weight:600;">${balanceHtml}</td>
       <td style="text-align:right;"><span class="stat-change ${deltaClass}">${deltaStr}</span></td>
@@ -977,7 +990,17 @@ const CP = (() => {
         const nodeLabel = inst.node === 'local' ? 'Local' : escapeHtml(inst.node);
         const wParam = inst.worker_id != null ? `', ${inst.worker_id}` : `'`;
         const iNoDocker = !inst.has_docker || inst.is_android;
-        const disabledAttr = iNoDocker ? ' disabled title="No Docker access"' : '';
+        // The mixed case this whole change is built around. The ROW keeps its
+        // buttons because a managed instance can still be controlled — but the
+        // external instance in that same row cannot, and its sub-row was still
+        // offering Restart/Stop/Logs that answer 404. The per-instance flag has
+        // to be READ here; marking it in the payload and ignoring it at the one
+        // place a mixed service is drawn left the bug exactly where it was.
+        // (CodeRabbit, PR #212.)
+        const iUnmanaged = inst.unmanaged || svc.unmanaged;
+        const disabledAttr = iUnmanaged
+          ? ' disabled title="Started outside CashPilot — manage it where you started it"'
+          : (iNoDocker ? ' disabled title="No Docker access"' : '');
         const subLabel = inst.is_android ? '' : escapeHtml(inst.container_name);
         const cpuCell = inst.is_android ? `↑ ${fmtNetBytes(inst.net_tx_24h)}` : `${inst.cpu || '0'}%`;
         const memCell = inst.is_android ? `↓ ${fmtNetBytes(inst.net_rx_24h)}` : (inst.memory || '0 MB');

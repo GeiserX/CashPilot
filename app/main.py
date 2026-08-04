@@ -204,7 +204,16 @@ async def _get_all_worker_containers(workers: list[dict[str, Any]] | None = None
                             "net_rx_bytes": c.get("net_rx_bytes"),
                             "net_tx_bytes": c.get("net_tx_bytes"),
                             "category": "",
-                            "deployed_by": worker_name,
+                            # The WORKER's answer, not the node name. The image
+                            # matcher sets "external" for a container it found by
+                            # image rather than by CashPilot's own label — one the
+                            # user started themselves. Overwriting it here meant
+                            # that container appeared as an ordinary managed
+                            # service with live Restart/Stop/Logs buttons, and
+                            # every one of them answered "404 Container not
+                            # found" for a row the same screen called Running.
+                            # The node name is already carried by _node.
+                            "deployed_by": c.get("deployed_by") or worker_name,
                             "_node": worker_name,
                             "_worker_id": w.get("id"),
                             "_has_docker": worker_has_docker,
@@ -227,6 +236,9 @@ async def _get_all_worker_containers(workers: list[dict[str, Any]] | None = None
                             "cpu_percent": 0,
                             "memory_mb": 0,
                             "category": "",
+                            # Android apps are enumerated by the worker itself and
+                            # are never CashPilot-managed containers, so there is
+                            # no external/managed distinction to preserve here.
                             "deployed_by": worker_name,
                             "_node": worker_name,
                             "_worker_id": w.get("id"),
@@ -1079,6 +1091,10 @@ async def api_services_deployed(request: Request) -> list[dict[str, Any]]:
                 "container_name": inst.get("name", ""),
                 "has_docker": inst.get("_has_docker", False),
                 "is_android": inst.get("_is_android", False),
+                # Started outside CashPilot: it has no CashPilot label, so the
+                # container commands cannot target it and the UI must not offer
+                # them.
+                "unmanaged": inst.get("deployed_by") == "external",
             }
             if inst.get("_is_android"):
                 detail["net_tx_24h"] = inst.get("_net_tx_24h", 0)
@@ -1091,6 +1107,10 @@ async def api_services_deployed(request: Request) -> list[dict[str, Any]]:
             "slug": slug,
             "name": svc["name"] if svc else slug,
             "container_status": agg["best_status"],
+            # True only when EVERY instance was started outside CashPilot. With
+            # a mix, the managed one can still be controlled, so the row keeps
+            # its buttons and the per-instance flag marks the odd one out.
+            "unmanaged": bool(agg["instances"]) and all(i.get("deployed_by") == "external" for i in agg["instances"]),
             # None, not 0.0, when CashPilot has never read this service.
             #
             # A missing earnings row means "no reading", and rendering it as
