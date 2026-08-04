@@ -49,6 +49,7 @@ from app import (
     preflight,
     producer_state,
     setup_token,
+    version,
 )
 from app.worker_proxy import _pin_url_to_ip, _validate_worker_url
 
@@ -837,7 +838,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="CashPilot",
-    version="0.1.0",
+    version=version.current(),
     lifespan=lifespan,
     # Off by default. FastAPI serves these unauthenticated, and this app's
     # schema is a map of its own admin surface — every route, parameter and
@@ -3411,8 +3412,16 @@ async def api_list_workers(request: Request) -> list[dict[str, Any]]:
     """List all registered workers."""
     _require_auth_api(request)
     workers = await database.list_workers()
+    ui_version = version.current()
     for w in workers:
         _parse_worker_json(w)
+        # Skew is judged here, where the UI's own version is known, rather than
+        # in the browser: the fleet page would otherwise have to learn what the
+        # UI is running and re-implement the comparison. Both sides must be
+        # known releases for this to be True, so an older worker that predates
+        # version reporting reads as unknown, not as a mismatch.
+        w["ui_version"] = ui_version
+        w["version_skew"] = version.skewed(ui_version, (w.get("system_info") or {}).get("version"))
     return workers
 
 

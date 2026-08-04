@@ -101,6 +101,8 @@ jobs:
           file: Dockerfile
           platforms: linux/amd64,linux/arm64
           push: true
+          build-args: |
+            CASHPILOT_VERSION=${{ needs.resolve-tags.outputs.version }}
           tags: ${{ needs.resolve-tags.outputs.ui_tags }}
           cache-from: type=gha,scope=ui
           cache-to: type=gha,mode=max,scope=ui
@@ -175,6 +177,8 @@ jobs:
           file: Dockerfile.worker
           platforms: linux/amd64,linux/arm64
           push: true
+          build-args: |
+            CASHPILOT_VERSION=${{ needs.resolve-tags.outputs.version }}
           tags: ${{ needs.resolve-tags.outputs.worker_tags }}
           cache-from: type=gha,scope=worker
           cache-to: type=gha,mode=max,scope=worker
