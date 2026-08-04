@@ -2195,7 +2195,32 @@ async def api_earnings_net(request: Request, days: int = 30) -> dict[str, Any]:
             }
         )
 
-    result = power.summarise(rows, price_per_kwh=price, currency=currency)
+    # Put gross into the SAME currency as the cost before subtracting.
+    #
+    # gross comes from get_earned_by_platform, which is USD by contract; cost is
+    # computed from a tariff the user entered in power_currency. Subtracting one
+    # from the other produced a number in neither, labelled with the tariff
+    # currency — at ~1.08 USD/EUR that is an 8% error in the direction that
+    # flatters the result, on the figure that decides whether a machine is worth
+    # running.
+    #
+    # When no rate is available the gross is left in USD and the response says
+    # the two could not be reconciled, rather than quietly mixing them.
+    fx_ok = True
+    if currency != "USD":
+        for row in rows:
+            converted = exchange_rates.from_usd(float(row.get("gross") or 0.0), currency)
+            if converted is None:
+                fx_ok = False
+                break
+            row["gross"] = converted
+
+    result = power.summarise(
+        rows, price_per_kwh=price, currency=(currency if fx_ok else "USD")
+    )
+    if not fx_ok:
+        result["fx_unavailable"] = True
+        result["tariff_currency"] = currency
     result["window_days"] = max(1, int(days))
     result["host_tdp_watts"] = host_tdp
     return result

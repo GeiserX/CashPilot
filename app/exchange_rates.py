@@ -160,6 +160,25 @@ def get_all() -> dict[str, Any]:
     }
 
 
+def from_usd(amount: float, currency: str) -> float | None:
+    """Convert a USD amount into *currency*. The inverse of :func:`to_usd`.
+
+    ``_fiat_rates`` stores USD->X rates, so this MULTIPLIES where ``to_usd``
+    divides. Getting that backwards would be worse than not converting at all,
+    which is why the two live next to each other.
+
+    Fiat only: a USD figure has no meaningful expression in a provider's token,
+    and inventing one would put a crypto amount where a currency belongs.
+    Returns None when no rate is available.
+    """
+    if currency == "USD":
+        return amount
+    rate = _fiat_rates.get(currency)
+    if rate and rate > 0:
+        return amount * rate
+    return None
+
+
 def to_usd(amount: float, currency: str) -> float | None:
     """Convert an amount in *currency* to USD.
 

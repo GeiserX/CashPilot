@@ -8,7 +8,7 @@ movement into fabricated earnings.
 from __future__ import annotations
 
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -105,3 +105,77 @@ class TestACryptoPriceMoveCannotFabricateEarnings:
 
         assert "ANYONE" in exchange_rates.CRYPTO_IDS
         assert exchange_rates.CRYPTO_IDS["ANYONE"] == "airtor-protocol"
+
+
+class TestNetEarningsSubtractLikeFromLike:
+    """CashPilot-dlr: an electricity cost in EUR taken off a gross in USD.
+
+    ``gross`` comes from ``get_earned_by_platform``, which is USD by contract.
+    ``cost`` is computed from a tariff the user entered in ``power_currency``.
+    Subtracting one from the other produced a number in neither, labelled with
+    the tariff currency.
+
+    At roughly 1.08 USD/EUR that is an ~8% error, in the direction that flatters
+    the result, on the single figure that decides whether a machine is worth
+    keeping powered on.
+    """
+
+    def _net(self, rate, currency="EUR", gross=100.0):
+        import asyncio
+
+        from app import exchange_rates as fx
+        from app import main
+
+        fx._fiat_rates.clear()
+        if rate is not None:
+            fx._fiat_rates[currency] = rate
+        cfg = {"power_price_per_kwh": "0.20", "power_currency": currency}
+        workers = [{"id": 1, "name": "w", "status": "online", "system_info": '{"network_type":"residential"}'}]
+        conts = [{"slug": "honeygain", "status": "running", "cpu_percent": 4.0, "_worker_id": 1}]
+
+        async def run():
+            with (
+                patch.object(main, "_require_auth_api", lambda r: None),
+                patch.object(main.database, "get_config", AsyncMock(return_value=cfg)),
+                patch.object(main, "_get_all_worker_containers", AsyncMock(return_value=conts)),
+                patch.object(main.database, "list_workers", AsyncMock(return_value=workers)),
+                patch.object(main.database, "get_earned_by_platform", AsyncMock(return_value={"honeygain": gross})),
+            ):
+                return await main.api_earnings_net(MagicMock(), days=30)
+
+        return asyncio.run(run())
+
+    def test_gross_is_converted_into_the_tariff_currency(self):
+        out = self._net(rate=0.92)
+        assert out["total_gross"] == pytest.approx(92.0), "gross was not converted, so net mixes two currencies"
+        assert out["currency"] == "EUR"
+
+    def test_net_is_then_a_real_subtraction(self):
+        out = self._net(rate=0.92)
+        assert out["total_net"] == pytest.approx(out["total_gross"] - out["total_cost"])
+
+    def test_without_a_rate_it_stays_in_usd_and_says_so(self):
+        """Mixing silently is the failure; reporting one currency honestly is not."""
+        out = self._net(rate=None)
+        assert out["total_gross"] == pytest.approx(100.0)
+        assert out["currency"] == "USD"
+        assert out["fx_unavailable"] is True
+        assert out["tariff_currency"] == "EUR"
+
+    def test_a_usd_tariff_needs_no_conversion(self):
+        out = self._net(rate=None, currency="USD")
+        assert out["currency"] == "USD"
+        assert "fx_unavailable" not in out
+
+    def test_the_inverse_rate_direction_is_right(self):
+        """_fiat_rates holds USD->X, so from_usd multiplies where to_usd divides.
+
+        Inverting this would be worse than the bug: at 0.92 it would report 109
+        EUR for 100 USD and flatter the result further.
+        """
+        from app import exchange_rates as fx
+
+        fx._fiat_rates.clear()
+        fx._fiat_rates["EUR"] = 0.92
+        assert fx.from_usd(100.0, "EUR") == pytest.approx(92.0)
+        assert fx.to_usd(92.0, "EUR") == pytest.approx(100.0)
