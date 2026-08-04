@@ -234,7 +234,11 @@ class TestNetEndpoint:
             [{"service": "svc", "status": "running", "cpu_percent": 5.0}],
         )
         assert out["cost_known"] is True
-        assert out["currency"] == "EUR"
+        # USD, not EUR. The tariff is converted into USD before it is subtracted
+        # from a USD gross (CashPilot-dlr); labelling the result EUR while the
+        # gross stayed in USD is exactly the mixing that was fixed. The frontend
+        # renders it in the user's display currency.
+        assert out["currency"] == "USD"
         assert out["services"][0]["net"] is not None
         assert out["window_days"] == 30
 

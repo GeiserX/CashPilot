@@ -2216,7 +2216,41 @@ async def api_earnings_net(request: Request, days: int = 30) -> dict[str, Any]:
             }
         )
 
-    result = power.summarise(rows, price_per_kwh=price, currency=currency)
+    # Convert the TARIFF into USD, rather than the gross into the tariff currency.
+    #
+    # gross comes from get_earned_by_platform, which is USD by contract, while
+    # the tariff is whatever power_currency says. Subtracting one from the other
+    # produced a number in neither, labelled with the tariff currency — at
+    # ~1.08 USD/EUR an 8% error, in the direction that flatters the result, on
+    # the figure that decides whether a machine is worth running.
+    #
+    # Converting the PRICE keeps this endpoint canonical USD like every other
+    # money figure in the API, and the frontend's display-currency layer renders
+    # it in whatever the user reads in. Converting the gross the other way would
+    # have made this one endpoint the exception.
+    price_usd = price
+    fx_ok = True
+    if price and currency != "USD":
+        converted = exchange_rates.to_usd(price, currency)
+        if converted is None:
+            fx_ok = False
+        else:
+            price_usd = converted
+
+    # No rate means the tariff cannot be expressed in the same unit as the
+    # earnings, so there is no honest net. Reporting gross alone is what this
+    # module already does when no tariff is set at all: "a zero cost would
+    # render gross as net and quietly overstate earnings."
+    result = power.summarise(rows, price_per_kwh=(price_usd if fx_ok else 0.0), currency="USD")
+    if not fx_ok:
+        result["cost_known"] = False
+        result["fx_unavailable"] = True
+        result["tariff_currency"] = currency
+        result["cost_unavailable_reason"] = (
+            f"Your tariff is in {currency} and earnings are recorded in USD. No "
+            f"{currency}-to-USD rate is available right now, so a net figure would be "
+            "two different currencies subtracted from each other."
+        )
     result["window_days"] = max(1, int(days))
     result["host_tdp_watts"] = host_tdp
     return result
