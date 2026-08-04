@@ -1238,7 +1238,7 @@ const CP = (() => {
         ${fieldsHtml}
         ${bonusHtml}
         <div style="display:flex; gap:8px; margin-top:14px;">
-          <button class="btn btn-primary btn-sm" data-action="saveCredentialModal">Save</button>
+          <button class="btn btn-primary btn-sm" data-action="saveCredentialModal" data-a1="${escapeHtml(slug)}">Save</button>
           <button class="btn btn-ghost btn-sm" data-action="closeModal" data-a1="cred-modal">Cancel</button>
           <button class="btn btn-ghost btn-sm" style="color:var(--error); margin-left:auto;" data-action="clearServiceCredentials" data-a1="${escapeHtml(slug)}" data-a2="${escapeHtml(col.name)}">Clear</button>
         </div>`;
@@ -1247,7 +1247,7 @@ const CP = (() => {
     }
   }
 
-  async function saveCredentialModal() {
+  async function saveCredentialModal(slug) {
     const inputs = document.querySelectorAll('.cred-modal-input');
     const data = {};
     inputs.forEach(input => {
@@ -1261,8 +1261,36 @@ const CP = (() => {
     }
     try {
       await api('/api/config', { method: 'POST', body: { data } });
-      toast('Credentials saved — collecting now\u2026', 'success');
       closeModal('cred-modal');
+
+      // Say whether the credentials WORK, not just that they were stored.
+      //
+      // app/credential_test.py exists to end the "paste a token, wait up to an
+      // hour, learn from the notification bell" loop, and it produces the
+      // actionable sentence ("... most likely expired — copy a fresh one and try
+      // again"). Nothing called it. What a user with a mistyped password got
+      // instead was the next hourly run's alert, rendered verbatim: "Client
+      // error '401 Unauthorized' for url 'https://.../api/v1/users/tokens' For
+      // more information check: https://developer.mozilla.org/...".
+      //
+      // The endpoint deliberately returns no field that could carry a secret,
+      // so its message is safe to show as-is.
+      if (slug) {
+        toast('Credentials saved — checking them\u2026', 'success');
+        try {
+          const verdict = await api(`/api/services/${encodeURIComponent(slug)}/test-credentials`, { method: 'POST' });
+          toast(verdict.message || (verdict.ok ? 'Credentials work.' : 'Could not verify these credentials.'),
+                verdict.ok ? 'success' : 'error');
+        } catch (err) {
+          // The CHECK failed, which is not the same as the credentials failing.
+          // Saying "rejected" here would send someone to re-copy a token that
+          // was fine.
+          toast(`Saved, but could not check them right now: ${err.message}`, 'warning');
+        }
+      } else {
+        toast('Credentials saved — collecting now\u2026', 'success');
+      }
+
       // Trigger a collection so it picks up new creds immediately
       api('/api/collect', { method: 'POST' }).catch(() => {});
       // Silently refresh the dashboard after collection has time to finish
