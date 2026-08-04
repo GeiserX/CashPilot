@@ -71,6 +71,5 @@ platforms: [docker, windows, macos, android]
 
 collector:
   type: api
-  auth: browser_jwt
   notes: "reCAPTCHA blocks programmatic login. Token extracted from browser Local Storage at app.traffmonetizer.com (same as deployment token)."
   credential_hint: "Log in at <a href='https://app.traffmonetizer.com' target='_blank'>app.traffmonetizer.com</a>, press F12 → Application → Local Storage → <b>token</b> value (a long JWT starting with <code>eyJ</code>)."
