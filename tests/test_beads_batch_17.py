@@ -233,15 +233,38 @@ class TestTheCardsRenderTheUnitTheyAreIn:
 
 
 class TestTheCatalogStillContainsTheCaseThisIsAbout:
-    """If Storj's YAML is ever normalised, this fix stops being exercised."""
+    """The reconciliation must stay exercised, whatever the catalog says today.
+
+    This class first asserted that storj declares ``currency: STORJ`` — pinning
+    the fix to one entry's declaration. CashPilot-bgj then established that the
+    declaration was WRONG: _schema.yml defines cashout.min_amount as "derived
+    from payment.minimum_payout", storj documents ``minimum_payout: "$4"``, and
+    the token it pays in already lives in payment.currency. Correcting storj to
+    USD broke this guard — a test pinned to an incidental fact standing in the
+    way of fixing that very fact.
+
+    What the guard is FOR is that a mismatch between the balance's unit and the
+    declared minimum is still reconciled rather than compared at 1:1. That is
+    asserted directly against the function now, so it holds no matter how the
+    catalog is written.
+    """
 
     def _cashout(self, slug):
         for path in ROOT.joinpath("services").rglob(f"{slug}.yml"):
             return (yaml.safe_load(path.read_text(encoding="utf-8")) or {}).get("cashout") or {}
         return {}
 
-    def test_storj_still_declares_a_token_minimum(self):
-        assert self._cashout("storj").get("currency") == "STORJ"
+    def test_a_declared_token_minimum_is_still_reconciled(self):
+        from app import payouts
+
+        with patch("app.exchange_rates.to_usd", lambda amount, currency: amount * 0.25):
+            assert payouts.min_payout_in({"cashout": {"min_amount": 4.0, "currency": "STORJ"}}, "USD") == pytest.approx(
+                1.0
+            )
+
+    def test_storj_declares_its_minimum_in_the_unit_it_documents(self):
+        """Corrected by bgj: "$4" is dollars, and payment.currency keeps STORJ."""
+        assert self._cashout("storj").get("currency") == "USD"
 
     def test_the_storj_collector_still_reports_usd(self):
         source = (ROOT / "app" / "collectors" / "storj.py").read_text(encoding="utf-8")
