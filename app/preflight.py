@@ -21,7 +21,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from app import egress
+from app import catalog, egress
 
 # Verdicts, worst first. The caller shows the worst one that applies.
 EARNS_NOTHING = "will_earn_nothing"
@@ -149,7 +149,7 @@ def assess(
     # hosted machine, which turns a precondition into a real finding. When it
     # cannot, this stays an explicitly unverified precondition rather than being
     # dressed up as a check.
-    if reqs.get("residential_ip") and reqs.get("vps_ip") is False:
+    if reqs.get("residential_ip") and catalog.vps_allowed(reqs) is False:
         if egress.normalise_network_type(info.get("egress_network_type")) == egress.HOSTING:
             findings.append(
                 {
