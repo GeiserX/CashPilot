@@ -116,8 +116,16 @@ class TestCredentialHintsLiveInTheCatalog:
             if not p.name.startswith("_")
             and ((yaml.safe_load(p.read_text(encoding="utf-8")) or {}).get("collector") or {}).get("credential_hint")
         ]
-        assert len(with_hint) == 13, (
-            f"expected 13 services with a credential hint, found {len(with_hint)}: {sorted(with_hint)}"
+        # A FLOOR at the current count, not equality. Equality made ADDING a
+        # hint look like a regression — anyone-protocol's fingerprint hint
+        # (CashPilot-eat) broke this test by existing. A floor below the current
+        # count would be worse: at >= 13 with 14 present, losing one still
+        # passed, which is the exact regression this guards. So the number
+        # tracks the current total and is bumped deliberately when a hint is
+        # added, which is a one-line edit with a message saying so.
+        assert len(with_hint) >= 14, (
+            f"a credential hint was lost: found {len(with_hint)}, expected at least 14: {sorted(with_hint)}. "
+            "If you ADDED one, raise this floor."
         )
 
     @pytest.mark.parametrize("slug", ["bytelixir", "earnapp", "grass", "packetstream", "proxyrack"])
@@ -338,7 +346,8 @@ class TestTheCatalogDrivenPathsActuallyRun:
         with patch.object(main, "_require_owner", lambda r: None):
             meta = asyncio.run(main.api_collectors_meta(MagicMock()))
         hints = {e["slug"]: e.get("hint") for e in meta if e.get("hint")}
-        assert len(hints) == 13, f"expected 13 services to serve a hint, got {sorted(hints)}"
+        # Floor at the current count — see the note in test_the_hints_survived_the_move.
+        assert len(hints) >= 14, f"a hint stopped being served: got {sorted(hints)}. If you added one, raise this."
         assert "F12" in hints["earnapp"], "the hint text itself did not survive the move to YAML"
 
     def test_a_service_without_a_hint_simply_omits_the_key(self):
@@ -436,7 +445,10 @@ class TestCredentialHintLinksCannotBeUsedForTabnabbing:
             for p in SERVICES.rglob("*.yml")
             if not p.name.startswith("_") and "credential_hint" in p.read_text(encoding="utf-8")
         ]
-        assert len(hints) == 13, f"expected 13 hint-bearing services, found {len(hints)}"
+        # Floor at the current count. The rule this class protects is enforced
+        # per-file by test_every_hint_anchor_is_covered_by_that_rule, which
+        # iterates them all; this count guards against the set shrinking.
+        assert len(hints) >= 14, f"hint-bearing services disappeared: found {len(hints)}. If you added one, raise this."
 
     def test_every_hint_anchor_is_covered_by_that_rule(self):
         """If a hint ever uses target without the sanitiser seeing it, this fails."""
