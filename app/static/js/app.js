@@ -348,14 +348,18 @@ const CP = (() => {
         </div>`;
     }
 
-    // Everything in this card is stated in the CASHOUT currency — the unit the
-    // provider's own minimum is declared in — and deliberately not converted to
-    // the dashboard's display currency. A browser check caught why: the balance
-    // rendered as "£3.73" directly above "to the 20 minimum", so the two halves
-    // of a single comparison were in different units and the progress bar
-    // agreed with neither. Here the numbers exist to be compared against that
-    // threshold, so they have to share its unit.
-    const unit = card.dataset.currency || '';
+    // Everything in this card shares ONE unit, and it is the unit the balance is
+    // actually recorded in — deliberately not the dashboard's display currency.
+    // A browser check caught why: the balance rendered as "£3.73" directly above
+    // "to the 20 minimum", so the two halves of a single comparison were in
+    // different units and the progress bar agreed with neither.
+    //
+    // It used to be the CASHOUT currency from the catalog, which is right only
+    // while the collector reports that same unit. Storj records USD and declares
+    // its minimum in STORJ, so a $3.50 balance rendered as "3.50 STORJ" and
+    // counted down to a threshold in tokens. The endpoint now converts the
+    // minimum into the balance's unit and states what that unit is.
+    const unit = data.balance_currency || card.dataset.currency || '';
     const money = value => (unit ? `${Number(value).toFixed(2)} ${unit}` : formatCurrency(value));
 
     const paid = data.confirmed_payout_count || 0;
@@ -555,8 +559,10 @@ const CP = (() => {
           const coB = b.cashout || {};
           const balA = (breakdownMap[a.slug] && breakdownMap[a.slug].balance) || a.balance || 0;
           const balB = (breakdownMap[b.slug] && breakdownMap[b.slug].balance) || b.balance || 0;
-          va = coA.min_amount > 0 ? (balA / coA.min_amount) : -1;
-          vb = coB.min_amount > 0 ? (balB / coB.min_amount) : -1;
+          // Sorting by "closest to payout" needs the same like-for-like ratio;
+          // otherwise a USD balance over a token minimum sorts nonsensically.
+          va = coA.min_amount_comparable > 0 ? (balA / coA.min_amount_comparable) : -1;
+          vb = coB.min_amount_comparable > 0 ? (balB / coB.min_amount_comparable) : -1;
           break;
         }
         default:
@@ -858,10 +864,23 @@ const CP = (() => {
 
     // Payout progress
     const co = svc.cashout || {};
-    const minAmount = co.min_amount || 0;
-    const eligible = balance > 0 && balance >= minAmount;
-    const pctToMin = minAmount > 0 ? Math.min(100, (balance / minAmount) * 100) : 0;
-    const progressBar = minAmount > 0 ? `
+    // The minimum in the SAME unit as the balance beside it. co.min_amount is
+    // whatever the provider declared — STORJ for a Storj balance recorded in USD
+    // — so comparing against it directly rated a $3.50 balance as 87% of the way
+    // to "4", and the tooltip printed 4 STORJ as "$4.00". null means the two
+    // units cannot be reconciled right now, and no bar is better than a wrong one.
+    // `?? 0` here would defeat the endpoint's own three-valued answer: null
+    // means the threshold could not be brought into the balance's unit, and
+    // coercing it to zero rates EVERY positive balance as eligible — the exact
+    // "unknown read as a definite yes" this whole change exists to remove.
+    const minAmount = co.min_amount_comparable;
+    const comparable = typeof minAmount === 'number';
+    // Eligibility is the endpoint's to decide; it is the only side that knows
+    // whether a rate was available. Recomputing it here is what let the two
+    // disagree.
+    const eligible = co.eligible === true;
+    const pctToMin = comparable && minAmount > 0 ? Math.min(100, (balance / minAmount) * 100) : 0;
+    const progressBar = comparable && minAmount > 0 ? `
       <div class="payout-progress" title="${formatCurrency(balance, currency)} / ${formatCurrency(minAmount, currency)}" style="min-width:60px;">
         <div class="payout-progress-bar ${eligible ? 'eligible' : ''}" style="width:${pctToMin.toFixed(0)}%"></div>
       </div>
@@ -1335,24 +1354,42 @@ const CP = (() => {
       }
 
       const co = svc.cashout || {};
+      // Three-valued, exactly as the endpoint reports it. `eligible` false and
+      // `eligible` null are different answers — "you are below the minimum" and
+      // "we cannot tell" — and rendering the second as the first tells the user
+      // something we do not know.
       const eligible = co.eligible;
-      const minAmount = co.min_amount || 0;
+      const eligibilityUnknown = eligible == null;
+      // Same reconciliation as the service row: compare and render in the unit
+      // the balance is in, never the catalog's declared cashout unit.
+      const minAmount = co.min_amount_comparable;
+      const comparable = typeof minAmount === 'number';
       const currency = svc.currency || 'USD';
 
       if (title) title.textContent = `Claim — ${svc.name}`;
 
-      const statusIcon = eligible
+      const unknownIcon = '<svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="8" y1="12" x2="16" y2="12"/></svg>';
+      const statusIcon = eligibilityUnknown
+        ? unknownIcon
+        : eligible
         ? '<svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--success)" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="16 8 10 16 7 13"/></svg>'
         : '<svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--warning)" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>';
 
-      const statusText = eligible
+      const statusText = eligibilityUnknown
+        ? `<span style="color:var(--text-muted); font-weight:600; font-size:1.1rem;">Cannot tell yet</span>
+           <div style="color:var(--text-muted); font-size:0.85rem; margin-top:6px;">
+             This provider's minimum is set in ${escapeHtml(String(co.min_amount_currency || 'another currency'))} and the balance is
+             recorded in ${escapeHtml(String(currency))}. Without an exchange rate the two cannot be compared, so
+             CashPilot will not guess. Check the provider's own dashboard.
+           </div>`
+        : eligible
         ? `<span style="color:var(--success); font-weight:600; font-size:1.1rem;">Eligible for payout!</span>`
         : `<span style="color:var(--warning); font-weight:600; font-size:1.1rem;">Below minimum payout</span>`;
 
-      const pctToMin = minAmount > 0 ? Math.min(100, (svc.balance / minAmount) * 100) : 0;
-      const remaining = Math.max(0, minAmount - svc.balance);
+      const pctToMin = comparable && minAmount > 0 ? Math.min(100, (svc.balance / minAmount) * 100) : 0;
+      const remaining = comparable ? Math.max(0, minAmount - svc.balance) : 0;
 
-      const progressSection = minAmount > 0 ? `
+      const progressSection = comparable && minAmount > 0 ? `
         <div style="margin: 20px 0;">
           <div style="display:flex; justify-content:space-between; font-size:0.85rem; margin-bottom:6px;">
             <span>Current: <strong>${formatCurrency(svc.balance, currency)}</strong></span>
