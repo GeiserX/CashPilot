@@ -348,14 +348,18 @@ const CP = (() => {
         </div>`;
     }
 
-    // Everything in this card is stated in the CASHOUT currency — the unit the
-    // provider's own minimum is declared in — and deliberately not converted to
-    // the dashboard's display currency. A browser check caught why: the balance
-    // rendered as "£3.73" directly above "to the 20 minimum", so the two halves
-    // of a single comparison were in different units and the progress bar
-    // agreed with neither. Here the numbers exist to be compared against that
-    // threshold, so they have to share its unit.
-    const unit = card.dataset.currency || '';
+    // Everything in this card shares ONE unit, and it is the unit the balance is
+    // actually recorded in — deliberately not the dashboard's display currency.
+    // A browser check caught why: the balance rendered as "£3.73" directly above
+    // "to the 20 minimum", so the two halves of a single comparison were in
+    // different units and the progress bar agreed with neither.
+    //
+    // It used to be the CASHOUT currency from the catalog, which is right only
+    // while the collector reports that same unit. Storj records USD and declares
+    // its minimum in STORJ, so a $3.50 balance rendered as "3.50 STORJ" and
+    // counted down to a threshold in tokens. The endpoint now converts the
+    // minimum into the balance's unit and states what that unit is.
+    const unit = data.balance_currency || card.dataset.currency || '';
     const money = value => (unit ? `${Number(value).toFixed(2)} ${unit}` : formatCurrency(value));
 
     const paid = data.confirmed_payout_count || 0;
@@ -555,8 +559,10 @@ const CP = (() => {
           const coB = b.cashout || {};
           const balA = (breakdownMap[a.slug] && breakdownMap[a.slug].balance) || a.balance || 0;
           const balB = (breakdownMap[b.slug] && breakdownMap[b.slug].balance) || b.balance || 0;
-          va = coA.min_amount > 0 ? (balA / coA.min_amount) : -1;
-          vb = coB.min_amount > 0 ? (balB / coB.min_amount) : -1;
+          // Sorting by "closest to payout" needs the same like-for-like ratio;
+          // otherwise a USD balance over a token minimum sorts nonsensically.
+          va = coA.min_amount_comparable > 0 ? (balA / coA.min_amount_comparable) : -1;
+          vb = coB.min_amount_comparable > 0 ? (balB / coB.min_amount_comparable) : -1;
           break;
         }
         default:
@@ -858,7 +864,12 @@ const CP = (() => {
 
     // Payout progress
     const co = svc.cashout || {};
-    const minAmount = co.min_amount || 0;
+    // The minimum in the SAME unit as the balance beside it. co.min_amount is
+    // whatever the provider declared — STORJ for a Storj balance recorded in USD
+    // — so comparing against it directly rated a $3.50 balance as 87% of the way
+    // to "4", and the tooltip printed 4 STORJ as "$4.00". null means the two
+    // units cannot be reconciled right now, and no bar is better than a wrong one.
+    const minAmount = co.min_amount_comparable ?? 0;
     const eligible = balance > 0 && balance >= minAmount;
     const pctToMin = minAmount > 0 ? Math.min(100, (balance / minAmount) * 100) : 0;
     const progressBar = minAmount > 0 ? `
@@ -1336,7 +1347,9 @@ const CP = (() => {
 
       const co = svc.cashout || {};
       const eligible = co.eligible;
-      const minAmount = co.min_amount || 0;
+      // Same reconciliation as the service row: compare and render in the unit
+      // the balance is in, never the catalog's declared cashout unit.
+      const minAmount = co.min_amount_comparable ?? 0;
       const currency = svc.currency || 'USD';
 
       if (title) title.textContent = `Claim — ${svc.name}`;

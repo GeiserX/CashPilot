@@ -78,6 +78,56 @@ def min_payout(service: dict[str, Any] | None) -> float | None:
     return value
 
 
+def min_payout_currency(service: dict[str, Any] | None) -> str | None:
+    """The unit ``min_payout`` is expressed in, straight from the catalog."""
+    if not service:
+        return None
+    raw = (service.get("cashout") or {}).get("currency")
+    text = str(raw or "").strip().upper()
+    return text or None
+
+
+def min_payout_in(service: dict[str, Any] | None, currency: str | None) -> float | None:
+    """The provider's minimum, expressed in ``currency``.
+
+    The minimum is declared in whatever unit the provider cashes out in, and the
+    balance is recorded in whatever unit the collector reports. For thirteen of
+    the fifteen collectors those agree, which is why nothing noticed. For Storj
+    the collector reports USD (its API gives cents) while the catalog declares
+    ``currency: STORJ, min_amount: 4.0``, and for anyone-protocol it is USD
+    against ANYONE — so a $3.50 balance was compared against 4 STORJ as though
+    the two were the same number, and the card told the user they had "0.50 to
+    go" toward a threshold in a different unit entirely.
+
+    ``None`` when the minimum is undocumented, when either unit is unknown, or
+    when no rate is available. Unknown is not zero and not "eligible": a guess
+    here sends someone to a withdrawal page that refuses them.
+    """
+    minimum = min_payout(service)
+    if minimum is None:
+        return None
+    declared = min_payout_currency(service)
+    target = str(currency or "").strip().upper()
+    # No declared unit is the common case — most catalog entries omit it because
+    # the provider pays in the same unit the collector reports. Taking the
+    # minimum at face value is what the code already did, and is right whenever
+    # the two agree; there is nothing better available when one is unstated.
+    if not declared or not target or declared == target:
+        return minimum
+    if minimum == 0:
+        # A documented "no minimum" is unit-free: zero of anything is zero.
+        return 0.0
+
+    # Imported here, not at module scope: this module is otherwise pure and is
+    # imported by tests that must not reach for a rate table.
+    from app import exchange_rates
+
+    in_usd = minimum if declared == "USD" else exchange_rates.to_usd(minimum, declared)
+    if in_usd is None:
+        return None
+    return in_usd if target == "USD" else exchange_rates.from_usd(in_usd, target)
+
+
 def looks_like_payout(previous: float, current: float, threshold: float | None) -> bool:
     """Did this balance fall far enough to look like a cashout?
 
@@ -175,6 +225,7 @@ def project(
     current_balance: float,
     service: dict[str, Any] | None,
     history: list[dict[str, Any]] | None,
+    balance_currency: str | None = None,
 ) -> dict[str, Any]:
     """How long until this can be cashed out?
 
@@ -182,7 +233,13 @@ def project(
     and "this is not earning" are different problems with different fixes, and
     collapsing them into one shrug helps nobody.
     """
-    threshold = min_payout(service)
+    # The threshold has to be in the BALANCE's unit, not the provider's. For
+    # Storj the collector records USD and the catalog declares the minimum in
+    # STORJ, so `remaining = 4.0 - 3.50` produced "0.50 to go" where the two
+    # numbers were dollars and tokens. min_payout_in returns None when they
+    # cannot be reconciled, which every branch below already treats as "no
+    # documented minimum" — no estimate rather than a wrong one.
+    threshold = min_payout_in(service, balance_currency)
     balance = float(current_balance or 0.0)
 
     if threshold is None:

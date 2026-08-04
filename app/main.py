@@ -1891,6 +1891,12 @@ async def api_earnings_breakdown(request: Request) -> list[dict[str, Any]]:
         except (TypeError, ValueError):
             min_amount = None
         balance = float(row["balance"])
+        # The minimum in the same unit as this balance. The catalog declares it
+        # in whatever the provider cashes out in, which for Storj (USD balance,
+        # STORJ minimum) and anyone-protocol is not what the collector reports —
+        # so `balance >= min_amount` was comparing two different currencies at
+        # 1:1, and told the user they were eligible when they were not.
+        comparable_min = payouts.min_payout_in(svc, row.get("currency"))
         prev_balance = float(row.get("prev_balance", 0))
         delta = balance - prev_balance
 
@@ -1921,9 +1927,17 @@ async def api_earnings_breakdown(request: Request) -> list[dict[str, Any]]:
                 #   minimum                eligibility would send the user to a
                 #                          page that refuses them.
                 "eligible": (
-                    False if not cashout else (None if min_amount is None else (balance > 0 and balance >= min_amount))
+                    False
+                    if not cashout
+                    else (None if comparable_min is None else (balance > 0 and balance >= comparable_min))
                 ),
                 "min_amount": min_amount,
+                # The threshold in the same unit as the balance above, or None
+                # when the two cannot be reconciled. Eligibility is decided on
+                # this one; min_amount stays as the catalog declares it so the
+                # provider's own wording is still available to the UI.
+                "min_amount_comparable": comparable_min,
+                "min_amount_currency": payouts.min_payout_currency(svc),
                 "method": cashout.get("method", "redirect"),
                 "dashboard_url": cashout.get("dashboard_url", ""),
                 "notes": cashout.get("notes", ""),
@@ -2476,13 +2490,36 @@ async def api_payout_progress(request: Request, slug: str) -> dict[str, Any]:
 
     balance = await database.get_latest_balance(slug)
     history = await database.get_balance_history(slug, days=30)
+    # The unit the balance is recorded in, taken from the newest reading we
+    # already fetched rather than a second query. None when nothing has ever
+    # been collected, which min_payout_in reads as "cannot reconcile" and so
+    # leaves the declared minimum alone.
+    balance_currency = (history[-1].get("currency") if history else None) or None
     confirmed = await database.get_payouts(platform=slug, confirmed_only=True)
 
     known = balance is not None
     current = float(balance or 0.0)
+    # The card renders every figure here in ONE unit and asks the user to compare
+    # them against the provider's minimum. The balance is in whatever the
+    # collector reports and the minimum in whatever the provider cashes out in;
+    # for Storj and anyone-protocol those differ, so "3.50 STORJ" was really
+    # $3.50 and "0.50 to go" counted down to a threshold in another unit.
+    # Expressing the minimum in the BALANCE's unit keeps the comparison honest
+    # and leaves the balance itself untouched.
+    minimum = payouts.min_payout_in(service, balance_currency)
+    declared_currency = payouts.min_payout_currency(service)
+    comparable = minimum is not None or payouts.min_payout(service) is None
     return {
         "slug": slug,
         "current_balance": round(current, 6) if known else None,
+        # What the numbers above are actually in, so nothing has to assume.
+        "balance_currency": balance_currency,
+        "min_amount": minimum,
+        "min_amount_currency": balance_currency if minimum is not None else declared_currency,
+        # False only when a real minimum exists and could not be brought into
+        # the balance's unit. The card hides the comparison rather than drawing
+        # a bar out of two different currencies.
+        "comparable": comparable,
         # Lifetime counts CONFIRMED payouts only. A probable one folded in here
         # would let a single misread drop inflate earnings forever, invisibly.
         #
@@ -2500,7 +2537,7 @@ async def api_payout_progress(request: Request, slug: str) -> dict[str, Any]:
         # null-check onto every caller. The misleading part was never this
         # field; it was the card rendering a 0%-of-minimum bar from it, which
         # is fixed where the card is drawn.
-        "projection": payouts.project(current, service, history),
+        "projection": payouts.project(current, service, history, balance_currency),
     }
 
 
