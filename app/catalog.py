@@ -197,3 +197,24 @@ def critical_volume_targets(slug: str) -> dict[str, str] | None:
         if target:
             targets[str(target)] = str(entry.get("holds") or "Irreplaceable service state.")
     return targets
+
+
+def vps_allowed(requirements: dict[str, Any] | None) -> bool | None:
+    """Whether a VPS is permitted, applying the schema's documented default.
+
+    ``services/_schema.yml`` states that ``vps_ip`` defaults to the opposite of
+    ``residential_ip``. Two consumers read this one fact and disagreed:
+    ``scripts/generate_readme_tables.py`` applied the default (so the catalog
+    page tells the user "VPS not allowed"), while ``app/preflight.py`` tested
+    ``reqs.get("vps_ip") is False`` — demanding the literal boolean, so an
+    absent key never entered the branch and 21 services that the docs describe
+    as residential-only produced no warning at all before a deploy onto a
+    hosting worker.
+
+    Returns None when neither field is set: unknown, not permitted.
+    """
+    reqs = requirements or {}
+    if reqs.get("vps_ip") is not None:
+        return bool(reqs["vps_ip"])
+    residential = reqs.get("residential_ip")
+    return None if residential is None else not residential

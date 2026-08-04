@@ -50,17 +50,17 @@ def _yes_no(value: object) -> str:
 
 
 def _vps_allowed(reqs: dict) -> object:
-    """Whether a VPS is permitted, applying the schema's documented default.
+    """Delegates to app.catalog.vps_allowed.
 
-    services/_schema.yml states vps_ip defaults to the opposite of
-    residential_ip. Using a DOCUMENTED default is not a guess; ignoring it and
-    printing "?" for two thirds of the catalog would be less informative and
-    less true.
+    This function and app/preflight.py used to interpret `vps_ip` differently —
+    this one applied the schema's documented default, preflight demanded the
+    literal boolean — so the catalog page said "VPS not allowed" for 21
+    services that preflight then deployed onto a hosting worker without a word.
+    One reader now, so they cannot drift apart again.
     """
-    if reqs.get("vps_ip") is not None:
-        return reqs["vps_ip"]
-    residential = reqs.get("residential_ip")
-    return None if residential is None else not residential
+    from app.catalog import vps_allowed
+
+    return vps_allowed(reqs)
 
 
 def _devices(value: object) -> str:
