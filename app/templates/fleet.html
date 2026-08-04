@@ -176,7 +176,10 @@ CASHPILOT_WORKER_NAME=server-name</code>
 
     const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c =>
       ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]);
-    const money = v => (v == null ? '—' : Number(v).toFixed(2));
+    // null is genuinely unknown (a machine not reporting, or no tariff), and an
+    // em dash says so. Everything else is USD from the API and is rendered in
+    // whatever currency the viewer reads in.
+    const money = v => (v == null ? '—' : CP.formatCurrency(v));
 
     const rows = machines.map(m => {
       const losing = m.verdict === 'losing_money';
