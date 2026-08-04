@@ -43,7 +43,10 @@ earnings:
 cashout:
   method: manual
   dashboard_url: "https://home.runonflux.io"
-  min_amount: 0
+  # Undocumented: the provider does not publish a minimum. NOT 0 —
+  # 0 means 'no minimum, cash out anything', which would tell the
+  # user they can withdraw now and disables payout detection.
+  min_amount: null
   currency: FLUX
 
 platforms: [linux]
