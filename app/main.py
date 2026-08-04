@@ -1069,8 +1069,17 @@ async def api_services_deployed(request: Request) -> list[dict[str, Any]]:
             }
         agg = slug_agg[slug]
         agg["instances"].append(s)
-        agg["total_cpu"] += float(s.get("cpu_percent", 0))
-        agg["total_mem"] += float(s.get("memory_mb", 0))
+        # Unknown instances are counted separately rather than summed as zero:
+        # averaging a failed stats read into the total drags the figure toward
+        # zero and makes a busy service look idle. `.get(key, 0)` does not help
+        # here — the key EXISTS with value None, so the default never applies.
+        cpu, mem = s.get("cpu_percent"), s.get("memory_mb")
+        if cpu is None or mem is None:
+            agg["unknown_stats"] = agg.get("unknown_stats", 0) + 1
+        else:
+            agg["total_cpu"] += float(cpu)
+            agg["total_mem"] += float(mem)
+            agg["measured"] = agg.get("measured", 0) + 1
         cur = s.get("status", "unknown")
         if _STATUS_PRIORITY.get(cur, 9) < _STATUS_PRIORITY.get(agg["best_status"], 9):
             agg["best_status"] = cur
@@ -1087,8 +1096,11 @@ async def api_services_deployed(request: Request) -> list[dict[str, Any]]:
                 "node": inst.get("_node", "unknown"),
                 "worker_id": inst.get("_worker_id"),
                 "status": inst.get("status", "unknown"),
-                "cpu": f"{float(inst.get('cpu_percent', 0)):.2f}",
-                "memory": f"{float(inst.get('memory_mb', 0)):.1f} MB",
+                # None reaches the UI as null, which renders as an em dash. A
+                # formatted "0.00" would be indistinguishable from a real idle
+                # container.
+                "cpu": None if inst.get("cpu_percent") is None else f"{float(inst['cpu_percent']):.2f}",
+                "memory": None if inst.get("memory_mb") is None else f"{float(inst['memory_mb']):.1f} MB",
                 "container_name": inst.get("name", ""),
                 "has_docker": inst.get("_has_docker", False),
                 "is_android": inst.get("_is_android", False),
@@ -1128,8 +1140,14 @@ async def api_services_deployed(request: Request) -> list[dict[str, Any]]:
             "balance": balance_map.get(slug),
             "balance_known": slug in balance_map,
             "currency": currency_map.get(slug, "USD"),
-            "cpu": f"{agg['total_cpu']:.2f}",
-            "memory": f"{agg['total_mem']:.1f} MB",
+            # None when NOTHING could be measured. A row whose every instance
+            # failed its stats read must not show 0.00 — that is the same
+            # fabricated idle as the per-instance case. When some instances were
+            # readable the total is real, and stats_unknown says how many were
+            # left out of it.
+            "cpu": f"{agg['total_cpu']:.2f}" if agg.get("measured") else None,
+            "memory": f"{agg['total_mem']:.1f} MB" if agg.get("measured") else None,
+            "stats_unknown": agg.get("unknown_stats", 0),
             "image": agg["image"],
             "category": agg["instances"][0].get("category", ""),
             "health_score": health.get("score"),
@@ -2307,6 +2325,12 @@ async def api_earnings_net(request: Request, days: int = 30) -> dict[str, Any]:
                 # No marginal power cost to the user on this host, so charge
                 # nothing rather than computing watts and multiplying by zero.
                 unmetered_services.add(svc)
+                continue
+            # A container whose CPU could not be read contributes no estimate
+            # rather than an estimate built from a fabricated 0%. `or 0.0` below
+            # would silently turn "unmeasurable" into "idle", which is how a
+            # busy service ends up costing nothing on the running-costs card.
+            if c.get("cpu_percent") is None:
                 continue
             watts_by_service[svc] = watts_by_service.get(svc, 0.0) + power.estimate_watts(
                 float(c.get("cpu_percent") or 0.0), host_tdp_watts=tdp, container_count=count

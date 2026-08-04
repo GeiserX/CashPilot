@@ -867,15 +867,28 @@ const CP = (() => {
     if (isExternal) {
       cpuStr = '--';
       memStr = '--';
+    } else if (svc.cpu == null || svc.memory == null) {
+      // Nothing could be measured: every instance's Docker stats call failed.
+      // `|| '0'` used to render that as a confident 0%, which reads as idle for
+      // a container that may be working hard (CashPilot-zdi).
+      const why = 'Docker could not report stats for this service';
+      cpuStr = `<span title="${why}">—</span>`;
+      memStr = `<span title="${why}">—</span>`;
     } else if (isMulti && instances > 0) {
-      const avgCpu = (parseFloat(svc.cpu) / instances).toFixed(2);
-      const totalMem = parseFloat(svc.memory);
-      const avgMem = (totalMem / instances).toFixed(1);
-      cpuStr = `<span title="Average across ${instances} instances">~${avgCpu}%</span>`;
-      memStr = `<span title="Average across ${instances} instances">~${avgMem} MB</span>`;
+      // Averaged over the instances that WERE measured. Dividing by the full
+      // instance count when some failed would drag the average toward zero for
+      // the same reason.
+      const measured = Math.max(1, instances - (svc.stats_unknown || 0));
+      const avgCpu = (parseFloat(svc.cpu) / measured).toFixed(2);
+      const avgMem = (parseFloat(svc.memory) / measured).toFixed(1);
+      const note = (svc.stats_unknown || 0) > 0
+        ? ` (${svc.stats_unknown} instance${svc.stats_unknown > 1 ? 's' : ''} could not be measured)`
+        : '';
+      cpuStr = `<span title="Average across ${measured} instance${measured > 1 ? 's' : ''}${note}">~${avgCpu}%</span>`;
+      memStr = `<span title="Average across ${measured} instance${measured > 1 ? 's' : ''}${note}">~${avgMem} MB</span>`;
     } else {
-      cpuStr = `${svc.cpu || '0'}%`;
-      memStr = svc.memory || '0 MB';
+      cpuStr = `${svc.cpu}%`;
+      memStr = svc.memory;
     }
 
     // Payout progress
@@ -1002,8 +1015,15 @@ const CP = (() => {
           ? ' disabled title="Started outside CashPilot — manage it where you started it"'
           : (iNoDocker ? ' disabled title="No Docker access"' : '');
         const subLabel = inst.is_android ? '' : escapeHtml(inst.container_name);
-        const cpuCell = inst.is_android ? `↑ ${fmtNetBytes(inst.net_tx_24h)}` : `${inst.cpu || '0'}%`;
-        const memCell = inst.is_android ? `↓ ${fmtNetBytes(inst.net_rx_24h)}` : (inst.memory || '0 MB');
+        // `|| '0'` would render an unmeasurable container as a confident 0%.
+        // The endpoint sends null when the Docker stats call failed, and an em
+        // dash is the only honest rendering of that (CashPilot-zdi).
+        const cpuCell = inst.is_android
+          ? `↑ ${fmtNetBytes(inst.net_tx_24h)}`
+          : (inst.cpu == null ? '<span title="Docker could not report this container\'s stats">—</span>' : `${inst.cpu}%`);
+        const memCell = inst.is_android
+          ? `↓ ${fmtNetBytes(inst.net_rx_24h)}`
+          : (inst.memory == null ? '<span title="Docker could not report this container\'s stats">—</span>' : inst.memory);
         html += `
         <tr class="instance-row" data-parent="${escapeHtml(svc.slug)}" style="display:none;">
           <td style="padding-left:28px;">

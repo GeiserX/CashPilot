@@ -383,9 +383,13 @@ async def _refresh_gauges() -> None:
                 m["container_info"].labels(service=slug, node=name, status=c_status).set(1)
                 key = (c_status, name)
                 container_counts[key] = container_counts.get(key, 0) + 1
-                cpu = c.get("cpu_percent", 0)
-                mem = c.get("memory_mb", 0)
-                if cpu or mem:
+                cpu = c.get("cpu_percent")
+                mem = c.get("memory_mb")
+                # A failed stats read is None now, and publishing it as 0 would
+                # put a flat zero line on a dashboard for a container nobody
+                # could measure. Absent from the scrape is the honest answer —
+                # Prometheus renders a gap, not a floor.
+                if cpu is not None and mem is not None and (cpu or mem):
                     m["container_cpu_percent"].labels(service=slug, node=name).set(cpu)
                     m["container_memory_mb"].labels(service=slug, node=name).set(mem)
         m["worker_containers_count"].labels(worker=name).set(container_count)
