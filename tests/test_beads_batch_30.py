@@ -125,8 +125,8 @@ class TestTheNumberInTheMessageCannotDrift:
 
     def test_the_worker_really_discards_after_that_many(self):
         """The claim in the message is about worker behaviour, so check it there."""
-        from app import worker_api
+        from pathlib import Path
 
-        source = (worker_api.__file__ and open(worker_api.__file__, encoding="utf-8").read()) or ""
+        source = (Path(__file__).resolve().parents[1] / "app" / "worker_api.py").read_text(encoding="utf-8")
         assert "_consecutive_auth_failures >= _AUTH_FAILURE_DISCARD_AFTER" in source
         assert "_discard_worker_key(" in source
