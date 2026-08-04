@@ -23,6 +23,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          # The same tags test.yml needs. tests/test_compose_image_pins.py
+          # compares the pinned image tag against the newest RELEASED version,
+          # and fails loudly rather than skipping when it finds no tags — so
+          # without this the whole release is blocked by a test that is working
+          # exactly as designed. It blocked v1.11.4 after six merges.
+          fetch-depth: 0
+          fetch-tags: true
       - uses: actions/setup-python@v7
         with:
           python-version: '3.12'

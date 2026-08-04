@@ -124,3 +124,68 @@ class TestTheComposePinTracksReleases:
         text = (PROJECT_ROOT / "docker-compose.yml").read_text(encoding="utf-8")
         header = text[: text.index("services:")]
         assert "PINNED" in header or "pinned" in header
+
+
+class TestEveryWorkflowThatRunsTheSuiteFetchesTags:
+    """The drift test above fails loudly when it finds no tags. That is right —
+    a silent skip is how the pin rotted to 1.4 in the first place — but it means
+    any workflow running pytest without tags cannot pass.
+
+    test.yml was given `fetch-tags: true` when the drift test was written.
+    release.yml was not, so its "Verify CI passes" job failed and blocked the
+    release of six merged fixes. The test was working exactly as designed; the
+    workflow was the thing that was wrong. This makes the requirement explicit
+    so a third workflow cannot repeat it.
+    """
+
+    @staticmethod
+    def _runs_the_drift_test(command: str) -> bool:
+        """Whether a pytest invocation would actually collect the drift test.
+
+        A marker or keyword filter means it would not. collector-live-check.yml
+        runs `pytest tests/ -m live`, and no test here carries that marker — so
+        requiring tags there would be a rule about a problem that workflow
+        cannot have. The first version of this guard flagged it, which is how
+        the distinction got noticed.
+        """
+        if "pytest" not in command:
+            return False
+        return " -m " not in command and " -k " not in command
+
+    def _workflows_running_pytest(self):
+        import yaml
+
+        out = []
+        for path in sorted((PROJECT_ROOT / ".github" / "workflows").glob("*.yml")):
+            text = path.read_text(encoding="utf-8")
+            if "pytest" not in text:
+                continue
+            out.append((path.name, yaml.safe_load(text)))
+        return out
+
+    def test_at_least_two_workflows_run_the_suite(self):
+        """Guards against this passing because the glob found nothing."""
+        names = [n for n, _ in self._workflows_running_pytest()]
+        assert len(names) >= 2, f"only {names} appear to run pytest — the scan is not seeing the workflows"
+
+    def test_a_marker_filtered_run_is_not_required_to_fetch_tags(self):
+        """The control that keeps this rule honest rather than merely strict."""
+        assert not self._runs_the_drift_test("python -m pytest tests/ -m live -q")
+        assert self._runs_the_drift_test("uv run pytest")
+        assert self._runs_the_drift_test("pytest tests/ -v --tb=short")
+
+    def test_each_such_job_checks_out_with_tags(self):
+        offenders = []
+        for name, doc in self._workflows_running_pytest():
+            for job_name, job in (doc.get("jobs") or {}).items():
+                steps = job.get("steps") or []
+                if not any(self._runs_the_drift_test(str(step.get("run", ""))) for step in steps):
+                    continue
+                checkouts = [s for s in steps if str(s.get("uses", "")).startswith("actions/checkout")]
+                for step in checkouts:
+                    if not (step.get("with") or {}).get("fetch-tags"):
+                        offenders.append(f"{name}:{job_name}")
+        assert not offenders, (
+            f"these run pytest without fetching tags, so the compose-pin drift test fails: {offenders}. "
+            "Add `fetch-depth: 0` and `fetch-tags: true` to the checkout."
+        )
