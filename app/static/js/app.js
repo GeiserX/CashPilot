@@ -1147,8 +1147,20 @@ const CP = (() => {
       if (title) title.textContent = `${col.name} — Credentials`;
 
       const secrets = config._secrets || {};
-      const fieldsHtml = col.fields.filter(f => f.required).map(f => {
+      // EVERY field, not just the required ones.
+      //
+      // Filtering to required hid exactly the credentials this UI recommends.
+      // Bytelixir's session cookie expires in about two hours; its remember_web
+      // and xsrf_token cookies last a year and are what stop collection dying
+      // the same afternoon — and both are optional, so the credential-health
+      // panel said "a longer-lived credential exists for this service" while
+      // the modal it links to offered nowhere to put it.
+      //
+      // Storj is worse: its only field is optional, so the modal rendered no
+      // inputs at all.
+      const fieldsHtml = col.fields.map(f => {
         const inputType = f.secret ? 'password' : 'text';
+        const optionalSuffix = f.required ? '' : ' <span style="color:var(--text-muted); font-weight:400;">(optional)</span>';
         // Secret inputs are write-only: empty, with a placeholder that reflects
         // whether a value is already stored (per _secrets). Non-secret fields keep
         // their plain placeholder.
@@ -1157,7 +1169,7 @@ const CP = (() => {
           : escapeHtml(f.label);
         return `
         <div style="margin-bottom:10px;">
-          <label style="display:block; font-size:0.8rem; color:var(--text-secondary); margin-bottom:4px;">${escapeHtml(f.label)}</label>
+          <label style="display:block; font-size:0.8rem; color:var(--text-secondary); margin-bottom:4px;">${escapeHtml(f.label)}${optionalSuffix}</label>
           <input class="form-input cred-modal-input" type="${inputType}"
                  data-config="${escapeHtml(f.key)}"
                  value=""
@@ -1550,6 +1562,7 @@ const CP = (() => {
       if (wizardState.step === 2) loadWizardServices();
       if (wizardState.step === 3) loadWizardSetupForms();
       if (wizardState.step === 4) {
+        renderWizardOutcome();
         // Persist category/service selections
         api('/api/preferences', {
           method: 'POST',
@@ -1561,6 +1574,34 @@ const CP = (() => {
         }).catch(() => {});
       }
     }
+  }
+
+  function renderWizardOutcome() {
+    // Say what actually happened.
+    //
+    // The final screen was unconditional markup: "You're all set! Your services
+    // are being deployed." It said that whether five services deployed, or none
+    // did, or every deploy 403'd — wizardState.deployed was written twice and
+    // read nowhere. A user whose deploys all failed was congratulated and sent
+    // to an empty dashboard with no idea anything had gone wrong.
+    const title = document.getElementById('wizard-done-title');
+    const text = document.getElementById('wizard-done-text');
+    if (!title || !text) return;
+    const done = wizardState.deployed || [];
+    const wanted = wizardState.selectedServices || [];
+    if (done.length === 0) {
+      title.textContent = wanted.length ? 'Nothing was deployed' : 'Setup saved';
+      text.textContent = wanted.length
+        ? 'None of the selected services could be deployed. Your choices are saved — check the Fleet page for a worker that is online, then deploy from the catalog.'
+        : 'Your preferences are saved. Nothing was deployed, because no services were selected.';
+      return;
+    }
+    const missed = wanted.filter(s => !done.includes(s));
+    title.textContent = missed.length ? 'Partly deployed' : "You're all set!";
+    const names = done.map(escapeHtml).join(', ');
+    text.textContent = missed.length
+      ? `Deployed: ${names}. ${missed.length} service${missed.length === 1 ? '' : 's'} could not be deployed — check the Fleet page.`
+      : `Deployed: ${names}. Head to the dashboard to monitor status and earnings.`;
   }
 
   function wizardPrev() {
