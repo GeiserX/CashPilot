@@ -479,10 +479,19 @@ const CP = (() => {
       const data = await api('/api/earnings/summary');
       const totalBonus = data.total_bonus || 0;
       const displayTotal = totalBonus > 0 ? (data.total_adjusted || 0) : (data.total || 0);
-      setTextContent('total-earnings', formatCurrency(displayTotal));
-      setTextContent('today-earnings', formatCurrency(data.today || 0));
-      setTextContent('month-earnings', formatCurrency(data.month || 0));
+      // "Nothing has been read yet" and "we read it and it was zero" are
+      // different facts, and only one of them is a measurement. Rendering both
+      // as $0.00 told a brand-new user their balance was zero before anything
+      // had ever looked, and said exactly the same thing on an install whose
+      // collection had silently stopped.
+      const money = value => (data.has_readings === false ? '\u2014' : formatCurrency(value));
+      setTextContent('total-earnings', money(displayTotal));
+      setTextContent('today-earnings', money(data.today || 0));
+      setTextContent('month-earnings', money(data.month || 0));
       setTextContent('active-services', data.active_services || 0);
+
+      const nothingYet = document.getElementById('no-readings-note');
+      if (nothingYet) nothingYet.style.display = data.has_readings === false ? '' : 'none';
 
       // Show promo offset footnote under total
       const bonusNote = document.getElementById('total-bonus-note');
@@ -496,7 +505,7 @@ const CP = (() => {
       }
 
       // Update topbar
-      setTextContent('topbar-total', formatCurrency(displayTotal));
+      setTextContent('topbar-total', money(displayTotal));
 
       // Change indicators
       if (data.today_change !== undefined) {
