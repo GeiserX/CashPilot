@@ -119,3 +119,62 @@ class TestTheEmptyDashboardSaysWhichEmptyItIs:
         """It reaches the DOM through innerHTML."""
         block = self._empty_state()
         assert "escapeHtml(String(unreachable))" in block
+
+
+class TestTheFleetTotalSaysWhatItCouldNotSee:
+    """Found in my own fresh review of this PR, not by an audit agent.
+
+    Making an unreachable machine report ``monthly_gross: None`` fixed the
+    per-machine verdict but pushed the same mistake up one level: the fleet
+    total summed that None as 0.0, so the headline gross silently shrank by
+    whatever the unreachable machine earns, with nothing saying so.
+
+    The function already guards exactly this for cost — "so the total never
+    quietly understates what the fleet costs" — and the guard simply had not
+    been extended to gross, because until this PR gross was never unknown.
+    """
+
+    def _summary(self, machines):
+        from app import machine_economics
+
+        return machine_economics.fleet_summary(machines)
+
+    def test_an_unreadable_machine_is_counted(self):
+        out = self._summary(
+            [
+                {"machine": "watchtower", "monthly_gross": 40.0, "monthly_cost": 9.0},
+                {"machine": "geiserback", "monthly_gross": None, "monthly_cost": None},
+            ]
+        )
+        assert out["gross_unknown_for"] == 1
+
+    def test_the_summary_says_the_total_is_incomplete(self):
+        out = self._summary(
+            [
+                {"machine": "watchtower", "monthly_gross": 40.0, "monthly_cost": 9.0},
+                {"machine": "geiserback", "monthly_gross": None, "monthly_cost": None},
+            ]
+        )
+        assert "not reporting" in out["summary"]
+        assert "not in this total" in out["summary"]
+
+    def test_a_fully_readable_fleet_says_nothing_extra(self):
+        """The control: this must not nag when everything is known."""
+        out = self._summary(
+            [
+                {"machine": "watchtower", "monthly_gross": 40.0, "monthly_cost": 9.0},
+                {"machine": "nuc", "monthly_gross": 10.0, "monthly_cost": 3.0},
+            ]
+        )
+        assert out["gross_unknown_for"] == 0
+        assert "not reporting" not in out["summary"]
+
+    def test_the_template_can_render_a_null_gross(self):
+        """monthly_gross became nullable; something has to draw it.
+
+        fleet.html's money() already returns an em dash for null — asserted so a
+        later simplification of that helper cannot turn a null into "0.00" or a
+        NaN.
+        """
+        text = (ROOT / "app" / "templates" / "fleet.html").read_text(encoding="utf-8")
+        assert "v == null ? '—'" in text

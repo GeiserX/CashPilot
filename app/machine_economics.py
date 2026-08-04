@@ -211,6 +211,12 @@ def fleet_summary(machines: list[dict[str, Any]]) -> dict[str, Any]:
     """
     known = [m for m in machines if m.get("monthly_cost") is not None]
     unknown = [m for m in machines if m.get("monthly_cost") is None]
+    # A machine that is not reporting has monthly_gross None, and summing that
+    # as 0.0 makes the fleet total silently exclude whatever it earns. That is
+    # the same "absent read as measured" mistake this function already guards
+    # against for cost, so it is counted and reported the same way rather than
+    # left for the reader to notice a number quietly getting smaller.
+    gross_unknown = [m for m in machines if m.get("monthly_gross") is None]
     gross = sum(float(m.get("monthly_gross") or 0.0) for m in machines)
     # Net must compare LIKE WITH LIKE. Subtracting the cost of the machines
     # whose cost is known from the gross of ALL machines flatters the result by
@@ -227,11 +233,19 @@ def fleet_summary(machines: list[dict[str, Any]]) -> dict[str, Any]:
         "monthly_net": round(known_gross - cost, 4) if known else None,
         "cost_known_for": len(known),
         "cost_unknown_for": len(unknown),
+        "gross_unknown_for": len(gross_unknown),
         "losing_money": [m["machine"] for m in machines if m.get("verdict") == LOSING_MONEY],
         "quality": "estimated",
         "summary": (
-            f"Costs are known for {len(known)} of {len(machines)} machine(s)."
-            if unknown
+            (
+                f"Costs are known for {len(known)} of {len(machines)} machine(s)."
+                + (
+                    f" {len(gross_unknown)} machine(s) are not reporting, so what they earn is not in this total."
+                    if gross_unknown
+                    else ""
+                )
+            )
+            if (unknown or gross_unknown)
             else f"Across {len(machines)} machine(s): about {gross:.2f} earned against {cost:.2f} of electricity."
         ),
     }
