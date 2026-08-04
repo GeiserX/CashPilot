@@ -69,6 +69,38 @@ class TestCredentialsAloneStartCollection:
         assert await db.get_deployments() == []
 
     @pytest.mark.asyncio
+    async def test_credentials_split_across_two_requests_still_start_collection(self, db):
+        """From CodeRabbit on this PR, and a real hole in the first fix.
+
+        set_config_bulk UPSERTS, so a credential set can legitimately arrive
+        across several requests — email now, password a moment later. The first
+        version judged completeness against the request payload alone, so
+        neither request ever saw a complete set: both values landed in the
+        database and no deployment row was created. Credentials stored,
+        collection still dead, and nothing on screen to say why.
+        """
+        await db.init_db()
+        await _save({"honeygain_email": "me@example.com"})
+        assert await db.get_deployments() == [], "a partial set must not create a row"
+        await _save({"honeygain_password": "pw"})
+        rows = await db.get_deployments()
+        assert [(r["slug"], r["status"]) for r in rows] == [("honeygain", "external")]
+
+    @pytest.mark.asyncio
+    async def test_saving_one_service_does_not_sweep_the_catalog(self, db):
+        """Judging against merged config must not create rows for everything.
+
+        The scan is still scoped to the slugs this request touched, so an
+        unrelated save cannot silently enable collection for a service the user
+        configured long ago and has since stopped running.
+        """
+        await db.init_db()
+        await _save({"honeygain_email": "me@example.com", "honeygain_password": "pw"})
+        await _save({"iproyal_email": "x@y.z"})
+        rows = await db.get_deployments()
+        assert [r["slug"] for r in rows] == ["honeygain"]
+
+    @pytest.mark.asyncio
     async def test_an_imageless_service_still_works(self, db):
         """The three services the old gate DID handle must not regress."""
         await db.init_db()

@@ -2947,11 +2947,24 @@ async def api_set_config(request: Request, body: ConfigUpdate) -> dict[str, str]
     # row, _run_collection() will never instantiate the collector.
     from app.collectors import _COLLECTOR_ARGS
 
+    # Completeness is judged against the MERGED config, not this request.
+    #
+    # set_config_bulk UPSERTS, so a credential set can legitimately arrive
+    # across several requests — email now, password a moment later. Checking
+    # only `sanitized` meant neither request ever saw a complete set, so both
+    # values landed in the database and no deployment row was ever created:
+    # credentials stored, collection still dead, and nothing to indicate why.
+    #
+    # Still scoped to the slugs this request touched, so saving one service's
+    # credentials does not sweep the whole catalog.
+    stored = await database.get_config() or {}
     for slug, arg_keys in _COLLECTOR_ARGS.items():
+        if not any(k.startswith(f"{slug}_") for k in sanitized):
+            continue
         required_keys = [f"{slug}_{a.lstrip('?')}" for a in arg_keys if not a.startswith("?")]
         if not required_keys:
             continue
-        if not all(sanitized.get(k) for k in required_keys):
+        if not all(stored.get(k) for k in required_keys):
             continue
         svc = catalog.get_service(slug)
         if not svc:
