@@ -266,8 +266,8 @@ CASHPILOT_WORKER_NAME=server-name</code>
               <span>${esc(sysInfo.arch || '-')}</span>
               <span>Last seen: ${w.last_heartbeat || 'never'}</span>
             </div>
-            ${isAndroid && items.length > 0 ? renderApps(items) : ''}
-            ${!isAndroid && items.length > 0 ? renderContainers(w) : ''}
+            ${isAndroid && items.length > 0 ? renderApps(items, isOnline, w.last_heartbeat) : ''}
+            ${!isAndroid && items.length > 0 ? renderContainers(w, isOnline) : ''}
           </div>
         </div>`;
       }
@@ -282,31 +282,55 @@ CASHPILOT_WORKER_NAME=server-name</code>
     return (b / 1073741824).toFixed(2) + ' GB';
   }
 
-  function renderApps(apps) {
+  function renderApps(apps, isOnline, lastSeen) {
     let html = '<div style="margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border-color);">';
+    if (isOnline === false) {
+      html += `<div style="font-size:0.7rem; color:var(--text-muted); margin-bottom:6px;">Last known state — not reachable</div>`;
+    }
     html += '<div style="display: flex; gap: 6px; flex-wrap: wrap;">';
     for (const a of apps) {
-      const isRunning = a.running;
+      // Same rule as the containers: an unreachable device cannot be reporting
+      // an app as running, whatever its last heartbeat said.
+      const isRunning = isOnline !== false && a.running;
       const color = isRunning ? 'var(--success)' : 'var(--text-muted)';
       const bg = isRunning ? 'var(--success-soft)' : 'var(--bg-hover)';
       const tx = a.net_tx_24h || 0;
       const rx = a.net_rx_24h || 0;
-      const netTip = (tx || rx) ? ` title="24h: ↑${fmtBytes(tx)} ↓${fmtBytes(rx)}"` : '';
-      html += `<span style="font-size:0.75rem; padding:3px 8px; border-radius:4px; background:${bg}; color:${color}; font-weight:500;"${netTip}>${esc(a.slug)}</span>`;
+      const staleTip = isOnline === false ? esc(staleNote(lastSeen)) : '';
+      const trafficTip = (tx || rx) ? `24h: ↑${fmtBytes(tx)} ↓${fmtBytes(rx)}` : '';
+      const tipText = [staleTip, trafficTip].filter(Boolean).join(' — ');
+      const netTip = tipText ? ` title="${tipText}"` : '';
+      const appStyle = isOnline === false ? ' border:1px dashed var(--border-color); opacity:0.75;' : '';
+      html += `<span style="font-size:0.75rem; padding:3px 8px; border-radius:4px; background:${bg}; color:${color}; font-weight:500;${appStyle}"${netTip}>${esc(a.slug)}</span>`;
     }
     html += '</div></div>';
     return html;
   }
 
-  function renderContainers(worker) {
+  // A container's colour is a claim about RIGHT NOW, and it can only be made
+  // while the worker is reachable. When it is not, every chip stayed the colour
+  // frozen into the last heartbeat — so a host that is powered off rendered a
+  // row of success-green containers next to a grey dot, and green is the louder
+  // signal. The state is still shown, because "what was running when we last
+  // heard" is useful, but it is shown as a memory rather than a measurement.
+  function staleNote(lastSeen) {
+    return `Last reported ${lastSeen || 'never'}. This host is not reachable, so this is the last known state, not the current one.`;
+  }
+
+  function renderContainers(worker, isOnline) {
     let html = '<div style="margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border-color);">';
+    if (!isOnline) {
+      html += `<div style="font-size:0.7rem; color:var(--text-muted); margin-bottom:6px;">Last known state — not reachable</div>`;
+    }
     html += '<div style="display: flex; gap: 6px; flex-wrap: wrap;">';
     for (const c of worker.containers) {
       const status = (c.status || 'stopped').toLowerCase();
-      const isRunning = status === 'running';
+      const isRunning = isOnline && status === 'running';
       const color = isRunning ? 'var(--success)' : 'var(--text-muted)';
       const bg = isRunning ? 'var(--success-soft)' : 'var(--bg-hover)';
-      html += `<span style="font-size:0.75rem; padding:3px 8px; border-radius:4px; background:${bg}; color:${color}; font-weight:500;">${esc(c.slug || c.name)}</span>`;
+      const style = isOnline ? '' : ' border:1px dashed var(--border-color); opacity:0.75;';
+      const tip = isOnline ? '' : ` title="${esc(staleNote(worker.last_heartbeat))}"`;
+      html += `<span style="font-size:0.75rem; padding:3px 8px; border-radius:4px; background:${bg}; color:${color}; font-weight:500;${style}"${tip}>${esc(c.slug || c.name)}</span>`;
     }
     html += '</div></div>';
     return html;
