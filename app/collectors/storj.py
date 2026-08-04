@@ -10,6 +10,7 @@ import logging
 
 import httpx
 
+from app.collectors import base
 from app.collectors.base import BaseCollector, EarningsResult
 
 logger = logging.getLogger(__name__)
@@ -42,9 +43,27 @@ class StorjCollector(BaseCollector):
             # estimated-payout endpoint returns cents
             if "currentMonth" in data:
                 # Payout values are in cents (integer)
-                payout_cents = data["currentMonth"].get("egressBandwidthPayout", 0)
-                payout_cents += data["currentMonth"].get("egressRepairAuditPayout", 0)
-                payout_cents += data["currentMonth"].get("diskSpacePayout", 0)
+                # Absent keys are a SHAPE CHANGE, not zero earnings.
+                #
+                # Three .get(name, 0) defaults summed to a confident 0.00 when
+                # storagenode renamed its payout sub-fields, and that zero was
+                # recorded as a real balance. Because it is a DROP from the
+                # previous reading, _detect_payout then asked the user to
+                # confirm a payout of their entire balance that never happened
+                # — and a confirmed payout is permanent.
+                #
+                # The ValueError below is unreachable once currentMonth exists,
+                # so this branch has to do its own shape check.
+                month = data["currentMonth"]
+                known = [
+                    k for k in ("egressBandwidthPayout", "egressRepairAuditPayout", "diskSpacePayout") if k in month
+                ]
+                if not known:
+                    raise ValueError(
+                        "storagenode currentMonth has no known payout field "
+                        f"(saw: {sorted(month)[:6]}) — the API shape may have changed"
+                    )
+                payout_cents = sum(month.get(k, 0) for k in known)
                 balance = payout_cents / 100.0
             elif "estimatedPayout" in data:
                 balance = data["estimatedPayout"] / 100.0
@@ -70,7 +89,7 @@ class StorjCollector(BaseCollector):
                 ),
             )
         except Exception as exc:
-            logger.error("Storj collection failed: %s", exc, exc_info=True)
+            base.log_failure(logger, "Storj", exc)
             return EarningsResult(
                 platform=self.platform,
                 balance=0.0,

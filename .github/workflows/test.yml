@@ -16,6 +16,27 @@ jobs:
         with:
           python-version: "3.14"
 
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+
+      # Nothing here parsed the JavaScript, and pytest cannot: appending a
+      # syntax error to app.js leaves the whole suite green. What ships in that
+      # state is a completely dead dashboard — app.js is one IIFE assigned to
+      # CP, so a parse failure anywhere means CP is never defined and every
+      # data-action button silently does nothing. No error page, no failed
+      # request, just a UI where nothing works.
+      - name: Parse the JavaScript
+        run: |
+          for f in app/static/js/*.js; do node --check "$f"; done
+
+      # Behaviour pytest cannot reach. This one needs no browser: it runs the
+      # real currency functions against controlled exchange-rate state, and
+      # exists because formatCurrency once labelled an UNCONVERTED USD amount
+      # with the viewer's currency symbol — $24.90 rendered as "£24.90".
+      - name: Currency formatting behaviour
+        run: node scripts/currency_check.mjs
+
       - name: Install dependencies
         run: |
           pip install -r requirements.txt

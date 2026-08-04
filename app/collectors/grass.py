@@ -29,6 +29,7 @@ from enum import Enum
 
 import httpx
 
+from app.collectors import base
 from app.collectors.base import BaseCollector, EarningsResult
 
 logger = logging.getLogger(__name__)
@@ -109,7 +110,15 @@ class GrassCollector(BaseCollector):
         resp.raise_for_status()
         data = resp.json()
 
-        devices = data.get("result", {}).get("data", [])
+        # Check for the KEY, not for truthiness. A missing envelope and a
+        # genuinely empty device list both produced 0.0 GRASS with no error,
+        # so an API change looked exactly like "you have no devices running".
+        result = data.get("result")
+        if not isinstance(result, dict) or "data" not in result:
+            raise ValueError(
+                f"Grass /activeDevices has no result.data (saw: {sorted(data)[:6]}) — the API shape may have changed"
+            )
+        devices = result["data"]
         if not devices:
             logger.debug("Grass /activeDevices returned no devices")
             return 0.0
@@ -194,7 +203,7 @@ class GrassCollector(BaseCollector):
                 currency="GRASS",
             )
         except Exception as exc:
-            logger.error("Grass collection failed: %s", exc, exc_info=True)
+            base.log_failure(logger, "Grass", exc)
             return EarningsResult(
                 platform=self.platform,
                 balance=0.0,

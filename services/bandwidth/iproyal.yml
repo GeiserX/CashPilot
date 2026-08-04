@@ -81,3 +81,4 @@ platforms: [docker, windows, macos, linux, android, ios]
 collector:
   type: api
   notes: "JWT auth via POST /api/v1/users/tokens (email+password), then GET /api/v1/users/me/balance-dashboard"
+  credential_hint: "Use your IPRoyal Pawns account email and password (same as <a href='https://pawns.app' target='_blank'>pawns.app</a>)."

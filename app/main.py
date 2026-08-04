@@ -491,11 +491,18 @@ async def _run_collection() -> None:
             platforms_ok = 0
             for result in results:
                 if isinstance(result, Exception):
-                    logger.warning("Collector raised exception: %s", result)
+                    # Redacted BEFORE it is logged. A collector exception is
+                    # usually an httpx error that embeds the offending header,
+                    # which for several providers IS the live credential.
+                    logger.warning("Collector raised exception: %s", notify.redact(str(result)))
                     success = False
                     continue
                 if result.error:
-                    logger.warning("Collection error for %s: %s", result.platform, result.error)
+                    # Redact FIRST. The comment below explains why the alert is
+                    # sanitised; this line used to log the raw string one step
+                    # earlier and put the credential in the container log
+                    # anyway, defeating the whole exercise.
+                    logger.warning("Collection error for %s: %s", result.platform, notify.redact(result.error))
                     # Redact ONCE, here, so the same sanitized string is what gets shown,
                     # stored and sent. Collector errors are usually str(exc), and an httpx
                     # exception embeds the offending header or URL — which for several
@@ -773,6 +780,13 @@ app = FastAPI(
     title="CashPilot",
     version="0.1.0",
     lifespan=lifespan,
+    # Off by default. FastAPI serves these unauthenticated, and this app's
+    # schema is a map of its own admin surface — every route, parameter and
+    # body shape, including the worker and payout endpoints. Nothing here
+    # needs them in a self-hosted deployment.
+    docs_url=None,
+    redoc_url=None,
+    openapi_url=None,
 )
 metrics.setup(app)
 
@@ -1030,7 +1044,21 @@ async def api_services_deployed(request: Request) -> list[dict[str, Any]]:
             "slug": slug,
             "name": svc["name"] if svc else slug,
             "container_status": agg["best_status"],
-            "balance": balance_map.get(slug, 0.0),
+            # None, not 0.0, when CashPilot has never read this service.
+            #
+            # A missing earnings row means "no reading", and rendering it as
+            # $0.00 told the user a service was running and earning nothing —
+            # when the truth was that nothing had ever looked. Neither
+            # suppressor fires in that state: collector_disconnected needs an
+            # alert (none was raised, because no collector ran) and
+            # collector_needs_setup only checks whether config keys are filled.
+            # The flatline detector cannot catch it either: it skips rows whose
+            # max balance is 0.
+            #
+            # This is the same defect filed three times by the audit
+            # (CashPilot-vp6, -ikh, -7qk) from three different areas.
+            "balance": balance_map.get(slug),
+            "balance_known": slug in balance_map,
             "currency": currency_map.get(slug, "USD"),
             "cpu": f"{agg['total_cpu']:.2f}",
             "memory": f"{agg['total_mem']:.1f} MB",
@@ -1072,7 +1100,21 @@ async def api_services_deployed(request: Request) -> list[dict[str, Any]]:
             "slug": slug,
             "name": svc["name"] if svc else slug,
             "container_status": "external",
-            "balance": balance_map.get(slug, 0.0),
+            # None, not 0.0, when CashPilot has never read this service.
+            #
+            # A missing earnings row means "no reading", and rendering it as
+            # $0.00 told the user a service was running and earning nothing —
+            # when the truth was that nothing had ever looked. Neither
+            # suppressor fires in that state: collector_disconnected needs an
+            # alert (none was raised, because no collector ran) and
+            # collector_needs_setup only checks whether config keys are filled.
+            # The flatline detector cannot catch it either: it skips rows whose
+            # max balance is 0.
+            #
+            # This is the same defect filed three times by the audit
+            # (CashPilot-vp6, -ikh, -7qk) from three different areas.
+            "balance": balance_map.get(slug),
+            "balance_known": slug in balance_map,
             "currency": currency_map.get(slug, "USD"),
             "cpu": "",
             "memory": "",
@@ -1513,8 +1555,17 @@ async def _get_verified_worker_url(worker: dict[str, Any]) -> tuple[str, dict[st
     # shared bootstrap key only for workers that have not enrolled yet. Post-cutover
     # an enrolled worker rejects the shared key, so the UI must present its own.
     cid = worker.get("client_id") or ""
-    worker_key = await database.get_worker_key(cid) if cid else None
-    auth_key = worker_key or FLEET_API_KEY
+    # Use the per-worker key only once the worker has CONFIRMED it.
+    #
+    # get_worker_key discards the confirmed flag, so the UI signed outbound
+    # commands with a key the worker may never have received — reachable
+    # whenever _save_worker_key failed on the worker ("staying on shared key").
+    # The worker then read as online from its heartbeats while every deploy,
+    # start, stop, restart and logs call failed 401, with nothing connecting
+    # the two symptoms.
+    key_state = await database.get_worker_key_state(cid) if cid else (None, False)
+    stored_key, key_confirmed = key_state if isinstance(key_state, tuple) else (key_state, False)
+    auth_key = stored_key if (stored_key and key_confirmed) else FLEET_API_KEY
     headers: dict[str, str] = {}
     if auth_key:
         headers["Authorization"] = f"Bearer {auth_key}"
@@ -1745,6 +1796,10 @@ async def api_earnings_summary(request: Request) -> dict[str, Any]:
     all_earnings = await database.get_earnings_summary()
     total_bonus_usd = 0.0
     total_adjusted = 0.0
+    # CashPilot-oj4: the count was computed deep in database.py and only ever
+    # logged. A total that silently omits holdings is indistinguishable from a
+    # correct one, so the number of omissions has to reach the response.
+    unpriced_platforms: list[str] = []
     for e in all_earnings:
         slug = e.get("platform", "")
         balance = float(e["balance"])
@@ -1756,13 +1811,27 @@ async def api_earnings_summary(request: Request) -> dict[str, Any]:
         adjusted = max(0.0, balance - bonus)
 
         if currency != "USD":
-            usd_val = exchange_rates.to_usd(balance, currency)
+            # Fall back to the rate the reading was RECORDED at.
+            #
+            # to_usd consults only the live caches, so a crypto whose rate
+            # lookup is merely stale was dropped from the headline total
+            # entirely — silently, with nothing on screen saying the figure was
+            # incomplete. upsert_earnings preserves fx_rate_usd on every row
+            # precisely so a later reader is not left guessing.
+            #
+            # A stored rate is imperfect (it is the rate at collection time,
+            # not now) but it is enormously better than omitting the holding,
+            # and the count below says how many rows needed it.
+            stored_rate = database._usd_rate(currency, e.get("fx_rate_usd"))
+            usd_val = _to_usd_with_stored(balance, currency, stored_rate)
             if usd_val is not None:
                 summary["total"] = round(summary["total"] + usd_val, 2)
-            adj_usd = exchange_rates.to_usd(adjusted, currency)
+            else:
+                unpriced_platforms.append(slug)
+            adj_usd = _to_usd_with_stored(adjusted, currency, stored_rate)
             if adj_usd is not None:
                 total_adjusted += adj_usd
-            bonus_usd = exchange_rates.to_usd(bonus, currency) if bonus > 0 else 0.0
+            bonus_usd = _to_usd_with_stored(bonus, currency, stored_rate) if bonus > 0 else 0.0
             if bonus_usd is not None:
                 total_bonus_usd += bonus_usd
         else:
@@ -1777,6 +1846,10 @@ async def api_earnings_summary(request: Request) -> dict[str, Any]:
     except Exception as exc:
         logger.debug("active-service count failed: %s", exc)
     summary["active_services"] = active
+    # A total that silently omits holdings is indistinguishable from a correct
+    # one. The count was already being computed in database.py and only logged;
+    # it now reaches the caller so the card can say the figure is partial.
+    summary["unpriced_platforms"] = sorted(set(unpriced_platforms))
     summary["total_bonus"] = round(total_bonus_usd, 2)
     summary["total_adjusted"] = round(total_adjusted, 2)
     return summary
@@ -2024,7 +2097,7 @@ async def api_earnings_net(request: Request, days: int = 30) -> dict[str, Any]:
 
     cfg = await database.get_config()
     try:
-        price = float(cfg.get("power_price_per_kwh") or 0)
+        price = _tariff_price(cfg)
     except (TypeError, ValueError):
         price = 0.0
     currency = str(cfg.get("power_currency") or "EUR")
@@ -2043,7 +2116,20 @@ async def api_earnings_net(request: Request, days: int = 30) -> dict[str, Any]:
     # Only RUNNING containers. A stopped one draws nothing, and counting it
     # inflates a worker's container count, which shrinks every running service's
     # share of that host's idle floor and understates the fleet's real cost.
-    running = [c for c in statuses if c.get("service") and str(c.get("status", "")).lower() == "running"]
+    # egress.container_slug, NOT c["service"].
+    #
+    # _get_all_worker_containers emits "slug"; this filtered on "service" and so
+    # matched NOTHING in production, every time. The consequence was not a
+    # missing panel — it was that every service was charged 0 W, so cost came
+    # out 0.00 and net was reported EQUAL TO GROSS with cost_known: true. The
+    # endpoint's own docstring promises it never presents gross as profit, and
+    # that is exactly what it did.
+    #
+    # This is the second time this key has bitten the project. container_slug()
+    # exists because of the first time and accepts both spellings; its docstring
+    # says code reading "service" matched nothing in production while its tests
+    # passed, which is precisely what happened here again.
+    running = [c for c in statuses if egress.container_slug(c) and str(c.get("status", "")).lower() == "running"]
 
     # Group by WORKER and keep it that way through the watt calculation. Each
     # host pays its own idle draw, so collapsing a multi-host fleet into one
@@ -2073,7 +2159,7 @@ async def api_earnings_net(request: Request, days: int = 30) -> dict[str, Any]:
             tdp = host_tdp
         count = max(1, len(containers))
         for c in containers:
-            svc = c["service"]
+            svc = egress.container_slug(c)
             if not metered:
                 # No marginal power cost to the user on this host, so charge
                 # nothing rather than computing watts and multiplying by zero.
@@ -2085,13 +2171,27 @@ async def api_earnings_net(request: Request, days: int = 30) -> dict[str, Any]:
 
     rows = []
     for platform, gross in earned.items():
+        watts = watts_by_service.get(platform, 0.0)
         rows.append(
             {
                 "platform": platform,
                 "gross": float(gross),
-                "watts": watts_by_service.get(platform, 0.0),
+                "watts": watts,
                 "hours": hours,
                 "cost_quality": power.ESTIMATED,
+                # Whether a PER-SERVICE cost means anything, as opposed to
+                # whether the machine costs anything. A bandwidth container adds
+                # roughly 1-3 W to a host that is already on, which is below
+                # what a consumer smart plug can resolve, so the share-out is
+                # arithmetic rather than measurement.
+                #
+                # The cost itself is still reported and still counted in the
+                # fleet total — the machine really does draw that power, and
+                # dropping it would understate what the fleet costs. What is
+                # unreliable is which service to blame, so that is what gets
+                # flagged. machine_economics has held this rule since it was
+                # written and nothing had ever asked it.
+                "cost_attributable": machine_economics.per_service_is_meaningful(watts),
             }
         )
 
@@ -2323,15 +2423,28 @@ async def api_payout_progress(request: Request, slug: str) -> dict[str, Any]:
     history = await database.get_balance_history(slug, days=30)
     confirmed = await database.get_payouts(platform=slug, confirmed_only=True)
 
+    known = balance is not None
     current = float(balance or 0.0)
     return {
         "slug": slug,
-        "current_balance": round(current, 6),
+        "current_balance": round(current, 6) if known else None,
         # Lifetime counts CONFIRMED payouts only. A probable one folded in here
         # would let a single misread drop inflate earnings forever, invisibly.
-        "lifetime_earned": payouts.lifetime_earned(current, confirmed),
+        #
+        # None when the balance is unknown AND nothing has been paid out:
+        # `float(balance or 0.0)` folded "never read" into a real zero, so the
+        # card stated a definite 0.00 lifetime for a service nothing had ever
+        # looked at. Confirmed payouts are still a real lower bound, so they
+        # keep a figure.
+        "lifetime_earned": payouts.lifetime_earned(current, confirmed) if (known or confirmed) else None,
         "confirmed_payout_count": len(confirmed),
-        "balance_known": balance is not None,
+        "balance_known": known,
+        # Projection stays. payouts.project already returns an explicit
+        # NOT_ENOUGH_DATA state, which is a more useful answer than null — it
+        # says WHY there is no estimate. Nulling it discarded that and pushed a
+        # null-check onto every caller. The misleading part was never this
+        # field; it was the card rendering a 0%-of-minimum bar from it, which
+        # is fixed where the card is drawn.
         "projection": payouts.project(current, service, history),
     }
 
@@ -2357,7 +2470,7 @@ async def api_fleet_economics(request: Request) -> dict[str, Any]:
         # forever — and both unknown-paths are deliberately quiet, which is
         # exactly what hid it. power_price_per_kwh is canonical (it shipped
         # first); the newer name is honoured so nobody's existing config breaks.
-        price = float(config.get("power_price_per_kwh") or config.get("electricity_price_per_kwh") or 0.0)
+        price = _tariff_price(config)
     except (TypeError, ValueError):
         price = 0.0
 
@@ -2386,7 +2499,16 @@ async def api_fleet_economics(request: Request) -> dict[str, Any]:
     assessed = []
     for worker in workers:
         info = worker.get("system_info") or {}
-        raw_watts = config.get(f"worker_{worker.get('id')}_watts")
+        # Keyed on client_id, not the autoincrement row id.
+        #
+        # delete_worker removes the row and nothing else, so a host that is
+        # removed and re-enrols gets a fresh id — orphaning its watts and
+        # dedicated settings silently, while the old keys linger forever. The
+        # id is also read from the row-id fallback for volumes written before
+        # this change.
+        raw_watts = config.get(f"worker_{_worker_config_key(worker)}_watts") or config.get(
+            f"worker_{worker.get('id')}_watts"
+        )
         try:
             watts = float(raw_watts) if raw_watts else None
         except (TypeError, ValueError):
@@ -2398,7 +2520,7 @@ async def api_fleet_economics(request: Request) -> dict[str, Any]:
                 watts=watts,
                 price_per_kwh=price or None,
                 metered=power.is_metered(info),
-                dedicated=bool(config.get(f"worker_{worker.get('id')}_dedicated")),
+                dedicated=_worker_flag(config, worker, "dedicated"),
             )
         )
 
@@ -2493,16 +2615,127 @@ async def api_per_node_earnings(request: Request, slug: str) -> list[dict[str, A
     if not isinstance(config, dict):
         config = {}
 
-    if slug == "mysterium":
-        from app.collectors.mystnodes import MystNodesCollector
+    # Driven by the catalog, not by a slug comparison. This used to read
+    # `if slug == "mysterium"` and import that collector class by name — two
+    # pieces of service-specific knowledge in app/, where the repo's own rule
+    # says neither belongs. Adding a second service that reports per-node
+    # figures meant editing this function; now it means one line of YAML.
+    service = catalog.get_service(slug)
+    declares_per_node = bool((service.get("collector") or {}).get("per_node_earnings")) if service else False
+    if not declares_per_node:
+        return []
 
-        collector = MystNodesCollector(
-            email=config.get("mysterium_email", ""),
-            password=config.get("mysterium_password", ""),
-        )
-        return await collector.get_per_node_earnings()
+    # Imported here, matching api_test_credentials: app.collectors pulls in every
+    # collector module, and importing it at module scope would drag that whole
+    # tree into any process that imports app.main.
+    from app import collectors
 
-    return []
+    collector, missing = collectors.build_one(slug, config)
+    if collector is None or missing:
+        return []
+    try:
+        # The capability is declared in YAML, so a service can claim it without
+        # its collector implementing it yet. Refuse rather than 500.
+        getter = getattr(collector, "get_per_node_earnings", None)
+        if getter is None:
+            logger.warning("%s declares per_node_earnings but its collector does not implement it", slug)
+            return []
+        try:
+            return await getter()
+        except Exception as exc:
+            # This call reaches a THIRD-PARTY API: it times out, rate-limits,
+            # and returns HTML instead of JSON on a bad day. None of that is a
+            # fault in CashPilot, and none of it should reach the user as a raw
+            # 500 — every other collector call in this file degrades instead.
+            # An empty per-node breakdown alongside the account total is a
+            # smaller loss than a broken page.
+            logger.warning("Per-node earnings unavailable for %s: %s", slug, exc)
+            return []
+    finally:
+        with contextlib.suppress(Exception):
+            await collector.close()
+
+
+def _config_flag(config: dict[str, Any], key: str) -> bool:
+    """A stored config value read as a boolean.
+
+    Config values are TEXT. `bool("false")` is True, so a user who set a flag
+    to "false", "0" or "no" got the opposite of what they asked for. Uses the
+    same truthy set as database.set_config so a value written by one half of
+    the app means the same thing to the other.
+    """
+    from app.database import _TRUTHY
+
+    return str(config.get(key, "") or "").strip().lower() in _TRUTHY
+
+
+def _tariff_price(config: dict[str, Any]) -> float:
+    """The electricity price per kWh, honouring the legacy key name.
+
+    `electricity_price_per_kwh` was renamed to `power_price_per_kwh`. One
+    endpoint accepted both and the other accepted only the new name, so an
+    upgrading user who had set the old key saw running costs on the fleet page
+    and "cost unknown" on the dashboard, from the same stored value. Both now
+    resolve through here.
+    """
+    return float(config.get("power_price_per_kwh") or config.get("electricity_price_per_kwh") or 0.0)
+
+
+def _to_usd_with_stored(amount: float, currency: str, stored_rate: float | None) -> float | None:
+    """Convert to USD, falling back to the rate the reading was RECORDED at.
+
+    ``exchange_rates.to_usd`` consults only the live caches, so a crypto whose
+    rate lookup is merely stale was dropped from the dashboard total entirely —
+    silently, with nothing on screen saying the headline figure was incomplete.
+
+    This is not a new rule. ``get_earnings_dashboard_summary`` and
+    ``get_earned_by_platform`` already price rows this way, and
+    ``upsert_earnings`` stores ``fx_rate_usd`` on every row specifically so
+    "the USD value of a historical non-USD reading cannot be reconstructed
+    later" without it. The Total was the one figure applying a stricter rule
+    than the cards beside it, which is why they disagreed.
+
+    A stored rate is the rate at collection time rather than now — imperfect,
+    and much better than omitting the holding. Callers count what still cannot
+    be priced so the response can say so.
+
+    Module-level rather than a closure: defined inside the loop it captured
+    ``currency`` late, so every conversion would have used the LAST currency
+    seen (ruff B023).
+    """
+    live = exchange_rates.to_usd(amount, currency)
+    if live is not None:
+        return live
+    return amount * stored_rate if stored_rate is not None else None
+
+
+def _worker_flag(config: dict[str, Any], worker: dict[str, Any], suffix: str) -> bool:
+    """A per-worker boolean setting, read by client_id with a row-id fallback.
+
+    Two problems in one place. Config values are TEXT, so ``bool("false")`` is
+    True and a user who set a flag to "false" got the opposite of what they
+    asked for; ``database._TRUTHY`` is the parser the rest of the app already
+    uses. And the key was built from the AUTOINCREMENT row id, which changes
+    when a host is removed and re-enrolled — silently orphaning the setting —
+    so ``client_id`` is preferred, with the old id-based key still honoured for
+    volumes written before this change.
+    """
+    for key in (f"worker_{_worker_config_key(worker)}_{suffix}", f"worker_{worker.get('id')}_{suffix}"):
+        if str(config.get(key, "") or "").strip():
+            return _config_flag(config, key)
+    return False
+
+
+def _worker_config_key(worker: dict[str, Any]) -> str:
+    """The stable identifier for per-worker config keys.
+
+    The row id is an AUTOINCREMENT primary key and ``delete_worker`` deletes the
+    row without touching config, so a host removed and re-enrolled comes back
+    under a new id — silently orphaning its watts and dedicated settings while
+    the old keys linger. ``client_id`` is UNIQUE and survives re-enrolment,
+    which is what these settings should have been keyed on.
+    """
+    return str(worker.get("client_id") or worker.get("id") or "")
 
 
 # ---------------------------------------------------------------------------
@@ -2545,8 +2778,14 @@ async def api_set_preferences(request: Request, body: PreferencesUpdate) -> dict
         if body.setup_completed is not None
         else existing.get("setup_completed", False),
     )
-    # If setup is completed, trigger an immediate collection
-    if body.setup_completed:
+    # Saving the preference is a viewer-safe act; triggering a fleet-wide
+    # collection is not. /api/collect gates the identical call behind
+    # _require_writer, so this was the same side effect through a weaker door —
+    # a viewer could hit every provider API on demand.
+    #
+    # The preference itself still saves for any authenticated user; only the
+    # collection is gated, so a viewer completing setup is not blocked.
+    if body.setup_completed and auth.require_role(user, "owner", "writer"):
         _spawn(_run_collection())
     return {"status": "saved"}
 
@@ -2630,30 +2869,12 @@ async def api_collectors_meta(request: Request) -> list[dict[str, Any]]:
     # keys are secret (a hand-maintained duplicate here previously missed
     # `remember_web` and `xsrf_token`, unmasking them).
     secret_args = database.SECRET_CONFIG_KEYS
-    # Per-service hints on how to obtain the credentials
-    hints: dict[str, str] = {
-        "bitping": "Use your Bitping account email and password (same as <a href='https://nodes.bitping.com' target='_blank'>nodes.bitping.com</a>).",
-        "bytelixir": (
-            "Log in at <a href='https://dash.bytelixir.com' target='_blank'>dash.bytelixir.com</a> "
-            "<b>ticking Remember Me</b>, press F12 → Application → expand <b>Cookies</b> in the left "
-            "sidebar → click <code>https://dash.bytelixir.com</code>, then copy three values: "
-            "<b>bytelixir_session</b>, <b>remember_web_…</b> (the long one starting with that prefix) "
-            "and <b>XSRF-TOKEN</b>. "
-            "The session cookie alone expires about two hours after you copy it, so collection stops "
-            "the same afternoon; the remember_web cookie lasts a year and is what keeps it working."
-        ),
-        "earnapp": "Log in at <a href='https://earnapp.com' target='_blank'>earnapp.com</a>, press F12 → Application → Cookies, copy the <b>oauth-refresh-token</b> value.",
-        "earnfm": "Use your Earn.fm account email and password (same as <a href='https://app.earn.fm' target='_blank'>app.earn.fm</a> login).",
-        "grass": "Log in at <a href='https://app.getgrass.io' target='_blank'>app.getgrass.io</a>, press F12 → Application → Local Storage, copy the <b>accessToken</b> value.",
-        "honeygain": "Use your Honeygain account email and password (same as <a href='https://dashboard.honeygain.com' target='_blank'>dashboard.honeygain.com</a>).",
-        "iproyal": "Use your IPRoyal Pawns account email and password (same as <a href='https://pawns.app' target='_blank'>pawns.app</a>).",
-        "mysterium": "Use your MystNodes account email and password (same as <a href='https://my.mystnodes.com' target='_blank'>my.mystnodes.com</a>).",
-        "packetstream": "Log in at <a href='https://packetstream.io' target='_blank'>packetstream.io</a>, press F12 → Application → Cookies, copy the <b>auth</b> cookie value (it’s a JWT).",
-        "proxyrack": "Log in at <a href='https://peer.proxyrack.com' target='_blank'>peer.proxyrack.com</a>, press F12 → Network, find any API request and copy the <b>Api-Key</b> header value.",
-        "repocket": "Use your Repocket account email and password (same as <a href='https://app.repocket.com' target='_blank'>app.repocket.com</a>).",
-        "salad": "Log in at <a href='https://app.salad.com' target='_blank'>app.salad.com</a>, press F12 → Application → Cookies, copy the <b>auth</b> cookie value.",
-        "traffmonetizer": "Log in at <a href='https://app.traffmonetizer.com' target='_blank'>app.traffmonetizer.com</a>, press F12 → Application → Local Storage → <b>token</b> value (a long JWT starting with <code>eyJ</code>).",
-    }
+    # Credential hints live in the service YAML (collector.credential_hint),
+    # not here. They are per-service prose about where to find a token in a
+    # provider's UI, which is exactly the service-specific knowledge the
+    # catalog exists to hold — 'never hardcode service-specific logic in
+    # app/'. Kept in app/ they also drifted out of reach of anyone editing
+    # the service they describe.
     meta = []
     for slug in sorted(COLLECTOR_MAP.keys()):
         args = _COLLECTOR_ARGS.get(slug, [])
@@ -2677,8 +2898,9 @@ async def api_collectors_meta(request: Request) -> list[dict[str, Any]]:
         pay_currency = payment.get("currency", "USD")
 
         entry: dict[str, Any] = {"slug": slug, "name": name, "fields": fields, "currency": pay_currency}
-        if slug in hints:
-            entry["hint"] = hints[slug]
+        hint = (svc.get("collector") or {}).get("credential_hint") if svc else None
+        if hint:
+            entry["hint"] = hint
         meta.append(entry)
     return meta
 

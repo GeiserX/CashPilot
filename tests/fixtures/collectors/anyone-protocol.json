@@ -2,10 +2,9 @@
   "currency": "ANYONE",
   "fields": [
     "Data",
-    "Messages",
-    "usd"
+    "Messages"
   ],
-  "note": "AO smart-contract dry-run per relay fingerprint",
+  "note": "AO smart-contract dry-run per relay fingerprint. Reports NATIVE ANYONE; pricing is exchange_rates' job, because converting a cumulative balance before the delta turns a token price move into fabricated earnings.",
   "parsed": 0.0,
   "sample": {
     "Messages": []

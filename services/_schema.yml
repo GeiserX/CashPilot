@@ -141,4 +141,15 @@
 # collector:
 #   type: api | scrape | manual | auto
 #     - auto: earnings accrue/settle automatically; no active collection needed
-#   notes: "Implementation hints for the earnings collector"
+#   notes: "Implementation hints for the earnings collector" (for developers)
+#   per_node_earnings: true|false
+#     The collector can break earnings down per node/machine, not just an
+#     account total. Declared here rather than branched on in app/ so adding a
+#     second such service is one line of YAML, not an edit to a route handler.
+#   credential_hint: |
+#     Where the USER finds the credential in the provider's own UI, shown next
+#     to the input in Settings. A different audience from `notes`: this is the
+#     sentence someone reads while looking at a provider dashboard they have
+#     never seen before. Limited HTML (<a>, <b>) is allowed and is escaped-safe
+#     because the UI inserts it as markup deliberately. Optional; omit it when
+#     the credential is just the account email and password.

@@ -525,3 +525,75 @@ class TestAnImpossibleRateIsNotBelieved:
     def test_a_normal_rate_still_works(self, tmp_path):
         """The guard must not swallow legitimate small rates."""
         assert self._earned(tmp_path, "small", 0.0001)["svc"] == pytest.approx(0.001)
+
+
+class TestNetEarningsActuallyChargeElectricity:
+    """`api_earnings_net` matched no containers at all, so cost was always zero.
+
+    It filtered on `c["service"]` while `_get_all_worker_containers` emits
+    `slug`. The consequence was not a missing panel — every service was charged
+    0 W, cost came out 0.00, and net was reported EQUAL TO GROSS with
+    `cost_known: true`. The endpoint's own docstring promises it never presents
+    gross as profit; that is exactly what it did.
+
+    Measured on a seeded instance: a service grossing 4.00 reported net 4.00
+    with the tariff configured. The real figures are cost 3.97, net 0.03 — the
+    electricity was consuming almost all of it.
+
+    This is the SECOND time this key has bitten the project.
+    `egress.container_slug` exists because of the first time, and its docstring
+    warns that code reading "service" matches nothing in production while its
+    tests pass. Which is what happened here, again.
+    """
+
+    def _net(self, containers, price="0.20"):
+        import asyncio
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        from app import main
+
+        workers = [{"id": 1, "name": "w", "status": "online", "system_info": '{"network_type": "residential"}'}]
+
+        async def run():
+            with (
+                patch.object(main, "_require_auth_api", lambda r: None),
+                patch.object(
+                    main.database,
+                    "get_config",
+                    AsyncMock(return_value={"power_price_per_kwh": price, "power_currency": "EUR"}),
+                ),
+                patch.object(main, "_get_all_worker_containers", AsyncMock(return_value=containers)),
+                patch.object(main.database, "list_workers", AsyncMock(return_value=workers)),
+                patch.object(main.database, "get_earned_by_platform", AsyncMock(return_value={"honeygain": 4.0})),
+            ):
+                return await main.api_earnings_net(MagicMock(), days=30)
+
+        return asyncio.run(run())
+
+    def test_a_running_container_is_actually_charged_for_its_electricity(self):
+        """The shape workers really send: keyed on `slug`."""
+        out = self._net([{"slug": "honeygain", "status": "running", "cpu_percent": 4.0, "_worker_id": 1}])
+        assert out["total_cost"] > 0, "no electricity was charged at all — the container matched nothing"
+        assert out["total_net"] < out["total_gross"], "net must be below gross once power is paid for"
+
+    def test_the_legacy_service_key_is_still_understood(self):
+        """Older fixtures and older workers use `service`; both must match."""
+        out = self._net([{"service": "honeygain", "status": "running", "cpu_percent": 4.0, "_worker_id": 1}])
+        assert out["total_cost"] > 0
+
+    def test_a_stopped_container_is_not_charged(self):
+        """It draws nothing, and charging it would inflate the fleet's cost."""
+        out = self._net([{"slug": "honeygain", "status": "exited", "cpu_percent": 0.0, "_worker_id": 1}])
+        assert out["total_cost"] == 0.0
+
+    def test_gross_is_never_reported_as_net_while_claiming_the_cost_is_known(self):
+        """The exact failure: cost_known true, cost 0.00, net == gross."""
+        out = self._net([{"slug": "honeygain", "status": "running", "cpu_percent": 4.0, "_worker_id": 1}])
+        assert not (out["cost_known"] and out["total_cost"] == 0.0 and out["total_net"] == out["total_gross"])
+
+    def test_with_no_tariff_the_cost_is_unknown_rather_than_zero(self):
+        """Unchanged behaviour, asserted so the fix above cannot break it."""
+        out = self._net([{"slug": "honeygain", "status": "running", "cpu_percent": 4.0, "_worker_id": 1}], price="")
+        assert out["cost_known"] is False
+        assert out["services"][0]["cost"] is None
+        assert out["services"][0]["net"] is None

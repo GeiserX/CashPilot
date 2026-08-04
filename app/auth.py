@@ -228,7 +228,24 @@ def require_role(user: dict[str, Any] | None, *roles: str) -> bool:
     if not user:
         return False
     role = user.get("r")
-    # fleet role implicitly satisfies writer checks (for heartbeat/status endpoints)
-    if role == "fleet" and "writer" in roles:
-        return True
+    # The fleet role deliberately does NOT satisfy writer.
+    #
+    # It used to, "for heartbeat/status endpoints" — but the heartbeat never
+    # went through here. app/main.py::api_worker_heartbeat authenticates with
+    # _authenticate_worker_heartbeat, so this granted nothing the workers
+    # needed, while unlocking five user-facing routes for anyone holding the
+    # shared key: payout confirm, payout REJECT (a hard DELETE), container
+    # logs, collection, and arbitrary worker commands.
+    #
+    # That key is handed to every worker host by design — it is in each
+    # worker's compose file and readable with `docker inspect` — so a second
+    # machine in the fleet could permanently destroy the owner's payout
+    # records with no login. Verified before removal: a bare
+    # `Authorization: Bearer <fleet key>` POST to
+    # /api/earnings/payouts/1/reject returned 200 and deleted the row, on a
+    # server with no session at all.
+    #
+    # Automation that genuinely needs write access uses
+    # CASHPILOT_ADMIN_API_KEY, which resolves to the owner role above and is
+    # not distributed to workers.
     return role in roles

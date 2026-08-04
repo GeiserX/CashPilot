@@ -54,3 +54,4 @@ platforms: [windows]
 collector:
   type: api
   notes: "API at app-api.salad.com/api/v1/profile/balance. Auth via 'auth' cookie + X-XSRF-TOKEN header (double-submit). Returns currentBalance (USD) and lifetimeBalance."
+  credential_hint: "Log in at <a href='https://app.salad.io' target='_blank'>app.salad.io</a>, press F12 → Application → Cookies, copy the <b>auth</b> cookie value."

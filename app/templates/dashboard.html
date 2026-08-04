@@ -28,6 +28,21 @@
   </div>
 </div>
 
+<!-- Payouts awaiting an answer.
+     Hidden until there is something to answer: an empty card every day would
+     train people to ignore the one day it matters. A balance drop is only a
+     PROBABLE payout — it can equally be a provider correction — so nothing is
+     ever counted as income until the answer comes from here. -->
+<div class="card" id="payout-queue-card" style="margin-bottom: 24px; display:none;">
+  <div class="card-header">
+    <span class="card-title">Did you get paid?</span>
+    <span style="font-size:0.72rem; color:var(--text-muted);">
+      A balance drop can be a payout or a provider correction. Nothing counts as earned until you say.
+    </span>
+  </div>
+  <div id="payout-queue-list"></div>
+</div>
+
 <!-- Earnings Chart -->
 <div class="card" style="margin-bottom: 24px;">
   <div class="card-header">
