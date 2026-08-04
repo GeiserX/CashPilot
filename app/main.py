@@ -1211,6 +1211,9 @@ async def api_services_available(request: Request) -> list[dict[str, Any]]:
     services = catalog.get_services()
     deployments = await database.get_deployments()
     deployed_slugs = {d["slug"] for d in deployments}
+    # Imported here rather than at module scope: app.collectors pulls in every
+    # collector module.
+    from app.collectors import COLLECTOR_MAP as collector_map
 
     # Also check worker containers for deployed status (catches externally-deployed services)
     worker_containers = await _get_all_worker_containers()
@@ -1235,6 +1238,11 @@ async def api_services_available(request: Request) -> list[dict[str, Any]]:
         svc["deployed"] = slug in deployed_slugs or slug in worker_slugs
         svc["manual_only"] = not has_image
         svc["node_count"] = len(worker_node_counts.get(slug, set()))
+        # The setup wizard reads this endpoint, and it needs to know whether
+        # earnings tracking takes a SECOND set of credentials — the service
+        # detail view already says so, and the wizard is the screen a new user
+        # actually sees (CashPilot-p6s).
+        svc["has_collector"] = slug in collector_map
         available.append(svc)
     return available
 
