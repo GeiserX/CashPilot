@@ -85,7 +85,12 @@ class TestThePayoutCardDoesNotInventProgress:
         Nulling it broke an existing test that was right to object.
         """
         source = (ROOT / "app" / "main.py").read_text(encoding="utf-8")
-        assert '"projection": payouts.project(current, service, history),' in source
+        # Matched on the CALL, not its full argument list. Pinning the arguments
+        # made this fail when project() gained the balance's currency — a change
+        # that has nothing to do with what this test is protecting, which is
+        # that the field is populated rather than nulled.
+        assert '"projection": payouts.project(current, service, history' in source
+        assert '"projection": None' not in source
 
     @pytest.mark.asyncio
     async def test_a_never_read_service_reports_null_lifetime(self):
