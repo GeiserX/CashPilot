@@ -126,7 +126,7 @@ Then open [http://localhost:8080](http://localhost:8080) and follow the setup wi
     Some services require a residential IP and will not pay (or will ban) VPS/datacenter IPs. These are marked as "Residential Only" in the service catalog. Services that work on VPS are a good way to scale up without additional home hardware.
 
 ??? question "How are credentials stored?"
-    All service credentials are encrypted at rest in the SQLite database using your `CASHPILOT_SECRET_KEY`. The database file lives in the mounted Docker volume. No credentials are ever sent anywhere except to the service containers themselves.
+    All service credentials are encrypted at rest in the SQLite database with a Fernet key kept at `/data/.fernet_key` (overridable via `CASHPILOT_ENCRYPTION_KEY`). This is not `CASHPILOT_SECRET_KEY`, which only signs login sessions. The database file lives in the mounted Docker volume. No credentials are ever sent anywhere except to the service containers themselves.
 
 ??? question "What about security?"
     Every service CashPilot deploys runs inside its own isolated Docker container with `--security-opt no-new-privileges`. Service credentials are encrypted at rest using Fernet symmetric encryption. Only the worker container requires Docker socket access; the UI container has no privileged access. We recommend running CashPilot on a dedicated machine or VLAN and keeping Docker and your host OS up to date.

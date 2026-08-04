@@ -73,7 +73,14 @@ jobs:
           BUILD_UI=false
           BUILD_WORKER=false
 
-          if echo "$CHANGED" | grep -qE '^(Dockerfile|entrypoint\.sh|pyproject\.toml|uv\.lock|app/(main|database|catalog|auth|compose_generator|exchange_rates|constants|collectors|templates|static|routers|deps|metrics|setup_token))'; then
+          # The UI image does `COPY app/ ./app/` — the WHOLE directory — so ANY
+          # change under app/ belongs in a UI build. The hand-maintained module
+          # allowlist that used to live here named 13 of 27 modules, so a change
+          # to any of the other 14 (payouts, preflight, power, egress,
+          # lan_isolation, notify, ...) produced a GREEN release run that
+          # published nothing at all: no tag, no GitHub Release, no images.
+          # Skipped steps do not fail a run, so it looked like a success.
+          if echo "$CHANGED" | grep -qE '^(Dockerfile|entrypoint\.sh|pyproject\.toml|uv\.lock|app/)'; then
             BUILD_UI=true
           fi
           if echo "$CHANGED" | grep -qE '^services/'; then
@@ -81,9 +88,22 @@ jobs:
             BUILD_WORKER=true
           fi
 
-          if echo "$CHANGED" | grep -qE '^(Dockerfile\.worker|entrypoint\.sh|pyproject\.toml|uv\.lock|app/(worker_api|orchestrator|constants|catalog|fleet_key)\.py)'; then
+          # The worker image copies an explicit list of modules, so its trigger
+          # is DERIVED FROM Dockerfile.worker rather than restated here. The
+          # previous hand-written list omitted egress.py and state_backup.py —
+          # both COPY'd into the worker and imported by worker_api at runtime —
+          # so a change to either published a worker image tagged with the new
+          # version while containing the previous release's code.
+          WORKER_MODULES=$(grep -oE '^COPY[^#]*app/([a-z_]+)\.py' Dockerfile.worker \
+            | grep -oE 'app/[a-z_]+\.py' | sort -u)
+          echo "Worker modules (from Dockerfile.worker):"; echo "$WORKER_MODULES"
+          if echo "$CHANGED" | grep -qE '^(Dockerfile\.worker|entrypoint\.sh|pyproject\.toml|uv\.lock)'; then
             BUILD_WORKER=true
           fi
+          while IFS= read -r mod; do
+            [ -n "$mod" ] || continue
+            if echo "$CHANGED" | grep -qxF "$mod"; then BUILD_WORKER=true; fi
+          done <<< "$WORKER_MODULES"
 
           if echo "$CHANGED" | grep -qE '^app/__init__\.py'; then
             BUILD_UI=true
