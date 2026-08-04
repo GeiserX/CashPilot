@@ -213,7 +213,11 @@ class BytelixirCollector(BaseCollector):
                 platform=self.platform,
                 balance=round(balance, 4),
                 currency="USD",
-                error="Withdrawable balance only (HTML scrape failed, using API fallback)",
+                # A WARNING, not an error: this reading is real and worth
+                # storing. Reported as an error, the balance was discarded by
+                # the collection loop and the user saw "collector failed" for a
+                # collector that had just returned a correct number.
+                warning="Withdrawable balance only (HTML scrape failed, using API fallback)",
             )
         except Exception as exc:
             base.log_failure(logger, "Bytelixir", exc)
