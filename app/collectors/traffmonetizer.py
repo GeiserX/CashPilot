@@ -15,6 +15,7 @@ import logging
 
 import httpx  # noqa: F401 (used by test patches targeting this module)
 
+from app.collectors import base
 from app.collectors.base import BaseCollector, EarningsResult
 
 logger = logging.getLogger(__name__)
@@ -76,7 +77,7 @@ class TraffmonetizerCollector(BaseCollector):
                 currency="USD",
             )
         except Exception as exc:
-            logger.error("Traffmonetizer collection failed: %s", exc, exc_info=True)
+            base.log_failure(logger, "Traffmonetizer", exc)
             return EarningsResult(
                 platform=self.platform,
                 balance=0.0,

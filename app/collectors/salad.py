@@ -16,6 +16,7 @@ import logging
 
 import httpx
 
+from app.collectors import base
 from app.collectors.base import BaseCollector, EarningsResult
 
 logger = logging.getLogger(__name__)
@@ -68,7 +69,7 @@ class SaladCollector(BaseCollector):
                 currency="USD",
             )
         except Exception as exc:
-            logger.error("Salad collection failed: %s", exc, exc_info=True)
+            base.log_failure(logger, "Salad", exc)
             return EarningsResult(
                 platform=self.platform,
                 balance=0.0,

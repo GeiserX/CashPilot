@@ -25,6 +25,10 @@ logger = logging.getLogger(__name__)
 # intentionally do NOT map GRASS here.
 CRYPTO_IDS: dict[str, str] = {
     "MYST": "mysterium",
+    # Anyone Protocol. The id really is "airtor-protocol" — the project was
+    # renamed from ATOR and CoinGecko kept the original slug. Taken from the
+    # collector, which has been querying that id for the price all along.
+    "ANYONE": "airtor-protocol",
 }
 
 CACHE_TTL = 900  # 15 minutes

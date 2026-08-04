@@ -68,3 +68,29 @@ class BaseCollector(abc.ABC):
     @abc.abstractmethod
     async def collect(self) -> EarningsResult:
         raise NotImplementedError
+
+
+def log_failure(logger: Any, service_name: str, exc: BaseException) -> None:
+    """Log a collector failure without writing the user's credential to the log.
+
+    Every collector used to do this itself, as
+    ``logger.error("X collection failed: %s", exc, exc_info=True)``. Both halves
+    leak. Several providers are authenticated with a bare header value — Salad's
+    auth cookie, Grass's access token, ProxyRack's API key, EarnApp's OAuth
+    token, PacketStream's JWT — so when httpx rejects one, the exception TEXT is
+    the credential, and ``exc_info`` then prints it again inside the chained
+    httpcore/httpx traceback.
+
+    That put a live credential in plaintext in ``docker logs cashpilot-ui``, and
+    in whatever ships those logs off the box. Anyone in the ``docker`` group, or
+    with read access to the log store, could take it — while the same string was
+    being carefully redacted one layer up for the alert bell, which is what made
+    the leak easy to miss.
+
+    Routed through one helper so a new collector cannot reintroduce it by
+    copying the idiom from its neighbours, which is exactly how it reached all
+    fifteen of them.
+    """
+    from app import notify
+
+    logger.error("%s collection failed: %s", service_name, notify.redact(str(exc)))

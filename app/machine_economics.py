@@ -31,9 +31,12 @@ from __future__ import annotations
 
 from typing import Any
 
-# What a machine draws when it is on but doing nothing much. A small always-on
-# server — NUC, mini PC, Pi 5 — sits around here. A guess, and labelled one.
-DEFAULT_IDLE_WATTS = 65.0
+# DEFAULT_IDLE_WATTS used to live here: 65.0, described as what a small
+# always-on server draws. It was never referenced by anything, and
+# `power.DEFAULT_HOST_TDP_WATTS` is the SAME number with the same meaning and
+# an actual consumer. Two constants for one quantity in two modules is worse
+# than an unused one — they can drift apart silently, and the next person to
+# need it has to guess which is authoritative. Import it from `power`.
 
 HOURS_PER_MONTH = 730.0
 
@@ -187,13 +190,19 @@ def fleet_summary(machines: list[dict[str, Any]]) -> dict[str, Any]:
     known = [m for m in machines if m.get("monthly_cost") is not None]
     unknown = [m for m in machines if m.get("monthly_cost") is None]
     gross = sum(float(m.get("monthly_gross") or 0.0) for m in machines)
+    # Net must compare LIKE WITH LIKE. Subtracting the cost of the machines
+    # whose cost is known from the gross of ALL machines flatters the result by
+    # exactly the gross of every machine whose cost is unknown — the more
+    # machines you cannot price, the healthier the fleet appears. The docstring
+    # promises this total "never quietly understates what the fleet costs".
+    known_gross = sum(float(m.get("monthly_gross") or 0.0) for m in known)
     cost = sum(float(m.get("monthly_cost") or 0.0) for m in known)
 
     return {
         "machines": machines,
         "monthly_gross": round(gross, 4),
         "monthly_cost": round(cost, 4) if known else None,
-        "monthly_net": round(gross - cost, 4) if known else None,
+        "monthly_net": round(known_gross - cost, 4) if known else None,
         "cost_known_for": len(known),
         "cost_unknown_for": len(unknown),
         "losing_money": [m["machine"] for m in machines if m.get("verdict") == LOSING_MONEY],

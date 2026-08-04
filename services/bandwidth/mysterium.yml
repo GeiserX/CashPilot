@@ -72,6 +72,10 @@ platforms: [docker, windows, macos, linux, android, browser-extension]
 collector:
   type: api
   notes: "Tequila API at http://localhost:4449/tequilapi/settlement/total-fees. Returns MYST in wei (10^18). No auth needed."
+  # MystNodes reports earnings per registered node, not just an
+  # account total, so the UI can break the figure down by machine.
+  per_node_earnings: true
+  credential_hint: "Use your MystNodes account email and password (same as <a href='https://my.mystnodes.com' target='_blank'>my.mystnodes.com</a>)."
 
 # What this service does with the user's machine (CashPilot-66x).
 # Written to be read by someone deciding whether to trust it.

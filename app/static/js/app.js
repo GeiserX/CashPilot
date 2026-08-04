@@ -95,6 +95,22 @@ const CP = (() => {
         if (node.tagName === 'A' && attr.name === 'target') continue;
         node.removeAttribute(attr.name);
       }
+      // Anything opening a new tab gets rel="noopener noreferrer", set HERE
+      // rather than in the YAML.
+      //
+      // The loop above strips every attribute it does not explicitly keep, so a
+      // rel written into a service's credential_hint would be removed on its
+      // way to the DOM — the fix would look applied, pass review, and do
+      // nothing. Setting it after sanitising covers all 13 existing hints and
+      // every future one, and cannot be forgotten by whoever writes the next.
+      //
+      // Modern browsers imply noopener for target=_blank, so this is defence in
+      // depth rather than a live hole; noreferrer is the part still worth
+      // having, since these links point at a provider's dashboard and the
+      // referrer would name the user's CashPilot host.
+      if (node.tagName === 'A' && node.getAttribute('target')) {
+        node.setAttribute('rel', 'noopener noreferrer');
+      }
     });
     return el.innerHTML;
   }
@@ -211,6 +227,7 @@ const CP = (() => {
       loadDashboardStats(),
       loadServicesTable(),
       loadEarningsChart('7'),
+      loadPayoutQueue(),
     ]);
 
     // Auto-refresh every hour
@@ -218,7 +235,239 @@ const CP = (() => {
     refreshTimer = setInterval(() => {
       loadDashboardStats();
       loadServicesTable();
+      loadPayoutQueue();
     }, 3600000);
+  }
+
+  // Payouts awaiting an answer.
+  //
+  // The backend has detected these for a while and had nowhere to ask: a
+  // balance drop was recorded as a PROBABLE payout, and without an answer it
+  // never counts toward lifetime earnings. So a real payout quietly looked like
+  // a loss, which is the opposite of what the feature is for.
+  async function loadPayoutQueue() {
+    const card = document.getElementById('payout-queue-card');
+    const list = document.getElementById('payout-queue-list');
+    if (!card || !list) return;
+
+    let pending;
+    try {
+      pending = (await api('/api/earnings/payouts')).probable || [];
+    } catch (err) {
+      // Unknown is not "nothing pending". Leave whatever is on screen rather
+      // than hiding a question the user still owes an answer to.
+      console.warn('Could not load pending payouts:', err);
+      return;
+    }
+
+    if (!pending.length) {
+      card.style.display = 'none';
+      list.innerHTML = '';
+      return;
+    }
+
+    card.style.display = '';
+    list.innerHTML = pending.map(p => {
+      // The NATIVE amount leads, because it is what the provider actually paid
+      // and it is what the user will see on the provider's own page when they
+      // go to check. Everywhere else on the dashboard the display currency is
+      // the right answer; here it is a converted approximation of a specific
+      // real transaction, so it is shown second and marked as approximate.
+      // A browser check caught this: a 24.90 USD payout rendered as "£18.55",
+      // which is not a figure the user can match against anything.
+      const nativeCurrency = p.currency || 'USD';
+      const native = `${Number(p.amount).toFixed(2)} ${nativeCurrency}`;
+      // Compare CURRENCY CODES, not the formatted strings. formatCurrency
+      // returns "$24.90" via Intl while `native` is "24.90 USD", so a string
+      // comparison finds them different for a USD payout on a USD dashboard
+      // and renders "24.90 USD (≈ $24.90)" — the duplication this is meant to
+      // suppress. The codes are the thing that actually decides whether a
+      // conversion happened.
+      const approx = effectiveDisplayCurrency(nativeCurrency) !== nativeCurrency
+        ? ` <span style="color:var(--text-muted);">(≈ ${escapeHtml(formatCurrency(p.amount, nativeCurrency))})</span>`
+        : '';
+      return `
+        <div class="payout-queue-item" data-payout-id="${escapeHtml(String(p.id))}">
+          <div class="payout-queue-body">
+            <div class="payout-queue-platform">${escapeHtml(p.platform || '')}</div>
+            <div class="payout-queue-detail">Balance dropped by ${escapeHtml(native)}${approx}${p.detected_at ? ` on ${escapeHtml(String(p.detected_at).slice(0, 10))}` : ''}</div>
+          </div>
+          <div class="payout-queue-actions">
+            ${_canWrite ? `
+            <button class="btn btn-primary btn-sm" data-action="confirmPayout" data-a1="${escapeHtml(String(p.id))}" data-a2="${escapeHtml(p.platform || '')}">Yes, I was paid</button>
+            <button class="btn btn-ghost btn-sm" data-action="rejectPayout" data-a1="${escapeHtml(String(p.id))}" data-a2="${escapeHtml(p.platform || '')}">No, not a payout</button>
+            ` : `<span style="font-size:0.72rem; color:var(--text-muted);">Writer access required to answer this.</span>`}
+          </div>
+        </div>
+      `;
+    }).join('');
+  }
+
+  // How far off is the next payout for this one service.
+  //
+  // Three separate questions that used to be one number which went DOWN when
+  // the user got paid: what is sitting there now, what has this service earned
+  // in total, and when can it be cashed out. The backend already answers all
+  // three and states its own uncertainty precisely — "not enough history yet"
+  // and "this is not earning" are different problems with different fixes — so
+  // this renders that sentence rather than inventing a cheerier one.
+  async function loadPayoutProgress() {
+    const card = document.getElementById('payout-progress-card');
+    const body = document.getElementById('payout-progress-body');
+    if (!card || !body) return;
+    const slug = card.dataset.slug;
+    if (!slug) return;
+
+    let data;
+    try {
+      data = await api(`/api/services/${encodeURIComponent(slug)}/payout-progress`);
+    } catch (err) {
+      // Leave the card hidden rather than showing a fabricated zero.
+      console.warn('Could not load payout progress:', err);
+      return;
+    }
+
+    const projection = data.projection || {};
+    const balance = Number(data.current_balance || 0);
+
+    // The endpoint reports what is LEFT, not the target, so the target is
+    // derived. A service with no documented minimum omits `remaining`
+    // entirely — checked against payouts.project() rather than assumed — and
+    // that absence is what suppresses the bar. "No documented minimum" is not
+    // "0% of the way there", and a bar stuck at zero would say the wrong thing
+    // far more loudly than no bar at all.
+    let bar = '';
+    const remaining = projection.remaining;
+    if (typeof remaining === 'number') {
+      const threshold = balance + remaining;
+      const pct = threshold > 0 ? Math.max(0, Math.min(100, (balance / threshold) * 100)) : 100;
+      bar = `
+        <div class="payout-progress-track" role="img"
+             aria-label="${escapeHtml(pct.toFixed(0))}% of the ${escapeHtml(threshold.toFixed(2))} minimum">
+          <div class="payout-progress-fill" style="width:${pct.toFixed(1)}%;"></div>
+        </div>`;
+    }
+
+    // Everything in this card is stated in the CASHOUT currency — the unit the
+    // provider's own minimum is declared in — and deliberately not converted to
+    // the dashboard's display currency. A browser check caught why: the balance
+    // rendered as "£3.73" directly above "to the 20 minimum", so the two halves
+    // of a single comparison were in different units and the progress bar
+    // agreed with neither. Here the numbers exist to be compared against that
+    // threshold, so they have to share its unit.
+    const unit = card.dataset.currency || '';
+    const money = value => (unit ? `${Number(value).toFixed(2)} ${unit}` : formatCurrency(value));
+
+    const paid = data.confirmed_payout_count || 0;
+
+    // Nothing read and nothing ever paid out: there is no progress to show.
+    //
+    // The card used to appear anyway, asserting a definite 0.00 lifetime and a
+    // 0%-of-minimum bar for a service CashPilot had never once looked at. It
+    // already got "Balance now" right (`balance_known`), which made the two
+    // fabricated figures beside it read as corroborated.
+    //
+    // Confirmed payouts alone are worth showing, so this hides the card only
+    // when BOTH are absent. Same defect filed three times: CashPilot-3oa
+    // (the API), -s2b (the lifetime figure), -jkd (the card and bar).
+    if (!data.balance_known && !paid) {
+      card.style.display = 'none';
+      return;
+    }
+    card.style.display = '';
+    body.innerHTML = `
+      <div class="detail-grid">
+        <div class="detail-item">
+          <div class="detail-label">Balance now</div>
+          <div class="detail-value">${data.balance_known ? escapeHtml(money(balance)) : '<span style="color:var(--text-muted);">not collected yet</span>'}</div>
+        </div>
+        <div class="detail-item">
+          <div class="detail-label">Earned in total</div>
+          <div class="detail-value">${data.balance_known || paid ? escapeHtml(money(data.lifetime_earned || 0)) : '<span style="color:var(--text-muted);">not collected yet</span>'}</div>
+          ${paid ? `<div style="font-size:0.7rem; color:var(--text-muted);">includes ${escapeHtml(String(paid))} confirmed payout${paid === 1 ? '' : 's'}</div>` : ''}
+        </div>
+      </div>
+      ${bar}
+      <p style="margin-top:12px; color:var(--text-secondary); font-size:0.85rem;">${escapeHtml(projection.summary || '')}</p>
+    `;
+  }
+
+  // What running this service actually does with the machine and connection.
+  //
+  // Two questions the deploy step never asked: whether strangers route traffic
+  // through the user's IP under their name, and whether the container can be
+  // kept off the home LAN. Both are answered by the backend already, and both
+  // are things a person deserves to know BEFORE they click deploy rather than
+  // after an ISP letter.
+  //
+  // "Nobody has documented this" is rendered as loudly as a known risk,
+  // because unknown is not safe — that distinction is the whole design of
+  // app/lan_isolation.py and dropping it here would undo it.
+  async function loadDeployRisk() {
+    const card = document.getElementById('deploy-risk-card');
+    const body = document.getElementById('deploy-risk-body');
+    if (!card || !body) return;
+    const slug = card.dataset.slug;
+    if (!slug) return;
+
+    let risk;
+    try {
+      risk = await api(`/api/services/${encodeURIComponent(slug)}/deploy-risk`);
+    } catch (err) {
+      console.warn('Could not load deploy risk:', err);
+      return;
+    }
+
+    const attribution = risk.attribution;
+    const isolation = risk.isolation || {};
+    if (!attribution && !isolation.summary) { card.style.display = 'none'; return; }
+
+    let html = '';
+    if (attribution) {
+      // documented === false means nobody checked, which is a different claim
+      // from "no risk" and is styled to say so rather than to reassure.
+      const tone = attribution.documented ? 'var(--warning)' : 'var(--text-muted)';
+      html += `
+        <div class="deploy-risk-block" style="border-left-color:${tone};">
+          <div class="deploy-risk-headline">${escapeHtml(attribution.headline || '')}</div>
+          <div class="deploy-risk-body-text">${escapeHtml(attribution.body || '')}</div>
+          ${attribution.lateral_note ? `<div class="deploy-risk-body-text">${escapeHtml(attribution.lateral_note)}</div>` : ''}
+          ${attribution.source ? `<div class="deploy-risk-source">Source: ${escapeHtml(attribution.source)}</div>` : ''}
+        </div>`;
+    }
+    if (isolation.summary) {
+      html += `
+        <div class="deploy-risk-block" style="border-left-color:var(--border-color);">
+          <div class="deploy-risk-headline">Keeping it off your LAN</div>
+          <div class="deploy-risk-body-text">${escapeHtml(isolation.summary)}</div>
+        </div>`;
+    }
+    card.style.display = '';
+    body.innerHTML = html;
+  }
+
+  async function confirmPayout(payoutId, platform) {
+    try {
+      await api(`/api/earnings/payouts/${encodeURIComponent(payoutId)}/confirm`, { method: 'POST' });
+      toast(`Recorded the ${platform || 'payout'} as paid.`, 'success');
+      // The totals move as a direct result, so refresh them alongside the queue
+      // rather than leaving the user to wonder whether it took effect.
+      await Promise.all([loadPayoutQueue(), loadDashboardStats(), loadCollectorAlerts()]);
+    } catch (err) {
+      toast(err.message, 'error');
+    }
+  }
+
+  async function rejectPayout(payoutId, platform) {
+    // Rejection DELETES the row, and there is no undo, so it asks first.
+    if (!window.confirm(`Discard the detected ${platform || ''} payout? This cannot be undone.`)) return;
+    try {
+      await api(`/api/earnings/payouts/${encodeURIComponent(payoutId)}/reject`, { method: 'POST' });
+      toast('Discarded — it will not count as earnings.', 'success');
+      await Promise.all([loadPayoutQueue(), loadCollectorAlerts()]);
+    } catch (err) {
+      toast(err.message, 'error');
+    }
   }
 
   async function loadDashboardStats() {
@@ -525,7 +774,10 @@ const CP = (() => {
     }
 
     // Balance + delta from breakdown
-    const balance = (bk && bk.balance) || svc.balance || 0;
+    // `|| 0` would defeat the whole fix: it coerces a null balance — which now
+    // explicitly means "never read" — straight back into a confident zero.
+    const balanceKnown = (bk ? bk.balance != null : null) ?? svc.balance_known ?? (svc.balance != null);
+    const balance = (bk && bk.balance != null ? bk.balance : svc.balance) ?? 0;
     const signupBonus = (bk && bk.signup_bonus) || 0;
     const balanceAdj = signupBonus > 0 ? ((bk && bk.balance_adjusted) ?? Math.max(0, balance - signupBonus)) : balance;
     const currency = (bk && bk.currency) || svc.currency || 'USD';
@@ -555,7 +807,11 @@ const CP = (() => {
       disconnectedLabel = `<div title="This service is running and earning. To show its balance here, add its earnings-tracking credentials." style="font-size:0.6rem; color:var(--text-muted); font-weight:500; display:flex; align-items:center; justify-content:flex-end; gap:4px;">tracking not set up${_isOwner ? ` <button class="btn btn-ghost" data-action="openCredentialModal" data-stop="1" data-a1="${escapeHtml(svc.slug)}" style="font-size:0.6rem; padding:1px 5px; line-height:1.2; color:var(--text-muted); border:1px solid var(--border); border-radius:3px; cursor:pointer;">set up</button>` : ''}</div>`;
     }
     let balanceHtml;
-    if (nativeLabel) {
+    if (!balanceKnown) {
+      // Never read. An em dash, not a number — the user must be able to tell
+      // "nothing has looked at this" from "this earned nothing".
+      balanceHtml = `<span style="color:var(--text-muted);" title="CashPilot has not read a balance for this service yet">&mdash;</span>${disconnectedLabel}`;
+    } else if (nativeLabel) {
       balanceHtml = `${formatCurrency(displayBalance, currency)}<div style="font-size:0.65rem;color:var(--text-muted);">${nativeLabel}</div>${bonusLabel}${disconnectedLabel}`;
     } else {
       balanceHtml = `${formatCurrency(displayBalance, currency)}${bonusLabel}${disconnectedLabel}`;
@@ -746,15 +1002,31 @@ const CP = (() => {
       labels = data.map(d => d.date);
       values = data.map(d => d.amount);
     } catch (err) {
-      // Generate placeholder data
-      const now = new Date();
-      const count = parseInt(days) || 7;
-      for (let i = count - 1; i >= 0; i--) {
-        const d = new Date(now);
-        d.setDate(d.getDate() - i);
-        labels.push(d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }));
-        values.push(0);
+      // A failed fetch is NOT a month of zero earnings.
+      //
+      // This used to fabricate one bar per day at exactly 0.00, drawn with the
+      // same axis and tooltips as real money. The user read "I earned nothing
+      // every day for the last month" when the truth was that the browser could
+      // not reach the server. Of every place in this app that could turn
+      // unknown into a number, this was the loudest: a full-width chart of
+      // confident zeros.
+      //
+      // Leave whatever is on screen alone if a chart already exists — stale
+      // real data beats invented data — and say so plainly when there is not.
+      console.warn('Could not load earnings for the chart:', err);
+      if (!earningsChart && ctx) {
+        const holder = ctx.parentElement;
+        if (holder) {
+          holder.innerHTML =
+            '<div class="empty-state" style="padding:32px 0;">'
+            + '<div class="empty-state-text">Could not load earnings. This is not a reading of zero — '
+            + 'the figures could not be fetched.</div>'
+            + '<button class="btn btn-ghost btn-sm" data-action="loadEarningsChart" data-a1="'
+            + escapeHtml(String(days)) + '" style="margin-top:10px;">Retry</button>'
+            + '</div>';
+        }
       }
+      return;
     }
 
     if (earningsChart) {
@@ -1374,7 +1646,7 @@ const CP = (() => {
     }
 
     return `
-    <div class="${classes.join(' ')}" data-slug="${svc.slug}" data-action="toggleWizardService" data-a1="${svc.slug}" data-a2="this">
+    <div class="${classes.join(' ')}" data-slug="${svc.slug}" data-action="toggleWizardService" data-a1="${svc.slug}">
       <div class="service-card-header">
         <div class="service-icon">${(svc.name || '?')[0]}</div>
         <div>
@@ -1391,14 +1663,27 @@ const CP = (() => {
     </div>`;
   }
 
-  function toggleWizardService(slug, el) {
+  function toggleWizardService(slug) {
+    // Resolves its own element. It used to take one as a second argument, fed
+    // by `data-a2="this"` — a leftover from the inline-handler migration, where
+    // `this` really was the element. delegate.js reads arguments out of
+    // `dataset`, and dataset values are ALWAYS strings, so the handler received
+    // the literal string "this" and threw on `.classList`.
+    //
+    // The throw was the harmless half. The selection is mutated BEFORE the
+    // line that throws, so a click updated wizardState and then died before
+    // highlighting anything: no visual feedback, and a second click silently
+    // deselected a service the user could not see was selected. They then
+    // pressed Next and were told to select something.
+    const card = document.querySelector(`#wizard-services .service-card[data-slug="${CSS.escape(slug)}"]`)
+      || document.querySelector(`.service-card[data-slug="${CSS.escape(slug)}"]`);
     const idx = wizardState.selectedServices.indexOf(slug);
     if (idx >= 0) {
       wizardState.selectedServices.splice(idx, 1);
-      el.classList.remove('selected');
+      card?.classList.remove('selected');
     } else {
       wizardState.selectedServices.push(slug);
-      el.classList.add('selected');
+      card?.classList.add('selected');
     }
   }
 
@@ -1507,7 +1792,7 @@ const CP = (() => {
           <div id="setup-worker-list-${svc.slug}">${workerRows}</div>
         </div>
         <div style="display:flex; gap:8px; align-items:center;">
-          <button class="btn btn-success" data-action="deployService" data-a1="${svc.slug}"${_canWrite ? '' : ' disabled title="Writer access required"'}>
+          <button class="btn btn-success" data-action="deployService" data-a1="${svc.slug}"${_isOwner ? '' : ' disabled title="Owner access required"'}>
             Deploy ${escapeHtml(svc.name)}
           </button>
           <span class="deploy-status" id="deploy-status-${svc.slug}" style="margin-left: 4px; font-size: 0.85rem;"></span>
@@ -1521,6 +1806,41 @@ const CP = (() => {
   // deploy entry points (the setup wizard and the catalog/detail view) so validation and
   // error reporting are identical — the detail view previously skipped validation and
   // swallowed server errors silently.
+  // Ask preflight about every target node, and put anything it objects to in
+  // front of the user before the deploy rather than after.
+  //
+  // Returns true to proceed. A preflight that cannot be reached returns TRUE:
+  // the check is advice, and failing to fetch advice is not grounds for
+  // blocking a deploy the user asked for. Silence here means "no opinion", not
+  // "no risk", which is why nothing is displayed in that case either.
+  async function _confirmPreflight(slug, workerIds) {
+    let assessments;
+    try {
+      assessments = await Promise.all(
+        workerIds.map(id => api(`/api/services/${slug}/preflight?worker_id=${encodeURIComponent(id)}`))
+      );
+    } catch (err) {
+      console.warn('Preflight unavailable, proceeding:', err);
+      return true;
+    }
+
+    // Only the findings worth interrupting for. "check_these" is advisory —
+    // surfacing it as a modal on every deploy would train people to click
+    // through the one that matters.
+    const serious = [];
+    assessments.forEach((a, i) => {
+      (a && a.findings ? a.findings : [])
+        .filter(f => f.verdict === 'will_earn_nothing' || a.blocking)
+        .forEach(f => serious.push({worker: workerIds[i], message: f.message}));
+    });
+    if (!serious.length) return true;
+
+    const lines = serious.map(s => `• ${s.message}`).join('\n\n');
+    return window.confirm(
+      `${slug}: this may not work as expected.\n\n${lines}\n\nDeploy anyway?`
+    );
+  }
+
   async function _deployToWorkers(slug, workerIds) {
     const statusEl = document.getElementById(`deploy-status-${slug}`);
     if (workerIds.length === 0) {
@@ -1545,6 +1865,21 @@ const CP = (() => {
 
     if (missingRequired) {
       toast('Fill in all required fields', 'warning');
+      if (statusEl) statusEl.textContent = '';
+      return;
+    }
+
+    // Preflight, at the deploy step — which is where the backend's own comments
+    // say it belongs, "not buried in an FAQ". It has been computed since 1.10.x
+    // and asked by nothing.
+    //
+    // WARNS, never blocks: the assessment itself reports blocking=false and
+    // says "you can deploy it anyway", and the machine running this knows
+    // things CashPilot does not. But the findings include cases like a second
+    // instance behind one IP, where some providers forfeit the account balance
+    // — a real loss, and worth one question before it happens rather than an
+    // explanation afterwards.
+    if (!await _confirmPreflight(slug, workerIds)) {
       if (statusEl) statusEl.textContent = '';
       return;
     }
@@ -1718,6 +2053,11 @@ const CP = (() => {
       _detailWorkers = workers;
       if (title) title.textContent = svc.name;
       if (body) body.innerHTML = renderServiceDetail(svc, workers);
+      // After the markup is in the DOM, not before: the container it fills is
+      // created by the line above. Not awaited, so a slow earnings query never
+      // holds up the rest of the modal.
+      loadPayoutProgress();
+      loadDeployRisk();
     } catch (err) {
       if (body) body.innerHTML = `<p class="empty-state-text">Could not load service: ${escapeHtml(err.message)}</p>`;
     }
@@ -1737,6 +2077,21 @@ const CP = (() => {
     // --- Info grid (no referral bonus) ---
     let html = `
     <p style="color: var(--text-secondary); margin-bottom: 16px;">${escapeHtml(svc.description || svc.short_description || '')}</p>
+    <!-- Filled in by loadPayoutProgress once the modal is in the DOM. Hidden
+         until it has a real answer: an empty "Payout progress" heading on a
+         service that has never been collected is worse than no heading. -->
+    <div id="payout-progress-card" data-slug="${escapeHtml(svc.slug || '')}"
+         data-currency="${escapeHtml(svc.cashout?.currency || '')}" style="display:none; margin-bottom:20px;">
+      <div class="detail-label" style="margin-bottom:8px;">Payout progress</div>
+      <div id="payout-progress-body"></div>
+    </div>
+    <!-- What running this actually does with the machine and the connection.
+         Filled by loadDeployRisk once the modal exists. This belongs at the
+         deploy step rather than in a FAQ nobody opens, which is what the
+         backend's own comments say and what it never got. -->
+    <div id="deploy-risk-card" data-slug="${escapeHtml(svc.slug || '')}" style="display:none; margin-bottom:20px;">
+      <div id="deploy-risk-body"></div>
+    </div>
     <div class="detail-grid" style="margin-bottom: 20px;">
       <div class="detail-item">
         <div class="detail-label">Category</div>
@@ -1821,7 +2176,7 @@ const CP = (() => {
           <div id="deploy-worker-list">${workerRows}</div>
         </div>
         <div style="display:flex; gap:8px; align-items:center;">
-          <button class="btn btn-success" data-action="deployServiceToWorkers" data-a1="${svc.slug}"${_canWrite ? '' : ' disabled title="Writer access required"'}>Deploy</button>
+          <button class="btn btn-success" data-action="deployServiceToWorkers" data-a1="${svc.slug}"${_isOwner ? '' : ' disabled title="Owner access required"'}>Deploy</button>
           <span id="deploy-status-${svc.slug}" style="font-size:0.85rem;"></span>
         </div>`;
       }
@@ -1909,6 +2264,77 @@ const CP = (() => {
   // -----------------------------------------------------------
   // Settings
   // -----------------------------------------------------------
+  // Which stored credentials are about to stop working.
+  //
+  // Several providers issue session cookies measured in hours. When one dies,
+  // collection stops and nothing says so — the dashboard keeps showing the last
+  // balance it managed to read, which is indistinguishable from a service that
+  // simply is not earning. This is the warning before that, not after.
+  //
+  // Worst first, because the only rows that need acting on are the bad ones.
+  const CREDENTIAL_STATUS = {
+    likely_expired: {rank: 0, label: 'Likely expired', tone: 'var(--danger)'},
+    expiring_soon: {rank: 1, label: 'Expiring soon', tone: 'var(--warning)'},
+    no_known_expiry: {rank: 2, label: 'No known expiry', tone: 'var(--text-muted)'},
+    fresh: {rank: 3, label: 'Fresh', tone: 'var(--success)'},
+  };
+
+  async function loadCredentialHealth() {
+    const card = document.getElementById('credential-health-card');
+    const body = document.getElementById('credential-health-body');
+    if (!card || !body) return;
+
+    let rows;
+    try {
+      rows = await api('/api/credentials/health');
+    } catch (err) {
+      // Leave it hidden. An empty "Credential health" heading would read as
+      // "nothing is configured", which is a different and reassuring claim.
+      console.warn('Could not load credential health:', err);
+      return;
+    }
+    if (!Array.isArray(rows) || !rows.length) {
+      card.style.display = 'none';
+      return;
+    }
+
+    const meta = status => CREDENTIAL_STATUS[status] || CREDENTIAL_STATUS.no_known_expiry;
+    rows.sort((a, b) => meta(a.status).rank - meta(b.status).rank);
+
+    card.style.display = '';
+    body.innerHTML = rows.map(row => {
+      const info = meta(row.status);
+      const age = row.age_hours >= 48
+        ? `${Math.round(row.age_hours / 24)} days old`
+        : `${Math.round(row.age_hours)} hours old`;
+      const lifetime = row.expected_lifetime_hours
+        ? ` · expected to last about ${row.expected_lifetime_hours >= 48
+            ? `${Math.round(row.expected_lifetime_hours / 24)} days`
+            : `${row.expected_lifetime_hours} hours`}`
+        : '';
+      // The durable alternative is the actual fix, not a nag: swapping to it
+      // ends the expiry cycle instead of restarting it.
+      const durable = (row.durable_alternative_missing || []).length
+        ? `<div class="credential-health-hint">A longer-lived credential exists for this service (${escapeHtml(row.durable_alternative_missing.join(', '))}) — setting it means not having to do this again.</div>`
+        : '';
+      const why = row.why ? `<div class="credential-health-hint">${escapeHtml(row.why)}</div>` : '';
+      const needsAction = row.status === 'likely_expired' || row.status === 'expiring_soon';
+      return `
+        <div class="credential-health-item">
+          <div>
+            <div class="credential-health-name">${escapeHtml(row.service)} <span style="color:var(--text-muted); font-weight:400;">· ${escapeHtml(String(row.field).replace(/_/g, ' '))}</span></div>
+            <div class="credential-health-detail">${escapeHtml(age)}${escapeHtml(lifetime)}</div>
+            ${why}${durable}
+          </div>
+          <div class="credential-health-actions">
+            <span class="credential-health-status" style="color:${info.tone};">${escapeHtml(info.label)}</span>
+            ${needsAction && _isOwner ? `<button class="btn btn-ghost btn-sm" data-action="openCredentialModal" data-a1="${escapeHtml(row.service)}">Update</button>` : ''}
+          </div>
+        </div>
+      `;
+    }).join('');
+  }
+
   async function loadSettings() {
     populateCurrencyDropdown();
     try {
@@ -1919,6 +2345,7 @@ const CP = (() => {
       ]);
       renderEnvVars(envInfo, config);
       renderCollectors(collectorsMeta, config);
+      loadCredentialHealth();
     } catch (err) {
       // Settings may not be available yet
     }
@@ -2022,12 +2449,20 @@ const CP = (() => {
     const items = meta.map(col => {
       // A collector is "configured" if any secret field has a stored value
       // (per _secrets) or any non-secret field carries a real value.
-      const configured = col.fields.some(f => {
-        if (f.secret) return !!secrets[f.key];
-        const val = config[f.key];
-        return val && val.trim() !== '';
-      });
-      const statusBadge = configured
+      // EVERY required field, not any field.
+      //
+      // `.some` meant a service needing an email AND a password showed
+      // "Configured" with only the email set — while the server's own
+      // make_collectors skipped it for the missing one, so it silently never
+      // collected. The badge asserted the opposite of what was happening.
+      const isSet = f => (f.secret ? !!secrets[f.key] : !!(config[f.key] || '').trim());
+      const required = col.fields.filter(f => f.required);
+      const setCount = required.filter(isSet).length;
+      const configured = required.length > 0 && setCount === required.length;
+      const partial = setCount > 0 && setCount < required.length;
+      const statusBadge = partial
+        ? '<span class="badge badge-warning" title="Some required credentials are missing, so this service is not being collected">Incomplete</span>'
+        : configured
         ? '<span class="badge badge-deployed">Configured</span>'
         : '<span class="badge badge-category">Not configured</span>';
       const fields = col.fields.map(f => {
@@ -2063,6 +2498,7 @@ const CP = (() => {
           ${statusBadge}
         </summary>
         <div class="collector-body">
+          ${col.hint ? `<div class="form-hint" style="margin-bottom:12px;">${sanitizeHint(col.hint)}</div>` : ''}
           ${fields}
           ${clearBtn}
         </div>
@@ -2126,6 +2562,24 @@ const CP = (() => {
   // -----------------------------------------------------------
   // Utility
   // -----------------------------------------------------------
+  // Which currency formatCurrency will ACTUALLY label its result as.
+  //
+  // Not the same question as "what is the display currency": an unpriced token
+  // is shown raw, and a display currency with no fiat rate falls back to USD.
+  // Callers that want to avoid printing the same figure twice need the answer
+  // to this, not to the simpler question — comparing against _displayCurrency
+  // printed "24.90 USD (≈ $24.90)" whenever the rate was missing.
+  function effectiveDisplayCurrency(nativeCurrency) {
+    nativeCurrency = nativeCurrency || 'USD';
+    const priced = nativeCurrency === 'USD'
+      || (_exchangeRates.crypto_usd && _exchangeRates.crypto_usd[nativeCurrency]);
+    if (!priced) return nativeCurrency;
+    if (_displayCurrency !== 'USD' && _exchangeRates.fiat && _exchangeRates.fiat[_displayCurrency]) {
+      return _displayCurrency;
+    }
+    return 'USD';
+  }
+
   function formatCurrency(val, nativeCurrency) {
     nativeCurrency = nativeCurrency || 'USD';
     const amount = parseFloat(val || 0);
@@ -2141,21 +2595,35 @@ const CP = (() => {
       return amount.toFixed(2) + ' ' + nativeCurrency;
     }
 
-    // Convert USD to display currency
+    // Convert USD to the display currency — but ONLY label it as the display
+    // currency if a rate was actually applied.
+    //
+    // This used to stamp the display currency's symbol on an unconverted USD
+    // figure whenever its rate was missing, so $24.90 rendered as "£24.90": not
+    // a conversion, the same number wearing a different sign. Caught in a
+    // browser against a freshly restarted server, which is exactly when it
+    // bites — rates are fetched asynchronously, so on every page load before
+    // they arrive EVERY figure on the dashboard was mislabelled, and a user
+    // whose currency simply has no rate saw it permanently.
     let displayAmount = usdAmount;
-    if (_displayCurrency !== 'USD' && _exchangeRates.fiat && _exchangeRates.fiat[_displayCurrency]) {
+    let currency = 'USD';
+    if (_displayCurrency === 'USD') {
+      currency = 'USD';
+    } else if (_exchangeRates.fiat && _exchangeRates.fiat[_displayCurrency]) {
       displayAmount = usdAmount * _exchangeRates.fiat[_displayCurrency];
+      currency = _displayCurrency;
     }
+    // else: no rate, so the value stays in USD and says so.
 
     try {
       return new Intl.NumberFormat(undefined, {
         style: 'currency',
-        currency: _displayCurrency,
+        currency,
         minimumFractionDigits: 2,
         maximumFractionDigits: 2,
       }).format(displayAmount);
     } catch {
-      return displayAmount.toFixed(2) + ' ' + _displayCurrency;
+      return displayAmount.toFixed(2) + ' ' + currency;
     }
   }
 
@@ -2173,6 +2641,15 @@ const CP = (() => {
   function setChangeIndicator(id, pct) {
     const el = document.getElementById(id);
     if (!el) return;
+    // null means the comparison was never computed — not "no change".
+    // month_change used to be a hardcoded 0.0, so this rendered "+0.0%" in the
+    // positive style forever, and `pct.toFixed` would now throw on the honest
+    // null. Blank is the only truthful rendering of an unmeasured figure.
+    if (pct === null || pct === undefined || Number.isNaN(Number(pct))) {
+      el.textContent = '';
+      el.className = 'stat-change';
+      return;
+    }
     const sign = pct >= 0 ? '+' : '';
     el.textContent = `${sign}${pct.toFixed(1)}%`;
     el.className = `stat-change ${pct >= 0 ? 'positive' : 'negative'}`;
@@ -2478,5 +2955,11 @@ const CP = (() => {
     clearServiceCredentials,
     openChangePasswordModal,
     submitPasswordChange,
+    loadPayoutQueue,
+    loadCredentialHealth,
+    loadPayoutProgress,
+    loadDeployRisk,
+    confirmPayout,
+    rejectPayout,
   };
 })();

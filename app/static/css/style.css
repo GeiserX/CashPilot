@@ -1965,3 +1965,100 @@ img { max-width: 100%; }
     grid-template-columns: 1fr;
   }
 }
+
+/* Payouts awaiting an answer (dashboard).
+   Deliberately not styled as an alert: this is a question, not a fault. The
+   row wraps rather than truncating because the amount and the date are the
+   two things the user needs in order to answer it. */
+.payout-queue-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border-color);
+}
+.payout-queue-item:last-child {
+  border-bottom: none;
+}
+.payout-queue-body {
+  min-width: 0;
+}
+.payout-queue-platform {
+  font-weight: 600;
+  text-transform: capitalize;
+}
+.payout-queue-detail {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+.payout-queue-actions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+/* Payout progress bar (service detail). Rendered only when there is a real
+   minimum to count down to — see loadPayoutProgress. */
+.payout-progress-track {
+  margin-top: 14px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--bg-tertiary);
+  overflow: hidden;
+}
+.payout-progress-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: var(--accent);
+  transition: width var(--transition);
+}
+
+/* Credential health (settings). Worst-first list; the status colour is the
+   only thing that needs to be readable at a glance. */
+.credential-health-item {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border-color);
+}
+.credential-health-item:last-child { border-bottom: none; }
+.credential-health-name { font-weight: 600; text-transform: capitalize; }
+.credential-health-detail { font-size: 0.78rem; color: var(--text-muted); margin-top: 2px; }
+.credential-health-hint { font-size: 0.75rem; color: var(--text-secondary); margin-top: 4px; max-width: 62ch; }
+.credential-health-actions { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+.credential-health-status { font-size: 0.78rem; font-weight: 600; white-space: nowrap; }
+
+/* Running costs (fleet). The verdict colour is the only thing that must read
+   at a glance; the sentence underneath carries the actual reasoning. */
+.economics-row {
+  display: flex; align-items: flex-start; justify-content: space-between;
+  gap: 16px; flex-wrap: wrap; padding: 12px 0;
+  border-bottom: 1px solid var(--border-color);
+}
+.economics-row:last-of-type { border-bottom: none; }
+.economics-machine { font-weight: 600; text-transform: capitalize; }
+.economics-summary { font-size: 0.78rem; color: var(--text-muted); margin-top: 3px; max-width: 68ch; }
+.economics-figures { display: flex; align-items: baseline; gap: 8px; font-variant-numeric: tabular-nums; flex-shrink: 0; }
+.economics-services { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border-color); }
+.economics-service-row {
+  display: flex; justify-content: space-between; gap: 12px;
+  font-size: 0.82rem; padding: 3px 0; font-variant-numeric: tabular-nums;
+}
+.economics-note { margin-top: 10px; font-size: 0.75rem; color: var(--text-muted); max-width: 72ch; }
+
+/* Deploy risk (service modal). Bordered rather than boxed-in-red: this is
+   information the user needs to weigh, not an error they have made. */
+.deploy-risk-block {
+  border-left: 3px solid var(--border-color);
+  padding: 8px 0 8px 12px;
+  margin-bottom: 10px;
+}
+.deploy-risk-headline { font-weight: 600; font-size: 0.85rem; }
+.deploy-risk-body-text { font-size: 0.8rem; color: var(--text-secondary); margin-top: 4px; max-width: 70ch; }
+.deploy-risk-source { font-size: 0.7rem; color: var(--text-muted); margin-top: 4px; }

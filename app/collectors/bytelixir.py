@@ -27,6 +27,7 @@ from urllib.parse import unquote
 
 import httpx
 
+from app.collectors import base
 from app.collectors.base import BaseCollector, EarningsResult
 
 logger = logging.getLogger(__name__)
@@ -215,7 +216,7 @@ class BytelixirCollector(BaseCollector):
                 error="Withdrawable balance only (HTML scrape failed, using API fallback)",
             )
         except Exception as exc:
-            logger.error("Bytelixir collection failed: %s", exc, exc_info=True)
+            base.log_failure(logger, "Bytelixir", exc)
             return EarningsResult(
                 platform=self.platform,
                 balance=0.0,

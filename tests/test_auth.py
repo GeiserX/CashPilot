@@ -120,11 +120,44 @@ class TestRequireRole:
     def test_writer_does_not_satisfy_owner(self):
         assert require_role({"r": "writer"}, "owner") is False
 
-    def test_fleet_satisfies_writer(self):
-        assert require_role({"r": "fleet"}, "writer") is True
+    def test_fleet_does_NOT_satisfy_writer(self):
+        """The shared fleet key must not be a writer credential.
+
+        This test previously asserted the opposite, and the grant it protected
+        was justified in a comment as being "for heartbeat/status endpoints".
+        The heartbeat never went through require_role — api_worker_heartbeat
+        uses _authenticate_worker_heartbeat — so the grant gave workers nothing
+        they needed while unlocking five user-facing routes.
+
+        That key is in every worker's compose file and readable with
+        `docker inspect`. Verified against a running server before the change:
+        a bare `Authorization: Bearer <fleet key>` POST to
+        /api/earnings/payouts/1/reject returned 200 and permanently deleted the
+        row, with no session and no account. It now returns 403.
+        """
+        assert require_role({"r": "fleet"}, "writer") is False
 
     def test_fleet_does_not_satisfy_owner(self):
         assert require_role({"r": "fleet"}, "owner") is False
+
+    def test_the_heartbeat_path_does_not_depend_on_require_role(self):
+        """What made removing the writer grant safe.
+
+        If the heartbeat had gone through require_role, dropping the grant
+        would have locked every worker out of the fleet.
+        """
+        import pathlib
+
+        main_src = (pathlib.Path(__file__).resolve().parents[1] / "app" / "main.py").read_text(encoding="utf-8")
+        start = main_src.index("async def api_worker_heartbeat")
+        body = main_src[start : start + 1200]
+        assert "_authenticate_worker_heartbeat" in body
+        assert "_require_writer" not in body
+
+    def test_fleet_still_matches_when_fleet_is_explicitly_listed(self):
+        """Removing the implicit grant must not break an explicit fleet check."""
+        assert require_role({"r": "fleet"}, "fleet") is True
+        assert require_role({"r": "fleet"}, "writer", "fleet") is True
 
     def test_fleet_does_not_satisfy_fleet_directly(self):
         # fleet role only has the implicit writer grant, not self-match unless listed
@@ -154,3 +187,67 @@ class TestAsyncPasswordWrappers:
             assert await verify_password_async("wrong-password", h) is False
 
         asyncio.run(run())
+
+
+class TestTheSharedFleetKeyCannotMutateFinancialRecords:
+    """End-to-end, because the unit test alone would not have caught this.
+
+    require_role is a pure function; the defect only becomes visible when you
+    ask what a real request carrying the shared key can reach. Before the fix a
+    bare `Authorization: Bearer <fleet key>` POST to
+    /api/earnings/payouts/{id}/reject returned 200 and permanently deleted the
+    row — no session, no account, on a server the caller had never logged into.
+
+    The key is distributed to every worker host by design (docs/fleet.md puts it
+    in the worker's compose environment), so this was reachable by any machine
+    in the fleet, anyone who could `docker inspect cashpilot-worker`, and anyone
+    who could read the shared /fleet volume.
+    """
+
+    def _call(self, handler_name, role, **kwargs):
+        import asyncio
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        from fastapi import HTTPException
+
+        from app import main
+
+        request = MagicMock()
+        request.headers = {}
+        request.cookies = {}
+        request.client = MagicMock(host="127.0.0.1")
+
+        async def run():
+            with (
+                # deps._require_auth_api resolves the user; patch there so the
+                # REAL require_role still runs — patching require_role itself
+                # would test nothing.
+                patch("app.deps._require_auth_api", lambda r: {"uid": 0, "u": "x", "r": role}),
+                patch.object(main.database, "reject_payout", AsyncMock(return_value=True)),
+                patch.object(main.database, "confirm_payout", AsyncMock(return_value=True)),
+            ):
+                try:
+                    await getattr(main, handler_name)(request, **kwargs)
+                    return "allowed"
+                except HTTPException as exc:
+                    return exc.status_code
+
+        return asyncio.run(run())
+
+    def test_the_fleet_key_cannot_reject_a_payout(self):
+        """Rejection is a hard DELETE FROM payouts. It is not recoverable."""
+        assert self._call("api_reject_payout", "fleet", payout_id=1) == 403
+
+    def test_the_fleet_key_cannot_confirm_a_payout(self):
+        assert self._call("api_confirm_payout", "fleet", payout_id=1) == 403
+
+    def test_a_real_writer_still_can(self):
+        """Without this, the two above would pass with the feature broken."""
+        assert self._call("api_reject_payout", "writer", payout_id=1) == "allowed"
+
+    def test_an_owner_still_can(self):
+        assert self._call("api_confirm_payout", "owner", payout_id=1) == "allowed"
+
+    def test_a_viewer_still_cannot(self):
+        """Unchanged behaviour, asserted so the fix cannot have loosened it."""
+        assert self._call("api_reject_payout", "viewer", payout_id=1) == 403
