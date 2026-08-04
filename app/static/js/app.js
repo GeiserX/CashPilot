@@ -869,10 +869,18 @@ const CP = (() => {
     // — so comparing against it directly rated a $3.50 balance as 87% of the way
     // to "4", and the tooltip printed 4 STORJ as "$4.00". null means the two
     // units cannot be reconciled right now, and no bar is better than a wrong one.
-    const minAmount = co.min_amount_comparable ?? 0;
-    const eligible = balance > 0 && balance >= minAmount;
-    const pctToMin = minAmount > 0 ? Math.min(100, (balance / minAmount) * 100) : 0;
-    const progressBar = minAmount > 0 ? `
+    // `?? 0` here would defeat the endpoint's own three-valued answer: null
+    // means the threshold could not be brought into the balance's unit, and
+    // coercing it to zero rates EVERY positive balance as eligible — the exact
+    // "unknown read as a definite yes" this whole change exists to remove.
+    const minAmount = co.min_amount_comparable;
+    const comparable = typeof minAmount === 'number';
+    // Eligibility is the endpoint's to decide; it is the only side that knows
+    // whether a rate was available. Recomputing it here is what let the two
+    // disagree.
+    const eligible = co.eligible === true;
+    const pctToMin = comparable && minAmount > 0 ? Math.min(100, (balance / minAmount) * 100) : 0;
+    const progressBar = comparable && minAmount > 0 ? `
       <div class="payout-progress" title="${formatCurrency(balance, currency)} / ${formatCurrency(minAmount, currency)}" style="min-width:60px;">
         <div class="payout-progress-bar ${eligible ? 'eligible' : ''}" style="width:${pctToMin.toFixed(0)}%"></div>
       </div>
@@ -1346,26 +1354,42 @@ const CP = (() => {
       }
 
       const co = svc.cashout || {};
+      // Three-valued, exactly as the endpoint reports it. `eligible` false and
+      // `eligible` null are different answers — "you are below the minimum" and
+      // "we cannot tell" — and rendering the second as the first tells the user
+      // something we do not know.
       const eligible = co.eligible;
+      const eligibilityUnknown = eligible == null;
       // Same reconciliation as the service row: compare and render in the unit
       // the balance is in, never the catalog's declared cashout unit.
-      const minAmount = co.min_amount_comparable ?? 0;
+      const minAmount = co.min_amount_comparable;
+      const comparable = typeof minAmount === 'number';
       const currency = svc.currency || 'USD';
 
       if (title) title.textContent = `Claim — ${svc.name}`;
 
-      const statusIcon = eligible
+      const unknownIcon = '<svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="8" y1="12" x2="16" y2="12"/></svg>';
+      const statusIcon = eligibilityUnknown
+        ? unknownIcon
+        : eligible
         ? '<svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--success)" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="16 8 10 16 7 13"/></svg>'
         : '<svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--warning)" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>';
 
-      const statusText = eligible
+      const statusText = eligibilityUnknown
+        ? `<span style="color:var(--text-muted); font-weight:600; font-size:1.1rem;">Cannot tell yet</span>
+           <div style="color:var(--text-muted); font-size:0.85rem; margin-top:6px;">
+             This provider's minimum is set in ${escapeHtml(String(co.min_amount_currency || 'another currency'))} and the balance is
+             recorded in ${escapeHtml(String(currency))}. Without an exchange rate the two cannot be compared, so
+             CashPilot will not guess. Check the provider's own dashboard.
+           </div>`
+        : eligible
         ? `<span style="color:var(--success); font-weight:600; font-size:1.1rem;">Eligible for payout!</span>`
         : `<span style="color:var(--warning); font-weight:600; font-size:1.1rem;">Below minimum payout</span>`;
 
-      const pctToMin = minAmount > 0 ? Math.min(100, (svc.balance / minAmount) * 100) : 0;
-      const remaining = Math.max(0, minAmount - svc.balance);
+      const pctToMin = comparable && minAmount > 0 ? Math.min(100, (svc.balance / minAmount) * 100) : 0;
+      const remaining = comparable ? Math.max(0, minAmount - svc.balance) : 0;
 
-      const progressSection = minAmount > 0 ? `
+      const progressSection = comparable && minAmount > 0 ? `
         <div style="margin: 20px 0;">
           <div style="display:flex; justify-content:space-between; font-size:0.85rem; margin-bottom:6px;">
             <span>Current: <strong>${formatCurrency(svc.balance, currency)}</strong></span>

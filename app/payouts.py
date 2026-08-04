@@ -125,7 +125,19 @@ def min_payout_in(service: dict[str, Any] | None, currency: str | None) -> float
     in_usd = minimum if declared == "USD" else exchange_rates.to_usd(minimum, declared)
     if in_usd is None:
         return None
-    return in_usd if target == "USD" else exchange_rates.from_usd(in_usd, target)
+    if target == "USD":
+        return in_usd
+    # The inverse is DERIVED from to_usd rather than taken from from_usd, for
+    # two reasons. from_usd is deliberately fiat-only ("a USD figure has no
+    # meaningful expression in a provider's token"), which is right for
+    # displaying earnings but wrong here: expressing a threshold in the token
+    # the balance is counted in is exactly the comparison the card needs. And
+    # deriving it means the direction cannot be inverted by mistake — one unit
+    # of the target is worth `unit_in_usd`, so a USD figure is that many units.
+    unit_in_usd = exchange_rates.to_usd(1.0, target)
+    if not unit_in_usd:
+        return None
+    return in_usd / unit_in_usd
 
 
 def looks_like_payout(previous: float, current: float, threshold: float | None) -> bool:

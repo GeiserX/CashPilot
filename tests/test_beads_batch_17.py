@@ -22,7 +22,7 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 import yaml
@@ -89,12 +89,50 @@ class TestTheMinimumIsBroughtIntoTheBalancesUnit:
         assert payouts.min_payout_in({"cashout": {}}, "USD") is None
 
     def test_it_converts_the_other_way_too(self):
-        """A USD minimum against a token balance is the mirror case."""
-        from app import payouts
+        """A USD minimum against a token balance is the mirror case.
 
-        with patch("app.exchange_rates.from_usd", lambda amount, currency: amount * 4.0):
+        Driven through the REAL rate table, not a patched helper. The first
+        version of this test replaced exchange_rates.from_usd with a lambda and
+        passed while production returned None for every token target: from_usd
+        is deliberately fiat-only, so nothing here exercised the path it claimed
+        to. Seeding the rate is the difference between testing the conversion
+        and testing the mock. (CodeRabbit caught this on PR #200.)
+        """
+        from app import exchange_rates, payouts
+
+        saved = dict(exchange_rates._crypto_usd)
+        try:
+            exchange_rates._crypto_usd["GRASS"] = 0.25  # 1 GRASS = $0.25
             got = payouts.min_payout_in({"cashout": {"min_amount": 5.0, "currency": "USD"}}, "GRASS")
-            assert got == pytest.approx(20.0)
+            assert got == pytest.approx(20.0), "a $5 minimum is 20 GRASS at $0.25"
+        finally:
+            exchange_rates._crypto_usd.clear()
+            exchange_rates._crypto_usd.update(saved)
+
+    def test_an_unpriced_token_target_is_unknown_not_zero(self):
+        """No rate for the token means no comparison, not a threshold of 0."""
+        from app import exchange_rates, payouts
+
+        saved = dict(exchange_rates._crypto_usd)
+        try:
+            exchange_rates._crypto_usd.pop("NOSUCHTOKEN", None)
+            assert payouts.min_payout_in({"cashout": {"min_amount": 5.0, "currency": "USD"}}, "NOSUCHTOKEN") is None
+        finally:
+            exchange_rates._crypto_usd.clear()
+            exchange_rates._crypto_usd.update(saved)
+
+    def test_a_fiat_target_still_works(self):
+        """The conversion is derived from to_usd, which handles both kinds."""
+        from app import exchange_rates, payouts
+
+        saved = dict(exchange_rates._fiat_rates)
+        try:
+            exchange_rates._fiat_rates["EUR"] = 0.80  # USD -> EUR
+            got = payouts.min_payout_in({"cashout": {"min_amount": 10.0, "currency": "USD"}}, "EUR")
+            assert got == pytest.approx(8.0), "a $10 minimum is EUR 8 at 0.80"
+        finally:
+            exchange_rates._fiat_rates.clear()
+            exchange_rates._fiat_rates.update(saved)
 
 
 class TestTheProjectionCountsDownInOneUnit:
@@ -186,7 +224,12 @@ class TestTheCardsRenderTheUnitTheyAreIn:
     def test_no_site_still_divides_by_the_raw_declared_minimum(self):
         source = without_comments(APP_JS.read_text(encoding="utf-8"))
         assert "/ coA.min_amount)" not in source
-        assert "balance >= minAmount" in source, "the comparison itself should still exist"
+        # The row no longer recomputes eligibility at all — it reads the
+        # endpoint's three-valued answer, which is the only side that knows
+        # whether a rate was available. This assertion used to require the local
+        # `balance >= minAmount`; keeping it would have blocked the better fix.
+        assert "co.eligible === true" in source, "the row must still state eligibility from somewhere"
+        assert "min_amount_comparable" in source, "the reconciled threshold is still what the bar uses"
 
 
 class TestTheCatalogStillContainsTheCaseThisIsAbout:
@@ -203,3 +246,84 @@ class TestTheCatalogStillContainsTheCaseThisIsAbout:
     def test_the_storj_collector_still_reports_usd(self):
         source = (ROOT / "app" / "collectors" / "storj.py").read_text(encoding="utf-8")
         assert 'currency="USD"' in source
+
+
+class TestTheThresholdAlwaysNamesItsUnit:
+    """CodeRabbit, PR #200: min_amount without a currency cannot be attributed.
+
+    With nothing collected there is no balance currency, so min_payout_in hands
+    back the catalog figure at face value — and the response labelled it with
+    None, leaving a consumer holding a number in no stated unit.
+    """
+
+    async def _progress(self, history):
+        from app import main
+
+        service = {"name": "Storj", "cashout": {"min_amount": 4.0, "currency": "STORJ"}}
+        with (
+            patch.object(main, "_require_auth_api", lambda r: None),
+            patch.object(main.catalog, "get_service", lambda slug: service),
+            patch.object(main.database, "get_latest_balance", AsyncMock(return_value=None if not history else 3.5)),
+            patch.object(main.database, "get_balance_history", AsyncMock(return_value=history)),
+            patch.object(main.database, "get_payouts", AsyncMock(return_value=[])),
+        ):
+            return await main.api_payout_progress(MagicMock(), "storj")
+
+    @pytest.mark.asyncio
+    async def test_a_never_collected_service_reports_the_declared_unit(self):
+        out = await self._progress([])
+        assert out["min_amount"] == 4.0
+        assert out["min_amount_currency"] == "STORJ", "the threshold has no attributable unit"
+
+    @pytest.mark.asyncio
+    async def test_a_collected_service_reports_the_balances_unit(self):
+        """The control: once there is a balance, the unit is the balance's."""
+        from app import exchange_rates
+
+        saved = dict(exchange_rates._crypto_usd)
+        try:
+            exchange_rates._crypto_usd["STORJ"] = 0.25
+            out = await self._progress([{"date": "2026-08-01", "balance": 3.5, "currency": "USD"}])
+            assert out["min_amount_currency"] == "USD"
+            assert out["min_amount"] == pytest.approx(1.0)
+        finally:
+            exchange_rates._crypto_usd.clear()
+            exchange_rates._crypto_usd.update(saved)
+
+
+class TestUnknownEligibilityStaysUnknownInTheUI:
+    """CodeRabbit, PR #200: my own fix reintroduced the bug it was removing.
+
+    The endpoint answers three-valued — True, False, or null when no rate makes
+    the comparison possible. The service row did `co.min_amount_comparable ?? 0`
+    and then `balance >= 0`, rating EVERY positive balance as eligible; the
+    claim modal rendered the same null as "Below minimum payout". Two opposite
+    wrong answers from one unknown.
+    """
+
+    def _js(self):
+        return without_comments(APP_JS.read_text(encoding="utf-8"))
+
+    def test_the_row_does_not_coerce_a_null_threshold_to_zero(self):
+        assert "co.min_amount_comparable ?? 0" not in self._js()
+
+    def test_the_row_takes_eligibility_from_the_endpoint(self):
+        """Recomputing it locally is what let the two sides disagree."""
+        assert "co.eligible === true" in self._js()
+
+    def test_the_row_hides_the_bar_when_the_units_cannot_be_reconciled(self):
+        assert "comparable && minAmount > 0" in self._js()
+
+    def test_the_modal_has_a_third_state(self):
+        js = self._js()
+        assert "eligibilityUnknown" in js
+        assert "Cannot tell yet" in js
+
+    def test_the_modal_explains_why_rather_than_guessing(self):
+        js = self._js()
+        assert "cannot be compared" in js
+        assert "will not guess" in js
+
+    def test_the_modal_still_says_below_minimum_when_it_knows(self):
+        """The control: the ordinary negative answer must survive."""
+        assert "Below minimum payout" in self._js()

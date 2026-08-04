@@ -2515,7 +2515,11 @@ async def api_payout_progress(request: Request, slug: str) -> dict[str, Any]:
         # What the numbers above are actually in, so nothing has to assume.
         "balance_currency": balance_currency,
         "min_amount": minimum,
-        "min_amount_currency": balance_currency if minimum is not None else declared_currency,
+        # Falls back to the DECLARED unit when nothing has been collected: with
+        # no balance currency, min_payout_in returns the catalog figure at face
+        # value, and labelling that with None leaves the consumer holding a
+        # threshold it cannot attribute to any unit.
+        "min_amount_currency": (balance_currency if (minimum is not None and balance_currency) else declared_currency),
         # False only when a real minimum exists and could not be brought into
         # the balance's unit. The card hides the comparison rather than drawing
         # a bar out of two different currencies.
