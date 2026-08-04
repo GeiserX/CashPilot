@@ -1,9 +1,14 @@
 """CashPilot-33h: two more route sweeps were quietly shrinking.
 
-``app.routes`` is not a complete enumeration on Starlette 1.3 — the version CI
-installs, because requirements.txt pins only ``fastapi>=0.136.1``.
-``include_router`` stops adding its routes there: re-including a 6-route
-APIRouter grew ``app.routes`` by ONE, and ``/login`` never appeared at all.
+``app.routes`` is not a complete enumeration on every version. Measured by
+holding Starlette at 1.3.1 and moving FastAPI alone: on 0.136.1 the app reports
+all 76 routes including ``/login``; on 0.141.1 it reports 62, with
+``include_router`` leaving only a pathless placeholder behind.
+
+It surfaced because requirements.txt pinned only ``fastapi>=0.136.1`` while the
+lockfile pins 0.136.1, so CI resolved a version nobody developed against. CI now
+installs from the lock (CashPilot-de1), which closes that gap; these sweeps go
+through one helper so a future FastAPI bump cannot shrink them again.
 
 Three test modules walked ``app.routes`` independently. The first was caught
 only because a PUBLIC-list staleness check failed on CI and nowhere else. The
@@ -49,17 +54,23 @@ class TestTheEnumerationSeesTheWholeApp:
         keys = [(getattr(r, "path", ""), frozenset(getattr(r, "methods", None) or ())) for r in all_routes()]
         assert len(keys) == len(set(keys)), "the union produced duplicate routes"
 
-    def test_it_sees_more_than_app_routes_alone(self):
-        """The premise. If this ever stops being true the helper is harmless,
-        but the comment explaining it would be wrong, so it is asserted."""
-        from app.main import app
-        from tests.route_enumeration import all_routes
+    def test_it_is_a_superset_of_app_routes(self):
+        """A SUPERSET, never strictly larger.
 
-        real = [r for r in app.routes if getattr(r, "path", "")]
-        assert len(all_routes()) > len(real), (
-            "the union found nothing app.routes was missing — either Starlette changed back, "
-            "or the helper stopped reaching the routers"
-        )
+        The first version asserted the union finds MORE than app.routes, which
+        encoded a wrong diagnosis. The under-enumeration comes from FastAPI
+        0.141.1, and the lockfile pins 0.136.1 — where app.routes is already
+        complete. On the version that ships the two are equal, and that is the
+        healthy state rather than a failure.
+
+        What must hold on every version is that the union never sees LESS.
+        """
+        from app.main import app
+        from tests.route_enumeration import all_paths
+
+        union = all_paths()
+        direct = {getattr(r, "path", "") for r in app.routes if getattr(r, "path", "")}
+        assert direct <= union, f"the union lost routes app.routes had: {sorted(direct - union)}"
 
 
 class TestEverySweepUsesIt:
@@ -128,5 +139,5 @@ class TestTheNegativeAssertionCannotPassVacuously:
 def test_the_helper_explains_why_it_exists():
     """A workaround with no recorded reason gets 'simplified' back out."""
     source = (TESTS / "route_enumeration.py").read_text(encoding="utf-8")
-    assert "Starlette 1.3" in source
+    assert "0.141.1" in source, "the helper should name the version that motivated it"
     assert re.search(r"include_router", source)

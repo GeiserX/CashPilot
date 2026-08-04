@@ -51,16 +51,24 @@ jobs:
       - name: Fleet staleness behaviour
         run: node scripts/fleet_staleness_check.mjs
 
+      # From the LOCKFILE, which is what Docker ships (`uv sync --frozen` in the
+      # Dockerfile) and what release.yml verifies against. Installing from the
+      # unpinned requirements.txt meant the suite ran against a resolution
+      # nobody else had: locally fastapi 0.136.1 / starlette 1.0.1, here
+      # 0.141.1 / 1.3.1. On the newer one `include_router` stops adding routes
+      # to `app.routes`, so a route sweep silently covered 65 of 76 — a real
+      # behaviour difference that only ever appeared on CI (CashPilot-de1).
+      - name: Install uv
+        run: pip install uv --quiet
+
       - name: Install dependencies
-        run: |
-          pip install -r requirements.txt
-          pip install pytest pytest-cov pytest-asyncio pyyaml tzdata docker
+        run: uv sync --frozen --extra dev
 
       - name: Run tests
-        run: pytest tests/ -v --tb=short
+        run: uv run pytest tests/ -v --tb=short
 
       - name: Run tests with coverage
-        run: pytest tests/ --cov=app --cov-report=term-missing --cov-report=xml --cov-fail-under=90
+        run: uv run pytest tests/ --cov=app --cov-report=term-missing --cov-report=xml --cov-fail-under=90
 
       - name: Upload coverage reports
         uses: codecov/codecov-action@v7

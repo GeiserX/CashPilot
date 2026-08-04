@@ -144,10 +144,12 @@ dependencies = [
 
 [package.optional-dependencies]
 dev = [
+    { name = "docker" },
     { name = "pytest" },
     { name = "pytest-asyncio" },
     { name = "pytest-cov" },
     { name = "ruff" },
+    { name = "tzdata" },
 ]
 
 [package.metadata]
@@ -157,6 +159,7 @@ requires-dist = [
     { name = "bcrypt", specifier = ">=5.0.0" },
     { name = "cryptography", specifier = ">=50.0.0" },
     { name = "docker", specifier = ">=7.1.0" },
+    { name = "docker", marker = "extra == 'dev'", specifier = ">=7.1.0" },
     { name = "fastapi", specifier = ">=0.136.1" },
     { name = "httptools", specifier = ">=0.6" },
     { name = "httpx", specifier = ">=0.28.1" },
@@ -169,6 +172,7 @@ requires-dist = [
     { name = "python-multipart", specifier = ">=0.0.31" },
     { name = "pyyaml", specifier = ">=6.0.3" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.15.13" },
+    { name = "tzdata", marker = "extra == 'dev'", specifier = ">=2025.1" },
     { name = "uvicorn", specifier = ">=0.47.0" },
     { name = "uvloop", specifier = ">=0.22.1" },
 ]

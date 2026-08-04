@@ -1,10 +1,17 @@
 """One way to enumerate the app's routes, for every test that needs to.
 
-``app.routes`` is NOT a complete enumeration. Under Starlette 1.3 — which CI
-installs, because requirements.txt pins only ``fastapi>=0.136.1`` —
-``include_router`` stops adding its routes there. Measured: re-including a
-6-route ``APIRouter`` grew ``app.routes`` by ONE, and ``/login`` never appeared
-at all. Routing itself is unaffected; every one of those paths still serves.
+``app.routes`` is NOT a complete enumeration on every supported version.
+FastAPI 0.141.1 drops routes from ``app.routes``. Measured by holding
+Starlette at 1.3.1 and moving FastAPI alone: on 0.136.1 the app reports all 76
+routes including /login; on 0.141.1 it reports 62 and /login is absent, with
+``include_router`` leaving only a pathless placeholder behind. Routing itself is
+unaffected — every one of those paths still serves.
+
+It surfaced because requirements.txt pinned only ``fastapi>=0.136.1`` while the
+lockfile pins 0.136.1, so CI resolved a version nobody developed against
+(CashPilot-de1). CI now installs from the lock, which closes that gap — this
+helper is what keeps a future FastAPI bump from silently shrinking a sweep
+again.
 
 Anything that ENUMERATES routes therefore sees a subset, and the failure is
 silent in the worst possible direction:
@@ -36,10 +43,10 @@ def all_routes() -> list[Any]:
 
     from app import main
 
-    # Starlette 1.3 puts a pathless `_IncludedRouter` placeholder in app.routes
-    # for each include_router call — that is the "+1 per include" measured when
-    # this was diagnosed. It is not a route anyone can call, and leaving it in
-    # makes every consumer filter it out again.
+    # FastAPI 0.141.1 puts a pathless `_IncludedRouter` placeholder in
+    # app.routes for each include_router call — the "+1 per include" measured
+    # when this was diagnosed. It is not a route anyone can call, and leaving it
+    # in makes every consumer filter it out again.
     routes = [r for r in main.app.routes if getattr(r, "path", "")]
     seen = {(getattr(r, "path", ""), frozenset(getattr(r, "methods", None) or ())) for r in routes}
     for value in vars(main).values():
