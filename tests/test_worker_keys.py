@@ -420,3 +420,145 @@ class TestTheAlarmActuallyFires(TestAuthFailureAlarmCounter):
     def test_a_broken_run_never_raises_it(self, caplog):
         """A flaky link is not a lockout, and must not be reported as one."""
         assert self._alarms([401, None, 401, 500, 401], caplog) == []
+
+
+class TestRemovingAWorkerDoesNotLockTheHostOut(TestAuthFailureAlarmCounter):
+    """CashPilot-u10: "remove it and it re-enrols" was not true of any code.
+
+    Removing a worker in the fleet dashboard deletes its row and its key on the
+    UI side. The worker keeps sending the key it persisted at /data/.worker_key
+    — _active_key() returns `_worker_key or API_KEY`, so once that file exists
+    the shared key is never used again — and 401s forever, on a host whose
+    service containers are still running and still earning. docs/upgrade-v1.md
+    promised removal "clears its enrollment so the shared key is accepted
+    again"; nothing cleared anything. The only real recovery was SSHing in to
+    delete a file documented nowhere.
+    """
+
+    def _run_with_real_key_file(self, statuses, tmp_path):
+        """Like _run, but with a key that can actually be discarded.
+
+        The inherited harness patches _worker_key with patch.object, which
+        restores the global when the block exits — so a discard inside the
+        heartbeat would be silently undone and this whole class would pass
+        against unmodified code.
+        """
+        key_file = tmp_path / ".worker_key"
+        key_file.write_text("own")
+        saved = w._worker_key
+        w._worker_key = "own"
+        w._consecutive_auth_failures = 0
+        try:
+            for st in statuses:
+                request = httpx.Request("POST", "http://ui:8080/api/workers/heartbeat")
+                response = httpx.Response(st, request=request, json={})
+                client = MagicMock()
+                client.__aenter__ = AsyncMock(return_value=client)
+                client.__aexit__ = AsyncMock(return_value=False)
+                client.post = AsyncMock(return_value=response)
+                with (
+                    patch.object(w, "_WORKER_KEY_FILE", key_file),
+                    patch.object(w, "UI_URL", "http://ui:8080"),
+                    patch("app.worker_api.orchestrator.get_status", return_value=[]),
+                    patch("app.worker_api.orchestrator.docker_available", return_value=True),
+                    patch("app.worker_api.httpx.AsyncClient", return_value=client),
+                ):
+                    asyncio.run(w._send_heartbeat())
+            return {"key": w._worker_key, "file_exists": key_file.exists()}
+        finally:
+            w._worker_key = saved
+            w._consecutive_auth_failures = 0
+
+    def test_sustained_rejection_discards_the_stale_key(self, tmp_path):
+        out = self._run_with_real_key_file([401] * w._AUTH_FAILURE_DISCARD_AFTER, tmp_path)
+        assert out["key"] is None, "the worker is still sending the key the UI deleted"
+        assert not out["file_exists"], "the stale key survives a restart"
+
+    def test_it_then_re_enrols_with_the_shared_key(self, tmp_path):
+        """Discarding is only useful if the next heartbeat can authenticate."""
+        self._run_with_real_key_file([401] * w._AUTH_FAILURE_DISCARD_AFTER, tmp_path)
+        with patch.object(w, "_worker_key", None), patch.object(w, "API_KEY", "shared"):
+            assert w._active_key() == "shared"
+
+    def test_a_few_401s_do_not_discard_anything(self, tmp_path):
+        """The control that keeps this bounded.
+
+        Discarding on the first failure would re-enrol on any blip and widen the
+        window in which the shared key is accepted — the exact weakening that
+        per-worker keys exist to close.
+        """
+        out = self._run_with_real_key_file([401] * (w._AUTH_FAILURE_DISCARD_AFTER - 1), tmp_path)
+        assert out["key"] == "own"
+        assert out["file_exists"]
+
+    def test_the_discard_threshold_is_above_the_alarm(self):
+        """The operator is told first, and only then does the key go."""
+        assert w._AUTH_FAILURE_DISCARD_AFTER > w._AUTH_FAILURE_ALARM_AFTER
+
+    def test_a_flaky_link_never_discards(self, tmp_path):
+        """Non-consecutive failures are a network problem, not a deleted row."""
+        statuses = [401, 500] * w._AUTH_FAILURE_DISCARD_AFTER
+        out = self._run_with_real_key_file(statuses, tmp_path)
+        assert out["key"] == "own"
+        assert out["file_exists"]
+
+    def test_a_success_before_the_threshold_saves_the_key(self, tmp_path):
+        statuses = [401] * (w._AUTH_FAILURE_DISCARD_AFTER - 1) + [200, 401]
+        out = self._run_with_real_key_file(statuses, tmp_path)
+        assert out["key"] == "own"
+        assert out["file_exists"]
+
+    def test_it_says_why_in_the_log(self, tmp_path, caplog):
+        """A key vanishing without explanation is its own support ticket."""
+        import logging
+
+        with caplog.at_level(logging.WARNING, logger="app.worker_api"):
+            caplog.clear()
+            self._run_with_real_key_file([401] * w._AUTH_FAILURE_DISCARD_AFTER, tmp_path)
+        messages = [r.getMessage() for r in caplog.records]
+        assert any("Discarded" in m and "Re-enrolling" in m for m in messages)
+
+    def test_an_undeletable_key_keeps_the_key_rather_than_pretending(self, tmp_path, caplog):
+        """A read-only /data must not leave us believing we re-enrolled.
+
+        Zeroing _worker_key while the file survives would re-enrol now and then
+        load the stale key back on the next restart, which is worse than not
+        trying: the same lockout returns with no failures leading up to it.
+        """
+        import logging
+
+        key_file = tmp_path / ".worker_key"
+        key_file.write_text("own")
+        saved = w._worker_key
+        w._worker_key = "own"
+        try:
+            with (
+                patch.object(w, "_WORKER_KEY_FILE", key_file),
+                patch.object(w.Path, "unlink", side_effect=OSError("read-only file system")),
+                caplog.at_level(logging.ERROR, logger="app.worker_api"),
+            ):
+                caplog.clear()
+                w._discard_worker_key("test")
+            assert w._worker_key == "own", "we claimed to re-enrol while the key is still on disk"
+            assert key_file.exists()
+            assert any("Delete it by hand" in r.getMessage() for r in caplog.records)
+        finally:
+            w._worker_key = saved
+
+
+class TestTheRecoveryIsDocumentedWhereItIsNeeded:
+    """The bead is as much about the two false promises as about the code."""
+
+    def test_the_upgrade_doc_no_longer_promises_the_shared_key_is_accepted(self):
+        from pathlib import Path
+
+        text = Path(__file__).resolve().parents[1].joinpath("docs/upgrade-v1.md").read_text(encoding="utf-8")
+        assert "so the shared key is accepted again" not in text
+        assert "/data/.worker_key" in text, "the manual recovery must be written down somewhere"
+
+    def test_the_confirm_dialog_says_the_worker_keeps_running(self):
+        from pathlib import Path
+
+        text = Path(__file__).resolve().parents[1].joinpath("app/templates/fleet.html").read_text(encoding="utf-8")
+        assert "This will unregister it from the fleet." not in text
+        assert "re-enrol on its own" in text

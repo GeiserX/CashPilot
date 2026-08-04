@@ -70,6 +70,9 @@ _last_error: str = ""
 # may be restarting); a run of them means our identity no longer matches our key.
 _consecutive_auth_failures = 0
 _AUTH_FAILURE_ALARM_AFTER = 3
+# Well above the alarm: the operator is told first, and a key is only discarded
+# after the rejection has clearly persisted rather than on a flaky link.
+_AUTH_FAILURE_DISCARD_AFTER = 10
 
 # Per-worker fleet key. On first contact the UI enrolls this worker and hands back
 # a key unique to us, which we persist here (in our own private /data, never the
@@ -105,6 +108,40 @@ def _save_worker_key(key: str) -> bool:
     global _worker_key
     _worker_key = key
     return True
+
+
+def _discard_worker_key(reason: str) -> None:
+    """Forget our per-worker key so the next heartbeat re-enrols.
+
+    Removing a worker in the fleet dashboard deletes its row and its key on the
+    UI side, but the worker keeps sending the key it persisted — so it 401s
+    forever, on a host whose containers are still running and still earning.
+    Nothing on either side says why: the UI shows one fewer worker, the worker
+    logs a bare 401. The documented recovery ("remove it and the shared key is
+    accepted again") could not work, and the real fix was SSHing in to delete a
+    file that is documented nowhere.
+
+    Bounded on purpose. Discarding after a single failure would re-enrol on any
+    transient blip and widen the window in which the shared key is accepted; it
+    takes sustained rejection, which is what a deleted row actually looks like.
+    """
+    global _worker_key, _consecutive_auth_failures
+    try:
+        _WORKER_KEY_FILE.unlink(missing_ok=True)
+    except OSError as exc:
+        logger.error(
+            "Could not remove the stale per-worker key at %s: %s. Delete it by hand "
+            "and restart this container to re-enrol.",
+            _WORKER_KEY_FILE,
+            exc,
+        )
+        return
+    _worker_key = None
+    _consecutive_auth_failures = 0
+    logger.warning(
+        "Discarded this worker's per-worker key (%s). Re-enrolling with the shared key on the next heartbeat.",
+        reason,
+    )
 
 
 _worker_key: str | None = _load_worker_key()
@@ -426,6 +463,11 @@ async def _send_heartbeat() -> None:
                     CLIENT_ID,
                     _WORKER_ID_FILE,
                 )
+            elif _consecutive_auth_failures >= _AUTH_FAILURE_DISCARD_AFTER:
+                # Sustained rejection of our own key is what a worker REMOVED in
+                # the dashboard looks like from here. Re-enrol rather than 401
+                # forever on a host that is still running containers.
+                _discard_worker_key(f"rejected {_consecutive_auth_failures} times; the UI no longer has this enrolment")
         else:
             # Any other outcome breaks the run. "Consecutive" has to mean it:
             # 401 -> timeout -> 401 -> 500 -> 401 is a flaky link, not an

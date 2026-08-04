@@ -343,7 +343,7 @@ CASHPILOT_WORKER_NAME=server-name</code>
   };
 
   async function removeWorker(workerId, name) {
-    if (!confirm(`Remove worker "${name}"? This will unregister it from the fleet.`)) return;
+    if (!confirm(`Remove worker "${name}"?\n\nIt is removed from the fleet here, but the worker itself keeps running. It will re-enrol on its own after a few minutes of rejected heartbeats. To bring it back immediately, delete /data/.worker_key on that host and restart the container.`)) return;
     try {
       await CP.api(`/api/workers/${workerId}`, { method: 'DELETE' });
       CP.toast(`Worker "${name}" removed`, 'success');
