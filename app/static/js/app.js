@@ -990,7 +990,17 @@ const CP = (() => {
         const nodeLabel = inst.node === 'local' ? 'Local' : escapeHtml(inst.node);
         const wParam = inst.worker_id != null ? `', ${inst.worker_id}` : `'`;
         const iNoDocker = !inst.has_docker || inst.is_android;
-        const disabledAttr = iNoDocker ? ' disabled title="No Docker access"' : '';
+        // The mixed case this whole change is built around. The ROW keeps its
+        // buttons because a managed instance can still be controlled — but the
+        // external instance in that same row cannot, and its sub-row was still
+        // offering Restart/Stop/Logs that answer 404. The per-instance flag has
+        // to be READ here; marking it in the payload and ignoring it at the one
+        // place a mixed service is drawn left the bug exactly where it was.
+        // (CodeRabbit, PR #212.)
+        const iUnmanaged = inst.unmanaged || svc.unmanaged;
+        const disabledAttr = iUnmanaged
+          ? ' disabled title="Started outside CashPilot — manage it where you started it"'
+          : (iNoDocker ? ' disabled title="No Docker access"' : '');
         const subLabel = inst.is_android ? '' : escapeHtml(inst.container_name);
         const cpuCell = inst.is_android ? `↑ ${fmtNetBytes(inst.net_tx_24h)}` : `${inst.cpu || '0'}%`;
         const memCell = inst.is_android ? `↓ ${fmtNetBytes(inst.net_rx_24h)}` : (inst.memory || '0 MB');

@@ -181,3 +181,61 @@ class TestTheWorkerStillComputesIt:
     def test_labelled_containers_report_their_label(self):
         source = (ROOT / "app" / "orchestrator.py").read_text(encoding="utf-8")
         assert 'c.labels.get(LABEL_DEPLOYED_BY, "unknown")' in source
+
+
+class TestTheMixedServiceSubRowsHonourTheFlag:
+    """CodeRabbit, PR #212: the case this change was designed around was unfixed.
+
+    A row with one managed and one external instance deliberately KEEPS its
+    buttons, because the managed instance can still be controlled — and the
+    per-instance flag was supposed to mark the odd one out. The sub-row renderer
+    never read that flag, so the external instance inside a mixed service still
+    offered Restart / Stop / Logs, and every one still answered 404.
+
+    Marking a thing in the payload and ignoring it at the one place it matters
+    leaves the bug exactly where it was.
+    """
+
+    def _js(self):
+        return without_comments(APP_JS.read_text(encoding="utf-8"))
+
+    def test_the_sub_row_reads_the_per_instance_flag(self):
+        """Declared AND used — declaring it alone changes no behaviour."""
+        source = self._js()
+        assert "const iUnmanaged = inst.unmanaged || svc.unmanaged;" in source
+        i = source.index("const iUnmanaged")
+        assert "iUnmanaged" in source[i + 20 : i + 300], "the flag is declared but never read"
+
+    def test_the_sub_row_disables_on_it(self):
+        source = self._js()
+        i = source.index("const iUnmanaged")
+        block = source[i : i + 300]
+        assert "disabled" in block
+        assert "Started outside CashPilot" in block
+
+    def test_the_sub_rows_no_docker_reason_survives(self):
+        """The control: the pre-existing disable must not be swallowed."""
+        source = self._js()
+        i = source.index("const iUnmanaged")
+        assert "iNoDocker ? ' disabled title=\"No Docker access\"'" in source[i : i + 400]
+
+    def test_both_render_paths_now_check_it(self):
+        """Single-instance and multi-instance are separate code paths.
+
+        Fixing one and not the other is exactly what happened the first time.
+
+        Asserted on the USE, not the declaration. The first version counted
+        `unmanaged || svc.unmanaged` occurrences, which a revert that deleted
+        only the disabledAttr ternary still satisfied — the variable stayed,
+        unused, and the test passed against the broken state. Every
+        disabledAttr assignment must mention the reason.
+        """
+        source = self._js()
+        assignments = [line for line in source.splitlines() if "const disabledAttr" in line]
+        assert len(assignments) >= 2, f"expected both render paths to build disabledAttr, found {assignments}"
+        # The ternary wraps, so check the block after each assignment.
+        for line in assignments:
+            i = source.index(line)
+            assert "Started outside CashPilot" in source[i : i + 300], (
+                f"a render path builds disabledAttr without the unmanaged reason: {line.strip()}"
+            )
