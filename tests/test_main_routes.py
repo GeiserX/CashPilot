@@ -174,12 +174,68 @@ class TestGetAllWorkerContainers:
         assert result[0]["_is_android"] is True
 
     def test_offline_workers_skipped(self):
+        """CashPilot-1xg: this fed a worker with NO containers.
+
+        Removing the `status != "online"` skip therefore still produced [] and
+        the test passed — it asserted nothing about the skip it is named for.
+        The offline worker now HAS a container, so deleting the skip leaks it
+        into the result and the test fails.
+        """
         from app.main import _get_all_worker_containers
 
-        workers = [{"id": 1, "name": "w1", "status": "offline", "system_info": "{}", "containers": "[]", "apps": "[]"}]
+        workers = [
+            {
+                "id": 1,
+                "name": "w1",
+                "status": "offline",
+                "system_info": '{"docker_available": true}',
+                "containers": '[{"slug": "honeygain", "status": "running"}]',
+                "apps": "[]",
+            }
+        ]
         with patch("app.main.database.list_workers", new_callable=AsyncMock, return_value=workers):
             result = asyncio.run(_get_all_worker_containers())
-        assert result == []
+        assert result == [], "an offline worker's containers leaked into the live view"
+
+    def test_online_workers_are_included(self):
+        """The control: without it the test above passes if NOTHING is returned."""
+        from app.main import _get_all_worker_containers
+
+        workers = [
+            {
+                "id": 1,
+                "name": "w1",
+                "status": "online",
+                "system_info": '{"docker_available": true}',
+                "containers": '[{"slug": "honeygain", "status": "running"}]',
+                "apps": "[]",
+            }
+        ]
+        with patch("app.main.database.list_workers", new_callable=AsyncMock, return_value=workers):
+            result = asyncio.run(_get_all_worker_containers())
+        assert [c["slug"] for c in result] == ["honeygain"]
+
+    def test_a_container_with_no_status_reads_as_unknown(self):
+        """CashPilot-1xg, second half: no test supplied a container without a status.
+
+        `c.get("status", "unknown")` is the rule that stops an unreadable
+        container from rendering as running, and nothing exercised the default.
+        """
+        from app.main import _get_all_worker_containers
+
+        workers = [
+            {
+                "id": 1,
+                "name": "w1",
+                "status": "online",
+                "system_info": '{"docker_available": true}',
+                "containers": '[{"slug": "honeygain"}]',
+                "apps": "[]",
+            }
+        ]
+        with patch("app.main.database.list_workers", new_callable=AsyncMock, return_value=workers):
+            result = asyncio.run(_get_all_worker_containers())
+        assert result[0]["status"] == "unknown", "a container with no status must not read as running"
 
 
 # ---------------------------------------------------------------------------

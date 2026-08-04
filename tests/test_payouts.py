@@ -199,7 +199,20 @@ class TestEndpoints:
             patch.object(main, "_require_writer", lambda r: None),
             patch.object(main.database, "get_latest_balance", AsyncMock(return_value=patches.get("balance"))),
             patch.object(main.database, "get_balance_history", AsyncMock(return_value=patches.get("history", []))),
-            patch.object(main.database, "get_payouts", AsyncMock(return_value=patches.get("payouts", []))),
+            # Honours confirmed_only, because that filter is the thing under
+            # test. A plain return_value is blind to kwargs, so removing
+            # `confirmed_only=True` from the endpoint changed nothing
+            # observable and the flagship payout feature could silently start
+            # counting UNCONFIRMED payouts as lifetime earnings (CashPilot-lu9).
+            patch.object(
+                main.database,
+                "get_payouts",
+                AsyncMock(
+                    side_effect=lambda platform=None, confirmed_only=False: [
+                        p for p in patches.get("payouts", []) if not confirmed_only or p.get("confirmed")
+                    ]
+                ),
+            ),
             patch.object(main.database, "confirm_payout", AsyncMock(return_value=patches.get("ok", True))),
             patch.object(main.database, "reject_payout", AsyncMock(return_value=patches.get("ok", True))),
         ):
@@ -213,10 +226,22 @@ class TestEndpoints:
             "honeygain",
             balance=5.0,
             history=series(1.0, 2.0, 3.0, 4.0, 5.0),
-            payouts=[{"amount": 20.0, "confirmed": 1}],
+            # An UNCONFIRMED payout sits alongside the confirmed one. Lifetime
+            # must count only the confirmed 20.0 — a probable payout is a
+            # guess from a balance drop, and folding it in would let a single
+            # misread inflate lifetime earnings permanently.
+            payouts=[{"amount": 20.0, "confirmed": 1}, {"amount": 99.0, "confirmed": 0}],
         )
         assert out["current_balance"] == 5.0
-        assert out["lifetime_earned"] == 25.0, "lifetime must include the confirmed payout"
+        assert out["lifetime_earned"] == 25.0, "lifetime counted an unconfirmed payout"
+        # This is the field the endpoint's confirmed_only filter actually
+        # protects. CashPilot-lu9 claimed lifetime_earned was at risk; it is
+        # not — payouts.lifetime_earned has its own `if payout.get("confirmed")`
+        # guard, so the filter is defence in depth there. The COUNT has no such
+        # guard, and it is rendered to the user as "includes N confirmed
+        # payouts", so dropping the filter would state that an unconfirmed
+        # balance drop was money they received.
+        assert out["confirmed_payout_count"] == 1, "an unconfirmed payout was counted as confirmed"
         assert out["projection"]["state"] == payouts.PROJECTED
 
     def test_progress_for_a_never_collected_service_says_the_balance_is_unknown(self):
