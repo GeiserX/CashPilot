@@ -47,7 +47,7 @@ cashout:
   method: redirect
   dashboard_url: "https://www.ebesucher.com/account"
   min_amount: 2.0
-  currency: EUR
+  currency: USD
   notes: "Euro payout via PayPal or bank transfer."
 
 platforms: [browser-extension]

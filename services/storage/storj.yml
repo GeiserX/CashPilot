@@ -109,7 +109,7 @@ cashout:
   method: redirect
   dashboard_url: "http://localhost:14002"
   min_amount: 4.0
-  currency: STORJ
+  currency: USD
   notes: "Payouts sent monthly in STORJ tokens to configured wallet address. Dashboard at port 14002."
 
 platforms: [docker, windows, linux]
