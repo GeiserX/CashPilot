@@ -40,3 +40,33 @@
   height: 1.6rem;
   width: 1.6rem;
 }
+
+/* The wordmark, matching banner.svg.
+ *
+ * The banner draws "CashPilot" in the pink gradient #f43f5e -> #fb7185 right
+ * beside the sun mark, as one lockup. The header rendered it in plain white
+ * with a wide gap, so the two read as an icon and some unrelated text rather
+ * than the product's mark.
+ *
+ * Only the FIRST topic is styled. Material puts the site name in one
+ * .md-header__topic and the current page title in a second one, swapping them
+ * on scroll — painting both would turn every page heading pink.
+ */
+.md-header__topic:first-child .md-ellipsis {
+  background: linear-gradient(90deg, #f43f5e 0%, #fb7185 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+}
+
+/* Close the gap so the mark and the wordmark read as one unit, the way the
+   banner sets them. */
+.md-header__button.md-logo {
+  padding-right: 0.2rem;
+}
+
+.md-header__title {
+  margin-left: 0.2rem;
+}
