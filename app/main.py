@@ -2139,7 +2139,9 @@ async def api_credential_health(request: Request) -> list[dict[str, Any]]:
 
 
 @app.get("/api/services/{slug}/preflight")
-async def api_service_preflight(request: Request, slug: str, worker_id: int | None = None) -> dict[str, Any]:
+async def api_service_preflight(
+    request: Request, slug: str, worker_id: int | None = None, planned: str | None = None
+) -> dict[str, Any]:
     """What this service will realistically do for THIS user, before deploying.
 
     Never blocks a deploy: the goal is informed consent, not a nanny.
@@ -2168,6 +2170,19 @@ async def api_service_preflight(request: Request, slug: str, worker_id: int | No
     if worker is None:
         raise HTTPException(status_code=404, detail=f"Unknown worker {worker_id}")
 
+    # The other workers receiving this service in the SAME wizard action. The
+    # cross-machine check otherwise only sees what is already RUNNING, so
+    # ticking two boxes behind one connection produced no warning: neither
+    # worker had the service yet, so neither counted against the other. The
+    # warning arrived on the next deploy, after the account was already at risk
+    # (CashPilot-3tr).
+    planned_ids: set[int] = set()
+    for part in (planned or "").split(","):
+        part = part.strip()
+        if part.isdigit():
+            planned_ids.add(int(part))
+    planned_ids.discard(worker_id)
+
     return preflight.assess(
         service,
         already_deployed_slugs=egress.running_slugs(worker),
@@ -2177,6 +2192,7 @@ async def api_service_preflight(request: Request, slug: str, worker_id: int | No
         # see at all.
         worker=worker,
         fleet_workers=workers,
+        also_deploying_to=planned_ids,
     )
 
 
