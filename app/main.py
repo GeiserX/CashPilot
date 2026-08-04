@@ -2516,7 +2516,14 @@ async def api_fleet_economics(request: Request) -> dict[str, Any]:
         assessed.append(
             machine_economics.assess_machine(
                 name=worker.get("name") or f"worker {worker.get('id')}",
-                monthly_gross=per_worker_gross.get(worker.get("id"), 0.0),
+                # None, not 0.0, when this worker's containers were never
+                # counted. per_worker_gross is built only from ONLINE workers
+                # (_get_all_worker_containers skips the rest), so defaulting an
+                # offline machine to zero earnings is what produced the
+                # "turn it off" advice about a host we cannot see.
+                monthly_gross=(
+                    per_worker_gross.get(worker.get("id"), 0.0) if str(worker.get("status") or "") == "online" else None
+                ),
                 watts=watts,
                 price_per_kwh=price or None,
                 metered=power.is_metered(info),
