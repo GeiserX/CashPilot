@@ -5,17 +5,23 @@
 #
 #   Start / update:  docker compose pull && docker compose up -d
 #
-# Images track the `latest` tag (pull_policy: always), so a plain `up -d`
-# always launches the newest published release — no rebuild needed. To pin a
-# specific version instead, replace `:latest` with e.g. `:1.0.1` (see
-# https://hub.docker.com/r/drumsergio/cashpilot/tags) and drop pull_policy.
+# Images are PINNED to a major.minor tag, which is what the lines below say.
+# `docker compose pull && up -d` therefore gets the newest patch of that series,
+# not the newest release overall — to move to a newer series, edit the tags.
+#
+# This header used to claim the file tracked `latest` while pinning 1.4, and the
+# string `:latest` it told you to replace did not appear anywhere. Following the
+# quickstart therefore installed a version many releases behind, and issue #188
+# is someone hitting a first-run bug that had been fixed for months because of
+# it. Keep this comment honest about what the file actually does.
+# See https://hub.docker.com/r/drumsergio/cashpilot/tags for available tags.
 # NOTE: versions before 1.0.0 predate the per-worker fleet-key auth cutover and
 # are not compatible with a worker running 1.x -- pin UI and worker together.
 # Building from source? Use: docker compose -f docker-compose.build.yml up -d
 
 services:
   cashpilot-ui:
-    image: drumsergio/cashpilot:1.4
+    image: drumsergio/cashpilot:1.11
     pull_policy: always
     container_name: cashpilot-ui
     # Published on loopback by default: the dashboard can command the Docker-socket
@@ -45,7 +51,7 @@ services:
       - /tmp:size=64M
 
   cashpilot-worker:
-    image: drumsergio/cashpilot-worker:1.4
+    image: drumsergio/cashpilot-worker:1.11
     pull_policy: always
     container_name: cashpilot-worker
     expose:
