@@ -388,7 +388,7 @@ async def _collect_bounded(collector) -> Any:
         return await collector.collect()
 
 
-async def _flatline_check() -> None:
+async def _flatline_check() -> list[dict[str, str]]:
     """Alert on services that are running but whose balance has stopped moving.
 
     A container can be up and a collector can authenticate happily while the
@@ -400,6 +400,7 @@ async def _flatline_check() -> None:
     cooldown keeps this to one notification per service rather than one per
     collection cycle.
     """
+    bell: list[dict[str, str]] = []
     try:
         flat_services = await database.get_flatlined_services()
         flat_now = {f["platform"] for f in flat_services}
@@ -417,6 +418,12 @@ async def _flatline_check() -> None:
                 f"Balance has not moved in {flat['days_flat']} days "
                 f"(still {flat['balance']}). The service is running but not earning."
             )
+            # Built for EVERY flatlined service, not only the ones that clear
+            # record_alert's cooldown. The cooldown exists to stop repeat
+            # NOTIFICATIONS; the bell is a standing statement of what is wrong
+            # right now, so gating it the same way would blank the bell on the
+            # second collection while the service was still not earning.
+            bell.append({"kind": "flatline", "platform": flat["platform"], "error": message})
             if await database.record_alert("flatline", flat["platform"], message):
                 _spawn(
                     notify.send(
@@ -428,6 +435,7 @@ async def _flatline_check() -> None:
                 )
     except Exception as exc:
         logger.warning("Flatline check failed: %s", exc)
+    return bell
 
 
 async def _warm_collector_alerts() -> None:
@@ -453,7 +461,10 @@ async def _warm_collector_alerts() -> None:
         # user is supposed to answer never appeared. Dedup by kind AND subject:
         # a platform can legitimately have both a failing collector and a
         # pending payout, and they are different things to tell someone.
-        if alert["kind"] not in ("collector", "payout"):
+        # flatline belongs here for the same reason payout does: it is recorded,
+        # and without this it is dropped on the way to the bell, so a restart
+        # silently clears a warning about a service that is still not earning.
+        if alert["kind"] not in ("collector", "payout", "flatline"):
             continue
         key = f"{alert['kind']}:{alert['subject']}"
         if key in seen:
@@ -556,9 +567,15 @@ async def _run_collection() -> None:
             alerts.extend(
                 await _pending_payout_alerts(seen={a["platform"] for a in alerts if a.get("kind") == "payout"})
             )
+            # Flatline is the one failure mode nothing else can surface — the
+            # container is up and the collector authenticates fine. It reached
+            # the database and the notifier, but never this list, and on a
+            # default install no notifier is configured (docker-compose.yml sets
+            # none of the NTFY/WEBHOOK/TELEGRAM variables), so the only place the
+            # user would ever see it was the one place it never went. The bell
+            # said "All collectors healthy".
+            alerts.extend(await _flatline_check())
             _collector_alerts = alerts
-
-            await _flatline_check()
         except Exception as exc:
             logger.error("Collection run failed: %s", exc)
             success = False
