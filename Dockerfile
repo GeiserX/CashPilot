@@ -18,6 +18,13 @@ RUN uv sync --frozen --no-dev --no-install-project \
 # -- Runtime stage --
 FROM python:3.14-alpine
 
+# The release tag this image was built from, so the app can report what it is.
+# Both apps used to hardcode "0.1.0" while releases were tag-driven and past
+# 1.11, which made UI/worker skew undetectable (CashPilot-l6c). Defaults to dev
+# so a local `docker build` says so rather than claiming a release.
+ARG CASHPILOT_VERSION=dev
+ENV CASHPILOT_VERSION=$CASHPILOT_VERSION
+
 LABEL maintainer="Sergio Fernandez <9169332+GeiserX@users.noreply.github.com>"
 LABEL org.opencontainers.image.description="CashPilot - Self-hosted passive income orchestrator"
 LABEL org.opencontainers.image.url="https://github.com/GeiserX/CashPilot"

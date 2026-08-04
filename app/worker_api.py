@@ -34,7 +34,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 
-from app import egress, fleet_key, orchestrator, state_backup
+from app import egress, fleet_key, orchestrator, state_backup, version
 
 try:
     from app.catalog import get_services as _catalog_get_services
@@ -412,6 +412,10 @@ async def _send_heartbeat() -> None:
             "arch": platform.machine(),
             "hostname": socket.gethostname(),
             "docker_available": await asyncio.to_thread(orchestrator.docker_available),
+            # So the UI can tell an operator when the two halves are different
+            # releases. An older worker sends nothing here, which reads as
+            # unknown rather than as a mismatch (CashPilot-l6c).
+            "version": version.current(),
             # Providers count devices per public IP, so the UI needs the address
             # the provider sees — not this container's LAN or tailnet address.
             "egress_ip": await _detect_egress_ip(),
@@ -546,7 +550,7 @@ async def lifespan(app: FastAPI):
     logger.info("CashPilot Worker stopped")
 
 
-app = FastAPI(title="CashPilot Worker", version="0.1.0", lifespan=lifespan)
+app = FastAPI(title="CashPilot Worker", version=version.current(), lifespan=lifespan)
 
 
 # ---------------------------------------------------------------------------
