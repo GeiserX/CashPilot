@@ -271,6 +271,12 @@ def verify_encryption_key_persisted() -> None:
     )
 
 
+# Mirrors worker_api._AUTH_FAILURE_DISCARD_AFTER. Named rather than inlined so
+# the number in the operator-facing message above cannot drift away from the
+# behaviour it describes; a test asserts the two agree.
+_WORKER_KEY_DISCARD_AFTER = 10
+
+
 _ENC_PREFIX = "enc:"
 
 
@@ -1660,18 +1666,27 @@ async def get_worker_key_state(client_id: str) -> tuple[str | None, bool]:
         key = decrypt_value(enc)
         if not key:
             # decrypt_value() returns "" (after logging its own warning) when the
-            # Fernet key can't decrypt this value -- e.g. CASHPILOT_SECRET_KEY was
-            # rotated or restored from a different value. A real per-worker key is
-            # always a secrets.token_urlsafe(32) string and can never legitimately
-            # be empty, so "" here unambiguously means "undecryptable", not "empty
-            # key". Report it as NOT enrolled (None) rather than as a real key that
-            # can never match, so callers fall back to the shared bootstrap key and
-            # the worker can re-enroll instead of being permanently bricked.
+            # CREDENTIAL-ENCRYPTION key can't decrypt this value -- the Fernet key
+            # at CASHPILOT_ENCRYPTION_KEY / /data/.fernet_key was rotated, or /data
+            # was restored without it. NOT CASHPILOT_SECRET_KEY, which only signs
+            # sessions: this message used to name that one, sending the operator
+            # after the wrong variable while their whole fleet sat offline.
+            #
+            # A real per-worker key is always a secrets.token_urlsafe(32) string
+            # and can never legitimately be empty, so "" here unambiguously means
+            # "undecryptable", not "empty key". Report it as NOT enrolled (None)
+            # rather than as a real key that can never match.
             _logger.error(
-                "Worker '%s' per-worker key is undecryptable (CASHPILOT_SECRET_KEY "
-                "changed?) -- treating as unenrolled so it can re-enroll via the "
-                "shared key",
+                "Worker '%s' per-worker key cannot be decrypted. The credential-encryption key "
+                "(CASHPILOT_ENCRYPTION_KEY / %s) is not the one it was encrypted with -- this is "
+                "NOT CASHPILOT_SECRET_KEY, which only signs sessions. Restore the original key to "
+                "recover every stored credential. Until then this worker is treated as unenrolled; "
+                "it keeps sending the key it persisted and will 401 for roughly %d heartbeats "
+                "before discarding it and re-enrolling on its own. To fix it now, delete "
+                "/data/.worker_key on that host and restart its container.",
                 client_id,
+                _FERNET_KEY_FILE,
+                _WORKER_KEY_DISCARD_AFTER,
             )
             return None, False
         return key, bool(row["key_confirmed"])
