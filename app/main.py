@@ -1256,15 +1256,24 @@ async def api_deploy(request: Request, slug: str, body: DeployRequest, worker_id
     if not image:
         raise HTTPException(status_code=400, detail=f"Service '{slug}' has no Docker image")
 
-    # Build full env: YAML defaults + {hostname} substitution + user overrides
+    # Build full env: YAML defaults + user overrides + {hostname} substitution.
+    #
+    # The substitution runs LAST, over the merged result, because it used to run
+    # only over the defaults — and the setup wizard prefills each input with the
+    # raw default, so the browser posts "cashpilot-{hostname}" back as a USER
+    # value. A user value wins over the default, so the placeholder was never
+    # substituted and the literal string shipped as the device name. Providers
+    # count devices by that name, so every host deployed through the wizard
+    # registered under one identical name.
+    #
+    # Applying it to overrides too is also the right reading of a value someone
+    # typed by hand: nobody means the eight characters "{hostname}".
     hn = body.hostname or HOSTNAME_PREFIX
     env: dict[str, str] = {}
     for var in docker_conf.get("env", []):
-        default = var.get("default", "")
-        if default and "{hostname}" in str(default):
-            default = str(default).replace("{hostname}", hn)
-        env[var["key"]] = str(default)
+        env[var["key"]] = str(var.get("default", ""))
     env.update(body.env or {})
+    env = {k: v.replace("{hostname}", hn) if isinstance(v, str) else v for k, v in env.items()}
 
     # What this service was ACTUALLY deployed with, if anything. Loaded before
     # the required-field check because a redeploy must not demand values the

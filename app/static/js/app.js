@@ -738,13 +738,20 @@ const CP = (() => {
       const hint = withHint && env.description
         ? `<div class="form-hint">${escapeHtml(env.description)}</div>`
         : '';
+      // A default containing {hostname} is a TEMPLATE, not a value. Prefilling
+      // it put the literal text in the box, and the browser posted it straight
+      // back as a user override — which outranks the default the server would
+      // have substituted. Showing it as the placeholder keeps the hint visible
+      // while leaving the field genuinely empty, so the server fills it in per
+      // worker and each host registers under its own name.
+      const defaultIsTemplate = String(env.default || '').includes('{hostname}');
       return `
       <div class="form-group">
         ${label}
         <input class="form-input" type="${inputType}"${withId ? ` id="${id}"` : ''}
                data-slug="${svc.slug}" data-key="${env.key}"
-               placeholder="${escapeHtml(env.description || '')}"
-               value="${escapeHtml(env.default || '')}"
+               placeholder="${escapeHtml(defaultIsTemplate ? String(env.default) : (env.description || ''))}"
+               value="${escapeHtml(defaultIsTemplate ? '' : (env.default || ''))}"
                ${env.required ? 'required' : ''}>
         ${hint}
       </div>`;
