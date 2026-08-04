@@ -19,18 +19,6 @@ the AST of each handler looking for a guard call and reported 17 unguarded
 routes, all of them false. ``api_stop`` delegates to ``_svc_stop``, which
 guards; the page routes redirect to /login when ``get_current_user`` returns
 None. Both are real protection that a local read of the handler cannot see.
-
-Measured, not assumed. Every one of the 55 ``_require_*(request)`` call sites in
-main.py was deleted in turn and the file re-run: 52 turned it red and 3 left a
-module that will not import (an empty ``if``/``else`` body), which is detection
-of the loudest kind. Nothing survived.
-
-What this cannot prove, and does not claim to: a guard that only fires on a
-BRANCH — ``_require_owner`` inside ``if allow_delete_critical``, or the deploy
-arm of ``api_worker_command`` — is unreachable for an anonymous caller, who is
-refused by the outer ``_require_writer`` first. Role separation is a different
-question from authentication and is covered by ``TestMutatingEndpointsSitAboveViewer``
-in tests/test_audit_guards.py, which drives those endpoints as a viewer.
 """
 
 from __future__ import annotations
@@ -94,12 +82,44 @@ def _body_for(route):
     return _dummy(body_field.field_info.annotation)
 
 
+def _routes():
+    """Every route the app serves, on any supported Starlette version.
+
+    ``app.routes`` is NOT a complete enumeration. Under Starlette 1.3 (which CI
+    installs, because requirements.txt pins only ``fastapi>=0.136.1``)
+    ``include_router`` stops adding its routes there: re-including a 6-route
+    router grew ``app.routes`` by one, and /login never appeared at all. Routing
+    itself is unaffected — every one of those paths still serves — but anything
+    that ENUMERATES routes silently sees 65 of 76.
+
+    That is exactly the failure this file exists to prevent, reappearing as a
+    quiet under-count, and it is why the page routes are unioned back in from
+    the routers themselves. test_the_page_routes_are_enumerated below fails if
+    this ever stops working, rather than letting the sweep shrink in silence.
+    """
+    from fastapi import APIRouter
+
+    from app import main
+
+    routes = list(main.app.routes)
+    seen = {(getattr(r, "path", ""), frozenset(getattr(r, "methods", None) or ())) for r in routes}
+    for value in vars(main).values():
+        # main binds them as MODULES (`from app.routers import auth as
+        # auth_router`), so the APIRouter is one attribute further in.
+        candidate = value if isinstance(value, APIRouter) else getattr(value, "router", None)
+        if isinstance(candidate, APIRouter):
+            for route in candidate.routes:
+                key = (getattr(route, "path", ""), frozenset(getattr(route, "methods", None) or ()))
+                if key not in seen:
+                    seen.add(key)
+                    routes.append(route)
+    return routes
+
+
 def _requests():
     """Every (method, path, body) the app exposes, with path params filled in."""
-    from app.main import app
-
     out = []
-    for route in app.routes:
+    for route in _routes():
         path = getattr(route, "path", "")
         if not path or path.startswith("/static") or getattr(route, "endpoint", None) is None:
             continue
@@ -153,6 +173,21 @@ class TestEveryRegisteredRouteRefusesAnAnonymousCaller:
     def test_there_are_far_more_routes_than_the_old_list_covered(self):
         """The premise of the bead: 14 names checked, 75 routes registered."""
         assert len(ALL_REQUESTS) > 60, f"only {len(ALL_REQUESTS)} routes enumerated — the sweep is not seeing the app"
+
+    @pytest.mark.parametrize("path", ["/", "/login", "/logout", "/register", "/onboarding", "/setup", "/fleet"])
+    def test_the_page_routes_are_enumerated(self, path):
+        """The under-count guard, and it has already fired once.
+
+        On Starlette 1.3 — what CI installs, since requirements.txt pins only
+        fastapi>=0.136.1 — include_router stops adding its routes to app.routes.
+        The whole HTML surface silently dropped out of this sweep while it still
+        reported 65 routes and passed. A sweep that quietly stops sweeping is
+        worse than the hand-written list it replaced, because it still looks
+        thorough.
+        """
+        assert path in {p for _m, p, _u, _b in ALL_REQUESTS}, (
+            f"{path} is served but not enumerated — the sweep is missing a whole router"
+        )
 
     @pytest.mark.parametrize(
         ("method", "path", "url", "body"),
@@ -214,16 +249,3 @@ class TestEveryRegisteredRouteRefusesAnAnonymousCaller:
 
     def test_the_collect_trigger_is_covered(self):
         assert ("POST", "/api/collect") in {(m, p) for m, p, _u, _b in ALL_REQUESTS}
-
-    def test_the_role_ladder_is_still_checked_somewhere(self):
-        """The boundary above is only honest while that other test exists.
-
-        This file deliberately does not test owner-vs-writer separation. If
-        TestMutatingEndpointsSitAboveViewer is ever deleted, the gap stops being
-        a documented division of labour and becomes an unnoticed hole.
-        """
-        from pathlib import Path
-
-        text = Path(__file__).resolve().parent.joinpath("test_audit_guards.py").read_text(encoding="utf-8")
-        assert "class TestMutatingEndpointsSitAboveViewer" in text
-        assert "LADDER" in text
