@@ -81,7 +81,7 @@ def break_even_price(monthly_gross: float, watts: float) -> float | None:
 def assess_machine(
     *,
     name: str,
-    monthly_gross: float,
+    monthly_gross: float | None,
     watts: float | None,
     price_per_kwh: float | None,
     metered: bool = True,
@@ -95,6 +95,28 @@ def assess_machine(
     measure, so the honest output is the cost of the box rather than a verdict
     pretending the services caused it.
     """
+    # None means CashPilot could not READ this machine's earnings — an offline
+    # worker, not a machine that earned nothing. The two were indistinguishable,
+    # so a host that had merely stopped heartbeating was told:
+    # "earns about 0.00 a month and costs about 9.49 in electricity ... turning
+    # it off would save that." A confident financial recommendation about a
+    # machine we cannot see, and its earnings were being silently reattributed
+    # to whatever workers were still reporting.
+    if monthly_gross is None:
+        return {
+            "machine": name,
+            "verdict": UNKNOWN,
+            "monthly_gross": None,
+            "monthly_cost": None,
+            "monthly_net": None,
+            "break_even_watts": None,
+            "summary": (
+                f"{name} is not reporting, so CashPilot cannot see what it earns. Nothing here "
+                "says whether it is worth running — the last figures it sent are not evidence "
+                "about now."
+            ),
+        }
+
     gross = float(monthly_gross or 0.0)
 
     if not metered:
