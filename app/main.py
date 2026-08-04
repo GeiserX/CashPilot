@@ -2956,14 +2956,22 @@ async def api_set_config(request: Request, body: ConfigUpdate) -> dict[str, str]
         svc = catalog.get_service(slug)
         if not svc:
             continue
-        docker_conf = svc.get("docker", {})
-        has_image = bool(docker_conf and docker_conf.get("image"))
-        if has_image:
-            continue  # Docker services get deployed normally
+        # No has_image gate. Collection is driven by DEPLOYMENT ROWS
+        # (make_collectors iterates deployments), so a service with no row is
+        # never collected no matter how complete its credentials are. Skipping
+        # image-backed services here meant that for 12 of the 15 collectors,
+        # saving credentials did nothing at all — while Settings promised
+        # "You don't need to deploy containers through CashPilot — just add
+        # your credentials." The badge flipped to Configured and no earnings
+        # ever arrived.
+        #
+        # Creating the row is safe for a user who later deploys through
+        # CashPilot: api_deploy calls save_deployment with the real container
+        # id and status, replacing this placeholder.
         existing = await database.get_deployment(slug)
         if not existing:
             await database.save_deployment(slug=slug, container_id="", status="external")
-            logger.info("Auto-created external deployment for %s", slug)
+            logger.info("Tracking %s from stored credentials (no container deployed by CashPilot)", slug)
 
     return {"status": "saved"}
 
@@ -2982,12 +2990,16 @@ async def api_clear_service_config(request: Request, slug: str) -> dict[str, str
     config_keys.append(f"{slug}_signup_bonus")
     await database.delete_config_keys(config_keys)
 
-    # Remove the auto-created "external" deployment record if present
-    svc = catalog.get_service(slug)
-    if svc:
-        docker_conf = svc.get("docker", {})
-        if not (docker_conf and docker_conf.get("image")):
-            await database.remove_deployment(slug)
+    # Remove the row only if it is the placeholder we auto-created.
+    #
+    # Gated on status == "external", NOT on whether the service has an image.
+    # Clearing credentials must never undeploy a container the user actually
+    # deployed through CashPilot — that row has a real container id and a
+    # status of its own, and removing it would orphan a running container from
+    # the dashboard.
+    existing = await database.get_deployment(slug)
+    if existing and (existing.get("status") or "") == "external":
+        await database.remove_deployment(slug)
 
     logger.info("Cleared credentials for %s", slug)
     return {"status": "cleared"}
