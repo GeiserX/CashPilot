@@ -83,7 +83,7 @@ graph LR
 |----------|---------|-------------|
 | `TZ` | `UTC` | Timezone for scheduling and display |
 | `CASHPILOT_SECRET_KEY` | *(auto-generated)* | Signing key for login sessions. Persisted at `/data/.secret_key`. **Does not encrypt credentials** |
-| `CASHPILOT_ENCRYPTION_KEY` | *(auto-generated)* | Fernet key encrypting stored credentials at rest. Persisted at `/data/.fernet_key`. Set this only to restore a backup |
+| `CASHPILOT_ENCRYPTION_KEY` | *(auto-generated)* | Fernet key encrypting stored credentials at rest. Persisted at `/data/.fernet_key`. Adopted only when that file is absent, so set it only to restore a backup |
 | `CASHPILOT_API_KEY` | -- | Shared secret between UI and workers for API authentication |
 | `CASHPILOT_COLLECT_INTERVAL` | `60` | Minutes between earnings collection cycles |
 | `CASHPILOT_BIND_ADDR` | `127.0.0.1` | Host interface the UI port is published on. **Loopback by default** — the dashboard can command the Docker-socket worker, so it is not exposed to your network out of the box. Set a specific IP (e.g. a Tailscale/VPN address) or `0.0.0.0` to expose it, or (preferred) run an authenticating reverse proxy in front |

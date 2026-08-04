@@ -162,3 +162,29 @@ class TestTheDocsNameTheRightEncryptionKey:
         text = (ROOT / "unraid" / "cashpilot.xml").read_text(encoding="utf-8")
         assert 'Target="CASHPILOT_ENCRYPTION_KEY"' in text
         assert text.count('Mask="true"') >= 2, "the encryption key must be masked like the session key"
+
+    @pytest.mark.parametrize("rel", ["docs/index.md", "docs/fleet.md", "docs/getting-started.md"])
+    def test_the_env_var_is_not_described_as_an_override(self, rel):
+        """From CodeRabbit on this PR, and right.
+
+        The key FILE always wins — app/database.py logs a warning and keeps the
+        stored key when CASHPILOT_ENCRYPTION_KEY differs, because switching keys
+        would make every existing credential unreadable. Calling the variable an
+        "override" is wrong exactly where it matters most: someone restoring a
+        backup onto an instance that still has a stale key file would expect
+        their value to take effect, and it would be ignored.
+        """
+        text = (ROOT / rel).read_text(encoding="utf-8")
+        for line in text.splitlines():
+            if "CASHPILOT_ENCRYPTION_KEY" not in line:
+                continue
+            assert "overridable" not in line.lower(), f"{rel}: {line.strip()[:120]}"
+
+    def test_at_least_one_doc_states_the_precedence(self):
+        """Knowing the variable exists is not enough to restore a backup with it."""
+        found = [
+            rel
+            for rel in ("docs/index.md", "docs/fleet.md", "docs/getting-started.md")
+            if "only when that file is absent" in (ROOT / rel).read_text(encoding="utf-8")
+        ]
+        assert len(found) >= 3, f"precedence stated in only {found}"
