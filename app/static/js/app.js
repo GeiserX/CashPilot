@@ -1456,6 +1456,42 @@ const CP = (() => {
   // -----------------------------------------------------------
   // Claim Modal
   // -----------------------------------------------------------
+  // Why this service has no earnings row, said accurately. Three different
+  // facts hide behind one empty result and they need three different answers.
+  async function renderNoEarningsYet(platform, title, body) {
+    let service = null;
+    try {
+      const available = await api('/api/services/available');
+      service = (available || []).find(s => s.slug === platform) || null;
+    } catch (err) {
+      // Could not check. Say that, rather than guessing at either answer.
+      if (title) title.textContent = 'Cashout';
+      if (body) {
+        body.innerHTML = `<p>Could not check this service right now: ${escapeHtml(err.message || 'request failed')}.</p>`;
+      }
+      return;
+    }
+
+    const name = service ? (service.name || platform) : platform;
+    if (title) title.textContent = `Cashout \u2014 ${name}`;
+    if (!body) return;
+
+    if (!service) {
+      // The only case that genuinely deserves the old wording.
+      body.innerHTML = `<p>${escapeHtml(name)} is not in the service catalog, so CashPilot knows nothing about its cashout.</p>`;
+      return;
+    }
+
+    // Deployed and running, but nothing has been read yet. Name the likely
+    // cause, because "no data" without a reason reads as a broken page.
+    const reason = service.has_collector
+      ? 'No earnings have been read for this service yet. Add its credentials in '
+        + 'Settings \u2192 Collectors, or wait for the next hourly collection if you already have.'
+      : 'CashPilot has no earnings collector for this service yet, so it cannot read a balance. '
+        + 'It may still be running and earning \u2014 check the provider\'s own dashboard.';
+    body.innerHTML = `<p>${escapeHtml(reason)}</p>`;
+  }
+
   async function openClaimModal(platform) {
     openModal('claim-modal');
     const title = document.getElementById('claim-modal-title');
@@ -1468,7 +1504,13 @@ const CP = (() => {
       const data = await api('/api/earnings/breakdown');
       const svc = data.find(s => s.platform === platform);
       if (!svc) {
-        if (body) body.innerHTML = '<p>Service not found.</p>';
+        // /api/earnings/breakdown is built from the EARNINGS table, so a service
+        // that has never produced a reading is simply absent from it. Reporting
+        // that absence as "Service not found" told the user the software had
+        // lost track of a service they were looking straight at -- it is in the
+        // catalog, on the dashboard, deployed and running. On this fleet that
+        // was 5 of 18 tracked services (CashPilot: claim-modal bead).
+        await renderNoEarningsYet(platform, title, body);
         return;
       }
 
