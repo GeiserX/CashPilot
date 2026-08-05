@@ -122,50 +122,6 @@ jobs:
   # This is a manifest re-point, not a rebuild: imagetools copies the existing
   # multi-arch descriptor to the new tags in seconds, so an unchanged image is
   # never rebuilt just to satisfy a naming convention.
-  retag-ui:
-    needs: [lint, resolve-tags]
-    if: ${{ !inputs.build_ui && inputs.version != '' }}
-    runs-on: ubuntu-latest
-    steps:
-      - uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4
-      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-      - name: Re-point the unchanged UI image at this release's tags
-        # Tags derive from inputs.version, which workflow_dispatch lets a caller
-        # set freely. Interpolating that straight into `for tag in ...` would let
-        # a malformed value break Bash parsing in a step that runs AFTER the
-        # registry login, so it goes through the environment and is read as data.
-        env:
-          TAGS: ${{ needs.resolve-tags.outputs.ui_tags }}
-        run: |
-          printf '%s\n' "$TAGS" | while IFS= read -r tag; do
-            [ -n "$tag" ] || continue
-            echo "retagging -> $tag"
-            docker buildx imagetools create -t "$tag" drumsergio/cashpilot:latest
-          done
-
-  retag-worker:
-    needs: [lint, resolve-tags]
-    if: ${{ !inputs.build_worker && inputs.version != '' }}
-    runs-on: ubuntu-latest
-    steps:
-      - uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4
-      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-      - name: Re-point the unchanged worker image at this release's tags
-        env:
-          TAGS: ${{ needs.resolve-tags.outputs.worker_tags }}
-        run: |
-          printf '%s\n' "$TAGS" | while IFS= read -r tag; do
-            [ -n "$tag" ] || continue
-            echo "retagging -> $tag"
-            docker buildx imagetools create -t "$tag" drumsergio/cashpilot-worker:latest
-          done
-
   build-worker:
     needs: [lint, resolve-tags]
     if: inputs.build_worker
@@ -194,7 +150,7 @@ jobs:
   # did not — the gap was only found by deploying. This closes that: if a tag
   # this release claims to have published does not resolve, the run fails.
   verify-tags:
-    needs: [resolve-tags, build-ui, build-worker, retag-ui, retag-worker]
+    needs: [resolve-tags, build-ui, build-worker]
     if: ${{ always() && inputs.version != '' }}
     runs-on: ubuntu-latest
     steps:
@@ -237,5 +193,58 @@ jobs:
           done < /tmp/tags.txt
           if [ "$missing" -ne 0 ]; then
             echo "::error::A tag this release claims to have published did not resolve. Read the registry response printed above BEFORE assuming a partial build: an auth or rate-limit failure looks identical here. If the images really are missing, the compose files pin both to the same tag, so a partial release breaks the documented quickstart."
+            exit 1
+          fi
+
+      # A tag RESOLVING says nothing about WHAT it resolves to. That gap shipped
+      # three releases of one worker image: 1.13.0, 1.14.0 and 1.14.1 all pointed
+      # at a single digest reporting CASHPILOT_VERSION=1.13.0, and the guard
+      # above passed every time because each tag existed.
+      #
+      # This checks the ARTIFACT instead of the label: pull the image config and
+      # require the version baked into it to equal the version being released. It
+      # catches a re-tag, a stale build cache and a skipped build alike -- all
+      # three produce a tag whose image disagrees with its name.
+      - name: Every published image must report the version it is tagged with
+        env:
+          UI_TAGS: ${{ needs.resolve-tags.outputs.ui_tags }}
+          WORKER_TAGS: ${{ needs.resolve-tags.outputs.worker_tags }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          # The release input is "v1.2.3"; the image bakes the bare number.
+          want="${VERSION#v}"
+          echo "expecting CASHPILOT_VERSION=${want}"
+          bad=0
+          # A here-string, not a pipe and not a temp file: a `while` on the right
+          # of a pipe runs in a subshell, so `bad` set inside it would be lost --
+          # which is why the step above uses a file. This avoids both.
+          while IFS= read -r tag; do
+            [ -n "$tag" ] || continue
+            # `docker buildx imagetools inspect --raw` returns the manifest, not
+            # the config, so the env is not in it. Pulling is the reliable way to
+            # read what the image actually declares.
+            #
+            # A FAILED PULL IS A FAILURE, not something to skip. An earlier draft
+            # `continue`d here on the reasoning that the resolve check above owns
+            # it -- but that check uses `docker manifest inspect`, which can
+            # succeed while a pull fails, so skipping left the version unverified
+            # and `bad` at 0. That is a check that cannot fail, which is worse
+            # than no check: the release would publish looking verified.
+            if ! err=$(docker pull -q "$tag" 2>&1); then
+              echo "PULL FAILED  $tag -- ${err}"
+              bad=1
+              continue
+            fi
+            got=$(docker image inspect "$tag" --format '{{range .Config.Env}}{{println .}}{{end}}' \
+                  | sed -n 's/^CASHPILOT_VERSION=//p' | head -1)
+            if [ "$got" = "$want" ]; then
+              echo "ok      $tag reports ${got}"
+            else
+              echo "WRONG   $tag reports '${got}', expected '${want}'"
+              bad=1
+            fi
+          done <<< "$(printf '%s\n%s\n' "$UI_TAGS" "$WORKER_TAGS")"
+          if [ "$bad" -ne 0 ]; then
+            echo "::error::A published image reports a version other than the one it is tagged with. This is what a re-tagged or cache-stale image looks like: the tag resolves, so the check above passes, while every worker running it reports the WRONG version on the fleet page -- and a wrong version reads as a match, hiding the staleness version reporting exists to reveal. Do NOT fix this by re-tagging; rebuild the image. A PULL FAILED line above means the version could not be read at all -- that is also a failure here, because an unverified image must not ship looking verified."
             exit 1
           fi
