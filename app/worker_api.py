@@ -450,24 +450,47 @@ async def _send_heartbeat() -> None:
         status = exc.response.status_code
         _last_error = f"authentication rejected ({status})" if status in (401, 403) else "connection failed"
         logger.warning("Heartbeat failed: %s", exc)
-        if status == 401 and _worker_key:
+        if status == 401:
+            # Counted whether or not we hold our own key. The condition used to
+            # be `and _worker_key`, which skipped the alarm in exactly the case
+            # it is most needed: a worker that LOST /data/.worker_key — a partial
+            # restore, an appdata copy that skips dotfiles — holds no key, sends
+            # the shared one, and is refused because the UI's row for this
+            # client_id is enrolled and confirmed. That worker 401'd forever and
+            # logged nothing but a generic "Heartbeat failed" every 60 seconds,
+            # while its service containers kept earning (CashPilot-65s).
             _consecutive_auth_failures += 1
             if _consecutive_auth_failures == _AUTH_FAILURE_ALARM_AFTER:
-                # A per-worker key rejected repeatedly almost always means our
-                # client_id no longer matches the row the UI enrolled — usually
-                # because the id was derived from a container hostname that
-                # changed on recreate. Service containers keep earning through
-                # this, so nothing else surfaces the problem: say it plainly once.
-                logger.error(
-                    "Rejected %d times with this worker's own key. The UI does not "
-                    "recognise client_id %r. If the UI still lists this worker under a "
-                    "different id, stop this container, write that id into %s, and start "
-                    "it again to reclaim the existing row.",
-                    _consecutive_auth_failures,
-                    CLIENT_ID,
-                    _WORKER_ID_FILE,
-                )
-            elif _consecutive_auth_failures >= _AUTH_FAILURE_DISCARD_AFTER:
+                # Two different lockouts, two different fixes. Saying the wrong
+                # one is worse than saying nothing: the previous message told the
+                # operator to write a client_id into /data/.worker_id, which is
+                # the fix for neither of the lockouts that actually happen — in
+                # both the id is fine and it is the KEY that has to change — and
+                # it named an id the dashboard has never displayed.
+                if _worker_key:
+                    logger.error(
+                        "Rejected %d times with this worker's own key. Either it was removed "
+                        "in the fleet dashboard, or the UI's credential-encryption key changed "
+                        "so it can no longer read the copy it stored. Both are recovered the "
+                        "same way and this worker will do it itself after about %d more "
+                        "rejections: discard the key and re-enrol. To fix it now, delete %s "
+                        "on this host and restart the container.",
+                        _consecutive_auth_failures,
+                        _AUTH_FAILURE_DISCARD_AFTER - _consecutive_auth_failures,
+                        _WORKER_KEY_FILE,
+                    )
+                else:
+                    logger.error(
+                        "Rejected %d times using the shared CASHPILOT_API_KEY. The UI already "
+                        "has a confirmed enrolment for client_id %r, so it refuses the shared "
+                        "key for it — this worker has lost the per-worker key it was issued "
+                        "(%s is missing). Restore that file, or remove this worker in the fleet "
+                        "dashboard and it will enrol again on its next heartbeat.",
+                        _consecutive_auth_failures,
+                        CLIENT_ID,
+                        _WORKER_KEY_FILE,
+                    )
+            elif _worker_key and _consecutive_auth_failures >= _AUTH_FAILURE_DISCARD_AFTER:
                 # Sustained rejection of our own key is what a worker REMOVED in
                 # the dashboard looks like from here. Re-enrol rather than 401
                 # forever on a host that is still running containers.
