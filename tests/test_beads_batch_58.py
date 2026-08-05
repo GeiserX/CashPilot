@@ -226,8 +226,12 @@ class TestTheConfigIsHonestAboutItsLimits:
                 group = line[4:].strip()
             elif line.startswith("- ") and group:
                 seen.setdefault(group, []).append(line[2:])
-        # A real feat: subject must not have landed in Other.
-        assert any("host disk and GPU" in e for e in seen.get("Features", [])), (
+        # A real `feat:` subject from main's history, which must not land in
+        # Other. Deliberately one that is MERGED rather than one from the branch
+        # under development: the first version named a commit that existed only
+        # on a sibling branch, so regenerating anywhere else failed the test for
+        # a reason that had nothing to do with the parsers.
+        assert any("report disk and GPU" in e for e in seen.get("Features", [])), (
             "a feat: commit is not being grouped as a Feature"
         )
         assert len(seen.get("Fixes", [])) > 50, "fix: is the most common type here; it should dominate"
@@ -270,3 +274,58 @@ class TestTheChangelogStaysOutOfTheDocsSite:
         """The flip side: excluded from the site must not mean missing."""
         assert (ROOT / "CHANGELOG.md").exists()
         assert (ROOT / "UPGRADING.md").exists()
+
+
+class TestTheArchiveIsActuallyReadable:
+    """Moving the file into ``docs/`` silently broke four of its links.
+
+    The entries were written when this changelog sat at the repository root, so
+    ``docs/guides/proxybase.md`` now resolves to ``docs/docs/...`` and 404s, and
+    a bare ``UPGRADING.md`` resolves to ``docs/UPGRADING.md``. Excluding the file
+    from the MkDocs build made ``--strict`` pass and hid this — but GitHub is
+    exactly where the archive is meant to be read, so the links still had to
+    work. (CodeRabbit, PR #251.)
+
+    Resolved against the filesystem rather than pattern-matched: a test that
+    only checked the links "look relative" would have passed on every broken
+    one of them.
+    """
+
+    def test_every_link_in_the_archive_resolves(self):
+        links = re.findall(r"\]\(([^)#\s]+\.md)\)", ARCHIVE.read_text(encoding="utf-8"))
+        assert links, "no links found; this test would be vacuous"
+        broken = [link for link in links if not (ARCHIVE.parent / link).resolve().exists()]
+        assert not broken, f"these 404 for anyone reading the archive on GitHub: {broken}"
+
+    def test_it_still_points_at_both_current_files(self):
+        text = ARCHIVE.read_text(encoding="utf-8")
+        assert "](../CHANGELOG.md)" in text
+        assert "](../UPGRADING.md)" in text
+
+    def test_the_rewrite_is_disclosed(self):
+        """The file claims to be verbatim; a silent edit would make that false."""
+        assert "only the links were rebased" in ARCHIVE.read_text(encoding="utf-8")
+
+
+class TestTheReleaseSkipRuleIsReachable:
+    """It sat *below* the generic ``^(chore|style|build)`` rule, which matches
+    ``chore(release):`` first — so the skip never fired and the rule was dead.
+
+    No such commit exists yet, so the current output is unchanged; this is about
+    the rule working the first time one appears. (CodeRabbit, PR #251.)
+    """
+
+    def _parsers(self) -> list[str]:
+        return re.findall(r"^\s*\{ message = \"([^\"]+)\"", CONFIG.read_text(encoding="utf-8"), re.M)
+
+    def test_the_release_rule_precedes_the_generic_chore_rule(self):
+        parsers = self._parsers()
+        release = next(i for i, p in enumerate(parsers) if "release" in p)
+        generic = next(i for i, p in enumerate(parsers) if p == "^(chore|style|build)")
+        assert release < generic, "the release skip is unreachable behind the generic chore rule"
+
+    def test_no_release_bookkeeping_leaks_into_the_changelog(self):
+        """The outcome, not just the ordering."""
+        entries = [ln for ln in CHANGELOG.read_text(encoding="utf-8").splitlines() if ln.startswith("- ")]
+        leaked = [e for e in entries if re.match(r"- (chore\(release\)|Release v?[0-9])", e)]
+        assert not leaked, leaked

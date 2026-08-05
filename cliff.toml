@@ -91,9 +91,13 @@ commit_parsers = [
   { message = "^(build|chore)\\(deps", group = "Dependencies" },
   { message = "^[Bb]ump ", group = "Dependencies" },
   { message = "^ci", group = "CI" },
-  { message = "^(chore|style|build)", group = "Maintenance" },
   # Release commits are pure bookkeeping and say nothing a reader needs.
+  # MUST precede the generic ^(chore|style|build) rule below: the first
+  # match wins, so behind it `chore(release):` was grouped as Maintenance and
+  # this rule was dead. No such commit exists yet, so nothing in the current
+  # output changes -- but the rule only works from here. (CodeRabbit, #251.)
   { message = "^(chore\\(release\\)|Release v?[0-9])", skip = true },
+  { message = "^(chore|style|build)", group = "Maintenance" },
   # Merge commits restate a PR title that already appears as its own entry.
   { message = "^Merge (pull request|branch|remote)", skip = true },
 

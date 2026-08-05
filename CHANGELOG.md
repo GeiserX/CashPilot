@@ -14,15 +14,8 @@ Releases before `1.0.0` were recorded by hand and are kept verbatim in
 
 ### Documentation
 
+- Generate CHANGELOG.md from the ~200 releases that already happened
 - Explain GPU passthrough, and pin that it stays optional (#248)
-
-### Features
-
-- Show host disk and GPU in the services table
-
-### Fixes
-
-- Do not tell an Android user to upgrade a worker that never reports
 
 ## [1.13.0] - 2026-08-05
 
