@@ -179,8 +179,24 @@ jobs:
     if: needs.release.outputs.new_tag
     uses: ./.github/workflows/build.yml
     with:
-      build_ui: ${{ needs.release.outputs.build_ui == 'true' }}
-      build_worker: ${{ needs.release.outputs.build_worker == 'true' }}
+      # BOTH images are built on every release, deliberately.
+      #
+      # The change detection above still decides whether to release AT ALL; it
+      # no longer decides whether to build. When it said "the worker did not
+      # change", build.yml re-tagged the previous image by copying its manifest
+      # -- and the version is BAKED INTO THAT IMAGE (Dockerfile ARG -> ENV). So
+      # the copy was not equivalent: cashpilot-worker:1.13.0, :1.14.0 and
+      # :1.14.1 all resolved to ONE digest that reported itself as 1.13.0, and
+      # every worker on the fleet page showed a version it was not running.
+      # A wrong version reads as a MATCH, which hides exactly the staleness
+      # version reporting exists to reveal.
+      #
+      # These are ~94MB Alpine images with a warm buildx cache, so the saving
+      # was small and the correctness cost was real. This file already records
+      # two incidents where skipping a build produced a green run that published
+      # nothing; this is the third of that family.
+      build_ui: true
+      build_worker: true
       version: ${{ needs.release.outputs.new_tag }}
     secrets: inherit
 
