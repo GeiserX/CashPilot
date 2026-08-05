@@ -4,8 +4,10 @@
 listed here. If a version is not mentioned, `docker compose pull && docker compose up -d`
 is all it needs.
 
-The full per-release list of changes is in [CHANGELOG.md](CHANGELOG.md). This file
-is the short one: what breaks, who it affects, and what to type.
+[CHANGELOG.md](CHANGELOG.md) carries the detailed notes recorded so far — it is
+**not** a complete release history, so do not treat it as the authoritative list
+of what an upgrade requires. This file is: what breaks, who it affects, and what
+to type.
 
 **Always upgrade the UI and every worker to the same version.** The compose files
 pin both images to the same tag for exactly this reason.
@@ -45,9 +47,28 @@ again:
 1. Upgrade that worker to `1.0.0` or newer.
 2. Make sure `/data` is a **writable, persistent** volume, not a tmpfs and not
    read-only.
-3. Remove the worker on the fleet page. It re-enrols on its next heartbeat and
-   writes `/data/.worker_key`.
-4. For the **Android app**, update it to **v0.2.0 or newer** — earlier builds
+3. **Keep `/data/.worker_id`.** It is the worker's identity, read once at
+   startup. If it is missing, the worker registers under a brand-new id and you
+   get a duplicate row in the fleet rather than the same machine re-enrolling.
+   Before recreating the container, make sure the file exists and is owned by
+   the container user:
+
+   ```bash
+   ls -l /path/to/worker/data/.worker_id
+   chown 1000:1000 /path/to/worker/data/.worker_id
+   ```
+
+4. Remove the worker on the fleet page, then **restart the container** — the
+   identity is read at startup, so `docker compose up -d` on an already-running
+   container does not re-read it:
+
+   ```bash
+   docker compose restart cashpilot-worker
+   docker logs cashpilot-worker | grep -i enrol
+   ```
+
+   It writes `/data/.worker_key` once enrolled. Confirm that file exists.
+5. For the **Android app**, update it to **v0.2.0 or newer** — earlier builds
    cannot persist the key at all.
 
 Existing, already-enrolled workers are untouched: they authenticate with their
@@ -65,9 +86,10 @@ you edit your compose file** — nothing changes underneath you.
 quickstart gives you a known version rather than whatever was pushed most
 recently.
 
-**What to do.** Nothing, unless you *want* the old behaviour — in which case set
-the tag back to `latest` deliberately, knowing you will not be able to tell which
-version you are running.
+**What to do.** Nothing. If you want a different version, pin an explicit one —
+`drumsergio/cashpilot:1.12.0` — rather than a floating tag. `:latest` is not
+supported: it makes the version you are running unknowable, which is what
+produced a months-old bug report against a bug that had already been fixed.
 
 ---
 
@@ -93,16 +115,6 @@ decrypted — not by you, and not by us.
 
 ---
 
-## v1.1.0 — `/metrics` can require a bearer token
-
-**Affects you if** you scrape Prometheus metrics. **No action is required** —
-with no token set the endpoint behaves exactly as before.
-
-**What to do (optional).** Set `CASHPILOT_METRICS_TOKEN` and have your scraper
-send `Authorization: Bearer <token>`.
-
----
-
 ## v1.0.4 — the dashboard binds to loopback by default
 
 **Affects you if** you reach the dashboard from another machine on your LAN and
@@ -124,8 +136,18 @@ interface you actually want it on:
 CASHPILOT_BIND_ADDR=192.168.1.10 docker compose up -d
 ```
 
-Consider leaving the **worker** on loopback regardless. Only the UI needs to
-reach it, and on a single-host install it does so over the Docker network.
+**On a single-host install**, leave the worker on loopback. Only the UI needs to
+reach it, and it does so over the Docker network.
+
+**On a fleet**, a remote worker must be reachable by the UI, and it uses a
+*different* variable — `CASHPILOT_WORKER_BIND_ADDR` in `docker-compose.fleet.yml`.
+Left on loopback, a remote worker is unreachable and its containers become
+unmanageable. Bind it to the interface the UI reaches it on — a tailnet address
+rather than `0.0.0.0`, since that port carries the Docker socket API:
+
+```bash
+CASHPILOT_WORKER_BIND_ADDR=100.x.y.z docker compose up -d
+```
 
 ---
 
@@ -146,3 +168,7 @@ No action required. Pull and recreate:
 ```bash
 docker compose pull && docker compose up -d
 ```
+
+**On a fleet, run that on every host.** It only updates the Compose project it
+runs in, so remote workers stay on their old version until you upgrade them too —
+and the UI and workers are meant to be on the same release.

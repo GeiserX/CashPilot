@@ -30,6 +30,15 @@ ROOT = Path(__file__).resolve().parents[1]
 UPGRADING = ROOT / "UPGRADING.md"
 
 
+def _normalised(version):
+    """A section's body as lowercase single-spaced text.
+
+    Markdown hard-wraps, so a phrase like "no action is required" is routinely
+    split across two lines and a naive substring check misses it.
+    """
+    return re.sub(r"\s+", " ", _sections()[version].lower())
+
+
 def _sections():
     """Each ``## vX.Y.Z`` section and its body."""
     text = UPGRADING.read_text(encoding="utf-8")
@@ -42,8 +51,11 @@ class TestTheGuideExists:
         """Deliberate: this must be readable from a checkout without building docs."""
         assert UPGRADING.is_file()
 
-    def test_it_documents_at_least_the_known_action_requiring_releases(self):
-        assert len(_sections()) >= 5
+    def test_it_documents_every_release_known_to_need_action(self):
+        """A count lets any one of these silently vanish."""
+        required = {"v1.11.30", "v1.11.4", "v1.5.0", "v1.0.4", "v1.0.0"}
+        missing = required - set(_sections())
+        assert not missing, f"these releases need an action and are undocumented: {sorted(missing)}"
 
     def test_it_tells_the_reader_what_the_default_is(self):
         """Most releases need nothing; saying so is what makes the rest credible."""
@@ -65,10 +77,39 @@ class TestEveryEntryAnswersTheThreeQuestions:
     @pytest.mark.parametrize("version", sorted(_sections()))
     def test_it_offers_an_explicit_no_action_clause(self, version):
         """The clause that stops most readers reading further."""
-        # Normalised: markdown wraps, so the clause is split across lines.
-        body = re.sub(r"\s+", " ", _sections()[version].lower())
-        assert "no action is required" in body or "nothing, unless" in body or "own page" in body, (
+        body = _normalised(version)
+        assert "no action is required" in body or "nothing." in body or "own page" in body, (
             f"{version} never tells an unaffected reader they can stop"
+        )
+
+    @pytest.mark.parametrize("version", sorted(_sections()))
+    def test_it_says_what_breaks_if_you_do_nothing(self, version):
+        """Stated in OBSERVABLE terms — the symptom, not the internals."""
+        body = _normalised(version)
+        assert "what breaks if you do nothing" in body or "own page" in body or "nothing." in body, (
+            f"{version} does not say what happens to someone who skips it"
+        )
+
+    @pytest.mark.parametrize("version", sorted(_sections()))
+    def test_it_says_what_to_do(self, version):
+        body = _normalised(version)
+        assert "what to do" in body or "own page" in body, f"{version} states a problem with no action"
+
+
+class TestEverythingHereNeedsAnAction:
+    """The document's whole value is that nothing in it is optional reading.
+
+    v1.1.0 (the optional /metrics token) was written up here and then removed:
+    it requires no action, so its presence weakened the promise that every
+    entry is something you must do. Opt-in features belong in the docs, not in
+    an upgrade guide.
+    """
+
+    @pytest.mark.parametrize("version", sorted(_sections()))
+    def test_the_entry_asks_something_of_the_reader(self, version):
+        body = _normalised(version)
+        assert "what to do" in body or "own page" in body, (
+            f"{version} asks nothing of the reader and does not belong in this file"
         )
 
 
@@ -81,16 +122,33 @@ class TestTheVersionsAreReal:
 
     @pytest.mark.parametrize("version", sorted(_sections()))
     def test_the_release_exists(self, version):
-        if not (ROOT / ".git").exists():
-            pytest.skip("not a git checkout")
-        tags = self._tags()
+        """Never silently skipped in CI.
+
+        Skipping when no tags are present would let a shallow checkout pass with
+        invented version headings — which is precisely the failure this test
+        exists to prevent. Outside CI, a non-git checkout is a legitimate skip.
+        """
+        import os
+
+        tags = self._tags() if (ROOT / ".git").exists() else set()
         if not tags:
-            pytest.skip("no tags fetched")
+            if os.environ.get("CI"):
+                pytest.fail(
+                    "no git tags available, so release headings cannot be verified. "
+                    "The workflow must check out with fetch-depth: 0 and fetch-tags: true."
+                )
+            pytest.skip("not a git checkout with tags; this invariant is enforced in CI")
         assert version in tags, f"{version} is documented but was never released"
 
     def test_the_enrollment_window_entry_names_the_release_that_shipped_it(self):
-        """Pinned because this is the entry most likely to disconnect somebody."""
-        assert "v1.11.30" in _sections()
+        """Pinned because this is the entry most likely to disconnect somebody.
+
+        Asserting only that the heading exists would pass with an empty section.
+        """
+        body = _normalised("v1.11.30")
+        assert "24 hours" in body, "the v1.11.30 entry does not state the window"
+        assert "401" in body, "it does not name the observable symptom"
+        assert "worker_id" in body, "it omits the identity file, without which re-enrolling duplicates the worker"
 
 
 class TestItIsDiscoverable:
