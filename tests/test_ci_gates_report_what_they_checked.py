@@ -289,10 +289,20 @@ class TestTheBacklogCannotBeCommitted:
 
         if not (ROOT / ".git").exists():
             pytest.skip("not a git checkout (sdist/export); the .gitignore assertion above still holds")
+        # Checks a path INSIDE the directory, not the directory itself.
+        # `.beads/` is a directory-only pattern, and git can only tell that a
+        # path is a directory if it exists on disk -- so `check-ignore .beads`
+        # answers "not ignored" on any fresh checkout where the tracker has not
+        # been initialised, which is every CI run. This test passed locally and
+        # failed on CI for exactly that reason.
         result = subprocess.run(
-            ["git", "check-ignore", "-v", ".beads"], cwd=ROOT, capture_output=True, text=True, check=False
+            ["git", "check-ignore", "-v", ".beads/config.yaml"],
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+            check=False,
         )
-        assert result.returncode == 0, ".beads is not ignored at all"
+        assert result.returncode == 0, ".beads contents are not ignored at all"
         assert result.stdout.startswith(".gitignore:"), (
             f"still relying on a non-portable exclude: {result.stdout.strip()}"
         )
