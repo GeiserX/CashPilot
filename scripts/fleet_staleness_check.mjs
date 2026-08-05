@@ -33,9 +33,22 @@ function extract(name) {
 
 const esc = s => String(s).replace(/[&<>"']/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]));
 const fmtBytes = b => `${b}B`;
+// The REAL fmtTimestamp from app.js, not a stub. fleet.html reaches it through
+// the CP namespace, and a stub here would let the formatter break while this
+// harness stayed green — which is the whole failure mode these scripts exist to
+// catch (CashPilot-2dh).
+const appSrc = readFileSync('app/static/js/app.js', 'utf8');
+const fnStart = appSrc.indexOf('function fmtTimestamp(');
+if (fnStart < 0) throw new Error('fmtTimestamp is gone from app/static/js/app.js');
+const fnRest = appSrc.slice(fnStart);
+const fmtTimestamp = new Function(
+  `${fnRest.slice(0, fnRest.indexOf('\n  }\n') + 4)}; return fmtTimestamp;`,
+)();
+const CP = {fmtTimestamp};
+
 const source = [extract('staleNote'), extract('renderContainers'), extract('renderApps'), extract('countWorkerNames')].join('\n');
-const build = new Function('esc', 'fmtBytes', `${source}; return {renderContainers, renderApps, staleNote, countWorkerNames};`);
-const {renderContainers, renderApps, countWorkerNames} = build(esc, fmtBytes);
+const build = new Function('esc', 'fmtBytes', 'CP', `${source}; return {renderContainers, renderApps, staleNote, countWorkerNames};`);
+const {renderContainers, renderApps, staleNote, countWorkerNames} = build(esc, fmtBytes, CP);
 
 const WORKER = {
   name: 'geiserback',
@@ -45,7 +58,31 @@ const WORKER = {
 const APPS = [{slug: 'honeygain', running: true, net_tx_24h: 10, net_rx_24h: 20}];
 
 const failures = [];
-const check = (name, ok, detail) => { if (!ok) failures.push(`${name}: ${detail}`); };
+// Counted, not asserted. The summary line used to interpolate a hardcoded
+// `${20}`, so it reported twenty assertions whether twenty ran or two did --
+// a number that looked measured and was not, in a script whose whole job is
+// catching exactly that.
+let checksRun = 0;
+const check = (name, ok, detail) => { checksRun++; if (!ok) failures.push(`${name}: ${detail}`); };
+
+// 0. CashPilot-2dh. The DB stores UTC with no zone designator; rendering it raw
+//    made a worker that heartbeated minutes ago look hours stale, right beside
+//    "This host is not reachable" and one click from Remove.
+const utc = '2026-08-05 04:00:00';
+const shown = CP.fmtTimestamp(utc);
+check('a UTC stamp is not shown verbatim', shown.text !== utc,
+  `rendered "${shown.text}" unchanged, so the viewer reads UTC as local time`);
+check('the original UTC is still recoverable', shown.title.includes('UTC'),
+  `title was "${shown.title}"`);
+check('it is parsed as UTC, not as local time',
+  new Date(`${utc.replace(' ', 'T')}Z`).toLocaleString() === shown.text,
+  `got "${shown.text}"`);
+check('a missing stamp says never', CP.fmtTimestamp(null).text === 'never',
+  JSON.stringify(CP.fmtTimestamp(null)));
+check('an unreadable stamp is not invented', CP.fmtTimestamp('nonsense').text === 'nonsense',
+  JSON.stringify(CP.fmtTimestamp('nonsense')));
+check('the stale note uses the formatter', !staleNote(utc).includes(utc),
+  staleNote(utc));
 
 // 1. The defect itself. An unreachable host must not paint anything success-green.
 const offline = renderContainers(WORKER, false);
@@ -63,8 +100,14 @@ check('offline still lists the containers', offline.includes('honeygain'),
   'the container list vanished instead of being marked stale');
 check('offline says so in words', offline.includes('Last known state'),
   'nothing on the card says the state is not current');
-check('offline names when it was last seen', offline.includes('2026-08-04 09:12'),
+// The intent is unchanged -- the card must say WHEN this was last true -- but
+// the representation is now the viewer's local time rather than raw UTC
+// (CashPilot-2dh), so the assertion tracks the formatter instead of a literal.
+check('offline names when it was last seen',
+  offline.includes(CP.fmtTimestamp(WORKER.last_heartbeat).text),
   'the chip tooltip does not say when this was last true');
+check('and it is no longer the raw UTC string', !offline.includes('2026-08-04 09:12'),
+  'the raw stored value is still being shown to the viewer');
 
 // 4. A stopped container on a LIVE host must still read as stopped, not stale.
 const stoppedLive = renderContainers({...WORKER, containers: [{slug: 'grass', status: 'exited'}]}, true);
@@ -113,4 +156,4 @@ if (failures.length) {
   for (const f of failures) console.error(`  - ${f}`);
   process.exit(1);
 }
-console.log(`fleet staleness check passed (${20} assertions)`);
+console.log(`fleet staleness check passed (${checksRun} assertions)`);

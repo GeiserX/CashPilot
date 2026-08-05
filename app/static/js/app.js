@@ -3238,6 +3238,26 @@ const CP = (() => {
   // -----------------------------------------------------------
   // Public API
   // -----------------------------------------------------------
+  // The frontend had NO date formatting of any kind — grep for toLocaleString,
+  // toLocaleDateString or `new Date(` across app.js and fleet.html returned zero
+  // hits — so every timestamp reached the user as whatever the server
+  // serialised. The DB writes datetime('now'), which SQLite produces in UTC, and
+  // it was rendered raw and unlabelled: a viewer in CEST read a worker that
+  // heartbeated five minutes ago as two hours stale, right next to the words
+  // "This host is not reachable" and one click from Remove (CashPilot-2dh).
+  function fmtTimestamp(value) {
+    if (!value) return { text: 'never', title: '' };
+    // SQLite's "YYYY-MM-DD HH:MM:SS" carries no zone designator, so Date.parse
+    // treats it as LOCAL time and silently shifts it. Say UTC explicitly.
+    const iso = String(value).trim().replace(' ', 'T');
+    const parsed = new Date(/[Zz]|[+-]\d{2}:?\d{2}$/.test(iso) ? iso : `${iso}Z`);
+    if (Number.isNaN(parsed.getTime())) {
+      // Unparseable is not a licence to invent a time. Show what we were given.
+      return { text: String(value), title: 'CashPilot could not read this timestamp' };
+    }
+    return { text: parsed.toLocaleString(), title: `${value} UTC` };
+  }
+
   return {
     api,
     toast,
@@ -3285,5 +3305,7 @@ const CP = (() => {
     // with a tariff in the user's own currency. The API is canonical USD now,
     // and this is the one place that knows the viewer's display currency.
     formatCurrency,
+    // Shared, so the next timestamp added does not repeat CashPilot-2dh.
+    fmtTimestamp,
   };
 })();
