@@ -2,6 +2,9 @@
 
 All notable changes to CashPilot are documented here.
 
+**Upgrading?** [UPGRADING.md](UPGRADING.md) lists only the releases that require an
+action, with what breaks if you skip them. This file is the full history.
+
 ## [Unreleased]
 
 ### Fixed
