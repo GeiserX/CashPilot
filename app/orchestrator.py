@@ -740,14 +740,12 @@ def get_status_light() -> list[dict[str, Any]]:
         filters={"label": f"{LABEL_MANAGED}=true"},
     )
     seen_ids: set[str] = set()
-    seen_slugs: set[str] = set()
 
     results: list[dict[str, Any]] = []
     for c in labeled:
         try:
             seen_ids.add(c.id)
             slug = c.labels.get(LABEL_SERVICE, "unknown")
-            seen_slugs.add(slug)
             results.append(
                 {
                     "slug": slug,
@@ -783,9 +781,19 @@ def get_status_light() -> list[dict[str, Any]]:
                     # Try without tag
                     base = image_name.split(":")[0]
                     slug = image_map.get(base, "")
-                if slug and slug not in seen_slugs:
+                # Dedupe on container ID only, NOT on slug. get_status does the
+                # same, and get_status_cached serves whichever of the two is
+                # current -- so a host running two containers of one external
+                # image reported two of them or one depending purely on how warm
+                # the cache was, with nothing in the code saying so
+                # (CashPilot-dw1).
+                #
+                # Returning every container is the correct side of that
+                # disagreement: the UI's per-instance rows exist to show each
+                # one, and collapsing them hides a running container from the
+                # person who has to manage it.
+                if slug:
                     seen_ids.add(c.id)
-                    seen_slugs.add(slug)
                     results.append(
                         {
                             "slug": slug,
