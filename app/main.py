@@ -2342,6 +2342,11 @@ async def api_earnings_net(request: Request, days: int = 30) -> dict[str, Any]:
     except (TypeError, ValueError):
         host_tdp = power.DEFAULT_HOST_TDP_WATTS
 
+    # Whether the power side of this endpoint has any input at all. An empty
+    # `statuses` from a FAILURE is not the same fact as an empty one from a
+    # fleet with nothing running, and the difference decides whether a net
+    # figure exists (CashPilot-c6u).
+    watts_known = True
     try:
         statuses = await _get_all_worker_containers()
     except Exception as exc:
@@ -2349,6 +2354,7 @@ async def api_earnings_net(request: Request, days: int = 30) -> dict[str, Any]:
         # come from the database and are still perfectly reportable.
         logger.warning("Worker status unavailable for the power estimate: %s", exc)
         statuses = []
+        watts_known = False
     # Only RUNNING containers. A stopped one draws nothing, and counting it
     # inflates a worker's container count, which shrinks every running service's
     # share of that host's idle floor and understates the fleet's real cost.
@@ -2462,7 +2468,24 @@ async def api_earnings_net(request: Request, days: int = 30) -> dict[str, Any]:
     # earnings, so there is no honest net. Reporting gross alone is what this
     # module already does when no tariff is set at all: "a zero cost would
     # render gross as net and quietly overstate earnings."
-    result = power.summarise(rows, price_per_kwh=(price_usd if fx_ok else 0.0), currency="USD")
+    #
+    # Unknown WATTS suppress the net for the same reason unknown FX does, and
+    # through the same mechanism: a zero price makes summarise report cost and
+    # net as None instead of as numbers. Without this, a failed worker lookup
+    # charged every service 0 W, cost summed to 0.00, and the endpoint returned
+    # total_net == total_gross with cost_known TRUE -- gross presented as profit,
+    # which is the one thing this endpoint's docstring promises it never does.
+    # cost_known came from `price_per_kwh > 0` alone and never asked whether any
+    # watts had actually been measured (CashPilot-c6u).
+    result = power.summarise(rows, price_per_kwh=(price_usd if (fx_ok and watts_known) else 0.0), currency="USD")
+    if not watts_known:
+        result["cost_known"] = False
+        result["watts_unavailable"] = True
+        result["cost_unavailable_reason"] = (
+            "CashPilot could not reach its workers, so it does not know what any service "
+            "is drawing right now. Earnings below are real; the running cost and the net "
+            "figure are unknown for this window, not zero."
+        )
     if not fx_ok:
         result["cost_known"] = False
         result["fx_unavailable"] = True
