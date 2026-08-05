@@ -76,9 +76,16 @@ jobs:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
         with:
-          python-version: "3.12"
-      - run: pip install ruff
-      - run: ruff check app/ && ruff format --check app/
+          python-version: "3.14"
+      # The lockfile's ruff, not whatever released today. This job gates
+      # build-ui/build-worker/retag-*, so a floating ruff that adds a default
+      # rule turns the RELEASE red on a commit that changed nothing -- in the
+      # same run whose `ci` job just passed lint on the pinned version. Scope is
+      # `.` here too; `app/` alone let a scripts/ or tests/ violation pass one
+      # gate and fail another.
+      - run: pip install uv
+      - run: uv sync --frozen --extra dev
+      - run: uv run ruff check . && uv run ruff format --check .
 
   # Multi-arch build (amd64 + arm64) in a single QEMU-emulated job on the X64
   # runner. buildx pushes the multi-platform manifest under all tags directly,
@@ -191,6 +198,19 @@ jobs:
     if: ${{ always() && inputs.version != '' }}
     runs-on: ubuntu-latest
     steps:
+      # This job is the only one in this file that talks to Docker Hub without
+      # logging in first. Anonymous pulls share a per-IP quota with every other
+      # project on the same GitHub-hosted runner egress, so a rate limit here
+      # reports "MISSING" for images that published perfectly — and because
+      # verify-tags failing fails release.yml's `build`, which `publish` needs,
+      # the run then withholds the git tag and the GitHub Release for a release
+      # that is actually complete.
+      - name: Log in to Docker Hub
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
       - name: Every published tag must resolve
         env:
           UI_TAGS: ${{ needs.resolve-tags.outputs.ui_tags }}
@@ -204,14 +224,18 @@ jobs:
           missing=0
           while IFS= read -r tag; do
             [ -n "$tag" ] || continue
-            if docker manifest inspect "$tag" >/dev/null 2>&1; then
+            # Capture stderr instead of discarding it. `2>&1 >/dev/null` threw
+            # away the registry's actual answer, so a rate limit, a 5xx or a DNS
+            # failure all printed the single word MISSING and the ::error::
+            # below then asserted a cause that was not true.
+            if err=$(docker manifest inspect "$tag" 2>&1); then
               echo "ok      $tag"
             else
-              echo "MISSING $tag"
+              echo "MISSING $tag -- registry said: ${err}"
               missing=1
             fi
           done < /tmp/tags.txt
           if [ "$missing" -ne 0 ]; then
-            echo "::error::A release tag is missing. The compose files pin both images to the same tag, so a partial release breaks the documented quickstart."
+            echo "::error::A tag this release claims to have published did not resolve. Read the registry response printed above BEFORE assuming a partial build: an auth or rate-limit failure looks identical here. If the images really are missing, the compose files pin both to the same tag, so a partial release breaks the documented quickstart."
             exit 1
           fi

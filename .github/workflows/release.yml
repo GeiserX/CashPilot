@@ -33,7 +33,13 @@ jobs:
           fetch-tags: true
       - uses: actions/setup-python@v7
         with:
-          python-version: '3.12'
+          # The interpreter the images ship (Dockerfile:2, Dockerfile.worker:2),
+          # and the one test.yml uses. This job is what the release is actually
+          # gated on -- test.yml gates nothing -- so on 3.12 a commit could be
+          # tagged and pushed to Docker Hub while its 3.14 suite was red.
+          # uv sync --frozen resolves markers per interpreter, so the two really
+          # did install different wheels. Same class as CashPilot-de1.
+          python-version: '3.14'
       - name: Install uv
         run: pip install uv --quiet
       - name: Install dependencies
