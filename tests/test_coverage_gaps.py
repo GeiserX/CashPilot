@@ -820,7 +820,10 @@ class TestMainEarningsSummaryWithWorkerException:
         ):
             resp = client.get("/api/earnings/summary")
             assert resp.status_code == 200
-            assert resp.json()["active_services"] == 0
+            # None, not 0. The count could not be TAKEN — reporting zero here
+            # says "nothing is running" about a fleet nobody could read
+            # (CashPilot-45k).
+            assert resp.json()["active_services"] is None
 
 
 class TestMainServicesDeployedMultiStatus:

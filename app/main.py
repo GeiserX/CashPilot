@@ -63,6 +63,12 @@ scheduler = AsyncIOScheduler()
 
 # In-memory store for the latest collector alerts (errors from last run)
 _collector_alerts: list[dict[str, str]] = []
+# Whether a collection has ever COMPLETED here. An empty alert list means
+# "nothing is wrong" only once something has looked; before that it means
+# "nothing has been checked", and the bell used to render both as "All
+# collectors healthy" (CashPilot-tb5). Restored on startup from durable state so
+# a restart does not reset the claim to "never ran" while data exists.
+_collection_has_run: bool = False
 _collection_lock = asyncio.Lock()
 _collection_semaphore = asyncio.Semaphore(8)
 
@@ -508,6 +514,16 @@ async def _warm_collector_alerts() -> None:
         seen.add(key)
         restored.append({"kind": alert["kind"], "platform": alert["subject"], "error": alert["message"]})
     _collector_alerts = restored
+    # A restart must not make the bell claim nothing has ever been checked. Any
+    # stored alert, or any earnings row, is proof that a collection ran.
+    global _collection_has_run
+    if restored:
+        _collection_has_run = True
+    else:
+        try:
+            _collection_has_run = bool(await database.get_earnings_summary())
+        except Exception as exc:  # noqa: BLE001 - a warm-up must not block startup
+            logger.warning("Could not tell whether a collection has run before: %s", exc)
 
 
 async def _run_collection() -> None:
@@ -633,6 +649,11 @@ async def _run_collection() -> None:
             ]
         finally:
             metrics.record_collection_end(start_time, success, platforms_ok)
+            # Set even on a failed run: the bell's question is "has anything
+            # looked", and a run that tried and failed HAS looked — its failure
+            # is in the alert list the bell is about to show.
+            global _collection_has_run
+            _collection_has_run = True
 
 
 # ---------------------------------------------------------------------------
@@ -1941,13 +1962,20 @@ async def api_earnings_summary(request: Request) -> dict[str, Any]:
             total_adjusted += adjusted
             total_bonus_usd += bonus
 
-    # Count active (running) services from worker data
-    active = 0
+    # Count active (running) services from worker data.
+    #
+    # None, not 0, when the count could not be taken. _get_all_worker_containers
+    # opens SQLite, so a locked or busy database — or a JSON-decode failure on a
+    # worker row — lands here while containers are in fact running, and "0"
+    # reads as "nothing is running". Logged at WARNING rather than DEBUG: DEBUG
+    # is off in production, so the only two places that could have said anything
+    # both said nothing (CashPilot-45k).
+    active: int | None = None
     try:
         worker_containers = await _get_all_worker_containers()
         active = sum(1 for s in worker_containers if s.get("status") == "running")
     except Exception as exc:
-        logger.debug("active-service count failed: %s", exc)
+        logger.warning("Could not count active services, reporting it as unknown: %s", exc)
     summary["active_services"] = active
     # A total that silently omits holdings is indistinguishable from a correct
     # one. The count was already being computed in database.py and only logged;
@@ -2870,8 +2898,20 @@ async def api_disclosure_coverage(request: Request) -> dict[str, Any]:
 
 
 @app.get("/api/collector-alerts")
-async def api_collector_alerts(request: Request) -> list[dict[str, str]]:
-    """Return collector errors from the last collection run (sanitized)."""
+async def api_collector_alerts(request: Request) -> dict[str, Any]:
+    """Collector errors from the last run, and whether a run has happened.
+
+    The bell rendered an empty list as "All collectors healthy". On a fresh
+    install — or after a restart, before the first hourly collection — nothing
+    has been checked, so that affirmative is unearned: it is the same
+    absent-equals-true shape this codebase rejects everywhere else. The bell's
+    own FAILURE path is written correctly ("Alerts unavailable" rather than
+    healthy), which makes the never-ran case the outlier (CashPilot-tb5).
+
+    Returning an object rather than a bare list so "no alerts" and "nothing has
+    run" can be told apart at all. The UI is the only consumer and ships with
+    this.
+    """
     _require_auth_api(request)
     sanitized: list[dict[str, str]] = []
     for alert in _collector_alerts:
@@ -2882,7 +2922,7 @@ async def api_collector_alerts(request: Request) -> list[dict[str, str]]:
         # `kind` is additive and defaults to "collector", so a frontend that
         # does not read it behaves exactly as before.
         sanitized.append({"kind": alert.get("kind", "collector"), "platform": alert["platform"], "error": clean})
-    return sanitized
+    return {"alerts": sanitized, "collected": _collection_has_run}
 
 
 @app.get("/api/exchange-rates")
