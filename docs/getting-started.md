@@ -100,47 +100,21 @@ The UI's web port inside the container is fixed at `8080` (set via the container
 | `CASHPILOT_WORKER_NAME` | *(hostname)* | Display name for this worker in the fleet dashboard |
 | `CASHPILOT_WORKER_URL` | *(auto-detected)* | URL the UI uses to reach this worker, e.g. `http://192.168.10.50:8081`. Set explicitly for cross-host fleets — auto-detection can report an unreachable container-internal IP |
 | `CASHPILOT_WORKER_BIND_ADDR` | `127.0.0.1` | Host interface the worker's Docker-socket API port is published on. **Loopback by default.** The worker API can deploy/stop any container (= root on the host), so for a remote worker bind a private/VPN interface (e.g. a Tailscale IP), **never** a public IP |
-| `CASHPILOT_PORT` | `8081` | Mini-UI/API port the worker listens on |
+| `CASHPILOT_PORT` | `8081` | Port the worker **advertises** to the UI. It does *not* change the listen port, which is fixed by the image's `CMD` — see the [configuration reference](configuration.md) |
 
 ### Docker Compose Example
 
 ```yaml
-services:
-  cashpilot-ui:
-    image: drumsergio/cashpilot:latest
-    pull_policy: always
-    container_name: cashpilot-ui
-    ports:
-      - "8080:8080"
-    volumes:
-      - cashpilot_data:/data
-    environment:
-      - TZ=Europe/Madrid
-      - CASHPILOT_API_KEY=your-secret-api-key
-      - CASHPILOT_SECRET_KEY=your-session-signing-key
-    restart: unless-stopped
-
-  cashpilot-worker:
-    image: drumsergio/cashpilot-worker:latest
-    pull_policy: always
-    container_name: cashpilot-worker
-    ports:
-      - "8081:8081"
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
-      - cashpilot_worker_data:/data
-    environment:
-      - TZ=Europe/Madrid
-      - CASHPILOT_UI_URL=http://cashpilot-ui:8080
-      - CASHPILOT_API_KEY=your-secret-api-key
-    restart: unless-stopped
-    security_opt:
-      - no-new-privileges:true
-
-volumes:
-  cashpilot_data:
-  cashpilot_worker_data:
+--8<-- "docker-compose.yml"
 ```
+
+!!! note "This is the real file"
+
+    The block above is included verbatim from `docker-compose.yml` in the
+    repository, so it cannot drift from what actually ships. Earlier, a
+    hand-copied version of it published the worker's Docker-socket API on every
+    interface and pinned `:latest` — both of which the
+    [security defaults](security-defaults.md) page tells you not to do.
 
 !!! warning "Docker Socket Access"
     The worker container requires access to `/var/run/docker.sock` to manage service containers. This grants the worker significant privileges on the host. Run CashPilot on a dedicated machine or VLAN for best security.

@@ -195,7 +195,7 @@ The UI's web port inside the container is fixed at `8080` (set via the container
 | `CASHPILOT_WORKER_NAME` | *(hostname)* | Display name for this worker in the fleet dashboard |
 | `CASHPILOT_WORKER_URL` | *(auto-detected)* | URL the UI uses to reach this worker, e.g. `http://192.168.10.50:8081`. Set explicitly for remote/cross-host workers |
 | `CASHPILOT_WORKER_BIND_ADDR` | `127.0.0.1` | Host interface the worker's Docker-socket API port is published on. Loopback by default — for a remote worker set a private/VPN interface, **never** a public IP |
-| `CASHPILOT_PORT` | `8081` | Mini-UI/API port the worker listens on |
+| `CASHPILOT_PORT` | `8081` | Port the worker **advertises** to the UI. It does *not* change the listen port, which is fixed by the image's `CMD` — see the [configuration reference](docs/configuration.md) |
 | `CASHPILOT_WORKER_NETWORK` | *(detected)* | `residential` or `hosting`. Overrides the hardware-based guess used to warn about residential-only services |
 | `CASHPILOT_EGRESS_DETECT` | on | Set to `off` to stop this worker looking up its own public IP (see below) |
 | `CASHPILOT_EGRESS_IP` | -- | State this worker's public IP directly instead of looking it up. Must be a public address |
