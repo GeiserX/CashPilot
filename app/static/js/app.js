@@ -595,6 +595,19 @@ const CP = (() => {
           va = parseFloat(a.memory) || 0;
           vb = parseFloat(b.memory) || 0;
           break;
+        // Both sort UNKNOWN last in either direction rather than as zero.
+        // `parseFloat(x) || 0` — the idiom used above — would rank a host whose
+        // free space could not be read as the fullest disk on the fleet, which
+        // is the same "absent read as a definite value" this codebase keeps
+        // having to undo.
+        case 'disk':
+          va = sortableFreeBytes(a);
+          vb = sortableFreeBytes(b);
+          break;
+        case 'gpu':
+          va = sortableGpu(a);
+          vb = sortableGpu(b);
+          break;
         case 'payout': {
           const coA = a.cashout || {};
           const coB = b.cashout || {};
@@ -610,10 +623,161 @@ const CP = (() => {
           va = 0; vb = 0;
       }
       if (_sortCol !== 'name') {
+        // Unknown sinks in BOTH directions. A sentinel number cannot do this:
+        // -Infinity sorts last descending but FIRST ascending, which would put
+        // every host whose free space could not be read at the top of "least
+        // free space" -- stating a failed reading as the worst case.
+        const aU = va === SORT_UNKNOWN;
+        const bU = vb === SORT_UNKNOWN;
+        if (aU || bU) return aU && bU ? 0 : (aU ? 1 : -1);
         return _sortAsc ? va - vb : vb - va;
       }
       return 0;
     });
+  }
+
+  // worker_id -> {disk, gpu} for the Disk and GPU columns, or null when the
+  // worker list could not be read at all.
+  let _hostResources = null;
+
+  // Sort keys. Unknown must not collapse into a number that sorts like a real
+  // reading, so both return this sentinel, which the comparator keeps at the
+  // bottom regardless of direction.
+  const SORT_UNKNOWN = Symbol('unknown');
+
+  function sortableFreeBytes(svc) {
+    const hosts = hostsFor(svc);
+    if (!hosts) return SORT_UNKNOWN;
+    const free = hosts
+      .filter(h => h.disk && typeof h.disk.free_bytes === 'number')
+      .map(h => h.disk.free_bytes);
+    return free.length ? Math.min(...free) : SORT_UNKNOWN;
+  }
+
+  // Ranked has-one > known-none > unknown, matching what the cell says.
+  function sortableGpu(svc) {
+    const hosts = hostsFor(svc);
+    if (!hosts) return SORT_UNKNOWN;
+    if (hosts.some(h => h.gpu && h.gpu.available === true)) return 2;
+    if (hosts.every(h => h.gpu && h.gpu.available === false)) return 1;
+    return SORT_UNKNOWN;
+  }
+
+  function buildHostResourceMap(workers) {
+    if (!Array.isArray(workers)) return null;
+    const map = {};
+    for (const w of workers) {
+      const info = w.system_info || {};
+      map[String(w.id)] = {
+        name: w.name || 'worker',
+        online: w.status === 'online',
+        disk: info.disk || null,
+        gpu: info.gpu || null,
+      };
+    }
+    return map;
+  }
+
+  function fmtBytes(n) {
+    if (typeof n !== 'number' || !isFinite(n) || n < 0) return null;
+    const units = ['B', 'KB', 'MB', 'GB', 'TB', 'PB'];
+    let i = 0;
+    let v = n;
+    while (v >= 1024 && i < units.length - 1) { v /= 1024; i++; }
+    return `${v >= 10 || i === 0 ? Math.round(v) : v.toFixed(1)} ${units[i]}`;
+  }
+
+  // The hosts a service actually runs on. A service can span several workers,
+  // and the columns must describe THOSE hosts rather than the fleet.
+  function hostsFor(svc) {
+    if (!_hostResources) return null;
+    // `instance_details`, NOT `instances` — the latter is a COUNT, and
+    // `for...of` over a number throws, which would have taken the whole table
+    // down rather than degrading one column. Checked against app/main.py:1229
+    // instead of assumed from the name.
+    const ids = new Set();
+    for (const inst of (Array.isArray(svc.instance_details) ? svc.instance_details : [])) {
+      if (inst && inst.worker_id != null) ids.add(String(inst.worker_id));
+    }
+    if (svc.worker_id != null) ids.add(String(svc.worker_id));
+    const hosts = [...ids].map(id => _hostResources[id]).filter(Boolean);
+    return hosts.length ? hosts : null;
+  }
+
+  const UNKNOWN_CELL = (why) => `<span style="color:var(--text-muted);" title="${escapeHtml(why)}">&mdash;</span>`;
+
+  // Free space on the host filesystem, NOT the service's own volume.
+  //
+  // Storj is paid for what it stores, so free space is earning capacity — a
+  // node that quietly fills up stops growing. The column is labelled "Host
+  // disk" because those are two different numbers and showing one under the
+  // other's name would be worse than showing neither.
+  function diskCell(svc) {
+    return diskCellForHosts(hostsFor(svc));
+  }
+
+  // One instance's own host, so a sub-row is exact rather than an aggregate.
+  function hostForWorker(workerId) {
+    if (!_hostResources || workerId == null) return null;
+    const h = _hostResources[String(workerId)];
+    return h ? [h] : null;
+  }
+
+  function diskCellForHosts(hosts) {
+    if (!_hostResources) return UNKNOWN_CELL('CashPilot could not read the worker list, so it does not know this host');
+    if (!hosts) return UNKNOWN_CELL('CashPilot does not know which host runs this service');
+    const known = hosts.filter(h => h.disk && typeof h.disk.free_bytes === 'number' && h.disk.total_bytes > 0);
+    if (!known.length) {
+      const offline = hosts.every(h => !h.online);
+      return UNKNOWN_CELL(offline
+        ? 'This host is not reporting right now, so its free space is unknown'
+        : 'This worker did not report disk usage; it may predate the feature');
+    }
+    // The tightest host is the one that decides whether the service can keep
+    // growing, so a fleet-wide average would hide exactly the case that matters.
+    const tightest = known.reduce((a, b) => (a.disk.free_bytes <= b.disk.free_bytes ? a : b));
+    const free = tightest.disk.free_bytes;
+    const total = tightest.disk.total_bytes;
+    const usedPct = Math.round(((total - free) / total) * 100);
+    const unreported = hosts.length - known.length;
+    const detail = [
+      `${tightest.name}: ${fmtBytes(free)} free of ${fmtBytes(total)} (${usedPct}% used)`,
+      `Free space on the host filesystem, not this service's own volume.`,
+      known.length > 1 ? `Showing the tightest of ${known.length} hosts running this service.` : '',
+      unreported > 0 ? `${unreported} host${unreported > 1 ? 's' : ''} did not report.` : '',
+    ].filter(Boolean).join(' ');
+    const warn = usedPct >= 90 ? ' style="color:var(--danger);"' : usedPct >= 80 ? ' style="color:var(--warning);"' : '';
+    return `<span${warn} title="${escapeHtml(detail)}">${fmtBytes(free)}</span>`;
+  }
+
+  // Three-valued on purpose. `available: false` is a real "this host has no
+  // GPU"; `null` is "could not tell" — which is what a containerised worker
+  // reports when the device was never passed through. Rendering the second as
+  // the first would state as fact that a machine has no GPU when it has three
+  // idle render nodes, which is precisely how the fleet looked.
+  function gpuCell(svc) {
+    return gpuCellForHosts(hostsFor(svc));
+  }
+
+  function gpuCellForHosts(hosts) {
+    if (!_hostResources) return UNKNOWN_CELL('CashPilot could not read the worker list, so it does not know this host');
+    if (!hosts) return UNKNOWN_CELL('CashPilot does not know which host runs this service');
+    const withGpu = hosts.filter(h => h.gpu && h.gpu.available === true);
+    if (withGpu.length) {
+      const devices = withGpu.flatMap(h => h.gpu.devices || []);
+      const label = devices.length ? devices[0] : 'Yes';
+      const detail = withGpu.map(h => `${h.name}: ${(h.gpu.devices || ['present']).join(', ')}`).join(' | ');
+      const more = devices.length > 1 ? ` +${devices.length - 1}` : '';
+      return `<span title="${escapeHtml(detail)}">${escapeHtml(String(label))}${more}</span>`;
+    }
+    // No host says yes. Only call it "None" when every host actually SAID no.
+    if (hosts.every(h => h.gpu && h.gpu.available === false)) {
+      return `<span style="color:var(--text-muted);" title="No GPU is visible on the host${hosts.length > 1 ? 's' : ''} running this service">None</span>`;
+    }
+    const reason = hosts.map(h => h.gpu && h.gpu.reason).find(Boolean);
+    return UNKNOWN_CELL(reason
+      ? `Unknown — ${reason}`
+      : 'This worker did not report GPU information; it may predate the feature');
   }
 
   async function loadServicesTable() {
@@ -626,10 +790,21 @@ const CP = (() => {
     }
 
     try {
-      const [services, breakdown] = await Promise.all([
+      // Workers are fetched for the Disk and GPU columns. Both are facts about
+      // the HOST a service runs on, not about the container, so they can only
+      // come from the worker that reported them — which is what makes them work
+      // for a remote host exactly as they do for the local one.
+      //
+      // .catch(() => null) rather than `[]`: an empty list would mean "no
+      // workers", and the columns would render a confident em-dash for every
+      // row. null means the lookup itself failed, which is a different answer
+      // and gets a different tooltip.
+      const [services, breakdown, workers] = await Promise.all([
         api('/api/services/deployed'),
         api('/api/earnings/breakdown').catch(() => []),
+        api('/api/workers').catch(() => null),
       ]);
+      _hostResources = buildHostResourceMap(workers);
 
       if (!services || services.length === 0) {
         // An empty list means one of two very different things, and saying the
@@ -701,6 +876,8 @@ const CP = (() => {
               ${sortTh('change', 'Change', 'right')}
               ${sortTh('cpu', 'CPU', 'right')}
               ${sortTh('memory', 'Memory', 'right')}
+              ${sortTh('disk', 'Host disk', 'right')}
+              ${sortTh('gpu', 'GPU', 'center')}
               ${sortTh('payout', 'Payout', 'center')}
               <th style="text-align:center;">Actions</th>
             </tr>
@@ -1023,6 +1200,8 @@ const CP = (() => {
       <td style="text-align:right;"><span class="stat-change ${deltaClass}">${deltaStr}</span></td>
       <td style="text-align:right;">${cpuStr}</td>
       <td style="text-align:right;">${memStr}</td>
+      <td style="text-align:right;">${diskCell(svc)}</td>
+      <td style="text-align:center;">${gpuCell(svc)}</td>
       <td style="text-align:center;">${progressBar}</td>
       <td style="text-align:center; white-space:nowrap;">${actionBtns}</td>
     </tr>`;
@@ -1068,6 +1247,8 @@ const CP = (() => {
           <td></td>
           <td style="text-align:right;">${cpuCell}</td>
           <td style="text-align:right;">${memCell}</td>
+          <td style="text-align:right;">${diskCellForHosts(hostForWorker(inst.worker_id))}</td>
+          <td style="text-align:center;">${gpuCellForHosts(hostForWorker(inst.worker_id))}</td>
           <td></td>
           <td style="text-align:center; white-space:nowrap;">
             <div class="action-btns">

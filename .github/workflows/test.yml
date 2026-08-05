@@ -62,6 +62,13 @@ jobs:
       - name: Fleet staleness behaviour
         run: node scripts/fleet_staleness_check.mjs
 
+      # The Disk and GPU columns. Worth running rather than grepping for the
+      # same reason as the rest: the first draft iterated `svc.instances`, which
+      # is a COUNT, and `for...of` over a number throws — a string assertion
+      # would have been perfectly happy while the services table went blank.
+      - name: Host resource columns
+        run: node scripts/host_resources_check.mjs
+
       # From the LOCKFILE, which is what Docker ships (`uv sync --frozen` in the
       # Dockerfile) and what release.yml verifies against. Installing from the
       # unpinned requirements.txt meant the suite ran against a resolution
