@@ -780,6 +780,10 @@ img { max-width: 100%; }
   background: var(--error-soft);
   color: var(--error);
 }
+.badge-unknown {
+  background: var(--warning-soft);
+  color: var(--warning);
+}
 .badge-error {
   background: var(--warning-soft);
   color: var(--warning);
@@ -821,6 +825,11 @@ img { max-width: 100%; }
   animation: pulse-glow 2s ease-in-out infinite;
 }
 .status-dot.stopped { background: var(--error); }
+/* "Unknown" is amber, deliberately NOT the stopped red. The two are different
+   claims: stopped means the service should be reporting and is not; unknown
+   means the worker could not see it. Colouring them alike is what made an
+   Android permission problem look like a fleet of dead apps. */
+.status-dot.unknown { background: var(--warning); }
 .status-dot.error   { background: var(--warning); }
 .status-dot.external { background: var(--accent-secondary); }
 .badge-external {
