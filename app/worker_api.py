@@ -20,7 +20,9 @@ import logging
 import os
 import platform
 import re
+import shutil
 import socket
+import subprocess
 import time
 import uuid
 from contextlib import asynccontextmanager
@@ -295,6 +297,105 @@ _EGRESS_TOTAL_TIMEOUT = 10.0
 _EGRESS_MAX_BYTES = 128
 
 
+def _disk_usage() -> dict[str, Any] | None:
+    """Free and total bytes on the filesystem holding the data directory.
+
+    Storj is paid for data it STORES, so free space is earning capacity, not a
+    housekeeping detail -- a node that quietly fills up stops growing and nothing
+    in CashPilot said so.
+
+    Returns None when it cannot be read. None is UNKNOWN; a caller must not
+    render it as 0 (a full disk) or as 100% (an empty one). Both are worse than
+    an em-dash.
+    """
+    try:
+        usage = shutil.disk_usage(str(_WORKER_ID_FILE.parent))
+    except OSError as exc:
+        logger.debug("Could not read disk usage: %s", exc)
+        return None
+    return {"path": str(_WORKER_ID_FILE.parent), "free_bytes": usage.free, "total_bytes": usage.total}
+
+
+def _gpu_info() -> dict[str, Any]:
+    """What this worker can see of a GPU, and how sure it is.
+
+    Salad, Nosana, io.net and Vast.ai only earn when a real GPU is present AND
+    usable. Today a GPU service that is running but idle -- because the device
+    was never passed into the container -- looks exactly like one that is
+    earning. That is the Mysterium /dev/net/tun failure again: healthy-looking
+    and worth nothing.
+
+    THE THREE-VALUED PART MATTERS. Inside a container with no device passed
+    through, the absence of nvidia-smi proves nothing about the HOST. So:
+
+        available True   we saw a device
+        available False  we looked, found none, and we are NOT in a container,
+                         so the host really has none
+        available None   we could not tell -- in a container with nothing passed
+                         through, which is exactly when a user most needs to know
+
+    Reporting None as False would tell someone their machine has no GPU when it
+    may have an unused one, which is the opposite of the useful answer.
+    """
+    devices: list[str] = []
+    how = None
+
+    nvidia = shutil.which("nvidia-smi")
+    if nvidia:
+        try:
+            out = subprocess.run(  # noqa: S603 - fixed binary, no shell, no user input
+                [nvidia, "--query-gpu=name", "--format=csv,noheader"],
+                capture_output=True,
+                text=True,
+                timeout=10,
+                check=False,
+            )
+            if out.returncode == 0:
+                devices = [line.strip() for line in out.stdout.splitlines() if line.strip()]
+                how = "nvidia-smi"
+        except (OSError, subprocess.SubprocessError) as exc:
+            logger.debug("nvidia-smi failed: %s", exc)
+
+    if not devices:
+        # A DRM render node means SOME GPU is reachable -- integrated, AMD, or an
+        # NVIDIA card without the management tool. Enough to say "yes", not
+        # enough to name it.
+        render_nodes = sorted(str(p) for p in Path("/dev/dri").glob("renderD*")) if Path("/dev/dri").is_dir() else []
+        if render_nodes:
+            devices = [f"DRM render node ({len(render_nodes)})"]
+            how = "drm"
+
+    if devices:
+        return {"available": True, "devices": devices, "detected_by": how}
+
+    # Both probes above are LINUX-specific: nvidia-smi is not on a stock macOS,
+    # and /dev/dri is the Linux DRM interface. Their absence on any other
+    # platform proves nothing at all -- every Mac has a GPU. Caught by running
+    # this on macOS, where the first version confidently reported "no GPU".
+    if platform.system() != "Linux":
+        return {
+            "available": None,
+            "devices": [],
+            "detected_by": None,
+            "reason": f"GPU detection is not implemented for {platform.system()}; this says nothing about whether one exists",
+        }
+
+    if Path("/.dockerenv").exists():
+        # On Linux, in a container, with nothing passed through. We genuinely
+        # cannot tell -- and this is exactly when a user most needs to know,
+        # because it is the case where a GPU service runs and earns nothing.
+        return {
+            "available": None,
+            "devices": [],
+            "detected_by": None,
+            "reason": "no GPU is visible from inside this container; the host may still have one that was not passed through",
+        }
+
+    # Linux, on the host, with no NVIDIA tool and no render node. This is the
+    # one case where "no" is a real answer.
+    return {"available": False, "devices": [], "detected_by": None}
+
+
 def _detect_network_type() -> str:
     """residential / hosting / unknown, from local hardware identifiers only.
 
@@ -420,6 +521,11 @@ async def _send_heartbeat() -> None:
             # the provider sees — not this container's LAN or tailnet address.
             "egress_ip": await _detect_egress_ip(),
             "egress_network_type": _detect_network_type(),
+            # Disk is earning capacity for Storj; GPU decides whether the compute
+            # services can earn at all. Both are None/unknown-aware -- see the
+            # helpers (CashPilot-cle).
+            "disk": await asyncio.to_thread(_disk_usage),
+            "gpu": await asyncio.to_thread(_gpu_info),
         },
     }
 
