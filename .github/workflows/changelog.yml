@@ -1,0 +1,94 @@
+name: Changelog
+
+# Regenerates CHANGELOG.md from commit history after a release.
+#
+# WHY A PULL REQUEST AND NOT A PUSH
+# ---------------------------------
+# `main` requires a pull request (verified: required_pull_request_reviews is set
+# and enforce_admins is false), so a job cannot push a regenerated file to it. It
+# therefore opens a PR onto a FIXED branch — `chore/changelog` — which
+# create-pull-request UPDATES in place rather than opening a new one each time.
+# Without the fixed branch this would file a pull request per release, and this
+# project releases roughly every two commits.
+#
+# WHY MERGING IT DOES NOT CAUSE ANOTHER RELEASE
+# --------------------------------------------
+# release.yml triggers on pushes to main filtered by path — Dockerfile,
+# entrypoint.sh, Dockerfile.worker, pyproject.toml, uv.lock, app/**, services/**.
+# CHANGELOG.md, cliff.toml and docs/** are all outside that list, so merging this
+# PR cannot start a release loop. If you ever add CHANGELOG.md to that filter,
+# this workflow becomes a release loop; do not.
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  regenerate:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      # Full history AND tags: git-cliff walks the tag graph, and a shallow
+      # clone silently produces a changelog containing only the newest release
+      # rather than failing.
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0
+
+      - name: Generate CHANGELOG.md
+        uses: orhun/git-cliff-action@f50e11560dce63f7c33227798f90b924471a88b5 # v4.8.0
+        with:
+          config: cliff.toml
+          args: --verbose
+        env:
+          OUTPUT: CHANGELOG.md
+
+      # The generator can produce an empty or truncated file when the tag graph
+      # is incomplete, and committing that would silently delete the changelog.
+      # Refuse rather than open a PR that erases it.
+      - name: Refuse to commit a truncated changelog
+        run: |
+          set -euo pipefail
+          lines=$(wc -l < CHANGELOG.md)
+          releases=$(grep -c '^## \[' CHANGELOG.md || true)
+          echo "CHANGELOG.md: ${lines} lines, ${releases} release sections"
+          if [ "${releases}" -lt 100 ]; then
+            echo "::error::Only ${releases} release sections; the tag graph looks incomplete. Refusing."
+            exit 1
+          fi
+          if ! grep -q 'UPGRADING.md' CHANGELOG.md; then
+            echo "::error::The header lost its link to UPGRADING.md."
+            exit 1
+          fi
+
+      - name: Open or update the changelog pull request
+        uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8.1.1
+        with:
+          branch: chore/changelog
+          # Rebuilt from main each run: without this the branch accumulates
+          # every past regeneration as a separate commit.
+          delete-branch: false
+          add-paths: CHANGELOG.md
+          commit-message: 'docs: regenerate CHANGELOG.md'
+          title: 'docs: regenerate CHANGELOG.md'
+          body: |
+            Regenerated from commit history by `.github/workflows/changelog.yml`.
+
+            This PR is **updated in place** after each release rather than
+            reopened, so it is normal for it to sit open and keep changing.
+
+            `CHANGELOG.md` is outside `release.yml`'s path filter, so merging
+            this does not trigger another release.
+
+            What changed here is only ever a re-render of commits that are
+            already on `main` — but read it before merging anyway: the grouping
+            rules in `cliff.toml` are what decide whether a commit lands under
+            **Fixes**, **Features** or **Other**, and a subject that lands in the
+            wrong section is worth correcting there.

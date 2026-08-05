@@ -108,6 +108,13 @@ exclude_docs: |
   GOAL.md
   AUTOPILOT-WORKLOG.md
   DEFERRED-QUESTIONS.md
+  # The changelog and its archive are deliberately NOT part of the docs site.
+  # They belong beside the code, where someone comparing the version they run
+  # against the one they are about to pull will actually look, and their links
+  # are written relative to the REPOSITORY root (../CHANGELOG.md,
+  # docs/guides/proxybase.md) rather than to the site tree — which is also why
+  # --strict fails on them if they are published.
+  changelog-0.x-handwritten.md
 
 nav:
   - Home: index.md
