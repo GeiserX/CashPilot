@@ -3459,14 +3459,67 @@ def _bearer_token(request: Request) -> str:
     return h[7:] if h.startswith("Bearer ") else ""
 
 
+WORKER_KEY_CONFIRM_WINDOW = timedelta(hours=24)
+
+
+def _humanize_window() -> str:
+    hours = WORKER_KEY_CONFIRM_WINDOW.total_seconds() / 3600
+    return f"more than {hours:g} hours" if hours >= 1 else f"more than {WORKER_KEY_CONFIRM_WINDOW.total_seconds():g}s"
+
+
+def enrollment_state(key_issued_at: str | None, confirmed: bool, now: datetime | None = None) -> str:
+    """``"confirmed"``, ``"pending"`` (still inside the window) or ``"incomplete"``.
+
+    Pure, so the heartbeat guard and the fleet page cannot disagree about which
+    workers are still enrolling and which have stalled.
+
+    An UNPARSEABLE or missing timestamp reads as ``"pending"``. That is the safe
+    direction: reading unknown as expired would lock out a worker on the
+    strength of a value nobody wrote.
+    """
+    if confirmed:
+        return "confirmed"
+    if not key_issued_at:
+        return "pending"
+    try:
+        issued = datetime.fromisoformat(key_issued_at).replace(tzinfo=UTC)
+    except (TypeError, ValueError):
+        logger.warning(
+            "Worker key issue time %r is unparseable; treating enrollment as still in progress", key_issued_at
+        )
+        return "pending"
+    return "pending" if (now or datetime.now(UTC)) - issued <= WORKER_KEY_CONFIRM_WINDOW else "incomplete"
+
+
+async def _enrollment_window_open(cid: str) -> bool:
+    """Whether the shared key may still be honoured for this enrolled worker.
+
+    A second read of the same row, rather than widening ``get_worker_key_state``.
+    It is reached only on the rare branch — a worker that has a key, has never
+    used it, and is presenting the shared key. Every steady-state heartbeat
+    returns "ok" before this line, so this is not on the hot path.
+    """
+    return enrollment_state(await database.get_worker_key_issued_at(cid), confirmed=False) == "pending"
+
+
 async def _authenticate_worker_heartbeat(request: Request, cid: str) -> str:
     """Authenticate a heartbeat and classify it. Returns one of:
 
     - ``"enroll"``  — worker has no key yet and presented the shared key: mint one.
     - ``"reissue"`` — worker has a key that is NOT yet confirmed and presented the
       shared key: it likely lost the enrollment response, so re-deliver the SAME
-      key (until confirmed, the shared key still works for this one worker — a
-      bounded window that closes on the worker's first own-key heartbeat).
+      key. Until confirmed, the shared key still works for this one worker — a
+      window that closes on the worker's first own-key heartbeat OR after
+      ``WORKER_KEY_CONFIRM_WINDOW`` from the key being minted, whichever comes
+      first.
+
+    That second bound is the whole point of this function. The window used to
+    close only on confirmation, so a worker that CANNOT persist its key — a
+    pre-1.0.0 image, a read-only /data, an ephemeral container — never closed it
+    at all. The security cutover the per-worker keys exist for silently never
+    completed: anyone holding CASHPILOT_API_KEY could impersonate that worker
+    indefinitely, and the UI re-sent the key to them every 60 seconds while
+    logging "not yet confirmed" once a minute forever.
     - ``"ok"``      — worker presented its own key: authenticated; confirm it so the
       shared key is refused from now on (the cutover finalizes).
 
@@ -3488,7 +3541,28 @@ async def _authenticate_worker_heartbeat(request: Request, cid: str) -> str:
     if token and hmac.compare_digest(token.encode(), key.encode()):
         return "ok"
     if not confirmed and shared_ok:
-        return "reissue"
+        if await _enrollment_window_open(cid):
+            return "reissue"
+        # Past the window. Refusing here is the cutover finally completing for a
+        # worker that could never complete it itself. Said plainly, because the
+        # operator's next question is why a worker that was working stopped.
+        logger.warning(
+            "Worker '%s' presented the SHARED key %s after enrolling and has never used its own key. "
+            "The shared key is no longer accepted for it: a worker that cannot persist "
+            "/data/.worker_key would otherwise keep the shared key valid for its identity forever. "
+            "Upgrade that worker to 1.0.0+, give it a writable and PERSISTENT /data, then remove it "
+            "in the fleet page so it can enroll again.",
+            cid,
+            _humanize_window(),
+        )
+        raise HTTPException(
+            status_code=401,
+            detail=(
+                "Enrollment was never completed for this worker and the shared key is no longer "
+                "accepted for it. Upgrade the worker to 1.0.0+ with a writable, persistent /data, "
+                "then remove it in the fleet page so it can enroll again."
+            ),
+        )
     raise HTTPException(status_code=401, detail="Invalid or missing per-worker key")
 
 
@@ -3565,6 +3639,11 @@ async def api_list_workers(request: Request) -> list[dict[str, Any]]:
         raw_watts = config.get(f"worker_{_worker_config_key(w)}_watts") or config.get(f"worker_{w.get('id')}_watts")
         w["watts"] = raw_watts or ""
         w["dedicated"] = _worker_flag(config, w, "dedicated")
+        # Whether this worker ever finished the per-worker-key cutover. Without
+        # it the only trace was a UI log line once a minute, which nobody reads,
+        # so a worker still authenticating with the SHARED key looked identical
+        # to a fully enrolled one on the fleet page.
+        w["enrollment"] = enrollment_state(w.get("key_issued_at"), bool(w.get("key_confirmed")))
     return workers
 
 

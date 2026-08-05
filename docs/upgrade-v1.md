@@ -32,9 +32,17 @@ You don't handle keys by hand — this all happens on the next heartbeat.
 
 1. **Upgrade the UI** image to `drumsergio/cashpilot:1.0.0` (or newer).
 2. **Upgrade every worker** image to `drumsergio/cashpilot-worker:1.0.0` (or newer).
-   Do not leave old-version workers running against a v1.0.0 UI — once the UI has
-   enrolled a worker, an old worker image (which only knows the shared key) can no
-   longer heartbeat.
+   Do not leave old-version workers running against a v1.0.0 UI. An old worker
+   image only knows the shared key and cannot persist the one it is issued, so it
+   never finishes enrolling: for the first 24 hours it keeps heartbeating on the
+   shared key — which means anyone holding `CASHPILOT_API_KEY` can impersonate it
+   for that long — and after that it is refused and goes offline. The fleet page
+   marks such a worker **enrollment incomplete**.
+
+   The same thing happens to a current worker image whose `/data` is read-only or
+   is not a persistent volume, because it has nowhere to keep `/data/.worker_key`.
+   To recover one: fix the image or the volume, then remove the worker in the
+   fleet page so it enrolls again from scratch.
 3. Keep `CASHPILOT_API_KEY` **unchanged** — it is still needed for enrollment.
 4. Restart the containers. Each worker auto-enrolls on its first heartbeat; confirm
    every worker shows **online** in the fleet dashboard.
