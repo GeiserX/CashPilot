@@ -40,7 +40,12 @@ def display() -> str:
     Never fabricate a number: a build that does not know its version says so.
     """
     value = current()
-    return f"v{value}" if is_release(value) else value
+    # `series()` is the strict check: it requires MAJOR.MINOR of digits, so an
+    # arbitrary string gets shown as-is rather than dressed up. is_release()
+    # alone was too permissive -- it accepts anything not on its exclusion list,
+    # so CASHPILOT_VERSION=not-a-release rendered as "vnot-a-release", which is
+    # exactly the fabrication this function exists to prevent.
+    return f"v{value}" if series(value) else value
 
 
 def is_release(value: str | None = None) -> bool:

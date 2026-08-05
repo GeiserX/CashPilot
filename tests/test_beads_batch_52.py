@@ -33,8 +33,18 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 TEMPLATES = sorted((ROOT / "app" / "templates").rglob("*.html"))
 
-#: A literal that looks like a version being shown to a person.
-VERSION_LITERAL = re.compile(r"v\d+\.\d+(\.\d+)?\b")
+#: A version printed NEXT TO THE PRODUCT NAME — which is the actual failure
+#: mode here ("CashPilot v0.2.49"), and the only one worth failing a build over.
+#:
+#: Deliberately not a bare version regex. `\d+\.\d+` matches 292 things in these
+#: templates — every 1.5rem, 0.85rem and opacity value. Even a three-component
+#: form matches SVG path coordinates, the chart.js CDN pin, and legitimate prose
+#: about a minimum worker version. Anchoring on the product name catches both
+#: "CashPilot v1.2.3" and the bare "CashPilot 1.2.3" with no false positives.
+PRODUCT_VERSION_LITERAL = re.compile(r"CashPilot\s+v?\d+\.\d+")
+
+#: Used only to assert that display() never returns a version-looking string.
+VERSION_LITERAL = re.compile(r"v?\d+\.\d+")
 
 
 class TestNoTemplateHardcodesAVersion:
@@ -52,9 +62,44 @@ class TestNoTemplateHardcodesAVersion:
         offenders = [
             (n, line.strip())
             for n, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1)
-            if VERSION_LITERAL.search(line) and "{#" not in line and "<!--" not in line
+            if PRODUCT_VERSION_LITERAL.search(line) and "{#" not in line and "<!--" not in line
         ]
         assert not offenders, f"{path.name} hardcodes a version a human will read: {offenders}"
+
+
+class TestTheSweepCatchesBothSpellings:
+    """A hardcoded version does not need a `v` to mislead somebody."""
+
+    @pytest.mark.parametrize(
+        "line",
+        [
+            '<span class="sidebar-footer-version">CashPilot v0.2.49</span>',
+            '<span class="sidebar-footer-version">CashPilot 0.2.49</span>',
+            "<footer>CashPilot 1.11.34</footer>",
+        ],
+        ids=["with-v", "bare", "bare-three-part"],
+    )
+    def test_it_flags_a_hardcoded_product_version(self, line):
+        assert PRODUCT_VERSION_LITERAL.search(line), f"the sweep would miss {line!r}"
+
+    @pytest.mark.parametrize(
+        "line",
+        [
+            'style="font-size:0.85rem; opacity:0.6;"',
+            '<path d="M12 11.385.6 4.4z"/>',
+            "chart.js@4.4.8/dist/chart.umd.min.js",
+            "Upgrade that worker to 1.0.0+ with a writable /data",
+            "CashPilot {{ app_version() }}",
+        ],
+        ids=["css", "svg-path", "cdn-pin", "prose-about-a-minimum", "the-correct-form"],
+    )
+    def test_it_does_not_flag_legitimate_lines(self, line):
+        """Every one of these is real content from these templates.
+
+        A sweep that cries wolf on 292 CSS values gets deleted by the next
+        person, which is worse than no sweep.
+        """
+        assert not PRODUCT_VERSION_LITERAL.search(line), f"false positive on {line!r}"
 
 
 class TestTheSidebarUsesTheRuntimeVersion:
@@ -95,7 +140,10 @@ class TestItNeverInventsAVersion:
         monkeypatch.setenv("CASHPILOT_VERSION", "1.11.34")
         assert version.display() == "v1.11.34"
 
-    @pytest.mark.parametrize(("value", "expected"), [("", "dev"), ("dev", "dev"), ("latest", "latest")])
+    @pytest.mark.parametrize(
+        ("value", "expected"),
+        [("", "dev"), ("dev", "dev"), ("latest", "latest"), ("not-a-release", "not-a-release")],
+    )
     def test_a_non_release_build_never_reads_as_a_version(self, monkeypatch, value, expected):
         """`latest` passes through deliberately, and that is the honest answer.
 
