@@ -78,6 +78,25 @@ extra:
 extra_css:
   - stylesheets/theme.css
 
+# Files that live under docs/ but must NEVER be published.
+#
+# MkDocs builds EVERY file in docs_dir, whether or not it appears in nav — so
+# these three were live on the public site despite being in no menu:
+#   /GOAL/                -> HTTP 200
+#   /AUTOPILOT-WORKLOG/   -> HTTP 200
+# They are agent working files. Between them they published this project's
+# internal planning verbatim, quoted the maintainer directly, and printed a
+# real Mysterium node identity address, which links this public repository to a
+# specific earning node.
+#
+# `mkdocs build --strict` does NOT catch this: validation.nav.omitted_files
+# defaults to `info`, and --strict only promotes `warn` to an error. Exclusion
+# has to be explicit.
+exclude_docs: |
+  GOAL.md
+  AUTOPILOT-WORKLOG.md
+  DEFERRED-QUESTIONS.md
+
 nav:
   - Home: index.md
   - Getting Started: getting-started.md

@@ -29,3 +29,12 @@ htmlcov/
 .sddw/
 .superset/
 .tbd/
+
+# Agent working files. These are scratch, not documentation, and they must never
+# be committed: they carried this project's internal planning verbatim, quoted
+# the maintainer directly, and printed a real node identity address — all of
+# which was then published to the public docs site, because MkDocs builds every
+# file in docs_dir whether or not it appears in nav.
+docs/GOAL.md
+docs/AUTOPILOT-WORKLOG.md
+docs/DEFERRED-QUESTIONS.md
