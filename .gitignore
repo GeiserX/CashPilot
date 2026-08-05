@@ -17,6 +17,13 @@ coverage.xml
 htmlcov/
 
 # Agent / tooling working dirs (not part of the project)
+#
+# .beads/ is NOT optional here and must not be "helpfully" committed later. The
+# usual beads convention is to commit the export so the tracker travels with the
+# repo; this repository is the exception, because the backlog contains real
+# wallet addresses and this repo is PUBLIC. It was previously protected only by
+# .git/info/exclude, which is local to one clone and travels with nothing.
+.beads/
 .omc/
 .claude/
 .sddw/

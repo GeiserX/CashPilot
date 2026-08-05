@@ -51,7 +51,37 @@ jobs:
           # marker yet, so without this the job fails EVERY night and files a
           # false drift alert — which trains the maintainer to ignore the one
           # alert designed to catch a real provider change.
-          uv run pytest tests/ -m live -q 2>&1 | tee live.log || [ "${PIPESTATUS[0]}" = "5" ]
+          #
+          # PIPESTATUS is captured into `rc` immediately, because EVERY later
+          # command overwrites it -- including the `[ ... ]` test that used to be
+          # on the right of this `||`. Reading ${PIPESTATUS[0]} on any subsequent
+          # line yields that test's own status, not pytest's.
+          rc=0
+          uv run pytest tests/ -m live -q 2>&1 | tee live.log || rc=${PIPESTATUS[0]}
+          # ...but say so. Masking exit 5 keeps the job green, which is right —
+          # and it also makes "green" mean two different things: "every provider
+          # still matches its collector" and "nothing was checked at all". Today
+          # it is always the second (no test carries the marker yet), so the
+          # nightly run is a safety net that reports healthy while catching
+          # nothing. The summary makes which one it is visible without turning
+          # the job red and training alert-blindness.
+          #
+          # A REAL failure (exit 1) must still redden the job and reach the
+          # issue-filing step below. Masking only the empty case is the whole
+          # point; masking everything would turn this into a silencer.
+          if [ "$rc" != "0" ] && [ "$rc" != "5" ]; then
+            exit "$rc"
+          fi
+          if [ "$rc" = "5" ]; then
+            {
+              echo "### Provider-drift detection is NOT active"
+              echo
+              echo "0 tests carry the \`live\` marker, so **no collector was checked against a real API**."
+              echo "This job passed because there was nothing to run — not because the providers are unchanged."
+              echo
+              echo "To activate it, mark a collector test with \`@pytest.mark.live\`."
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
 
       - name: Open an issue when a provider's shape changed
         if: failure()
