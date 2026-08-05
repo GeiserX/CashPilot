@@ -74,6 +74,72 @@ defensible on its own; together they are impossible to guess.
     To actually move the port, override the container's `command:` **and** set
     `CASHPILOT_PORT` to match.
 
+## GPU passthrough
+
+CashPilot reports a worker's GPU as one of three answers — **yes**, **no**, or
+**unknown** — and inside a container the honest answer is almost always
+*unknown*: the absence of a GPU there says nothing about the host.
+
+That matters because four services only earn with a real GPU (Salad, Nosana,
+io.net, Vast.ai), and a GPU service deployed **without** the device starts,
+reports healthy, and earns nothing. It is the same shape as the Mysterium
+`/dev/net/tun` failure.
+
+To let the worker see an Intel or AMD GPU, uncomment the block in the compose
+file:
+
+```yaml
+devices:
+  - /dev/dri:/dev/dri
+```
+
+!!! warning "Only on a host that actually has one"
+
+    Docker **refuses to start a container** when a listed device does not exist,
+    so this is shipped commented out. Uncommenting it on a GPU-less host breaks
+    the worker outright.
+
+### NVIDIA is a different mechanism
+
+`/dev/dri` does nothing for an NVIDIA card, and installing the
+[NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html)
+is only the **prerequisite** — the toolkit on its own does *not* hand the GPU to
+a Compose service. You have to ask for it as well, with **either** of these:
+
+=== "Shorthand"
+
+    ```yaml
+    gpus: all
+    ```
+
+=== "Explicit reservation"
+
+    ```yaml
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    ```
+
+Both are Compose-spec attributes and both were validated against Compose
+v2.40.3. Pick one; do not set both. Use the explicit reservation when you need
+to pin particular cards, which it can do via `device_ids` and `capabilities`.
+
+!!! warning "These fail on a GPU-less host too"
+
+    Verified: on a machine with no NVIDIA card, *both* forms exit 1, the
+    reservation form reporting `could not select device driver`. So like
+    `/dev/dri`, they ship commented out rather than enabled by default.
+
+Once the GPU is actually allocated, the worker finds `nvidia-smi` and reports
+the real model name rather than just a device count.
+
+Passing a device into the worker only lets the **worker** see it. A deployed GPU
+**service** needs the device too — declare it in that service's catalog entry.
+
 ## Compose-level
 
 These are read by the compose files, not by CashPilot itself.
