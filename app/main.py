@@ -3598,6 +3598,80 @@ class WorkerHeartbeat(BaseModel):
     system_info: dict[str, Any] = {}
 
 
+async def _earnings_for_worker(body: WorkerHeartbeat, days: int = 30) -> dict[str, Any] | None:
+    """What the platforms on THIS worker have earned, for the client to display.
+
+    Returned in the heartbeat response rather than from a new endpoint, because
+    the heartbeat is the ONE call a worker is already authenticated for. Every
+    earnings route goes through ``_require_auth_api``, which needs a user
+    session; a per-worker key cannot read any of them, and handing a phone an
+    owner-level credential so it can show a number would be a bad trade.
+
+    THE HONESTY CONSTRAINT, which shapes the whole payload:
+
+    Earnings are collected per PLATFORM, from the provider's account. They are
+    not, and cannot be, attributed to a device. If two machines both run Grass,
+    the provider reports one balance and nothing can split it. So this never
+    says "this device earned X" — it says "the platforms this device is running
+    earned X on your account", and it flags each platform that is running on
+    more than one worker so the client can say so too.
+
+    Returns None when the figures cannot be produced at all. None means unknown;
+    a caller must not render it as zero.
+    """
+    slugs = {
+        str(entry.get("slug") or "").strip()
+        for entry in (body.apps or []) + (body.containers or [])
+        if str(entry.get("slug") or "").strip()
+    }
+    if not slugs:
+        return None
+
+    try:
+        earned = await database.get_earned_by_platform(days)
+        workers = await database.list_workers()
+    except Exception as exc:  # noqa: BLE001 - a heartbeat must never fail on this
+        logger.warning("Could not attach earnings to the heartbeat response: %s", exc)
+        return None
+
+    # Which platforms run on more than one worker. Counted across the fleet, not
+    # just this device, because that is what makes a per-device claim false.
+    running_on: dict[str, int] = {}
+    for worker in workers:
+        _parse_worker_json(worker)
+        seen: set[str] = set()
+        for entry in (worker.get("apps") or []) + (worker.get("containers") or []):
+            slug = str(entry.get("slug") or "").strip()
+            if slug and slug not in seen:
+                seen.add(slug)
+                running_on[slug] = running_on.get(slug, 0) + 1
+
+    platforms = []
+    for slug in sorted(slugs):
+        # A platform with no reading is UNKNOWN, not zero. Absent from `earned`
+        # means nothing has ever been collected for it -- most often no collector
+        # exists, or its credentials were never entered.
+        value = earned.get(slug)
+        platforms.append(
+            {
+                "slug": slug,
+                "usd": round(value, 4) if value is not None else None,
+                "shared_with_other_workers": running_on.get(slug, 0) > 1,
+            }
+        )
+
+    known = [p["usd"] for p in platforms if p["usd"] is not None]
+    return {
+        "window_days": max(1, int(days)),
+        "currency": "USD",
+        "platforms": platforms,
+        # Only sums what is actually known. A total that silently treats unknown
+        # as zero is the same lie in aggregate.
+        "total_usd": round(sum(known), 4) if known else None,
+        "platforms_without_readings": [p["slug"] for p in platforms if p["usd"] is None],
+    }
+
+
 @app.post("/api/workers/heartbeat")
 async def api_worker_heartbeat(request: Request, body: WorkerHeartbeat) -> dict[str, Any]:
     """Receive a heartbeat from a worker. Registers or updates the worker."""
@@ -3635,6 +3709,14 @@ async def api_worker_heartbeat(request: Request, body: WorkerHeartbeat) -> dict[
         # The worker authenticated with its own key: finalize the cutover so the
         # shared key is refused from now on.
         await database.confirm_worker_key(cid)
+
+    # What the platforms on this worker have earned, so a client can show money
+    # without needing a second, broader credential. Absent when it cannot be
+    # produced -- the key is omitted rather than sent as an empty object, so a
+    # client can tell "unknown" from "nothing earned" (CashPilot-android-35t).
+    earnings = await _earnings_for_worker(body)
+    if earnings is not None:
+        resp["earnings"] = earnings
     return resp
 
 
