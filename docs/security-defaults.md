@@ -22,6 +22,7 @@ These have no off switch. If you need one of them disabled, CashPilot is the wro
 | **Deployed containers drop all capabilities**, get `no-new-privileges`, and a PID limit | These images are third-party and closed-source. They get the minimum kernel surface. Capabilities are granted per-service from the catalog, never globally. |
 | **Privileged containers are refused** | A privileged container is not isolated in any meaningful sense. No service in the catalog needs one. |
 | **System volume roots are blocked** | A container that can mount `/etc` or `/var/run` owns the host. Specific paths can be opted in (tier 2), but the blanket block cannot be removed. |
+| **Host devices are allowlisted, and per-service** | Passing a host device into a container widens what that container can touch, so it is not something to enable casually. A deploy may request a device only if **its own** catalog entry declares it *and* the device is on a fixed ceiling — today that ceiling is `/dev/net/tun` alone, for [Mysterium](guides/mysterium.md). One service declaring a device does not let any other request it, and anything outside the ceiling is refused rather than quietly dropped. |
 | **No telemetry, no phone-home** | Absent rather than opt-out. A toggle would imply the capability exists; it does not. There is no code that reports anything about you anywhere. |
 | **Volumes holding irreplaceable state are protected from deletion** | Node identities and generated wallets have no server-side copy. See [what counts as irreplaceable](#irreplaceable-state). |
 

@@ -296,3 +296,83 @@ class TestTheCommentedYamlIsActuallyValidYaml:
         device = parsed["deploy"]["resources"]["reservations"]["devices"][0]
         assert device["driver"] == "nvidia"
         assert device["capabilities"] == ["gpu"]
+
+
+class TestTheDeviceCeilingIsDocumentedWhereItIsEnforced:
+    """CLAUDE.md said "the catalog cannot declare devices yet". It can, and does.
+
+    The claim was true before the Mysterium TUN fix and was never updated, so the
+    file agents read first told them a shipped capability did not exist —
+    ``services/bandwidth/mysterium.yml`` declares ``/dev/net/tun`` and
+    ``app/main.py`` passes it through to the worker. A stale instruction is worse
+    than a missing one: it is followed.
+
+    Checked while closing out the GPU work, where the same question came up for
+    the compute services. Their answer is different — every one of them ships an
+    empty ``docker.image``, so none is deployable and none can request anything.
+
+    These assertions read the ceiling out of the CODE and require the docs to
+    agree, rather than checking each for a string it can satisfy alone.
+    """
+
+    import pathlib
+
+    ROOT = pathlib.Path(__file__).resolve().parents[1]
+
+    def _ceiling(self):
+        from app.worker_api import _ALLOWED_DEVICES
+
+        return set(_ALLOWED_DEVICES)
+
+    def test_the_security_doc_names_every_device_the_code_permits(self):
+        text = (self.ROOT / "docs" / "security-defaults.md").read_text(encoding="utf-8")
+        missing = {d for d in self._ceiling() if d not in text}
+        assert not missing, f"the ceiling was widened to include {missing} and security-defaults.md never said so"
+
+    def test_the_security_doc_does_not_promise_a_narrower_ceiling(self):
+        """The inverse drift: a device removed from the code but left in prose."""
+        import re
+
+        text = (self.ROOT / "docs" / "security-defaults.md").read_text(encoding="utf-8")
+        claimed = set(re.findall(r"`(/dev/[a-z0-9/_-]+)`", text))
+        assert claimed <= self._ceiling(), f"the doc advertises {claimed - self._ceiling()}, which deploys would refuse"
+
+    def test_claude_md_no_longer_denies_the_capability(self):
+        text = (self.ROOT / "CLAUDE.md").read_text(encoding="utf-8")
+        assert "catalog cannot declare devices" not in text, "the stale claim is back"
+
+    def test_the_capability_it_now_describes_is_real(self):
+        """Do not simply delete the false sentence — prove the true one."""
+        import yaml
+
+        docker = yaml.safe_load((self.ROOT / "services" / "bandwidth" / "mysterium.yml").read_text(encoding="utf-8"))[
+            "docker"
+        ]
+        assert "/dev/net/tun" in (docker.get("devices") or []), "CLAUDE.md now claims a declaration that is absent"
+
+    def test_the_deploy_path_actually_forwards_it(self):
+        """Declared-but-ignored would make the corrected CLAUDE.md wrong too."""
+        main = (self.ROOT / "app" / "main.py").read_text(encoding="utf-8")
+        assert '"devices": docker_conf.get("devices") or None' in main
+
+    def test_no_gpu_service_is_deployable_so_none_can_request_a_device(self):
+        """The premise of a follow-up, checked rather than assumed.
+
+        The worry was that the GPU services would hit the Mysterium bug —
+        deployed without their device, healthy, earning nothing. They cannot:
+        every compute service is extension/app-only with an empty image.
+        """
+        import pathlib
+
+        import yaml
+
+        for path in sorted(pathlib.Path(self.ROOT / "services" / "compute").glob("*.yml")):
+            if path.name.startswith("_"):
+                continue
+            docker = yaml.safe_load(path.read_text(encoding="utf-8")).get("docker") or {}
+            image = (docker.get("image") or "").strip()
+            if image:
+                assert docker.get("devices") is not None, (
+                    f"{path.name} became deployable without declaring its device; "
+                    "if it needs a GPU it will start, look healthy and earn nothing"
+                )
