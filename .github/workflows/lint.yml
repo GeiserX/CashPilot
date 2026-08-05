@@ -16,13 +16,18 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v7
         with:
-          python-version: "3.12"
+          python-version: "3.14"
 
-      - name: Install Ruff
-        run: pip install ruff
+      # The lockfile's ruff, so this gate and release.yml's cannot reach
+      # different verdicts about the same commit.
+      - name: Install uv
+        run: pip install uv
+
+      - name: Sync from the lockfile
+        run: uv sync --frozen --extra dev
 
       - name: Ruff check
-        run: ruff check .
+        run: uv run ruff check .
 
       - name: Ruff format check
-        run: ruff format --check .
+        run: uv run ruff format --check .
