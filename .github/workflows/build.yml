@@ -214,15 +214,25 @@ jobs:
           # The release input is "v1.2.3"; the image bakes the bare number.
           want="${VERSION#v}"
           echo "expecting CASHPILOT_VERSION=${want}"
-          printf '%s\n%s\n' "$UI_TAGS" "$WORKER_TAGS" > /tmp/vtags.txt
           bad=0
+          # A here-string, not a pipe and not a temp file: a `while` on the right
+          # of a pipe runs in a subshell, so `bad` set inside it would be lost --
+          # which is why the step above uses a file. This avoids both.
           while IFS= read -r tag; do
             [ -n "$tag" ] || continue
             # `docker buildx imagetools inspect --raw` returns the manifest, not
             # the config, so the env is not in it. Pulling is the reliable way to
             # read what the image actually declares.
-            if ! docker pull -q "$tag" >/dev/null 2>&1; then
-              echo "SKIP    $tag -- could not pull; the resolve check above owns that failure"
+            #
+            # A FAILED PULL IS A FAILURE, not something to skip. An earlier draft
+            # `continue`d here on the reasoning that the resolve check above owns
+            # it -- but that check uses `docker manifest inspect`, which can
+            # succeed while a pull fails, so skipping left the version unverified
+            # and `bad` at 0. That is a check that cannot fail, which is worse
+            # than no check: the release would publish looking verified.
+            if ! err=$(docker pull -q "$tag" 2>&1); then
+              echo "PULL FAILED  $tag -- ${err}"
+              bad=1
               continue
             fi
             got=$(docker image inspect "$tag" --format '{{range .Config.Env}}{{println .}}{{end}}' \
@@ -233,8 +243,8 @@ jobs:
               echo "WRONG   $tag reports '${got}', expected '${want}'"
               bad=1
             fi
-          done < /tmp/vtags.txt
+          done <<< "$(printf '%s\n%s\n' "$UI_TAGS" "$WORKER_TAGS")"
           if [ "$bad" -ne 0 ]; then
-            echo "::error::A published image reports a version other than the one it is tagged with. This is what a re-tagged or cache-stale image looks like: the tag resolves, so the check above passes, while every worker running it reports the WRONG version on the fleet page -- and a wrong version reads as a match, hiding the staleness version reporting exists to reveal. Do NOT fix this by re-tagging; rebuild the image."
+            echo "::error::A published image reports a version other than the one it is tagged with. This is what a re-tagged or cache-stale image looks like: the tag resolves, so the check above passes, while every worker running it reports the WRONG version on the fleet page -- and a wrong version reads as a match, hiding the staleness version reporting exists to reveal. Do NOT fix this by re-tagging; rebuild the image. A PULL FAILED line above means the version could not be read at all -- that is also a failure here, because an unverified image must not ship looking verified."
             exit 1
           fi

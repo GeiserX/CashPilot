@@ -151,6 +151,43 @@ class TestTheGuardChecksTheArtifactNotTheLabel:
         env = str(step.get("env", {}))
         assert "worker_tags" in env, env
 
+    def test_a_failed_pull_fails_the_run_rather_than_skipping(self):
+        """A check that can silently opt out is worse than no check.
+
+        My first version `continue`d on a pull failure, reasoning that the
+        resolve step above owned it. It does not: that step uses `docker
+        manifest inspect`, which can succeed while a pull fails, so a registry
+        hiccup left the version unverified with `bad` still 0 — and the release
+        published looking verified. (CodeRabbit, PR #254.)
+        """
+        step = next(s for s in self._verify_steps() if "version" in s.get("name", "").lower())
+        run = step["run"]
+
+        # Scoped to the pull branch ALONE. Two earlier versions of this
+        # assertion passed against a deliberately broken workflow:
+        #   * `"PULL FAILED" in run` also matched the ::error:: text, which
+        #     mentions it -- the test matching its own prose;
+        #   * a `bad=1 in pull_block` slice that ran to `done <<<` swallowed the
+        #     legitimate `bad=1` in the version-mismatch branch below it.
+        start = run.index("if ! err=$(docker pull")
+        branch = run[start : run.index("fi", start)]
+        assert "bad=1" in branch, f"a failed pull does not mark the run failed:\n{branch}"
+        assert "owns that failure" not in run, "the silent-skip rationale is back"
+
+    def test_it_keeps_no_runtime_state_in_tmp(self):
+        """Replaced by a here-string, which also avoids the subshell that made
+        the neighbouring step use a file in the first place."""
+        step = next(s for s in self._verify_steps() if "version" in s.get("name", "").lower())
+        assert "/tmp" not in step["run"]
+
+    def test_the_loop_does_not_run_in_a_subshell(self):
+        """`while` on the right of a pipe loses `bad`, which is how this class of
+        check silently passes."""
+        step = next(s for s in self._verify_steps() if "version" in s.get("name", "").lower())
+        run = step["run"]
+        assert "done <<<" in run, "the loop no longer reads from a here-string"
+        assert "| while" not in run and "|while" not in run
+
     def test_it_tells_the_reader_not_to_re_tag(self):
         """Re-tagging is the obvious 'fix' and it reproduces the defect."""
         step = next(s for s in self._verify_steps() if "version" in s.get("name", "").lower())
