@@ -15,15 +15,22 @@
     <div class="stat-label">Online</div>
     <div class="stat-value" id="fleet-online-workers">-</div>
   </div>
+  {# "Workers" and "Online" are fleet-wide; these two count ONLY online workers
+     (api_fleet_summary skips offline ones before accumulating). Nothing said so,
+     so a host rebooting made "Services" drop and read as containers lost --
+     contradicting the dashboard note that routes the user to this very page:
+     "Containers keep running and earning while a worker is offline."
+     (CashPilot-wij) #}
   <div class="stat-card">
-    <div class="stat-label">Services</div>
+    <div class="stat-label" title="Counted across workers that are currently online. Containers on an offline worker keep running and earning; they are not included here.">Services <span style="opacity:0.6;">(online)</span></div>
     <div class="stat-value" id="fleet-total-containers">-</div>
   </div>
   <div class="stat-card">
-    <div class="stat-label">Running</div>
+    <div class="stat-label" title="Counted across workers that are currently online. Containers on an offline worker keep running and earning; they are not included here.">Running <span style="opacity:0.6;">(online)</span></div>
     <div class="stat-value" id="fleet-running-containers">-</div>
   </div>
 </div>
+<div id="fleet-unreachable-note" style="display:none; margin:-8px 0 16px; font-size:0.82rem; color:var(--warning);"></div>
 
 <!-- Add Worker Info -->
 <div class="card" style="margin-bottom: 24px;">
@@ -46,6 +53,12 @@ CASHPILOT_WORKER_NAME=server-name</code>
         <button class="btn btn-ghost btn-sm" data-action="toggleApiKey" id="reveal-btn">Reveal API Key</button>
         <button class="btn btn-ghost btn-sm" data-action="copyWorkerEnv">Copy</button>
         {% endif %}
+      </div>
+      {# Shown only when the clipboard API is unreachable — which is the normal
+         case on the plain-http LAN origin docs/fleet.md documents, because
+         navigator.clipboard is gated on a secure context. #}
+      <div id="worker-env-fallback" style="display:none; margin-top:8px;">
+        <textarea readonly rows="3" class="form-input" style="width:100%; font-family:monospace; font-size:0.78rem;"></textarea>
       </div>
     </div>
     <p style="color: var(--text-muted); margin-top: 8px; font-size: 0.82rem;">
@@ -155,6 +168,22 @@ CASHPILOT_WORKER_NAME=server-name</code>
       document.getElementById('fleet-online-workers').textContent = summary.online_workers || 0;
       document.getElementById('fleet-total-containers').textContent = summary.total_containers || 0;
       document.getElementById('fleet-running-containers').textContent = summary.running_containers || 0;
+
+      // Name what the two online-only cards leave out, rather than letting the
+      // drop read as containers lost.
+      const note = document.getElementById('fleet-unreachable-note');
+      const hidden = summary.unreachable_containers || 0;
+      if (note) {
+        if (hidden > 0) {
+          const w = summary.unreachable_workers || 0;
+          note.textContent = `${hidden} container${hidden === 1 ? '' : 's'} on `
+            + `${w} unreachable worker${w === 1 ? '' : 's'} ${hidden === 1 ? 'is' : 'are'} not counted above. `
+            + `They keep running and earning while their worker is offline — CashPilot just cannot see them right now.`;
+          note.style.display = '';
+        } else {
+          note.style.display = 'none';
+        }
+      }
 
       renderWorkers(workers);
       loadFleetEconomics();
@@ -323,7 +352,7 @@ CASHPILOT_WORKER_NAME=server-name</code>
               <span>${esc(w.url || '-')}</span>
               <span>${esc(sysInfo.os || '-')}${sysInfo.os_version ? ' ' + esc(sysInfo.os_version) : ''}</span>
               <span>${esc(sysInfo.arch || '-')}</span>
-              <span>Last seen: ${w.last_heartbeat || 'never'}</span>
+              <span title="${esc(CP.fmtTimestamp(w.last_heartbeat).title)}">Last seen: ${esc(CP.fmtTimestamp(w.last_heartbeat).text)}</span>
               <span>
                 <label for="watts-${esc(w.client_id || w.id)}" style="color:var(--text-muted);">Draw</label>
                 <input id="watts-${esc(w.client_id || w.id)}" class="power-watts form-input" type="number" min="0" step="1"
@@ -389,7 +418,7 @@ CASHPILOT_WORKER_NAME=server-name</code>
   // signal. The state is still shown, because "what was running when we last
   // heard" is useful, but it is shown as a memory rather than a measurement.
   function staleNote(lastSeen) {
-    return `Last reported ${lastSeen || 'never'}. This host is not reachable, so this is the last known state, not the current one.`;
+    return `Last reported ${CP.fmtTimestamp(lastSeen).text}. This host is not reachable, so this is the last known state, not the current one.`;
   }
 
   function renderContainers(worker, isOnline) {
@@ -546,9 +575,44 @@ CASHPILOT_WORKER_NAME=server-name</code>
     // Lazily fetch the plaintext key (owner-only reveal endpoint) before copying.
     await fetchApiKey();
     const uiUrl = document.getElementById('env-ui-url').textContent;
+    // The key is only worth copying if we actually got one. On a failed reveal
+    // _apiKey is the literal string "(error)" or "(not configured)", and the
+    // old code toasted success regardless -- so the user pasted
+    // CASHPILOT_API_KEY=(error) into their compose file and then debugged a
+    // worker that could never enrol (CashPilot-0p4).
+    if (!_apiKey || _apiKey.startsWith('(')) {
+      CP.toast(`Nothing to copy — the API key reads ${_apiKey || 'as unset'}. Reveal it first.`, 'error');
+      return;
+    }
     const text = `CASHPILOT_UI_URL=${uiUrl}\nCASHPILOT_API_KEY=${_apiKey}\nCASHPILOT_WORKER_NAME=server-name`;
-    navigator.clipboard.writeText(text).then(() => CP.toast('Copied', 'success'));
+    // navigator.clipboard is gated on a SECURE CONTEXT, and docs/fleet.md
+    // documents the normal setup as plain http:// on the LAN. There the object
+    // is undefined, the property access throws inside this async function, and
+    // delegate.js calls it without awaiting -- so the button was simply dead,
+    // with no toast and no explanation, for exactly the multi-server users who
+    // need it most.
+    try {
+      if (!navigator.clipboard) throw new Error('clipboard unavailable');
+      await navigator.clipboard.writeText(text);
+      CP.toast('Copied', 'success');
+    } catch (err) {
+      showWorkerEnvFallback(text);
+    }
   };
+
+  // Selecting the text is the honest fallback: it cannot fail, and it puts the
+  // user one keystroke from the same result.
+  function showWorkerEnvFallback(text) {
+    const box = document.getElementById('worker-env-fallback');
+    if (!box) {
+      CP.toast('Copying needs a secure (https) page. Select the text above and copy it manually.', 'warning');
+      return;
+    }
+    box.style.display = '';
+    box.querySelector('textarea').value = text;
+    box.querySelector('textarea').select();
+    CP.toast('This page is not on https, so CashPilot cannot reach the clipboard. The text is selected — press Ctrl/Cmd+C.', 'warning');
+  }
 
   loadApiKeyStatus();
   loadFleet();

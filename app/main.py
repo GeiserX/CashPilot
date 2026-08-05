@@ -3799,11 +3799,21 @@ async def api_fleet_summary(request: Request) -> dict[str, Any]:
     total_running = 0
     online_workers = 0
 
+    # Containers on workers that are NOT online. They are still running and
+    # still earning -- an unreachable worker is a reporting gap, not a stopped
+    # one -- so the fleet page can say how much of the estate these cards leave
+    # out instead of letting a reboot read as containers lost (CashPilot-wij).
+    unreachable_containers = 0
+    unreachable_workers = 0
+
     for w in workers:
+        _parse_worker_json(w)
         if w["status"] != "online":
+            if w["container_count"]:
+                unreachable_workers += 1
+                unreachable_containers += w["container_count"]
             continue
         online_workers += 1
-        _parse_worker_json(w)
         total_services += w["container_count"]
         total_running += w["running_count"]
 
@@ -3812,6 +3822,8 @@ async def api_fleet_summary(request: Request) -> dict[str, Any]:
         "online_workers": online_workers,
         "total_containers": total_services,
         "running_containers": total_running,
+        "unreachable_containers": unreachable_containers,
+        "unreachable_workers": unreachable_workers,
     }
 
 
