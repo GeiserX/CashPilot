@@ -34,6 +34,8 @@ The key differentiator: a browser-based setup wizard guides you through account 
 - **Simple two-container setup** -- UI + Worker, no dependencies to install
 - **Service catalog** with earning estimates, requirements, and platform details
 
+> **Every setting, and which source wins:** [Configuration reference](docs/configuration.md)
+
 > **Upgrading an existing install?** Read [UPGRADING.md](UPGRADING.md) first. It lists only the releases that need you to do something.
 
 ## Quick Start
