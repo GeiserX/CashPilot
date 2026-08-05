@@ -202,12 +202,41 @@ const CP = (() => {
     return map[locale] || map[locale.split('-')[0]] || 'USD';
   }
 
+  // Which sources are currently stale, and what that means for what is shown.
+  //
+  // exchange_rates.py keeps a separate clock per source, each advanced only on
+  // that source's own HTTP 200, and publishes crypto_stale / fiat_stale. No
+  // caller ever asked. So if CoinGecko stopped responding after one successful
+  // fetch, every token balance kept rendering at a price that could be hours or
+  // days old, and nothing on screen changed (CashPilot-dfw).
+  function staleRateNotice() {
+    const cryptoStale = _exchangeRates.crypto_stale === true;
+    // Fiat only matters when a conversion actually uses it — a viewer reading in
+    // USD is not affected by a stale USD->X table, and warning them would be the
+    // kind of noise that teaches people to ignore warnings.
+    const fiatStale = _exchangeRates.fiat_stale === true && _displayCurrency !== 'USD';
+    if (!cryptoStale && !fiatStale) return '';
+    const sources = [];
+    if (cryptoStale) sources.push('crypto prices');
+    if (fiatStale) sources.push(`${_displayCurrency} exchange rates`);
+    return `Using cached ${sources.join(' and ')} — the last refresh failed, so converted figures may be out of date.`;
+  }
+
+  function renderStaleRateNotice() {
+    const note = document.getElementById('rates-stale-note');
+    if (!note) return;
+    const message = staleRateNotice();
+    note.textContent = message;
+    note.style.display = message ? '' : 'none';
+  }
+
   async function loadExchangeRates() {
     try {
       _exchangeRates = await api('/api/exchange-rates');
     } catch (err) {
       console.warn('Could not refresh exchange rates, keeping previous values:', err);
     }
+    renderStaleRateNotice();
   }
 
   async function loadTopbarEarnings() {
@@ -3040,6 +3069,9 @@ const CP = (() => {
       _displayCurrency = select.value;
       localStorage.setItem('cp-display-currency', select.value);
       toast(`Display currency set to ${select.value}`, 'success');
+      // The fiat half of the staleness notice depends on which currency is being
+      // read, so it has to be recomputed when that changes.
+      renderStaleRateNotice();
       const topbarSelect = document.getElementById('topbar-currency');
       if (topbarSelect) topbarSelect.value = select.value;
     });
@@ -3131,6 +3163,7 @@ const CP = (() => {
     select.addEventListener('change', () => {
       _displayCurrency = select.value;
       localStorage.setItem('cp-display-currency', select.value);
+      renderStaleRateNotice();
       // Re-render dashboard if on that page
       if (document.body.dataset.page === 'dashboard') {
         loadDashboardStats();
