@@ -488,7 +488,10 @@ const CP = (() => {
       setTextContent('total-earnings', money(displayTotal));
       setTextContent('today-earnings', money(data.today || 0));
       setTextContent('month-earnings', money(data.month || 0));
-      setTextContent('active-services', data.active_services || 0);
+      // `|| 0` would render "could not be counted" as "nothing is running".
+      // The endpoint sends null when the count could not be taken
+      // (CashPilot-45k).
+      setTextContent('active-services', data.active_services == null ? '\u2014' : data.active_services);
 
       const nothingYet = document.getElementById('no-readings-note');
       if (nothingYet) nothingYet.style.display = data.has_readings === false ? '' : 'none';
@@ -2934,14 +2937,23 @@ const CP = (() => {
     if (!container || !badge || !list) return;
 
     try {
-      const alerts = await api('/api/collector-alerts');
+      const payload = await api('/api/collector-alerts');
+      const alerts = payload.alerts || [];
       // Clear any muted "alerts unavailable" styling left over from a prior
       // failed poll now that the fetch succeeded.
       badge.style.background = '';
       badge.title = '';
-      if (!alerts || alerts.length === 0) {
+      if (alerts.length === 0) {
         badge.style.display = 'none';
-        list.innerHTML = '<div class="notify-empty">All collectors healthy</div>';
+        // "Healthy" is a claim about something that was CHECKED. On a fresh
+        // install, or after a restart before the first collection, nothing has
+        // been — and saying so is the same absent-equals-true this codebase
+        // rejects everywhere else. The bell's failure path already gets this
+        // right ("Alerts unavailable"), which made the never-ran case the
+        // outlier (CashPilot-tb5).
+        list.innerHTML = payload.collected
+          ? '<div class="notify-empty">All collectors healthy</div>'
+          : '<div class="notify-empty">No collection has run yet — nothing has been checked.</div>';
         return;
       }
 

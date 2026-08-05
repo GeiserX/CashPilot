@@ -451,7 +451,9 @@ class TestADetectedPayoutActuallyReachesTheUser:
             patch.object(main, "_require_auth_api", lambda r: None),
         ):
             out = asyncio.run(main.api_collector_alerts(MagicMock()))
-        assert out[0]["kind"] == "collector", "an untagged alert must default to collector, not vanish"
+        # The endpoint returns {alerts, collected} so "no alerts" and "nothing
+        # has run" can be told apart at all (CashPilot-tb5).
+        assert out["alerts"][0]["kind"] == "collector", "an untagged alert must default to collector, not vanish"
 
 
 class TestTheCredentialCooldownCannotBeRaced:
