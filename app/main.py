@@ -526,6 +526,50 @@ async def _warm_collector_alerts() -> None:
             logger.warning("Could not tell whether a collection has run before: %s", exc)
 
 
+async def _track_fully_configured_services() -> int:
+    """Give every fully-credentialled service a deployment row, so it is collected.
+
+    Collection iterates DEPLOYMENT ROWS (``make_collectors``), so a service with
+    no row is never collected however complete its credentials are. Saving
+    credentials has created that row since the fix in #187 — but only at save
+    time, and nothing has ever repaired a database written before it.
+
+    That leaves the upgrade path in exactly the state the fix was meant to end:
+    credentials stored under an older version show the green "Configured" badge,
+    no collector is ever built for them, and no earnings arrive. Nothing prompts
+    the user to re-save, because as far as the UI is concerned everything is
+    already correct. So this runs once per start and is idempotent — a slug that
+    already has a row of any status is left exactly as it is, because that row
+    may carry a real container id and spec that must not be replaced with an
+    empty placeholder.
+
+    Returns the number of rows created, for the log line and the tests.
+    """
+    from app.collectors import fully_configured_slugs
+
+    try:
+        config = await database.get_config() or {}
+        if not isinstance(config, dict):
+            return 0
+        existing = {d.get("slug") for d in await database.get_deployments()}
+        tracked = 0
+        for slug in sorted(fully_configured_slugs(config)):
+            if slug in existing or not catalog.get_service(slug):
+                continue
+            await database.save_deployment(slug=slug, container_id="", status="external")
+            tracked += 1
+        if tracked:
+            logger.info(
+                "Started tracking %d service(s) whose credentials were stored before "
+                "saving them began tracking; their earnings will be collected from now on",
+                tracked,
+            )
+        return tracked
+    except Exception as exc:  # noqa: BLE001 - bookkeeping must never block startup
+        logger.warning("Could not backfill tracking for stored credentials: %s", exc)
+        return 0
+
+
 async def _run_collection() -> None:
     """Collect earnings from all deployed services that have collectors."""
     global _collector_alerts
@@ -764,6 +808,9 @@ async def lifespan(app: FastAPI):
     # silently clear the notification bell while the underlying collector is still
     # broken (previously these lived only in memory).
     await _warm_collector_alerts()
+    # Credentials saved before saving them began creating a tracking row are
+    # otherwise inert forever, while Settings shows them as "Configured".
+    await _track_fully_configured_services()
     # First-run setup token: while no users exist, require a one-time token
     # (printed below) for /register so a proxy-exposed instance cannot be seized
     # by the first public visitor. Persisted in config so it survives restarts;
@@ -3270,7 +3317,7 @@ async def api_set_config(request: Request, body: ConfigUpdate) -> dict[str, str]
     # Auto-create "external" deployment records for manual-only services
     # whose collector credentials were just saved.  Without a deployment
     # row, _run_collection() will never instantiate the collector.
-    from app.collectors import _COLLECTOR_ARGS
+    from app.collectors import fully_configured_slugs
 
     # Completeness is judged against the MERGED config, not this request.
     #
@@ -3282,14 +3329,13 @@ async def api_set_config(request: Request, body: ConfigUpdate) -> dict[str, str]
     #
     # Still scoped to the slugs this request touched, so saving one service's
     # credentials does not sweep the whole catalog.
+    #
+    # The completeness rule itself lives in collectors.fully_configured_slugs,
+    # shared with the startup backfill so the two can never disagree about which
+    # services are ready to collect.
     stored = await database.get_config() or {}
-    for slug, arg_keys in _COLLECTOR_ARGS.items():
+    for slug in fully_configured_slugs(stored):
         if not any(k.startswith(f"{slug}_") for k in sanitized):
-            continue
-        required_keys = [f"{slug}_{a.lstrip('?')}" for a in arg_keys if not a.startswith("?")]
-        if not required_keys:
-            continue
-        if not all(stored.get(k) for k in required_keys):
             continue
         svc = catalog.get_service(slug)
         if not svc:

@@ -232,6 +232,32 @@ def make_collectors(
     return collectors
 
 
+def fully_configured_slugs(config: dict[str, str]) -> set[str]:
+    """Slugs whose every REQUIRED credential key has a value in ``config``.
+
+    The one predicate behind "this service's credentials are complete". It is
+    what Settings renders as the green "Configured" badge, what decides whether
+    saving credentials starts tracking a service, and what the startup backfill
+    uses to catch credentials stored before tracking existed. Three copies of it
+    would eventually disagree, and the failure when they do is silent: a badge
+    that says Configured for a service nothing collects.
+
+    REQUIRED only. Optional args (``?``-prefixed in ``_COLLECTOR_ARGS``) are
+    exactly the ones a collector works without, so demanding them would refuse
+    to track a service that would collect perfectly well.
+
+    A collector with no required args at all is NOT included. There is no
+    credential to be complete, so "the user configured this" would be asserting
+    something the user never did.
+    """
+    configured: set[str] = set()
+    for slug in COLLECTOR_MAP:
+        required = [f"{slug}_{arg}" for arg in _COLLECTOR_ARGS.get(slug, []) if not arg.startswith("?")]
+        if required and all(config.get(key) for key in required):
+            configured.add(slug)
+    return configured
+
+
 def build_one(slug: str, config: dict[str, str]) -> tuple[Any | None, list[str]]:
     """Build a single, UNCACHED collector for an on-demand credential test.
 
