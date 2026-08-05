@@ -18,7 +18,7 @@ from fastapi import HTTPException, Request
 from fastapi.responses import RedirectResponse
 from fastapi.templating import Jinja2Templates
 
-from app import auth, setup_token
+from app import auth, setup_token, version
 
 __all__ = [
     "templates",
@@ -51,6 +51,11 @@ def _csp_nonce(request) -> str:
 
 
 templates.env.globals["csp_nonce"] = _csp_nonce
+# Registered as a GLOBAL so every template gets the running version without
+# each handler threading it through, and so a new template cannot quietly
+# reintroduce a hardcoded literal by copy-paste (CashPilot: the sidebar shipped
+# "v0.2.49" for ~150 releases).
+templates.env.globals["app_version"] = version.display
 
 
 def _login_redirect() -> RedirectResponse:
