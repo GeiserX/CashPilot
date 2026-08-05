@@ -129,7 +129,7 @@ nav:
   - Prometheus Metrics: guides/prometheus-metrics.md
   - Upgrade to v1.0.0: upgrade-v1.md
   - Service Guides:
-    - guides/README.md
+    - Overview: guides/README.md
     - Bandwidth Sharing:
       - Bitping: guides/bitping.md
       - Bytebenefit: guides/bytebenefit.md
@@ -145,6 +145,7 @@ nav:
       - PacketStream: guides/packetstream.md
       - Peer2Profit: guides/peer2profit.md
       - ProxyBase: guides/proxybase.md
+      - ProxyBase Markets: guides/proxybase-xyz.md
       - ProxyLite: guides/proxylite.md
       - ProxyRack: guides/proxyrack.md
       - Repocket: guides/repocket.md
@@ -155,7 +156,7 @@ nav:
       - WizardGain: guides/wizardgain.md
     - DePIN:
       - Anyone Protocol: guides/anyone-protocol.md
-      - BlockMesh: guides/blockmesh.md
+      - BlockMesh (Perceptron Network): guides/blockmesh.md
       - Dawn Internet: guides/dawn.md
       - Deeper Network: guides/deeper-network.md
       - GagaNode: guides/gaganode.md
@@ -174,8 +175,6 @@ nav:
       - Titan Network: guides/titan.md
       - Uprock: guides/uprock.md
       - Wipter: guides/wipter.md
-    - Storage:
-      - Storj: guides/storj.md
     - GPU Compute:
       - Flux: guides/flux.md
       - Golem Network: guides/golem.md
@@ -183,3 +182,5 @@ nav:
       - Nosana: guides/nosana.md
       - Salad: guides/salad.md
       - Vast.ai: guides/vast-ai.md
+    - Storage:
+      - Storj: guides/storj.md
