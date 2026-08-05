@@ -50,6 +50,11 @@ jobs:
       - name: Settings failure path
         run: node scripts/settings_failure_check.mjs
 
+      # Also browser-free. The claim modal has to give THREE different answers
+      # for what looks like one empty result; only running it proves which.
+      - name: Claim modal honesty
+        run: node scripts/claim_modal_check.mjs
+
       # Also behaviour pytest cannot reach, and for the same reason: these
       # renderers live in a <script> block inside a Jinja template, so a Python
       # assertion could only prove the source mentions a variable — never what
