@@ -155,7 +155,7 @@ Notifications fire **only the first time** a particular failure appears — a co
 | `CASHPILOT_API_KEY` | Yes | -- | Must match the UI's API key |
 | `CASHPILOT_WORKER_NAME` | No | *(hostname)* | Display name for this worker. Recommended on Docker workers: without it the name is the container hostname, so it changes on every recreate and the dashboard label churns -- see [Worker identity](#worker-identity) |
 | `CASHPILOT_WORKER_URL` | No | *(auto-detected)* | URL the UI uses to reach this worker. Set explicitly for remote/cross-host workers -- auto-detection can report an unreachable address |
-| `CASHPILOT_PORT` | No | `8081` | Mini-UI/API port the worker listens on |
+| `CASHPILOT_PORT` | No | `8081` | Port the worker **advertises** to the UI. It does *not* change the listen port, which is fixed by the image's `CMD` — see the [configuration reference](configuration.md) |
 | `CASHPILOT_ALLOWED_VOLUME_ROOTS` | No | *(none)* | Colon-separated host directories this worker may bind-mount despite sitting under a blocked system root -- see [Volume mounts](#volume-mounts) |
 | `CASHPILOT_PIDS_LIMIT` | No | `512` | Max processes a deployed service container may create. Raise only if a service legitimately needs more. An unparseable or non-positive value falls back to the default |
 | `CASHPILOT_WORKER_NETWORK` | No | *(detected)* | `residential` or `hosting`. Overrides the hardware-based guess -- see [Egress IP and per-IP limits](#egress-ip-and-per-ip-limits) |
