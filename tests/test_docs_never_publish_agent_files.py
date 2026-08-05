@@ -80,6 +80,39 @@ class TestNoAgentArtifactIsPublished:
         leaked = [s for s in suspects if s not in excluded]
         assert not leaked, f"agent-looking files in docs/ that would be published: {leaked}"
 
+
+class TestNoAgentArtifactIsCommitted:
+    """Excluding from the SITE is not enough — they must not be in the repo.
+
+    Both were tracked, so their content is in this public repository's history
+    from the commit that added them onwards. Untracking stops it growing; it does
+    not remove what is already there.
+    """
+
+    @pytest.mark.parametrize("name", AGENT_ARTIFACTS)
+    def test_it_is_gitignored(self, name):
+        import subprocess
+
+        if not (ROOT / ".git").exists():
+            pytest.skip("not a git checkout")
+        result = subprocess.run(
+            ["git", "check-ignore", "-q", f"docs/{name}"], cwd=ROOT, capture_output=True, check=False
+        )
+        assert result.returncode == 0, f"docs/{name} is not ignored, so it can be committed again"
+
+    @pytest.mark.parametrize("name", AGENT_ARTIFACTS)
+    def test_it_is_not_tracked(self, name):
+        import subprocess
+
+        if not (ROOT / ".git").exists():
+            pytest.skip("not a git checkout")
+        tracked = subprocess.run(
+            ["git", "ls-files", f"docs/{name}"], cwd=ROOT, capture_output=True, text=True, check=False
+        ).stdout.strip()
+        assert not tracked, f"docs/{name} is still tracked: {tracked}"
+
+
+class TestTheReasonIsRecorded:
     def test_the_reason_is_recorded_beside_the_rule(self):
         """Without it, a later tidy-up deletes the block as unexplained."""
         text = MKDOCS.read_text(encoding="utf-8")
