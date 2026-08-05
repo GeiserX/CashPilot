@@ -2607,8 +2607,34 @@ const CP = (() => {
       renderCollectors(collectorsMeta, config);
       loadCredentialHealth();
     } catch (err) {
-      // Settings may not be available yet
+      // Say what happened. /api/env-info and /api/collectors/meta each carry
+      // their own .catch, so the only call that can reject is /api/config —
+      // and its rejection aborts the whole Promise.all before either render
+      // runs. Both panels then keep the template's "Loading..." forever, and
+      // this catch used to be empty, so nothing ever corrected it: an expired
+      // session or a restarting server looked like a page that simply never
+      // finished loading (CashPilot-cn3).
+      //
+      // Every other loader here writes a reason into its own container; this
+      // one was the outlier.
+      settingsPanelsFailed(err);
     }
+  }
+
+  // Exported for the harness: the message is the whole point of the fix, so it
+  // has to be reachable without a browser.
+  function settingsLoadFailureMessage(err) {
+    const detail = (err && err.message) ? String(err.message) : '';
+    return `Could not load settings${detail ? `: ${detail}` : ''}. Your session may have expired — `
+      + `reload the page, and sign in again if you are asked to.`;
+  }
+
+  function settingsPanelsFailed(err) {
+    const message = settingsLoadFailureMessage(err);
+    ['env-vars-container', 'collectors-container'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.innerHTML = `<p style="color:var(--error);font-size:0.85rem;">${escapeHtml(message)}</p>`;
+    });
   }
 
   function renderEnvVars(envInfo, config) {

@@ -30,7 +30,13 @@
   </div>
   <div class="stat-card">
     <div class="stat-label">Active Services</div>
-    <div class="stat-value" id="active-services">0</div>
+    {# Em-dash, like every sibling card. app.js already renders the em-dash when
+       the count comes back null, and its catch deliberately PRESERVES whatever
+       is displayed so a transient fetch failure cannot look like earnings
+       dropping to zero. On a FIRST load that fails, what it preserved was this
+       literal 0 — so the one card fixed for this in JS was the one where a
+       template character undid the fix (CashPilot-pmi). #}
+    <div class="stat-value" id="active-services">&mdash;</div>
   </div>
 </div>
 
