@@ -147,6 +147,7 @@ class TestTheStartupBackfill:
         make_collectors reads `slug` off each deployment, so that is what has to
         be right — asserting the row merely exists proves nothing.
         """
+        from app import collectors as collectors_mod
         from app import main
         from app.collectors import make_collectors
 
@@ -161,6 +162,13 @@ class TestTheStartupBackfill:
                 "the backfilled row does not produce a collector, so nothing is collected"
             )
         finally:
+            # Evict BEFORE closing. make_collectors caches by slug and hands the
+            # cached instance back whenever the resolved kwargs match, so
+            # closing without evicting leaves a closed httpx client in the cache
+            # for the next caller with the same credentials to be given.
+            for slug in [d["slug"] for d in deployments]:
+                collectors_mod._cached_collectors.pop(slug, None)
+                collectors_mod._cached_kwargs.pop(slug, None)
             for collector in collectors:
                 await collector.close()
 
