@@ -28,6 +28,26 @@ def current() -> str:
     return (os.getenv("CASHPILOT_VERSION") or "").strip() or UNKNOWN
 
 
+def display() -> str:
+    """How the running version should be shown to a person.
+
+    A real release reads ``v1.11.34``; anything else reads ``dev``. The ``v`` is
+    added HERE rather than in a template so no caller has to remember it, and so
+    a dev build cannot end up rendered as ``vdev``.
+
+    Exists because the sidebar printed a hardcoded ``CashPilot v0.2.49`` for
+    roughly 150 releases while the correct value sat unread in CASHPILOT_VERSION.
+    Never fabricate a number: a build that does not know its version says so.
+    """
+    value = current()
+    # `series()` is the strict check: it requires MAJOR.MINOR of digits, so an
+    # arbitrary string gets shown as-is rather than dressed up. is_release()
+    # alone was too permissive -- it accepts anything not on its exclusion list,
+    # so CASHPILOT_VERSION=not-a-release rendered as "vnot-a-release", which is
+    # exactly the fabrication this function exists to prevent.
+    return f"v{value}" if series(value) else value
+
+
 def is_release(value: str | None = None) -> bool:
     """Whether a version string names an actual release rather than ``dev``."""
     return (value if value is not None else current()) not in ("", UNKNOWN, "latest", None)
