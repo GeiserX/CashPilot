@@ -326,10 +326,27 @@ CREATE TABLE IF NOT EXISTS earnings (
 -- values copied out of a browser and some expire in hours; without a timestamp
 -- the UI cannot say "this will stop working tonight" before it does, and a dead
 -- collector looks identical to a provider outage.
+-- updated_at is nullable with no default, deliberately, and this must MATCH
+-- what an upgraded volume gets. SQLite's ALTER TABLE ADD COLUMN cannot add a
+-- NOT NULL column without a default, and adding a default would back-fill --
+-- which is exactly the thing the migration refuses to do, because stamping
+-- every existing credential with the moment of the upgrade once made a
+-- Bytelixir cookie that had expired days earlier report as fresh.
+--
+-- So a fresh install had NOT NULL DEFAULT (datetime('now')) and an upgraded one
+-- had a plain nullable column, permanently. Nothing broke today because both
+-- writers set the value explicitly — but the next writer to rely on the default
+-- would store NULL on upgraded volumes only, and the credential-age report
+-- filters WHERE updated_at IS NOT NULL, so those keys would quietly vanish from
+-- it. A bug that only appears on volumes older than a given release is the
+-- hardest kind to reproduce from a report (CashPilot-f62).
+--
+-- NULL is also the honest value: it means "nobody recorded when this was set",
+-- which is what both consumers already assume.
 CREATE TABLE IF NOT EXISTS config (
     key        TEXT PRIMARY KEY,
     value      TEXT NOT NULL,
-    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    updated_at TEXT
 );
 
 -- spec_encrypted holds the FULL resolved container spec as it was actually
