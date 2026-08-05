@@ -385,6 +385,7 @@ CREATE TABLE IF NOT EXISTS workers (
     last_heartbeat  TEXT,
     api_key_enc     TEXT,
     key_confirmed   INTEGER NOT NULL DEFAULT 0,
+    key_issued_at   TEXT,
     registered_at   TEXT    NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -740,6 +741,20 @@ async def init_db() -> None:
             await db.execute("ALTER TABLE workers ADD COLUMN api_key_enc TEXT")
         if "key_confirmed" not in cols:
             await db.execute("ALTER TABLE workers ADD COLUMN key_confirmed INTEGER NOT NULL DEFAULT 0")
+        if "key_issued_at" not in cols:
+            # When the per-worker key was minted, so the window in which the
+            # SHARED key still works for that worker can be bounded.
+            await db.execute("ALTER TABLE workers ADD COLUMN key_issued_at TEXT")
+            # Backfilled to NOW, not to NULL and not to the distant past.
+            # Every already-enrolled-but-unconfirmed worker would otherwise be
+            # instantly past its window the moment this upgrade lands, and a
+            # patch release would take a working fleet offline with no warning.
+            # Absent is not expired: these get a full fresh window, and only a
+            # worker that still cannot confirm within it is cut off.
+            await db.execute(
+                "UPDATE workers SET key_issued_at = datetime('now') "
+                "WHERE api_key_enc IS NOT NULL AND api_key_enc != '' AND key_confirmed = 0"
+            )
 
         # Migrate earnings table: add fx_rate_usd so a non-USD balance's value at the
         # time it was recorded stays reconstructable (rates are only cached live).
@@ -1632,7 +1647,7 @@ async def set_worker_key(client_id: str, key: str) -> None:
     db = await _get_db()
     try:
         cursor = await db.execute(
-            "UPDATE workers SET api_key_enc = ?, key_confirmed = 0 WHERE client_id = ?",
+            "UPDATE workers SET api_key_enc = ?, key_confirmed = 0, key_issued_at = datetime('now') WHERE client_id = ?",
             (encrypt_value(key), client_id),
         )
         await db.commit()
@@ -1707,6 +1722,27 @@ async def get_worker_key_state(client_id: str) -> tuple[str | None, bool]:
             )
             return None, False
         return key, bool(row["key_confirmed"])
+    finally:
+        await db.close()
+
+
+async def get_worker_key_issued_at(client_id: str) -> str | None:
+    """When this worker's per-worker key was minted, or None if not recorded.
+
+    Separate from ``get_worker_key_state`` rather than widening its tuple: that
+    function is called on every heartbeat and its 2-tuple contract is relied on
+    in several places, while this is only needed on the one branch that decides
+    whether the shared key may still be honoured.
+
+    None means UNKNOWN — a row written before this column existed and missed by
+    the migration's backfill. Callers must not read it as "long ago"; unknown is
+    not expired.
+    """
+    db = await _get_db()
+    try:
+        cursor = await db.execute("SELECT key_issued_at FROM workers WHERE client_id = ?", (client_id,))
+        row = await cursor.fetchone()
+        return row["key_issued_at"] if row else None
     finally:
         await db.close()
 

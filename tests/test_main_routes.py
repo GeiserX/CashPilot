@@ -1470,6 +1470,8 @@ class TestApiFleet:
             set_key.assert_awaited_once()  # it was persisted (encrypted)
 
     def test_api_worker_heartbeat_reissues_until_confirmed(self, client):
+        from datetime import UTC, datetime
+
         # Enrolled but unconfirmed (worker missed the enrollment response): the
         # shared key is still accepted and the SAME key is re-delivered, so a
         # dropped response can't permanently lock the worker out.
@@ -1481,6 +1483,13 @@ class TestApiFleet:
                 return_value=("existing-key", False),
             ),
             patch("app.main.database.get_worker_key", new_callable=AsyncMock, return_value="existing-key"),
+            # Minted just now, so the reissue window is open. Without this the
+            # guard reads the real database (CashPilot-cvr).
+            patch(
+                "app.main.database.get_worker_key_issued_at",
+                new_callable=AsyncMock,
+                return_value=datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S"),
+            ),
             patch("app.main.database.upsert_worker", new_callable=AsyncMock, return_value=1),
         ):
             resp = client.post(
