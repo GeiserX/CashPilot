@@ -1576,7 +1576,30 @@ async def upsert_worker(
             INSERT INTO workers (client_id, name, url, containers, apps, system_info, status, last_heartbeat)
             VALUES (?, ?, ?, ?, ?, ?, 'online', datetime('now'))
             ON CONFLICT(client_id) DO UPDATE SET
-                name = excluded.name,
+                -- Never replace a name we already have with a Docker container ID.
+                --
+                -- Inside a container, socket.gethostname() returns the first 12
+                -- hex characters of the container ID, and Docker regenerates that
+                -- on every recreate -- which is what an image bump does. So a
+                -- worker with no CASHPILOT_WORKER_NAME set reported a brand-new
+                -- meaningless name after every upgrade, and the fleet page's
+                -- labels churned while the machines had not changed at all.
+                -- Observed live: three workers renamed themselves during a
+                -- routine 1.10.1 -> 1.11.34 roll.
+                --
+                -- The worker's IDENTITY is already protected from this
+                -- (worker_api._name_is_ephemeral guards client_id); this is the
+                -- display name, which was not.
+                --
+                -- GLOB matches the whole string, so 12 character classes means
+                -- exactly 12 hex characters -- the container-ID shape and
+                -- nothing else. A real hostname, or anything the user set, is
+                -- kept and wins.
+                name = CASE
+                    WHEN excluded.name GLOB '[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]' AND COALESCE(workers.name, '') != ''
+                        THEN workers.name
+                    ELSE excluded.name
+                END,
                 url = excluded.url,
                 containers = excluded.containers,
                 apps = excluded.apps,
