@@ -55,7 +55,19 @@ markdown_extensions:
   - pymdownx.highlight:
       anchor_linenums: true
   - pymdownx.inlinehilite
-  - pymdownx.snippets
+  # base_path reaches the repo ROOT so a docs page can include a real shipped
+  # file verbatim -- the quickstart includes docker-compose.yml, so it cannot
+  # drift from what actually ships. A hand-copied one did: it published the
+  # worker's Docker-socket API on every interface and pinned :latest, both of
+  # which security-defaults.md forbids.
+  #
+  # check_paths makes a missing include FAIL the build instead of rendering an
+  # empty block, which would look like a quickstart with no compose file.
+  - pymdownx.snippets:
+      base_path:
+        - .
+        - docs
+      check_paths: true
   - pymdownx.mark
   - attr_list
   - md_in_html
