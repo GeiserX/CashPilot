@@ -399,15 +399,25 @@ class TestTheAlarmActuallyFires(TestAuthFailureAlarmCounter):
         with caplog.at_level(logging.ERROR, logger="app.worker_api"):
             caplog.clear()
             self._run(statuses)
-        return [r for r in caplog.records if "does not recognise client_id" in r.getMessage()]
+        # Matched on "Rejected N times", which both lockout messages share.
+        # It used to match "does not recognise client_id" — the wording of an
+        # alarm that told the operator to edit /data/.worker_id, which is the
+        # fix for neither lockout that actually happens (CashPilot-65s).
+        return [r for r in caplog.records if "Rejected" in r.getMessage()]
 
     def test_three_straight_401s_tell_the_operator(self, caplog):
         assert len(self._alarms([401, 401, 401], caplog)) == 1
 
-    def test_it_names_the_id_and_the_file_needed_to_fix_it(self, caplog):
+    def test_it_names_the_file_that_has_to_go(self, caplog):
+        """The key, not the id.
+
+        This worker holds a key that is being refused, so the recovery is to
+        discard it — either by waiting for the automatic re-enrolment or by
+        deleting the file. The id is fine in both real lockouts.
+        """
         message = self._alarms([401, 401, 401], caplog)[0].getMessage()
-        assert w.CLIENT_ID in message, "an alarm without the id cannot be acted on"
-        assert str(w._WORKER_ID_FILE) in message, "the operator needs to know where to write it"
+        assert str(w._WORKER_KEY_FILE) in message, "the operator is not told which file to remove"
+        assert "re-enrol" in message, "nothing says the worker will recover on its own"
 
     def test_it_stays_quiet_below_the_threshold(self, caplog):
         """Two 401s across a restart are ordinary, not an identity mismatch."""
