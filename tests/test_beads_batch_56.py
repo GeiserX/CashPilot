@@ -129,3 +129,46 @@ class TestTheHeartbeatCarriesThem:
         assert "asyncio.to_thread(_disk_usage)" in block
         assert "asyncio.to_thread(_gpu_info)" in block
         ast.parse(source)
+
+
+class TestTheShippedComposeDoesNotBreakGpuLessHosts:
+    """Docker refuses to start when a listed device is missing.
+
+    Verified on a real host: ``docker run --device /dev/does-not-exist`` fails,
+    while ``--device /dev/dri`` on a machine that has one works. So a hard
+    ``devices:`` entry in the shipped compose would break every user without a
+    GPU — it is documented and commented out instead.
+    """
+
+    import pathlib
+
+    ROOT = pathlib.Path(__file__).resolve().parents[1]
+
+    @pytest.mark.parametrize("name", ["docker-compose.yml", "docker-compose.fleet.yml"])
+    def test_the_device_is_not_hard_required(self, name):
+        import yaml
+
+        doc = yaml.safe_load((self.ROOT / name).read_text(encoding="utf-8"))
+        worker = doc["services"]["cashpilot-worker"]
+        assert "devices" not in worker, (
+            f"{name} hard-requires a device; Docker refuses to start when it is missing, "
+            "so this breaks every host without a GPU"
+        )
+
+    @pytest.mark.parametrize("name", ["docker-compose.yml", "docker-compose.fleet.yml"])
+    def test_but_it_is_documented_in_place(self, name):
+        """Commented out is only helpful if it says why and when to enable it."""
+        text = (self.ROOT / name).read_text(encoding="utf-8")
+        assert "/dev/dri:/dev/dri" in text, f"{name} gives no hint that GPU passthrough is possible"
+        assert "does not exist" in text or "no GPU" in text
+
+    def test_the_docs_explain_the_nvidia_path_too(self):
+        """Whitespace-normalised: markdown hard-wraps, and "NVIDIA Container
+        Toolkit" was split across two lines, so a contiguous substring check
+        missed it. Third time this trap has bitten in this session."""
+        import re
+
+        raw = (self.ROOT / "docs" / "configuration.md").read_text(encoding="utf-8")
+        text = re.sub(r"\s+", " ", raw)
+        assert "NVIDIA Container Toolkit" in text
+        assert "GPU passthrough" in text

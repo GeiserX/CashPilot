@@ -74,6 +74,38 @@ defensible on its own; together they are impossible to guess.
     To actually move the port, override the container's `command:` **and** set
     `CASHPILOT_PORT` to match.
 
+## GPU passthrough
+
+CashPilot reports a worker's GPU as one of three answers — **yes**, **no**, or
+**unknown** — and inside a container the honest answer is almost always
+*unknown*: the absence of a GPU there says nothing about the host.
+
+That matters because four services only earn with a real GPU (Salad, Nosana,
+io.net, Vast.ai), and a GPU service deployed **without** the device starts,
+reports healthy, and earns nothing. It is the same shape as the Mysterium
+`/dev/net/tun` failure.
+
+To let the worker see an Intel or AMD GPU, uncomment the block in the compose
+file:
+
+```yaml
+devices:
+  - /dev/dri:/dev/dri
+```
+
+!!! warning "Only on a host that actually has one"
+
+    Docker **refuses to start a container** when a listed device does not exist,
+    so this is shipped commented out. Uncommenting it on a GPU-less host breaks
+    the worker outright.
+
+For **NVIDIA**, `/dev/dri` is not the mechanism — install the NVIDIA Container
+Toolkit and the worker will find `nvidia-smi`, which reports the real model name
+rather than just a device count.
+
+Passing a device into the worker only lets the **worker** see it. A deployed GPU
+**service** needs the device too — declare it in that service's catalog entry.
+
 ## Compose-level
 
 These are read by the compose files, not by CashPilot itself.

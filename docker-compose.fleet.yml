@@ -10,7 +10,7 @@
 # === Deploy on main server (e.g., server-a) ===
 services:
   cashpilot-ui:
-    image: drumsergio/cashpilot:1.12
+    image: drumsergio/cashpilot:1.13
     pull_policy: always
     container_name: cashpilot-ui
     # Loopback by default (the UI commands the Docker-socket worker). Set
@@ -38,7 +38,7 @@ services:
       - /tmp:size=64M
 
   cashpilot-worker:
-    image: drumsergio/cashpilot-worker:1.12
+    image: drumsergio/cashpilot-worker:1.13
     pull_policy: always
     container_name: cashpilot-worker
     # The worker exposes a Docker-socket-backed API (deploy/stop/remove any
@@ -50,6 +50,21 @@ services:
     # CASHPILOT_API_KEY secret.
     ports:
       - "${CASHPILOT_WORKER_BIND_ADDR:-127.0.0.1}:8081:8081"
+      # GPU passthrough. COMMENTED OUT ON PURPOSE: Docker refuses to start a
+      # container when a listed device does not exist, so uncommenting this on a
+      # host with no GPU breaks the worker outright (verified: `docker run
+      # --device /dev/does-not-exist` fails).
+      #
+      # Uncomment on a Linux host that HAS a GPU. Without it the worker cannot
+      # see the hardware, so CashPilot reports the GPU as *unknown* and cannot
+      # tell you whether Salad, Nosana, io.net or Vast.ai would earn here. Worse,
+      # a GPU service deployed without the device starts, looks healthy, and
+      # earns nothing -- the same shape as the Mysterium /dev/net/tun failure.
+      #
+      # NVIDIA cards use the NVIDIA Container Toolkit instead of /dev/dri; see
+      # the GPU section of the docs.
+      # devices:
+      #   - /dev/dri:/dev/dri
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - cashpilot_worker_data:/data
@@ -72,7 +87,7 @@ services:
 #
 #  services:
 #    cashpilot-worker:
-#      image: drumsergio/cashpilot-worker:1.12
+#      image: drumsergio/cashpilot-worker:1.13
 #      pull_policy: always
 #      container_name: cashpilot-worker
 #      # Docker-socket-backed API = full host control. Bind a PRIVATE/VPN interface
