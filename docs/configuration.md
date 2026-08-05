@@ -99,9 +99,43 @@ devices:
     so this is shipped commented out. Uncommenting it on a GPU-less host breaks
     the worker outright.
 
-For **NVIDIA**, `/dev/dri` is not the mechanism — install the NVIDIA Container
-Toolkit and the worker will find `nvidia-smi`, which reports the real model name
-rather than just a device count.
+### NVIDIA is a different mechanism
+
+`/dev/dri` does nothing for an NVIDIA card, and installing the
+[NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html)
+is only the **prerequisite** — the toolkit on its own does *not* hand the GPU to
+a Compose service. You have to ask for it as well, with **either** of these:
+
+=== "Shorthand"
+
+    ```yaml
+    gpus: all
+    ```
+
+=== "Explicit reservation"
+
+    ```yaml
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    ```
+
+Both are Compose-spec attributes and both were validated against Compose
+v2.40.3. Pick one; do not set both. Use the explicit reservation when you need
+to pin particular cards, which it can do via `device_ids` and `capabilities`.
+
+!!! warning "These fail on a GPU-less host too"
+
+    Verified: on a machine with no NVIDIA card, *both* forms exit 1, the
+    reservation form reporting `could not select device driver`. So like
+    `/dev/dri`, they ship commented out rather than enabled by default.
+
+Once the GPU is actually allocated, the worker finds `nvidia-smi` and reports
+the real model name rather than just a device count.
 
 Passing a device into the worker only lets the **worker** see it. A deployed GPU
 **service** needs the device too — declare it in that service's catalog entry.
