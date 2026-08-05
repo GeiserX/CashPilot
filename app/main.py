@@ -238,7 +238,15 @@ async def _get_all_worker_containers(workers: list[dict[str, Any]] | None = None
                         {
                             "slug": slug,
                             "name": a.get("slug", slug),
-                            "status": "running" if a.get("running") else "stopped",
+                            # Three-valued, matching what the Android client
+                            # now sends. `running` is None when the phone could
+                            # not determine it -- every detection signal degrades
+                            # to false when its permissions are denied -- and
+                            # `"running" if a.get("running") else "stopped"`
+                            # turned that into a confident "stopped", so the
+                            # fleet page stated the user's earning apps had died
+                            # when the device simply could not see them.
+                            "status": _android_app_status(a.get("running")),
                             "image": "",
                             "cpu_percent": 0,
                             "memory_mb": 0,
@@ -1123,7 +1131,27 @@ async def api_services_deployed(request: Request) -> list[dict[str, Any]]:
         logger.warning("Could not load config for collector-setup check: %s", exc)
 
     # Aggregate by slug: one row per service
-    _STATUS_PRIORITY = {"running": 0, "restarting": 1, "exited": 2, "created": 3, "dead": 4}
+    # "unknown" ranks LAST on purpose: best_status picks the lowest number, so a
+    # service that is running on one worker and unknown on another reports
+    # running -- a known fact beats a blind spot. It only wins when nothing else
+    # is known, which is the honest answer at that point.
+    # "stopped" is what _android_app_status emits; Docker's own word is "exited".
+    # It MUST be listed: an unlisted status falls through to .get(cur, 9), and
+    # with unknown ranked 5 a blind spot would have beaten a definite stopped --
+    # the exact inverse of the rule below. (CodeRabbit, PR #252.)
+    #
+    # "unknown" ranks LAST on purpose: best_status picks the lowest number, so a
+    # service running on one worker and unknown on another reports running -- a
+    # known fact beats a blind spot. It only wins when nothing else is known.
+    _STATUS_PRIORITY = {
+        "running": 0,
+        "restarting": 1,
+        "exited": 2,
+        "stopped": 2,
+        "created": 3,
+        "dead": 4,
+        "unknown": 5,
+    }
     slug_agg: dict[str, dict[str, Any]] = {}
     for s in statuses:
         slug = s["slug"]
@@ -3596,6 +3624,19 @@ class WorkerHeartbeat(BaseModel):
     containers: list[dict[str, Any]] = []
     apps: list[dict[str, Any]] = []
     system_info: dict[str, Any] = {}
+
+
+def _android_app_status(running: object) -> str:
+    """How an Android app's three-valued ``running`` reads as a container status.
+
+    ``None`` is UNKNOWN and must not become ``"stopped"``. The phone reports it
+    when it cannot see -- notification-listener and usage access are what make
+    detection possible at all, and without them every signal reads false. A
+    worker on an older client that never sends null is unaffected.
+    """
+    if running is None:
+        return "unknown"
+    return "running" if running else "stopped"
 
 
 async def _earnings_for_worker(body: WorkerHeartbeat, days: int = 30) -> dict[str, Any] | None:
