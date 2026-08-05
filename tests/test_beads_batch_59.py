@@ -78,9 +78,15 @@ class TestAggregationPrefersAKnownFact:
     """``best_status`` picks the lowest priority number across instances."""
 
     def _priority(self) -> dict:
-        text = MAIN.read_text(encoding="utf-8")
-        line = next(ln for ln in text.splitlines() if "_STATUS_PRIORITY = {" in ln)
-        return ast.literal_eval(line.split("=", 1)[1].strip())
+        """Read the table out of the source, however it is formatted."""
+        tree = ast.parse(MAIN.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            targets = getattr(node, "targets", [])
+            if isinstance(node, ast.Assign) and any(
+                isinstance(x, ast.Name) and x.id == "_STATUS_PRIORITY" for x in targets
+            ):
+                return ast.literal_eval(node.value)
+        raise AssertionError("_STATUS_PRIORITY not found")
 
     def test_unknown_is_ranked_explicitly(self):
         """Relying on the `.get(cur, 9)` fallback leaves it undeclared."""
@@ -93,6 +99,28 @@ class TestAggregationPrefersAKnownFact:
         for status, rank in priority.items():
             if status != "unknown":
                 assert rank < unknown, f"{status!r} ranks worse than unknown, so a blind spot would win"
+
+    def test_every_status_this_module_emits_is_ranked(self):
+        """The flaw that let a real bug through.
+
+        The check above iterates the table's OWN keys, so it can only compare
+        statuses that are already in it — and ``"stopped"`` was not. Unlisted, it
+        fell through to ``.get(cur, 9)`` and LOST to ``"unknown"`` at 5, which is
+        the exact inverse of the rule. A table validated against itself proves
+        nothing; this validates it against what the code actually produces.
+        (CodeRabbit, PR #252.)
+        """
+        from app.main import _android_app_status
+
+        priority = self._priority()
+        emitted = {_android_app_status(v) for v in (None, True, False)}
+        missing = emitted - set(priority)
+        assert not missing, f"emitted but unranked, so it falls back to 9 and loses to unknown: {missing}"
+
+    def test_a_definite_stopped_beats_a_blind_spot(self):
+        """The specific inversion, stated as its own assertion."""
+        priority = self._priority()
+        assert priority["stopped"] < priority["unknown"]
 
     def test_running_is_still_the_best_answer(self):
         priority = self._priority()

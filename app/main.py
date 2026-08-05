@@ -1135,7 +1135,23 @@ async def api_services_deployed(request: Request) -> list[dict[str, Any]]:
     # service that is running on one worker and unknown on another reports
     # running -- a known fact beats a blind spot. It only wins when nothing else
     # is known, which is the honest answer at that point.
-    _STATUS_PRIORITY = {"running": 0, "restarting": 1, "exited": 2, "created": 3, "dead": 4, "unknown": 5}
+    # "stopped" is what _android_app_status emits; Docker's own word is "exited".
+    # It MUST be listed: an unlisted status falls through to .get(cur, 9), and
+    # with unknown ranked 5 a blind spot would have beaten a definite stopped --
+    # the exact inverse of the rule below. (CodeRabbit, PR #252.)
+    #
+    # "unknown" ranks LAST on purpose: best_status picks the lowest number, so a
+    # service running on one worker and unknown on another reports running -- a
+    # known fact beats a blind spot. It only wins when nothing else is known.
+    _STATUS_PRIORITY = {
+        "running": 0,
+        "restarting": 1,
+        "exited": 2,
+        "stopped": 2,
+        "created": 3,
+        "dead": 4,
+        "unknown": 5,
+    }
     slug_agg: dict[str, dict[str, Any]] = {}
     for s in statuses:
         slug = s["slug"]
