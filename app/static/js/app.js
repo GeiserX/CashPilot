@@ -671,6 +671,11 @@ const CP = (() => {
       map[String(w.id)] = {
         name: w.name || 'worker',
         online: w.status === 'online',
+        // The Android client does not collect either of these. Telling its
+        // owner their worker "may predate the feature" would send them to
+        // upgrade something that was never going to report it -- verified
+        // against the live fleet, where the phone reports neither.
+        android: info.device_type === 'android',
         disk: info.disk || null,
         gpu: info.gpu || null,
       };
@@ -728,6 +733,9 @@ const CP = (() => {
     if (!hosts) return UNKNOWN_CELL('CashPilot does not know which host runs this service');
     const known = hosts.filter(h => h.disk && typeof h.disk.free_bytes === 'number' && h.disk.total_bytes > 0);
     if (!known.length) {
+      if (hosts.every(h => h.android)) {
+        return UNKNOWN_CELL('The Android client does not report host disk usage');
+      }
       const offline = hosts.every(h => !h.online);
       return UNKNOWN_CELL(offline
         ? 'This host is not reporting right now, so its free space is unknown'
@@ -773,6 +781,9 @@ const CP = (() => {
     // No host says yes. Only call it "None" when every host actually SAID no.
     if (hosts.every(h => h.gpu && h.gpu.available === false)) {
       return `<span style="color:var(--text-muted);" title="No GPU is visible on the host${hosts.length > 1 ? 's' : ''} running this service">None</span>`;
+    }
+    if (hosts.every(h => h.android)) {
+      return UNKNOWN_CELL('The Android client does not report GPU information');
     }
     const reason = hosts.map(h => h.gpu && h.gpu.reason).find(Boolean);
     return UNKNOWN_CELL(reason

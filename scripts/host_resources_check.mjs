@@ -178,6 +178,50 @@ for (const asc of [true, false]) {
   check(`unknown sorts LAST when ascending=${asc}`, lastIsUnknown, JSON.stringify(sorted.map(api.sortableFreeBytes).map(String)));
 }
 
+// ------------------------------------------------- the real fleet, verbatim
+// Copied from the live database rather than invented, so this asserts what
+// production actually sends. Every Docker worker reports disk; NONE reports a
+// GPU, because the workers are containerised and the devices were never passed
+// through -- while the hosts have three render nodes each.
+const REAL = [
+  {id: 1, name: 'watchtower', status: 'online', system_info: {
+    disk: {free_bytes: 1073 * GB, total_bytes: 1798 * GB},
+    gpu: {available: null, devices: [], reason: 'no GPU is visible from inside this container; the host may still have one that was not passed through'}}},
+  {id: 2, name: 'geiserback', status: 'online', system_info: {
+    disk: {free_bytes: 545 * GB, total_bytes: 899 * GB},
+    gpu: {available: null, devices: [], reason: 'no GPU is visible from inside this container; the host may still have one that was not passed through'}}},
+  {id: 3, name: 'geiserct', status: 'online', system_info: {
+    disk: {free_bytes: 23 * GB, total_bytes: 98 * GB},
+    gpu: {available: null, devices: [], reason: 'no GPU is visible from inside this container; the host may still have one that was not passed through'}}},
+  // The phone reports neither, and never will -- it is not a Docker host.
+  {id: 4, name: 'OPPO CPH1951', status: 'online', system_info: {device_type: 'android'}},
+];
+api.setHosts(api.buildHostResourceMap(REAL));
+
+const ct = api.diskCell(svc(3));
+check('the real tightest host is surfaced', /23 GB/.test(ct), ct);
+check('and flagged, since 76% is under the 80% threshold it is NOT', !/var\(--danger\)/.test(ct), ct);
+const fleetWide = api.diskCell(svc(1, 2, 3));
+check('a service across the whole real fleet reports the tightest', /23 GB/.test(fleetWide), fleetWide);
+
+// Not one of them reports a GPU. All three must read UNKNOWN, never "None" --
+// the hosts have three render nodes each.
+for (const id of [1, 2, 3]) {
+  const cell = api.gpuCell(svc(id));
+  check(`real worker ${id} reads GPU as unknown, not None`, !/None/.test(cell) && /&mdash;/.test(cell), cell);
+}
+
+// The Android client collects neither. Telling its owner to upgrade would send
+// them after something that was never going to report.
+const phoneDisk = api.diskCell(svc(4));
+const phoneGpu = api.gpuCell(svc(4));
+check('the phone is not told it predates the feature', !/predate/.test(phoneDisk), phoneDisk);
+check('it is told the Android client does not report disk', /Android client does not report host disk/.test(phoneDisk), phoneDisk);
+check('and the same for GPU', /Android client does not report GPU/.test(phoneGpu), phoneGpu);
+check('the phone is never reported as having no GPU', !/None/.test(phoneGpu), phoneGpu);
+
+api.setHosts(api.buildHostResourceMap(FLEET));
+
 // ---------------------------------------------------------------- formatting
 check('bytes format readably', api.fmtBytes(24 * GB) === '24 GB', api.fmtBytes(24 * GB));
 check('a null size is null, not "0 B"', api.fmtBytes(null) === null, String(api.fmtBytes(null)));
