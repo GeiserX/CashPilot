@@ -281,7 +281,22 @@ class TestGetStatusLight:
         assert results[0]["memory_mb"] == 0.0
         container.stats.assert_not_called()
 
-    def test_image_matched_container_skipped_when_slug_already_seen(self):
+    def test_a_second_container_of_the_same_service_is_still_reported(self):
+        """It is a DIFFERENT container, and get_status reports it (CashPilot-dw1).
+
+        This used to assert the opposite. get_status_light deduped image-matched
+        externals by slug while get_status did not, and get_status_cached serves
+        whichever of the two is current -- so a host running a managed honeygain
+        alongside a hand-started one reported two containers or one depending
+        purely on how warm the cache was.
+
+        Reporting both is the correct side of that disagreement. The IDs differ,
+        so these are genuinely separate containers; `seen_ids` already prevents
+        counting one twice. Collapsing them hid a running container from the
+        person responsible for it -- and a second instance of the same service on
+        one host is exactly the situation a user needs to see, since most
+        providers pay per IP.
+        """
         labeled = _mock_container(name="cashpilot-honeygain", status="running", slug="honeygain")
         dup = MagicMock()
         dup.id = "dup-id"
@@ -294,7 +309,22 @@ class TestGetStatusLight:
             patch.object(orchestrator, "_build_image_slug_map", return_value=image_map),
         ):
             results = orchestrator.get_status_light()
-        # The duplicate slug from the image-matched scan must not be added again.
+        assert len(results) == 2
+        assert {r["slug"] for r in results} == {"honeygain"}
+        # "worker" is what the labeled scan emits — read from the code, not assumed.
+        assert {r["deployed_by"] for r in results} == {"worker", "external"}
+
+    def test_the_same_container_is_never_reported_twice(self):
+        """ID-based dedupe stays: the two scans can surface one container."""
+        labeled = _mock_container(name="cashpilot-honeygain", status="running", slug="honeygain")
+        labeled.image.tags = ["honeygain/desktop:latest"]
+        client = MagicMock()
+        client.containers.list.side_effect = [[labeled], [labeled]]
+        with (
+            patch.object(orchestrator, "_get_client", return_value=client),
+            patch.object(orchestrator, "_build_image_slug_map", return_value={"honeygain/desktop:latest": "honeygain"}),
+        ):
+            results = orchestrator.get_status_light()
         assert len(results) == 1
 
     def test_all_containers_listing_failure_handled(self):
