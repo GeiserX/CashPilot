@@ -54,6 +54,23 @@ async def page_settings(request: Request):
     return deps.templates.TemplateResponse(request, "settings.html", {"user": user})
 
 
+@router.get("/payouts", response_class=HTMLResponse)
+async def page_payouts(request: Request):
+    """Where every service pays out (CashPilot-luj, tier 1).
+
+    OWNER-ONLY, matching ``/api/payout-registry`` exactly. The page is useless
+    without that endpoint, so a laxer gate here would only produce a screen that
+    renders its own 403 — and it would advertise to a viewer that the owner's
+    wallet map exists.
+    """
+    user = auth_module.get_current_user(request)
+    if not user:
+        return deps._login_redirect()
+    if not auth_module.require_role(user, "owner"):
+        raise HTTPException(status_code=403, detail="Owner access required")
+    return deps.templates.TemplateResponse(request, "payouts.html", {"user": user})
+
+
 @router.get("/fleet", response_class=HTMLResponse)
 async def page_fleet(request: Request):
     user = auth_module.get_current_user(request)
