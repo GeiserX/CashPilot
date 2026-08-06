@@ -91,8 +91,44 @@ _cache: dict[str, tuple[float, dict[str, Any]]] = {}
 _backoff_until: dict[str, float] = {}
 
 
+#: A ceiling so a long-lived process cannot grow the cache without bound even if
+#: every entry is somehow live. Far above any real fleet's address count.
+MAX_CACHE_ENTRIES = 512
+
+
 def _now() -> float:
     return time.monotonic()
+
+
+def _cache_get(key: str) -> dict[str, Any] | None:
+    """A COPY of the cached result, or None.
+
+    Returning the stored dict itself would let any caller that mutates what it
+    got corrupt every later read — and this module's entire contract is that
+    ``amount`` is None unless ``state`` is ``known``, so a mutated cache entry
+    is exactly the lie the module exists to prevent.
+    """
+    hit = _cache.get(key)
+    if hit and hit[0] > _now():
+        return dict(hit[1])
+    return None
+
+
+def _cache_put(key: str, value: dict[str, Any]) -> None:
+    now = _now()
+    # Expired entries are only ever noticed on read, so without this sweep they
+    # accumulate for the life of the process: one entry per address ever asked
+    # about, never released.
+    for k in [k for k, (expires, _) in _cache.items() if expires <= now]:
+        del _cache[k]
+    # Evict DOWN TO the ceiling, not by one. Dropping a single entry leaves an
+    # over-full cache over-full forever, which is how a "capped" cache quietly
+    # is not one.
+    if len(_cache) >= MAX_CACHE_ENTRIES:
+        by_expiry = sorted(_cache, key=lambda k: _cache[k][0])
+        for k in by_expiry[: len(_cache) - MAX_CACHE_ENTRIES + 1]:
+            del _cache[k]
+    _cache[key] = (now + CACHE_TTL, dict(value))
 
 
 def address_looks_valid(chain: str, address: str) -> bool:
@@ -170,9 +206,9 @@ async def balance(chain: str, address: str, *, client: httpx.AsyncClient | None 
 
     address = address.strip()
     key = f"{slug}:{address}"
-    cached = _cache.get(key)
-    if cached and cached[0] > _now():
-        return cached[1]
+    cached = _cache_get(key)
+    if cached is not None:
+        return cached
 
     if _backoff_until.get(spec.rpc, 0) > _now():
         # Deliberately NOT cached: the moment backoff expires we should try again.
@@ -191,7 +227,7 @@ async def balance(chain: str, address: str, *, client: httpx.AsyncClient | None 
             await client.aclose()
 
     out = _result(KNOWN, slug, amount=amount)
-    _cache[key] = (_now() + CACHE_TTL, out)
+    _cache_put(key, out)
     return out
 
 

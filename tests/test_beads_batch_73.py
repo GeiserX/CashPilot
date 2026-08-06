@@ -235,3 +235,64 @@ class TestTheContract:
             assert "key=" not in spec.rpc.lower()
             assert "apikey" not in spec.rpc.lower()
             assert spec.rpc.startswith("https://")
+
+
+class TestTheCacheCannotBeCorruptedOrGrowForever:
+    """Both of these were REAL defects in the first draft of this module, found
+    by self-review rather than by any test, and fixed before it shipped."""
+
+    @pytest.mark.anyio
+    async def test_a_caller_mutating_its_result_does_not_poison_the_cache(self):
+        """The cache used to hand out the stored dict itself. A caller that
+        modified what it got corrupted every later read -- and since this
+        module's whole contract is "amount is None unless state is known", a
+        mutated entry is exactly the lie it exists to prevent.
+        """
+        async with _client(_ok(hex(10**18))) as client:
+            first = await onchain.balance("ethereum", EVM_ADDR, client=client)
+            first["amount"] = "TAMPERED"
+            first["state"] = "nonsense"
+            second = await onchain.balance("ethereum", EVM_ADDR, client=client)
+
+        assert second["state"] == onchain.KNOWN
+        assert second["amount"] == Decimal(1)
+        assert second is not first, "the cache handed back the same object twice"
+
+    @pytest.mark.anyio
+    async def test_control_the_cache_is_actually_being_used(self):
+        """Negative control for the test above. If caching were simply broken,
+        it would pass for the wrong reason -- every read would be fresh."""
+        calls = []
+
+        def counting(request):
+            calls.append(1)
+            return httpx.Response(200, json={"result": hex(10**18)})
+
+        async with _client(counting) as client:
+            await onchain.balance("ethereum", EVM_ADDR, client=client)
+            await onchain.balance("ethereum", EVM_ADDR, client=client)
+        assert len(calls) == 1, "not a cache hit, so the poisoning test proves nothing"
+
+    @pytest.mark.anyio
+    async def test_expired_entries_do_not_accumulate_forever(self):
+        """Expiry was only ever noticed on read, so entries piled up for the life
+        of the process -- one per address ever asked about, never released."""
+        for i in range(600):
+            onchain._cache[f"ethereum:0x{i:040x}"] = (0.0, {})  # all long expired
+
+        async with _client(_ok(hex(1))) as client:
+            await onchain.balance("ethereum", "0x" + "cd" * 20, client=client)
+
+        assert len(onchain._cache) == 1, f"expired entries survived: {len(onchain._cache)}"
+
+    @pytest.mark.anyio
+    async def test_live_entries_are_capped_rather_than_grown_without_bound(self):
+        """Even if every entry is live, there is a ceiling."""
+        future = onchain._now() + 9999
+        for i in range(onchain.MAX_CACHE_ENTRIES + 50):
+            onchain._cache[f"ethereum:0x{i:040x}"] = (future, {"state": "known"})
+
+        async with _client(_ok(hex(1))) as client:
+            await onchain.balance("ethereum", "0x" + "ef" * 20, client=client)
+
+        assert len(onchain._cache) <= onchain.MAX_CACHE_ENTRIES
