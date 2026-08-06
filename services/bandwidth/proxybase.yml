@@ -69,5 +69,10 @@ collector:
   notes: "No known public API for earnings."
 
 payout:
-  model: minted
-  notes: "The client mints its own wallet on first run. See tier 3."
+  model: internal
+  notes: >-
+    Earnings accrue to the ProxyBase ACCOUNT the Access Token belongs to, and
+    are withdrawn from the dashboard on request. The peer client holds no
+    wallet and the container keeps no state -- docker.volumes is empty.
+    Not to be confused with proxybase-xyz (ProxyBase Markets, same org), which
+    genuinely does mint a local wallet and declares it a critical volume.
