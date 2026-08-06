@@ -157,30 +157,43 @@ class TestTheDocsBuildRunsBeforeMergeNotAfter:
 
     def test_the_pr_build_is_strict(self):
         """Without --strict, a nav entry pointing at a missing file is a
-        WARNING and the build still passes."""
-        runs = [
-            step.get("run", "")
-            for job in self._doc()["jobs"].values()
-            for step in job["steps"]
-            if isinstance(step, dict)
-        ]
+        WARNING and the build still passes.
+
+        Scoped to the BUILD job's steps, not to every job's. Searching the whole
+        workflow would keep passing if the strict build were moved into `deploy`
+        — which runs only on main, and is precisely the regression that puts the
+        gate back after the merge instead of before it. (CodeRabbit, PR #257.)
+        """
+        runs = [step.get("run", "") for step in self._doc()["jobs"]["build"]["steps"] if isinstance(step, dict)]
         assert any("mkdocs build --strict" in run for run in runs), runs
 
     def test_the_deploy_waits_for_the_build(self):
         """Otherwise the check is decorative: main could deploy a site the
         build job was still failing on."""
         deploy = self._doc()["jobs"]["deploy"]
-        assert deploy.get("needs") == "build" or "build" in (deploy.get("needs") or [])
+        needs = deploy.get("needs")
+        needs = [needs] if isinstance(needs, str) else (needs or [])
+        assert "build" in needs, f"deploy needs {needs!r}"
 
     def test_the_deploy_does_not_run_on_a_pull_request(self):
-        """A fork PR must never be able to publish to the site."""
-        condition = str(self._doc()["jobs"]["deploy"].get("if", ""))
-        assert "push" in condition, f"deploy `if:` is {condition!r}"
+        """A fork PR must never be able to publish to the site.
+
+        The EXACT condition, not a substring. `"push" in condition` is satisfied
+        by `github.event_name != 'push'` too — an inversion that would deploy on
+        every pull request and on nothing else.
+        """
+        condition = str(self._doc()["jobs"]["deploy"].get("if", "")).strip()
+        assert condition == "github.event_name == 'push'", f"deploy `if:` is {condition!r}"
 
     def test_only_the_deploy_job_can_write(self):
         """Least privilege: the PR build needs to read the checkout and nothing
-        more, and it is the job a fork can trigger."""
+        more, and it is the job a fork can trigger.
+
+        The exact maps, because a permissions block that GAINED a write scope
+        (`packages: write`, say) would satisfy a check that only looked at
+        `contents`.
+        """
         doc = self._doc()
-        assert doc["permissions"]["contents"] == "read"
-        assert doc["jobs"]["deploy"]["permissions"]["contents"] == "write"
-        assert "permissions" not in doc["jobs"]["build"]
+        assert doc["permissions"] == {"contents": "read"}, doc["permissions"]
+        assert doc["jobs"]["deploy"]["permissions"] == {"contents": "write"}, doc["jobs"]["deploy"]["permissions"]
+        assert "permissions" not in doc["jobs"]["build"], "the build job declares its own permissions"
