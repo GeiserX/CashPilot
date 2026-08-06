@@ -175,3 +175,88 @@ def _unpollute_catalog(_real_catalog_slugs):
     if catalog._by_slug and set(catalog._by_slug) != _real_catalog_slugs:
         catalog._services = []
         catalog._by_slug = {}
+
+
+# ---------------------------------------------------------------------------
+# CashPilot-ixjx: refuse to run against a contaminated working tree.
+#
+# The repos on this machine are two-way rsynced against a hub that keeps files
+# the local side deleted (no --delete, by design). A branch checkout removes a
+# file; the next sync copies it straight back as an UNTRACKED stray. The tree
+# then holds a mixture of two branches.
+#
+# THE FAILING CASE IS THE LUCKY ONE. On 2026-08-06 four files from two feature
+# branches reappeared on a third, and five tests failed loudly. But an EARLIER
+# run on that same branch had reported 4096 PASSED while silently including
+# another branch's tests -- a green suite measuring the wrong tree, which
+# nothing announces and nobody double-checks.
+#
+# So: a stray is any untracked file that HAS COMMIT HISTORY somewhere. A file
+# nobody ever committed is ordinary new work and is ignored.
+# ---------------------------------------------------------------------------
+
+#: Only these affect what the suite measures. An untracked note or scratch file
+#: is nobody's business.
+_RESULT_BEARING = ("app/", "tests/", "scripts/", "services/")
+
+
+def _git(*args: str) -> str | None:
+    import subprocess
+
+    try:
+        out = subprocess.run(
+            ["git", "-C", str(PROJECT_ROOT), *args],
+            capture_output=True,
+            text=True,
+            timeout=15,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return out.stdout if out.returncode == 0 else None
+
+
+def find_stray_files() -> list[str]:
+    """Untracked, result-bearing files that were committed somewhere else.
+
+    Returns [] when git is unavailable or this is not a repository — the guard
+    must never be the reason a suite cannot run, only a reason it refuses to
+    lie about what it measured.
+    """
+    status = _git("status", "--porcelain")
+    if status is None:
+        return []
+
+    strays = []
+    for line in status.splitlines():
+        if not line.startswith("?? "):
+            continue
+        path = line[3:].strip().strip('"')
+        if not path.startswith(_RESULT_BEARING):
+            continue
+        # Commit history anywhere means this file belongs to some branch, so its
+        # presence here as untracked is resurrection rather than new work.
+        history = _git("rev-list", "--all", "--max-count=1", "--", path)
+        if history and history.strip():
+            strays.append(path)
+    return strays
+
+
+def pytest_sessionstart(session):  # noqa: ARG001 - pytest hook signature
+    if os.environ.get("CASHPILOT_ALLOW_STRAY_FILES"):
+        return
+    strays = find_stray_files()
+    if not strays:
+        return
+    listing = "\n".join(f"  {p}" for p in strays)
+    raise pytest.UsageError(
+        "Refusing to run: the working tree holds untracked files that are committed on\n"
+        "another branch. The suite would measure a mixture of two branches, and the\n"
+        "dangerous outcome is not a failure but a PASS that means nothing.\n\n"
+        f"{listing}\n\n"
+        "These are almost certainly cmux-sync resurrecting files a branch checkout\n"
+        "removed (CashPilot-ixjx). Verify each is identical to its committed version\n"
+        "before removing it:\n"
+        "  git show <branch>:<path> | diff - <path>\n\n"
+        "Set CASHPILOT_ALLOW_STRAY_FILES=1 to run anyway."
+    )
