@@ -55,3 +55,7 @@ platforms: [windows, macos, linux]
 collector:
   type: manual
   notes: "No info available. Signup broken."
+
+payout:
+  model: unknown
+  notes: "Not yet determined. Flagged rather than shown blank -- see CashPilot-luj."

@@ -56,3 +56,7 @@ platforms: [browser-extension]
 collector:
   type: scrape
   notes: "Dashboard at app.blockmesh.xyz. Solana wallet auth. Points tracking via web UI."
+
+payout:
+  model: unknown
+  notes: "Not yet determined. Flagged rather than shown blank -- see CashPilot-luj."

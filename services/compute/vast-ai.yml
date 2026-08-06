@@ -59,3 +59,7 @@ platforms: [linux]
 collector:
   type: api
   notes: "REST API at https://console.vast.ai/api/v0/. API key auth. Endpoints for machine stats and earnings."
+
+payout:
+  model: unknown
+  notes: "Not yet determined. Flagged rather than shown blank -- see CashPilot-luj."

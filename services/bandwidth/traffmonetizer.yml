@@ -73,3 +73,7 @@ collector:
   type: api
   notes: "reCAPTCHA blocks programmatic login. Token extracted from browser Local Storage at app.traffmonetizer.com (same as deployment token)."
   credential_hint: "Log in at <a href='https://app.traffmonetizer.com' target='_blank'>app.traffmonetizer.com</a>, press F12 → Application → Local Storage → <b>token</b> value (a long JWT starting with <code>eyJ</code>)."
+
+payout:
+  model: internal
+  notes: "USDT, but the CHAIN IS CHOSEN PER WITHDRAWAL (Arbitrum/Tron/Solana/TON), so there is no persistent on-chain identity to register."

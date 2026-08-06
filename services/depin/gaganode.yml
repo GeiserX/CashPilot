@@ -54,3 +54,7 @@ platforms: [windows, macos, linux, android]
 collector:
   type: api
   notes: "Dashboard API at dashboard.gaganode.com. Token-based auth. Earnings and node status endpoints."
+
+payout:
+  model: unknown
+  notes: "Not yet determined. Flagged rather than shown blank -- see CashPilot-luj."

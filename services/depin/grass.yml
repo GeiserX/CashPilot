@@ -63,3 +63,7 @@ collector:
   type: api
   notes: "Dashboard API at app.grass.io. Auth via session token. Points visible in dashboard."
   credential_hint: "Log in at <a href='https://app.getgrass.io' target='_blank'>app.getgrass.io</a>, press F12 → Application → Local Storage, copy the <b>accessToken</b> value."
+
+payout:
+  model: internal
+  notes: "Accrues POINTS; GRASS is claimed from the Grass dashboard during periodic airdrops."

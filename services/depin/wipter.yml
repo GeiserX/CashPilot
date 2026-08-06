@@ -53,3 +53,7 @@ platforms: [windows, macos, linux, android]
 collector:
   type: scrape
   notes: "Dashboard at wipter.com. Earnings visible in account panel. No public API documented."
+
+payout:
+  model: unknown
+  notes: "Not yet determined. Flagged rather than shown blank -- see CashPilot-luj."

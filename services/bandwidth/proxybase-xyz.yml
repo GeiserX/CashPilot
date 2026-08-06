@@ -99,3 +99,7 @@ disclosure:
   account_rules: >-
     unknown - the provider does not publish a per-account or per-IP device
     limit, and the catalog does not declare one.
+
+payout:
+  model: minted
+  notes: "The client mints its own wallet on first run. See tier 3."

@@ -139,3 +139,10 @@ disclosure:
   account_rules: >-
     Unlimited nodes, but nodes on the same /24 subnet share allocation, so
     several on one connection earn less each.
+
+payout:
+  model: external
+  chain: ethereum
+  address_env: WALLET
+  address_source: env
+  notes: "Paid monthly in STORJ (ERC-20) to the address in WALLET."

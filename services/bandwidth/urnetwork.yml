@@ -61,3 +61,9 @@ platforms: [docker, windows, macos, linux]
 collector:
   type: manual
   notes: "No known public earnings API."
+
+payout:
+  model: external
+  chain: solana
+  address_source: app
+  notes: "Wallet is linked inside the URnetwork app. AN UNLINKED WALLET FORFEITS PAYOUT AFTER 30 DAYS."

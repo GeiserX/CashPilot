@@ -55,3 +55,7 @@ platforms: [browser-extension]
 collector:
   type: manual
   notes: "Browser extension only. No API. Earnings visible in Ebesucher dashboard only."
+
+payout:
+  model: unknown
+  notes: "Not yet determined. Flagged rather than shown blank -- see CashPilot-luj."

@@ -55,3 +55,7 @@ platforms: [ios, android]
 collector:
   type: manual
   notes: "Mobile app only. No API documented."
+
+payout:
+  model: unknown
+  notes: "Not yet determined. Flagged rather than shown blank -- see CashPilot-luj."

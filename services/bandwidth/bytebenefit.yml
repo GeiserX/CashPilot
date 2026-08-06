@@ -51,3 +51,7 @@ platforms: [windows, android]
 collector:
   type: manual
   notes: "No Docker image or public API."
+
+payout:
+  model: unknown
+  notes: "Not yet determined. Flagged rather than shown blank -- see CashPilot-luj."

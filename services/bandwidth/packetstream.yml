@@ -63,3 +63,7 @@ collector:
   type: scrape
   notes: "Dashboard is CAPTCHA-protected. May need manual JWT from browser session for API access."
   credential_hint: "Log in at <a href='https://packetstream.io' target='_blank'>packetstream.io</a>, press F12 → Application → Cookies, copy the <b>auth</b> cookie value (it’s a JWT)."
+
+payout:
+  model: internal
+  notes: "Balance held by PacketStream; withdrawn on request."

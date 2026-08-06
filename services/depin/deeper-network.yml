@@ -54,3 +54,7 @@ platforms: []
 collector:
   type: manual
   notes: "Hardware device dashboard. Requires Deeper Connect device."
+
+payout:
+  model: unknown
+  notes: "Not yet determined. Flagged rather than shown blank -- see CashPilot-luj."

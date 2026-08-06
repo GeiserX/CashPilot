@@ -60,3 +60,7 @@ platforms: [windows, linux]
 collector:
   type: manual
   notes: "No official Docker image or public API found."
+
+payout:
+  model: unknown
+  notes: "Not yet determined. Flagged rather than shown blank -- see CashPilot-luj."

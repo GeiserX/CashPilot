@@ -64,3 +64,7 @@ platforms: [docker, windows, macos, linux]
 collector:
   type: manual
   notes: "No official API. Community Docker image. Manual earnings tracking via dashboard."
+
+payout:
+  model: unknown
+  notes: "Not yet determined. Flagged rather than shown blank -- see CashPilot-luj."

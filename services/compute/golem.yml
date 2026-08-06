@@ -57,3 +57,7 @@ platforms: [linux]
 collector:
   type: api
   notes: "Yagna REST API at localhost:7465. Provider earnings queryable via /payment/invoices. GLM on Polygon for on-chain tracking."
+
+payout:
+  model: unknown
+  notes: "Not yet determined. Flagged rather than shown blank -- see CashPilot-luj."
