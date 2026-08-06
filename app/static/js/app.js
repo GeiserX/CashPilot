@@ -3217,6 +3217,61 @@ const CP = (() => {
     // Fetch alerts now and every 60s
     loadCollectorAlerts();
     setInterval(loadCollectorAlerts, 60000);
+
+    // Once per page load. The server refreshes daily; polling more often would
+    // only re-read the same cached value.
+    checkForUpdate();
+  }
+
+  // A newer release is available (CashPilot-w0ss).
+  //
+  // Three rules, and they are what keep this from being unwelcome:
+  //   * SILENT when unknown. Offline, disabled, never-run, or a dev build all
+  //     produce `known: false`, and an unknown state renders NOTHING -- never a
+  //     spinner, an error, or a reassuring "up to date" it has not earned.
+  //   * NEVER auto-updates. It tells you; you decide.
+  //   * Dismissible PER VERSION. Dismiss 1.20.1 and it stays gone until 1.20.2
+  //     exists, so it cannot become wallpaper.
+  async function checkForUpdate() {
+    const banner = document.getElementById('update-banner');
+    if (!banner) return;
+    let state;
+    try {
+      state = await api('/api/update-status');
+    } catch (err) {
+      return; // Unknown. Say nothing at all.
+    }
+    if (!state || !state.known || !state.behind || !state.latest) return;
+
+    // Per-version dismissal. Keyed on the version so a NEW release re-appears.
+    let dismissed = null;
+    try {
+      dismissed = localStorage.getItem('cp-update-dismissed');
+    } catch (err) {
+      dismissed = null; // private mode / storage disabled: just show it
+    }
+    if (dismissed === state.latest) return;
+
+    const text = document.getElementById('update-banner-text');
+    const link = document.getElementById('update-banner-link');
+    if (text) {
+      text.textContent = `CashPilot ${state.latest} is available \u2014 you are running ${state.current}.`;
+    }
+    if (link) {
+      link.href = `https://github.com/GeiserX/CashPilot/releases/tag/${encodeURIComponent(state.latest)}`;
+    }
+    const dismiss = document.getElementById('update-banner-dismiss');
+    if (dismiss) {
+      dismiss.onclick = () => {
+        banner.hidden = true;
+        try {
+          localStorage.setItem('cp-update-dismissed', state.latest);
+        } catch (err) {
+          /* storage disabled: it will reappear next load, which is acceptable */
+        }
+      };
+    }
+    banner.hidden = false;
   }
 
   async function loadCollectorAlerts() {
@@ -3494,6 +3549,7 @@ const CP = (() => {
 
   return {
     api,
+    checkForUpdate,
     toast,
     openModal,
     closeModal,

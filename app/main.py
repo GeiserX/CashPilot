@@ -52,6 +52,7 @@ from app import (
     preflight,
     producer_state,
     setup_token,
+    update_check,
     version,
 )
 from app.worker_proxy import _pin_url_to_ip, _validate_worker_url
@@ -888,6 +889,21 @@ async def lifespan(app: FastAPI):
         id="db_vacuum",
         max_instances=1,
         coalesce=True,
+        misfire_grace_time=300,
+    )
+    # Once a day. A release is not urgent, and a self-hosted app polling a third
+    # party more often than that is rude. Every failure mode inside refresh()
+    # lands on UNKNOWN, so a firewalled install produces no noise at all.
+    scheduler.add_job(
+        update_check.refresh,
+        "interval",
+        hours=24,
+        id="update_check",
+        max_instances=1,
+        coalesce=True,
+        # 300 like every other job here rather than a carve-out. A missed daily
+        # check simply happens tomorrow; that is not worth an exception to a
+        # convention a test enforces uniformly.
         misfire_grace_time=300,
     )
     scheduler.add_job(
@@ -3041,6 +3057,21 @@ async def api_disclosure_coverage(request: Request) -> dict[str, Any]:
     """
     _require_auth_api(request)
     return disclosure.coverage(catalog.get_services())
+
+
+@app.get("/api/update-status")
+async def api_update_status(request: Request) -> dict[str, Any]:
+    """Whether a newer CashPilot has been released (CashPilot-w0ss).
+
+    Reads the cached result only -- it never fetches on the request path, so a
+    slow or unreachable GitHub cannot make a page load slowly. The scheduler
+    refreshes it once a day.
+
+    ``known`` is the honest field. False means we do not know, which is NOT the
+    same as up to date, and the UI must not render it as reassurance.
+    """
+    _require_auth_api(request)
+    return update_check.state()
 
 
 @app.get("/api/collector-alerts")

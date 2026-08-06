@@ -162,6 +162,16 @@
       </div>
     </header>
 
+    <!-- A newer release is available (CashPilot-w0ss). Hidden by default and
+         populated by CP.checkForUpdate(); it stays hidden when the check is off,
+         has not run, failed, or this build is not a release. Unknown is unknown,
+         never "up to date". -->
+    <div class="update-banner" id="update-banner" hidden>
+      <span id="update-banner-text"></span>
+      <a id="update-banner-link" href="#" target="_blank" rel="noopener noreferrer">Release notes</a>
+      <button type="button" id="update-banner-dismiss" aria-label="Dismiss">&times;</button>
+    </div>
+
     <!-- Page content -->
     <main class="page-content">
       {% block content %}{% endblock %}

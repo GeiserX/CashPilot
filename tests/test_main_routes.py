@@ -2172,6 +2172,7 @@ class TestLifespanScheduler:
                         "data_retention",
                         "db_vacuum",
                         "exchange_rates",
+                        "update_check",
                     }
                     # Every job carries the hardening kwargs (audit fix).
                     for job in jobs.values():
