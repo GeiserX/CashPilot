@@ -2107,3 +2107,30 @@ img { max-width: 100%; }
 .update-banner button:hover {
   color: #dbeafe;
 }
+
+/* Payout destinations (CashPilot-luj tier 1).
+   Four states, kept deliberately distinct. The failure this styling exists to
+   prevent is "internal" and "not set" looking alike: one is nothing to do, the
+   other is money going nowhere. */
+.payout-address {
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 0.8rem;
+  word-break: break-all;
+  color: var(--text-primary);
+}
+/* Actionable: a deployed service that expects an address and has none. */
+.payout-missing {
+  color: var(--warning, #f59e0b);
+  font-weight: 600;
+  font-size: 0.82rem;
+}
+/* NOT a warning. There is no address to show, and that is correct. Muted so it
+   never reads as a value the user failed to supply. */
+.payout-na {
+  color: var(--text-muted);
+  font-size: 0.82rem;
+  font-style: italic;
+}
+.payout-row-actionable {
+  background: var(--warning-soft, rgba(245, 158, 11, 0.08));
+}
