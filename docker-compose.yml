@@ -21,7 +21,7 @@
 
 services:
   cashpilot-ui:
-    image: drumsergio/cashpilot:1.19
+    image: drumsergio/cashpilot:1.20
     pull_policy: always
     container_name: cashpilot-ui
     # Published on loopback by default: the dashboard can command the Docker-socket
@@ -62,7 +62,7 @@ services:
       - /tmp:size=64M
 
   cashpilot-worker:
-    image: drumsergio/cashpilot-worker:1.19
+    image: drumsergio/cashpilot-worker:1.20
     pull_policy: always
     container_name: cashpilot-worker
     expose:
