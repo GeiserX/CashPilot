@@ -131,8 +131,12 @@ class TestTheRegistryOverTheRealCatalog:
         from app import catalog
 
         result = self._registry()
-        assert result["summary"]["total"] == len(catalog.get_services())
-        assert result["summary"]["total"] >= 40
+        services = catalog.get_services()
+        # The equality below is vacuous against an empty catalog -- 0 == 0 passes
+        # while proving nothing. This guards that, which is the job the old fixed
+        # ">= 40" floor was really doing, without failing on a valid reduction.
+        assert services, "the catalog loaded no services"
+        assert result["summary"]["total"] == len(services)
 
     def test_every_row_declares_one_of_the_four_models(self):
         for row in self._registry()["entries"]:
