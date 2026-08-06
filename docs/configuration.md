@@ -39,6 +39,7 @@ defensible on its own; together they are impossible to guess.
 | `CASHPILOT_VERSION` | `dev` | Set by the image build. Shown in the sidebar. | — |
 | `CASHPILOT_METRICS_ENABLED` | `false` | Serve `/metrics`. | — |
 | `CASHPILOT_METRICS_TOKEN` | unset | Require `Authorization: Bearer` on `/metrics`. | — |
+| `CASHPILOT_UPDATE_CHECK` | `on` | Set to `off` to disable the once-a-day check for a newer release. See below. |
 | `CASHPILOT_NTFY_URL` | unset | ntfy endpoint for alerts. | — |
 | `CASHPILOT_WEBHOOK_URL` | unset | Generic webhook for alerts. | — |
 | `CASHPILOT_TELEGRAM_BOT_TOKEN` | unset | Telegram alerts. | — |
@@ -148,3 +149,31 @@ These are read by the compose files, not by CashPilot itself.
 |---|---|---|
 | `CASHPILOT_BIND_ADDR` | `127.0.0.1` | Which host interface publishes the **UI** port. |
 | `CASHPILOT_WORKER_BIND_ADDR` | `127.0.0.1` | Which host interface publishes the **worker** port, in the fleet compose. The worker holds the Docker socket — root-equivalent on the host — so publish it only on an interface the UI needs, never `0.0.0.0`. |
+
+## Update check
+
+CashPilot asks GitHub once a day whether a newer release exists, and shows a
+dismissible banner if there is one. A fleet running 33 releases behind with no
+indication anywhere is the problem this solves.
+
+Three things it deliberately does not do:
+
+- **It never updates anything.** It tells you; you decide. This application
+  deploys containers and holds credentials, and nothing about that should happen
+  because a version number changed.
+- **It never says "up to date".** Offline, firewalled, disabled, or simply not
+  run yet all produce *unknown*, and unknown renders nothing at all — no error,
+  no spinner, and no reassurance it has not earned.
+- **It sends nothing about you.** One unauthenticated `GET` to the public
+  releases endpoint. No request body, no identifier, and your version is not
+  reported upstream. GitHub learns that an IP asked what the latest release is.
+
+Turn it off entirely and no connection is made:
+
+```yaml
+environment:
+  - CASHPILOT_UPDATE_CHECK=off
+```
+
+The banner is dismissible per version — dismiss `v1.20.1` and it stays gone until
+there is a `v1.20.2`, so it cannot become wallpaper.

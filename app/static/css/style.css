@@ -2071,3 +2071,39 @@ img { max-width: 100%; }
 .deploy-risk-headline { font-weight: 600; font-size: 0.85rem; }
 .deploy-risk-body-text { font-size: 0.8rem; color: var(--text-secondary); margin-top: 4px; max-width: 70ch; }
 .deploy-risk-source { font-size: 0.7rem; color: var(--text-muted); margin-top: 4px; }
+
+/* A newer release is available (CashPilot-w0ss).
+   Informational, not an error: this is news, not a fault, and colouring it red
+   would train the operator to dismiss it the way they dismiss real alarms. */
+.update-banner {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin: 0 0 1rem;
+  padding: 0.65rem 1rem;
+  border: 1px solid rgba(59, 130, 246, 0.35);
+  border-radius: 10px;
+  background: rgba(30, 58, 138, 0.18);
+  color: #dbeafe;
+  font-size: 0.9rem;
+}
+
+.update-banner a {
+  color: #93c5fd;
+  text-decoration: underline;
+}
+
+.update-banner button {
+  margin-left: auto;
+  border: 0;
+  background: transparent;
+  color: #93c5fd;
+  font-size: 1.15rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 0.25rem;
+}
+
+.update-banner button:hover {
+  color: #dbeafe;
+}

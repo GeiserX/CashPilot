@@ -32,6 +32,47 @@ PUBLIC_COLLECTOR_FIELDS = {
 }
 
 
+def _code_only(source: str) -> str:
+    """Source with comments and docstrings removed, string literals kept.
+
+    Keeping literals is the point: a telemetry endpoint lives in a string, and
+    dropping strings would make this scan decorative.
+    """
+    import ast
+    import io
+    import tokenize
+
+    # Docstrings first, by position, so only the prose ones go.
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        tree = None
+    doc_spans: set[tuple[int, int]] = set()
+    if tree is not None:
+        for node in ast.walk(tree):
+            if isinstance(node, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
+                body = getattr(node, "body", None)
+                if (
+                    body
+                    and isinstance(body[0], ast.Expr)
+                    and isinstance(body[0].value, ast.Constant)
+                    and isinstance(body[0].value.value, str)
+                ):
+                    doc_spans.add((body[0].lineno, body[0].col_offset))
+
+    out: list[str] = []
+    try:
+        for tok in tokenize.generate_tokens(io.StringIO(source).readline):
+            if tok.type == tokenize.COMMENT:
+                continue
+            if tok.type == tokenize.STRING and tok.start in doc_spans:
+                continue
+            out.append(tok.string)
+    except tokenize.TokenError:
+        return source
+    return "\n".join(out)
+
+
 class TestCredentialEncryptionBoundary:
     """Tier 1: credential encryption at rest, with no plaintext mode."""
 
@@ -151,12 +192,47 @@ class TestNoTelemetry:
     """Tier 1: absent, not a toggle - a toggle implies it could exist."""
 
     def test_no_telemetry_or_phone_home_code_exists(self):
+        """Scans CODE, not prose.
+
+        The needle list is a substring match, so it used to fire on any COMMENT
+        mentioning the word -- including a docstring stating that a module sends
+        none, which is the opposite of the thing being forbidden. A check that
+        cannot tell a denial from an admission is one that gets worked around by
+        rewording, and then it is protecting nothing.
+
+        Comments and docstrings are stripped; STRING LITERALS ARE NOT, so a
+        telemetry endpoint URL or a `posthog` import is still caught. Proved by
+        the control below rather than asserted.
+        """
         needles = ("telemetry", "phone_home", "posthog", "mixpanel", "amplitude")
         offenders = []
         for path in (PROJECT_ROOT / "app").rglob("*.py"):
-            lowered = path.read_text().lower()
+            lowered = _code_only(path.read_text()).lower()
             offenders += [f"{path.name}:{n}" for n in needles if n in lowered]
         assert not offenders, f"telemetry-shaped code found: {offenders}"
+
+    def test_the_scan_still_catches_real_telemetry(self):
+        """The control. Stripping prose must not have stripped the teeth.
+
+        Each of these is a shape the scan exists to catch, and each must survive
+        comment-and-docstring removal.
+        """
+        for source in (
+            "import posthog\n",
+            "TELEMETRY_URL = 'https://example.invalid/collect'\n",
+            "def phone_home():\n    pass\n",
+            "client.post('https://mixpanel.example/track')\n",
+        ):
+            lowered = _code_only(source).lower()
+            assert any(n in lowered for n in ("telemetry", "phone_home", "posthog", "mixpanel", "amplitude")), (
+                f"the scan no longer catches: {source!r}"
+            )
+
+    def test_the_scan_ignores_prose(self):
+        """The false positive that prompted this: a module saying it sends no
+        telemetry is not telemetry."""
+        assert "telemetry" not in _code_only('"""This module sends no telemetry."""\n').lower()
+        assert "telemetry" not in _code_only("# no telemetry here\nx = 1\n").lower()
 
 
 class TestConfigCiphertext:
