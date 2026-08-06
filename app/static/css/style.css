@@ -2134,3 +2134,21 @@ img { max-width: 100%; }
 .payout-row-actionable {
   background: var(--warning-soft, rgba(245, 158, 11, 0.08));
 }
+
+/* On-chain balance column (CashPilot-dv6 tier 2).
+   "could not check" must not read as a balance, and must not read as the
+   em dash used for "there was nothing to ask". Three distinct looks. */
+.payout-balance {
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 0.82rem;
+  white-space: nowrap;
+  color: var(--text-primary);
+}
+/* Not an error and not a zero: we simply do not know right now. */
+.payout-unchecked {
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  font-style: italic;
+  border-bottom: 1px dotted var(--border-color);
+  cursor: help;
+}

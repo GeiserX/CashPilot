@@ -47,6 +47,7 @@ from app import (
     metrics,
     net_activity,
     notify,
+    onchain,
     payout_registry,
     payouts,
     power,
@@ -3070,6 +3071,49 @@ async def api_payout_registry(request: Request) -> dict[str, Any]:
     """
     _require_owner(request)
     return await payout_registry.registry()
+
+
+@app.get("/api/payout-balances")
+async def api_payout_balances(request: Request) -> dict[str, Any]:
+    """What is actually AT each payout address (CashPilot-dv6, tier 2).
+
+    OWNER-ONLY, same reasoning as the registry it builds on.
+
+    A SEPARATE endpoint from /api/payout-registry on purpose. The registry is a
+    local join and answers instantly; these are network reads against public
+    RPCs that can take seconds or time out. Folding them together would make the
+    whole payout table hostage to the slowest chain, so the page renders the
+    table first and fills these in afterwards.
+
+    Only addresses we actually hold are queried -- an `internal`, `minted` or
+    `unknown` service has no address, and asking a public RPC about nothing is
+    both pointless and rude.
+    """
+    _require_owner(request)
+    registry = await payout_registry.registry()
+
+    wanted = [
+        row
+        for row in registry["entries"]
+        if row.get("model") == "external" and row.get("address") and row.get("chain") in onchain.CHAINS
+    ]
+    results = await onchain.balances([(row["chain"], row["address"]) for row in wanted])
+
+    balances: dict[str, Any] = {}
+    for row, result in zip(wanted, results, strict=True):
+        # Decimal does not survive JSON. str() keeps every digit, which is the
+        # whole reason the reader uses Decimal in the first place -- a float here
+        # would undo it at the last step.
+        amount = result.get("amount")
+        balances[row["slug"]] = {**result, "amount": None if amount is None else str(amount)}
+
+    return {
+        "balances": balances,
+        # Named so the UI can say "3 of 5 addresses could not be checked"
+        # instead of quietly showing fewer rows than it did a moment ago.
+        "checked": len(wanted),
+        "unreadable": sum(1 for r in results if r.get("state") != onchain.KNOWN),
+    }
 
 
 @app.get("/api/update-status")

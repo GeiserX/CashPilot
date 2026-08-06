@@ -102,6 +102,33 @@
     return '<span class="payout-na">Not classified yet</span>';
   }
 
+  // What is actually AT the address (CashPilot-dv6 tier 2).
+  //
+  // The same rule as the address column, one level down: "we could not check"
+  // must NEVER render like "the balance is zero". Zero is a fact about an
+  // address; unreachable is a fact about us, and a public RPC rate-limiting us
+  // is not news about the user's money.
+  //
+  // A row we never queried (internal, minted, unknown, or no address) gets an
+  // em dash, because there was nothing to ask.
+  function balanceCell(result) {
+    if (!result) return '<span class="payout-na">&mdash;</span>';
+    if (result.state === 'known') {
+      return '<span class="payout-balance">' + esc(result.amount)
+           + (result.symbol ? ' ' + esc(result.symbol) : '') + '</span>';
+    }
+    if (result.state === 'unreachable') {
+      return '<span class="payout-unchecked" title="' + esc(result.detail || '')
+           + '">could not check</span>';
+    }
+    if (result.state === 'invalid') {
+      return '<span class="payout-missing">address not valid</span>';
+    }
+    // unsupported: we have no keyless endpoint for that chain. Not the user's
+    // problem and not an error about their money.
+    return '<span class="payout-na">&mdash;</span>';
+  }
+
   function payoutRow(entry) {
     var chain = entry.chain ? esc(entry.chain) : '<span class="payout-na">&mdash;</span>';
     var deployed = entry.deployed
@@ -116,6 +143,8 @@
       + '<td><span class="badge badge-category">' + esc(entry.model || 'unknown') + '</span></td>'
       + '<td>' + chain + '</td>'
       + '<td>' + payoutAddressCell(entry) + '</td>'
+      + '<td class="payout-balance-cell" data-slug="' + esc(entry.slug) + '">'
+      + balanceCell(_balances[entry.slug]) + '</td>'
       + '</tr>';
   }
 
@@ -125,12 +154,14 @@
     }
     return '<div style="overflow-x:auto;"><table class="breakdown-table"><thead><tr>'
       + '<th>Service</th><th>Status</th><th>Payout model</th><th>Chain</th><th>Address</th>'
+      + '<th>On-chain</th>'
       + '</tr></thead><tbody>'
       + entries.map(payoutRow).join('')
       + '</tbody></table></div>';
   }
 
   var _entries = [];
+  var _balances = {};
 
   function applyFilter() {
     var q = (document.getElementById('payout-filter').value || '').trim().toLowerCase();
@@ -163,12 +194,30 @@
       }
 
       applyFilter();
+      loadBalances();
     } catch (err) {
       // Say the registry could not be read. Never render an empty table, which
       // would look like "no services pay you anything".
       container.innerHTML = '<p style="color: var(--error);">Could not load payout destinations: '
         + esc((err && err.message) || 'error') + '</p>';
     }
+  }
+
+  // Deliberately fired after the table exists. These are network reads against
+  // public RPCs; making the page wait on them would mean a rate-limited chain
+  // shows the user a blank screen instead of their addresses.
+  async function loadBalances() {
+    try {
+      var data = await CP.api('/api/payout-balances');
+      _balances = data.balances || {};
+    } catch (err) {
+      // Leave every cell as it was. Inventing zeroes here would be the exact
+      // failure this column is built to avoid.
+      return;
+    }
+    document.querySelectorAll('.payout-balance-cell').forEach(function (cell) {
+      cell.innerHTML = balanceCell(_balances[cell.dataset.slug]);
+    });
   }
 
   document.addEventListener('DOMContentLoaded', function () {
