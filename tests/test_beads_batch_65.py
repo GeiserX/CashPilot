@@ -114,6 +114,32 @@ class TestTheReleaseMovesThePin:
         """Never a hardcoded 'main': the branch name is the runtime's to know."""
         assert "GITHUB_REF_NAME" in bump_step()["run"]
 
+    def test_the_series_is_read_from_both_files(self):
+        """Reading only docker-compose.yml made partial drift invisible.
+
+        If one file had drifted and the other had not, the "already on $SERIES"
+        check would fire on the first and leave the second stale forever — a
+        silent no-op that looks exactly like success. Verified on a Linux host:
+        with the two files on 1.14 and 1.16, the step now reports
+        `bump [1.14 1.16] -> 1.16` instead of `NOOP`.
+        """
+        run = bump_step()["run"]
+        read = run[run.index("CURRENT=") : run.index("if [ -z")]
+        assert "docker-compose.yml" in read and "docker-compose.fleet.yml" in read, read
+
+    def test_finding_no_pin_warns_instead_of_failing_the_release(self):
+        """`set -o pipefail` turns a grep that matches nothing into a failed
+        pipeline, and `set -e` then kills the step — which runs AFTER the tag is
+        pushed. So a compose file without a pin would turn a successful release
+        red over a cosmetic edit: the exact failure the retry logic below exists
+        to prevent, reappearing a few lines earlier.
+        """
+        run = bump_step()["run"]
+        read = run[run.index("CURRENT=") : run.index("if [ -z")]
+        assert "|| true" in read, "a grep miss still fails the step:\n" + read
+        guard = run[run.index("if [ -z") : run.index('if [ "$CURRENT" = "$SERIES" ]')]
+        assert "::warning::" in guard and "exit 0" in guard, guard
+
     def test_both_compose_files_are_covered(self):
         run = bump_step()["run"]
         assert "docker-compose.yml" in run

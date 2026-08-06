@@ -262,14 +262,35 @@ jobs:
           TAG="${{ needs.release.outputs.new_tag }}"
           SERIES="${TAG#v}"; SERIES="${SERIES%.*}"   # v1.16.2 -> 1.16
 
-          CURRENT=$(grep -oE 'drumsergio/cashpilot:[0-9]+\.[0-9]+' docker-compose.yml | head -1 | cut -d: -f2)
+          # Read the pins from BOTH files, and tolerate finding none.
+          #
+          # `|| true` is load-bearing twice over. Under `set -o pipefail` a grep
+          # that matches nothing fails the whole pipeline, so `set -e` would kill
+          # this step -- and this step runs AFTER the tag is pushed, so it would
+          # turn a successful release into a red one over a cosmetic edit. That
+          # is the exact failure this step's retry/warning logic exists to avoid,
+          # reappearing three lines earlier.
+          CURRENT=$(grep -ohE 'drumsergio/cashpilot(-worker)?:[0-9]+\.[0-9]+' \
+                      docker-compose.yml docker-compose.fleet.yml \
+                    | cut -d: -f2 | sort -u | tr '\n' ' ' || true)
+          CURRENT=$(echo "$CURRENT" | xargs || true)   # trim
+
+          if [ -z "$CURRENT" ]; then
+            echo "::warning::found no pinned cashpilot image in the compose files; leaving them alone"
+            exit 0
+          fi
           if [ "$CURRENT" = "$SERIES" ]; then
             # A patch release does not change the series. Committing an
             # unchanged file would push an empty commit on every patch.
+            #
+            # Both files are read, not just docker-compose.yml: if one had
+            # drifted and the other had not, reading only the first would report
+            # "already on $SERIES" and leave the other stale forever -- a silent
+            # no-op that looks exactly like success.
             echo "Pins already on $SERIES; nothing to do."
             exit 0
           fi
-          echo "Bumping the example pins $CURRENT -> $SERIES"
+          echo "Bumping the example pins [$CURRENT] -> $SERIES"
 
           sed -i -E "s|(drumsergio/cashpilot(-worker)?):[0-9]+\.[0-9]+|\1:$SERIES|g" \
             docker-compose.yml docker-compose.fleet.yml
