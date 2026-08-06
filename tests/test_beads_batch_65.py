@@ -95,24 +95,73 @@ class TestTheReleaseMovesThePin:
         assert commits, "the step no longer commits anything"
         assert all("[skip ci]" in ln for ln in commits), commits
 
-    def test_it_retries_rather_than_racing_a_merge(self):
-        """The build job takes minutes, so main may well have moved. A rejected
-        push must not be the end of it."""
-        run = bump_step()["run"]
-        assert "git pull --rebase" in run
-        assert "for attempt" in run
+    def test_it_goes_through_a_pull_request(self):
+        """main is PROTECTED: "Changes must be made through a pull request".
 
-    def test_a_failed_push_warns_rather_than_failing_the_release(self):
+        The first version pushed straight to main and was rejected three times
+        with GH006 in the v1.16.0 run — which shipped green only because the
+        failure warns instead of failing. Branch protection is not going away,
+        so the mechanism had to change rather than the retry count.
+        """
+        run = bump_step()["run"]
+        assert "gh pr create" in run, run
+        assert "gh pr merge" in run, run
+
+    def test_every_push_targets_the_delivery_branch(self):
+        """The regression that matters: reintroducing a direct push would be
+        rejected on every release, silently, behind a warning.
+
+        Asserted POSITIVELY -- every `git push` must name "$BRANCH". The first
+        version filtered for lines mentioning GITHUB_REF_NAME, which meant a
+        hardcoded `git push origin main` -- the likeliest regression of all --
+        matched nothing and passed. (CodeRabbit, PR #260.)
+        """
+        pushes = [ln.strip() for ln in bump_step()["run"].splitlines() if "git push" in ln]
+        assert pushes, "the step no longer pushes anything"
+        offenders = [ln for ln in pushes if '"$BRANCH"' not in ln]
+        assert not offenders, f"a push does not target the delivery branch: {offenders}"
+
+    def test_the_pr_targets_the_branch_the_release_ran_on(self):
+        """Never a hardcoded 'main'."""
+        run = bump_step()["run"]
+        create = next(ln for ln in run.splitlines() if "gh pr create" in ln)
+        assert "GITHUB_REF_NAME" in create, create
+
+    def test_the_step_has_a_token_to_talk_to_the_api(self):
+        """`gh` without GH_TOKEN fails with an auth error that reads like a
+        permissions bug.
+
+        The EXACT mapping, not just the presence of the name: `GH_TOKEN: ""` and
+        `GH_TOKEN: ${{ secrets.SOMETHING_ELSE }}` both satisfied the first
+        version, and both would fail at run time in a way that looks like a
+        permissions problem rather than a typo. (CodeRabbit, PR #260.)
+        """
+        env = bump_step().get("env", {})
+        assert env.get("GH_TOKEN") == "${{ secrets.GITHUB_TOKEN }}", env
+
+    def test_the_job_may_open_a_pull_request(self):
+        """contents: write is not enough to open a PR; the API returns 403."""
+        import yaml as _yaml
+
+        doc = _yaml.safe_load(RELEASE.read_text(encoding="utf-8"))
+        perms = doc["jobs"]["publish"]["permissions"]
+        assert perms.get("pull-requests") == "write", perms
+
+    def test_every_delivery_failure_warns_rather_than_failing_the_release(self):
         """The tag and the images are already published and correct by this
-        point. Failing here would turn a cosmetic miss into a red release."""
-        run = bump_step()["run"]
-        assert "::warning::" in run
-        tail = run[run.index("for attempt") :]
-        assert "::error::" not in tail, "a push failure is escalated to an error"
+        point. Failing here would turn a cosmetic miss into a red release — and
+        that is not hypothetical: the v1.16.0 run hit exactly this path.
 
-    def test_it_pushes_to_the_branch_it_ran_on(self):
-        """Never a hardcoded 'main': the branch name is the runtime's to know."""
-        assert "GITHUB_REF_NAME" in bump_step()["run"]
+        Scoped to the DELIVERY half (push, PR, merge). The validation above it
+        still uses ::error:: for a sed that did not do what it claims, which is a
+        real defect rather than an environment refusal.
+        """
+        run = bump_step()["run"]
+        delivery = run[run.index('BRANCH="chore/compose-pins') :]
+        assert "::warning::" in delivery
+        assert "::error::" not in delivery, "a delivery failure is escalated to an error"
+        # Each of the three ways delivery can fail must exit 0, not fall through.
+        assert delivery.count("exit 0") >= 3, delivery
 
     def test_the_series_is_read_from_both_files(self):
         """Reading only docker-compose.yml made partial drift invisible.
