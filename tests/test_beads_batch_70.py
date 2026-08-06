@@ -158,8 +158,20 @@ class TestTheThingsTheResearchEstablished:
         assert "30 days" in self._payout("urnetwork").get("notes", "").lower()
 
     def test_the_minted_services_are_marked_for_tier_three(self):
-        for slug in ("proxybase", "nosana"):
+        """CORRECTED. This originally asserted `proxybase` was minted, which
+        encoded a mistake I made in #267: the payout block was carried across
+        from its similarly named sibling `proxybase-xyz` (same org, opposite
+        model). The peer-cli client authenticates with an account access token,
+        cashes out by dashboard redirect, and mounts no volumes at all — that is
+        the `internal` model, and the test was asserting the bug rather than
+        catching it.
+
+        `proxybase-xyz` is the one that genuinely mints a local wallet, and it
+        declares the volume holding it as critical.
+        """
+        for slug in ("proxybase-xyz", "nosana"):
             assert self._payout(slug)["model"] == "minted", slug
+        assert self._payout("proxybase")["model"] == "internal"
 
 
 class TestNoPrivateKeyIsEverDeclared:
