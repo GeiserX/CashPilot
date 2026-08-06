@@ -1,6 +1,16 @@
 <?xml version="1.0"?>
 <Container version="2">
   <Name>cashpilot-worker</Name>
+  <!-- :latest is DELIBERATE here, and only here.
+       Everywhere else in this project pins a major.minor series, because
+       SECURITY.md is right that a floating tag makes what you are running
+       unknowable. Community Applications is the exception: CA is how unraid
+       users receive updates at all, and a template pinned to 1.19 leaves every
+       CA user on 1.19 until the template itself is re-published. That trades
+       "unknowable version" for "silently frozen version", which is worse for
+       an app whose whole job is to keep earning.
+       Decided 2026-08-07. Do not "fix" this to a pinned tag without changing
+       how CA users are meant to upgrade. See CashPilot-3c2n. -->
   <Repository>drumsergio/cashpilot-worker:latest</Repository>
   <Registry>https://hub.docker.com/r/drumsergio/cashpilot-worker</Registry>
   <Network>bridge</Network>
