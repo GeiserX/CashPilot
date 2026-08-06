@@ -29,6 +29,10 @@
     <div class="stat-value" id="payout-needs-address">&mdash;</div>
   </div>
   <div class="stat-card">
+    <div class="stat-label">Irreplaceable state</div>
+    <div class="stat-value" id="payout-critical-count">&mdash;</div>
+  </div>
+  <div class="stat-card">
     <div class="stat-label">Not classified</div>
     <div class="stat-value" id="payout-unclassified">&mdash;</div>
   </div>
@@ -41,6 +45,18 @@
     Whatever they earn may be going somewhere you cannot reach.
   </p>
   <div id="payout-actionable-body"></div>
+</div>
+
+<div class="card" id="payout-critical-card" style="display:none; border-color: var(--error, #ef4444);">
+  <h3 class="settings-section-title">These are one deleted volume away from gone</h3>
+  <p class="settings-section-desc">
+    These running services keep money-bearing state on disk that exists
+    <strong>nowhere else</strong>. There is no server-side copy and no reset
+    link: if the volume goes, so does whatever it held. CashPilot will refuse to
+    delete these containers, but it cannot protect you from
+    <code>docker volume rm</code>, a wiped disk, or a rebuilt machine.
+  </p>
+  <div id="payout-critical-body"></div>
 </div>
 
 <div class="card">
@@ -129,6 +145,25 @@
     return '<span class="payout-na">&mdash;</span>';
   }
 
+  // What this service would lose, in the catalog's own words.
+  //
+  // Deliberately NOT a generic "this volume is important" line: the catalog
+  // already says what each volume holds, and the specific sentence ("This
+  // volume IS the money") is what makes someone act. A generic warning trains
+  // people to dismiss it.
+  //
+  // Pure, string-returning, no DOM — so the harness can run it.
+  function criticalStateRow(entry) {
+    var items = (entry.critical_state || []).map(function (v) {
+      return '<li><code class="payout-address">' + esc(v.target) + '</code>'
+           + '<div class="payout-holds">' + esc(v.holds) + '</div></li>';
+    }).join('');
+    return '<div class="payout-critical-item">'
+      + '<div class="payout-critical-name">' + esc(entry.name || entry.slug) + '</div>'
+      + '<ul class="payout-critical-list">' + items + '</ul>'
+      + '</div>';
+  }
+
   function payoutRow(entry) {
     var chain = entry.chain ? esc(entry.chain) : '<span class="payout-na">&mdash;</span>';
     var deployed = entry.deployed
@@ -183,6 +218,19 @@
       document.getElementById('payout-deployed').textContent = summary.deployed || 0;
       document.getElementById('payout-needs-address').textContent = summary.needs_an_address || 0;
       document.getElementById('payout-unclassified').textContent = summary.unclassified || 0;
+
+      document.getElementById('payout-critical-count').textContent = summary.holding_irreplaceable_state || 0;
+
+      // DEPLOYED only. A service you are not running cannot lose state you do
+      // not have, and warning about it would be noise on someone's dashboard.
+      var atRisk = _entries.filter(function (e) { return e.deployed && (e.critical_state || []).length; });
+      var criticalCard = document.getElementById('payout-critical-card');
+      if (atRisk.length) {
+        document.getElementById('payout-critical-body').innerHTML = atRisk.map(criticalStateRow).join('');
+        criticalCard.style.display = '';
+      } else {
+        criticalCard.style.display = 'none';
+      }
 
       var actionable = _entries.filter(function (e) { return e.address_missing && e.deployed; });
       var card = document.getElementById('payout-actionable-card');

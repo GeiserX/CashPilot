@@ -2152,3 +2152,11 @@ img { max-width: 100%; }
   border-bottom: 1px dotted var(--border-color);
   cursor: help;
 }
+
+/* Irreplaceable state (CashPilot-e8u). The catalog's own wording is the
+   warning; this only makes it legible. */
+.payout-critical-item { padding: 10px 0; border-bottom: 1px solid var(--border-color); }
+.payout-critical-item:last-child { border-bottom: none; }
+.payout-critical-name { font-weight: 600; margin-bottom: 6px; }
+.payout-critical-list { margin: 0; padding-left: 18px; }
+.payout-holds { color: var(--text-muted); font-size: 0.85rem; margin: 2px 0 8px; }

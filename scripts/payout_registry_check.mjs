@@ -40,11 +40,11 @@ function extract(name) {
 // Evaluate the real esc/payoutAddressCell/payoutRow together, since they call
 // one another. A stub for esc() here would let escaping break while this stayed
 // green — exactly the failure these harnesses exist to catch.
-const src = [extract('esc'), extract('payoutAddressCell'), extract('balanceCell'), extract('payoutRow')].join('\n');
+const src = [extract('esc'), extract('payoutAddressCell'), extract('balanceCell'), extract('criticalStateRow'), extract('payoutRow')].join('\n');
 // payoutRow reads the module-level _balances map, so give it an empty one --
 // the balance cell is exercised directly below.
-const {payoutAddressCell, payoutRow, balanceCell} = new Function(
-  `const _balances = {}; ${src}; return {payoutAddressCell, payoutRow, balanceCell};`
+const {payoutAddressCell, payoutRow, balanceCell, criticalStateRow} = new Function(
+  `const _balances = {}; ${src}; return {payoutAddressCell, payoutRow, balanceCell, criticalStateRow};`
 )();
 
 let failures = 0;
@@ -172,6 +172,37 @@ check(
   'CONTROL: a hostile amount is escaped in the balance cell',
   !balanceCell({state: 'known', amount: '<script>x</script>', symbol: 'E'}).includes('<script>'),
   balanceCell({state: 'known', amount: '<script>x</script>', symbol: 'E'})
+);
+
+// ---------------------------------------------------------------------------
+// Irreplaceable state (e8u). The catalog's own sentence is the warning.
+// ---------------------------------------------------------------------------
+const crit = criticalStateRow({
+  slug: 'proxybase-xyz', name: 'ProxyBase Markets',
+  critical_state: [{target: '/home/proxybase/.proxybase', holds: 'This volume IS the money.'}],
+});
+check('the volume path is shown', crit.includes('/home/proxybase/.proxybase'), crit);
+check(
+  "the catalog's SPECIFIC sentence survives, not a generic warning",
+  crit.includes('This volume IS the money.'),
+  crit
+);
+check('the service is named', crit.includes('ProxyBase Markets'), crit);
+
+check(
+  'CONTROL: a service with no critical state renders no list items',
+  !criticalStateRow({slug: 'x', name: 'X', critical_state: []}).includes('<li>'),
+  criticalStateRow({slug: 'x', name: 'X', critical_state: []})
+);
+check(
+  'CONTROL: a missing critical_state does not throw or invent one',
+  !criticalStateRow({slug: 'x', name: 'X'}).includes('<li>'),
+  criticalStateRow({slug: 'x', name: 'X'})
+);
+check(
+  'a hostile holds string is escaped',
+  !criticalStateRow({slug: 'x', name: 'X', critical_state: [{target: '/t', holds: '<img src=x>'}]}).includes('<img src=x>'),
+  'escaping failed'
 );
 
 if (failures) {
