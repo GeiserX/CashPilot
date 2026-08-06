@@ -40,9 +40,11 @@ function extract(name) {
 // Evaluate the real esc/payoutAddressCell/payoutRow together, since they call
 // one another. A stub for esc() here would let escaping break while this stayed
 // green — exactly the failure these harnesses exist to catch.
-const src = [extract('esc'), extract('payoutAddressCell'), extract('payoutRow')].join('\n');
-const {payoutAddressCell, payoutRow} = new Function(
-  `${src}; return {payoutAddressCell, payoutRow};`
+const src = [extract('esc'), extract('payoutAddressCell'), extract('balanceCell'), extract('payoutRow')].join('\n');
+// payoutRow reads the module-level _balances map, so give it an empty one --
+// the balance cell is exercised directly below.
+const {payoutAddressCell, payoutRow, balanceCell} = new Function(
+  `const _balances = {}; ${src}; return {payoutAddressCell, payoutRow, balanceCell};`
 )();
 
 let failures = 0;
@@ -133,6 +135,43 @@ check(
   'CONTROL: an absent model falls through to unknown, never to external',
   !/not set/i.test(payoutAddressCell({})) && /not classified/i.test(payoutAddressCell({})),
   payoutAddressCell({})
+);
+
+// ---------------------------------------------------------------------------
+// The on-chain column (dv6 tier 2). Same rule, one level down.
+// ---------------------------------------------------------------------------
+const bKnown = balanceCell({state: 'known', amount: '1.5', symbol: 'ETH'});
+const bZero = balanceCell({state: 'known', amount: '0', symbol: 'ETH'});
+const bUnreachable = balanceCell({state: 'unreachable', detail: 'timeout'});
+const bUnsupported = balanceCell({state: 'unsupported'});
+const bInvalid = balanceCell({state: 'invalid'});
+const bNone = balanceCell(undefined);
+
+check('a known balance is shown with its symbol', bKnown.includes('1.5') && bKnown.includes('ETH'), bKnown);
+check('a real zero balance IS shown as 0', bZero.includes('0'), bZero);
+
+check(
+  'THE ONE THAT MATTERS: unreachable does not render as a number',
+  !/\d/.test(bUnreachable.replace(/[^>]*>/g, '')) && /could not check/i.test(bUnreachable),
+  bUnreachable
+);
+check(
+  'unreachable and a zero balance look different',
+  bUnreachable !== bZero && !bUnreachable.includes('payout-balance"'),
+  `unreachable=${bUnreachable}\n      zero=${bZero}`
+);
+check(
+  'a row that was never queried is an em dash, not "could not check"',
+  bNone.includes('&mdash;') && !/could not check/i.test(bNone),
+  bNone
+);
+check('unsupported is also an em dash, not an error', bUnsupported.includes('&mdash;'), bUnsupported);
+check('an invalid address says so', /not valid/i.test(bInvalid), bInvalid);
+
+check(
+  'CONTROL: a hostile amount is escaped in the balance cell',
+  !balanceCell({state: 'known', amount: '<script>x</script>', symbol: 'E'}).includes('<script>'),
+  balanceCell({state: 'known', amount: '<script>x</script>', symbol: 'E'})
 );
 
 if (failures) {
