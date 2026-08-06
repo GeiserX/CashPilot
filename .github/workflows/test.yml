@@ -69,6 +69,13 @@ jobs:
       - name: Host resource columns
         run: node scripts/host_resources_check.mjs
 
+      # The four payout states. The regression this guards is "internal" (there
+      # is no address, by design) rendering like "not set" (money may be going
+      # nowhere). Both are a cell with no address in it; only the output tells
+      # them apart, so only running the renderer can check it.
+      - name: Payout destination states
+        run: node scripts/payout_registry_check.mjs
+
       # From the LOCKFILE, which is what Docker ships (`uv sync --frozen` in the
       # Dockerfile) and what release.yml verifies against. Installing from the
       # unpinned requirements.txt meant the suite ran against a resolution

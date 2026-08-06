@@ -223,3 +223,75 @@ class TestNoSecretIsEverExposed:
 def test_every_documented_model_is_accepted(model):
     row = payout_registry.entry({"slug": "x", "payout": {"model": model}}, None, deployed=False)
     assert row["model"] == model
+
+
+class TestThePayoutPage:
+    """The screen for the registry above (CashPilot-luj tier 1).
+
+    OWNER-ONLY, matching /api/payout-registry. The page is useless without that
+    endpoint, so a laxer gate here would render a screen that 403s against its
+    own data -- and would tell a viewer that the owner's wallet map exists.
+
+    The RENDERING rules (four states staying distinguishable) are not testable
+    from here: they live in a <script> block, and asserting the template contains
+    a string proves only that a literal is present, never which state produces
+    it. scripts/payout_registry_check.mjs runs those functions for real.
+    """
+
+    @staticmethod
+    def _client():
+        """NOT used as a context manager, deliberately.
+
+        Entering the context runs the app lifespan, which installs a SIGHUP
+        handler for catalog reload, and ``signal()`` raises "only works in main
+        thread" under pytest. Routing works fine without startup here because
+        these tests never touch the scheduler or the database.
+        """
+        from fastapi.testclient import TestClient
+
+        from app.main import app
+
+        return TestClient(app, raise_server_exceptions=False)
+
+    @staticmethod
+    def _as(role: str | None):
+        user = None if role is None else {"u": "sergio", "r": role}
+        return patch("app.main.auth.get_current_user", return_value=user)
+
+    def test_the_owner_can_open_it(self):
+        client = self._client()
+        with self._as("owner"):
+            assert client.get("/payouts").status_code == 200
+
+    def test_a_viewer_is_refused(self):
+        client = self._client()
+        with self._as("viewer"):
+            assert client.get("/payouts").status_code == 403
+
+    def test_a_writer_is_refused(self):
+        """Writer can deploy containers; that is not the same as being handed
+        every address the owner is paid at."""
+        client = self._client()
+        with self._as("writer"):
+            assert client.get("/payouts").status_code == 403
+
+    def test_anonymous_is_sent_to_login_not_403(self):
+        client = self._client()
+        with self._as(None):
+            assert client.get("/payouts", follow_redirects=False).status_code == 303
+
+    def test_the_nav_link_is_owner_only(self):
+        """Rendered OUTPUT, not the template source: a viewer loading a page they
+        ARE allowed to see must not be shown a link to this one."""
+        client = self._client()
+        with self._as("viewer"):
+            body = client.get("/catalog").text
+        assert 'href="/payouts"' not in body
+
+    def test_the_owner_does_get_the_nav_link(self):
+        """The negative control for the test above. If this fails, the assertion
+        above passes for the wrong reason -- the link missing everywhere."""
+        client = self._client()
+        with self._as("owner"):
+            body = client.get("/catalog").text
+        assert 'href="/payouts"' in body

@@ -1,0 +1,181 @@
+{% extends "base.html" %}
+
+{% block title %}Payouts - CashPilot{% endblock %}
+{% block page %}payouts{% endblock %}
+{% block topbar_title %}Payout Destinations{% endblock %}
+
+{% block content %}
+<h2 class="section-title" style="margin-bottom: 8px;">Where your money goes</h2>
+<p class="settings-section-desc" style="margin-bottom: 24px; max-width: 70ch;">
+  Every service in the catalog and the address it pays to. Addresses are read from
+  the spec each container was <em>actually deployed</em> with &mdash; not from the
+  catalog default &mdash; so what you see here is what your machines are really using.
+  Undeployed services are listed too, because the time to learn a service needs a
+  wallet is <em>before</em> you deploy it.
+</p>
+
+<div class="stats-grid" style="margin-bottom: 24px;">
+  <div class="stat-card">
+    <div class="stat-label">Services</div>
+    <div class="stat-value" id="payout-total">&mdash;</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Deployed</div>
+    <div class="stat-value" id="payout-deployed">&mdash;</div>
+  </div>
+  <!-- The only number on this page that asks the user to DO something. -->
+  <div class="stat-card">
+    <div class="stat-label">Need an address</div>
+    <div class="stat-value" id="payout-needs-address">&mdash;</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Not classified</div>
+    <div class="stat-value" id="payout-unclassified">&mdash;</div>
+  </div>
+</div>
+
+<div class="card" id="payout-actionable-card" style="display:none; border-color: var(--warning, #f59e0b);">
+  <h3 class="settings-section-title">Deployed, earning, and paying to nowhere</h3>
+  <p class="settings-section-desc">
+    These services are running and expect an address you have not given them.
+    Whatever they earn may be going somewhere you cannot reach.
+  </p>
+  <div id="payout-actionable-body"></div>
+</div>
+
+<div class="card">
+  <div class="card-header">
+    <h3 class="card-title">All services</h3>
+    <input type="search" id="payout-filter" class="form-input" placeholder="Filter by name, chain or address&hellip;"
+           style="max-width: 280px;" aria-label="Filter payout destinations">
+  </div>
+  <div id="payout-table-container">
+    <p style="color: var(--text-muted); font-size: 0.85rem;">Loading&hellip;</p>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script nonce="{{ csp_nonce(request) }}">
+(function () {
+  'use strict';
+
+  // Addresses come from a deployed container's environment, which is user
+  // supplied. Everything interpolated below goes through this.
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+      return {'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c];
+    });
+  }
+
+  // THE RULE THIS PAGE EXISTS TO HOLD: four payout states are genuinely
+  // different and must never collapse into one another.
+  //
+  //   external + an address   -> show it
+  //   external + nothing      -> "Not set", and it is ACTIONABLE
+  //   internal                -> there is NO address, BY DESIGN. A blank here
+  //                              would read as "you forgot something" when
+  //                              nothing is configurable.
+  //   minted                  -> the container made a wallet the user has
+  //                              probably never seen. Say so; do not fake an
+  //                              address we have not read.
+  //   unknown                 -> OUR gap in the catalog. Never phrased as the
+  //                              user's mistake.
+  //
+  // Returns an HTML string and touches no DOM, so scripts/payout_registry_check.mjs
+  // can run it for real.
+  function payoutAddressCell(entry) {
+    var model = entry && entry.model;
+    if (model === 'external') {
+      if (entry.address) {
+        return '<code class="payout-address" title="' + esc(entry.address) + '">'
+             + esc(entry.address) + '</code>';
+      }
+      return '<span class="payout-missing">Not set</span>';
+    }
+    if (model === 'internal') {
+      return '<span class="payout-na">Held by the service until you withdraw</span>';
+    }
+    if (model === 'minted') {
+      return '<span class="payout-na">The container generates its own wallet</span>';
+    }
+    return '<span class="payout-na">Not classified yet</span>';
+  }
+
+  function payoutRow(entry) {
+    var chain = entry.chain ? esc(entry.chain) : '<span class="payout-na">&mdash;</span>';
+    var deployed = entry.deployed
+      ? '<span class="badge badge-deployed">Deployed</span>'
+      : '<span class="badge badge-unknown">Not deployed</span>';
+    // Only a DEPLOYED service with a missing address is urgent. An undeployed
+    // one is information, not a problem to solve today.
+    var rowClass = (entry.address_missing && entry.deployed) ? ' class="payout-row-actionable"' : '';
+    return '<tr' + rowClass + ' data-slug="' + esc(entry.slug) + '">'
+      + '<td>' + esc(entry.name || entry.slug) + '</td>'
+      + '<td>' + deployed + '</td>'
+      + '<td><span class="badge badge-category">' + esc(entry.model || 'unknown') + '</span></td>'
+      + '<td>' + chain + '</td>'
+      + '<td>' + payoutAddressCell(entry) + '</td>'
+      + '</tr>';
+  }
+
+  function renderTable(entries) {
+    if (!entries.length) {
+      return '<p style="color: var(--text-muted); font-size: 0.85rem;">Nothing matches that filter.</p>';
+    }
+    return '<div style="overflow-x:auto;"><table class="breakdown-table"><thead><tr>'
+      + '<th>Service</th><th>Status</th><th>Payout model</th><th>Chain</th><th>Address</th>'
+      + '</tr></thead><tbody>'
+      + entries.map(payoutRow).join('')
+      + '</tbody></table></div>';
+  }
+
+  var _entries = [];
+
+  function applyFilter() {
+    var q = (document.getElementById('payout-filter').value || '').trim().toLowerCase();
+    var rows = !q ? _entries : _entries.filter(function (e) {
+      return [e.name, e.slug, e.chain, e.address, e.model]
+        .some(function (v) { return v && String(v).toLowerCase().indexOf(q) !== -1; });
+    });
+    document.getElementById('payout-table-container').innerHTML = renderTable(rows);
+  }
+
+  async function loadPayouts() {
+    var container = document.getElementById('payout-table-container');
+    try {
+      var data = await CP.api('/api/payout-registry');
+      var summary = data.summary || {};
+      _entries = data.entries || [];
+
+      document.getElementById('payout-total').textContent = summary.total || 0;
+      document.getElementById('payout-deployed').textContent = summary.deployed || 0;
+      document.getElementById('payout-needs-address').textContent = summary.needs_an_address || 0;
+      document.getElementById('payout-unclassified').textContent = summary.unclassified || 0;
+
+      var actionable = _entries.filter(function (e) { return e.address_missing && e.deployed; });
+      var card = document.getElementById('payout-actionable-card');
+      if (actionable.length) {
+        document.getElementById('payout-actionable-body').innerHTML = renderTable(actionable);
+        card.style.display = '';
+      } else {
+        card.style.display = 'none';
+      }
+
+      applyFilter();
+    } catch (err) {
+      // Say the registry could not be read. Never render an empty table, which
+      // would look like "no services pay you anything".
+      container.innerHTML = '<p style="color: var(--error);">Could not load payout destinations: '
+        + esc((err && err.message) || 'error') + '</p>';
+    }
+  }
+
+  document.addEventListener('DOMContentLoaded', function () {
+    if (document.body.dataset.page !== 'payouts') return;
+    document.getElementById('payout-filter').addEventListener('input', applyFilter);
+    loadPayouts();
+  });
+})();
+</script>
+{% endblock %}
