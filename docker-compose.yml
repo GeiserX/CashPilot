@@ -91,6 +91,18 @@ services:
       # too. Pick ONE; do not set both.
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
+      # SEPARATE FROM THE UI'S /data, DELIBERATELY. This container has the
+      # Docker socket, which is root on the host. The UI's /data holds
+      # cashpilot.db and .fernet_key -- the credential store and the only key
+      # that can decrypt it -- and the component that can start any container
+      # on the machine has no business being able to read them.
+      #
+      # /fleet IS shared on purpose: it holds only the shared enrolment key,
+      # which both sides need by definition.
+      #
+      # Consolidating these into one volume is the obvious "simplification" and
+      # it silently removes that boundary. tests/test_beads_batch_69.py fails if
+      # anyone does.
       - cashpilot_worker_data:/data
       - cashpilot_fleet:/fleet
     environment:

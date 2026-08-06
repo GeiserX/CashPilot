@@ -145,6 +145,34 @@ volumes:
 !!! important "API Key"
     The `CASHPILOT_API_KEY` must be identical on the UI and all workers. It is the **enrollment key** each worker uses on first contact; after that, each worker uses its own automatically-issued key.
 
+## Why the UI and worker have separate data directories
+
+The shipped compose files give each its own `/data` volume — `cashpilot_data`
+for the UI, `cashpilot_worker_data` for the worker — and that is a security
+boundary, not tidiness.
+
+The worker mounts the Docker socket. **That is root on the host**: anything that
+can talk to it can start a privileged container and read any file on the
+machine. The UI's `/data` holds `cashpilot.db` and `.fernet_key` — the credential
+store and the only key that can decrypt it.
+
+Keeping them apart means a compromised or misbehaving worker cannot simply read
+every provider password you have entered. It does not make the worker safe to
+expose — a worker with the Docker socket is as privileged as the host, which is
+why its API binds to loopback by default — but it does stop one component's
+blast radius from automatically including the other's secrets.
+
+**`/fleet` is shared, deliberately.** It holds only the enrolment key, which both
+sides need by definition.
+
+!!! warning "Do not consolidate them"
+
+    Merging the two into one volume is the obvious simplification when tidying a
+    compose file, it looks harmless, and it silently removes the boundary.
+    `tests/test_beads_batch_69.py` fails if anyone does — including if the UI
+    ever gains the Docker socket, which is the premise the whole argument rests
+    on.
+
 ## Authentication
 
 CashPilot uses **per-worker fleet keys** (since v1.0.0). The shared `CASHPILOT_API_KEY` is only a bootstrap/enrollment credential; each worker then gets its own key.
