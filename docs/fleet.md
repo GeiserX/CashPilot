@@ -74,6 +74,15 @@ place in its own series and the readings either side then difference against the
 wrong neighbour — silently, and only in the earned figure. A request may carry at
 most **2000 readings**; send larger histories in chunks.
 
+`balance` and `fx_rate_usd` must be finite. JSON has no `NaN` or `Infinity`, but
+Python's parser accepts them, and one `NaN` balance poisons every earned figure
+taken from that series — every comparison against it is false, so the clamp
+misbehaves silently and the account total becomes `NaN`. They are rejected with
+`422`.
+
+Unknown slugs come back in `skipped` as a **distinct, sorted** list, so a year of
+one unrecognised platform is reported once rather than 400 times.
+
 ## Setting Up the Fleet
 
 ### Main server (UI + local worker)

@@ -202,6 +202,194 @@ class TestTheReadingsSurviveIntact:
         upsert.assert_not_awaited()
 
 
+class TestABalanceMustBeARealNumber:
+    """JSON has no NaN or Infinity. Python's parser accepts them anyway.
+
+    Found by re-reading the endpoint rather than by a report: ``{"balance": NaN}``
+    was accepted and stored verbatim. One such reading poisons every delta taken
+    from that series — ``NaN - x`` is ``NaN``, and every comparison against it is
+    False, so the clamp silently misbehaves — the account total becomes ``NaN``,
+    and serialising that back out emits a bare ``NaN`` that ``JSON.parse``
+    rejects. A single bad reading from one client breaks the dashboard for
+    everyone.
+    """
+
+    @staticmethod
+    def _raw(client, body: str):
+        return client.post(
+            "/api/workers/earnings-import",
+            content=body,
+            headers={"Authorization": "Bearer k", "Content-Type": "application/json"},
+        )
+
+    @pytest.mark.parametrize("literal", ["NaN", "Infinity", "-Infinity"])
+    def test_a_non_finite_balance_is_refused(self, client, literal):
+        with (
+            patch("app.main._authenticate_worker_heartbeat", new_callable=AsyncMock, return_value="ok"),
+            patch("app.main.database.upsert_earnings", new_callable=AsyncMock) as upsert,
+        ):
+            resp = self._raw(
+                client,
+                f'{{"client_id":"d","readings":[{{"slug":"grass","balance":{literal},"date":"2026-01-01"}}]}}',
+            )
+        assert resp.status_code == 422, f"{literal} balance was accepted"
+        upsert.assert_not_awaited()
+
+    @pytest.mark.parametrize("literal", ["NaN", "Infinity"])
+    def test_a_non_finite_rate_is_refused(self, client, literal):
+        """An infinite rate prices the balance at infinity, which is worse than
+        pricing it at nothing."""
+        with (
+            patch("app.main._authenticate_worker_heartbeat", new_callable=AsyncMock, return_value="ok"),
+            patch("app.main.database.upsert_earnings", new_callable=AsyncMock) as upsert,
+        ):
+            resp = self._raw(
+                client,
+                f'{{"client_id":"d","readings":[{{"slug":"grass","balance":1.0,"date":"2026-01-01",'
+                f'"fx_rate_usd":{literal}}}]}}',
+            )
+        assert resp.status_code == 422, f"{literal} rate was accepted"
+        upsert.assert_not_awaited()
+
+    def test_ordinary_numbers_still_pass(self, client):
+        """A guard that rejects everything is as useless as none at all. Zero and
+        a negative are both legitimate: a provider balance can be zero, and a
+        clawback can take it negative."""
+        with (
+            patch("app.main._authenticate_worker_heartbeat", new_callable=AsyncMock, return_value="ok"),
+            patch("app.main.database.upsert_earnings", new_callable=AsyncMock) as upsert,
+        ):
+            resp = _import(
+                client,
+                readings=[
+                    {"slug": "grass", "balance": 0.0, "date": "2026-01-01"},
+                    {"slug": "honeygain", "balance": -1.25, "date": "2026-01-02", "fx_rate_usd": 0.0001},
+                    {"slug": "storj", "balance": 1e9, "date": "2026-01-03"},
+                ],
+            )
+        assert resp.status_code == 200
+        assert upsert.await_count == 3
+
+
+class TestTheRejectionItselfCanBeSerialised:
+    """FastAPI's 422 body echoes the offending input, and some inputs cannot be
+    encoded — so the rejection became a 500.
+
+    Both halves were found the same way: by driving the real request rather than
+    reading the code. ``NaN`` made the default handler raise "Out of range float
+    values are not JSON compliant"; my FIRST attempt at a handler then broke every
+    OTHER validation error, because a custom validator's error carries the raised
+    ``ValueError`` object in ``ctx`` and that is not serialisable either. The
+    second test below is the regression that caught it.
+    """
+
+    def test_a_non_finite_value_yields_a_bad_request_not_a_server_error(self, client):
+        with patch("app.main._authenticate_worker_heartbeat", new_callable=AsyncMock, return_value="ok"):
+            resp = client.post(
+                "/api/workers/earnings-import",
+                content='{"client_id":"d","readings":[{"slug":"grass","balance":NaN,"date":"2026-01-01"}]}',
+                headers={"Authorization": "Bearer k", "Content-Type": "application/json"},
+            )
+        assert resp.status_code == 422
+        resp.json()  # must parse: a bare NaN in the body would make this raise
+
+    def test_an_ordinary_validation_error_is_unchanged(self, client):
+        """The regression. A custom validator raises ValueError, which lands in
+        `ctx` as an OBJECT; a handler that skips jsonable_encoder turns every one
+        of those into a 500."""
+        with patch("app.main._authenticate_worker_heartbeat", new_callable=AsyncMock, return_value="ok"):
+            resp = _import(client, readings=[{"slug": "grass", "balance": 1.0, "date": "yesterday"}])
+        assert resp.status_code == 422
+        detail = resp.json()["detail"]
+        assert isinstance(detail, list) and detail, detail
+        assert "date" in str(detail), "the error no longer says which field was wrong"
+
+    def test_a_missing_field_still_reports_normally(self, client):
+        """The plainest possible validation error, to catch a handler that only
+        works for the exotic cases it was written for."""
+        resp = client.post(
+            "/api/workers/earnings-import",
+            json={"readings": []},
+            headers={"Authorization": "Bearer k"},
+        )
+        assert resp.status_code == 422
+        assert "client_id" in str(resp.json()["detail"])
+
+
+class TestJsonSafe:
+    """The sanitiser on its own, so its edge cases are not only reachable through
+    a request that happens to hit them."""
+
+    @staticmethod
+    def _safe(value):
+        from app.main import _json_safe
+
+        return _json_safe(value)
+
+    def test_non_finite_floats_become_their_names(self):
+        assert self._safe(float("nan")) == "nan"
+        assert self._safe(float("inf")) == "inf"
+        assert self._safe(float("-inf")) == "-inf"
+
+    def test_ordinary_numbers_are_untouched(self):
+        """A sanitiser that rewrites healthy values corrupts every error body it
+        touches."""
+        for value in (0.0, -1.5, 1e300, 42):
+            assert self._safe(value) == value
+
+    def test_booleans_survive_as_booleans(self):
+        """bool is a subclass of int. A guard written for numbers that forgets
+        that turns True into 1 in every error body."""
+        assert self._safe(True) is True
+        assert self._safe(False) is False
+
+    def test_it_recurses_into_nested_structures(self):
+        """The value is buried at errors()[0]["input"], inside a list of dicts."""
+        got = self._safe([{"input": float("nan"), "loc": ["body", 0, "balance"], "ok": 1.5}])
+        assert got == [{"input": "nan", "loc": ["body", 0, "balance"], "ok": 1.5}]
+
+    def test_strings_and_none_pass_through(self):
+        assert self._safe(None) is None
+        assert self._safe("nan") == "nan"
+
+
+class TestTheSkipReportIsBounded:
+    def test_a_repeated_unknown_slug_is_reported_once(self, client):
+        """A client pushing 400 days of a platform this server does not know
+        would otherwise get the same name back 400 times: a response that grows
+        with the request, echoing client-supplied strings, and saying nothing the
+        set does not."""
+        with (
+            patch("app.main._authenticate_worker_heartbeat", new_callable=AsyncMock, return_value="ok"),
+            patch("app.main.database.upsert_earnings", new_callable=AsyncMock),
+        ):
+            resp = _import(
+                client,
+                readings=[
+                    {"slug": "not-a-real-service", "balance": float(i), "date": f"2026-01-{i + 1:02d}"}
+                    for i in range(20)
+                ],
+            )
+        assert resp.json()["skipped"] == ["not-a-real-service"]
+        assert resp.json()["imported"] == 0
+
+    def test_several_distinct_unknowns_are_all_reported(self, client):
+        """Deduplicating must not become "report only the first"."""
+        with (
+            patch("app.main._authenticate_worker_heartbeat", new_callable=AsyncMock, return_value="ok"),
+            patch("app.main.database.upsert_earnings", new_callable=AsyncMock),
+        ):
+            resp = _import(
+                client,
+                readings=[
+                    {"slug": "gone-one", "balance": 1.0, "date": "2026-01-01"},
+                    {"slug": "gone-two", "balance": 1.0, "date": "2026-01-01"},
+                    {"slug": "gone-one", "balance": 2.0, "date": "2026-01-02"},
+                ],
+            )
+        assert resp.json()["skipped"] == ["gone-one", "gone-two"], "a distinct unknown platform was swallowed"
+
+
 class TestTheDateIsAValidCalendarDay:
     """Both delta readers ``ORDER BY ... date``, so the date is not free text.
 
