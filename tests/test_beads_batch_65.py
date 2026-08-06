@@ -107,16 +107,19 @@ class TestTheReleaseMovesThePin:
         assert "gh pr create" in run, run
         assert "gh pr merge" in run, run
 
-    def test_it_never_pushes_straight_to_the_release_branch(self):
+    def test_every_push_targets_the_delivery_branch(self):
         """The regression that matters: reintroducing a direct push would be
-        rejected on every release, silently, behind a warning."""
-        run = bump_step()["run"]
-        direct = [
-            ln.strip()
-            for ln in run.splitlines()
-            if "git push" in ln and "GITHUB_REF_NAME" in ln and "$BRANCH" not in ln
-        ]
-        assert not direct, direct
+        rejected on every release, silently, behind a warning.
+
+        Asserted POSITIVELY -- every `git push` must name "$BRANCH". The first
+        version filtered for lines mentioning GITHUB_REF_NAME, which meant a
+        hardcoded `git push origin main` -- the likeliest regression of all --
+        matched nothing and passed. (CodeRabbit, PR #260.)
+        """
+        pushes = [ln.strip() for ln in bump_step()["run"].splitlines() if "git push" in ln]
+        assert pushes, "the step no longer pushes anything"
+        offenders = [ln for ln in pushes if '"$BRANCH"' not in ln]
+        assert not offenders, f"a push does not target the delivery branch: {offenders}"
 
     def test_the_pr_targets_the_branch_the_release_ran_on(self):
         """Never a hardcoded 'main'."""
@@ -126,8 +129,15 @@ class TestTheReleaseMovesThePin:
 
     def test_the_step_has_a_token_to_talk_to_the_api(self):
         """`gh` without GH_TOKEN fails with an auth error that reads like a
-        permissions bug."""
-        assert "GH_TOKEN" in str(bump_step().get("env", {}))
+        permissions bug.
+
+        The EXACT mapping, not just the presence of the name: `GH_TOKEN: ""` and
+        `GH_TOKEN: ${{ secrets.SOMETHING_ELSE }}` both satisfied the first
+        version, and both would fail at run time in a way that looks like a
+        permissions problem rather than a typo. (CodeRabbit, PR #260.)
+        """
+        env = bump_step().get("env", {})
+        assert env.get("GH_TOKEN") == "${{ secrets.GITHUB_TOKEN }}", env
 
     def test_the_job_may_open_a_pull_request(self):
         """contents: write is not enough to open a PR; the API returns 403."""
