@@ -221,6 +221,9 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      # For the compose-pin bump, which must go through a PR because main is
+      # protected. Nothing else in this job needs it.
+      pull-requests: write
     steps:
       - uses: actions/checkout@v7
         with:
@@ -257,6 +260,10 @@ jobs:
       # a guard on the release. Now the release moves the pin itself, straight
       # after the tag it is pinning to. (CashPilot-9fg.)
       - name: Bump the example compose pins to this series
+        env:
+          # gh needs a token; the job already holds contents: write, and
+          # pull-requests: write is added on the job below for the PR itself.
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
           TAG="${{ needs.release.outputs.new_tag }}"
@@ -319,19 +326,39 @@ jobs:
           # ever widens.
           git commit -m "chore(compose): pin the examples to $SERIES [skip ci]"
 
-          # Push onto whatever main is NOW. The build job takes minutes, so
-          # something may well have merged since this run checked out -- and a
-          # release that fails at the last step because of an unrelated merge
-          # would leave the tag published and the pins stale, which is the
-          # position this whole step exists to avoid.
-          for attempt in 1 2 3; do
-            if git push origin "HEAD:${GITHUB_REF_NAME}"; then exit 0; fi
-            echo "push rejected (attempt $attempt); rebasing onto the current branch"
-            git pull --rebase origin "${GITHUB_REF_NAME}"
-          done
-          # Never fail the release for this: the tag and the images are already
-          # published and correct. Say so loudly instead.
-          echo "::warning::could not push the compose pin bump to $SERIES; bump it by hand"
+          # THROUGH A PULL REQUEST, because main is protected.
+          #
+          # The first version pushed straight to main and was rejected three
+          # times with "Changes must be made through a pull request" (GH006) --
+          # observed in the v1.16.0 run, which shipped green only because the
+          # failure warns instead of failing. Branch protection is not going
+          # away, so the mechanism has to change rather than the retry count.
+          #
+          # A PR can be merged immediately here: main requires a PR but demands
+          # no approvals and no status checks (verified against the protection
+          # API). If that ever tightens, the merge below fails, the warning
+          # fires, and the release still ships -- which is the behaviour to keep.
+          BRANCH="chore/compose-pins-$SERIES"
+          git checkout -b "$BRANCH"
+          # --force-with-lease so a re-run reuses the branch instead of dying on
+          # it. Protection covers main, not this branch.
+          if ! git push --force-with-lease origin "$BRANCH"; then
+            echo "::warning::could not push $BRANCH; bump the compose pins to $SERIES by hand"
+            exit 0
+          fi
+
+          if ! gh pr create --base "${GITHUB_REF_NAME}" --head "$BRANCH" \
+                 --title "chore(compose): pin the examples to $SERIES" \
+                 --body "Automated by the $TAG release. The example compose files pin the major.minor series, and tests/test_compose_image_pins.py compares that pin against the newest released series -- so without this every open branch goes red until someone bumps them by hand."; then
+            echo "::warning::could not open the pin-bump PR for $SERIES; merge $BRANCH by hand"
+            exit 0
+          fi
+
+          if ! gh pr merge "$BRANCH" --squash --delete-branch; then
+            echo "::warning::opened the pin-bump PR for $SERIES but could not merge it; merge it by hand"
+            exit 0
+          fi
+          echo "Pins bumped to $SERIES via $BRANCH."
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228 # v3
