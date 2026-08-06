@@ -245,6 +245,94 @@ jobs:
             git push origin "$TAG"
           fi
 
+      # The example compose files pin the major.minor series, and nothing moved
+      # them. So every minor release left docker-compose.yml and
+      # docker-compose.fleet.yml a series behind, and
+      # tests/test_compose_image_pins.py -- which is right to fail, a stale pin
+      # is what gave issue #188 a version with a first-run bug fixed months
+      # earlier -- went red on EVERY open branch until someone bumped them by
+      # hand. It blocked two unrelated PRs within hours of v1.15.0.
+      #
+      # The check was a tripwire on other people's work when it should have been
+      # a guard on the release. Now the release moves the pin itself, straight
+      # after the tag it is pinning to. (CashPilot-9fg.)
+      - name: Bump the example compose pins to this series
+        run: |
+          set -euo pipefail
+          TAG="${{ needs.release.outputs.new_tag }}"
+          SERIES="${TAG#v}"; SERIES="${SERIES%.*}"   # v1.16.2 -> 1.16
+
+          # Read the pins from BOTH files, and tolerate finding none.
+          #
+          # `|| true` is load-bearing twice over. Under `set -o pipefail` a grep
+          # that matches nothing fails the whole pipeline, so `set -e` would kill
+          # this step -- and this step runs AFTER the tag is pushed, so it would
+          # turn a successful release into a red one over a cosmetic edit. That
+          # is the exact failure this step's retry/warning logic exists to avoid,
+          # reappearing three lines earlier.
+          CURRENT=$(grep -ohE 'drumsergio/cashpilot(-worker)?:[0-9]+\.[0-9]+' \
+                      docker-compose.yml docker-compose.fleet.yml \
+                    | cut -d: -f2 | sort -u | tr '\n' ' ' || true)
+          CURRENT=$(echo "$CURRENT" | xargs || true)   # trim
+
+          if [ -z "$CURRENT" ]; then
+            echo "::warning::found no pinned cashpilot image in the compose files; leaving them alone"
+            exit 0
+          fi
+          if [ "$CURRENT" = "$SERIES" ]; then
+            # A patch release does not change the series. Committing an
+            # unchanged file would push an empty commit on every patch.
+            #
+            # Both files are read, not just docker-compose.yml: if one had
+            # drifted and the other had not, reading only the first would report
+            # "already on $SERIES" and leave the other stale forever -- a silent
+            # no-op that looks exactly like success.
+            echo "Pins already on $SERIES; nothing to do."
+            exit 0
+          fi
+          echo "Bumping the example pins [$CURRENT] -> $SERIES"
+
+          sed -i -E "s|(drumsergio/cashpilot(-worker)?):[0-9]+\.[0-9]+|\1:$SERIES|g" \
+            docker-compose.yml docker-compose.fleet.yml
+
+          # Prove the edit did what it claims before committing it. A silently
+          # unmatched sed would otherwise commit nothing and report success,
+          # leaving the drift in place with no red build to reveal it.
+          #
+          # Plain ERE, no negative lookahead: that needs -P, and GNU grep
+          # REFUSES -E and -P together ("conflicting matchers specified"). The
+          # first version of this used both and appeared to work locally only
+          # because that shell's `grep` is a ugrep shim, which accepts it.
+          STRAY=$(grep -ohE 'drumsergio/cashpilot(-worker)?:[0-9]+\.[0-9]+' \
+                    docker-compose.yml docker-compose.fleet.yml \
+                  | cut -d: -f2 | sort -u | grep -vx "$SERIES" || true)
+          if [ -n "$STRAY" ]; then
+            echo "::error::a pin did not move to $SERIES (still on: $STRAY)"; exit 1
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add docker-compose.yml docker-compose.fleet.yml
+          # [skip ci] because this must not start another release. The paths
+          # filter on this workflow does not list the compose files, so it would
+          # not fire anyway -- the marker is what keeps that true if the filter
+          # ever widens.
+          git commit -m "chore(compose): pin the examples to $SERIES [skip ci]"
+
+          # Push onto whatever main is NOW. The build job takes minutes, so
+          # something may well have merged since this run checked out -- and a
+          # release that fails at the last step because of an unrelated merge
+          # would leave the tag published and the pins stale, which is the
+          # position this whole step exists to avoid.
+          for attempt in 1 2 3; do
+            if git push origin "HEAD:${GITHUB_REF_NAME}"; then exit 0; fi
+            echo "push rejected (attempt $attempt); rebasing onto the current branch"
+            git pull --rebase origin "${GITHUB_REF_NAME}"
+          done
+          # Never fail the release for this: the tag and the images are already
+          # published and correct. Say so loudly instead.
+          echo "::warning::could not push the compose pin bump to $SERIES; bump it by hand"
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228 # v3
         with:
