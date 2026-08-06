@@ -116,7 +116,7 @@ class TestTheAdvertiseOnlyPortIsDescribedCorrectlyEverywhere:
 
 
 # ---------------------------------------------------------------------------
-# CashPilot-o6mu: the same defect survived in README.md, which is the file most
+# CashPilot-wqkd: the same defect survived in README.md, which is the file most
 # people read FIRST.
 #
 # The two checks above were written against GETTING_STARTED by name. So when
