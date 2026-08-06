@@ -1,5 +1,8 @@
-name: Deploy Documentation
+name: Documentation
 
+# The build ran ONLY on push to main, so a nav that did not resolve was
+# discovered by deploying it. `mkdocs build --strict` on the pull request turns
+# that into a check, and the deploy job runs only after the same build passes.
 on:
   push:
     branches:
@@ -7,13 +10,42 @@ on:
     paths:
       - 'docs/**'
       - 'mkdocs.yml'
+  pull_request:
+    paths:
+      - 'docs/**'
+      - 'mkdocs.yml'
+      - '.github/workflows/docs.yml'
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  deploy:
+  build:
+    name: build (strict)
     runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: pip install -r docs/requirements-docs.txt
+
+      # --strict turns a warning into a failure: a nav entry pointing at a file
+      # that does not exist, or a broken internal link, stops the run instead of
+      # shipping a 404 to the site.
+      - name: Build
+        run: mkdocs build --strict
+
+  deploy:
+    # Only from main, and only once the same build has passed above.
+    if: github.event_name == 'push'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v7
 
