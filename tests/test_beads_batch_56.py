@@ -350,11 +350,6 @@ class TestTheDeviceCeilingIsDocumentedWhereItIsEnforced:
         ]
         assert "/dev/net/tun" in (docker.get("devices") or []), "CLAUDE.md now claims a declaration that is absent"
 
-    def test_the_deploy_path_actually_forwards_it(self):
-        """Declared-but-ignored would make the corrected CLAUDE.md wrong too."""
-        main = (self.ROOT / "app" / "main.py").read_text(encoding="utf-8")
-        assert '"devices": docker_conf.get("devices") or None' in main
-
     def test_no_gpu_service_is_deployable_so_none_can_request_a_device(self):
         """The premise of a follow-up, checked rather than assumed.
 
@@ -376,3 +371,144 @@ class TestTheDeviceCeilingIsDocumentedWhereItIsEnforced:
                     f"{path.name} became deployable without declaring its device; "
                     "if it needs a GPU it will start, look healthy and earn nothing"
                 )
+
+    def test_the_deploy_path_actually_forwards_it(self):
+        """Declared-but-ignored would make the corrected CLAUDE.md wrong too.
+
+        REWRITTEN. This used to assert that app/main.py CONTAINED the literal
+        string `"devices": docker_conf.get("devices") or None`, which is the
+        anti-pattern this repository has been bitten by repeatedly: it passes
+        against a build where that line exists but never runs. It now deploys
+        Mysterium for real and inspects the spec handed to the worker.
+        """
+        import asyncio
+        from unittest.mock import AsyncMock, patch
+
+        from app import main as main_module
+
+        captured: dict = {}
+
+        async def fake_deploy(worker_id, slug, spec):
+            captured["slug"] = slug
+            captured["spec"] = spec
+            return {"container_id": "deadbeef"}
+
+        body = main_module.DeployRequest(env={}, worker_id=1)
+        with (
+            patch("app.main._require_owner", return_value=None),
+            patch("app.main._resolve_worker_id", new_callable=AsyncMock, return_value=1),
+            patch("app.main._proxy_worker_deploy", side_effect=fake_deploy),
+            # No prior deployment: the real call needs a database this test has
+            # no business creating, and a redeploy path is a different test.
+            patch("app.main.database.get_deployment_spec", new_callable=AsyncMock, return_value=None),
+            patch("app.main.database.save_deployment", new_callable=AsyncMock),
+            patch("app.main.database.record_health_event", new_callable=AsyncMock),
+        ):
+            asyncio.run(main_module.api_deploy(_FakeRequest(), "mysterium", body, worker_id=1))
+
+        assert captured["slug"] == "mysterium"
+        assert captured["spec"]["devices"] == ["/dev/net/tun"], (
+            f"the deploy spec dropped the device: {captured['spec'].get('devices')!r}. "
+            "Mysterium starts, registers and earns nothing without it."
+        )
+
+    def test_control_a_service_declaring_no_device_sends_none(self):
+        """Without this the assertion above could pass on a spec that always
+        carries /dev/net/tun regardless of what the catalog said."""
+        import asyncio
+        from unittest.mock import AsyncMock, patch
+
+        from app import main as main_module
+
+        captured: dict = {}
+
+        async def fake_deploy(worker_id, slug, spec):
+            captured["spec"] = spec
+            return {"container_id": "deadbeef"}
+
+        # Honeygain requires credentials; supplying them keeps this test about
+        # DEVICES rather than about validation.
+        body = main_module.DeployRequest(
+            env={"HONEYGAIN_EMAIL": "someone@example.invalid", "HONEYGAIN_PASSWORD": "not-a-real-password"},
+            worker_id=1,
+        )
+        with (
+            patch("app.main._require_owner", return_value=None),
+            patch("app.main._resolve_worker_id", new_callable=AsyncMock, return_value=1),
+            patch("app.main._proxy_worker_deploy", side_effect=fake_deploy),
+            patch("app.main.database.get_deployment_spec", new_callable=AsyncMock, return_value=None),
+            patch("app.main.database.save_deployment", new_callable=AsyncMock),
+            patch("app.main.database.record_health_event", new_callable=AsyncMock),
+        ):
+            asyncio.run(main_module.api_deploy(_FakeRequest(), "honeygain", body, worker_id=1))
+
+        assert not captured["spec"].get("devices")
+
+
+class TestTheCeilingRefusesADeviceItDoesNotKnow:
+    """CashPilot-6zp, the half the existing tripwire does not cover.
+
+    That test catches a compute service becoming deployable WITHOUT declaring a
+    device. This catches the other order: it declares one, and the ceiling
+    refuses it anyway.
+
+    The bead is explicit that the ceiling must NOT be widened pre-emptively —
+    every compute service still ships an empty image, so nothing can request
+    anything, and granting reach nothing uses is the opposite of the
+    deny-by-default posture. What was missing is a test that pins the refusal
+    and, when it fires, says what to do about it.
+    """
+
+    def test_a_declared_device_outside_the_ceiling_is_refused_loudly(self):
+        from unittest.mock import patch
+
+        import pytest as _pytest
+        from fastapi import HTTPException
+
+        from app import worker_api
+
+        catalog_says_dri = [{"slug": "future-gpu", "docker": {"devices": ["/dev/dri"]}}]
+        spec = worker_api.DeploySpec(image="x:1", devices=["/dev/dri"])
+
+        with (
+            patch.object(worker_api, "_catalog_get_services", lambda: catalog_says_dri),
+            _pytest.raises(HTTPException) as excinfo,
+        ):
+            worker_api._validate_deploy_spec(spec, slug="future-gpu")
+
+        assert excinfo.value.status_code == 403
+        assert "/dev/dri" in str(excinfo.value.detail), (
+            "A GPU service declared /dev/dri and the deploy was refused — correctly, but "
+            "read CashPilot-6zp before widening _ALLOWED_DEVICES. Note NVIDIA is NOT a "
+            "device at all: it needs `gpus: all` or a deploy.resources reservation, and "
+            "the worker spec has no field for either. That is a bigger change than adding "
+            "a string to a frozenset."
+        )
+
+    def test_control_the_declared_device_inside_the_ceiling_is_allowed(self):
+        """If validation refused everything, the test above would pass for the
+        wrong reason."""
+        from unittest.mock import patch
+
+        from app import worker_api
+
+        catalog = [{"slug": "mysterium", "docker": {"devices": ["/dev/net/tun"]}}]
+        spec = worker_api.DeploySpec(image="x:1", devices=["/dev/net/tun"])
+        with patch.object(worker_api, "_catalog_get_services", lambda: catalog):
+            worker_api._validate_deploy_spec(spec, slug="mysterium")  # must not raise
+
+    def test_the_ceiling_still_has_exactly_one_member(self):
+        """A canary, not a rule. If this fails someone widened the ceiling —
+        which may be right, but CashPilot-6zp should be read first."""
+        from app.worker_api import _ALLOWED_DEVICES
+
+        assert set(_ALLOWED_DEVICES) == {"/dev/net/tun"}
+
+
+class _FakeRequest:
+    """api_deploy only hands the request to _require_owner, which these tests
+    patch out. Anything with the attribute surface of a Request would do."""
+
+    def __init__(self):
+        self.headers = {}
+        self.cookies = {}
