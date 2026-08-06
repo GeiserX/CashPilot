@@ -47,6 +47,7 @@ from app import (
     metrics,
     net_activity,
     notify,
+    payout_registry,
     payouts,
     power,
     preflight,
@@ -3057,6 +3058,18 @@ async def api_disclosure_coverage(request: Request) -> dict[str, Any]:
     """
     _require_auth_api(request)
     return disclosure.coverage(catalog.get_services())
+
+
+@app.get("/api/payout-registry")
+async def api_payout_registry(request: Request) -> dict[str, Any]:
+    """Where every service pays out (CashPilot-luj, tier 1).
+
+    OWNER-ONLY, deliberately. The addresses themselves are public data, but this
+    response maps one person to all of their wallets at once -- exactly the
+    correlation an ordinary viewer has no business being handed.
+    """
+    _require_owner(request)
+    return await payout_registry.registry()
 
 
 @app.get("/api/update-status")
