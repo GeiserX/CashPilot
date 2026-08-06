@@ -30,6 +30,13 @@
   </script>
 </head>
 <body data-page="{% block page %}{% endblock %}">
+{# Every sidebar link below compares `active_page`, and .sidebar-link.active is
+   styled -- but nothing ever SET this, so the comparison was always false and
+   no page has ever highlighted its own nav item (CashPilot-yhkl). The page name
+   is already declared by each child through {% raw %}{% block page %}{% endraw %},
+   which is what <body data-page> uses, so derive it here rather than making
+   every route pass a second copy of the same string. #}
+{% set active_page = self.page() %}
 
   <div class="sidebar-overlay"></div>
 
