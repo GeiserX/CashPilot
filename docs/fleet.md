@@ -68,6 +68,12 @@ Three things about it are deliberate:
 Re-sending the same day updates it rather than appending, so a retried or
 repeated import is safe.
 
+`date` must be `YYYY-MM-DD` and a real calendar day. It is not free text: both
+delta readers order by it, so a differently shaped date sorts into the wrong
+place in its own series and the readings either side then difference against the
+wrong neighbour — silently, and only in the earned figure. A request may carry at
+most **2000 readings**; send larger histories in chunks.
+
 ## Setting Up the Fleet
 
 ### Main server (UI + local worker)

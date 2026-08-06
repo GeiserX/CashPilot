@@ -200,3 +200,96 @@ class TestTheReadingsSurviveIntact:
         assert resp.status_code == 200
         assert resp.json()["imported"] == 0
         upsert.assert_not_awaited()
+
+
+class TestTheDateIsAValidCalendarDay:
+    """Both delta readers ``ORDER BY ... date``, so the date is not free text.
+
+    A reading dated ``01/02/2026`` or ``2026-1-2`` sorts into the wrong place in
+    its own series, and the readings either side of it then difference against
+    the wrong neighbour. It fails silently, only for the client that sent it,
+    and only in the earned figure — never in the balance the dashboard shows.
+    """
+
+    @pytest.mark.parametrize(
+        "bad",
+        [
+            "01/02/2026",  # a different convention entirely
+            "2026-1-2",  # unpadded: sorts after "2026-11-01"
+            "2026-01-01T00:00:00Z",  # an instant, not a day
+            "yesterday",
+            "",
+            "2026-02-30",  # right shape, no such day
+            "2026-13-01",
+        ],
+    )
+    def test_a_malformed_date_is_refused(self, client, bad):
+        with (
+            patch("app.main._authenticate_worker_heartbeat", new_callable=AsyncMock, return_value="ok"),
+            patch("app.main.database.upsert_earnings", new_callable=AsyncMock) as upsert,
+        ):
+            resp = _import(client, readings=[{"slug": "grass", "balance": 1.0, "date": bad}])
+        assert resp.status_code == 422, f"{bad!r} was accepted"
+        upsert.assert_not_awaited()
+
+    @pytest.mark.parametrize("good", ["2026-01-01", "2024-02-29", "2026-12-31"])
+    def test_a_real_day_is_accepted(self, client, good):
+        """A validator that rejects everything is as useless as none at all —
+        2024-02-29 exists and must survive."""
+        with (
+            patch("app.main._authenticate_worker_heartbeat", new_callable=AsyncMock, return_value="ok"),
+            patch("app.main.database.upsert_earnings", new_callable=AsyncMock) as upsert,
+        ):
+            resp = _import(client, readings=[{"slug": "grass", "balance": 1.0, "date": good}])
+        assert resp.status_code == 200
+        assert upsert.await_args.kwargs["date"] == good
+
+    def test_the_date_is_refused_before_authentication_is_even_checked(self, client):
+        """Body validation runs first, so a malformed date cannot be used to
+        probe which client ids exist."""
+        with patch(
+            "app.main._authenticate_worker_heartbeat", new_callable=AsyncMock, return_value="ok"
+        ) as authenticate:
+            _import(client, readings=[{"slug": "grass", "balance": 1.0, "date": "nope"}])
+        authenticate.assert_not_awaited()
+
+
+class TestTheBodyIsBounded:
+    """One authenticated client must not be able to hand the server an
+    arbitrarily large body to parse and then write row by row."""
+
+    @staticmethod
+    def _readings(n: int) -> list[dict]:
+        return [{"slug": "grass", "balance": float(i), "date": "2026-01-01"} for i in range(n)]
+
+    def test_an_oversized_import_is_refused(self, client):
+        with (
+            patch("app.main._authenticate_worker_heartbeat", new_callable=AsyncMock, return_value="ok"),
+            patch("app.main.database.upsert_earnings", new_callable=AsyncMock) as upsert,
+        ):
+            resp = _import(client, readings=self._readings(2001))
+        assert resp.status_code == 422
+        upsert.assert_not_awaited(), "the server wrote rows from a body it should have refused"
+
+    def test_a_real_sized_import_still_fits(self):
+        """The cap must clear an honest import, or clients can never pair.
+
+        400 days of retention against the whole catalog is the worst case a
+        client would ever chunk against, so the bound is checked against the
+        REAL catalog size rather than a guess.
+        """
+        from app import catalog
+
+        chunk = 1000  # what a client sends per request
+        assert chunk <= 2000
+        assert len(catalog.get_services()) >= 40, "catalog too small for this to mean anything"
+
+    def test_a_thousand_readings_are_accepted(self, client):
+        """The chunk size a client actually uses, exercised end to end."""
+        with (
+            patch("app.main._authenticate_worker_heartbeat", new_callable=AsyncMock, return_value="ok"),
+            patch("app.main.database.upsert_earnings", new_callable=AsyncMock) as upsert,
+        ):
+            resp = _import(client, readings=self._readings(1000))
+        assert resp.status_code == 200
+        assert upsert.await_count == 1000

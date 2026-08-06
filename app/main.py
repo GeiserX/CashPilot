@@ -25,7 +25,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, field_validator
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from app import (
@@ -3713,6 +3713,13 @@ async def _earnings_for_worker(body: WorkerHeartbeat, days: int = 30) -> dict[st
     }
 
 
+#: The exact shape ``upsert_earnings`` writes and both delta readers ORDER BY.
+#: A date in any other shape would sort into the wrong place in its own series,
+#: so the readings either side of it difference against the wrong neighbour --
+#: silently, and only for the client that sent it.
+_ISO_DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+
 class EarningsReading(BaseModel):
     """One historical balance reading from a paired client."""
 
@@ -3721,6 +3728,19 @@ class EarningsReading(BaseModel):
     date: str
     currency: str = "USD"
     fx_rate_usd: float | None = None
+
+    @field_validator("date")
+    @classmethod
+    def _iso_date(cls, value: str) -> str:
+        value = (value or "").strip()
+        if not _ISO_DATE.match(value):
+            raise ValueError("date must be YYYY-MM-DD")
+        # Reject 2026-02-30 and friends: the pattern above only proves shape.
+        try:
+            datetime.strptime(value, "%Y-%m-%d")  # noqa: DTZ007 -- a calendar date, not an instant
+        except ValueError as exc:
+            raise ValueError("date must be a real calendar date") from exc
+        return value
 
 
 class EarningsImport(BaseModel):
@@ -3733,7 +3753,13 @@ class EarningsImport(BaseModel):
     """
 
     client_id: str
-    readings: list[EarningsReading] = []
+    #: Bounded so one authenticated client cannot hand the server an
+    #: arbitrarily large body to parse and then write row by row. 2000 is
+    #: comfortably above a real import -- the server keeps 400 days, and a
+    #: client chunks anything larger -- while staying a body the process can
+    #: hold. An unbounded list here is a denial of service that needs only one
+    #: compromised worker.
+    readings: list[EarningsReading] = Field(default_factory=list, max_length=2000)
 
 
 @app.post("/api/workers/earnings-import")
