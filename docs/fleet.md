@@ -34,6 +34,69 @@ Workers use **REST HTTP** to communicate with the UI:
 
 Workers must be reachable from the UI for commands. The UI must be reachable from workers for heartbeats.
 
+### Importing earnings a client collected on its own
+
+`POST /api/workers/earnings-import` lets a client that has been reading a
+provider account by itself — CashPilot Desktop, typically, before it was paired —
+hand that history to the UI, so the fleet view shows the complete picture rather
+than starting from the day of pairing.
+
+```http
+POST /api/workers/earnings-import
+Authorization: Bearer <this worker's own key, not the shared enrollment key>
+Content-Type: application/json
+
+{
+  "client_id": "desktop-macbook",
+  "readings": [
+    {"slug": "honeygain", "balance": 12.4, "date": "2026-07-01", "currency": "USD"},
+    {"slug": "mysterium", "balance": 88.0, "date": "2026-07-01", "currency": "MYST", "fx_rate_usd": 0.41}
+  ]
+}
+```
+
+It answers:
+
+| Status | Meaning |
+|---|---|
+| `200` | `{"status": "ok", "imported": N, "skipped": [...], "source": "<client_id>"}` |
+| `400` | `client_id` was missing or blank |
+| `401` | the key is wrong or revoked |
+| `403` | this worker is not fully enrolled yet — send a heartbeat first, then retry |
+| `422` | the body was rejected: a date that is not a real `YYYY-MM-DD` day, a non-finite `balance` or `fx_rate_usd`, or more than 2000 readings |
+
+Three things about it are deliberate:
+
+- **Each client's readings are stored under their own source, not merged with the
+  server's.** Earnings are clamped deltas between consecutive readings of the same
+  balance, so interleaving two samplers of one account makes every apparent drop
+  clamp to zero and understates the total. Separate series are differenced
+  separately and then summed.
+- **The source is taken from the authenticated worker, never from the request
+  body.** Otherwise any enrolled client could write into another's history, or
+  into the server's own.
+- **Only a fully enrolled worker may import.** A caller still presenting the
+  shared enrollment key gets `403` with instructions to heartbeat first: every
+  worker holds that key, and this writes durable money data.
+
+Re-sending the same day updates it rather than appending, so a retried or
+repeated import is safe.
+
+`date` must be `YYYY-MM-DD` and a real calendar day. It is not free text: both
+delta readers order by it, so a differently shaped date sorts into the wrong
+place in its own series and the readings either side then difference against the
+wrong neighbour — silently, and only in the earned figure. A request may carry at
+most **2000 readings**; send larger histories in chunks.
+
+`balance` and `fx_rate_usd` must be finite. JSON has no `NaN` or `Infinity`, but
+Python's parser accepts them, and one `NaN` balance poisons every earned figure
+taken from that series — every comparison against it is false, so the clamp
+misbehaves silently and the account total becomes `NaN`. They are rejected with
+`422`.
+
+Unknown slugs come back in `skipped` as a **distinct, sorted** list, so a year of
+one unrecognised platform is reported once rather than 400 times.
+
 ## Setting Up the Fleet
 
 ### Main server (UI + local worker)

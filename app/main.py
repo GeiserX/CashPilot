@@ -11,6 +11,7 @@ import contextlib
 import hmac
 import json
 import logging
+import math
 import os
 import re
 import secrets
@@ -23,9 +24,11 @@ import httpx
 from apscheduler.events import EVENT_JOB_ERROR, EVENT_JOB_MISSED
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from fastapi import FastAPI, HTTPException, Request
+from fastapi.encoders import jsonable_encoder
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, field_validator
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from app import (
@@ -983,6 +986,51 @@ class _SecurityHeadersMiddleware(BaseHTTPMiddleware):
 
 
 app.add_middleware(_SecurityHeadersMiddleware)
+
+
+@app.exception_handler(RequestValidationError)
+async def _validation_error_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
+    """FastAPI's 422 body echoes the offending input, and some inputs cannot be
+    encoded — so the rejection itself became a 500.
+
+    JSON has no ``NaN`` or ``Infinity``. Python's parser accepts them anyway, so
+    a client can put one in a float field; pydantic correctly rejects it, and
+    then the default handler tries to serialise ``{"input": nan}`` and Starlette's
+    encoder raises "Out of range float values are not JSON compliant". The client
+    gets an opaque 500 for what is squarely a bad request, and the log fills with
+    a traceback that names the encoder rather than the cause.
+
+    Non-finite floats are therefore rendered as their names. That keeps the
+    message diagnostic ("we saw NaN") instead of dropping the field, and it fixes
+    the whole class rather than the one endpoint that happens to take a float
+    today. Every other error is passed through byte-for-byte, so the response
+    shape callers already parse is unchanged.
+    """
+    # jsonable_encoder FIRST, exactly as FastAPI's own handler does: a custom
+    # validator's error carries the raised ValueError OBJECT in ctx, which is not
+    # serialisable either. Encoding then sanitising fixes both without changing
+    # the body for any error that was already fine.
+    return JSONResponse(status_code=422, content={"detail": _json_safe(jsonable_encoder(exc.errors()))})
+
+
+def _json_safe(value: Any) -> Any:
+    """Recursively replace values the JSON encoder refuses — currently only
+    non-finite floats.
+
+    Deliberately narrow. ``bool`` needs no special case: it subclasses ``int``,
+    not ``float``, so the check below never sees it. An earlier version guarded
+    for it anyway, with a comment that was simply wrong; a negative control
+    showed removing the guard changed nothing, so it went.
+    (``test_booleans_survive_as_booleans`` still pins the guarantee.)
+    """
+    if isinstance(value, dict):
+        return {k: _json_safe(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_json_safe(v) for v in value]
+    if isinstance(value, float) and not math.isfinite(value):
+        return repr(value)  # "nan", "inf", "-inf"
+    return value
+
 
 # Static files
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
@@ -3711,6 +3759,139 @@ async def _earnings_for_worker(body: WorkerHeartbeat, days: int = 30) -> dict[st
         "total_usd": round(sum(known), 4) if known else None,
         "platforms_without_readings": [p["slug"] for p in platforms if p["usd"] is None],
     }
+
+
+#: The exact shape ``upsert_earnings`` writes and both delta readers ORDER BY.
+#: A date in any other shape would sort into the wrong place in its own series,
+#: so the readings either side of it difference against the wrong neighbour --
+#: silently, and only for the client that sent it.
+_ISO_DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+
+class EarningsReading(BaseModel):
+    """One historical balance reading from a paired client."""
+
+    slug: str
+    #: allow_inf_nan=False because JSON's `NaN` and `Infinity` -- which Python's
+    #: parser accepts even though the spec does not -- are otherwise stored
+    #: verbatim. One NaN balance poisons every delta taken from that series
+    #: (NaN - x is NaN, and every comparison against it is False, so the clamp
+    #: silently misbehaves), the account total becomes NaN, and serialising that
+    #: back out emits a bare `NaN` that JSON.parse rejects. So a single bad
+    #: reading from one client breaks the dashboard for everyone.
+    balance: float = Field(allow_inf_nan=False)
+    date: str
+    currency: str = "USD"
+    fx_rate_usd: float | None = Field(default=None, allow_inf_nan=False)
+
+    @field_validator("date")
+    @classmethod
+    def _iso_date(cls, value: str) -> str:
+        value = (value or "").strip()
+        if not _ISO_DATE.match(value):
+            raise ValueError("date must be YYYY-MM-DD")
+        # Reject 2026-02-30 and friends: the pattern above only proves shape.
+        try:
+            datetime.strptime(value, "%Y-%m-%d")  # noqa: DTZ007 -- a calendar date, not an instant
+        except ValueError as exc:
+            raise ValueError("date must be a real calendar date") from exc
+        return value
+
+
+class EarningsImport(BaseModel):
+    """A client pushing the history it collected before it was paired.
+
+    Deliberately carries NO source field. The source is taken from the
+    AUTHENTICATED worker, never from the body -- otherwise any enrolled client
+    could write into the 'server' series, or into another machine's, and
+    overwrite readings it never took.
+    """
+
+    client_id: str
+    #: Bounded so one authenticated client cannot hand the server an
+    #: arbitrarily large body to parse and then write row by row. 2000 is
+    #: comfortably above a real import -- the server keeps 400 days, and a
+    #: client chunks anything larger -- while staying a body the process can
+    #: hold. An unbounded list here is a denial of service that needs only one
+    #: compromised worker.
+    readings: list[EarningsReading] = Field(default_factory=list, max_length=2000)
+
+
+@app.post("/api/workers/earnings-import")
+async def api_worker_earnings_import(request: Request, body: EarningsImport) -> dict[str, Any]:
+    """Accept a paired client's historical earnings under its own source.
+
+    This exists because the server and a Desktop can both have been reading the
+    SAME provider account. Their readings must not be merged into one series:
+    earnings are clamped deltas between consecutive readings, so interleaving two
+    samplers makes every drop clamp to zero and the total comes out
+    systematically understated. Each client's rows therefore land under its own
+    ``source`` and are differenced separately.
+
+    Idempotent by construction: the (platform, source, date) unique index means a
+    re-pair or a retried import UPDATES a day rather than adding a second reading
+    for it, which would difference against itself and read as zero.
+    """
+    cid = (body.client_id or "").strip()
+    if not cid:
+        raise HTTPException(status_code=400, detail="client_id required")
+
+    state = await _authenticate_worker_heartbeat(request, cid)
+    # Only a CONFIRMED worker may import. "enroll" and "reissue" both mean the
+    # caller presented the SHARED key, which every worker holds -- accepting it
+    # here would let anyone with that token write a history for any client_id
+    # they cared to name. A heartbeat is idempotent status; this is durable
+    # money data, so it gets the stricter bar.
+    if state != "ok":
+        raise HTTPException(
+            status_code=403,
+            detail=(
+                "Importing earnings requires this worker's own key. Send a heartbeat first "
+                "to complete enrollment, then retry."
+            ),
+        )
+
+    known = {s["slug"] for s in catalog.get_services()}
+    # DISTINCT slugs, not one entry per skipped reading. A client pushing 400
+    # days of a platform this server does not know would otherwise get the same
+    # name back 400 times -- a response that grows with the request, echoing
+    # client-supplied strings, and tells the reader nothing the set does not.
+    skipped: set[str] = set()
+    rows: list[dict[str, Any]] = []
+    for reading in body.readings:
+        slug = (reading.slug or "").strip()
+        # An unknown slug is dropped rather than stored: it would create a
+        # platform the catalog cannot render, name or ever collect for again.
+        if not slug or slug not in known:
+            skipped.add(slug or "(blank)")
+            continue
+        rows.append(
+            {
+                "platform": slug,
+                "balance": float(reading.balance),
+                "currency": (reading.currency or "USD").upper(),
+                "date": reading.date,
+                "fx_rate_usd": reading.fx_rate_usd,
+                "source": cid,
+            }
+        )
+
+    # ONE transaction for the whole batch. Writing row by row committed once per
+    # reading, and every commit is an fsync that takes SQLite's write lock -- so
+    # a thousand-reading import serialised a thousand disk syncs against this
+    # server's own collector, and latency tracked sync cost rather than row
+    # count. It also makes the import all-or-nothing: a failure part-way leaves
+    # the client's history exactly as it was rather than half-applied, and the
+    # import is idempotent so retrying costs a round trip. (CodeRabbit, PR #256.)
+    written = await database.upsert_earnings_many(rows)
+
+    logger.info(
+        "Imported %d earnings reading(s) from worker '%s' (%d unknown platform(s) skipped)",
+        written,
+        cid,
+        len(skipped),
+    )
+    return {"status": "ok", "imported": written, "skipped": sorted(skipped), "source": cid}
 
 
 @app.post("/api/workers/heartbeat")

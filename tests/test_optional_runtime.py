@@ -35,7 +35,7 @@ class TestNothingIsEverDefaulted:
     def test_a_spec_without_a_runtime_passes_validation_untouched(self):
         with patch.object(orchestrator, "available_runtimes", return_value=set()) as available:
             worker_api._validate_runtime(None)
-        available.assert_not_called(), "an absent runtime must not even query the daemon"
+        assert available.call_count == 0, "an absent runtime must not even query the daemon"
 
     def test_deploy_passes_none_through_so_docker_uses_its_default(self):
         captured = {}
