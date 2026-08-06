@@ -3713,6 +3713,87 @@ async def _earnings_for_worker(body: WorkerHeartbeat, days: int = 30) -> dict[st
     }
 
 
+class EarningsReading(BaseModel):
+    """One historical balance reading from a paired client."""
+
+    slug: str
+    balance: float
+    date: str
+    currency: str = "USD"
+    fx_rate_usd: float | None = None
+
+
+class EarningsImport(BaseModel):
+    """A client pushing the history it collected before it was paired.
+
+    Deliberately carries NO source field. The source is taken from the
+    AUTHENTICATED worker, never from the body -- otherwise any enrolled client
+    could write into the 'server' series, or into another machine's, and
+    overwrite readings it never took.
+    """
+
+    client_id: str
+    readings: list[EarningsReading] = []
+
+
+@app.post("/api/workers/earnings-import")
+async def api_worker_earnings_import(request: Request, body: EarningsImport) -> dict[str, Any]:
+    """Accept a paired client's historical earnings under its own source.
+
+    This exists because the server and a Desktop can both have been reading the
+    SAME provider account. Their readings must not be merged into one series:
+    earnings are clamped deltas between consecutive readings, so interleaving two
+    samplers makes every drop clamp to zero and the total comes out
+    systematically understated. Each client's rows therefore land under its own
+    ``source`` and are differenced separately.
+
+    Idempotent by construction: the (platform, source, date) unique index means a
+    re-pair or a retried import UPDATES a day rather than adding a second reading
+    for it, which would difference against itself and read as zero.
+    """
+    cid = (body.client_id or "").strip()
+    if not cid:
+        raise HTTPException(status_code=400, detail="client_id required")
+
+    state = await _authenticate_worker_heartbeat(request, cid)
+    # Only a CONFIRMED worker may import. "enroll" and "reissue" both mean the
+    # caller presented the SHARED key, which every worker holds -- accepting it
+    # here would let anyone with that token write a history for any client_id
+    # they cared to name. A heartbeat is idempotent status; this is durable
+    # money data, so it gets the stricter bar.
+    if state != "ok":
+        raise HTTPException(
+            status_code=403,
+            detail=(
+                "Importing earnings requires this worker's own key. Send a heartbeat first "
+                "to complete enrollment, then retry."
+            ),
+        )
+
+    known = {s["slug"] for s in catalog.get_services()}
+    written = 0
+    skipped: list[str] = []
+    for reading in body.readings:
+        slug = (reading.slug or "").strip()
+        # An unknown slug is dropped rather than stored: it would create a
+        # platform the catalog cannot render, name or ever collect for again.
+        if not slug or slug not in known:
+            skipped.append(slug or "(blank)")
+            continue
+        await database.upsert_earnings(
+            platform=slug,
+            balance=float(reading.balance),
+            currency=(reading.currency or "USD").upper(),
+            date=reading.date,
+            fx_rate_usd=reading.fx_rate_usd,
+            source=cid,
+        )
+        written += 1
+
+    logger.info("Imported %d earnings reading(s) from worker '%s' (%d skipped)", written, cid, len(skipped))
+    return {"status": "ok", "imported": written, "skipped": skipped, "source": cid}
+
+
 @app.post("/api/workers/heartbeat")
 async def api_worker_heartbeat(request: Request, body: WorkerHeartbeat) -> dict[str, Any]:
     """Receive a heartbeat from a worker. Registers or updates the worker."""

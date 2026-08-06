@@ -34,6 +34,40 @@ Workers use **REST HTTP** to communicate with the UI:
 
 Workers must be reachable from the UI for commands. The UI must be reachable from workers for heartbeats.
 
+### Importing earnings a client collected on its own
+
+`POST /api/workers/earnings-import` lets a client that has been reading a
+provider account by itself — CashPilot Desktop, typically, before it was paired —
+hand that history to the UI, so the fleet view shows the complete picture rather
+than starting from the day of pairing.
+
+```json
+{
+  "client_id": "desktop-macbook",
+  "readings": [
+    {"slug": "honeygain", "balance": 12.4, "date": "2026-07-01", "currency": "USD"},
+    {"slug": "mysterium", "balance": 88.0, "date": "2026-07-01", "currency": "MYST", "fx_rate_usd": 0.41}
+  ]
+}
+```
+
+Three things about it are deliberate:
+
+- **Each client's readings are stored under their own source, not merged with the
+  server's.** Earnings are clamped deltas between consecutive readings of the same
+  balance, so interleaving two samplers of one account makes every apparent drop
+  clamp to zero and understates the total. Separate series are differenced
+  separately and then summed.
+- **The source is taken from the authenticated worker, never from the request
+  body.** Otherwise any enrolled client could write into another's history, or
+  into the server's own.
+- **Only a fully enrolled worker may import.** A caller still presenting the
+  shared enrollment key gets `403` with instructions to heartbeat first: every
+  worker holds that key, and this writes durable money data.
+
+Re-sending the same day updates it rather than appending, so a retried or
+repeated import is safe.
+
 ## Setting Up the Fleet
 
 ### Main server (UI + local worker)
