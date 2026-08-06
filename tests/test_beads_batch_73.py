@@ -296,3 +296,59 @@ class TestTheCacheCannotBeCorruptedOrGrowForever:
             await onchain.balance("ethereum", "0x" + "ef" * 20, client=client)
 
         assert len(onchain._cache) <= onchain.MAX_CACHE_ENTRIES
+
+
+class TestAMalformedRpcResultIsNeverReportedAsABalance:
+    """A tolerant parser turns a malformed response into a CONFIDENT WRONG
+    NUMBER, reported as `known` -- the one outcome worse than admitting we could
+    not read the chain. All three of these produced a fake balance before the
+    parser was tightened (CodeRabbit, #273).
+    """
+
+    @pytest.mark.anyio
+    async def test_a_json_number_is_not_read_as_hex(self):
+        """`int(str(10), 16)` is 16. A decimal 10 became 16 wei, reported as
+        fact."""
+        async with _client(_ok(10)) as client:
+            out = await onchain.balance("ethereum", EVM_ADDR, client=client)
+        assert out["state"] == onchain.UNREACHABLE
+        assert out["amount"] is None
+
+    @pytest.mark.anyio
+    async def test_a_non_hex_string_is_rejected(self):
+        async with _client(_ok("banana")) as client:
+            out = await onchain.balance("ethereum", EVM_ADDR, client=client)
+        assert out["state"] == onchain.UNREACHABLE
+
+    @pytest.mark.anyio
+    async def test_a_bool_is_not_a_solana_balance(self):
+        """isinstance(True, int) is True, so a boolean became 1e-9 SOL."""
+        async with _client(_ok({"value": True})) as client:
+            out = await onchain.balance("solana", SOL_ADDR, client=client)
+        assert out["state"] == onchain.UNREACHABLE
+        assert out["amount"] is None
+
+    @pytest.mark.anyio
+    async def test_a_negative_balance_is_impossible_and_rejected(self):
+        async with _client(_ok({"value": -5_000_000_000})) as client:
+            out = await onchain.balance("solana", SOL_ADDR, client=client)
+        assert out["state"] == onchain.UNREACHABLE
+        assert out["amount"] is None
+
+    @pytest.mark.anyio
+    async def test_a_bare_integer_result_is_a_protocol_change_not_a_balance(self):
+        async with _client(_ok(2_500_000_000)) as client:
+            out = await onchain.balance("solana", SOL_ADDR, client=client)
+        assert out["state"] == onchain.UNREACHABLE
+
+    @pytest.mark.anyio
+    async def test_control_the_documented_shapes_still_work(self):
+        """The negative control. If the parser now rejected EVERYTHING, every
+        assertion above would pass for the wrong reason."""
+        async with _client(_ok(hex(10**18))) as client:
+            evm = await onchain.balance("ethereum", EVM_ADDR, client=client)
+        onchain.reset_state()
+        async with _client(_ok({"context": {"slot": 1}, "value": 2_500_000_000})) as client:
+            sol = await onchain.balance("solana", SOL_ADDR, client=client)
+        assert evm["state"] == onchain.KNOWN and evm["amount"] == Decimal(1)
+        assert sol["state"] == onchain.KNOWN and sol["amount"] == Decimal("2.5")

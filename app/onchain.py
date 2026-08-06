@@ -62,6 +62,8 @@ INVALID = "invalid"
 _EVM_ADDRESS = re.compile(r"^0x[0-9a-fA-F]{40}$")
 # Base58 excludes 0, O, I and l precisely so they cannot be confused visually.
 _SOLANA_ADDRESS = re.compile(r"^[1-9A-HJ-NP-Za-km-z]{32,44}$")
+# An Ethereum JSON-RPC QUANTITY: a 0x-prefixed hex string, and nothing else.
+_EVM_QUANTITY = re.compile(r"0x[0-9a-fA-F]+")
 
 
 @dataclass(frozen=True)
@@ -184,14 +186,37 @@ async def _rpc(client: httpx.AsyncClient, url: str, method: str, params: list[An
 
 
 async def _read(spec: Chain, address: str, client: httpx.AsyncClient) -> Decimal:
+    """Parse a balance, refusing anything that is not exactly the documented shape.
+
+    Being strict here is the whole point. A tolerant parser turns a malformed
+    response into a CONFIDENT WRONG NUMBER, which this module reports as
+    ``known`` — the one outcome worse than admitting we could not read the
+    chain. Three ways that happened before this was tightened:
+
+    * ``int(str(raw), 16)`` accepted the JSON *number* ``10`` and read it as
+      hex, reporting 16 wei as fact.
+    * ``isinstance(value, int)`` is True for ``True``, so a boolean became a
+      balance of 1e-9 SOL.
+    * nothing rejected a negative, so ``-5000000000`` rendered as -5 SOL.
+
+    Every rejection raises, and the caller turns that into ``unreachable``.
+    """
     if spec.kind == "evm":
         raw = await _rpc(client, spec.rpc, "eth_getBalance", [address, "latest"])
-        return _scale(int(str(raw), 16), spec.decimals)
+        # A hex STRING, not merely something str() can render.
+        if not isinstance(raw, str) or not _EVM_QUANTITY.fullmatch(raw):
+            raise ValueError(f"unexpected eth_getBalance result: {str(raw)[:120]}")
+        return _scale(int(raw, 16), spec.decimals)
+
     result = await _rpc(client, spec.rpc, "getBalance", [address])
-    # Solana nests the number under `value`; a bare int would be a protocol change.
-    value = result.get("value") if isinstance(result, dict) else result
-    if not isinstance(value, int):
+    # Solana nests the number under `value`; a bare int is a protocol change,
+    # not something to accept quietly.
+    if not isinstance(result, dict):
         raise ValueError(f"unexpected getBalance shape: {str(result)[:120]}")
+    value = result.get("value")
+    # `type(...) is not int` rather than isinstance: bool subclasses int.
+    if type(value) is not int or value < 0:
+        raise ValueError(f"unexpected getBalance value: {str(result)[:120]}")
     return _scale(value, spec.decimals)
 
 
