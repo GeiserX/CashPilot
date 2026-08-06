@@ -115,6 +115,17 @@ exclude_docs: |
   # docs/guides/proxybase.md) rather than to the site tree — which is also why
   # --strict fails on them if they are published.
   changelog-0.x-handwritten.md
+  # An internal working checklist, not a product page. It opens "Track status of
+  # each action here", lists promotion tactics in candid internal wording, and
+  # ticks off features that do not exist yet. Publishing it told visitors what we
+  # do to acquire them, and a checklist published as a page is a checklist nobody
+  # updates. It was reachable at /growth-strategy/ (verified 200) even though no
+  # nav entry linked it.
+  #
+  # This stops it being a PAGE. It does NOT make it private: the repository is
+  # public, so the file is still readable on GitHub. Removing it from history is
+  # a separate, deliberate decision.
+  growth-strategy.md
 
 nav:
   - Home: index.md
