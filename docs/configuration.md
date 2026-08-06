@@ -150,6 +150,67 @@ These are read by the compose files, not by CashPilot itself.
 | `CASHPILOT_BIND_ADDR` | `127.0.0.1` | Which host interface publishes the **UI** port. |
 | `CASHPILOT_WORKER_BIND_ADDR` | `127.0.0.1` | Which host interface publishes the **worker** port, in the fleet compose. The worker holds the Docker socket — root-equivalent on the host — so publish it only on an interface the UI needs, never `0.0.0.0`. |
 
+## Memory
+
+**The shipped compose files set no memory limit, deliberately.** If you set one,
+size it from the numbers below rather than from what the container looks like
+when idle — because those two figures are very far apart.
+
+### Measured, not estimated
+
+Read from the kernel's own high-water mark (`memory.peak`) on a live install
+after 8 hours of normal operation, which covers roughly 8 hourly collection
+cycles:
+
+| Container | Steady state | **Peak** | Database |
+|---|---|---|---|
+| `cashpilot-ui` | ~72 MiB | **207 MiB** | 54.7 MB |
+| `cashpilot-worker` | ~65 MiB | **130 MiB** | — |
+
+*Provenance: `drumsergio/cashpilot:1.14.1`, 15 managed containers, 54.7 MB
+SQLite database, collectors running hourly in-process under APScheduler.
+Figures are `memory.peak` and `docker stats` from the container's own cgroup.*
+
+### Why the peak is what matters
+
+The UI idles around **72 MiB and peaks near 207 MiB** — close to three times
+its resting size. Collection runs every service's collector in-process, and the
+transient cost of that dwarfs the steady state.
+
+So a limit chosen by looking at a running container is almost certainly too
+low. **128 MiB looks generous against 72 MiB and will be exceeded on the first
+collection cycle.**
+
+!!! danger "An OOM here does not look like an OOM"
+
+    The container is killed and restarted mid-collection. The dashboard keeps
+    serving the last figures it stored, so nothing on screen says anything is
+    wrong — the symptom is "earnings stopped updating", days later, which is
+    the hardest kind of failure to notice and the hardest to report.
+
+    That is the reason this page gives you a number instead of a limit.
+
+### If you do set one
+
+Leave real headroom above the measured peak. **256 MiB leaves only 49 MiB above
+the 207 MiB observed here**, on one install with one database size — a larger
+database, more services, or a slower provider that holds connections longer
+will all push it up.
+
+```yaml
+services:
+  cashpilot-ui:
+    mem_limit: 384m     # 177 MiB above the measured peak
+  cashpilot-worker:
+    mem_limit: 256m     # 126 MiB above the measured peak
+```
+
+Re-measure on your own install rather than trusting these:
+
+```bash
+docker exec cashpilot-ui cat /sys/fs/cgroup/memory.peak
+```
+
 ## Update check
 
 CashPilot asks GitHub once a day whether a newer release exists, and shows a
