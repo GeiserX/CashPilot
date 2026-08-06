@@ -8,10 +8,12 @@ fallback to ./data/cashpilot.db for development.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import logging
 import math
 import os
+from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -919,6 +921,78 @@ async def upsert_earnings(
         await db.commit()
     finally:
         await db.close()
+
+
+async def upsert_earnings_many(readings: Sequence[Mapping[str, Any]]) -> int:
+    """Upsert many readings in ONE transaction. Returns how many were written.
+
+    Same statement and same conflict rules as :func:`upsert_earnings` — this is
+    purely about how often the work is committed.
+
+    WHY IT EXISTS
+    -------------
+    A client importing its pre-pairing history sends up to a thousand readings
+    per request, and calling ``upsert_earnings`` in a loop commits once per row.
+    Every commit is an fsync, and every one of them takes SQLite's write lock —
+    so a single import serialised a thousand disk syncs against the server's own
+    collector, and request latency tracked disk sync cost rather than row count.
+
+    (The connection is NOT the problem, despite appearances: ``_get_db`` hands
+    out a borrowed handle on a shared per-loop connection whose ``close()`` is a
+    documented no-op, so the loop was never opening and closing a thousand
+    connections. It was committing a thousand times.)
+
+    ONE TRANSACTION ALSO MEANS ALL-OR-NOTHING, which is the behaviour to want
+    here: a failure part-way through leaves the caller's history exactly as it
+    was rather than half-applied, and the import is idempotent so retrying costs
+    a round trip.
+    """
+    rows = [
+        (
+            r["platform"],
+            float(r["balance"]),
+            (r.get("currency") or "USD"),
+            r.get("date") or datetime.now(UTC).strftime("%Y-%m-%d"),
+            r.get("fx_rate_usd"),
+            (r.get("source") or "server"),
+        )
+        for r in readings
+    ]
+    if not rows:
+        # No statement, no commit. An empty import is a normal case, and taking
+        # the write lock to do nothing would still block the collector.
+        return 0
+
+    db = await _get_db()
+    try:
+        try:
+            await db.executemany(
+                """
+                INSERT INTO earnings (platform, balance, currency, date, fx_rate_usd, source)
+                VALUES (?, ?, ?, ?, ?, ?)
+                ON CONFLICT(platform, source, date) DO UPDATE SET
+                    balance = excluded.balance,
+                    currency = excluded.currency,
+                    fx_rate_usd = COALESCE(excluded.fx_rate_usd, earnings.fx_rate_usd),
+                    created_at = datetime('now')
+                WHERE earnings.balance != excluded.balance
+                   OR earnings.fx_rate_usd IS NULL
+                """,
+                rows,
+            )
+            await db.commit()
+        except Exception:
+            # ROLL BACK, do not merely propagate. The connection is SHARED and
+            # outlives the request, so an abandoned transaction keeps SQLite's
+            # write lock and every later write on this loop -- including this
+            # server's own collector -- blocks until it times out. Measured: the
+            # next write took twelve seconds before this was added.
+            with contextlib.suppress(Exception):
+                await db.rollback()
+            raise
+    finally:
+        await db.close()
+    return len(rows)
 
 
 async def get_earnings_summary() -> list[dict[str, Any]]:

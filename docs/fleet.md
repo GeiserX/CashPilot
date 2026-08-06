@@ -41,7 +41,11 @@ provider account by itself — CashPilot Desktop, typically, before it was paire
 hand that history to the UI, so the fleet view shows the complete picture rather
 than starting from the day of pairing.
 
-```json
+```http
+POST /api/workers/earnings-import
+Authorization: Bearer <this worker's own key, not the shared enrollment key>
+Content-Type: application/json
+
 {
   "client_id": "desktop-macbook",
   "readings": [
@@ -50,6 +54,16 @@ than starting from the day of pairing.
   ]
 }
 ```
+
+It answers:
+
+| Status | Meaning |
+|---|---|
+| `200` | `{"status": "ok", "imported": N, "skipped": [...], "source": "<client_id>"}` |
+| `400` | `client_id` was missing or blank |
+| `401` | the key is wrong or revoked |
+| `403` | this worker is not fully enrolled yet — send a heartbeat first, then retry |
+| `422` | the body was rejected: a date that is not a real `YYYY-MM-DD` day, a non-finite `balance` or `fx_rate_usd`, or more than 2000 readings |
 
 Three things about it are deliberate:
 

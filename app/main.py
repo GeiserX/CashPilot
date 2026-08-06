@@ -3852,12 +3852,12 @@ async def api_worker_earnings_import(request: Request, body: EarningsImport) -> 
         )
 
     known = {s["slug"] for s in catalog.get_services()}
-    written = 0
     # DISTINCT slugs, not one entry per skipped reading. A client pushing 400
     # days of a platform this server does not know would otherwise get the same
     # name back 400 times -- a response that grows with the request, echoing
     # client-supplied strings, and tells the reader nothing the set does not.
     skipped: set[str] = set()
+    rows: list[dict[str, Any]] = []
     for reading in body.readings:
         slug = (reading.slug or "").strip()
         # An unknown slug is dropped rather than stored: it would create a
@@ -3865,15 +3865,25 @@ async def api_worker_earnings_import(request: Request, body: EarningsImport) -> 
         if not slug or slug not in known:
             skipped.add(slug or "(blank)")
             continue
-        await database.upsert_earnings(
-            platform=slug,
-            balance=float(reading.balance),
-            currency=(reading.currency or "USD").upper(),
-            date=reading.date,
-            fx_rate_usd=reading.fx_rate_usd,
-            source=cid,
+        rows.append(
+            {
+                "platform": slug,
+                "balance": float(reading.balance),
+                "currency": (reading.currency or "USD").upper(),
+                "date": reading.date,
+                "fx_rate_usd": reading.fx_rate_usd,
+                "source": cid,
+            }
         )
-        written += 1
+
+    # ONE transaction for the whole batch. Writing row by row committed once per
+    # reading, and every commit is an fsync that takes SQLite's write lock -- so
+    # a thousand-reading import serialised a thousand disk syncs against this
+    # server's own collector, and latency tracked sync cost rather than row
+    # count. It also makes the import all-or-nothing: a failure part-way leaves
+    # the client's history exactly as it was rather than half-applied, and the
+    # import is idempotent so retrying costs a round trip. (CodeRabbit, PR #256.)
+    written = await database.upsert_earnings_many(rows)
 
     logger.info(
         "Imported %d earnings reading(s) from worker '%s' (%d unknown platform(s) skipped)",
