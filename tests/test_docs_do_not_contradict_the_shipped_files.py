@@ -113,3 +113,85 @@ class TestTheAdvertiseOnlyPortIsDescribedCorrectlyEverywhere:
     def test_the_listen_port_really_is_fixed_by_the_image(self):
         """The correction is only right while this stays true."""
         assert '"--port", "8081"' in (ROOT / "Dockerfile.worker").read_text(encoding="utf-8")
+
+
+# ---------------------------------------------------------------------------
+# CashPilot-o6mu: the same defect survived in README.md, which is the file most
+# people read FIRST.
+#
+# The two checks above were written against GETTING_STARTED by name. So when
+# `docs/getting-started.md` was fixed, README.md's "Adding remote workers"
+# snippet kept telling people to run `image: ...:latest` with a bare
+# `"8081:8081"` -- publishing an API that can deploy, stop or remove any
+# container on the host, to every interface.
+#
+# Naming one page was the bug. These check EVERY doc that ships a compose
+# snippet.
+# ---------------------------------------------------------------------------
+
+
+#: Docs a user might copy from. CHANGELOG is excluded on purpose: it records
+#: what WAS true at a point in time, and rewriting history to satisfy a linter
+#: would make it useless.
+def _shipped_docs() -> list[Path]:
+    paths = sorted(ROOT.glob("*.md")) + sorted((ROOT / "docs").rglob("*.md"))
+    return [p for p in paths if p.name != "CHANGELOG.md" and "changelog" not in p.name.lower()]
+
+
+#: A ports entry with NO bind address in front of it. Docker reads that as
+#: 0.0.0.0, so it is the difference between "reachable from this machine" and
+#: "reachable from the whole network".
+_UNBOUND_WORKER_PORT = re.compile(r'^\s*-\s*"?8081:8081"?\s*$', re.MULTILINE)
+_LATEST_IMAGE = re.compile(r"image:\s*drumsergio/\S+:latest")
+
+
+@pytest.mark.parametrize("path", _shipped_docs(), ids=lambda p: str(p.relative_to(ROOT)))
+def test_no_doc_tells_the_user_to_publish_the_worker_api(path):
+    """The worker API is root on that host. A doc that publishes it on 0.0.0.0
+    is worse than no doc at all, because the reader trusts it."""
+    text = path.read_text(encoding="utf-8")
+    found = _UNBOUND_WORKER_PORT.findall(text)
+    assert not found, (
+        f"{path.relative_to(ROOT)} publishes the worker API on every interface: {found}. "
+        'Bind it: "${CASHPILOT_WORKER_BIND_ADDR:-127.0.0.1}:8081:8081"'
+    )
+
+
+@pytest.mark.parametrize("path", _shipped_docs(), ids=lambda p: str(p.relative_to(ROOT)))
+def test_no_doc_pins_latest_for_a_cashpilot_image(path):
+    text = path.read_text(encoding="utf-8")
+    found = _LATEST_IMAGE.findall(text)
+    assert not found, (
+        f"{path.relative_to(ROOT)} pins :latest ({found}), which SECURITY.md says makes what you "
+        "are running unknowable. Pin the major.minor series like the shipped compose files."
+    )
+
+
+class TestTheseChecksCanActuallyFail:
+    """CONTROLS. Both patterns above must match the real defect, or the sweep is
+    decoration -- and a decorative security check is worse than none, because it
+    is cited as evidence."""
+
+    def test_the_port_pattern_matches_a_bare_publish(self):
+        assert _UNBOUND_WORKER_PORT.search('    ports:\n      - "8081:8081"\n')
+        assert _UNBOUND_WORKER_PORT.search("    ports:\n      - 8081:8081\n")
+
+    def test_the_port_pattern_accepts_an_address_scoped_publish(self):
+        assert not _UNBOUND_WORKER_PORT.search('      - "${CASHPILOT_WORKER_BIND_ADDR:-127.0.0.1}:8081:8081"\n')
+        assert not _UNBOUND_WORKER_PORT.search('      - "127.0.0.1:8081:8081"\n')
+
+    def test_the_port_pattern_ignores_prose_mentioning_the_port(self):
+        """A table row or sentence naming 8081 is not a publish instruction."""
+        assert not _UNBOUND_WORKER_PORT.search("| cashpilot-worker | 8081 | Docker agent |\n")
+        assert not _UNBOUND_WORKER_PORT.search("reach it at http://server-b:8081\n")
+
+    def test_the_latest_pattern_matches_a_real_image_line(self):
+        assert _LATEST_IMAGE.search("    image: drumsergio/cashpilot-worker:latest\n")
+
+    def test_the_latest_pattern_ignores_prose_about_latest(self):
+        """SECURITY.md discusses `:latest` in order to warn about it. Flagging
+        that would force the docs to stop naming the thing they warn about."""
+        assert not _LATEST_IMAGE.search("`:latest` is published but deliberately not used\n")
+
+    def test_the_latest_pattern_accepts_a_pinned_image(self):
+        assert not _LATEST_IMAGE.search("    image: drumsergio/cashpilot-worker:1.19\n")
