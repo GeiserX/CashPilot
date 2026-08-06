@@ -31,6 +31,17 @@ services:
       - CASHPILOT_ALLOW_EPHEMERAL_KEY=${CASHPILOT_ALLOW_EPHEMERAL_KEY:-false}
       - CASHPILOT_API_KEY=${CASHPILOT_API_KEY}
     init: true
+    # The image declares its own HEALTHCHECK, so `docker ps` will show
+    # "(unhealthy)" when the app stops answering. NOTHING ACTS ON THAT BY
+    # DEFAULT: `restart: unless-stopped` restarts a container that EXITS, and a
+    # container failing its healthcheck is still running. It will sit there
+    # unhealthy indefinitely. (Docker Swarm reschedules unhealthy tasks; plain
+    # Compose does not.)
+    #
+    # To act on it, either alert on it -- see the CashPilotDown rule in
+    # docs/guides/prometheus-metrics.md -- or add an autoheal sidecar, which is
+    # documented in the same place along with the fact that it needs the Docker
+    # socket, i.e. root on the host.
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true

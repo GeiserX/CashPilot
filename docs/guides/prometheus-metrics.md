@@ -133,7 +133,67 @@ groups:
           severity: warning
         annotations:
           summary: "No successful earnings collection in 2+ hours"
+
+      # THE ONE THAT WATCHES THE WATCHER. Every alert above is computed FROM
+      # CashPilot's own metrics, so if CashPilot itself stops, none of them
+      # fire -- there is simply no data, and silence reads exactly like health.
+      # This is the only rule here that survives the thing it monitors dying.
+      - alert: CashPilotDown
+        expr: up{job="cashpilot"} == 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Prometheus cannot scrape CashPilot — every other CashPilot alert is now blind"
 ```
+
+## The container can be "up" and failing
+
+Both images declare a `HEALTHCHECK`, so Docker knows whether the app inside is
+actually answering:
+
+```bash
+docker ps --format '{{.Names}}\t{{.Status}}'
+# cashpilot-ui   Up 2 hours (unhealthy)
+```
+
+**Nothing acts on that by default, and that surprises people.**
+`restart: unless-stopped` restarts a container that *exits*. A container that
+stays running while failing its own healthcheck is not exiting, so it is never
+restarted — it sits there, `unhealthy`, indefinitely. (Docker **Swarm** does
+reschedule unhealthy tasks; plain Docker and Compose do not.)
+
+Three ways to close that, in increasing order of effort:
+
+**1. Alert on it.** If you already run Prometheus, the `CashPilotDown` rule
+above covers the case that matters: a failing healthcheck almost always means
+the HTTP endpoint stopped answering, which is the same thing a failed scrape
+detects.
+
+**2. Restart it automatically.** A small sidecar watches the Docker socket and
+restarts anything that goes unhealthy:
+
+```yaml
+  autoheal:
+    image: willfarrell/autoheal:1.2.0
+    restart: unless-stopped
+    environment:
+      - AUTOHEAL_CONTAINER_LABEL=autoheal
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+```
+
+Then label the containers you want it to manage with `autoheal: "true"`.
+
+!!! warning "This sidecar holds the Docker socket"
+
+    The socket is root on the host. You are trading one risk for another, and
+    on a single-user home server that is usually a reasonable trade — but make
+    it deliberately, not by copy-paste. If you would not give a third-party
+    image root, alert instead of autohealing.
+
+**3. Watch it by hand.** `docker ps` shows the health state, and it costs
+nothing to look at after an upgrade.
 
 ## Grafana Dashboard
 
