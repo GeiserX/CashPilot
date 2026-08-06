@@ -248,11 +248,18 @@ On each additional server, deploy only a worker pointing to the UI:
 ```yaml
 services:
   cashpilot-worker:
-    image: drumsergio/cashpilot-worker:latest
+    image: drumsergio/cashpilot-worker:1.19
     pull_policy: always
     container_name: cashpilot-worker
     ports:
-      - "8081:8081"
+      # The worker's API is backed by the Docker socket -- deploy, stop or
+      # remove ANY container -- so publishing it is publishing full control of
+      # this host. It binds LOOPBACK by default for that reason.
+      #
+      # A remote UI does need to reach it, so set CASHPILOT_WORKER_BIND_ADDR to
+      # this server's PRIVATE or VPN address (a Tailscale IP, say). Never a
+      # public one, and never 0.0.0.0.
+      - "${CASHPILOT_WORKER_BIND_ADDR:-127.0.0.1}:8081:8081"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - cashpilot_worker_data:/data

@@ -114,7 +114,7 @@ On each additional server, deploy only a worker pointing back to the UI:
 ```yaml
 services:
   cashpilot-worker:
-    image: drumsergio/cashpilot-worker:latest
+    image: drumsergio/cashpilot-worker:1.19
     pull_policy: always
     container_name: cashpilot-worker
     # The worker's API is Docker-socket-backed (= root on the host). Bind it to a
