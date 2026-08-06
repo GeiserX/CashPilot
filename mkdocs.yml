@@ -190,3 +190,4 @@ nav:
     - Direction and Roadmap: roadmap.md
     - What "idle" looks like on the wire: research/idle-network-traffic.md
     - Per-IP device limits: research/per-ip-device-limits.md
+    - Self-hosting operability review: research/self-hosting-operability.md
