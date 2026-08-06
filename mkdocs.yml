@@ -182,6 +182,7 @@ nav:
     - Security Defaults: security-defaults.md
     - Network Isolation: isolation.md
   - Operations:
+    - Backup and Restore: backup-restore.md
     - Backing Up Node Identities: backup.md
     - Prometheus Metrics: guides/prometheus-metrics.md
     - Upgrade to v1.0.0: upgrade-v1.md
