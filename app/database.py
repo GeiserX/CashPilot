@@ -319,8 +319,23 @@ CREATE TABLE IF NOT EXISTS earnings (
     -- any accuracy — which is what a net-profit or tax export needs. NULL only when
     -- the rate was genuinely unavailable, never a guess.
     fx_rate_usd REAL,
+    -- WHO took this reading. 'server' is this CashPilot's own collectors; a
+    -- paired client pushing its history uses its own worker client_id.
+    --
+    -- Load-bearing, not bookkeeping. A balance is a RUNNING TOTAL and earnings
+    -- are the delta between CONSECUTIVE readings. Two samplers of one provider
+    -- account interleaved into a single series oscillate -- server 10, desktop
+    -- 9, server 11, desktop 10 -- and because a drop clamps to zero, the total
+    -- comes out SYSTEMATICALLY UNDERSTATED while looking entirely plausible.
+    -- Deltas are therefore taken per (platform, source) and only then summed.
+    source     TEXT    NOT NULL DEFAULT 'server',
     created_at TEXT    NOT NULL DEFAULT (datetime('now'))
 );
+-- NOTE: the (platform, source, date) unique index is created in the MIGRATION,
+-- not here. On an upgraded volume `CREATE TABLE IF NOT EXISTS earnings` is a
+-- no-op, so an index declared here would reference `source` before the ALTER
+-- adds it and every upgrade would fail on "no such column: source". The
+-- existing fx-migration test models exactly that volume and caught it.
 
 -- updated_at exists so a credential's AGE is knowable. Several collectors use
 -- values copied out of a browser and some expire in hours; without a timestamp
@@ -451,8 +466,18 @@ CREATE TABLE IF NOT EXISTS session_revocations (
     revoked_before REAL    NOT NULL
 );
 
-CREATE UNIQUE INDEX IF NOT EXISTS idx_earnings_platform_date
-    ON earnings (platform, date);
+-- The (platform, SOURCE, date) unique index is created in the MIGRATION, not
+-- here, and this must stay that way. _SCHEMA is replayed on EVERY startup, and
+-- on an upgraded volume `CREATE TABLE IF NOT EXISTS earnings` is a no-op -- so
+-- an index declared here names `source` before the ALTER has added it and
+-- init_db dies with "no such column: source", taking the whole app down on
+-- upgrade. I made that mistake twice; the fx-migration test catches it both
+-- times.
+--
+-- Source is part of the key because two machines may legitimately report the
+-- same platform on the same day -- the normal case once a client pushes its
+-- history -- while one machine reporting a platform twice for one day is still
+-- a duplicate to be upserted away.
 
 CREATE INDEX IF NOT EXISTS idx_earnings_created
     ON earnings (created_at);
@@ -606,7 +631,7 @@ async def _dedupe_earnings_before_indexing(db: Any) -> None:
     would have left behind had the index been there all along.
     """
     cursor = await db.execute(
-        "SELECT 1 FROM sqlite_master WHERE type = 'index' AND name = 'idx_earnings_platform_date'"
+        "SELECT 1 FROM sqlite_master WHERE type = 'index' AND name = 'idx_earnings_platform_source_date'"
     )
     if await cursor.fetchone():
         return  # Index already present, so duplicates cannot exist.
@@ -615,7 +640,15 @@ async def _dedupe_earnings_before_indexing(db: Any) -> None:
     if not await cursor.fetchone():
         return  # Fresh install; the table is about to be created cleanly.
 
-    cursor = await db.execute("SELECT COUNT(*) - COUNT(DISTINCT platform || '|' || date) AS extra FROM earnings")
+    # This runs BEFORE the `source` column is added, so the key must match
+    # whichever schema is actually on disk. Referencing `source` unconditionally
+    # crashes init_db on exactly the volume this helper exists to rescue.
+    cursor = await db.execute("PRAGMA table_info(earnings)")
+    has_source = any(row["name"] == "source" for row in await cursor.fetchall())
+    key = "platform || '|' || COALESCE(source, 'server') || '|' || date" if has_source else "platform || '|' || date"
+    group_by = "platform, source, date" if has_source else "platform, date"
+
+    cursor = await db.execute(f"SELECT COUNT(*) - COUNT(DISTINCT {key}) AS extra FROM earnings")
     row = await cursor.fetchone()
     extra = int(row["extra"] or 0)
     if extra <= 0:
@@ -627,7 +660,7 @@ async def _dedupe_earnings_before_indexing(db: Any) -> None:
         "and the application can start.",
         extra,
     )
-    await db.execute("DELETE FROM earnings WHERE id NOT IN (SELECT MAX(id) FROM earnings GROUP BY platform, date)")
+    await db.execute(f"DELETE FROM earnings WHERE id NOT IN (SELECT MAX(id) FROM earnings GROUP BY {group_by})")
     await db.commit()
 
 
@@ -745,6 +778,7 @@ async def init_db() -> None:
             # When the per-worker key was minted, so the window in which the
             # SHARED key still works for that worker can be bounded.
             await db.execute("ALTER TABLE workers ADD COLUMN key_issued_at TEXT")
+
             # Backfilled to NOW, not to NULL and not to the distant past.
             # Every already-enrolled-but-unconfirmed worker would otherwise be
             # instantly past its window the moment this upgrade lands, and a
@@ -762,6 +796,30 @@ async def init_db() -> None:
         earnings_cols = {row["name"] for row in await cursor.fetchall()}
         if "fx_rate_usd" not in earnings_cols:
             await db.execute("ALTER TABLE earnings ADD COLUMN fx_rate_usd REAL")
+        # Add `source`: WHO took the reading. Existing rows were all taken by
+        # this server's own collectors, so 'server' is the truthful backfill
+        # rather than a placeholder -- there was no other sampler before this.
+        if "source" not in earnings_cols:
+            await db.execute("ALTER TABLE earnings ADD COLUMN source TEXT NOT NULL DEFAULT 'server'")
+        # Unconditional, and only AFTER the column is guaranteed to exist. This
+        # is the ONLY place the index is created, so a fresh install and an
+        # upgraded volume take the same path -- declaring it in _SCHEMA instead
+        # broke every upgrade, because `CREATE TABLE IF NOT EXISTS` is a no-op
+        # there and the index then named a column the ALTER had not yet added.
+        #
+        # Makes (platform, source, date) the idempotency key, so re-pairing or a
+        # retried import overwrites a day rather than appending a second reading
+        # for it -- which would difference against itself and read as zero.
+        # The LEGACY index must go FIRST. On an upgraded volume
+        # idx_earnings_platform_date survives, and it still forbids two sources
+        # for one (platform, date) -- so the new index would be created and the
+        # old one would quietly keep rejecting exactly the writes this change
+        # exists to allow. Creating the replacement is not enough; the old
+        # constraint has to be removed. (CodeRabbit, PR #255.)
+        await db.execute("DROP INDEX IF EXISTS idx_earnings_platform_date")
+        await db.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_earnings_platform_source_date ON earnings (platform, source, date)"
+        )
 
         # Migrate deployments table: add spec_encrypted so an existing install starts
         # remembering what it deployed. Rows written before this stay empty and fall
@@ -814,12 +872,20 @@ async def upsert_earnings(
     currency: str = "USD",
     date: str | None = None,
     fx_rate_usd: float | None = None,
+    source: str = "server",
 ) -> None:
-    """Insert or update an earnings record for a platform + date.
+    """Insert or update an earnings record for a platform + source + date.
 
     ``fx_rate_usd`` is the currency -> USD rate at collection time. It is stored
     alongside the balance because exchange rates are only cached live: without it,
     the USD value of a historical non-USD reading cannot be reconstructed later.
+
+    ``source`` is WHO took the reading: ``"server"`` for this server's own
+    collectors, or a paired client's worker id. It is part of the key, so two
+    machines may report the same platform on the same day -- the normal case once
+    a client pushes its history -- while one machine reporting a platform twice
+    for a day still upserts. Without this parameter the schema would accept a
+    source but nothing could ever write one, so a client's series could not exist.
     """
     date = date or datetime.now(UTC).strftime("%Y-%m-%d")
     db = await _get_db()
@@ -829,9 +895,9 @@ async def upsert_earnings(
         # WHERE guard preserves created_at when the balance is unchanged.
         await db.execute(
             """
-            INSERT INTO earnings (platform, balance, currency, date, fx_rate_usd)
-            VALUES (?, ?, ?, ?, ?)
-            ON CONFLICT(platform, date) DO UPDATE SET
+            INSERT INTO earnings (platform, balance, currency, date, fx_rate_usd, source)
+            VALUES (?, ?, ?, ?, ?, ?)
+            ON CONFLICT(platform, source, date) DO UPDATE SET
                 balance = excluded.balance,
                 currency = excluded.currency,
                 -- COALESCE, not a plain assignment: if the rate lookup failed this
@@ -848,7 +914,7 @@ async def upsert_earnings(
             WHERE earnings.balance != excluded.balance
                OR earnings.fx_rate_usd IS NULL
             """,
-            (platform, balance, currency, date, fx_rate_usd),
+            (platform, balance, currency, date, fx_rate_usd, source),
         )
         await db.commit()
     finally:
@@ -868,8 +934,16 @@ async def get_earnings_summary() -> list[dict[str, Any]]:
             -- at is sitting right here in the row.
             SELECT platform, balance, currency, date, fx_rate_usd
             FROM earnings
-            WHERE (platform, date) IN (
-                SELECT platform, MAX(date) FROM earnings GROUP BY platform
+            -- Deliberately ONE row per platform, not one per source. A
+            -- provider reports a single balance for the whole account, so the
+            -- newest reading from ANY source IS the current balance; taking the
+            -- latest per source and summing them would multiply it by the
+            -- number of machines watching.
+            WHERE id IN (
+                SELECT id FROM earnings e
+                WHERE e.date = (SELECT MAX(date) FROM earnings WHERE platform = e.platform)
+                GROUP BY e.platform
+                HAVING id = MAX(e.id)
             )
             ORDER BY platform
             """
@@ -958,31 +1032,39 @@ async def _usd_earned_per_date(db: Any) -> tuple[dict[str, float], int]:
     """
     cursor = await db.execute(
         """
-        SELECT platform, date, balance, currency, fx_rate_usd
+        SELECT platform, date, balance, currency, fx_rate_usd, source
         FROM earnings
-        ORDER BY platform, date
+        ORDER BY platform, source, date
         """
     )
     per_date: dict[str, float] = {}
-    previous: dict[str, tuple[str, float]] = {}
+    # Keyed by (platform, SOURCE) for the same reason as get_earned_by_platform:
+    # two machines sampling one provider account interleave into a series whose
+    # deltas are meaningless, and every drop clamps to zero, so the total comes
+    # out understated while looking plausible.
+    previous: dict[tuple[str, str], tuple[str, float]] = {}
     unpriced = 0
     for row in await cursor.fetchall():
         platform = row["platform"]
+        # Absent source means a row written before the column existed; those
+        # were all this server's own, so they join the 'server' series rather
+        # than forming a phantom one.
+        series = (platform, (row["source"] or "server"))
         currency = (row["currency"] or "USD").upper()
         rate = _usd_rate(currency, row["fx_rate_usd"])
         if rate is None:
-            previous.pop(platform, None)
+            previous.pop(series, None)
             unpriced += 1
             continue
         balance = float(row["balance"] or 0.0)
-        before = previous.get(platform)
+        before = previous.get(series)
         if before is not None and before[0] == currency:
             # Clamped per platform BEFORE summing: a payout drops one
             # platform's balance, and an unclamped drop would cancel real
             # earnings on another platform in the same day's total.
             gained = max(0.0, balance - before[1]) * rate
             per_date[row["date"]] = per_date.get(row["date"], 0.0) + gained
-        previous[platform] = (currency, balance)
+        previous[series] = (currency, balance)
     return per_date, unpriced
 
 
@@ -1840,20 +1922,27 @@ async def get_earned_by_platform(days: int = 30) -> dict[str, float]:
     try:
         cursor = await db.execute(
             """
-            SELECT platform, date, balance, currency, fx_rate_usd
+            SELECT platform, date, balance, currency, fx_rate_usd, source
             FROM earnings
             WHERE date >= date('now', ?)
-            ORDER BY platform, date
+            ORDER BY platform, source, date
             """,
             (f"-{max(1, int(days))} days",),
         )
         rows = await cursor.fetchall()
 
         earned: dict[str, float] = {}
-        previous: dict[str, tuple[str, float]] = {}
+        # Keyed by (platform, SOURCE). Keyed by platform alone, two samplers of
+        # one provider account interleave into a single series whose deltas are
+        # meaningless: each drop clamps to zero, so the total is understated.
+        previous: dict[tuple[str, str], tuple[str, float]] = {}
         unpriced = 0
         for row in rows:
             platform = row["platform"]
+            # Absent source means a row written before the column existed, and
+            # those were all this server's own. Never invent a distinct source
+            # for them: that would split one real series in two.
+            series = (platform, (row["source"] or "server"))
             currency = (row["currency"] or "USD").upper()
             balance = float(row["balance"] or 0.0)
             # USD is parity by definition. Trusting a stored rate on a USD row
@@ -1866,14 +1955,16 @@ async def get_earned_by_platform(days: int = 30) -> dict[str, float]:
                 # contribute earnings nor anchor the next delta. Dropping the
                 # baseline is what stops a later reading from being differenced
                 # across the gap and counting the unpriced period twice.
-                previous.pop(platform, None)
+                previous.pop(series, None)
                 unpriced += 1
                 continue
 
-            before = previous.get(platform)
+            before = previous.get(series)
             if before is not None and before[0] == currency:
+                # Summed into the PLATFORM, so each source contributes its own
+                # earnings and the combination happens after differencing.
                 earned[platform] += max(0.0, balance - before[1]) * float(rate)
-            previous[platform] = (currency, balance)
+            previous[series] = (currency, balance)
 
         if unpriced:
             _logger.warning(
