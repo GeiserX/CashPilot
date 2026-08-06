@@ -810,6 +810,13 @@ async def init_db() -> None:
         # Makes (platform, source, date) the idempotency key, so re-pairing or a
         # retried import overwrites a day rather than appending a second reading
         # for it -- which would difference against itself and read as zero.
+        # The LEGACY index must go FIRST. On an upgraded volume
+        # idx_earnings_platform_date survives, and it still forbids two sources
+        # for one (platform, date) -- so the new index would be created and the
+        # old one would quietly keep rejecting exactly the writes this change
+        # exists to allow. Creating the replacement is not enough; the old
+        # constraint has to be removed. (CodeRabbit, PR #255.)
+        await db.execute("DROP INDEX IF EXISTS idx_earnings_platform_date")
         await db.execute(
             "CREATE UNIQUE INDEX IF NOT EXISTS idx_earnings_platform_source_date ON earnings (platform, source, date)"
         )
@@ -865,12 +872,20 @@ async def upsert_earnings(
     currency: str = "USD",
     date: str | None = None,
     fx_rate_usd: float | None = None,
+    source: str = "server",
 ) -> None:
-    """Insert or update an earnings record for a platform + date.
+    """Insert or update an earnings record for a platform + source + date.
 
     ``fx_rate_usd`` is the currency -> USD rate at collection time. It is stored
     alongside the balance because exchange rates are only cached live: without it,
     the USD value of a historical non-USD reading cannot be reconstructed later.
+
+    ``source`` is WHO took the reading: ``"server"`` for this server's own
+    collectors, or a paired client's worker id. It is part of the key, so two
+    machines may report the same platform on the same day -- the normal case once
+    a client pushes its history -- while one machine reporting a platform twice
+    for a day still upserts. Without this parameter the schema would accept a
+    source but nothing could ever write one, so a client's series could not exist.
     """
     date = date or datetime.now(UTC).strftime("%Y-%m-%d")
     db = await _get_db()
@@ -880,8 +895,8 @@ async def upsert_earnings(
         # WHERE guard preserves created_at when the balance is unchanged.
         await db.execute(
             """
-            INSERT INTO earnings (platform, balance, currency, date, fx_rate_usd)
-            VALUES (?, ?, ?, ?, ?)
+            INSERT INTO earnings (platform, balance, currency, date, fx_rate_usd, source)
+            VALUES (?, ?, ?, ?, ?, ?)
             ON CONFLICT(platform, source, date) DO UPDATE SET
                 balance = excluded.balance,
                 currency = excluded.currency,
@@ -899,7 +914,7 @@ async def upsert_earnings(
             WHERE earnings.balance != excluded.balance
                OR earnings.fx_rate_usd IS NULL
             """,
-            (platform, balance, currency, date, fx_rate_usd),
+            (platform, balance, currency, date, fx_rate_usd, source),
         )
         await db.commit()
     finally:

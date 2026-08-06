@@ -223,23 +223,93 @@ class TestTwoSamplersNoLongerCorruptTheTotal:
     def test_a_legacy_row_with_no_source_joins_the_server_series(self, db):
         """Rows written before the column existed were all this server's own.
 
-        Treating them as a distinct source would split one real series in two and
-        drop the delta across the boundary.
+        The column is OMITTED from the INSERT so the schema default applies --
+        which is the shape a migrated legacy row actually has. An earlier version
+        of this test set source='server' explicitly, so it exercised no fallback
+        at all and merely duplicated the single-source case while its name
+        claimed otherwise. (CodeRabbit, PR #255.)
         """
 
         async def run():
             conn = await database._get_db()
             try:
                 await conn.execute(
-                    "INSERT INTO earnings (platform, balance, currency, date, fx_rate_usd, source) "
-                    "VALUES ('titan', 1.0, 'USD', date('now', '-2 days'), 1.0, 'server')"
+                    "INSERT INTO earnings (platform, balance, currency, date, fx_rate_usd) "
+                    "VALUES ('titan', 1.0, 'USD', date('now', '-2 days'), 1.0)"
+                )
+                await conn.execute(
+                    "INSERT INTO earnings (platform, balance, currency, date, fx_rate_usd) "
+                    "VALUES ('titan', 6.0, 'USD', date('now', '-1 days'), 1.0)"
                 )
                 await conn.commit()
             finally:
                 await conn.close()
-            await _insert([("titan", 6.0, "-1 days", "server")])
             earned = await database.get_earned_by_platform(days=30)
             assert earned["titan"] == pytest.approx(5.0)
+
+        asyncio.run(run())
+
+    def test_the_storage_api_can_write_a_source(self, db):
+        """The schema is unusable if nothing can write a non-default source.
+
+        upsert_earnings had no `source` parameter, so SQLite applied the default
+        to every call and a paired client could never create its own series
+        through the storage API. (CodeRabbit, PR #255.)
+        """
+
+        async def run():
+            await database.upsert_earnings(
+                platform="grass", balance=5.0, currency="USD", date="2026-01-01", fx_rate_usd=1.0, source="desktop-a"
+            )
+            conn = await database._get_db()
+            try:
+                cur = await conn.execute("SELECT source FROM earnings WHERE platform = 'grass'")
+                row = await cur.fetchone()
+            finally:
+                await conn.close()
+            assert row["source"] == "desktop-a"
+
+        asyncio.run(run())
+
+    def test_two_sources_upsert_independently(self, db):
+        """Each machine's series is its own: writing one must not overwrite the
+        other's reading for the same day."""
+
+        async def run():
+            for src, bal in (("server", 5.0), ("desktop-a", 50.0)):
+                await database.upsert_earnings(
+                    platform="grass", balance=bal, currency="USD", date="2026-01-01", fx_rate_usd=1.0, source=src
+                )
+            conn = await database._get_db()
+            try:
+                cur = await conn.execute(
+                    "SELECT source, balance FROM earnings WHERE platform = 'grass' ORDER BY source"
+                )
+                rows = await cur.fetchall()
+            finally:
+                await conn.close()
+            assert [(r["source"], r["balance"]) for r in rows] == [("desktop-a", 50.0), ("server", 5.0)]
+
+        asyncio.run(run())
+
+    def test_the_same_source_still_upserts(self, db):
+        """The dedupe half of the key: one machine, one platform, one day."""
+
+        async def run():
+            for bal in (5.0, 9.0):
+                await database.upsert_earnings(
+                    platform="grass", balance=bal, currency="USD", date="2026-01-01", fx_rate_usd=1.0, source="server"
+                )
+            conn = await database._get_db()
+            try:
+                cur = await conn.execute(
+                    "SELECT COUNT(*) AS n, MAX(balance) AS b FROM earnings WHERE platform = 'grass'"
+                )
+                row = await cur.fetchone()
+            finally:
+                await conn.close()
+            assert row["n"] == 1
+            assert row["b"] == 9.0
 
         asyncio.run(run())
 
@@ -375,5 +445,78 @@ class TestAnOldVolumeUpgradesCleanly:
             # upsert would have left had the index existed all along.
             assert len(rows) == 1
             assert rows[0]["balance"] == 2.0
+
+        asyncio.run(run())
+
+
+class TestTheLegacyIndexIsRemovedOnUpgrade:
+    """The bug my own upgrade test could not see.
+
+    It built a legacy table with NO indexes, so it never noticed that a real
+    upgraded volume keeps ``idx_earnings_platform_date`` -- which still forbids
+    two sources for one (platform, date) and would silently defeat the entire
+    change for every existing install. Creating the replacement is not enough;
+    the old constraint has to be dropped. (CodeRabbit, PR #255.)
+    """
+
+    def _legacy_volume(self):
+        async def build():
+            conn = await database._get_db()
+            try:
+                await conn.executescript("""
+                    DROP TABLE IF EXISTS earnings;
+                    CREATE TABLE earnings (
+                        id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                        platform   TEXT    NOT NULL,
+                        balance    REAL    NOT NULL,
+                        currency   TEXT    NOT NULL DEFAULT 'USD',
+                        date       TEXT    NOT NULL,
+                        created_at TEXT    NOT NULL DEFAULT (datetime('now'))
+                    );
+                    CREATE UNIQUE INDEX idx_earnings_platform_date
+                        ON earnings (platform, date);
+                """)
+                await conn.commit()
+            finally:
+                await conn.close()
+
+        return build
+
+    def test_the_old_index_is_gone_after_migration(self, db_dir):
+        async def run():
+            await self._legacy_volume()()
+            await database.init_db()
+            conn = await database._get_db()
+            try:
+                cur = await conn.execute(
+                    "SELECT name FROM sqlite_master WHERE type = 'index' AND name LIKE 'idx_earnings_platform%'"
+                )
+                names = {row["name"] for row in await cur.fetchall()}
+            finally:
+                await conn.close()
+            assert "idx_earnings_platform_source_date" in names
+            assert "idx_earnings_platform_date" not in names, (
+                "the legacy index survived and still forbids two sources per day"
+            )
+
+        asyncio.run(run())
+
+    def test_two_sources_can_write_one_day_after_upgrading(self, db_dir):
+        """The behaviour the dropped index was blocking, end to end."""
+
+        async def run():
+            await self._legacy_volume()()
+            await database.init_db()
+            for src, bal in (("server", 1.0), ("desktop-a", 100.0)):
+                await database.upsert_earnings(
+                    platform="grass", balance=bal, currency="USD", date="2026-01-01", fx_rate_usd=1.0, source=src
+                )
+            conn = await database._get_db()
+            try:
+                cur = await conn.execute("SELECT COUNT(*) AS n FROM earnings WHERE platform = 'grass'")
+                row = await cur.fetchone()
+            finally:
+                await conn.close()
+            assert row["n"] == 2, "an upgraded volume still rejects a second source for the same day"
 
         asyncio.run(run())
