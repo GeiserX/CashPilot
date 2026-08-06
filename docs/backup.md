@@ -1,5 +1,12 @@
 # Backing up what cannot be replaced
 
+!!! info "Looking for the UI's own data?"
+
+    This page is about the identities your SERVICES generate. CashPilot's own
+    database and its credential-encryption key are a separate job — see
+    [Backup and Restore](backup-restore.md). Losing `.fernet_key` makes every
+    stored credential permanently undecryptable, so that page matters more.
+
 Some services keep state on your machine that **exists nowhere else**: a node
 identity, a relay key, a wallet generated inside the container on first run.
 Lose the disk and you lose the held payout balance and the node's accumulated
