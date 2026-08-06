@@ -97,7 +97,45 @@ def entry(service: dict[str, Any], spec: dict[str, Any] | None, *, deployed: boo
         # the one state that asks the user to do something.
         "address_missing": model == "external" and address is None,
         "notes": payout.get("notes"),
+        # Volumes the catalog marks irreplaceable, with the catalog's own words
+        # for what each one holds. For a `minted` service this IS the payout
+        # destination -- the wallet is a file on that volume, so "where does my
+        # money go?" is answered by naming the volume, not an address.
+        #
+        # Read straight from the service dict rather than looking the slug up
+        # again: this function is pure, and the caller already resolved it.
+        "critical_state": critical_state(service),
     }
+
+
+def critical_state(service: dict[str, Any]) -> list[dict[str, Any]]:
+    """The volumes this service cannot survive losing, and what each holds.
+
+    An empty list means the catalog declares nothing irreplaceable -- NOT that
+    nothing was checked. That distinction matters here for the same reason it
+    matters everywhere else in this module: a service whose criticality was
+    never established must not render as a service with nothing to lose.
+    Callers holding a service dict have the catalog by definition, so absence
+    here really is "declares nothing".
+    """
+    docker = service.get("docker") or {}
+    out: list[dict[str, Any]] = []
+    for entry_ in docker.get("critical_volumes") or []:
+        if not isinstance(entry_, dict):
+            continue
+        target = entry_.get("target")
+        if not target:
+            continue
+        out.append(
+            {
+                "target": str(target),
+                # The catalog's wording is the user-facing explanation. A generic
+                # fallback is worse than nothing only if it pretends to be
+                # specific, so keep it plainly generic.
+                "holds": str(entry_.get("holds") or "Irreplaceable service state."),
+            }
+        )
+    return out
 
 
 async def registry() -> dict[str, Any]:
@@ -136,5 +174,9 @@ async def registry() -> dict[str, Any]:
             # be going nowhere, and services we cannot yet answer for.
             "needs_an_address": sum(1 for row in entries if row["address_missing"] and row["deployed"]),
             "unclassified": sum(1 for row in entries if row["model"] == "unknown"),
+            # DEPLOYED only. A service you are not running cannot lose state you
+            # do not have, and counting it would put a permanent warning on the
+            # dashboard of someone who has nothing at risk.
+            "holding_irreplaceable_state": sum(1 for row in entries if row["deployed"] and row["critical_state"]),
         },
     }
