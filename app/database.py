@@ -387,7 +387,18 @@ CREATE TABLE IF NOT EXISTS users (
     username   TEXT    NOT NULL UNIQUE,
     password   TEXT    NOT NULL,
     role       TEXT    NOT NULL DEFAULT 'viewer',
-    created_at TEXT    NOT NULL DEFAULT (datetime('now'))
+    created_at TEXT    NOT NULL DEFAULT (datetime('now')),
+    -- Declared here as well as in the migration below, so a FRESH install does
+    -- not run an ALTER TABLE it never needed. Found by the startup log added in
+    -- CashPilot-sfbh: a brand-new database reported "Migrations applied this
+    -- boot: users.password_changed_at", which is exactly the noise that makes an
+    -- operator stop reading migration output.
+    --
+    -- Safe both ways: CREATE TABLE IF NOT EXISTS is a no-op on an existing
+    -- database, so it still gets the column from the migration. (Unlike adding
+    -- an INDEX here, which runs on existing tables and fails on a column they do
+    -- not have yet -- that mistake broke the upgrade path twice.)
+    password_changed_at REAL DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS workers (
@@ -717,9 +728,24 @@ async def _encrypt_legacy_plaintext_credentials(db: Any) -> int:
     return len(stale)
 
 
+#: What this build's schema looks like. Bumped by hand when a migration is added.
+#:
+#: REPORTED, NEVER USED AS A GATE. Every migration below is guarded by its own
+#: ``PRAGMA table_info`` check, and that stays the source of truth. If this number
+#: decided whether migrations ran, a database whose user_version said 10 but was
+#: missing a column -- an interrupted upgrade, a restored backup, a hand-edited
+#: file -- could never be repaired, because the gate would say there was nothing
+#: to do. The guards are idempotent and cheap; the version is for the operator.
+SCHEMA_VERSION = 10
+
+
 async def init_db() -> None:
     """Create tables if they don't exist."""
     db = await _get_db()
+    # What actually changed on THIS boot, for the log line at the end. An
+    # operator watching `docker logs` during an upgrade could previously not
+    # tell a clean start from one that had just rewritten the earnings table.
+    applied: list[str] = []
     try:
         await _dedupe_earnings_before_indexing(db)
         await db.executescript(_SCHEMA)
@@ -727,6 +753,7 @@ async def init_db() -> None:
         cursor = await db.execute("PRAGMA table_info(workers)")
         cols = {row["name"] for row in await cursor.fetchall()}
         if "client_id" not in cols:
+            applied.append("workers.client_id")
             # Rebuild table: UNIQUE moves from name → client_id, name becomes display-only.
             # Existing rows get client_id = name for backward compat.
             has_apps = "apps" in cols
@@ -767,16 +794,20 @@ async def init_db() -> None:
                 CREATE INDEX IF NOT EXISTS idx_workers_status ON workers (status);
             """)
         elif "apps" not in cols:
+            applied.append("workers.apps")
             await db.execute("ALTER TABLE workers ADD COLUMN apps TEXT NOT NULL DEFAULT '[]'")
 
         # Migrate workers table: add api_key_enc for per-worker fleet keys.
         # (cols is the pre-rebuild snapshot; on a fresh DB the column comes from
         # _SCHEMA so it is already present here and the ALTER is skipped.)
         if "api_key_enc" not in cols:
+            applied.append("workers.api_key_enc")
             await db.execute("ALTER TABLE workers ADD COLUMN api_key_enc TEXT")
         if "key_confirmed" not in cols:
+            applied.append("workers.key_confirmed")
             await db.execute("ALTER TABLE workers ADD COLUMN key_confirmed INTEGER NOT NULL DEFAULT 0")
         if "key_issued_at" not in cols:
+            applied.append("workers.key_issued_at")
             # When the per-worker key was minted, so the window in which the
             # SHARED key still works for that worker can be bounded.
             await db.execute("ALTER TABLE workers ADD COLUMN key_issued_at TEXT")
@@ -797,11 +828,13 @@ async def init_db() -> None:
         cursor = await db.execute("PRAGMA table_info(earnings)")
         earnings_cols = {row["name"] for row in await cursor.fetchall()}
         if "fx_rate_usd" not in earnings_cols:
+            applied.append("earnings.fx_rate_usd")
             await db.execute("ALTER TABLE earnings ADD COLUMN fx_rate_usd REAL")
         # Add `source`: WHO took the reading. Existing rows were all taken by
         # this server's own collectors, so 'server' is the truthful backfill
         # rather than a placeholder -- there was no other sampler before this.
         if "source" not in earnings_cols:
+            applied.append("earnings.source")
             await db.execute("ALTER TABLE earnings ADD COLUMN source TEXT NOT NULL DEFAULT 'server'")
         # Unconditional, and only AFTER the column is guaranteed to exist. This
         # is the ONLY place the index is created, so a fresh install and an
@@ -829,6 +862,7 @@ async def init_db() -> None:
         cursor = await db.execute("PRAGMA table_info(deployments)")
         deployment_cols = {row["name"] for row in await cursor.fetchall()}
         if "spec_encrypted" not in deployment_cols:
+            applied.append("deployments.spec_encrypted")
             await db.execute("ALTER TABLE deployments ADD COLUMN spec_encrypted TEXT NOT NULL DEFAULT ''")
         # Migrate config table: add updated_at so credential age is knowable.
         # Existing rows are left NULL — see the note on the back-fill below.
@@ -838,6 +872,7 @@ async def init_db() -> None:
         cursor = await db.execute("PRAGMA table_info(config)")
         config_cols = {row["name"] for row in await cursor.fetchall()}
         if "updated_at" not in config_cols:
+            applied.append("config.updated_at")
             await db.execute("ALTER TABLE config ADD COLUMN updated_at TEXT")
             # Deliberately NOT back-filled with datetime('now').
             #
@@ -855,7 +890,30 @@ async def init_db() -> None:
         cursor = await db.execute("PRAGMA table_info(users)")
         user_cols = {row["name"] for row in await cursor.fetchall()}
         if "password_changed_at" not in user_cols:
+            applied.append("users.password_changed_at")
             await db.execute("ALTER TABLE users ADD COLUMN password_changed_at REAL DEFAULT 0")
+
+        # The version the database CLAIMED before this boot. 0 on anything
+        # written before this was introduced, including a fully up-to-date one --
+        # so the first upgrade reports "was 0" and that is honest rather than
+        # alarming.
+        cursor = await db.execute("PRAGMA user_version")
+        row = await cursor.fetchone()
+        previous = int(row[0]) if row else 0
+        if previous != SCHEMA_VERSION:
+            # A literal: PRAGMA does not accept a bound parameter here. Safe
+            # because the value is this module's own int constant.
+            await db.execute(f"PRAGMA user_version = {int(SCHEMA_VERSION)}")
+
+        if applied:
+            _logger.info(
+                "Schema now at version %d (was %d). Migrations applied this boot: %s",
+                SCHEMA_VERSION,
+                previous,
+                ", ".join(applied),
+            )
+        else:
+            _logger.info("Schema at version %d; no migration needed this boot.", SCHEMA_VERSION)
 
         await db.commit()
 
