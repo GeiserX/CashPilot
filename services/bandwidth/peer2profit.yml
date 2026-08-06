@@ -57,3 +57,7 @@ platforms: [docker, windows, macos, linux, android]
 collector:
   type: api
   notes: "Dashboard at peer2profit.com. API endpoints undocumented."
+
+payout:
+  model: unknown
+  notes: "Not yet determined. Flagged rather than shown blank -- see CashPilot-luj."

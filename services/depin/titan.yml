@@ -57,3 +57,7 @@ platforms: [windows, macos, android]
 collector:
   type: api
   notes: "Dashboard at edge.titannet.io. Node status and earnings visible via web UI. API details sparse."
+
+payout:
+  model: unknown
+  notes: "Not yet determined. Flagged rather than shown blank -- see CashPilot-luj."

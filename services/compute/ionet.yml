@@ -54,3 +54,7 @@ platforms: [linux]
 collector:
   type: manual
   notes: "Dashboard at cloud.io.net. GPU provider signup process unclear."
+
+payout:
+  model: unknown
+  notes: "Not yet determined. Flagged rather than shown blank -- see CashPilot-luj."

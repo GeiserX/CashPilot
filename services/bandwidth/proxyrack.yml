@@ -77,3 +77,7 @@ collector:
   type: api
   notes: "Dashboard behind Cloudflare. May need API key from browser session. Per-device earnings visible."
   credential_hint: "Log in at <a href='https://peer.proxyrack.com' target='_blank'>peer.proxyrack.com</a>, press F12 → Network, find any API request and copy the <b>Api-Key</b> header value."
+
+payout:
+  model: internal
+  notes: "Balance held by ProxyRack; withdrawn on request."

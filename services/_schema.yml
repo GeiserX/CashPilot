@@ -136,6 +136,50 @@
 #   currency: USD
 #   notes: "Additional cashout instructions or caveats"
 
+# payout:
+#   WHERE THE MONEY ACTUALLY GOES. `cashout` says how to WITHDRAW; this says
+#   where the funds live and whether there is an address at all (CashPilot-luj).
+#
+#   model: external | internal | minted | unknown        (REQUIRED)
+#     - external: the USER supplies an address they already own. CashPilot never
+#         holds a key. There IS an address to show.
+#     - internal: the service keeps an off-chain balance and pays out on
+#         request. There is NO address to register, and no chain to watch, until
+#         the user withdraws. Showing a blank address field here would read as
+#         "you forgot to configure this" when nothing is configurable — which is
+#         exactly why the model is a first-class field rather than an empty slot.
+#     - minted:   the container generates its own wallet on first run and
+#         accrues to it. The user has typically never seen the address, let
+#         alone backed up the seed.
+#     - unknown:  not yet determined. A DELIBERATE value, not a placeholder: the
+#         registry must flag what it does not know rather than render a blank
+#         that reads as "nothing to see here".
+#
+#   chain: ethereum | polygon | solana | none | ...
+#     `none` means NO on-chain surface exists at all, ever — Salad pays PayPal
+#     and gift cards only. Tier 2 (on-chain reconciliation) must skip these
+#     rather than fail to find an address for them.
+#     Omit entirely when the chain is chosen per-withdrawal and there is no
+#     persistent on-chain identity (Traffmonetizer picks Arbitrum/Tron/Solana/TON
+#     at withdrawal time).
+#
+#   address_env: WALLET
+#     `external` only, and only when the address is carried by an env var on the
+#     container — so the registry can read it from the deployed spec instead of
+#     asking the user to retype it.
+#
+#   address_source: env | manual | app
+#     Where the address is actually set. `manual` covers post-deploy
+#     configuration (Mysterium's beneficiary via TequilAPI, Anyone's anonrc);
+#     `app` covers a wallet linked inside the provider's own site.
+#
+#   notes: "Caveats worth showing the user."
+#     e.g. URnetwork forfeits payout after 30 days with no wallet linked.
+#
+#   NO PRIVATE KEYS. This block is a registry of PUBLIC addresses and payout
+#   mechanics, and nothing else. That is precisely why it comes first: it
+#   delivers most of the "where is my money" answer at zero custody risk.
+
 # platforms: [windows, macos, linux, android, ios, docker, browser_extension]
 
 # collector:

@@ -106,3 +106,9 @@ disclosure:
     No account is needed at all, so there is nothing to limit per account. The
     project does not publish a per-IP relay limit, and the catalog does not
     declare one.
+
+payout:
+  model: external
+  chain: ethereum
+  address_source: manual
+  notes: "Set as ContactInfo in anonrc, prefixed '@anon:0x...'."

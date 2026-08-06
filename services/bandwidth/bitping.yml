@@ -73,3 +73,9 @@ collector:
   type: api
   notes: "Dashboard at app.bitping.com. Credentials persisted in /root/.bitping volume."
   credential_hint: "Use your Bitping account email and password (same as <a href='https://nodes.bitping.com' target='_blank'>nodes.bitping.com</a>)."
+
+payout:
+  model: internal
+  chain: solana
+  address_source: app
+  notes: "Solana-only now, and the address is typed in AT WITHDRAWAL TIME rather than stored."

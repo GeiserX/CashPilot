@@ -57,3 +57,8 @@ platforms: [linux]
 collector:
   type: api
   notes: "Nosana explorer API on Solana. Node earnings queryable via Solana RPC and Nosana dashboard."
+
+payout:
+  model: minted
+  chain: solana
+  notes: "Mints a Solana wallet by default. The user has typically never seen the address. See tier 3."

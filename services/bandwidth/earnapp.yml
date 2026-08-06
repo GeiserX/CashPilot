@@ -72,3 +72,7 @@ collector:
   type: api
   notes: "Dashboard API at /dashboard/api/money/. Auth via OAuth refresh token cookie. Returns balance in USD."
   credential_hint: "Log in at <a href='https://earnapp.com' target='_blank'>earnapp.com</a>, press F12 → Application → Cookies, copy the <b>oauth-refresh-token</b> value."
+
+payout:
+  model: internal
+  notes: "Balance held by EarnApp; redeemed to Amazon/Wise/PayPal."

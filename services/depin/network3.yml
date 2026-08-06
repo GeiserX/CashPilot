@@ -57,3 +57,7 @@ platforms: [windows, macos, linux]
 collector:
   type: manual
   notes: "Site unreachable due to expired certificate. No collection possible."
+
+payout:
+  model: unknown
+  notes: "Not yet determined. Flagged rather than shown blank -- see CashPilot-luj."

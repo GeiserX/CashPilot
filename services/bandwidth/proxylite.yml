@@ -60,3 +60,7 @@ platforms: [docker, windows, linux]
 collector:
   type: api
   notes: "Dashboard at lk.proxylite.ru. User ID based authentication."
+
+payout:
+  model: unknown
+  notes: "Not yet determined. Flagged rather than shown blank -- see CashPilot-luj."

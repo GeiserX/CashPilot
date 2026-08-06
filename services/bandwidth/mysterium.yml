@@ -99,3 +99,9 @@ disclosure:
     before running it.
   account_rules: >-
     Unlimited devices per account and per IP.
+
+payout:
+  model: external
+  chain: polygon
+  address_source: manual
+  notes: "The beneficiary wallet is set AFTER deploy, via TequilAPI or the node WebUI -- not by an env var, so it cannot be read from the container spec."

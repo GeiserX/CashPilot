@@ -67,3 +67,7 @@ platforms: [docker, windows, linux]
 collector:
   type: manual
   notes: "No known public API for earnings."
+
+payout:
+  model: minted
+  notes: "The client mints its own wallet on first run. See tier 3."

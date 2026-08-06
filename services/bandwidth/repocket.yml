@@ -71,3 +71,7 @@ collector:
   type: api
   notes: "Earnings collector authenticates separately via Firebase (account email/password) to read the balance — distinct from the container's RP_API_KEY. Per-device earnings visible."
   credential_hint: "Use your Repocket account email and password (same as <a href='https://app.repocket.com' target='_blank'>app.repocket.com</a>)."
+
+payout:
+  model: internal
+  notes: "Balance held by Repocket; withdrawn on request."

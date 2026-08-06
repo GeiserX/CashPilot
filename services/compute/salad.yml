@@ -55,3 +55,8 @@ collector:
   type: api
   notes: "API at app-api.salad.com/api/v1/profile/balance. Auth via 'auth' cookie + X-XSRF-TOKEN header (double-submit). Returns currentBalance (USD) and lifetimeBalance."
   credential_hint: "Log in at <a href='https://app.salad.io' target='_blank'>app.salad.io</a>, press F12 → Application → Cookies, copy the <b>auth</b> cookie value."
+
+payout:
+  model: internal
+  chain: none
+  notes: "PayPal and gift cards ONLY -- no crypto whatsoever. Has no on-chain surface for tier 2 to reconcile."

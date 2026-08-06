@@ -53,3 +53,7 @@ platforms: [browser-extension, android]
 collector:
   type: manual
   notes: "No official Docker image or public API."
+
+payout:
+  model: unknown
+  notes: "Not yet determined. Flagged rather than shown blank -- see CashPilot-luj."

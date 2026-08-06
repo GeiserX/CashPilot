@@ -62,3 +62,7 @@ platforms: [docker, windows, macos, linux]
 collector:
   type: manual
   notes: "No known public API for earnings. Check dashboard manually."
+
+payout:
+  model: unknown
+  notes: "Not yet determined. Flagged rather than shown blank -- see CashPilot-luj."
