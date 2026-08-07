@@ -126,14 +126,132 @@ class TestLoadServices:
         assert len(errors) == 1 and errors[0].is_problem
 
 
-class TestCheckService:
-    def test_dead_status_service_is_skipped(self):
+def _resp(status_code: int, url: str):
+    return MagicMock(status_code=status_code, url=url)
+
+
+class TestResurrectionProbe:
+    """Dead/dropped services get one probe: are they alive again?
+
+    Liveness used to skip them entirely, so a resurrection was invisible
+    forever -- Bytebenefit ran ~5 months at bytebenefit.io while the catalog
+    said dead (CashPilot-lv8v).
+    """
+
+    def test_alive_on_its_own_domain_is_a_finding(self):
         client = MagicMock()
+        client.get.return_value = _resp(200, "https://x.com/home")
+        findings = liveness.check_service(
+            client, {"slug": "gone", "status": "dead", "website": "https://x.com"}, check_images=False
+        )
+        assert len(findings) == 1
+        f = findings[0]
+        assert f.kind == "resurrection"
+        assert f.status == liveness.RESURRECTED
+        assert f.is_problem, "a resurrection must reach the weekly issue"
+        assert "never flipped automatically" in f.detail
+
+    def test_a_dropped_service_is_not_probed_at_all(self):
+        """Dropped means rejected on judgment (shady, rebranded), not died.
+        gaganode's site answers 200 today -- that is expected, not news, and
+        probing it would put the same non-finding in the issue every week."""
+        client = MagicMock()
+        findings = liveness.check_service(
+            client, {"slug": "shady", "status": "dropped", "website": "https://x.com"}, check_images=False
+        )
+        assert len(findings) == 1
+        assert findings[0].status == liveness.SKIPPED
+        client.get.assert_not_called()
+        client.head.assert_not_called()
+
+    def test_the_parked_domain_control(self):
+        """The negative control, straight from the incident: bytebenefit.com
+        answers 200 today -- by redirecting to the atom.com marketplace. A 200
+        on someone ELSE'S domain must never be claimed as a resurrection."""
+        client = MagicMock()
+        client.get.return_value = _resp(200, "https://www.atom.com/name/ByteBenefit")
+        findings = liveness.check_service(
+            client, {"slug": "gone", "status": "dead", "website": "https://bytebenefit.com"}, check_images=False
+        )
+        assert len(findings) == 1
+        f = findings[0]
+        assert f.status == liveness.SKIPPED
+        assert not f.is_problem
+        assert "parked" in f.detail
+        assert liveness.build_report(findings).splitlines()[2].startswith("All good")
+
+    def test_a_dead_site_that_is_still_dead_stays_quiet(self):
+        client = MagicMock()
+        client.get.return_value = _resp(404, "https://x.com")
+        findings = liveness.check_service(
+            client, {"slug": "gone", "status": "dead", "website": "https://x.com"}, check_images=False
+        )
+        assert findings[0].status == liveness.SKIPPED
+        assert "still dead" in findings[0].detail
+        assert not findings[0].is_problem
+        assert not findings[0].is_inconclusive, "still-dead must not clutter the weekly inconclusive section"
+
+    def test_an_unreachable_dead_site_stays_quiet_too(self):
+        client = MagicMock()
+        client.get.side_effect = liveness.httpx.ConnectError("boom")
+        findings = liveness.check_service(
+            client, {"slug": "gone", "status": "dead", "website": "https://x.com"}, check_images=False
+        )
+        assert findings[0].status == liveness.SKIPPED
+        assert not findings[0].is_problem
+
+    def test_no_website_recorded_is_skipped_without_network(self):
+        client = MagicMock()
+        findings = liveness.check_service(client, {"slug": "gone", "status": "dead"}, check_images=False)
+        assert findings[0].status == liveness.SKIPPED
+        client.get.assert_not_called()
+
+    def test_referral_and_image_are_not_checked_for_dead_services(self):
+        """The probe is one cheap GET; the rest stays retired noise."""
+        client = MagicMock()
+        client.get.return_value = _resp(200, "https://x.com/")
+        findings = liveness.check_service(
+            client,
+            {
+                "slug": "gone",
+                "status": "dead",
+                "website": "https://x.com",
+                "referral": {"signup_url": "https://x.com/?r=C"},
+                "docker": {"image": "x/y:1"},
+            },
+            check_images=True,
+        )
+        assert len(findings) == 1
+        client.head.assert_not_called()
+
+    def test_the_report_gets_its_own_section(self):
+        findings = [liveness.Finding("gone", "resurrection", "https://x.com", liveness.RESURRECTED, "answers HTTP 200")]
+        report = liveness.build_report(findings)
+        assert "Possibly resurrected" in report
+        assert "Verify by hand" in report
+        assert not report.splitlines()[2].startswith("All good")
+
+
+class TestRegistrableDomain:
+    def test_www_is_the_same_site(self):
+        assert liveness.registrable_domain("www.x.com") == liveness.registrable_domain("x.com")
+
+    def test_a_subdomain_is_the_same_site(self):
+        assert liveness.registrable_domain("dashboard.x.com") == liveness.registrable_domain("x.com")
+
+    def test_a_different_domain_is_not(self):
+        assert liveness.registrable_domain("atom.com") != liveness.registrable_domain("bytebenefit.com")
+
+
+class TestCheckService:
+    def test_dead_status_service_is_probed_for_resurrection_only(self):
+        client = MagicMock()
+        client.get.return_value = _resp(404, "https://x.com")
         findings = liveness.check_service(
             client, {"slug": "gone", "status": "dead", "website": "https://x.com"}, check_images=False
         )
         assert all(f.status == liveness.SKIPPED for f in findings)
-        client.head.assert_not_called()  # no network for a service we already retired
+        client.head.assert_not_called()  # one GET probe; no referral/image checks
 
     def test_referral_is_checked_separately_from_website(self):
         client = MagicMock()
@@ -245,6 +363,47 @@ class TestReferralCollapseIsInconclusive:
         report = liveness.build_report(findings)
         assert report.splitlines()[2].startswith("All good")
         assert "verify manually" in report
+
+    def test_a_recorded_code_visible_after_redirect_is_conclusively_ok(self):
+        """The registry upgrade: with referral.code recorded, the POSITIVE
+        direction becomes conclusive -- the code is still where the provider
+        reads it. (Absence stays inconclusive; session capture hides working
+        codes.)"""
+        client = MagicMock()
+        client.head.return_value = _resp(200, "https://p.com/welcome?ref=CODE")
+        findings = liveness.check_service(
+            client,
+            {
+                "slug": "p",
+                "status": "active",
+                "website": "https://p.com",
+                "referral": {"signup_url": "https://p.com/signup?ref=CODE", "code": "CODE"},
+            },
+            check_images=False,
+        )
+        ref = [f for f in findings if f.kind == "referral"][0]
+        assert ref.status == liveness.OK
+        assert "code visible" in ref.detail
+
+    def test_a_recorded_code_that_vanished_is_still_only_inconclusive(self):
+        """The code being INVISIBLE proves nothing -- ProxyLite's working
+        session-capture link looks exactly like this. The registry must not
+        turn a working link into a weekly 'problem'."""
+        client = MagicMock()
+        client.head.return_value = _resp(200, "https://p.com/")
+        findings = liveness.check_service(
+            client,
+            {
+                "slug": "p",
+                "status": "active",
+                "website": "https://p.com",
+                "referral": {"signup_url": "https://p.com/?r=CODE", "code": "CODE"},
+            },
+            check_images=False,
+        )
+        ref = [f for f in findings if f.kind == "referral"][0]
+        assert ref.status == liveness.UNREACHABLE
+        assert not ref.is_problem
 
     def test_footer_does_not_call_a_collapse_dead(self):
         """The footer must match the classification, or it teaches the wrong lesson."""

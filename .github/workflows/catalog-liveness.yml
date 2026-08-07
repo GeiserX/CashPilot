@@ -58,7 +58,7 @@ jobs:
             echo "Updated issue #$existing"
           else
             gh issue create \
-              --title "Catalog liveness: dead references detected" \
+              --title "Catalog liveness: action needed (dead or resurrected references)" \
               --label catalog-liveness \
               --body-file report.md
           fi
