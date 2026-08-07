@@ -1,0 +1,217 @@
+// Measure, in a real browser, whether the UI can actually be READ.
+// CashPilot-5ekm.
+//
+// The repo has thousands of tests and none of them would have caught this:
+// the claim modal's "Go to Dashboard" button rendered as cyan #22d3ee text on
+// its own green #22c55e background, underlined, because `.modal-body a`
+// (specificity 0,1,1) outranked `.btn-success` (0,1,0). Every existing test
+// reads values; none of them looks at the result.
+//
+// The obvious test -- asserting style.css contains ":not(.btn)" -- is worthless
+// and this repo has already been bitten twice by tests matching their own
+// prose. A string proves a rule was typed, not that a button is legible, and it
+// would keep passing if a later rule re-broke the cascade.
+//
+// So this computes, from the browser's own getComputedStyle:
+//   * the WCAG contrast ratio between each button's text and the background it
+//     is actually painted on (walking ancestors through transparency), and
+//   * whether a button is underlined, which for a filled control means the
+//     link styling has leaked into it.
+//
+// The fixture is generated from the STYLESHEET'S OWN `.btn-*` classes, so a
+// variant added next year is covered the day it is added rather than the day
+// someone remembers to add it here.
+//
+//   ./scripts/legibility_check.sh
+//
+// Exits non-zero on an unreadable control, and exits non-zero if no browser is
+// available -- "skipped" must never read as "passed".
+
+import fs from "node:fs";
+import path from "node:path";
+
+const ROOT = path.resolve(import.meta.dirname, "..");
+const CSS = path.join(ROOT, "app", "static", "css", "style.css");
+const PORT = process.env.CHROME_DEBUG_PORT || 9222;
+
+// WCAG 2.1 minimum for normal text. Buttons carry the action, so if the label
+// cannot be read the control cannot be used.
+const MIN_CONTRAST = 4.5;
+
+const css = fs.readFileSync(CSS, "utf8");
+
+// Colour variants only. btn-sm / btn-lg are sizes and change no colour, so
+// asserting on them would just duplicate the base .btn result.
+const SIZES = new Set(["btn-sm", "btn-lg"]);
+const variants = [...new Set([...css.matchAll(/^\.(btn-[a-z-]+)/gm)].map((m) => m[1]))]
+  .filter((v) => !SIZES.has(v))
+  .sort();
+
+if (variants.length === 0) {
+  console.error("FAIL  found no .btn-* variants in style.css -- the fixture would be empty");
+  process.exit(1);
+}
+
+// Each variant is rendered twice: bare, and inside .modal-body. The modal case
+// is the one that regressed, and it is exactly the context a crawl of the live
+// pages would miss, because modal markup is injected by JS on demand.
+const buttons = variants
+  .map(
+    (v) => `
+      <div class="card" style="padding:16px;margin:8px">
+        <button class="btn ${v}" data-probe="${v}|card">${v}</button>
+      </div>
+      <div class="modal-body" style="padding:16px;margin:8px">
+        <button class="btn ${v}" data-probe="${v}|modal-body">${v}</button>
+        <a href="#" class="btn ${v}" data-probe="${v}|modal-body-anchor">${v} as anchor</a>
+      </div>`,
+  )
+  .join("");
+
+const fixture = `<!DOCTYPE html><html><head><meta charset="utf-8">
+<link rel="stylesheet" href="file://${CSS}"></head>
+<body>
+  <div class="card" style="padding:16px;margin:8px">
+    <button class="btn" data-probe="btn-base|card">base</button>
+  </div>
+  ${buttons}
+  <div class="modal-body" style="padding:16px;margin:8px">
+    <p data-probe-text="modal-prose">Prose with <a href="#" data-probe-link="modal-link">a real link</a> in it.</p>
+  </div>
+</body></html>`;
+
+const fixturePath = path.join(process.env.TMPDIR || "/tmp", "cashpilot-legibility.html");
+fs.writeFileSync(fixturePath, fixture);
+
+// ---------------------------------------------------------------------------
+// This runs INSIDE the page. It reports measurements; it makes no judgements,
+// so the thresholds stay here in one place rather than being scattered.
+// ---------------------------------------------------------------------------
+const AUDIT = `(() => {
+  const parse = (c) => {
+    const m = c.match(/rgba?\\(([^)]+)\\)/);
+    if (!m) return null;
+    const p = m[1].split(",").map((x) => parseFloat(x));
+    return { r: p[0], g: p[1], b: p[2], a: p.length > 3 ? p[3] : 1 };
+  };
+  // The background a control is REALLY painted on: its own, or the nearest
+  // ancestor that actually paints one. A transparent button (btn-danger,
+  // btn-ghost) is legible only relative to whatever shows through it.
+  const effectiveBg = (el) => {
+    let n = el;
+    while (n && n !== document.documentElement) {
+      const c = parse(getComputedStyle(n).backgroundColor);
+      if (c && c.a > 0) return c;
+      n = n.parentElement;
+    }
+    const c = parse(getComputedStyle(document.body).backgroundColor);
+    return c && c.a > 0 ? c : { r: 255, g: 255, b: 255, a: 1 };
+  };
+  const lum = ({ r, g, b }) => {
+    const f = (v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); };
+    return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b);
+  };
+  const ratio = (fg, bg) => {
+    const a = lum(fg), b = lum(bg);
+    return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+  };
+
+  const out = { theme: document.documentElement.getAttribute("data-theme") || "dark", buttons: [], link: null };
+  for (const el of document.querySelectorAll("[data-probe]")) {
+    const cs = getComputedStyle(el);
+    const fg = parse(cs.color), bg = effectiveBg(el);
+    out.buttons.push({
+      probe: el.getAttribute("data-probe"),
+      color: cs.color,
+      bg: "rgb(" + bg.r + "," + bg.g + "," + bg.b + ")",
+      contrast: Math.round(ratio(fg, bg) * 100) / 100,
+      underlined: cs.textDecorationLine.includes("underline"),
+    });
+  }
+  const link = document.querySelector("[data-probe-link]");
+  if (link) {
+    const lcs = getComputedStyle(link);
+    const pcs = getComputedStyle(document.querySelector("[data-probe-text]"));
+    out.link = {
+      underlined: lcs.textDecorationLine.includes("underline"),
+      distinctFromProse: lcs.color !== pcs.color,
+      contrast: Math.round(ratio(parse(lcs.color), effectiveBg(link)) * 100) / 100,
+    };
+  }
+  return JSON.stringify(out);
+})()`;
+
+// ---------------------------------------------------------------------------
+const version = await fetch(`http://127.0.0.1:${PORT}/json/version`).catch(() => null);
+if (!version || !version.ok) {
+  console.error("FAIL  no headless Chrome on port " + PORT + ".");
+  console.error("      This check needs a real browser: contrast is a property of");
+  console.error("      the RENDERED page, and no static parse can compute it.");
+  console.error("      Run it through ./scripts/legibility_check.sh");
+  process.exit(2); // never 0 -- a skipped legibility check must not read as a pass
+}
+
+const target = await (
+  await fetch(`http://127.0.0.1:${PORT}/json/new?${encodeURIComponent("file://" + fixturePath)}`, { method: "PUT" })
+).json();
+const ws = new WebSocket(target.webSocketDebuggerUrl);
+let id = 0;
+const pending = new Map();
+const send = (method, params = {}) =>
+  new Promise((r) => { pending.set(++id, r); ws.send(JSON.stringify({ id, method, params })); });
+await new Promise((r) => ws.addEventListener("open", r));
+ws.addEventListener("message", (ev) => {
+  const m = JSON.parse(ev.data);
+  if (m.id && pending.has(m.id)) { pending.get(m.id)(m.result); pending.delete(m.id); }
+});
+await send("Page.enable");
+await send("Runtime.enable");
+
+let failures = 0;
+let checks = 0;
+const fail = (msg) => { failures++; console.error("FAIL  " + msg); };
+
+// Both themes. A palette that works in the dark one can be unreadable in the
+// other, and the light theme redefines every colour token.
+for (const theme of ["dark", "light"]) {
+  await send("Runtime.evaluate", {
+    expression:
+      theme === "light"
+        ? `document.documentElement.setAttribute("data-theme","light")`
+        : `document.documentElement.removeAttribute("data-theme")`,
+  });
+  await new Promise((r) => setTimeout(r, 120));
+  const res = await send("Runtime.evaluate", { expression: AUDIT, returnByValue: true });
+  const data = JSON.parse(res.result.value);
+
+  for (const b of data.buttons) {
+    checks += 2;
+    if (b.contrast < MIN_CONTRAST) {
+      fail(`[${theme}] ${b.probe} contrast ${b.contrast}:1 (need ${MIN_CONTRAST}:1) — ${b.color} on ${b.bg}`);
+    }
+    // A filled control that is underlined means link styling leaked into it.
+    if (b.underlined) {
+      fail(`[${theme}] ${b.probe} is underlined — link styling has leaked into a button`);
+    }
+  }
+
+  // THE CONTROL. Without this the whole check could be satisfied by deleting
+  // the modal link styling altogether: buttons would stop being underlined and
+  // every assertion above would pass, while real links silently became
+  // indistinguishable from prose. Fixing one by breaking the other is not a fix.
+  checks += 3;
+  if (!data.link) fail(`[${theme}] control link missing from the fixture`);
+  else {
+    if (!data.link.underlined)
+      fail(`[${theme}] a real prose link is NOT underlined — link styling was removed rather than scoped`);
+    if (!data.link.distinctFromProse)
+      fail(`[${theme}] a real prose link is the same colour as surrounding prose`);
+    if (data.link.contrast < MIN_CONTRAST)
+      fail(`[${theme}] prose link contrast ${data.link.contrast}:1 (need ${MIN_CONTRAST}:1)`);
+  }
+  console.log(`${theme.padEnd(5)}: ${data.buttons.length} controls measured, link ok=${!!data.link && data.link.underlined}`);
+}
+
+ws.close();
+console.log(`${checks - failures}/${checks} legibility checks passed`);
+if (failures) process.exit(1);
