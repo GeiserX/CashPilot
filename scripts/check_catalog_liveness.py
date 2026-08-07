@@ -12,6 +12,13 @@ For each ``services/**/*.yml`` it checks:
 * ``referral.signup_url`` still answers **and still carries its referral code** --
   a dead or code-stripped referral link is direct lost revenue
 * ``docker.image`` still resolves in its registry
+* dead services get the OPPOSITE probe: is the site alive again on its own
+  domain? Liveness used to skip them entirely, which made it structurally
+  blind to resurrections -- Bytebenefit ran for ~5 months while the catalog
+  said dead. A parked domain answering from another registrable domain is
+  recognised and never claimed as a resurrection, and status is never flipped
+  automatically. (dropped services stay unprobed: they were rejected on
+  judgment, so their sites being alive is expected, not news.)
 
 Exit code is 0 unless the script itself could not run. A dead link is a *finding
 to report*, not a build failure: a flaky provider must not turn the weekly run red,
@@ -34,6 +41,7 @@ import yaml
 # Statuses
 OK = "ok"
 DEAD = "dead"
+RESURRECTED = "resurrected"
 UNREACHABLE = "unreachable"
 SKIPPED = "skipped"
 
@@ -62,8 +70,12 @@ class Finding:
         those raised the problem count, the weekly issue would cry wolf most
         weeks and get ignored, which costs us the one week it is real. They are
         still reported, just in their own section.
+
+        RESURRECTED counts: a service the catalog says is dead answered alive
+        on its own domain, which is lost revenue every week it stays unlisted.
+        Bytebenefit did exactly this for ~5 months (CashPilot-lv8v).
         """
-        return self.status == DEAD
+        return self.status in (DEAD, RESURRECTED)
 
     @property
     def is_inconclusive(self) -> bool:
@@ -184,14 +196,87 @@ def load_services(services_dir: Path) -> tuple[list[dict], list[Finding]]:
     return sorted(services, key=lambda s: s["slug"]), errors
 
 
+def registrable_domain(host: str) -> str:
+    """Last two labels of a hostname, with any www. prefix dropped.
+
+    Not a public-suffix parse -- every domain in this catalog is a simple
+    two-label one (provider.com, provider.io, provider.network), and pulling in
+    a suffix list for a weekly report is not worth the dependency. If a co.uk
+    provider ever lands in the catalog this gets stricter, not looser: two
+    labels would call sibling.co.uk domains "the same", which errs toward NOT
+    claiming a resurrection.
+    """
+    labels = host.lower().lstrip(".").removeprefix("www.").split(".")
+    return ".".join(labels[-2:])
+
+
+def check_resurrection(client: httpx.Client, svc: dict) -> list[Finding]:
+    """Probe a dead/dropped service's website for signs of life.
+
+    The old behaviour skipped these entirely, which made liveness structurally
+    blind to dead->alive: Bytebenefit ran for ~5 months at bytebenefit.io while
+    the catalog said dead, because only the parked .com had been checked and
+    nothing ever looked again.
+
+    Only a live answer on the service's OWN registrable domain counts. A 200
+    that lands on a different domain is what a parked domain looks like --
+    bytebenefit.com answers 200 today by redirecting to the atom.com
+    marketplace -- so it must never be claimed as a resurrection. And a finding
+    is a prompt to a human, never an automatic status flip: this script does
+    not write catalog files, because reviving is a judgment call.
+    """
+    slug = svc["slug"]
+    website = svc.get("website", "") or ""
+    if not website:
+        return [Finding(slug, "website", "", SKIPPED, f"status: {svc['status']}, no website recorded")]
+    try:
+        resp = client.get(website)
+    except httpx.HTTPError as exc:
+        # Unreachable is CONSISTENT with dead -- not worth a weekly report row.
+        return [Finding(slug, "website", website, SKIPPED, f"still dead as recorded ({type(exc).__name__})")]
+
+    if classify_status(resp.status_code) != OK:
+        return [Finding(slug, "website", website, SKIPPED, f"still dead as recorded (HTTP {resp.status_code})")]
+
+    final = str(resp.url)
+    if registrable_domain(urlparse(final).hostname or "") != registrable_domain(urlparse(website).hostname or ""):
+        # Alive-but-elsewhere is exactly what a domain-marketplace lander does.
+        return [
+            Finding(
+                slug,
+                "website",
+                website,
+                SKIPPED,
+                f"answers but lands on a different domain ({final}) -- a parked/sold domain, not a resurrection",
+            )
+        ]
+
+    return [
+        Finding(
+            slug,
+            "resurrection",
+            website,
+            RESURRECTED,
+            f"catalog says {svc['status']}, but the site answers HTTP {resp.status_code} on its own domain "
+            f"({final}) -- verify by hand and revive the entry (status is never flipped automatically)",
+        )
+    ]
+
+
 def check_service(client: httpx.Client, svc: dict, *, check_images: bool) -> list[Finding]:
     slug = svc["slug"]
     findings: list[Finding] = []
 
-    # Services the catalog already marks as gone are expected to be dead; checking
-    # them would just generate noise the maintainer has already acted on.
-    if svc.get("status") in ("dead", "dropped"):
-        return [Finding(slug, "website", svc.get("website", ""), SKIPPED, f"status: {svc['status']}")]
+    # DEAD services get exactly one cheap probe: are they still gone? Their
+    # referral links and images stay unchecked -- that noise is what the
+    # maintainer already acted on. DROPPED is different: it means "evaluated
+    # and rejected on judgment" (shady, rebranded, dev-mode-only), so those
+    # sites being alive is expected -- gaganode answers 200 today -- and
+    # probing them would put the same non-finding in the issue every week.
+    if svc.get("status") == "dropped":
+        return [Finding(slug, "website", svc.get("website", ""), SKIPPED, "status: dropped (rejected on judgment)")]
+    if svc.get("status") == "dead":
+        return check_resurrection(client, svc)
 
     website = svc.get("website", "") or ""
     status, detail = check_url(client, website)
@@ -199,11 +284,19 @@ def check_service(client: httpx.Client, svc: dict, *, check_images: bool) -> lis
 
     signup = ((svc.get("referral") or {}).get("signup_url")) or ""
     if signup:
+        code = str((svc.get("referral") or {}).get("code") or "")
         status, detail = check_url(client, signup)
         if status == OK:
             try:
                 final = str(client.head(signup).url)
-                if referral_code_lost(signup, final):
+                if code and code in final:
+                    # The registry makes the POSITIVE case conclusive: the
+                    # recorded code is still visible where the provider reads
+                    # it. (Its absence still proves nothing -- session-capture
+                    # redirects hide a working code -- so only this direction
+                    # upgrades the verdict.)
+                    detail += " (referral code visible after redirect)"
+                elif referral_code_lost(signup, final):
                     # Inconclusive, not dead: a site that captures the code into
                     # the session and redirects to a clean URL is indistinguishable
                     # from one that dropped it. Verified against ProxyLite, where
@@ -225,7 +318,7 @@ def check_service(client: httpx.Client, svc: dict, *, check_images: bool) -> lis
 
 
 # One legend, rendered by every report shape so the two can never drift apart.
-_LEGEND = "_`unreachable` means we could not tell -- a transient provider outage, a registry rate-limit, or a referral link that redirected somewhere its code is no longer visible (which is also what a working session-capture link looks like). Reported, but not counted as a problem. `dead` means the reference answered with a client error, or a catalog file could not be read._"
+_LEGEND = "_`unreachable` means we could not tell -- a transient provider outage, a registry rate-limit, or a referral link that redirected somewhere its code is no longer visible (which is also what a working session-capture link looks like). Reported, but not counted as a problem. `dead` means the reference answered with a client error, or a catalog file could not be read. `resurrected` means a service the catalog marks dead/dropped answered alive on its own domain -- verify by hand; nothing is flipped automatically._"
 
 
 def build_report(findings: list[Finding]) -> str:
@@ -273,7 +366,22 @@ def build_report(findings: list[Finding]) -> str:
         lines += [f"| `{f.slug}` | {f.status} | {f.detail} | {f.target} |" for f in referral]
         lines += [""]
 
-    rest = [f for f in problems if f.kind not in ("referral", "catalog")]
+    resurrected = [f for f in problems if f.kind == "resurrection"]
+    if resurrected:
+        lines += [
+            "## Possibly resurrected (catalog says dead, site answers)",
+            "",
+            "Verify by hand before touching the catalog -- a parked domain can answer "
+            "too, and this check only claims same-domain life. Status is never flipped "
+            "automatically.",
+            "",
+            "| Service | Detail | URL |",
+            "|---|---|---|",
+        ]
+        lines += [f"| `{f.slug}` | {f.detail} | {f.target} |" for f in resurrected]
+        lines += [""]
+
+    rest = [f for f in problems if f.kind not in ("referral", "catalog", "resurrection")]
     if rest:
         lines += [
             "## Websites and images",
