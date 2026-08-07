@@ -11,6 +11,7 @@ short_description: Bandwidth sharing - email/password auth, lightweight client
 
 referral:
   signup_url: "https://earn.fm/ref/GEISYB91"
+  code: "GEISYB91"
 
 docker:
   image: earnfm/earnfm-client

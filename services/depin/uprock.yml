@@ -12,6 +12,7 @@ short_description: DePIN internet sharing - crypto payout, browser extension pri
 
 referral:
   signup_url: "https://link.uprock.com/i/33e8492e"
+  code: "33e8492e"
 
 docker:
   image: ""

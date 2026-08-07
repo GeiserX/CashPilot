@@ -14,6 +14,7 @@ short_description: proxybase.xyz - SOCKS5 marketplace for AI agents, USDC payout
 
 referral:
   signup_url: "https://proxybase.xyz?referral=nXzS3c6iTO"
+  code: "nXzS3c6iTO"
 
 docker:
   image: "ghcr.io/proxybasehq/proxybase-cli@sha256:9c96a1d149a1d5b18360110be5caf7164a98656e4bb2c25f6b373b91f1c79802"

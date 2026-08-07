@@ -12,6 +12,7 @@ short_description: DePIN browser extension - 2000 pts per referral
 
 referral:
   signup_url: "https://dashboard.teneo.pro/?code=CAqef"
+  code: "CAqef"
 
 docker:
   image: ""

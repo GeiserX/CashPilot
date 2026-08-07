@@ -11,6 +11,7 @@ short_description: DePIN bandwidth/compute - crypto and PayPal payouts
 
 referral:
   signup_url: "https://passiveapp.com/i/bqpC4M"
+  code: "bqpC4M"
 
 docker:
   image: ""

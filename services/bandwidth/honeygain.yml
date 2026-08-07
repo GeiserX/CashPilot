@@ -12,6 +12,7 @@ short_description: Bandwidth sharing - most established platform
 
 referral:
   signup_url: "https://dashboard.honeygain.com/ref/SERGIB4014"
+  code: "SERGIB4014"
 
 docker:
   image: honeygain/honeygain

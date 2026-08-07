@@ -11,6 +11,7 @@ short_description: Bandwidth sharing - machine ID based
 
 referral:
   signup_url: "https://spide.network/register.html?f3bc51"
+  code: "f3bc51"
 
 docker:
   image: ""

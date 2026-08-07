@@ -13,6 +13,7 @@ short_description: DePIN sharing IP, storage, bandwidth - $5-30/month
 
 referral:
   signup_url: "https://edge.titannet.info/signup?inviteCode=2GKKJ495"
+  code: "2GKKJ495"
 
 docker:
   image: ""

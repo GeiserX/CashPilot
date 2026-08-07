@@ -12,6 +12,7 @@ short_description: Bandwidth sharing - 15% lifetime referral, works on VPS
 
 referral:
   signup_url: "https://proxylite.ru/?r=KMUPRZIZ"
+  code: "KMUPRZIZ"
 
 docker:
   image: proxylite/proxyservice
