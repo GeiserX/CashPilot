@@ -8,7 +8,7 @@ description: >
   sharing their unused internet connection. You authenticate the peer client with an
   Access Token from your dashboard. Residential IPs earn the most, but datacenter IPs
   are also supported. Official multi-arch Docker image (amd64/arm64/armv7).
-short_description: Bandwidth sharing - crypto payout, Access Token auth
+short_description: proxybase.org - bandwidth sharing, crypto payout, Access Token auth. No wallet is generated
 
 referral:
   signup_url: "https://peer.proxybase.org?referral=nXzS3c6iTO"
