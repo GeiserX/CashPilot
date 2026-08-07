@@ -47,7 +47,7 @@ are deleted. Steps 1–2 are a web form and cannot be scripted.
    | Description | Self-hosted passive income orchestrator. Deploy, manage and monitor bandwidth-sharing, DePIN, storage and GPU compute containers from one dashboard, with earnings tracked across 49 services. |
    | Enhanced | yes |
    | Tile background | `dark` |
-   | Icon | `docs/icon.svg` from this repository — 256×256, square, no excess whitespace |
+   | Icon | `docs/logo.svg` from this repository — the official mark, transparent, disc filling the frame edge to edge |
 
 2. Once the request exists, use the **Enhanced** download button on their site to
    get the scaffold. It carries a generated `appid`, which is why the files here
@@ -64,6 +64,19 @@ are deleted. Steps 1–2 are a web form and cannot be scripted.
 Set `CASHPILOT_ADMIN_API_KEY` on the instance you test against, or use the fleet
 key. On the live server the admin key is **not** set today, which is why the
 verification above used the fleet key.
+
+### A correction worth keeping
+
+An earlier version of this file sent `docs/icon.svg` — a square with its own
+dark background plate — and justified it by claiming `logo.svg` carried a white
+background. **That was wrong.** The white rect in `logo.svg` sits inside a
+`<mask>`, so it is never painted; the file renders fully transparent (top-left
+pixel `srgba(0,0,0,0)`).
+
+It matters because their guidance explicitly asks for transparent backgrounds,
+and Heimdall paints its own colour behind the icon — a plate fights it. The
+lesson is the cheap one: that claim came from reading the markup, and one
+render would have settled it.
 
 Be aware, and it is stated in the config help too: CashPilot has no read-only
 token, so whichever key is used grants more than the tile needs. That gap is
