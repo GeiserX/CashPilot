@@ -172,7 +172,6 @@ class TestAViewerCannotTriggerAFleetCollection:
 
         async def run():
             with (
-                patch.object(main, "_require_auth_api", lambda r: {"uid": 1, "u": "x", "r": role}),
                 patch.object(main.database, "get_user_preferences", AsyncMock(return_value={})),
                 patch.object(main.database, "save_user_preferences", AsyncMock()),
                 patch.object(main, "_spawn", lambda coro: (spawned.append(1), coro.close())),
@@ -182,7 +181,7 @@ class TestAViewerCannotTriggerAFleetCollection:
                 body.selected_categories = None
                 body.timezone = None
                 body.setup_mode = None
-                await main.api_set_preferences(request, body)
+                await main.api_set_preferences(request, body, {"uid": 1, "u": "x", "r": role})
             return spawned
 
         return asyncio.run(run())
@@ -217,7 +216,23 @@ class TestTheDeployButtonMatchesTheServerGate:
         assert "Owner access required" in source
 
     def test_the_server_really_does_require_owner(self):
-        """If this changes, the button should follow it — not the other way round."""
-        source = (ROOT / "app" / "main.py").read_text(encoding="utf-8")
-        idx = source.index('@app.post("/api/deploy/{slug}")')
-        assert "_require_owner(request)" in source[idx : idx + 600]
+        """If this changes, the button should follow it — not the other way round.
+
+        Asserted by CALLING the endpoint, not by grepping main.py for the guard.
+        The previous version matched the literal string "_require_owner(request)"
+        near the decorator, and broke when that guard moved into a FastAPI
+        dependency -- a change that made the endpoint strictly more secure
+        (CashPilot-nz4d). A test that fails on a hardening is not measuring the
+        thing it claims to.
+        """
+        from fastapi.testclient import TestClient
+
+        from app.main import app
+
+        client = TestClient(app, raise_server_exceptions=False)
+        # No credentials at all: the deploy route must refuse, and must do so
+        # before it will even discuss the request body.
+        assert client.post("/api/deploy/honeygain", json={}).status_code == 401
+        # And a well-formed body is refused identically, so the assertion above
+        # cannot be satisfied by the endpoint merely being broken.
+        assert client.post("/api/deploy/honeygain", json={"env": {}}).status_code == 401
