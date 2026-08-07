@@ -1,16 +1,18 @@
 name: Bytebenefit
 slug: bytebenefit
 category: bandwidth
-status: dead
-website: https://bytebenefit.com
+status: active
+website: https://bytebenefit.io
 description: >
   Bytebenefit is a bandwidth-sharing service that pays through PayPal and Stripe.
-  Relatively new service with no official Docker image available yet. Desktop
-  application is the primary client.
-short_description: Bandwidth sharing - PayPal/Stripe payouts, desktop app
+  No official Docker image; the Windows desktop app and Android app are the
+  clients. The service lives at bytebenefit.io -- the old bytebenefit.com domain
+  was dropped and is parked on a marketplace, which is why it was once marked
+  dead here.
+short_description: Bandwidth sharing - PayPal/Stripe payouts, desktop/Android app
 
 referral:
-  signup_url: "https://bytebenefit.com"
+  signup_url: "https://bytebenefit.io/invited?ref=Brl4z3"
 
 docker:
   image: ""
@@ -42,7 +44,7 @@ earnings:
 
 cashout:
   method: redirect
-  dashboard_url: "https://bytebenefit.com/dashboard"
+  dashboard_url: "https://dashboard.bytebenefit.io"
   min_amount: 5.0
   currency: USD
 

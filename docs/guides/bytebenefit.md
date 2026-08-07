@@ -1,11 +1,11 @@
 # Bytebenefit
 
-> **Category:** Bandwidth Sharing | **Status:** Dead
-> **Website:** [https://bytebenefit.com](https://bytebenefit.com)
+> **Category:** Bandwidth Sharing | **Status:** Active
+> **Website:** [https://bytebenefit.io](https://bytebenefit.io)
 
 ## Description
 
-Bytebenefit is a bandwidth-sharing service that pays through PayPal and Stripe. Relatively new service with no official Docker image available yet. Desktop application is the primary client.
+Bytebenefit is a bandwidth-sharing service that pays through PayPal and Stripe. No official Docker image; the Windows desktop app and Android app are the clients. The service lives at bytebenefit.io — the old bytebenefit.com domain was dropped and is now parked on a marketplace, which is why this guide once listed the service as dead.
 
 ## Earning Estimates
 
@@ -33,7 +33,7 @@ Bytebenefit is a bandwidth-sharing service that pays through PayPal and Stripe. 
 
 ### 1. Create an account
 
-Sign up at [Bytebenefit](https://bytebenefit.com).
+Sign up at [Bytebenefit](https://bytebenefit.io/invited?ref=Brl4z3).
 
 ### 2. Get your credentials
 

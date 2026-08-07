@@ -17,7 +17,7 @@ Setup and configuration for every service CashPilot supports.
 | Service | Needs | Runs as | Minimum payout | Status |
 |---|---|---|---|---|
 | [Bitping](bitping.md) | — | Docker | $5 | active |
-| [Bytebenefit](bytebenefit.md) | Residential IP | App only | $5 | dead |
+| [Bytebenefit](bytebenefit.md) | Residential IP | App only | $5 | active |
 | [Bytelixir](bytelixir.md) | Residential IP | App only | $5 | active |
 | [earn.cc](earncc.md) | Residential IP | App only | — | broken |
 | [Earn.fm](earnfm.md) | Residential IP | Docker | $15 | active |
