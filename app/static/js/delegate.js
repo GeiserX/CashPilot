@@ -40,11 +40,22 @@ document.addEventListener('click', (event) => {
     fn(...args);
   };
 
+  // Arguments are strings, one per data-aN. The single exception is the
+  // sentinel "$event", which passes the real event object: a handler that has
+  // to decide whether the click landed on a child control cannot do it from a
+  // string. It was previously written as data-a2="event" with no substitution
+  // anywhere, so toggleInstances received the literal text "event", and
+  // "event".target is undefined -- expanding a multi-instance row threw a
+  // TypeError instead of expanding it.
+  //
+  // A sentinel rather than passing the event to everything: viewLogs(slug,
+  // workerId) would then receive the event as workerId and put [object Event]
+  // in the query string.
   const args = [];
   for (let i = 1; i <= 3; i += 1) {
     const value = el.dataset[`a${i}`];
     if (value === undefined) break;
-    args.push(value);
+    args.push(value === '$event' ? event : value);
   }
   run(el.dataset.action, args);
   // A few controls did two things in one inline handler.

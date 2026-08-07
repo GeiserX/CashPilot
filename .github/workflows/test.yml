@@ -88,6 +88,15 @@ jobs:
       - name: Legibility (contrast + link styling, real browser)
         run: ./scripts/legibility_check.sh
 
+      # Also a browser, and for the same reason: what a delegated handler
+      # RECEIVES cannot be read off the markup. Six dashboard buttons shipped
+      # with data-a1="'slug', 123" -- the leftover source text of an inline
+      # onclick -- so every Restart, Stop and Logs click passed one mangled
+      # string and no worker id. Well-formed markup, correct handler name, all
+      # tests green.
+      - name: Delegated action arguments (real browser)
+        run: ./scripts/delegate_check.sh
+
       # From the LOCKFILE, which is what Docker ships (`uv sync --frozen` in the
       # Dockerfile) and what release.yml verifies against. Installing from the
       # unpinned requirements.txt meant the suite ran against a resolution

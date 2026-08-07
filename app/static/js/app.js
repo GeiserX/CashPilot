@@ -1174,7 +1174,12 @@ const CP = (() => {
     } else {
       // Single instance — build container buttons targeting the right node
       const inst = details[0] || {};
-      const wParam = inst.worker_id != null ? `', ${inst.worker_id}` : `'`;
+      // A real second argument, not the tail of an inline onclick. This used to
+      // be `', ${inst.worker_id}` -- the leftover source text of
+      // onclick="viewLogs('slug', 123)" -- which the delegated dispatcher hands
+      // over as ONE string, so the handler received slug="'slug', 123" and no
+      // worker id at all.
+      const wAttr = inst.worker_id != null ? ` data-a2="${inst.worker_id}"` : '';
       const noDocker = !inst.has_docker || inst.is_android;
       // Started outside CashPilot — matched by IMAGE, not by a CashPilot label,
       // so every container command targets a name that does not exist and
@@ -1189,13 +1194,13 @@ const CP = (() => {
           ${claimBtn}
           ${settingsBtn}
           ${_canWrite ? `
-          <button class="btn btn-icon" data-action="restartService" data-a1="'${escapeHtml(svc.slug)}${wParam}" title="Restart"${disabledAttr}>
+          <button class="btn btn-icon" data-action="restartService" data-a1="${escapeHtml(svc.slug)}"${wAttr} title="Restart"${disabledAttr}>
             ${ICON_RESTART}
           </button>
-          <button class="btn btn-icon" data-action="stopService" data-a1="'${escapeHtml(svc.slug)}${wParam}" title="Stop"${disabledAttr}>
+          <button class="btn btn-icon" data-action="stopService" data-a1="${escapeHtml(svc.slug)}"${wAttr} title="Stop"${disabledAttr}>
             ${ICON_STOP}
           </button>
-          <button class="btn btn-icon" data-action="viewLogs" data-a1="'${escapeHtml(svc.slug)}${wParam}" title="Logs"${disabledAttr}>
+          <button class="btn btn-icon" data-action="viewLogs" data-a1="${escapeHtml(svc.slug)}"${wAttr} title="Logs"${disabledAttr}>
             ${ICON_LOGS}
           </button>` : ''}
         </div>`;
@@ -1203,7 +1208,7 @@ const CP = (() => {
 
     // Main row
     let html = `
-    <tr class="breakdown-row${isMulti ? ' expandable' : ''}" data-slug="${escapeHtml(svc.slug)}"${isMulti ? ` data-action="toggleInstances" data-a1="${escapeHtml(svc.slug)}" data-a2="event" style="cursor:pointer;"` : ''}>
+    <tr class="breakdown-row${isMulti ? ' expandable' : ''}" data-slug="${escapeHtml(svc.slug)}"${isMulti ? ` data-action="toggleInstances" data-a1="${escapeHtml(svc.slug)}" data-a2="$event" style="cursor:pointer;"` : ''}>
       <td>${nameHtml}<div style="font-size:0.7rem; color:var(--text-muted);">${subtitle}</div></td>
       <td style="text-align:center;"><span class="badge badge-${statusClass}"><span class="status-dot ${statusClass}"></span> ${statusLabel}</span>${instanceLabel}${unmanagedLabel}${outdatedBadge}</td>
       <td style="text-align:center;">${healthBadge}</td>
@@ -1223,7 +1228,12 @@ const CP = (() => {
         const iStatus = (inst.status || 'unknown').toLowerCase();
         const iStatusLabel = iStatus.charAt(0).toUpperCase() + iStatus.slice(1);
         const nodeLabel = inst.node === 'local' ? 'Local' : escapeHtml(inst.node);
-        const wParam = inst.worker_id != null ? `', ${inst.worker_id}` : `'`;
+        // A real second argument, not the tail of an inline onclick. This used to
+      // be `', ${inst.worker_id}` -- the leftover source text of
+      // onclick="viewLogs('slug', 123)" -- which the delegated dispatcher hands
+      // over as ONE string, so the handler received slug="'slug', 123" and no
+      // worker id at all.
+      const wAttr = inst.worker_id != null ? ` data-a2="${inst.worker_id}"` : '';
         const iNoDocker = !inst.has_docker || inst.is_android;
         // The mixed case this whole change is built around. The ROW keeps its
         // buttons because a managed instance can still be controlled — but the
@@ -1264,13 +1274,13 @@ const CP = (() => {
           <td style="text-align:center; white-space:nowrap;">
             <div class="action-btns">
               ${_canWrite ? `
-              <button class="btn btn-icon" data-action="restartService" data-a1="'${escapeHtml(svc.slug)}${wParam}" title="Restart on ${nodeLabel}"${disabledAttr}>
+              <button class="btn btn-icon" data-action="restartService" data-a1="${escapeHtml(svc.slug)}"${wAttr} title="Restart on ${nodeLabel}"${disabledAttr}>
                 ${ICON_RESTART}
               </button>
-              <button class="btn btn-icon" data-action="stopService" data-a1="'${escapeHtml(svc.slug)}${wParam}" title="Stop on ${nodeLabel}"${disabledAttr}>
+              <button class="btn btn-icon" data-action="stopService" data-a1="${escapeHtml(svc.slug)}"${wAttr} title="Stop on ${nodeLabel}"${disabledAttr}>
                 ${ICON_STOP}
               </button>
-              <button class="btn btn-icon" data-action="viewLogs" data-a1="'${escapeHtml(svc.slug)}${wParam}" title="Logs on ${nodeLabel}"${disabledAttr}>
+              <button class="btn btn-icon" data-action="viewLogs" data-a1="${escapeHtml(svc.slug)}"${wAttr} title="Logs on ${nodeLabel}"${disabledAttr}>
                 ${ICON_LOGS}
               </button>` : ''}
             </div>
