@@ -24,6 +24,7 @@ __all__ = [
     "templates",
     "_login_redirect",
     "_require_auth_api",
+    "_require_reader",
     "_require_writer",
     "_require_owner",
     "_require_private_network",
@@ -63,7 +64,33 @@ def _login_redirect() -> RedirectResponse:
 
 
 def _require_auth_api(request: Request) -> dict[str, Any]:
-    """Return user dict or raise 401 for API routes."""
+    """Return user dict or raise 401 for API routes.
+
+    The read-only role is REFUSED here, and that refusal is the whole security
+    model. An allowlist fails silently and in the direction of passing, so the
+    reader must not be granted by the guard that ~40 endpoints already share --
+    it has to be opted into, one endpoint at a time, via _require_reader below.
+
+    The practical consequence is the one that matters: an endpoint added next
+    year, by someone who has never read this file, denies the read-only token by
+    default. Forgetting to think about it produces a 403, not a leak.
+    """
+    user = auth.get_current_user(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    if user.get("r") == "reader":
+        raise HTTPException(status_code=403, detail="Read-only token")
+    return user
+
+
+def _require_reader(request: Request) -> dict[str, Any]:
+    """Allow the read-only token, plus every role that already outranks it.
+
+    Use ONLY on GET endpoints that report state and expose no credential. A
+    dashboard tile, a Grafana panel or the Home Assistant sensors need exactly
+    this and nothing more; today they can only be wired up with a credential
+    that also deploys containers or enrols workers.
+    """
     user = auth.get_current_user(request)
     if not user:
         raise HTTPException(status_code=401, detail="Not authenticated")

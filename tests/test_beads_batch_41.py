@@ -42,6 +42,7 @@ async def _summary(*, worker_read_fails):
     )
     with (
         patch.object(main, "_require_auth_api", lambda r: None),
+        patch.object(main, "_require_reader", lambda r: None),
         patch.object(main.database, "get_earnings_dashboard_summary", AsyncMock(return_value={"total": 0})),
         patch.object(main.database, "get_config", AsyncMock(return_value={})),
         patch.object(main.database, "get_earnings_summary", AsyncMock(return_value=[])),
@@ -82,6 +83,7 @@ class TestTheBellDoesNotClaimUncheckedHealth:
 
         with (
             patch.object(main, "_require_auth_api", lambda r: None),
+            patch.object(main, "_require_reader", lambda r: None),
             patch.object(main, "_collector_alerts", alerts),
             patch.object(main, "_collection_has_run", has_run),
         ):

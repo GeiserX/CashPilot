@@ -1067,6 +1067,7 @@ from app.deps import (  # noqa: E402
     _require_first_run_access,  # noqa: F401  (re-exported for app.main.* router surface)
     _require_owner,
     _require_private_network,  # noqa: F401  (re-exported for app.main.* router surface)
+    _require_reader,
     _require_writer,
     client_ip,  # noqa: F401  (re-exported for app.main.* router surface)
     templates,  # noqa: F401  (re-exported for app.main.* router/test surface)
@@ -1171,7 +1172,7 @@ async def api_services_deployed(request: Request) -> list[dict[str, Any]]:
     single row with summed CPU/memory, an instance count, and per-instance
     details for the expandable sub-row UI.
     """
-    _require_auth_api(request)
+    _require_reader(request)
     statuses: list[dict[str, Any]] = await _get_all_worker_containers()
 
     # Get latest earnings per platform for balance display
@@ -2047,7 +2048,7 @@ async def api_earnings(request: Request) -> list[dict[str, Any]]:
 @app.get("/api/earnings/summary")
 async def api_earnings_summary(request: Request) -> dict[str, Any]:
     """Aggregated earnings stats for the dashboard."""
-    _require_auth_api(request)
+    _require_reader(request)
     summary = await database.get_earnings_dashboard_summary()
 
     # Load config for signup bonus offsets
@@ -2146,7 +2147,7 @@ async def api_earnings_daily(request: Request, days: int = 7) -> list[dict[str, 
 @app.get("/api/earnings/breakdown")
 async def api_earnings_breakdown(request: Request) -> list[dict[str, Any]]:
     """Per-service earnings breakdown with cashout eligibility."""
-    _require_auth_api(request)
+    _require_reader(request)
     rows = await database.get_earnings_per_service()
 
     # Load config for per-service signup bonus offsets
@@ -2237,7 +2238,7 @@ async def api_earnings_history(request: Request, period: str = "week") -> list[d
 @app.get("/api/health/scores")
 async def api_health_scores(request: Request, days: int = 7) -> list[dict[str, Any]]:
     """Health scores for all services."""
-    _require_auth_api(request)
+    _require_reader(request)
     if days < 1 or days > 90:
         raise HTTPException(status_code=400, detail="days must be between 1 and 90")
     scores = await database.get_health_scores(days)
@@ -4184,7 +4185,7 @@ async def api_worker_command(request: Request, worker_id: int, body: WorkerComma
 @app.get("/api/fleet/summary")
 async def api_fleet_summary(request: Request) -> dict[str, Any]:
     """Aggregate fleet stats across local + all workers."""
-    _require_auth_api(request)
+    _require_reader(request)
 
     workers = await database.list_workers()
     total_services = 0
