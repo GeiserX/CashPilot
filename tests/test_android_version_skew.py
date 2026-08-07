@@ -125,3 +125,70 @@ class TestTheFetchNeverRaises:
         """Third-party JSON. A tag like 'nightly' must not be shown as a release."""
         assert update_check._parse_tag({"tag_name": "nightly"}) is None
         assert update_check._parse_tag({"tag_name": "v0.3.0"}) == "v0.3.0"
+
+
+class TestTheFetchSucceeds:
+    """The success and caching paths. Without these the only thing proven is
+    that the check fails safely -- not that it ever works."""
+
+    class _Resp:
+        def __init__(self, payload):
+            self._payload = payload
+
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return self._payload
+
+    def _client(self, payload, counter):
+        outer = self
+
+        class _C:
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *a):
+                return False
+
+            async def get(self, *a, **k):
+                counter.append(1)
+                return outer._Resp(payload)
+
+        return lambda **k: _C()
+
+    @pytest.mark.asyncio
+    async def test_a_successful_fetch_caches_the_tag(self):
+        calls = []
+        with patch("app.update_check.httpx.AsyncClient", self._client({"tag_name": "v0.4.0"}, calls)):
+            assert await update_check.refresh_android(force=True) == "v0.4.0"
+        assert update_check.android_latest() == "v0.4.0"
+        assert len(calls) == 1
+
+    @pytest.mark.asyncio
+    async def test_a_second_call_inside_the_interval_does_not_refetch(self):
+        """Once a day. A self-hosted app polling a third party harder than that
+        is rude, and the cache is what makes the fleet page free to read."""
+        calls = []
+        with patch("app.update_check.httpx.AsyncClient", self._client({"tag_name": "v0.4.0"}, calls)):
+            await update_check.refresh_android(force=True)
+            assert await update_check.refresh_android() == "v0.4.0"
+        assert len(calls) == 1, "the cached value should have been returned without a second request"
+
+    @pytest.mark.asyncio
+    async def test_a_junk_tag_is_stored_as_unknown_not_as_a_version(self):
+        calls = []
+        with patch("app.update_check.httpx.AsyncClient", self._client({"tag_name": "nightly"}, calls)):
+            assert await update_check.refresh_android(force=True) is None
+        assert update_check.android_latest() is None
+
+    @pytest.mark.asyncio
+    async def test_a_fetched_tag_then_drives_the_comparison(self):
+        """End to end: fetch, then judge a phone against what was fetched."""
+        calls = []
+        with patch("app.update_check.httpx.AsyncClient", self._client({"tag_name": "v0.4.0"}, calls)):
+            await update_check.refresh_android(force=True)
+        si = {"os": "Android", "version": "0.3.0"}
+        assert version.skewed(_reference(si, "1.24.1"), si["version"]) is True
+        si_current = {"os": "Android", "version": "0.4.0"}
+        assert version.skewed(_reference(si_current, "1.24.1"), si_current["version"]) is False
