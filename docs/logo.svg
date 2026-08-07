@@ -23,15 +23,28 @@
     </mask>
   </defs>
 
-  <circle cx="128" cy="132" r="96" fill="url(#cpSun)" mask="url(#cpBands)"/>
+  <!--
+    THE SUN TOUCHES ALL FOUR EDGES. It used to sit in a 192x192 box inside a
+    256 canvas (32px of padding left and right, 36 top), which read as a small
+    mark floating in space wherever it was placed. Scaling about the disc's own
+    centre (r 96 to 128, and up 4px because the sun sat at cy=132) makes the
+    ink bounding box exactly 256x256 at +0+0: touching, never overflowing.
+    Verified by rendering and trimming, not by eye.
 
-  <!-- Plane: the official dark silhouette, matching banner.svg (#000010 at 0.65).
-       It was white, which is the one colour that disappears here: the top of the
-       sun gradient is #FFD54F, so a white plane on it is near-invisible and read
-       as a smudge rather than an aircraft. The banner has always drawn it dark
-       against the sun; this is the same mark at header size. -->
-  <g transform="translate(128,104) rotate(28)">
-    <path d="M0,-46 L4,-10 L50,3 L5,8 L6.5,20 L0,13 L-6.5,20 L-5,8 L-50,3 L-4,-10 Z"
-          fill="#000010" opacity="0.65"/>
+    The whole mark is scaled rather than every band and the plane re-derived by
+    hand, so the artwork below stays exactly as drawn.
+  -->
+  <g transform="translate(128,128) scale(1.3333333) translate(-128,-132)">
+  <circle cx="128" cy="132" r="96" fill="url(#cpSun)" mask="url(#cpBands)"/>
+  
+    <!-- Plane: the official dark silhouette, matching banner.svg (#000010 at 0.65).
+         It was white, which is the one colour that disappears here: the top of the
+         sun gradient is #FFD54F, so a white plane on it is near-invisible and read
+         as a smudge rather than an aircraft. The banner has always drawn it dark
+         against the sun; this is the same mark at header size. -->
+    <g transform="translate(128,104) rotate(28)">
+      <path d="M0,-46 L4,-10 L50,3 L5,8 L6.5,20 L0,13 L-6.5,20 L-5,8 L-50,3 L-4,-10 Z"
+            fill="#000010" opacity="0.65"/>
+    </g>
   </g>
 </svg>
