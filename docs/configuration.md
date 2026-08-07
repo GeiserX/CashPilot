@@ -28,7 +28,7 @@ defensible on its own; together they are impossible to guess.
 | `CASHPILOT_ALLOW_EPHEMERAL_KEY` | `false` | Allow starting when the encryption key cannot be persisted. | — |
 | `CASHPILOT_API_KEY` | from `/fleet` | Shared **enrolment** key. Not an ongoing credential — see [Fleet](fleet.md). | Env, else `/fleet/.fleet_key`, else generated there. |
 | `CASHPILOT_ADMIN_API_KEY` | unset | Bearer token for API access without a session. Grants **owner**: it can deploy, stop and remove containers and read stored credentials. | — |
-| `CASHPILOT_READONLY_API_KEY` | unset | Bearer token for **reporting only**. Accepted on a small allowlist of GET endpoints (earnings summary and breakdown, fleet summary, health scores, deployed services) and refused everywhere else, including on endpoints added in future. Use this for a dashboard tile, a Grafana panel or Home Assistant sensors rather than handing them a key that controls containers. | — |
+| `CASHPILOT_READONLY_API_KEY` | unset | Bearer token for **reporting only**. Accepted on a small allowlist of GET endpoints (earnings summary and breakdown, fleet summary, health scores, deployed services) and refused everywhere else, including on endpoints added in the future. Use this for a dashboard tile, a Grafana panel or Home Assistant sensors rather than handing them a key that controls containers. | — |
 | `CASHPILOT_DATA_DIR` | `/data` | Where the database and keys live. | — |
 | `CASHPILOT_FLEET_DIR` | `/fleet` | Where the shared enrolment key lives. | — |
 | `CASHPILOT_BASE_URL` | unset | Absolute base URL, for links in notifications. | — |
