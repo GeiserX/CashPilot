@@ -40,7 +40,7 @@ earnings:
   monthly_high: 3
   currency: USD
   per: "device"
-  notes: "No Docker image available. Desktop app only."
+  notes: "No Docker image available. Windows desktop and Android apps only."
 
 cashout:
   method: redirect

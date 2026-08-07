@@ -17,7 +17,7 @@ Bytebenefit is a bandwidth-sharing service that pays through PayPal and Stripe. 
 | Payout frequency | On request |
 | Payment methods | Paypal |
 
-> No Docker image available. Desktop app only.
+> No Docker image available. Windows desktop and Android apps only.
 
 ## Requirements
 
