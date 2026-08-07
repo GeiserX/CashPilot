@@ -103,6 +103,7 @@ These services have no Docker image. CashPilot lists them in the catalog with si
 <!-- BEGIN GENERATED: extension-services -->
 | Service | Guide | Residential IP required | VPS allowed | Devices / Acct | Devices / IP | Payout | Status |
 |---------|-------|:-:|:-:|:-:|:-:|--------|--------|
+| [Bytebenefit](https://bytebenefit.io/invited?ref=Brl4z3) | [Guide](docs/guides/bytebenefit.md) | ✅ | ❌ | ? \*\*\* | ? \*\*\* | PayPal | Active |
 | [Bytelixir](https://bytelixir.com/r/OYEIRE0VSZBZ) | [Guide](docs/guides/bytelixir.md) | ✅ | ❌ | ? \*\*\* | ? \*\*\* | Crypto | Active |
 | [Dawn Internet](https://dawninternet.com/?code=2QLQV97F) | [Guide](docs/guides/dawn.md) | ✅ | ❌ | ? \*\*\* | ? \*\*\* | Crypto | Active |
 | [Deeper Network](https://deeper.network) | [Guide](docs/guides/deeper-network.md) | ✅ | ❌ | ? \*\*\* | ? \*\*\* | Crypto | Active |
@@ -366,7 +367,6 @@ Services that were evaluated but are no longer listed in the catalog due to bein
 | Network3 | Broken | No SSL, no updates in months | Mar 2026 |
 | GagaNode | Shady | Poorly made website, untrustworthy | Mar 2026 |
 | BlockMesh (Perceptron) | Dropped | Rebranded, requires browser dev mode, shady | Mar 2026 |
-| Bytebenefit | Dead | Domain sold/parked on marketplace | Mar 2026 |
 | Wipter | Dead | Domain resolves to DNS sinkhole, infrastructure gone | Mar 2026 |
 | Filecoin | Not viable | Enterprise-only (10 TiB min, datacenter infrastructure required) | Mar 2026 |
 | AntGain | Dead | Telegram channel unavailable | Mar 2026 |
