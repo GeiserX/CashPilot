@@ -367,7 +367,20 @@ CASHPILOT_WORKER_NAME=server-name</code>
                         style="font-size:0.7rem; padding:1px 6px;">Save</button>
               </span>
               ${sysInfo.version
-                ? `<span${w.version_skew ? ` style="color:var(--warning); font-weight:600;" title="This worker is on a different release series from the UI (${esc(w.ui_version || '?')}). Update whichever is behind — on Unraid the UI and the worker are two separate apps, so updating one leaves the other."` : ''}>v${esc(sysInfo.version)}${w.version_skew ? ` \u2260 UI v${esc(w.ui_version || '?')}` : ''}</span>`
+                ? (() => {
+                    // What this worker was actually judged against. An Android
+                    // client is compared to the newest CashPilot-android
+                    // release, not to the UI: the two ship on separate tracks,
+                    // so "v0.3.0 != UI v1.24.1" was never skew, it was two
+                    // different products, and it flagged every phone forever.
+                    const isAndroid = String(sysInfo.os || '').toLowerCase() === 'android';
+                    const ref = w.reference_version || w.ui_version || '?';
+                    const refLabel = isAndroid ? `latest v${esc(ref)}` : `UI v${esc(ref)}`;
+                    const why = isAndroid
+                      ? `This phone is on an older CashPilot Android release than the newest published one (${esc(ref)}). Install the newer APK from the GitHub releases page.`
+                      : `This worker is on a different release series from the UI (${esc(ref)}). Update whichever is behind — on Unraid the UI and the worker are two separate apps, so updating one leaves the other.`;
+                    return `<span${w.version_skew ? ` style="color:var(--warning); font-weight:600;" title="${why}"` : ''}>v${esc(sysInfo.version)}${w.version_skew ? ` \u2260 ${refLabel}` : ''}</span>`;
+                  })()
                 : `<span title="This worker predates version reporting, so CashPilot cannot tell which release it is. Update it to find out.">version unknown</span>`}
             </div>
             ${isAndroid && items.length > 0 ? renderApps(items, isOnline, w.last_heartbeat) : ''}

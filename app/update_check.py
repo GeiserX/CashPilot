@@ -45,6 +45,12 @@ logger = logging.getLogger(__name__)
 #: it cannot be made expensive by a repository with a long release history.
 LATEST_URL = "https://api.github.com/repos/GeiserX/CashPilot/releases/latest"
 
+#: The Android client ships on its OWN release track and its versions will never
+#: match the server's. Comparing a phone running 0.3.0 against a UI running
+#: 1.24.1 flagged EVERY Android device as skewed, permanently, which is noise
+#: that teaches the operator to ignore the one warning that matters.
+ANDROID_LATEST_URL = "https://api.github.com/repos/GeiserX/CashPilot-android/releases/latest"
+
 #: Once a day. A release is not urgent, and a self-hosted app polling a third
 #: party more often than that is rude.
 CHECK_INTERVAL_SECONDS = 24 * 60 * 60
@@ -55,6 +61,12 @@ _HTTP_TIMEOUT = 10.0
 #: different statement and is carried by `known`.
 _latest_tag: str | None = None
 _checked_at: float = 0.0
+
+#: Same shape, for the Android client. Kept separate rather than folded into a
+#: dict so the existing server path cannot be perturbed by a failure fetching
+#: the Android one.
+_android_tag: str | None = None
+_android_checked_at: float = 0.0
 
 
 def enabled() -> bool:
@@ -114,6 +126,46 @@ async def refresh(*, force: bool = False) -> str | None:
     return tag
 
 
+async def refresh_android(*, force: bool = False) -> str | None:
+    """The newest published CashPilot-android release tag, or None for unknown.
+
+    Same contract as refresh(): never raises, and every failure lands on
+    UNKNOWN. That matters more here than for the server check, because this
+    value feeds a WARNING on the fleet page -- an unreachable GitHub must make
+    the warning disappear, never make every phone look out of date.
+    """
+    global _android_tag, _android_checked_at
+
+    if not enabled():
+        return None
+    if not force and _android_checked_at and (time.time() - _android_checked_at) < CHECK_INTERVAL_SECONDS:
+        return _android_tag
+
+    try:
+        async with httpx.AsyncClient(timeout=_HTTP_TIMEOUT) as client:
+            response = await client.get(ANDROID_LATEST_URL, headers={"Accept": "application/vnd.github+json"})
+            response.raise_for_status()
+            tag = _parse_tag(response.json())
+    except Exception as exc:  # noqa: BLE001 - every failure means the same thing
+        logger.debug("Android update check could not reach %s: %s", ANDROID_LATEST_URL, exc)
+        _android_checked_at = time.time()
+        return _android_tag
+
+    _android_tag = tag
+    _android_checked_at = time.time()
+    return _android_tag
+
+
+def android_latest() -> str | None:
+    """The cached Android release tag, or None when it is not known.
+
+    None is load-bearing: version.skewed() treats an unknown reference as "no
+    evidence of skew", so an install that cannot reach GitHub shows no warning
+    at all rather than a wrong one.
+    """
+    return _android_tag
+
+
 def state() -> dict[str, Any]:
     """What the UI needs to decide whether to say anything.
 
@@ -150,5 +202,6 @@ def _tuple(series_text: str) -> tuple[int, ...]:
 
 def _reset_for_tests() -> None:
     """Clear the module cache. Tests only."""
-    global _latest_tag, _checked_at
+    global _latest_tag, _checked_at, _android_tag, _android_checked_at
     _latest_tag, _checked_at = None, 0.0
+    _android_tag, _android_checked_at = None, 0.0

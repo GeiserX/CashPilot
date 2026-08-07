@@ -2173,6 +2173,11 @@ class TestLifespanScheduler:
                         "db_vacuum",
                         "exchange_rates",
                         "update_check",
+                        # The Android client's own release track. Separate job
+                        # so a GitHub hiccup fetching one cannot suppress the
+                        # other; it carries the same hardening kwargs, which the
+                        # loop below asserts for every job uniformly.
+                        "update_check_android",
                     }
                     # Every job carries the hardening kwargs (audit fix).
                     for job in jobs.values():

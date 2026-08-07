@@ -68,7 +68,7 @@ const buttons = variants
   )
   .join("");
 
-const fixture = `<!DOCTYPE html><html><head><meta charset="utf-8">
+const fixtureFor = (theme) => `<!DOCTYPE html><html${theme === "light" ? ' data-theme="light"' : ""}><head><meta charset="utf-8">
 <link rel="stylesheet" href="file://${CSS}"></head>
 <body>
   <div class="card" style="padding:16px;margin:8px">
@@ -91,14 +91,27 @@ const fixture = `<!DOCTYPE html><html><head><meta charset="utf-8">
   </div>
 </body></html>`;
 
-const fixturePath = path.join(process.env.TMPDIR || "/tmp", "cashpilot-legibility.html");
-fs.writeFileSync(fixturePath, fixture);
+// One file PER THEME, each with data-theme baked into <html> so the theme is
+// in force before a single style is resolved.
+//
+// Toggling the attribute on a live page and re-measuring does not work in
+// headless Chrome: the first getComputedStyle resolves and the later attribute
+// change is not re-resolved, so the second theme silently reports the FIRST
+// theme's values. That is what made this check pass locally and fail in CI --
+// and, worse, what made a passing run meaningless. A fresh document per theme
+// has no such state to go stale.
+const fixturePaths = {};
+for (const theme of ["dark", "light"]) {
+  const fp = path.join(process.env.TMPDIR || "/tmp", `cashpilot-legibility-${theme}.html`);
+  fs.writeFileSync(fp, fixtureFor(theme));
+  fixturePaths[theme] = fp;
+}
 
 // ---------------------------------------------------------------------------
 // This runs INSIDE the page. It reports measurements; it makes no judgements,
 // so the thresholds stay here in one place rather than being scattered.
 // ---------------------------------------------------------------------------
-const AUDIT = `(() => {
+const AUDIT = (theme) => `((theme) => {
   const parse = (c) => {
     const m = c.match(/rgba?\\(([^)]+)\\)/);
     if (!m) return null;
@@ -189,8 +202,12 @@ const AUDIT = `(() => {
       contrast: Math.round(ratio(parse(lcs.color), effectiveBg(link)) * 100) / 100,
     };
   }
+  // Prove the switch actually took effect. A partially-applied theme produced
+  // the CI failure this guards against, and silently measuring it is worse than
+  // failing: the numbers look authoritative and describe nothing real.
+  out.themeApplied = (document.documentElement.getAttribute("data-theme") || "dark") === theme;
   return JSON.stringify(out);
-})()`;
+})(${JSON.stringify(theme)})`;
 
 // ---------------------------------------------------------------------------
 const version = await fetch(`http://127.0.0.1:${PORT}/json/version`).catch(() => null);
@@ -203,7 +220,7 @@ if (!version || !version.ok) {
 }
 
 const target = await (
-  await fetch(`http://127.0.0.1:${PORT}/json/new?${encodeURIComponent("file://" + fixturePath)}`, { method: "PUT" })
+  await fetch(`http://127.0.0.1:${PORT}/json/new?about:blank`, { method: "PUT" })
 ).json();
 const ws = new WebSocket(target.webSocketDebuggerUrl);
 let id = 0;
@@ -225,15 +242,15 @@ const fail = (msg) => { failures++; console.error("FAIL  " + msg); };
 // Both themes. A palette that works in the dark one can be unreadable in the
 // other, and the light theme redefines every colour token.
 for (const theme of ["dark", "light"]) {
-  await send("Runtime.evaluate", {
-    expression:
-      theme === "light"
-        ? `document.documentElement.setAttribute("data-theme","light")`
-        : `document.documentElement.removeAttribute("data-theme")`,
-  });
-  await new Promise((r) => setTimeout(r, 120));
-  const res = await send("Runtime.evaluate", { expression: AUDIT, returnByValue: true });
+  await send("Page.navigate", { url: "file://" + fixturePaths[theme] });
+  await new Promise((r) => setTimeout(r, 400)); // let the stylesheet load
+  const res = await send("Runtime.evaluate", { expression: AUDIT(theme), returnByValue: true });
   const data = JSON.parse(res.result.value);
+  checks += 1;
+  if (!data.themeApplied) {
+    fail(`[${theme}] the theme did not apply, so every measurement below is meaningless`);
+    continue;
+  }
 
   for (const b of data.buttons) {
     checks += 2;
