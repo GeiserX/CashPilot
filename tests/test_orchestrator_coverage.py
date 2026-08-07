@@ -126,6 +126,7 @@ class TestCollectStats:
 class TestFindContainer:
     def test_finds_by_name(self):
         container = MagicMock()
+        container.labels = {LABEL_MANAGED: "true", LABEL_SERVICE: "honeygain"}
         client = MagicMock()
         client.containers.get.return_value = container
         with patch.object(orchestrator, "_get_client", return_value=client):
@@ -133,6 +134,50 @@ class TestFindContainer:
         assert result is container
         client.containers.get.assert_called_once_with("cashpilot-honeygain")
         client.containers.list.assert_not_called()
+
+    def test_a_name_hit_without_the_managed_label_is_not_ours(self):
+        """CashPilot-o4uw: the platform's own containers are cashpilot-worker
+        and cashpilot-ui, so slug 'worker' name-matched the worker's OWN
+        container and command channel 'remove' force-removed it -- the worker
+        deleting itself, unrecoverable remotely. An unlabelled name hit must
+        be invisible, exactly like NotFound."""
+        own_container = MagicMock()
+        own_container.labels = {}  # compose-created, carries no cashpilot labels
+        client = MagicMock()
+        client.containers.get.return_value = own_container
+        client.containers.list.return_value = []
+        with (
+            patch.object(orchestrator, "_get_client", return_value=client),
+            pytest.raises(ValueError, match="worker"),
+        ):
+            orchestrator._find_container("worker")
+        own_container.remove.assert_not_called()
+        own_container.stop.assert_not_called()
+
+    def test_an_unlabelled_name_hit_still_allows_the_label_fallback(self):
+        """Control: the guard must reroute to the label lookup, not dead-end.
+        A managed container that lost its name to an impostor is still found."""
+        impostor = MagicMock()
+        impostor.labels = {}
+        real = MagicMock()
+        client = MagicMock()
+        client.containers.get.return_value = impostor
+        client.containers.list.return_value = [real]
+        with patch.object(orchestrator, "_get_client", return_value=client):
+            assert orchestrator._find_container("honeygain") is real
+
+    def test_none_labels_do_not_crash_the_guard(self):
+        """Docker can hand back labels=None; absent is not 'managed'."""
+        container = MagicMock()
+        container.labels = None
+        client = MagicMock()
+        client.containers.get.return_value = container
+        client.containers.list.return_value = []
+        with (
+            patch.object(orchestrator, "_get_client", return_value=client),
+            pytest.raises(ValueError, match="ui"),
+        ):
+            orchestrator._find_container("ui")
 
     def test_falls_back_to_label_lookup_when_renamed(self):
         container = MagicMock()
