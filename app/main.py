@@ -23,7 +23,7 @@ from typing import Any
 import httpx
 from apscheduler.events import EVENT_JOB_ERROR, EVENT_JOB_MISSED
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, PlainTextResponse
@@ -1475,8 +1475,13 @@ class DeployRequest(BaseModel):
 
 
 @app.post("/api/deploy/{slug}")
-async def api_deploy(request: Request, slug: str, body: DeployRequest, worker_id: int | None = None) -> dict[str, str]:
-    _require_owner(request)
+async def api_deploy(
+    request: Request,
+    slug: str,
+    body: DeployRequest,
+    worker_id: int | None = None,
+    _auth: dict[str, Any] = Depends(_require_owner),
+) -> dict[str, str]:
     worker_id = await _resolve_worker_id(worker_id)
     svc = catalog.get_service(slug)
     if not svc:
@@ -2015,9 +2020,12 @@ class ComposeMultiRequest(BaseModel):
 
 
 @app.post("/api/compose", response_class=PlainTextResponse)
-async def api_compose_multi(request: Request, body: ComposeMultiRequest):
+async def api_compose_multi(
+    request: Request,
+    body: ComposeMultiRequest,
+    _auth: dict[str, Any] = Depends(_require_auth_api),
+):
     """Export a docker-compose.yml for multiple services."""
-    _require_auth_api(request)
     try:
         return compose_generator.generate_compose_multi(body.slugs)
     except ValueError as exc:
@@ -3320,8 +3328,9 @@ class PreferencesUpdate(BaseModel):
 
 
 @app.post("/api/preferences")
-async def api_set_preferences(request: Request, body: PreferencesUpdate) -> dict[str, str]:
-    user = _require_auth_api(request)
+async def api_set_preferences(
+    request: Request, body: PreferencesUpdate, user: dict[str, Any] = Depends(_require_auth_api)
+) -> dict[str, str]:
     if body.setup_mode is not None and body.setup_mode not in ("fresh", "monitoring", "mixed"):
         raise HTTPException(status_code=400, detail="setup_mode must be fresh, monitoring, or mixed")
 
@@ -3497,8 +3506,9 @@ def _sanitize_credential(value: str) -> str:
 
 
 @app.post("/api/config")
-async def api_set_config(request: Request, body: ConfigUpdate) -> dict[str, str]:
-    _require_owner(request)
+async def api_set_config(
+    request: Request, body: ConfigUpdate, _auth: dict[str, Any] = Depends(_require_owner)
+) -> dict[str, str]:
     sanitized = {k: _sanitize_credential(v) for k, v in body.data.items()}
     await database.set_config_bulk(sanitized)
 
@@ -3595,9 +3605,10 @@ class AdminPasswordSet(BaseModel):
 
 
 @app.post("/api/users/me/password")
-async def api_change_own_password(request: Request, body: PasswordChange) -> JSONResponse:
+async def api_change_own_password(
+    request: Request, body: PasswordChange, user: dict[str, Any] = Depends(_require_auth_api)
+) -> JSONResponse:
     """Change the authenticated user's own password (verifies current password)."""
-    user = _require_auth_api(request)
     uid = user["uid"]
     if uid == 0:
         raise HTTPException(status_code=400, detail="API-key sessions cannot change a password")
@@ -3621,9 +3632,10 @@ async def api_change_own_password(request: Request, body: PasswordChange) -> JSO
 
 
 @app.post("/api/users/{user_id}/password")
-async def api_admin_set_password(request: Request, user_id: int, body: AdminPasswordSet) -> dict[str, str]:
+async def api_admin_set_password(
+    request: Request, user_id: int, body: AdminPasswordSet, _auth: dict[str, Any] = Depends(_require_owner)
+) -> dict[str, str]:
     """Owner resets another user's password (no current-password check, no re-mint)."""
-    _require_owner(request)
     target = await database.get_user_by_id(user_id)
     if not target:
         raise HTTPException(status_code=404, detail="User not found")
