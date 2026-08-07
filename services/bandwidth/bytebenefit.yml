@@ -13,6 +13,10 @@ short_description: Bandwidth sharing - PayPal/Stripe payouts, desktop/Android ap
 
 referral:
   signup_url: "https://bytebenefit.io/invited?ref=Brl4z3"
+  code: "Brl4z3"
+  bonus:
+    referrer: "20% of referral traffic earnings"
+    referee: "$1 (10,000 Coins) welcome bonus"
 
 docker:
   image: ""

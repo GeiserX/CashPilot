@@ -15,6 +15,7 @@ on:
       - "services/**"
       - "README.md"
       - "scripts/generate_readme_tables.py"
+      - "scripts/referral_check.py"
       - ".github/workflows/catalog-check.yml"
   push:
     branches: [main]
@@ -51,6 +52,16 @@ jobs:
 
       - name: README service tables match the catalog
         run: python scripts/generate_readme_tables.py --check
+
+      # Referral links are revenue. This fails on regressions (a recorded code
+      # no longer anchored in its signup_url, malformed registry facts);
+      # known-program-without-code gaps and unresearched providers are printed,
+      # not failed. A contributor who updates a migrated provider's signup_url
+      # CAN trip the code check -- the error text tells them the escape hatch:
+      # leave `code` as it was and flag it, since only the account holder can
+      # re-issue the link.
+      - name: Referral links still carry their codes
+        run: python scripts/referral_check.py
 
       - name: Every service has a guide
         run: |

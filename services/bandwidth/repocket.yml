@@ -13,6 +13,7 @@ short_description: Bandwidth sharing - max 5 devices, API key auth
 
 referral:
   signup_url: "https://repocket.com/"
+  program: true
 
 docker:
   image: repocket/repocket

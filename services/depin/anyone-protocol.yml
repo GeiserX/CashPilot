@@ -13,6 +13,7 @@ short_description: Decentralized onion routing - incentivized Tor relay nodes
 
 referral:
   signup_url: "https://anyone.io"
+  program: false
 
 docker:
   image: ghcr.io/anyone-protocol/ator-protocol

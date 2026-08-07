@@ -13,6 +13,7 @@ short_description: DePIN bandwidth sharing for AI data - earns GRASS tokens
 
 referral:
   signup_url: "https://app.grass.io/register?referralCode=kn8FNEPnUr2tMqE"
+  code: "kn8FNEPnUr2tMqE"
 
 docker:
   image: ""

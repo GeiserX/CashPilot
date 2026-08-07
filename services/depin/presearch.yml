@@ -12,6 +12,7 @@ short_description: Decentralized search engine - Docker nodes, PRE token rewards
 
 referral:
   signup_url: "https://presearch.com/signup?rid=4872322"
+  code: "4872322"
 
 docker:
   image: presearch/node

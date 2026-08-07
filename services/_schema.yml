@@ -13,6 +13,19 @@
 
 # referral:
 #   signup_url: Full signup URL with referral code already embedded
+#   code: The referral code itself, ALWAYS QUOTED -- unquoted, "0071234" parses
+#         as an octal int and "no"/"yes"/"on" as booleans (YAML 1.1).
+#         scripts/referral_check.py proves it stays anchored in signup_url
+#         (query value, bare query key, or path segment), so a domain
+#         migration cannot silently strip the attribution.
+#   program: Whether the PROVIDER runs a referral program. Three-valued, and
+#            absent is not "no":
+#              true    verified to run one (true + no code = actionable gap)
+#              false   verified NOT to run one (a bare signup_url is correct)
+#              absent  nobody has checked yet (reported, never failed)
+#   bonus: (optional) what each side gets, shown on the service detail page:
+#     referrer: "20% of referral traffic earnings"
+#     referee: "$1 welcome bonus"
 
 # docker:
 #   image: Docker Hub image

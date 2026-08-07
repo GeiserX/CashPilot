@@ -12,6 +12,7 @@ short_description: Bandwidth sharing - $2-50/month, desktop + Android
 
 referral:
   signup_url: "https://bytelixir.com/r/OYEIRE0VSZBZ"
+  code: "OYEIRE0VSZBZ"
 
 docker:
   image: ""

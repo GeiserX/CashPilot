@@ -13,6 +13,7 @@ short_description: Bandwidth sharing - simple CID-based setup
 
 referral:
   signup_url: "https://packetstream.io/?psr=7xgZ"
+  code: "7xgZ"
 
 docker:
   image: packetstream/psclient

@@ -12,6 +12,7 @@ short_description: DePIN wireless network - browser extension and hardware box
 
 referral:
   signup_url: "https://dawninternet.com/?code=2QLQV97F"
+  code: "2QLQV97F"
 
 docker:
   image: ""

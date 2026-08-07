@@ -13,6 +13,7 @@ short_description: GPU marketplace - set your own prices, RTX 3090 ~$0.20-0.40/h
 
 referral:
   signup_url: "https://cloud.vast.ai/?ref_id=452772"
+  code: "452772"
 
 docker:
   image: ""
