@@ -104,7 +104,13 @@ def audit(services: list[dict]) -> dict[str, list[str]]:
             continue
 
         if code is not None:
-            if not str(code).strip():
+            if not isinstance(code, str):
+                # An unquoted YAML scalar: 0071234 arrives as the int 29340
+                # (octal), no/yes as booleans. str() would launder some of
+                # these into accidental matches, so refuse the type outright.
+                errors.append(f"{slug}: referral.code must be a quoted string, got {type(code).__name__} {code!r}")
+                continue
+            if not code.strip():
                 errors.append(
                     f"{slug}: referral.code is empty -- delete the key or record the real code; empty is not a value"
                 )
@@ -154,6 +160,11 @@ def main() -> int:
         help="catalog root to audit (tests point this at fixtures)",
     )
     args = parser.parse_args()
+
+    if not args.services_dir.is_dir():
+        # A missing directory must not audit zero files and report success.
+        print(f"services dir not found: {args.services_dir}", file=sys.stderr)
+        return 2
 
     findings = audit(load_services(args.services_dir))
 

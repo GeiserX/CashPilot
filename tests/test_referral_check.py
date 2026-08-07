@@ -77,6 +77,15 @@ class TestTheRegressionShape:
         )
         assert len(referral_check.audit([svc])["errors"]) == 1
 
+    def test_an_unquoted_numeric_code_is_a_type_error(self):
+        """`code: 123` with `?ref=123` in the URL would pass through str() --
+        but an unquoted scalar is a YAML accident waiting to differ (0071234
+        parses as octal 29340), so the type itself is refused."""
+        svc = _svc(referral={"signup_url": "https://example.com/?ref=123", "code": 123})
+        f = referral_check.audit([svc])
+        assert len(f["errors"]) == 1
+        assert "quoted string" in f["errors"][0]
+
     def test_an_empty_code_is_an_error_not_a_pass(self):
         svc = _svc(referral={"signup_url": "https://example.com/", "code": ""})
         f = referral_check.audit([svc])
@@ -223,3 +232,19 @@ class TestTheRealCatalog:
             text=True,
         )
         assert result.returncode == 0, result.stdout + result.stderr
+
+    def test_a_missing_services_dir_is_an_error_not_a_clean_pass(self, tmp_path):
+        """Auditing zero files must never report success."""
+        result = subprocess.run(
+            [
+                sys.executable,
+                "scripts/referral_check.py",
+                "--services-dir",
+                str(tmp_path / "does-not-exist"),
+            ],
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+        )
+        assert result.returncode == 2, result.stdout + result.stderr
+        assert "not found" in result.stderr
