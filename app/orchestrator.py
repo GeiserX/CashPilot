@@ -85,25 +85,36 @@ def _container_name(slug: str) -> str:
 
 
 def _find_container(slug: str):
-    """Find a container by name, falling back to label-based lookup."""
+    """Find a MANAGED container by name, falling back to label-based lookup.
+
+    The name match must verify the cashpilot.managed label, not just the
+    prefix: the platform's own containers are named cashpilot-worker and
+    cashpilot-ui, so slug "worker" name-matched the worker's OWN container
+    and a writer-role command could force-remove it -- the worker deleting
+    itself, unrecoverable remotely (CashPilot-o4uw). A name hit without the
+    label is treated exactly like NotFound.
+    """
     client = _get_client()
     name = _container_name(slug)
     try:
-        return client.containers.get(name)
+        container = client.containers.get(name)
+        if (container.labels or {}).get(LABEL_MANAGED) == "true":
+            return container
     except NotFound:
-        # Fallback: find by label (handles renamed containers)
-        matches = client.containers.list(
-            all=True,
-            filters={
-                "label": [
-                    f"{LABEL_SERVICE}={slug}",
-                    f"{LABEL_MANAGED}=true",
-                ]
-            },
-        )
-        if matches:
-            return matches[0]
-        raise ValueError(f"Container for {slug} not found")
+        pass
+    # Fallback: find by label (handles renamed containers)
+    matches = client.containers.list(
+        all=True,
+        filters={
+            "label": [
+                f"{LABEL_SERVICE}={slug}",
+                f"{LABEL_MANAGED}=true",
+            ]
+        },
+    )
+    if matches:
+        return matches[0]
+    raise ValueError(f"Container for {slug} not found")
 
 
 def _normalize_resources(resources: Any) -> dict[str, Any]:
