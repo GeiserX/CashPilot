@@ -33,7 +33,7 @@ Bytebenefit is a bandwidth-sharing service that pays through PayPal and Stripe. 
 
 ### 1. Create an account
 
-Sign up at [Bytebenefit](https://bytebenefit.io/invited?ref=Brl4z3).
+Sign up at [Bytebenefit](https://bytebenefit.io/invited?ref=Brl4z3) — signing up through this link gives you a **$1 (10,000 Coins) welcome bonus**.
 
 ### 2. Get your credentials
 
