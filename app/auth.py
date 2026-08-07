@@ -159,6 +159,16 @@ def get_current_user(request: Request) -> dict[str, Any] | None:
     # Check Bearer token — admin key gets owner, fleet key gets fleet (limited)
     auth_header = request.headers.get("Authorization", "")
     if auth_header:
+        # Checked FIRST, before the admin key, deliberately. If an operator sets
+        # both variables to the same value that is a misconfiguration either way,
+        # and the two possible resolutions are not equally bad: resolving it to
+        # "owner" would silently hand full container control to whatever they
+        # pasted into a dashboard widget. Resolving it to "reader" merely stops
+        # the admin path working, which is loud and harmless. Fail toward less
+        # privilege.
+        readonly_key = os.getenv("CASHPILOT_READONLY_API_KEY", "")
+        if readonly_key and hmac.compare_digest(auth_header.encode(), f"Bearer {readonly_key}".encode()):
+            return {"uid": 0, "u": "readonly", "r": "reader"}
         admin_key = os.getenv("CASHPILOT_ADMIN_API_KEY", "")
         if admin_key and hmac.compare_digest(auth_header.encode(), f"Bearer {admin_key}".encode()):
             return {"uid": 0, "u": "api", "r": "owner"}

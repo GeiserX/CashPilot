@@ -49,6 +49,7 @@ class TestTheTotalUsesTheRateTheReadingWasRecordedAt:
 
         with (
             patch.object(main, "_require_auth_api", lambda r: None),
+            patch.object(main, "_require_reader", lambda r: None),
             patch.object(
                 database,
                 "get_earnings_dashboard_summary",
