@@ -2094,23 +2094,37 @@ img { max-width: 100%; }
   gap: 0.75rem;
   margin: 0 0 1rem;
   padding: 0.65rem 1rem;
-  border: 1px solid rgba(59, 130, 246, 0.35);
+  border: 1px solid var(--border-light);
   border-radius: 10px;
-  background: rgba(30, 58, 138, 0.18);
-  color: #dbeafe;
+  background: var(--accent-secondary-soft);
+  color: var(--text-primary);
   font-size: 0.9rem;
 }
 
+/* `hidden` is only honoured because the UA stylesheet says display:none, and
+   ANY author `display` outranks it. Without this rule the banner above was
+   permanently visible -- empty, because checkForUpdate had never populated it,
+   and carrying its initial href="#", which with target="_blank" opens the
+   CURRENT page in a new tab. It looked like a broken link to GitHub; it was
+   never a link to GitHub at all. */
+.update-banner[hidden] {
+  display: none;
+}
+
+/* Tokens, not hardcoded blues. The previous #dbeafe text and #93c5fd link were
+   picked for the dark theme and had no light-theme counterpart, so in light
+   mode the banner was pale blue on pale lavender. */
 .update-banner a {
-  color: #93c5fd;
+  color: var(--accent-secondary);
   text-decoration: underline;
+  text-underline-offset: 2px;
 }
 
 .update-banner button {
   margin-left: auto;
   border: 0;
   background: transparent;
-  color: #93c5fd;
+  color: var(--text-secondary);
   font-size: 1.15rem;
   line-height: 1;
   cursor: pointer;
@@ -2118,7 +2132,7 @@ img { max-width: 100%; }
 }
 
 .update-banner button:hover {
-  color: #dbeafe;
+  color: var(--text-primary);
 }
 
 /* Payout destinations (CashPilot-luj tier 1).

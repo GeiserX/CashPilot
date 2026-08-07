@@ -78,6 +78,17 @@ const fixture = `<!DOCTYPE html><html><head><meta charset="utf-8">
   <div class="modal-body" style="padding:16px;margin:8px">
     <p data-probe-text="modal-prose">Prose with <a href="#" data-probe-link="modal-link">a real link</a> in it.</p>
   </div>
+
+  <!-- Real components, populated as the app populates them. Buttons were only
+       where the FIRST bug happened; the update banner then turned out to be
+       pale blue on pale lavender in the light theme, because its colours were
+       hardcoded for the dark one and had no counterpart. A check that only ever
+       looked at .btn would have missed it entirely. -->
+  <div class="update-banner">
+    <span data-probe-fg="update-banner-text">CashPilot 1.23.2 is available - you are running 1.14.1.</span>
+    <a href="#" data-probe-fg="update-banner-link">Release notes</a>
+    <button type="button" data-probe-fg="update-banner-dismiss">&times;</button>
+  </div>
 </body></html>`;
 
 const fixturePath = path.join(process.env.TMPDIR || "/tmp", "cashpilot-legibility.html");
@@ -98,20 +109,49 @@ const AUDIT = `(() => {
   // ancestor that actually paints one. A transparent button (btn-danger,
   // btn-ghost) is legible only relative to whatever shows through it.
   const effectiveBg = (el) => {
+    // Collect every painted layer up the tree, then composite them.
+    //
+    // The first version returned the first layer with alpha > 0 and treated it
+    // as opaque. That is wrong for exactly the tokens this codebase uses:
+    // --accent-secondary-soft is rgba(34,211,238,0.10), and reading it as solid
+    // #22d3ee reported the update banner at 1:1 against its own link colour --
+    // a fabricated failure that nearly sent me redesigning a component that was
+    // fine. Alpha has to be blended, not ignored.
+    const layers = [];
     let n = el;
-    while (n && n !== document.documentElement) {
+    while (n) {
       const c = parse(getComputedStyle(n).backgroundColor);
-      if (c && c.a > 0) return c;
+      if (c && c.a > 0) {
+        layers.push(c);
+        if (c.a >= 1) break; // opaque: nothing below it shows through
+      }
       n = n.parentElement;
     }
-    const c = parse(getComputedStyle(document.body).backgroundColor);
-    return c && c.a > 0 ? c : { r: 255, g: 255, b: 255, a: 1 };
+    let base = { r: 255, g: 255, b: 255 };
+    for (const c of layers.reverse()) {
+      base = {
+        r: c.r * c.a + base.r * (1 - c.a),
+        g: c.g * c.a + base.g * (1 - c.a),
+        b: c.b * c.a + base.b * (1 - c.a),
+      };
+    }
+    return base;
   };
   const lum = ({ r, g, b }) => {
     const f = (v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); };
     return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b);
   };
-  const ratio = (fg, bg) => {
+  // Text alpha counts too. A negative control caught this: setting the banner
+  // text to rgba(232,230,240,0.25) -- nearly invisible -- still measured as a
+  // clean 14:1, because only the background was being composited and the
+  // foreground's own alpha was thrown away. Blend the text over its background
+  // before measuring, exactly as the screen does.
+  const ratio = (fgRaw, bg) => {
+    const fg = fgRaw.a !== undefined && fgRaw.a < 1
+      ? { r: fgRaw.r * fgRaw.a + bg.r * (1 - fgRaw.a),
+          g: fgRaw.g * fgRaw.a + bg.g * (1 - fgRaw.a),
+          b: fgRaw.b * fgRaw.a + bg.b * (1 - fgRaw.a) }
+      : fgRaw;
     const a = lum(fg), b = lum(bg);
     return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
   };
@@ -126,6 +166,17 @@ const AUDIT = `(() => {
       bg: "rgb(" + bg.r + "," + bg.g + "," + bg.b + ")",
       contrast: Math.round(ratio(fg, bg) * 100) / 100,
       underlined: cs.textDecorationLine.includes("underline"),
+    });
+  }
+  for (const el of document.querySelectorAll("[data-probe-fg]")) {
+    const cs = getComputedStyle(el);
+    const fg = parse(cs.color), bg = effectiveBg(el);
+    out.buttons.push({
+      probe: el.getAttribute("data-probe-fg"),
+      color: cs.color,
+      bg: "rgb(" + Math.round(bg.r) + "," + Math.round(bg.g) + "," + Math.round(bg.b) + ")",
+      contrast: Math.round(ratio(fg, bg) * 100) / 100,
+      underlined: false, // an underline is only a defect on a FILLED control
     });
   }
   const link = document.querySelector("[data-probe-link]");

@@ -43,23 +43,28 @@
   <!-- Sidebar -->
   <aside class="sidebar">
     <div class="sidebar-brand">
-      <svg width="28" height="28" viewBox="0 0 32 32">
+      <svg width="28" height="28" viewBox="0 0 256 256" role="img" aria-label="CashPilot">
         <defs>
-          <linearGradient id="cpSun" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stop-color="#fde68a"/>
-            <stop offset="35%" stop-color="#fb923c"/>
-            <stop offset="65%" stop-color="#e11d48"/>
-            <stop offset="100%" stop-color="#6d28d9"/>
+          <linearGradient id="cpSun" x1="0%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%" stop-color="#FFD54F"/>
+            <stop offset="40%" stop-color="#FF9800"/>
+            <stop offset="72%" stop-color="#E91E63"/>
+            <stop offset="100%" stop-color="#AB47BC"/>
           </linearGradient>
-          <mask id="cpMask">
-            <circle cx="16" cy="16" r="12" fill="white"/>
-            <rect x="0" y="16" width="32" height="1" fill="black"/>
-            <rect x="0" y="18.5" width="32" height="1.5" fill="black"/>
-            <rect x="0" y="21.5" width="32" height="2.5" fill="black"/>
-            <rect x="0" y="25.5" width="32" height="4" fill="black"/>
+          <mask id="cpBands">
+            <rect width="256" height="256" fill="#fff"/>
+            <rect x="16" y="150" width="224" height="10" fill="#000"/>
+            <rect x="16" y="172" width="224" height="13" fill="#000"/>
+            <rect x="16" y="197" width="224" height="16" fill="#000"/>
           </mask>
         </defs>
-        <circle cx="16" cy="16" r="12" fill="url(#cpSun)" mask="url(#cpMask)"/>
+        <g transform="translate(128,128) scale(1.3333333) translate(-128,-132)">
+          <circle cx="128" cy="132" r="96" fill="url(#cpSun)" mask="url(#cpBands)"/>
+          <g transform="translate(128,104) rotate(28)">
+            <path d="M0,-46 L4,-10 L50,3 L5,8 L6.5,20 L0,13 L-6.5,20 L-5,8 L-50,3 L-4,-10 Z"
+                  fill="#000010" opacity="0.65"/>
+          </g>
+        </g>
       </svg>
       CashPilot
     </div>
