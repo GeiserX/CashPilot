@@ -76,6 +76,18 @@ jobs:
       - name: Payout destination states
         run: node scripts/payout_registry_check.mjs
 
+      # The only check here that needs a real browser, because it measures a
+      # property of the RENDERED page. A button's label colour is decided by the
+      # cascade, so `.modal-body a` (0,1,1) silently outranked `.btn-success`
+      # (0,1,0) and painted the claim modal's button cyan-on-green at 2.28:1 --
+      # invisible to every other test in this repo, all of which read values
+      # rather than looking at the result. Asserting the stylesheet CONTAINS
+      # ":not(.btn)" would prove a rule was typed, not that a button can be read.
+      # ubuntu-latest ships Chrome, and the script exits 2 rather than 0 when no
+      # browser is found, so a skipped run can never read as a pass.
+      - name: Legibility (contrast + link styling, real browser)
+        run: ./scripts/legibility_check.sh
+
       # From the LOCKFILE, which is what Docker ships (`uv sync --frozen` in the
       # Dockerfile) and what release.yml verifies against. Installing from the
       # unpinned requirements.txt meant the suite ran against a resolution
