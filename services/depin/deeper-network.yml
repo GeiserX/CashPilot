@@ -11,6 +11,7 @@ short_description: Decentralized VPN - requires proprietary hardware device
 
 referral:
   signup_url: "https://deeper.network"
+  program: true
 
 docker:
   image: ""
