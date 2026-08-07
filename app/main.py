@@ -908,6 +908,18 @@ async def lifespan(app: FastAPI):
         # convention a test enforces uniformly.
         misfire_grace_time=300,
     )
+    # The Android client's own release track, on the same daily cadence and with
+    # the same failure contract. Separate job rather than folded into the one
+    # above so a GitHub hiccup fetching one cannot suppress the other.
+    scheduler.add_job(
+        update_check.refresh_android,
+        "interval",
+        hours=24,
+        id="update_check_android",
+        max_instances=1,
+        coalesce=True,
+        misfire_grace_time=300,
+    )
     scheduler.add_job(
         exchange_rates.refresh,
         "interval",
@@ -919,6 +931,15 @@ async def lifespan(app: FastAPI):
     )
     scheduler.start()
     await exchange_rates.refresh()
+    # Kick both release checks NOW rather than waiting out the first 24-hour
+    # interval. APScheduler's interval trigger does not fire on start, and this
+    # container is recreated on every deploy -- so on an install that ships more
+    # often than daily the check would never run at all, and the update banner
+    # would sit permanently at known=false. Spawned, not awaited: a slow or
+    # unreachable GitHub must not delay startup, and every failure inside these
+    # already lands on UNKNOWN.
+    _spawn(update_check.refresh())
+    _spawn(update_check.refresh_android())
     _spawn(_run_collection())
     logger.info("CashPilot UI started (container ops via workers)")
 
@@ -4058,7 +4079,22 @@ async def api_list_workers(request: Request) -> list[dict[str, Any]]:
         # known releases for this to be True, so an older worker that predates
         # version reporting reads as unknown, not as a mismatch.
         w["ui_version"] = ui_version
-        w["version_skew"] = version.skewed(ui_version, (w.get("system_info") or {}).get("version"))
+        # An Android client ships on its OWN release track, so the UI's version
+        # is the wrong yardstick: a phone on 0.3.0 against a UI on 1.24.1 is not
+        # skew, it is two different products, and comparing them flagged EVERY
+        # Android device permanently. Compare a phone against the newest
+        # CashPilot-android release instead.
+        #
+        # reference_version is what the worker was actually judged against, so
+        # the UI can say so rather than always claiming "UI vX".
+        si = w.get("system_info") or {}
+        is_android = str(si.get("os") or "").strip().lower() == "android"
+        reference = update_check.android_latest() if is_android else ui_version
+        w["reference_version"] = reference
+        # Unknown reference -> no skew. version.skewed() already returns False
+        # when either side is unknown, which is what keeps an offline install
+        # (or a GitHub outage) from lighting a warning on every phone.
+        w["version_skew"] = version.skewed(reference, si.get("version"))
         # The per-machine power settings the running-costs card needs, read the
         # SAME way api_fleet_economics reads them — client_id first, row id as
         # the fallback for values written before that changed. Returning them
