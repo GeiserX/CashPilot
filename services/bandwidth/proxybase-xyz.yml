@@ -10,7 +10,7 @@ description: >
   both direct (own bandwidth) and upstream (resell external proxies) modes with
   auto-reconnect. Buyers purchase proxy sessions by country, ISP, and bandwidth.
   Payments flow through the Micropayments Protocol (MPP) on Tempo Chain.
-short_description: SOCKS5 proxy marketplace for AI agents - USDC payout, CLI daemon
+short_description: proxybase.xyz - SOCKS5 marketplace for AI agents, USDC payout. Generates a wallet whose volume holds the only copy of the key
 
 referral:
   signup_url: "https://proxybase.xyz?referral=nXzS3c6iTO"
