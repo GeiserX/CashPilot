@@ -50,8 +50,20 @@ are deleted. Steps 1–2 are a web form and cannot be scripted.
    | Icon | `docs/logo.svg` from this repository — the official mark, transparent, disc filling the frame edge to edge |
 
 2. Once the request exists, use the **Enhanced** download button on their site to
-   get the scaffold. It carries a generated `appid`, which is why the files here
-   do not include an `app.json` — that value must come from them.
+   get the scaffold.
+
+   An earlier version of this file said the scaffold's `appid` "must come from
+   them". **It does not.** The value is simply `sha1(lowercase app name)`:
+
+   ```console
+   $ printf 'cashpilot' | sha1sum
+   5b7c085bf60518c8e7261473688a98200e60847b
+   ```
+
+   That matches the `appid` in `app.json` exactly, and the same relation holds
+   for Grafana, Vaultwarden and Home Assistant. Knowing it means the whole
+   package can be assembled and **tested locally before submitting anything** —
+   see below.
 
 3. Fork `linuxserver/Heimdall-Apps`, make a branch named for the app, extract the
    scaffold into it, then replace the generated stubs with the three files here.
@@ -59,11 +71,74 @@ are deleted. Steps 1–2 are a web form and cannot be scripted.
 
 4. Open the PR against their master.
 
-## Before you submit
+## Try it on a real Heimdall first
 
-Set `CASHPILOT_ADMIN_API_KEY` on the instance you test against, or use the fleet
-key. On the live server the admin key is **not** set today, which is why the
-verification above used the fleet key.
+Because the `appid` is derivable, the whole app can be installed by hand and
+exercised before a single word is sent upstream. This was done against a live
+Heimdall **2.8.1** on 2026-08-07 and the tile rendered
+`Earnings $66.61 / Running 43` from a real server.
+
+**A custom app persists.** Both paths Heimdall loads from are symlinks into the
+config bind mount, so a hand-installed app survives a container update:
+
+```
+/app/www/app/SupportedApps        -> /config/www/SupportedApps
+/app/www/storage/app/public/icons -> /config/www/icons
+```
+
+1. Copy `CashPilot.php`, `livestats.blade.php`, `config.blade.php`, `app.json`
+   and the icon into `SupportedApps/CashPilot/`, and the icon again into
+   `icons/`. The blades must sit **beside** the PHP class: Heimdall registers
+   the view namespace as `addNamespace('SupportedApps', app_path('SupportedApps'))`.
+   (Enhanced apps such as Jellyfin and UniFi ship blades; non-enhanced ones such
+   as Grafana ship none — so a file listing from the wrong app misleads.)
+2. Own the files **numerically**, e.g. `chown -R 1000:1000`. On an unRAID host
+   `chown abc:users` fails: that user exists only inside the container.
+3. Point an item at it — `class` = `App\SupportedApps\CashPilot\CashPilot`,
+   `appid` as above, and the settings as **JSON** in `items.description`:
+   `{"enabled":"1","url":"...","access_token":"..."}`. `Item::enabled()` reads
+   `config->enabled`, so livestats render only when it is set.
+4. `php artisan cache:clear`, then request the stats directly:
+
+   ```console
+   $ curl http://<host>:8000/get_stats/<item_id>
+   {"status":"active","html":"...<strong>$66.61</strong>...<strong>43</strong>..."}
+   ```
+
+> **Read the log as well as the response.** `ItemController::getStats` catches
+> every exception and returns `{"status":"inactive","html":""}`. A broken app
+> therefore looks merely *idle*, never broken, and checking the HTTP response
+> alone will read a silent failure as a pass. Confirm `storage/logs/*.log` is
+> empty.
+
+`sqlite3` is not in the container; query the database with `php -r` and PDO.
+
+### The rule, exercised against the installed class
+
+Driving the real class against a stub server, so the em-dash handling is proven
+rather than asserted:
+
+| server says | Earnings | Running |
+|---|---|---|
+| `has_readings:true, total_adjusted:66.61, active_services:43` | `$66.61` | `43` |
+| `has_readings:false, total_adjusted:0` | **—** | `43` |
+| `active_services:null` | `$66.61` | **—** |
+| `has_readings:true, total_adjusted:0, active_services:0` | `$0.00` | `0` |
+
+The last row is the one that matters. It carries the same `0` as the second and
+renders **differently**, which is what proves the dash follows `has_readings`
+rather than the number being zero. Without it the table would also pass against
+a tile that simply dashed every zero.
+
+## Which key to use
+
+Use **`CASHPILOT_READONLY_API_KEY`**. It is scoped to reporting endpoints and
+cannot deploy, stop or remove anything, which is exactly what a tile needs.
+
+The admin and fleet keys also work, but the admin key grants full container
+control and the fleet key is the *enrolment* credential — anything holding it
+can enrol a worker. Handing either to a dashboard is far more than showing two
+numbers requires.
 
 ### A correction worth keeping
 
@@ -77,7 +152,3 @@ It matters because their guidance explicitly asks for transparent backgrounds,
 and Heimdall paints its own colour behind the icon — a plate fights it. The
 lesson is the cheap one: that claim came from reading the markup, and one
 render would have settled it.
-
-Be aware, and it is stated in the config help too: CashPilot has no read-only
-token, so whichever key is used grants more than the tile needs. That gap is
-tracked separately.
