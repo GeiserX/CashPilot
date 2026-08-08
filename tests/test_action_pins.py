@@ -202,3 +202,34 @@ class TestTheShippedWorkflowsParse:
         uses = pins.parse_workflows(ROOT / ".github" / "workflows")
         assert len(uses) > 20
         assert all(use.repo.count("/") == 1 for use in uses)
+
+
+class TestAHalfCheckedPinIsNotVerified:
+    """CodeRabbit's catch: the ref resolved, its version claim did not.
+
+    Reporting that as OK would be this script telling exactly the kind of lie
+    it exists to catch -- "verified" for something nobody verified. The pin
+    that started all this was half-plausible in precisely this way: a real-
+    looking SHA beside an unchecked version comment.
+    """
+
+    def _use(self):
+        return pins.Use(repo="actions/github-script", ref=REAL_V701, comment="v7.0.1", file="wf.yml", line=1)
+
+    def test_an_unresolvable_version_claim_is_unknown_not_ok(self, monkeypatch):
+        def resolve(repo, ref, token=None):
+            if ref == REAL_V701:
+                return (REAL_V701, pins.OK)
+            return (None, pins.UNKNOWN)  # the tag lookup got rate limited
+
+        monkeypatch.setattr(pins, "_resolve", resolve)
+        (finding,) = pins.audit([self._use()], None)
+        assert finding.status == pins.UNKNOWN, "a half-checked pin must not be reported as verified"
+        assert not finding.is_problem, "still inconclusive, so it must not redden the run"
+
+    def test_the_control_a_fully_resolved_claim_is_ok(self, monkeypatch):
+        """Without this, the assertion above could pass by calling everything
+        unknown."""
+        monkeypatch.setattr(pins, "_resolve", lambda repo, ref, token=None: (REAL_V701, pins.OK))
+        (finding,) = pins.audit([self._use()], None)
+        assert finding.status == pins.OK

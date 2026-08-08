@@ -163,6 +163,17 @@ def audit(uses: list[Use], token: str | None) -> list[Finding]:
             if tag_status == MISSING:
                 findings.append(Finding(use, MISMATCH, f"comment claims {use.comment}, but {use.repo} has no such tag"))
                 continue
+            if tag_status == UNKNOWN:
+                # The ref resolved but its VERSION CLAIM did not, so this pin is
+                # half-checked. Reporting it as OK would be this script telling
+                # the same kind of lie it exists to catch: "verified" for
+                # something nobody verified.
+                findings.append(
+                    Finding(
+                        use, UNKNOWN, f"ref resolves, but {use.comment} could not be checked (rate limit or network)"
+                    )
+                )
+                continue
             if tag_status == OK and tag_sha != use.ref:
                 findings.append(
                     Finding(

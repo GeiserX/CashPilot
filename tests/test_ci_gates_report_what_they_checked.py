@@ -193,10 +193,13 @@ class TestTheNightlyLiveCheckAdmitsWhenItCheckedNothing:
         assert reporters, "the failure reaction must be its own job, or a setup failure silences it"
         for job in reporters:
             for step in _steps(job):
-                uses = str(step.get("uses", ""))
-                assert not uses or uses.startswith("actions/checkout@"), (
-                    f"the reporter resolves {uses!r}; an unresolvable action there would silence "
-                    f"the alarm exactly as the original bug did"
+                # Not "only checkout" -- NONE. The reporter shells out to the
+                # preinstalled gh CLI and reads no repository file, so every
+                # action it resolved would be one more way for the alarm to die
+                # at setup, which is the whole bug.
+                assert not step.get("uses"), (
+                    f"the reporter resolves {step.get('uses')!r}; it needs no action at all, and "
+                    f"an unresolvable one there would silence the alarm exactly as the original bug did"
                 )
 
 
