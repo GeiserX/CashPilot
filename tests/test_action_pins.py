@@ -233,3 +233,72 @@ class TestAHalfCheckedPinIsNotVerified:
         monkeypatch.setattr(pins, "_resolve", lambda repo, ref, token=None: (REAL_V701, pins.OK))
         (finding,) = pins.audit([self._use()], None)
         assert finding.status == pins.OK
+
+
+class TestRealWorldCommentSpellings:
+    """Both regressions came from running this against OTHER repos, where it
+    reported two correct pins as fabricated. Neither shape exists in CashPilot,
+    which is exactly why the happy path could not have caught them."""
+
+    SETUP_BEAM = "54075bcc5e249e4758d363f27d099f55d843f124"
+
+    def test_a_comment_without_the_v_prefix_still_resolves(self, monkeypatch):
+        """erlef/setup-beam tags `v1.24.1`; the comment beside the pin says
+        `1.24.1`. Resolving only what was written called a correct pin a lie."""
+        monkeypatch.setattr(
+            pins,
+            "_resolve",
+            _resolver(
+                {
+                    ("erlef/setup-beam", self.SETUP_BEAM): (self.SETUP_BEAM, pins.OK),
+                    ("erlef/setup-beam", "v1.24.1"): (self.SETUP_BEAM, pins.OK),
+                }
+            ),
+        )
+        use = pins.Use(repo="erlef/setup-beam", ref=self.SETUP_BEAM, comment="1.24.1", file="wf.yml", line=1)
+        (finding,) = pins.audit([use], None)
+        assert finding.status == pins.OK, finding.detail
+
+    def test_a_floating_major_tag_is_not_compared_by_sha(self, monkeypatch):
+        """github/codeql-action's `v4` moves; a pin one release behind still
+        IS a v4 release, so the comment is true and must not go red."""
+        pinned, current_v4 = "8aad20d150bbac5944a9f9d289da16a4b0d87c1e", "5595ccaf912efad79be6eef63a5619ff05969be3"
+        monkeypatch.setattr(
+            pins,
+            "_resolve",
+            _resolver(
+                {
+                    ("github/codeql-action", pinned): (pinned, pins.OK),
+                    ("github/codeql-action", "v4"): (current_v4, pins.OK),
+                }
+            ),
+        )
+        use = pins.Use(repo="github/codeql-action", ref=pinned, comment="v4", file="wf.yml", line=1)
+        (finding,) = pins.audit([use], None)
+        assert finding.status == pins.OK, finding.detail
+
+    def test_but_a_floating_tag_that_does_not_exist_is_still_caught(self, monkeypatch):
+        """The control: relaxing the SHA comparison must not relax existence."""
+        pinned = "8aad20d150bbac5944a9f9d289da16a4b0d87c1e"
+        monkeypatch.setattr(pins, "_resolve", _resolver({("github/codeql-action", pinned): (pinned, pins.OK)}))
+        use = pins.Use(repo="github/codeql-action", ref=pinned, comment="v99", file="wf.yml", line=1)
+        (finding,) = pins.audit([use], None)
+        assert finding.status == pins.MISMATCH
+
+    def test_a_full_semver_comment_is_still_compared_by_sha(self, monkeypatch):
+        """The other control: vX.Y.Z names one immutable release, so the
+        original bug's shape must still be caught."""
+        other = "3a2844b7e9c422d3c10d287c895573f7108da1b3"
+        monkeypatch.setattr(
+            pins,
+            "_resolve",
+            _resolver(
+                {
+                    ("actions/github-script", REAL_V701): (REAL_V701, pins.OK),
+                    ("actions/github-script", "v9.0.0"): (other, pins.OK),
+                }
+            ),
+        )
+        use = pins.Use(repo="actions/github-script", ref=REAL_V701, comment="v9.0.0", file="wf.yml", line=1)
+        (finding,) = pins.audit([use], None)
+        assert finding.status == pins.MISMATCH

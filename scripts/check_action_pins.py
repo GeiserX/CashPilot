@@ -55,6 +55,28 @@ _USES = re.compile(
     r"@(?P<ref>[A-Za-z0-9._/-]+)\s*(?:#\s*(?P<comment>\S+))?"
 )
 _SHA = re.compile(r"^[0-9a-f]{40}$")
+#: A comment naming a full MAJOR.MINOR.PATCH is claiming one immutable release,
+#: so the pinned SHA must be that release. A bare `v4` or `v4.2` names a tag
+#: that MOVES: github/codeql-action's `v4` currently points at v4.37.6, so a
+#: pin one release behind is not a lying comment, it is just behind -- which is
+#: Dependabot's business, not a red build. Verified against two live repos that
+#: this check first reported wrongly.
+_FULL_SEMVER = re.compile(r"^v?\d+\.\d+\.\d+")
+
+
+def _tag_spellings(comment: str) -> list[str]:
+    """Both `1.24.1` and `v1.24.1`, because projects differ.
+
+    erlef/setup-beam tags `v1.24.1` while the comment beside the pin says
+    `1.24.1`; resolving only what was written called a correct pin fabricated.
+    """
+    bare = comment.lstrip("v")
+    seen: list[str] = []
+    for candidate in (comment, f"v{bare}", bare):
+        if candidate and candidate not in seen:
+            seen.append(candidate)
+    return seen
+
 
 OK = "ok"
 MISSING = "missing"
@@ -159,9 +181,19 @@ def audit(uses: list[Use], token: str | None) -> list[Finding]:
         # The ref is real. If a SHA pin also CLAIMS a version, that claim is
         # the only thing a reviewer reads, so it has to be true.
         if use.is_sha and use.comment:
-            tag_sha, tag_status = resolve(use.repo, use.comment)
+            tag_sha, tag_status = None, MISSING
+            for spelling in _tag_spellings(use.comment):
+                tag_sha, tag_status = resolve(use.repo, spelling)
+                if tag_status != MISSING:
+                    break
             if tag_status == MISSING:
                 findings.append(Finding(use, MISMATCH, f"comment claims {use.comment}, but {use.repo} has no such tag"))
+                continue
+            if tag_status == OK and not _FULL_SEMVER.match(use.comment):
+                # A floating tag. Its existence is all that can be checked --
+                # comparing SHAs would flag every pin that is one release
+                # behind the tag it names, which is not a false claim.
+                findings.append(Finding(use, OK))
                 continue
             if tag_status == UNKNOWN:
                 # The ref resolved but its VERSION CLAIM did not, so this pin is
