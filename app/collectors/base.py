@@ -28,6 +28,44 @@ class EarningsResult:
     # Bytelixir's API fallback did exactly this: a valid withdrawable balance,
     # thrown away, reported as a failure.
     warning: str | None = None
+    # WHAT KIND of failure `error` describes (CashPilot-5bdm). A 401 and a
+    # timeout used to be the same free-text string, so the UI could only ever
+    # say "collection failed" — teaching the user to ignore the one alert that
+    # needs them (an expired credential earns $0 until a human acts; a provider
+    # outage fixes itself). One of KIND_AUTH / KIND_TRANSIENT / KIND_SHAPE, or
+    # None when the cause is genuinely unknown — never guess a kind: an
+    # unknown labelled "transient" teaches the user to wait for something that
+    # will not heal.
+    error_kind: str | None = None
+
+
+#: The stored credential was REJECTED (401/403/login redirect). Only a human
+#: pasting a fresh credential fixes this; every hour it stands is $0 collected.
+KIND_AUTH = "auth"
+#: Network trouble or the provider having a bad afternoon (timeout, 5xx).
+#: Self-heals; the user should NOT be told to touch their credential.
+KIND_TRANSIENT = "transient"
+#: The provider changed its page/API shape. A code problem — the user can do
+#: nothing except report it; their credential is (probably) fine.
+KIND_SHAPE = "shape"
+
+
+def classify_exception(exc: BaseException) -> str | None:
+    """Best-effort failure kind for an exception a collector did not classify.
+
+    Only claims what the exception type actually proves: transport errors and
+    5xx are transient, 401/403 are auth. Everything else stays None -- absent
+    is not transient, and a wrong "will self-heal" label is worse than none.
+    """
+    if isinstance(exc, (httpx.TimeoutException, httpx.NetworkError)):
+        return KIND_TRANSIENT
+    if isinstance(exc, httpx.HTTPStatusError):
+        code = exc.response.status_code
+        if code in (401, 403):
+            return KIND_AUTH
+        if code >= 500:
+            return KIND_TRANSIENT
+    return None
 
 
 class BaseCollector(abc.ABC):

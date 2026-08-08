@@ -53,6 +53,7 @@ class SaladCollector(BaseCollector):
                     platform=self.platform,
                     balance=0.0,
                     error="Auth cookie expired — get a new 'auth' cookie from salad.com",
+                    error_kind=base.KIND_AUTH,
                 )
 
             resp.raise_for_status()
@@ -60,7 +61,12 @@ class SaladCollector(BaseCollector):
 
             raw = data.get("currentBalance")
             if raw is None:
-                raise ValueError("currentBalance field missing — API shape may have changed")
+                return EarningsResult(
+                    platform=self.platform,
+                    balance=0.0,
+                    error="currentBalance field missing — API shape may have changed",
+                    error_kind=base.KIND_SHAPE,
+                )
             balance = float(raw)
 
             return EarningsResult(
@@ -74,4 +80,5 @@ class SaladCollector(BaseCollector):
                 platform=self.platform,
                 balance=0.0,
                 error=str(exc),
+                error_kind=base.classify_exception(exc),
             )

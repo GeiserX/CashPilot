@@ -45,6 +45,7 @@ class PacketStreamCollector(BaseCollector):
                     platform=self.platform,
                     balance=0.0,
                     error="Authentication failed — check auth JWT cookie",
+                    error_kind=base.KIND_AUTH,
                 )
 
             resp.raise_for_status()
@@ -108,6 +109,7 @@ class PacketStreamCollector(BaseCollector):
                     platform=self.platform,
                     balance=0.0,
                     error="Could not parse balance from dashboard — page structure may have changed",
+                    error_kind=base.KIND_SHAPE,
                 )
 
             return EarningsResult(
@@ -121,4 +123,5 @@ class PacketStreamCollector(BaseCollector):
                 platform=self.platform,
                 balance=0.0,
                 error=str(exc),
+                error_kind=base.classify_exception(exc),
             )

@@ -152,13 +152,19 @@ class TestTheBellRendersANoteRatherThanAFault:
         assert "a.kind === 'notice'" in self._js()
 
     def test_a_notice_does_not_offer_update_credentials(self):
-        """The button points at the one action that cannot help here."""
-        assert "!isPayout && !isNotice && _isOwner" in self._js()
+        """The button points at the one action that cannot help here.
+
+        Since CashPilot-5bdm the exclusion also covers transient and shape
+        failures: a network blip self-heals and a scrape break is our bug, so
+        pointing the user at their credential for either teaches them the one
+        alert that DOES need them is ignorable.
+        """
+        assert "!isPayout && !isNotice && !isTransient && !isShape && _isOwner" in self._js()
 
     def test_a_notice_does_not_use_the_warning_triangle(self):
         js = self._js()
         assert "NOTICE_ICON" in js
-        assert "isNotice ? NOTICE_ICON : WARNING_ICON" in js
+        assert "(isNotice || isTransient) ? NOTICE_ICON : WARNING_ICON" in js
 
     def test_a_collector_failure_still_gets_the_triangle_and_the_button(self):
         """The control: the fault path must survive intact."""
