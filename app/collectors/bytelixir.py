@@ -163,6 +163,7 @@ class BytelixirCollector(BaseCollector):
                     platform=self.platform,
                     balance=0.0,
                     error="Session expired — refresh bytelixir_session cookie in Settings",
+                    error_kind=base.KIND_AUTH,
                 )
 
             if html_resp.status_code == 200:
@@ -197,6 +198,7 @@ class BytelixirCollector(BaseCollector):
                     platform=self.platform,
                     balance=0.0,
                     error="Session expired — refresh bytelixir_session cookie in Settings",
+                    error_kind=base.KIND_AUTH,
                 )
 
             api_resp.raise_for_status()
@@ -225,4 +227,5 @@ class BytelixirCollector(BaseCollector):
                 platform=self.platform,
                 balance=0.0,
                 error=str(exc),
+                error_kind=base.classify_exception(exc),
             )

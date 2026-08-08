@@ -439,9 +439,28 @@ async def _pending_payout_alerts(seen: set[str] | None = None) -> list[dict[str,
 
 
 async def _collect_bounded(collector) -> Any:
-    """Run a single collector's `collect()` under the shared concurrency limit."""
+    """Run a single collector's `collect()` under the shared concurrency limit.
+
+    A raised exception is converted into an EarningsResult HERE, while the
+    collector -- and with it the platform name -- is still in hand. It used to
+    propagate to the gather(), where the platform was unrecoverable: the
+    failure was logged as an anonymous line and produced no alert, no bell
+    entry and no metric. A collector that raised was invisible to the user
+    (CashPilot-5bdm).
+    """
+    from app.collectors import base as collectors_base
+
     async with _collection_semaphore:
-        return await collector.collect()
+        try:
+            return await collector.collect()
+        except Exception as exc:
+            collectors_base.log_failure(logger, collector.platform or type(collector).__name__, exc)
+            return collectors_base.EarningsResult(
+                platform=collector.platform or type(collector).__name__,
+                balance=0.0,
+                error=str(exc),
+                error_kind=collectors_base.classify_exception(exc),
+            )
 
 
 async def _flatline_check() -> list[dict[str, str]]:
@@ -526,7 +545,10 @@ async def _warm_collector_alerts() -> None:
         if key in seen:
             continue
         seen.add(key)
-        restored.append({"kind": alert["kind"], "platform": alert["subject"], "error": alert["message"]})
+        entry = {"kind": alert["kind"], "platform": alert["subject"], "error": alert["message"]}
+        if alert.get("category"):
+            entry["category"] = alert["category"]
+        restored.append(entry)
     _collector_alerts = restored
     # A restart must not make the bell claim nothing has ever been checked. Any
     # stored alert, or any earnings row, is proof that a collection ran.
@@ -630,14 +652,26 @@ async def _run_collection() -> None:
                     # providers is a live credential. The alert is now durable and readable
                     # by any authenticated role, so it must never hold a secret.
                     safe_error = notify.redact(result.error)
-                    alerts.append({"kind": "collector", "platform": result.platform, "error": safe_error})
+                    error_kind = getattr(result, "error_kind", None)
+                    entry = {"kind": "collector", "platform": result.platform, "error": safe_error}
+                    if error_kind:
+                        entry["category"] = error_kind
+                    alerts.append(entry)
                     metrics.record_collection_error(result.platform)
                     # Push out-of-band only the FIRST time this failure appears — a
                     # collector broken for a week must not notify every single hour.
-                    if await database.record_alert("collector", result.platform, safe_error):
+                    if await database.record_alert("collector", result.platform, safe_error, category=error_kind):
+                        # The push is the only channel an unattended install
+                        # has, so the taxonomy must reach it too: "rotate your
+                        # cookie" and "provider hiccup" are different asks.
+                        cause = {
+                            "auth": " (credential rejected)",
+                            "transient": " (provider unreachable)",
+                            "shape": " (page changed)",
+                        }.get(error_kind or "", "")
                         _spawn(
                             notify.send(
-                                f"CashPilot: {result.platform} collector failed",
+                                f"CashPilot: {result.platform} collector failed{cause}",
                                 safe_error,
                                 kind="collector",
                                 subject=result.platform,
@@ -3184,8 +3218,13 @@ async def api_collector_alerts(request: Request) -> dict[str, Any]:
         if len(error_msg) > _MAX_ALERT_ERROR_LEN:
             clean += "..."
         # `kind` is additive and defaults to "collector", so a frontend that
-        # does not read it behaves exactly as before.
-        sanitized.append({"kind": alert.get("kind", "collector"), "platform": alert["platform"], "error": clean})
+        # does not read it behaves exactly as before. `category` is the failure
+        # TAXONOMY (auth/transient/shape) and is only present when a collector
+        # actually classified it -- absent is unknown, never transient.
+        entry = {"kind": alert.get("kind", "collector"), "platform": alert["platform"], "error": clean}
+        if alert.get("category"):
+            entry["category"] = alert["category"]
+        sanitized.append(entry)
     return {"alerts": sanitized, "collected": _collection_has_run}
 
 

@@ -3281,8 +3281,32 @@ const CP = (() => {
     if (!container || !badge || !list) return;
 
     try {
-      const payload = await api('/api/collector-alerts');
+      // Warn BEFORE the gap, not after it (CashPilot-5bdm): a credential the
+      // lifetime table says is about to lapse (or already past it, which is
+      // strictly worse and must not vanish from the bell the moment the
+      // forecast comes true) joins the bell while collection may still be
+      // working. The endpoint is any-authenticated and value-free; a failed
+      // fetch just means no early warnings, never a broken bell. A forecast
+      // gets its OWN category ('expiring') — it is a prediction, not an
+      // observed rejection, and the bell must not assert a 401 that never
+      // happened.
+      const [payload, health] = await Promise.all([
+        api('/api/collector-alerts'),
+        api('/api/credentials/health').catch(() => []),
+      ]);
       const alerts = payload.alerts || [];
+      for (const row of (Array.isArray(health) ? health : [])) {
+        if (row.status !== 'expiring_soon' && row.status !== 'likely_expired') continue;
+        if (alerts.some(a => a.platform === row.service && a.kind === 'collector')) continue;
+        alerts.push({
+          kind: 'collector',
+          category: 'expiring',
+          platform: row.service,
+          error: row.status === 'likely_expired'
+            ? `Credential is past its usual lifetime — renew it (${row.field || 'credential'})`
+            : `Credential likely expires soon — renew it before collection stops (${row.field || 'credential'})`,
+        });
+      }
       // Clear any muted "alerts unavailable" styling left over from a prior
       // failed poll now that the fetch succeeded.
       badge.style.background = '';
@@ -3303,6 +3327,12 @@ const CP = (() => {
 
       badge.style.display = '';
       badge.textContent = alerts.length;
+      // A bell full of nothing but forecasts is advice, not an incident: mute
+      // the badge so a healthy install with an ageing cookie is not shown the
+      // same red count as a broken one.
+      if (alerts.every(a => a.category === 'expiring')) {
+        badge.style.background = 'var(--text-muted)';
+      }
       // A payout is a question, not a fault. Rendering it with the warning
       // triangle and an "Update credentials" button would tell the user
       // something is broken at the exact moment they got paid.
@@ -3317,17 +3347,37 @@ const CP = (() => {
       list.innerHTML = alerts.map(a => {
         const isPayout = a.kind === 'payout';
         const isNotice = a.kind === 'notice';
-        const icon = isPayout ? PAYOUT_ICON : isNotice ? NOTICE_ICON : WARNING_ICON;
+        // The failure TAXONOMY (CashPilot-5bdm). Only 'auth' means "your
+        // credential needs replacing"; a transient provider outage self-heals
+        // and a shape change is our bug, so pointing the user at their
+        // credential for either teaches them the one alert that DOES need
+        // them is ignorable. Absent means unknown — the button stays, because
+        // unknown might be an auth failure the collector could not classify.
+        const category = a.category || '';
+        const isTransient = category === 'transient';
+        const isShape = category === 'shape';
+        const isAuth = category === 'auth';
+        const isExpiring = category === 'expiring';
+        const icon = isPayout ? PAYOUT_ICON : (isNotice || isTransient) ? NOTICE_ICON : WARNING_ICON;
+        const suffix = isPayout ? ' — payout?'
+          : isNotice ? ' — note'
+          : isAuth ? ' — credential expired'
+          : isExpiring ? ' — credential expiring'
+          : isTransient ? ' — provider unreachable'
+          : isShape ? ' — page changed (our bug)'
+          : '';
+        const muted = isNotice || isTransient;
+        const showFix = !isPayout && !isNotice && !isTransient && !isShape && _isOwner;
         return `
-        <div class="notify-item" data-platform="${escapeHtml(a.platform)}" data-kind="${escapeHtml(a.kind || 'collector')}">
-          <div class="notify-item-icon"${isNotice ? ' style="color:var(--text-muted);"' : ''}>
+        <div class="notify-item" data-platform="${escapeHtml(a.platform)}" data-kind="${escapeHtml(a.kind || 'collector')}"${category ? ` data-category="${escapeHtml(category)}"` : ''}>
+          <div class="notify-item-icon"${muted ? ' style="color:var(--text-muted);"' : ''}>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">${icon}</svg>
           </div>
           <div class="notify-item-body">
-            <div class="notify-item-platform">${escapeHtml(a.platform)}${isPayout ? ' — payout?' : ''}${isNotice ? ' — note' : ''}</div>
+            <div class="notify-item-platform">${escapeHtml(a.platform)}${suffix}</div>
             <div class="notify-item-msg" title="${escapeHtml(a.error)}">${escapeHtml(a.error)}</div>
           </div>
-          ${!isPayout && !isNotice && _isOwner ? `<button class="btn btn-ghost btn-sm" data-action="openCredentialModal" data-stop="1" data-a1="${escapeHtml(a.platform)}" style="font-size:0.65rem; padding:2px 6px; white-space:nowrap; flex-shrink:0;">Update</button>` : ''}
+          ${showFix ? `<button class="btn btn-ghost btn-sm" data-action="openCredentialModal" data-stop="1" data-a1="${escapeHtml(a.platform)}" style="font-size:0.65rem; padding:2px 6px; white-space:nowrap; flex-shrink:0;">${isAuth ? 'Fix credential' : 'Update'}</button>` : ''}
         </div>
       `;
       }).join('');

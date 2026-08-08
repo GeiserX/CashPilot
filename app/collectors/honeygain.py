@@ -78,7 +78,12 @@ class HoneygainCollector(BaseCollector):
             payout = data.get("data", {}).get("payout", {})
             raw = payout.get("usd_cents")
             if raw is None:
-                raise ValueError("usd_cents field missing — API shape may have changed")
+                return EarningsResult(
+                    platform=self.platform,
+                    balance=0.0,
+                    error="usd_cents field missing — API shape may have changed",
+                    error_kind=base.KIND_SHAPE,
+                )
             usd_cents = float(raw)
             balance_usd = round(usd_cents / 100, 4)
 
@@ -93,4 +98,5 @@ class HoneygainCollector(BaseCollector):
                 platform=self.platform,
                 balance=0.0,
                 error=str(exc),
+                error_kind=base.classify_exception(exc),
             )

@@ -172,11 +172,13 @@ class GrassCollector(BaseCollector):
                         platform=self.platform,
                         balance=0.0,
                         error="Token expired — get a new accessToken from app.grass.io Local Storage",
+                        error_kind=base.KIND_AUTH,
                     )
                 return EarningsResult(
                     platform=self.platform,
                     balance=0.0,
                     error="Cloudflare rate limit — will retry next collection cycle",
+                    error_kind=base.KIND_TRANSIENT,
                 )
 
             if settled > 0:
@@ -195,6 +197,7 @@ class GrassCollector(BaseCollector):
                     platform=self.platform,
                     balance=0.0,
                     error="Cloudflare rate limit — will retry next collection cycle",
+                    error_kind=base.KIND_TRANSIENT,
                 )
 
             return EarningsResult(
@@ -208,4 +211,5 @@ class GrassCollector(BaseCollector):
                 platform=self.platform,
                 balance=0.0,
                 error=str(exc),
+                error_kind=base.classify_exception(exc),
             )

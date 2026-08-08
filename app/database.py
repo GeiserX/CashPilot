@@ -457,6 +457,11 @@ CREATE TABLE IF NOT EXISTS alerts (
     kind       TEXT    NOT NULL,
     subject    TEXT    NOT NULL,
     message    TEXT    NOT NULL DEFAULT '',
+    -- What KIND of failure the message describes: 'auth' | 'transient' |
+    -- 'shape', or NULL when the collector could not tell. NULL means unknown,
+    -- never transient -- the UI renders unknown as a plain failure, not as
+    -- "will self-heal" (CashPilot-5bdm).
+    category   TEXT,
     created_at TEXT    NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -736,7 +741,7 @@ async def _encrypt_legacy_plaintext_credentials(db: Any) -> int:
 #: missing a column -- an interrupted upgrade, a restored backup, a hand-edited
 #: file -- could never be repaired, because the gate would say there was nothing
 #: to do. The guards are idempotent and cheap; the version is for the operator.
-SCHEMA_VERSION = 10
+SCHEMA_VERSION = 11
 
 
 async def init_db() -> None:
@@ -859,6 +864,15 @@ async def init_db() -> None:
         # Migrate deployments table: add spec_encrypted so an existing install starts
         # remembering what it deployed. Rows written before this stay empty and fall
         # back to the catalog, exactly as they do today.
+        # Migrate alerts table: add the failure-kind category (CashPilot-5bdm).
+        cursor = await db.execute("PRAGMA table_info(alerts)")
+        alerts_cols = {row["name"] for row in await cursor.fetchall()}
+        if "category" not in alerts_cols:
+            applied.append("alerts.category")
+            # NULL backfill is the truthful one: nothing recorded before this
+            # column existed ever knew its failure kind (CashPilot-5bdm).
+            await db.execute("ALTER TABLE alerts ADD COLUMN category TEXT")
+
         cursor = await db.execute("PRAGMA table_info(deployments)")
         deployment_cols = {row["name"] for row in await cursor.fetchall()}
         if "spec_encrypted" not in deployment_cols:
@@ -2175,6 +2189,7 @@ async def record_alert(
     subject: str,
     message: str,
     *,
+    category: str | None = None,
     cooldown_hours: int = ALERT_COOLDOWN_HOURS,
 ) -> bool:
     """Persist an alert, returning True only when the caller should notify.
@@ -2190,17 +2205,35 @@ async def record_alert(
     Call ``clear_alerts`` when a subject recovers so the next failure alerts again
     immediately instead of waiting out the window.
     """
+    # A closed enum, enforced at the boundary: `error` is carefully redacted
+    # on the line next to this call, and a future collector setting
+    # error_kind=str(exc) must not smuggle unredacted exception text (which
+    # for several providers IS the credential) into a durable, any-role table.
+    if category not in (None, "auth", "transient", "shape"):
+        category = None
     db = await _get_db()
     try:
         cursor = await db.execute(
             "SELECT id FROM alerts WHERE kind = ? AND subject = ? AND created_at > datetime('now', ?) LIMIT 1",
             (kind, subject, f"-{int(cooldown_hours)} hours"),
         )
-        if await cursor.fetchone() is not None:
+        if (row := await cursor.fetchone()) is not None:
+            # Refresh what the stored row SAYS while keeping the push
+            # suppressed. Without this the first category of a failure window
+            # is pinned for 24h: grass alternates between an expired-token
+            # error (auth) and a Cloudflare rate-limit (transient) with no
+            # success in between, so a restart could restore "transient" for a
+            # dead credential — rendered muted, with no fix button, as a blip
+            # that will never actually heal.
+            await db.execute(
+                "UPDATE alerts SET category = ?, message = ? WHERE id = ?",
+                (category, message, row["id"]),
+            )
+            await db.commit()
             return False
         await db.execute(
-            "INSERT INTO alerts (kind, subject, message) VALUES (?, ?, ?)",
-            (kind, subject, message),
+            "INSERT INTO alerts (kind, subject, message, category) VALUES (?, ?, ?, ?)",
+            (kind, subject, message, category),
         )
         await db.commit()
         return True
@@ -2213,7 +2246,7 @@ async def list_alerts(limit: int = 50) -> list[dict[str, Any]]:
     db = await _get_db()
     try:
         cursor = await db.execute(
-            "SELECT kind, subject, message, created_at FROM alerts ORDER BY id DESC LIMIT ?",
+            "SELECT kind, subject, message, category, created_at FROM alerts ORDER BY id DESC LIMIT ?",
             (limit,),
         )
         return [dict(row) for row in await cursor.fetchall()]
