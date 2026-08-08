@@ -60,6 +60,13 @@ def _steps(job):
     return job.get("steps") or []
 
 
+def _as_list(value):
+    """`needs:` is a string for one dependency and a list for several."""
+    if value is None:
+        return []
+    return [value] if isinstance(value, str) else list(value)
+
+
 class TestTheNightlyLiveCheckAdmitsWhenItCheckedNothing:
     """It may stay green on an empty run; it may not stay silent about it."""
 
@@ -147,10 +154,50 @@ class TestTheNightlyLiveCheckAdmitsWhenItCheckedNothing:
     def test_a_real_failure_can_still_reach_the_issue_filing_step(self):
         """Masking everything would turn a masking bug into a silencing bug."""
         doc = _wf("collector-live-check.yml")
-        job = next(j for j in doc["jobs"].values() if any("pytest" in str(s.get("run", "")) for s in _steps(j)))
-        assert any(str(s.get("if", "")).strip() == "failure()" for s in _steps(job)), (
+        live_name, live_job = next(
+            (name, job)
+            for name, job in doc["jobs"].items()
+            if any("pytest" in str(s.get("run", "")) for s in _steps(job))
+        )
+        reactors = [
+            name
+            for name, job in doc["jobs"].items()
+            if live_name in _as_list(job.get("needs")) and str(job.get("if", "")).strip() == "failure()"
+        ]
+        assert reactors or any(str(s.get("if", "")).strip() == "failure()" for s in _steps(live_job)), (
             "nothing reacts to a genuine live-test failure any more"
         )
+
+    def test_the_reaction_does_not_share_a_failure_domain_with_what_it_reports(self):
+        """The reason this workflow was silent for six nights.
+
+        The alarm was an ``if: failure()`` STEP inside the live job. A step
+        cannot run when the job never starts, and this job did not start: its
+        ``actions/github-script`` pin named a commit that does not exist, so
+        GitHub failed it during "Set up job" every night while filing nothing.
+
+        A reporter must therefore be a separate job -- reached through
+        ``needs``, which fires however the watched job died -- and must not
+        reintroduce the same dependency, so it may not resolve any action
+        beyond the checkout its own steps need.
+        """
+        doc = _wf("collector-live-check.yml")
+        live_name = next(
+            name for name, job in doc["jobs"].items() if any("pytest" in str(s.get("run", "")) for s in _steps(job))
+        )
+        reporters = [
+            job
+            for job in doc["jobs"].values()
+            if live_name in _as_list(job.get("needs")) and str(job.get("if", "")).strip() == "failure()"
+        ]
+        assert reporters, "the failure reaction must be its own job, or a setup failure silences it"
+        for job in reporters:
+            for step in _steps(job):
+                uses = str(step.get("uses", ""))
+                assert not uses or uses.startswith("actions/checkout@"), (
+                    f"the reporter resolves {uses!r}; an unresolvable action there would silence "
+                    f"the alarm exactly as the original bug did"
+                )
 
 
 class TestTheTagVerifierCanTellApartMissingAndUnreachable:

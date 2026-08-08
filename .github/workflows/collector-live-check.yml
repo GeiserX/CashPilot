@@ -13,9 +13,10 @@ on:
     - cron: "17 5 * * *"
   workflow_dispatch:
 
+# Least privilege: the job that handles real provider credentials gets read
+# only. Issue-writing belongs to the reporter job alone, which declares it.
 permissions:
   contents: read
-  issues: write
 
 concurrency:
   group: collector-live-check
@@ -83,37 +84,55 @@ jobs:
             } >> "$GITHUB_STEP_SUMMARY"
           fi
 
-      - name: Open an issue when a provider's shape changed
-        if: failure()
-        uses: actions/github-script@60a0d83039c74a4aa971cc2a0930ae7e2fe2c8bd # v7.0.4
-        with:
-          script: |
-            const title = 'Collector live check failed — a provider may have changed its API';
-            const existing = await github.rest.issues.listForRepo({
-              owner: context.repo.owner, repo: context.repo.repo,
-              state: 'open', labels: 'collector-drift',
-            });
-            const body = [
-              'The nightly live collector check failed.',
-              '',
-              'This usually means a provider renamed or moved a field, which the recorded',
-              'fixtures cannot detect on their own. Compare the failing collector against',
-              '`tests/fixtures/collectors/<slug>.json` and update BOTH the collector and its',
-              'contract.',
-              '',
-              `Run: ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
-              '',
-              'Note: the log is deliberately not pasted here — collector failures can echo',
-              'request payloads containing credentials.',
-            ].join('\n');
-            if (existing.data.length) {
-              await github.rest.issues.createComment({
-                owner: context.repo.owner, repo: context.repo.repo,
-                issue_number: existing.data[0].number, body,
-              });
-            } else {
-              await github.rest.issues.create({
-                owner: context.repo.owner, repo: context.repo.repo,
-                title, body, labels: ['collector-drift'],
-              });
-            }
+  # A SEPARATE JOB, not a step, and deliberately dependency-free.
+  #
+  # This alarm used to be an `if: failure()` step inside the job above. That
+  # cannot fire when the job never starts -- and for six consecutive nights it
+  # did not, because the job's own `actions/github-script` pin named a commit
+  # that does not exist, so GitHub failed the job during "Set up job", before
+  # any step ran. The check reported nothing and filed nothing while never once
+  # having checked a provider.
+  #
+  # As a job with `needs:`, this runs whenever `live` fails for ANY reason,
+  # including one that kills it at setup. It uses the preinstalled `gh` CLI
+  # rather than an action, so the path that reports a broken workflow cannot
+  # itself be broken by an unresolvable action.
+  report:
+    needs: live
+    if: failure()
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    steps:
+      - name: Open or update the drift issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          # The log is deliberately never pasted: collector failures can echo
+          # request payloads containing credentials.
+          body=$(cat <<EOF
+          The nightly live collector check failed.
+
+          This usually means a provider renamed or moved a field, which the recorded
+          fixtures cannot detect on their own. Compare the failing collector against
+          \`tests/fixtures/collectors/<slug>.json\` and update BOTH the collector and its
+          contract.
+
+          If the job failed before any step ran, the cause is the workflow itself
+          (an unresolvable action pin, a missing secret) and no provider was checked.
+
+          Run: $RUN_URL
+          EOF
+          )
+          gh label create collector-drift \
+            --description "Automated collector drift findings" --color ededed 2>/dev/null || true
+          existing=$(gh issue list --state open --label collector-drift --limit 1 --json number --jq '.[0].number // empty')
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --body "$body"
+          else
+            gh issue create \
+              --title "Collector live check failed — a provider may have changed its API" \
+              --label collector-drift --body "$body"
+          fi

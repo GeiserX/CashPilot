@@ -1,0 +1,47 @@
+name: Action Pins
+
+# Every action this repo uses must exist, and its version comment must be true.
+#
+# `collector-live-check.yml` shipped a pin whose SHA shared sixteen characters
+# with a real release commit and then diverged into a commit that never
+# existed, beside a comment naming a tag that was never published. GitHub
+# resolves actions BEFORE the first step, so that job died in "Set up job"
+# every night for six nights without checking a single provider -- and its own
+# `if: failure()` alarm was a step inside that same job, so nothing was ever
+# reported. The pin was wrong in the commit that introduced the workflow, so
+# the check had never run once.
+#
+# A pinned SHA cannot be eyeballed. This is the thing that reads it.
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/**"
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/**"
+  # A tag can be deleted or moved AFTER a pin is merged, so the audit is worth
+  # repeating on a schedule and not only at review time.
+  schedule:
+    - cron: "23 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  pins:
+    runs-on: ubuntu-latest
+    steps:
+      # The ONLY action this job uses. A guard against unresolvable actions
+      # that itself depended on several would be one bad pin away from the
+      # silence it exists to prevent; the checker is stdlib-only Python, and
+      # runners ship python3, so nothing else is needed.
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Every action reference resolves, and its version comment is true
+        env:
+          # Raises the API rate limit. Read-only; a fork PR's token works too.
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python3 scripts/check_action_pins.py
