@@ -465,3 +465,46 @@ class TestStatusCarriesAdvertisedAddress:
         # Absent, not None: the key's absence is "nothing to say".
         entries = self._entries(self._labeled("honeygain", ["EMAIL=a@b.c"]), {"docker": {}})
         assert "advertised_address" not in entries[0]
+
+
+class TestAdvertisedAddressSecretBackstop:
+    def test_a_secret_flagged_var_is_refused_even_when_declared(self):
+        # Runtime backstop: a catalog edit pointing advertised_address_env at
+        # a credential must not export it into every heartbeat.
+        c = MagicMock()
+        c.id = "cid"
+        c.client.api.inspect_container.return_value = {"Config": {"Env": ["TOKEN=supersecret"]}}
+        service = {
+            "docker": {
+                "advertised_address_env": "TOKEN",
+                "env": [{"key": "TOKEN", "secret": True}],
+            }
+        }
+        with patch.object(orchestrator, "get_service", return_value=service):
+            assert orchestrator._advertised_address(c, "shady") is None
+        c.client.api.inspect_container.assert_not_called()
+
+
+class TestExternalContainersCarryAdvertisedAddress:
+    def test_an_image_matched_external_node_is_not_a_blind_spot(self):
+        # Running a storagenode BEFORE installing CashPilot is the common storj
+        # adoption path; the address check must cover those containers too.
+        c = MagicMock()
+        c.id = "ext1"
+        c.short_id = "ext1"
+        c.name = "storagenode"
+        c.status = "running"
+        c.labels = {}
+        c.image.tags = ["storjlabs/storagenode:latest"]
+        c.attrs = {"Created": "2026-08-10"}
+        c.client.api.inspect_container.return_value = {"Config": {"Env": ["ADDRESS=node.example.org:28967"]}}
+        client = MagicMock()
+        client.containers.list.side_effect = [[], [c]]  # no labeled, one external
+        with (
+            patch.object(orchestrator, "_get_client", return_value=client),
+            patch.object(orchestrator, "_build_image_slug_map", return_value={"storjlabs/storagenode": "storj"}),
+            patch.object(orchestrator, "get_service", return_value={"docker": {"advertised_address_env": "ADDRESS"}}),
+        ):
+            entries = orchestrator.get_status_light()
+        assert entries and entries[0]["deployed_by"] == "external"
+        assert entries[0]["advertised_address"] == "node.example.org:28967"

@@ -2667,7 +2667,14 @@ async def api_earnings_net(request: Request, days: int = 30) -> dict[str, Any]:
     return result
 
 
-async def _advertised_address_mismatch(matches: list[dict[str, Any]]) -> str | None:
+#: Hostname shape a resolver should ever be asked about. advertised_address is
+#: WORKER-SUPPLIED text: without this gate a rogue worker could drive the hub's
+#: resolver with arbitrary strings (and an IDNA-invalid label does not even
+#: raise the OSError family — see _resolve_advertised_host).
+_HOSTNAME_RE = re.compile(r"^[A-Za-z0-9]([A-Za-z0-9.-]{0,251}[A-Za-z0-9])?$")
+
+
+async def _advertised_address_mismatch(matches: list[dict[str, Any]], worker_id: int | None = None) -> str | None:
     """Is the network dialling an address this machine no longer has?
 
     Compares the advertised_address a worker reported (the ONE env var the
@@ -2682,7 +2689,14 @@ async def _advertised_address_mismatch(matches: list[dict[str, Any]]) -> str | N
     transient resolver error is indistinguishable from OUR network having a
     bad moment, which says nothing about the record.
     """
-    reported = next((c for c in matches if c.get("advertised_address") and c.get("_worker_id") is not None), None)
+    # Judge only what is actually RUNNING, and only on the node the caller
+    # asked about: an exited container elsewhere in the fleet carries the env
+    # of its LAST run, and judging that produced a finding about a machine the
+    # page was not even showing.
+    candidates = [c for c in matches if str(c.get("status", "")).lower() == "running"]
+    if worker_id is not None:
+        candidates = [c for c in candidates if c.get("_worker_id") == worker_id]
+    reported = next((c for c in candidates if c.get("advertised_address") and c.get("_worker_id") is not None), None)
     if reported is None:
         return None
     row = await database.get_worker(reported["_worker_id"])
@@ -2696,8 +2710,19 @@ async def _advertised_address_mismatch(matches: list[dict[str, Any]]) -> str | N
         try:
             ipaddress.ip_address(host)
         except ValueError:
+            if not _HOSTNAME_RE.fullmatch(host):
+                return None
             resolved = await _resolve_advertised_host(host)
     return egress.advertised_address_verdict(reported["advertised_address"], egress_ip, resolved)
+
+
+#: host -> (monotonic stamp, result). One entry per advertised hostname (one
+#: service per fleet declares one today), so this stays tiny; the TTL exists so
+#: a blackholed resolver costs one executor thread per window, not one per
+#: request — wait_for abandons the await but the thread blocks on for the full
+#: OS resolver timeout.
+_RESOLVE_CACHE: dict[str, tuple[float, set[str] | None]] = {}
+_RESOLVE_CACHE_TTL = 60.0
 
 
 async def _resolve_advertised_host(host: str) -> set[str] | None:
@@ -2707,15 +2732,25 @@ async def _resolve_advertised_host(host: str) -> set[str] | None:
     for a definitive does-not-exist answer (EAI_NONAME/EAI_NODATA), and None
     for everything transient — timeout, EAI_AGAIN, resolver trouble — because
     OUR resolver having a bad moment says nothing about the record.
+
+    UnicodeError is in the transient clause because getaddrinfo raises it (a
+    ValueError, NOT an OSError) for an IDNA-invalid label — uncaught, it
+    escaped to the route's umbrella handler and silently disabled the log-
+    signal scan that shares the same try block.
     """
+    cached = _RESOLVE_CACHE.get(host)
+    if cached and time.monotonic() - cached[0] < _RESOLVE_CACHE_TTL:
+        return cached[1]
     try:
         infos = await asyncio.wait_for(asyncio.get_running_loop().getaddrinfo(host, None, type=socket.SOCK_STREAM), 3.0)
-        return {addr[4][0] for addr in infos}
+        result: set[str] | None = {addr[4][0] for addr in infos}
     except socket.gaierror as exc:
         definitive = {socket.EAI_NONAME, getattr(socket, "EAI_NODATA", socket.EAI_NONAME)}
-        return set() if exc.errno in definitive else None
-    except (TimeoutError, OSError):
-        return None
+        result = set() if exc.errno in definitive else None
+    except (TimeoutError, OSError, UnicodeError):
+        result = None
+    _RESOLVE_CACHE[host] = (time.monotonic(), result)
+    return result
 
 
 @app.get("/api/services/{slug}/producer-state")
@@ -2779,9 +2814,13 @@ async def api_producer_state(request: Request, slug: str, worker_id: int | None 
         running = any(str(c.get("status", "")).lower() == "running" for c in matches)
         traffic = _traffic_state(slug, matches)
         if running:
-            # Inside the same never-500 umbrella: a worker-row or DNS problem
-            # must degrade to "no claim", not break the earnings verdict.
-            address_mismatch = await _advertised_address_mismatch(matches)
+            # Own guard, not just the outer umbrella: an exception here would
+            # otherwise abandon the whole try block and silently zero the
+            # log-signal scan below — the address check disabling the very
+            # detection (#318) that shares this block. No claim, ever, at the
+            # cost of the rest of the verdict.
+            with contextlib.suppress(Exception):
+                address_mismatch = await _advertised_address_mismatch(matches, worker_id)
         if signals and running:
             wid = worker_id if worker_id is not None else (matches[0].get("_worker_id") if matches else None)
             if wid is not None:

@@ -823,3 +823,61 @@ class TestAdvertisedAddressCatalog:
                 continue
             keys = {e.get("key") for e in (docker.get("env") or [])}
             assert var in keys, f"{svc.get('slug')}: advertised_address_env={var!r} names no declared env var"
+
+
+class TestAdvertisedAddressVerdictFamilies:
+    """Cross-family comparisons must be silence, not fabricated staleness.
+
+    The egress detection endpoints are dual-stack, so a v6 egress reading
+    against a v4 advertised address is a legitimate state of the world —
+    comparing across families produced a confident wrong finding.
+    """
+
+    V6_EGRESS = "2001:db8::1234"
+
+    def test_a_v4_literal_against_a_v6_egress_is_no_claim(self):
+        assert egress.advertised_address_verdict("84.54.25.89:28967", self.V6_EGRESS, None) is None
+
+    def test_a_v6_only_name_against_a_v4_egress_is_no_claim(self):
+        assert egress.advertised_address_verdict("node.example.org:28967", "213.217.28.154", {"2001:db8::9"}) is None
+
+    def test_mixed_records_compare_within_the_egress_family(self):
+        # The v6 record is noise; the v4 one matches the v4 egress: no finding.
+        resolved = {"213.217.28.154", "2001:db8::9"}
+        assert egress.advertised_address_verdict("node.example.org:28967", "213.217.28.154", resolved) is None
+        # And a v4 mismatch still fires even with a v6 record alongside.
+        assert egress.advertised_address_verdict(
+            "node.example.org:28967", "213.217.28.154", {"84.54.25.89", "2001:db8::9"}
+        )
+
+    def test_private_resolved_addresses_are_not_echoed_back(self):
+        # resolved IPs originate from a worker-supplied name; repeating a
+        # private answer would leak the hub's internal DNS view.
+        reason = egress.advertised_address_verdict("intra.example.org:28967", "213.217.28.154", {"192.168.10.100"})
+        assert reason and "192.168.10.100" not in reason and "non-public" in reason
+
+
+class TestAdvertisedHostTrailingColon:
+    def test_a_dangling_colon_is_a_typo_not_part_of_the_host(self):
+        # It used to fall through whole and earn a confident "does not
+        # resolve at all" about a name that was never looked up.
+        assert egress.advertised_host("node.example.org:") == "node.example.org"
+
+    def test_a_bare_v6_keeps_its_trailing_colons(self):
+        assert egress.advertised_host("2001:db8::") == "2001:db8::"
+
+
+class TestAdvertisedAddressNeverNamesASecret:
+    def test_no_declared_address_env_is_secret_flagged(self):
+        # The worker exports the declared var's VALUE into heartbeats; a
+        # secret-flagged var here would ship a credential to the hub in clear.
+        from app.catalog import load_services
+
+        for svc in load_services():
+            docker = svc.get("docker") or {}
+            var = docker.get("advertised_address_env")
+            if not var:
+                continue
+            declared = next((e for e in docker.get("env") or [] if e.get("key") == var), None)
+            assert declared is not None
+            assert not declared.get("secret"), f"{svc.get('slug')}: advertised_address_env names a SECRET env var"

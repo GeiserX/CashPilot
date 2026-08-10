@@ -466,14 +466,23 @@ class TestAdvertisedMismatchHelper:
         return asyncio.run(go())
 
     def test_a_stale_literal_yields_the_reason(self):
-        reason = self._run([{"slug": "storj", "advertised_address": "84.54.25.89:28967", "_worker_id": 1}])
+        reason = self._run(
+            [{"slug": "storj", "status": "running", "advertised_address": "84.54.25.89:28967", "_worker_id": 1}]
+        )
         assert reason and "84.54.25.89" in reason
 
     def test_a_matching_literal_is_silent(self):
-        assert self._run([{"slug": "storj", "advertised_address": "213.217.28.154:28967", "_worker_id": 1}]) is None
+        assert (
+            self._run(
+                [{"slug": "storj", "status": "running", "advertised_address": "213.217.28.154:28967", "_worker_id": 1}]
+            )
+            is None
+        )
 
     def test_a_hostname_is_judged_through_the_resolver(self):
-        entry = [{"slug": "storj", "advertised_address": "node.example.org:28967", "_worker_id": 1}]
+        entry = [
+            {"slug": "storj", "status": "running", "advertised_address": "node.example.org:28967", "_worker_id": 1}
+        ]
         assert self._run(entry, resolved={"213.217.28.154"}) is None
         assert self._run(entry, resolved={"84.54.25.89"})
 
@@ -483,12 +492,95 @@ class TestAdvertisedMismatchHelper:
         assert self._run([{"slug": "storj", "status": "running", "_worker_id": 1}], expect_db_call=False) is None
 
     def test_a_missing_worker_row_is_no_claim(self):
-        entry = [{"slug": "storj", "advertised_address": "84.54.25.89:1", "_worker_id": 9}]
+        entry = [{"slug": "storj", "status": "running", "advertised_address": "84.54.25.89:1", "_worker_id": 9}]
         assert self._run(entry, worker_row=None) is None
 
     def test_a_worker_with_undetected_egress_is_no_claim(self):
         row = {"id": 1, "system_info": "{}", "containers": "[]"}
         assert (
-            self._run([{"slug": "storj", "advertised_address": "84.54.25.89:1", "_worker_id": 1}], worker_row=row)
+            self._run(
+                [{"slug": "storj", "status": "running", "advertised_address": "84.54.25.89:1", "_worker_id": 1}],
+                worker_row=row,
+            )
             is None
         )
+
+
+class TestResolveAdvertisedHost:
+    """The three-valued resolver contract, exercised on the real function.
+
+    Every earlier test replaced this wholesale, which is how a UnicodeError
+    (ValueError, not OSError) escaped it and silently disabled the log-signal
+    scan sharing the route's try block.
+    """
+
+    def _resolve(self, side_effect):
+        import asyncio
+        from unittest.mock import AsyncMock, patch
+
+        from app import main
+
+        async def go():
+            with patch.object(main.asyncio, "wait_for", AsyncMock(side_effect=side_effect)):
+                return await main._resolve_advertised_host(f"host-{id(side_effect)}.example.org")
+
+        return asyncio.run(go())
+
+    def test_a_definitive_nxdomain_is_an_empty_set(self):
+        import socket
+
+        assert self._resolve(socket.gaierror(socket.EAI_NONAME, "no name")) == set()
+
+    def test_a_transient_resolver_error_is_none(self):
+        import socket
+
+        assert self._resolve(socket.gaierror(socket.EAI_AGAIN, "try again")) is None
+
+    def test_a_timeout_is_none(self):
+        assert self._resolve(TimeoutError()) is None
+
+    def test_an_idna_invalid_label_is_none_not_an_escape(self):
+        # UnicodeError is a ValueError: uncaught it left this function
+        # entirely and took the log-signal scan down with it.
+        assert self._resolve(UnicodeError("label too long")) is None
+
+
+class TestAdvertisedMismatchFiltering:
+    """Only running containers, and only the node the caller asked about."""
+
+    WORKER_ROW = {"id": 1, "system_info": '{"egress_ip": "213.217.28.154"}', "containers": "[]"}
+
+    def _run(self, containers, worker_id=None):
+        import asyncio
+        from unittest.mock import AsyncMock, patch
+
+        from app import main
+
+        async def go():
+            with (
+                patch.object(main.database, "get_worker", AsyncMock(return_value=self.WORKER_ROW)),
+                patch.object(main, "_resolve_advertised_host", AsyncMock(return_value=None)),
+            ):
+                return await main._advertised_address_mismatch(containers, worker_id)
+
+        return asyncio.run(go())
+
+    def test_an_exited_container_is_never_judged(self):
+        # Its env is from the LAST run — a stale ADDRESS there is history,
+        # not a finding about the machine.
+        exited = [{"slug": "storj", "status": "exited", "advertised_address": "84.54.25.89:1", "_worker_id": 1}]
+        assert self._run(exited) is None
+
+    def test_only_the_requested_worker_is_judged(self):
+        both = [
+            {"slug": "storj", "status": "running", "advertised_address": "84.54.25.89:1", "_worker_id": 1},
+            {"slug": "storj", "status": "running", "advertised_address": "213.217.28.154:1", "_worker_id": 2},
+        ]
+        # Worker 2's address matches the (mocked) egress: asking about worker 2
+        # must not surface worker 1's stale address.
+        assert self._run(both, worker_id=2) is None
+        assert self._run(both, worker_id=1)
+
+    def test_a_garbage_hostname_is_rejected_before_any_resolution(self):
+        weird = [{"slug": "storj", "status": "running", "advertised_address": "not a hostname!:1", "_worker_id": 1}]
+        assert self._run(weird) is None

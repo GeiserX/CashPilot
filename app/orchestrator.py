@@ -608,9 +608,16 @@ def _advertised_address(container: Any, slug: str) -> str | None:
         service = get_service(slug) or {}
     except Exception:
         return None
-    var = (service.get("docker") or {}).get("advertised_address_env")
+    docker_conf = service.get("docker") or {}
+    var = docker_conf.get("advertised_address_env")
     if not var or not isinstance(var, str):
         return None
+    # Runtime backstop for the CI guard: a catalog edit pointing this at a
+    # secret-flagged var must not start exporting a credential into every
+    # heartbeat just because a test was skipped.
+    for declared in docker_conf.get("env") or []:
+        if isinstance(declared, dict) and declared.get("key") == var and declared.get("secret"):
+            return None
     try:
         env = (container.client.api.inspect_container(container.id).get("Config") or {}).get("Env") or []
     except Exception:
@@ -703,22 +710,26 @@ def get_status() -> list[dict[str, Any]]:
         for c, slug, image_name in matched:
             try:
                 cpu_pct, mem_mb, net_rx, net_tx = matched_stats.get(c.id, (0.0, 0.0, None, None))
-                results.append(
-                    {
-                        "slug": slug,
-                        "name": c.name,
-                        "status": c.status,
-                        "image": image_name or str(c.image.short_id),
-                        "cpu_percent": cpu_pct,
-                        "memory_mb": mem_mb,
-                        "net_rx_bytes": net_rx,
-                        "net_tx_bytes": net_tx,
-                        "created": c.attrs.get("Created", ""),
-                        "container_id": c.short_id,
-                        "deployed_by": "external",
-                        "category": "",
-                    }
-                )
+                entry = {
+                    "slug": slug,
+                    "name": c.name,
+                    "status": c.status,
+                    "image": image_name or str(c.image.short_id),
+                    "cpu_percent": cpu_pct,
+                    "memory_mb": mem_mb,
+                    "net_rx_bytes": net_rx,
+                    "net_tx_bytes": net_tx,
+                    "created": c.attrs.get("Created", ""),
+                    "container_id": c.short_id,
+                    "deployed_by": "external",
+                    "category": "",
+                }
+                # External nodes are the COMMON storj adoption path (the node
+                # predates CashPilot) — leaving them out of the address check
+                # would blind it for exactly the users most likely to need it.
+                if advertised := _advertised_address(c, slug):
+                    entry["advertised_address"] = advertised
+                results.append(entry)
             except Exception as exc:
                 logger.warning("Skipping corrupted container %s: %s", getattr(c, "short_id", "?"), exc)
 
@@ -841,20 +852,23 @@ def get_status_light() -> list[dict[str, Any]]:
                 # person who has to manage it.
                 if slug:
                     seen_ids.add(c.id)
-                    results.append(
-                        {
-                            "slug": slug,
-                            "name": c.name,
-                            "status": c.status,
-                            "image": image_name or str(c.image.short_id),
-                            "cpu_percent": 0.0,
-                            "memory_mb": 0.0,
-                            "created": c.attrs.get("Created", ""),
-                            "container_id": c.short_id,
-                            "deployed_by": "external",
-                            "category": "",
-                        }
-                    )
+                    entry = {
+                        "slug": slug,
+                        "name": c.name,
+                        "status": c.status,
+                        "image": image_name or str(c.image.short_id),
+                        "cpu_percent": 0.0,
+                        "memory_mb": 0.0,
+                        "created": c.attrs.get("Created", ""),
+                        "container_id": c.short_id,
+                        "deployed_by": "external",
+                        "category": "",
+                    }
+                    # Same contract as the labeled loops; external storj nodes
+                    # are the common adoption path and must not be blind spots.
+                    if advertised := _advertised_address(c, slug):
+                        entry["advertised_address"] = advertised
+                    results.append(entry)
             except Exception as exc:
                 logger.warning("Skipping corrupted container %s: %s", getattr(c, "short_id", "?"), exc)
 
