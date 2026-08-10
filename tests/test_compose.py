@@ -286,6 +286,13 @@ class TestResourceLimitsSurviveExport:
         for key in ("mem_limit", "mem_reservation", "oom_score_adj", "cpu_shares"):
             assert key not in block
 
+    def test_a_truthy_non_mapping_resources_value_is_ignored(self):
+        # A malformed catalog entry (resources as a list) must not crash the
+        # export nor leak anything into the block — same outcome as absence.
+        block = self._compose_for(["invalid"])
+        for key in ("mem_limit", "mem_reservation", "oom_score_adj", "cpu_shares"):
+            assert key not in block
+
     def test_the_real_storj_export_carries_its_limits(self):
         # Against the real catalog, end to end through the YAML renderer.
         import yaml as _yaml
