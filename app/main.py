@@ -1637,8 +1637,8 @@ async def api_deploy(
     if raw_command:
         spec["command"] = re.sub(r"\$\{(\w+)\}", lambda m: env.get(m.group(1), m.group(0)), raw_command)
 
-    # Durable resource limits (mem_limit / mem_reservation / oom_score_adj),
-    # declared in the service YAML. Only forwarded when present.
+    # Durable resource limits (mem_limit / mem_reservation / oom_score_adj /
+    # cpu_shares), declared in the service YAML. Only forwarded when present.
     resources = docker_conf.get("resources")
     if resources:
         spec["resources"] = resources
@@ -1762,10 +1762,30 @@ def _merge_recorded_spec(
     # None, and rebuilding from that would silently give the service a new
     # identity. As with env, a hostname the operator typed THIS deploy still
     # wins - a non-empty catalog_spec value is what they just asked for.
-    for field in ("command", "network_mode", "cap_add", "resources"):
+    for field in ("command", "network_mode", "cap_add"):
         if field in recorded and recorded.get(field) != catalog_spec.get(field):
             divergence.append(f"{field}: keeping the deployed value")
             merged[field] = recorded[field]
+
+    # resources is merged per KEY, unlike the runtime-shape fields above, and
+    # for the env reason: limits carry no deployment identity, and the catalog
+    # is where NEW tuning keys land (a value change to a key the record
+    # already set still keeps the recorded value, reported as a divergence).
+    # Whole-dict recorded-wins made every catalog
+    # resource change unreachable for a deployed service — the record predating
+    # a new key (cpu_shares) beat the catalog forever, and the only escape was
+    # remove-and-redeploy, which for storj is the identity-loss operation the
+    # recorded spec exists to prevent. A key the record already set still wins:
+    # that is the value this deployment verifiably ran with.
+    stored_res = recorded.get("resources")
+    if isinstance(stored_res, dict):
+        catalog_res = catalog_spec.get("resources")
+        merged_res = dict(catalog_res) if isinstance(catalog_res, dict) else {}
+        merged_res.update(stored_res)
+        if merged_res != (catalog_res or {}):
+            divergence.append("resources: keeping the limits this service was deployed with")
+        if merged_res:
+            merged["resources"] = merged_res
 
     stored_hostname = recorded.get("hostname")
     if stored_hostname and not catalog_spec.get("hostname") and stored_hostname != catalog_spec.get("hostname"):

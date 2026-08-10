@@ -1076,9 +1076,12 @@ def _validate_resources(resources: ResourceSpec | None) -> None:
             status_code=400,
             detail=f"Invalid oom_score_adj '{resources.oom_score_adj}': must be between -1000 and 1000",
         )
-    # Docker treats 0 as "use the default" but rejects 1, and the kernel caps
-    # the weight at 262144. Reject the whole range Docker would refuse rather
-    # than letting the deploy fail later at container-create time.
+    # 2..262144 is the kernel's cpu.shares range (MIN_SHARES..MAX_SHARES);
+    # Docker documents no bound of its own, and daemons vary at the edges
+    # (0 means "use the default", modern ones clamp out-of-range values rather
+    # than erroring). The guard rejects everything outside the kernel range —
+    # including 0, where OMITTING the key is the honest spelling of "default" —
+    # because a 400 is actionable where a silently clamped weight is not.
     if resources.cpu_shares is not None and not (2 <= resources.cpu_shares <= 262144):
         raise HTTPException(
             status_code=400,

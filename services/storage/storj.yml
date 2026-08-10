@@ -21,12 +21,15 @@ docker:
   resources:
     mem_limit: "2g"
     oom_score_adj: -100
-    # Satellites dial the node back in and mark it offline when the connection
-    # times out, so being slow is indistinguishable from being down -- and
-    # sustained "offline" leads to suspension. A weight above the 1024 default
-    # keeps the node answering while other workloads saturate the host; it is
-    # relative, so it costs nothing when the machine is idle.
-    cpu_shares: 2048
+    # Defensive weight for a service the network dials back into: satellites
+    # mark the node offline when their dial times out, so a node that is merely
+    # slow to answer reads as down, and sustained "offline" leads to suspension.
+    # This only arbitrates CPU against other containers under contention (free
+    # while the host is idle) -- it does NOT fix I/O-wait on the storage path or
+    # a wrong/stale ADDRESS, which are the more common causes of offline mail.
+    # 4096 (not 2048) because older runc maps shares under ~2600 BELOW the
+    # unset default weight -- see cpu_shares in _schema.yml.
+    cpu_shares: 4096
   env:
     - key: WALLET
       label: "Wallet address"

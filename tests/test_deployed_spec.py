@@ -306,6 +306,68 @@ class TestMergeRecordedSpec:
         assert merged["volumes"]["newvol"] == {"bind": "/app/cache", "mode": "rw"}
         assert merged["volumes"]["/old"] == {"bind": "/app/data", "mode": "rw"}
 
+    def test_a_resource_key_added_to_the_catalog_since_deployment_still_lands(self):
+        """The cpu_shares rollout bug: resources merged as an opaque whole.
+
+        The recorded dict predated the key, differed from the catalog, and so
+        beat it forever — every deployed storj kept the default CPU weight, and
+        the only escape was the remove-and-redeploy that risks the node
+        identity. Resources merge per key now, like env: the catalog supplies
+        keys the record never set.
+        """
+        merged, divergence = _merge_recorded_spec(
+            {"image": "i", "env": {}, "resources": {"mem_limit": "2g", "oom_score_adj": -100, "cpu_shares": 4096}},
+            {"image": "i", "env": {}, "resources": {"mem_limit": "2g", "oom_score_adj": -100}},
+            user_env={},
+        )
+        assert merged["resources"] == {"mem_limit": "2g", "oom_score_adj": -100, "cpu_shares": 4096}
+        # Nothing was kept over the catalog, so nothing may be reported as kept.
+        assert not any("resources" in d for d in divergence)
+
+    def test_a_resource_value_the_deployment_ran_with_still_wins_per_key(self):
+        """Control for the test above: per-key must not mean catalog-clobbers.
+
+        The record's own mem_limit survives — that is the value this container
+        verifiably ran with — while the catalog's new key still lands beside it.
+        """
+        merged, divergence = _merge_recorded_spec(
+            {"image": "i", "env": {}, "resources": {"mem_limit": "2g", "cpu_shares": 4096}},
+            {"image": "i", "env": {}, "resources": {"mem_limit": "1g"}},
+            user_env={},
+        )
+        assert merged["resources"] == {"mem_limit": "1g", "cpu_shares": 4096}
+        assert any("resources" in d for d in divergence)
+
+    def test_a_recorded_resources_block_survives_a_catalog_that_dropped_its_own(self):
+        merged, divergence = _merge_recorded_spec(
+            {"image": "i", "env": {}},
+            {"image": "i", "env": {}, "resources": {"mem_limit": "1g"}},
+            user_env={},
+        )
+        assert merged["resources"] == {"mem_limit": "1g"}
+        assert any("resources" in d for d in divergence)
+
+    def test_a_record_without_resources_takes_the_catalog_block_untouched(self):
+        merged, divergence = _merge_recorded_spec(
+            {"image": "i", "env": {}, "resources": {"cpu_shares": 4096}},
+            {"image": "i", "env": {}},
+            user_env={},
+        )
+        assert merged["resources"] == {"cpu_shares": 4096}
+        assert not any("resources" in d for d in divergence)
+
+    def test_a_non_dict_recorded_resources_value_is_ignored_not_merged(self):
+        # The isinstance guard: a record predating the feature, or a corrupted
+        # one, may carry None here — the catalog block must survive untouched
+        # rather than crash the redeploy or clobber the limits with junk.
+        merged, divergence = _merge_recorded_spec(
+            {"image": "i", "env": {}, "resources": {"cpu_shares": 4096}},
+            {"image": "i", "env": {}, "resources": None},
+            user_env={},
+        )
+        assert merged["resources"] == {"cpu_shares": 4096}
+        assert not any("resources" in d for d in divergence)
+
     def test_hostname_is_preserved_when_the_operator_leaves_it_blank(self):
         """Several services key device identity to the hostname."""
         merged, divergence = _merge_recorded_spec(

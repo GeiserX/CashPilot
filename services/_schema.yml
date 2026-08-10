@@ -34,11 +34,18 @@
 #     mem_limit: "768m"        # hard memory ceiling (str: <number><b|k|m|g>, e.g. "512m", "2g")
 #     mem_reservation: "512m"  # (optional) soft memory reservation, same format as mem_limit
 #     oom_score_adj: -100      # kernel OOM-killer bias, int -1000..1000 (lower = sacrificed last)
-#     cpu_shares: 2048         # relative CPU weight, int 2..262144 (Docker's default is 1024).
-#                              # Only applies while the host is contended, so it does NOT cap the
+#     cpu_shares: 4096         # relative CPU weight, int 2..262144 (Docker's API default is 1024).
+#                              # Only arbitrates while CPU is contended, so it does NOT cap the
 #                              # container on an idle box. Raise it for earners that must answer
 #                              # inbound connections on time (a storage node the network dials
 #                              # back into), which are reported "offline" if they are merely slow.
+#                              # It arbitrates CPU between CONTAINERS only: it buys nothing
+#                              # against host-process load, I/O-wait, or an unreachable address.
+#                              # On cgroup v2 the value maps onto cpu.weight (unset default 100):
+#                              # runc >= 1.2 maps 1024->100, 4096->303; OLDER runc maps linearly,
+#                              # where anything under ~2600 lands BELOW the unset default -- 2048
+#                              # would give the "protected" service LESS weight than its
+#                              # neighbours. Use 4096 or more, which clears 100 on both mappings.
 #   env:
 #     - key: ENV_VAR_NAME
 #       label: "Human label"

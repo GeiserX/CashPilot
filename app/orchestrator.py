@@ -243,7 +243,12 @@ def deploy_raw(
         if res.get(key) is not None
     }
 
-    logger.info("Creating container %s from %s", name, image)
+    # The resource kwargs are logged because the deploy response only says
+    # "deployed" — nothing echoes which limits were applied, and a worker whose
+    # ResourceSpec predates a key silently drops it (Pydantic ignores extras).
+    # This line makes `docker logs cashpilot-worker` state what THIS worker
+    # applied, so an operator comparing against the catalog can see the gap.
+    logger.info("Creating container %s from %s (resources: %s)", name, image, resource_kwargs or "docker defaults")
     container = client.containers.run(
         image=image,
         name=name,
