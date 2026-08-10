@@ -416,3 +416,79 @@ class TestStorjDialBackSignal:
             "INFO bandwidth Persisting bandwidth usage cache to db\n"
         )
         assert ps.match_log_signals(healthy, self._signals()) == []
+
+
+class TestAddressMismatch:
+    """A stale advertised address must be able to outrank everything good."""
+
+    def test_a_mismatch_reads_failing_and_carries_the_reason(self):
+        out = ps.assess(slug="s", has_collector=False, earned_recently=None, address_mismatch="stale address")
+        assert out["state"] == ps.FAILING
+        assert "stale address" in out["reasons"]
+
+    def test_a_mismatch_beats_moving_earnings(self):
+        # Storage/held components keep ticking while inbound work is dead, so
+        # PRODUCING must not mask an unreachable node.
+        out = ps.assess(slug="s", has_collector=True, earned_recently=True, address_mismatch="stale")
+        assert out["state"] == ps.FAILING
+
+    def test_none_is_no_claim(self):
+        # Negative control: absent mismatch must leave the verdict untouched.
+        out = ps.assess(slug="s", has_collector=True, earned_recently=True, address_mismatch=None)
+        assert out["state"] == ps.PRODUCING
+
+
+class TestAdvertisedMismatchHelper:
+    """The hub-side wiring: worker row -> egress IP -> verdict."""
+
+    WORKER_ROW = {"id": 1, "system_info": '{"egress_ip": "213.217.28.154"}', "containers": "[]"}
+
+    _DEFAULT = object()
+
+    def _run(self, containers, worker_row=_DEFAULT, resolved=None, expect_db_call=True):
+        import asyncio
+        from unittest.mock import AsyncMock, patch
+
+        from app import main
+
+        get_worker = AsyncMock(return_value=self.WORKER_ROW if worker_row is self._DEFAULT else worker_row)
+
+        async def go():
+            with (
+                patch.object(main.database, "get_worker", get_worker),
+                patch.object(main, "_resolve_advertised_host", AsyncMock(return_value=resolved)),
+            ):
+                result = await main._advertised_address_mismatch(containers)
+            if not expect_db_call:
+                get_worker.assert_not_awaited()
+            return result
+
+        return asyncio.run(go())
+
+    def test_a_stale_literal_yields_the_reason(self):
+        reason = self._run([{"slug": "storj", "advertised_address": "84.54.25.89:28967", "_worker_id": 1}])
+        assert reason and "84.54.25.89" in reason
+
+    def test_a_matching_literal_is_silent(self):
+        assert self._run([{"slug": "storj", "advertised_address": "213.217.28.154:28967", "_worker_id": 1}]) is None
+
+    def test_a_hostname_is_judged_through_the_resolver(self):
+        entry = [{"slug": "storj", "advertised_address": "node.example.org:28967", "_worker_id": 1}]
+        assert self._run(entry, resolved={"213.217.28.154"}) is None
+        assert self._run(entry, resolved={"84.54.25.89"})
+
+    def test_no_advertised_address_never_touches_the_database(self):
+        # Negative control for every pre-existing route test: containers that
+        # do not carry the field must exit before any worker lookup.
+        assert self._run([{"slug": "storj", "status": "running", "_worker_id": 1}], expect_db_call=False) is None
+
+    def test_a_missing_worker_row_is_no_claim(self):
+        entry = [{"slug": "storj", "advertised_address": "84.54.25.89:1", "_worker_id": 9}]
+        assert self._run(entry, worker_row=None) is None
+
+    def test_a_worker_with_undetected_egress_is_no_claim(self):
+        row = {"id": 1, "system_info": "{}", "containers": "[]"}
+        assert (
+            self._run([{"slug": "storj", "advertised_address": "84.54.25.89:1", "_worker_id": 1}], worker_row=row)
+            is None
+        )

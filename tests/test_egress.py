@@ -728,3 +728,98 @@ class TestTheHeartbeatSurvivesABadCycle:
                 break
         task.cancel()
         assert len(calls) >= 3, "the loop stopped after the first exception"
+
+
+class TestAdvertisedHost:
+    """Parsing the host out of an advertised dial-back address."""
+
+    @pytest.mark.parametrize(
+        ("raw", "host"),
+        [
+            ("84.54.25.89:28967", "84.54.25.89"),
+            ("mynode.ddns.net:28967", "mynode.ddns.net"),
+            ("mynode.ddns.net", "mynode.ddns.net"),
+            ("[2001:db8::1]:28967", "2001:db8::1"),
+            ("2001:db8::1", "2001:db8::1"),
+            ("  host:1  ", "host"),
+        ],
+    )
+    def test_host_is_extracted(self, raw, host):
+        assert egress.advertised_host(raw) == host
+
+    @pytest.mark.parametrize("raw", ["", "   ", None, "[]:28967"])
+    def test_nothing_usable_is_none(self, raw):
+        assert egress.advertised_host(raw) is None
+
+
+class TestAdvertisedAddressVerdict:
+    """The Aug 2026 storj incident, as a decision table.
+
+    The node advertised a stale literal IP after a silent ISP re-provision;
+    satellites dialled a dead address for days while the container looked
+    healthy. The verdict's job is to catch exactly that — and its NO-CLAIM
+    rows matter as much as its findings, because a wrong "your address is
+    stale" sends the operator to fix DNS that is fine.
+    """
+
+    EGRESS = "213.217.28.154"
+
+    def test_the_incident_a_stale_literal_ip_is_a_finding(self):
+        reason = egress.advertised_address_verdict("84.54.25.89:28967", self.EGRESS, None)
+        assert reason and "84.54.25.89" in reason and self.EGRESS in reason
+
+    def test_a_literal_matching_the_egress_is_no_finding(self):
+        assert egress.advertised_address_verdict(f"{self.EGRESS}:28967", self.EGRESS, None) is None
+
+    def test_a_private_literal_is_a_finding_without_any_egress_comparison(self):
+        reason = egress.advertised_address_verdict("192.168.10.100:28967", self.EGRESS, None)
+        assert reason and "private" in reason
+
+    def test_a_hostname_resolving_to_the_egress_is_no_finding(self):
+        assert egress.advertised_address_verdict("node.example.org:28967", self.EGRESS, {self.EGRESS}) is None
+
+    def test_a_hostname_resolving_elsewhere_is_a_finding(self):
+        reason = egress.advertised_address_verdict("node.example.org:28967", self.EGRESS, {"84.54.25.89"})
+        assert reason and "node.example.org" in reason and "84.54.25.89" in reason
+
+    def test_a_name_that_definitively_does_not_resolve_is_a_finding(self):
+        reason = egress.advertised_address_verdict("gone.example.org:28967", self.EGRESS, set())
+        assert reason and "does not resolve" in reason
+
+    # -- the no-claim rows: silence must mean "cannot tell", never "fine" -----
+
+    def test_transient_resolution_failure_is_no_claim(self):
+        assert egress.advertised_address_verdict("node.example.org:28967", self.EGRESS, None) is None
+
+    def test_undetected_egress_is_no_claim_even_for_a_wrong_literal(self):
+        # Negative control: the strongest possible finding input must still be
+        # silent when the machine's own egress is unknown.
+        assert egress.advertised_address_verdict("84.54.25.89:28967", None, None) is None
+
+    def test_no_advertised_address_is_no_claim(self):
+        assert egress.advertised_address_verdict(None, self.EGRESS, {"1.2.3.4"}) is None
+        assert egress.advertised_address_verdict("", self.EGRESS, {"1.2.3.4"}) is None
+
+
+class TestAdvertisedAddressCatalog:
+    """The schema key is only useful if it names an env var that exists."""
+
+    def test_storj_declares_its_dial_back_env(self):
+        from app.catalog import load_services
+
+        storj = next(s for s in load_services() if s.get("slug") == "storj")
+        assert (storj.get("docker") or {}).get("advertised_address_env") == "ADDRESS"
+
+    def test_every_declared_address_env_exists_in_that_services_env_list(self):
+        # A typo here would make the worker look up an env var that is never
+        # set, silently reporting nothing — the same failure mode this whole
+        # feature exists to end.
+        from app.catalog import load_services
+
+        for svc in load_services():
+            docker = svc.get("docker") or {}
+            var = docker.get("advertised_address_env")
+            if not var:
+                continue
+            keys = {e.get("key") for e in (docker.get("env") or [])}
+            assert var in keys, f"{svc.get('slug')}: advertised_address_env={var!r} names no declared env var"

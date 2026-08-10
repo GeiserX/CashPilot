@@ -69,6 +69,11 @@ docker:
         the node and forfeits the held balance.
   command: "--operator.wallet-features=zksync-era"
   network_mode: ""
+  # Satellites dial the node at exactly this env var's value, so the worker
+  # reports it and the UI cross-checks it against the machine's current
+  # egress IP — the check that catches a stale advertised IP the day it goes
+  # stale instead of days later via provider email.
+  advertised_address_env: ADDRESS
   health_signals:
     # Seen live (Aug 2026): ~40x/hour for days while the container looked
     # perfectly healthy -- the node advertised a stale IP after an ISP

@@ -9,12 +9,14 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import hmac
+import ipaddress
 import json
 import logging
 import math
 import os
 import re
 import secrets
+import socket
 import time
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
@@ -227,6 +229,13 @@ async def _get_all_worker_containers(workers: list[dict[str, Any]] | None = None
                             # found" for a row the same screen called Running.
                             # The node name is already carried by _node.
                             "deployed_by": c.get("deployed_by") or worker_name,
+                            # The dial-back address the worker read from the ONE
+                            # env var the service's catalog entry declares. None
+                            # when undeclared/unreported — this dict is a key
+                            # allowlist, so without this line the field the
+                            # mismatch check depends on would be silently
+                            # dropped right here.
+                            "advertised_address": c.get("advertised_address"),
                             "_node": worker_name,
                             "_worker_id": w.get("id"),
                             "_has_docker": worker_has_docker,
@@ -2658,6 +2667,57 @@ async def api_earnings_net(request: Request, days: int = 30) -> dict[str, Any]:
     return result
 
 
+async def _advertised_address_mismatch(matches: list[dict[str, Any]]) -> str | None:
+    """Is the network dialling an address this machine no longer has?
+
+    Compares the advertised_address a worker reported (the ONE env var the
+    service's catalog entry declares, see advertised_address_env in
+    services/_schema.yml) against that worker's detected egress IP. This is
+    the check that catches a stale advertised IP the day the ISP re-provisions
+    it, instead of days later via the provider's offline emails.
+
+    Every failure to gather either side returns None — no claim — because a
+    wrong "your address is stale" sends the operator to fix DNS that is fine.
+    Only a definitive NXDOMAIN counts as a resolution verdict; a timeout or a
+    transient resolver error is indistinguishable from OUR network having a
+    bad moment, which says nothing about the record.
+    """
+    reported = next((c for c in matches if c.get("advertised_address") and c.get("_worker_id") is not None), None)
+    if reported is None:
+        return None
+    row = await database.get_worker(reported["_worker_id"])
+    if row is None:
+        return None
+    egress_ip = egress.egress_of(_decoded_worker(row))
+
+    host = egress.advertised_host(reported["advertised_address"])
+    resolved: set[str] | None = None
+    if host and egress_ip:
+        try:
+            ipaddress.ip_address(host)
+        except ValueError:
+            resolved = await _resolve_advertised_host(host)
+    return egress.advertised_address_verdict(reported["advertised_address"], egress_ip, resolved)
+
+
+async def _resolve_advertised_host(host: str) -> set[str] | None:
+    """Resolve a hostname the way the dialling network would.
+
+    Three-valued by contract: a non-empty set of addresses, an EMPTY set only
+    for a definitive does-not-exist answer (EAI_NONAME/EAI_NODATA), and None
+    for everything transient — timeout, EAI_AGAIN, resolver trouble — because
+    OUR resolver having a bad moment says nothing about the record.
+    """
+    try:
+        infos = await asyncio.wait_for(asyncio.get_running_loop().getaddrinfo(host, None, type=socket.SOCK_STREAM), 3.0)
+        return {addr[4][0] for addr in infos}
+    except socket.gaierror as exc:
+        definitive = {socket.EAI_NONAME, getattr(socket, "EAI_NODATA", socket.EAI_NONAME)}
+        return set() if exc.errno in definitive else None
+    except (TimeoutError, OSError):
+        return None
+
+
 @app.get("/api/services/{slug}/producer-state")
 async def api_producer_state(request: Request, slug: str, worker_id: int | None = None) -> dict[str, Any]:
     """Is this service actually EARNING, as distinct from merely running?
@@ -2708,6 +2768,7 @@ async def api_producer_state(request: Request, slug: str, worker_id: int | None 
     running: bool | None = None
     log_hits: list[dict[str, str]] = []
     traffic: str | None = None
+    address_mismatch: str | None = None
     signals = producer_state.signals_for(service)
     try:
         containers = await _get_all_worker_containers()
@@ -2717,6 +2778,10 @@ async def api_producer_state(request: Request, slug: str, worker_id: int | None 
         matches = [c for c in containers if egress.container_slug(c) == slug]
         running = any(str(c.get("status", "")).lower() == "running" for c in matches)
         traffic = _traffic_state(slug, matches)
+        if running:
+            # Inside the same never-500 umbrella: a worker-row or DNS problem
+            # must degrade to "no claim", not break the earnings verdict.
+            address_mismatch = await _advertised_address_mismatch(matches)
         if signals and running:
             wid = worker_id if worker_id is not None else (matches[0].get("_worker_id") if matches else None)
             if wid is not None:
@@ -2734,6 +2799,7 @@ async def api_producer_state(request: Request, slug: str, worker_id: int | None 
         log_hits=log_hits,
         traffic=traffic,
         container_running=running,
+        address_mismatch=address_mismatch,
     )
 
 

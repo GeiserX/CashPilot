@@ -591,6 +591,37 @@ def _collect_stats_bulk(containers: list[Any]) -> dict[str, tuple[float, float, 
     return results
 
 
+def _advertised_address(container: Any, slug: str) -> str | None:
+    """The value of the ONE env var this service declares as its dial-back address.
+
+    Only a service whose catalog entry sets ``docker.advertised_address_env``
+    yields anything, and only that single variable is ever read: container env
+    holds credentials, and the heartbeat must never widen into carrying them.
+    The Docker LIST API omits ``Config.Env``, so this costs one inspect call —
+    but only for declaring services (in practice: storj alone), so the status
+    paths stay cheap. None is "nothing to report", covering the undeclared,
+    unset and inspect-failed cases alike — absence is not a claim.
+    """
+    if get_service is None:
+        return None
+    try:
+        service = get_service(slug) or {}
+    except Exception:
+        return None
+    var = (service.get("docker") or {}).get("advertised_address_env")
+    if not var or not isinstance(var, str):
+        return None
+    try:
+        env = (container.client.api.inspect_container(container.id).get("Config") or {}).get("Env") or []
+    except Exception:
+        return None
+    prefix = f"{var}="
+    for entry in env:
+        if isinstance(entry, str) and entry.startswith(prefix):
+            return entry[len(prefix) :] or None
+    return None
+
+
 def get_status() -> list[dict[str, Any]]:
     """Return live status of all known containers (labeled + image-matched).
 
@@ -620,23 +651,26 @@ def get_status() -> list[dict[str, Any]]:
             seen_ids.add(c.id)
             slug = c.labels.get(LABEL_SERVICE, "unknown")
             cpu_pct, mem_mb, net_rx, net_tx = labeled_stats.get(c.id, (0.0, 0.0, None, None))
-            results.append(
-                {
-                    "slug": slug,
-                    "name": c.name,
-                    "status": c.status,
-                    "image": c.image.tags[0] if c.image.tags else str(c.image.short_id),
-                    "cpu_percent": cpu_pct,
-                    "memory_mb": mem_mb,
-                    # Cumulative since container start; None when unavailable.
-                    "net_rx_bytes": net_rx,
-                    "net_tx_bytes": net_tx,
-                    "created": c.attrs.get("Created", ""),
-                    "container_id": c.short_id,
-                    "deployed_by": c.labels.get(LABEL_DEPLOYED_BY, "unknown"),
-                    "category": c.labels.get(LABEL_CATEGORY, ""),
-                }
-            )
+            entry = {
+                "slug": slug,
+                "name": c.name,
+                "status": c.status,
+                "image": c.image.tags[0] if c.image.tags else str(c.image.short_id),
+                "cpu_percent": cpu_pct,
+                "memory_mb": mem_mb,
+                # Cumulative since container start; None when unavailable.
+                "net_rx_bytes": net_rx,
+                "net_tx_bytes": net_tx,
+                "created": c.attrs.get("Created", ""),
+                "container_id": c.short_id,
+                "deployed_by": c.labels.get(LABEL_DEPLOYED_BY, "unknown"),
+                "category": c.labels.get(LABEL_CATEGORY, ""),
+            }
+            # Present only when the service declares a dial-back address var;
+            # the key's absence is "nothing to say", never "checked and fine".
+            if advertised := _advertised_address(c, slug):
+                entry["advertised_address"] = advertised
+            results.append(entry)
         except Exception as exc:
             logger.warning("Skipping corrupted container %s: %s", getattr(c, "short_id", "?"), exc)
 
@@ -757,20 +791,22 @@ def get_status_light() -> list[dict[str, Any]]:
         try:
             seen_ids.add(c.id)
             slug = c.labels.get(LABEL_SERVICE, "unknown")
-            results.append(
-                {
-                    "slug": slug,
-                    "name": c.name,
-                    "status": c.status,
-                    "image": c.image.tags[0] if c.image.tags else str(c.image.short_id),
-                    "cpu_percent": 0.0,
-                    "memory_mb": 0.0,
-                    "created": c.attrs.get("Created", ""),
-                    "container_id": c.short_id,
-                    "deployed_by": c.labels.get(LABEL_DEPLOYED_BY, "unknown"),
-                    "category": c.labels.get(LABEL_CATEGORY, ""),
-                }
-            )
+            entry = {
+                "slug": slug,
+                "name": c.name,
+                "status": c.status,
+                "image": c.image.tags[0] if c.image.tags else str(c.image.short_id),
+                "cpu_percent": 0.0,
+                "memory_mb": 0.0,
+                "created": c.attrs.get("Created", ""),
+                "container_id": c.short_id,
+                "deployed_by": c.labels.get(LABEL_DEPLOYED_BY, "unknown"),
+                "category": c.labels.get(LABEL_CATEGORY, ""),
+            }
+            # Same contract as get_status: key present only when declared+set.
+            if advertised := _advertised_address(c, slug):
+                entry["advertised_address"] = advertised
+            results.append(entry)
         except Exception as exc:
             logger.warning("Skipping corrupted container %s: %s", getattr(c, "short_id", "?"), exc)
 

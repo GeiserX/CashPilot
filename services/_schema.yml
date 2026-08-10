@@ -64,6 +64,15 @@
 #     Only add a pattern you have actually seen in that service's logs. A guessed regex
 #     that never matches is dead weight; one that matches the wrong line tells the user
 #     something false.
+#   advertised_address_env: ADDRESS  (optional) the env var holding the address
+#     the NETWORK dials this service back at ("host:port" or "host"). The
+#     worker copies that ONE variable's value into heartbeat container entries
+#     as advertised_address — never any other env, which may hold credentials —
+#     so the UI can compare it against the machine's current egress IP and mark
+#     the service failing when the network is dialling an address this machine
+#     no longer has (the classic silent-ISP-re-provision failure). Only declare
+#     it for services that are genuinely dialled back into; for outbound-only
+#     services the comparison would be meaningless.
 #   devices: [] (optional) host devices to map in, e.g. ["/dev/net/tun"]
 #     Only devices on the worker's allow-list may be requested, and only by the
 #     service whose own YAML declares them. A device is a direct line to the
