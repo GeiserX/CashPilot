@@ -1567,7 +1567,11 @@ async def api_deploy(
     body: DeployRequest,
     worker_id: int | None = None,
     _auth: dict[str, Any] = Depends(_require_owner),
-) -> dict[str, str]:
+) -> dict[str, Any]:
+    # dict[str, Any], not dict[str, str]: kept_from_previous_deployment is a
+    # list, and FastAPI validates the response against this annotation AFTER
+    # the deploy has run and persisted — a stricter type turns the successful
+    # deployments that had something to report into 500s.
     worker_id = await _resolve_worker_id(worker_id)
     svc = catalog.get_service(slug)
     if not svc:

@@ -135,6 +135,83 @@ class TestApiDeploy:
             data = resp.json()
             assert data["status"] == "deployed"
 
+    def test_divergent_redeploy_returns_the_kept_list_over_http(self, client):
+        """CashPilot-23yb: the deploy response must survive FastAPI's response model.
+
+        `kept_from_previous_deployment` is a list, and the route used to be
+        annotated `-> dict[str, str]` — so the very deployments that had
+        something to tell the user 500'd AFTER deploying and persisting, and a
+        retry could deploy again. Exercised through HTTP because a direct call
+        to the function bypasses response validation entirely.
+        """
+        svc = {
+            "slug": "honeygain",
+            "name": "Honeygain",
+            "docker": {
+                "image": "honeygain/honeygain:latest",
+                "env": [{"key": "EMAIL", "default": "user@test.com"}],
+                "ports": ["8080:80/tcp"],
+                "volumes": ["/data:/app/data"],
+            },
+        }
+        # The recorded container ran with a command the catalog no longer has:
+        # _merge_recorded_spec keeps it and reports the divergence.
+        recorded = {"image": "honeygain/honeygain:latest", "command": "--legacy-flag"}
+        worker = _online_worker()
+
+        async def _fake_deploy(worker_id, slug, spec):
+            return {"container_id": "abc123"}
+
+        with (
+            _auth_owner(),
+            patch("app.main.database.list_workers", new_callable=AsyncMock, return_value=[worker]),
+            patch("app.main.catalog.get_service", return_value=svc),
+            patch("app.main.database.get_worker", new_callable=AsyncMock, return_value=worker),
+            patch(
+                "app.main.database.get_deployment_spec",
+                new_callable=AsyncMock,
+                return_value=recorded,
+            ),
+            patch("app.main._proxy_worker_deploy", side_effect=_fake_deploy),
+            patch("app.main.database.save_deployment", new_callable=AsyncMock),
+            patch("app.main.database.record_health_event", new_callable=AsyncMock),
+            patch("app.main._run_collection", new_callable=AsyncMock),
+        ):
+            resp = client.post("/api/deploy/honeygain", json={"env": {}})
+            assert resp.status_code == 200, resp.text
+            data = resp.json()
+            assert data["status"] == "deployed"
+            kept = data["kept_from_previous_deployment"]
+            assert isinstance(kept, list) and kept
+            assert any("command" in line for line in kept)
+
+    def test_plain_deploy_response_has_no_kept_key(self, client):
+        # Negative control: without a recorded spec there is no divergence and
+        # the key must be absent — the toast only fires when there is news.
+        svc = {
+            "slug": "honeygain",
+            "name": "Honeygain",
+            "docker": {"image": "honeygain/honeygain:latest", "env": []},
+        }
+        worker = _online_worker()
+
+        async def _fake_deploy(worker_id, slug, spec):
+            return {"container_id": "abc123"}
+
+        with (
+            _auth_owner(),
+            patch("app.main.database.list_workers", new_callable=AsyncMock, return_value=[worker]),
+            patch("app.main.catalog.get_service", return_value=svc),
+            patch("app.main.database.get_worker", new_callable=AsyncMock, return_value=worker),
+            patch("app.main._proxy_worker_deploy", side_effect=_fake_deploy),
+            patch("app.main.database.save_deployment", new_callable=AsyncMock),
+            patch("app.main.database.record_health_event", new_callable=AsyncMock),
+            patch("app.main._run_collection", new_callable=AsyncMock),
+        ):
+            resp = client.post("/api/deploy/honeygain", json={"env": {}})
+            assert resp.status_code == 200, resp.text
+            assert "kept_from_previous_deployment" not in resp.json()
+
     def test_deploy_service_not_found(self, client):
         with (
             _auth_owner(),

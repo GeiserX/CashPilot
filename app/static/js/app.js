@@ -2386,8 +2386,16 @@ const CP = (() => {
     let ok = 0, fail = 0;
     for (const wid of workerIds) {
       try {
-        await api(`/api/deploy/${slug}?worker_id=${wid}`, { method: 'POST', body: { env } });
+        const res = await api(`/api/deploy/${slug}?worker_id=${wid}`, { method: 'POST', body: { env } });
         ok++;
+        // A redeploy rebuilds from the RECORDED spec where it diverges from
+        // the catalog. The API has always reported what it kept; nothing
+        // rendered it, so the operator saw a plain success while e.g. their
+        // typed-in catalog values were quietly superseded (CashPilot-23yb).
+        const kept = res && res.kept_from_previous_deployment;
+        if (Array.isArray(kept) && kept.length) {
+          toast(`${slug}: kept from the previous deployment — ${kept.join('; ')}`, 'warning');
+        }
       } catch (err) {
         fail++;
         toast(`Deploy to worker ${wid} failed: ${err.message}`, 'error');
