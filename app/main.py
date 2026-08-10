@@ -640,6 +640,9 @@ async def _run_collection() -> None:
             # recovery, so a service that breaks again later notifies again rather
             # than being deduped into silence forever.
             previously_alerting = {a["platform"] for a in _collector_alerts}
+            # Notices tracked separately: a warning-free success is a notice's
+            # recovery, and conflating the two would clear the wrong kind.
+            previously_noticing = {a["platform"] for a in _collector_alerts if a.get("kind") == "notice"}
             platforms_ok = 0
             for result in results:
                 if isinstance(result, Exception):
@@ -694,6 +697,25 @@ async def _run_collection() -> None:
                         safe_warning = notify.redact(result.warning)
                         logger.info("Collector notice for %s: %s", result.platform, safe_warning)
                         alerts.append({"kind": "notice", "platform": result.platform, "error": safe_warning})
+                        # Push out-of-band with the same once-per-window dedupe
+                        # errors get. A notice used to reach ONLY the bell,
+                        # which is read by whoever happens to open the UI — and
+                        # "nobody looked for days" is the incident this class
+                        # of warning (an unreachable storj node) comes from.
+                        if await database.record_alert("notice", result.platform, safe_warning):
+                            _spawn(
+                                notify.send(
+                                    f"CashPilot: {result.platform} needs attention",
+                                    safe_warning,
+                                    kind="notice",
+                                    subject=result.platform,
+                                )
+                            )
+                    elif result.platform in previously_noticing:
+                        # A warning-free success is the notice's recovery: drop
+                        # the stored row so the NEXT warning pushes again rather
+                        # than being deduped into silence forever.
+                        await database.clear_alerts("notice", result.platform)
                     # Compare against the last reading BEFORE writing the new one:
                     # a payout is only visible as the step between two snapshots.
                     payout_alert = await _detect_payout(result)
