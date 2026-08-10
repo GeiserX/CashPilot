@@ -592,3 +592,158 @@ class TestAnyoneProtocolDeep:
         assert result.error is None
         assert result.balance == 1.0
         assert result.currency == "ANYONE"
+
+
+# ---------------------------------------------------------------------------
+# Storj — reachability warning (the Aug 2026 stale-ADDRESS incident)
+# ---------------------------------------------------------------------------
+
+
+class TestStorjReachability:
+    """A successful collection must still say when satellites cannot reach the node.
+
+    The balance keeps ticking from held/storage components while inbound work
+    is dead, so the warning rides on a HEALTHY reading — and the probe failing
+    must produce silence, never a verdict.
+    """
+
+    def _collect(self, sno_payload=None, probe_fails=False):
+        import asyncio
+        from datetime import UTC, datetime
+
+        from app.collectors.storj import StorjCollector
+
+        earnings = _mock_response(200, {"estimatedPayout": 250})
+        if probe_fails:
+            probe = MagicMock()
+            probe.raise_for_status.side_effect = RuntimeError("probe down")
+        else:
+            payload = sno_payload if sno_payload is not None else {}
+            probe = _mock_response(200, payload)
+        client = _make_async_client()
+        client.get.side_effect = [earnings, probe]
+
+        with patch("app.collectors.storj.httpx.AsyncClient", return_value=client):
+            result = asyncio.run(StorjCollector().collect())
+        assert result.error is None and result.balance == 2.50, "the earnings reading itself must be untouched"
+        self._now = datetime.now(UTC)
+        return result
+
+    @staticmethod
+    def _ago(**kwargs):
+        from datetime import UTC, datetime, timedelta
+
+        return (datetime.now(UTC) - timedelta(**kwargs)).isoformat()
+
+    def test_a_recently_pinged_node_carries_no_warning(self):
+        result = self._collect({"lastPinged": self._ago(minutes=10), "quicStatus": "OK"})
+        assert result.warning is None
+
+    def test_a_never_pinged_node_warns(self):
+        # The incident node carried the zero-value for four months, invisible.
+        result = self._collect({"lastPinged": "0001-01-01T00:00:00Z", "quicStatus": "OK"})
+        assert result.warning and "EVER" in result.warning and "ADDRESS" in result.warning
+
+    def test_a_stale_ping_warns_with_the_age(self):
+        result = self._collect({"lastPinged": self._ago(hours=7), "quicStatus": "OK"})
+        assert result.warning and "counted offline" in result.warning
+
+    def test_misconfigured_quic_warns(self):
+        result = self._collect({"lastPinged": self._ago(minutes=5), "quicStatus": "Misconfigured"})
+        assert result.warning and "QUIC" in result.warning
+
+    def test_stale_ping_and_bad_quic_both_appear(self):
+        result = self._collect({"lastPinged": self._ago(hours=7), "quicStatus": "Misconfigured"})
+        assert result.warning and "counted offline" in result.warning and "QUIC" in result.warning
+
+    def test_refreshing_quic_is_not_a_warning(self):
+        # Negative control: only the one value SEEN to mean broken may fire —
+        # "Refreshing" appears briefly at every startup.
+        result = self._collect({"lastPinged": self._ago(minutes=5), "quicStatus": "Refreshing"})
+        assert result.warning is None
+
+    def test_an_absent_last_pinged_is_no_claim(self):
+        # Negative control: a payload without the field must stay silent.
+        result = self._collect({"quicStatus": "OK"})
+        assert result.warning is None
+
+    def test_a_failing_probe_is_silence_not_a_verdict(self):
+        # Negative control: the probe itself failing must not invent anything.
+        result = self._collect(probe_fails=True)
+        assert result.warning is None
+
+
+class TestStorjNodeTimeParsing:
+    def test_go_nanosecond_and_offset_forms_parse(self):
+        from app.collectors.storj import _parse_node_time
+
+        assert _parse_node_time("2026-08-10T11:51:24.45559978Z") is not None
+        assert _parse_node_time("2026-08-10T13:50:14.25180728+02:00") is not None
+
+    def test_a_naive_timestamp_is_read_as_utc(self):
+        from app.collectors.storj import _parse_node_time
+
+        parsed = _parse_node_time("2026-08-10T11:51:24")
+        assert parsed is not None and parsed.tzinfo is not None
+
+    def test_garbage_is_none_not_a_crash(self):
+        from app.collectors.storj import _parse_node_time
+
+        assert _parse_node_time("not-a-time") is None
+        assert _parse_node_time(None) is None
+        assert _parse_node_time(12345) is None
+
+
+class TestStorjYoungNodeGrace:
+    """A node started minutes ago must not greet its user with an alert.
+
+    The zero-value lastPinged is legitimate until satellites have had a
+    chance; and an ABSENT startedAt degrades to the warning (current
+    behaviour), never to silence — failing toward the alert, not away.
+    """
+
+    def _collect(self, payload):
+        import asyncio
+
+        from app.collectors.storj import StorjCollector
+
+        earnings = _mock_response(200, {"estimatedPayout": 250})
+        probe = _mock_response(200, payload)
+        client = _make_async_client()
+        client.get.side_effect = [earnings, probe]
+        with patch("app.collectors.storj.httpx.AsyncClient", return_value=client):
+            return asyncio.run(StorjCollector().collect())
+
+    @staticmethod
+    def _ago(**kwargs):
+        from datetime import UTC, datetime, timedelta
+
+        return (datetime.now(UTC) - timedelta(**kwargs)).isoformat()
+
+    def test_a_five_minute_old_node_gets_grace(self):
+        result = self._collect(
+            {"lastPinged": "0001-01-01T00:00:00Z", "quicStatus": "OK", "startedAt": self._ago(minutes=5)}
+        )
+        assert result.warning is None
+
+    def test_a_two_hour_old_node_gets_no_grace(self):
+        # Negative control: the grace window must not swallow the real alert.
+        result = self._collect(
+            {"lastPinged": "0001-01-01T00:00:00Z", "quicStatus": "OK", "startedAt": self._ago(hours=2)}
+        )
+        assert result.warning and "EVER" in result.warning
+
+    def test_an_absent_started_at_fails_toward_the_warning(self):
+        result = self._collect({"lastPinged": "0001-01-01T00:00:00Z", "quicStatus": "OK"})
+        assert result.warning and "EVER" in result.warning
+
+
+class TestStorjDateOnlyTimestamp:
+    def test_a_bare_date_is_no_claim_not_midnight(self):
+        # fromisoformat reads "2026-08-10" as midnight — treating that as a
+        # real ping time would fabricate an hours-stale timestamp from a value
+        # that never claimed a time. Go always emits a time component, so a
+        # date-only value is not a node timestamp at all.
+        from app.collectors.storj import _parse_node_time
+
+        assert _parse_node_time("2026-08-10") is None

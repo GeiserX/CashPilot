@@ -7,6 +7,8 @@ No authentication required — the API is only accessible on localhost.
 from __future__ import annotations
 
 import logging
+from datetime import UTC, datetime, timedelta
+from typing import Any
 
 import httpx
 
@@ -16,6 +18,39 @@ from app.collectors.base import BaseCollector, EarningsResult
 logger = logging.getLogger(__name__)
 
 DEFAULT_API_URL = "http://localhost:14002"
+
+#: A zero-value Go time.Time — the node has NEVER been successfully pinged.
+#: The Aug 2026 incident node carried this for four months while its dashboard
+#: looked healthy: satellites were dialling a stale advertised IP the whole time.
+_NEVER_PINGED_PREFIX = "0001-01-01"
+
+#: Satellites ping the node on every contact cycle (well under an hour in
+#: practice — a freshly fixed node was pinged within two minutes). Three hours
+#: keeps maintenance pauses and satellite-side slowness from crying wolf while
+#: still catching a real reachability loss the same day it starts.
+_PINGED_STALE_AFTER = timedelta(hours=3)
+
+
+def _parse_node_time(raw: Any) -> datetime | None:
+    """A Go-marshalled timestamp as an aware datetime, or None (no claim).
+
+    The node emits RFC 3339 with nanosecond fractions and either Z or a local
+    offset; fromisoformat handles all observed forms. A naive result is read
+    as UTC rather than discarded — Go only omits the offset for UTC.
+
+    A bare DATE is refused: fromisoformat reads "2026-08-10" as midnight,
+    which would fabricate a stale-looking timestamp out of a value that never
+    claimed a time. Go's time.Time marshalling always emits a time component,
+    so anything without one is not a node timestamp.
+    """
+    text = str(raw or "")
+    if "T" not in text:
+        return None
+    try:
+        parsed = datetime.fromisoformat(text)
+    except ValueError:
+        return None
+    return parsed if parsed.tzinfo else parsed.replace(tzinfo=UTC)
 
 
 class StorjCollector(BaseCollector):
@@ -76,6 +111,10 @@ class StorjCollector(BaseCollector):
                 platform=self.platform,
                 balance=round(balance, 4),
                 currency="USD",
+                # The balance can keep ticking (held amount, storage income)
+                # while satellites cannot reach the node at all, so a healthy
+                # collection is exactly when a reachability caveat is needed.
+                warning=await self._reachability_warning(client),
             )
         except httpx.ConnectError:
             return EarningsResult(
@@ -95,3 +134,73 @@ class StorjCollector(BaseCollector):
                 balance=0.0,
                 error=str(exc),
             )
+
+    async def _reachability_warning(self, client: httpx.AsyncClient) -> str | None:
+        """Can satellites actually reach this node? None is 'nothing to report'.
+
+        The dashboard's /api/sno/ states it directly: ``lastPinged`` is the
+        last time any satellite successfully dialled the node back, and
+        ``quicStatus`` whether UDP 28967 got through. A node can be green in
+        every other way — container healthy, balance moving — while both of
+        these say the network cannot reach it (the Aug 2026 stale-ADDRESS
+        incident ran ~40 failed dial-backs an hour for days, invisible).
+
+        Every failure of this PROBE returns None: reachability is a bonus
+        reading on top of a successful collection, and inventing a verdict
+        from a probe that itself failed would be the same false confidence
+        this exists to remove.
+        """
+        try:
+            # A shorter deadline than the collection's own 15s: a stalling
+            # dashboard must not be able to double the cost of the reading
+            # this probe merely decorates.
+            resp = await client.get(f"{self.api_url}/api/sno/", timeout=5)
+            resp.raise_for_status()
+            data = resp.json()
+        except Exception as exc:
+            # Debug, not warning: silence is the right product behaviour, but
+            # with no line at all a probe that never fires (wrong path, shape
+            # change) is indistinguishable from a healthy node — the same
+            # invisibility class this feature exists to end.
+            logger.debug("Storj reachability probe unavailable: %s", exc)
+            return None
+        if not isinstance(data, dict):
+            return None
+
+        notes: list[str] = []
+        raw_pinged = data.get("lastPinged")
+        pinged_at = _parse_node_time(raw_pinged)
+        # A node started seconds ago legitimately carries the zero-value
+        # lastPinged — satellites have not had a chance yet. Warning then
+        # would make the user's FIRST reading of a healthy new node an
+        # unreachability alert, teaching them to ignore the one notice that
+        # matters. An absent/unparseable startedAt reads as not-young, so the
+        # behaviour degrades to the warning, never to silence.
+        started_at = _parse_node_time(data.get("startedAt"))
+        node_is_young = started_at is not None and datetime.now(UTC) - started_at < timedelta(minutes=15)
+        if node_is_young:
+            logger.debug("Storj node started %s — too young to judge dial-backs", started_at)
+        elif str(raw_pinged or "").startswith(_NEVER_PINGED_PREFIX):
+            notes.append(
+                "No satellite has EVER successfully reached this node — it is being "
+                "counted offline. Check that the advertised ADDRESS matches your current "
+                "public IP (prefer a DDNS hostname) and that port 28967 TCP+UDP is forwarded."
+            )
+        elif pinged_at is not None and datetime.now(UTC) - pinged_at > _PINGED_STALE_AFTER:
+            hours = (datetime.now(UTC) - pinged_at).total_seconds() / 3600
+            notes.append(
+                f"No satellite has reached this node for {hours:.0f}h (last ping "
+                f"{pinged_at.isoformat(timespec='seconds')}) — it is being counted offline. "
+                "Check the advertised ADDRESS and that port 28967 TCP+UDP is forwarded."
+            )
+        # An absent or unparseable lastPinged is deliberately silent: this is a
+        # bonus probe, and "cannot tell" must never read as "unreachable".
+
+        # Only the one value we have SEEN mean broken. "Refreshing" appears
+        # briefly at startup and warning on anything != OK would cry wolf.
+        if data.get("quicStatus") == "Misconfigured":
+            notes.append(
+                "QUIC is misconfigured: UDP on port 28967 is not reaching the node. "
+                "TCP transfers still work, but forward UDP 28967 too for full performance."
+            )
+        return " ".join(notes) or None
