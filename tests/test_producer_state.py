@@ -353,3 +353,66 @@ class TestItReadsTheShapeWorkersActuallySend:
     def test_an_unrelated_container_is_not_matched(self):
         other = [{"slug": "something-else", "status": "running", "_worker_id": 1}]
         assert self._call(other)["state"] == ps.UNKNOWN
+
+
+class TestStorjDialBackSignal:
+    """The Aug 2026 incident, pinned against the real catalog entry.
+
+    The node advertised a stale IP after a silent ISP re-provision; every
+    satellite dial-back timed out (~40x/hour for days) while the container
+    looked perfectly healthy. This signal is the product-side alarm for that
+    failure, so it is tested with the verbatim live log line, not a paraphrase.
+    """
+
+    LIVE_LINE = (
+        'ERROR contact:service ping satellite failed {"error": "ping satellite: '
+        "failed to dial storage node (ID: 12kxyHQJPtNG7svApvw8P62UrzPLZFJsafpv6N1CGFxgQ5W8Nx6) "
+        "at address 84.54.25.89:28967: rpc: tcp connector failed: rpc: dial tcp "
+        '84.54.25.89:28967: i/o timeout"}'
+    )
+
+    @staticmethod
+    def _signals():
+        from app.catalog import load_services
+
+        storj = next(s for s in load_services() if s.get("slug") == "storj")
+        return ps.signals_for(storj)
+
+    def test_the_catalog_declares_the_signal(self):
+        signals = self._signals()
+        assert signals, "storj declares no health_signals"
+        for signal in signals:
+            assert signal.get("pattern")
+            assert signal.get("means")
+            assert signal.get("state", "failing") in ("failing", "idle")
+
+    def test_the_live_incident_line_matches_and_reads_failing(self):
+        hits = ps.match_log_signals(self.LIVE_LINE, self._signals())
+        assert hits, "the verbatim incident line no longer matches any declared signal"
+        assert hits[0]["state"] == ps.FAILING
+        assert "ADDRESS" in hits[0]["means"], "the remedy must name the knob to check"
+
+    def test_the_mechanism_matches_regardless_of_the_underlying_cause(self):
+        # A refused connection is the same dial-back failure as a timeout; the
+        # pattern is anchored on the mechanism, not one error string.
+        refused = self.LIVE_LINE.replace("i/o timeout", "connect: connection refused")
+        assert ps.match_log_signals(refused, self._signals())
+
+    def test_a_successful_ping_does_not_match(self):
+        # Negative control sharing the words "ping satellite": only the failure
+        # form may fire, or every healthy node reads as failing.
+        ok = (
+            "INFO contact:service ping satellite succeeded "
+            '{"Satellite ID": "12EayRS2V1kEsWESU9QMRseFhdxYxKicsiFmxrsLZHeLUtdps3S"}'
+        )
+        assert ps.match_log_signals(ok, self._signals()) == []
+
+    def test_ordinary_healthy_logs_do_not_match(self):
+        healthy = (
+            "INFO Node 12kxyHQJPtNG7svApvw8P62UrzPLZFJsafpv6N1CGFxgQ5W8Nx6 started\n"
+            "INFO quic:endpoint QUIC endpoint is listening\n"
+            "INFO piecestore download started\n"
+            "INFO contact:chore Storagenode contact chore starting up\n"
+            "INFO bandwidth Persisting bandwidth usage cache to db\n"
+        )
+        assert ps.match_log_signals(healthy, self._signals()) == []

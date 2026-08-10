@@ -36,7 +36,7 @@ docker:
       label: "External address"
       required: true
       secret: false
-      description: "Your public IP or DDNS hostname with port (e.g. 84.54.27.229:28967). Port 28967 must be forwarded (TCP+UDP)"
+      description: "DDNS hostname with port (e.g. mynode.ddns.net:28967) -- strongly preferred over a literal IP, which strands the node the day your ISP silently re-provisions it. Port 28967 must be forwarded (TCP+UDP)"
     - key: STORAGE
       label: "Storage allocation"
       required: true
@@ -69,6 +69,22 @@ docker:
         the node and forfeits the held balance.
   command: "--operator.wallet-features=zksync-era"
   network_mode: ""
+  health_signals:
+    # Seen live (Aug 2026): ~40x/hour for days while the container looked
+    # perfectly healthy -- the node advertised a stale IP after an ISP
+    # re-provision, and every satellite dial-back timed out. The line is the
+    # node relaying the satellite's own error, so it names the MECHANISM
+    # (the network cannot dial the node back), not one cause: a refused
+    # connection or an unresolvable hostname produces the same match.
+    - pattern: "ping satellite.*failed to dial storage node"
+      means: >-
+        The Storj network cannot dial your node back at its advertised
+        ADDRESS, so satellites count it offline: new data stops arriving,
+        egress income stalls, and sustained offline time leads to suspension.
+        Check that ADDRESS matches your CURRENT public IP (use a DDNS
+        hostname, not a literal IP, so an ISP re-provision cannot strand the
+        node) and that port 28967 TCP+UDP is forwarded to this machine.
+      state: failing
   stop_timeout: 300
   setup: >
     Before first run, initialize the storage node config:

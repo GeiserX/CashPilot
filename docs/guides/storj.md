@@ -67,7 +67,7 @@ You need an Ethereum-compatible wallet address to receive STORJ token payouts. A
 In the CashPilot web UI, find **Storj** in the service catalog and click **Deploy**. You'll be asked for:
 - **Wallet address** — your ERC-20 wallet for payouts
 - **Email** — for operator notifications
-- **External address** — your public IP or DDNS hostname with port (e.g. `84.54.27.229:28967`)
+- **External address** — a DDNS hostname with port (e.g. `mynode.ddns.net:28967`). A literal public IP works until your ISP silently re-provisions it — from that day satellites dial a dead address and count the node offline while everything looks healthy locally
 - **Storage allocation** — how much disk space to offer (e.g. `2TB`)
 - **Identity path** — host directory where your identity files are stored
 - **Storage path** — host directory on a spinning disk (HDD) for storing data
@@ -85,13 +85,14 @@ CashPilot will handle the container creation with proper volume mounts.
 |----------|-------|:--------:|:------:|-------------|
 | `WALLET` | Wallet address | Yes | No | ERC-20 wallet address for STORJ token payouts (or zkSync) |
 | `EMAIL` | Email | Yes | No | Email address for operator notifications |
-| `ADDRESS` | External address | Yes | No | Public IP or DDNS hostname with port (e.g. mynode.ddns.net:28967) |
+| `ADDRESS` | External address | Yes | No | DDNS hostname with port (e.g. mynode.ddns.net:28967) — prefer over a literal IP |
 | `STORAGE` | Storage allocation | Yes | No | Maximum disk space to allocate (e.g. 2TB) (default: `1TB`) |
 | `IDENTITY_DIR` | Identity directory | Yes | No | Host path where identity files are stored (ca.cert, identity.cert, etc.) |
 | `STORAGE_DIR` | Storage directory | Yes | No | Host path on a spinning disk (HDD) for Storj data storage |
 
 ### Important Notes
 
+- **Use a DDNS hostname for `ADDRESS`, never a literal IP.** Satellites dial your node back at exactly the address it advertises. Residential ISPs re-provision public IPs without notice, and when that happens a node advertising the old literal IP is counted offline around the clock — container healthy, dashboard green, earnings from new data at zero — until someone notices the provider's offline emails. A dynamic-DNS hostname (DuckDNS, Cloudflare DDNS, your router's DDNS client) self-heals through an IP change. If satellites cannot reach the node, CashPilot's producer state for Storj reports it with the exact reason; you can also check yourself with `curl -s http://<server>:14002/api/sno/` (`lastPinged` stale or `quicStatus: "Misconfigured"` means unreachable).
 - **No signup required**: Storj nodes are permissionless since mid-2025. No auth token, no account creation.
 - **Escrow period**: First 9 months of operation have held-back escrow (75% of storage fees held, released gradually). This incentivizes long-term operation.
 - **One node per public IP**: Storj recommends one node per public IP for optimal satellite allocation. Nodes on the same /24 subnet share data allocation.
