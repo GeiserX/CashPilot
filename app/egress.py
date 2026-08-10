@@ -308,3 +308,126 @@ def running_slugs(worker: dict[str, Any] | None) -> set[str]:
     if isinstance(apps, list):
         found |= {container_slug(a) for a in apps if isinstance(a, dict) and a.get("running")}
     return found - {""}
+
+
+def advertised_host(value: Any) -> str | None:
+    """The host part of an advertised dial-back address ("host:port" or "host").
+
+    Returns None when there is nothing usable — empty, whitespace, or a bare
+    port. A ``[v6]:port`` bracket form yields the address inside the brackets.
+    None is "no claim", never "checked and fine".
+    """
+    text = str(value or "").strip()
+    if not text:
+        return None
+    if text.startswith("["):
+        host = text[1:].split("]", 1)[0].strip()
+        return host or None
+    # "host:" with nothing after the one colon is a typo, not part of the
+    # host — passing it through made the resolver report a confident NXDOMAIN
+    # ("the DNS record is broken") about a name that was never looked up.
+    # Only the single-colon form is stripped: "2001:db8::" is a valid bare
+    # IPv6 address whose trailing colons belong to it.
+    if text.endswith(":") and ":" not in text[:-1]:
+        text = text[:-1].strip()
+    if not text:
+        return None
+    head, sep, tail = text.rpartition(":")
+    if sep and head and tail.isdigit() and ":" not in head:
+        # Exactly one colon with digits after it is host:port. A digit tail
+        # after MORE colons is a bare IPv6 address, which stays whole.
+        return head
+    return text
+
+
+def advertised_address_verdict(
+    advertised: Any,
+    egress_ip: str | None,
+    resolved_ips: set[str] | None,
+) -> str | None:
+    """Reason string when the network appears to be dialling an address this
+    machine does not have. None is NO CLAIM — undetected egress, unparseable
+    input, or resolution unavailable — never a verdict of "fine".
+
+    ``resolved_ips`` follows the three-valued rule for a HOSTNAME:
+      - None       resolution was not attempted or failed transiently: no claim;
+      - empty set  the name definitively does not resolve: that IS a finding;
+      - non-empty  the addresses the name currently points at.
+    For an IP-literal host the verdict needs no resolution at all.
+
+    The comparison assumes the service's inbound port rides the same WAN as
+    the machine's default egress — true for every single-WAN host. An operator
+    who deliberately forwards through a second WAN gets a warning they can
+    read and dismiss; the message says which assumption produced it.
+    """
+    host = advertised_host(advertised)
+    if not host or egress_ip is None:
+        return None
+
+    try:
+        literal = ipaddress.ip_address(host)
+    except ValueError:
+        literal = None
+
+    try:
+        egress_version = ipaddress.ip_address(egress_ip).version
+    except ValueError:
+        return None
+
+    if literal is not None:
+        if public_ip(host) is None:
+            return (
+                f"This service advertises {host}, a private address the network cannot dial back. "
+                "Set the advertised address to your public DDNS hostname (preferred) or public IP."
+            )
+        if literal.version != egress_version:
+            # A v4 literal against a v6 egress reading (or vice versa) says
+            # nothing about staleness — the detection endpoints are dual-stack,
+            # so the two readings can legitimately be different families.
+            # Comparing across them fabricated exactly the false "your address
+            # is stale" this module promises never to produce.
+            return None
+        if public_ip(host) != egress_ip:
+            return (
+                f"This service advertises {host}, but this machine's current public IP is {egress_ip} — "
+                "the network is dialling an address this machine no longer has (a silent ISP re-provision "
+                "does exactly this). Update the advertised address, and prefer a DDNS hostname so the next "
+                "IP change heals itself. If this machine's IP changed within the last hour, this can also "
+                "be a stale reading that clears itself. If you deliberately forward this service through a "
+                "different WAN than this machine's default egress, this comparison does not apply."
+            )
+        return None
+
+    if resolved_ips is None:
+        return None
+    if not resolved_ips:
+        return (
+            f"This service advertises the hostname {host}, which does not resolve at all — "
+            "the network cannot even look it up. Check the DNS record (did the DDNS updater stop?)."
+        )
+
+    def _version(ip: str) -> int | None:
+        try:
+            return ipaddress.ip_address(ip).version
+        except ValueError:
+            return None
+
+    same_family = {ip for ip in resolved_ips if _version(ip) == egress_version}
+    if not same_family:
+        # The name only has records of the other family — nothing comparable,
+        # so no claim (a v6-only DDNS name against a v4 egress is not stale).
+        return None
+    if egress_ip not in same_family:
+        # Echo only PUBLIC addresses back: resolved IPs originate from a
+        # worker-supplied name, and repeating a private answer would let a
+        # rogue worker read the hub's internal DNS view out of this message.
+        public_resolved = sorted(ip for ip in same_family if public_ip(ip))
+        shown = ", ".join(public_resolved[:3]) or "only non-public addresses"
+        return (
+            f"This service advertises {host}, which resolves to {shown}, but this machine's current "
+            f"public IP is {egress_ip} — the network is dialling an address this machine does not have. "
+            "If the IP just changed, a DDNS updater may simply be lagging and this clears itself; if it "
+            "persists, fix the record. If you deliberately forward this service through a different WAN "
+            "than this machine's default egress, this comparison does not apply."
+        )
+    return None

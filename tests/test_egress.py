@@ -728,3 +728,156 @@ class TestTheHeartbeatSurvivesABadCycle:
                 break
         task.cancel()
         assert len(calls) >= 3, "the loop stopped after the first exception"
+
+
+class TestAdvertisedHost:
+    """Parsing the host out of an advertised dial-back address."""
+
+    @pytest.mark.parametrize(
+        ("raw", "host"),
+        [
+            ("84.54.25.89:28967", "84.54.25.89"),
+            ("mynode.ddns.net:28967", "mynode.ddns.net"),
+            ("mynode.ddns.net", "mynode.ddns.net"),
+            ("[2001:db8::1]:28967", "2001:db8::1"),
+            ("2001:db8::1", "2001:db8::1"),
+            ("  host:1  ", "host"),
+        ],
+    )
+    def test_host_is_extracted(self, raw, host):
+        assert egress.advertised_host(raw) == host
+
+    @pytest.mark.parametrize("raw", ["", "   ", None, "[]:28967"])
+    def test_nothing_usable_is_none(self, raw):
+        assert egress.advertised_host(raw) is None
+
+
+class TestAdvertisedAddressVerdict:
+    """The Aug 2026 storj incident, as a decision table.
+
+    The node advertised a stale literal IP after a silent ISP re-provision;
+    satellites dialled a dead address for days while the container looked
+    healthy. The verdict's job is to catch exactly that — and its NO-CLAIM
+    rows matter as much as its findings, because a wrong "your address is
+    stale" sends the operator to fix DNS that is fine.
+    """
+
+    EGRESS = "213.217.28.154"
+
+    def test_the_incident_a_stale_literal_ip_is_a_finding(self):
+        reason = egress.advertised_address_verdict("84.54.25.89:28967", self.EGRESS, None)
+        assert reason and "84.54.25.89" in reason and self.EGRESS in reason
+
+    def test_a_literal_matching_the_egress_is_no_finding(self):
+        assert egress.advertised_address_verdict(f"{self.EGRESS}:28967", self.EGRESS, None) is None
+
+    def test_a_private_literal_is_a_finding_without_any_egress_comparison(self):
+        reason = egress.advertised_address_verdict("192.168.10.100:28967", self.EGRESS, None)
+        assert reason and "private" in reason
+
+    def test_a_hostname_resolving_to_the_egress_is_no_finding(self):
+        assert egress.advertised_address_verdict("node.example.org:28967", self.EGRESS, {self.EGRESS}) is None
+
+    def test_a_hostname_resolving_elsewhere_is_a_finding(self):
+        reason = egress.advertised_address_verdict("node.example.org:28967", self.EGRESS, {"84.54.25.89"})
+        assert reason and "node.example.org" in reason and "84.54.25.89" in reason
+
+    def test_a_name_that_definitively_does_not_resolve_is_a_finding(self):
+        reason = egress.advertised_address_verdict("gone.example.org:28967", self.EGRESS, set())
+        assert reason and "does not resolve" in reason
+
+    # -- the no-claim rows: silence must mean "cannot tell", never "fine" -----
+
+    def test_transient_resolution_failure_is_no_claim(self):
+        assert egress.advertised_address_verdict("node.example.org:28967", self.EGRESS, None) is None
+
+    def test_undetected_egress_is_no_claim_even_for_a_wrong_literal(self):
+        # Negative control: the strongest possible finding input must still be
+        # silent when the machine's own egress is unknown.
+        assert egress.advertised_address_verdict("84.54.25.89:28967", None, None) is None
+
+    def test_no_advertised_address_is_no_claim(self):
+        assert egress.advertised_address_verdict(None, self.EGRESS, {"1.2.3.4"}) is None
+        assert egress.advertised_address_verdict("", self.EGRESS, {"1.2.3.4"}) is None
+
+
+class TestAdvertisedAddressCatalog:
+    """The schema key is only useful if it names an env var that exists."""
+
+    def test_storj_declares_its_dial_back_env(self):
+        from app.catalog import load_services
+
+        storj = next(s for s in load_services() if s.get("slug") == "storj")
+        assert (storj.get("docker") or {}).get("advertised_address_env") == "ADDRESS"
+
+    def test_every_declared_address_env_exists_in_that_services_env_list(self):
+        # A typo here would make the worker look up an env var that is never
+        # set, silently reporting nothing — the same failure mode this whole
+        # feature exists to end.
+        from app.catalog import load_services
+
+        for svc in load_services():
+            docker = svc.get("docker") or {}
+            var = docker.get("advertised_address_env")
+            if not var:
+                continue
+            keys = {e.get("key") for e in (docker.get("env") or [])}
+            assert var in keys, f"{svc.get('slug')}: advertised_address_env={var!r} names no declared env var"
+
+
+class TestAdvertisedAddressVerdictFamilies:
+    """Cross-family comparisons must be silence, not fabricated staleness.
+
+    The egress detection endpoints are dual-stack, so a v6 egress reading
+    against a v4 advertised address is a legitimate state of the world —
+    comparing across families produced a confident wrong finding.
+    """
+
+    V6_EGRESS = "2001:db8::1234"
+
+    def test_a_v4_literal_against_a_v6_egress_is_no_claim(self):
+        assert egress.advertised_address_verdict("84.54.25.89:28967", self.V6_EGRESS, None) is None
+
+    def test_a_v6_only_name_against_a_v4_egress_is_no_claim(self):
+        assert egress.advertised_address_verdict("node.example.org:28967", "213.217.28.154", {"2001:db8::9"}) is None
+
+    def test_mixed_records_compare_within_the_egress_family(self):
+        # The v6 record is noise; the v4 one matches the v4 egress: no finding.
+        resolved = {"213.217.28.154", "2001:db8::9"}
+        assert egress.advertised_address_verdict("node.example.org:28967", "213.217.28.154", resolved) is None
+        # And a v4 mismatch still fires even with a v6 record alongside.
+        assert egress.advertised_address_verdict(
+            "node.example.org:28967", "213.217.28.154", {"84.54.25.89", "2001:db8::9"}
+        )
+
+    def test_private_resolved_addresses_are_not_echoed_back(self):
+        # resolved IPs originate from a worker-supplied name; repeating a
+        # private answer would leak the hub's internal DNS view.
+        reason = egress.advertised_address_verdict("intra.example.org:28967", "213.217.28.154", {"192.168.10.100"})
+        assert reason and "192.168.10.100" not in reason and "non-public" in reason
+
+
+class TestAdvertisedHostTrailingColon:
+    def test_a_dangling_colon_is_a_typo_not_part_of_the_host(self):
+        # It used to fall through whole and earn a confident "does not
+        # resolve at all" about a name that was never looked up.
+        assert egress.advertised_host("node.example.org:") == "node.example.org"
+
+    def test_a_bare_v6_keeps_its_trailing_colons(self):
+        assert egress.advertised_host("2001:db8::") == "2001:db8::"
+
+
+class TestAdvertisedAddressNeverNamesASecret:
+    def test_no_declared_address_env_is_secret_flagged(self):
+        # The worker exports the declared var's VALUE into heartbeats; a
+        # secret-flagged var here would ship a credential to the hub in clear.
+        from app.catalog import load_services
+
+        for svc in load_services():
+            docker = svc.get("docker") or {}
+            var = docker.get("advertised_address_env")
+            if not var:
+                continue
+            declared = next((e for e in docker.get("env") or [] if e.get("key") == var), None)
+            assert declared is not None
+            assert not declared.get("secret"), f"{svc.get('slug')}: advertised_address_env names a SECRET env var"

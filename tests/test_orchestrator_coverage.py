@@ -383,3 +383,128 @@ class TestGetStatusLight:
         ):
             results = orchestrator.get_status_light()
         assert len(results) == 1
+
+
+class TestAdvertisedAddressExtraction:
+    """The worker reads ONE declared env var into the heartbeat — never more.
+
+    Container env holds credentials (wallets, API keys), so the security
+    property under test is as important as the feature: only the variable the
+    catalog declares may ever leave the container inspect.
+    """
+
+    def _container(self, env):
+        c = MagicMock()
+        c.id = "cid123"
+        c.client.api.inspect_container.return_value = {"Config": {"Env": env}}
+        return c
+
+    def test_the_declared_var_is_extracted(self):
+        with patch.object(orchestrator, "get_service", return_value={"docker": {"advertised_address_env": "ADDRESS"}}):
+            value = orchestrator._advertised_address(
+                self._container(["WALLET=0xdeadbeef", "ADDRESS=storj.example.org:28967"]), "storj"
+            )
+        assert value == "storj.example.org:28967"
+
+    def test_an_undeclared_service_never_even_inspects(self):
+        c = self._container(["ADDRESS=whatever:1"])
+        with patch.object(orchestrator, "get_service", return_value={"docker": {}}):
+            assert orchestrator._advertised_address(c, "honeygain") is None
+        c.client.api.inspect_container.assert_not_called()
+
+    def test_an_unset_declared_var_is_none_not_empty(self):
+        with patch.object(orchestrator, "get_service", return_value={"docker": {"advertised_address_env": "ADDRESS"}}):
+            assert orchestrator._advertised_address(self._container(["WALLET=0xdeadbeef"]), "storj") is None
+
+    def test_an_inspect_failure_is_none_not_a_crash(self):
+        c = self._container([])
+        c.client.api.inspect_container.side_effect = RuntimeError("daemon hiccup")
+        with patch.object(orchestrator, "get_service", return_value={"docker": {"advertised_address_env": "ADDRESS"}}):
+            assert orchestrator._advertised_address(c, "storj") is None
+
+    def test_an_unknown_service_is_none(self):
+        with patch.object(orchestrator, "get_service", return_value=None):
+            assert orchestrator._advertised_address(self._container(["ADDRESS=x:1"]), "ghost") is None
+
+
+class TestStatusCarriesAdvertisedAddress:
+    """get_status_light forwards the field — and omits it when undeclared."""
+
+    def _labeled(self, slug, env):
+        c = MagicMock()
+        c.id = f"id-{slug}"
+        c.short_id = f"id-{slug}"[:10]
+        c.name = f"cashpilot-{slug}"
+        c.status = "running"
+        c.labels = {"cashpilot.managed": "true", "cashpilot.service": slug}
+        c.image.tags = ["img:1"]
+        c.attrs = {"Created": "2026-08-10"}
+        c.client.api.inspect_container.return_value = {"Config": {"Env": env}}
+        return c
+
+    def _entries(self, container, service):
+        client = MagicMock()
+        client.containers.list.return_value = [container]
+        with (
+            patch.object(orchestrator, "_get_client", return_value=client),
+            patch.object(orchestrator, "_build_image_slug_map", return_value={}),
+            patch.object(orchestrator, "get_service", return_value=service),
+        ):
+            return orchestrator.get_status_light()
+
+    def test_a_declaring_service_reports_its_address(self):
+        entries = self._entries(
+            self._labeled("storj", ["ADDRESS=node.example.org:28967", "WALLET=0xdeadbeef"]),
+            {"docker": {"advertised_address_env": "ADDRESS"}},
+        )
+        assert entries[0]["advertised_address"] == "node.example.org:28967"
+        # The security property: nothing else from the env may ride along.
+        assert "0xdeadbeef" not in str(entries[0])
+
+    def test_an_undeclared_service_has_no_key_at_all(self):
+        # Absent, not None: the key's absence is "nothing to say".
+        entries = self._entries(self._labeled("honeygain", ["EMAIL=a@b.c"]), {"docker": {}})
+        assert "advertised_address" not in entries[0]
+
+
+class TestAdvertisedAddressSecretBackstop:
+    def test_a_secret_flagged_var_is_refused_even_when_declared(self):
+        # Runtime backstop: a catalog edit pointing advertised_address_env at
+        # a credential must not export it into every heartbeat.
+        c = MagicMock()
+        c.id = "cid"
+        c.client.api.inspect_container.return_value = {"Config": {"Env": ["TOKEN=supersecret"]}}
+        service = {
+            "docker": {
+                "advertised_address_env": "TOKEN",
+                "env": [{"key": "TOKEN", "secret": True}],
+            }
+        }
+        with patch.object(orchestrator, "get_service", return_value=service):
+            assert orchestrator._advertised_address(c, "shady") is None
+        c.client.api.inspect_container.assert_not_called()
+
+
+class TestExternalContainersCarryAdvertisedAddress:
+    def test_an_image_matched_external_node_is_not_a_blind_spot(self):
+        # Running a storagenode BEFORE installing CashPilot is the common storj
+        # adoption path; the address check must cover those containers too.
+        c = MagicMock()
+        c.id = "ext1"
+        c.short_id = "ext1"
+        c.name = "storagenode"
+        c.status = "running"
+        c.labels = {}
+        c.image.tags = ["storjlabs/storagenode:latest"]
+        c.attrs = {"Created": "2026-08-10"}
+        c.client.api.inspect_container.return_value = {"Config": {"Env": ["ADDRESS=node.example.org:28967"]}}
+        client = MagicMock()
+        client.containers.list.side_effect = [[], [c]]  # no labeled, one external
+        with (
+            patch.object(orchestrator, "_get_client", return_value=client),
+            patch.object(orchestrator, "_build_image_slug_map", return_value={"storjlabs/storagenode": "storj"}),
+            patch.object(orchestrator, "get_service", return_value={"docker": {"advertised_address_env": "ADDRESS"}}),
+        ):
+            entries = orchestrator.get_status_light()
+        assert entries and entries[0]["deployed_by"] == "external"
+        assert entries[0]["advertised_address"] == "node.example.org:28967"

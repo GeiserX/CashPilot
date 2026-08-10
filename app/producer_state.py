@@ -88,6 +88,7 @@ def assess(
     log_hits: list[dict[str, str]] | None = None,
     container_running: bool | None = True,
     traffic: str | None = None,
+    address_mismatch: str | None = None,
 ) -> dict[str, Any]:
     """Combine the available signals into one producer state.
 
@@ -125,6 +126,17 @@ def assess(
         state = hit["state"] if hit["state"] in _RANK else FAILING
         candidates.append(state)
         reasons.append(hit["means"])
+
+    # The network dialling an address this machine does not have (a stale
+    # advertised IP after an ISP re-provision) starves a dial-back service of
+    # ALL inbound work while the container looks perfectly healthy — and
+    # earnings can keep ticking from held/storage components, so this must be
+    # able to outrank PRODUCING exactly like a failing log signal does. The
+    # caller computed the reason (egress.advertised_address_verdict); None
+    # means no claim, never "checked and fine".
+    if address_mismatch:
+        candidates.append(FAILING)
+        reasons.append(address_mismatch)
 
     if earned_recently is True:
         candidates.append(PRODUCING)
