@@ -128,6 +128,18 @@ def _service_to_compose(
     if command:
         compose_svc["command"] = _escape_interpolation(command)
 
+    # Durable resource limits. Compose accepts these as top-level service keys
+    # under the same names the catalog uses; dropping them exported a container
+    # WITHOUT its memory ceiling, OOM bias or CPU weight — silently less
+    # protected than the same service deployed by the worker (CashPilot-65q4).
+    # Only keys the catalog actually sets are emitted; absent stays absent.
+    resources = docker_conf.get("resources") or {}
+    if isinstance(resources, dict):
+        for key in ("mem_limit", "mem_reservation", "cpu_shares", "oom_score_adj"):
+            value = resources.get(key)
+            if value is not None:
+                compose_svc[key] = value
+
     return compose_svc
 
 
