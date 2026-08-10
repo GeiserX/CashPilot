@@ -310,7 +310,13 @@ class TestApiDeploy:
                 },
             )
             assert resp.status_code == 200, resp.text
-            assert captured["spec"]["resources"] == {"mem_limit": "2g", "oom_score_adj": -100}
+            assert captured["spec"]["resources"] == {
+                "mem_limit": "2g",
+                "oom_score_adj": -100,
+                # 4096, not 2048: older runc maps shares below ~2600 UNDER the
+                # unset cgroup-v2 default weight — see _schema.yml.
+                "cpu_shares": 4096,
+            }
 
 
 # ---------------------------------------------------------------------------

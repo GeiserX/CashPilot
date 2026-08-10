@@ -777,11 +777,15 @@ class ResourceSpec(BaseModel):
 
     mem_limit / mem_reservation follow Docker's size syntax ("768m", "2g");
     oom_score_adj biases the kernel OOM killer (-1000 = sacrificed last).
+    cpu_shares is a *relative* weight (Docker's default is 1024) that only
+    takes effect while the host is contended, so it protects a latency-
+    sensitive earner from noisy neighbours without capping it on an idle box.
     """
 
     mem_limit: str | None = None
     mem_reservation: str | None = None
     oom_score_adj: int | None = None
+    cpu_shares: int | None = None
 
 
 class DeploySpec(BaseModel):
@@ -1071,6 +1075,17 @@ def _validate_resources(resources: ResourceSpec | None) -> None:
         raise HTTPException(
             status_code=400,
             detail=f"Invalid oom_score_adj '{resources.oom_score_adj}': must be between -1000 and 1000",
+        )
+    # 2..262144 is the kernel's cpu.shares range (MIN_SHARES..MAX_SHARES);
+    # Docker documents no bound of its own, and daemons vary at the edges
+    # (0 means "use the default", modern ones clamp out-of-range values rather
+    # than erroring). The guard rejects everything outside the kernel range —
+    # including 0, where OMITTING the key is the honest spelling of "default" —
+    # because a 400 is actionable where a silently clamped weight is not.
+    if resources.cpu_shares is not None and not (2 <= resources.cpu_shares <= 262144):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid cpu_shares '{resources.cpu_shares}': must be between 2 and 262144 (Docker's default is 1024)",
         )
 
 

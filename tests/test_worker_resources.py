@@ -2,10 +2,12 @@
 
 Covers:
   * DeploySpec / ResourceSpec validation (valid + invalid mem_limit,
-    mem_reservation, oom_score_adj).
+    mem_reservation, oom_score_adj, cpu_shares).
   * orchestrator.deploy_raw forwarding mem_limit / mem_reservation /
-    oom_score_adj to containers.run() only when set.
+    oom_score_adj / cpu_shares to containers.run() only when set.
   * The worker /deploy endpoint threading resources through to deploy_raw.
+  * Every catalog YAML's docker.resources block validating against the same
+    rules the worker enforces, with only documented keys.
 """
 
 import os
@@ -69,6 +71,19 @@ class TestResourceValidation:
             _validate_resources(ResourceSpec(oom_score_adj=bad))
         assert ei.value.status_code == 400
 
+    @pytest.mark.parametrize("good", [2, 1024, 2048, 262144])
+    def test_valid_cpu_shares_accepted(self, good):
+        _validate_resources(ResourceSpec(cpu_shares=good))
+
+    @pytest.mark.parametrize("bad", [0, 1, -1, -1024, 262145])
+    def test_cpu_shares_out_of_range_rejected(self, bad):
+        # 0 and 1 are rejected deliberately: Docker reads 0 as "default" and
+        # refuses 1 outright, so accepting either would silently not apply the
+        # weight the operator asked for.
+        with pytest.raises(HTTPException) as ei:
+            _validate_resources(ResourceSpec(cpu_shares=bad))
+        assert ei.value.status_code == 400
+
     @pytest.mark.parametrize("good", [-1000, -100, 0, 200, 300, 1000])
     def test_oom_in_range_accepted(self, good):
         _validate_resources(ResourceSpec(oom_score_adj=good))
@@ -123,6 +138,28 @@ class TestDeployRawResources:
         # None-valued fields are dropped, never forwarded as None.
         assert "oom_score_adj" not in kwargs
 
+    def test_forwards_cpu_shares(self):
+        client = self._mock_client()
+        with patch.object(orchestrator, "_get_client", return_value=client):
+            orchestrator.deploy_raw(
+                slug="storj",
+                image="img",
+                resources=ResourceSpec(mem_limit="2g", oom_score_adj=-100, cpu_shares=2048),
+            )
+        kwargs = client.containers.run.call_args.kwargs
+        assert kwargs["cpu_shares"] == 2048
+        assert kwargs["mem_limit"] == "2g"
+
+    def test_forwards_cpu_shares_from_catalog_dict(self):
+        # No production caller passes a dict today (the worker always builds a
+        # ResourceSpec), but _normalize_resources deliberately accepts one, so
+        # pin that tolerance. NOTE: the dict path skips _validate_resources —
+        # any future caller taking this shortcut must validate first.
+        client = self._mock_client()
+        with patch.object(orchestrator, "_get_client", return_value=client):
+            orchestrator.deploy_raw(slug="storj", image="img", resources={"cpu_shares": 2048})
+        assert client.containers.run.call_args.kwargs["cpu_shares"] == 2048
+
     def test_omits_resource_kwargs_when_unset(self):
         client = self._mock_client()
         with patch.object(orchestrator, "_get_client", return_value=client):
@@ -130,6 +167,7 @@ class TestDeployRawResources:
         kwargs = client.containers.run.call_args.kwargs
         assert "mem_limit" not in kwargs
         assert "mem_reservation" not in kwargs
+        assert "cpu_shares" not in kwargs
         assert "oom_score_adj" not in kwargs
 
     def test_forwards_container_spec(self):
@@ -277,6 +315,86 @@ class TestWorkerDeployEndpoint:
             headers=self._auth(),
         )
         assert resp.status_code == 400
+
+    def test_endpoint_rejects_invalid_cpu_shares(self):
+        # Proves the shared validator is actually reached on the wire for the
+        # new key, like the oom/mem siblings above — not just at unit level.
+        resp = self._client().post(
+            "/api/containers/storj/deploy",
+            json={"image": "img", "resources": {"cpu_shares": 1}},
+            headers=self._auth(),
+        )
+        assert resp.status_code == 400
+
+
+class TestCatalogResourceBlocksAreValid:
+    """Every docker.resources block in the real catalog must be deployable.
+
+    Nothing else validates these at load time: an undocumented key (a typo like
+    `cpushares`) is silently ignored by Pydantic's default extra="ignore", so
+    the YAML looks correct, CI stays green, and the limit the author asked for
+    never reaches Docker. Same failure mode — and same guard pattern — as the
+    collector-key allowlist in test_beads_batch_24.py.
+    """
+
+    # Derived, not hardcoded: ResourceSpec is what actually decides whether a
+    # key is honored, so a hand-copied set here could drift and prove nothing.
+    # The schema-agreement test below covers the documentation side.
+    DOCUMENTED_RESOURCE_KEYS = frozenset(ResourceSpec.model_fields)
+
+    @staticmethod
+    def _resource_blocks():
+        # The production loader, not a reimplemented walk: it reads both .yml
+        # and .yaml, so a service added under either extension stays guarded.
+        from app.catalog import load_services
+
+        return {
+            svc.get("slug"): resources
+            for svc in load_services()
+            if (resources := (svc.get("docker") or {}).get("resources"))
+        }
+
+    def test_the_catalog_carries_resource_blocks_at_all(self):
+        # Negative control for the two tests below: if the loader breaks and
+        # returns nothing, they would pass vacuously while checking nothing.
+        assert self._resource_blocks(), "no docker.resources block found in any service YAML"
+
+    def test_every_resource_key_is_one_the_schema_documents(self):
+        offenders = {
+            slug: sorted(set(res) - self.DOCUMENTED_RESOURCE_KEYS)
+            for slug, res in self._resource_blocks().items()
+            if set(res) - self.DOCUMENTED_RESOURCE_KEYS
+        }
+        assert not offenders, f"undocumented resource keys are silently ignored, never applied: {offenders}"
+
+    def test_every_resource_block_passes_worker_validation(self):
+        # The worker 400s an out-of-range value at deploy time; a catalog that
+        # ships one turns every operator's first deploy into that 400.
+        for slug, res in self._resource_blocks().items():
+            try:
+                _validate_resources(ResourceSpec(**res))
+            except HTTPException as exc:
+                pytest.fail(f"{slug}: catalog resources would be rejected at deploy: {exc.detail}")
+
+    def test_every_honored_key_is_documented_in_the_schema(self):
+        # Guards the guard from the other side: the allowlist above is derived
+        # from ResourceSpec (what the worker honors), and this ties each of
+        # those keys back to _schema.yml (what authors read). If they disagree,
+        # either the schema teaches a key nothing applies, or the worker
+        # honors a key nobody can discover.
+        #
+        # _schema.yml is documentation written entirely in comments — there is
+        # no YAML structure to parse (safe_load returns None) — so the check
+        # anchors on a commented MAPPING KEY (`#   cpu_shares:`), which a stray
+        # mention in prose cannot satisfy.
+        import pathlib
+        import re
+
+        schema = (pathlib.Path(__file__).resolve().parents[1] / "services" / "_schema.yml").read_text(encoding="utf-8")
+        for key in self.DOCUMENTED_RESOURCE_KEYS:
+            assert re.search(rf"^#\s*{re.escape(key)}:", schema, re.MULTILINE), (
+                f"{key} is honored by ResourceSpec but not documented as a key in services/_schema.yml"
+            )
 
 
 class TestPidsLimitParsing:
