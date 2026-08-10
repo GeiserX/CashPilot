@@ -382,11 +382,19 @@ class TestCatalogResourceBlocksAreValid:
         # those keys back to _schema.yml (what authors read). If they disagree,
         # either the schema teaches a key nothing applies, or the worker
         # honors a key nobody can discover.
+        #
+        # _schema.yml is documentation written entirely in comments — there is
+        # no YAML structure to parse (safe_load returns None) — so the check
+        # anchors on a commented MAPPING KEY (`#   cpu_shares:`), which a stray
+        # mention in prose cannot satisfy.
         import pathlib
+        import re
 
         schema = (pathlib.Path(__file__).resolve().parents[1] / "services" / "_schema.yml").read_text(encoding="utf-8")
         for key in self.DOCUMENTED_RESOURCE_KEYS:
-            assert key in schema, f"{key} is honored by ResourceSpec but undocumented in services/_schema.yml"
+            assert re.search(rf"^#\s*{re.escape(key)}:", schema, re.MULTILINE), (
+                f"{key} is honored by ResourceSpec but not documented as a key in services/_schema.yml"
+            )
 
 
 class TestPidsLimitParsing:
