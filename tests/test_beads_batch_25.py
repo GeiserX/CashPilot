@@ -171,3 +171,87 @@ class TestTheBellRendersANoteRatherThanAFault:
         js = self._js()
         assert "WARNING_ICON" in js
         assert "openCredentialModal" in js
+
+
+class TestANoticeReachesTheOutOfBandChannel:
+    """CashPilot-vb78: a notice only ever reached the bell.
+
+    The bell is read by whoever happens to open the UI, and "nobody looked for
+    days" is the incident the reachability notice comes from. A notice now gets
+    the same once-per-window dedupe and push that errors get, and a warning-free
+    success clears the stored row so the NEXT warning pushes again.
+    """
+
+    async def _collect(self, result, record_returns=True, prior_alerts=None):
+        from unittest.mock import MagicMock
+
+        from app import main
+        from app.collectors.base import EarningsResult
+
+        assert isinstance(result, EarningsResult)
+        record_alert = AsyncMock(return_value=record_returns)
+        clear_alerts = AsyncMock()
+        send = MagicMock(side_effect=lambda *a, **k: AsyncMock()())
+
+        with (
+            patch.object(main.database, "get_deployments", AsyncMock(return_value=[{"slug": "storj"}])),
+            patch.object(main.database, "get_config", AsyncMock(return_value={})),
+            patch.object(main.database, "upsert_earnings", AsyncMock()),
+            patch.object(main.database, "record_alert", record_alert),
+            patch.object(main.database, "clear_alerts", clear_alerts),
+            patch.object(main.database, "list_alerts", AsyncMock(return_value=[])),
+            patch.object(main, "_detect_payout", AsyncMock(return_value=None)),
+            patch.object(main, "_flatline_check", AsyncMock(return_value=[])),
+            patch.object(main, "_pending_payout_alerts", AsyncMock(return_value=[])),
+            patch.object(main, "_collect_bounded", AsyncMock(return_value=result)),
+            patch.object(main, "_collector_alerts", list(prior_alerts or [])),
+            patch.object(main.notify, "send", send),
+            patch("app.collectors.make_collectors", lambda deployments, config: [object()]),
+            patch("app.collectors._close_stale", AsyncMock()),
+            patch.object(main, "_spawn", lambda coro: coro.close()),
+        ):
+            await main._run_collection()
+        return record_alert, clear_alerts, send
+
+    @pytest.mark.asyncio
+    async def test_a_fresh_notice_is_pushed_once(self):
+        from app.collectors.base import EarningsResult
+
+        record_alert, _, send = await self._collect(
+            EarningsResult(platform="storj", balance=1.0, warning="satellites cannot reach this node")
+        )
+        record_alert.assert_awaited_once_with("notice", "storj", "satellites cannot reach this node")
+        assert send.called and send.call_args.kwargs.get("kind") == "notice"
+        assert "storj" in send.call_args.args[0]
+
+    @pytest.mark.asyncio
+    async def test_a_deduped_notice_is_not_pushed_again(self):
+        # Negative control: within the window record_alert says False and the
+        # push must stay silent — a node broken for a week must not notify
+        # every single hour.
+        from app.collectors.base import EarningsResult
+
+        _, _, send = await self._collect(
+            EarningsResult(platform="storj", balance=1.0, warning="still unreachable"), record_returns=False
+        )
+        assert not send.called
+
+    @pytest.mark.asyncio
+    async def test_a_warning_free_success_clears_the_stored_notice(self):
+        from app.collectors.base import EarningsResult
+
+        _, clear_alerts, send = await self._collect(
+            EarningsResult(platform="storj", balance=1.0),
+            prior_alerts=[{"kind": "notice", "platform": "storj", "error": "was unreachable"}],
+        )
+        clear_alerts.assert_any_await("notice", "storj")
+        assert not send.called
+
+    @pytest.mark.asyncio
+    async def test_a_success_with_no_prior_notice_clears_nothing(self):
+        # Negative control: no stored notice, nothing to clear.
+        from app.collectors.base import EarningsResult
+
+        _, clear_alerts, _ = await self._collect(EarningsResult(platform="storj", balance=1.0))
+        for call in clear_alerts.await_args_list:
+            assert call.args[:1] != ("notice",), "cleared a notice that never existed"
