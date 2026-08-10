@@ -2713,7 +2713,12 @@ async def _advertised_address_mismatch(matches: list[dict[str, Any]], worker_id:
             if not _HOSTNAME_RE.fullmatch(host):
                 return None
             resolved = await _resolve_advertised_host(host)
-    return egress.advertised_address_verdict(reported["advertised_address"], egress_ip, resolved)
+    reason = egress.advertised_address_verdict(reported["advertised_address"], egress_ip, resolved)
+    # Name the node: on a fleet the bare reason says "this machine" with no
+    # way to tell WHICH machine, which is a finding nobody can act on.
+    if reason and (node := reported.get("_node")):
+        return f"On {node}: {reason}"
+    return reason
 
 
 #: host -> (monotonic stamp, result). One entry per advertised hostname (one
@@ -2723,6 +2728,9 @@ async def _advertised_address_mismatch(matches: list[dict[str, Any]], worker_id:
 #: OS resolver timeout.
 _RESOLVE_CACHE: dict[str, tuple[float, set[str] | None]] = {}
 _RESOLVE_CACHE_TTL = 60.0
+#: The keys are worker-supplied hostnames, so the table must be bounded: a
+#: worker rotating its advertised address must not grow hub memory forever.
+_RESOLVE_CACHE_MAX = 256
 
 
 async def _resolve_advertised_host(host: str) -> set[str] | None:
@@ -2749,7 +2757,14 @@ async def _resolve_advertised_host(host: str) -> set[str] | None:
         result = set() if exc.errno in definitive else None
     except (TimeoutError, OSError, UnicodeError):
         result = None
-    _RESOLVE_CACHE[host] = (time.monotonic(), result)
+    now = time.monotonic()
+    # Purge expired entries on every write, then cap: without eviction each
+    # distinct worker-supplied name would be a permanent key.
+    for stale in [k for k, (stamp, _) in _RESOLVE_CACHE.items() if now - stamp >= _RESOLVE_CACHE_TTL]:
+        del _RESOLVE_CACHE[stale]
+    while len(_RESOLVE_CACHE) >= _RESOLVE_CACHE_MAX:
+        del _RESOLVE_CACHE[min(_RESOLVE_CACHE, key=lambda k: _RESOLVE_CACHE[k][0])]
+    _RESOLVE_CACHE[host] = (now, result)
     return result
 
 

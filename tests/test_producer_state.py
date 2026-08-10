@@ -521,8 +521,12 @@ class TestResolveAdvertisedHost:
         from app import main
 
         async def go():
+            # A fixed host with an explicit cache clear: keying on id() looked
+            # unique but CPython reuses ids, so two tests could share a cache
+            # entry inside the TTL and read each other's result.
+            main._RESOLVE_CACHE.clear()
             with patch.object(main.asyncio, "wait_for", AsyncMock(side_effect=side_effect)):
-                return await main._resolve_advertised_host(f"host-{id(side_effect)}.example.org")
+                return await main._resolve_advertised_host("host.example.org")
 
         return asyncio.run(go())
 
@@ -584,3 +588,58 @@ class TestAdvertisedMismatchFiltering:
     def test_a_garbage_hostname_is_rejected_before_any_resolution(self):
         weird = [{"slug": "storj", "status": "running", "advertised_address": "not a hostname!:1", "_worker_id": 1}]
         assert self._run(weird) is None
+
+
+class TestResolveCacheBounds:
+    def test_expired_entries_are_purged_and_the_table_is_capped(self):
+        # The keys are worker-supplied hostnames: without eviction each
+        # distinct name would be a permanent key in hub memory.
+        import asyncio
+        import time as _time
+        from unittest.mock import AsyncMock, patch
+
+        from app import main
+
+        async def go():
+            main._RESOLVE_CACHE.clear()
+            stale_stamp = _time.monotonic() - main._RESOLVE_CACHE_TTL - 1
+            main._RESOLVE_CACHE["old.example.org"] = (stale_stamp, {"1.2.3.4"})
+            for i in range(main._RESOLVE_CACHE_MAX):
+                main._RESOLVE_CACHE[f"h{i}.example.org"] = (_time.monotonic(), None)
+            with patch.object(main.asyncio, "wait_for", AsyncMock(side_effect=TimeoutError())):
+                await main._resolve_advertised_host("fresh.example.org")
+            assert "old.example.org" not in main._RESOLVE_CACHE, "expired entry survived the write"
+            assert len(main._RESOLVE_CACHE) <= main._RESOLVE_CACHE_MAX, "the cap did not hold"
+            assert "fresh.example.org" in main._RESOLVE_CACHE
+            main._RESOLVE_CACHE.clear()
+
+        asyncio.run(go())
+
+
+class TestMismatchNamesTheNode:
+    def test_the_reason_says_which_machine(self):
+        import asyncio
+        from unittest.mock import AsyncMock, patch
+
+        from app import main
+
+        row = {"id": 1, "system_info": '{"egress_ip": "213.217.28.154"}', "containers": "[]"}
+        entry = [
+            {
+                "slug": "storj",
+                "status": "running",
+                "advertised_address": "84.54.25.89:28967",
+                "_worker_id": 1,
+                "_node": "watchtower",
+            }
+        ]
+
+        async def go():
+            with (
+                patch.object(main.database, "get_worker", AsyncMock(return_value=row)),
+                patch.object(main, "_resolve_advertised_host", AsyncMock(return_value=None)),
+            ):
+                return await main._advertised_address_mismatch(entry)
+
+        reason = asyncio.run(go())
+        assert reason and reason.startswith("On watchtower:"), "a fleet finding must name its node"
