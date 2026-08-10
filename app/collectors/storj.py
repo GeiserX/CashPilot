@@ -143,10 +143,18 @@ class StorjCollector(BaseCollector):
         this exists to remove.
         """
         try:
-            resp = await client.get(f"{self.api_url}/api/sno/")
+            # A shorter deadline than the collection's own 15s: a stalling
+            # dashboard must not be able to double the cost of the reading
+            # this probe merely decorates.
+            resp = await client.get(f"{self.api_url}/api/sno/", timeout=5)
             resp.raise_for_status()
             data = resp.json()
-        except Exception:
+        except Exception as exc:
+            # Debug, not warning: silence is the right product behaviour, but
+            # with no line at all a probe that never fires (wrong path, shape
+            # change) is indistinguishable from a healthy node — the same
+            # invisibility class this feature exists to end.
+            logger.debug("Storj reachability probe unavailable: %s", exc)
             return None
         if not isinstance(data, dict):
             return None
@@ -154,7 +162,17 @@ class StorjCollector(BaseCollector):
         notes: list[str] = []
         raw_pinged = data.get("lastPinged")
         pinged_at = _parse_node_time(raw_pinged)
-        if str(raw_pinged or "").startswith(_NEVER_PINGED_PREFIX):
+        # A node started seconds ago legitimately carries the zero-value
+        # lastPinged — satellites have not had a chance yet. Warning then
+        # would make the user's FIRST reading of a healthy new node an
+        # unreachability alert, teaching them to ignore the one notice that
+        # matters. An absent/unparseable startedAt reads as not-young, so the
+        # behaviour degrades to the warning, never to silence.
+        started_at = _parse_node_time(data.get("startedAt"))
+        node_is_young = started_at is not None and datetime.now(UTC) - started_at < timedelta(minutes=15)
+        if node_is_young:
+            logger.debug("Storj node started %s — too young to judge dial-backs", started_at)
+        elif str(raw_pinged or "").startswith(_NEVER_PINGED_PREFIX):
             notes.append(
                 "No satellite has EVER successfully reached this node — it is being "
                 "counted offline. Check that the advertised ADDRESS matches your current "

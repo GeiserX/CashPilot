@@ -692,3 +692,47 @@ class TestStorjNodeTimeParsing:
         assert _parse_node_time("not-a-time") is None
         assert _parse_node_time(None) is None
         assert _parse_node_time(12345) is None
+
+
+class TestStorjYoungNodeGrace:
+    """A node started minutes ago must not greet its user with an alert.
+
+    The zero-value lastPinged is legitimate until satellites have had a
+    chance; and an ABSENT startedAt degrades to the warning (current
+    behaviour), never to silence — failing toward the alert, not away.
+    """
+
+    def _collect(self, payload):
+        import asyncio
+
+        from app.collectors.storj import StorjCollector
+
+        earnings = _mock_response(200, {"estimatedPayout": 250})
+        probe = _mock_response(200, payload)
+        client = _make_async_client()
+        client.get.side_effect = [earnings, probe]
+        with patch("app.collectors.storj.httpx.AsyncClient", return_value=client):
+            return asyncio.run(StorjCollector().collect())
+
+    @staticmethod
+    def _ago(**kwargs):
+        from datetime import UTC, datetime, timedelta
+
+        return (datetime.now(UTC) - timedelta(**kwargs)).isoformat()
+
+    def test_a_five_minute_old_node_gets_grace(self):
+        result = self._collect(
+            {"lastPinged": "0001-01-01T00:00:00Z", "quicStatus": "OK", "startedAt": self._ago(minutes=5)}
+        )
+        assert result.warning is None
+
+    def test_a_two_hour_old_node_gets_no_grace(self):
+        # Negative control: the grace window must not swallow the real alert.
+        result = self._collect(
+            {"lastPinged": "0001-01-01T00:00:00Z", "quicStatus": "OK", "startedAt": self._ago(hours=2)}
+        )
+        assert result.warning and "EVER" in result.warning
+
+    def test_an_absent_started_at_fails_toward_the_warning(self):
+        result = self._collect({"lastPinged": "0001-01-01T00:00:00Z", "quicStatus": "OK"})
+        assert result.warning and "EVER" in result.warning
