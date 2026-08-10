@@ -37,9 +37,17 @@ def _parse_node_time(raw: Any) -> datetime | None:
     The node emits RFC 3339 with nanosecond fractions and either Z or a local
     offset; fromisoformat handles all observed forms. A naive result is read
     as UTC rather than discarded — Go only omits the offset for UTC.
+
+    A bare DATE is refused: fromisoformat reads "2026-08-10" as midnight,
+    which would fabricate a stale-looking timestamp out of a value that never
+    claimed a time. Go's time.Time marshalling always emits a time component,
+    so anything without one is not a node timestamp.
     """
+    text = str(raw or "")
+    if "T" not in text:
+        return None
     try:
-        parsed = datetime.fromisoformat(str(raw or ""))
+        parsed = datetime.fromisoformat(text)
     except ValueError:
         return None
     return parsed if parsed.tzinfo else parsed.replace(tzinfo=UTC)

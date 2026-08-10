@@ -736,3 +736,14 @@ class TestStorjYoungNodeGrace:
     def test_an_absent_started_at_fails_toward_the_warning(self):
         result = self._collect({"lastPinged": "0001-01-01T00:00:00Z", "quicStatus": "OK"})
         assert result.warning and "EVER" in result.warning
+
+
+class TestStorjDateOnlyTimestamp:
+    def test_a_bare_date_is_no_claim_not_midnight(self):
+        # fromisoformat reads "2026-08-10" as midnight — treating that as a
+        # real ping time would fabricate an hours-stale timestamp from a value
+        # that never claimed a time. Go always emits a time component, so a
+        # date-only value is not a node timestamp at all.
+        from app.collectors.storj import _parse_node_time
+
+        assert _parse_node_time("2026-08-10") is None
