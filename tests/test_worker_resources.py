@@ -69,6 +69,19 @@ class TestResourceValidation:
             _validate_resources(ResourceSpec(oom_score_adj=bad))
         assert ei.value.status_code == 400
 
+    @pytest.mark.parametrize("good", [2, 1024, 2048, 262144])
+    def test_valid_cpu_shares_accepted(self, good):
+        _validate_resources(ResourceSpec(cpu_shares=good))
+
+    @pytest.mark.parametrize("bad", [0, 1, -1, -1024, 262145])
+    def test_cpu_shares_out_of_range_rejected(self, bad):
+        # 0 and 1 are rejected deliberately: Docker reads 0 as "default" and
+        # refuses 1 outright, so accepting either would silently not apply the
+        # weight the operator asked for.
+        with pytest.raises(HTTPException) as ei:
+            _validate_resources(ResourceSpec(cpu_shares=bad))
+        assert ei.value.status_code == 400
+
     @pytest.mark.parametrize("good", [-1000, -100, 0, 200, 300, 1000])
     def test_oom_in_range_accepted(self, good):
         _validate_resources(ResourceSpec(oom_score_adj=good))
@@ -123,6 +136,26 @@ class TestDeployRawResources:
         # None-valued fields are dropped, never forwarded as None.
         assert "oom_score_adj" not in kwargs
 
+    def test_forwards_cpu_shares(self):
+        client = self._mock_client()
+        with patch.object(orchestrator, "_get_client", return_value=client):
+            orchestrator.deploy_raw(
+                slug="storj",
+                image="img",
+                resources=ResourceSpec(mem_limit="2g", oom_score_adj=-100, cpu_shares=2048),
+            )
+        kwargs = client.containers.run.call_args.kwargs
+        assert kwargs["cpu_shares"] == 2048
+        assert kwargs["mem_limit"] == "2g"
+
+    def test_forwards_cpu_shares_from_catalog_dict(self):
+        # Catalog services reach deploy_raw as a plain dict read out of the
+        # service YAML, not as a Pydantic model.
+        client = self._mock_client()
+        with patch.object(orchestrator, "_get_client", return_value=client):
+            orchestrator.deploy_raw(slug="storj", image="img", resources={"cpu_shares": 2048})
+        assert client.containers.run.call_args.kwargs["cpu_shares"] == 2048
+
     def test_omits_resource_kwargs_when_unset(self):
         client = self._mock_client()
         with patch.object(orchestrator, "_get_client", return_value=client):
@@ -130,6 +163,7 @@ class TestDeployRawResources:
         kwargs = client.containers.run.call_args.kwargs
         assert "mem_limit" not in kwargs
         assert "mem_reservation" not in kwargs
+        assert "cpu_shares" not in kwargs
         assert "oom_score_adj" not in kwargs
 
     def test_forwards_container_spec(self):

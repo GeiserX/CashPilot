@@ -202,8 +202,9 @@ def deploy_raw(
     """Deploy a container from a raw spec (no catalog lookup).
 
     Used by CashPilot Worker when the UI sends a full container spec.
-    ``resources`` (mem_limit / mem_reservation / oom_score_adj) makes the
-    container's cgroup limits durable across recreates. Returns the container ID.
+    ``resources`` (mem_limit / mem_reservation / oom_score_adj / cpu_shares)
+    makes the container's cgroup limits durable across recreates. Returns the
+    container ID.
     """
     client = _get_client()
     name = _container_name(slug)
@@ -237,7 +238,9 @@ def deploy_raw(
     # at create time mem_limit alone avoids the cgroup-v2 swap validation issue.
     res = _normalize_resources(resources)
     resource_kwargs = {
-        key: res[key] for key in ("mem_limit", "mem_reservation", "oom_score_adj") if res.get(key) is not None
+        key: res[key]
+        for key in ("mem_limit", "mem_reservation", "oom_score_adj", "cpu_shares")
+        if res.get(key) is not None
     }
 
     logger.info("Creating container %s from %s", name, image)

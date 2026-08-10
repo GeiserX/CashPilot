@@ -310,7 +310,11 @@ class TestApiDeploy:
                 },
             )
             assert resp.status_code == 200, resp.text
-            assert captured["spec"]["resources"] == {"mem_limit": "2g", "oom_score_adj": -100}
+            assert captured["spec"]["resources"] == {
+                "mem_limit": "2g",
+                "oom_score_adj": -100,
+                "cpu_shares": 2048,
+            }
 
 
 # ---------------------------------------------------------------------------

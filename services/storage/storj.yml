@@ -21,6 +21,12 @@ docker:
   resources:
     mem_limit: "2g"
     oom_score_adj: -100
+    # Satellites dial the node back in and mark it offline when the connection
+    # times out, so being slow is indistinguishable from being down -- and
+    # sustained "offline" leads to suspension. A weight above the 1024 default
+    # keeps the node answering while other workloads saturate the host; it is
+    # relative, so it costs nothing when the machine is idle.
+    cpu_shares: 2048
   env:
     - key: WALLET
       label: "Wallet address"
