@@ -248,3 +248,62 @@ class TestNamedVolumeDeclaration:
         lines = [line for line in output.split("\n") if not line.startswith("#")]
         parsed = yaml.safe_load("\n".join(lines))
         assert "volumes" not in parsed or parsed.get("volumes") is None
+
+
+class TestResourceLimitsSurviveExport:
+    """CashPilot-65q4: the export dropped the whole docker.resources block.
+
+    A user exporting storj to Portainer got a container without its memory
+    ceiling, OOM bias or CPU weight — silently less protected than the same
+    service deployed by the worker. Compose accepts all four keys top-level
+    under the catalog's own names.
+    """
+
+    def _compose_for(self, resources):
+        svc = _mock_service(slug="storj", name="Storj", image="storjlabs/storagenode")
+        if resources is not None:
+            svc["docker"]["resources"] = resources
+        return compose_generator._service_to_compose(svc)
+
+    def test_all_declared_limits_are_emitted(self):
+        block = self._compose_for(
+            {"mem_limit": "2g", "mem_reservation": "1g", "oom_score_adj": -100, "cpu_shares": 4096}
+        )
+        assert block["mem_limit"] == "2g"
+        assert block["mem_reservation"] == "1g"
+        assert block["oom_score_adj"] == -100
+        assert block["cpu_shares"] == 4096
+
+    def test_only_the_keys_the_catalog_sets_are_emitted(self):
+        block = self._compose_for({"mem_limit": "2g"})
+        assert block["mem_limit"] == "2g"
+        for absent in ("mem_reservation", "oom_score_adj", "cpu_shares"):
+            assert absent not in block, f"{absent} was invented out of nothing"
+
+    def test_a_service_without_resources_emits_none(self):
+        # Negative control: absence stays absence.
+        block = self._compose_for(None)
+        for key in ("mem_limit", "mem_reservation", "oom_score_adj", "cpu_shares"):
+            assert key not in block
+
+    def test_a_truthy_non_mapping_resources_value_is_ignored(self):
+        # A malformed catalog entry (resources as a list) must not crash the
+        # export nor leak anything into the block — same outcome as absence.
+        block = self._compose_for(["invalid"])
+        for key in ("mem_limit", "mem_reservation", "oom_score_adj", "cpu_shares"):
+            assert key not in block
+
+    def test_the_real_storj_export_carries_its_limits(self):
+        # Against the real catalog, end to end through the YAML renderer.
+        import yaml as _yaml
+
+        from app.catalog import load_services
+
+        storj = next(s for s in load_services() if s.get("slug") == "storj")
+        with patch("app.compose_generator.get_service", return_value=storj):
+            output = compose_generator.generate_compose_single("storj")
+        parsed = _yaml.safe_load("\n".join(line for line in output.split("\n") if not line.startswith("#")))
+        svc = parsed["services"]["cashpilot-storj"]
+        assert svc["mem_limit"] == "2g"
+        assert svc["oom_score_adj"] == -100
+        assert svc["cpu_shares"] == 4096
