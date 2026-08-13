@@ -68,7 +68,12 @@ VOLUME /data
 EXPOSE 8081
 
 ENTRYPOINT ["/entrypoint.sh"]
+# Ask the app whether it can still REPORT IN, not merely whether this port is
+# open. A TCP connect succeeds on a worker that has been unable to reach the UI
+# for days, so `docker ps` read "healthy" right through a 42-hour outage while
+# the fleet page showed the worker offline. /api/health returns 503 only after a
+# sustained run of missed heartbeats, so a UI restart does not flap the state.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
-    CMD ["python", "-c", "import socket; socket.create_connection(('127.0.0.1', 8081), timeout=3).close()"]
+    CMD ["python", "-c", "import sys,urllib.request\ntry:\n    urllib.request.urlopen('http://127.0.0.1:8081/api/health', timeout=3)\nexcept Exception:\n    sys.exit(1)"]
 
 CMD ["python", "-m", "uvicorn", "app.worker_api:app", "--host", "0.0.0.0", "--port", "8081", "--no-access-log"]

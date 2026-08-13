@@ -32,7 +32,7 @@ from pathlib import Path
 from typing import Any
 
 import httpx
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 
@@ -75,6 +75,18 @@ _AUTH_FAILURE_ALARM_AFTER = 3
 # Well above the alarm: the operator is told first, and a key is only discarded
 # after the rejection has clearly persisted rather than on a flaky link.
 _AUTH_FAILURE_DISCARD_AFTER = 10
+
+# Consecutive heartbeats that did not land, for ANY reason — refused, timed out,
+# unresolvable. This is what /api/health reports on, because from the operator's
+# side the only thing that matters is "is this worker still reporting in".
+_consecutive_heartbeat_failures = 0
+# ~5 minutes at the 60s interval. Long enough that a UI restart or a brief
+# network blip does not flip the container to unhealthy, short enough that a
+# genuinely disconnected worker is visible in `docker ps` the same hour.
+_HEARTBEAT_FAILURES_UNHEALTHY_AFTER = 5
+# The name-resolution hint is logged ONCE per outage, not every cycle. A warning
+# repeated every 60 seconds for 42 hours is precisely how the last one was missed.
+_link_hint_logged = False
 
 # Per-worker fleet key. On first contact the UI enrolls this worker and hands back
 # a key unique to us, which we persist here (in our own private /data, never the
@@ -493,9 +505,59 @@ async def _detect_egress_ip() -> str | None:
     return None
 
 
+def _log_link_failure_hint(exc: BaseException) -> None:
+    """Explain a heartbeat that never reached the UI, once per outage.
+
+    A worker that cannot resolve CASHPILOT_UI_URL logs the same opaque line
+    every 60 seconds — `Heartbeat failed: [Errno -3] Try again` — which says
+    nothing about the cause and is trivially scrolled past. In production this
+    ran for 42 hours on two hosts before anyone looked, while the containers
+    kept earning and the UI simply showed the workers as offline.
+
+    The usual cause is not DNS being broken: it is that the worker is not on the
+    same Docker network as the UI. Compose service names only resolve inside a
+    shared user-defined network, so a container that was started detached (an
+    unclean shutdown, `docker start` on a container whose project network was
+    since recreated) fails to resolve a name that is otherwise perfectly valid.
+    """
+    global _link_hint_logged
+    if _link_hint_logged:
+        return
+
+    # The resolution failure is usually wrapped (httpx.ConnectError -> gaierror),
+    # so inspect the whole chain rather than just the surface exception.
+    seen: set[int] = set()
+    cur: BaseException | None = exc
+    is_resolution_failure = False
+    while cur is not None and id(cur) not in seen:
+        seen.add(id(cur))
+        if isinstance(cur, socket.gaierror):
+            is_resolution_failure = True
+            break
+        cur = cur.__cause__ or cur.__context__
+
+    if not is_resolution_failure:
+        return
+
+    host = UI_URL.split("://", 1)[-1].split("/", 1)[0].split(":", 1)[0] or UI_URL
+    logger.error(
+        "Cannot resolve %r from inside this container, so no heartbeat can reach the UI. "
+        "If that is a Compose service name, this worker and the UI must share a Docker "
+        "network — check `docker inspect %s --format '{{json .NetworkSettings.Networks}}'`: "
+        "an empty result means this container is attached to NO network, which `docker start` "
+        "can leave behind after an unclean shutdown. `docker compose up -d` reattaches it. "
+        "If the UI is on another host, use an address this container can actually resolve. "
+        "Logging this once; the per-cycle warning continues.",
+        host,
+        WORKER_NAME,
+    )
+    _link_hint_logged = True
+
+
 async def _send_heartbeat() -> None:
     """Send a single heartbeat to the UI."""
     global _ui_connected, _last_heartbeat, _last_error, _consecutive_auth_failures
+    global _consecutive_heartbeat_failures, _link_hint_logged
 
     containers = []
     try:
@@ -550,9 +612,12 @@ async def _send_heartbeat() -> None:
             _last_heartbeat = datetime.now(UTC).strftime("%H:%M:%S UTC")
             _last_error = ""
             _consecutive_auth_failures = 0
+            _consecutive_heartbeat_failures = 0
+            _link_hint_logged = False
             logger.debug("Heartbeat sent to %s", UI_URL)
     except httpx.HTTPStatusError as exc:
         _ui_connected = False
+        _consecutive_heartbeat_failures += 1
         status = exc.response.status_code
         _last_error = f"authentication rejected ({status})" if status in (401, 403) else "connection failed"
         logger.warning("Heartbeat failed: %s", exc)
@@ -611,7 +676,9 @@ async def _send_heartbeat() -> None:
         _last_error = "connection failed"
         # A network failure is not an auth rejection, so it breaks the run too.
         _consecutive_auth_failures = 0
+        _consecutive_heartbeat_failures += 1
         logger.warning("Heartbeat failed: %s", exc)
+        _log_link_failure_hint(exc)
 
 
 async def _heartbeat_loop() -> None:
@@ -1361,6 +1428,29 @@ async def api_runtimes(request: Request) -> dict[str, Any]:
 
 
 @app.get("/api/health")
-async def api_health() -> dict[str, str]:
-    """Health check endpoint (no auth required)."""
-    return {"status": "ok", "worker": WORKER_NAME}
+async def api_health(response: Response) -> dict[str, str]:
+    """Health check endpoint (no auth required).
+
+    Reports whether this worker can still REPORT IN, not merely whether its own
+    process is listening. The container healthcheck used to be a TCP connect to
+    this port, which is true of a worker that has been unable to reach the UI
+    for days — so `docker ps` showed "healthy" throughout a 42-hour outage on
+    two hosts while the fleet page showed both as offline and nobody reconciled
+    the two. A check that cannot fail for the failure you actually have is not a
+    check.
+
+    Degraded only after a sustained run of misses, so a UI restart or a brief
+    network blip does not flap the container. Deliberately NOT degraded when no
+    UI_URL is configured: a worker with nowhere to report is doing exactly what
+    it was told to.
+    """
+    body = {"status": "ok", "worker": WORKER_NAME}
+    if UI_URL and _consecutive_heartbeat_failures >= _HEARTBEAT_FAILURES_UNHEALTHY_AFTER:
+        response.status_code = 503
+        body["status"] = "degraded"
+        body["reason"] = "not reporting to the UI"
+        body["last_heartbeat"] = _last_heartbeat
+        body["consecutive_failures"] = str(_consecutive_heartbeat_failures)
+        if _last_error:
+            body["error"] = _last_error
+    return body
