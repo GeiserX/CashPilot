@@ -1030,13 +1030,14 @@ async def _raise_worker_offline_alert(w: dict[str, Any]) -> None:
         f"Worker '{w['name']}': no heartbeat for over {STALE_WORKER_SECONDS // 60} minutes. Its "
         "containers keep running and earning, but CashPilot cannot see or manage them until it reconnects."
     )
-    if await database.record_alert("worker", cid, msg):
+    if alert_id := await database.record_alert("worker", cid, msg):
         _spawn(
-            notify.send(
+            _push_alert(
+                "worker",
+                cid,
                 f"CashPilot: worker '{w['name']}' went offline",
                 msg,
-                kind="worker",
-                subject=cid,
+                alert_id,
             )
         )
     # Into the bell NOW (the sweep runs every 2 min); the hourly collection
