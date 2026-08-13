@@ -44,24 +44,55 @@ _status_cache: list[dict[str, Any]] = []
 _status_cache_time: float = 0.0
 
 
+def _mark_docker_unavailable(reason: str, exc: BaseException) -> None:
+    """Flip the availability memo to False, saying so LOUDLY on the transition.
+
+    Docker going away mid-life used to be a logger.debug — invisible at the
+    default INFO level — so a worker silently degraded to monitor-only, every
+    deploy 503'd, and `docker logs` contained no reason at all. The transition
+    is the loud moment; a persisting outage stays quiet (the caller's per-call
+    debug covers it) so a dead daemon does not warn once per probe forever.
+    Only True -> False warns: None -> False is startup discovering a
+    monitor-only worker, which lifespan already announces.
+    """
+    global _docker_available
+    if _docker_available is True:
+        logger.warning(
+            "Docker became unreachable (%s): %s — degrading to monitor-only until it returns",
+            reason,
+            exc,
+        )
+    _docker_available = False
+
+
+def _mark_docker_available() -> None:
+    """Flip the availability memo to True, announcing a recovery."""
+    global _docker_available
+    if _docker_available is False:
+        logger.warning("Docker is reachable again — container management restored")
+    _docker_available = True
+
+
 def docker_available() -> bool:
     """Check whether the Docker socket is accessible.
 
     Only the positive result is memoized. A negative/unknown result is
-    re-probed on every call so a transient daemon blip self-heals.
+    re-probed on every call so a transient daemon blip self-heals. The memo is
+    invalidated by any code path that catches a live Docker failure (see
+    _mark_docker_unavailable), so a daemon that dies AFTER a successful probe
+    is re-discovered rather than reported available forever.
     """
-    global _docker_available
     if _docker_available:
         return True
     try:
         client = docker.from_env()
         client.ping()
         client.close()
-        _docker_available = True
+        _mark_docker_available()
     except Exception as exc:
         logger.debug("Docker ping failed: %s", exc)
-        _docker_available = False
-    return _docker_available
+        _mark_docker_unavailable("ping failed", exc)
+    return bool(_docker_available)
 
 
 def _get_client() -> docker.DockerClient:
@@ -69,10 +100,10 @@ def _get_client() -> docker.DockerClient:
     try:
         client = docker.from_env()
         client.ping()
+        _mark_docker_available()
         return client
     except DockerException as exc:
-        global _docker_available
-        _docker_available = False
+        _mark_docker_unavailable("client connect failed", exc)
         raise RuntimeError(
             "Docker socket not available. Mount /var/run/docker.sock to "
             "enable container management, or use CashPilot in monitor-only "
@@ -653,10 +684,21 @@ def get_status() -> list[dict[str, Any]]:
         return []
 
     # Labeled containers (CashPilot-managed)
-    labeled = client.containers.list(
-        all=True,
-        filters={"label": f"{LABEL_MANAGED}=true"},
-    )
+    try:
+        labeled = client.containers.list(
+            all=True,
+            filters={"label": f"{LABEL_MANAGED}=true"},
+        )
+    except Exception as exc:
+        # "Ping works, list fails" (daemon 500, read timeout, containerd
+        # hiccup) used to escape this function entirely: the heartbeat then
+        # shipped containers=[] WITH docker_available=true — a worker that
+        # looks online and deliberately empty, while the UI writes a durable
+        # check_down for every deployment it can no longer see. Flag the
+        # outage so the SAME heartbeat reports blind, and the UI's guard
+        # skips the false downtime.
+        _mark_docker_unavailable("container listing failed", exc)
+        return []
     seen_ids: set[str] = set()
 
     results: list[dict[str, Any]] = []

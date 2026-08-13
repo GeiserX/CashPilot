@@ -1272,7 +1272,13 @@ async def api_list_containers(request: Request) -> list[dict[str, Any]]:
 async def api_deploy_container(request: Request, slug: str, spec: DeploySpec) -> dict[str, str]:
     """Deploy a container from spec sent by UI."""
     _verify_api_key(request)
-    _validate_deploy_spec(spec, slug=slug)
+    # Threaded like every other Docker touch in this file: _validate_runtime
+    # inside does a live daemon round-trip (available_runtimes has no cache and
+    # no timeout), and unthreaded it blocked the WHOLE event loop on a wedged
+    # daemon — including /api/health, so the container flipped unhealthy
+    # because an unrelated route was stuck. HTTPException propagates through
+    # to_thread unchanged, so the 400/403 behaviour is identical.
+    await asyncio.to_thread(_validate_deploy_spec, spec, slug)
     try:
         container_id = await asyncio.to_thread(
             orchestrator.deploy_raw,
