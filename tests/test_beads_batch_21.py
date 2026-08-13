@@ -81,7 +81,12 @@ class TestAFlatlinedServiceReachesTheBell:
         from app import main
 
         with patch.object(main.database, "get_flatlined_services", AsyncMock(side_effect=RuntimeError("boom"))):
-            assert await main._flatline_check() == []
+            bell = await main._flatline_check()
+        # Still a list (the caller extends with it), but no longer an EMPTY
+        # one: a broken check rendering as "nothing is flatlined" was itself
+        # an invisible failure, so it now reports its own outage to the bell.
+        assert isinstance(bell, list)
+        assert [e["kind"] for e in bell] == ["flatline"]
 
 
 class TestTheCollectionRunKeepsThem:

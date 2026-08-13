@@ -374,6 +374,54 @@ async def _run_health_check() -> None:
         logger.warning("Health check skipped: %s", exc)
 
 
+async def _push_alert(kind: str, subject: str, title: str, message: str, alert_id: int) -> None:
+    """Push an alert out-of-band, and make a total delivery failure retryable.
+
+    The dedupe row is committed BEFORE this runs, so a failed delivery used to
+    disarm the alert for the whole cooldown window: ntfy unreachable in the
+    minute a collector broke meant one WARNING in a container log and 24 silent
+    hours — the push path's own failure was the one failure it could not
+    report. When no target accepts the message, the row THIS delivery owns
+    (record_alert's returned id) is deleted so the next collection cycle
+    records-and-pushes again — by id, never by (kind, subject), because a
+    recovery and a fresh failure can insert a newer row while this push was in
+    flight, and taking that row's dedupe with ours would double-notify. The
+    outcome feeds a metric either way so dead delivery is visible to
+    Prometheus instead of indistinguishable from health.
+    """
+    try:
+        delivered = await notify.send(title, message, kind=kind, subject=subject)
+    except Exception as exc:  # noqa: BLE001 - a notifier crash must never kill collection
+        logger.warning("Alert push for %s/%s crashed: %s", kind, subject, notify.redact(str(exc)))
+        delivered = 0
+    if not notify.is_enabled():
+        # Nothing is configured: the bell is the only channel, the row must
+        # stand (clearing it would re-insert every cycle and churn the bell),
+        # and delivery metrics would only count an absence.
+        return
+    metrics.record_notify_delivery(bool(delivered))
+    if not delivered:
+        try:
+            undeduped = await database.delete_alert(alert_id)
+        except Exception as exc:  # noqa: BLE001
+            undeduped = False
+            logger.warning("Could not un-dedupe alert %s after failed delivery: %s", alert_id, exc)
+        if undeduped:
+            logger.warning(
+                "No notification target accepted the %s alert for %s — will retry on the next cycle",
+                kind,
+                subject,
+            )
+        else:
+            # Saying "will retry" when the dedupe row survived would be false.
+            logger.warning(
+                "No notification target accepted the %s alert for %s, and the dedupe row could "
+                "not be released — the next push waits out the cooldown window",
+                kind,
+                subject,
+            )
+
+
 async def _detect_payout(result: Any) -> dict[str, str] | None:
     """Notice a balance drop that looks like a cashout, and ask.
 
@@ -404,7 +452,22 @@ async def _detect_payout(result: Any) -> dict[str, str] | None:
             # One already pending for this platform; a second prompt for the
             # same event teaches the user to dismiss them.
             return None
-        await database.record_alert("payout", result.platform, probable["reason"])
+        if alert_id := await database.record_alert("payout", result.platform, probable["reason"]):
+            # The one alert that asks a QUESTION — unanswered, the payout never
+            # counts toward lifetime earnings, so the headline number stays
+            # wrong until a human replies. It was the only pushable kind that
+            # never pushed: recorded, belled, and then waiting for someone to
+            # happen to open the UI. The record_alert gate was already here,
+            # its boolean just went unread.
+            _spawn(
+                _push_alert(
+                    "payout",
+                    result.platform,
+                    f"CashPilot: {result.platform} balance dropped — was this a payout?",
+                    probable["reason"],
+                    alert_id,
+                )
+            )
         return {"kind": "payout", "platform": result.platform, "error": probable["reason"]}
     except Exception as exc:
         # Earnings collection must not fail because payout detection did.
@@ -543,17 +606,28 @@ async def _flatline_check() -> list[dict[str, str]]:
             # right now, so gating it the same way would blank the bell on the
             # second collection while the service was still not earning.
             bell.append({"kind": "flatline", "platform": flat["platform"], "error": message})
-            if await database.record_alert("flatline", flat["platform"], message):
+            if alert_id := await database.record_alert("flatline", flat["platform"], message):
                 _spawn(
-                    notify.send(
+                    _push_alert(
+                        "flatline",
+                        flat["platform"],
                         f"CashPilot: {flat['platform']} is running but not earning",
                         message,
-                        kind="flatline",
-                        subject=flat["platform"],
+                        alert_id,
                     )
                 )
     except Exception as exc:
         logger.warning("Flatline check failed: %s", exc)
+        # The check's own failure must not render as health: an empty return
+        # here is indistinguishable from "nothing is flatlined", so a broken
+        # query would silently retire the only detector this class of fault has.
+        bell.append(
+            {
+                "kind": "flatline",
+                "platform": "flatline check",
+                "error": "The flatline check itself failed — earning anomalies are NOT being watched. See server logs.",
+            }
+        )
     return bell
 
 
@@ -675,6 +749,7 @@ async def _run_collection() -> None:
     async with _collection_lock:
         success = True
         start_time = 0.0
+        collectors: list = []
         try:
             start_time = metrics.record_collection_start()
             deployments = await database.get_deployments()
@@ -723,7 +798,9 @@ async def _run_collection() -> None:
                     metrics.record_collection_error(result.platform)
                     # Push out-of-band only the FIRST time this failure appears — a
                     # collector broken for a week must not notify every single hour.
-                    if await database.record_alert("collector", result.platform, safe_error, category=error_kind):
+                    if alert_id := await database.record_alert(
+                        "collector", result.platform, safe_error, category=error_kind
+                    ):
                         # The push is the only channel an unattended install
                         # has, so the taxonomy must reach it too: "rotate your
                         # cookie" and "provider hiccup" are different asks.
@@ -733,11 +810,12 @@ async def _run_collection() -> None:
                             "shape": " (page changed)",
                         }.get(error_kind or "", "")
                         _spawn(
-                            notify.send(
+                            _push_alert(
+                                "collector",
+                                result.platform,
                                 f"CashPilot: {result.platform} collector failed{cause}",
                                 safe_error,
-                                kind="collector",
-                                subject=result.platform,
+                                alert_id,
                             )
                         )
                 else:
@@ -753,13 +831,14 @@ async def _run_collection() -> None:
                         # which is read by whoever happens to open the UI — and
                         # "nobody looked for days" is the incident this class
                         # of warning (an unreachable storj node) comes from.
-                        if await database.record_alert("notice", result.platform, safe_warning):
+                        if alert_id := await database.record_alert("notice", result.platform, safe_warning):
                             _spawn(
-                                notify.send(
+                                _push_alert(
+                                    "notice",
+                                    result.platform,
                                     f"CashPilot: {result.platform} needs attention",
                                     safe_warning,
-                                    kind="notice",
-                                    subject=result.platform,
+                                    alert_id,
                                 )
                             )
                     elif result.platform in previously_noticing:
@@ -812,6 +891,19 @@ async def _run_collection() -> None:
             # replacement of this list would silently un-report a dead machine.
             alerts.extend(await _offline_worker_alerts())
             _collector_alerts = alerts
+            if collectors and platforms_ok == 0:
+                # A run in which EVERY collector failed used to be recorded as
+                # a SUCCESS: _collect_bounded converts exceptions into
+                # EarningsResult.error, so the isinstance branch above never
+                # fired and nothing else touched the flag. That refreshed
+                # collection_last_success_timestamp hourly through a total
+                # outage — both documented Prometheus alerts (CollectionFailing,
+                # EarningsStale) were structurally unable to fire, proven by
+                # execution. A PARTIAL failure stays a success: one chronically
+                # broken collector must not freeze the staleness stamp and
+                # false-alarm while fourteen others are collecting fine, and an
+                # install with no collectors has nothing to be stale about.
+                success = False
         except Exception as exc:
             logger.error("Collection run failed: %s", exc)
             success = False
@@ -825,7 +917,7 @@ async def _run_collection() -> None:
                 {"platform": "collection", "error": "Collection run failed — see server logs"},
             ]
         finally:
-            metrics.record_collection_end(start_time, success, platforms_ok)
+            metrics.record_collection_end(start_time, success, platforms_ok, len(collectors))
             # Set even on a failed run: the bell's question is "has anything
             # looked", and a run that tried and failed HAS looked — its failure
             # is in the alert list the bell is about to show.
@@ -938,13 +1030,14 @@ async def _raise_worker_offline_alert(w: dict[str, Any]) -> None:
         f"Worker '{w['name']}': no heartbeat for over {STALE_WORKER_SECONDS // 60} minutes. Its "
         "containers keep running and earning, but CashPilot cannot see or manage them until it reconnects."
     )
-    if await database.record_alert("worker", cid, msg):
+    if alert_id := await database.record_alert("worker", cid, msg):
         _spawn(
-            notify.send(
+            _push_alert(
+                "worker",
+                cid,
                 f"CashPilot: worker '{w['name']}' went offline",
                 msg,
-                kind="worker",
-                subject=cid,
+                alert_id,
             )
         )
     # Into the bell NOW (the sweep runs every 2 min); the hourly collection
@@ -1020,6 +1113,18 @@ async def lifespan(app: FastAPI):
             "not embedded in any URL so it stays out of proxy logs and browser history)",
             _tok,
         )
+    if not notify.is_enabled():
+        # The push path exists so problems reach someone when nobody is
+        # watching the dashboard — and a default install has never armed it.
+        # Say so once, loudly, in the same place the setup token announces
+        # itself; anything quieter and this line is its own counterexample.
+        logger.warning(
+            "No notification channel configured — alerts will only appear in the UI bell, "
+            "which somebody has to open. Set CASHPILOT_NTFY_URL, CASHPILOT_WEBHOOK_URL or "
+            "the CASHPILOT_TELEGRAM_* variables to get collector failures, offline workers "
+            "and payout prompts pushed out-of-band."
+        )
+
     catalog.load_services()
     catalog.register_sighup()
 
@@ -3108,10 +3213,16 @@ async def api_payouts(request: Request, platform: str | None = None) -> dict[str
 
 async def _payout_platform(payout_id: int) -> str | None:
     """Which platform a payout row belongs to, before it is deleted."""
-    with contextlib.suppress(Exception):
-        for row in await database.get_payouts():
-            if row.get("id") == payout_id:
-                return row.get("platform")
+    try:
+        rows = await database.get_payouts()
+    except Exception as exc:  # noqa: BLE001 - answering the payout must not 500 on the lookup
+        # Silent None here left the bell entry standing forever with no trace
+        # of why; the operator "answered" the prompt and it never went away.
+        logger.warning("Could not resolve payout %s to a platform; its bell entry stays: %s", payout_id, exc)
+        return None
+    for row in rows:
+        if row.get("id") == payout_id:
+            return row.get("platform")
     return None
 
 
@@ -3122,8 +3233,15 @@ async def _retire_payout_alert(payout_id: int, platform: str | None = None) -> N
         platform = await _payout_platform(payout_id)
     if not platform:
         return
-    with contextlib.suppress(Exception):
+    try:
         await database.clear_alerts("payout", platform)
+    except Exception as exc:  # noqa: BLE001
+        # Do NOT prune the in-memory bell when the durable delete failed: the
+        # two stores would diverge on a financial record — the operator sees
+        # the prompt disappear, believes it answered, and the surviving row
+        # resurrects it after the next restart.
+        logger.warning("Could not clear the stored payout alert for %s; keeping it in the bell: %s", platform, exc)
+        return
     _collector_alerts = [
         a for a in _collector_alerts if not (a.get("kind") == "payout" and a.get("platform") == platform)
     ]

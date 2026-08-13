@@ -2229,8 +2229,15 @@ async def record_alert(
     *,
     category: str | None = None,
     cooldown_hours: int = ALERT_COOLDOWN_HOURS,
-) -> bool:
-    """Persist an alert, returning True only when the caller should notify.
+) -> int | None:
+    """Persist an alert, returning the new row's id only when the caller should notify.
+
+    The id is the delivery task's ownership token: a push that fails and wants
+    to un-dedupe must delete THAT row and no other, because a recovery and a
+    fresh failure can insert a newer row while the push was in flight —
+    clearing by (kind, subject) would take the newer row's dedupe with it.
+    Deduped calls return None, so every existing truthiness check keeps its
+    meaning.
 
     Suppression is by TIME WINDOW per kind+subject, not by message equality. Message
     equality alone is not enough: several collectors alternate between two error
@@ -2268,13 +2275,28 @@ async def record_alert(
                 (category, message, row["id"]),
             )
             await db.commit()
-            return False
-        await db.execute(
+            return None
+        cursor = await db.execute(
             "INSERT INTO alerts (kind, subject, message, category) VALUES (?, ?, ?, ?)",
             (kind, subject, message, category),
         )
         await db.commit()
-        return True
+        return cursor.lastrowid
+    finally:
+        await db.close()
+
+
+async def delete_alert(alert_id: int) -> bool:
+    """Delete exactly one alert row by id; True when a row was deleted.
+
+    The ownership-token counterpart to record_alert's returned id: a failed
+    delivery un-dedupes only the row it created, never a newer one.
+    """
+    db = await _get_db()
+    try:
+        cursor = await db.execute("DELETE FROM alerts WHERE id = ?", (alert_id,))
+        await db.commit()
+        return cursor.rowcount == 1
     finally:
         await db.close()
 

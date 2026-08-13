@@ -71,6 +71,9 @@ scrape_configs:
 | `cashpilot_collection_errors_total` | Counter | `platform` | Per-platform collection errors |
 | `cashpilot_collection_last_success_timestamp` | Gauge | -- | Unix timestamp of last successful run |
 | `cashpilot_collection_platforms_scraped` | Gauge | -- | Platforms successfully scraped in last run |
+| `cashpilot_collection_collectors_configured` | Gauge | -- | Collectors the last run attempted |
+| `cashpilot_notify_delivery_total` | Counter | `result` | Out-of-band alert deliveries (success/error) |
+| `cashpilot_notify_last_success_timestamp` | Gauge | -- | Unix timestamp of the last accepted delivery |
 
 ### Workers
 
@@ -99,6 +102,11 @@ scrape_configs:
 | `cashpilot_login_rate_limited_total` | Counter | -- | Rate-limited login attempts |
 
 ## Example Alerts
+
+Every rule below is computed from CashPilot's own metrics, so **the whole
+section requires `CASHPILOT_METRICS_ENABLED=true`** (it is off by default —
+see [Enabling Metrics](#enabling-metrics)). Without it none of these alerts
+exist, including `CashPilotDown`.
 
 ```yaml
 groups:
@@ -133,6 +141,26 @@ groups:
           severity: warning
         annotations:
           summary: "No successful earnings collection in 2+ hours"
+
+      # A run where EVERY collector fails is recorded as result="error" and
+      # does NOT refresh the success timestamp, so the two rules above fire on
+      # a total outage. This one additionally catches the same state directly.
+      - alert: NothingCollected
+        expr: cashpilot_collection_platforms_scraped == 0 and cashpilot_collection_collectors_configured > 0
+        for: 3h
+        labels:
+          severity: warning
+        annotations:
+          summary: "Collection runs are completing but zero platforms produced a reading"
+
+      # The alert channel itself needs watching: a delivery path that is down
+      # sends nothing, and that silence reads exactly like health.
+      - alert: AlertDeliveryFailing
+        expr: increase(cashpilot_notify_delivery_total{result="error"}[6h]) > 0
+        labels:
+          severity: warning
+        annotations:
+          summary: "Out-of-band alert deliveries are failing — pushes are not reaching you"
 
       # THE ONE THAT WATCHES THE WATCHER. Every alert above is computed FROM
       # CashPilot's own metrics, so if CashPilot itself stops, none of them
