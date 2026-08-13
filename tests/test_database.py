@@ -561,10 +561,10 @@ class TestAlerts:
 
     def test_first_alert_is_new_duplicate_is_not(self, db):
         async def run():
-            assert await database.record_alert("collector", "honeygain", "login failed") is True
+            assert isinstance(await database.record_alert("collector", "honeygain", "login failed"), int)
             # Same failure an hour later: stored once, reported as not-new so the
             # caller doesn't re-notify.
-            assert await database.record_alert("collector", "honeygain", "login failed") is False
+            assert await database.record_alert("collector", "honeygain", "login failed") is None
             assert len(await database.list_alerts()) == 1
 
         asyncio.run(run())
@@ -578,18 +578,18 @@ class TestAlerts:
         """
 
         async def run():
-            assert await database.record_alert("collector", "grass", "Token expired") is True
-            assert await database.record_alert("collector", "grass", "Cloudflare rate limit") is False
-            assert await database.record_alert("collector", "grass", "Token expired") is False
+            assert isinstance(await database.record_alert("collector", "grass", "Token expired"), int)
+            assert await database.record_alert("collector", "grass", "Cloudflare rate limit") is None
+            assert await database.record_alert("collector", "grass", "Token expired") is None
             assert len(await database.list_alerts()) == 1
 
         asyncio.run(run())
 
     def test_alerts_again_once_the_cooldown_has_passed(self, db):
         async def run():
-            assert await database.record_alert("collector", "hg", "boom") is True
+            assert isinstance(await database.record_alert("collector", "hg", "boom"), int)
             # A zero-length window models the cooldown having elapsed.
-            assert await database.record_alert("collector", "hg", "boom", cooldown_hours=0) is True
+            assert isinstance(await database.record_alert("collector", "hg", "boom", cooldown_hours=0), int)
 
         asyncio.run(run())
 
@@ -614,9 +614,9 @@ class TestAlerts:
     def test_recovery_then_failure_notifies_again(self, db):
         # The point of clearing on recovery: the next failure must count as new.
         async def run():
-            assert await database.record_alert("collector", "hg", "boom") is True
+            assert isinstance(await database.record_alert("collector", "hg", "boom"), int)
             await database.clear_alerts("collector", "hg")
-            assert await database.record_alert("collector", "hg", "boom") is True
+            assert isinstance(await database.record_alert("collector", "hg", "boom"), int)
 
         asyncio.run(run())
 

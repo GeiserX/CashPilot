@@ -42,8 +42,8 @@ class TestTotalCollectionFailureIsAnError:
         """Drive _run_collection over the given per-collector results."""
         ends = []
 
-        def _capture_end(start, success, platforms_ok=0):
-            ends.append((success, platforms_ok))
+        def _capture_end(start, success, platforms_ok=0, collectors_configured=0):
+            ends.append((success, platforms_ok, collectors_configured))
 
         seq = iter(results)
         with (
@@ -64,7 +64,7 @@ class TestTotalCollectionFailureIsAnError:
         ):
             await main._run_collection()
         assert len(ends) == 1
-        return ends[0]
+        return ends[0][:2]
 
     @pytest.mark.asyncio
     async def test_every_collector_failing_is_not_a_success(self):
@@ -101,10 +101,11 @@ class TestTotalCollectionFailureIsAnError:
 
 class TestPushAlertFeedsBack:
     def _push(self, *, delivered, enabled, raises=False):
-        cleared = []
+        deleted = []
 
-        async def _clear(kind, subject):
-            cleared.append((kind, subject))
+        async def _delete(alert_id):
+            deleted.append(alert_id)
+            return True
 
         async def _send(title, message, **kw):
             if raises:
@@ -115,35 +116,38 @@ class TestPushAlertFeedsBack:
         with (
             patch.object(main.notify, "send", _send),
             patch.object(main.notify, "is_enabled", lambda: enabled),
-            patch.object(main.database, "clear_alerts", _clear),
+            patch.object(main.database, "delete_alert", _delete),
             patch.object(main.metrics, "record_notify_delivery", recorded.append),
         ):
-            _run(main._push_alert("collector", "honeygain", "t", "m"))
-        return cleared, recorded
+            _run(main._push_alert("collector", "honeygain", "t", "m", 41))
+        return deleted, recorded
 
     def test_a_failed_delivery_undedupes_for_retry(self):
-        cleared, recorded = self._push(delivered=0, enabled=True)
-        assert cleared == [("collector", "honeygain")]
+        # Deletion is by the OWNED row id — a recovery + fresh failure can
+        # insert a newer row mid-flight, and a (kind, subject) clear would
+        # take that row's dedupe with it and double-notify.
+        deleted, recorded = self._push(delivered=0, enabled=True)
+        assert deleted == [41]
         assert recorded == [False]
 
     def test_a_successful_delivery_keeps_the_dedupe(self):
         # Negative control: delivered means the row must stand, or every
         # cycle would re-push the same alert.
-        cleared, recorded = self._push(delivered=1, enabled=True)
-        assert cleared == []
+        deleted, recorded = self._push(delivered=1, enabled=True)
+        assert deleted == []
         assert recorded == [True]
 
     def test_no_channel_configured_means_no_churn(self):
         # Negative control: with nothing configured the bell is the channel;
         # clearing would re-insert every cycle, and a delivery metric would
         # only count an absence.
-        cleared, recorded = self._push(delivered=0, enabled=False)
-        assert cleared == []
+        deleted, recorded = self._push(delivered=0, enabled=False)
+        assert deleted == []
         assert recorded == []
 
     def test_a_crashing_notifier_counts_as_failed(self):
-        cleared, recorded = self._push(delivered=0, enabled=True, raises=True)
-        assert cleared == [("collector", "honeygain")]
+        deleted, recorded = self._push(delivered=0, enabled=True, raises=True)
+        assert deleted == [41]
         assert recorded == [False]
 
 
@@ -166,7 +170,7 @@ class TestPayoutPromptIsPushed:
                 lambda prev, bal, svc: {"amount": 5.0, "reason": "balance dropped by 5"},
             ),
             patch.object(main.database, "record_probable_payout", AsyncMock(return_value=payout_id)),
-            patch.object(main.database, "record_alert", AsyncMock(return_value=record_returns)),
+            patch.object(main.database, "record_alert", AsyncMock(return_value=7 if record_returns else None)),
             patch.object(main.notify, "send", _send),
             patch.object(main.notify, "is_enabled", lambda: True),
             patch.object(main.metrics, "record_notify_delivery", lambda ok: None),

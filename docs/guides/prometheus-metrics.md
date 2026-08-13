@@ -71,6 +71,9 @@ scrape_configs:
 | `cashpilot_collection_errors_total` | Counter | `platform` | Per-platform collection errors |
 | `cashpilot_collection_last_success_timestamp` | Gauge | -- | Unix timestamp of last successful run |
 | `cashpilot_collection_platforms_scraped` | Gauge | -- | Platforms successfully scraped in last run |
+| `cashpilot_collection_collectors_configured` | Gauge | -- | Collectors the last run attempted |
+| `cashpilot_notify_delivery_total` | Counter | `result` | Out-of-band alert deliveries (success/error) |
+| `cashpilot_notify_last_success_timestamp` | Gauge | -- | Unix timestamp of the last accepted delivery |
 
 ### Workers
 
@@ -143,7 +146,7 @@ groups:
       # does NOT refresh the success timestamp, so the two rules above fire on
       # a total outage. This one additionally catches the same state directly.
       - alert: NothingCollected
-        expr: cashpilot_collection_platforms_scraped == 0
+        expr: cashpilot_collection_platforms_scraped == 0 and cashpilot_collection_collectors_configured > 0
         for: 3h
         labels:
           severity: warning
