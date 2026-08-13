@@ -30,6 +30,7 @@ import pytest
 # The routes that are meant to be reachable with no credentials, and why. A new
 # entry here is a deliberate decision to expose something publicly.
 PUBLIC = {
+    ("GET", "/api/health"): "the Docker healthcheck asks it; fixed state names, no data",
     ("GET", "/login"): "the login form itself",
     ("POST", "/login"): "authenticates; rejects bad credentials on its own",
     ("GET", "/logout"): "clears the session — safe to hit anonymously",

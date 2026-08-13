@@ -3327,6 +3327,15 @@ const CP = (() => {
         // rejects everywhere else. The bell's failure path already gets this
         // right ("Alerts unavailable"), which made the never-ran case the
         // outlier (CashPilot-tb5).
+        // "Healthy" additionally requires the collection machinery to be
+        // ALIVE: the collected latch is permanent, so after a scheduler death
+        // the bell would otherwise affirm health forever on the strength of a
+        // collection that stopped happening. The server decides staleness.
+        if (payload.collected && payload.collection_stale) {
+          const mins = Math.floor((payload.last_run_age_seconds || 0) / 60);
+          list.innerHTML = `<div class="notify-empty">No collection in ${mins} minutes — status unknown. Check the server.</div>`;
+          return;
+        }
         list.innerHTML = payload.collected
           ? '<div class="notify-empty">All collectors healthy</div>'
           : '<div class="notify-empty">No collection has run yet — nothing has been checked.</div>';
