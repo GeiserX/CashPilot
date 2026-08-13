@@ -208,9 +208,15 @@ class TestANoticeReachesTheOutOfBandChannel:
             patch.object(main.notify, "send", send),
             patch("app.collectors.make_collectors", lambda deployments, config: [object()]),
             patch("app.collectors._close_stale", AsyncMock()),
-            patch.object(main, "_spawn", lambda coro: coro.close()),
+            # The push now goes through the _push_alert wrapper, so the spawned
+            # coroutine must actually RUN for notify.send to be reached —
+            # collect and await instead of closing unexecuted.
+            patch.object(main, "_spawn", lambda coro: spawned.append(coro)),
         ):
+            spawned: list = []
             await main._run_collection()
+            for coro in spawned:
+                await coro
         return record_alert, clear_alerts, send
 
     @pytest.mark.asyncio

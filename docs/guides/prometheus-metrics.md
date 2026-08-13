@@ -100,6 +100,11 @@ scrape_configs:
 
 ## Example Alerts
 
+Every rule below is computed from CashPilot's own metrics, so **the whole
+section requires `CASHPILOT_METRICS_ENABLED=true`** (it is off by default —
+see [Enabling Metrics](#enabling-metrics)). Without it none of these alerts
+exist, including `CashPilotDown`.
+
 ```yaml
 groups:
   - name: cashpilot
@@ -133,6 +138,26 @@ groups:
           severity: warning
         annotations:
           summary: "No successful earnings collection in 2+ hours"
+
+      # A run where EVERY collector fails is recorded as result="error" and
+      # does NOT refresh the success timestamp, so the two rules above fire on
+      # a total outage. This one additionally catches the same state directly.
+      - alert: NothingCollected
+        expr: cashpilot_collection_platforms_scraped == 0
+        for: 3h
+        labels:
+          severity: warning
+        annotations:
+          summary: "Collection runs are completing but zero platforms produced a reading"
+
+      # The alert channel itself needs watching: a delivery path that is down
+      # sends nothing, and that silence reads exactly like health.
+      - alert: AlertDeliveryFailing
+        expr: increase(cashpilot_notify_delivery_total{result="error"}[6h]) > 0
+        labels:
+          severity: warning
+        annotations:
+          summary: "Out-of-band alert deliveries are failing — pushes are not reaching you"
 
       # THE ONE THAT WATCHES THE WATCHER. Every alert above is computed FROM
       # CashPilot's own metrics, so if CashPilot itself stops, none of them

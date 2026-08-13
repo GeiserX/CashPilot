@@ -159,6 +159,20 @@ def _init_metrics():
         "Number of platforms successfully scraped in last run",
         registry=_registry,
     )
+    # The alert channel needs its own telemetry, or its failure is silence:
+    # a monitoring system whose delivery path is down sends nothing, and that
+    # silence is indistinguishable from health (the Kuma lesson).
+    _metrics["notify_delivery_total"] = Counter(
+        "cashpilot_notify_delivery_total",
+        "Out-of-band alert delivery attempts by outcome",
+        ["result"],
+        registry=_registry,
+    )
+    _metrics["notify_last_success_timestamp"] = Gauge(
+        "cashpilot_notify_last_success_timestamp",
+        "Unix timestamp of the last alert delivery any target accepted",
+        registry=_registry,
+    )
 
     # -- Worker metrics --
     _metrics["workers_total"] = Gauge(
@@ -188,6 +202,16 @@ def _init_metrics():
     _metrics["heartbeats_total"] = Counter(
         "cashpilot_heartbeats_total",
         "Total heartbeat messages received from workers",
+        ["worker"],
+        registry=_registry,
+    )
+    # An unparseable heartbeat timestamp used to be silently skipped, which
+    # made the worker VANISH from worker_last_heartbeat_seconds — and the
+    # documented WorkerOffline rule cannot fire on an absent series, so the
+    # broken state read as health. Absence must never be the failure signal.
+    _metrics["worker_heartbeat_unparseable_total"] = Counter(
+        "cashpilot_worker_heartbeat_unparseable_total",
+        "Heartbeat timestamps that could not be parsed during metric refresh",
         ["worker"],
         registry=_registry,
     )
@@ -346,6 +370,12 @@ async def _refresh_gauges() -> None:
     m["container_info"].clear()
     m["container_cpu_percent"].clear()
     m["container_memory_mb"].clear()
+    # Per-worker gauges cleared like their neighbours: without this a REMOVED
+    # worker kept publishing its last values forever, and stale-but-present
+    # series read as live machines.
+    m["worker_last_heartbeat_seconds"].clear()
+    m["worker_docker_available"].clear()
+    m["worker_containers_count"].clear()
 
     workers = await database.list_workers()
     status_counts: dict[str, int] = {}
@@ -363,7 +393,10 @@ async def _refresh_gauges() -> None:
                     dt = dt.replace(tzinfo=UTC)
                 m["worker_last_heartbeat_seconds"].labels(worker=name).set(now - dt.timestamp())
             except (ValueError, TypeError):
-                pass
+                # Skipping silently made the worker vanish from the heartbeat
+                # gauge, and the WorkerOffline rule cannot fire on an absent
+                # series — count it so the broken state has a signal of its own.
+                m["worker_heartbeat_unparseable_total"].labels(worker=name).inc()
 
         sys_info = {}
         with contextlib.suppress(json.JSONDecodeError, TypeError):
@@ -464,6 +497,15 @@ def record_collection_error(platform: str) -> None:
     if not METRICS_ENABLED or not _metrics:
         return
     _metrics["collection_errors_total"].labels(platform=platform).inc()
+
+
+def record_notify_delivery(delivered: bool) -> None:
+    """Record whether an out-of-band alert delivery was accepted by any target."""
+    if not METRICS_ENABLED or not _metrics:
+        return
+    _metrics["notify_delivery_total"].labels(result="success" if delivered else "error").inc()
+    if delivered:
+        _metrics["notify_last_success_timestamp"].set(time.time())
 
 
 def record_container_lifecycle(action: str, service: str) -> None:
