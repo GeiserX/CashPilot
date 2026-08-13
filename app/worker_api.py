@@ -1169,6 +1169,15 @@ def _validate_runtime(runtime: str | None) -> None:
     if not runtime:
         return
     available = orchestrator.available_runtimes()
+    if available is None:
+        # An unreachable daemon is an OUTAGE, not a caller mistake: answering
+        # 400 here told the operator their runtime choice was wrong when the
+        # actual fix was the daemon. The deploy would fail against the dead
+        # daemon anyway — refuse honestly first.
+        raise HTTPException(
+            status_code=503,
+            detail=f"Cannot verify the {runtime!r} runtime — the Docker daemon is not answering.",
+        )
     if runtime not in available:
         raise HTTPException(
             status_code=400,
@@ -1504,7 +1513,12 @@ async def api_runtimes(request: Request) -> dict[str, Any]:
     throughput on a workload that is pure network I/O.
     """
     _verify_api_key(request)
-    available = sorted(await asyncio.to_thread(orchestrator.available_runtimes))
+    runtimes = await asyncio.to_thread(orchestrator.available_runtimes)
+    if runtimes is None:
+        # Same split as _validate_runtime: unreachable daemon is an outage,
+        # and an empty list here would read as "no runtimes installed".
+        raise HTTPException(status_code=503, detail="The Docker daemon is not answering.")
+    available = sorted(runtimes)
     return {
         "available": available,
         "default": None,

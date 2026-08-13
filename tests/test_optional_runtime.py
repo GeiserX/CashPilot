@@ -96,18 +96,35 @@ class TestReadingTheDaemon:
     def test_it_returns_what_docker_reports(self):
         client = MagicMock()
         client.info.return_value = {"Runtimes": {"runc": {}, "runsc": {}}}
-        with patch.object(orchestrator, "_get_client", return_value=client):
+        with patch.object(orchestrator.docker, "from_env", return_value=client) as from_env:
             assert orchestrator.available_runtimes() == {"runc", "runsc"}
+        # The probe uses its own short-timeout client, not the shared one whose
+        # long default exists for image pulls.
+        assert from_env.call_args.kwargs.get("timeout") == 5
+        client.close.assert_called_once()
 
     def test_a_daemon_that_cannot_be_reached_reports_none_rather_than_raising(self):
-        with patch.object(orchestrator, "_get_client", side_effect=RuntimeError("no docker")):
-            assert orchestrator.available_runtimes() == set()
+        # None, not set(): "no runtimes installed" is a 400-class caller
+        # mistake, "daemon unreachable" is a 503-class outage — collapsing
+        # them told the operator to fix the wrong thing.
+        with patch.object(orchestrator.docker, "from_env", side_effect=RuntimeError("no docker")):
+            assert orchestrator.available_runtimes() is None
 
-    def test_a_malformed_info_response_reports_none(self):
+    def test_a_malformed_info_response_reports_empty_not_outage(self):
+        # A daemon that ANSWERS with a shape we cannot read is not an outage:
+        # empty set, so the caller 400s rather than 503s.
         client = MagicMock()
         client.info.return_value = {"Runtimes": "runc"}
-        with patch.object(orchestrator, "_get_client", return_value=client):
+        with patch.object(orchestrator.docker, "from_env", return_value=client):
             assert orchestrator.available_runtimes() == set()
+
+    def test_an_unreachable_daemon_is_a_503_not_a_400(self):
+        with (
+            patch.object(orchestrator, "available_runtimes", return_value=None),
+            pytest.raises(HTTPException) as exc,
+        ):
+            worker_api._validate_runtime("runsc")
+        assert exc.value.status_code == 503
 
 
 class TestTheSpecStillRefusesEverythingElse:
