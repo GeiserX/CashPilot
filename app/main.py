@@ -472,6 +472,37 @@ async def _collect_bounded(collector) -> Any:
             )
 
 
+async def _offline_worker_alerts() -> list[dict[str, str]]:
+    """Bell entries for every worker currently marked offline.
+
+    Derived from the workers table on each rebuild rather than carried in
+    memory: the collection loop replaces _collector_alerts wholesale every
+    hour, and an entry that lived only in the list would be dropped there —
+    silently un-reporting a machine that is still down. Recovery needs no
+    bookkeeping either: the next heartbeat flips the row back to online and
+    the entry stops being derived.
+    """
+    try:
+        workers = await database.list_workers()
+    except Exception as exc:  # noqa: BLE001 - the bell must not take down collection
+        logger.warning("Could not derive offline-worker alerts: %s", exc)
+        return []
+    entries: list[dict[str, str]] = []
+    for w in workers:
+        if w.get("status") == "offline" and w.get("last_heartbeat"):
+            entries.append(
+                {
+                    "kind": "worker",
+                    "platform": w["name"],
+                    "error": (
+                        f"Offline since {w['last_heartbeat']} UTC. Its containers keep running "
+                        "and earning, but CashPilot cannot see or manage them until it reconnects."
+                    ),
+                }
+            )
+    return entries
+
+
 async def _flatline_check() -> list[dict[str, str]]:
     """Alert on services that are running but whose balance has stopped moving.
 
@@ -548,7 +579,12 @@ async def _warm_collector_alerts() -> None:
         # flatline belongs here for the same reason payout does: it is recorded,
         # and without this it is dropped on the way to the bell, so a restart
         # silently clears a warning about a service that is still not earning.
-        if alert["kind"] not in ("collector", "payout", "flatline"):
+        # worker likewise: an offline machine must survive a UI restart. And
+        # notice: #326 made notices durable and deduped, but a restart dropped
+        # them from the bell while their 24h push-dedupe survived — so a
+        # recovery inside the gap skipped clear_alerts and the stale row
+        # swallowed the next genuine warning.
+        if alert["kind"] not in ("collector", "payout", "flatline", "worker", "notice"):
             continue
         key = f"{alert['kind']}:{alert['subject']}"
         if key in seen:
@@ -757,6 +793,9 @@ async def _run_collection() -> None:
             # user would ever see it was the one place it never went. The bell
             # said "All collectors healthy".
             alerts.extend(await _flatline_check())
+            # Offline workers re-derived every rebuild, or the hourly wholesale
+            # replacement of this list would silently un-report a dead machine.
+            alerts.extend(await _offline_worker_alerts())
             _collector_alerts = alerts
         except Exception as exc:
             logger.error("Collection run failed: %s", exc)
@@ -832,6 +871,26 @@ async def _check_stale_workers() -> None:
             if w["status"] == "online" and last < cutoff:
                 await database.set_worker_status(w["id"], "offline")
                 logger.info("Worker '%s' marked offline (last heartbeat: %s)", w["name"], last_hb)
+                # The 42-hour incident, UI side: this transition used to be the
+                # log line above and nothing else — the UI KNEW and told nobody.
+                # Same alert/push/recovery pattern as a failing collector.
+                msg = (
+                    f"No heartbeat for over {STALE_WORKER_SECONDS // 60} minutes. Its containers "
+                    "keep running and earning, but CashPilot cannot see or manage them until it reconnects."
+                )
+                if await database.record_alert("worker", w["name"], msg):
+                    _spawn(
+                        notify.send(
+                            f"CashPilot: worker '{w['name']}' went offline",
+                            msg,
+                            kind="worker",
+                            subject=w["name"],
+                        )
+                    )
+                # Into the bell NOW (this job runs every 2 min); the hourly
+                # collection rebuild re-derives it from the workers table.
+                if not any(a.get("kind") == "worker" and a.get("platform") == w["name"] for a in _collector_alerts):
+                    _collector_alerts.append({"kind": "worker", "platform": w["name"], "error": msg})
             elif w["status"] == "offline" and last < purge_cutoff and not w.get("api_key_enc"):
                 await database.delete_worker(w["id"])
                 logger.info("Purged stale unenrolled worker '%s' (offline since %s)", w["name"], last_hb)
@@ -4229,6 +4288,16 @@ async def api_worker_heartbeat(request: Request, body: WorkerHeartbeat) -> dict[
     if not cid:
         raise HTTPException(status_code=400, detail="Worker name or client_id required")
     state = await _authenticate_worker_heartbeat(request, cid)
+    # Pre-upsert state: upsert_worker unconditionally writes 'online', so the
+    # offline -> online recovery is only observable here, before it runs.
+    # Best-effort on purpose: this read failing must never reject a heartbeat
+    # (the upsert below is the loud path if the DB is really broken); the cost
+    # is one missed immediate alert-clear, which the 24h cooldown self-heals.
+    previous = None
+    try:
+        previous = await database.get_worker_status_and_name(cid)
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("Could not read pre-heartbeat worker state for %s: %s", cid, exc)
     worker_id = await database.upsert_worker(
         client_id=cid,
         name=body.name,
@@ -4238,6 +4307,19 @@ async def api_worker_heartbeat(request: Request, body: WorkerHeartbeat) -> dict[
         system_info=json.dumps(body.system_info),
     )
     metrics.record_heartbeat(body.name)
+    if previous is not None and previous[0] == "offline":
+        # Recovered — drop the stored alert so the NEXT outage notifies again
+        # instead of being deduped inside the cooldown window, and prune the
+        # bell entry now rather than at the next hourly rebuild. The alert was
+        # recorded under the STORED display name, which name-protection can
+        # keep different from what this heartbeat carries.
+        prev_name = previous[1]
+        await database.clear_alerts("worker", prev_name)
+        global _collector_alerts
+        _collector_alerts = [
+            a for a in _collector_alerts if not (a.get("kind") == "worker" and a.get("platform") == prev_name)
+        ]
+        logger.info("Worker '%s' is back online", prev_name)
     resp: dict[str, Any] = {"status": "ok", "worker_id": worker_id}
     if state == "enroll":
         # First contact: mint this worker's own key and hand it back once. Stored

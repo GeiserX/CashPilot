@@ -1855,6 +1855,22 @@ async def get_worker(worker_id: int) -> dict[str, Any] | None:
         await db.close()
 
 
+async def get_worker_status_and_name(client_id: str) -> tuple[str, str] | None:
+    """The (status, display name) a worker had BEFORE its next upsert.
+
+    The heartbeat route needs the pre-upsert state to detect an
+    offline -> online recovery — upsert_worker unconditionally writes
+    'online', so after it runs the transition is no longer observable.
+    """
+    db = await _get_db()
+    try:
+        cursor = await db.execute("SELECT status, name FROM workers WHERE client_id = ?", (client_id,))
+        row = await cursor.fetchone()
+        return (row["status"], row["name"]) if row else None
+    finally:
+        await db.close()
+
+
 async def list_workers() -> list[dict[str, Any]]:
     db = await _get_db()
     try:
