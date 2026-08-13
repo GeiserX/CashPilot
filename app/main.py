@@ -25,7 +25,7 @@ from typing import Any
 import httpx
 from apscheduler.events import EVENT_JOB_ERROR, EVENT_JOB_MISSED
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, PlainTextResponse
@@ -77,6 +77,13 @@ _collector_alerts: list[dict[str, str]] = []
 # collectors healthy" (CashPilot-tb5). Restored on startup from durable state so
 # a restart does not reset the claim to "never ran" while data exists.
 _collection_has_run: bool = False
+# Monotonic time the collection machinery last COMPLETED a run (success or
+# failure — this measures aliveness, not outcome; the success timestamp is a
+# metric). Initialized to process start so boot gets a grace window, exactly
+# like the worker's heartbeat stamp. A dead scheduler, a wedged collection
+# lock, or a blocked event loop all freeze this — and they used to freeze
+# every other signal green with them.
+_last_collection_finished: float = time.monotonic()
 _collection_lock = asyncio.Lock()
 _collection_semaphore = asyncio.Semaphore(8)
 
@@ -921,8 +928,14 @@ async def _run_collection() -> None:
             # Set even on a failed run: the bell's question is "has anything
             # looked", and a run that tried and failed HAS looked — its failure
             # is in the alert list the bell is about to show.
-            global _collection_has_run
+            global _collection_has_run, _last_collection_finished
             _collection_has_run = True
+            # "The machinery ran", success or not — /api/health and the bell
+            # measure staleness of THIS stamp. A run that wedges on the
+            # collection lock returns early above and never reaches here, so
+            # the age keeps growing through exactly the failure the skip line
+            # used to disguise as routine.
+            _last_collection_finished = time.monotonic()
 
 
 # ---------------------------------------------------------------------------
@@ -3593,6 +3606,47 @@ async def api_update_status(request: Request) -> dict[str, Any]:
     return update_check.state()
 
 
+# How stale the collection stamp may grow before it is a problem: 2.5x the
+# interval tolerates one slow run and one missed slot before declaring the
+# machinery dead — the same flap-resistance reasoning as the worker's window.
+_COLLECTION_STALE_FACTOR = 2.5
+
+
+@app.get("/api/health")
+async def api_health(response: Response) -> dict[str, Any]:
+    """Health of the UI process itself (no auth — the Docker healthcheck asks).
+
+    Reports whether this process can still DO ITS JOB, not merely whether the
+    port answers. The container healthcheck used to be a TCP connect, which the
+    kernel's listen backlog completes for a wedged uvicorn, a dead scheduler or
+    an unwritable database — every internal failure rendered as "healthy". A
+    check that cannot fail for the failure you actually have is not a check.
+
+    Three concrete questions, each a distinct operational failure an operator
+    can act on: is the scheduler running, has the collection machinery
+    completed a run recently (a wedged collection lock freezes this stamp —
+    the skip line used to disguise that as routine), and can the database be
+    read. Values are deliberately generic state names, no secrets.
+    """
+    problems: list[str] = []
+    if not scheduler.running:
+        problems.append("scheduler stopped")
+    stale_after = _COLLECTION_STALE_FACTOR * COLLECT_INTERVAL_MIN * 60
+    age = time.monotonic() - _last_collection_finished
+    if age > stale_after:
+        problems.append(f"no collection completed in {int(age // 60)} minutes")
+    try:
+        await database.get_config()
+    except Exception:  # noqa: BLE001 - the reason goes to the body, not a 500
+        problems.append("database unreadable")
+    body: dict[str, Any] = {"status": "ok"}
+    if problems:
+        response.status_code = 503
+        body["status"] = "degraded"
+        body["problems"] = problems
+    return body
+
+
 @app.get("/api/collector-alerts")
 async def api_collector_alerts(request: Request) -> dict[str, Any]:
     """Collector errors from the last run, and whether a run has happened.
@@ -3623,7 +3677,18 @@ async def api_collector_alerts(request: Request) -> dict[str, Any]:
         if alert.get("category"):
             entry["category"] = alert["category"]
         sanitized.append(entry)
-    return {"alerts": sanitized, "collected": _collection_has_run}
+    # The staleness flag is what keeps "All collectors healthy" honest: the
+    # collected latch below is permanent once set, so after a scheduler death
+    # the bell would affirm health forever on the strength of a collection
+    # that stopped happening. Decided server-side so the frontend never has
+    # to know the interval.
+    age = int(time.monotonic() - _last_collection_finished)
+    return {
+        "alerts": sanitized,
+        "collected": _collection_has_run,
+        "last_run_age_seconds": age,
+        "collection_stale": age > _COLLECTION_STALE_FACTOR * COLLECT_INTERVAL_MIN * 60,
+    }
 
 
 @app.get("/api/exchange-rates")

@@ -53,7 +53,14 @@ VOLUME /data
 EXPOSE 8080
 
 ENTRYPOINT ["/entrypoint.sh"]
+# Ask the app whether it can still DO ITS JOB, not merely whether the port
+# answers: a TCP connect is completed by the kernel's listen backlog while
+# uvicorn is wedged, the scheduler is dead or the database is unreadable —
+# every internal failure rendered as "healthy". /api/health answers 503 for
+# those. http.client, NOT urllib.request: urlopen honors http_proxy (which
+# Docker injects fleet-wide when the host has a proxies config) with no
+# localhost exemption, so the "loopback" probe would be answered by the proxy.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
-    CMD ["python", "-c", "import socket; socket.create_connection(('127.0.0.1', 8080), timeout=3).close()"]
+    CMD ["python", "-c", "import sys,http.client\ntry:\n    c = http.client.HTTPConnection('127.0.0.1', 8080, timeout=3)\n    c.request('GET', '/api/health')\n    sys.exit(0 if c.getresponse().status == 200 else 1)\nexcept Exception:\n    sys.exit(1)"]
 
 CMD ["python", "-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8080", "--no-access-log"]
