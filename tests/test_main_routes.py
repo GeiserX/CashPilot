@@ -1906,13 +1906,16 @@ class TestPeriodicTasks:
         from app.main import _check_stale_workers
 
         old_time = (datetime.now(UTC) - timedelta(seconds=300)).isoformat()
-        workers = [{"id": 1, "name": "w1", "status": "online", "last_heartbeat": old_time}]
+        workers = [{"id": 1, "client_id": "w1-cid", "name": "w1", "status": "online", "last_heartbeat": old_time}]
         with (
             patch("app.main.database.list_workers", new_callable=AsyncMock, return_value=workers),
-            patch("app.main.database.set_worker_status", new_callable=AsyncMock) as mock_set,
+            patch(
+                "app.main.database.mark_worker_offline_if_unchanged", new_callable=AsyncMock, return_value=True
+            ) as mock_mark,
+            patch("app.main.database.record_alert", new_callable=AsyncMock, return_value=False),
         ):
             asyncio.run(_check_stale_workers())
-            mock_set.assert_called_once_with(1, "offline")
+            mock_mark.assert_called_once_with(1, old_time)
 
     def test_check_stale_workers_error(self):
         from app.main import _check_stale_workers

@@ -1855,6 +1855,22 @@ async def get_worker(worker_id: int) -> dict[str, Any] | None:
         await db.close()
 
 
+async def get_worker_status_and_name(client_id: str) -> tuple[str, str] | None:
+    """The (status, display name) a worker had BEFORE its next upsert.
+
+    The heartbeat route needs the pre-upsert state to detect an
+    offline -> online recovery — upsert_worker unconditionally writes
+    'online', so after it runs the transition is no longer observable.
+    """
+    db = await _get_db()
+    try:
+        cursor = await db.execute("SELECT status, name FROM workers WHERE client_id = ?", (client_id,))
+        row = await cursor.fetchone()
+        return (row["status"], row["name"]) if row else None
+    finally:
+        await db.close()
+
+
 async def list_workers() -> list[dict[str, Any]]:
     db = await _get_db()
     try:
@@ -1870,6 +1886,28 @@ async def set_worker_status(worker_id: int, status: str) -> None:
     try:
         await db.execute("UPDATE workers SET status = ? WHERE id = ?", (status, worker_id))
         await db.commit()
+    finally:
+        await db.close()
+
+
+async def mark_worker_offline_if_unchanged(worker_id: int, expected_heartbeat: str) -> bool:
+    """Mark a worker offline only if no heartbeat landed since the sweep read it.
+
+    The stale-worker sweep reads the row, decides, then writes — and a recovery
+    heartbeat can land in that gap. An unconditional write would flip a worker
+    that JUST came back to offline and alert on it, exactly at its moment of
+    recovery. Conditioning on the heartbeat value the sweep based its decision
+    on makes the decide-and-write atomic: if anything moved, the update matches
+    nothing and the sweep simply reconsiders in two minutes.
+    """
+    db = await _get_db()
+    try:
+        cursor = await db.execute(
+            "UPDATE workers SET status = 'offline' WHERE id = ? AND last_heartbeat = ? AND status = 'online'",
+            (worker_id, expected_heartbeat),
+        )
+        await db.commit()
+        return cursor.rowcount == 1
     finally:
         await db.close()
 
