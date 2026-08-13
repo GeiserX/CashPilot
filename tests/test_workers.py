@@ -339,7 +339,8 @@ class TestStaleWorkerPurge:
         mock_delete = AsyncMock()
         with (
             patch("app.main.database.list_workers", new_callable=AsyncMock, return_value=workers),
-            patch("app.main.database.set_worker_status", new_callable=AsyncMock),
+            patch("app.main.database.mark_worker_offline_if_unchanged", new_callable=AsyncMock, return_value=True),
+            patch("app.main.database.record_alert", new_callable=AsyncMock, return_value=False),
             patch("app.main.database.delete_worker", mock_delete),
         ):
             _run(_check_stale_workers())
@@ -362,7 +363,8 @@ class TestStaleWorkerPurge:
         mock_delete = AsyncMock()
         with (
             patch("app.main.database.list_workers", new_callable=AsyncMock, return_value=workers),
-            patch("app.main.database.set_worker_status", new_callable=AsyncMock),
+            patch("app.main.database.mark_worker_offline_if_unchanged", new_callable=AsyncMock, return_value=True),
+            patch("app.main.database.record_alert", new_callable=AsyncMock, return_value=False),
             patch("app.main.database.delete_worker", mock_delete),
         ):
             _run(_check_stale_workers())
@@ -385,14 +387,17 @@ class TestStaleWorkerPurge:
         in the same batch from being processed (per-worker error boundary)."""
         bad = _worker_row(id=4, name="bad", status="online", last_heartbeat="not-a-real-timestamp")
         good = _worker_row(id=3, name="good", status="online", last_heartbeat="2020-01-01T00:00:00")
-        mock_set_status = AsyncMock()
+        mock_mark = AsyncMock(return_value=True)
         with (
             patch("app.main.database.list_workers", new_callable=AsyncMock, return_value=[bad, good]),
-            patch("app.main.database.set_worker_status", mock_set_status),
+            patch("app.main.database.mark_worker_offline_if_unchanged", mock_mark),
+            patch("app.main.database.record_alert", new_callable=AsyncMock, return_value=False),
             patch("app.main.database.delete_worker", new_callable=AsyncMock),
         ):
             _run(_check_stale_workers())
-        mock_set_status.assert_called_once_with(3, "offline")
+        # The offline mark is conditional on the heartbeat the decision came
+        # from — the sweep hands over exactly what it read.
+        mock_mark.assert_called_once_with(3, "2020-01-01T00:00:00")
 
 
 # ---------------------------------------------------------------------------

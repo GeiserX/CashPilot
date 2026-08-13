@@ -1890,6 +1890,28 @@ async def set_worker_status(worker_id: int, status: str) -> None:
         await db.close()
 
 
+async def mark_worker_offline_if_unchanged(worker_id: int, expected_heartbeat: str) -> bool:
+    """Mark a worker offline only if no heartbeat landed since the sweep read it.
+
+    The stale-worker sweep reads the row, decides, then writes — and a recovery
+    heartbeat can land in that gap. An unconditional write would flip a worker
+    that JUST came back to offline and alert on it, exactly at its moment of
+    recovery. Conditioning on the heartbeat value the sweep based its decision
+    on makes the decide-and-write atomic: if anything moved, the update matches
+    nothing and the sweep simply reconsiders in two minutes.
+    """
+    db = await _get_db()
+    try:
+        cursor = await db.execute(
+            "UPDATE workers SET status = 'offline' WHERE id = ? AND last_heartbeat = ? AND status = 'online'",
+            (worker_id, expected_heartbeat),
+        )
+        await db.commit()
+        return cursor.rowcount == 1
+    finally:
+        await db.close()
+
+
 async def delete_worker(worker_id: int) -> None:
     db = await _get_db()
     try:
