@@ -144,6 +144,19 @@ def _reset_process_wide_caches():
 
         orchestrator._status_cache = []
         orchestrator._status_cache_time = 0.0
+    with contextlib.suppress(Exception):
+        # test_worker_keys drives _send_heartbeat through 401/ConnectError paths
+        # and leaves the heartbeat-failure counter nonzero; with CASHPILOT_UI_URL
+        # exported (any dev pointed at a real fleet) that turns /api/health tests
+        # in OTHER files into 503s.
+        from app import worker_api
+
+        worker_api._consecutive_heartbeat_failures = 0
+        worker_api._link_hint_logged = False
+        # A stale stamp reads as "not reporting in": without this reset, any
+        # pytest process older than the staleness window would 503 every
+        # /api/health test that patches UI_URL.
+        worker_api._last_heartbeat_ok = worker_api.time.monotonic()
     yield
 
 
