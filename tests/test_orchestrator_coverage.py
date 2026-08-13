@@ -288,19 +288,30 @@ class TestGetStatus:
         assert results[0]["slug"] == "storj"
         assert results[0]["deployed_by"] == "external"
 
-    def test_all_containers_listing_failure_still_returns_labeled(self):
+    def test_all_containers_listing_failure_flags_blind_not_partial(self):
+        """A half-answer is a lie with the flag still true.
+
+        This used to return the labeled results and swallow the external-list
+        failure — so external deployments read as DOWN while the worker looked
+        healthy. Now any listing failure returns [] and flips the availability
+        memo, and the same heartbeat reports docker_available=false.
+        """
         labeled = _mock_container(name="cashpilot-honeygain", status="running", slug="honeygain")
         labeled.stats.return_value = _zero_stats()
         client = MagicMock()
         client.containers.list.side_effect = [[labeled], Exception("docker daemon hiccup")]
         image_map = {"some/image:latest": "svc"}
-        with (
-            patch.object(orchestrator, "_get_client", return_value=client),
-            patch.object(orchestrator, "_build_image_slug_map", return_value=image_map),
-        ):
-            results = orchestrator.get_status()
-        assert len(results) == 1
-        assert results[0]["slug"] == "honeygain"
+        orchestrator._docker_available = True
+        try:
+            with (
+                patch.object(orchestrator, "_get_client", return_value=client),
+                patch.object(orchestrator, "_build_image_slug_map", return_value=image_map),
+            ):
+                results = orchestrator.get_status()
+            assert results == []
+            assert orchestrator._docker_available is False
+        finally:
+            orchestrator._docker_available = None
 
 
 # ---------------------------------------------------------------------------
@@ -372,17 +383,23 @@ class TestGetStatusLight:
             results = orchestrator.get_status_light()
         assert len(results) == 1
 
-    def test_all_containers_listing_failure_handled(self):
+    def test_all_containers_listing_failure_flags_blind_not_partial(self):
+        # Mirror of get_status: no half-answers with the flag still true.
         labeled = _mock_container(name="cashpilot-honeygain", status="running", slug="honeygain")
         client = MagicMock()
         client.containers.list.side_effect = [[labeled], Exception("boom")]
         image_map = {"x": "y"}
-        with (
-            patch.object(orchestrator, "_get_client", return_value=client),
-            patch.object(orchestrator, "_build_image_slug_map", return_value=image_map),
-        ):
-            results = orchestrator.get_status_light()
-        assert len(results) == 1
+        orchestrator._docker_available = True
+        try:
+            with (
+                patch.object(orchestrator, "_get_client", return_value=client),
+                patch.object(orchestrator, "_build_image_slug_map", return_value=image_map),
+            ):
+                results = orchestrator.get_status_light()
+            assert results == []
+            assert orchestrator._docker_available is False
+        finally:
+            orchestrator._docker_available = None
 
 
 class TestAdvertisedAddressExtraction:

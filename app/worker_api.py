@@ -1169,6 +1169,15 @@ def _validate_runtime(runtime: str | None) -> None:
     if not runtime:
         return
     available = orchestrator.available_runtimes()
+    if available is None:
+        # An unreachable daemon is an OUTAGE, not a caller mistake: answering
+        # 400 here told the operator their runtime choice was wrong when the
+        # actual fix was the daemon. The deploy would fail against the dead
+        # daemon anyway — refuse honestly first.
+        raise HTTPException(
+            status_code=503,
+            detail=f"Cannot verify the {runtime!r} runtime — the Docker daemon is not answering.",
+        )
     if runtime not in available:
         raise HTTPException(
             status_code=400,
@@ -1272,7 +1281,13 @@ async def api_list_containers(request: Request) -> list[dict[str, Any]]:
 async def api_deploy_container(request: Request, slug: str, spec: DeploySpec) -> dict[str, str]:
     """Deploy a container from spec sent by UI."""
     _verify_api_key(request)
-    _validate_deploy_spec(spec, slug=slug)
+    # Threaded like every other Docker touch in this file: _validate_runtime
+    # inside does a live daemon round-trip (available_runtimes has no cache and
+    # no timeout), and unthreaded it blocked the WHOLE event loop on a wedged
+    # daemon — including /api/health, so the container flipped unhealthy
+    # because an unrelated route was stuck. HTTPException propagates through
+    # to_thread unchanged, so the 400/403 behaviour is identical.
+    await asyncio.to_thread(_validate_deploy_spec, spec, slug)
     try:
         container_id = await asyncio.to_thread(
             orchestrator.deploy_raw,
@@ -1498,7 +1513,12 @@ async def api_runtimes(request: Request) -> dict[str, Any]:
     throughput on a workload that is pure network I/O.
     """
     _verify_api_key(request)
-    available = sorted(await asyncio.to_thread(orchestrator.available_runtimes))
+    runtimes = await asyncio.to_thread(orchestrator.available_runtimes)
+    if runtimes is None:
+        # Same split as _validate_runtime: unreachable daemon is an outage,
+        # and an empty list here would read as "no runtimes installed".
+        raise HTTPException(status_code=503, detail="The Docker daemon is not answering.")
+    available = sorted(runtimes)
     return {
         "available": available,
         "default": None,

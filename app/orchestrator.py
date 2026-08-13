@@ -7,6 +7,7 @@ inspection for cashpilot-managed containers via the Docker SDK.
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import os
 import time
@@ -44,24 +45,60 @@ _status_cache: list[dict[str, Any]] = []
 _status_cache_time: float = 0.0
 
 
+def _mark_docker_unavailable(reason: str, exc: BaseException) -> None:
+    """Flip the availability memo to False, saying so LOUDLY on the transition.
+
+    Docker going away mid-life used to be a logger.debug — invisible at the
+    default INFO level — so a worker silently degraded to monitor-only, every
+    deploy 503'd, and `docker logs` contained no reason at all. The transition
+    is the loud moment; a persisting outage stays quiet (the caller's per-call
+    debug covers it) so a dead daemon does not warn once per probe forever.
+    Only True -> False warns: None -> False is startup discovering a
+    monitor-only worker, which lifespan already announces.
+    """
+    global _docker_available
+    if _docker_available is True:
+        logger.warning(
+            "Docker became unreachable (%s): %s — degrading to monitor-only until it returns",
+            reason,
+            exc,
+        )
+    _docker_available = False
+
+
+def _mark_docker_available() -> None:
+    """Flip the availability memo to True, announcing a recovery."""
+    global _docker_available
+    if _docker_available is False:
+        logger.warning("Docker is reachable again — container management restored")
+    _docker_available = True
+
+
 def docker_available() -> bool:
     """Check whether the Docker socket is accessible.
 
     Only the positive result is memoized. A negative/unknown result is
-    re-probed on every call so a transient daemon blip self-heals.
+    re-probed on every call so a transient daemon blip self-heals. The memo is
+    invalidated by any code path that catches a live Docker failure (see
+    _mark_docker_unavailable), so a daemon that dies AFTER a successful probe
+    is re-discovered rather than reported available forever.
     """
-    global _docker_available
     if _docker_available:
         return True
+    client = None
     try:
         client = docker.from_env()
         client.ping()
-        client.close()
-        _docker_available = True
+        _mark_docker_available()
     except Exception as exc:
         logger.debug("Docker ping failed: %s", exc)
-        _docker_available = False
-    return _docker_available
+        _mark_docker_unavailable("ping failed", exc)
+    finally:
+        # A ping that RAISED used to leak the half-built client and its pool.
+        if client is not None:
+            with contextlib.suppress(Exception):
+                client.close()
+    return bool(_docker_available)
 
 
 def _get_client() -> docker.DockerClient:
@@ -69,10 +106,10 @@ def _get_client() -> docker.DockerClient:
     try:
         client = docker.from_env()
         client.ping()
+        _mark_docker_available()
         return client
     except DockerException as exc:
-        global _docker_available
-        _docker_available = False
+        _mark_docker_unavailable("client connect failed", exc)
         raise RuntimeError(
             "Docker socket not available. Mount /var/run/docker.sock to "
             "enable container management, or use CashPilot in monitor-only "
@@ -166,19 +203,32 @@ def _read_pids_limit() -> int:
 _PIDS_LIMIT = _read_pids_limit()
 
 
-def available_runtimes() -> set[str]:
-    """Runtimes the local Docker daemon actually reports.
+def available_runtimes() -> set[str] | None:
+    """Runtimes the local Docker daemon actually reports, or None if unaskable.
 
     The allowlist is derived from the daemon rather than hardcoded, because a
     runtime CashPilot has heard of but the host has not installed would fail at
     container-create time with a Docker error the user cannot act on. Asking the
     daemon means the only runtimes offered are ones that exist here.
+
+    None, not an empty set, when the daemon cannot be asked: "no runtimes
+    installed here" is a caller mistake (400), "daemon unreachable" is an
+    outage (503), and collapsing them told the operator to fix the wrong
+    thing. The probe uses its OWN short-timeout client — the shared client
+    keeps the SDK's long default because deploys legitimately take minutes,
+    but a validation probe hanging 60s per call could pile onto the executor.
     """
+    client = None
     try:
-        info = _get_client().info()
-    except Exception:
-        logger.warning("Could not read Docker runtimes; treating none as available")
-        return set()
+        client = docker.from_env(timeout=5)
+        info = client.info()
+    except Exception as exc:
+        logger.warning("Could not read Docker runtimes (daemon unreachable?): %s", exc)
+        return None
+    finally:
+        if client is not None:
+            with contextlib.suppress(Exception):
+                client.close()
     runtimes = info.get("Runtimes")
     return set(runtimes) if isinstance(runtimes, dict) else set()
 
@@ -653,10 +703,21 @@ def get_status() -> list[dict[str, Any]]:
         return []
 
     # Labeled containers (CashPilot-managed)
-    labeled = client.containers.list(
-        all=True,
-        filters={"label": f"{LABEL_MANAGED}=true"},
-    )
+    try:
+        labeled = client.containers.list(
+            all=True,
+            filters={"label": f"{LABEL_MANAGED}=true"},
+        )
+    except Exception as exc:
+        # "Ping works, list fails" (daemon 500, read timeout, containerd
+        # hiccup) used to escape this function entirely: the heartbeat then
+        # shipped containers=[] WITH docker_available=true — a worker that
+        # looks online and deliberately empty, while the UI writes a durable
+        # check_down for every deployment it can no longer see. Flag the
+        # outage so the SAME heartbeat reports blind, and the UI's guard
+        # skips the false downtime.
+        _mark_docker_unavailable("container listing failed", exc)
+        return []
     seen_ids: set[str] = set()
 
     results: list[dict[str, Any]] = []
@@ -695,8 +756,11 @@ def get_status() -> list[dict[str, Any]]:
         try:
             all_containers = client.containers.list(all=True)
         except Exception as exc:
-            logger.warning("Failed to list all containers: %s", exc)
-            all_containers = []
+            # Same rule as the labeled list: a partial result with the flag
+            # still true would show EXTERNAL deployments as down instead of
+            # Docker-blind — the exact lie this change removes.
+            _mark_docker_unavailable("container listing failed", exc)
+            return []
         # Resolve which externally-deployed containers we actually care about
         # BEFORE fetching stats, so nothing is paid for a container we skip.
         matched: list[tuple[Any, str, str]] = []
@@ -799,10 +863,16 @@ def get_status_light() -> list[dict[str, Any]]:
         return []
 
     # First: labeled containers (CashPilot-managed)
-    labeled = client.containers.list(
-        all=True,
-        filters={"label": f"{LABEL_MANAGED}=true"},
-    )
+    try:
+        labeled = client.containers.list(
+            all=True,
+            filters={"label": f"{LABEL_MANAGED}=true"},
+        )
+    except Exception as exc:
+        # Mirror of get_status: "ping works, list fails" must flag the outage,
+        # not serve an empty-but-healthy answer.
+        _mark_docker_unavailable("container listing failed", exc)
+        return []
     seen_ids: set[str] = set()
 
     results: list[dict[str, Any]] = []
@@ -835,8 +905,11 @@ def get_status_light() -> list[dict[str, Any]]:
         try:
             all_containers = client.containers.list(all=True)
         except Exception as exc:
-            logger.warning("Failed to list all containers: %s", exc)
-            all_containers = []
+            # Same rule as the labeled list: a partial result with the flag
+            # still true would show EXTERNAL deployments as down instead of
+            # Docker-blind — the exact lie this change removes.
+            _mark_docker_unavailable("container listing failed", exc)
+            return []
         for c in all_containers:
             try:
                 if c.id in seen_ids:
