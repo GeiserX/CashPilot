@@ -30,6 +30,7 @@ from datetime import UTC, datetime
 from html import escape as _esc
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 import httpx
 from fastapi import FastAPI, HTTPException, Request, Response
@@ -80,10 +81,34 @@ _AUTH_FAILURE_DISCARD_AFTER = 10
 # unresolvable. This is what /api/health reports on, because from the operator's
 # side the only thing that matters is "is this worker still reporting in".
 _consecutive_heartbeat_failures = 0
-# ~5 minutes at the 60s interval. Long enough that a UI restart or a brief
-# network blip does not flip the container to unhealthy, short enough that a
-# genuinely disconnected worker is visible in `docker ps` the same hour.
-_HEARTBEAT_FAILURES_UNHEALTHY_AFTER = 5
+# Monotonic time of the last heartbeat the UI actually accepted. The counter
+# above only moves when a cycle RETURNS; a payload helper that blocks forever
+# (statvfs against a wedged /data mount, a wedged Docker socket) freezes the
+# loop with the counter at zero, which is the 42-hour false-healthy all over
+# again. Staleness of this stamp catches raise, hang and dead-task alike.
+# Initialized to process start so a freshly booted worker gets the same grace
+# window before it is expected to have reported in.
+_last_heartbeat_ok = time.monotonic()
+# The endpoint DEGRADES once 12 consecutive sends have missed (~11 min after
+# the outage starts — the first failure lands at t≈0) or the last accepted
+# heartbeat is _HEARTBEAT_STALE_AFTER (16 min) old; `docker ps` flips to
+# unhealthy up to 3 failed checks (~90s) later — the counter path is visible
+# the same quarter-hour, the hang path within 20 minutes. Long enough that a
+# UI restart or a brief blip does not flap the container. It MUST stay
+# above _AUTH_FAILURE_DISCARD_AFTER: this repo documents an autoheal sidecar
+# that restarts unhealthy containers, a restart resets the in-memory auth
+# ladder while the stale key file survives on disk — so an unhealthy threshold
+# below the discard threshold would restart-loop a locked-out worker at N
+# failures forever and the discard-and-re-enrol self-heal could never run.
+_HEARTBEAT_FAILURES_UNHEALTHY_AFTER = 12
+# The staleness backstop gets its own, LONGER window. The discard ladder is
+# counted in CYCLES and a cycle costs 60s plus payload time (container stats
+# stretch it with fleet size; nvidia-smi alone may burn its 10s timeout), so a
+# wall-clock window equal to 12 nominal cycles can expire BEFORE failure #10
+# lands on a slow host — tripping unhealthy (and any restart-on-unhealthy
+# supervisor) during the worker's own self-heal. Four extra nominal cycles
+# tolerate ~36s of per-cycle overhead before that ordering could invert.
+_HEARTBEAT_STALE_AFTER = (_HEARTBEAT_FAILURES_UNHEALTHY_AFTER + 4) * HEARTBEAT_INTERVAL
 # The name-resolution hint is logged ONCE per outage, not every cycle. A warning
 # repeated every 60 seconds for 42 hours is precisely how the last one was missed.
 _link_hint_logged = False
@@ -505,6 +530,38 @@ async def _detect_egress_ip() -> str | None:
     return None
 
 
+def _ui_host() -> str:
+    """Hostname of UI_URL, safe to log.
+
+    CASHPILOT_UI_URL can carry userinfo (a UI behind reverse-proxy basic auth is
+    `https://user:pass@host`), and string-splitting leaked it: `token@host` kept
+    the whole token, `user:pass@host` printed the username as the "host". Parse
+    properly and log only the hostname.
+    """
+    raw = UI_URL if "://" in UI_URL else f"//{UI_URL}"
+    try:
+        host = urlsplit(raw).hostname
+    except ValueError:
+        host = None
+    return host or "<unparseable CASHPILOT_UI_URL>"
+
+
+def _redact_userinfo(text: str) -> str:
+    """Strip URL credentials (user:pass@ / token@) from a URL or a message.
+
+    Applied to log text that can embed UI_URL: httpx's HTTPStatusError message
+    interpolates str(request.url) UNREDACTED, so a credentialed CASHPILOT_UI_URL
+    put the password in the per-cycle "Heartbeat failed" warning.
+
+    The userinfo class deliberately allows '@' so the greedy match runs to the
+    LAST '@' before the path — a password containing an unencoded '@' must not
+    half-survive. Scheme matching is case-insensitive ('HTTPS://user:pass@h'
+    is a working httpx config).
+    """
+    text = re.sub(r"([a-zA-Z][a-zA-Z0-9+.-]*://)[^/\s'\"]*@", r"\1", text)
+    return re.sub(r"^[^/\s]*@", "", text, count=1)
+
+
 def _log_link_failure_hint(exc: BaseException) -> None:
     """Explain a heartbeat that never reached the UI, once per outage.
 
@@ -534,12 +591,15 @@ def _log_link_failure_hint(exc: BaseException) -> None:
         if isinstance(cur, socket.gaierror):
             is_resolution_failure = True
             break
-        cur = cur.__cause__ or cur.__context__
+        # Honor `raise X from None`: a suppressed context was deliberately
+        # disowned, and following it anyway would blame DNS for an exception
+        # that merely HAPPENED during a resolution failure's cleanup.
+        cur = cur.__cause__ if cur.__cause__ is not None or cur.__suppress_context__ else cur.__context__
 
     if not is_resolution_failure:
         return
 
-    host = UI_URL.split("://", 1)[-1].split("/", 1)[0].split(":", 1)[0] or UI_URL
+    host = _ui_host()
     logger.error(
         "Cannot resolve %r from inside this container, so no heartbeat can reach the UI. "
         "If that is a Compose service name, this worker and the UI must share a Docker "
@@ -557,7 +617,7 @@ def _log_link_failure_hint(exc: BaseException) -> None:
 async def _send_heartbeat() -> None:
     """Send a single heartbeat to the UI."""
     global _ui_connected, _last_heartbeat, _last_error, _consecutive_auth_failures
-    global _consecutive_heartbeat_failures, _link_hint_logged
+    global _consecutive_heartbeat_failures, _link_hint_logged, _last_heartbeat_ok
 
     containers = []
     try:
@@ -599,28 +659,42 @@ async def _send_heartbeat() -> None:
                 headers={"Authorization": f"Bearer {_active_key()}"},
             )
             resp.raise_for_status()
-            # Enrollment: the UI returns our own per-worker key exactly once.
-            issued = None
-            with contextlib.suppress(Exception):
-                issued = resp.json().get("worker_key")
-            if issued and issued != _worker_key:
-                if _save_worker_key(issued):
-                    logger.info("Enrolled: received and persisted this worker's own fleet key")
-                else:
-                    logger.error("Received per-worker key but could not persist it — staying on shared key")
+            # The heartbeat LANDED — record the success before any enrollment
+            # bookkeeping. This state measures "did the UI hear from us", and a
+            # bug in the bookkeeping below (a UI version skew handing back a
+            # malformed worker_key, say) must not count a delivered heartbeat
+            # as a connection failure and degrade a perfectly reporting worker.
             _ui_connected = True
             _last_heartbeat = datetime.now(UTC).strftime("%H:%M:%S UTC")
+            _last_heartbeat_ok = time.monotonic()
             _last_error = ""
             _consecutive_auth_failures = 0
             _consecutive_heartbeat_failures = 0
             _link_hint_logged = False
-            logger.debug("Heartbeat sent to %s", UI_URL)
+            logger.debug("Heartbeat sent to %s", _ui_host())
+            try:
+                # Enrollment: the UI returns our own per-worker key exactly once.
+                issued = None
+                with contextlib.suppress(Exception):
+                    issued = resp.json().get("worker_key")
+                if issued and issued != _worker_key:
+                    if _save_worker_key(issued):
+                        logger.info("Enrolled: received and persisted this worker's own fleet key")
+                    else:
+                        logger.error("Received per-worker key but could not persist it — staying on shared key")
+            except Exception as exc:  # noqa: BLE001 - bookkeeping must not report as an outage
+                logger.error("Enrollment bookkeeping failed (heartbeat itself landed): %s", _redact_userinfo(str(exc)))
     except httpx.HTTPStatusError as exc:
         _ui_connected = False
         _consecutive_heartbeat_failures += 1
+        # A reply — any reply — proves the UI's name resolves, so a resolution
+        # outage is over and the hint must re-arm. Resetting only on full
+        # success left the flag stuck True through a post-outage 401 spell,
+        # silencing the hint for the NEXT resolution outage.
+        _link_hint_logged = False
         status = exc.response.status_code
         _last_error = f"authentication rejected ({status})" if status in (401, 403) else "connection failed"
-        logger.warning("Heartbeat failed: %s", exc)
+        logger.warning("Heartbeat failed: %s", _redact_userinfo(str(exc)))
         if status == 401:
             # Counted whether or not we hold our own key. The condition used to
             # be `and _worker_key`, which skipped the alarm in exactly the case
@@ -677,7 +751,7 @@ async def _send_heartbeat() -> None:
         # A network failure is not an auth rejection, so it breaks the run too.
         _consecutive_auth_failures = 0
         _consecutive_heartbeat_failures += 1
-        logger.warning("Heartbeat failed: %s", exc)
+        logger.warning("Heartbeat failed: %s", _redact_userinfo(str(exc)))
         _log_link_failure_hint(exc)
 
 
@@ -693,12 +767,21 @@ async def _heartbeat_loop() -> None:
     offline until someone restarts the container — while the service containers
     keep earning and nothing surfaces the problem.
     """
+    global _ui_connected, _last_error, _consecutive_heartbeat_failures
     while True:
         try:
             await _send_heartbeat()
         except asyncio.CancelledError:
             raise
         except Exception:
+            # A cycle that died before the POST is still a heartbeat that did
+            # not land. Without this accounting a worker whose payload
+            # construction fails every time never degrades /api/health — 200
+            # "ok" forever while it never reports in, which is exactly the
+            # invisible state this endpoint exists to expose.
+            _ui_connected = False
+            _consecutive_heartbeat_failures += 1
+            _last_error = "internal error preparing the heartbeat"
             logger.exception("Heartbeat cycle failed — continuing")
         await asyncio.sleep(HEARTBEAT_INTERVAL)
 
@@ -731,7 +814,7 @@ async def lifespan(app: FastAPI):
 
     if UI_URL:
         _heartbeat_task = asyncio.create_task(_heartbeat_loop())
-        logger.info("Heartbeat enabled -> %s (every %ds)", UI_URL, HEARTBEAT_INTERVAL)
+        logger.info("Heartbeat enabled -> %s (every %ds)", _redact_userinfo(UI_URL), HEARTBEAT_INTERVAL)
         if not API_KEY:
             logger.warning("CASHPILOT_API_KEY not set — heartbeats sent without auth")
     else:
@@ -1428,7 +1511,7 @@ async def api_runtimes(request: Request) -> dict[str, Any]:
 
 
 @app.get("/api/health")
-async def api_health(response: Response) -> dict[str, str]:
+async def api_health(response: Response) -> dict[str, Any]:
     """Health check endpoint (no auth required).
 
     Reports whether this worker can still REPORT IN, not merely whether its own
@@ -1439,18 +1522,35 @@ async def api_health(response: Response) -> dict[str, str]:
     the two. A check that cannot fail for the failure you actually have is not a
     check.
 
-    Degraded only after a sustained run of misses, so a UI restart or a brief
-    network blip does not flap the container. Deliberately NOT degraded when no
-    UI_URL is configured: a worker with nowhere to report is doing exactly what
-    it was told to.
+    Two triggers, two windows: a sustained run of counted misses (12 cycles),
+    OR a last-success stamp older than the separate, longer _HEARTBEAT_STALE_AFTER
+    wall-clock window — they are deliberately NOT the same number, because the
+    auth-discard ladder is cycle-counted and a wall clock equal to 12 nominal
+    cycles would pre-empt it on a slow host (see the constants).
+    The stamp is what catches a cycle that never RETURNS —
+    a payload helper blocking on a wedged /data mount or Docker socket freezes
+    the loop with the counter at zero, and only staleness can see that. It also
+    covers a dead heartbeat task outright. Degraded only after a full window,
+    so a UI restart or a brief blip does not flap the container. Deliberately
+    NOT degraded when no UI_URL is configured: a worker with nowhere to report
+    is doing exactly what it was told to.
+
+    The annotation is dict[str, Any] on purpose: FastAPI validates the response
+    against it AFTER the work is done, and a stricter type turns a future
+    non-str field into a 500 exactly when the endpoint has news (the api_deploy
+    lesson). Every value is still deliberately built as a str.
     """
-    body = {"status": "ok", "worker": WORKER_NAME}
-    if UI_URL and _consecutive_heartbeat_failures >= _HEARTBEAT_FAILURES_UNHEALTHY_AFTER:
+    body: dict[str, Any] = {"status": "ok", "worker": WORKER_NAME}
+    success_age = time.monotonic() - _last_heartbeat_ok
+    if UI_URL and (
+        _consecutive_heartbeat_failures >= _HEARTBEAT_FAILURES_UNHEALTHY_AFTER or success_age > _HEARTBEAT_STALE_AFTER
+    ):
         response.status_code = 503
         body["status"] = "degraded"
         body["reason"] = "not reporting to the UI"
         body["last_heartbeat"] = _last_heartbeat
         body["consecutive_failures"] = str(_consecutive_heartbeat_failures)
+        body["last_success_age"] = f"{int(success_age)}s"
         if _last_error:
             body["error"] = _last_error
     return body

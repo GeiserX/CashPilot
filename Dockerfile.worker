@@ -73,7 +73,11 @@ ENTRYPOINT ["/entrypoint.sh"]
 # for days, so `docker ps` read "healthy" right through a 42-hour outage while
 # the fleet page showed the worker offline. /api/health returns 503 only after a
 # sustained run of missed heartbeats, so a UI restart does not flap the state.
+# http.client, NOT urllib.request: urlopen honors http_proxy/HTTPS_PROXY (which
+# Docker injects fleet-wide when the host has a proxies config) and has no
+# localhost exemption, so the "loopback" probe would be answered by the proxy —
+# unhealthy forever, or worse, healthy on the strength of a different host.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
-    CMD ["python", "-c", "import sys,urllib.request\ntry:\n    urllib.request.urlopen('http://127.0.0.1:8081/api/health', timeout=3)\nexcept Exception:\n    sys.exit(1)"]
+    CMD ["python", "-c", "import sys,http.client\ntry:\n    c = http.client.HTTPConnection('127.0.0.1', 8081, timeout=3)\n    c.request('GET', '/api/health')\n    sys.exit(0 if c.getresponse().status == 200 else 1)\nexcept Exception:\n    sys.exit(1)"]
 
 CMD ["python", "-m", "uvicorn", "app.worker_api:app", "--host", "0.0.0.0", "--port", "8081", "--no-access-log"]
