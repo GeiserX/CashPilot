@@ -5,7 +5,7 @@
 
 ## Description
 
-Bytelixir lets you earn passive income by sharing unused internet bandwidth. Supports Windows and Android only — the official FAQ states no Linux or Docker client is planned, iOS is unsupported, and macOS is not offered. Earnings range $2-50/month depending on location. Web dashboard at dash.bytelixir.com for tracking. No Docker image available.
+Bytelixir lets you earn passive income by sharing unused internet bandwidth. Supports Windows and Android only — the official FAQ states no Linux or Docker client is planned, iOS is unsupported, and macOS is not offered. Earnings depend heavily on location. Web dashboard at dash.bytelixir.com for tracking. No Docker image available.
 
 ## Earning Estimates
 
@@ -17,7 +17,7 @@ Bytelixir lets you earn passive income by sharing unused internet bandwidth. Sup
 | Payout frequency | On request |
 | Payment methods | Crypto |
 
-> Earnings vary by location ($2-50/month). No Docker image, and the official FAQ says none is planned. Windows desktop app or Android app required.
+> Earnings vary heavily by location. No Docker image, and the official FAQ says none is planned. Windows desktop app or Android app required.
 
 ## Requirements
 
@@ -35,18 +35,16 @@ Bytelixir lets you earn passive income by sharing unused internet bandwidth. Sup
 
 Sign up at [Bytelixir](https://bytelixir.com/r/OYEIRE0VSZBZ).
 
-### 2. Get your credentials
+### 2. Install the app
 
-After signing up, locate the credentials needed for Docker deployment. These are typically your email/password or an API token found in the dashboard.
+Download the Windows or Android app from the **Download** section of your dashboard at
+[dash.bytelixir.com](https://dash.bytelixir.com) — those are the only supported platforms,
+and the official FAQ states no Linux or Docker client is planned.
 
-### 3. Deploy with CashPilot
+### 3. Track earnings in CashPilot
 
-In the CashPilot web UI, find **Bytelixir** in the service catalog and click **Deploy**. Enter the required credentials and CashPilot will handle the rest.
-
-## Docker Configuration
-
-- **Image:** ``
-
-### Environment Variables
-
-No environment variables required.
+There is no container to deploy; CashPilot tracks Bytelixir's earnings through your
+dashboard session. In the catalog entry, paste the session cookie values exactly as the
+credential fields describe (log in at dash.bytelixir.com, then F12 → Application →
+Cookies). Sessions with "Remember Me" last days to weeks; refresh the cookie when the
+collector reports it expired.

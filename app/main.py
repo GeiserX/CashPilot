@@ -1433,7 +1433,7 @@ def _collector_needs_setup(slug: str, config: dict[str, str]) -> bool:
 # can't drift apart again — previously the listing hid all three but deploy only
 # refused "dead", so a direct link or a stale page could still deploy a broken or
 # dropped service and then silently earn nothing.
-_UNDEPLOYABLE_STATUSES = frozenset({"broken", "dead", "dropped"})
+from app.constants import UNDEPLOYABLE_STATUSES as _UNDEPLOYABLE_STATUSES  # noqa: E402 - single source, see constants
 
 
 def _split_image(ref: str) -> tuple[str, str, str]:

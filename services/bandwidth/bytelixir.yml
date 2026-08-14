@@ -7,9 +7,9 @@ description: >
   Bytelixir lets you earn passive income by sharing unused internet bandwidth.
   Supports Windows and Android only — the official FAQ states no Linux or
   Docker client is planned, iOS is unsupported, and macOS is not offered.
-  Earnings range $2-50/month depending on location. Web dashboard at
-  dash.bytelixir.com for tracking. No Docker image available.
-short_description: Bandwidth sharing - $2-50/month, Windows + Android only
+  Earnings depend heavily on location. Web dashboard at dash.bytelixir.com
+  for tracking. No Docker image available.
+short_description: Bandwidth sharing - Windows + Android only
 
 referral:
   signup_url: "https://bytelixir.com/r/OYEIRE0VSZBZ"

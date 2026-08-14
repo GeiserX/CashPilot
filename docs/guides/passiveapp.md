@@ -1,6 +1,6 @@
 # PassiveApp
 
-> **Category:** DePIN | **Status:** Dead
+> **Category:** DePIN | **Status:** Active
 > **Website:** [https://passiveapp.com](https://passiveapp.com)
 
 ## Description
@@ -35,18 +35,14 @@ PassiveApp is a DePIN platform that lets you earn crypto and PayPal rewards by s
 
 Sign up at [PassiveApp](https://passiveapp.com/i/bqpC4M).
 
-### 2. Get your credentials
+### 2. Install the Windows app
 
-After signing up, locate the credentials needed for Docker deployment. These are typically your email/password or an API token found in the dashboard.
+Download the Windows desktop app from the vendor's download page and log in. That is the
+only released client — Android, iOS and Linux are vendor-announced "coming soon" and have
+never shipped.
 
-### 3. Deploy with CashPilot
+### 3. What CashPilot can and cannot do here
 
-In the CashPilot web UI, find **PassiveApp** in the service catalog and click **Deploy**. Enter the required credentials and CashPilot will handle the rest.
-
-## Docker Configuration
-
-- **Image:** ``
-
-### Environment Variables
-
-No environment variables required.
+There is no Docker image and no public API, so CashPilot can neither deploy nor track
+PassiveApp automatically. It is listed for completeness; earnings tracking is manual via
+the vendor dashboard.
