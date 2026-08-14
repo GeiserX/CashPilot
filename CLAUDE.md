@@ -279,7 +279,7 @@ Working collectors (15 total, in `app/collectors/__init__.py` `COLLECTOR_MAP`):
 | Category | Active | Broken | Dead | Shady | Total |
 |----------|--------|--------|------|-------|-------|
 | Bandwidth | 14 | 2 | 4 | 0 | 22 |
-| DePIN | 8 | 4 | 0 | 2 | 20 |
+| DePIN | 7 | 4 | 1 | 2 | 20 |
 | Compute | 4 | 1 | 0 | 0 | 6 |
 | Storage | 1 | 0 | 0 | 0 | 1 |
 

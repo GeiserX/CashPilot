@@ -189,6 +189,46 @@ class TestGenerateComposeAll:
         assert "cashpilot-b" in output
 
 
+class TestDeadServicesAreNotExported:
+    """A compose file is a runnable artifact: exporting one for a dead service
+    points the user at something that cannot earn (Presearch shut down July
+    2026 and its entry stays in the catalog as status: dead)."""
+
+    def _dead(self):
+        svc = _mock_service(slug="presearch", name="Presearch", image="presearch/node")
+        svc["status"] = "dead"
+        return svc
+
+    def test_single_export_of_a_dead_service_refuses(self):
+        with (
+            patch("app.compose_generator.get_service", return_value=self._dead()),
+            pytest.raises(ValueError, match="no longer available"),
+        ):
+            compose_generator.generate_compose_single("presearch")
+
+    def test_multi_export_skips_dead_services(self):
+        live = _mock_service(slug="honeygain", name="Honeygain")
+
+        def mock_get(slug):
+            return {"presearch": self._dead(), "honeygain": live}.get(slug)
+
+        with patch("app.compose_generator.get_service", side_effect=mock_get):
+            output = compose_generator.generate_compose_multi(["presearch", "honeygain"])
+        assert "cashpilot-honeygain" in output  # negative control: live stays
+        assert "presearch" not in output
+
+    def test_the_real_dead_presearch_is_not_in_export_all(self):
+        # Against the real catalog: the entry exists with an image, and must
+        # still not be exported.
+        from app.catalog import load_services
+
+        presearch = next(s for s in load_services() if s.get("slug") == "presearch")
+        assert presearch["status"] == "dead"
+        assert presearch["docker"]["image"]  # the trap: image present, status dead
+        out = compose_generator.generate_compose_all()
+        assert "presearch" not in out
+
+
 class TestEscapeInterpolation:
     def test_basic_escape(self):
         assert compose_generator._escape_interpolation("${FOO}") == "$${FOO}"

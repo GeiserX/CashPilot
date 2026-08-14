@@ -25,6 +25,7 @@ from app.constants import (
     LABEL_MANAGED,
     LABEL_SERVICE,
     LABEL_VERSION,
+    UNDEPLOYABLE_STATUSES,
 )
 
 
@@ -152,6 +153,11 @@ def generate_compose_single(
     svc = get_service(slug)
     if not svc:
         raise ValueError(f"Unknown service: {slug}")
+    if svc.get("status") in UNDEPLOYABLE_STATUSES:
+        # A compose file for a dead service is a runnable artifact pointing at
+        # something that cannot earn — the export must refuse like the deploy
+        # route does, not hand the user a working-looking YAML.
+        raise ValueError(f"Service {slug} is no longer available ({svc.get('status')})")
 
     compose_svc = _service_to_compose(svc, env_vars, hostname)
     if not compose_svc:
@@ -178,6 +184,8 @@ def generate_compose_multi(
     for slug in slugs:
         svc = get_service(slug)
         if not svc:
+            continue
+        if svc.get("status") in UNDEPLOYABLE_STATUSES:
             continue
         compose_svc = _service_to_compose(svc, env_map.get(slug), hostname)
         if compose_svc:

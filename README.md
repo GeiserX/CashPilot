@@ -75,7 +75,6 @@ Services CashPilot can deploy and manage automatically via Docker.
 | [IPRoyal Pawns](https://pawns.app?r=19266874) | [Guide](docs/guides/iproyal.md) | ✅ | ❌ | ? \*\*\* | 1 | PayPal, Crypto, Bank Transfer |
 | [MystNodes](https://mystnodes.co/?referral_code=do7v7YOoBBpbOstKQovX2pUvZYKia4ZhH3QIdNtE) | [Guide](docs/guides/mysterium.md) | ❌ | ✅ | ? \*\*\* | Unlimited | Crypto |
 | [PacketStream](https://packetstream.io/?psr=7xgZ) | [Guide](docs/guides/packetstream.md) | ✅ | ❌ | ? \*\*\* | ? \*\*\* | PayPal |
-| [Presearch](https://presearch.com/signup?rid=4872322) | [Guide](docs/guides/presearch.md) | ❌ | ✅ | ? \*\*\* | ? \*\*\* | Crypto |
 | [ProxyBase](https://peer.proxybase.org?referral=nXzS3c6iTO) | [Guide](docs/guides/proxybase.md) | ❌ | ✅ | ? \*\*\* | ? \*\*\* | Crypto |
 | [ProxyBase Markets](https://proxybase.xyz?referral=nXzS3c6iTO) | [Guide](docs/guides/proxybase-xyz.md) | ❌ | ✅ | ? \*\*\* | ? \*\*\* | Crypto (USDC) |
 | [ProxyLite](https://proxylite.ru/?r=KMUPRZIZ) | [Guide](docs/guides/proxylite.md) | ❌ | ✅ | ? \*\*\* | ? \*\*\* | Crypto, PayPal |
@@ -358,6 +357,7 @@ Services that were evaluated but are no longer listed in the catalog due to bein
 
 | Service | Status | Reason | Last checked |
 |---------|--------|--------|:------------:|
+| Presearch | Dead | Company shut down July 24-28, 2026; node program and backend decommissioned | Aug 2026 |
 | SpeedShare | Dead | Project confirmed dead in Discord | Mar 2026 |
 | Peer2Profit | Dead | Domain unreachable | Mar 2026 |
 | PacketShare | Dead | Signup process broken, no progress | Mar 2026 |

@@ -57,7 +57,7 @@ Setup and configuration for every service CashPilot supports.
 | [Nodepay](nodepay.md) | Residential IP | App only | — | active |
 | [Nodle](nodle.md) | — | App only | — | active |
 | [PassiveApp](passiveapp.md) | Residential IP | App only | $5 | active |
-| [Presearch](presearch.md) | — | Docker | — | active |
+| [Presearch](presearch.md) | — | Docker | — | dead |
 | [Sentinel dVPN](sentinel-dvpn.md) | 10 Mbps | App only | — | active |
 | [Teneo Protocol](teneo.md) | Residential IP | App only | — | active |
 | [Theta Edge Node](theta-edge.md) | — | App only | — | active |
