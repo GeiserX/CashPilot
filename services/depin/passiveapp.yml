@@ -5,9 +5,12 @@ status: active
 website: https://passiveapp.com
 description: >
   PassiveApp is a DePIN platform that lets you earn crypto and PayPal rewards
-  by sharing unused bandwidth and computing resources. Relatively new service
-  with limited Docker support through community images.
-short_description: DePIN bandwidth/compute - crypto and PayPal payouts
+  by sharing unused bandwidth and computing resources. Windows only in
+  practice: the vendor's own download page has listed Android, iOS and Linux
+  as "coming soon" unchanged since at least February 2025, and no macOS
+  version exists — despite marketing copy on the same site claiming broader
+  support. No Docker image.
+short_description: DePIN bandwidth/compute - Windows only, crypto and PayPal payouts
 
 referral:
   signup_url: "https://passiveapp.com/i/bqpC4M"
@@ -39,7 +42,7 @@ earnings:
   monthly_high: 4
   currency: USD
   per: "device"
-  notes: "Relatively new. No official Docker image available yet."
+  notes: "Windows desktop app only (v1.0.x); Android/iOS/Linux are vendor-announced 'coming soon' since early 2025 and have never shipped. No official Docker image."
 
 cashout:
   method: redirect
@@ -47,7 +50,7 @@ cashout:
   min_amount: 5.0
   currency: USD
 
-platforms: [windows, linux, android, ios]
+platforms: [windows]
 
 collector:
   type: manual

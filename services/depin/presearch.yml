@@ -1,14 +1,17 @@
 name: Presearch
 slug: presearch
 category: depin
-status: active
+status: dead
 website: https://presearch.com
 description: >
-  Presearch is a decentralized search engine where node operators run Docker
-  containers to process search queries and earn PRE tokens. Requires staking
-  a minimum of 4,000 PRE tokens to earn rewards. Prioritizes fast internet
-  and low latency nodes.
-short_description: Decentralized search engine - Docker nodes, PRE token rewards
+  Presearch was a decentralized search engine where node operators ran Docker
+  containers to process search queries and earn PRE tokens. The company
+  announced its permanent shutdown on July 24, 2026 (effective July 28, 2026):
+  the search platform and the node program are gone, backend infrastructure
+  was decommissioned, and operators were told to withdraw their staked PRE
+  before the deadline. The PRE token contract still trades residually on
+  DEXes, but no node can earn anything anymore.
+short_description: Decentralized search engine - SHUT DOWN July 2026
 
 referral:
   signup_url: "https://presearch.com/signup?rid=4872322"

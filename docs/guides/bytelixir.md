@@ -5,7 +5,7 @@
 
 ## Description
 
-Bytelixir lets you earn passive income by sharing unused internet bandwidth. Supports Windows, macOS, Linux, and Android. Earnings range $2-50/month depending on location. Web dashboard at dash.bytelixir.com for tracking. No Docker image available.
+Bytelixir lets you earn passive income by sharing unused internet bandwidth. Supports Windows and Android only — the official FAQ states no Linux or Docker client is planned, iOS is unsupported, and macOS is not offered. Earnings range $2-50/month depending on location. Web dashboard at dash.bytelixir.com for tracking. No Docker image available.
 
 ## Earning Estimates
 
@@ -17,7 +17,7 @@ Bytelixir lets you earn passive income by sharing unused internet bandwidth. Sup
 | Payout frequency | On request |
 | Payment methods | Crypto |
 
-> Earnings vary by location ($2-50/month). No Docker image. Desktop app or Android app required.
+> Earnings vary by location ($2-50/month). No Docker image, and the official FAQ says none is planned. Windows desktop app or Android app required.
 
 ## Requirements
 
@@ -27,7 +27,7 @@ Bytelixir lets you earn passive income by sharing unused internet bandwidth. Sup
 | Minimum bandwidth | None |
 | GPU required | No |
 | Minimum storage | None |
-| Supported platforms | Windows, Macos, Linux, Android |
+| Supported platforms | Windows, Android |
 
 ## Setup Instructions
 
