@@ -565,6 +565,142 @@ def start_service(slug: str) -> None:
     logger.info("Started container %s", container.name)
 
 
+# ---------------------------------------------------------------------------
+# Self-update (issue #342)
+#
+# The documented install pins a MAJOR.MINOR image series with pull_policy:
+# always, and docker-compose.yml itself names `docker compose pull && docker
+# compose up -d` as the update path. The update button runs exactly that — from
+# a transient helper container, because the worker cannot recreate itself from
+# inside the process being recreated.
+#
+# Nothing here is caller-controlled: the compose project location comes from
+# the labels Compose put on the worker's OWN container, the helper image is
+# pinned, and the command is fixed. An install that pins an exact tag (GitOps
+# fleets) gets a no-op pull by construction; an install not managed by Compose
+# is refused with instructions instead of guessing.
+# ---------------------------------------------------------------------------
+
+#: Pinned helper image (ships the compose plugin — verified v2.33.0). Never :latest.
+UPDATER_IMAGE = "docker:27.5.1-cli"
+#: Fixed helper name: doubles as the only-one-update-at-a-time lock.
+UPDATER_NAME = "cashpilot-updater"
+_UPDATER_COMMAND = "docker compose pull && docker compose up -d"
+
+
+class SelfUpdateUnavailable(RuntimeError):
+    """This install cannot be updated by the helper; the message says what to do."""
+
+
+def _self_container(client: docker.DockerClient):
+    """The worker's own container, or None outside Docker.
+
+    The container hostname defaults to the short container id (the documented
+    compose file sets container_name, not hostname), so gethostname() resolves
+    directly; the documented container name is the fallback for installs that
+    do set a hostname.
+    """
+    import socket as _socket
+
+    for candidate in (_socket.gethostname(), "cashpilot-worker"):
+        try:
+            return client.containers.get(candidate)
+        except (NotFound, APIError):
+            continue
+    return None
+
+
+def _compose_project(container: Any) -> dict[str, str]:
+    labels = (container.attrs.get("Config", {}) or {}).get("Labels") or {}
+    return {
+        "working_dir": labels.get("com.docker.compose.project.working_dir") or "",
+        "config_files": labels.get("com.docker.compose.project.config_files") or "",
+        "project": labels.get("com.docker.compose.project") or "",
+    }
+
+
+def self_update_info() -> dict[str, Any]:
+    """What an update here would actually do — facts, no side effects."""
+    client = _get_client()
+    me = _self_container(client)
+    info: dict[str, Any] = {
+        "compose_managed": False,
+        "working_dir": "",
+        "project": "",
+        "worker_image": "",
+        "ui_image": "",
+        "updater_running": False,
+    }
+    if me is not None:
+        project = _compose_project(me)
+        info["compose_managed"] = bool(project["working_dir"])
+        info["working_dir"] = project["working_dir"]
+        info["project"] = project["project"]
+        info["worker_image"] = (me.attrs.get("Config", {}) or {}).get("Image") or ""
+    with contextlib.suppress(NotFound, APIError):
+        ui = client.containers.get("cashpilot-ui")
+        info["ui_image"] = (ui.attrs.get("Config", {}) or {}).get("Image") or ""
+    with contextlib.suppress(NotFound, APIError):
+        updater = client.containers.get(UPDATER_NAME)
+        info["updater_running"] = updater.status == "running"
+    return info
+
+
+def spawn_self_update() -> dict[str, Any]:
+    """Start the one-shot updater helper and return its identity.
+
+    Raises SelfUpdateUnavailable when this install has no compose project to
+    update (not deployed via Compose, or the worker cannot see itself), and
+    when an update is already running.
+    """
+    client = _get_client()
+    me = _self_container(client)
+    if me is None:
+        raise SelfUpdateUnavailable(
+            "The worker cannot identify its own container, so it cannot locate "
+            "your compose project. Update manually: docker compose pull && docker compose up -d"
+        )
+    project = _compose_project(me)
+    if not project["working_dir"]:
+        raise SelfUpdateUnavailable(
+            "This install is not managed by Docker Compose (no compose labels on "
+            "the worker container). Update manually with the commands you used to "
+            "install — for docker run, pull the new image and recreate the "
+            "cashpilot-ui and cashpilot-worker containers."
+        )
+
+    try:
+        existing = client.containers.get(UPDATER_NAME)
+        if existing.status == "running":
+            raise SelfUpdateUnavailable("An update is already running.")
+        # A leftover from an interrupted run — clear it so the fixed name is free.
+        existing.remove(force=True)
+    except NotFound:
+        pass
+
+    environment: dict[str, str] = {}
+    if project["config_files"]:
+        # Compose separates label paths with commas; COMPOSE_FILE uses colons.
+        environment["COMPOSE_FILE"] = project["config_files"].replace(",", ":")
+
+    updater = client.containers.run(
+        UPDATER_IMAGE,
+        name=UPDATER_NAME,
+        command=["sh", "-c", _UPDATER_COMMAND],
+        working_dir=project["working_dir"],
+        volumes={
+            "/var/run/docker.sock": {"bind": "/var/run/docker.sock", "mode": "rw"},
+            project["working_dir"]: {"bind": project["working_dir"], "mode": "rw"},
+        },
+        environment=environment,
+        labels={"cashpilot.updater": "true"},
+        detach=True,
+        remove=True,
+    )
+    logger.info("Self-update started: helper %s in %s", updater.id[:12], project["working_dir"])
+    return {"updater_id": updater.id[:12], "working_dir": project["working_dir"]}
+
+
 def _collect_stats(c) -> tuple[float, float, int | None, int | None]:
     """Collect CPU%, memory and cumulative network counters for one container.
 

@@ -2848,6 +2848,7 @@ const CP = (() => {
       renderEnvVars(envInfo, config);
       renderCollectors(collectorsMeta, config);
       loadCredentialHealth();
+      loadUpdateCard();
     } catch (err) {
       // Say what happened. /api/env-info and /api/collectors/meta each carry
       // their own .catch, so the only call that can reject is /api/config —
@@ -2877,6 +2878,80 @@ const CP = (() => {
       const el = document.getElementById(id);
       if (el) el.innerHTML = `<p style="color:var(--error);font-size:0.85rem;">${escapeHtml(message)}</p>`;
     });
+  }
+
+  // --- About & Updates (issue #342) ---------------------------------------
+
+  async function loadUpdateCard() {
+    const container = document.getElementById('update-card-container');
+    if (!container) return;
+    try {
+      const info = await api('/api/update-info');
+      renderUpdateCard(info);
+    } catch (err) {
+      // The card must render something honest even with the worker down — the
+      // rest of the settings page is still usable.
+      const detail = (err && err.message) ? `: ${err.message}` : '';
+      container.innerHTML = `<p style="color:var(--text-muted);font-size:0.85rem;">${escapeHtml(`Could not read update state${detail}. The local worker may be unreachable.`)}</p>`;
+    }
+  }
+
+  function renderUpdateCard(info) {
+    const container = document.getElementById('update-card-container');
+    if (!container) return;
+    const current = info.current_display || info.current || 'dev';
+    const latest = (info.known && info.latest) ? `v${String(info.latest).replace(/^v/, '')}` : null;
+    const line = (label, value) => `
+      <div style="display:grid;grid-template-columns:220px 1fr;gap:12px;padding:8px 0;border-bottom:1px solid var(--border-color);">
+        <div style="font-weight:600;font-size:0.9rem;color:var(--text-primary);">${escapeHtml(label)}</div>
+        <div style="font-size:0.9rem;color:var(--text-secondary);font-family:monospace;">${escapeHtml(value)}</div>
+      </div>`;
+    let html = line('Running', current);
+    if (info.worker_image) html += line('Worker image', info.worker_image);
+    if (info.ui_image) html += line('Dashboard image', info.ui_image);
+    html += line('Latest release', latest || 'unknown — check disabled, not yet run, or GitHub unreachable');
+
+    let action;
+    if (info.updater_running) {
+      action = `<p style="font-size:0.85rem;color:var(--text-secondary);margin-top:12px;">An update is already running — the dashboard may restart at any moment. Reload this page in a minute.</p>`;
+    } else if (!info.compose_managed) {
+      action = `<p style="font-size:0.85rem;color:var(--text-muted);margin-top:12px;">This install is not managed by Docker Compose, so CashPilot cannot update itself. Update manually: pull the new images, then recreate the <code>cashpilot-ui</code> and <code>cashpilot-worker</code> containers the way you created them.</p>`;
+    } else {
+      let label; let note;
+      if (info.patch_available) {
+        label = `Update to ${latest}`;
+        note = 'Installs the newest patch of your pinned series and recreates the CashPilot containers.';
+      } else if (info.behind) {
+        label = 'Pull newest patches';
+        note = `A newer series (${latest}) exists — moving to it means editing the image tags in your compose file. This button installs the newest patch of the series you currently pin.`;
+      } else {
+        label = 'Re-pull images';
+        note = latest
+          ? 'You are on the newest known release. The button re-runs the documented pull anyway.'
+          : 'The newest release is unknown; the button still runs the documented pull for your pinned series.';
+      }
+      action = `
+      <div style="display:flex;gap:12px;align-items:center;margin-top:14px;">
+        <button class="btn btn-primary" data-action="runSelfUpdate">${escapeHtml(label)}</button>
+        <span id="update-run-status" style="font-size:0.85rem;color:var(--text-muted);"></span>
+      </div>
+      <div class="form-hint" style="margin-top:8px;">${escapeHtml(note)}</div>`;
+    }
+    container.innerHTML = html + action;
+  }
+
+  async function runSelfUpdate() {
+    if (!confirm('Update CashPilot now? This pulls the newest images of your pinned series and recreates the CashPilot containers — the dashboard will briefly go away.')) return;
+    const status = document.getElementById('update-run-status');
+    if (status) status.textContent = 'Starting update…';
+    try {
+      await api('/api/update', { method: 'POST' });
+      if (status) status.textContent = 'Update started — the dashboard will restart. Reload this page in a minute.';
+    } catch (err) {
+      // A 409 carries the worker's honest refusal (e.g. not compose-managed,
+      // or an update already running) — show it verbatim, it IS the answer.
+      if (status) status.textContent = (err && err.message) ? err.message : 'Update failed to start.';
+    }
   }
 
   function renderEnvVars(envInfo, config) {
@@ -3657,6 +3732,7 @@ const CP = (() => {
     loadDeployRisk,
     confirmPayout,
     rejectPayout,
+    runSelfUpdate,
     // Exposed for fleet.html, which rendered running costs with a bare
     // Number(v).toFixed(2) — no unit at all, on figures that mixed USD earnings
     // with a tariff in the user's own currency. The API is canonical USD now,

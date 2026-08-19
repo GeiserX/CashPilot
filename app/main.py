@@ -3887,6 +3887,53 @@ async def api_set_preferences(
 # ---------------------------------------------------------------------------
 
 
+# --- Self-update surface (issue #342) ------------------------------------
+#
+# The daily release check (app/update_check.py, CashPilot-w0ss) already knows
+# the newest published release; these routes add what an operator can DO about
+# it. `behind` from update_check.state() is deliberately series-based; the
+# update button's semantic is different — it installs the newest PATCH of the
+# series the compose file pins — so patch_available is computed separately.
+
+
+@app.get("/api/update-info")
+async def api_update_info(request: Request, worker_id: int | None = None) -> dict[str, Any]:
+    """Everything the settings card needs: versions + what an update would do."""
+    _require_owner(request)
+    wid = await _resolve_worker_id(worker_id)
+    info = await _proxy_to_worker(wid, "GET", "/api/update/info")
+    check = update_check.state()
+    current = version.current()
+    latest = check.get("latest")
+    same_series = version.series(latest) is not None and version.series(latest) == version.series(current)
+    info.update(
+        {
+            "current": current,
+            "current_display": version.display(),
+            "latest": latest,
+            "known": check.get("known", False),
+            "behind": check.get("behind", False),
+            # True only when the documented `compose pull` would actually land a
+            # newer image on a series-pinned install.
+            "patch_available": same_series and version.is_newer(latest, current),
+        }
+    )
+    return info
+
+
+@app.post("/api/update")
+async def api_update(request: Request, worker_id: int | None = None) -> dict[str, Any]:
+    """Run the documented update on the selected worker's install.
+
+    The worker refuses with instructions (409) when the install is not
+    compose-managed; that detail passes through to the caller verbatim. The
+    long timeout covers the helper-image pull on a slow line.
+    """
+    _require_owner(request)
+    wid = await _resolve_worker_id(worker_id)
+    return await _proxy_to_worker(wid, "POST", "/api/update/self", timeout=120)
+
+
 @app.get("/api/env-info")
 async def api_env_info(request: Request) -> list[dict[str, Any]]:
     _require_owner(request)

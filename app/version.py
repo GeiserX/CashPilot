@@ -68,6 +68,36 @@ def series(value: str | None) -> str | None:
     return f"{parts[0]}.{parts[1]}"
 
 
+def release_tuple(value: str | None) -> tuple[int, ...] | None:
+    """The numeric parts of a release string, or None for anything else.
+
+    Strictly all-digit dotted parts after an optional leading ``v``: a value
+    like ``dev``, ``latest`` or ``1.36.0-rc1`` yields None, because comparing
+    against a non-release is how an update check invents an update.
+    """
+    text = (value or "").strip().lstrip("v")
+    if not is_release(text):
+        return None
+    parts = text.split(".")
+    if not parts or not all(p.isdigit() for p in parts):
+        return None
+    return tuple(int(p) for p in parts)
+
+
+def is_newer(candidate: str | None, current_value: str | None) -> bool:
+    """Whether ``candidate`` is a strictly newer release than ``current_value``.
+
+    False whenever either side is not a clean release — a ``dev`` build never
+    sees an "update available" claim it cannot act on, and a malformed tag from
+    the release feed never counts as newer than anything.
+    """
+    a, b = release_tuple(candidate), release_tuple(current_value)
+    if a is None or b is None:
+        return False
+    length = max(len(a), len(b))
+    return a + (0,) * (length - len(a)) > b + (0,) * (length - len(b))
+
+
 def skewed(ui: str | None, worker: str | None) -> bool:
     """True only when both sides are known releases AND their series differ.
 
