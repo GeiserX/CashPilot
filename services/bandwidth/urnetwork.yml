@@ -5,31 +5,47 @@ status: active
 website: https://ur.io
 description: >
   URnetwork is a decentralized VPN and bandwidth-sharing network. You earn by
-  providing bandwidth as a community provider. Uses JWT-based authentication.
-  Official Docker image from Bring Your Own (bringyour). Supports both direct
-  mode (with tun device) and proxy mode (SOCKS5).
-short_description: Decentralized VPN/bandwidth - JWT auth, direct or proxy mode
+  providing bandwidth as a community provider. The provider binary authenticates
+  itself with your account email and password (its auth-provide subcommand) and
+  stores the resulting session JWT in the data volume. Official Docker image
+  from BringYour, Inc.
+short_description: Decentralized VPN/bandwidth - email+password auth, JWT session in volume
 
 referral:
   signup_url: "https://ur.io/?referral_code=1Q3G19"
   code: "1Q3G19"
 
 docker:
-  image: bringyour/community-provider
+  # g4-latest is the channel the provider docs (docs.ur.io/provider) name as the
+  # most stable release line.
+  image: bringyour/community-provider:g4-latest
   platforms: [linux/amd64, linux/arm64]
   resources:
     mem_limit: "128m"
     oom_score_adj: 300
+  # The old UR_AUTH_TOKEN env var never existed in the provider: the binary reads
+  # no environment variables at all (its --help is the contract), so every deploy
+  # of that spec started an unauthenticated container (issue #344). auth-provide
+  # logs in with the account credentials, writes the session JWT into the volume
+  # ("Jwt written to /root/.urnetwork/jwt" — verified live 2026-08-19) and starts
+  # providing in one step. On restart it keeps the existing JWT (the overwrite
+  # prompt defaults to No without a TTY) and keeps providing; a fresh client_id
+  # per process start is normal provider behavior on every auth path.
   env:
-    - key: UR_AUTH_TOKEN
-      label: "Auth Token"
+    - key: UR_USER_AUTH
+      label: "Email"
+      required: true
+      secret: false
+      description: "Your URnetwork account email (the login you use at <a href=\"https://ur.io\" target=\"_blank\">ur.io</a>). Accounts created via Google/Apple sign-in need a password set first."
+    - key: UR_PASSWORD
+      label: "Password"
       required: true
       secret: true
-      description: "Log in at <a href=\"https://app.urnetwork.com\">app.urnetwork.com</a>, press F12 → Application → Local Storage → click <code>https://app.urnetwork.com</code> → copy the <code>auth_token</code> value (a JWT starting with eyJ)"
+      description: "Your URnetwork account password (no spaces). Used by the provider's auth-provide login; the session then persists in the data volume."
   ports: []
   volumes:
     - "urnetwork-data:/root/.urnetwork"
-  command: "provide"
+  command: "auth-provide --user_auth=${UR_USER_AUTH} --password=${UR_PASSWORD}"
   network_mode: ""
 
 requirements:
@@ -53,7 +69,9 @@ earnings:
 
 cashout:
   method: redirect
-  dashboard_url: "https://urnetwork.com/dashboard"
+  # urnetwork.com is dead (v6-only DNS remnants, no HTTP answer — issue #344);
+  # the live provider stats page is on the ur.network app domain.
+  dashboard_url: "https://app.ur.network/stats"
   min_amount: 5.0
   currency: USD
 

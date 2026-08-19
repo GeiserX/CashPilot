@@ -15,6 +15,8 @@ referral:
   code: "nXzS3c6iTO"
 
 docker:
+  # Index digest of tag v2.0.3 (their v2.0.x tags re-package the same client, which
+  # still reports itself as 1.0.4 — verified against ghcr 2026-08-19).
   image: "ghcr.io/proxybaseorg/peer-cli@sha256:b78dda3969019eb9e0d3ba0aeba0929148337898b00d99cf780f4d8c99b31b0e"
   platforms: [linux/amd64, linux/arm64, linux/arm/v7]
   resources:
@@ -30,11 +32,17 @@ docker:
       label: "Device Name"
       required: true
       secret: false
-      description: "Any name to identify this device in your ProxyBase dashboard"
+      description: "Any name (no spaces) to identify this device in your ProxyBase dashboard"
       default: "cashpilot-{hostname}"
   ports: []
   volumes: []
-  command: ""
+  # The peer client reads its credentials ONLY as positional arguments. Its own
+  # error text offers "environment variables ID and NAME" as an alternative, but
+  # no published image honors them — verified live 2026-08-19 on both the pinned
+  # digest and tag v2.0.3: env-only containers loop on "Missing ID and NAME"
+  # while argument-style containers connect (issue #343). The ${VAR} placeholders
+  # are filled from the form values at deploy time.
+  command: "${ID} ${NAME}"
   network_mode: ""
 
 requirements:

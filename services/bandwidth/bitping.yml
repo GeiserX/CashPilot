@@ -7,8 +7,10 @@ description: >
   Bitping is a decentralized network monitoring platform that pays you for running
   a node. Your node performs website monitoring, latency testing, and network
   quality checks for Bitping's customers. Works on both residential and VPS
-  connections. The Docker image requires interactive initial setup to authenticate,
-  then persists credentials in a volume mount.
+  connections. The Docker image logs in with the BITPING_EMAIL and BITPING_PASSWORD
+  environment variables on first start ("Attempting login with environment
+  variables" in its own log), then persists the session in the volume mount so
+  restarts do not re-authenticate.
 short_description: Bandwidth sharing - decentralized network monitoring, works on VPS
 
 referral:
@@ -20,7 +22,22 @@ docker:
   resources:
     mem_limit: "192m"
     oom_score_adj: 200
-  env: []
+  # These two were dropped in the 2026-03-28 catalog rewrite while the image kept
+  # supporting them, which left every deploy since with NO credentials at all: the
+  # container sat at "No active session" forever and earned nothing (issue #341).
+  # Verified live 2026-08-19 on bitpingd 26.8.17-1: with both set, the daemon logs
+  # "Attempting login with environment variables" and writes a session to disk.
+  env:
+    - key: BITPING_EMAIL
+      label: "Email"
+      required: true
+      secret: false
+      description: "Your Bitping account email (same login as <a href='https://app.bitping.com' target='_blank'>app.bitping.com</a>)"
+    - key: BITPING_PASSWORD
+      label: "Password"
+      required: true
+      secret: true
+      description: "Your Bitping account password. Used once to create the node session, which then persists in the data volume."
   ports: []
   volumes:
     - "bitping-data:/root/.bitping"
@@ -37,9 +54,9 @@ docker:
   # Scoped per-slug, so it grants nothing to any other service.
   cap_add: [NET_RAW]
   notes: >
-    Initial authentication is interactive via the container's web UI.
-    Credentials are then persisted in the /root/.bitping volume mount.
-    No environment variables are needed.
+    Authentication is fully non-interactive: the daemon reads BITPING_EMAIL and
+    BITPING_PASSWORD at startup and stores the resulting session in the
+    /root/.bitping volume mount.
 
 requirements:
   residential_ip: false
