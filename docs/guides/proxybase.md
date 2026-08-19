@@ -42,7 +42,7 @@ After signing up and verifying your email, open your [dashboard](https://peer.pr
 
 ### 3. Deploy with CashPilot
 
-In the CashPilot web UI, find **ProxyBase** in the service catalog and click **Deploy**. Enter your Access Token and a device name, and CashPilot will handle the rest.
+In the CashPilot web UI, find **ProxyBase** in the service catalog and click **Deploy**. Enter your Access Token and a device name (no spaces), and CashPilot will handle the rest.
 
 > **Upgrading from an older CashPilot?** ProxyBase moved to a new client image and replaced its credentials: the old `USER_ID`/`DEVICE_NAME` values are retired and cannot be reused. Generate a fresh **Access Token** in your [dashboard](https://peer.proxybase.org/dashboard), then re-deploy ProxyBase from the catalog with it (plus a Device Name) — existing containers built on the old image have stopped earning.
 
@@ -66,6 +66,8 @@ If ProxyBase was deployed before the migration to the new client, the container 
 
 Fix: **Remove** the ProxyBase service, then **Deploy** it again from the catalog and paste a fresh **Access Token** from [your dashboard](https://peer.proxybase.org/dashboard). The redeploy pulls the current `ghcr.io/proxybaseorg/peer-cli` image.
 
-### Container exits immediately after deploy
+### Container loops on `Missing ID and NAME`
 
-The client exits with `Missing ID and NAME` when it starts without credentials. CashPilot's deploy form requires both fields, so this normally can't happen — but if you deployed with an exported compose file, make sure the `ID` and `NAME` environment variables are filled in.
+The peer client accepts its credentials **only as command-line arguments**. Its error text also offers "environment variables ID and NAME", but no published image actually reads them — a container started with only the environment variables loops on `Missing ID and NAME` forever while showing as "running".
+
+CashPilot releases from 2026-07-17 through 1.35.x deployed exactly that shape, so **every fresh ProxyBase deploy in that window hit this** (issue #343). Current CashPilot passes the token and device name as arguments. Fix: upgrade CashPilot, then **Deploy** ProxyBase again from the catalog. If you used an exported compose file from an affected release, re-export it — old exports carried literal `${ID}` placeholders in the command.

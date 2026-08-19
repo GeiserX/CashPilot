@@ -395,6 +395,107 @@ class TestApiDeploy:
                 "cpu_shares": 4096,
             }
 
+    def test_deploy_proxybase_real_catalog_passes_credentials_as_arguments(self, client, deploy_capture):
+        """Guard for issue #343: the peer client reads ONLY positional arguments.
+
+        Its own error text offers "environment variables ID and NAME", but no
+        published image honors them (verified live against the pinned digest
+        and tag v2.0.3): an env-only container loops on "Missing ID and NAME"
+        while showing as running. The catalog command must therefore reach the
+        worker spec with both values substituted — if a catalog rewrite drops
+        the command line again (the 2026-07-17 fix shipped without it), this
+        goes red.
+        """
+        captured, capture = deploy_capture
+
+        from app import catalog
+
+        catalog.load_services()
+
+        with (
+            _auth_owner(),
+            patch("app.main._resolve_worker_id", new_callable=AsyncMock, return_value=1),
+            patch("app.main._proxy_worker_deploy", side_effect=capture),
+            patch("app.main.database.save_deployment", new_callable=AsyncMock),
+            patch("app.main.database.record_health_event", new_callable=AsyncMock),
+        ):
+            resp = client.post(
+                "/api/deploy/proxybase",
+                json={"env": {"ID": "tok123", "NAME": "mydev"}},
+            )
+            assert resp.status_code == 200, resp.text
+            assert captured["spec"]["command"] == "tok123 mydev"
+
+    def test_deploy_bitping_real_catalog_requires_credentials(self, client, deploy_capture):
+        """Guard for issue #341: bitping must not deploy credential-less.
+
+        The 2026-03-28 catalog rewrite dropped BITPING_EMAIL/BITPING_PASSWORD
+        while the guide and the image kept supporting them, so every deploy
+        for months shipped a node that sat at "No active session" earning
+        nothing. With the env block restored, an empty deploy is rejected up
+        front; if the block is ever dropped again, the empty deploy succeeds
+        and this goes red.
+        """
+        captured, capture = deploy_capture
+
+        from app import catalog
+
+        catalog.load_services()
+
+        with (
+            _auth_owner(),
+            patch("app.main._resolve_worker_id", new_callable=AsyncMock, return_value=1),
+            patch("app.main._proxy_worker_deploy", side_effect=capture),
+            patch("app.main.database.save_deployment", new_callable=AsyncMock),
+            patch("app.main.database.record_health_event", new_callable=AsyncMock),
+        ):
+            resp = client.post("/api/deploy/bitping", json={"env": {}})
+            assert resp.status_code == 400
+            assert "Email" in resp.json()["detail"]
+            assert "Password" in resp.json()["detail"]
+
+            resp = client.post(
+                "/api/deploy/bitping",
+                json={"env": {"BITPING_EMAIL": "a@b.c", "BITPING_PASSWORD": "pw"}},
+            )
+            assert resp.status_code == 200, resp.text
+            assert captured["spec"]["env"]["BITPING_EMAIL"] == "a@b.c"
+            assert captured["spec"]["env"]["BITPING_PASSWORD"] == "pw"
+
+    def test_deploy_urnetwork_real_catalog_authenticates_via_auth_provide(self, client, deploy_capture):
+        """Guard for issue #344: the provider binary reads NO environment variables.
+
+        The retired UR_AUTH_TOKEN spec deployed containers that simply ran
+        unauthenticated. The working contract (the binary's own --help, verified
+        live) is the auth-provide subcommand with the account credentials as
+        arguments — so the substituted command must reach the worker spec, and a
+        credential-less deploy must be rejected up front.
+        """
+        captured, capture = deploy_capture
+
+        from app import catalog
+
+        catalog.load_services()
+
+        with (
+            _auth_owner(),
+            patch("app.main._resolve_worker_id", new_callable=AsyncMock, return_value=1),
+            patch("app.main._proxy_worker_deploy", side_effect=capture),
+            patch("app.main.database.save_deployment", new_callable=AsyncMock),
+            patch("app.main.database.record_health_event", new_callable=AsyncMock),
+        ):
+            resp = client.post("/api/deploy/urnetwork", json={"env": {}})
+            assert resp.status_code == 400
+            assert "Email" in resp.json()["detail"]
+            assert "Password" in resp.json()["detail"]
+
+            resp = client.post(
+                "/api/deploy/urnetwork",
+                json={"env": {"UR_USER_AUTH": "a@b.c", "UR_PASSWORD": "pw"}},
+            )
+            assert resp.status_code == 200, resp.text
+            assert captured["spec"]["command"] == "auth-provide --user_auth=a@b.c --password=pw"
+
 
 # ---------------------------------------------------------------------------
 # Stop / Restart / Start / Remove (service management routes)

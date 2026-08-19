@@ -347,3 +347,112 @@ class TestResourceLimitsSurviveExport:
         assert svc["mem_limit"] == "2g"
         assert svc["oom_score_adj"] == -100
         assert svc["cpu_shares"] == 4096
+
+
+class TestCommandAndVolumeSubstitution:
+    """The exporter must FILL ${KEY} placeholders the way the worker deploy does.
+
+    Before this existed, the exporter only ESCAPED them, so an exported file for
+    every argument-auth service (honeygain, iproyal, traffmonetizer, packetshare,
+    proxybase) ran the client with the literal string "${EMAIL}" as its
+    credential — a compose file that could never authenticate (issue #343).
+    """
+
+    def test_command_placeholders_are_filled_from_supplied_values(self):
+        svc = _mock_service(
+            env=[
+                {"key": "ID", "required": True, "label": "Access Token"},
+                {"key": "NAME", "default": "dev-{hostname}"},
+            ],
+            command="${ID} ${NAME}",
+        )
+        result = compose_generator._service_to_compose(svc, env_vars={"ID": "tok123", "NAME": "mydev"})
+        assert result["command"] == "tok123 mydev"
+
+    def test_command_placeholders_fall_back_to_defaults_and_labels(self):
+        svc = _mock_service(
+            env=[
+                {"key": "ID", "required": True, "label": "Access Token"},
+                {"key": "NAME", "default": "dev-{hostname}"},
+            ],
+            command="${ID} ${NAME}",
+        )
+        result = compose_generator._service_to_compose(svc, hostname="pi4")
+        assert result["command"] == "<Access Token> dev-pi4"
+
+    def test_unknown_placeholder_is_still_escaped_for_compose(self):
+        # proxyrack's default carries ${UUID}, which is no catalog env key —
+        # values CashPilot does not hold keep the escape-as-template behavior.
+        svc = _mock_service(command="start ${NOT_A_CATALOG_KEY}")
+        result = compose_generator._service_to_compose(svc)
+        assert result["command"] == "start $${NOT_A_CATALOG_KEY}"
+
+    def test_volume_host_paths_are_filled_from_supplied_values(self):
+        svc = _mock_service(
+            env=[{"key": "IDENTITY_DIR", "required": True, "label": "Identity Directory"}],
+            volumes=["${IDENTITY_DIR}:/app/identity"],
+        )
+        result = compose_generator._service_to_compose(svc, env_vars={"IDENTITY_DIR": "/mnt/id"})
+        assert result["volumes"] == ["/mnt/id:/app/identity"]
+
+    def test_the_real_proxybase_export_authenticates_not_placeholders(self):
+        # End to end through the YAML renderer against the real catalog entry:
+        # the peer client reads ONLY positional arguments (its env-var hint is
+        # false — verified live against the pinned digest and tag v2.0.3), so
+        # the exported command must carry the actual values.
+        from app.catalog import load_services
+
+        proxybase = next(s for s in load_services() if s.get("slug") == "proxybase")
+        with patch("app.compose_generator.get_service", return_value=proxybase):
+            output = compose_generator.generate_compose_single("proxybase", env_vars={"ID": "tok123", "NAME": "mydev"})
+        parsed = yaml.safe_load("\n".join(line for line in output.split("\n") if not line.startswith("#")))
+        assert parsed["services"]["cashpilot-proxybase"]["command"] == "tok123 mydev"
+        assert "${ID}" not in output
+
+    def test_a_credential_containing_a_dollar_survives_compose_interpolation(self):
+        # Compose interpolates $VAR inside unquoted/double-quoted YAML values,
+        # so a password like tok$word emitted verbatim silently CHANGES when the
+        # exported file runs. $$ is the spec's literal form — assert on it.
+        svc = _mock_service(
+            env=[{"key": "ID", "required": True, "label": "Access Token"}],
+            command="${ID} fixed",
+        )
+        result = compose_generator._service_to_compose(svc, env_vars={"ID": "tok$word"})
+        assert result["command"] == "tok$$word fixed"
+        assert result["environment"]["ID"] == "tok$$word"
+
+    def test_dollar_escape_applies_to_volume_paths_too(self):
+        svc = _mock_service(
+            env=[{"key": "IDENTITY_DIR", "required": True, "label": "Identity Directory"}],
+            volumes=["${IDENTITY_DIR}:/app/identity"],
+        )
+        result = compose_generator._service_to_compose(svc, env_vars={"IDENTITY_DIR": "/mnt/$data"})
+        assert result["volumes"] == ["/mnt/$$data:/app/identity"]
+
+    def test_a_value_that_itself_looks_like_a_placeholder_is_not_reinterpolated(self):
+        # The value escapes BEFORE the general escape pass, so its ${ arrives
+        # already $-prefixed and the pass leaves it alone: one escape, not two.
+        svc = _mock_service(
+            env=[{"key": "ID", "required": True, "label": "Access Token"}],
+            command="${ID}",
+        )
+        result = compose_generator._service_to_compose(svc, env_vars={"ID": "we${ird}"})
+        assert result["command"] == "we$${ird}"
+
+    def test_the_real_honeygain_export_carries_credentials(self):
+        from app.catalog import load_services
+
+        honeygain = next(s for s in load_services() if s.get("slug") == "honeygain")
+        with patch("app.compose_generator.get_service", return_value=honeygain):
+            output = compose_generator.generate_compose_single(
+                "honeygain",
+                env_vars={
+                    "HONEYGAIN_EMAIL": "a@b.c",
+                    "HONEYGAIN_PASSWORD": "pw",
+                    "HONEYGAIN_DEVICE_NAME": "dev1",
+                },
+            )
+        parsed = yaml.safe_load("\n".join(line for line in output.split("\n") if not line.startswith("#")))
+        cmd = parsed["services"]["cashpilot-honeygain"]["command"]
+        assert "-email a@b.c" in cmd
+        assert "${HONEYGAIN_EMAIL}" not in cmd

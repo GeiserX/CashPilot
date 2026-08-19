@@ -5,7 +5,7 @@
 
 ## Description
 
-Bitping is a decentralized network monitoring platform that pays you for running a node. Your node performs website monitoring, latency testing, and network quality checks for Bitping's customers. Works on both residential and VPS connections. The Docker image requires interactive initial setup to authenticate, then persists credentials in a volume mount.
+Bitping is a decentralized network monitoring platform that pays you for running a node. Your node performs website monitoring, latency testing, and network quality checks for Bitping's customers. Works on both residential and VPS connections. The Docker image logs in with the `BITPING_EMAIL` and `BITPING_PASSWORD` environment variables on first start, then persists the session in a volume mount so restarts do not re-authenticate.
 
 ## Earning Estimates
 
@@ -37,11 +37,13 @@ Sign up at [Bitping](https://app.bitping.com).
 
 ### 2. Get your credentials
 
-After signing up, locate the credentials needed for Docker deployment. These are typically your email/password or an API token found in the dashboard.
+The node uses your normal account login: the same email and password you use at [app.bitping.com](https://app.bitping.com). No separate API token is needed.
 
 ### 3. Deploy with CashPilot
 
-In the CashPilot web UI, find **Bitping** in the service catalog and click **Deploy**. Enter the required credentials and CashPilot will handle the rest.
+In the CashPilot web UI, find **Bitping** in the service catalog and click **Deploy**. Enter your email and password; the node logs itself in on first start and stores its session in the `bitping-data` volume.
+
+> **Deployed Bitping before and it never earned anything?** CashPilot releases **v0.2.32 through v1.35.1** deployed the container with **no credentials at all** (the catalog had lost the two variables), so the node sat waiting for a login forever. Upgrade CashPilot, then **Deploy** Bitping again from the catalog with your email and password.
 
 ## Docker Configuration
 
