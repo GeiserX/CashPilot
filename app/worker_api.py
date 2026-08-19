@@ -1556,7 +1556,10 @@ async def api_update_self(request: Request) -> dict[str, Any]:
     try:
         result = await asyncio.to_thread(orchestrator.spawn_self_update)
     except orchestrator.SelfUpdateUnavailable as exc:
-        raise HTTPException(status_code=409, detail=str(exc))
+        # Structured, so the UI's worker-detail sanitizer can forward the
+        # instructions verbatim — a bare string detail gets replaced with a
+        # generic message and the operator never sees what to do instead.
+        raise HTTPException(status_code=409, detail={"error": "self_update_unavailable", "message": str(exc)})
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc))
     return {"status": "updating", **result}

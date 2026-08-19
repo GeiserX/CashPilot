@@ -2207,7 +2207,16 @@ def _safe_worker_detail(resp: Any) -> dict[str, Any] | None:
     error = detail.get("error") if isinstance(detail, dict) else None
     # error comes from a remote worker body; a list/dict would make the `not in`
     # test raise TypeError and turn a 409 into a 500. Require a string.
-    if not isinstance(error, str) or error not in _FORWARDABLE_WORKER_ERRORS:
+    if not isinstance(error, str):
+        return None
+    # The self-update refusal is the second forwardable shape: a fixed,
+    # worker-authored instruction string ("not compose-managed, run these
+    # commands instead"). Without this, the sanitizer replaced it with the
+    # generic "Worker request failed" and the promised manual instructions
+    # never reached the operator.
+    if error == "self_update_unavailable":
+        return {"error": error, "message": str(detail.get("message") or "")}
+    if error not in _FORWARDABLE_WORKER_ERRORS:
         return None
     blocked = detail.get("blocked")
     if not isinstance(blocked, list):

@@ -23,8 +23,11 @@ const CP = (() => {
       const res = await fetch(path, config);
       const data = await res.json().catch(() => null);
       if (!res.ok) {
-        const msg = (data && data.detail) || `Error ${res.status}`;
-        throw new Error(msg);
+        // detail can be a structured refusal ({error, message, ...}); surface
+        // its message instead of the useless "[object Object]".
+        let detail = data && data.detail;
+        if (detail && typeof detail === 'object') detail = detail.message || JSON.stringify(detail);
+        throw new Error(detail || `Error ${res.status}`);
       }
       return data;
     } catch (err) {
@@ -2839,6 +2842,9 @@ const CP = (() => {
 
   async function loadSettings() {
     populateCurrencyDropdown();
+    // Independent of /api/config on purpose: a failed config load must not
+    // leave the update card stuck on "Loading..." — it has its own error path.
+    loadUpdateCard();
     try {
       const [config, envInfo, collectorsMeta] = await Promise.all([
         api('/api/config'),
@@ -2848,7 +2854,6 @@ const CP = (() => {
       renderEnvVars(envInfo, config);
       renderCollectors(collectorsMeta, config);
       loadCredentialHealth();
-      loadUpdateCard();
     } catch (err) {
       // Say what happened. /api/env-info and /api/collectors/meta each carry
       // their own .catch, so the only call that can reject is /api/config —
@@ -2882,12 +2887,23 @@ const CP = (() => {
 
   // --- About & Updates (issue #342) ---------------------------------------
 
+  // The worker whose install the card inspects/updates. Multi-worker fleets
+  // get a selector; _resolve_worker_id would otherwise 400 the whole card.
+  let updateCardWorkerId = null;
+
   async function loadUpdateCard() {
     const container = document.getElementById('update-card-container');
     if (!container) return;
     try {
-      const info = await api('/api/update-info');
-      renderUpdateCard(info);
+      const workers = await api('/api/workers').catch(() => []);
+      const online = (workers || []).filter(w => w.status === 'online');
+      if (!online.length) {
+        container.innerHTML = `<p style="color:var(--text-muted);font-size:0.85rem;">No worker is online, so the install cannot be inspected or updated right now.</p>`;
+        return;
+      }
+      if (!online.some(w => w.id === updateCardWorkerId)) updateCardWorkerId = online[0].id;
+      const info = await api(`/api/update-info?worker_id=${updateCardWorkerId}`);
+      renderUpdateCard(info, online);
     } catch (err) {
       // The card must render something honest even with the worker down — the
       // rest of the settings page is still usable.
@@ -2896,7 +2912,12 @@ const CP = (() => {
     }
   }
 
-  function renderUpdateCard(info) {
+  function selectUpdateWorker(sel) {
+    updateCardWorkerId = parseInt(sel.value, 10);
+    loadUpdateCard();
+  }
+
+  function renderUpdateCard(info, onlineWorkers) {
     const container = document.getElementById('update-card-container');
     if (!container) return;
     const current = info.current_display || info.current || 'dev';
@@ -2906,7 +2927,18 @@ const CP = (() => {
         <div style="font-weight:600;font-size:0.9rem;color:var(--text-primary);">${escapeHtml(label)}</div>
         <div style="font-size:0.9rem;color:var(--text-secondary);font-family:monospace;">${escapeHtml(value)}</div>
       </div>`;
-    let html = line('Running', current);
+    let html = '';
+    if ((onlineWorkers || []).length > 1) {
+      const options = onlineWorkers.map(w =>
+        `<option value="${escapeHtml(String(w.id))}" ${w.id === updateCardWorkerId ? 'selected' : ''}>${escapeHtml(w.name || `worker ${w.id}`)}</option>`
+      ).join('');
+      html += `
+      <div style="display:grid;grid-template-columns:220px 1fr;gap:12px;padding:8px 0;border-bottom:1px solid var(--border-color);">
+        <div style="font-weight:600;font-size:0.9rem;color:var(--text-primary);">Server</div>
+        <div><select id="update-worker-select" class="form-input" style="max-width:280px;">${options}</select></div>
+      </div>`;
+    }
+    html += line('Running', current);
     if (info.worker_image) html += line('Worker image', info.worker_image);
     if (info.ui_image) html += line('Dashboard image', info.ui_image);
     html += line('Latest release', latest || 'unknown — check disabled, not yet run, or GitHub unreachable');
@@ -2938,6 +2970,8 @@ const CP = (() => {
       <div class="form-hint" style="margin-top:8px;">${escapeHtml(note)}</div>`;
     }
     container.innerHTML = html + action;
+    const sel = container.querySelector('#update-worker-select');
+    if (sel) sel.addEventListener('change', e => selectUpdateWorker(e.target));
   }
 
   async function runSelfUpdate() {
@@ -2945,7 +2979,9 @@ const CP = (() => {
     const status = document.getElementById('update-run-status');
     if (status) status.textContent = 'Starting update…';
     try {
-      await api('/api/update', { method: 'POST' });
+      // Same worker the card inspected — info and action must not diverge.
+      const q = updateCardWorkerId != null ? `?worker_id=${updateCardWorkerId}` : '';
+      await api(`/api/update${q}`, { method: 'POST' });
       if (status) status.textContent = 'Update started — the dashboard will restart. Reload this page in a minute.';
     } catch (err) {
       // A 409 carries the worker's honest refusal (e.g. not compose-managed,

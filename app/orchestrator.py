@@ -585,7 +585,34 @@ def start_service(slug: str) -> None:
 UPDATER_IMAGE = "docker:27.5.1-cli"
 #: Fixed helper name: doubles as the only-one-update-at-a-time lock.
 UPDATER_NAME = "cashpilot-updater"
-_UPDATER_COMMAND = "docker compose pull && docker compose up -d"
+
+
+def _updater_script(services: list[str]) -> str:
+    """The helper's fixed script, scoped to the named compose services.
+
+    Two guards precede the documented pull/up:
+    - `docker compose config` must succeed — a file the resolver rejects must
+      never drive a recreation.
+    - Unset ``${VAR}`` substitutions abort. The helper does not inherit the
+      shell environment the operator originally deployed with, so a variable
+      that resolved to a bind path then would resolve to EMPTY now — recreating
+      onto broken mounts. (The documented compose file only uses ``:-`` defaults
+      and is immune; this protects customized files.)
+
+    And the pull/up is scoped to the CashPilot services by name — a user's
+    compose project may hold other services, and recreating those is exactly
+    the bulk-redeploy the catalog rules forbid.
+    """
+    import shlex as _shlex
+
+    scoped = " ".join(_shlex.quote(s) for s in services)
+    return (
+        "if ! w=$(docker compose config 2>&1 >/dev/null); then "
+        'echo "refusing to update: docker compose rejected the configuration:"; echo "$w"; exit 1; fi; '
+        'if [ -n "$w" ] && echo "$w" | grep -qi "is not set"; then '
+        'echo "refusing to update: the compose file references variables that are not set here:"; echo "$w"; exit 1; fi; '
+        f"docker compose pull {scoped} && docker compose up -d --no-deps {scoped}"
+    )
 
 
 class SelfUpdateUnavailable(RuntimeError):
@@ -669,36 +696,73 @@ def spawn_self_update() -> dict[str, Any]:
             "cashpilot-ui and cashpilot-worker containers."
         )
 
-    try:
-        existing = client.containers.get(UPDATER_NAME)
-        if existing.status == "running":
-            raise SelfUpdateUnavailable("An update is already running.")
-        # A leftover from an interrupted run — clear it so the fixed name is free.
-        existing.remove(force=True)
-    except NotFound:
-        pass
+    # The update is scoped to the CashPilot services BY NAME, both derived from
+    # container labels — never `up -d` on the whole project, which would
+    # recreate any unrelated services the operator keeps in the same file.
+    me_labels = (me.attrs.get("Config", {}) or {}).get("Labels") or {}
+    services: list[str] = []
+    my_service = me_labels.get("com.docker.compose.service")
+    if my_service:
+        services.append(my_service)
+    with contextlib.suppress(NotFound, APIError):
+        ui = client.containers.get("cashpilot-ui")
+        ui_labels = (ui.attrs.get("Config", {}) or {}).get("Labels") or {}
+        if ui_labels.get("com.docker.compose.project") == project["project"]:
+            ui_service = ui_labels.get("com.docker.compose.service")
+            if ui_service and ui_service not in services:
+                services.append(ui_service)
+    if not services:
+        raise SelfUpdateUnavailable(
+            "The worker container carries a compose project but no service name "
+            "label, so the update cannot be scoped safely. Update manually: "
+            "docker compose pull && docker compose up -d"
+        )
 
     environment: dict[str, str] = {}
     if project["config_files"]:
         # Compose separates label paths with commas; COMPOSE_FILE uses colons.
         environment["COMPOSE_FILE"] = project["config_files"].replace(",", ":")
 
-    updater = client.containers.run(
-        UPDATER_IMAGE,
-        name=UPDATER_NAME,
-        command=["sh", "-c", _UPDATER_COMMAND],
-        working_dir=project["working_dir"],
-        volumes={
-            "/var/run/docker.sock": {"bind": "/var/run/docker.sock", "mode": "rw"},
-            project["working_dir"]: {"bind": project["working_dir"], "mode": "rw"},
-        },
-        environment=environment,
-        labels={"cashpilot.updater": "true"},
-        detach=True,
-        remove=True,
+    try:
+        try:
+            existing = client.containers.get(UPDATER_NAME)
+            if existing.status == "running":
+                raise SelfUpdateUnavailable("An update is already running.")
+            # A leftover from an interrupted run — clear it so the fixed name is free.
+            existing.remove(force=True)
+        except NotFound:
+            pass
+
+        updater = client.containers.run(
+            UPDATER_IMAGE,
+            name=UPDATER_NAME,
+            command=["sh", "-c", _updater_script(services)],
+            working_dir=project["working_dir"],
+            volumes={
+                "/var/run/docker.sock": {"bind": "/var/run/docker.sock", "mode": "rw"},
+                project["working_dir"]: {"bind": project["working_dir"], "mode": "rw"},
+            },
+            environment=environment,
+            labels={"cashpilot.updater": "true"},
+            detach=True,
+            remove=True,
+        )
+    except APIError as exc:
+        # Two updates racing: the loser's containers.run hits a 409 name
+        # conflict on the fixed helper name — that is the already-running
+        # answer, not an outage. Anything else from the daemon is.
+        if getattr(exc, "status_code", None) == 409:
+            raise SelfUpdateUnavailable("An update is already running (the helper name is in use).") from exc
+        logger.warning("Self-update helper failed to start: %s", exc)
+        raise RuntimeError("Docker refused to start the update helper.") from exc
+
+    logger.info(
+        "Self-update started: helper %s updating %s in %s",
+        updater.id[:12],
+        ", ".join(services),
+        project["working_dir"],
     )
-    logger.info("Self-update started: helper %s in %s", updater.id[:12], project["working_dir"])
-    return {"updater_id": updater.id[:12], "working_dir": project["working_dir"]}
+    return {"updater_id": updater.id[:12], "working_dir": project["working_dir"], "services": services}
 
 
 def _collect_stats(c) -> tuple[float, float, int | None, int | None]:

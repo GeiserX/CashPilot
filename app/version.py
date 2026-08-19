@@ -59,7 +59,9 @@ def series(value: str | None) -> str | None:
     Patch releases inside a series are meant to interoperate; a difference in
     major or minor is the one worth telling somebody about.
     """
-    text = (value or "").strip().lstrip("v")
+    # removeprefix, not lstrip: lstrip("v") strips EVERY leading v, so the
+    # malformed tag vv1.36.0 would read as a valid release.
+    text = (value or "").strip().removeprefix("v")
     if not is_release(text):
         return None
     parts = text.split(".")
@@ -75,7 +77,8 @@ def release_tuple(value: str | None) -> tuple[int, ...] | None:
     like ``dev``, ``latest`` or ``1.36.0-rc1`` yields None, because comparing
     against a non-release is how an update check invents an update.
     """
-    text = (value or "").strip().lstrip("v")
+    # At most ONE leading v — see series().
+    text = (value or "").strip().removeprefix("v")
     if not is_release(text):
         return None
     parts = text.split(".")

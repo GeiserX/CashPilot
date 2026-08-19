@@ -103,6 +103,7 @@ _COMPOSE_LABELS = {
     "com.docker.compose.project.working_dir": "/srv/cashpilot",
     "com.docker.compose.project.config_files": "/srv/cashpilot/docker-compose.yml,/srv/cashpilot/override.yml",
     "com.docker.compose.project": "cashpilot",
+    "com.docker.compose.service": "cashpilot-worker",
 }
 
 
@@ -168,13 +169,20 @@ class TestSpawnSelfUpdate:
             result = orchestrator.spawn_self_update()
 
         assert result["working_dir"] == "/srv/cashpilot"
+        assert result["services"] == ["cashpilot-worker"]
         kwargs = client.containers.run.call_args.kwargs
         args = client.containers.run.call_args.args
         # Image pinned — never :latest, never caller-supplied.
         assert args[0] == orchestrator.UPDATER_IMAGE
         assert ":" in orchestrator.UPDATER_IMAGE and not orchestrator.UPDATER_IMAGE.endswith(":latest")
-        # Fixed command: the documented update, nothing else.
-        assert kwargs["command"] == ["sh", "-c", "docker compose pull && docker compose up -d"]
+        # Fixed script template: guards first, then the documented update SCOPED
+        # to the label-derived service names — never a whole-project `up -d`.
+        assert kwargs["command"][:2] == ["sh", "-c"]
+        script = kwargs["command"][2]
+        assert "docker compose config" in script
+        assert "is not set" in script
+        assert "docker compose pull cashpilot-worker" in script
+        assert "docker compose up -d --no-deps cashpilot-worker" in script
         # Exactly two binds: the socket and the compose project dir.
         assert set(kwargs["volumes"]) == {"/var/run/docker.sock", "/srv/cashpilot"}
         assert kwargs["working_dir"] == "/srv/cashpilot"
@@ -228,6 +236,45 @@ class TestSpawnSelfUpdate:
         leftover.remove.assert_called_once_with(force=True)
         client.containers.run.assert_called_once()
 
+    def test_refuses_when_the_service_name_cannot_be_derived(self):
+        # Compose project labels but NO service label: the scoped update cannot
+        # be constructed, and an unscoped whole-project `up -d` is forbidden.
+        labels = {k: v for k, v in _COMPOSE_LABELS.items() if k != "com.docker.compose.service"}
+        client = _fake_docker(me=_fake_container(labels=labels))
+        with (
+            patch.object(orchestrator, "_get_client", return_value=client),
+            pytest.raises(orchestrator.SelfUpdateUnavailable) as ei,
+        ):
+            orchestrator.spawn_self_update()
+        assert "scoped" in str(ei.value)
+        client.containers.run.assert_not_called()
+
+    def test_racing_updates_map_the_name_conflict_to_already_running(self):
+        from docker.errors import APIError
+
+        me = _fake_container(labels=_COMPOSE_LABELS)
+        client = _fake_docker(me=me)
+        conflict = APIError("conflict", response=MagicMock(status_code=409))
+        client.containers.run.side_effect = conflict
+        with (
+            patch.object(orchestrator, "_get_client", return_value=client),
+            pytest.raises(orchestrator.SelfUpdateUnavailable) as ei,
+        ):
+            orchestrator.spawn_self_update()
+        assert "already running" in str(ei.value)
+
+    def test_other_daemon_errors_surface_as_outage_not_500(self):
+        from docker.errors import APIError
+
+        me = _fake_container(labels=_COMPOSE_LABELS)
+        client = _fake_docker(me=me)
+        client.containers.run.side_effect = APIError("boom", response=MagicMock(status_code=500))
+        with (
+            patch.object(orchestrator, "_get_client", return_value=client),
+            pytest.raises(RuntimeError, match="refused to start"),
+        ):
+            orchestrator.spawn_self_update()
+
 
 # ---------------------------------------------------------------------------
 # Worker endpoints
@@ -265,7 +312,7 @@ class TestWorkerUpdateEndpoints:
         assert body["status"] == "updating"
         assert body["updater_id"] == "abc123def456"
 
-    def test_update_self_unavailable_is_409_with_instructions(self):
+    def test_update_self_unavailable_is_409_with_structured_instructions(self):
         with patch.object(
             orchestrator,
             "spawn_self_update",
@@ -273,7 +320,12 @@ class TestWorkerUpdateEndpoints:
         ):
             resp = _worker_client().post("/api/update/self", headers=_worker_auth())
         assert resp.status_code == 409
-        assert "Update manually" in resp.json()["detail"]
+        detail = resp.json()["detail"]
+        # Structured on purpose: the UI's worker-detail sanitizer forwards only
+        # allowlisted shapes, and a bare string would be replaced with a
+        # generic message — losing the instructions this refusal exists for.
+        assert detail["error"] == "self_update_unavailable"
+        assert "Update manually" in detail["message"]
 
 
 # ---------------------------------------------------------------------------
@@ -367,3 +419,81 @@ class TestUiUpdateRoutes:
         with patch("app.main.auth.get_current_user", return_value={"uid": 2, "u": "w", "r": "writer"}):
             resp = _ui_client().post("/api/update")
         assert resp.status_code in (401, 403)
+
+    def test_the_refusal_survives_the_real_worker_detail_sanitizer(self):
+        """Regression for the finding my own earlier test mocked past.
+
+        The earlier passthrough test patched _proxy_to_worker, so the real
+        _safe_worker_detail never ran — and it replaces every non-allowlisted
+        detail with "Worker request failed", which would have eaten the manual
+        instructions. This goes through the REAL proxy with only httpx mocked.
+        """
+        import json as _json
+
+        refusal = {
+            "detail": {
+                "error": "self_update_unavailable",
+                "message": "Update manually: docker compose pull && docker compose up -d",
+            }
+        }
+        resp409 = MagicMock()
+        resp409.status_code = 409
+        resp409.json.return_value = refusal
+        resp409.text = _json.dumps(refusal)
+        resp409.headers = {"content-type": "application/json"}
+
+        mock_client = AsyncMock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_client.post.return_value = resp409
+
+        worker = {"id": 1, "name": "w1", "status": "online", "url": "http://192.168.1.10:8081"}
+        with (
+            _auth_owner(),
+            patch("app.main._resolve_worker_id", new_callable=AsyncMock, return_value=1),
+            patch("app.main.database.get_worker", new_callable=AsyncMock, return_value=worker),
+            patch("app.main.httpx.AsyncClient", return_value=mock_client),
+            patch("app.main.FLEET_API_KEY", "test-key"),
+        ):
+            resp = _ui_client().post("/api/update?worker_id=1")
+        assert resp.status_code == 409
+        detail = resp.json()["detail"]
+        assert detail["error"] == "self_update_unavailable"
+        assert "Update manually" in detail["message"]
+
+    def test_arbitrary_worker_error_bodies_stay_generic(self):
+        # Negative control for the sanitizer: a non-allowlisted shape must NOT
+        # pass through — that protection is the reason the refusal is structured.
+        import json as _json
+
+        leak = {"detail": "secret-laden arbitrary worker error"}
+        resp500 = MagicMock()
+        resp500.status_code = 500
+        resp500.json.return_value = leak
+        resp500.text = _json.dumps(leak)
+        resp500.headers = {"content-type": "application/json"}
+
+        mock_client = AsyncMock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_client.post.return_value = resp500
+
+        worker = {"id": 1, "name": "w1", "status": "online", "url": "http://192.168.1.10:8081"}
+        with (
+            _auth_owner(),
+            patch("app.main._resolve_worker_id", new_callable=AsyncMock, return_value=1),
+            patch("app.main.database.get_worker", new_callable=AsyncMock, return_value=worker),
+            patch("app.main.httpx.AsyncClient", return_value=mock_client),
+            patch("app.main.FLEET_API_KEY", "test-key"),
+        ):
+            resp = _ui_client().post("/api/update?worker_id=1")
+        assert resp.status_code == 500
+        assert resp.json()["detail"] == "Worker request failed"
+
+
+class TestVersionPrefixStrictness:
+    def test_multiple_leading_v_is_not_a_release(self):
+        # lstrip("v") would accept vv1.36.0; removeprefix must not.
+        assert version.release_tuple("vv1.36.0") is None
+        assert version.series("vv1.36.0") is None
+        assert not version.is_newer("vv9.9.9", "1.35.0")
