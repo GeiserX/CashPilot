@@ -1530,6 +1530,41 @@ async def api_runtimes(request: Request) -> dict[str, Any]:
     }
 
 
+@app.get("/api/update/info")
+async def api_update_info(request: Request) -> dict[str, Any]:
+    """Whether this install can update itself, and what it runs (issue #342)."""
+    _verify_api_key(request)
+    try:
+        return await asyncio.to_thread(orchestrator.self_update_info)
+    except RuntimeError as exc:
+        # No Docker socket — same outage split as everywhere else on this API.
+        raise HTTPException(status_code=503, detail=str(exc))
+
+
+@app.post("/api/update/self")
+async def api_update_self(request: Request) -> dict[str, Any]:
+    """Run the documented update (`docker compose pull && up -d`) via a one-shot
+    helper container.
+
+    Deliberately parameterless: the compose project location comes from the
+    labels on this worker's own container, the helper image is pinned, and the
+    command is fixed — the caller controls nothing that reaches Docker. The
+    caller still has to hold the per-worker key, and whoever holds that already
+    commands this worker's Docker socket through the deploy API.
+    """
+    _verify_api_key(request)
+    try:
+        result = await asyncio.to_thread(orchestrator.spawn_self_update)
+    except orchestrator.SelfUpdateUnavailable as exc:
+        # Structured, so the UI's worker-detail sanitizer can forward the
+        # instructions verbatim — a bare string detail gets replaced with a
+        # generic message and the operator never sees what to do instead.
+        raise HTTPException(status_code=409, detail={"error": "self_update_unavailable", "message": str(exc)})
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
+    return {"status": "updating", **result}
+
+
 @app.get("/api/health")
 async def api_health(response: Response) -> dict[str, Any]:
     """Health check endpoint (no auth required).

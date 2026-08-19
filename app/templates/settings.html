@@ -7,6 +7,21 @@
 {% block content %}
 <h2 class="section-title" style="margin-bottom: 24px;">Settings</h2>
 
+<!-- About & Updates (issue #342) -->
+<div class="card settings-section">
+  <h3 class="settings-section-title">About &amp; Updates</h3>
+  <p class="settings-section-desc">
+    CashPilot checks GitHub for the latest release. <strong>Update</strong> runs the
+    documented <code>docker compose pull &amp;&amp; docker compose up -d</code> for you,
+    from a one-shot helper container &mdash; it installs the newest patch of the image
+    series your compose file pins. Moving to a newer series still means editing the
+    image tags. Installs not managed by Compose get the manual commands instead.
+  </p>
+  <div id="update-card-container">
+    <p style="color: var(--text-muted); font-size: 0.85rem;">Loading...</p>
+  </div>
+</div>
+
 <!-- Environment Variables -->
 <div class="card settings-section">
   <h3 class="settings-section-title">Environment Variables</h3>
