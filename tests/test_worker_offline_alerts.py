@@ -75,9 +75,11 @@ def _isolate_bell():
     before = main._collector_alerts
     main._collector_alerts = []
     main._worker_online_streak.clear()
+    main._worker_last_offline_push.clear()
     yield
     main._collector_alerts = before
     main._worker_online_streak.clear()
+    main._worker_last_offline_push.clear()
 
 
 class TestOfflineTransition:
@@ -337,8 +339,12 @@ class TestFlapDamping:
         self._sweep(rows=[self._fresh_row()])  # online sweep 1 — no clear yet
         second = self._sweep(rows=[self._fresh_row()])  # online sweep 2 — clears
         second.clear.assert_awaited_once_with("worker", "cid-watchtower")
-        # Cleared row -> a NEW offline episode records fresh and pushes again.
+        # Cleared row -> a NEW offline episode records fresh again. The PUSH
+        # additionally obeys the per-worker floor (TestOfflinePushFloor), so
+        # it fires here only once the floor has passed.
+        main._worker_last_offline_push["cid-watchtower"] -= main._WORKER_OFFLINE_PUSH_COOLDOWN_S + 1
         episode2 = self._sweep(rows=[_worker_row()])
+        episode2.record.assert_awaited_once()
         assert len(episode2.sends) == 1
 
     def test_the_streak_resets_on_every_flap(self):
@@ -369,3 +375,59 @@ class TestFlapDamping:
         cleared.clear.assert_awaited_once()
         later = self._sweep(rows=[self._fresh_row()])
         later.clear.assert_not_awaited()
+
+
+class TestOfflinePushFloor:
+    """Episode damping cannot rate-limit a worker whose NORMAL operation is
+    rhythmic flapping — the live OPPO phone stays awake 7-10 minutes between
+    2-3 minute dozes, so every wake window passes the sustained-recovery bar,
+    re-arms the alert, and the next nap pushed again (eight pushes in two
+    hours AFTER episode damping shipped). The floor caps the buzz itself:
+    the first push is immediate, repeats per worker wait out the floor, and
+    the dashboard/bell stay real-time truth."""
+
+    _sweep = TestFlapDamping._sweep
+    _fresh_row = TestFlapDamping._fresh_row
+
+    def _cycle_to_rearmed(self):
+        first = self._sweep(rows=[_worker_row()])  # episode 1: pushes, arms the floor
+        assert len(first.sends) == 1
+        self._sweep(rows=[self._fresh_row()])
+        self._sweep(rows=[self._fresh_row()])  # sustained recovery: cleared + re-armed
+
+    def test_a_new_episode_inside_the_floor_records_but_does_not_push(self):
+        self._cycle_to_rearmed()
+        second = self._sweep(rows=[_worker_row()])
+        second.record.assert_awaited_once()  # the row and bell stay truthful
+        assert second.sends == []  # the phone does not buzz again
+        assert any(a.get("kind") == "worker" for a in main._collector_alerts)
+
+    def test_the_floor_expires_and_the_next_episode_pushes(self):
+        self._cycle_to_rearmed()
+        main._worker_last_offline_push["cid-watchtower"] -= main._WORKER_OFFLINE_PUSH_COOLDOWN_S + 1
+        second = self._sweep(rows=[_worker_row()])
+        assert len(second.sends) == 1
+
+    def test_recovery_never_resets_the_floor(self):
+        # The whole point: recovering is what re-armed the spam loop, so a
+        # recovery must not shorten the floor.
+        self._cycle_to_rearmed()
+        armed_at = main._worker_last_offline_push["cid-watchtower"]
+        self._sweep(rows=[self._fresh_row()])
+        self._sweep(rows=[self._fresh_row()])
+        assert main._worker_last_offline_push["cid-watchtower"] == armed_at
+
+    def test_a_failed_delivery_releases_the_floor(self):
+        """The floor is armed at spawn time, before the outcome is known — a
+        total delivery failure must release it or the un-dedupe retry would be
+        suppressed for the whole floor window."""
+        import time as _time
+
+        main._worker_last_offline_push["cid-watchtower"] = _time.monotonic()
+        with (
+            patch("app.main.notify.send", new_callable=AsyncMock, return_value=0),
+            patch("app.main.notify.is_enabled", return_value=True),
+            patch("app.main.database.delete_alert", new_callable=AsyncMock, return_value=True),
+        ):
+            _run(main._push_alert("worker", "cid-watchtower", "t", "m", 123))
+        assert "cid-watchtower" not in main._worker_last_offline_push
