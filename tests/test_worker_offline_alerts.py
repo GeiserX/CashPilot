@@ -74,8 +74,10 @@ def _run(coro):
 def _isolate_bell():
     before = main._collector_alerts
     main._collector_alerts = []
+    main._worker_online_streak.clear()
     yield
     main._collector_alerts = before
+    main._worker_online_streak.clear()
 
 
 class TestOfflineTransition:
@@ -149,16 +151,19 @@ class TestOfflineTransition:
         r.delete.assert_not_awaited()
 
     def test_an_online_worker_with_a_lingering_alert_is_reconciled(self):
-        """A recovery clear the heartbeat route missed (it is best-effort so a
-        DB hiccup can never fail a heartbeat) is finished by the sweep."""
+        """The sweep owns clearing, and only after a SUSTAINED recovery: the
+        first online sweep arms the streak, the second clears row + bell."""
         from datetime import UTC, datetime
 
         fresh = _worker_row(last_heartbeat=datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%S"))
         main._collector_alerts = [
             {"kind": "worker", "platform": "watchtower", "client_id": "cid-watchtower", "error": "x"}
         ]
-        r = self._sweep(rows=[fresh])
-        r.clear.assert_awaited_once_with("worker", "cid-watchtower")
+        first = self._sweep(rows=[fresh])
+        first.clear.assert_not_awaited()  # one online sweep is not a recovery yet
+        assert main._collector_alerts  # bell stays honest meanwhile
+        second = self._sweep(rows=[fresh])
+        second.clear.assert_awaited_once_with("worker", "cid-watchtower")
         assert main._collector_alerts == []
 
 
@@ -251,28 +256,22 @@ class TestRecoveryClears:
             )
         return cleared, result
 
-    def test_recovery_clears_the_alert_and_the_bell_by_identity(self):
+    def test_a_recovery_heartbeat_never_clears_the_alert(self):
+        """The route clearing on the FIRST heartbeat was the flap-spam engine:
+        a phone in Android Doze wakes ~every 12 minutes, beats once, sleeps —
+        and each beat re-armed the push, one identical Telegram message per
+        nap. The route now only logs; the sweep clears after a sustained
+        recovery."""
         main._collector_alerts = [
             {"kind": "worker", "platform": "watchtower", "client_id": "cid-watchtower", "error": "offline"},
             {"kind": "collector", "platform": "honeygain", "error": "kept"},
         ]
-        cleared, _ = self._heartbeat(previous=("offline", "watchtower"))
-        assert cleared == [("worker", "cid-watchtower")]
-        kinds = [(a["kind"], a.get("client_id")) for a in main._collector_alerts]
-        assert ("worker", "cid-watchtower") not in kinds
-        assert ("collector", None) in kinds  # untouched
-
-    def test_a_failed_clear_never_fails_the_heartbeat(self):
-        """Heartbeats are the fleet's lifeline: the clear is best-effort, the
-        bell entry stays (memory and disk must not diverge), and the sweep's
-        reconciliation finishes the job."""
-        main._collector_alerts = [
-            {"kind": "worker", "platform": "watchtower", "client_id": "cid-watchtower", "error": "offline"}
-        ]
-        cleared, result = self._heartbeat(previous=("offline", "watchtower"), clear_raises=True)
-        assert result["status"] == "ok"  # the heartbeat itself succeeded
+        cleared, result = self._heartbeat(previous=("offline", "watchtower"))
+        assert result["status"] == "ok"
         assert cleared == []
-        assert len(main._collector_alerts) == 1  # NOT pruned while the row survives
+        kinds = [(a["kind"], a.get("client_id")) for a in main._collector_alerts]
+        assert ("worker", "cid-watchtower") in kinds  # bell stays until the sweep decides
+        assert ("collector", None) in kinds
 
     def test_an_online_worker_heartbeat_clears_nothing(self):
         # Negative control: no transition, no clearing.
@@ -286,3 +285,65 @@ class TestRecoveryClears:
     def test_a_new_worker_heartbeat_clears_nothing(self):
         cleared, _ = self._heartbeat(previous=None)
         assert cleared == []
+
+
+class TestFlapDamping:
+    """The OPPO incident, pinned end to end: a Doze-napping phone worker must
+    cost ONE push per episode, not one per nap."""
+
+    def _sweep(self, *, rows, record_returns=True):
+        sends = []
+
+        async def _capture_send(title, message, **kw):
+            sends.append(title)
+            return 1
+
+        record = AsyncMock(return_value=record_returns)
+        clear = AsyncMock()
+        with (
+            patch("app.main.database.list_workers", new_callable=AsyncMock, return_value=rows),
+            patch("app.main.database.mark_worker_offline_if_unchanged", new_callable=AsyncMock, return_value=True),
+            patch("app.main.database.delete_worker", new_callable=AsyncMock),
+            patch("app.main.database.record_alert", record),
+            patch("app.main.database.clear_alerts", clear),
+            patch("app.main.notify.send", _capture_send),
+        ):
+            _run(_check_stale_workers())
+        return SimpleNamespace(record=record, clear=clear, sends=sends)
+
+    def _fresh_row(self):
+        from datetime import UTC, datetime
+
+        return _worker_row(last_heartbeat=datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%S"))
+
+    def test_a_single_doze_beat_does_not_rearm_the_push(self):
+        # Episode starts: stale online worker -> offline, one push.
+        first = self._sweep(rows=[_worker_row()])
+        assert len(first.sends) == 1
+        first.clear.assert_not_awaited()
+
+        # The phone wakes once (route logs, clears nothing — pinned above),
+        # and the next sweep sees it online: streak 1, still no clear.
+        blip = self._sweep(rows=[self._fresh_row()])
+        blip.clear.assert_not_awaited()
+
+        # It dozes off again: the record cooldown still holds (deduped), so
+        # the re-offline transition pushes NOTHING. One episode, one push.
+        again = self._sweep(rows=[_worker_row()], record_returns=None)
+        assert again.sends == []
+
+    def test_a_sustained_recovery_rearms_the_next_episode(self):
+        self._sweep(rows=[_worker_row()])  # episode 1: push
+        self._sweep(rows=[self._fresh_row()])  # online sweep 1 — no clear yet
+        second = self._sweep(rows=[self._fresh_row()])  # online sweep 2 — clears
+        second.clear.assert_awaited_once_with("worker", "cid-watchtower")
+        # Cleared row -> a NEW offline episode records fresh and pushes again.
+        episode2 = self._sweep(rows=[_worker_row()])
+        assert len(episode2.sends) == 1
+
+    def test_the_streak_resets_on_every_flap(self):
+        self._sweep(rows=[_worker_row()])  # offline
+        self._sweep(rows=[self._fresh_row()])  # online (streak 1)
+        self._sweep(rows=[_worker_row()], record_returns=None)  # flap: offline again
+        after_flap = self._sweep(rows=[self._fresh_row()])  # online (streak must be 1 again)
+        after_flap.clear.assert_not_awaited()

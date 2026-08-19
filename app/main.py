@@ -962,6 +962,19 @@ async def _run_vacuum() -> None:
         logger.warning("Database VACUUM error: %s", exc)
 
 
+# A recovery re-arms the offline alert only after this many CONSECUTIVE sweeps
+# online. One heartbeat is not a recovery: an Android phone in Doze wakes every
+# ~12 minutes, heartbeats once and sleeps again — and when that single beat
+# cleared the alert row immediately, every nap became a "new" offline episode
+# with its own push. Seven identical Telegram messages in ~80 minutes, live.
+# Two sweeps (~4 minutes online) is enough to tell a recovery from a blip while
+# a genuinely recovered server re-arms almost immediately. In-memory on
+# purpose: a UI restart forgets streaks, which at worst re-arms one alert
+# early — the 24h record cooldown still caps the damage.
+_SUSTAINED_RECOVERY_SWEEPS = 2
+_worker_online_streak: dict[str, int] = {}
+
+
 async def _check_stale_workers() -> None:
     """Mark workers as offline if stale, and purge never-enrolled workers offline > 1 hour.
 
@@ -973,6 +986,9 @@ async def _check_stale_workers() -> None:
     re-enroll — a permanent fleet lockout after a reboot/maintenance window.
     Only a worker that never completed enrollment is purged automatically;
     removing an enrolled worker is a deliberate action via the UI.
+
+    This sweep is also the ONLY place the offline alert is cleared — see the
+    sustained-recovery branch. The heartbeat route deliberately does not clear.
     """
     try:
         workers = await database.list_workers()
@@ -991,6 +1007,7 @@ async def _check_stale_workers() -> None:
             cid = w.get("client_id") or w["name"]
             last = datetime.fromisoformat(last_hb).replace(tzinfo=UTC)
             if w["status"] == "online" and last < cutoff:
+                _worker_online_streak.pop(cid, None)
                 # Conditional on the heartbeat the decision was based on: a
                 # recovery heartbeat landing between this sweep's read and its
                 # write must win, or the worker would be alerted offline at its
@@ -1003,6 +1020,7 @@ async def _check_stale_workers() -> None:
                 # Same alert/push/recovery pattern as a failing collector.
                 await _raise_worker_offline_alert(w)
             elif w["status"] == "offline":
+                _worker_online_streak.pop(cid, None)
                 if last < purge_cutoff and not w.get("api_key_enc"):
                     await database.delete_worker(w["id"])
                     logger.info("Purged stale unenrolled worker '%s' (offline since %s)", w["name"], last_hb)
@@ -1014,18 +1032,26 @@ async def _check_stale_workers() -> None:
                     # retried instead of being lost to the already-offline
                     # state, which used to make the miss permanent.
                     await _raise_worker_offline_alert(w)
-            elif w["status"] == "online" and any(
-                a.get("kind") == "worker" and a.get("client_id") == cid for a in _collector_alerts
-            ):
-                # Reconciliation: an online worker with a lingering worker
-                # alert means a recovery clear failed or was missed (the
-                # heartbeat route treats that clear as best-effort so a DB
-                # hiccup can never fail a heartbeat). Finish the job here.
-                await database.clear_alerts("worker", cid)
-                _collector_alerts = [
-                    a for a in _collector_alerts if not (a.get("kind") == "worker" and a.get("client_id") == cid)
-                ]
-                logger.info("Cleared lingering offline alert for recovered worker '%s'", w["name"])
+            elif w["status"] == "online":
+                # Sustained recovery, and the ONLY place the offline alert is
+                # cleared. Clearing re-arms the next push, so a clear on the
+                # FIRST heartbeat turned every Doze nap of a phone worker into
+                # a fresh alerted episode (~5 pushes/hour, live). The clear
+                # fires once when the streak reaches the threshold; the
+                # bell-presence fallback re-runs it if that clear failed. A
+                # clear missed by both paths self-heals within 24h — the
+                # record cooldown is measured from the lingering row's own
+                # created_at, so it ages out of the dedupe window on its own.
+                streak = _worker_online_streak.get(cid, 0) + 1
+                _worker_online_streak[cid] = streak
+                bell_lingers = any(a.get("kind") == "worker" and a.get("client_id") == cid for a in _collector_alerts)
+                if streak == _SUSTAINED_RECOVERY_SWEEPS or (streak > _SUSTAINED_RECOVERY_SWEEPS and bell_lingers):
+                    await database.clear_alerts("worker", cid)
+                    _collector_alerts = [
+                        a for a in _collector_alerts if not (a.get("kind") == "worker" and a.get("client_id") == cid)
+                    ]
+                    if bell_lingers:
+                        logger.info("Cleared offline alert for recovered worker '%s'", w["name"])
         except Exception as exc:
             logger.warning("Stale worker check error for worker '%s': %s", w.get("name", w.get("id")), exc)
 
@@ -4602,21 +4628,15 @@ async def api_worker_heartbeat(request: Request, body: WorkerHeartbeat) -> dict[
     )
     metrics.record_heartbeat(body.name)
     if previous is not None and previous[0] == "offline":
-        # Recovered — drop the stored alert so the NEXT outage notifies again
-        # instead of being deduped inside the cooldown window, and prune the
-        # bell entry now rather than at the next hourly rebuild. Keyed by
-        # client_id (the identity), never the cosmetic display name. Best
-        # effort on purpose: a DB hiccup here must never fail a HEARTBEAT —
-        # the stale-worker sweep reconciles any clear this misses.
-        try:
-            await database.clear_alerts("worker", cid)
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("Could not clear the offline alert for recovered worker %s (sweep will): %s", cid, exc)
-        else:
-            global _collector_alerts
-            _collector_alerts = [
-                a for a in _collector_alerts if not (a.get("kind") == "worker" and a.get("client_id") == cid)
-            ]
+        # Deliberately NO alert clearing here. This used to drop the stored
+        # alert on the first heartbeat after offline — which re-armed the push
+        # on every single beat, so a phone worker waking from Android Doze
+        # every ~12 minutes produced an identical offline push per nap (seven
+        # in 80 minutes, live). The stale-worker sweep now owns clearing, and
+        # only after the worker stays online for _SUSTAINED_RECOVERY_SWEEPS
+        # consecutive sweeps — a real recovery re-arms in ~4 minutes, a Doze
+        # blip never does, and the 24h record cooldown keeps one push per
+        # episode.
         logger.info("Worker '%s' is back online", previous[1])
     resp: dict[str, Any] = {"status": "ok", "worker_id": worker_id}
     if state == "enroll":
