@@ -38,6 +38,16 @@ def _escape_interpolation(value: str) -> str:
     return re.sub(r"(?<!\$)\$\{", "$${", value)
 
 
+def _escape_value(value: str) -> str:
+    """Escape every $ in a substituted value so Compose keeps it literal.
+
+    Compose interpolates $VAR and ${VAR} in unquoted and double-quoted YAML
+    values, so a credential like ``tok$word`` written into the file verbatim
+    silently CHANGES when the exported file runs. $$ is the spec's literal form.
+    """
+    return value.replace("$", "$$")
+
+
 def _substitute_env(value: str, env: dict[str, str]) -> str:
     """Fill ${KEY} placeholders from the emitted environment map.
 
@@ -48,9 +58,11 @@ def _substitute_env(value: str, env: dict[str, str]) -> str:
     client with the literal eight characters "${EMAIL}" as its credentials: a file
     that could never authenticate, silently. Placeholders with no corresponding
     entry (proxyrack's ${UUID}) are left for _escape_interpolation, preserving the
-    old template behavior for values CashPilot does not hold.
+    old template behavior for values CashPilot does not hold. Inserted values are
+    $-escaped so a credential containing a dollar sign survives Compose's own
+    interpolation pass.
     """
-    return re.sub(r"\$\{(\w+)\}", lambda m: env.get(m.group(1), m.group(0)), value)
+    return re.sub(r"\$\{(\w+)\}", lambda m: _escape_value(env[m.group(1)]) if m.group(1) in env else m.group(0), value)
 
 
 def _is_named_volume(volume_str: str) -> str | None:
@@ -117,7 +129,12 @@ def _service_to_compose(
         elif var.get("required"):
             env[key] = f"<{var.get('label', key)}>"
     if env:
-        compose_svc["environment"] = env
+        # $-escaped at emission: Compose interpolates inside environment values
+        # too, so a stored password containing $ would otherwise change (or
+        # error) when the exported file runs. The raw map stays unescaped — it
+        # is also the substitution source for command/volumes, which escape at
+        # their own emission point.
+        compose_svc["environment"] = {key: _escape_value(value) for key, value in env.items()}
 
     # Ports
     ports = docker_conf.get("ports", [])

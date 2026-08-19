@@ -43,7 +43,7 @@ The node uses your normal account login: the same email and password you use at 
 
 In the CashPilot web UI, find **Bitping** in the service catalog and click **Deploy**. Enter your email and password; the node logs itself in on first start and stores its session in the `bitping-data` volume.
 
-> **Deployed Bitping before and it never earned anything?** CashPilot releases between 2026-03-28 and 1.35.x deployed the container with **no credentials at all** (the catalog had lost the two variables), so the node sat waiting for a login forever. Upgrade CashPilot, then **Deploy** Bitping again from the catalog with your email and password.
+> **Deployed Bitping before and it never earned anything?** CashPilot releases **v0.2.32 through v1.35.1** deployed the container with **no credentials at all** (the catalog had lost the two variables), so the node sat waiting for a login forever. Upgrade CashPilot, then **Deploy** Bitping again from the catalog with your email and password.
 
 ## Docker Configuration
 

@@ -409,6 +409,36 @@ class TestCommandAndVolumeSubstitution:
         assert parsed["services"]["cashpilot-proxybase"]["command"] == "tok123 mydev"
         assert "${ID}" not in output
 
+    def test_a_credential_containing_a_dollar_survives_compose_interpolation(self):
+        # Compose interpolates $VAR inside unquoted/double-quoted YAML values,
+        # so a password like tok$word emitted verbatim silently CHANGES when the
+        # exported file runs. $$ is the spec's literal form — assert on it.
+        svc = _mock_service(
+            env=[{"key": "ID", "required": True, "label": "Access Token"}],
+            command="${ID} fixed",
+        )
+        result = compose_generator._service_to_compose(svc, env_vars={"ID": "tok$word"})
+        assert result["command"] == "tok$$word fixed"
+        assert result["environment"]["ID"] == "tok$$word"
+
+    def test_dollar_escape_applies_to_volume_paths_too(self):
+        svc = _mock_service(
+            env=[{"key": "IDENTITY_DIR", "required": True, "label": "Identity Directory"}],
+            volumes=["${IDENTITY_DIR}:/app/identity"],
+        )
+        result = compose_generator._service_to_compose(svc, env_vars={"IDENTITY_DIR": "/mnt/$data"})
+        assert result["volumes"] == ["/mnt/$$data:/app/identity"]
+
+    def test_a_value_that_itself_looks_like_a_placeholder_is_not_reinterpolated(self):
+        # The value escapes BEFORE the general escape pass, so its ${ arrives
+        # already $-prefixed and the pass leaves it alone: one escape, not two.
+        svc = _mock_service(
+            env=[{"key": "ID", "required": True, "label": "Access Token"}],
+            command="${ID}",
+        )
+        result = compose_generator._service_to_compose(svc, env_vars={"ID": "we${ird}"})
+        assert result["command"] == "we$${ird}"
+
     def test_the_real_honeygain_export_carries_credentials(self):
         from app.catalog import load_services
 
