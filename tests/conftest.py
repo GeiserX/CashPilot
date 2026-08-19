@@ -134,6 +134,7 @@ def _reset_process_wide_caches():
     for module_name, attr in (
         ("app.main", "_net_baselines"),
         ("app.main", "_worker_online_streak"),
+        ("app.main", "_worker_last_offline_push"),
         ("app.credential_test", "_last_attempt"),
     ):
         with contextlib.suppress(Exception):

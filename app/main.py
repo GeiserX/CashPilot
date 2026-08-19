@@ -408,6 +408,12 @@ async def _push_alert(kind: str, subject: str, title: str, message: str, alert_i
         return
     metrics.record_notify_delivery(bool(delivered))
     if not delivered:
+        # The worker push floor is armed at spawn time, before the outcome is
+        # known — a TOTAL delivery failure must release it, or the un-dedupe
+        # retry below would be suppressed for the whole floor window and the
+        # "will retry on the next cycle" promise becomes false.
+        if kind == "worker":
+            _worker_last_offline_push.pop(subject, None)
         try:
             undeduped = await database.delete_alert(alert_id)
         except Exception as exc:  # noqa: BLE001
@@ -977,6 +983,20 @@ _SUSTAINED_RECOVERY_SWEEPS = 2
 _STREAK_CLEARED = -1
 _worker_online_streak: dict[str, int] = {}
 
+#: Floor between offline PUSHES for one worker, independent of episodes.
+#: Sustained-recovery damping alone was defeated by a phone whose NORMAL duty
+#: cycle is 7-10 minutes awake, 2-3 minutes dozing: every wake window passed
+#: the sustained bar, re-armed the alert, and the next nap pushed — eight
+#: pushes in two hours, live, AFTER the episode damping shipped. A worker
+#: whose ordinary operation is rhythmic flapping can never be rate-limited by
+#: episode detection, so the cap sits on the notification itself: the first
+#: offline push is immediate, repeats for the same worker wait out the floor.
+#: The bell and dashboard stay real-time; only the phone-buzz is capped.
+#: In-memory on purpose — a restart forgets the floor, which at worst costs
+#: one early push.
+_WORKER_OFFLINE_PUSH_COOLDOWN_S = 6 * 3600
+_worker_last_offline_push: dict[str, float] = {}
+
 
 async def _check_stale_workers() -> None:
     """Mark workers as offline if stale, and purge never-enrolled workers offline > 1 hour.
@@ -1078,15 +1098,30 @@ async def _raise_worker_offline_alert(w: dict[str, Any]) -> None:
         "containers keep running and earning, but CashPilot cannot see or manage them until it reconnects."
     )
     if alert_id := await database.record_alert("worker", cid, msg):
-        _spawn(
-            _push_alert(
-                "worker",
-                cid,
-                f"CashPilot: worker '{w['name']}' went offline",
-                msg,
-                alert_id,
+        # The push floor, checked only on a FRESH row (a deduped record never
+        # gets here): a new episode inside the floor keeps its row and bell
+        # entry — the dashboard tells the truth — but does not buzz the phone
+        # again. Deliberately never reset on recovery; resetting there is
+        # exactly the re-arm loop this exists to end.
+        now = time.monotonic()
+        last_push = _worker_last_offline_push.get(cid)
+        if last_push is None or now - last_push >= _WORKER_OFFLINE_PUSH_COOLDOWN_S:
+            _worker_last_offline_push[cid] = now
+            _spawn(
+                _push_alert(
+                    "worker",
+                    cid,
+                    f"CashPilot: worker '{w['name']}' went offline",
+                    msg,
+                    alert_id,
+                )
             )
-        )
+        else:
+            logger.info(
+                "Offline push for worker '%s' suppressed by the per-worker floor (%.0f min since last)",
+                w["name"],
+                (now - last_push) / 60,
+            )
     # Into the bell NOW (the sweep runs every 2 min); the hourly collection
     # rebuild re-derives it from the workers table.
     if not any(a.get("kind") == "worker" and a.get("client_id") == cid for a in _collector_alerts):
