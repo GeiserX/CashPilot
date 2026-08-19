@@ -972,6 +972,9 @@ async def _run_vacuum() -> None:
 # purpose: a UI restart forgets streaks, which at worst re-arms one alert
 # early — the 24h record cooldown still caps the damage.
 _SUSTAINED_RECOVERY_SWEEPS = 2
+#: Sentinel streak value: this recovery's durable clear SUCCEEDED — stop
+#: clearing until the next offline episode resets the streak.
+_STREAK_CLEARED = -1
 _worker_online_streak: dict[str, int] = {}
 
 
@@ -1036,21 +1039,26 @@ async def _check_stale_workers() -> None:
                 # Sustained recovery, and the ONLY place the offline alert is
                 # cleared. Clearing re-arms the next push, so a clear on the
                 # FIRST heartbeat turned every Doze nap of a phone worker into
-                # a fresh alerted episode (~5 pushes/hour, live). The clear
-                # fires once when the streak reaches the threshold; the
-                # bell-presence fallback re-runs it if that clear failed. A
-                # clear missed by both paths self-heals within 24h — the
-                # record cooldown is measured from the lingering row's own
-                # created_at, so it ages out of the dedupe window on its own.
-                streak = _worker_online_streak.get(cid, 0) + 1
+                # a fresh alerted episode (~5 pushes/hour, live). The retry
+                # state lives in the streak itself: at or past the threshold
+                # the clear runs every sweep until it SUCCEEDS (a raise lands
+                # in this loop's per-worker handler and the streak stays
+                # armed), and only success parks the streak on the sentinel —
+                # so a failed durable clear cannot be stranded by the hourly
+                # bell rebuild dropping the in-memory entry.
+                streak = _worker_online_streak.get(cid, 0)
+                if streak == _STREAK_CLEARED:
+                    continue
+                streak += 1
                 _worker_online_streak[cid] = streak
-                bell_lingers = any(a.get("kind") == "worker" and a.get("client_id") == cid for a in _collector_alerts)
-                if streak == _SUSTAINED_RECOVERY_SWEEPS or (streak > _SUSTAINED_RECOVERY_SWEEPS and bell_lingers):
+                if streak >= _SUSTAINED_RECOVERY_SWEEPS:
                     await database.clear_alerts("worker", cid)
+                    had_bell = any(a.get("kind") == "worker" and a.get("client_id") == cid for a in _collector_alerts)
                     _collector_alerts = [
                         a for a in _collector_alerts if not (a.get("kind") == "worker" and a.get("client_id") == cid)
                     ]
-                    if bell_lingers:
+                    _worker_online_streak[cid] = _STREAK_CLEARED
+                    if had_bell:
                         logger.info("Cleared offline alert for recovered worker '%s'", w["name"])
         except Exception as exc:
             logger.warning("Stale worker check error for worker '%s': %s", w.get("name", w.get("id")), exc)

@@ -291,7 +291,7 @@ class TestFlapDamping:
     """The OPPO incident, pinned end to end: a Doze-napping phone worker must
     cost ONE push per episode, not one per nap."""
 
-    def _sweep(self, *, rows, record_returns=True):
+    def _sweep(self, *, rows, record_returns=True, clear_raises=False):
         sends = []
 
         async def _capture_send(title, message, **kw):
@@ -299,7 +299,7 @@ class TestFlapDamping:
             return 1
 
         record = AsyncMock(return_value=record_returns)
-        clear = AsyncMock()
+        clear = AsyncMock(side_effect=RuntimeError("db locked") if clear_raises else None)
         with (
             patch("app.main.database.list_workers", new_callable=AsyncMock, return_value=rows),
             patch("app.main.database.mark_worker_offline_if_unchanged", new_callable=AsyncMock, return_value=True),
@@ -347,3 +347,25 @@ class TestFlapDamping:
         self._sweep(rows=[_worker_row()], record_returns=None)  # flap: offline again
         after_flap = self._sweep(rows=[self._fresh_row()])  # online (streak must be 1 again)
         after_flap.clear.assert_not_awaited()
+
+    def test_a_failed_durable_clear_is_retried_next_sweep(self):
+        """The retry must not depend on the in-memory bell entry: the hourly
+        rebuild derives worker entries from OFFLINE workers only, so it drops
+        the bell for an online worker whose durable clear failed — and a
+        bell-gated retry would then never run, suppressing the next episode's
+        push until the row aged out of the 24h window."""
+        self._sweep(rows=[_worker_row()])  # offline episode
+        self._sweep(rows=[self._fresh_row()])  # online sweep 1 — arming
+        failing = self._sweep(rows=[self._fresh_row()], clear_raises=True)
+        failing.clear.assert_awaited_once()  # threshold reached, clear attempted
+        main._collector_alerts = []  # hourly rebuild dropped the bell entry
+        retry = self._sweep(rows=[self._fresh_row()])
+        retry.clear.assert_awaited_once_with("worker", "cid-watchtower")
+
+    def test_a_successful_clear_is_not_repeated_while_online(self):
+        self._sweep(rows=[_worker_row()])
+        self._sweep(rows=[self._fresh_row()])
+        cleared = self._sweep(rows=[self._fresh_row()])  # clears, parks on the sentinel
+        cleared.clear.assert_awaited_once()
+        later = self._sweep(rows=[self._fresh_row()])
+        later.clear.assert_not_awaited()
