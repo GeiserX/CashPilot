@@ -320,12 +320,20 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add docker-compose.yml docker-compose.fleet.yml
-          # No [skip ci] marker, deliberately. `test` is a required check on
+          # No skip-CI marker, deliberately. `test` is a required check on
           # main now, and a skipped run never reports -- the check would sit
           # "Expected" forever and this PR could never merge. What stops a
           # second release is the paths filter at the top of this workflow,
           # which does not list the compose files. Keep it that way: widening it
           # to cover them would make every pin bump cut a release.
+          #
+          # And do not write the marker out in full anywhere it can reach a
+          # commit message, not even to explain it. GitHub reads the string
+          # ANYWHERE in a HEAD commit message, body included, and skips every
+          # workflow for that commit -- no runs, no annotation, nothing to
+          # notice. A commit explaining the removal of the marker skipped all
+          # three checks on this branch and left the PR permanently BLOCKED on a
+          # required check that could never report.
           git commit -m "chore(compose): pin the examples to $SERIES"
 
           # THROUGH A PULL REQUEST, because main is protected.
