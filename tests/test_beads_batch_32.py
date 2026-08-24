@@ -212,10 +212,11 @@ class TestDependabotUpdatesWhatShips:
         app to uv without this entry would have frozen the docs build's only
         dependency without anything saying so.
         """
-        docs = [u for u in self._updates() if u["directory"].rstrip("/") == "/docs"]
-        assert docs, (
-            "nothing watches docs/requirements-docs.txt. docs.yml pip-installs it, "
-            "so without a Dependabot entry MkDocs silently freezes"
+        docs = [u for u in self._updates() if u["directory"].rstrip("/") == "/docs" and u["package-ecosystem"] == "pip"]
+        assert len(docs) == 1, (
+            "nothing that can read a requirements file watches docs/requirements-docs.txt. "
+            "docs.yml pip-installs it, and `uv` does not see requirements files at all, so "
+            f"a uv entry here would leave MkDocs frozen: {self._updates()}"
         )
 
     def test_the_docs_deps_stay_out_of_the_app_lock(self):

@@ -20,6 +20,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+import pytest
 import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -29,6 +30,52 @@ RELEASE = ROOT / ".github" / "workflows" / "release.yml"
 def publish_steps() -> list[dict]:
     doc = yaml.safe_load(RELEASE.read_text(encoding="utf-8"))
     return [s for s in doc["jobs"]["publish"]["steps"] if isinstance(s, dict)]
+
+
+def release_push_paths() -> list[str]:
+    doc = yaml.safe_load(RELEASE.read_text(encoding="utf-8"))
+    # PyYAML parses a bare `on:` key as the boolean True.
+    return list((doc.get("on", doc.get(True)))["push"]["paths"])
+
+
+def _filter_regex(pattern: str) -> re.Pattern[str]:
+    """GitHub's filter-pattern syntax, enough of it to be honest.
+
+    `*` stops at a slash, `**` does not, and `?`/`+` are quantifiers on what
+    precedes them. Substring matching was the previous version of this check and
+    it would have waved through `'*.yml'`, which matches both compose files.
+    """
+    out: list[str] = []
+    i = 0
+    while i < len(pattern):
+        char = pattern[i]
+        if char == "*":
+            if pattern[i + 1 : i + 2] == "*":
+                out.append(".*")
+                i += 2
+                continue
+            out.append("[^/]*")
+        elif char in "?+":
+            out.append(char)
+        elif char == "[":
+            close = pattern.index("]", i)
+            out.append(pattern[i : close + 1])
+            i = close + 1
+            continue
+        else:
+            out.append(re.escape(char))
+        i += 1
+    return re.compile("^" + "".join(out) + "$")
+
+
+def path_filter_matches(paths: list[str], filename: str) -> bool:
+    """Last matching pattern wins, and a leading `!` negates."""
+    matched = False
+    for pattern in paths:
+        negated = pattern.startswith("!")
+        if _filter_regex(pattern[1:] if negated else pattern).match(filename):
+            matched = not negated
+    return matched
 
 
 def bump_step() -> dict:
@@ -82,20 +129,30 @@ class TestTheReleaseMovesThePin:
         offenders = [ln.strip() for ln in run.splitlines() if re.search(r"\bgrep\b.*-\w*P\b", ln)]
         assert not offenders, offenders
 
-    def test_the_commit_cannot_start_another_release(self):
+    def test_the_step_names_the_compose_files_it_edits(self):
+        """Derived, not restated, so a rename cannot slip past the next test."""
+        assert self._edited_files() == ["docker-compose.fleet.yml", "docker-compose.yml"], self._edited_files()
+
+    def _edited_files(self):
+        adds = [ln for ln in bump_step()["run"].splitlines() if ln.strip().startswith("git add")]
+        assert adds, "the step no longer stages anything"
+        return sorted({word for line in adds for word in line.split()[2:] if word.endswith(".yml")})
+
+    @pytest.mark.parametrize("compose", ["docker-compose.yml", "docker-compose.fleet.yml"])
+    def test_the_commit_cannot_start_another_release(self, compose):
         """release.yml triggers on pushes to main, so a pin bump must not be one.
 
-        The guarantee used to be a `[skip ci]` marker on the commit. It is now
-        the paths filter, which does not list the compose files, so the workflow
+        The guarantee used to be a skip-CI marker on the commit. It is now the
+        paths filter, which does not match the compose files, so the workflow
         never fires for this push at all. Asserted where the guarantee actually
         lives rather than on a marker that only backs it up.
+
+        Matched as GitHub matches, not by substring: `'*.yml'` names neither
+        file and matches both. (CodeRabbit, PR #351.)
         """
-        doc = yaml.safe_load(RELEASE.read_text(encoding="utf-8"))
-        # PyYAML parses a bare `on:` key as the boolean True.
-        paths = set((doc.get("on", doc.get(True)))["push"]["paths"])
-        offenders = [p for p in paths if "docker-compose" in p or p in {"**", "*"}]
-        assert not offenders, (
-            f"release.yml would fire on the pin-bump commit ({offenders}), so every release would trigger another one"
+        paths = release_push_paths()
+        assert not path_filter_matches(paths, compose), (
+            f"release.yml fires on {compose} (paths: {paths}), so every release would trigger another one"
         )
 
     def test_the_commit_carries_no_skip_marker(self):
