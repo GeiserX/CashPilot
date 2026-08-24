@@ -22,7 +22,7 @@ jobs:
     name: Verify CI passes
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
         with:
           # The same tags test.yml needs. tests/test_compose_image_pins.py
           # compares the pinned image tag against the newest RELEASED version,
@@ -31,7 +31,7 @@ jobs:
           # exactly as designed. It blocked v1.11.4 after six merges.
           fetch-depth: 0
           fetch-tags: true
-      - uses: actions/setup-python@v7
+      - uses: actions/setup-python@v7.0.0
         with:
           # The interpreter the images ship (Dockerfile:2, Dockerfile.worker:2),
           # and the one test.yml uses. This job is what the release is actually
@@ -60,7 +60,7 @@ jobs:
       build_worker: ${{ steps.changes.outputs.worker }}
     steps:
       - name: Checkout code
-        uses: actions/checkout@v7
+        uses: actions/checkout@v7.0.1
         with:
           fetch-depth: 0
 
@@ -225,7 +225,7 @@ jobs:
       # protected. Nothing else in this job needs it.
       pull-requests: write
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
         with:
           fetch-depth: 0
           fetch-tags: true

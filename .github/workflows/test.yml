@@ -10,7 +10,7 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
         with:
           # Tags are needed by the compose-pin drift test, which compares the
           # pinned image tag against the newest RELEASED version. checkout does
@@ -19,11 +19,11 @@ jobs:
           fetch-depth: 0
           fetch-tags: true
 
-      - uses: actions/setup-python@v7
+      - uses: actions/setup-python@v7.0.0
         with:
           python-version: "3.14"
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7
         with:
           node-version: "22"
 
