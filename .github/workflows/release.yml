@@ -320,11 +320,13 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add docker-compose.yml docker-compose.fleet.yml
-          # [skip ci] because this must not start another release. The paths
-          # filter on this workflow does not list the compose files, so it would
-          # not fire anyway -- the marker is what keeps that true if the filter
-          # ever widens.
-          git commit -m "chore(compose): pin the examples to $SERIES [skip ci]"
+          # No [skip ci] marker, deliberately. `test` is a required check on
+          # main now, and a skipped run never reports -- the check would sit
+          # "Expected" forever and this PR could never merge. What stops a
+          # second release is the paths filter at the top of this workflow,
+          # which does not list the compose files. Keep it that way: widening it
+          # to cover them would make every pin bump cut a release.
+          git commit -m "chore(compose): pin the examples to $SERIES"
 
           # THROUGH A PULL REQUEST, because main is protected.
           #
@@ -334,10 +336,11 @@ jobs:
           # failure warns instead of failing. Branch protection is not going
           # away, so the mechanism has to change rather than the retry count.
           #
-          # A PR can be merged immediately here: main requires a PR but demands
-          # no approvals and no status checks (verified against the protection
-          # API). If that ever tightens, the merge below fails, the warning
-          # fires, and the release still ships -- which is the behaviour to keep.
+          # Merged with --auto, not immediately: main requires `test` to pass,
+          # and an immediate merge would be rejected while it is still running.
+          # Auto-merge lands the PR the moment the check goes green. If merging
+          # fails for any other reason the warning fires and the release still
+          # ships -- which is the behaviour to keep.
           BRANCH="chore/compose-pins-$SERIES"
           git checkout -b "$BRANCH"
           # --force-with-lease so a re-run reuses the branch instead of dying on
@@ -354,11 +357,11 @@ jobs:
             exit 0
           fi
 
-          if ! gh pr merge "$BRANCH" --squash --delete-branch; then
+          if ! gh pr merge "$BRANCH" --squash --delete-branch --auto; then
             echo "::warning::opened the pin-bump PR for $SERIES but could not merge it; merge it by hand"
             exit 0
           fi
-          echo "Pins bumped to $SERIES via $BRANCH."
+          echo "Pins bumped to $SERIES via $BRANCH (auto-merges when tests pass)."
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228 # v3

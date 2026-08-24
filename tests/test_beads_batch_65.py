@@ -83,17 +83,42 @@ class TestTheReleaseMovesThePin:
         assert not offenders, offenders
 
     def test_the_commit_cannot_start_another_release(self):
-        """release.yml triggers on pushes to main. Without the marker this would
-        be a release that releases.
+        """release.yml triggers on pushes to main, so a pin bump must not be one.
 
-        Scoped to the `git commit` line. A plain `"[skip ci]" in run` passed with
-        the marker DELETED from the commit, because the comment above it explains
-        why the marker is there and therefore has to name it — the test matching
-        its own prose. Caught by a negative control.
+        The guarantee used to be a `[skip ci]` marker on the commit. It is now
+        the paths filter, which does not list the compose files, so the workflow
+        never fires for this push at all. Asserted where the guarantee actually
+        lives rather than on a marker that only backs it up.
+        """
+        doc = yaml.safe_load(RELEASE.read_text(encoding="utf-8"))
+        # PyYAML parses a bare `on:` key as the boolean True.
+        paths = set((doc.get("on", doc.get(True)))["push"]["paths"])
+        offenders = [p for p in paths if "docker-compose" in p or p in {"**", "*"}]
+        assert not offenders, (
+            f"release.yml would fire on the pin-bump commit ({offenders}), so every release would trigger another one"
+        )
+
+    def test_the_commit_carries_no_skip_marker(self):
+        """A skipped run never reports, and `test` is required on main.
+
+        With `[skip ci]` the pin-bump PR produced zero Actions checks (#347 ran
+        one, and it was GitGuardian). Under a required check that PR could never
+        merge: the check sits "Expected" forever.
         """
         commits = [ln for ln in bump_step()["run"].splitlines() if ln.strip().startswith("git commit")]
         assert commits, "the step no longer commits anything"
-        assert all("[skip ci]" in ln for ln in commits), commits
+        offenders = [ln.strip() for ln in commits if "[skip ci]" in ln]
+        assert not offenders, (
+            f"the pin-bump commit skips CI, so the required `test` check can never report on its PR: {offenders}"
+        )
+
+    def test_the_merge_waits_for_the_required_check(self):
+        """An immediate merge is rejected while `test` is still running."""
+        merges = [ln.strip() for ln in bump_step()["run"].splitlines() if "gh pr merge" in ln]
+        assert merges, "the step no longer merges anything"
+        assert all("--auto" in ln for ln in merges), (
+            f"the pin-bump merge does not use --auto, so it fires before `test` finishes and is rejected: {merges}"
+        )
 
     def test_it_goes_through_a_pull_request(self):
         """main is PROTECTED: "Changes must be made through a pull request".
