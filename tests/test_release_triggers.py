@@ -265,6 +265,71 @@ class TestOnlyARealDependencyChangeBuilds:
         assert "Install uv" in names, f"the release job never installs uv: {names}"
         assert names.index("Install uv") < names.index("Detect what changed"), names
 
+    def _script_module(self):
+        """The script is not a package; load it from its path."""
+        import importlib.util
+
+        spec = importlib.util.spec_from_file_location("runtime_deps_changed", self.SCRIPT)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module
+
+    def test_the_detector_uses_the_uv_the_images_build_with(self):
+        """A different uv could read the lock differently from the one that
+        installs it, and then the check judges a resolution nobody ships.
+        Derived from the Dockerfile, so there is no second copy to drift.
+        (CodeRabbit, PR #354.)
+        """
+        import yaml
+
+        doc = yaml.safe_load(RELEASE.read_text(encoding="utf-8"))
+        step = next(s for s in doc["jobs"]["release"]["steps"] if s.get("name") == "Install uv")
+        assert "astral-sh/uv:" in step["run"], "the release job installs some uv, not the images' uv"
+        assert 'pip install "uv==$UV_VERSION"' in step["run"], "the derived version is read but not installed"
+
+    def test_the_dockerfile_still_states_a_uv_version_to_derive(self):
+        """The derivation above degrades to a warning, so this is what notices."""
+        found = re.findall(r"astral-sh/uv:(\d+\.\d+\.\d+)", (ROOT / "Dockerfile").read_text(encoding="utf-8"))
+        assert found, "Dockerfile no longer pins a uv version, so the release job cannot match it"
+        worker = re.findall(r"astral-sh/uv:(\d+\.\d+\.\d+)", (ROOT / "Dockerfile.worker").read_text(encoding="utf-8"))
+        assert set(found) == set(worker), f"the two images build with different uv versions: {found} vs {worker}"
+
+    def test_a_hash_only_change_is_a_change(self):
+        """`uv sync --frozen` consumes the artifacts, not just the versions.
+
+        A lock can gain or change an artifact for a version that already
+        exists, and every `name==version` pin still reads the same. Exporting
+        without hashes returned "unchanged" for something the build installs
+        differently. (CodeRabbit, PR #354.)
+        """
+        import re as _re
+        import shutil
+        import tempfile
+
+        module = self._script_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            plain, tampered = root / "plain", root / "tampered"
+            for target in (plain, tampered):
+                target.mkdir()
+                for name in module.MANIFESTS:
+                    shutil.copy(ROOT / name, target / name)
+
+            before = module._runtime_requirements(plain)
+            assert before, "the baseline export produced nothing, so this test proves nothing"
+
+            hashes = _re.findall(r"--hash=sha256:([0-9a-f]{64})", "\n".join(before))
+            assert hashes, "the export carries no hashes, so a hash-only change could never be seen"
+
+            lock = (tampered / "uv.lock").read_text(encoding="utf-8")
+            flipped = ("0" if hashes[0][0] != "0" else "1") + hashes[0][1:]
+            assert hashes[0] in lock
+            (tampered / "uv.lock").write_text(lock.replace(hashes[0], flipped), encoding="utf-8")
+
+            after = module._runtime_requirements(tampered)
+            assert after is not None, "uv refused the tampered lock, so the comparison never happened"
+            assert before != after, "a changed artifact hash reads as no change, so the release would be skipped"
+
     def test_no_tag_to_compare_against_still_builds(self):
         """The first release, or a checkout without tags, must not skip.
 

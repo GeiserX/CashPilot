@@ -65,11 +65,24 @@ def _materialise(repo: pathlib.Path, ref: str, into: pathlib.Path) -> bool:
 
 
 def _runtime_requirements(directory: pathlib.Path) -> set[str] | None:
-    """The pinned no-dev requirements, or None when uv cannot say.
+    """Everything the no-dev resolution pins, or None when uv cannot say.
 
     ``--frozen`` so uv reports a lock that disagrees with its pyproject instead
     of quietly re-resolving it, which would need the network and would answer a
     different question from the one the Dockerfile asks.
+
+    HASHES ARE INCLUDED. Exporting with ``--no-hashes`` and keeping only the
+    ``name==version`` lines compares less than the build consumes: a lock can
+    gain or change an artifact for a version that already exists -- a new wheel
+    for a platform, a re-resolved sdist -- and every pin still reads the same
+    while ``uv sync --frozen`` installs something different. That returns
+    "unchanged" for a change that ships, which is the one direction this script
+    must never get wrong. (CodeRabbit, PR #354.)
+
+    Comment lines go, and only those. uv writes the command it was run with into
+    the header, and that names the temp directory, so it differs on every call
+    by construction. The ``# via ...`` provenance notes are dropped with it;
+    they restate the graph the pins already describe.
     """
     result = _run(
         [
@@ -79,7 +92,6 @@ def _runtime_requirements(directory: pathlib.Path) -> set[str] | None:
             str(directory),
             "--frozen",
             "--no-dev",
-            "--no-hashes",
             "--format",
             "requirements-txt",
         ]
@@ -87,9 +99,7 @@ def _runtime_requirements(directory: pathlib.Path) -> set[str] | None:
     if result.returncode != 0:
         _warn(f"uv export failed in {directory}: {result.stderr.strip()[:400]}")
         return None
-    # Continuation lines are indented comments ("    # via fastapi"); the pins
-    # themselves start at column zero.
-    return {line.strip() for line in result.stdout.splitlines() if line.strip() and not line.startswith(("#", " "))}
+    return {line.strip() for line in result.stdout.splitlines() if line.strip() and not line.strip().startswith("#")}
 
 
 def runtime_deps_changed(repo: pathlib.Path, base: str, head: str) -> bool:

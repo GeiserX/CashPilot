@@ -67,8 +67,24 @@ jobs:
       # The change detector asks uv what the no-dev resolution was at the last
       # tag. Without uv on PATH the script says "changed" and is fail-safe but
       # useless, so install it before anything reads its answer.
+      #
+      # The SAME uv the images build with, read out of the Dockerfile rather
+      # than restated here: uv guarantees lockfile compatibility within a minor
+      # release, and a detector on a different one would be judging a
+      # resolution nobody ships. Warns rather than fails if it cannot read the
+      # version -- an unpinned uv still compares both refs with one binary, so
+      # the answer stays sound; tests/test_release_triggers.py is what keeps the
+      # Dockerfile readable. (CodeRabbit, PR #354.)
       - name: Install uv
-        run: pip install uv --quiet
+        run: |
+          UV_VERSION=$(grep -oE 'astral-sh/uv:[0-9]+\.[0-9]+\.[0-9]+' Dockerfile | head -1 | cut -d: -f2)
+          if [ -z "$UV_VERSION" ]; then
+            echo "::warning::could not read the uv version from Dockerfile; installing the newest"
+            pip install uv --quiet
+          else
+            echo "Installing uv $UV_VERSION, the version Dockerfile builds with"
+            pip install "uv==$UV_VERSION" --quiet
+          fi
 
       - name: Detect what changed
         id: changes
