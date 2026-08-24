@@ -23,14 +23,13 @@ Self-hosted passive income platform with a web UI that guides setup, deploys Doc
 ## Development
 
 ```bash
-# Local development
-python -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8080
+# Local development. uv.lock is the only source of truth: it is what the image
+# builds from and what CI syncs, so this gets you exactly what ships.
+uv sync --frozen --extra dev
+uv run uvicorn app.main:app --reload --host 0.0.0.0 --port 8080
 
 # Run tests
-pytest tests/
+uv run pytest tests/
 
 # Run dev environment
 docker compose up -d

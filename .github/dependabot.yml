@@ -1,6 +1,16 @@
 version: 2
 updates:
-  - package-ecosystem: pip
+  # uv, NOT pip. The image builds with `uv sync --frozen` from uv.lock, CI syncs
+  # from the same lock, and release.yml treats uv.lock as a release trigger — so
+  # uv.lock is the only file whose contents decide what ships.
+  #
+  # On `pip` Dependabot edited requirements.txt instead, which was a generated
+  # export nothing installed from. #350 bumped six pins there, changed nothing
+  # that ships, left the lock behind, and put a version pair in the file that
+  # pip cannot even resolve (pydantic 2.13.4 requires pydantic-core==2.46.4;
+  # the PR asked for 2.48.0). The export is gone and the ecosystem now points at
+  # the lock, so a bump either reaches the image or is never proposed.
+  - package-ecosystem: uv
     directory: /
     schedule:
       interval: weekly
@@ -18,7 +28,7 @@ updates:
         update-types:
           - minor
           - patch
-      pip_security:
+      uv_security:
         applies-to: security-updates
         patterns:
           - '*'
