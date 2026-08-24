@@ -20,6 +20,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+import pytest
 import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -29,6 +30,52 @@ RELEASE = ROOT / ".github" / "workflows" / "release.yml"
 def publish_steps() -> list[dict]:
     doc = yaml.safe_load(RELEASE.read_text(encoding="utf-8"))
     return [s for s in doc["jobs"]["publish"]["steps"] if isinstance(s, dict)]
+
+
+def release_push_paths() -> list[str]:
+    doc = yaml.safe_load(RELEASE.read_text(encoding="utf-8"))
+    # PyYAML parses a bare `on:` key as the boolean True.
+    return list((doc.get("on", doc.get(True)))["push"]["paths"])
+
+
+def _filter_regex(pattern: str) -> re.Pattern[str]:
+    """GitHub's filter-pattern syntax, enough of it to be honest.
+
+    `*` stops at a slash, `**` does not, and `?`/`+` are quantifiers on what
+    precedes them. Substring matching was the previous version of this check and
+    it would have waved through `'*.yml'`, which matches both compose files.
+    """
+    out: list[str] = []
+    i = 0
+    while i < len(pattern):
+        char = pattern[i]
+        if char == "*":
+            if pattern[i + 1 : i + 2] == "*":
+                out.append(".*")
+                i += 2
+                continue
+            out.append("[^/]*")
+        elif char in "?+":
+            out.append(char)
+        elif char == "[":
+            close = pattern.index("]", i)
+            out.append(pattern[i : close + 1])
+            i = close + 1
+            continue
+        else:
+            out.append(re.escape(char))
+        i += 1
+    return re.compile("^" + "".join(out) + "$")
+
+
+def path_filter_matches(paths: list[str], filename: str) -> bool:
+    """Last matching pattern wins, and a leading `!` negates."""
+    matched = False
+    for pattern in paths:
+        negated = pattern.startswith("!")
+        if _filter_regex(pattern[1:] if negated else pattern).match(filename):
+            matched = not negated
+    return matched
 
 
 def bump_step() -> dict:
@@ -82,18 +129,53 @@ class TestTheReleaseMovesThePin:
         offenders = [ln.strip() for ln in run.splitlines() if re.search(r"\bgrep\b.*-\w*P\b", ln)]
         assert not offenders, offenders
 
-    def test_the_commit_cannot_start_another_release(self):
-        """release.yml triggers on pushes to main. Without the marker this would
-        be a release that releases.
+    def test_the_step_names_the_compose_files_it_edits(self):
+        """Derived, not restated, so a rename cannot slip past the next test."""
+        assert self._edited_files() == ["docker-compose.fleet.yml", "docker-compose.yml"], self._edited_files()
 
-        Scoped to the `git commit` line. A plain `"[skip ci]" in run` passed with
-        the marker DELETED from the commit, because the comment above it explains
-        why the marker is there and therefore has to name it — the test matching
-        its own prose. Caught by a negative control.
+    def _edited_files(self):
+        adds = [ln for ln in bump_step()["run"].splitlines() if ln.strip().startswith("git add")]
+        assert adds, "the step no longer stages anything"
+        return sorted({word for line in adds for word in line.split()[2:] if word.endswith(".yml")})
+
+    @pytest.mark.parametrize("compose", ["docker-compose.yml", "docker-compose.fleet.yml"])
+    def test_the_commit_cannot_start_another_release(self, compose):
+        """release.yml triggers on pushes to main, so a pin bump must not be one.
+
+        The guarantee used to be a skip-CI marker on the commit. It is now the
+        paths filter, which does not match the compose files, so the workflow
+        never fires for this push at all. Asserted where the guarantee actually
+        lives rather than on a marker that only backs it up.
+
+        Matched as GitHub matches, not by substring: `'*.yml'` names neither
+        file and matches both. (CodeRabbit, PR #351.)
+        """
+        paths = release_push_paths()
+        assert not path_filter_matches(paths, compose), (
+            f"release.yml fires on {compose} (paths: {paths}), so every release would trigger another one"
+        )
+
+    def test_the_commit_carries_no_skip_marker(self):
+        """A skipped run never reports, and `test` is required on main.
+
+        With `[skip ci]` the pin-bump PR produced zero Actions checks (#347 ran
+        one, and it was GitGuardian). Under a required check that PR could never
+        merge: the check sits "Expected" forever.
         """
         commits = [ln for ln in bump_step()["run"].splitlines() if ln.strip().startswith("git commit")]
         assert commits, "the step no longer commits anything"
-        assert all("[skip ci]" in ln for ln in commits), commits
+        offenders = [ln.strip() for ln in commits if "[skip ci]" in ln]
+        assert not offenders, (
+            f"the pin-bump commit skips CI, so the required `test` check can never report on its PR: {offenders}"
+        )
+
+    def test_the_merge_waits_for_the_required_check(self):
+        """An immediate merge is rejected while `test` is still running."""
+        merges = [ln.strip() for ln in bump_step()["run"].splitlines() if "gh pr merge" in ln]
+        assert merges, "the step no longer merges anything"
+        assert all("--auto" in ln for ln in merges), (
+            f"the pin-bump merge does not use --auto, so it fires before `test` finishes and is rejected: {merges}"
+        )
 
     def test_it_goes_through_a_pull_request(self):
         """main is PROTECTED: "Changes must be made through a pull request".

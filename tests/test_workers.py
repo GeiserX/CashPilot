@@ -5,7 +5,7 @@ Exercises /api/workers/heartbeat, /api/workers, /api/fleet/summary, the DB
 migration (client_id identity, apps column), _check_stale_workers,
 _run_health_check, and the login-attempt rate limiter.
 
-Requires fastapi + httpx (installed in CI via requirements.txt).
+Requires fastapi + httpx (installed in CI with `uv sync --frozen` from uv.lock).
 Skipped automatically in minimal local environments.
 """
 

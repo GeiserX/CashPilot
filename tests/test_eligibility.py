@@ -3,7 +3,7 @@
 These tests call the actual route handler with mocked DB/catalog/auth
 dependencies, so they exercise real route wiring and response assembly.
 
-Requires fastapi + httpx (installed in CI via requirements.txt).
+Requires fastapi + httpx (installed in CI with `uv sync --frozen` from uv.lock).
 Skipped automatically in minimal local environments.
 """
 

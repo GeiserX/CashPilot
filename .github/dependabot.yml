@@ -1,6 +1,16 @@
 version: 2
 updates:
-  - package-ecosystem: pip
+  # uv, NOT pip. The image builds with `uv sync --frozen` from uv.lock, CI syncs
+  # from the same lock, and release.yml treats uv.lock as a release trigger — so
+  # uv.lock is the only file whose contents decide what ships.
+  #
+  # On `pip` Dependabot edited requirements.txt instead, which was a generated
+  # export nothing installed from. #350 bumped six pins there, changed nothing
+  # that ships, left the lock behind, and put a version pair in the file that
+  # pip cannot even resolve (pydantic 2.13.4 requires pydantic-core==2.46.4;
+  # the PR asked for 2.48.0). The export is gone and the ecosystem now points at
+  # the lock, so a bump either reaches the image or is never proposed.
+  - package-ecosystem: uv
     directory: /
     schedule:
       interval: weekly
@@ -18,7 +28,7 @@ updates:
         update-types:
           - minor
           - patch
-      pip_security:
+      uv_security:
         applies-to: security-updates
         patterns:
           - '*'
@@ -26,6 +36,32 @@ updates:
       - dependency-name: '*'
         update-types:
           - version-update:semver-major
+  # The docs toolchain is a separate install and needs its own watcher: docs.yml
+  # pip-installs docs/requirements-docs.txt to run MkDocs, and `uv` does not see
+  # that file. Dependabot's pip ecosystem did (it opened #125 for
+  # mkdocs-material), so dropping pip entirely would have quietly frozen MkDocs.
+  #
+  # These deps stay OUT of uv.lock on purpose. release.yml treats uv.lock as a
+  # release trigger, so a mkdocs-material bump would otherwise cut an app
+  # release that changes nothing in the app.
+  - package-ecosystem: pip
+    directory: /docs
+    schedule:
+      interval: weekly
+      day: monday
+    commit-message:
+      prefix: docs
+    labels:
+      - documentation
+      - automated
+    groups:
+      docs_toolchain:
+        patterns:
+          - '*'
+      docs_security:
+        applies-to: security-updates
+        patterns:
+          - '*'
   - package-ecosystem: github-actions
     directory: /
     schedule:

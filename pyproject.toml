@@ -45,7 +45,7 @@ dev = [
     # meant the test environment was assembled by hand rather than resolved from
     # the lockfile that ships.
     "docker>=7.1.0",
-    "tzdata>=2025.1",
+    "tzdata>=2026.3",
 ]
 
 [project.urls]
