@@ -64,6 +64,28 @@ jobs:
         with:
           fetch-depth: 0
 
+      # The change detector asks uv what the no-dev resolution was at the last
+      # tag. Without uv on PATH the script says "changed" and is fail-safe but
+      # useless, so install it before anything reads its answer.
+      #
+      # The SAME uv the images build with, read out of the Dockerfile rather
+      # than restated here: uv guarantees lockfile compatibility within a minor
+      # release, and a detector on a different one would be judging a
+      # resolution nobody ships. Warns rather than fails if it cannot read the
+      # version -- an unpinned uv still compares both refs with one binary, so
+      # the answer stays sound; tests/test_release_triggers.py is what keeps the
+      # Dockerfile readable. (CodeRabbit, PR #354.)
+      - name: Install uv
+        run: |
+          UV_VERSION=$(grep -oE 'astral-sh/uv:[0-9]+\.[0-9]+\.[0-9]+' Dockerfile | head -1 | cut -d: -f2)
+          if [ -z "$UV_VERSION" ]; then
+            echo "::warning::could not read the uv version from Dockerfile; installing the newest"
+            pip install uv --quiet
+          else
+            echo "Installing uv $UV_VERSION, the version Dockerfile builds with"
+            pip install "uv==$UV_VERSION" --quiet
+          fi
+
       - name: Detect what changed
         id: changes
         run: |
@@ -94,8 +116,32 @@ jobs:
           # lan_isolation, notify, ...) produced a GREEN release run that
           # published nothing at all: no tag, no GitHub Release, no images.
           # Skipped steps do not fail a run, so it looked like a success.
-          if echo "$CHANGED" | grep -qE '^(Dockerfile|entrypoint\.sh|pyproject\.toml|uv\.lock|app/)'; then
+          # uv.lock and pyproject.toml hold the DEV group too, and both images
+          # build with `uv sync --frozen --no-dev`. Matching on the filename
+          # meant a pytest or ruff bump -- the most frequent dependency PR there
+          # is -- cut a full release. v1.36.4 was exactly that: 78 entries in
+          # site-packages, not one of them different from v1.36.3, and three
+          # containers restarted on the fleet for a version label.
+          #
+          # So the manifests do not trigger by name. The script exports the
+          # no-dev resolution at both refs with the real resolver and compares,
+          # and every way of not knowing answers "changed".
+          RUNTIME_CHANGED=false
+          if echo "$CHANGED" | grep -qE '^(pyproject\.toml|uv\.lock)$'; then
+            if [ -n "$LAST_TAG" ]; then
+              RUNTIME_CHANGED=$(python3 scripts/runtime_deps_changed.py "$LAST_TAG" HEAD || echo true)
+            else
+              RUNTIME_CHANGED=true
+            fi
+          fi
+          echo "Runtime dependencies changed: $RUNTIME_CHANGED"
+
+          if echo "$CHANGED" | grep -qE '^(Dockerfile|entrypoint\.sh|app/)'; then
             BUILD_UI=true
+          fi
+          if [ "$RUNTIME_CHANGED" = true ]; then
+            BUILD_UI=true
+            BUILD_WORKER=true
           fi
           if echo "$CHANGED" | grep -qE '^services/'; then
             BUILD_UI=true
@@ -111,7 +157,7 @@ jobs:
           WORKER_MODULES=$(grep -oE '^COPY[^#]*app/([a-z_]+)\.py' Dockerfile.worker \
             | grep -oE 'app/[a-z_]+\.py' | sort -u)
           echo "Worker modules (from Dockerfile.worker):"; echo "$WORKER_MODULES"
-          if echo "$CHANGED" | grep -qE '^(Dockerfile\.worker|entrypoint\.sh|pyproject\.toml|uv\.lock)'; then
+          if echo "$CHANGED" | grep -qE '^(Dockerfile\.worker|entrypoint\.sh)'; then
             BUILD_WORKER=true
           fi
           while IFS= read -r mod; do

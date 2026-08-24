@@ -25,10 +25,14 @@ without anyone remembering.
 
 from __future__ import annotations
 
+import os
 import re
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
+import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
 RELEASE = ROOT / ".github" / "workflows" / "release.yml"
@@ -188,3 +192,193 @@ class TestTheDocsNameTheRightEncryptionKey:
             if "only when that file is absent" in (ROOT / rel).read_text(encoding="utf-8")
         ]
         assert len(found) >= 3, f"precedence stated in only {found}"
+
+
+class TestOnlyARealDependencyChangeBuilds:
+    """CashPilot-#354: a dev-tool bump cut a full release.
+
+    ``uv.lock`` carries the dev group, both images build with
+    ``uv sync --frozen --no-dev``, and the trigger matched on the filename. So
+    v1.36.4 shipped for a pytest/pytest-asyncio/ruff bump: 78 entries in
+    site-packages, not one different from v1.36.3, and three containers
+    restarted on the fleet for a version label. Dependency PRs land weekly, so
+    this was the most frequent release the project cut.
+
+    The question that decides a release is whether the no-dev resolution moved,
+    which is what ``scripts/runtime_deps_changed.py`` answers.
+    """
+
+    SCRIPT = ROOT / "scripts" / "runtime_deps_changed.py"
+
+    def _detect_step(self) -> str:
+        doc = yaml.safe_load(RELEASE.read_text(encoding="utf-8"))
+        for step in doc["jobs"]["release"]["steps"]:
+            if step.get("name") == "Detect what changed":
+                return step["run"]
+        raise AssertionError("release.yml no longer detects what changed")
+
+    def _answer(self, base: str, head: str) -> str:
+        result = subprocess.run(
+            [sys.executable, str(self.SCRIPT), base, head, "--repo", str(ROOT)],
+            capture_output=True,
+            text=True,
+            timeout=300,
+            check=False,
+        )
+        assert result.returncode == 0, result.stderr
+        return result.stdout.strip()
+
+    @pytest.mark.parametrize("manifest", [r"pyproject\.toml", r"uv\.lock"])
+    def test_the_manifests_no_longer_trigger_by_name(self, manifest):
+        """Naming a manifest may gate the resolution check, never a build.
+
+        Checked as a BLOCK, not a line. The condition that decides whether to
+        run the check names both manifests too, so a line-level "does this
+        mention uv.lock" flags the fix itself.
+        """
+        lines = self._detect_step().splitlines()
+        offenders = []
+        for index, line in enumerate(lines):
+            if "grep -qE" not in line or manifest not in line:
+                continue
+            body = []
+            for follower in lines[index + 1 :]:
+                if follower.strip() == "fi":
+                    break
+                body.append(follower)
+            if any("BUILD_UI" in b or "BUILD_WORKER" in b for b in body):
+                offenders.append(line.strip())
+        assert not offenders, (
+            f"{manifest} still sets a build flag by filename, so the resolution check cannot matter: {offenders}"
+        )
+
+    def test_the_resolution_check_decides_instead(self):
+        step = self._detect_step()
+        assert "scripts/runtime_deps_changed.py" in step, "nothing asks whether the shipped dependencies changed"
+        assert "RUNTIME_CHANGED" in step
+        assert 'if [ "$RUNTIME_CHANGED" = true ]; then' in step, "the answer is computed but never acted on"
+
+    def test_uv_is_installed_before_anything_reads_the_answer(self):
+        """Without uv the script is fail-safe but useless: everything builds."""
+        doc = yaml.safe_load(RELEASE.read_text(encoding="utf-8"))
+        names = [s.get("name") or s.get("uses") or "" for s in doc["jobs"]["release"]["steps"]]
+        assert "Install uv" in names, f"the release job never installs uv: {names}"
+        assert names.index("Install uv") < names.index("Detect what changed"), names
+
+    def _script_module(self):
+        """The script is not a package; load it from its path."""
+        import importlib.util
+
+        spec = importlib.util.spec_from_file_location("runtime_deps_changed", self.SCRIPT)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module
+
+    def test_the_detector_uses_the_uv_the_images_build_with(self):
+        """A different uv could read the lock differently from the one that
+        installs it, and then the check judges a resolution nobody ships.
+        Derived from the Dockerfile, so there is no second copy to drift.
+        (CodeRabbit, PR #354.)
+        """
+        import yaml
+
+        doc = yaml.safe_load(RELEASE.read_text(encoding="utf-8"))
+        step = next(s for s in doc["jobs"]["release"]["steps"] if s.get("name") == "Install uv")
+        assert "astral-sh/uv:" in step["run"], "the release job installs some uv, not the images' uv"
+        assert 'pip install "uv==$UV_VERSION"' in step["run"], "the derived version is read but not installed"
+
+    def test_the_dockerfile_still_states_a_uv_version_to_derive(self):
+        """The derivation above degrades to a warning, so this is what notices."""
+        found = re.findall(r"astral-sh/uv:(\d+\.\d+\.\d+)", (ROOT / "Dockerfile").read_text(encoding="utf-8"))
+        assert found, "Dockerfile no longer pins a uv version, so the release job cannot match it"
+        worker = re.findall(r"astral-sh/uv:(\d+\.\d+\.\d+)", (ROOT / "Dockerfile.worker").read_text(encoding="utf-8"))
+        assert set(found) == set(worker), f"the two images build with different uv versions: {found} vs {worker}"
+
+    def test_a_hash_only_change_is_a_change(self):
+        """`uv sync --frozen` consumes the artifacts, not just the versions.
+
+        A lock can gain or change an artifact for a version that already
+        exists, and every `name==version` pin still reads the same. Exporting
+        without hashes returned "unchanged" for something the build installs
+        differently. (CodeRabbit, PR #354.)
+        """
+        import re as _re
+        import shutil
+        import tempfile
+
+        module = self._script_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            plain, tampered = root / "plain", root / "tampered"
+            for target in (plain, tampered):
+                target.mkdir()
+                for name in module.MANIFESTS:
+                    shutil.copy(ROOT / name, target / name)
+
+            before = module._runtime_requirements(plain)
+            assert before, "the baseline export produced nothing, so this test proves nothing"
+
+            hashes = _re.findall(r"--hash=sha256:([0-9a-f]{64})", "\n".join(before))
+            assert hashes, "the export carries no hashes, so a hash-only change could never be seen"
+
+            lock = (tampered / "uv.lock").read_text(encoding="utf-8")
+            flipped = ("0" if hashes[0][0] != "0" else "1") + hashes[0][1:]
+            assert hashes[0] in lock
+            (tampered / "uv.lock").write_text(lock.replace(hashes[0], flipped), encoding="utf-8")
+
+            after = module._runtime_requirements(tampered)
+            assert after is not None, "uv refused the tampered lock, so the comparison never happened"
+            assert before != after, "a changed artifact hash reads as no change, so the release would be skipped"
+
+    def test_no_tag_to_compare_against_still_builds(self):
+        """The first release, or a checkout without tags, must not skip.
+
+        There is nothing to diff against, so the honest answer is "changed".
+        Reaching the script with an empty ref would make it compare HEAD with
+        nothing and say "unchanged", which publishes no image at all.
+        """
+        step = self._detect_step()
+        block = step[step.index("RUNTIME_CHANGED=false") :]
+        block = block[: block.index("BUILD_UI")]
+        assert 'if [ -n "$LAST_TAG" ]; then' in block, (
+            "the detector calls the script even with no tag to compare against"
+        )
+        assert "RUNTIME_CHANGED=true" in block, "the no-tag branch does not force a build"
+
+    def test_a_dev_only_bump_does_not_build(self):
+        """v1.36.4 over v1.36.3: pytest, pytest-asyncio and ruff, nothing shipped."""
+        assert self._answer("v1.36.3", "v1.36.4") == "false"
+
+    def test_a_runtime_bump_does_build(self):
+        """v1.36.3 over v1.36.2: starlette, uvicorn, idna and friends."""
+        assert self._answer("v1.36.2", "v1.36.3") == "true"
+
+    def test_a_ref_it_cannot_read_builds(self):
+        """Not knowing must never read as "nothing to do"."""
+        assert self._answer("v99.99.99", "HEAD") == "true"
+
+    def test_a_missing_uv_builds(self, tmp_path):
+        """The one failure that would otherwise silently disable every release."""
+        stripped = dict(os.environ, PATH=str(tmp_path))
+        result = subprocess.run(
+            [sys.executable, str(self.SCRIPT), "v1.36.3", "v1.36.4", "--repo", str(ROOT)],
+            capture_output=True,
+            text=True,
+            timeout=120,
+            check=False,
+            env=stripped,
+        )
+        assert result.returncode == 0, result.stderr
+        assert result.stdout.strip() == "true", result.stdout
+        assert "uv is not on PATH" in result.stderr
+
+    def test_the_tags_it_measures_against_exist(self):
+        """Guards the two tests above from passing on a repo with no tags."""
+        for tag in ("v1.36.2", "v1.36.3", "v1.36.4"):
+            result = subprocess.run(
+                ["git", "-C", str(ROOT), "rev-parse", "--verify", f"{tag}^{{commit}}"],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            assert result.returncode == 0, f"{tag} is missing, so the behaviour tests measure nothing"
