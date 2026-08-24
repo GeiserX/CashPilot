@@ -172,7 +172,7 @@ requires-dist = [
     { name = "python-multipart", specifier = ">=0.0.31" },
     { name = "pyyaml", specifier = ">=6.0.3" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.15.13" },
-    { name = "tzdata", marker = "extra == 'dev'", specifier = ">=2025.1" },
+    { name = "tzdata", marker = "extra == 'dev'", specifier = ">=2026.3" },
     { name = "uvicorn", specifier = ">=0.47.0" },
     { name = "uvloop", specifier = ">=0.22.1" },
 ]

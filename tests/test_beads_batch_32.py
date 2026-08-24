@@ -160,6 +160,8 @@ class TestThereIsOneDependencySourceOfTruth:
 class TestDependabotUpdatesWhatShips:
     """A dependency PR that cannot reach a built image is worse than none."""
 
+    PYTHON_ECOSYSTEMS = {"uv", "pip", "poetry", "pipenv"}
+
     def _release_paths(self):
         """Everything release.yml treats as a reason to cut a release."""
         doc = _workflow("release.yml")
@@ -167,14 +169,17 @@ class TestDependabotUpdatesWhatShips:
         triggers = doc.get("on", doc.get(True))
         return set(triggers["push"]["paths"])
 
-    def _python_update(self):
+    def _updates(self):
         config = yaml.safe_load((ROOT / ".github" / "dependabot.yml").read_text(encoding="utf-8"))
-        python = [u for u in config["updates"] if u["package-ecosystem"] in {"uv", "pip", "poetry", "pipenv"}]
-        assert len(python) == 1, f"expected exactly one Python update config, found {len(python)}"
-        return python[0]
+        return [u for u in config["updates"] if u["package-ecosystem"] in self.PYTHON_ECOSYSTEMS]
 
-    def test_the_python_ecosystem_is_uv(self):
-        ecosystem = self._python_update()["package-ecosystem"]
+    def _app_update(self):
+        app = [u for u in self._updates() if u["directory"] == "/"]
+        assert len(app) == 1, f"expected exactly one Python update config for the app, found {len(app)}"
+        return app[0]
+
+    def test_the_app_ecosystem_is_uv(self):
+        ecosystem = self._app_update()["package-ecosystem"]
         assert ecosystem == "uv", (
             f"Dependabot is set to '{ecosystem}', which edits requirements files. "
             "uv.lock is what the image builds from; anything else bumps a file nobody installs."
@@ -194,8 +199,29 @@ class TestDependabotUpdatesWhatShips:
 
     def test_major_bumps_stay_ignored(self):
         """Kept from the pip config on purpose: majors land by hand, reviewed."""
-        ignored = self._python_update()["ignore"]
+        ignored = self._app_update()["ignore"]
         assert any(
             entry.get("dependency-name") == "*" and "version-update:semver-major" in entry.get("update-types", [])
             for entry in ignored
         ), "major updates are no longer ignored"
+
+    def test_the_docs_toolchain_still_has_a_watcher(self):
+        """`uv` cannot see docs/requirements-docs.txt, and pip could.
+
+        Dependabot's pip ecosystem opened #125 for mkdocs-material. Switching the
+        app to uv without this entry would have frozen the docs build's only
+        dependency without anything saying so.
+        """
+        docs = [u for u in self._updates() if u["directory"].rstrip("/") == "/docs"]
+        assert docs, (
+            "nothing watches docs/requirements-docs.txt. docs.yml pip-installs it, "
+            "so without a Dependabot entry MkDocs silently freezes"
+        )
+
+    def test_the_docs_deps_stay_out_of_the_app_lock(self):
+        """Otherwise every mkdocs bump would cut an app release."""
+        lock = (ROOT / "uv.lock").read_text(encoding="utf-8")
+        assert 'name = "mkdocs-material"' not in lock, (
+            "mkdocs-material is in uv.lock, so a docs-tool bump now rewrites a release trigger "
+            "and ships an app release that changes nothing in the app"
+        )
