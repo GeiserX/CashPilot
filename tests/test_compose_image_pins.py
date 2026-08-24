@@ -147,10 +147,17 @@ class TestEveryWorkflowThatRunsTheSuiteFetchesTags:
         requiring tags there would be a rule about a problem that workflow
         cannot have. The first version of this guard flagged it, which is how
         the distinction got noticed.
+
+        Comments are stripped first. release.yml's change detector explains that
+        a pytest bump used to cut a release, and on the raw text that prose read
+        as a job that runs the suite — the guard matching someone's writing
+        rather than a command, which is the same way the skip-marker guard in
+        test_beads_batch_65.py once fooled itself.
         """
-        if "pytest" not in command:
+        commands = "\n".join(line for line in command.splitlines() if not line.strip().startswith("#"))
+        if "pytest" not in commands:
             return False
-        return " -m " not in command and " -k " not in command
+        return " -m " not in commands and " -k " not in commands
 
     def _workflows_running_pytest(self):
         import yaml
@@ -173,6 +180,11 @@ class TestEveryWorkflowThatRunsTheSuiteFetchesTags:
         assert not self._runs_the_drift_test("python -m pytest tests/ -m live -q")
         assert self._runs_the_drift_test("uv run pytest")
         assert self._runs_the_drift_test("pytest tests/ -v --tb=short")
+
+    def test_prose_about_pytest_is_not_a_pytest_run(self):
+        """The control for the comment-stripping, which is the whole point."""
+        assert not self._runs_the_drift_test("# a pytest bump used to cut a release\npip install uv --quiet")
+        assert self._runs_the_drift_test("# install first\nuv run pytest tests/")
 
     def test_each_such_job_checks_out_with_tags(self):
         offenders = []

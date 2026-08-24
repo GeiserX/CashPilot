@@ -25,10 +25,14 @@ without anyone remembering.
 
 from __future__ import annotations
 
+import os
 import re
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
+import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
 RELEASE = ROOT / ".github" / "workflows" / "release.yml"
@@ -188,3 +192,128 @@ class TestTheDocsNameTheRightEncryptionKey:
             if "only when that file is absent" in (ROOT / rel).read_text(encoding="utf-8")
         ]
         assert len(found) >= 3, f"precedence stated in only {found}"
+
+
+class TestOnlyARealDependencyChangeBuilds:
+    """CashPilot-#354: a dev-tool bump cut a full release.
+
+    ``uv.lock`` carries the dev group, both images build with
+    ``uv sync --frozen --no-dev``, and the trigger matched on the filename. So
+    v1.36.4 shipped for a pytest/pytest-asyncio/ruff bump: 78 entries in
+    site-packages, not one different from v1.36.3, and three containers
+    restarted on the fleet for a version label. Dependency PRs land weekly, so
+    this was the most frequent release the project cut.
+
+    The question that decides a release is whether the no-dev resolution moved,
+    which is what ``scripts/runtime_deps_changed.py`` answers.
+    """
+
+    SCRIPT = ROOT / "scripts" / "runtime_deps_changed.py"
+
+    def _detect_step(self) -> str:
+        doc = yaml.safe_load(RELEASE.read_text(encoding="utf-8"))
+        for step in doc["jobs"]["release"]["steps"]:
+            if step.get("name") == "Detect what changed":
+                return step["run"]
+        raise AssertionError("release.yml no longer detects what changed")
+
+    def _answer(self, base: str, head: str) -> str:
+        result = subprocess.run(
+            [sys.executable, str(self.SCRIPT), base, head, "--repo", str(ROOT)],
+            capture_output=True,
+            text=True,
+            timeout=300,
+            check=False,
+        )
+        assert result.returncode == 0, result.stderr
+        return result.stdout.strip()
+
+    @pytest.mark.parametrize("manifest", [r"pyproject\.toml", r"uv\.lock"])
+    def test_the_manifests_no_longer_trigger_by_name(self, manifest):
+        """Naming a manifest may gate the resolution check, never a build.
+
+        Checked as a BLOCK, not a line. The condition that decides whether to
+        run the check names both manifests too, so a line-level "does this
+        mention uv.lock" flags the fix itself.
+        """
+        lines = self._detect_step().splitlines()
+        offenders = []
+        for index, line in enumerate(lines):
+            if "grep -qE" not in line or manifest not in line:
+                continue
+            body = []
+            for follower in lines[index + 1 :]:
+                if follower.strip() == "fi":
+                    break
+                body.append(follower)
+            if any("BUILD_UI" in b or "BUILD_WORKER" in b for b in body):
+                offenders.append(line.strip())
+        assert not offenders, (
+            f"{manifest} still sets a build flag by filename, so the resolution check cannot matter: {offenders}"
+        )
+
+    def test_the_resolution_check_decides_instead(self):
+        step = self._detect_step()
+        assert "scripts/runtime_deps_changed.py" in step, "nothing asks whether the shipped dependencies changed"
+        assert "RUNTIME_CHANGED" in step
+        assert 'if [ "$RUNTIME_CHANGED" = true ]; then' in step, "the answer is computed but never acted on"
+
+    def test_uv_is_installed_before_anything_reads_the_answer(self):
+        """Without uv the script is fail-safe but useless: everything builds."""
+        doc = yaml.safe_load(RELEASE.read_text(encoding="utf-8"))
+        names = [s.get("name") or s.get("uses") or "" for s in doc["jobs"]["release"]["steps"]]
+        assert "Install uv" in names, f"the release job never installs uv: {names}"
+        assert names.index("Install uv") < names.index("Detect what changed"), names
+
+    def test_no_tag_to_compare_against_still_builds(self):
+        """The first release, or a checkout without tags, must not skip.
+
+        There is nothing to diff against, so the honest answer is "changed".
+        Reaching the script with an empty ref would make it compare HEAD with
+        nothing and say "unchanged", which publishes no image at all.
+        """
+        step = self._detect_step()
+        block = step[step.index("RUNTIME_CHANGED=false") :]
+        block = block[: block.index("BUILD_UI")]
+        assert 'if [ -n "$LAST_TAG" ]; then' in block, (
+            "the detector calls the script even with no tag to compare against"
+        )
+        assert "RUNTIME_CHANGED=true" in block, "the no-tag branch does not force a build"
+
+    def test_a_dev_only_bump_does_not_build(self):
+        """v1.36.4 over v1.36.3: pytest, pytest-asyncio and ruff, nothing shipped."""
+        assert self._answer("v1.36.3", "v1.36.4") == "false"
+
+    def test_a_runtime_bump_does_build(self):
+        """v1.36.3 over v1.36.2: starlette, uvicorn, idna and friends."""
+        assert self._answer("v1.36.2", "v1.36.3") == "true"
+
+    def test_a_ref_it_cannot_read_builds(self):
+        """Not knowing must never read as "nothing to do"."""
+        assert self._answer("v99.99.99", "HEAD") == "true"
+
+    def test_a_missing_uv_builds(self, tmp_path):
+        """The one failure that would otherwise silently disable every release."""
+        stripped = dict(os.environ, PATH=str(tmp_path))
+        result = subprocess.run(
+            [sys.executable, str(self.SCRIPT), "v1.36.3", "v1.36.4", "--repo", str(ROOT)],
+            capture_output=True,
+            text=True,
+            timeout=120,
+            check=False,
+            env=stripped,
+        )
+        assert result.returncode == 0, result.stderr
+        assert result.stdout.strip() == "true", result.stdout
+        assert "uv is not on PATH" in result.stderr
+
+    def test_the_tags_it_measures_against_exist(self):
+        """Guards the two tests above from passing on a repo with no tags."""
+        for tag in ("v1.36.2", "v1.36.3", "v1.36.4"):
+            result = subprocess.run(
+                ["git", "-C", str(ROOT), "rev-parse", "--verify", f"{tag}^{{commit}}"],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            assert result.returncode == 0, f"{tag} is missing, so the behaviour tests measure nothing"
