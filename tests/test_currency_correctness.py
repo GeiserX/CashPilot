@@ -7,12 +7,26 @@ movement into fabricated earnings.
 
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def _day(n: int) -> str:
+    """An ISO date n days ago on the UTC clock get_daily_earnings reads.
+
+    The rows below were pinned to 1 and 2 August 2026, and get_daily_earnings
+    only looks back 30 days. On 1 September the control test stopped seeing its
+    own rows and went red on main with nothing merged, while its two siblings
+    kept passing on 0.0 == 0.0 without touching the code they name. Dating the
+    rows relative to today keeps them inside the window for good, the way
+    test_power.py already does.
+    """
+    return (datetime.now(UTC) - timedelta(days=n)).strftime("%Y-%m-%d")
 
 
 @pytest.fixture(autouse=True)
@@ -78,8 +92,8 @@ class TestACryptoPriceMoveCannotFabricateEarnings:
         """The exact fabrication: identical token count, higher price."""
         total = await self._daily(
             [
-                ("2026-08-01", 1000.0, "ANYONE", 0.10),
-                ("2026-08-02", 1000.0, "ANYONE", 0.12),
+                (_day(2), 1000.0, "ANYONE", 0.10),
+                (_day(1), 1000.0, "ANYONE", 0.12),
             ],
             tmp_path,
         )
@@ -90,8 +104,8 @@ class TestACryptoPriceMoveCannotFabricateEarnings:
         """The control: without this the test above passes with earnings broken."""
         total = await self._daily(
             [
-                ("2026-08-01", 1000.0, "ANYONE", 0.10),
-                ("2026-08-02", 1100.0, "ANYONE", 0.10),
+                (_day(2), 1000.0, "ANYONE", 0.10),
+                (_day(1), 1100.0, "ANYONE", 0.10),
             ],
             tmp_path,
         )
@@ -108,8 +122,8 @@ class TestACryptoPriceMoveCannotFabricateEarnings:
         """
         total = await self._daily(
             [
-                ("2026-08-01", 100.0, "USD", 1.0),
-                ("2026-08-02", 1000.0, "ANYONE", 0.10),
+                (_day(2), 100.0, "USD", 1.0),
+                (_day(1), 1000.0, "ANYONE", 0.10),
             ],
             tmp_path,
         )
