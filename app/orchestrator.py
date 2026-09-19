@@ -282,6 +282,15 @@ def deploy_raw(
             )
         if kept_mounts is not None:
             kept_mounts.extend(kept)
+        # Stop it the way stop and restart do, with the catalog's timeout, before
+        # removing it. remove(force=True) alone is SIGKILL: a storage node gets no
+        # chance to flush (storj declares 300 s for that reason) and pays for it
+        # with an unclean-shutdown recovery. A stop that fails is not a reason to
+        # abandon the deploy - the forced removal below is what ran before.
+        try:
+            old.stop(timeout=_get_stop_timeout(slug))
+        except APIError as exc:
+            logger.warning("Could not stop %s cleanly before replacing it: %s", name, exc)
         logger.info("Removing existing container %s", name)
         old.remove(force=True)
     except NotFound:
@@ -441,9 +450,14 @@ def _keep_live_mounts(
         mode = str((spec or {}).get("mode") or "rw")
         target = _norm_mount(bind)
         source, read_only = live.get(target, ("", False))
-        if source and source != host and target not in moved and (allowed is None or target in allowed):
+        keepable = bool(source) and target not in moved and (allowed is None or target in allowed)
+        # Same source but read-only now and read-write in the spec is a change
+        # too: the replacement could write to data that was protected.
+        if keepable and (source != host or (read_only and mode != "ro")):
             binds.append(f"{source}:{bind}:{'ro' if read_only else mode}")
-            kept.append({"target": target, "kept": source, "requested": host})
+            kept.append(
+                {"target": target, "kept": source if source != host else f"{source} (read-only)", "requested": host}
+            )
         else:
             binds.append(f"{host}:{bind}:{mode}")
     if not kept:

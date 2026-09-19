@@ -75,6 +75,12 @@ class TestTheRunningContainerDecidesWhereItsDataLives:
         volumes, _ = _deploy(_old([live]), volumes=CATALOG_VOLUMES)
         assert volumes == [f"/srv/myst:{TARGET}:ro"]
 
+    def test_read_only_survives_even_when_the_source_is_the_same(self):
+        live = {**_volume("mysterium-data"), "Mode": "ro", "RW": False}
+        volumes, kept = _deploy(_old([live]), volumes=CATALOG_VOLUMES)
+        assert volumes == [f"mysterium-data:{TARGET}:ro"]
+        assert len(kept) == 1
+
     def test_two_targets_on_one_source_both_survive(self):
         """A dict keyed by source dropped one, and that target came up empty."""
         spec = {
@@ -97,6 +103,26 @@ class TestTheRunningContainerDecidesWhereItsDataLives:
     def test_the_old_container_is_still_replaced(self):
         old = _old([_bind("/srv/myst")])
         _deploy(old, volumes=CATALOG_VOLUMES)
+        old.remove.assert_called_once_with(force=True)
+
+
+class TestTheOldContainerGetsToShutDown:
+    """A redeploy used to SIGKILL it; stop and restart already honoured the timeout."""
+
+    def test_it_is_stopped_with_the_catalog_timeout_before_it_is_removed(self):
+        old = _old([])
+        calls = MagicMock()
+        calls.attach_mock(old.stop, "stop")
+        calls.attach_mock(old.remove, "remove")
+        with patch.object(orchestrator, "_get_stop_timeout", return_value=300):
+            _deploy(old)
+        assert [c[0] for c in calls.mock_calls] == ["stop", "remove"]
+        old.stop.assert_called_once_with(timeout=300)
+
+    def test_a_stop_that_fails_does_not_abandon_the_deploy(self):
+        old = _old([])
+        old.stop.side_effect = orchestrator.APIError("daemon said no")
+        _deploy(old)
         old.remove.assert_called_once_with(force=True)
 
 
