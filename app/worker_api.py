@@ -1142,18 +1142,44 @@ def _catalog_allowed_capabilities(slug: str | None = None) -> set[str]:
     return caps
 
 
-def _catalog_no_new_privileges_optout_slugs() -> set[str]:
-    """Slugs whose catalog entry declares no_new_privileges: false.
+def _image_repository(image: str) -> str:
+    """The repository part of an image reference, without tag or digest.
+
+    `mysteriumnetwork/myst`, `:latest` and `@sha256:...` are the same repository
+    and must compare equal; a tag is not a security boundary.
+    """
+    ref = (image or "").strip()
+    ref = ref.split("@", 1)[0]
+    head, sep, tail = ref.rpartition(":")
+    # A colon in the registry host (`registry:5000/img`) is a port, not a tag.
+    if sep and "/" not in tail:
+        ref = head
+    return ref
+
+
+def _catalog_no_new_privileges_optout(slug: str | None = None) -> str | None:
+    """The catalog image a slug may drop no-new-privileges for, else None.
 
     Only a service that needs setuid inside its container may turn the hardening
-    off, and only for itself. Mysterium is the one today: it configures its
-    wireguard interface with `sudo ip address replace`, which no_new_privs blocks.
+    off, only for itself, and only for its OWN image. Mysterium is the one today:
+    it configures its wireguard interface with `sudo ip address replace`, which
+    no_new_privs blocks.
+
+    Returning the image rather than just the slug is deliberate. Checking the slug
+    alone would let an authenticated caller pass slug="mysterium" with any image
+    and have it started unhardened -- the slug is caller-supplied, so on its own it
+    authorises nothing.
     """
-    if not _catalog_get_services:
-        return set()
-    return {
-        svc["slug"] for svc in _catalog_get_services() if (svc.get("docker") or {}).get("no_new_privileges") is False
-    }
+    if not _catalog_get_services or not slug:
+        return None
+    for svc in _catalog_get_services():
+        if svc.get("slug") != slug:
+            continue
+        docker = svc.get("docker") or {}
+        if docker.get("no_new_privileges") is False:
+            return _image_repository(str(docker.get("image") or ""))
+        return None
+    return None
 
 
 def _catalog_host_network_slugs() -> set[str]:
@@ -1222,11 +1248,18 @@ def _validate_deploy_spec(spec: DeploySpec, slug: str | None = None) -> None:
                 status_code=403,
                 detail=f"Blocked devices: {', '.join(sorted(blocked_devices))}",
             )
-    if not spec.no_new_privileges and slug not in _catalog_no_new_privileges_optout_slugs():
-        raise HTTPException(
-            status_code=403,
-            detail=f"Disabling no-new-privileges is not allowed for '{slug}'",
-        )
+    if not spec.no_new_privileges:
+        allowed_image = _catalog_no_new_privileges_optout(slug)
+        if not allowed_image:
+            raise HTTPException(
+                status_code=403,
+                detail=f"Disabling no-new-privileges is not allowed for '{slug}'",
+            )
+        if _image_repository(spec.image) != allowed_image:
+            raise HTTPException(
+                status_code=403,
+                detail=f"Disabling no-new-privileges is only allowed for '{slug}' image '{allowed_image}'",
+            )
     if spec.network_mode not in _ALLOWED_NETWORK_MODES:
         raise HTTPException(status_code=403, detail=f"Network mode '{spec.network_mode}' is not allowed")
     if spec.network_mode == "host" and slug not in _catalog_host_network_slugs():
