@@ -2416,8 +2416,21 @@ async def _proxy_worker_command(
 
 
 async def _proxy_worker_deploy(worker_id: int, slug: str, spec: dict[str, Any]) -> dict[str, Any]:
-    """Forward a deploy command with full spec to a worker."""
-    return await _proxy_to_worker(worker_id, "POST", f"/api/containers/{slug}/deploy", json=spec, timeout=60)
+    """Forward a deploy command with full spec to a worker.
+
+    The worker stops the container it replaces with the catalog's stop timeout
+    (300 s for storj) before it pulls and starts the new one, so the wait has to
+    cover that stop. With a flat 60 s the dashboard reported a failed deploy
+    while the worker was still shutting the old node down cleanly.
+    """
+    raw = ((catalog.get_service(slug) or {}).get("docker") or {}).get("stop_timeout")
+    try:
+        stop_timeout = max(0, int(raw)) if raw is not None else 30
+    except (TypeError, ValueError):
+        stop_timeout = 30
+    return await _proxy_to_worker(
+        worker_id, "POST", f"/api/containers/{slug}/deploy", json=spec, timeout=60 + stop_timeout
+    )
 
 
 async def _proxy_worker_logs(worker_id: int, slug: str, lines: int = 50) -> dict[str, str]:

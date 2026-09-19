@@ -376,6 +376,19 @@ class TestApiDeploy:
         assert sent["moved_mounts"] == []
         assert list(sent["volumes"]) == ["/mnt/storj"]
 
+    @pytest.mark.parametrize(("declared", "expected"), [(300, 360), (None, 90), ("junk", 90)])
+    def test_the_deploy_wait_covers_the_old_containers_clean_stop(self, declared, expected):
+        """The worker stops the old container with this timeout before replacing it."""
+        import asyncio
+
+        from app import main
+
+        svc = {"slug": "storj", "docker": {"image": "i", "stop_timeout": declared}}
+        proxy = AsyncMock(return_value={})
+        with patch("app.main.catalog.get_service", return_value=svc), patch("app.main._proxy_to_worker", proxy):
+            asyncio.run(main._proxy_worker_deploy(1, "storj", {}))
+        assert proxy.call_args.kwargs["timeout"] == expected
+
     def test_deploy_service_not_found(self, client):
         with (
             _auth_owner(),
