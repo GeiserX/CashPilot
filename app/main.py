@@ -2020,16 +2020,18 @@ async def api_deploy(
 
     result = await _proxy_worker_deploy(worker_id, slug, {**spec, "moved_mounts": moved_mounts})
     container_id = result.get("container_id", "remote")
-    kept_mounts = [k for k in result.get("kept_mounts") or [] if isinstance(k, dict)]
-    if kept_mounts and isinstance(spec.get("volumes"), dict):
-        # Record what actually runs, not what was asked for.
-        requested = {k.get("requested"): k.get("kept") for k in kept_mounts}
-        spec["volumes"] = {requested.get(host) or host: mount for host, mount in spec["volumes"].items()}
-    for k in kept_mounts:
-        divergence.append(
-            f"mounts: {k.get('target')} stays on {k.get('kept')}, where the running container keeps it, "
-            f"instead of {k.get('requested')}"
-        )
+    # Reported, deliberately NOT recorded. The worker reads the running container
+    # on every deploy, so the record does not need the kept source - and writing
+    # it there made the next redeploy send a host path the worker's bind-path
+    # rules refuse (403), and handed one worker's path to every other worker,
+    # since the record is one row per service for the whole fleet.
+    raw_kept = result.get("kept_mounts")
+    for k in raw_kept if isinstance(raw_kept, list) else []:
+        if isinstance(k, dict):
+            divergence.append(
+                f"mounts: {k.get('target')} stays on {k.get('kept')}, where the running container keeps it, "
+                f"instead of {k.get('requested')}"
+            )
     await database.save_deployment(slug=slug, container_id=container_id, spec=spec)
     await database.record_health_event(slug, "start", f"deployed to worker {worker_id}")
     metrics.record_container_lifecycle("deploy", slug)

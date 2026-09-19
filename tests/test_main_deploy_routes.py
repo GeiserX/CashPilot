@@ -235,12 +235,13 @@ class TestApiDeploy:
             resp = client.post(f"/api/deploy/{svc['slug']}", json=body)
         return resp, sent, save.call_args.kwargs["spec"]
 
-    def test_a_mount_the_worker_kept_is_reported_and_recorded(self, client):
+    def test_a_mount_the_worker_kept_is_reported_and_not_recorded(self, client):
         """Seen live: a redeploy moved a mysterium node onto another identity.
 
-        The worker now keeps the running container's mounts. The operator has to
-        hear about it, and the record has to describe what actually runs, or the
-        next redeploy argues with the container again.
+        The worker now keeps the running container's mounts and the operator
+        hears about it. The kept source stays OUT of the record: the record is
+        one row for the whole fleet, and a recorded host path is sent back on the
+        next redeploy, where the worker's bind-path rules refuse it (403).
         """
         svc = {
             "slug": "mysterium",
@@ -255,9 +256,18 @@ class TestApiDeploy:
         assert resp.status_code == 200, resp.text
         kept = resp.json()["kept_from_previous_deployment"]
         assert any("/srv/myst" in line and "mysterium-data" in line for line in kept)
-        assert list(recorded["volumes"]) == ["/srv/myst"]
+        assert list(recorded["volumes"]) == ["mysterium-data"]
         assert sent["moved_mounts"] == []
         assert "moved_mounts" not in recorded
+
+    @pytest.mark.parametrize("junk", [5, "kept", {"target": "x"}, [5, None, "x"]])
+    def test_a_malformed_kept_list_cannot_fail_a_deploy_that_already_happened(self, client, junk):
+        svc = {"slug": "honeygain", "name": "Honeygain", "docker": {"image": "honeygain/honeygain", "env": []}}
+        resp, _, _ = self._deploy_with_worker_reply(
+            client, svc, {"env": {}}, {"container_id": "abc123", "kept_mounts": junk}
+        )
+        assert resp.status_code == 200, resp.text
+        assert "kept_from_previous_deployment" not in resp.json()
 
     def test_a_path_typed_this_deploy_is_sent_as_a_deliberate_move(self, client):
         svc = {

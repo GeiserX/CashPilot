@@ -58,17 +58,41 @@ def _deploy(old, **kwargs):
 class TestTheRunningContainerDecidesWhereItsDataLives:
     def test_a_bind_mount_the_spec_does_not_know_survives_a_redeploy(self):
         volumes, kept = _deploy(_old([_bind("/mnt/user/appdata/myst/data")]), volumes=CATALOG_VOLUMES)
-        assert volumes == {"/mnt/user/appdata/myst/data": {"bind": TARGET, "mode": "rw"}}
+        assert volumes == [f"/mnt/user/appdata/myst/data:{TARGET}:rw"]
         assert kept == [{"target": TARGET, "kept": "/mnt/user/appdata/myst/data", "requested": "mysterium-data"}]
 
     def test_a_differently_named_volume_survives_too(self):
         volumes, _ = _deploy(_old([_volume("myst-identity")]), volumes=CATALOG_VOLUMES)
-        assert list(volumes) == ["myst-identity"]
+        assert volumes == [f"myst-identity:{TARGET}:rw"]
 
     def test_a_trailing_slash_does_not_hide_the_mount(self):
         spec = {"mysterium-data": {"bind": TARGET + "/", "mode": "rw"}}
         volumes, _ = _deploy(_old([_bind("/srv/myst")]), volumes=spec)
-        assert list(volumes) == ["/srv/myst"]
+        assert volumes == [f"/srv/myst:{TARGET}/:rw"]
+
+    def test_a_read_only_mount_stays_read_only(self):
+        live = {**_bind("/srv/myst"), "Mode": "ro", "RW": False}
+        volumes, _ = _deploy(_old([live]), volumes=CATALOG_VOLUMES)
+        assert volumes == [f"/srv/myst:{TARGET}:ro"]
+
+    def test_two_targets_on_one_source_both_survive(self):
+        """A dict keyed by source dropped one, and that target came up empty."""
+        spec = {
+            "catalog-a": {"bind": "/app/identity", "mode": "rw"},
+            "catalog-b": {"bind": "/app/config", "mode": "rw"},
+        }
+        old = _old([_bind("/srv/storj", "/app/identity"), _bind("/srv/storj", "/app/config")])
+        volumes, kept = _deploy(old, volumes=spec)
+        assert sorted(volumes) == ["/srv/storj:/app/config:rw", "/srv/storj:/app/identity:rw"]
+        assert len(kept) == 2
+
+    def test_a_kept_source_equal_to_another_requested_one_drops_nothing(self):
+        spec = {
+            "catalog-a": {"bind": "/app/identity", "mode": "rw"},
+            "/srv/storj": {"bind": "/app/config", "mode": "rw"},
+        }
+        volumes, _ = _deploy(_old([_bind("/srv/storj", "/app/identity")]), volumes=spec)
+        assert sorted(volumes) == ["/srv/storj:/app/config:rw", "/srv/storj:/app/identity:rw"]
 
     def test_the_old_container_is_still_replaced(self):
         old = _old([_bind("/srv/myst")])
@@ -90,10 +114,7 @@ class TestItOnlyKeepsWhatIsThere:
     def test_a_mount_the_catalog_added_since_is_added(self):
         spec = {**CATALOG_VOLUMES, "myst-logs": {"bind": "/var/log/myst", "mode": "rw"}}
         volumes, _ = _deploy(_old([_bind("/srv/myst")]), volumes=spec)
-        assert volumes == {
-            "/srv/myst": {"bind": TARGET, "mode": "rw"},
-            "myst-logs": {"bind": "/var/log/myst", "mode": "rw"},
-        }
+        assert volumes == [f"/srv/myst:{TARGET}:rw", "myst-logs:/var/log/myst:rw"]
 
     def test_a_mount_at_another_target_is_not_pulled_in(self):
         volumes, kept = _deploy(_old([_bind("/etc/localtime", "/etc/localtime")]), volumes=CATALOG_VOLUMES)
@@ -117,21 +138,45 @@ class TestTheOperatorCanStillMoveIt:
         }
         old = _old([_bind("/old/identity", "/app/identity"), _bind("/old/storage", "/app/config")])
         volumes, _ = _deploy(old, volumes=spec, moved_mounts=["/app/identity"])
-        assert set(volumes) == {"/new/identity", "/old/storage"}
+        assert volumes == ["/new/identity:/app/identity:rw", "/old/storage:/app/config:rw"]
+
+    def test_only_targets_the_caller_vouches_for_are_kept(self):
+        """The kept source skips the bind-path rules, so the target is not the caller's pick."""
+        spec = {"x": {"bind": "/secrets", "mode": "rw"}, **CATALOG_VOLUMES}
+        old = _old([_bind("/root/.ssh", "/secrets"), _bind("/srv/myst")])
+        volumes, kept = _deploy(old, volumes=spec, keep_targets={TARGET})
+        assert volumes == ["x:/secrets:rw", f"/srv/myst:{TARGET}:rw"]
+        assert [k["target"] for k in kept] == [TARGET]
 
 
 @pytest.fixture
 def worker_client(monkeypatch):
     from fastapi.testclient import TestClient
 
-    from app import worker_api
+    from app import catalog, worker_api
 
     monkeypatch.setattr(worker_api, "_verify_api_key", lambda request: None)
-    monkeypatch.setattr(worker_api, "_validate_deploy_spec", lambda spec, slug=None: None)
+    monkeypatch.setattr(worker_api, "_catalog_get_services", catalog.get_services)
+    monkeypatch.setattr(worker_api, "_validate_runtime", lambda *a, **k: None, raising=False)
     return TestClient(worker_api.app), worker_api
 
 
+def _mysterium_spec():
+    from app import catalog
+
+    docker = catalog.get_service("mysterium")["docker"]
+    return {
+        "image": docker["image"],
+        "volumes": CATALOG_VOLUMES,
+        "network_mode": docker["network_mode"],
+        "cap_add": docker["cap_add"],
+        "devices": docker["devices"],
+    }
+
+
 class TestTheWorkerSaysWhatItKept:
+    """Through the REAL spec validation: a stubbed one hid a 403 on the second redeploy."""
+
     def test_the_deploy_response_names_the_kept_mount(self, worker_client):
         client, worker_api = worker_client
         seen = {}
@@ -142,17 +187,20 @@ class TestTheWorkerSaysWhatItKept:
             return "cid"
 
         with patch.object(worker_api.orchestrator, "deploy_raw", side_effect=fake_deploy_raw):
-            resp = client.post(
-                "/api/containers/mysterium/deploy",
-                json={"image": "img", "volumes": CATALOG_VOLUMES, "moved_mounts": ["/x"]},
-            )
+            resp = client.post("/api/containers/mysterium/deploy", json={**_mysterium_spec(), "moved_mounts": ["/x"]})
         assert resp.status_code == 200, resp.text
         assert resp.json()["kept_mounts"] == [{"target": TARGET, "kept": "/srv/myst", "requested": "mysterium-data"}]
         assert seen["moved_mounts"] == ["/x"]
+        assert seen["keep_targets"] == {TARGET}, "only what the worker's own catalog mounts for the slug"
 
     def test_nothing_kept_means_no_key(self, worker_client):
         client, worker_api = worker_client
         with patch.object(worker_api.orchestrator, "deploy_raw", return_value="cid"):
-            resp = client.post("/api/containers/mysterium/deploy", json={"image": "img"})
+            resp = client.post("/api/containers/mysterium/deploy", json=_mysterium_spec())
         assert resp.status_code == 200, resp.text
         assert "kept_mounts" not in resp.json()
+
+    def test_an_unknown_slug_keeps_nothing(self, worker_client):
+        _, worker_api = worker_client
+        assert worker_api._catalog_volume_targets("no-such-service") == set()
+        assert worker_api._catalog_volume_targets(None) == set()

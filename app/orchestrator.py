@@ -250,13 +250,15 @@ def deploy_raw(
     runtime: str | None = None,
     moved_mounts: list[str] | None = None,
     kept_mounts: list[dict[str, str]] | None = None,
+    keep_targets: set[str] | None = None,
 ) -> str:
     """Deploy a container from a raw spec (no catalog lookup).
 
     A container being REPLACED keeps the mounts it has now — see
     ``_keep_live_mounts``. ``moved_mounts`` names the targets the operator
-    relocated on purpose this deploy; ``kept_mounts``, when given, is filled
-    with what was kept so the caller can report and record it.
+    relocated on purpose this deploy; ``keep_targets`` limits keeping to the
+    targets the caller vouches for; ``kept_mounts``, when given, is filled with
+    what was kept so the caller can report it.
 
     Used by CashPilot Worker when the UI sends a full container spec.
     ``resources`` (mem_limit / mem_reservation / oom_score_adj / cpu_shares)
@@ -269,7 +271,7 @@ def deploy_raw(
     # Remove any existing container with the same name
     try:
         old = client.containers.get(name)
-        volumes, kept = _keep_live_mounts(old, volumes, moved_mounts)
+        volumes, kept = _keep_live_mounts(old, volumes, moved_mounts, keep_targets)
         for entry in kept:
             logger.warning(
                 "%s keeps %s at %s; the spec asked for %s",
@@ -391,7 +393,8 @@ def _keep_live_mounts(
     old: Any,
     volumes: dict[str, dict[str, str]] | None,
     moved_mounts: list[str] | None = None,
-) -> tuple[dict[str, dict[str, str]] | None, list[dict[str, str]]]:
+    keep_targets: set[str] | None = None,
+) -> tuple[dict[str, dict[str, str]] | list[str] | None, list[dict[str, str]]]:
     """Where a running container keeps its data is a fact; the spec is a guess.
 
     A deploy that replaces a container mounts, at every target the two have in
@@ -403,29 +406,45 @@ def _keep_live_mounts(
     seen live, a redeploy moved a node from its bind-mounted directory onto the
     ``mysterium-data`` volume and it came up with another identity.
 
-    The exception is a target in ``moved_mounts``: the operator typed a new path
-    for it on this deploy, so the move is what they asked for.
+    Two limits. A target in ``moved_mounts`` is left to the spec: the operator
+    typed a new path for it on this deploy, so the move is what they asked for.
+    And when ``keep_targets`` is given, only those targets are kept — the worker
+    passes the ones its own catalog declares for the slug, because the kept
+    source is not re-checked against the bind-path rules and the spec's targets
+    are caller-supplied.
+
+    A mount that was read-only stays read-only. When anything is kept the result
+    is a list of ``source:target:mode`` strings rather than a dict keyed by
+    source: two targets can share one source (a directory mounted twice, or a
+    kept source that equals another requested one), and a dict would silently
+    drop one of them — bringing that target up empty, which is the very loss
+    this exists to prevent.
     """
     if not volumes:
         return volumes, []
     moved = {_norm_mount(target) for target in moved_mounts or []}
-    live: dict[str, str] = {}
+    allowed = None if keep_targets is None else {_norm_mount(target) for target in keep_targets}
+    live: dict[str, tuple[str, bool]] = {}
     for mount in (getattr(old, "attrs", None) or {}).get("Mounts") or []:
         source = mount.get("Name") if mount.get("Type") == "volume" else mount.get("Source")
         if source and mount.get("Destination"):
-            live[_norm_mount(mount["Destination"])] = source
+            live[_norm_mount(mount["Destination"])] = (source, mount.get("RW") is False)
 
-    merged: dict[str, dict[str, str]] = {}
+    binds: list[str] = []
     kept: list[dict[str, str]] = []
     for host, spec in volumes.items():
-        target = _norm_mount(str((spec or {}).get("bind") or ""))
-        source = live.get(target)
-        if source and source != host and target not in moved:
-            merged[source] = spec
+        bind = str((spec or {}).get("bind") or "")
+        mode = str((spec or {}).get("mode") or "rw")
+        target = _norm_mount(bind)
+        source, read_only = live.get(target, ("", False))
+        if source and source != host and target not in moved and (allowed is None or target in allowed):
+            binds.append(f"{source}:{bind}:{'ro' if read_only else mode}")
             kept.append({"target": target, "kept": source, "requested": host})
         else:
-            merged[host] = spec
-    return merged, kept
+            binds.append(f"{host}:{bind}:{mode}")
+    if not kept:
+        return volumes, []
+    return binds, kept
 
 
 def _norm_mount(path: str) -> str:

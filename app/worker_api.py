@@ -1142,6 +1142,27 @@ def _catalog_allowed_capabilities(slug: str | None = None) -> set[str]:
     return caps
 
 
+def _catalog_volume_targets(slug: str | None) -> set[str]:
+    """Container paths the catalog mounts for a slug — the only ones a redeploy keeps.
+
+    ``deploy_raw`` keeps a replaced container's mount without re-checking its
+    source against the bind-path rules, so which targets qualify must not be the
+    caller's choice. An unknown slug or a missing catalog keeps nothing.
+    """
+    if not _catalog_get_services or not slug:
+        return set()
+    for svc in _catalog_get_services():
+        if svc.get("slug") != slug:
+            continue
+        targets: set[str] = set()
+        for mapping in (svc.get("docker") or {}).get("volumes") or []:
+            parts = str(mapping).split(":")
+            if len(parts) >= 2:
+                targets.add(parts[1])
+        return targets
+    return set()
+
+
 def _catalog_host_network_slugs() -> set[str]:
     """Slugs whose catalog definition legitimately declares network_mode: host."""
     if not _catalog_get_services:
@@ -1312,6 +1333,7 @@ async def api_deploy_container(request: Request, slug: str, spec: DeploySpec) ->
             runtime=spec.runtime,
             moved_mounts=spec.moved_mounts,
             kept_mounts=kept_mounts,
+            keep_targets=_catalog_volume_targets(slug),
         )
         response: dict[str, Any] = {"status": "deployed", "container_id": container_id}
         if kept_mounts:
