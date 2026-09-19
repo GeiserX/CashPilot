@@ -943,6 +943,9 @@ class DeploySpec(BaseModel):
     env: dict[str, str] = {}
     ports: dict[str, int] = {}
     volumes: dict[str, dict[str, str]] = {}
+    # Mount targets the operator relocated on purpose this deploy. Every other
+    # mount of a container being replaced is kept where it is.
+    moved_mounts: list[str] = []
     network_mode: str | None = None
     cap_add: list[str] | None = None
     devices: list[str] | None = None
@@ -1278,7 +1281,7 @@ async def api_list_containers(request: Request) -> list[dict[str, Any]]:
 
 
 @app.post("/api/containers/{slug}/deploy")
-async def api_deploy_container(request: Request, slug: str, spec: DeploySpec) -> dict[str, str]:
+async def api_deploy_container(request: Request, slug: str, spec: DeploySpec) -> dict[str, Any]:
     """Deploy a container from spec sent by UI."""
     _verify_api_key(request)
     # Threaded like every other Docker touch in this file: _validate_runtime
@@ -1288,6 +1291,7 @@ async def api_deploy_container(request: Request, slug: str, spec: DeploySpec) ->
     # because an unrelated route was stuck. HTTPException propagates through
     # to_thread unchanged, so the 400/403 behaviour is identical.
     await asyncio.to_thread(_validate_deploy_spec, spec, slug)
+    kept_mounts: list[dict[str, str]] = []
     try:
         container_id = await asyncio.to_thread(
             orchestrator.deploy_raw,
@@ -1306,8 +1310,13 @@ async def api_deploy_container(request: Request, slug: str, spec: DeploySpec) ->
             labels=spec.labels,
             resources=spec.resources,
             runtime=spec.runtime,
+            moved_mounts=spec.moved_mounts,
+            kept_mounts=kept_mounts,
         )
-        return {"status": "deployed", "container_id": container_id}
+        response: dict[str, Any] = {"status": "deployed", "container_id": container_id}
+        if kept_mounts:
+            response["kept_mounts"] = kept_mounts
+        return response
     except Exception:
         logger.exception("Deploy failed for %s", slug)
         raise HTTPException(status_code=500, detail="Container deployment failed")

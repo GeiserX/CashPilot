@@ -212,6 +212,70 @@ class TestApiDeploy:
             assert resp.status_code == 200, resp.text
             assert "kept_from_previous_deployment" not in resp.json()
 
+    def _deploy_with_worker_reply(self, client, svc, body, reply):
+        """POST /api/deploy and return (response, spec sent to the worker, spec recorded)."""
+        worker = _online_worker()
+        sent = {}
+
+        async def _fake_deploy(worker_id, slug, spec):
+            sent.update(spec)
+            return reply
+
+        save = AsyncMock()
+        with (
+            _auth_owner(),
+            patch("app.main.database.list_workers", new_callable=AsyncMock, return_value=[worker]),
+            patch("app.main.catalog.get_service", return_value=svc),
+            patch("app.main.database.get_worker", new_callable=AsyncMock, return_value=worker),
+            patch("app.main._proxy_worker_deploy", side_effect=_fake_deploy),
+            patch("app.main.database.save_deployment", save),
+            patch("app.main.database.record_health_event", new_callable=AsyncMock),
+            patch("app.main._run_collection", new_callable=AsyncMock),
+        ):
+            resp = client.post(f"/api/deploy/{svc['slug']}", json=body)
+        return resp, sent, save.call_args.kwargs["spec"]
+
+    def test_a_mount_the_worker_kept_is_reported_and_recorded(self, client):
+        """Seen live: a redeploy moved a mysterium node onto another identity.
+
+        The worker now keeps the running container's mounts. The operator has to
+        hear about it, and the record has to describe what actually runs, or the
+        next redeploy argues with the container again.
+        """
+        svc = {
+            "slug": "mysterium",
+            "name": "MystNodes",
+            "docker": {"image": "mysteriumnetwork/myst", "volumes": ["mysterium-data:/var/lib/mysterium-node"]},
+        }
+        reply = {
+            "container_id": "abc123",
+            "kept_mounts": [{"target": "/var/lib/mysterium-node", "kept": "/srv/myst", "requested": "mysterium-data"}],
+        }
+        resp, sent, recorded = self._deploy_with_worker_reply(client, svc, {"env": {}}, reply)
+        assert resp.status_code == 200, resp.text
+        kept = resp.json()["kept_from_previous_deployment"]
+        assert any("/srv/myst" in line and "mysterium-data" in line for line in kept)
+        assert list(recorded["volumes"]) == ["/srv/myst"]
+        assert sent["moved_mounts"] == []
+        assert "moved_mounts" not in recorded
+
+    def test_a_path_typed_this_deploy_is_sent_as_a_deliberate_move(self, client):
+        svc = {
+            "slug": "storj",
+            "name": "Storj",
+            "docker": {
+                "image": "storjlabs/storagenode",
+                "env": [{"key": "IDENTITY_DIR", "default": ""}, {"key": "STORAGE_DIR", "default": "/s"}],
+                "volumes": ["${IDENTITY_DIR}:/app/identity", "${STORAGE_DIR}:/app/config"],
+            },
+        }
+        resp, sent, _ = self._deploy_with_worker_reply(
+            client, svc, {"env": {"IDENTITY_DIR": "/new/identity"}}, {"container_id": "abc123"}
+        )
+        assert resp.status_code == 200, resp.text
+        assert sent["moved_mounts"] == ["/app/identity"]
+        assert "kept_from_previous_deployment" not in resp.json()
+
     def test_deploy_service_not_found(self, client):
         with (
             _auth_owner(),

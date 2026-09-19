@@ -248,8 +248,15 @@ def deploy_raw(
     resources: Any = None,
     category: str = "bandwidth",
     runtime: str | None = None,
+    moved_mounts: list[str] | None = None,
+    kept_mounts: list[dict[str, str]] | None = None,
 ) -> str:
     """Deploy a container from a raw spec (no catalog lookup).
+
+    A container being REPLACED keeps the mounts it has now — see
+    ``_keep_live_mounts``. ``moved_mounts`` names the targets the operator
+    relocated on purpose this deploy; ``kept_mounts``, when given, is filled
+    with what was kept so the caller can report and record it.
 
     Used by CashPilot Worker when the UI sends a full container spec.
     ``resources`` (mem_limit / mem_reservation / oom_score_adj / cpu_shares)
@@ -262,6 +269,17 @@ def deploy_raw(
     # Remove any existing container with the same name
     try:
         old = client.containers.get(name)
+        volumes, kept = _keep_live_mounts(old, volumes, moved_mounts)
+        for entry in kept:
+            logger.warning(
+                "%s keeps %s at %s; the spec asked for %s",
+                name,
+                entry["kept"],
+                entry["target"],
+                entry["requested"],
+            )
+        if kept_mounts is not None:
+            kept_mounts.extend(kept)
         logger.info("Removing existing container %s", name)
         old.remove(force=True)
     except NotFound:
@@ -367,6 +385,47 @@ def restart_service(slug: str) -> None:
     container = _find_container(slug)
     container.restart(timeout=_get_stop_timeout(slug))
     logger.info("Restarted container %s", container.name)
+
+
+def _keep_live_mounts(
+    old: Any,
+    volumes: dict[str, dict[str, str]] | None,
+    moved_mounts: list[str] | None = None,
+) -> tuple[dict[str, dict[str, str]] | None, list[dict[str, str]]]:
+    """Where a running container keeps its data is a fact; the spec is a guess.
+
+    A deploy that replaces a container mounts, at every target the two have in
+    common, what the container has mounted NOW. Otherwise a container whose data
+    lives somewhere the spec does not know about — created or edited by hand,
+    deployed before specs were recorded, or described by a record that belongs
+    to another worker — comes back on the catalog's volume. For mysterium, storj
+    and every service that keeps an identity on disk, that is a different node:
+    seen live, a redeploy moved a node from its bind-mounted directory onto the
+    ``mysterium-data`` volume and it came up with another identity.
+
+    The exception is a target in ``moved_mounts``: the operator typed a new path
+    for it on this deploy, so the move is what they asked for.
+    """
+    if not volumes:
+        return volumes, []
+    moved = {_norm_mount(target) for target in moved_mounts or []}
+    live: dict[str, str] = {}
+    for mount in (getattr(old, "attrs", None) or {}).get("Mounts") or []:
+        source = mount.get("Name") if mount.get("Type") == "volume" else mount.get("Source")
+        if source and mount.get("Destination"):
+            live[_norm_mount(mount["Destination"])] = source
+
+    merged: dict[str, dict[str, str]] = {}
+    kept: list[dict[str, str]] = []
+    for host, spec in volumes.items():
+        target = _norm_mount(str((spec or {}).get("bind") or ""))
+        source = live.get(target)
+        if source and source != host and target not in moved:
+            merged[source] = spec
+            kept.append({"target": target, "kept": source, "requested": host})
+        else:
+            merged[host] = spec
+    return merged, kept
 
 
 def _norm_mount(path: str) -> str:

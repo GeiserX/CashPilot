@@ -1983,22 +1983,40 @@ async def api_deploy(
     # catalog - see _merge_recorded_spec. `recorded` was loaded above, before the
     # required-field check.
     divergence: list[str] = []
+    # Which env vars feed which mount, so a relocation applies only to the
+    # mount it actually names.
+    keys_by_target: dict[str, set[str]] = {}
+    for mapping in docker_conf.get("volumes", []):
+        raw = str(mapping)
+        if ":" not in raw:
+            continue
+        host_part, target = raw.split(":")[0], raw.split(":")[1]
+        keys_by_target.setdefault(target, set()).update(m.group(1) for m in re.finditer(r"\$\{(\w+)\}", host_part))
     if recorded:
-        # Which env vars feed which mount, so a relocation applies only to the
-        # mount it actually names.
-        keys_by_target: dict[str, set[str]] = {}
-        for mapping in docker_conf.get("volumes", []):
-            raw = str(mapping)
-            if ":" not in raw:
-                continue
-            host_part, target = raw.split(":")[0], raw.split(":")[1]
-            keys_by_target.setdefault(target, set()).update(m.group(1) for m in re.finditer(r"\$\{(\w+)\}", host_part))
         spec, divergence = _merge_recorded_spec(spec, recorded, body.env or {}, keys_by_target)
         if divergence:
             logger.info("Redeploying %s from its recorded spec: %s", slug, "; ".join(divergence))
 
-    result = await _proxy_worker_deploy(worker_id, slug, spec)
+    # The worker keeps every mount of the container it replaces where it is now,
+    # except the ones named here: a path the operator typed on THIS deploy is a
+    # move they asked for. The record above cannot settle this on its own - it
+    # is one row per service for the whole fleet, and a container made or edited
+    # by hand has no record at all - so the running container has the last word.
+    typed = set(body.env or {})
+    moved_mounts = sorted(target for target, keys in keys_by_target.items() if keys & typed)
+
+    result = await _proxy_worker_deploy(worker_id, slug, {**spec, "moved_mounts": moved_mounts})
     container_id = result.get("container_id", "remote")
+    kept_mounts = [k for k in result.get("kept_mounts") or [] if isinstance(k, dict)]
+    if kept_mounts and isinstance(spec.get("volumes"), dict):
+        # Record what actually runs, not what was asked for.
+        requested = {k.get("requested"): k.get("kept") for k in kept_mounts}
+        spec["volumes"] = {requested.get(host) or host: mount for host, mount in spec["volumes"].items()}
+    for k in kept_mounts:
+        divergence.append(
+            f"mounts: {k.get('target')} stays on {k.get('kept')}, where the running container keeps it, "
+            f"instead of {k.get('requested')}"
+        )
     await database.save_deployment(slug=slug, container_id=container_id, spec=spec)
     await database.record_health_event(slug, "start", f"deployed to worker {worker_id}")
     metrics.record_container_lifecycle("deploy", slug)
