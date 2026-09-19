@@ -48,7 +48,7 @@ In the CashPilot web UI, find **Traffmonetizer** in the service catalog and clic
 ## Docker Configuration
 
 - **Image:** `traffmonetizer/cli_v2`
-- **Platforms:** linux/amd64, linux/arm64
+- **Platforms:** linux/amd64 (Docker arm64 package actually includes a amd64 package)
 
 ### Environment Variables
 
