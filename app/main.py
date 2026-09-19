@@ -2112,7 +2112,10 @@ def _merge_recorded_spec(
     # rebuilding the container with the list that was broken. It failed the other
     # way too, since a capability the catalog had dropped came back from the record
     # and the worker refused the deploy.
-    if "cap_add" in recorded and (recorded.get("cap_add") or []) != (catalog_spec.get("cap_add") or []):
+    def _caps(spec: dict[str, Any]) -> set[str]:
+        return {str(cap).upper() for cap in spec.get("cap_add") or []}
+
+    if "cap_add" in recorded and _caps(recorded) != _caps(catalog_spec):
         divergence.append("cap_add: using the capabilities the catalog declares now, not the ones it was deployed with")
 
     # resources is merged per KEY, unlike the runtime-shape fields above, and

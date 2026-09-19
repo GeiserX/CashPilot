@@ -83,7 +83,7 @@ registers and still advertises itself to the network, and carries no traffic.
 curl -s http://127.0.0.1:4050/node/monitoring-agent-statuses
 ```
 
-A TUN problem looks like this:
+A missing device (cause 1) looks like this:
 
 ```json
 {"statuses":{"data_transfer":{"tun_device_problem":14},
@@ -91,7 +91,16 @@ A TUN problem looks like this:
              "monitoring":{"connect_fail":5,"tun_device_problem":1}}}
 ```
 
-And `curl -s http://127.0.0.1:4050/node/monitoring-status` returns
+With the device present and the capabilities missing (cause 2), the node reports
+only `connect_fail`:
+
+```json
+{"statuses":{"data_transfer":{"connect_fail":2},
+             "monitoring":{"connect_fail":2},
+             "scraping":{"connect_fail":4}}}
+```
+
+In both cases `curl -s http://127.0.0.1:4050/node/monitoring-status` returns
 `{"status":"failed"}`.
 
 Then check each cause. Both commands run inside the container's own limits, so

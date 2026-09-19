@@ -55,8 +55,9 @@ docker:
         The node cannot run sudo inside its container, so it cannot configure
         its VPN interface or firewall and every session fails at setup: it looks
         online and earns nothing. The container was created without the SETUID
-        and SETGID capabilities. Redeploy Mysterium from the dashboard; the node
-        identity lives in its data volume and is kept.
+        and SETGID capabilities. Update CashPilot and the worker running this
+        node, then redeploy Mysterium from the dashboard; the node identity
+        lives in its data volume and is kept.
       state: failing
 
 requirements:

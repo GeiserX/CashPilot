@@ -124,6 +124,14 @@ class TestARedeployDeliversTheFix:
         )
         assert not any("cap_add" in d for d in divergence)
 
+    def test_the_same_capabilities_in_another_order_are_not_a_change(self):
+        _, divergence = _merge_recorded_spec(
+            {"image": "i", "env": {}, "cap_add": ["NET_ADMIN", "SETUID"]},
+            {"image": "i", "env": {}, "cap_add": ["setuid", "NET_ADMIN"]},
+            user_env={},
+        )
+        assert not any("cap_add" in d for d in divergence)
+
     def test_the_command_is_still_reproduced(self):
         """Control: the rest of the runtime shape keeps following the record."""
         merged, divergence = _merge_recorded_spec(
