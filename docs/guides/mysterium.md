@@ -5,7 +5,7 @@
 
 ## Description
 
-MystNodes (Mysterium Network) is a decentralized VPN and proxy network built on blockchain technology. You earn MYST tokens by running a node that provides VPN, proxy, and data scraping services to users. Requires NET_ADMIN capability and host networking for full functionality. Includes a built-in web UI for node management. Works on both residential and VPS connections.
+MystNodes (Mysterium Network) is a decentralized VPN and proxy network built on blockchain technology. You earn MYST tokens by running a node that provides VPN, proxy, and data scraping services to users. Requires NET_ADMIN, SETUID and SETGID capabilities and host networking for full functionality. Includes a built-in web UI for node management. Works on both residential and VPS connections.
 
 ## Earning Estimates
 
@@ -21,7 +21,7 @@ MystNodes (Mysterium Network) is a decentralized VPN and proxy network built on 
 
 > **One node per public IP.** Mysterium strictly enforces one active node per public IP address. Additional nodes on the same IP show as offline and earn nothing. Do not run on a phone if a Docker node is already running on the same network. Use separate public IPs (e.g. dual WAN, different locations) for additional nodes.
 
-> **Port forwarding recommended.** Forward **UDP 56000-56100** to maximize earnings. Without this, nodes get "Strict NAT" status — many VPN/proxy sessions fail to connect, severely reducing income. Alternatives: enable UPnP on your router (Mysterium uses it automatically), or as last resort, use DMZ. The Docker image runs with `--net host` and `NET_ADMIN` capability.
+> **Port forwarding recommended.** Forward **UDP 56000-56100** to maximize earnings. Without this, nodes get "Strict NAT" status — many VPN/proxy sessions fail to connect, severely reducing income. Alternatives: enable UPnP on your router (Mysterium uses it automatically), or as last resort, use DMZ. The Docker image runs with `--net host` and the `NET_ADMIN`, `SETUID` and `SETGID` capabilities.
 
 ## Requirements
 
@@ -64,11 +64,18 @@ No environment variables required.
 *"we're temporarily unable to track its status"*. The dashboard shows no quality
 score, and earnings stay flat.
 
-**Cause.** The node cannot open a TUN device. Mysterium serves `wireguard` and
-`dvpn` through `/dev/net/tun`, and without it the node still starts, still
-registers, and still advertises itself to the network — it simply cannot carry
-any traffic. Everything looks fine from outside, which is what makes this one
-hard to spot.
+**Cause.** The node cannot bring up its VPN interface. There are two ways that
+happens, and from outside they look the same: the node still starts, still
+registers and still advertises itself to the network, and carries no traffic.
+
+1. **`/dev/net/tun` is missing from the container.** Mysterium serves `wireguard`
+   and `dvpn` through it.
+2. **The container lacks the `SETUID` and `SETGID` capabilities.** The node runs
+   as root and still configures its interface and firewall through
+   `sudo ip ...` and `sudo iptables ...`. sudo switches uid and gid on the way,
+   and a container started with `--cap-drop ALL` cannot do that unless those two
+   capabilities are added back. The device can be present and correct and the
+   node still cannot use it.
 
 **Confirm it.** Ask the node itself, on the host running it:
 
@@ -87,19 +94,38 @@ A TUN problem looks like this:
 And `curl -s http://127.0.0.1:4050/node/monitoring-status` returns
 `{"status":"failed"}`.
 
-**Check whether the device reached the container:**
+Then check each cause. Both commands run inside the container's own limits, so
+they fail exactly when the node does:
 
 ```bash
 docker exec cashpilot-mysterium ls -l /dev/net/tun
-# "No such file or directory" means it did not
+# "No such file or directory" means cause 1
+
+docker exec cashpilot-mysterium sudo -n true && echo SUDO_OK
+# "sudo: PERM_SUDOERS: setresuid(-1, 1, -1): Operation not permitted" means cause 2
 ```
 
-**Fix.** The container needs the device mapped in, alongside `NET_ADMIN`:
+Cause 2 also shows in the container log, at startup and once per attempted
+session:
+
+```bash
+docker logs cashpilot-mysterium 2>&1 | grep -c 'PERM_SUDOERS'   # anything above 0
+```
+
+**Fix.** If CashPilot deployed the container, **redeploy Mysterium from the
+dashboard** on CashPilot v1.36.6 or newer, with the worker on the same version.
+The catalog declares the device and the capabilities, the redeploy applies both,
+and the data volume is reused, so the node keeps its identity.
+
+For a container created outside CashPilot, recreate it with the device and the
+three capabilities. Mount the **same** data directory or volume the container
+uses now (`docker inspect cashpilot-mysterium --format '{{json .Mounts}}'`); a
+different one starts a new node identity.
 
 ```bash
 docker run -d --name cashpilot-mysterium \
   --network host --restart unless-stopped \
-  --cap-drop ALL --cap-add NET_ADMIN \
+  --cap-drop ALL --cap-add NET_ADMIN --cap-add SETUID --cap-add SETGID \
   --device /dev/net/tun \
   --security-opt no-new-privileges:true \
   -v /path/to/your/myst/data:/var/lib/mysterium-node \
@@ -111,6 +137,8 @@ Verify it took:
 
 ```bash
 docker exec cashpilot-mysterium sh -c 'ip tuntap add dev probe mode tun && echo TUN_OK && ip link del probe'
+docker exec cashpilot-mysterium sudo -n true && echo SUDO_OK
+docker logs cashpilot-mysterium 2>&1 | grep -c 'PERM_SUDOERS'        # expect 0
 docker logs cashpilot-mysterium 2>&1 | grep -i wireguard | tail -3   # expect "Wireguard: started"
 ```
 
@@ -126,8 +154,8 @@ MystNodes' own monitoring takes a while to re-score a node after the fix — all
 several hours before judging it by the dashboard rather than by the node's own
 `monitoring-agent-statuses`.
 
-> **Fixed in v1.5.1+.** The catalog now declares `/dev/net/tun` for Mysterium, so
-> a container CashPilot deploys gets the device automatically. The manual steps
-> above are only needed for a container deployed before that, or one created
-> outside CashPilot. Redeploy from the UI and the device comes with it.
+> **Fixed in the catalog.** It has declared `/dev/net/tun` since v1.5.1 and the
+> `SETUID` and `SETGID` capabilities since v1.36.6, so a container CashPilot
+> deploys gets all of it. A container deployed before that keeps its old shape
+> until you redeploy it from the UI.
 

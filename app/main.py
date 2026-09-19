@@ -2024,10 +2024,11 @@ def _merge_recorded_spec(
     produces a different container, and the worker destroys the old one before
     anything can compare them - which is how a node identity gets orphaned.
 
-    So for an existing service the record wins, with two deliberate exceptions:
-    the image always comes from the catalog (otherwise upgrades could never
-    land), and anything the user explicitly typed on this deploy wins over the
-    stored value (otherwise a credential could never be corrected).
+    So for an existing service the record wins, with deliberate exceptions:
+    the image and the capabilities always come from the catalog (otherwise
+    upgrades and capability fixes could never land), and anything the user
+    explicitly typed on this deploy wins over the stored value (otherwise a
+    credential could never be corrected).
 
     Returns the merged spec and a list of human-readable divergences, which are
     information for the operator rather than something to resolve silently.
@@ -2098,10 +2099,21 @@ def _merge_recorded_spec(
     # None, and rebuilding from that would silently give the service a new
     # identity. As with env, a hostname the operator typed THIS deploy still
     # wins - a non-empty catalog_spec value is what they just asked for.
-    for field in ("command", "network_mode", "cap_add"):
+    for field in ("command", "network_mode"):
         if field in recorded and recorded.get(field) != catalog_spec.get(field):
             divergence.append(f"{field}: keeping the deployed value")
             merged[field] = recorded[field]
+
+    # cap_add is NOT reproduced from the record; like the image, it comes from
+    # the catalog. Capabilities carry no deployment identity, the operator cannot
+    # set them, and the worker only accepts what its own catalog declares for the
+    # slug. Recorded-wins made a capability fix unreachable for every deployed
+    # service: mysterium gained SETUID/SETGID in the catalog and a redeploy kept
+    # rebuilding the container with the list that was broken. It failed the other
+    # way too, since a capability the catalog had dropped came back from the record
+    # and the worker refused the deploy.
+    if "cap_add" in recorded and (recorded.get("cap_add") or []) != (catalog_spec.get("cap_add") or []):
+        divergence.append("cap_add: using the capabilities the catalog declares now, not the ones it was deployed with")
 
     # resources is merged per KEY, unlike the runtime-shape fields above, and
     # for the env reason: limits carry no deployment identity, and the catalog
