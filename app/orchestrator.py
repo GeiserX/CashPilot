@@ -248,8 +248,17 @@ def deploy_raw(
     resources: Any = None,
     category: str = "bandwidth",
     runtime: str | None = None,
+    moved_mounts: list[str] | None = None,
+    kept_mounts: list[dict[str, str]] | None = None,
+    keep_targets: set[str] | None = None,
 ) -> str:
     """Deploy a container from a raw spec (no catalog lookup).
+
+    A container being REPLACED keeps the mounts it has now — see
+    ``_keep_live_mounts``. ``moved_mounts`` names the targets the operator
+    relocated on purpose this deploy; ``keep_targets`` limits keeping to the
+    targets the caller vouches for; ``kept_mounts``, when given, is filled with
+    what was kept so the caller can report it.
 
     Used by CashPilot Worker when the UI sends a full container spec.
     ``resources`` (mem_limit / mem_reservation / oom_score_adj / cpu_shares)
@@ -262,6 +271,26 @@ def deploy_raw(
     # Remove any existing container with the same name
     try:
         old = client.containers.get(name)
+        volumes, kept = _keep_live_mounts(old, volumes, moved_mounts, keep_targets)
+        for entry in kept:
+            logger.warning(
+                "%s keeps %s at %s; the spec asked for %s",
+                name,
+                entry["kept"],
+                entry["target"],
+                entry["requested"],
+            )
+        if kept_mounts is not None:
+            kept_mounts.extend(kept)
+        # Stop it the way stop and restart do, with the catalog's timeout, before
+        # removing it. remove(force=True) alone is SIGKILL: a storage node gets no
+        # chance to flush (storj declares 300 s for that reason) and pays for it
+        # with an unclean-shutdown recovery. A stop that fails is not a reason to
+        # abandon the deploy - the forced removal below is what ran before.
+        try:
+            old.stop(timeout=_get_stop_timeout(slug))
+        except APIError as exc:
+            logger.warning("Could not stop %s cleanly before replacing it: %s", name, exc)
         logger.info("Removing existing container %s", name)
         old.remove(force=True)
     except NotFound:
@@ -367,6 +396,73 @@ def restart_service(slug: str) -> None:
     container = _find_container(slug)
     container.restart(timeout=_get_stop_timeout(slug))
     logger.info("Restarted container %s", container.name)
+
+
+def _keep_live_mounts(
+    old: Any,
+    volumes: dict[str, dict[str, str]] | None,
+    moved_mounts: list[str] | None = None,
+    keep_targets: set[str] | None = None,
+) -> tuple[dict[str, dict[str, str]] | list[str] | None, list[dict[str, str]]]:
+    """Where a running container keeps its data is a fact; the spec is a guess.
+
+    A deploy that replaces a container mounts, at every target the two have in
+    common, what the container has mounted NOW. Otherwise a container whose data
+    lives somewhere the spec does not know about — created or edited by hand,
+    deployed before specs were recorded, or described by a record that belongs
+    to another worker — comes back on the catalog's volume. For mysterium, storj
+    and every service that keeps an identity on disk, that is a different node:
+    seen live, a redeploy moved a node from its bind-mounted directory onto the
+    ``mysterium-data`` volume and it came up with another identity.
+
+    Two limits. A target in ``moved_mounts`` is left to the spec: the operator
+    typed a new path for it on this deploy, so the move is what they asked for.
+    And when ``keep_targets`` is given, only those targets are kept — the worker
+    passes the ones its own catalog declares for the slug, because the kept
+    source is not re-checked against the bind-path rules and the spec's targets
+    are caller-supplied.
+
+    A target whose host side has no path variable (mysterium's) can never be in
+    ``moved_mounts``, so the dashboard cannot move it: that is intended, and the
+    way to move such a mount is to recreate the container by hand.
+
+    A mount that was read-only stays read-only. When anything is kept the result
+    is a list of ``source:target:mode`` strings rather than a dict keyed by
+    source: two targets can share one source (a directory mounted twice, or a
+    kept source that equals another requested one), and a dict would silently
+    drop one of them — bringing that target up empty, which is the very loss
+    this exists to prevent.
+    """
+    if not volumes:
+        return volumes, []
+    moved = {_norm_mount(target) for target in moved_mounts or []}
+    allowed = None if keep_targets is None else {_norm_mount(target) for target in keep_targets}
+    live: dict[str, tuple[str, bool]] = {}
+    for mount in (getattr(old, "attrs", None) or {}).get("Mounts") or []:
+        source = mount.get("Name") if mount.get("Type") == "volume" else mount.get("Source")
+        if source and mount.get("Destination"):
+            live[_norm_mount(mount["Destination"])] = (source, mount.get("RW") is False)
+
+    binds: list[str] = []
+    kept: list[dict[str, str]] = []
+    for host, spec in volumes.items():
+        bind = str((spec or {}).get("bind") or "")
+        mode = str((spec or {}).get("mode") or "rw")
+        target = _norm_mount(bind)
+        source, read_only = live.get(target, ("", False))
+        keepable = bool(source) and target not in moved and (allowed is None or target in allowed)
+        # Same source but read-only now and read-write in the spec is a change
+        # too: the replacement could write to data that was protected.
+        if keepable and (source != host or (read_only and mode != "ro")):
+            binds.append(f"{source}:{bind}:{'ro' if read_only else mode}")
+            kept.append(
+                {"target": target, "kept": source if source != host else f"{source} (read-only)", "requested": host}
+            )
+        else:
+            binds.append(f"{host}:{bind}:{mode}")
+    if not kept:
+        return volumes, []
+    return binds, kept
 
 
 def _norm_mount(path: str) -> str:

@@ -212,6 +212,183 @@ class TestApiDeploy:
             assert resp.status_code == 200, resp.text
             assert "kept_from_previous_deployment" not in resp.json()
 
+    def _deploy_with_worker_reply(self, client, svc, body, reply):
+        """POST /api/deploy and return (response, spec sent to the worker, spec recorded)."""
+        worker = _online_worker()
+        sent = {}
+
+        async def _fake_deploy(worker_id, slug, spec):
+            sent.update(spec)
+            return reply
+
+        save = AsyncMock()
+        with (
+            _auth_owner(),
+            patch("app.main.database.list_workers", new_callable=AsyncMock, return_value=[worker]),
+            patch("app.main.catalog.get_service", return_value=svc),
+            patch("app.main.database.get_worker", new_callable=AsyncMock, return_value=worker),
+            patch("app.main._proxy_worker_deploy", side_effect=_fake_deploy),
+            patch("app.main.database.save_deployment", save),
+            patch("app.main.database.record_health_event", new_callable=AsyncMock),
+            patch("app.main._run_collection", new_callable=AsyncMock),
+        ):
+            resp = client.post(f"/api/deploy/{svc['slug']}", json=body)
+        return resp, sent, save.call_args.kwargs["spec"]
+
+    def test_a_mount_the_worker_kept_is_reported_and_not_recorded(self, client):
+        """Seen live: a redeploy moved a mysterium node onto another identity.
+
+        The worker now keeps the running container's mounts and the operator
+        hears about it. The kept source stays OUT of the record: the record is
+        one row for the whole fleet, and a recorded host path is sent back on the
+        next redeploy, where the worker's bind-path rules refuse it (403).
+        """
+        svc = {
+            "slug": "mysterium",
+            "name": "MystNodes",
+            "docker": {"image": "mysteriumnetwork/myst", "volumes": ["mysterium-data:/var/lib/mysterium-node"]},
+        }
+        reply = {
+            "container_id": "abc123",
+            "kept_mounts": [{"target": "/var/lib/mysterium-node", "kept": "/srv/myst", "requested": "mysterium-data"}],
+        }
+        resp, sent, recorded = self._deploy_with_worker_reply(client, svc, {"env": {}}, reply)
+        assert resp.status_code == 200, resp.text
+        kept = resp.json()["kept_from_previous_deployment"]
+        assert any("/srv/myst" in line and "mysterium-data" in line for line in kept)
+        assert list(recorded["volumes"]) == ["mysterium-data"]
+        assert sent["moved_mounts"] == []
+        assert "moved_mounts" not in recorded
+
+    @pytest.mark.parametrize("junk", [5, "kept", {"target": "x"}, [5, None, "x"]])
+    def test_a_malformed_kept_list_cannot_fail_a_deploy_that_already_happened(self, client, junk):
+        svc = {"slug": "honeygain", "name": "Honeygain", "docker": {"image": "honeygain/honeygain", "env": []}}
+        resp, _, _ = self._deploy_with_worker_reply(
+            client, svc, {"env": {}}, {"container_id": "abc123", "kept_mounts": junk}
+        )
+        assert resp.status_code == 200, resp.text
+        assert "kept_from_previous_deployment" not in resp.json()
+
+    def test_a_path_typed_this_deploy_is_sent_as_a_deliberate_move(self, client):
+        svc = {
+            "slug": "storj",
+            "name": "Storj",
+            "docker": {
+                "image": "storjlabs/storagenode",
+                "env": [{"key": "IDENTITY_DIR", "default": ""}, {"key": "STORAGE_DIR", "default": "/s"}],
+                "volumes": ["${IDENTITY_DIR}:/app/identity", "${STORAGE_DIR}:/app/config"],
+            },
+        }
+        resp, sent, _ = self._deploy_with_worker_reply(
+            client, svc, {"env": {"IDENTITY_DIR": "/new/identity"}}, {"container_id": "abc123"}
+        )
+        assert resp.status_code == 200, resp.text
+        assert sent["moved_mounts"] == ["/app/identity"]
+        assert "kept_from_previous_deployment" not in resp.json()
+
+    def test_the_form_posting_blanks_and_defaults_is_not_the_operator_typing(self, client):
+        """The dashboard redeploys by posting the deploy form, every field included.
+
+        An empty box must not erase the recorded credential, and a path still
+        showing the catalog default must not count as relocating the mount.
+        """
+        svc = {
+            "slug": "storj",
+            "name": "Storj",
+            "docker": {
+                "image": "storjlabs/storagenode",
+                "env": [
+                    {"key": "WALLET", "default": ""},
+                    {"key": "STORAGE_DIR", "default": "/mnt/storj"},
+                ],
+                "volumes": ["${STORAGE_DIR}:/app/config"],
+            },
+        }
+        recorded = {
+            "image": "storjlabs/storagenode",
+            "env": {"WALLET": "0xrecorded", "STORAGE_DIR": "/mnt/disk7/storj"},
+            "volumes": {"/mnt/disk7/storj": {"bind": "/app/config", "mode": "rw"}},
+        }
+        with patch("app.main.database.get_deployment_spec", new_callable=AsyncMock, return_value=recorded):
+            resp, sent, _ = self._deploy_with_worker_reply(
+                client, svc, {"env": {"WALLET": "", "STORAGE_DIR": "/mnt/storj"}}, {"container_id": "abc123"}
+            )
+        assert resp.status_code == 200, resp.text
+        assert sent["env"]["WALLET"] == "0xrecorded"
+        assert list(sent["volumes"]) == ["/mnt/disk7/storj"]
+        assert sent["moved_mounts"] == []
+
+    def test_a_new_path_typed_into_the_form_still_moves_the_mount(self, client):
+        """Control for the test above: a real decision is still honoured."""
+        svc = {
+            "slug": "storj",
+            "name": "Storj",
+            "docker": {
+                "image": "storjlabs/storagenode",
+                "env": [{"key": "STORAGE_DIR", "default": "/mnt/storj"}],
+                "volumes": ["${STORAGE_DIR}:/app/config"],
+            },
+        }
+        recorded = {
+            "image": "storjlabs/storagenode",
+            "env": {"STORAGE_DIR": "/mnt/disk7/storj"},
+            "volumes": {"/mnt/disk7/storj": {"bind": "/app/config", "mode": "rw"}},
+        }
+        with patch("app.main.database.get_deployment_spec", new_callable=AsyncMock, return_value=recorded):
+            resp, sent, _ = self._deploy_with_worker_reply(
+                client, svc, {"env": {"STORAGE_DIR": "/mnt/disk9/storj"}}, {"container_id": "abc123"}
+            )
+        assert resp.status_code == 200, resp.text
+        assert list(sent["volumes"]) == ["/mnt/disk9/storj"]
+        assert sent["moved_mounts"] == ["/app/config"]
+
+    def test_a_blank_box_does_not_erase_the_default_on_a_first_deploy(self, client):
+        """The form shows {hostname} templates as a placeholder and posts "" for them."""
+        svc = {
+            "slug": "honeygain",
+            "name": "Honeygain",
+            "docker": {
+                "image": "honeygain/honeygain",
+                "env": [{"key": "DEVICE", "default": "cashpilot-{hostname}"}, {"key": "EMAIL", "default": ""}],
+            },
+        }
+        resp, sent, _ = self._deploy_with_worker_reply(
+            client, svc, {"env": {"DEVICE": "", "EMAIL": " me@example.com "}, "hostname": "nas"}, {"container_id": "x"}
+        )
+        assert resp.status_code == 200, resp.text
+        assert sent["env"]["DEVICE"] == "cashpilot-nas"
+        assert sent["env"]["EMAIL"] == "me@example.com"
+
+    def test_trailing_whitespace_is_not_a_new_path(self, client):
+        svc = {
+            "slug": "storj",
+            "name": "Storj",
+            "docker": {
+                "image": "storjlabs/storagenode",
+                "env": [{"key": "STORAGE_DIR", "default": "/mnt/storj"}],
+                "volumes": ["${STORAGE_DIR}:/app/config"],
+            },
+        }
+        resp, sent, _ = self._deploy_with_worker_reply(
+            client, svc, {"env": {"STORAGE_DIR": "/mnt/storj "}}, {"container_id": "x"}
+        )
+        assert resp.status_code == 200, resp.text
+        assert sent["moved_mounts"] == []
+        assert list(sent["volumes"]) == ["/mnt/storj"]
+
+    @pytest.mark.parametrize(("declared", "expected"), [(300, 360), (None, 90), ("junk", 90)])
+    def test_the_deploy_wait_covers_the_old_containers_clean_stop(self, declared, expected):
+        """The worker stops the old container with this timeout before replacing it."""
+        import asyncio
+
+        from app import main
+
+        svc = {"slug": "storj", "docker": {"image": "i", "stop_timeout": declared}}
+        proxy = AsyncMock(return_value={})
+        with patch("app.main.catalog.get_service", return_value=svc), patch("app.main._proxy_to_worker", proxy):
+            asyncio.run(main._proxy_worker_deploy(1, "storj", {}))
+        assert proxy.call_args.kwargs["timeout"] == expected
+
     def test_deploy_service_not_found(self, client):
         with (
             _auth_owner(),

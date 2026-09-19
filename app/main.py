@@ -1908,7 +1908,11 @@ async def api_deploy(
     env: dict[str, str] = {}
     for var in docker_conf.get("env", []):
         env[var["key"]] = str(var.get("default", ""))
-    env.update(body.env or {})
+    # A box left blank is not a value. The form posts "" for every field the
+    # operator did not fill, including the {hostname} templates it shows as a
+    # placeholder precisely so the server fills them in - and "" overriding the
+    # default sent an empty device name on a first deploy.
+    env.update({key: str(value).strip() for key, value in (body.env or {}).items() if str(value).strip()})
     env = {k: v.replace("{hostname}", hn) if isinstance(v, str) else v for k, v in env.items()}
 
     # What this service was ACTUALLY deployed with, if anything. Loaded before
@@ -1918,6 +1922,21 @@ async def api_deploy(
     # precisely what recording the spec exists to avoid.
     recorded = await database.get_deployment_spec(slug)
     recorded_env = (recorded or {}).get("env") or {}
+
+    # What the operator actually TYPED on this deploy. The dashboard has no
+    # separate redeploy action: it posts the deploy form, and the form posts
+    # every field - the ones left blank, and the ones still showing the catalog
+    # default. Neither is a decision. Treating them as one let an empty box
+    # overwrite a recorded credential and let a prefilled path count as the
+    # operator relocating a mount, which is how a redeploy moves a node off the
+    # directory that holds its identity.
+    catalog_defaults = {var["key"]: str(var.get("default", "")) for var in docker_conf.get("env", [])}
+    # Stripped once and used stripped: "/mnt/s " is not a different path from
+    # "/mnt/s", and sent as typed it becomes a host directory with a space in it.
+    posted_env = {key: str(value).strip() for key, value in (body.env or {}).items()}
+    typed_env = {
+        key: value for key, value in posted_env.items() if value and value != catalog_defaults.get(key, "").strip()
+    }
 
     # Validate required env vars are not blank.
     missing = [
@@ -1983,22 +2002,41 @@ async def api_deploy(
     # catalog - see _merge_recorded_spec. `recorded` was loaded above, before the
     # required-field check.
     divergence: list[str] = []
+    # Which env vars feed which mount, so a relocation applies only to the
+    # mount it actually names.
+    keys_by_target: dict[str, set[str]] = {}
+    for mapping in docker_conf.get("volumes", []):
+        raw = str(mapping)
+        if ":" not in raw:
+            continue
+        host_part, target = raw.split(":")[0], raw.split(":")[1]
+        keys_by_target.setdefault(target, set()).update(m.group(1) for m in re.finditer(r"\$\{(\w+)\}", host_part))
     if recorded:
-        # Which env vars feed which mount, so a relocation applies only to the
-        # mount it actually names.
-        keys_by_target: dict[str, set[str]] = {}
-        for mapping in docker_conf.get("volumes", []):
-            raw = str(mapping)
-            if ":" not in raw:
-                continue
-            host_part, target = raw.split(":")[0], raw.split(":")[1]
-            keys_by_target.setdefault(target, set()).update(m.group(1) for m in re.finditer(r"\$\{(\w+)\}", host_part))
-        spec, divergence = _merge_recorded_spec(spec, recorded, body.env or {}, keys_by_target)
+        spec, divergence = _merge_recorded_spec(spec, recorded, typed_env, keys_by_target)
         if divergence:
             logger.info("Redeploying %s from its recorded spec: %s", slug, "; ".join(divergence))
 
-    result = await _proxy_worker_deploy(worker_id, slug, spec)
+    # The worker keeps every mount of the container it replaces where it is now,
+    # except the ones named here: a path the operator typed on THIS deploy is a
+    # move they asked for. The record above cannot settle this on its own - it
+    # is one row per service for the whole fleet, and a container made or edited
+    # by hand has no record at all - so the running container has the last word.
+    moved_mounts = sorted(target for target, keys in keys_by_target.items() if keys & set(typed_env))
+
+    result = await _proxy_worker_deploy(worker_id, slug, {**spec, "moved_mounts": moved_mounts})
     container_id = result.get("container_id", "remote")
+    # Reported, deliberately NOT recorded. The worker reads the running container
+    # on every deploy, so the record does not need the kept source - and writing
+    # it there made the next redeploy send a host path the worker's bind-path
+    # rules refuse (403), and handed one worker's path to every other worker,
+    # since the record is one row per service for the whole fleet.
+    raw_kept = result.get("kept_mounts")
+    for k in raw_kept if isinstance(raw_kept, list) else []:
+        if isinstance(k, dict):
+            divergence.append(
+                f"mounts: {k.get('target')} stays on {k.get('kept')}, where the running container keeps it, "
+                f"instead of {k.get('requested')}"
+            )
     await database.save_deployment(slug=slug, container_id=container_id, spec=spec)
     await database.record_health_event(slug, "start", f"deployed to worker {worker_id}")
     metrics.record_container_lifecycle("deploy", slug)
@@ -2378,8 +2416,21 @@ async def _proxy_worker_command(
 
 
 async def _proxy_worker_deploy(worker_id: int, slug: str, spec: dict[str, Any]) -> dict[str, Any]:
-    """Forward a deploy command with full spec to a worker."""
-    return await _proxy_to_worker(worker_id, "POST", f"/api/containers/{slug}/deploy", json=spec, timeout=60)
+    """Forward a deploy command with full spec to a worker.
+
+    The worker stops the container it replaces with the catalog's stop timeout
+    (300 s for storj) before it pulls and starts the new one, so the wait has to
+    cover that stop. With a flat 60 s the dashboard reported a failed deploy
+    while the worker was still shutting the old node down cleanly.
+    """
+    raw = ((catalog.get_service(slug) or {}).get("docker") or {}).get("stop_timeout")
+    try:
+        stop_timeout = max(0, int(raw)) if raw is not None else 30
+    except (TypeError, ValueError):
+        stop_timeout = 30
+    return await _proxy_to_worker(
+        worker_id, "POST", f"/api/containers/{slug}/deploy", json=spec, timeout=60 + stop_timeout
+    )
 
 
 async def _proxy_worker_logs(worker_id: int, slug: str, lines: int = 50) -> dict[str, str]:

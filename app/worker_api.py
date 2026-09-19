@@ -943,6 +943,9 @@ class DeploySpec(BaseModel):
     env: dict[str, str] = {}
     ports: dict[str, int] = {}
     volumes: dict[str, dict[str, str]] = {}
+    # Mount targets the operator relocated on purpose this deploy. Every other
+    # mount of a container being replaced is kept where it is.
+    moved_mounts: list[str] = []
     network_mode: str | None = None
     cap_add: list[str] | None = None
     devices: list[str] | None = None
@@ -1139,6 +1142,27 @@ def _catalog_allowed_capabilities(slug: str | None = None) -> set[str]:
     return caps
 
 
+def _catalog_volume_targets(slug: str | None) -> set[str]:
+    """Container paths the catalog mounts for a slug — the only ones a redeploy keeps.
+
+    ``deploy_raw`` keeps a replaced container's mount without re-checking its
+    source against the bind-path rules, so which targets qualify must not be the
+    caller's choice. An unknown slug or a missing catalog keeps nothing.
+    """
+    if not _catalog_get_services or not slug:
+        return set()
+    for svc in _catalog_get_services():
+        if svc.get("slug") != slug:
+            continue
+        targets: set[str] = set()
+        for mapping in (svc.get("docker") or {}).get("volumes") or []:
+            parts = str(mapping).split(":")
+            if len(parts) >= 2:
+                targets.add(parts[1])
+        return targets
+    return set()
+
+
 def _catalog_host_network_slugs() -> set[str]:
     """Slugs whose catalog definition legitimately declares network_mode: host."""
     if not _catalog_get_services:
@@ -1278,7 +1302,7 @@ async def api_list_containers(request: Request) -> list[dict[str, Any]]:
 
 
 @app.post("/api/containers/{slug}/deploy")
-async def api_deploy_container(request: Request, slug: str, spec: DeploySpec) -> dict[str, str]:
+async def api_deploy_container(request: Request, slug: str, spec: DeploySpec) -> dict[str, Any]:
     """Deploy a container from spec sent by UI."""
     _verify_api_key(request)
     # Threaded like every other Docker touch in this file: _validate_runtime
@@ -1288,6 +1312,7 @@ async def api_deploy_container(request: Request, slug: str, spec: DeploySpec) ->
     # because an unrelated route was stuck. HTTPException propagates through
     # to_thread unchanged, so the 400/403 behaviour is identical.
     await asyncio.to_thread(_validate_deploy_spec, spec, slug)
+    kept_mounts: list[dict[str, str]] = []
     try:
         container_id = await asyncio.to_thread(
             orchestrator.deploy_raw,
@@ -1306,8 +1331,14 @@ async def api_deploy_container(request: Request, slug: str, spec: DeploySpec) ->
             labels=spec.labels,
             resources=spec.resources,
             runtime=spec.runtime,
+            moved_mounts=spec.moved_mounts,
+            kept_mounts=kept_mounts,
+            keep_targets=_catalog_volume_targets(slug),
         )
-        return {"status": "deployed", "container_id": container_id}
+        response: dict[str, Any] = {"status": "deployed", "container_id": container_id}
+        if kept_mounts:
+            response["kept_mounts"] = kept_mounts
+        return response
     except Exception:
         logger.exception("Deploy failed for %s", slug)
         raise HTTPException(status_code=500, detail="Container deployment failed")
