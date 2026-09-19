@@ -90,6 +90,14 @@
 #     service whose own YAML declares them. A device is a direct line to the
 #     kernel, so the catalog cannot widen that ceiling on its own.
 #   privileged: false (optional, security-sensitive — grants the container full host device access)
+#   no_new_privileges: true (optional, security-sensitive) containers run with
+#     no-new-privileges:true by default, which blocks setuid escalation. Set it to
+#     false ONLY for an image that genuinely needs setuid inside the container —
+#     today only mysterium, whose node calls `sudo ip` to configure its wireguard
+#     interface. The worker honours this per slug: a service cannot disable the
+#     hardening for anything but itself. Note that `docker exec ... sudo` does NOT
+#     reproduce the failure: exec starts a fresh process that does not inherit the
+#     container's no_new_privs bit, so it succeeds even on a broken container.
 #   stop_timeout: 30 (optional, seconds to wait before SIGKILL on stop — default 30)
 #   setup: "" (optional, one-time setup instructions/commands to run before first deploy)
 

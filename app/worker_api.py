@@ -947,6 +947,9 @@ class DeploySpec(BaseModel):
     cap_add: list[str] | None = None
     devices: list[str] | None = None
     privileged: bool = False
+    # Opt-out, not opt-in: everything is hardened unless its own catalog entry
+    # says otherwise, and the worker checks that claim by slug below.
+    no_new_privileges: bool = True
     command: str | None = None
     hostname: str | None = None
     labels: dict[str, str] = {}
@@ -1139,6 +1142,20 @@ def _catalog_allowed_capabilities(slug: str | None = None) -> set[str]:
     return caps
 
 
+def _catalog_no_new_privileges_optout_slugs() -> set[str]:
+    """Slugs whose catalog entry declares no_new_privileges: false.
+
+    Only a service that needs setuid inside its container may turn the hardening
+    off, and only for itself. Mysterium is the one today: it configures its
+    wireguard interface with `sudo ip address replace`, which no_new_privs blocks.
+    """
+    if not _catalog_get_services:
+        return set()
+    return {
+        svc["slug"] for svc in _catalog_get_services() if (svc.get("docker") or {}).get("no_new_privileges") is False
+    }
+
+
 def _catalog_host_network_slugs() -> set[str]:
     """Slugs whose catalog definition legitimately declares network_mode: host."""
     if not _catalog_get_services:
@@ -1205,6 +1222,11 @@ def _validate_deploy_spec(spec: DeploySpec, slug: str | None = None) -> None:
                 status_code=403,
                 detail=f"Blocked devices: {', '.join(sorted(blocked_devices))}",
             )
+    if not spec.no_new_privileges and slug not in _catalog_no_new_privileges_optout_slugs():
+        raise HTTPException(
+            status_code=403,
+            detail=f"Disabling no-new-privileges is not allowed for '{slug}'",
+        )
     if spec.network_mode not in _ALLOWED_NETWORK_MODES:
         raise HTTPException(status_code=403, detail=f"Network mode '{spec.network_mode}' is not allowed")
     if spec.network_mode == "host" and slug not in _catalog_host_network_slugs():
@@ -1299,6 +1321,7 @@ async def api_deploy_container(request: Request, slug: str, spec: DeploySpec) ->
             network_mode=spec.network_mode,
             cap_add=spec.cap_add,
             devices=spec.devices,
+            no_new_privileges=spec.no_new_privileges,
             # spec.privileged is rejected outright by _validate_deploy_spec above, and
             # deploy_raw no longer accepts it at all — containers are never privileged.
             command=spec.command,

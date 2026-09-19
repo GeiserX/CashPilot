@@ -40,6 +40,12 @@ docker:
   devices:
     - "/dev/net/tun"
   privileged: false
+  # The node configures its wireguard interface by shelling out to
+  # `sudo ip address replace dev myst0 10.182.0.1/24`. no_new_privs makes sudo
+  # unable to elevate, so that call fails and EVERY session dies at setup while
+  # the node still registers, publishes proposals and reports itself healthy --
+  # the same silent shape as the missing-TUN failure above.
+  no_new_privileges: false
 
 requirements:
   residential_ip: false

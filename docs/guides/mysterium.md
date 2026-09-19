@@ -64,11 +64,16 @@ No environment variables required.
 *"we're temporarily unable to track its status"*. The dashboard shows no quality
 score, and earnings stay flat.
 
-**Cause.** The node cannot open a TUN device. Mysterium serves `wireguard` and
-`dvpn` through `/dev/net/tun`, and without it the node still starts, still
-registers, and still advertises itself to the network — it simply cannot carry
-any traffic. Everything looks fine from outside, which is what makes this one
-hard to spot.
+**Cause.** The node cannot bring up its wireguard interface. There are two ways
+that happens, and they look identical from outside — the node still starts, still
+registers, and still advertises itself to the network, it simply cannot carry any
+traffic:
+
+1. **`/dev/net/tun` is missing from the container.**
+2. **The container runs with `no-new-privileges:true`.** The node configures the
+   interface by shelling out to `sudo ip address replace dev myst0 10.182.0.1/24`,
+   and `no_new_privs` permanently prevents `sudo` from elevating. The device can be
+   present and correct and the node still cannot use it.
 
 **Confirm it.** Ask the node itself, on the host running it:
 
@@ -87,6 +92,17 @@ A TUN problem looks like this:
 And `curl -s http://127.0.0.1:4050/node/monitoring-status` returns
 `{"status":"failed"}`.
 
+The `no-new-privileges` variant instead shows up in the container log, once per
+attempted session:
+
+```
+ERR Session failed, disconnecting error="cannot get provider config for session ...:
+    could not start provider wg connection endpoint: could not configure device:
+    failed to create TUN device: failed to assign IP address:
+    \"ip address replace dev myst0 10.182.0.1/24\": exit status 1
+    output: sudo: PERM_SUDOERS: setresuid(-1, 1, -1): Operation not permitted"
+```
+
 **Check whether the device reached the container:**
 
 ```bash
@@ -101,7 +117,6 @@ docker run -d --name cashpilot-mysterium \
   --network host --restart unless-stopped \
   --cap-drop ALL --cap-add NET_ADMIN \
   --device /dev/net/tun \
-  --security-opt no-new-privileges:true \
   -v /path/to/your/myst/data:/var/lib/mysterium-node \
   mysteriumnetwork/myst:latest \
   --ui.address=0.0.0.0 --tequilapi.address=0.0.0.0 service --agreed-terms-and-conditions
@@ -110,9 +125,16 @@ docker run -d --name cashpilot-mysterium \
 Verify it took:
 
 ```bash
-docker exec cashpilot-mysterium sh -c 'ip tuntap add dev probe mode tun && echo TUN_OK && ip link del probe'
+docker inspect cashpilot-mysterium --format '{{.HostConfig.SecurityOpt}}'   # expect []
+docker exec cashpilot-mysterium ls -l /dev/net/tun                          # expect the device
 docker logs cashpilot-mysterium 2>&1 | grep -i wireguard | tail -3   # expect "Wireguard: started"
 ```
+
+Check `SecurityOpt` with `docker inspect`, not by running `sudo` through
+`docker exec`. `exec` starts a fresh process that does **not** inherit the
+container's `no_new_privs` bit, so `docker exec ... sudo true` and
+`docker exec ... ip tuntap add` both succeed on a container whose own node
+process cannot do either. They cannot detect this failure.
 
 **Your identity is safe.** It lives in the mounted data directory
 (`/var/lib/mysterium-node/keystore/`), not in the container, so recreating the

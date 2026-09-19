@@ -1966,6 +1966,9 @@ async def api_deploy(
         # starts, registers and earns nothing.
         "devices": docker_conf.get("devices") or None,
         "privileged": docker_conf.get("privileged", False),
+        # Hardened unless the catalog entry opts out. Mysterium must, because the
+        # node configures its wireguard interface through sudo.
+        "no_new_privileges": docker_conf.get("no_new_privileges", True),
     }
 
     # Command: resolve ${VAR} placeholders

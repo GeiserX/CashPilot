@@ -248,6 +248,7 @@ def deploy_raw(
     resources: Any = None,
     category: str = "bandwidth",
     runtime: str | None = None,
+    no_new_privileges: bool = True,
 ) -> str:
     """Deploy a container from a raw spec (no catalog lookup).
 
@@ -318,7 +319,14 @@ def deploy_raw(
         # no-new-privileges blocks privilege escalation via setuid binaries; privileged
         # is hardcoded off so the dangerous state is unrepresentable here rather than
         # merely refused upstream by the worker's spec validation.
-        security_opt=["no-new-privileges:true"],
+        #
+        # A service may opt out ONLY by declaring no_new_privileges: false in its own
+        # catalog entry, which the worker validates by slug. Mysterium needs it: the
+        # node shells out to `sudo ip address replace dev myst0 ...` to configure its
+        # wireguard interface, and no_new_privs makes sudo unable to elevate, so every
+        # session dies at setup while the node still registers, publishes proposals and
+        # looks healthy -- the same silent shape as the missing-TUN failure.
+        security_opt=["no-new-privileges:true"] if no_new_privileges else [],
         privileged=False,
         pids_limit=_PIDS_LIMIT,
         command=command if command else None,
