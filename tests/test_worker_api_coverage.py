@@ -142,7 +142,7 @@ class TestValidateDeploySpecRejections:
 
     @pytest.mark.parametrize("cap", ["SYS_MODULE", "DAC_READ_SEARCH", "SYS_RAWIO", "BPF", "SYS_BOOT"])
     def test_capability_not_declared_by_any_catalog_service_rejected(self, cap):
-        # Allowlist, not a denylist: only mysterium's NET_ADMIN is in the catalog,
+        # Allowlist, not a denylist: only what a catalog service declares is allowed,
         # so anything else -- including caps the old 3-entry denylist missed -- is refused.
         spec = DeploySpec(image="x", cap_add=[cap])
         with pytest.raises(HTTPException) as ei:

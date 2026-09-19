@@ -6,7 +6,7 @@ website: https://mystnodes.com
 description: >
   MystNodes (Mysterium Network) is a decentralized VPN and proxy network built on
   blockchain technology. You earn MYST tokens by running a node that provides VPN,
-  proxy, and data scraping services to users. Requires NET_ADMIN capability and
+  proxy, and data scraping services to users. Requires NET_ADMIN, SETUID and SETGID capabilities and
   host networking for full functionality. Includes a built-in web UI for node
   management. Works on both residential and VPS connections.
 short_description: Decentralized VPN node - blockchain-based, works on VPS
@@ -33,13 +33,32 @@ docker:
         node loses its reputation and any earnings still held against the old one.
   command: "--ui.address=0.0.0.0 --tequilapi.address=0.0.0.0 service --agreed-terms-and-conditions"
   network_mode: "host"
-  cap_add: [NET_ADMIN]
+  # SETUID and SETGID are for sudo. The node runs as root and still configures
+  # its interface and firewall through `sudo ip ...` / `sudo iptables ...`, and
+  # sudo switches uid and gid on the way (setresuid, setgroups). Every container
+  # is deployed with cap_drop ALL, so without these two that call fails with
+  # "sudo: PERM_SUDOERS: setresuid(-1, 1, -1): Operation not permitted", every
+  # session dies at setup, and the node keeps registering and looking healthy.
+  # no-new-privileges stays on: the node is already root, so it blocks nothing here.
+  cap_add: [NET_ADMIN, SETUID, SETGID]
   # Wireguard/dvpn need a TUN device. Without it the node starts, registers and
   # advertises itself to the network but carries no traffic - it looks healthy
   # and earns nothing. See docs/guides/mysterium.md.
   devices:
     - "/dev/net/tun"
   privileged: false
+  health_signals:
+    # Seen live (Sep 2026) on three nodes at once: the container was healthy,
+    # the node was listed in discovery, and no session ever completed.
+    - pattern: "sudo: PERM_SUDOERS"
+      means: >-
+        The node cannot run sudo inside its container, so it cannot configure
+        its VPN interface or firewall and every session fails at setup: it looks
+        online and earns nothing. The container was created without the SETUID
+        and SETGID capabilities. Update CashPilot and the worker running this
+        node, then redeploy Mysterium from the dashboard; the node identity
+        lives in its data volume and is kept.
+      state: failing
 
 requirements:
   residential_ip: false

@@ -2397,7 +2397,7 @@ const CP = (() => {
         // typed-in catalog values were quietly superseded (CashPilot-23yb).
         const kept = res && res.kept_from_previous_deployment;
         if (Array.isArray(kept) && kept.length) {
-          toast(`${slug}: kept from the previous deployment — ${kept.join('; ')}`, 'warning');
+          toast(`${slug}: redeploy notes — ${kept.join('; ')}`, 'warning');
         }
       } catch (err) {
         fail++;

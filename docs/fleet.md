@@ -314,7 +314,7 @@ Relative paths are refused, and refusals are logged with the reason.
 
 Service containers are third-party and closed-source, so the worker deploys them with the minimum kernel surface: **all capabilities dropped**, then only the ones that service's own catalog entry declares added back. They also get `no-new-privileges`, a PID limit, and are **never** privileged — `privileged` is refused by spec validation and is not an accepted argument in the deploy path at all.
 
-If you add a service that genuinely needs a capability, declare it in that service's YAML (`docker.cap_add`). The check is **per service**: a slug may only request the capabilities its own catalog entry declares, so adding one to one service grants nothing to the others. Today that is Mysterium's `NET_ADMIN` and Bitping's `NET_RAW`.
+If you add a service that genuinely needs a capability, declare it in that service's YAML (`docker.cap_add`). The check is **per service**: a slug may only request the capabilities its own catalog entry declares, so adding one to one service grants nothing to the others. Today that is Mysterium's `NET_ADMIN`, `SETUID` and `SETGID` (its node configures the VPN interface through `sudo`) and Bitping's `NET_RAW`.
 
 ### Worker identity
 

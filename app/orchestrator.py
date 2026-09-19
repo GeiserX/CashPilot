@@ -308,10 +308,11 @@ def deploy_raw(
         network_mode=network_mode,
         # These images are third-party and closed-source, so they get the minimum
         # kernel surface: every capability dropped, then only the ones the service's
-        # own catalog entry declares added back (today that is mysterium's NET_ADMIN
-        # alone — the rest are plain outbound TCP clients). Without this they ran as
-        # in-container root with Docker's full default set, which includes NET_RAW
-        # (ARP/DNS spoofing on the bridge), MKNOD, SETUID and SYS_CHROOT.
+        # own catalog entry declares added back (docs/fleet.md lists them; most
+        # services are plain outbound TCP clients and add nothing). Without this
+        # they ran as in-container root with Docker's full default set, which
+        # includes NET_RAW (ARP/DNS spoofing on the bridge), MKNOD, SETUID and
+        # SYS_CHROOT.
         devices=devices or None,
         cap_drop=["ALL"],
         cap_add=cap_add or None,
