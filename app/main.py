@@ -1908,7 +1908,11 @@ async def api_deploy(
     env: dict[str, str] = {}
     for var in docker_conf.get("env", []):
         env[var["key"]] = str(var.get("default", ""))
-    env.update(body.env or {})
+    # A box left blank is not a value. The form posts "" for every field the
+    # operator did not fill, including the {hostname} templates it shows as a
+    # placeholder precisely so the server fills them in - and "" overriding the
+    # default sent an empty device name on a first deploy.
+    env.update({key: str(value).strip() for key, value in (body.env or {}).items() if str(value).strip()})
     env = {k: v.replace("{hostname}", hn) if isinstance(v, str) else v for k, v in env.items()}
 
     # What this service was ACTUALLY deployed with, if anything. Loaded before
@@ -1927,10 +1931,11 @@ async def api_deploy(
     # operator relocating a mount, which is how a redeploy moves a node off the
     # directory that holds its identity.
     catalog_defaults = {var["key"]: str(var.get("default", "")) for var in docker_conf.get("env", [])}
+    # Stripped once and used stripped: "/mnt/s " is not a different path from
+    # "/mnt/s", and sent as typed it becomes a host directory with a space in it.
+    posted_env = {key: str(value).strip() for key, value in (body.env or {}).items()}
     typed_env = {
-        key: value
-        for key, value in (body.env or {}).items()
-        if str(value).strip() and str(value) != catalog_defaults.get(key)
+        key: value for key, value in posted_env.items() if value and value != catalog_defaults.get(key, "").strip()
     }
 
     # Validate required env vars are not blank.

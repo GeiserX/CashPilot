@@ -342,6 +342,40 @@ class TestApiDeploy:
         assert list(sent["volumes"]) == ["/mnt/disk9/storj"]
         assert sent["moved_mounts"] == ["/app/config"]
 
+    def test_a_blank_box_does_not_erase_the_default_on_a_first_deploy(self, client):
+        """The form shows {hostname} templates as a placeholder and posts "" for them."""
+        svc = {
+            "slug": "honeygain",
+            "name": "Honeygain",
+            "docker": {
+                "image": "honeygain/honeygain",
+                "env": [{"key": "DEVICE", "default": "cashpilot-{hostname}"}, {"key": "EMAIL", "default": ""}],
+            },
+        }
+        resp, sent, _ = self._deploy_with_worker_reply(
+            client, svc, {"env": {"DEVICE": "", "EMAIL": " me@example.com "}, "hostname": "nas"}, {"container_id": "x"}
+        )
+        assert resp.status_code == 200, resp.text
+        assert sent["env"]["DEVICE"] == "cashpilot-nas"
+        assert sent["env"]["EMAIL"] == "me@example.com"
+
+    def test_trailing_whitespace_is_not_a_new_path(self, client):
+        svc = {
+            "slug": "storj",
+            "name": "Storj",
+            "docker": {
+                "image": "storjlabs/storagenode",
+                "env": [{"key": "STORAGE_DIR", "default": "/mnt/storj"}],
+                "volumes": ["${STORAGE_DIR}:/app/config"],
+            },
+        }
+        resp, sent, _ = self._deploy_with_worker_reply(
+            client, svc, {"env": {"STORAGE_DIR": "/mnt/storj "}}, {"container_id": "x"}
+        )
+        assert resp.status_code == 200, resp.text
+        assert sent["moved_mounts"] == []
+        assert list(sent["volumes"]) == ["/mnt/storj"]
+
     def test_deploy_service_not_found(self, client):
         with (
             _auth_owner(),

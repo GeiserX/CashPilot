@@ -413,6 +413,10 @@ def _keep_live_mounts(
     source is not re-checked against the bind-path rules and the spec's targets
     are caller-supplied.
 
+    A target whose host side has no path variable (mysterium's) can never be in
+    ``moved_mounts``, so the dashboard cannot move it: that is intended, and the
+    way to move such a mount is to recreate the container by hand.
+
     A mount that was read-only stays read-only. When anything is kept the result
     is a list of ``source:target:mode`` strings rather than a dict keyed by
     source: two targets can share one source (a directory mounted twice, or a
