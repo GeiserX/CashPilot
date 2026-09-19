@@ -276,6 +276,62 @@ class TestApiDeploy:
         assert sent["moved_mounts"] == ["/app/identity"]
         assert "kept_from_previous_deployment" not in resp.json()
 
+    def test_the_form_posting_blanks_and_defaults_is_not_the_operator_typing(self, client):
+        """The dashboard redeploys by posting the deploy form, every field included.
+
+        An empty box must not erase the recorded credential, and a path still
+        showing the catalog default must not count as relocating the mount.
+        """
+        svc = {
+            "slug": "storj",
+            "name": "Storj",
+            "docker": {
+                "image": "storjlabs/storagenode",
+                "env": [
+                    {"key": "WALLET", "default": ""},
+                    {"key": "STORAGE_DIR", "default": "/mnt/storj"},
+                ],
+                "volumes": ["${STORAGE_DIR}:/app/config"],
+            },
+        }
+        recorded = {
+            "image": "storjlabs/storagenode",
+            "env": {"WALLET": "0xrecorded", "STORAGE_DIR": "/mnt/disk7/storj"},
+            "volumes": {"/mnt/disk7/storj": {"bind": "/app/config", "mode": "rw"}},
+        }
+        with patch("app.main.database.get_deployment_spec", new_callable=AsyncMock, return_value=recorded):
+            resp, sent, _ = self._deploy_with_worker_reply(
+                client, svc, {"env": {"WALLET": "", "STORAGE_DIR": "/mnt/storj"}}, {"container_id": "abc123"}
+            )
+        assert resp.status_code == 200, resp.text
+        assert sent["env"]["WALLET"] == "0xrecorded"
+        assert list(sent["volumes"]) == ["/mnt/disk7/storj"]
+        assert sent["moved_mounts"] == []
+
+    def test_a_new_path_typed_into_the_form_still_moves_the_mount(self, client):
+        """Control for the test above: a real decision is still honoured."""
+        svc = {
+            "slug": "storj",
+            "name": "Storj",
+            "docker": {
+                "image": "storjlabs/storagenode",
+                "env": [{"key": "STORAGE_DIR", "default": "/mnt/storj"}],
+                "volumes": ["${STORAGE_DIR}:/app/config"],
+            },
+        }
+        recorded = {
+            "image": "storjlabs/storagenode",
+            "env": {"STORAGE_DIR": "/mnt/disk7/storj"},
+            "volumes": {"/mnt/disk7/storj": {"bind": "/app/config", "mode": "rw"}},
+        }
+        with patch("app.main.database.get_deployment_spec", new_callable=AsyncMock, return_value=recorded):
+            resp, sent, _ = self._deploy_with_worker_reply(
+                client, svc, {"env": {"STORAGE_DIR": "/mnt/disk9/storj"}}, {"container_id": "abc123"}
+            )
+        assert resp.status_code == 200, resp.text
+        assert list(sent["volumes"]) == ["/mnt/disk9/storj"]
+        assert sent["moved_mounts"] == ["/app/config"]
+
     def test_deploy_service_not_found(self, client):
         with (
             _auth_owner(),

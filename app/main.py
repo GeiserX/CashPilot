@@ -1919,6 +1919,20 @@ async def api_deploy(
     recorded = await database.get_deployment_spec(slug)
     recorded_env = (recorded or {}).get("env") or {}
 
+    # What the operator actually TYPED on this deploy. The dashboard has no
+    # separate redeploy action: it posts the deploy form, and the form posts
+    # every field - the ones left blank, and the ones still showing the catalog
+    # default. Neither is a decision. Treating them as one let an empty box
+    # overwrite a recorded credential and let a prefilled path count as the
+    # operator relocating a mount, which is how a redeploy moves a node off the
+    # directory that holds its identity.
+    catalog_defaults = {var["key"]: str(var.get("default", "")) for var in docker_conf.get("env", [])}
+    typed_env = {
+        key: value
+        for key, value in (body.env or {}).items()
+        if str(value).strip() and str(value) != catalog_defaults.get(key)
+    }
+
     # Validate required env vars are not blank.
     missing = [
         var.get("label", var["key"])
@@ -1993,7 +2007,7 @@ async def api_deploy(
         host_part, target = raw.split(":")[0], raw.split(":")[1]
         keys_by_target.setdefault(target, set()).update(m.group(1) for m in re.finditer(r"\$\{(\w+)\}", host_part))
     if recorded:
-        spec, divergence = _merge_recorded_spec(spec, recorded, body.env or {}, keys_by_target)
+        spec, divergence = _merge_recorded_spec(spec, recorded, typed_env, keys_by_target)
         if divergence:
             logger.info("Redeploying %s from its recorded spec: %s", slug, "; ".join(divergence))
 
@@ -2002,8 +2016,7 @@ async def api_deploy(
     # move they asked for. The record above cannot settle this on its own - it
     # is one row per service for the whole fleet, and a container made or edited
     # by hand has no record at all - so the running container has the last word.
-    typed = set(body.env or {})
-    moved_mounts = sorted(target for target, keys in keys_by_target.items() if keys & typed)
+    moved_mounts = sorted(target for target, keys in keys_by_target.items() if keys & set(typed_env))
 
     result = await _proxy_worker_deploy(worker_id, slug, {**spec, "moved_mounts": moved_mounts})
     container_id = result.get("container_id", "remote")
