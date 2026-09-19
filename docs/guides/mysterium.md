@@ -124,7 +124,13 @@ docker logs cashpilot-mysterium 2>&1 | grep -c 'PERM_SUDOERS'   # anything above
 **Fix.** If CashPilot deployed the container, **redeploy Mysterium from the
 dashboard** on CashPilot v1.36.6 or newer, with the worker on the same version.
 The catalog declares the device and the capabilities, the redeploy applies both,
-and the data volume is reused, so the node keeps its identity.
+and the `mysterium-data` volume is reused, so the node keeps its identity.
+
+Check the mount first:
+`docker inspect cashpilot-mysterium --format '{{range .Mounts}}{{.Type}} {{.Name}}{{.Source}}{{println}}{{end}}'`.
+If it says `bind`, the container was created or changed outside CashPilot and a
+redeploy would move it onto the `mysterium-data` volume, which holds a different
+identity. Use the manual steps below for that container.
 
 For a container created outside CashPilot, recreate it with the device and the
 three capabilities. Mount the **same** data directory or volume the container
