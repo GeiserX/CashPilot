@@ -18,6 +18,54 @@ recovered. See [Backing up node identities](docs/backup.md) for the rest.
 
 ---
 
+## v1.36.6 — a Mysterium node deployed by CashPilot has to be redeployed once
+
+**Affects you if** you run Mysterium (MystNodes) through CashPilot. Check on the
+host that runs it:
+
+```bash
+docker logs cashpilot-mysterium 2>&1 | grep -c 'PERM_SUDOERS'
+```
+
+`0` means **no action is required**. Anything else means the node has been
+online, listed and earning nothing.
+
+**What changed.** CashPilot starts every service with all Linux capabilities
+dropped and adds back only what the service's catalog entry declares. Mysterium
+declared `NET_ADMIN` alone. Its node configures the VPN interface and firewall
+through `sudo`, and sudo needs `SETUID` and `SETGID`, so since v1.15.0 every
+session failed at setup while the node kept registering and looking healthy. The
+catalog now declares all three, and a redeploy now takes capabilities from the
+catalog instead of repeating the ones the container was first created with.
+
+**What breaks if you do nothing.** Nothing new. The node stays as it is: running
+and not earning.
+
+**What to do.**
+
+1. Upgrade the UI **and the worker that runs Mysterium** to v1.36.6. A worker on
+   an older version refuses the deploy with `403 Blocked capabilities: SETGID,
+   SETUID`, because each worker checks capabilities against its own catalog.
+2. Check where the node keeps its identity **before** you redeploy:
+
+   ```bash
+   docker inspect cashpilot-mysterium --format '{{range .Mounts}}{{.Type}} {{.Name}}{{.Source}} -> {{.Destination}}{{println}}{{end}}'
+   ```
+
+   `volume mysterium-data...` is what CashPilot creates: open Mysterium in the
+   dashboard and **redeploy** it, and the node keeps its identity and
+   reputation. A `bind` mount means the container was created or changed outside
+   CashPilot. A redeploy would move it onto the `mysterium-data` volume, which
+   is a different identity. Recreate that container by hand instead, with the
+   same mount, following the [Mysterium guide](docs/guides/mysterium.md).
+3. Confirm: `docker exec cashpilot-mysterium sudo -n true && echo SUDO_OK`, and
+   the `grep -c` above stays at `0` for the new container.
+
+MystNodes takes several hours to re-score a node. The full walkthrough is in the
+[Mysterium guide](docs/guides/mysterium.md).
+
+---
+
 ## v1.11.30 — the shared fleet key stops working for a worker that never enrolled
 
 **Affects you if** a worker appears in your fleet but has never confirmed its own
