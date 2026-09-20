@@ -54,7 +54,20 @@ class TestTheCatalogNamesTheArmBuilds:
         with open(path) as f:
             assert catalog._validate(yaml.safe_load(f), path) == []
 
-    @pytest.mark.parametrize("bad", ["traffmonetizer/cli_v2:arm64v8", ["arm64"], {"arm64": 7}, {3: "x"}])
+    @pytest.mark.parametrize(
+        "bad",
+        [
+            "traffmonetizer/cli_v2:arm64v8",
+            ["arm64"],
+            {"arm64": 7},
+            {3: "x"},
+            # A key the resolver never produces would load fine and then silently
+            # hand an ARM worker the amd64 image. The catalog is where that is caught.
+            {"aarch64": "traffmonetizer/cli_v2:arm64v8"},
+            {"linux/arm64": "traffmonetizer/cli_v2:arm64v8"},
+            {"ARM64": "traffmonetizer/cli_v2:arm64v8"},
+        ],
+    )
     def test_a_malformed_map_is_rejected_at_load(self, tmp_path, bad):
         """A service with an error is skipped at load, which is the loud failure we want here."""
         data = {
@@ -67,6 +80,14 @@ class TestTheCatalogNamesTheArmBuilds:
         }
         errors = catalog._validate(data, tmp_path / "t.yml")
         assert len(errors) == 1 and "image_by_arch" in errors[0]
+
+
+class TestTheValidatorAndTheResolverAgree:
+    def test_every_family_the_resolver_can_produce_is_a_key_the_catalog_accepts(self):
+        """The rule lives in two places; this is the mirror check."""
+        from app.main import _ARCH_FAMILY
+
+        assert set(_ARCH_FAMILY.values()) == set(catalog.IMAGE_ARCH_FAMILIES)
 
 
 class TestTheImageFollowsTheWorkerArchitecture:
