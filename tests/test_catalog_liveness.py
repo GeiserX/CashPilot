@@ -456,7 +456,7 @@ class TestPublishedPlatforms:
         with patch.object(subprocess, "run", return_value=MagicMock(returncode=0, stdout=out, stderr="")):
             status, families, _ = liveness.published_platforms("repo/img")
         assert status == liveness.OK
-        assert families == {"amd64", "arm", "arm64"}
+        assert families == {"amd64", ("arm", 7), "arm64"}
 
     def test_a_single_arch_image_yields_its_one_family(self):
         with patch.object(
@@ -468,19 +468,61 @@ class TestPublishedPlatforms:
         with patch.object(subprocess, "run", return_value=MagicMock(returncode=1, stdout="", stderr="toomanyrequests")):
             assert liveness.published_platforms("repo/img")[0] == liveness.UNREACHABLE
 
-    def test_a_missing_manifest_is_dead(self):
-        with patch.object(
-            subprocess, "run", return_value=MagicMock(returncode=1, stdout="", stderr="manifest unknown")
-        ):
+    @pytest.mark.parametrize(
+        "stderr", ["manifest unknown: manifest unknown", "no such manifest: repo/gone:1", "repo/gone:1 not found"]
+    )
+    def test_a_registry_that_says_no_such_manifest_is_dead(self, stderr):
+        with patch.object(subprocess, "run", return_value=MagicMock(returncode=1, stdout="", stderr=stderr)):
             assert liveness.published_platforms("repo/gone")[0] == liveness.DEAD
+
+    @pytest.mark.parametrize(
+        "stderr", ["dial tcp: lookup registry-1.docker.io: no such host", "Cannot connect to the Docker daemon", ""]
+    )
+    def test_any_other_failure_is_inconclusive_not_dead(self, stderr):
+        """A DNS blip or a daemon hiccup must not raise the weekly problem count."""
+        with patch.object(subprocess, "run", return_value=MagicMock(returncode=1, stdout="", stderr=stderr)):
+            status, _, detail = liveness.published_platforms("repo/img")
+        assert status == liveness.UNREACHABLE
+        assert detail
 
     def test_no_docker_is_inconclusive(self):
         with patch.object(subprocess, "run", side_effect=OSError("no docker")):
             assert liveness.published_platforms("repo/img")[0] == liveness.UNREACHABLE
 
 
+class TestArmVariantsAreDirectional:
+    """A v7 board runs v5 and v6 builds; a Pi Zero (v6) cannot run a v7 build."""
+
+    @pytest.mark.parametrize(
+        ("platform", "norm"),
+        [
+            ("linux/arm/v5", ("arm", 5)),
+            ("linux/arm/v7", ("arm", 7)),
+            ("linux/arm", ("arm", 7)),
+            ("linux/arm64/v8", "arm64"),
+            ("linux/amd64", "amd64"),
+        ],
+    )
+    def test_arm_keeps_its_variant(self, platform, norm):
+        assert liveness.normalise_platform(platform) == norm
+
+    @pytest.mark.parametrize(
+        ("published", "declared", "ok"),
+        [
+            ({("arm", 5)}, ("arm", 7), True),  # a v5 build runs on a v7 board
+            ({("arm", 7)}, ("arm", 5), False),  # a v7 build does not run on a v5 board
+            ({("arm", 7)}, ("arm", 6), False),  # nor on a Pi Zero
+            ({("arm", 6), ("arm", 7)}, ("arm", 7), True),
+            ({"arm64"}, "arm64", True),
+            ({"amd64"}, "arm64", False),
+        ],
+    )
+    def test_coverage_follows_the_direction(self, published, declared, ok):
+        assert liveness.covers(published, declared) is ok
+
+
 class TestCheckPlatforms:
-    """The catalog's promise versus the registry's manifest, per declared family."""
+    """The catalog's promise versus the registry's manifest, per declared platform."""
 
     def _svc(self, platforms, image="repo/img", image_by_arch=None):
         docker = {"image": image, "platforms": platforms}
@@ -526,6 +568,30 @@ class TestCheckPlatforms:
         with self._with_registry(answers):
             [f] = liveness.check_platforms(svc)
         assert f.status == liveness.OK
+
+    def test_a_declared_variant_the_image_does_not_reach_is_a_problem(self):
+        """Declaring arm/v6 on a v7-only image promises Pi Zero support that is not there."""
+        with self._with_registry({"repo/img": _manifest("linux/amd64", "linux/arm/v7")}):
+            [f] = liveness.check_platforms(self._svc(["linux/amd64", "linux/arm/v6"]))
+        assert f.status == liveness.DEAD and "arm/v6" in f.detail and "arm/v7" in f.detail
+
+    def test_a_lower_published_variant_covers_a_higher_declared_one(self):
+        with self._with_registry({"repo/img": _manifest("linux/amd64", "linux/arm/v5")}):
+            [f] = liveness.check_platforms(self._svc(["linux/amd64", "linux/arm/v7"]))
+        assert f.status == liveness.OK
+
+    def test_an_unreachable_override_is_reported_but_does_not_condemn_the_entry(self):
+        svc = self._svc(["linux/amd64", "linux/arm64"], image_by_arch={"arm64": "repo/img:arm64v8"})
+
+        def _run(cmd, **_kw):
+            if cmd[-1] == "repo/img":
+                return MagicMock(returncode=0, stdout=_manifest("linux/amd64"), stderr="")
+            return MagicMock(returncode=1, stdout="", stderr="toomanyrequests: rate limit")
+
+        with patch.object(subprocess, "run", side_effect=_run):
+            findings = liveness.check_platforms(svc)
+        assert [f.status for f in findings] == [liveness.UNREACHABLE]
+        assert not any(f.is_problem for f in findings)
 
     def test_an_override_tag_that_vanished_is_a_problem(self):
         svc = self._svc(["linux/amd64", "linux/arm64"], image_by_arch={"arm64": "repo/img:arm64v8"})

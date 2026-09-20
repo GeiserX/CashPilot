@@ -171,18 +171,46 @@ def check_image(image: str) -> tuple[str, str]:
     return DEAD, lines[-1][:160] if lines else "manifest not found"
 
 
-#: A published or declared platform string folded to the family the deploy path
-#: reasons in. Variants of one family run each other's binaries (an arm/v5 build
-#: runs on a v7 Pi; arm64/v8 is arm64), so the family is the unit of truth.
-_PLATFORM_FAMILY = {"amd64": "amd64", "arm64": "arm64", "arm": "arm"}
+#: Docker's default variant for a bare ``linux/arm``.
+_ARM_DEFAULT_VARIANT = 7
 
 
-def platform_family(platform: str) -> str | None:
-    """``linux/arm64/v8`` -> ``arm64``; ``linux/arm/v7`` -> ``arm``; unknown -> None."""
+def normalise_platform(platform: str) -> str | tuple[str, int] | None:
+    """``linux/amd64`` -> ``amd64``; ``linux/arm64/v8`` -> ``arm64``; ``linux/arm/v6`` -> ``("arm", 6)``.
+
+    32-bit ARM keeps its variant because compatibility is directional: a v7
+    board runs v5 and v6 builds, but a Pi Zero (v6) cannot run a v7 build.
+    arm64 has one variant in practice (v8), so it folds. Anything else (386,
+    riscv64, windows) is None: no catalog entry declares it.
+    """
     parts = str(platform).strip().lower().split("/")
     if len(parts) < 2 or parts[0] != "linux":
         return None
-    return _PLATFORM_FAMILY.get(parts[1])
+    arch, variant = parts[1], (parts[2] if len(parts) > 2 else "")
+    if arch in ("amd64", "arm64"):
+        return arch
+    if arch == "arm":
+        digits = variant.lstrip("v")
+        return ("arm", int(digits) if digits.isdigit() else _ARM_DEFAULT_VARIANT)
+    return None
+
+
+def platform_family(platform: str) -> str | None:
+    """The family alone: ``linux/arm/v7`` -> ``arm``. What ``image_by_arch`` is keyed on."""
+    n = normalise_platform(platform)
+    return n if isinstance(n, str) else (n[0] if n else None)
+
+
+def describe_platform(p: str | tuple[str, int]) -> str:
+    return p if isinstance(p, str) else f"{p[0]}/v{p[1]}"
+
+
+def covers(published: set, declared: str | tuple[str, int]) -> bool:
+    """Does a published build run on a machine the declaration promises?"""
+    if isinstance(declared, str):
+        return declared in published
+    fam, want = declared
+    return any(isinstance(p, tuple) and p[0] == fam and p[1] <= want for p in published)
 
 
 def published_platforms(image: str) -> tuple[str, set[str], str]:
@@ -204,24 +232,35 @@ def published_platforms(image: str) -> tuple[str, set[str], str]:
     except (OSError, subprocess.SubprocessError) as exc:
         return UNREACHABLE, set(), f"could not run docker: {exc}"
     if proc.returncode != 0:
-        stderr = (proc.stderr or "").strip().lower()
-        if any(marker in stderr for marker in ("toomanyrequests", "rate limit", "unauthorized", "denied")):
+        stderr = (proc.stderr or "").strip()
+        low = stderr.lower()
+        if any(marker in low for marker in ("toomanyrequests", "rate limit", "unauthorized", "denied")):
             return UNREACHABLE, set(), "registry rate-limited or auth-gated"
-        return DEAD, set(), "manifest not found"
+        # Only a registry that positively says "no such manifest" is a dead image.
+        # Any other failure (DNS, a proxy, a daemon hiccup) is "could not tell":
+        # a DEAD here raises the weekly problem count, and crying wolf is how the
+        # report gets ignored the week it is right.
+        if any(marker in low for marker in ("manifest unknown", "not found", "no such manifest", "does not exist")):
+            return DEAD, set(), "manifest not found"
+        last = stderr.splitlines()[-1][:160] if stderr else "docker manifest inspect failed"
+        return UNREACHABLE, set(), last
     try:
         data = json.loads(proc.stdout or "null")
     except ValueError:
         return UNREACHABLE, set(), "unparseable manifest output"
     entries = data if isinstance(data, list) else [data]
-    families: set[str] = set()
+    published: set = set()
     for entry in entries:
         platform = ((entry or {}).get("Descriptor") or {}).get("platform") or {}
         if platform.get("os") in (None, "unknown") or platform.get("architecture") in (None, "unknown"):
             continue  # attestation blobs carry os/arch "unknown"
-        family = platform_family(f"{platform.get('os')}/{platform.get('architecture')}")
-        if family:
-            families.add(family)
-    return OK, families, ""
+        text = f"{platform.get('os')}/{platform.get('architecture')}"
+        if platform.get("variant"):
+            text += f"/{platform['variant']}"
+        norm = normalise_platform(text)
+        if norm:
+            published.add(norm)
+    return OK, published, ""
 
 
 def check_platforms(svc: dict) -> list[Finding]:
@@ -236,33 +275,42 @@ def check_platforms(svc: dict) -> list[Finding]:
     slug = svc["slug"]
     docker = svc.get("docker") or {}
     image = docker.get("image") or ""
-    declared = {f for f in (platform_family(p) for p in docker.get("platforms") or []) if f}
+    declared = {n for n in (normalise_platform(p) for p in docker.get("platforms") or []) if n}
     if not image or not declared:
         return []
     status, published, detail = published_platforms(image)
     if status != OK:
         return [Finding(slug, "platforms", image, status, detail)]
-    covered = set(published)
     findings: list[Finding] = []
+    # An override covers its whole family: the tag is a separate single-arch image
+    # whose label lies (that is why it exists), so its variant cannot be read.
+    override_ok: set[str] = set()
+    override_unknown: set[str] = set()
     for family, override in (docker.get("image_by_arch") or {}).items():
         o_status, _o_published, o_detail = published_platforms(str(override))
         if o_status == OK:
-            covered.add(family)
+            override_ok.add(family)
         else:
+            if o_status == UNREACHABLE:
+                override_unknown.add(family)
             findings.append(Finding(slug, "platforms", str(override), o_status, f"image_by_arch[{family}]: {o_detail}"))
-    missing = sorted(declared - covered)
+
+    def _family(d: str | tuple[str, int]) -> str:
+        return d if isinstance(d, str) else d[0]
+
+    missing = sorted(
+        describe_platform(d)
+        for d in declared
+        if not covers(published, d) and _family(d) not in override_ok and _family(d) not in override_unknown
+    )
     if missing:
+        have = ", ".join(sorted(describe_platform(p) for p in published)) or "nothing"
         findings.append(
-            Finding(
-                slug,
-                "platforms",
-                image,
-                DEAD,
-                f"declares {', '.join(missing)} but the registry publishes {', '.join(sorted(published)) or 'nothing'}",
-            )
+            Finding(slug, "platforms", image, DEAD, f"declares {', '.join(missing)} but the registry publishes {have}")
         )
     elif not findings:
-        findings.append(Finding(slug, "platforms", image, OK, f"published: {', '.join(sorted(published))}"))
+        have = ", ".join(sorted(describe_platform(p) for p in published))
+        findings.append(Finding(slug, "platforms", image, OK, f"published: {have}"))
     return findings
 
 
