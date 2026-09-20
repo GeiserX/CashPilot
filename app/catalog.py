@@ -15,6 +15,8 @@ from typing import Any
 
 import yaml
 
+from app import arch
+
 logger = logging.getLogger(__name__)
 
 SERVICES_DIR = Path(__file__).resolve().parent.parent / "services"
@@ -31,7 +33,7 @@ _CATEGORIES = {"bandwidth", "depin", "storage", "compute"}
 #: The keys ``docker.image_by_arch`` may use. The deploy path folds whatever a
 #: worker reports (x86_64, aarch64, armv7l, ...) onto these; a key outside the
 #: set could never be chosen, so it is a mistake and the entry is rejected.
-IMAGE_ARCH_FAMILIES = frozenset({"amd64", "arm64", "arm"})
+IMAGE_ARCH_FAMILIES = arch.FAMILIES
 _VALID_STATUSES = {"active", "beta", "broken", "dead", "dropped"}
 
 

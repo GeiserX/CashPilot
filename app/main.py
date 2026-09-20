@@ -34,6 +34,7 @@ from pydantic import BaseModel, Field, field_validator
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from app import (
+    arch,
     auth,
     catalog,
     compose_generator,
@@ -1518,36 +1519,10 @@ def _split_image(ref: str) -> tuple[str, str, str]:
     return repo, tag, digest
 
 
-#: What ``platform.machine()`` reports, folded to the family a catalog entry keys on.
-_ARCH_FAMILY = {
-    "x86_64": "amd64",
-    "amd64": "amd64",
-    "aarch64": "arm64",
-    "arm64": "arm64",
-    "armv7l": "arm",
-    "armv6l": "arm",
-    "armhf": "arm",
-}
-
-
-def _image_for_arch(docker_conf: dict[str, Any], machine: str | None) -> str | None:
-    """The image a worker of this architecture should run.
-
-    Docker picks the right build from a multi-arch manifest by itself, so most
-    entries need only ``image``. ``image_by_arch`` exists for the images whose
-    ARM builds Docker cannot select: traffmonetizer/cli_v2 publishes separate
-    arm64v8 and arm32v7 tags and labels every one of them linux/amd64, so a
-    worker on a Raspberry Pi pulling the default tag gets an x86_64 binary that
-    cannot start. The worker reports ``platform.machine()`` in its heartbeat;
-    an unknown or missing architecture, or a family the entry does not name,
-    falls back to ``image``.
-    """
-    image = docker_conf.get("image")
-    by_arch = docker_conf.get("image_by_arch")
-    if not isinstance(by_arch, dict) or not machine:
-        return image
-    override = by_arch.get(_ARCH_FAMILY.get(str(machine).strip().lower(), ""))
-    return override.strip() if isinstance(override, str) and override.strip() else image
+# The architecture table and the per-arch image resolver live in app/arch.py so
+# the preflight, the compose export and the deploy proxy reason in one vocabulary.
+_ARCH_FAMILY = arch.MACHINE_FAMILY
+_image_for_arch = arch.image_for
 
 
 def _image_outdated(deployed: str, catalog_image: str) -> bool:
@@ -2532,20 +2507,36 @@ async def api_service_remove(
 
 
 @app.get("/api/compose/{slug}", response_class=PlainTextResponse)
-async def api_compose_single(request: Request, slug: str):
+async def api_compose_single(request: Request, slug: str, arch: str | None = None):
     """Export a docker-compose.yml for a single service."""
     _require_auth_api(request)
     svc = catalog.get_service(slug)
     if not svc:
         raise HTTPException(status_code=404, detail=f"Service '{slug}' not found")
     try:
-        return compose_generator.generate_compose_single(slug)
+        return compose_generator.generate_compose_single(slug, arch=_compose_arch(arch))
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 
 
 class ComposeMultiRequest(BaseModel):
     slugs: list[str]
+    # amd64, arm64 or arm (a raw machine name such as aarch64 is accepted too).
+    # Absent means the catalog's default image, which is the amd64 build.
+    arch: str | None = None
+
+
+def _compose_arch(value: str | None) -> str | None:
+    """Validate the export's target architecture; None means the default image."""
+    if value is None or not str(value).strip():
+        return None
+    fam = arch.family(value)
+    if fam is None:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unknown architecture '{value}': use one of {', '.join(sorted(arch.FAMILIES))}",
+        )
+    return fam
 
 
 @app.post("/api/compose", response_class=PlainTextResponse)
@@ -2556,17 +2547,17 @@ async def api_compose_multi(
 ):
     """Export a docker-compose.yml for multiple services."""
     try:
-        return compose_generator.generate_compose_multi(body.slugs)
+        return compose_generator.generate_compose_multi(body.slugs, arch=_compose_arch(body.arch))
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 
 
 @app.get("/api/compose", response_class=PlainTextResponse)
-async def api_compose_all(request: Request):
+async def api_compose_all(request: Request, arch: str | None = None):
     """Export a docker-compose.yml for ALL services with Docker images."""
     _require_auth_api(request)
     try:
-        return compose_generator.generate_compose_all()
+        return compose_generator.generate_compose_all(arch=_compose_arch(arch))
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 

@@ -32,6 +32,7 @@ The key differentiator: a browser-based setup wizard guides you through account 
 - **Automatic earnings collection** from service APIs and dashboards
 - **Mobile-responsive dark UI** -- manage your fleet from any device
 - **Simple two-container setup** -- UI + Worker, no dependencies to install
+- **Runs on x86-64 and ARM** -- Raspberry Pi, Apple Silicon and ARM cloud boxes; see [Running on ARM](docs/arm.md)
 - **Service catalog** with earning estimates, requirements, and platform details
 
 > **Every setting, and which source wins:** [Configuration reference](docs/configuration.md)

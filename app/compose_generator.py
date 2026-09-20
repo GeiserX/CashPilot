@@ -17,6 +17,7 @@ from typing import Any
 
 import yaml
 
+from app import arch as arch_mod
 from app.catalog import get_service, get_services
 from app.constants import (
     CONTAINER_PREFIX,
@@ -80,13 +81,17 @@ def _service_to_compose(
     svc: dict[str, Any],
     env_vars: dict[str, str] | None = None,
     hostname: str | None = None,
+    arch: str | None = None,
 ) -> dict[str, Any] | None:
     """Convert a single YAML service definition to a compose service block.
 
-    Returns None if the service has no Docker image.
+    Returns None if the service has no Docker image. ``arch`` names the box the
+    file is for (amd64, arm64, arm); an entry with a per-architecture image gets
+    that build, everything else is unchanged. The export has no worker to ask,
+    so the caller has to say.
     """
     docker_conf = svc.get("docker", {})
-    image = docker_conf.get("image")
+    image = arch_mod.image_for(docker_conf, arch) if arch else docker_conf.get("image")
     if not image:
         return None
 
@@ -180,6 +185,7 @@ def generate_compose_single(
     slug: str,
     env_vars: dict[str, str] | None = None,
     hostname: str | None = None,
+    arch: str | None = None,
 ) -> str:
     """Generate a docker-compose.yml for a single service."""
     svc = get_service(slug)
@@ -191,7 +197,7 @@ def generate_compose_single(
         # route does, not hand the user a working-looking YAML.
         raise ValueError(f"Service {slug} is no longer available ({svc.get('status')})")
 
-    compose_svc = _service_to_compose(svc, env_vars, hostname)
+    compose_svc = _service_to_compose(svc, env_vars, hostname, arch)
     if not compose_svc:
         raise ValueError(f"Service {slug} has no Docker image")
 
@@ -208,6 +214,7 @@ def generate_compose_multi(
     slugs: list[str],
     env_map: dict[str, dict[str, str]] | None = None,
     hostname: str | None = None,
+    arch: str | None = None,
 ) -> str:
     """Generate a docker-compose.yml for multiple services."""
     services: dict[str, Any] = {}
@@ -219,7 +226,7 @@ def generate_compose_multi(
             continue
         if svc.get("status") in UNDEPLOYABLE_STATUSES:
             continue
-        compose_svc = _service_to_compose(svc, env_map.get(slug), hostname)
+        compose_svc = _service_to_compose(svc, env_map.get(slug), hostname, arch)
         if compose_svc:
             services[f"{CONTAINER_PREFIX}{slug}"] = compose_svc
 
@@ -233,11 +240,12 @@ def generate_compose_multi(
 def generate_compose_all(
     env_map: dict[str, dict[str, str]] | None = None,
     hostname: str | None = None,
+    arch: str | None = None,
 ) -> str:
     """Generate a docker-compose.yml for ALL services with Docker images."""
     all_svcs = get_services()
     slugs = [s.get("slug", s["name"].lower().replace(" ", "-")) for s in all_svcs if s.get("docker", {}).get("image")]
-    return generate_compose_multi(slugs, env_map, hostname)
+    return generate_compose_multi(slugs, env_map, hostname, arch)
 
 
 def _dump_compose(compose: dict, name: str) -> str:
