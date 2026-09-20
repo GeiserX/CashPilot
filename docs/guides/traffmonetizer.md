@@ -48,7 +48,7 @@ In the CashPilot web UI, find **Traffmonetizer** in the service catalog and clic
 ## Docker Configuration
 
 - **Image:** `traffmonetizer/cli_v2`
-- **Platforms:** linux/amd64 (Docker arm64 package actually includes a amd64 package)
+- **Platforms:** linux/amd64. The default tag is an amd64 build, and that is what CashPilot deploys. The `arm64v8` and `arm32v7` tags contain real ARM binaries, but Docker Hub labels all three tags `linux/amd64`, so Docker will not pick them on an ARM host. On a Raspberry Pi or other ARM box, run the `arm64v8` tag by hand.
 
 ### Environment Variables
 
