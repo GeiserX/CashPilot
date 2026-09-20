@@ -15,7 +15,7 @@ referral:
 
 docker:
   image: earnfm/earnfm-client
-  platforms: [linux/amd64, linux/arm64]
+  platforms: [linux/amd64, linux/arm64, linux/arm/v7]
   resources:
     mem_limit: "128m"
     oom_score_adj: 200

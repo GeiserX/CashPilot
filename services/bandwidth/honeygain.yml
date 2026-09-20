@@ -16,7 +16,7 @@ referral:
 
 docker:
   image: honeygain/honeygain
-  platforms: [linux/amd64]
+  platforms: [linux/amd64, linux/arm64, linux/arm/v7]
   resources:
     mem_limit: "256m"
     oom_score_adj: 200

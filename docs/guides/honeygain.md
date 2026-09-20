@@ -46,7 +46,7 @@ In the CashPilot web UI, find **Honeygain** in the service catalog and click **D
 ## Docker Configuration
 
 - **Image:** `honeygain/honeygain`
-- **Platforms:** linux/amd64
+- **Platforms:** linux/amd64, linux/arm64, linux/arm/v7
 
 ### Environment Variables
 

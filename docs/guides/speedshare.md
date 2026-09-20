@@ -48,7 +48,7 @@ In the CashPilot web UI, find **SpeedShare** in the service catalog and click **
 ## Docker Configuration
 
 - **Image:** `mrcolorrain/speedshare`
-- **Platforms:** linux/amd64
+- **Platforms:** linux/amd64, linux/arm64
 
 ### Environment Variables
 

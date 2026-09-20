@@ -17,7 +17,7 @@ referral:
 
 docker:
   image: mysteriumnetwork/myst
-  platforms: [linux/amd64, linux/arm64]
+  platforms: [linux/amd64, linux/arm64, linux/arm/v7]
   resources:
     mem_limit: "768m"
     oom_score_adj: -100

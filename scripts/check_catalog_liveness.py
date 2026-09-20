@@ -12,6 +12,9 @@ For each ``services/**/*.yml`` it checks:
 * ``referral.signup_url`` still answers **and still carries its referral code** --
   a dead or code-stripped referral link is direct lost revenue
 * ``docker.image`` still resolves in its registry
+* every ``docker.platforms`` entry has a build behind it, from the image's own
+  manifest or an ``image_by_arch`` override -- a declared arm64 with no arm64
+  build sends a Raspberry Pi user a container that dies with "exec format error"
 * dead services get the OPPOSITE probe: is the site alive again on its own
   domain? Liveness used to skip them entirely, which made it structurally
   blind to resurrections -- Bytebenefit ran for ~5 months while the catalog
@@ -28,6 +31,7 @@ because a job that is red every week is a job nobody reads.
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import subprocess
 import sys
@@ -56,7 +60,7 @@ _UA = "Mozilla/5.0 (compatible; CashPilot-catalog-check/1.0; +https://github.com
 @dataclass
 class Finding:
     slug: str
-    kind: str  # "website" | "referral" | "image"
+    kind: str  # "website" | "referral" | "image" | "platforms"
     target: str
     status: str
     detail: str = ""
@@ -165,6 +169,149 @@ def check_image(image: str) -> tuple[str, str]:
         return UNREACHABLE, "registry rate-limited or auth-gated"
     lines = stderr.splitlines()
     return DEAD, lines[-1][:160] if lines else "manifest not found"
+
+
+#: Docker's default variant for a bare ``linux/arm``.
+_ARM_DEFAULT_VARIANT = 7
+
+
+def normalise_platform(platform: str) -> str | tuple[str, int] | None:
+    """``linux/amd64`` -> ``amd64``; ``linux/arm64/v8`` -> ``arm64``; ``linux/arm/v6`` -> ``("arm", 6)``.
+
+    32-bit ARM keeps its variant because compatibility is directional: a v7
+    board runs v5 and v6 builds, but a Pi Zero (v6) cannot run a v7 build.
+    arm64 has one variant in practice (v8), so it folds. Anything else (386,
+    riscv64, windows) is None: no catalog entry declares it.
+    """
+    parts = str(platform).strip().lower().split("/")
+    if len(parts) < 2 or parts[0] != "linux":
+        return None
+    arch, variant = parts[1], (parts[2] if len(parts) > 2 else "")
+    if arch in ("amd64", "arm64"):
+        return arch
+    if arch == "arm":
+        digits = variant.lstrip("v")
+        return ("arm", int(digits) if digits.isdigit() else _ARM_DEFAULT_VARIANT)
+    return None
+
+
+def platform_family(platform: str) -> str | None:
+    """The family alone: ``linux/arm/v7`` -> ``arm``. What ``image_by_arch`` is keyed on."""
+    n = normalise_platform(platform)
+    return n if isinstance(n, str) else (n[0] if n else None)
+
+
+def describe_platform(p: str | tuple[str, int]) -> str:
+    return p if isinstance(p, str) else f"{p[0]}/v{p[1]}"
+
+
+def covers(published: set, declared: str | tuple[str, int]) -> bool:
+    """Does a published build run on a machine the declaration promises?"""
+    if isinstance(declared, str):
+        return declared in published
+    fam, want = declared
+    return any(isinstance(p, tuple) and p[0] == fam and p[1] <= want for p in published)
+
+
+def published_platforms(image: str) -> tuple[str, set[str], str]:
+    """Return (status, families the registry publishes for this image, detail).
+
+    Reads ``docker manifest inspect -v``: a manifest list yields one entry per
+    build, a single-arch image yields one object whose descriptor names its
+    platform. Traffmonetizer's ARM tags are single-arch images labelled amd64,
+    which is exactly why the deploy path needs ``image_by_arch`` and why this
+    check counts those overrides as coverage rather than reading them.
+    """
+    try:
+        proc = subprocess.run(  # noqa: S603
+            ["docker", "manifest", "inspect", "-v", "--", image],  # noqa: S607
+            capture_output=True,
+            text=True,
+            timeout=90,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        return UNREACHABLE, set(), f"could not run docker: {exc}"
+    if proc.returncode != 0:
+        stderr = (proc.stderr or "").strip()
+        low = stderr.lower()
+        if any(marker in low for marker in ("toomanyrequests", "rate limit", "unauthorized", "denied")):
+            return UNREACHABLE, set(), "registry rate-limited or auth-gated"
+        # Only a registry that positively says "no such manifest" is a dead image.
+        # Any other failure (DNS, a proxy, a daemon hiccup) is "could not tell":
+        # a DEAD here raises the weekly problem count, and crying wolf is how the
+        # report gets ignored the week it is right.
+        if any(marker in low for marker in ("manifest unknown", "not found", "no such manifest", "does not exist")):
+            return DEAD, set(), "manifest not found"
+        last = stderr.splitlines()[-1][:160] if stderr else "docker manifest inspect failed"
+        return UNREACHABLE, set(), last
+    try:
+        data = json.loads(proc.stdout or "null")
+    except ValueError:
+        return UNREACHABLE, set(), "unparseable manifest output"
+    entries = data if isinstance(data, list) else [data]
+    published: set = set()
+    for entry in entries:
+        platform = ((entry or {}).get("Descriptor") or {}).get("platform") or {}
+        if platform.get("os") in (None, "unknown") or platform.get("architecture") in (None, "unknown"):
+            continue  # attestation blobs carry os/arch "unknown"
+        text = f"{platform.get('os')}/{platform.get('architecture')}"
+        if platform.get("variant"):
+            text += f"/{platform['variant']}"
+        norm = normalise_platform(text)
+        if norm:
+            published.add(norm)
+    return OK, published, ""
+
+
+def check_platforms(svc: dict) -> list[Finding]:
+    """Does every platform the entry declares have a build behind it?
+
+    A declared ``linux/arm64`` with no arm64 build is a promise an ARM user
+    acts on: the deploy goes through and the container dies with "exec format
+    error". That is a catalog error, so it is reported as DEAD (a problem), not
+    as a warning. Coverage comes from the image's own manifest or from an
+    ``image_by_arch`` override for that family, whose image must itself exist.
+    """
+    slug = svc["slug"]
+    docker = svc.get("docker") or {}
+    image = docker.get("image") or ""
+    declared = {n for n in (normalise_platform(p) for p in docker.get("platforms") or []) if n}
+    if not image or not declared:
+        return []
+    status, published, detail = published_platforms(image)
+    if status != OK:
+        return [Finding(slug, "platforms", image, status, detail)]
+    findings: list[Finding] = []
+    # An override covers its whole family: the tag is a separate single-arch image
+    # whose label lies (that is why it exists), so its variant cannot be read.
+    override_ok: set[str] = set()
+    override_unknown: set[str] = set()
+    for family, override in (docker.get("image_by_arch") or {}).items():
+        o_status, _o_published, o_detail = published_platforms(str(override))
+        if o_status == OK:
+            override_ok.add(family)
+        else:
+            if o_status == UNREACHABLE:
+                override_unknown.add(family)
+            findings.append(Finding(slug, "platforms", str(override), o_status, f"image_by_arch[{family}]: {o_detail}"))
+
+    def _family(d: str | tuple[str, int]) -> str:
+        return d if isinstance(d, str) else d[0]
+
+    missing = sorted(
+        describe_platform(d)
+        for d in declared
+        if not covers(published, d) and _family(d) not in override_ok and _family(d) not in override_unknown
+    )
+    if missing:
+        have = ", ".join(sorted(describe_platform(p) for p in published)) or "nothing"
+        findings.append(
+            Finding(slug, "platforms", image, DEAD, f"declares {', '.join(missing)} but the registry publishes {have}")
+        )
+    elif not findings:
+        have = ", ".join(sorted(describe_platform(p) for p in published))
+        findings.append(Finding(slug, "platforms", image, OK, f"published: {have}"))
+    return findings
 
 
 def load_services(services_dir: Path) -> tuple[list[dict], list[Finding]]:
@@ -313,6 +460,7 @@ def check_service(client: httpx.Client, svc: dict, *, check_images: bool) -> lis
         image = ((svc.get("docker") or {}).get("image")) or ""
         status, detail = check_image(image)
         findings.append(Finding(slug, "image", image, status, detail))
+        findings.extend(check_platforms(svc))
 
     return findings
 
