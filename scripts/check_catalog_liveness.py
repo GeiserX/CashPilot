@@ -12,6 +12,9 @@ For each ``services/**/*.yml`` it checks:
 * ``referral.signup_url`` still answers **and still carries its referral code** --
   a dead or code-stripped referral link is direct lost revenue
 * ``docker.image`` still resolves in its registry
+* every ``docker.platforms`` entry has a build behind it, from the image's own
+  manifest or an ``image_by_arch`` override -- a declared arm64 with no arm64
+  build sends a Raspberry Pi user a container that dies with "exec format error"
 * dead services get the OPPOSITE probe: is the site alive again on its own
   domain? Liveness used to skip them entirely, which made it structurally
   blind to resurrections -- Bytebenefit ran for ~5 months while the catalog
@@ -28,6 +31,7 @@ because a job that is red every week is a job nobody reads.
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import subprocess
 import sys
@@ -56,7 +60,7 @@ _UA = "Mozilla/5.0 (compatible; CashPilot-catalog-check/1.0; +https://github.com
 @dataclass
 class Finding:
     slug: str
-    kind: str  # "website" | "referral" | "image"
+    kind: str  # "website" | "referral" | "image" | "platforms"
     target: str
     status: str
     detail: str = ""
@@ -165,6 +169,101 @@ def check_image(image: str) -> tuple[str, str]:
         return UNREACHABLE, "registry rate-limited or auth-gated"
     lines = stderr.splitlines()
     return DEAD, lines[-1][:160] if lines else "manifest not found"
+
+
+#: A published or declared platform string folded to the family the deploy path
+#: reasons in. Variants of one family run each other's binaries (an arm/v5 build
+#: runs on a v7 Pi; arm64/v8 is arm64), so the family is the unit of truth.
+_PLATFORM_FAMILY = {"amd64": "amd64", "arm64": "arm64", "arm": "arm"}
+
+
+def platform_family(platform: str) -> str | None:
+    """``linux/arm64/v8`` -> ``arm64``; ``linux/arm/v7`` -> ``arm``; unknown -> None."""
+    parts = str(platform).strip().lower().split("/")
+    if len(parts) < 2 or parts[0] != "linux":
+        return None
+    return _PLATFORM_FAMILY.get(parts[1])
+
+
+def published_platforms(image: str) -> tuple[str, set[str], str]:
+    """Return (status, families the registry publishes for this image, detail).
+
+    Reads ``docker manifest inspect -v``: a manifest list yields one entry per
+    build, a single-arch image yields one object whose descriptor names its
+    platform. Traffmonetizer's ARM tags are single-arch images labelled amd64,
+    which is exactly why the deploy path needs ``image_by_arch`` and why this
+    check counts those overrides as coverage rather than reading them.
+    """
+    try:
+        proc = subprocess.run(  # noqa: S603
+            ["docker", "manifest", "inspect", "-v", "--", image],  # noqa: S607
+            capture_output=True,
+            text=True,
+            timeout=90,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        return UNREACHABLE, set(), f"could not run docker: {exc}"
+    if proc.returncode != 0:
+        stderr = (proc.stderr or "").strip().lower()
+        if any(marker in stderr for marker in ("toomanyrequests", "rate limit", "unauthorized", "denied")):
+            return UNREACHABLE, set(), "registry rate-limited or auth-gated"
+        return DEAD, set(), "manifest not found"
+    try:
+        data = json.loads(proc.stdout or "null")
+    except ValueError:
+        return UNREACHABLE, set(), "unparseable manifest output"
+    entries = data if isinstance(data, list) else [data]
+    families: set[str] = set()
+    for entry in entries:
+        platform = ((entry or {}).get("Descriptor") or {}).get("platform") or {}
+        if platform.get("os") in (None, "unknown") or platform.get("architecture") in (None, "unknown"):
+            continue  # attestation blobs carry os/arch "unknown"
+        family = platform_family(f"{platform.get('os')}/{platform.get('architecture')}")
+        if family:
+            families.add(family)
+    return OK, families, ""
+
+
+def check_platforms(svc: dict) -> list[Finding]:
+    """Does every platform the entry declares have a build behind it?
+
+    A declared ``linux/arm64`` with no arm64 build is a promise an ARM user
+    acts on: the deploy goes through and the container dies with "exec format
+    error". That is a catalog error, so it is reported as DEAD (a problem), not
+    as a warning. Coverage comes from the image's own manifest or from an
+    ``image_by_arch`` override for that family, whose image must itself exist.
+    """
+    slug = svc["slug"]
+    docker = svc.get("docker") or {}
+    image = docker.get("image") or ""
+    declared = {f for f in (platform_family(p) for p in docker.get("platforms") or []) if f}
+    if not image or not declared:
+        return []
+    status, published, detail = published_platforms(image)
+    if status != OK:
+        return [Finding(slug, "platforms", image, status, detail)]
+    covered = set(published)
+    findings: list[Finding] = []
+    for family, override in (docker.get("image_by_arch") or {}).items():
+        o_status, _o_published, o_detail = published_platforms(str(override))
+        if o_status == OK:
+            covered.add(family)
+        else:
+            findings.append(Finding(slug, "platforms", str(override), o_status, f"image_by_arch[{family}]: {o_detail}"))
+    missing = sorted(declared - covered)
+    if missing:
+        findings.append(
+            Finding(
+                slug,
+                "platforms",
+                image,
+                DEAD,
+                f"declares {', '.join(missing)} but the registry publishes {', '.join(sorted(published)) or 'nothing'}",
+            )
+        )
+    elif not findings:
+        findings.append(Finding(slug, "platforms", image, OK, f"published: {', '.join(sorted(published))}"))
+    return findings
 
 
 def load_services(services_dir: Path) -> tuple[list[dict], list[Finding]]:
@@ -313,6 +412,7 @@ def check_service(client: httpx.Client, svc: dict, *, check_images: bool) -> lis
         image = ((svc.get("docker") or {}).get("image")) or ""
         status, detail = check_image(image)
         findings.append(Finding(slug, "image", image, status, detail))
+        findings.extend(check_platforms(svc))
 
     return findings
 

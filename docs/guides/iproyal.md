@@ -46,7 +46,7 @@ In the CashPilot web UI, find **IPRoyal Pawns** in the service catalog and click
 ## Docker Configuration
 
 - **Image:** `iproyal/pawns-cli`
-- **Platforms:** linux/amd64, linux/arm64
+- **Platforms:** linux/amd64, linux/arm64, linux/arm/v7, linux/arm/v6
 
 ### Environment Variables
 

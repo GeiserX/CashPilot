@@ -15,7 +15,7 @@ referral:
 
 docker:
   image: mrcolorrain/speedshare
-  platforms: [linux/amd64]
+  platforms: [linux/amd64, linux/arm64]
   env:
     - key: CODE
       label: "Authorization Code"

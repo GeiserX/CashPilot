@@ -46,7 +46,7 @@ In the CashPilot web UI, find **Earn.fm** in the service catalog and click **Dep
 ## Docker Configuration
 
 - **Image:** `earnfm/earnfm-client`
-- **Platforms:** linux/amd64, linux/arm64
+- **Platforms:** linux/amd64, linux/arm64, linux/arm/v7
 
 ### Environment Variables
 

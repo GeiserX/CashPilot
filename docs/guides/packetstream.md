@@ -46,7 +46,7 @@ In the CashPilot web UI, find **PacketStream** in the service catalog and click 
 ## Docker Configuration
 
 - **Image:** `packetstream/psclient`
-- **Platforms:** linux/amd64
+- **Platforms:** linux/amd64, linux/arm64, linux/arm/v7, linux/arm/v6
 
 ### Environment Variables
 

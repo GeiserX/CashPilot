@@ -9,6 +9,7 @@ working catalog entry) and cannot report an empty catalog as healthy.
 from __future__ import annotations
 
 import importlib.util
+import json
 import subprocess
 import sys
 from pathlib import Path
@@ -412,3 +413,144 @@ class TestReferralCollapseIsInconclusive:
         tail = report.rsplit("_`unreachable`", 1)[-1]
         assert "referral link collapsed" not in tail
         assert "no longer visible" in tail
+
+
+# ---------------------------------------------------------------------------
+# Declared platforms must have a build behind them
+# ---------------------------------------------------------------------------
+
+
+def _manifest(*platforms: str) -> str:
+    """What ``docker manifest inspect -v`` prints: a list for multi-arch, one object otherwise."""
+    entries = []
+    for p in platforms:
+        os_, arch, *variant = p.split("/")
+        plat = {"os": os_, "architecture": arch}
+        if variant:
+            plat["variant"] = variant[0]
+        entries.append({"Ref": "x", "Descriptor": {"platform": plat}})
+    return json.dumps(entries if len(entries) != 1 else entries[0])
+
+
+class TestPlatformFamily:
+    @pytest.mark.parametrize(
+        ("platform", "family"),
+        [
+            ("linux/amd64", "amd64"),
+            ("linux/arm64", "arm64"),
+            ("linux/arm64/v8", "arm64"),
+            ("linux/arm/v7", "arm"),
+            ("linux/arm/v5", "arm"),
+            ("linux/386", None),
+            ("windows/amd64", None),
+            ("amd64", None),
+        ],
+    )
+    def test_folds_variants_onto_the_family(self, platform, family):
+        assert liveness.platform_family(platform) == family
+
+
+class TestPublishedPlatforms:
+    def test_a_manifest_list_yields_every_family(self):
+        out = _manifest("linux/amd64", "linux/arm/v7", "linux/arm64/v8", "unknown/unknown")
+        with patch.object(subprocess, "run", return_value=MagicMock(returncode=0, stdout=out, stderr="")):
+            status, families, _ = liveness.published_platforms("repo/img")
+        assert status == liveness.OK
+        assert families == {"amd64", "arm", "arm64"}
+
+    def test_a_single_arch_image_yields_its_one_family(self):
+        with patch.object(
+            subprocess, "run", return_value=MagicMock(returncode=0, stdout=_manifest("linux/amd64"), stderr="")
+        ):
+            assert liveness.published_platforms("traffmonetizer/cli_v2")[1] == {"amd64"}
+
+    def test_a_rate_limit_is_inconclusive_not_dead(self):
+        with patch.object(subprocess, "run", return_value=MagicMock(returncode=1, stdout="", stderr="toomanyrequests")):
+            assert liveness.published_platforms("repo/img")[0] == liveness.UNREACHABLE
+
+    def test_a_missing_manifest_is_dead(self):
+        with patch.object(
+            subprocess, "run", return_value=MagicMock(returncode=1, stdout="", stderr="manifest unknown")
+        ):
+            assert liveness.published_platforms("repo/gone")[0] == liveness.DEAD
+
+    def test_no_docker_is_inconclusive(self):
+        with patch.object(subprocess, "run", side_effect=OSError("no docker")):
+            assert liveness.published_platforms("repo/img")[0] == liveness.UNREACHABLE
+
+
+class TestCheckPlatforms:
+    """The catalog's promise versus the registry's manifest, per declared family."""
+
+    def _svc(self, platforms, image="repo/img", image_by_arch=None):
+        docker = {"image": image, "platforms": platforms}
+        if image_by_arch:
+            docker["image_by_arch"] = image_by_arch
+        return {"slug": "svc", "status": "active", "docker": docker}
+
+    def _with_registry(self, answers: dict[str, str]):
+        """Map image -> manifest JSON; anything else is 'manifest unknown'."""
+
+        def _run(cmd, **_kw):
+            image = cmd[-1]
+            if image in answers:
+                return MagicMock(returncode=0, stdout=answers[image], stderr="")
+            return MagicMock(returncode=1, stdout="", stderr="manifest unknown")
+
+        return patch.object(subprocess, "run", side_effect=_run)
+
+    def test_a_declared_build_that_exists_is_ok(self):
+        with self._with_registry({"repo/img": _manifest("linux/amd64", "linux/arm64/v8")}):
+            [f] = liveness.check_platforms(self._svc(["linux/amd64", "linux/arm64"]))
+        assert f.status == liveness.OK and f.kind == "platforms"
+
+    def test_a_declared_build_that_does_not_exist_is_a_problem(self):
+        """ProxyLite declared arm64 for months; the image only ever had amd64."""
+        with self._with_registry({"repo/img": _manifest("linux/amd64")}):
+            [f] = liveness.check_platforms(self._svc(["linux/amd64", "linux/arm64"]))
+        assert f.status == liveness.DEAD and f.is_problem
+        assert "arm64" in f.detail and "amd64" in f.detail
+
+    def test_an_image_by_arch_override_covers_its_family(self):
+        """Traffmonetizer: the default tag is amd64-only, the ARM tags exist under their own names."""
+        svc = self._svc(
+            ["linux/amd64", "linux/arm64", "linux/arm/v7"],
+            image="traffmonetizer/cli_v2",
+            image_by_arch={"arm64": "traffmonetizer/cli_v2:arm64v8", "arm": "traffmonetizer/cli_v2:arm32v7"},
+        )
+        answers = {
+            "traffmonetizer/cli_v2": _manifest("linux/amd64"),
+            "traffmonetizer/cli_v2:arm64v8": _manifest("linux/amd64"),  # mislabelled, but it exists
+            "traffmonetizer/cli_v2:arm32v7": _manifest("linux/amd64"),
+        }
+        with self._with_registry(answers):
+            [f] = liveness.check_platforms(svc)
+        assert f.status == liveness.OK
+
+    def test_an_override_tag_that_vanished_is_a_problem(self):
+        svc = self._svc(["linux/amd64", "linux/arm64"], image_by_arch={"arm64": "repo/img:arm64v8"})
+        with self._with_registry({"repo/img": _manifest("linux/amd64")}):
+            findings = liveness.check_platforms(svc)
+        kinds = {(f.status, f.target) for f in findings}
+        assert (liveness.DEAD, "repo/img:arm64v8") in kinds  # the override itself
+        assert any(f.status == liveness.DEAD and f.target == "repo/img" and "arm64" in f.detail for f in findings)
+
+    def test_a_rate_limited_registry_is_reported_but_not_a_problem(self):
+        with patch.object(subprocess, "run", return_value=MagicMock(returncode=1, stdout="", stderr="toomanyrequests")):
+            [f] = liveness.check_platforms(self._svc(["linux/amd64"]))
+        assert f.status == liveness.UNREACHABLE and not f.is_problem
+
+    def test_nothing_declared_or_no_image_checks_nothing(self):
+        assert liveness.check_platforms(self._svc([])) == []
+        assert liveness.check_platforms(self._svc(["linux/amd64"], image="")) == []
+
+    def test_check_service_runs_it_only_with_images_and_never_for_dead_entries(self):
+        client = MagicMock()
+        client.head.return_value = MagicMock(status_code=200, url="https://x.example/")
+        svc = self._svc(["linux/amd64", "linux/arm64"])
+        svc["website"] = "https://x.example/"
+        with self._with_registry({"repo/img": _manifest("linux/amd64")}):
+            with_images = liveness.check_service(client, svc, check_images=True)
+            without = liveness.check_service(client, svc, check_images=False)
+        assert any(f.kind == "platforms" and f.is_problem for f in with_images)
+        assert not any(f.kind == "platforms" for f in without)

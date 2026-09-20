@@ -46,7 +46,7 @@ In the CashPilot web UI, find **ProxyLite** in the service catalog and click **D
 ## Docker Configuration
 
 - **Image:** `proxylite/proxyservice`
-- **Platforms:** linux/amd64, linux/arm64
+- **Platforms:** linux/amd64
 
 ### Environment Variables
 
