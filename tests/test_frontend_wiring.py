@@ -549,6 +549,53 @@ class TestTheUiNeverInventsDataItCouldNotFetch:
         assert "onclick=" not in source
 
 
+class TestTheRowActionsPassAnArgumentNotASyntaxFragment:
+    """`data-a1` carried inline-onclick argument syntax: `'slug', 1`.
+
+    Another leftover from the inline-handler migration. delegate.js reads each
+    `data-aN` as ONE raw string, so the whole fragment — quote, slug, comma,
+    worker id — arrived as the `slug` parameter and `workerId` was undefined.
+    Every request became `/api/services/'bitping', 1/...`, which the worker
+    correctly 404s.
+
+    It hit Logs, Restart and Stop, on the main row and the per-node sub-rows, for
+    every deployed service. Nothing errored visibly except the logs modal, so a
+    dashboard whose Stop button silently did nothing looked perfectly healthy.
+    """
+
+    def test_no_data_a_attribute_opens_with_a_quoted_interpolation(self):
+        """The whole class, not just the one instance.
+
+        Matches `data-aN="'${` specifically. A bare `data-aN="'` also appears in
+        legitimate string concatenation, where that quote closes the JS string
+        and the value follows — `... data-a1="' + escapeHtml(x) + '"`. The
+        onclick leftover is the one that opens a template interpolation with a
+        quote still pending, which is never a value.
+        """
+        import re
+
+        for path in [*JS, *TEMPLATES]:
+            text = without_comments(path.read_text(encoding="utf-8"))
+            assert not re.search(r"""data-a[123]=["']'\$\{""", text), (
+                f"{path.name} builds a data-a* value as an onclick argument list; "
+                "delegate.js passes it through verbatim as one string"
+            )
+
+    def test_the_worker_id_travels_as_its_own_attribute(self):
+        app_js = without_comments((ROOT / "app" / "static" / "js" / "app.js").read_text(encoding="utf-8"))
+        assert 'data-a2="${inst.worker_id}"' in app_js
+
+    def test_an_absent_worker_emits_no_second_argument(self):
+        """`data-a2=""` would be passed as a real workerId.
+
+        delegate.js stops collecting at the first undefined `data-aN`, so the
+        single-worker case has to omit the attribute entirely rather than
+        render it empty — an empty string is not None to `workerId != null`.
+        """
+        app_js = without_comments((ROOT / "app" / "static" / "js" / "app.js").read_text(encoding="utf-8"))
+        assert 'data-a2=""' not in app_js
+
+
 class TestTheWizardSelectionIsVisible:
     """`data-a2="this"` passed the literal STRING "this".
 

@@ -1177,7 +1177,7 @@ const CP = (() => {
     } else {
       // Single instance — build container buttons targeting the right node
       const inst = details[0] || {};
-      const wParam = inst.worker_id != null ? `', ${inst.worker_id}` : `'`;
+      const wParam = inst.worker_id != null ? ` data-a2="${inst.worker_id}"` : '';
       const noDocker = !inst.has_docker || inst.is_android;
       // Started outside CashPilot — matched by IMAGE, not by a CashPilot label,
       // so every container command targets a name that does not exist and
@@ -1192,13 +1192,13 @@ const CP = (() => {
           ${claimBtn}
           ${settingsBtn}
           ${_canWrite ? `
-          <button class="btn btn-icon" data-action="restartService" data-a1="'${escapeHtml(svc.slug)}${wParam}" title="Restart"${disabledAttr}>
+          <button class="btn btn-icon" data-action="restartService" data-a1="${escapeHtml(svc.slug)}"${wParam} title="Restart"${disabledAttr}>
             ${ICON_RESTART}
           </button>
-          <button class="btn btn-icon" data-action="stopService" data-a1="'${escapeHtml(svc.slug)}${wParam}" title="Stop"${disabledAttr}>
+          <button class="btn btn-icon" data-action="stopService" data-a1="${escapeHtml(svc.slug)}"${wParam} title="Stop"${disabledAttr}>
             ${ICON_STOP}
           </button>
-          <button class="btn btn-icon" data-action="viewLogs" data-a1="'${escapeHtml(svc.slug)}${wParam}" title="Logs"${disabledAttr}>
+          <button class="btn btn-icon" data-action="viewLogs" data-a1="${escapeHtml(svc.slug)}"${wParam} title="Logs"${disabledAttr}>
             ${ICON_LOGS}
           </button>` : ''}
         </div>`;
@@ -1226,7 +1226,7 @@ const CP = (() => {
         const iStatus = (inst.status || 'unknown').toLowerCase();
         const iStatusLabel = iStatus.charAt(0).toUpperCase() + iStatus.slice(1);
         const nodeLabel = inst.node === 'local' ? 'Local' : escapeHtml(inst.node);
-        const wParam = inst.worker_id != null ? `', ${inst.worker_id}` : `'`;
+        const wParam = inst.worker_id != null ? ` data-a2="${inst.worker_id}"` : '';
         const iNoDocker = !inst.has_docker || inst.is_android;
         // The mixed case this whole change is built around. The ROW keeps its
         // buttons because a managed instance can still be controlled — but the
@@ -1267,13 +1267,13 @@ const CP = (() => {
           <td style="text-align:center; white-space:nowrap;">
             <div class="action-btns">
               ${_canWrite ? `
-              <button class="btn btn-icon" data-action="restartService" data-a1="'${escapeHtml(svc.slug)}${wParam}" title="Restart on ${nodeLabel}"${disabledAttr}>
+              <button class="btn btn-icon" data-action="restartService" data-a1="${escapeHtml(svc.slug)}"${wParam} title="Restart on ${nodeLabel}"${disabledAttr}>
                 ${ICON_RESTART}
               </button>
-              <button class="btn btn-icon" data-action="stopService" data-a1="'${escapeHtml(svc.slug)}${wParam}" title="Stop on ${nodeLabel}"${disabledAttr}>
+              <button class="btn btn-icon" data-action="stopService" data-a1="${escapeHtml(svc.slug)}"${wParam} title="Stop on ${nodeLabel}"${disabledAttr}>
                 ${ICON_STOP}
               </button>
-              <button class="btn btn-icon" data-action="viewLogs" data-a1="'${escapeHtml(svc.slug)}${wParam}" title="Logs on ${nodeLabel}"${disabledAttr}>
+              <button class="btn btn-icon" data-action="viewLogs" data-a1="${escapeHtml(svc.slug)}"${wParam} title="Logs on ${nodeLabel}"${disabledAttr}>
                 ${ICON_LOGS}
               </button>` : ''}
             </div>
