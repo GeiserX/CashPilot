@@ -214,11 +214,10 @@ def assess(
     docker_conf = service.get("docker") or {}
     machine = info.get("arch")
     fam = arch.family(machine)
-    supported = arch.supported_families(docker_conf)
     verdict_for_cpu = arch.supports(docker_conf, machine) if docker_conf.get("image") else None
     arch_checked = verdict_for_cpu is not None
     if verdict_for_cpu is False:
-        have = ", ".join(arch.label(f) for f in sorted(supported))
+        have = arch.describe_builds(docker_conf)
         findings.append(
             {
                 "verdict": EARNS_NOTHING,

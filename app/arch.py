@@ -103,6 +103,19 @@ def label(fam: str | None) -> str:
     return _LABEL.get(fam or "", str(fam or "unknown"))
 
 
+def describe_builds(docker_conf: dict[str, Any]) -> str:
+    """The builds an entry has, variants included: ``x86-64, 32-bit ARM v7``.
+
+    For the preflight message. Folding to the family here would let a Pi Zero
+    read "no build for 32-bit ARM, only 32-bit ARM": the variant is the point.
+    """
+    builds = {n for n in (normalise_platform(p) for p in docker_conf.get("platforms") or []) if n}
+    by_arch = docker_conf.get("image_by_arch")
+    builds.update(k for k in (by_arch or {}) if isinstance(by_arch, dict) and k in FAMILIES)
+    names = sorted({label(b) if isinstance(b, str) else f"{label(b[0])} v{b[1]}" for b in builds})
+    return ", ".join(names)
+
+
 def supported_families(docker_conf: dict[str, Any]) -> set[str]:
     """The families a catalog entry has a build for: its platforms plus its overrides.
 

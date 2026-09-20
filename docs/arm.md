@@ -1,6 +1,6 @@
 # Running CashPilot on ARM
 
-CashPilot runs on 64-bit ARM and 32-bit ARM as well as x86-64. A Raspberry Pi 4 or 5, an Apple Silicon Mac, or an ARM cloud box (AWS Graviton, Oracle Ampere) can host the UI, a worker, or both.
+CashPilot's UI and worker run on 64-bit ARM as well as x86-64. A Raspberry Pi 4 or 5 on the 64-bit OS, an Apple Silicon Mac, or an ARM cloud box (AWS Graviton, Oracle Ampere) can host the UI, a worker, or both. A 32-bit ARM box cannot run the UI or a worker, but a worker elsewhere can still deploy to it the service containers that publish a 32-bit build.
 
 ## What runs where
 
