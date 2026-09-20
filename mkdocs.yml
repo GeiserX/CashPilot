@@ -189,6 +189,7 @@ nav:
   - Configuration:
     - Configuration: configuration.md
     - Fleet Management: fleet.md
+    - Running on ARM: arm.md
   - Security:
     - Security Defaults: security-defaults.md
     - Network Isolation: isolation.md

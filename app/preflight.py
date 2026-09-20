@@ -21,7 +21,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from app import catalog, egress
+from app import arch, catalog, egress
 
 # Verdicts, worst first. The caller shows the worst one that applies.
 EARNS_NOTHING = "will_earn_nothing"
@@ -202,6 +202,37 @@ def assess(
         findings.append({"verdict": CHECK_YOURSELF, "message": str(note)})
         verdicts.append(CHECK_YOURSELF)
 
+    # Does the provider publish a build for this CPU at all? The catalog's
+    # platforms field used to be a badge nobody read; a Raspberry Pi user could
+    # deploy an amd64-only image and get a container that died with "exec
+    # format error" and a red row that explained nothing. The worker reports
+    # platform.machine() in its heartbeat, so this is checkable, and a wrong
+    # answer here is not "earns less" but "never starts", so it gets the top
+    # verdict. Emulation (Docker Desktop with Rosetta, binfmt/qemu) makes such
+    # an image run anyway; the worker cannot see the host's binfmt from inside
+    # its container, so that is stated as unchecked rather than guessed.
+    docker_conf = service.get("docker") or {}
+    machine = info.get("arch")
+    fam = arch.family(machine)
+    verdict_for_cpu = arch.supports(docker_conf, machine) if docker_conf.get("image") else None
+    arch_checked = verdict_for_cpu is not None
+    if verdict_for_cpu is False:
+        have = arch.describe_builds(docker_conf)
+        findings.append(
+            {
+                "verdict": EARNS_NOTHING,
+                "message": (
+                    f"This machine is {arch.label(fam)} ({machine}) and "
+                    f"{service.get('name', slug)} publishes no build for it, only {have}. "
+                    "The container will not start: Docker pulls the wrong build and it dies "
+                    "with 'exec format error'. The one exception is a Docker that runs foreign "
+                    "images under emulation (Docker Desktop with Rosetta, or binfmt/qemu), "
+                    "which CashPilot cannot check."
+                ),
+            }
+        )
+        verdicts.append(EARNS_NOTHING)
+
     # The cross-machine half: what the REST of the fleet implies about this.
     for finding in _fleet_findings(
         service, worker=worker, fleet_workers=fleet_workers, also_deploying_to=also_deploying_to
@@ -220,6 +251,10 @@ def assess(
     # divergence this function was just fixed to remove, mirrored.
     if egress.normalise_network_type(info.get("egress_network_type")) == egress.UNKNOWN:
         not_checked.insert(0, "egress IP type")
+    if docker_conf.get("image") and not arch_checked:
+        # An old worker sends no arch, an unusual CPU folds to nothing, or the
+        # entry declares no platforms. Say so instead of implying a pass.
+        not_checked.append("whether the image has a build for this CPU")
     return {
         "slug": slug,
         "verdict": verdict,

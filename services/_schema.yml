@@ -35,7 +35,10 @@
 #     falls back to `image`.
 #     arm64: traffmonetizer/cli_v2:arm64v8
 #     arm: traffmonetizer/cli_v2:arm32v7
-#   platforms: [linux/amd64, linux/arm64]
+#   platforms: [linux/amd64, linux/arm64]   # what the registry PUBLISHES for this image, nothing
+#     more: the preflight warns an ARM worker off an entry that lacks its family, and the
+#     weekly liveness check compares this list with the manifest. Families: linux/amd64,
+#     linux/arm64 (Pi 4/5 64-bit, Apple Silicon), linux/arm/v7 or v6 or v5 (32-bit Pi).
 #   resources: (optional, durable Docker resource limits applied at container create)
 #     mem_limit: "768m"        # hard memory ceiling (str: <number><b|k|m|g>, e.g. "512m", "2g")
 #     mem_reservation: "512m"  # (optional) soft memory reservation, same format as mem_limit
