@@ -266,8 +266,9 @@ class TestThirtyTwoBitArmIsDirectional:
     def test_the_preflight_warns_a_pi_zero_off_a_v7_only_image(self):
         svc = {"slug": "x", "name": "X", "docker": {"image": "x/y", "platforms": ["linux/amd64", "linux/arm/v7"]}}
         zero = preflight.assess(svc, system_info={"arch": "armv6l"})
-        assert any(
-            "publishes no build" in f["message"] and "32-bit ARM (armv6l)" in f["message"] for f in zero["findings"]
-        )
+        [msg] = [f["message"] for f in zero["findings"] if "publishes no build" in f["message"]]
+        assert "32-bit ARM (armv6l)" in msg
+        # The builds it does have keep their variant, or the sentence contradicts itself.
+        assert "only 32-bit ARM v7, x86-64" in msg
         pi3 = preflight.assess(svc, system_info={"arch": "armv7l"})
         assert not any("publishes no build" in f["message"] for f in pi3["findings"])
