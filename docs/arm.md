@@ -22,7 +22,7 @@ Two cases need help, and both are handled for you.
 
 **Images whose ARM builds Docker cannot select.** [Traffmonetizer](guides/traffmonetizer.md) publishes its ARM builds as separate tags (`arm64v8`, `arm32v7`) and labels all of them `linux/amd64`. The catalog names the tag per architecture (`docker.image_by_arch`) and the deploy picks it from the architecture the worker reports in its heartbeat. The worker itself needs no change.
 
-**Providers with no ARM build at all.** Before a deploy, the preflight compares the worker's CPU with the entry's `platforms`. If the provider publishes nothing for that CPU, the deploy dialog says so and explains that the container would die with `exec format error`. You can still deploy. That is the right call if your Docker runs foreign images under emulation (Docker Desktop with Rosetta, or binfmt with qemu). CashPilot cannot see the host's emulation setup from inside the worker container, so it does not claim to.
+**Providers with no build for your CPU.** Before a deploy, the preflight compares the worker's CPU with the entry's `platforms`, including the 32-bit ARM variant: a v7 board runs v5 and v6 builds, but a Pi Zero (v6) cannot run a v7 build, and the preflight knows the difference. If the provider publishes nothing for that CPU, the deploy dialog says so and explains that the container would die with `exec format error`. You can still deploy. That is the right call if your Docker runs foreign images under emulation (Docker Desktop with Rosetta, or binfmt with qemu). CashPilot cannot see the host's emulation setup from inside the worker container, so it does not claim to.
 
 ## Exporting a compose file for an ARM box
 

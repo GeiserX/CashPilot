@@ -218,3 +218,56 @@ class TestTheComposeExportCanBeToldTheTarget:
         resp = self._get(client, "/api/compose/traffmonetizer?arch=sparc")
         assert resp.status_code == 400
         assert "amd64" in resp.text and "arm64" in resp.text
+
+
+class TestThirtyTwoBitArmIsDirectional:
+    """A v7 board runs v5 and v6 builds; a Pi Zero (v6) cannot run a v7 build."""
+
+    @pytest.mark.parametrize(
+        ("machine", "target"),
+        [
+            ("armv6l", ("arm", 6)),
+            ("armv7l", ("arm", 7)),
+            ("armhf", ("arm", 7)),
+            ("armeabi-v7a", ("arm", 7)),
+            ("aarch64", "arm64"),
+            ("x86_64", "amd64"),
+            ("riscv64", None),
+        ],
+    )
+    def test_a_machine_folds_to_a_target(self, machine, target):
+        assert arch.machine_target(machine) == target
+
+    @pytest.mark.parametrize(
+        ("platforms", "machine", "expected"),
+        [
+            (["linux/amd64", "linux/arm/v5"], "armv7l", True),
+            (["linux/amd64", "linux/arm/v7"], "armv6l", False),  # the Pi Zero case
+            (["linux/amd64", "linux/arm/v7"], "armv7l", True),
+            (["linux/amd64", "linux/arm"], "armv7l", True),  # bare linux/arm is v7
+            (["linux/amd64", "linux/arm64"], "armv7l", False),
+            (["linux/amd64"], "aarch64", False),
+            (["linux/amd64"], "x86_64", True),
+        ],
+    )
+    def test_supports_follows_the_direction(self, platforms, machine, expected):
+        assert arch.supports({"image": "x/y", "platforms": platforms}, machine) is expected
+
+    @pytest.mark.parametrize(
+        ("platforms", "machine"), [([], "aarch64"), (["linux/amd64"], ""), (["linux/amd64"], "riscv64")]
+    )
+    def test_unknowable_is_none_not_false(self, platforms, machine):
+        assert arch.supports({"image": "x/y", "platforms": platforms}, machine) is None
+
+    def test_an_override_covers_its_whole_family(self):
+        docker = {"image": "x/y", "platforms": ["linux/amd64"], "image_by_arch": {"arm": "x/y:arm32v7"}}
+        assert arch.supports(docker, "armv6l") is True
+
+    def test_the_preflight_warns_a_pi_zero_off_a_v7_only_image(self):
+        svc = {"slug": "x", "name": "X", "docker": {"image": "x/y", "platforms": ["linux/amd64", "linux/arm/v7"]}}
+        zero = preflight.assess(svc, system_info={"arch": "armv6l"})
+        assert any(
+            "publishes no build" in f["message"] and "32-bit ARM (armv6l)" in f["message"] for f in zero["findings"]
+        )
+        pi3 = preflight.assess(svc, system_info={"arch": "armv7l"})
+        assert not any("publishes no build" in f["message"] for f in pi3["findings"])

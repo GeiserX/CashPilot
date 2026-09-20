@@ -19,6 +19,7 @@ publishes it, and the honest answer is "cannot say" rather than a guess.
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 FAMILIES = frozenset({"amd64", "arm64", "arm"})
@@ -48,12 +49,53 @@ def family(machine: Any) -> str | None:
     return MACHINE_FAMILY.get(str(machine).strip().lower())
 
 
-def platform_family(platform: Any) -> str | None:
-    """``linux/arm64/v8`` -> ``arm64``; ``linux/arm/v7`` -> ``arm``; ``linux/386`` -> None."""
+#: Docker's default variant for a bare ``linux/arm``, and what ``armhf`` means.
+_ARM_DEFAULT_VARIANT = 7
+
+
+def normalise_platform(platform: Any) -> str | tuple[str, int] | None:
+    """``linux/amd64`` -> ``amd64``; ``linux/arm64/v8`` -> ``arm64``; ``linux/arm/v6`` -> ``("arm", 6)``.
+
+    32-bit ARM keeps its variant because compatibility runs one way: a v7 board
+    runs v5 and v6 builds, but a Pi Zero (v6) cannot run a v7 build. arm64 has
+    one variant in practice, so it folds.
+    """
     parts = str(platform or "").strip().lower().split("/")
     if len(parts) < 2 or parts[0] != "linux":
         return None
-    return parts[1] if parts[1] in FAMILIES else None
+    kind, variant = parts[1], (parts[2] if len(parts) > 2 else "")
+    if kind in ("amd64", "arm64"):
+        return kind
+    if kind == "arm":
+        digits = variant.lstrip("v")
+        return ("arm", int(digits) if digits.isdigit() else _ARM_DEFAULT_VARIANT)
+    return None
+
+
+def platform_family(platform: Any) -> str | None:
+    """``linux/arm64/v8`` -> ``arm64``; ``linux/arm/v7`` -> ``arm``; ``linux/386`` -> None."""
+    n = normalise_platform(platform)
+    return n if isinstance(n, str) else (n[0] if n else None)
+
+
+def machine_target(machine: Any) -> str | tuple[str, int] | None:
+    """What a machine can run, in the same shape ``normalise_platform`` gives builds.
+
+    ``armv6l`` -> ``("arm", 6)``; ``armv7l`` -> ``("arm", 7)``; ``armhf``,
+    ``arm`` and Android's ``armeabi-v7a`` -> ``("arm", 7)``; ``aarch64`` -> ``arm64``.
+    """
+    fam = family(machine)
+    if fam != "arm":
+        return fam
+    m = re.search(r"armv(\d)", str(machine).lower())
+    return ("arm", int(m.group(1)) if m else _ARM_DEFAULT_VARIANT)
+
+
+def runs_on(build: str | tuple[str, int], target: str | tuple[str, int]) -> bool:
+    """Does a build of this platform run on that machine?"""
+    if isinstance(build, str) or isinstance(target, str):
+        return build == target
+    return build[0] == target[0] and build[1] <= target[1]
 
 
 def label(fam: str | None) -> str:
@@ -72,6 +114,27 @@ def supported_families(docker_conf: dict[str, Any]) -> set[str]:
     if isinstance(by_arch, dict):
         out.update(k for k in by_arch if k in FAMILIES)
     return out
+
+
+def supports(docker_conf: dict[str, Any], machine: Any) -> bool | None:
+    """Does this catalog entry have a build that runs on this machine?
+
+    None when it cannot be known: no reported architecture, an architecture
+    nothing folds, or an entry that declares no platforms. Callers must read
+    None as "not checked", never as a pass. An ``image_by_arch`` override counts
+    for its whole family: the tag is a separate single-arch image whose label
+    lies (that is why it exists), so its variant cannot be read.
+    """
+    target = machine_target(machine)
+    declared = {n for n in (normalise_platform(p) for p in docker_conf.get("platforms") or []) if n}
+    by_arch = docker_conf.get("image_by_arch")
+    overrides = {k for k in by_arch if k in FAMILIES} if isinstance(by_arch, dict) else set()
+    if target is None or not (declared or overrides):
+        return None
+    fam = target if isinstance(target, str) else target[0]
+    if fam in overrides:
+        return True
+    return any(runs_on(build, target) for build in declared)
 
 
 def image_for(docker_conf: dict[str, Any], machine: Any) -> str | None:

@@ -215,25 +215,24 @@ def assess(
     machine = info.get("arch")
     fam = arch.family(machine)
     supported = arch.supported_families(docker_conf)
-    arch_checked = False
-    if docker_conf.get("image") and fam and supported:
-        arch_checked = True
-        if fam not in supported:
-            have = ", ".join(arch.label(f) for f in sorted(supported))
-            findings.append(
-                {
-                    "verdict": EARNS_NOTHING,
-                    "message": (
-                        f"This machine is {arch.label(fam)} ({machine}) and "
-                        f"{service.get('name', slug)} publishes no build for it, only {have}. "
-                        "The container will not start: Docker pulls the wrong build and it dies "
-                        "with 'exec format error'. The one exception is a Docker that runs foreign "
-                        "images under emulation (Docker Desktop with Rosetta, or binfmt/qemu), "
-                        "which CashPilot cannot check."
-                    ),
-                }
-            )
-            verdicts.append(EARNS_NOTHING)
+    verdict_for_cpu = arch.supports(docker_conf, machine) if docker_conf.get("image") else None
+    arch_checked = verdict_for_cpu is not None
+    if verdict_for_cpu is False:
+        have = ", ".join(arch.label(f) for f in sorted(supported))
+        findings.append(
+            {
+                "verdict": EARNS_NOTHING,
+                "message": (
+                    f"This machine is {arch.label(fam)} ({machine}) and "
+                    f"{service.get('name', slug)} publishes no build for it, only {have}. "
+                    "The container will not start: Docker pulls the wrong build and it dies "
+                    "with 'exec format error'. The one exception is a Docker that runs foreign "
+                    "images under emulation (Docker Desktop with Rosetta, or binfmt/qemu), "
+                    "which CashPilot cannot check."
+                ),
+            }
+        )
+        verdicts.append(EARNS_NOTHING)
 
     # The cross-machine half: what the REST of the fleet implies about this.
     for finding in _fleet_findings(
