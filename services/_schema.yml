@@ -29,6 +29,12 @@
 
 # docker:
 #   image: Docker Hub image
+#   image_by_arch: (optional) image per architecture family, for images whose ARM builds
+#     Docker cannot select itself (separate tags, all labelled linux/amd64). Keys are
+#     amd64, arm64 or arm; the deploy picks by the worker's reported architecture and
+#     falls back to `image`.
+#     arm64: traffmonetizer/cli_v2:arm64v8
+#     arm: traffmonetizer/cli_v2:arm32v7
 #   platforms: [linux/amd64, linux/arm64]
 #   resources: (optional, durable Docker resource limits applied at container create)
 #     mem_limit: "768m"        # hard memory ceiling (str: <number><b|k|m|g>, e.g. "512m", "2g")

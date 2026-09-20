@@ -1518,6 +1518,38 @@ def _split_image(ref: str) -> tuple[str, str, str]:
     return repo, tag, digest
 
 
+#: What ``platform.machine()`` reports, folded to the family a catalog entry keys on.
+_ARCH_FAMILY = {
+    "x86_64": "amd64",
+    "amd64": "amd64",
+    "aarch64": "arm64",
+    "arm64": "arm64",
+    "armv7l": "arm",
+    "armv6l": "arm",
+    "armhf": "arm",
+}
+
+
+def _image_for_arch(docker_conf: dict[str, Any], machine: str | None) -> str | None:
+    """The image a worker of this architecture should run.
+
+    Docker picks the right build from a multi-arch manifest by itself, so most
+    entries need only ``image``. ``image_by_arch`` exists for the images whose
+    ARM builds Docker cannot select: traffmonetizer/cli_v2 publishes separate
+    arm64v8 and arm32v7 tags and labels every one of them linux/amd64, so a
+    worker on a Raspberry Pi pulling the default tag gets an x86_64 binary that
+    cannot start. The worker reports ``platform.machine()`` in its heartbeat;
+    an unknown or missing architecture, or a family the entry does not name,
+    falls back to ``image``.
+    """
+    image = docker_conf.get("image")
+    by_arch = docker_conf.get("image_by_arch")
+    if not isinstance(by_arch, dict) or not machine:
+        return image
+    override = by_arch.get(_ARCH_FAMILY.get(str(machine).strip().lower(), ""))
+    return override.strip() if isinstance(override, str) and override.strip() else image
+
+
 def _image_outdated(deployed: str, catalog_image: str) -> bool:
     """True when a running container's image no longer matches the catalog entry.
 
@@ -2423,11 +2455,22 @@ async def _proxy_worker_deploy(worker_id: int, slug: str, spec: dict[str, Any]) 
     cover that stop. With a flat 60 s the dashboard reported a failed deploy
     while the worker was still shutting the old node down cleanly.
     """
-    raw = ((catalog.get_service(slug) or {}).get("docker") or {}).get("stop_timeout")
+    docker_conf = (catalog.get_service(slug) or {}).get("docker") or {}
+    raw = docker_conf.get("stop_timeout")
     try:
         stop_timeout = max(0, int(raw)) if raw is not None else 30
     except (TypeError, ValueError):
         stop_timeout = 30
+    # Which build THIS worker runs is decided here, at the edge, from the
+    # architecture in its heartbeat. The deployment record stays on the
+    # catalog's default image: it is one row for the whole fleet, and a
+    # Raspberry Pi's tag must not be replayed onto an x86 box.
+    if isinstance(docker_conf.get("image_by_arch"), dict):
+        worker = await database.get_worker(worker_id) or {}
+        arch = _safe_json(worker.get("system_info", "{}"), {}).get("arch")
+        image = _image_for_arch(docker_conf, arch)
+        if image:
+            spec = {**spec, "image": image}
     return await _proxy_to_worker(
         worker_id, "POST", f"/api/containers/{slug}/deploy", json=spec, timeout=60 + stop_timeout
     )

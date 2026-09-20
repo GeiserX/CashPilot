@@ -28,6 +28,10 @@ _REQUIRED_FIELDS = {"name", "slug", "category", "status", "description", "docker
 
 
 _CATEGORIES = {"bandwidth", "depin", "storage", "compute"}
+#: The keys ``docker.image_by_arch`` may use. The deploy path folds whatever a
+#: worker reports (x86_64, aarch64, armv7l, ...) onto these; a key outside the
+#: set could never be chosen, so it is a mistake and the entry is rejected.
+IMAGE_ARCH_FAMILIES = frozenset({"amd64", "arm64", "arm"})
 _VALID_STATUSES = {"active", "beta", "broken", "dead", "dropped"}
 
 
@@ -64,6 +68,15 @@ def _validate(data: dict[str, Any], path: Path) -> list[str]:
         # they are listed but not Docker-deployable. Only reject a non-string image.
         if image is not None and not isinstance(image, str):
             errors.append(f"{path.name}: docker.image must be a string")
+        by_arch = docker.get("image_by_arch")
+        if by_arch is not None and (
+            not isinstance(by_arch, dict)
+            or not all(k in IMAGE_ARCH_FAMILIES and isinstance(v, str) for k, v in by_arch.items())
+        ):
+            errors.append(
+                f"{path.name}: docker.image_by_arch must map an architecture family "
+                f"({', '.join(sorted(IMAGE_ARCH_FAMILIES))}) to an image string"
+            )
         env = docker.get("env")
         if env is not None and not isinstance(env, list):
             errors.append(f"{path.name}: docker.env must be a list")
