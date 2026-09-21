@@ -620,3 +620,69 @@ class TestCheckPlatforms:
             without = liveness.check_service(client, svc, check_images=False)
         assert any(f.kind == "platforms" and f.is_problem for f in with_images)
         assert not any(f.kind == "platforms" for f in without)
+
+
+# ---------------------------------------------------------------------------
+# A dead entry whose site stays up: a human can record the hand check
+# ---------------------------------------------------------------------------
+
+
+class TestAnAcknowledgedDeadSiteIsNotReflaggedForAYear:
+    """Presearch, SpeedShare and Wipter answered on their own domains every week
+    for months after being marked dead, and the report asked every week. The
+    hand check is now recorded in the entry and the report stops asking, for a
+    year, after which it asks again.
+    """
+
+    def _dead(self, **extra):
+        return {"slug": "gone", "status": "dead", "website": "https://gone.example/", **extra}
+
+    def _client_alive(self):
+        client = MagicMock()
+        client.get.return_value = MagicMock(status_code=200, url="https://gone.example/")
+        return client
+
+    def test_the_field_counts_for_a_year(self):
+        from datetime import date
+
+        svc = self._dead(resurrection_checked="2026-09-21")
+        assert liveness.acknowledged_dead(svc, today=date(2026, 9, 21)) == date(2026, 9, 21)
+        assert liveness.acknowledged_dead(svc, today=date(2027, 9, 21)) == date(2026, 9, 21)  # day 365 still counts
+        assert liveness.acknowledged_dead(svc, today=date(2027, 9, 22)) is None  # day 366 asks again
+        assert liveness.acknowledged_dead(svc, today=date(2026, 9, 20)) is None  # a future date is a typo, not a check
+
+    @pytest.mark.parametrize("raw", [None, "", "yesterday", "21/09/2026", 20260921])
+    def test_a_missing_or_malformed_date_does_not_silence_the_check(self, raw):
+        svc = self._dead()
+        if raw is not None:
+            svc["resurrection_checked"] = raw
+        assert liveness.acknowledged_dead(svc) is None
+
+    def test_a_fresh_acknowledgement_moves_the_entry_to_the_skipped_section(self):
+        from datetime import date
+
+        svc = self._dead(resurrection_checked=date.today().isoformat())
+        [f] = liveness.check_resurrection(self._client_alive(), svc)
+        assert f.status == liveness.SKIPPED and not f.is_problem
+        assert "hand check" in f.detail and "resurrection_checked" in f.detail
+
+    def test_without_it_the_site_answering_is_still_a_resurrection(self):
+        [f] = liveness.check_resurrection(self._client_alive(), self._dead())
+        assert f.status == liveness.RESURRECTED and f.is_problem
+        assert "resurrection_checked" in f.detail  # the report tells the reader how to acknowledge
+
+    def test_an_expired_acknowledgement_asks_again(self):
+        [f] = liveness.check_resurrection(self._client_alive(), self._dead(resurrection_checked="2020-01-01"))
+        assert f.status == liveness.RESURRECTED
+
+    def test_the_real_catalog_uses_the_field_correctly(self):
+        """Only dead entries carry it, and every value is an ISO date the script can read."""
+        from datetime import date
+
+        services, errors = liveness.load_services(Path(__file__).resolve().parents[1] / "services")
+        assert not errors
+        carriers = [s for s in services if s.get(liveness.ACK_FIELD)]
+        assert carriers, "the three entries this was built for no longer carry the field"
+        for svc in carriers:
+            assert svc.get("status") == "dead", f"{svc['slug']} is {svc.get('status')} but carries {liveness.ACK_FIELD}"
+            date.fromisoformat(str(svc[liveness.ACK_FIELD]))

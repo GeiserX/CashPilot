@@ -6,6 +6,9 @@
 # slug: URL/container-safe identifier (lowercase, hyphens)
 # category: bandwidth | depin | storage | compute
 # status: active | beta | broken | dead | dropped
+# resurrection_checked: "YYYY-MM-DD"   # (dead entries only) the site still answers, but a human
+#   confirmed on this date that the programme is gone. The weekly liveness check stops
+#   reporting a possible resurrection for a year from that date, then asks again.
 #   - dropped: evaluated then removed; hidden from catalog (alongside broken/dead)
 # website: Main URL
 # description: One paragraph description

@@ -20,7 +20,9 @@ For each ``services/**/*.yml`` it checks:
   blind to resurrections -- Bytebenefit ran for ~5 months while the catalog
   said dead. A parked domain answering from another registrable domain is
   recognised and never claimed as a resurrection, and status is never flipped
-  automatically. (dropped services stay unprobed: they were rejected on
+  automatically. A dead entry whose site stays up can record the hand check as
+  ``resurrection_checked: YYYY-MM-DD``; the report stops asking for a year.
+  (dropped services stay unprobed: they were rejected on
   judgment, so their sites being alive is expected, not news.)
 
 Exit code is 0 unless the script itself could not run. A dead link is a *finding
@@ -33,9 +35,11 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import subprocess
 import sys
 from dataclasses import dataclass
+from datetime import date
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -357,6 +361,38 @@ def registrable_domain(host: str) -> str:
     return ".".join(labels[-2:])
 
 
+#: A dead entry whose site still answers can carry the date a human last
+#: confirmed the programme is gone. The weekly report stops asking for that
+#: long; after it, it asks again, because a site that stays up for a year
+#: deserves a second look (Bytebenefit ran ~5 months while the catalog said dead).
+ACK_FIELD = "resurrection_checked"
+ACK_TTL_DAYS = 365
+
+
+def acknowledged_dead(svc: dict, today: date | None = None) -> date | None:
+    """The date a human last confirmed "site up, programme gone", if it still counts.
+
+    None when the field is absent, not an ISO date, or older than ACK_TTL_DAYS.
+    A malformed value is treated as absent rather than trusted: a typo must not
+    silence the one check that catches a resurrection.
+    """
+    raw = str(svc.get(ACK_FIELD) or "")
+    # The dashed shape only: date.fromisoformat also accepts 20260921, which
+    # is how a YAML author writes an integer, not a date they checked.
+    if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", raw):
+        return None
+    try:
+        checked = date.fromisoformat(raw)
+    except ValueError:
+        return None
+    # A future date would silence the check until it arrives; a typo in the
+    # year must not buy a decade of quiet.
+    age_days = ((today or date.today()) - checked).days
+    if not 0 <= age_days <= ACK_TTL_DAYS:
+        return None
+    return checked
+
+
 def check_resurrection(client: httpx.Client, svc: dict) -> list[Finding]:
     """Probe a dead/dropped service's website for signs of life.
 
@@ -398,6 +434,21 @@ def check_resurrection(client: httpx.Client, svc: dict) -> list[Finding]:
             )
         ]
 
+    checked = acknowledged_dead(svc)
+    if checked is not None:
+        # A human already looked: the site is up, the programme is not. Say so
+        # in the skipped section, with the date, instead of asking every week.
+        return [
+            Finding(
+                slug,
+                "website",
+                website,
+                SKIPPED,
+                f"site answers HTTP {resp.status_code} on its own domain, but a hand check on {checked.isoformat()} "
+                f"confirmed the programme is gone ({ACK_FIELD}); asked again after {ACK_TTL_DAYS} days",
+            )
+        ]
+
     return [
         Finding(
             slug,
@@ -405,7 +456,8 @@ def check_resurrection(client: httpx.Client, svc: dict) -> list[Finding]:
             website,
             RESURRECTED,
             f"catalog says {svc['status']}, but the site answers HTTP {resp.status_code} on its own domain "
-            f"({final}) -- verify by hand and revive the entry (status is never flipped automatically)",
+            f"({final}) -- verify by hand and revive the entry, or record the hand check as "
+            f"{ACK_FIELD}: YYYY-MM-DD if it is still dead (status is never flipped automatically)",
         )
     ]
 
