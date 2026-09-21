@@ -2,6 +2,8 @@ name: SpeedShare
 slug: speedshare
 category: bandwidth
 status: dead
+# Marketing page still up; programme confirmed dead (Discord, March 2026).
+resurrection_checked: "2026-09-21"
 website: https://speedshare.app
 description: >
   SpeedShare lets you earn by sharing your unused internet bandwidth. Residential

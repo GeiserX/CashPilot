@@ -2,6 +2,8 @@ name: Wipter
 slug: wipter
 category: depin
 status: dead
+# Marketing page still up; programme confirmed dead March 2026.
+resurrection_checked: "2026-09-21"
 website: https://wipter.com
 description: >
   Wipter is a bandwidth sharing platform available on Windows, Mac, Linux, and

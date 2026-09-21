@@ -2,6 +2,8 @@ name: Presearch
 slug: presearch
 category: depin
 status: dead
+# Announced permanent shutdown July 2026; the site is a Cloudflare page.
+resurrection_checked: "2026-09-21"
 website: https://presearch.com
 description: >
   Presearch was a decentralized search engine where node operators ran Docker
