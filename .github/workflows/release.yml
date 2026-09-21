@@ -404,14 +404,21 @@ jobs:
             exit 0
           fi
 
-          if ! gh pr create --base "${GITHUB_REF_NAME}" --head "$BRANCH" \
+          PR_BODY="Automated by the $TAG release. The example compose files pin the major.minor series, and tests/test_compose_image_pins.py compares that pin against the newest released series -- so without this every open branch goes red until someone bumps them by hand."
+          if ! PR_URL=$(gh pr create --base "${GITHUB_REF_NAME}" --head "$BRANCH" \
                  --title "chore(compose): pin the examples to $SERIES" \
-                 --body "Automated by the $TAG release. The example compose files pin the major.minor series, and tests/test_compose_image_pins.py compares that pin against the newest released series -- so without this every open branch goes red until someone bumps them by hand."; then
+                 --body "$PR_BODY"); then
             echo "::warning::could not open the pin-bump PR for $SERIES; merge $BRANCH by hand"
             exit 0
           fi
 
-          if ! gh pr merge "$BRANCH" --squash --delete-branch --auto; then
+          # The squash message is spelled out. Left to GitHub, the default
+          # message appends a co-author trailer naming the Actions bot to every
+          # pin commit on main (#347, #371), and no commit here carries a trailer.
+          PR_NUMBER="${PR_URL##*/}"
+          if ! gh pr merge "$BRANCH" --squash --delete-branch --auto \
+                 --subject "chore(compose): pin the examples to $SERIES (#$PR_NUMBER)" \
+                 --body "$PR_BODY"; then
             echo "::warning::opened the pin-bump PR for $SERIES but could not merge it; merge it by hand"
             exit 0
           fi
