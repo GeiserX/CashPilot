@@ -649,6 +649,7 @@ class TestAnAcknowledgedDeadSiteIsNotReflaggedForAYear:
         assert liveness.acknowledged_dead(svc, today=date(2026, 9, 21)) == date(2026, 9, 21)
         assert liveness.acknowledged_dead(svc, today=date(2027, 9, 21)) == date(2026, 9, 21)  # day 365 still counts
         assert liveness.acknowledged_dead(svc, today=date(2027, 9, 22)) is None  # day 366 asks again
+        assert liveness.acknowledged_dead(svc, today=date(2026, 9, 20)) is None  # a future date is a typo, not a check
 
     @pytest.mark.parametrize("raw", [None, "", "yesterday", "21/09/2026", 20260921])
     def test_a_missing_or_malformed_date_does_not_silence_the_check(self, raw):

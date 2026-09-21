@@ -385,7 +385,10 @@ def acknowledged_dead(svc: dict, today: date | None = None) -> date | None:
         checked = date.fromisoformat(raw)
     except ValueError:
         return None
-    if ((today or date.today()) - checked).days > ACK_TTL_DAYS:
+    # A future date would silence the check until it arrives; a typo in the
+    # year must not buy a decade of quiet.
+    age_days = ((today or date.today()) - checked).days
+    if not 0 <= age_days <= ACK_TTL_DAYS:
         return None
     return checked
 
