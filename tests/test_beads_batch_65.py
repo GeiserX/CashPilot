@@ -186,7 +186,8 @@ class TestTheReleaseMovesThePin:
         run = bump_step()["run"]
         merge = run[run.index("gh pr merge") :]
         merge = merge[: merge.index("; then")]
-        assert "--subject" in merge and "--body" in merge, merge
+        assert '--subject "chore(compose): pin the examples to $SERIES (#$PR_NUMBER)"' in merge, merge
+        assert 'PR_NUMBER="${PR_URL##*/}"' in run, "the PR number must come from the URL gh pr create printed"
         assert "Co-authored-by" not in run
         # The body is the same text the PR was opened with, not a second draft.
         assert '--body "$PR_BODY"' in merge, merge
