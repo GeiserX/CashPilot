@@ -21,7 +21,20 @@ docker:
   resources:
     mem_limit: "768m"
     oom_score_adj: -100
-  env: []
+  env:
+    - key: UI_ADDRESS
+      label: "WebUI address"
+      required: false
+      secret: false
+      description: >-
+        Where the node's WebUI (port 4449) listens. 127.0.0.1 keeps it on this
+        machine. To reach it through a reverse proxy, add the address the proxy
+        connects to, comma separated with no spaces: 127.0.0.1,172.18.0.1.
+      default: "127.0.0.1"
+      # The value lands on the node's command line, so anything but addresses
+      # would become an argument: "127.0.0.1, 10.0.0.1" puts a stray word before
+      # `service`, the node refuses to start and stops earning.
+      pattern: '(?:localhost|\d{1,3}(?:\.\d{1,3}){3})(?:,(?:localhost|\d{1,3}(?:\.\d{1,3}){3}))*'
   ports:
     - "4449:4449"
   volumes:
@@ -31,12 +44,15 @@ docker:
       holds: >-
         Node identity keystore. Destroying it creates a brand-new identity: the
         node loses its reputation and any earnings still held against the old one.
-  # Loopback on purpose. With host networking, 0.0.0.0 publishes the node's
-  # WebUI (4449) and Tequila API (4050) on every interface of the machine, and
-  # nothing off the machine needs them: CashPilot reads earnings from the
-  # mystnodes.com cloud API, not from the node. Reach the WebUI from another
-  # machine over an SSH tunnel (ssh -L 4449:127.0.0.1:4449 <host>).
-  command: "--ui.address=127.0.0.1 --tequilapi.address=127.0.0.1 service --agreed-terms-and-conditions"
+  # Loopback by default, on purpose. With host networking, 0.0.0.0 publishes
+  # the node's WebUI (4449) and Tequila API (4050) on every interface of the
+  # machine, and nothing off the machine needs them: CashPilot reads earnings
+  # from the mystnodes.com cloud API, not from the node. Reach the WebUI from
+  # another machine over an SSH tunnel (ssh -L 4449:127.0.0.1:4449 <host>), or
+  # put a reverse proxy in front by adding the one address it connects to in
+  # UI_ADDRESS (the node binds every address in the comma-separated list). The
+  # Tequila API stays on loopback: the WebUI proxies to it from inside the node.
+  command: "--ui.address=${UI_ADDRESS} --tequilapi.address=127.0.0.1 service --agreed-terms-and-conditions"
   network_mode: "host"
   # SETUID and SETGID are for sudo. The node runs as root and still configures
   # its interface and firewall through `sudo ip ...` / `sudo iptables ...`, and

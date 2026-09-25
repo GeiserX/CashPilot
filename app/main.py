@@ -1957,6 +1957,20 @@ async def api_deploy(
     if missing:
         raise HTTPException(status_code=400, detail=f"Missing required fields: {', '.join(missing)}")
 
+    # A value the catalog constrains must match before anything is deployed:
+    # it may land on the command line, where "127.0.0.1, 10.0.0.1" becomes two
+    # arguments and the service refuses to start. Only what was posted is
+    # checked; defaults and recorded values were accepted when they were set.
+    invalid = [
+        var.get("label", var["key"])
+        for var in docker_conf.get("env", [])
+        if var.get("pattern")
+        and posted_env.get(var["key"])
+        and not re.fullmatch(var["pattern"], posted_env[var["key"]])
+    ]
+    if invalid:
+        raise HTTPException(status_code=400, detail=f"Invalid value for: {', '.join(invalid)}")
+
     # Ports — key is "container_port/protocol" per Docker SDK
     ports: dict[str, int] = {}
     for mapping in docker_conf.get("ports", []):

@@ -17,7 +17,7 @@ MystNodes (Mysterium Network) is a decentralized VPN and proxy network built on 
 | Payout frequency | On request |
 | Payment methods | Crypto |
 
-> Earnings in MYST tokens. Residential IPs earn significantly more. Node WebUI at port 4449 for management, bound to the machine it runs on; from another machine open an SSH tunnel first (`ssh -L 4449:127.0.0.1:4449 <host>`, then browse `http://127.0.0.1:4449`). VPS accepted. Important: after first run, set your beneficiary (settlement) wallet via the node WebUI or CLI to match your mystnodes.com account -- this links on-chain earnings to your cloud dashboard.
+> Earnings in MYST tokens. Residential IPs earn significantly more. Node WebUI at port 4449 for management, bound to the machine it runs on; from another machine open an SSH tunnel first (`ssh -L 4449:127.0.0.1:4449 <host>`, then browse `http://127.0.0.1:4449`), or put a reverse proxy in front (see **WebUI address** below). VPS accepted. Important: after first run, set your beneficiary (settlement) wallet via the node WebUI or CLI to match your mystnodes.com account -- this links on-chain earnings to your cloud dashboard.
 
 > **One node per public IP.** Mysterium strictly enforces one active node per public IP address. Additional nodes on the same IP show as offline and earn nothing. Do not run on a phone if a Docker node is already running on the same network. Use separate public IPs (e.g. dual WAN, different locations) for additional nodes.
 
@@ -54,7 +54,36 @@ In the CashPilot web UI, find **MystNodes** in the service catalog and click **D
 
 ### Environment Variables
 
-No environment variables required.
+| Variable | Default | What it does |
+|---|---|---|
+| `UI_ADDRESS` | `127.0.0.1` | Where the node's WebUI (port 4449) listens. Comma separated, no spaces. |
+
+### WebUI address
+
+The node runs with host networking, so the WebUI listens on the host itself.
+By default that is `127.0.0.1` only: nothing outside the machine can reach it,
+and CashPilot does not need it (earnings come from the mystnodes.com cloud API).
+
+To put a reverse proxy in front, add the one address the proxy connects to and
+keep `127.0.0.1` first, for example `127.0.0.1,172.18.0.1`:
+
+- **Proxy in Docker on the same machine:** the gateway of the proxy's Docker
+  network (`docker network inspect <network> --format '{{(index .IPAM.Config 0).Gateway}}'`).
+  Only containers on that network can reach it. Create that network before the
+  node starts: an address that does not exist yet is skipped, and the node has to
+  be restarted to pick it up.
+- **Proxy on another machine:** this machine's LAN address. Anything on the LAN
+  can then reach the WebUI, so let only the proxy's address in with the host
+  firewall.
+
+Never `0.0.0.0`: with host networking that is every interface of the machine.
+The Tequila API (4050) always stays on `127.0.0.1`; the WebUI reaches it from
+inside the node.
+
+Set it in the deploy form and redeploy that machine's node; each worker keeps
+its own value. To go back to loopback only, enter `localhost`: the form treats
+the prefilled `127.0.0.1` as untouched and keeps the address recorded for that
+machine.
 
 ## Troubleshooting
 
@@ -147,6 +176,9 @@ docker run -d --name cashpilot-mysterium \
   mysteriumnetwork/myst:latest \
   --ui.address=127.0.0.1 --tequilapi.address=127.0.0.1 service --agreed-terms-and-conditions
 ```
+
+If a reverse proxy reaches this node's WebUI, use the same `--ui.address` list
+the container has now (`docker inspect cashpilot-mysterium --format '{{json .Config.Cmd}}'`).
 
 Verify it took:
 

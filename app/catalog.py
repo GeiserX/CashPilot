@@ -8,6 +8,7 @@ Reload on SIGHUP.
 from __future__ import annotations
 
 import logging
+import re
 import signal
 import sys
 from pathlib import Path
@@ -87,6 +88,12 @@ def _validate(data: dict[str, Any], path: Path) -> list[str]:
                 key = item.get("key") if isinstance(item, dict) else None
                 if not isinstance(key, str) or not key.strip():
                     errors.append(f"{path.name}: docker.env[{i}] must have a non-empty string 'key'")
+                pattern = item.get("pattern") if isinstance(item, dict) else None
+                if pattern is not None:
+                    try:
+                        re.compile(pattern)
+                    except (re.error, TypeError):
+                        errors.append(f"{path.name}: docker.env[{i}].pattern must be a valid regular expression")
 
     reqs = data.get("requirements")
     if isinstance(reqs, dict):
