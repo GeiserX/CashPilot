@@ -1391,3 +1391,66 @@ class TestRedeployTakesTheCatalogCommand:
         assert "command:" in report
         for secret in ("pw2", "pw1", "me@example.com"):
             assert secret not in report
+
+
+class TestRedeployReadsThisWorkersRecord:
+    """A redeploy on one machine must never rebuild from another machine's spec."""
+
+    SVC = {
+        "slug": "storj",
+        "name": "Storj",
+        "docker": {
+            "image": "storjlabs/storagenode",
+            "env": [
+                {"key": "ADDRESS", "required": True, "default": ""},
+                {"key": "STORAGE", "required": True, "default": "1TB"},
+            ],
+        },
+    }
+    RECORDS = {
+        1: {"image": "storjlabs/storagenode", "env": {"ADDRESS": "node-a.example:28967", "STORAGE": "1TB"}},
+        2: {"image": "storjlabs/storagenode", "env": {"ADDRESS": "node-b.example:28968", "STORAGE": "2TB"}},
+    }
+
+    def _redeploy(self, client, worker_id, records):
+        worker = _online_worker(wid=worker_id)
+        sent: dict = {}
+        read_for: list = []
+
+        async def _spec(slug, worker_id=None):
+            read_for.append(worker_id)
+            return records.get(worker_id)
+
+        async def _fake_deploy(wid, slug, spec):
+            sent.update(spec)
+            return {"container_id": "abc123"}
+
+        save = AsyncMock()
+        with (
+            _auth_owner(),
+            patch("app.main.database.list_workers", new_callable=AsyncMock, return_value=[worker]),
+            patch("app.main.catalog.get_service", return_value=self.SVC),
+            patch("app.main.database.get_worker", new_callable=AsyncMock, return_value=worker),
+            patch("app.main.database.get_deployment_spec", side_effect=_spec),
+            patch("app.main._proxy_worker_deploy", side_effect=_fake_deploy),
+            patch("app.main.database.save_deployment", save),
+            patch("app.main.database.record_health_event", new_callable=AsyncMock),
+            patch("app.main._run_collection", new_callable=AsyncMock),
+        ):
+            resp = client.post(f"/api/deploy/storj?worker_id={worker_id}", json={"env": {}})
+        return resp, sent, read_for, save
+
+    def test_the_redeploy_uses_the_target_workers_address(self, client):
+        resp, sent, read_for, save = self._redeploy(client, 1, self.RECORDS)
+        assert resp.status_code == 200, resp.text
+        assert read_for == [1]
+        assert sent["env"]["ADDRESS"] == "node-a.example:28967"
+        assert sent["env"]["STORAGE"] == "1TB"
+        assert save.call_args.kwargs["worker_id"] == 1
+
+    def test_no_record_for_this_worker_asks_instead_of_borrowing(self, client):
+        """Only worker 2 has a record: worker 1 must be asked for its address."""
+        resp, sent, _, _ = self._redeploy(client, 1, {2: self.RECORDS[2]})
+        assert resp.status_code == 400
+        assert "External address" in resp.text or "ADDRESS" in resp.text
+        assert not sent, "nothing may reach the worker with another machine's address"

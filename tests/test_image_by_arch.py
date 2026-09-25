@@ -156,6 +156,8 @@ class TestTheDeployRouteSendsTheWorkerItsBuild:
             patch("app.main.catalog.get_service", return_value=self.SVC),
             patch("app.main.database.get_worker", new_callable=AsyncMock, return_value=worker),
             patch("app.main.database.get_deployment", new_callable=AsyncMock, return_value=None),
+            # No record for this worker: the redeploy path reads the spec per worker.
+            patch("app.main.database.get_deployment_spec", new_callable=AsyncMock, return_value=None),
             patch("app.main._proxy_to_worker", side_effect=_fake_hop),
             patch("app.main.database.save_deployment", save),
             patch("app.main.database.record_health_event", new_callable=AsyncMock),
@@ -208,6 +210,8 @@ class TestTheDeployRouteSendsTheWorkerItsBuild:
             patch("app.main.catalog.get_service", return_value=self.SVC),
             patch("app.main.database.get_worker", new_callable=AsyncMock, return_value=None),
             patch("app.main.database.get_deployment", new_callable=AsyncMock, return_value=None),
+            # No record for this worker: the redeploy path reads the spec per worker.
+            patch("app.main.database.get_deployment_spec", new_callable=AsyncMock, return_value=None),
             patch("app.main._proxy_to_worker", side_effect=_fake_hop),
             patch("app.main.database.save_deployment", new_callable=AsyncMock),
             patch("app.main.database.record_health_event", new_callable=AsyncMock),
