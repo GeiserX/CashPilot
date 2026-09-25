@@ -481,3 +481,96 @@ class TestRedeployUsesTheRecordedSpec:
         result, spec = self._deploy(None, body_env={"DATA_DIR": "/mnt/user/new"})
         assert result["status"] == "deployed"
         assert "kept_from_previous_deployment" not in result
+
+
+class TestTheSpecIsRecordedPerWorker:
+    """One service, several machines, several specs.
+
+    The record used to be one row per service for the whole fleet. Two Storj
+    nodes advertise different addresses, and a dashboard redeploy on one
+    machine rebuilt its node with the address the OTHER machine had recorded
+    last, so satellites dialled the wrong node. Seen in the recorded spec on
+    the fleet, 2026-09-25, before any redeploy acted on it.
+    """
+
+    A = {"image": "storjlabs/storagenode", "env": {"ADDRESS": "node-a.example:28967", "STORAGE": "1TB"}}
+    B = {"image": "storjlabs/storagenode", "env": {"ADDRESS": "node-b.example:28968", "STORAGE": "2TB"}}
+
+    @staticmethod
+    def _workers(containers_a="[]", containers_b="[]"):
+        async def run():
+            a = await database.upsert_worker(client_id="wa", name="a", url="", containers=containers_a)
+            b = await database.upsert_worker(client_id="wb", name="b", url="", containers=containers_b)
+            return a, b
+
+        return asyncio.run(run())
+
+    def test_each_worker_reads_back_its_own_spec(self, db):
+        a, b = self._workers()
+
+        async def run():
+            await database.save_deployment(slug="storj", container_id="ca" * 32, spec=self.A, worker_id=a)
+            await database.save_deployment(slug="storj", container_id="cb" * 32, spec=self.B, worker_id=b)
+            return (
+                await database.get_deployment_spec("storj", worker_id=a),
+                await database.get_deployment_spec("storj", worker_id=b),
+            )
+
+        spec_a, spec_b = asyncio.run(run())
+        assert spec_a["env"]["ADDRESS"] == "node-a.example:28967"
+        assert spec_b["env"]["ADDRESS"] == "node-b.example:28968"
+
+    def test_a_worker_with_no_record_gets_none_not_another_workers_spec(self, db):
+        a, b = self._workers()
+
+        async def run():
+            await database.save_deployment(slug="storj", container_id="cb" * 32, spec=self.B, worker_id=b)
+            return await database.get_deployment_spec("storj", worker_id=a)
+
+        assert asyncio.run(run()) is None
+
+    def test_a_record_from_before_this_belongs_to_the_worker_running_its_container(self, db):
+        """Migration: the old fleet-wide row is attributed by container id, or not at all."""
+        legacy_id = "2ce66514c05695d1c6ae6ce14580c3968859bb2c1a2b96319ab22a3dabc74e30"
+        running_b = '[{"slug": "storj", "container_id": "2ce66514c056"}]'
+        running_a = '[{"slug": "storj", "container_id": "a742c69d61c9"}]'
+        a, b = self._workers(containers_a=running_a, containers_b=running_b)
+
+        async def run():
+            # Written the old way: no worker.
+            await database.save_deployment(slug="storj", container_id=legacy_id, spec=self.B)
+            return (
+                await database.get_deployment_spec("storj", worker_id=a),
+                await database.get_deployment_spec("storj", worker_id=b),
+            )
+
+        spec_a, spec_b = asyncio.run(run())
+        assert spec_a is None, "worker A runs a different container; the old row is not its spec"
+        assert spec_b["env"]["ADDRESS"] == "node-b.example:28968"
+
+    def test_without_a_worker_the_fleet_wide_answer_is_unchanged(self, db):
+        """The payout registry asks "is an address configured anywhere"."""
+        a, b = self._workers()
+
+        async def run():
+            await database.save_deployment(slug="storj", container_id="ca" * 32, spec=self.A, worker_id=a)
+            await database.save_deployment(slug="storj", container_id="cb" * 32, spec=self.B, worker_id=b)
+            return await database.get_deployment_spec("storj")
+
+        assert asyncio.run(run())["env"]["ADDRESS"] == "node-b.example:28968"
+
+    def test_removing_on_one_worker_keeps_the_others_spec(self, db):
+        a, b = self._workers()
+
+        async def run():
+            await database.save_deployment(slug="storj", container_id="ca" * 32, spec=self.A, worker_id=a)
+            await database.save_deployment(slug="storj", container_id="cb" * 32, spec=self.B, worker_id=b)
+            await database.remove_deployment("storj", worker_id=a)
+            return (
+                await database.get_deployment_spec("storj", worker_id=a),
+                await database.get_deployment_spec("storj", worker_id=b),
+            )
+
+        spec_a, spec_b = asyncio.run(run())
+        assert spec_a is None
+        assert spec_b["env"]["ADDRESS"] == "node-b.example:28968"

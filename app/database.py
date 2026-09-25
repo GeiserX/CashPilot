@@ -382,6 +382,20 @@ CREATE TABLE IF NOT EXISTS deployments (
     status             TEXT NOT NULL DEFAULT 'running'
 );
 
+-- The spec each WORKER was deployed with. deployments.spec_encrypted is one
+-- row per service for the whole fleet, and a service's env is not the same on
+-- every machine: two Storj nodes advertise different addresses and allocate
+-- different space, two Honeygain devices carry different names. A redeploy
+-- that read the fleet-wide row rebuilt one machine's node with another
+-- machine's address, and the satellites then dialled the wrong node.
+CREATE TABLE IF NOT EXISTS deployment_specs (
+    slug           TEXT    NOT NULL,
+    worker_id      INTEGER NOT NULL,
+    spec_encrypted TEXT    NOT NULL,
+    deployed_at    TEXT    NOT NULL DEFAULT (datetime('now')),
+    PRIMARY KEY (slug, worker_id)
+);
+
 CREATE TABLE IF NOT EXISTS users (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
     username   TEXT    NOT NULL UNIQUE,
@@ -1462,8 +1476,13 @@ async def save_deployment(
     env_vars_encrypted: str = "",
     status: str = "running",
     spec: dict[str, Any] | None = None,
+    worker_id: int | None = None,
 ) -> None:
     """Record a deployment, including the spec that was actually used.
+
+    ``worker_id`` also records the spec against that worker, which is what a
+    redeploy on that worker reads back (see get_deployment_spec). The fleet-wide
+    row is still written: it answers "is this service deployed anywhere".
 
     ``spec`` is serialised and encrypted at rest because it embeds the service's
     environment, which carries credentials. Passing None preserves any spec
@@ -1501,23 +1520,78 @@ async def save_deployment(
             """,
             (slug, container_id, env_vars_encrypted, spec_encrypted, status),
         )
+        if spec is not None and spec_encrypted and worker_id is not None:
+            await db.execute(
+                """
+                INSERT OR REPLACE INTO deployment_specs (slug, worker_id, spec_encrypted, deployed_at)
+                VALUES (?, ?, ?, datetime('now'))
+                """,
+                (slug, worker_id, spec_encrypted),
+            )
         await db.commit()
     finally:
         await db.close()
 
 
-async def get_deployment_spec(slug: str) -> dict[str, Any] | None:
+async def get_deployment_spec(slug: str, worker_id: int | None = None) -> dict[str, Any] | None:
     """Return the spec this service was actually deployed with, or None.
 
     None means "no record" - a deployment made before this existed, or one whose
     stored spec can no longer be decrypted. Callers must fall back to the
     catalog in that case rather than deploying a half-remembered spec, which
     would be worse than deploying a fresh one.
+
+    With ``worker_id`` the answer is about THAT worker's container, and only
+    that. Without it, it is the most recent deploy anywhere, which is enough for
+    questions like "is a payout address configured" but never for rebuilding a
+    container: another machine's spec carries another machine's env.
     """
+    if worker_id is not None:
+        return await _worker_deployment_spec(slug, worker_id)
     row = await get_deployment(slug)
     if not row:
         return None
-    blob = row.get("spec_encrypted") or ""
+    return _decode_spec(row.get("spec_encrypted") or "", slug)
+
+
+async def _worker_deployment_spec(slug: str, worker_id: int) -> dict[str, Any] | None:
+    db = await _get_db()
+    try:
+        cursor = await db.execute(
+            "SELECT spec_encrypted FROM deployment_specs WHERE slug = ? AND worker_id = ?",
+            (slug, worker_id),
+        )
+        row = await cursor.fetchone()
+    finally:
+        await db.close()
+    if row:
+        return _decode_spec(row["spec_encrypted"] or "", slug)
+
+    # Deployments recorded before specs were kept per worker live only in the
+    # fleet-wide row. That row describes ONE container: the one whose id it
+    # recorded. It belongs to this worker only if this worker is running that
+    # container right now, which its last heartbeat says. Any other worker gets
+    # no record and a catalog rebuild, which asks for missing required values
+    # instead of borrowing another machine's.
+    legacy = await get_deployment(slug)
+    recorded_id = str((legacy or {}).get("container_id") or "")
+    if not recorded_id:
+        return None
+    worker = await get_worker(worker_id)
+    try:
+        containers = json.loads((worker or {}).get("containers") or "[]")
+    except (TypeError, ValueError):
+        return None
+    for entry in containers if isinstance(containers, list) else []:
+        if not isinstance(entry, dict) or entry.get("slug") != slug:
+            continue
+        short_id = str(entry.get("container_id") or "")
+        if len(short_id) >= 12 and recorded_id.startswith(short_id):
+            return _decode_spec(legacy.get("spec_encrypted") or "", slug)
+    return None
+
+
+def _decode_spec(blob: str, slug: str) -> dict[str, Any] | None:
     if not blob:
         return None
     raw = decrypt_value(blob)
@@ -1553,10 +1627,17 @@ async def get_deployment(slug: str) -> dict[str, Any] | None:
         await db.close()
 
 
-async def remove_deployment(slug: str) -> None:
+async def remove_deployment(slug: str, worker_id: int | None = None) -> None:
+    """Forget a deployment. ``worker_id`` also forgets that worker's spec.
+
+    Only that worker's: the service may still run on other machines, and their
+    specs are what their next redeploy needs.
+    """
     db = await _get_db()
     try:
         await db.execute("DELETE FROM deployments WHERE slug = ?", (slug,))
+        if worker_id is not None:
+            await db.execute("DELETE FROM deployment_specs WHERE slug = ? AND worker_id = ?", (slug, worker_id))
         await db.commit()
     finally:
         await db.close()

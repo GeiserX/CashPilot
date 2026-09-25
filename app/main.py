@@ -1927,7 +1927,8 @@ async def api_deploy(
     # deployment already has: rejecting here would mean the operator has to
     # retype Storj's IDENTITY_DIR/STORAGE_DIR on every redeploy, which is
     # precisely what recording the spec exists to avoid.
-    recorded = await database.get_deployment_spec(slug)
+    # THIS worker's record: another machine's carries another machine's env.
+    recorded = await database.get_deployment_spec(slug, worker_id=worker_id)
     recorded_env = (recorded or {}).get("env") or {}
 
     # What the operator actually TYPED on this deploy. The dashboard has no
@@ -2067,7 +2068,7 @@ async def api_deploy(
                 f"mounts: {k.get('target')} stays on {k.get('kept')}, where the running container keeps it, "
                 f"instead of {k.get('requested')}"
             )
-    await database.save_deployment(slug=slug, container_id=container_id, spec=spec)
+    await database.save_deployment(slug=slug, container_id=container_id, spec=spec, worker_id=worker_id)
     await database.record_health_event(slug, "start", f"deployed to worker {worker_id}")
     metrics.record_container_lifecycle("deploy", slug)
     _spawn(_run_collection())
@@ -2270,7 +2271,7 @@ async def _svc_remove(
         if allow_delete_critical:
             params["allow_delete_critical"] = "true"
     result = await _proxy_worker_command(worker_id, "remove", slug, params=params)
-    await database.remove_deployment(slug)
+    await database.remove_deployment(slug, worker_id=worker_id)
     await database.record_health_event(slug, "remove")
     metrics.record_container_lifecycle("remove", slug)
     return result
@@ -4984,6 +4985,7 @@ async def api_worker_command(request: Request, worker_id: int, body: WorkerComma
             slug=slug,
             container_id=container_id,
             spec=body.spec if isinstance(body.spec, dict) else None,
+            worker_id=worker_id,
         )
         await database.record_health_event(slug, "start", f"deployed to worker {worker_id}")
         metrics.record_container_lifecycle("deploy", slug)
@@ -4998,7 +5000,7 @@ async def api_worker_command(request: Request, worker_id: int, body: WorkerComma
         await database.record_health_event(slug, "start")
         metrics.record_container_lifecycle("start", slug)
     elif body.command == "remove":
-        await database.remove_deployment(slug)
+        await database.remove_deployment(slug, worker_id=worker_id)
         await database.record_health_event(slug, "remove")
         metrics.record_container_lifecycle("remove", slug)
     return result
