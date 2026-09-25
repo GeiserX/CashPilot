@@ -5,7 +5,7 @@
 
 ## Description
 
-Storj is a decentralized cloud storage network where you earn by renting out your unused disk space. Run the storage node via Docker and get paid approximately $1.50/TB stored per month plus $2/TB egress. Payouts are monthly in USDC, a US-dollar stablecoin, to an Ethereum wallet you control (STORJ token until the September 2026 payout). Requires at least 550GB of available disk space and a stable internet connection. One of the most mature and truly passive storage income services.
+Storj is a decentralized cloud storage network where you earn by renting out your unused disk space. Run the storage node via Docker and get paid approximately $1.50/TB stored per month plus $2/TB egress. Payouts are monthly in USDC, a US-dollar stablecoin, on Ethereum mainnet to a wallet you control, once the balance clears a fee-based minimum (STORJ token until the September 2026 payout). Requires at least 550GB of available disk space and a stable internet connection. One of the most mature and truly passive storage income services.
 
 ## Earning Estimates
 
@@ -60,7 +60,7 @@ Forward these ports through your router to the server running the node:
 
 ### 4. Get an Ethereum wallet address
 
-You need an Ethereum wallet address to receive USDC payouts. Storj paid in STORJ token until the September 2026 payout and pays in USDC from the October 2026 payout on. Any self-custodial wallet works (MetaMask, Trust Wallet, Ledger, etc.), and if you already have an Ethereum address from other DePIN services you can reuse it. Do not use an exchange deposit address unless it is the exchange's USDC deposit address. The node starts with the zkSync Era wallet feature enabled, and Storj has not said which chain USDC lands on for such wallets, so after your first USDC payout look for the token on zkSync Era first, then on Ethereum mainnet.
+You need an Ethereum wallet address whose private key you control to receive USDC payouts. Storj paid in STORJ token until the September 2026 payout and pays in USDC on Ethereum mainnet from the October 2026 payout on; zkSync Era payouts ended on 1 September 2026. Any self-custodial wallet works (MetaMask, Trust Wallet, Ledger, etc.), and if you already have an Ethereum address from other DePIN services you can reuse it. Do not use an exchange deposit address. Use the same address on every node you run: Storj pays a wallet only when the transaction fee is at most a quarter of the amount, so the minimum moves with Ethereum gas (the docs' examples land between $50 and $70) and a balance below it rolls into the next month.
 
 ### 5. Deploy with CashPilot
 

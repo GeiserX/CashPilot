@@ -7,8 +7,9 @@ description: >
   Storj is a decentralized cloud storage network where you earn by renting out
   your unused disk space. Run the storage node via Docker and get paid approximately
   $1.50/TB stored per month plus $2/TB egress. Payouts are monthly in USDC, a
-  US-dollar stablecoin, to an Ethereum wallet you control (STORJ token until the
-  September 2026 payout). Requires at least 550GB of available disk space and a stable internet
+  US-dollar stablecoin, on Ethereum mainnet to a wallet you control, once the
+  balance clears a fee-based minimum (STORJ token until the September 2026
+  payout). Requires at least 550GB of available disk space and a stable internet
   connection. One of the most mature and truly passive storage income services.
   No account or signup needed -- nodes are permissionless since mid-2025.
 short_description: Decentralized storage node - ~$1.50/TB stored + $2/TB egress
@@ -77,7 +78,7 @@ docker:
       holds: >-
         Stored customer data and the node's held amount. Losing it disqualifies
         the node and forfeits the held balance.
-  command: "--operator.wallet-features=zksync-era"
+  command: ""
   network_mode: ""
   # Satellites dial the node at exactly this env var's value, so the worker
   # reports it and the UI cross-checks it against the machine's current
@@ -125,7 +126,7 @@ requirements:
 
 payment:
   methods: [crypto]
-  minimum_payout: "$4"
+  minimum_payout: "4x the Ethereum transaction fee, smaller balances roll over"
   currency: USDC
   crypto_token: USDC
   frequency: "Monthly"
@@ -140,9 +141,12 @@ earnings:
 cashout:
   method: redirect
   dashboard_url: "http://localhost:14002"
-  min_amount: 4.0
+  # No min_amount on purpose: the minimum is not a fixed number. Storj pays a
+  # wallet only when the Ethereum transaction fee is at most 25% of the amount,
+  # so the threshold moves with gas (roughly $50 to $70 in the docs' examples)
+  # and anything below it rolls into the next month.
   currency: USD
-  notes: "Payouts sent monthly in USDC to the configured wallet address (STORJ token until the September 2026 payout). Dashboard at port 14002."
+  notes: "Paid monthly in USDC on Ethereum mainnet once the wallet balance is at least four times the current transaction fee; smaller balances roll into the next month. STORJ token until the September 2026 payout. Dashboard at port 14002."
 
 platforms: [docker, windows, linux]
 
@@ -177,4 +181,4 @@ payout:
   chain: ethereum
   address_env: WALLET
   address_source: env
-  notes: "Paid monthly in USDC (ERC-20) to the address in WALLET; STORJ token until the September 2026 payout."
+  notes: "Paid monthly in USDC on Ethereum mainnet to the address in WALLET once the balance clears the fee-based minimum. STORJ token until the September 2026 payout; zkSync Era payouts ended 1 September 2026."
