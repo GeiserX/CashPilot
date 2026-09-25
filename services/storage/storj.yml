@@ -6,8 +6,9 @@ website: https://www.storj.io
 description: >
   Storj is a decentralized cloud storage network where you earn by renting out
   your unused disk space. Run the storage node via Docker and get paid approximately
-  $1.50/TB stored per month plus $2/TB egress. Payments are in STORJ token or via
-  zkSync L2. Requires at least 550GB of available disk space and a stable internet
+  $1.50/TB stored per month plus $2/TB egress. Payouts are monthly in USDC, a
+  US-dollar stablecoin, to an Ethereum wallet you control (STORJ token until the
+  September 2026 payout). Requires at least 550GB of available disk space and a stable internet
   connection. One of the most mature and truly passive storage income services.
   No account or signup needed -- nodes are permissionless since mid-2025.
 short_description: Decentralized storage node - ~$1.50/TB stored + $2/TB egress
@@ -35,7 +36,7 @@ docker:
       label: "Wallet address"
       required: true
       secret: false
-      description: "ERC-20 wallet address for STORJ token payouts (e.g. 0x1234...abcd). Must be self-custodial (MetaMask, Ledger, etc.) -- never use an exchange address"
+      description: "Ethereum wallet address for USDC payouts (e.g. 0x1234...abcd). Must be self-custodial (MetaMask, Ledger, etc.) -- never use an exchange address"
     - key: EMAIL
       label: "Email"
       required: true
@@ -125,7 +126,8 @@ requirements:
 payment:
   methods: [crypto]
   minimum_payout: "$4"
-  currency: STORJ
+  currency: USDC
+  crypto_token: USDC
   frequency: "Monthly"
 
 earnings:
@@ -140,7 +142,7 @@ cashout:
   dashboard_url: "http://localhost:14002"
   min_amount: 4.0
   currency: USD
-  notes: "Payouts sent monthly in STORJ tokens to configured wallet address. Dashboard at port 14002."
+  notes: "Payouts sent monthly in USDC to the configured wallet address (STORJ token until the September 2026 payout). Dashboard at port 14002."
 
 platforms: [docker, windows, linux]
 
@@ -175,4 +177,4 @@ payout:
   chain: ethereum
   address_env: WALLET
   address_source: env
-  notes: "Paid monthly in STORJ (ERC-20) to the address in WALLET."
+  notes: "Paid monthly in USDC (ERC-20) to the address in WALLET; STORJ token until the September 2026 payout."

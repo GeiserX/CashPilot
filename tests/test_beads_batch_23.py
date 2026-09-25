@@ -79,7 +79,7 @@ class TestTheMinimumIsLabelledWithTheUnitItWasDerivedFrom:
 
     @pytest.mark.parametrize(
         ("slug", "token"),
-        [("storj", "STORJ"), ("ebesucher", "EUR"), ("proxybase-xyz", "USDC")],
+        [("storj", "USDC"), ("ebesucher", "EUR"), ("proxybase-xyz", "USDC")],
     )
     def test_the_payout_token_is_still_recorded(self, slug, token):
         """The control: this must not erase what the provider pays in."""

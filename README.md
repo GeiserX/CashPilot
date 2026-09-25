@@ -81,7 +81,7 @@ Services CashPilot can deploy and manage automatically via Docker.
 | [ProxyLite](https://proxylite.ru/?r=KMUPRZIZ) | [Guide](docs/guides/proxylite.md) | ❌ | ✅ | ? \*\*\* | ? \*\*\* | Crypto, PayPal |
 | [ProxyRack](https://peer.proxyrack.com/ref/mpwiok3xlaxeycnn5znqlg7ipjeutxyxr6xl7vmn) | [Guide](docs/guides/proxyrack.md) | ❌ | ✅ | 500 | ? \*\*\* | PayPal, Crypto |
 | [Repocket](https://repocket.com/) | [Guide](docs/guides/repocket.md) | ✅ | ❌ | 5 | ? \*\*\* | PayPal, Crypto |
-| [Storj](https://storj.dev/node/get-started/setup) | [Guide](docs/guides/storj.md) | ❌ | ✅ | ? \*\*\* | ? \*\*\* | Crypto |
+| [Storj](https://storj.dev/node/get-started/setup) | [Guide](docs/guides/storj.md) | ❌ | ✅ | ? \*\*\* | ? \*\*\* | Crypto (USDC) |
 | [Traffmonetizer](https://traffmonetizer.com/?aff=2111758) | [Guide](docs/guides/traffmonetizer.md) | ❌ | ✅ | ? \*\*\* | Unlimited | Crypto (USDT), PayPal |
 | [URnetwork](https://ur.io/?referral_code=1Q3G19) | [Guide](docs/guides/urnetwork.md) | ❌ | ✅ | ? \*\*\* | ? \*\*\* | Crypto |
 <!-- END GENERATED: docker-services -->
