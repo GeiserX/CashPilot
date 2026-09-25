@@ -29,6 +29,10 @@ from app.constants import (
     UNDEPLOYABLE_STATUSES,
 )
 
+#: What the worker gives a service that declares no stop_timeout (see
+#: orchestrator._parse_stop_timeout); the export must not give it less.
+_DEFAULT_STOP_GRACE = 30
+
 
 def _escape_interpolation(value: str) -> str:
     """Escape ${VAR} as $${VAR} so Docker Compose treats it as literal.
@@ -169,15 +173,16 @@ def _service_to_compose(
     if isinstance(entrypoint, list) and entrypoint:
         compose_svc["entrypoint"] = [_escape_value(str(part)) for part in entrypoint]
 
-    # The catalog's stop grace. Without it the exported container gets Docker's
-    # 10 seconds, which is shorter than a storage node may need to flush.
+    # The stop grace the worker gives the same service: the catalog's, or 30
+    # seconds when it declares none or something unusable (orchestrator's
+    # _parse_stop_timeout). Leaving the key out gave the exported container
+    # Docker's 10 seconds instead, shorter than a deployed one gets.
     stop_timeout = docker_conf.get("stop_timeout")
     try:
-        grace = int(stop_timeout) if stop_timeout is not None else 0
+        grace = int(stop_timeout)
     except (TypeError, ValueError):
         grace = 0
-    if grace > 0:
-        compose_svc["stop_grace_period"] = f"{grace}s"
+    compose_svc["stop_grace_period"] = f"{grace if grace > 0 else _DEFAULT_STOP_GRACE}s"
 
     # Command — fill ${VAR} credentials from known values, escape whatever remains
     command = docker_conf.get("command")

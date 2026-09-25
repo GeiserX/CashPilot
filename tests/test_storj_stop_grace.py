@@ -92,7 +92,12 @@ class TestTheExportCarriesBoth:
         assert '"$$F"' in script
         assert re.search(r"(?<!\$)\$(?!\$)", script.replace("$$", "")) is None, "no bare $ left for Compose to fill"
 
-    def test_a_service_without_either_exports_neither(self):
+    def test_a_service_without_either_gets_the_workers_default_and_the_images_entrypoint(self):
         svc = self._export("honeygain")
-        assert "stop_grace_period" not in svc
+        assert svc["stop_grace_period"] == "30s", "the worker gives it 30 s; Docker's 10 s default would be less"
         assert "entrypoint" not in svc
+
+    @pytest.mark.parametrize("raw", [None, "soon", 0, -5])
+    def test_an_unusable_value_exports_the_default(self, raw):
+        entry = {"name": "X", "slug": "x", "docker": {"image": "x/x:1.0.0", "stop_timeout": raw}}
+        assert compose_generator._service_to_compose(entry)["stop_grace_period"] == "30s"
