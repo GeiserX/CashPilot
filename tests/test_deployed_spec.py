@@ -574,3 +574,50 @@ class TestTheSpecIsRecordedPerWorker:
         spec_a, spec_b = asyncio.run(run())
         assert spec_a is None
         assert spec_b["env"]["ADDRESS"] == "node-b.example:28968"
+
+
+class TestRemovingOnOneWorkerKeepsTheServiceDeployedElsewhere:
+    """Collection, metrics and the payout registry read the fleet-wide row as "deployed"."""
+
+    SPEC = {"image": "storjlabs/storagenode", "env": {}}
+
+    @staticmethod
+    def _run(coro):
+        return asyncio.run(coro)
+
+    def test_another_workers_spec_keeps_the_row(self, db):
+        async def run():
+            a = await database.upsert_worker(client_id="wa", name="a", url="")
+            b = await database.upsert_worker(client_id="wb", name="b", url="")
+            await database.save_deployment(slug="storj", container_id="ca" * 32, spec=self.SPEC, worker_id=a)
+            await database.save_deployment(slug="storj", container_id="cb" * 32, spec=self.SPEC, worker_id=b)
+            await database.remove_deployment("storj", worker_id=a)
+            return await database.get_deployment("storj")
+
+        assert self._run(run()) is not None
+
+    def test_another_workers_heartbeat_keeps_the_row(self, db):
+        """A deployment from before per-worker specs is known only from the heartbeat."""
+
+        async def run():
+            a = await database.upsert_worker(client_id="wa", name="a", url="")
+            await database.upsert_worker(
+                client_id="wb", name="b", url="", containers='[{"slug": "storj", "container_id": "cb0000000000"}]'
+            )
+            await database.save_deployment(slug="storj", container_id="ca" * 32, spec=self.SPEC)
+            await database.remove_deployment("storj", worker_id=a)
+            return await database.get_deployment("storj")
+
+        assert self._run(run()) is not None
+
+    def test_the_last_worker_removes_the_row(self, db):
+        async def run():
+            a = await database.upsert_worker(
+                client_id="wa", name="a", url="", containers='[{"slug": "storj", "container_id": "ca0000000000"}]'
+            )
+            await database.upsert_worker(client_id="wb", name="b", url="", containers='[{"slug": "honeygain"}]')
+            await database.save_deployment(slug="storj", container_id="ca" * 32, spec=self.SPEC, worker_id=a)
+            await database.remove_deployment("storj", worker_id=a)
+            return await database.get_deployment("storj")
+
+        assert self._run(run()) is None

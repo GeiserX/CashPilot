@@ -1628,19 +1628,48 @@ async def get_deployment(slug: str) -> dict[str, Any] | None:
 
 
 async def remove_deployment(slug: str, worker_id: int | None = None) -> None:
-    """Forget a deployment. ``worker_id`` also forgets that worker's spec.
+    """Forget a deployment. ``worker_id`` forgets it on that worker only.
 
-    Only that worker's: the service may still run on other machines, and their
-    specs are what their next redeploy needs.
+    Only that worker's spec goes: the service may still run on other machines,
+    and their specs are what their next redeploy needs. The fleet-wide row goes
+    too, but only when no other worker still has the service. Collection,
+    metrics and the payout registry read that row as "deployed", so dropping it
+    while another machine still runs the service stopped its earnings being
+    collected. "Still has it" is either a spec recorded for another worker, or
+    another worker's last heartbeat listing the service, which also covers
+    deployments made before specs were kept per worker.
     """
     db = await _get_db()
     try:
-        await db.execute("DELETE FROM deployments WHERE slug = ?", (slug,))
-        if worker_id is not None:
+        if worker_id is None:
+            await db.execute("DELETE FROM deployments WHERE slug = ?", (slug,))
+        else:
             await db.execute("DELETE FROM deployment_specs WHERE slug = ? AND worker_id = ?", (slug, worker_id))
+            if not await _deployed_on_another_worker(db, slug, worker_id):
+                await db.execute("DELETE FROM deployments WHERE slug = ?", (slug,))
         await db.commit()
     finally:
         await db.close()
+
+
+async def _deployed_on_another_worker(db: Any, slug: str, worker_id: int) -> bool:
+    cursor = await db.execute(
+        "SELECT 1 FROM deployment_specs WHERE slug = ? AND worker_id != ? LIMIT 1",
+        (slug, worker_id),
+    )
+    if await cursor.fetchone():
+        return True
+    cursor = await db.execute("SELECT containers FROM workers WHERE id != ?", (worker_id,))
+    for row in await cursor.fetchall():
+        try:
+            containers = json.loads(row["containers"] or "[]")
+        except (TypeError, ValueError):
+            continue
+        if isinstance(containers, list) and any(
+            isinstance(entry, dict) and entry.get("slug") == slug for entry in containers
+        ):
+            return True
+    return False
 
 
 # --- Users ---
