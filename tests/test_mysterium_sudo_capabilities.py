@@ -132,15 +132,20 @@ class TestARedeployDeliversTheFix:
         )
         assert not any("cap_add" in d for d in divergence)
 
-    def test_the_command_is_still_reproduced(self):
-        """Control: the rest of the runtime shape keeps following the record."""
+    def test_the_network_mode_is_still_reproduced(self):
+        """Control: the rest of the runtime shape keeps following the record.
+
+        This used the command until the redeploy started rebuilding the command
+        from the catalog (see TestRedeployTakesTheCatalogCommand in
+        test_main_deploy_routes.py); the network mode still follows the record.
+        """
         merged, divergence = _merge_recorded_spec(
-            {"image": "i", "env": {}, "command": "new"},
-            {"image": "i", "env": {}, "command": "deployed"},
+            {"image": "i", "env": {}, "network_mode": None},
+            {"image": "i", "env": {}, "network_mode": "host"},
             user_env={},
         )
-        assert merged["command"] == "deployed"
-        assert any("command" in d for d in divergence)
+        assert merged["network_mode"] == "host"
+        assert any("network_mode" in d for d in divergence)
 
 
 class TestTheFailureIsNamed:
