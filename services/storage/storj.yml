@@ -102,6 +102,24 @@ docker:
         node) and that port 28967 TCP+UDP is forwarded to this machine.
       state: failing
   stop_timeout: 300
+  # The image runs supervisord as PID 1, and its [program:storagenode] sets no
+  # stopwaitsecs, so supervisord SIGKILLs the node 10 s after any stop no matter
+  # how long Docker would wait. Most stops finish in 1 to 7 s, but a node that
+  # is slow to stop is killed mid-flush and restarts with "hashstore unclean
+  # shutdown detected". This wrapper gives the node 270 s (inside the 300 s
+  # above) and then runs the image's own entrypoint unchanged. Removing any
+  # stopwaitsecs already in that section first keeps exactly one, so a restart
+  # or a future image that sets its own cannot produce a duplicate option, and
+  # if the file is not where it was the wrapper changes nothing and still execs.
+  entrypoint:
+    - /bin/sh
+    - -c
+    - >-
+      F=/etc/supervisor/supervisord.conf;
+      [ -f "$F" ] && sed -i -e '/^\[program:storagenode\]$/,/^\[/{/^stopwaitsecs=/d}'
+      -e '/^\[program:storagenode\]$/a stopwaitsecs=270' "$F";
+      exec /entrypoint "$@"
+    - --
   setup: >
     Before first run, initialize the storage node config:
     docker run --rm -e SETUP="true"

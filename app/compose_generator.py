@@ -29,6 +29,10 @@ from app.constants import (
     UNDEPLOYABLE_STATUSES,
 )
 
+#: What the worker gives a service that declares no stop_timeout (see
+#: orchestrator._parse_stop_timeout); the export must not give it less.
+_DEFAULT_STOP_GRACE = 30
+
 
 def _escape_interpolation(value: str) -> str:
     """Escape ${VAR} as $${VAR} so Docker Compose treats it as literal.
@@ -160,6 +164,25 @@ def _service_to_compose(
     cap_add = docker_conf.get("cap_add")
     if cap_add:
         compose_svc["cap_add"] = cap_add
+
+    # Entrypoint override. EVERY $ is escaped, not just ${VAR}: a shell wrapper
+    # uses bare $F and $@, and Compose would fill those from the host's
+    # environment (empty), silently breaking the script. Nothing in an
+    # entrypoint is meant for Compose to substitute.
+    entrypoint = docker_conf.get("entrypoint")
+    if isinstance(entrypoint, list) and entrypoint:
+        compose_svc["entrypoint"] = [_escape_value(str(part)) for part in entrypoint]
+
+    # The stop grace the worker gives the same service: the catalog's, or 30
+    # seconds when it declares none or something unusable (orchestrator's
+    # _parse_stop_timeout). Leaving the key out gave the exported container
+    # Docker's 10 seconds instead, shorter than a deployed one gets.
+    stop_timeout = docker_conf.get("stop_timeout")
+    try:
+        grace = int(stop_timeout)
+    except (TypeError, ValueError):
+        grace = 0
+    compose_svc["stop_grace_period"] = f"{grace if grace > 0 else _DEFAULT_STOP_GRACE}s"
 
     # Command — fill ${VAR} credentials from known values, escape whatever remains
     command = docker_conf.get("command")

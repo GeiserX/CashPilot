@@ -105,7 +105,14 @@
 #     service whose own YAML declares them. A device is a direct line to the
 #     kernel, so the catalog cannot widen that ceiling on its own.
 #   privileged: false (optional, security-sensitive — grants the container full host device access)
-#   stop_timeout: 30 (optional, seconds to wait before SIGKILL on stop — default 30)
+#   stop_timeout: 30 (optional, seconds to wait before SIGKILL on stop — default 30).
+#     Also set as the container's own stop timeout, so stops CashPilot does not
+#     send (a plain `docker stop`, Docker Desktop quitting, a host shutdown that
+#     does not pass its own timeout) get it too, and exported as stop_grace_period.
+#   entrypoint: ["/bin/sh", "-c", "..."] (optional, list of strings) replaces the
+#     image's ENTRYPOINT. Read by the worker from its own catalog, never from a
+#     deploy request. Keep it a thin wrapper that ends by exec-ing the image's
+#     own entrypoint, and make it degrade to exactly that if its tweak fails.
 #   setup: "" (optional, one-time setup instructions/commands to run before first deploy)
 
 # disclosure: (optional but strongly encouraged) what this service does with the
