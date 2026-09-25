@@ -31,7 +31,12 @@ docker:
       holds: >-
         Node identity keystore. Destroying it creates a brand-new identity: the
         node loses its reputation and any earnings still held against the old one.
-  command: "--ui.address=0.0.0.0 --tequilapi.address=0.0.0.0 service --agreed-terms-and-conditions"
+  # Loopback on purpose. With host networking, 0.0.0.0 publishes the node's
+  # WebUI (4449) and Tequila API (4050) on every interface of the machine, and
+  # nothing off the machine needs them: CashPilot reads earnings from the
+  # mystnodes.com cloud API, not from the node. Reach the WebUI from another
+  # machine over an SSH tunnel (ssh -L 4449:127.0.0.1:4449 <host>).
+  command: "--ui.address=127.0.0.1 --tequilapi.address=127.0.0.1 service --agreed-terms-and-conditions"
   network_mode: "host"
   # SETUID and SETGID are for sudo. The node runs as root and still configures
   # its interface and firewall through `sudo ip ...` / `sudo iptables ...`, and

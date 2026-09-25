@@ -17,7 +17,7 @@ MystNodes (Mysterium Network) is a decentralized VPN and proxy network built on 
 | Payout frequency | On request |
 | Payment methods | Crypto |
 
-> Earnings in MYST tokens. Residential IPs earn significantly more. Node WebUI at port 4449 for management. VPS accepted. Important: after first run, set your beneficiary (settlement) wallet via the node WebUI or CLI to match your mystnodes.com account -- this links on-chain earnings to your cloud dashboard.
+> Earnings in MYST tokens. Residential IPs earn significantly more. Node WebUI at port 4449 for management, bound to the machine it runs on; from another machine open an SSH tunnel first (`ssh -L 4449:127.0.0.1:4449 <host>`, then browse `http://127.0.0.1:4449`). VPS accepted. Important: after first run, set your beneficiary (settlement) wallet via the node WebUI or CLI to match your mystnodes.com account -- this links on-chain earnings to your cloud dashboard.
 
 > **One node per public IP.** Mysterium strictly enforces one active node per public IP address. Additional nodes on the same IP show as offline and earn nothing. Do not run on a phone if a Docker node is already running on the same network. Use separate public IPs (e.g. dual WAN, different locations) for additional nodes.
 
@@ -145,7 +145,7 @@ docker run -d --name cashpilot-mysterium \
   --security-opt no-new-privileges:true \
   -v /path/to/your/myst/data:/var/lib/mysterium-node \
   mysteriumnetwork/myst:latest \
-  --ui.address=0.0.0.0 --tequilapi.address=0.0.0.0 service --agreed-terms-and-conditions
+  --ui.address=127.0.0.1 --tequilapi.address=127.0.0.1 service --agreed-terms-and-conditions
 ```
 
 Verify it took:
