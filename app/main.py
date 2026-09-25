@@ -1994,10 +1994,9 @@ async def api_deploy(
         "privileged": docker_conf.get("privileged", False),
     }
 
-    # Command: resolve ${VAR} placeholders
+    # The command template; its ${VAR} placeholders are filled in below, AFTER
+    # the recorded spec is merged, so they see the env this deployment really has.
     raw_command = docker_conf.get("command") or None
-    if raw_command:
-        spec["command"] = re.sub(r"\$\{(\w+)\}", lambda m: env.get(m.group(1), m.group(0)), raw_command)
 
     # Durable resource limits (mem_limit / mem_reservation / oom_score_adj /
     # cpu_shares), declared in the service YAML. Only forwarded when present.
@@ -2020,8 +2019,32 @@ async def api_deploy(
         keys_by_target.setdefault(target, set()).update(m.group(1) for m in re.finditer(r"\$\{(\w+)\}", host_part))
     if recorded:
         spec, divergence = _merge_recorded_spec(spec, recorded, typed_env, keys_by_target)
-        if divergence:
-            logger.info("Redeploying %s from its recorded spec: %s", slug, "; ".join(divergence))
+
+    # The command always comes from the catalog, filled from the MERGED env.
+    #
+    # Nobody types a command: the form has no field for one, so a recorded
+    # command is only ever an older catalog template filled with that
+    # deployment's values. Keeping it protected no decision and froze two
+    # things that must change. A catalog fix to the command never reached a
+    # running service (Mysterium kept publishing its UI and API on 0.0.0.0 after
+    # the catalog bound them to loopback), and a password retyped on redeploy
+    # never reached a service that takes it on the command line (Honeygain,
+    # IPRoyal, Traffmonetizer), because the old command still carried the old one.
+    #
+    # Filling it from the merged env is what makes that safe: a blank redeploy
+    # gets the recorded credentials, where the pre-merge env had only the form's
+    # values and left the placeholders unfilled, which is why the record had to
+    # win before.
+    merged_env = spec.get("env") or {}
+    if raw_command:
+        spec["command"] = re.sub(r"\$\{(\w+)\}", lambda m: merged_env.get(m.group(1), m.group(0)), raw_command)
+    else:
+        spec.pop("command", None)
+    if recorded and "command" in recorded and recorded.get("command") != spec.get("command"):
+        # Never the command itself: it carries credentials.
+        divergence.append("command: using the catalog's current command; this service last ran a different one")
+    if divergence:
+        logger.info("Redeploying %s from its recorded spec: %s", slug, "; ".join(divergence))
 
     # The worker keeps every mount of the container it replaces where it is now,
     # except the ones named here: a path the operator typed on THIS deploy is a
@@ -2070,8 +2093,9 @@ def _merge_recorded_spec(
     anything can compare them - which is how a node identity gets orphaned.
 
     So for an existing service the record wins, with deliberate exceptions:
-    the image and the capabilities always come from the catalog (otherwise
-    upgrades and capability fixes could never land), and anything the user
+    the image, the capabilities and the command always come from the catalog
+    (otherwise upgrades and fixes to them could never land; the command is
+    filled by the caller, from the env merged here), and anything the user
     explicitly typed on this deploy wins over the stored value (otherwise a
     credential could never be corrected).
 
@@ -2144,7 +2168,9 @@ def _merge_recorded_spec(
     # None, and rebuilding from that would silently give the service a new
     # identity. As with env, a hostname the operator typed THIS deploy still
     # wins - a non-empty catalog_spec value is what they just asked for.
-    for field in ("command", "network_mode"):
+    # command is not here: the caller rebuilds it from the catalog template and
+    # the merged env, and reports the change itself (see api_deploy).
+    for field in ("network_mode",):
         if field in recorded and recorded.get(field) != catalog_spec.get(field):
             divergence.append(f"{field}: keeping the deployed value")
             merged[field] = recorded[field]
