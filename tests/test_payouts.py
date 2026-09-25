@@ -168,7 +168,9 @@ class TestAgainstTheRealCatalog:
         from app import catalog
 
         assert payouts.min_payout(catalog.get_service("honeygain")) == 20.0
-        assert payouts.min_payout(catalog.get_service("storj")) == 4.0
+        # Storj's minimum is fee-based (paid when the Ethereum transaction fee
+        # is at most 25% of the amount), so the catalog documents no fixed number.
+        assert payouts.min_payout(catalog.get_service("storj")) is None
 
     def test_every_catalogued_minimum_is_a_usable_number(self):
         """A malformed min_amount silently disables payout detection."""

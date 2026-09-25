@@ -79,7 +79,7 @@ class TestTheMinimumIsLabelledWithTheUnitItWasDerivedFrom:
 
     @pytest.mark.parametrize(
         ("slug", "token"),
-        [("storj", "STORJ"), ("ebesucher", "EUR"), ("proxybase-xyz", "USDC")],
+        [("storj", "USDC"), ("ebesucher", "EUR"), ("proxybase-xyz", "USDC")],
     )
     def test_the_payout_token_is_still_recorded(self, slug, token):
         """The control: this must not erase what the provider pays in."""
@@ -115,24 +115,29 @@ class TestTheReconciledThresholdIsNowRight:
     With STORJ declared, a $3.50 balance was measured against 4 STORJ converted
     into dollars — about $1 — so the user was told they were eligible far too
     early. With the declaration corrected there is nothing to convert and the
-    threshold is the $4 the provider documents.
+    threshold is the dollar figure the provider documents.
+
+    Storj itself no longer documents a fixed minimum (since October 2026 it pays
+    USDC on Ethereum once the balance clears a fee-based threshold), so the
+    same rule is exercised on proxybase-xyz, which still declares a $1 minimum
+    in USD.
     """
 
-    def test_storj_needs_no_conversion_now(self):
+    def test_a_usd_minimum_needs_no_conversion(self):
         from app import payouts
 
-        service = catalog()["storj"]
-        assert payouts.min_payout_in(service, "USD") == 4.0
+        service = catalog()["proxybase-xyz"]
+        assert payouts.min_payout_in(service, "USD") == 1.0
 
     def test_it_no_longer_depends_on_a_token_rate(self):
-        """Before this, a missing STORJ rate made the threshold unknown."""
+        """Before this, a missing token rate made the threshold unknown."""
         from unittest.mock import patch
 
         from app import payouts
 
-        service = catalog()["storj"]
+        service = catalog()["proxybase-xyz"]
         with patch("app.exchange_rates.to_usd", lambda amount, currency: None):
-            assert payouts.min_payout_in(service, "USD") == 4.0
+            assert payouts.min_payout_in(service, "USD") == 1.0
 
     def test_the_collector_still_reports_usd(self):
         """The premise: the balance side of the comparison is dollars."""

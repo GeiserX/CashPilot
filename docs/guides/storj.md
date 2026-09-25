@@ -5,7 +5,7 @@
 
 ## Description
 
-Storj is a decentralized cloud storage network where you earn by renting out your unused disk space. Run the storage node via Docker and get paid approximately $1.50/TB stored per month plus $2/TB egress. Payments are in STORJ token or via zkSync L2. Requires at least 550GB of available disk space and a stable internet connection. One of the most mature and truly passive storage income services.
+Storj is a decentralized cloud storage network where you earn by renting out your unused disk space. Run the storage node via Docker and get paid approximately $1.50/TB stored per month plus $2/TB egress. Payouts are monthly in USDC, a US-dollar stablecoin, on Ethereum mainnet to a wallet you control, once the balance clears a fee-based minimum (STORJ token until the September 2026 payout). Requires at least 550GB of available disk space and a stable internet connection. One of the most mature and truly passive storage income services.
 
 ## Earning Estimates
 
@@ -58,14 +58,14 @@ Forward these ports through your router to the server running the node:
 - **TCP+UDP 28967** — Storage node traffic (required, UDP for QUIC)
 - **TCP 14002** — Dashboard/monitoring (optional, local access only)
 
-### 4. Get an ERC-20 wallet address
+### 4. Get an Ethereum wallet address
 
-You need an Ethereum-compatible wallet address to receive STORJ token payouts. Any ERC-20 wallet works (MetaMask, Trust Wallet, Ledger, etc.). If you already have an Ethereum address from other DePIN services, you can reuse it. Storj also supports zkSync L2 payouts (same address, lower gas fees).
+You need an Ethereum wallet address whose private key you control to receive USDC payouts. Storj paid in STORJ token until the September 2026 payout and pays in USDC on Ethereum mainnet from the October 2026 payout on; zkSync Era payouts ended on 1 September 2026. Any self-custodial wallet works (MetaMask, Trust Wallet, Ledger, etc.), and if you already have an Ethereum address from other DePIN services you can reuse it. Do not use an exchange deposit address. Use the same address on every node you run: Storj pays a wallet only when the transaction fee is at most a quarter of the amount, so the minimum moves with Ethereum gas (the docs' examples land between $50 and $70) and a balance below it rolls into the next month.
 
 ### 5. Deploy with CashPilot
 
 In the CashPilot web UI, find **Storj** in the service catalog and click **Deploy**. You'll be asked for:
-- **Wallet address** — your ERC-20 wallet for payouts
+- **Wallet address** — your Ethereum wallet for USDC payouts
 - **Email** — for operator notifications
 - **External address** — a DDNS hostname with port (e.g. `mynode.ddns.net:28967`). A literal public IP works until your ISP silently re-provisions it — from that day satellites dial a dead address and count the node offline while everything looks healthy locally
 - **Storage allocation** — how much disk space to offer (e.g. `2TB`)
@@ -83,7 +83,7 @@ CashPilot will handle the container creation with proper volume mounts.
 
 | Variable | Label | Required | Secret | Description |
 |----------|-------|:--------:|:------:|-------------|
-| `WALLET` | Wallet address | Yes | No | ERC-20 wallet address for STORJ token payouts (or zkSync) |
+| `WALLET` | Wallet address | Yes | No | Ethereum wallet address for USDC payouts, self-custodial |
 | `EMAIL` | Email | Yes | No | Email address for operator notifications |
 | `ADDRESS` | External address | Yes | No | DDNS hostname with port (e.g. mynode.ddns.net:28967) — prefer over a literal IP |
 | `STORAGE` | Storage allocation | Yes | No | Maximum disk space to allocate (e.g. 2TB) (default: `1TB`) |

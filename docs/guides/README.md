@@ -80,7 +80,7 @@ Setup and configuration for every service CashPilot supports.
 
 | Service | Needs | Runs as | Minimum payout | Status |
 |---|---|---|---|---|
-| [Storj](storj.md) | Storage 550GB, 5 Mbps upload | Docker | $4 | active |
+| [Storj](storj.md) | Storage 550GB, 5 Mbps upload | Docker | 4x the Ethereum transaction fee, smaller balances roll over | active |
 
 ## Not a service guide
 
