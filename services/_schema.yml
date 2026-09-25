@@ -65,6 +65,9 @@
 #       secret: true/false
 #       description: "Help text"
 #       default: "" (optional)
+#       pattern: "" (optional) regex a typed value must match in full, or the
+#         deploy is refused. For values that land on a command line, where a
+#         stray space or word becomes an argument and the service stops starting.
 #   ports: ["port:port"]
 #   volumes: ["host:container"]
 #   critical_volumes:          (optional) mounts holding state that CANNOT be recovered
