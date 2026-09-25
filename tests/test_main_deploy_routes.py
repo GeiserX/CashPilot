@@ -155,7 +155,7 @@ class TestApiDeploy:
             },
         }
         # The recorded container ran with a command the catalog no longer has:
-        # _merge_recorded_spec keeps it and reports the divergence.
+        # the redeploy drops it and reports the divergence.
         recorded = {"image": "honeygain/honeygain:latest", "command": "--legacy-flag"}
         worker = _online_worker()
 
@@ -1290,3 +1290,104 @@ class TestEarningsSummaryAdvanced:
             data = resp.json()
             assert data["total_bonus"] == 5.0
             assert data["total_adjusted"] == 10.0
+
+
+class TestRedeployTakesTheCatalogCommand:
+    """A redeploy rebuilds the command from the catalog, filled from the merged env.
+
+    The recorded command used to win over the catalog. Nobody can type a
+    command, so that froze two things that must change: Mysterium kept
+    publishing its WebUI and API on 0.0.0.0 after the catalog bound them to
+    loopback, and a password retyped on redeploy never reached a service that
+    takes it on the command line. Seen live on the fleet, 2026-09-25.
+    """
+
+    CREDENTIAL_SVC = {
+        "slug": "honeygain",
+        "name": "Honeygain",
+        "docker": {
+            "image": "honeygain/honeygain:latest",
+            "env": [
+                {"key": "HG_EMAIL", "required": True, "default": ""},
+                {"key": "HG_PASSWORD", "required": True, "secret": True, "default": ""},
+            ],
+            "command": "-tou-accept -email ${HG_EMAIL} -pass ${HG_PASSWORD}",
+        },
+    }
+    CREDENTIAL_RECORD = {
+        "image": "honeygain/honeygain:latest",
+        "env": {"HG_EMAIL": "me@example.com", "HG_PASSWORD": "pw1"},
+        "command": "-tou-accept -email me@example.com -pass pw1",
+    }
+
+    def _redeploy(self, client, svc, recorded, body):
+        worker = _online_worker()
+        sent: dict = {}
+
+        async def _fake_deploy(worker_id, slug, spec):
+            sent.update(spec)
+            return {"container_id": "abc123"}
+
+        with (
+            _auth_owner(),
+            patch("app.main.database.list_workers", new_callable=AsyncMock, return_value=[worker]),
+            patch("app.main.catalog.get_service", return_value=svc),
+            patch("app.main.database.get_worker", new_callable=AsyncMock, return_value=worker),
+            patch("app.main.database.get_deployment_spec", new_callable=AsyncMock, return_value=recorded),
+            patch("app.main._proxy_worker_deploy", side_effect=_fake_deploy),
+            patch("app.main.database.save_deployment", new_callable=AsyncMock),
+            patch("app.main.database.record_health_event", new_callable=AsyncMock),
+            patch("app.main._run_collection", new_callable=AsyncMock),
+        ):
+            resp = client.post(f"/api/deploy/{svc['slug']}", json=body)
+        assert resp.status_code == 200, resp.text
+        return resp.json(), sent
+
+    def test_a_catalog_fix_to_the_command_reaches_a_running_service(self, client):
+        svc = {
+            "slug": "mysterium",
+            "name": "Mysterium",
+            "docker": {
+                "image": "mysteriumnetwork/myst",
+                "env": [],
+                "command": "--ui.address=127.0.0.1 --tequilapi.address=127.0.0.1 service",
+            },
+        }
+        recorded = {
+            "image": "mysteriumnetwork/myst",
+            "env": {},
+            "command": "--ui.address=0.0.0.0 --tequilapi.address=0.0.0.0 service",
+        }
+        data, sent = self._redeploy(client, svc, recorded, {"env": {}})
+        assert sent["command"] == "--ui.address=127.0.0.1 --tequilapi.address=127.0.0.1 service"
+        assert any(line.startswith("command:") for line in data["kept_from_previous_deployment"])
+
+    def test_a_command_the_catalog_dropped_is_dropped(self, client):
+        """Storj's sunset zkSync flag: gone from the catalog, gone from the node."""
+        svc = {"slug": "storj", "name": "Storj", "docker": {"image": "storjlabs/storagenode", "env": []}}
+        recorded = {"image": "storjlabs/storagenode", "env": {}, "command": "--operator.wallet-features=zksync-era"}
+        data, sent = self._redeploy(client, svc, recorded, {"env": {}})
+        assert not sent.get("command")
+        assert any(line.startswith("command:") for line in data["kept_from_previous_deployment"])
+
+    def test_a_blank_redeploy_fills_the_command_from_the_recorded_credentials(self, client):
+        """Why the record used to win: the form's own env has no credentials in it."""
+        data, sent = self._redeploy(client, self.CREDENTIAL_SVC, self.CREDENTIAL_RECORD, {"env": {}})
+        assert sent["command"] == "-tou-accept -email me@example.com -pass pw1"
+        assert "${" not in sent["command"]
+        # Nothing changed, so there is nothing to report about the command.
+        assert not any(line.startswith("command:") for line in data.get("kept_from_previous_deployment", []))
+
+    def test_a_retyped_password_reaches_the_command_line(self, client):
+        data, sent = self._redeploy(
+            client, self.CREDENTIAL_SVC, self.CREDENTIAL_RECORD, {"env": {"HG_PASSWORD": "pw2"}}
+        )
+        assert sent["command"] == "-tou-accept -email me@example.com -pass pw2"
+
+    def test_the_report_never_repeats_the_command(self, client):
+        """Commands carry credentials; the toast and the log line must not."""
+        data, _ = self._redeploy(client, self.CREDENTIAL_SVC, self.CREDENTIAL_RECORD, {"env": {"HG_PASSWORD": "pw2"}})
+        report = " ".join(data["kept_from_previous_deployment"])
+        assert "command:" in report
+        for secret in ("pw2", "pw1", "me@example.com"):
+            assert secret not in report
