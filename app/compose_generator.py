@@ -161,6 +161,24 @@ def _service_to_compose(
     if cap_add:
         compose_svc["cap_add"] = cap_add
 
+    # Entrypoint override. EVERY $ is escaped, not just ${VAR}: a shell wrapper
+    # uses bare $F and $@, and Compose would fill those from the host's
+    # environment (empty), silently breaking the script. Nothing in an
+    # entrypoint is meant for Compose to substitute.
+    entrypoint = docker_conf.get("entrypoint")
+    if isinstance(entrypoint, list) and entrypoint:
+        compose_svc["entrypoint"] = [_escape_value(str(part)) for part in entrypoint]
+
+    # The catalog's stop grace. Without it the exported container gets Docker's
+    # 10 seconds, which is shorter than a storage node may need to flush.
+    stop_timeout = docker_conf.get("stop_timeout")
+    try:
+        grace = int(stop_timeout) if stop_timeout is not None else 0
+    except (TypeError, ValueError):
+        grace = 0
+    if grace > 0:
+        compose_svc["stop_grace_period"] = f"{grace}s"
+
     # Command — fill ${VAR} credentials from known values, escape whatever remains
     command = docker_conf.get("command")
     if command:

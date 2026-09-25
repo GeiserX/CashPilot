@@ -17,6 +17,14 @@ from typing import Any
 import docker
 from docker.errors import APIError, DockerException, NotFound
 
+# docker-py's run() and create() refuse stop_timeout although the Engine API and
+# the low-level create_container() accept it, so a container could only ever
+# carry Docker's default of 10 seconds. That default governs every stop that
+# does not pass its own timeout: a plain `docker stop`, Docker Desktop quitting,
+# a host shutting down. Registering the key lets run() forward it.
+if "stop_timeout" not in docker.models.containers.RUN_CREATE_KWARGS:
+    docker.models.containers.RUN_CREATE_KWARGS.append("stop_timeout")
+
 try:
     from app.catalog import critical_volume_targets, get_service, get_services
 except ImportError:
@@ -351,7 +359,13 @@ def deploy_raw(
         security_opt=["no-new-privileges:true"],
         privileged=False,
         pids_limit=_PIDS_LIMIT,
+        # From the worker's own catalog (see _get_entrypoint), like the stop
+        # timeout below: neither is something the deploy request can set.
+        entrypoint=_get_entrypoint(slug),
         command=command if command else None,
+        # The container keeps the catalog's grace for every stop, not only the
+        # ones this worker sends with an explicit timeout.
+        stop_timeout=_get_stop_timeout(slug),
         labels=all_labels,
         hostname=hostname or f"cashpilot-{slug}",
         detach=True,
@@ -373,6 +387,22 @@ def _parse_stop_timeout(value: Any) -> int:
     except (TypeError, ValueError):
         return 30
     return timeout if timeout > 0 else 30
+
+
+def _get_entrypoint(slug: str) -> list[str] | None:
+    """The entrypoint override the catalog declares for ``slug``, if any.
+
+    Read from the worker's OWN catalog, never from the deploy request: an
+    entrypoint decides what runs as root inside the container, so the caller
+    must not be able to choose it.
+    """
+    if not get_service:
+        return None
+    svc = get_service(slug)
+    raw = (svc or {}).get("docker", {}).get("entrypoint")
+    if isinstance(raw, list) and raw and all(isinstance(part, str) for part in raw):
+        return list(raw)
+    return None
 
 
 def _get_stop_timeout(slug: str) -> int:
