@@ -320,7 +320,7 @@ If the key cannot be written to disk at all — an unwritable or unmounted `/dat
 
 **What about security?**
 
-Every service CashPilot deploys runs inside its own isolated Docker container. Containers cannot access your host filesystem, other containers, or your local network unless explicitly configured to do so. CashPilot further hardens deployments with `--security-opt no-new-privileges`, preventing privilege escalation inside containers. Service credentials are encrypted at rest using Fernet symmetric encryption. Only the worker container requires Docker socket access; the UI container has no privileged access.
+Every service CashPilot deploys runs in its own container with every Linux capability dropped (a few services add back only the ones they declare) and `--security-opt no-new-privileges` set, so a process inside cannot gain privileges. Containers cannot see your host filesystem beyond the volumes a service declares. They CAN reach your local network by default, because Docker does not block that; [Protecting Your Home Network](docs/home-network-security.md) shows how to put them on a firewalled bridge that reaches the internet but not your LAN, router or host. Service credentials are encrypted at rest using Fernet symmetric encryption. Only the worker container requires Docker socket access; the UI container has no privileged access.
 
 That said, no setup is bulletproof. You are still running third-party software that routes external traffic through your network. Docker isolation significantly reduces the attack surface compared to running these services directly on your host, but it does not eliminate all risk. We recommend running CashPilot on a dedicated machine or VLAN, keeping Docker and your host OS up to date, and reviewing the open-source code of any service before deploying it.
 
@@ -330,7 +330,7 @@ CashPilot monitors container health continuously. If a service container exits u
 
 ## Disclosure
 
-> This project contains affiliate/referral links. If you sign up through these links, the project maintainer may earn a small commission at no extra cost to you. This helps support the development of CashPilot. You are free to replace all referral codes with your own in the Settings page.
+The signup links in CashPilot and in this README are referral links. If you sign up through one, the maintainer may earn a commission, at no cost to you, which helps fund CashPilot's development. To avoid them, sign up on the provider's own website instead.
 
 ## Ecosystem
 

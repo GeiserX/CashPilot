@@ -1,6 +1,7 @@
 # Nosana
 
 > **Category:** GPU Compute | **Status:** Active
+>
 > **Website:** [https://nosana.io](https://nosana.io)
 
 ## Description

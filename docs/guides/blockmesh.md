@@ -1,6 +1,7 @@
 # BlockMesh (Perceptron Network)
 
 > **Category:** DePIN | **Status:** Dropped
+>
 > **Website:** [https://blockmesh.xyz](https://blockmesh.xyz)
 
 ## Description

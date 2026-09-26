@@ -1,6 +1,7 @@
 # Deeper Network
 
 > **Category:** DePIN | **Status:** Active
+>
 > **Website:** [https://deeper.network](https://deeper.network)
 
 ## Description

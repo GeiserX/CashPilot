@@ -24,6 +24,7 @@ from app import catalog  # noqa: E402
 TEMPLATE = """# {name}
 
 > **Category:** {category} | **Status:** {status}
+>
 > **Website:** [{website}]({website})
 
 ## Description

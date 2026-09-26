@@ -1,6 +1,7 @@
 # SpeedShare
 
 > **Category:** Bandwidth Sharing | **Status:** Dead
+>
 > **Website:** [https://speedshare.app](https://speedshare.app)
 
 > **Deprecated:** SpeedShare authentication is completely broken — login no longer works. The project was confirmed dead in their Discord (March 2026). Deployment is blocked. This guide is kept for reference only.

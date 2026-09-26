@@ -1,6 +1,7 @@
 # Bytebenefit
 
 > **Category:** Bandwidth Sharing | **Status:** Active
+>
 > **Website:** [https://bytebenefit.io](https://bytebenefit.io)
 
 ## Description

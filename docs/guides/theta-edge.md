@@ -1,6 +1,7 @@
 # Theta Edge Node
 
 > **Category:** DePIN | **Status:** Active
+>
 > **Website:** [https://thetatoken.org](https://thetatoken.org)
 
 ## Description

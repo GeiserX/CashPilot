@@ -1,6 +1,7 @@
 # Koii Network
 
 > **Category:** DePIN | **Status:** Broken
+>
 > **Website:** [https://koii.network](https://koii.network)
 
 ## Description

@@ -1,6 +1,7 @@
 # Gradient Network
 
 > **Category:** DePIN | **Status:** Active
+>
 > **Website:** [https://gradient.network](https://gradient.network)
 
 ## Description

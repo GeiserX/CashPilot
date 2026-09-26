@@ -1,6 +1,7 @@
 # WizardGain
 
 > **Category:** Bandwidth Sharing | **Status:** Broken
+>
 > **Website:** [https://wizardgain.com](https://wizardgain.com)
 
 ## Description

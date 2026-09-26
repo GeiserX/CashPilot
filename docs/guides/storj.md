@@ -1,6 +1,7 @@
 # Storj
 
 > **Category:** Storage Sharing | **Status:** Active
+>
 > **Website:** [https://www.storj.io](https://www.storj.io)
 
 ## Description

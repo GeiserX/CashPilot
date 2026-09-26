@@ -1,6 +1,7 @@
 # Grass
 
 > **Category:** DePIN | **Status:** Active
+>
 > **Website:** [https://www.grass.io](https://www.grass.io)
 
 ## Description

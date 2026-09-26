@@ -1,6 +1,7 @@
 # Vast.ai
 
 > **Category:** GPU Compute | **Status:** Active
+>
 > **Website:** [https://vast.ai](https://vast.ai)
 
 ## Description

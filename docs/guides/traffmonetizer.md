@@ -1,6 +1,7 @@
 # Traffmonetizer
 
 > **Category:** Bandwidth Sharing | **Status:** Active
+>
 > **Website:** [https://traffmonetizer.com](https://traffmonetizer.com)
 
 ## Description

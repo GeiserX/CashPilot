@@ -1,6 +1,7 @@
 # PassiveApp
 
 > **Category:** DePIN | **Status:** Active
+>
 > **Website:** [https://passiveapp.com](https://passiveapp.com)
 
 ## Description

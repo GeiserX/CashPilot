@@ -1,6 +1,7 @@
 # earn.cc
 
 > **Category:** Bandwidth Sharing | **Status:** Broken
+>
 > **Website:** [https://earn.cc](https://earn.cc)
 
 ## Description

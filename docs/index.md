@@ -3,7 +3,7 @@ hide:
   - navigation
 ---
 
-# CashPilot
+# CashPilot { .cp-visually-hidden }
 
 <p align="center">
   <img src="banner.svg" alt="CashPilot" width="100%">
@@ -61,11 +61,11 @@ It supports both **Docker-based services** (deployed and managed automatically) 
 
     All credentials encrypted at rest with Fernet symmetric encryption.
 
--   :material-view-grid: **49 Services, 4 Categories**
+-   :material-view-grid: **50 Services, 4 Categories**
 
     ---
 
-    Bandwidth sharing, DePIN, storage, and GPU compute -- the broadest catalog available.
+    Bandwidth sharing, DePIN, storage, and GPU compute, each with a setup guide.
 
 -   :material-cellphone: **Mobile-Responsive Dark UI**
 
@@ -88,8 +88,8 @@ docker compose up -d
 
 This starts two containers:
 
-- **cashpilot-ui** -- Web dashboard, earnings collection, service catalog (port 8080)
-- **cashpilot-worker** -- Docker agent that deploys and monitors service containers (port 8081)
+- **cashpilot-ui**: web dashboard, earnings collection, service catalog (port 8080)
+- **cashpilot-worker**: Docker agent that deploys and monitors service containers (port 8081)
 
 Then open [http://localhost:8080](http://localhost:8080) and follow the setup wizard.
 
@@ -108,8 +108,8 @@ Then open [http://localhost:8080](http://localhost:8080) and follow the setup wi
 | Earnings dashboard | **Yes** | No | No | No | No |
 | Historical charts | **Yes** | No | No | No | No |
 | Multi-node fleet management | **Yes** | No | No | No | No |
-| Service catalog with guides | **49 services** | 17 | 8 | 14 | 8 |
-| Automated earnings collection | **13 collectors** | 0 | 0 | 0 | 0 |
+| Service catalog with guides | **50 services** | 17 | 8 | 14 | 8 |
+| Automated earnings collection | **15 collectors** | 0 | 0 | 0 | 0 |
 | Multi-arch (amd64 + arm64) | **Yes** | Yes | Yes | No | No |
 | Credential encryption | **Yes** | No | No | No | No |
 | Compose export | **Yes** | Yes | Yes | Yes | Yes |
@@ -129,16 +129,15 @@ Then open [http://localhost:8080](http://localhost:8080) and follow the setup wi
     All service credentials are encrypted at rest in the SQLite database with a Fernet key kept at `/data/.fernet_key`. `CASHPILOT_ENCRYPTION_KEY` is adopted only when that file is absent — the file always wins, so on an instance that already has a key the variable changes nothing. This is not `CASHPILOT_SECRET_KEY`, which only signs login sessions. The database file lives in the mounted Docker volume. No credentials are ever sent anywhere except to the service containers themselves.
 
 ??? question "What about security?"
-    Every service CashPilot deploys runs inside its own isolated Docker container with `--security-opt no-new-privileges`. Service credentials are encrypted at rest using Fernet symmetric encryption. Only the worker container requires Docker socket access; the UI container has no privileged access. We recommend running CashPilot on a dedicated machine or VLAN and keeping Docker and your host OS up to date.
+    Every service CashPilot deploys runs in its own container with every Linux capability dropped (a few services add back only the ones they declare) and `no-new-privileges` set. Credentials are encrypted at rest, and only the worker touches the Docker socket. A container can still reach your home network by default, though: Docker does not block that. To close it, follow [Protecting Your Home Network](home-network-security.md), which puts the earners on a firewalled bridge that can reach the internet but not your LAN, router or host.
 
 ??? question "What happens if a service container crashes?"
     CashPilot monitors container health continuously. If a service container exits unexpectedly, it is automatically restarted. The dashboard shows uptime and health status for every running service.
 
 ## Disclosure
 
-!!! info "Referral Links"
-    This project contains affiliate/referral links. If you sign up through these links, the project maintainer may earn a small commission at no extra cost to you. You are free to replace all referral codes with your own in the Settings page.
+The signup links in CashPilot and in these docs are referral links. If you sign up through one, the maintainer may earn a commission, at no cost to you. To avoid them, sign up on the provider's own website instead.
 
 ## License
 
-[GPL-3.0](https://github.com/GeiserX/CashPilot/blob/main/LICENSE) -- Sergio Fernandez, 2026
+[GPL-3.0](https://github.com/GeiserX/CashPilot/blob/main/LICENSE) · Sergio Fernandez, 2026

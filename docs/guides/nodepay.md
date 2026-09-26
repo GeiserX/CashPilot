@@ -1,6 +1,7 @@
 # Nodepay
 
 > **Category:** DePIN | **Status:** Active
+>
 > **Website:** [https://nodepay.ai](https://nodepay.ai)
 
 ## Description
