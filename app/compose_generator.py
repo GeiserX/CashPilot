@@ -73,12 +73,30 @@ def _substitute_env(value: str, env: dict[str, str]) -> str:
 def _is_named_volume(volume_str: str) -> str | None:
     """Return the volume name if the mapping uses a named volume, else None.
 
-    Named volumes have a source that doesn't start with /, ., or ~.
+    Named volumes have a source that doesn't start with /, ., or ~. A source
+    that starts with $ is a host path Compose fills in from the environment
+    (see _volume_mapping), never a volume name.
     """
     source = volume_str.split(":")[0]
-    if source and not source.startswith(("/", ".", "~")):
+    if source and not source.startswith(("/", ".", "~", "$")):
         return source
     return None
+
+
+def _volume_mapping(volume: str, env: dict[str, str], unfilled: dict[str, str]) -> str:
+    """One volume line for the export: known values filled, missing paths required."""
+
+    def fill(match: re.Match[str]) -> str:
+        key = match.group(1)
+        if key in unfilled:
+            # No "}" or "$" in the message: it sits inside Compose's own ${...}.
+            label = re.sub(r"[}$]", "", unfilled[key])
+            return f"${{{key}:?set {key} to the host directory for {label}, in .env or the shell}}"
+        if key in env:
+            return _escape_value(env[key])
+        return "$$" + match.group(0)[1:]
+
+    return re.sub(r"\$\{(\w+)\}", fill, volume)
 
 
 def _service_to_compose(
@@ -126,6 +144,8 @@ def _service_to_compose(
 
     # Environment variables
     env: dict[str, str] = {}
+    # Required values nobody supplied: the file carries a placeholder for them.
+    unfilled: dict[str, str] = {}
     for var in docker_conf.get("env", []):
         key = var["key"]
         default = var.get("default", "")
@@ -137,6 +157,7 @@ def _service_to_compose(
             env[key] = default
         elif var.get("required"):
             env[key] = f"<{var.get('label', key)}>"
+            unfilled[key] = str(var.get("label", key))
     if env:
         # $-escaped at emission: Compose interpolates inside environment values
         # too, so a stored password containing $ would otherwise change (or
@@ -150,10 +171,17 @@ def _service_to_compose(
     if ports:
         compose_svc["ports"] = [str(p) for p in ports]
 
-    # Volumes — fill ${VAR} host paths from known values, escape whatever remains
+    # Volumes — fill ${VAR} host paths from known values, escape whatever remains.
+    #
+    # A path nobody supplied cannot take the "<Label>" placeholder the environment
+    # block uses: as a host path it reads as a named volume, the file declares a
+    # volume called "<Identity directory>", and Compose rejects the whole file with
+    # an error that names neither setting. It becomes ${KEY:?...} instead, which
+    # Compose fills from the user's .env or shell, and refuses to run without,
+    # naming the variable.
     volumes = docker_conf.get("volumes", [])
     if volumes:
-        compose_svc["volumes"] = [_escape_interpolation(_substitute_env(str(v), env)) for v in volumes]
+        compose_svc["volumes"] = [_volume_mapping(str(v), env, unfilled) for v in volumes]
 
     # Network mode
     network_mode = docker_conf.get("network_mode")
