@@ -241,6 +241,52 @@ def available_runtimes() -> set[str] | None:
     return set(runtimes) if isinstance(runtimes, dict) else set()
 
 
+#: A user-defined bridge the operator created for the earners, so their host
+#: firewall rules can name one interface (docs/home-network-security.md).
+#: Empty means Docker's default bridge, as before.
+_CONTAINER_NETWORK = os.getenv("CASHPILOT_CONTAINER_NETWORK", "").strip()
+
+
+class ContainerNetworkError(RuntimeError):
+    """CASHPILOT_CONTAINER_NETWORK names a network this worker cannot use."""
+
+
+def container_network(network_mode: str | None) -> str | None:
+    """The network a new container joins, or None for Docker's default bridge.
+
+    Only a container that would otherwise land on the default bridge moves: host
+    or none networking is the service's own choice. The worker never creates the
+    network (or any firewall rule); a network that is missing, or is not a
+    bridge, is refused here, BEFORE anything is removed, so a typo cannot take a
+    running service down.
+    """
+    if not _CONTAINER_NETWORK or (network_mode or "bridge") != "bridge":
+        return None
+    try:
+        network = _get_client().networks.get(_CONTAINER_NETWORK)
+    except NotFound:
+        raise ContainerNetworkError(
+            f"CASHPILOT_CONTAINER_NETWORK is {_CONTAINER_NETWORK!r}, and no network by that name exists on "
+            f"this host. Create it first: docker network create --driver bridge "
+            f"-o com.docker.network.bridge.name=cp-isolated {_CONTAINER_NETWORK}"
+        ) from None
+    attrs = network.attrs or {}
+    if (attrs.get("Name") or getattr(network, "name", "")) == "bridge" or (attrs.get("Options") or {}).get(
+        "com.docker.network.bridge.default_bridge"
+    ) == "true":
+        raise ContainerNetworkError(
+            "CASHPILOT_CONTAINER_NETWORK names Docker's default bridge, which every other container shares, "
+            "so no firewall rule can single out the earners. Name the bridge you created for them."
+        )
+    driver = attrs.get("Driver")
+    if driver != "bridge":
+        raise ContainerNetworkError(
+            f"CASHPILOT_CONTAINER_NETWORK is {_CONTAINER_NETWORK!r}, a {driver!r} network. Only a bridge keeps "
+            f"the containers behind this host's firewall rules."
+        )
+    return _CONTAINER_NETWORK
+
+
 def deploy_raw(
     slug: str,
     image: str,
@@ -275,6 +321,10 @@ def deploy_raw(
     """
     client = _get_client()
     name = _container_name(slug)
+
+    # Decided before the old container is touched: a network that cannot be
+    # used must fail the deploy while the running service is still running.
+    network = container_network(network_mode)
 
     # Remove any existing container with the same name
     try:
@@ -342,7 +392,10 @@ def deploy_raw(
         environment=env or {},
         ports=ports if ports and network_mode != "host" else None,
         volumes=volumes if volumes else None,
-        network_mode=network_mode,
+        # docker-py refuses network and network_mode together; a container moved
+        # onto the operator's bridge is joined to it and nothing else.
+        network_mode=None if network else network_mode,
+        network=network,
         # These images are third-party and closed-source, so they get the minimum
         # kernel surface: every capability dropped, then only the ones the service's
         # own catalog entry declares added back (docs/fleet.md lists them; most

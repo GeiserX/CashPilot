@@ -152,6 +152,7 @@ Two separate Docker images:
 | `CASHPILOT_EGRESS_DETECT` | No | on | `off` disables the hourly public-IP lookup |
 | `CASHPILOT_EGRESS_IP` | No | -- | State the public IP directly (validated; a LAN/tailnet address is rejected) |
 | `CASHPILOT_EGRESS_IP_URL` | No | -- | Custom IP-echo endpoint returning a bare IP |
+| `CASHPILOT_CONTAINER_NETWORK` | No | -- | A bridge you created; bridge-networked containers join it instead of Docker's default, so host firewall rules can confine them (docs/home-network-security.md). Missing = deploy refused |
 
 ### Egress IP awareness (CashPilot-5qc)
 

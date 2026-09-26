@@ -45,6 +45,10 @@ RFC1918 = ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16")
 LINK_LOCAL = ("169.254.0.0/16",)
 
 DEFAULT_NETWORK_NAME = "cashpilot-isolated"
+#: The bridge's interface name, which host firewall rules match on. Linux caps
+#: interface names at 15 characters, so the network's own name cannot double as
+#: it: Docker refuses "cashpilot-isolated" with "numerical result out of range".
+BRIDGE_INTERFACE = "cp-isolated"
 
 
 def _docker(service: dict[str, Any] | None) -> dict[str, Any]:
@@ -153,6 +157,7 @@ def assess(service: dict[str, Any] | None) -> dict[str, Any]:
         "exceptions": exceptions,
         "blocked_destinations": list(RFC1918 + LINK_LOCAL),
         "network_name": DEFAULT_NETWORK_NAME,
+        "bridge_interface": BRIDGE_INTERFACE,
         "summary": summary,
     }
 
@@ -215,7 +220,7 @@ def attribution_notice(service: dict[str, Any] | None) -> dict[str, Any] | None:
     }
 
 
-def compose_snippet(network_name: str = DEFAULT_NETWORK_NAME) -> str:
+def compose_snippet(network_name: str = DEFAULT_NETWORK_NAME, bridge_interface: str = BRIDGE_INTERFACE) -> str:
     """A Docker network definition the operator can actually paste.
 
     Deliberately returned as text rather than applied. Creating networks and
@@ -226,12 +231,15 @@ def compose_snippet(network_name: str = DEFAULT_NETWORK_NAME) -> str:
     return (
         f"networks:\n"
         f"  {network_name}:\n"
+        # Without an explicit name Compose prefixes the project name, and the
+        # worker (CASHPILOT_CONTAINER_NETWORK) looks up the unprefixed one.
+        f"    name: {network_name}\n"
         f"    driver: bridge\n"
         f"    driver_opts:\n"
-        f'      com.docker.network.bridge.name: "{network_name}"\n'
+        f'      com.docker.network.bridge.name: "{bridge_interface}"\n'
         f"\n"
         f"# Docker alone does NOT stop a container reaching your LAN. Add host firewall\n"
-        f"# rules on the {network_name} bridge denying these destinations:\n"
+        f"# rules on the {bridge_interface} interface denying these destinations:\n"
         f"{blocked}\n"
         f"# ...while still allowing the exceptions listed for each service, or the\n"
         f"# services that need inbound ports will silently stop earning.\n"

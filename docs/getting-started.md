@@ -185,4 +185,5 @@ Browse the full catalog in the [Service Guides](guides/README.md) section.
 
 - [Architecture](architecture.md) -- Understand the UI + Worker split design
 - [Fleet Management](fleet.md) -- Deploy across multiple servers
+- [Protecting your home network](home-network-security.md) -- Keep the containers off your LAN, and when gVisor helps
 - [Service Guides](guides/README.md) -- Detailed setup instructions for each service
