@@ -100,10 +100,11 @@ other people's traffic to your IP address, and containers reaching your LAN.
 
 Measured on a standard Linux host, it cost about a fifth of peak throughput and
 six to nine times the CPU per byte moved. That is minutes of CPU a month for a
-typical bandwidth-sharing service, and more for a busy storage node. It turns
-off raw sockets unless registered with `--net-raw`, gains little for services on
-host networking, and cannot run at all on stock Unraid, where a VM is the better
-boundary. The figures, the install steps and the details are in
+typical bandwidth-sharing service, and more for a busy storage node. Plain
+`runsc` cannot resolve names on a Docker network you created, so on CashPilot's
+networks it needs its network passthrough mode. It turns off raw sockets unless
+registered with `--net-raw`, gains little for services on host networking, and
+cannot run at all on stock Unraid, where a VM is the better boundary. The figures, the install steps and the details are in
 [the gVisor section](home-network-security.md#7-gvisor-optional).
 
 If you have installed a runtime and want a specific service in it, set `runtime`
