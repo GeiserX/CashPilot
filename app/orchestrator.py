@@ -287,6 +287,77 @@ def container_network(network_mode: str | None) -> str | None:
     return _CONTAINER_NETWORK
 
 
+#: The runtime for containers on bridge networking when the deploy request
+#: names none, e.g. a gVisor runtime registered in daemon.json. Empty means
+#: Docker's default, as before. CashPilot never picks one for the operator.
+_CONTAINER_RUNTIME = os.getenv("CASHPILOT_CONTAINER_RUNTIME", "").strip()
+#: Per-service exceptions, "slug=runtime,slug=runtime": a service that needs
+#: raw sockets gets a runtime registered with --net-raw, and "runc" opts one
+#: out of the default.
+_CONTAINER_RUNTIME_OVERRIDES = os.getenv("CASHPILOT_CONTAINER_RUNTIME_OVERRIDES", "").strip()
+
+
+class ContainerRuntimeError(RuntimeError):
+    """The runtime settings name a runtime this worker cannot use.
+
+    ``status_code`` is what the worker API answers: 409 for a setting the
+    operator has to fix, 503 when the daemon cannot be asked at all.
+    """
+
+    def __init__(self, message: str, status_code: int = 409) -> None:
+        super().__init__(message)
+        self.status_code = status_code
+
+
+def _runtime_overrides() -> dict[str, str]:
+    overrides: dict[str, str] = {}
+    for entry in _CONTAINER_RUNTIME_OVERRIDES.split(","):
+        if not entry.strip():
+            continue
+        slug, sep, runtime = entry.partition("=")
+        if not sep or not slug.strip() or not runtime.strip():
+            raise ContainerRuntimeError(
+                f"CASHPILOT_CONTAINER_RUNTIME_OVERRIDES has {entry.strip()!r}; each entry is slug=runtime, "
+                f"for example bitping=runsc-hostnet-raw."
+            )
+        overrides[slug.strip()] = runtime.strip()
+    return overrides
+
+
+def container_runtime(slug: str, network_mode: str | None, requested: str | None) -> str | None:
+    """The runtime a new container runs under, or None for Docker's default.
+
+    A runtime named in the deploy request wins; the worker API has already
+    checked it against the daemon. Otherwise a container on bridge networking
+    takes the service's override or the worker's default. Host and none
+    networking keep Docker's default: a sandbox gains little on the host's own
+    network stack, and Mysterium's TUN device does not work under gVisor.
+
+    Like container_network, a runtime the daemon does not provide is refused
+    here, BEFORE the running container is stopped, so a typo in the compose
+    file cannot take a service down.
+    """
+    if requested:
+        return requested
+    if (network_mode or "bridge") != "bridge":
+        return None
+    runtime = _runtime_overrides().get(slug, _CONTAINER_RUNTIME)
+    if not runtime:
+        return None
+    available = available_runtimes()
+    if available is None:
+        raise ContainerRuntimeError(
+            f"Cannot check the {runtime!r} runtime: the Docker daemon is not answering.", status_code=503
+        )
+    if runtime not in available:
+        raise ContainerRuntimeError(
+            f"The runtime settings give {slug} the {runtime!r} runtime, which this host's Docker daemon "
+            f"does not provide. Available: {sorted(available) or 'none reported'}. Register it in "
+            f"/etc/docker/daemon.json and restart Docker, or change CASHPILOT_CONTAINER_RUNTIME."
+        )
+    return runtime
+
+
 def deploy_raw(
     slug: str,
     image: str,
@@ -322,9 +393,10 @@ def deploy_raw(
     client = _get_client()
     name = _container_name(slug)
 
-    # Decided before the old container is touched: a network that cannot be
-    # used must fail the deploy while the running service is still running.
+    # Decided before the old container is touched: a network or runtime that
+    # cannot be used must fail the deploy while the running service is still running.
     network = container_network(network_mode)
+    runtime = container_runtime(slug, network_mode, runtime)
 
     # Remove any existing container with the same name
     try:
@@ -423,8 +495,8 @@ def deploy_raw(
         hostname=hostname or f"cashpilot-{slug}",
         detach=True,
         restart_policy={"Name": "unless-stopped"},
-        # None means Docker's default runtime, which is what every service uses
-        # unless an advanced user has deliberately opted one into another.
+        # None means Docker's default runtime. See container_runtime for when
+        # the operator's CASHPILOT_CONTAINER_RUNTIME applies instead.
         runtime=runtime or None,
         **resource_kwargs,
     )

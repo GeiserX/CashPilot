@@ -389,10 +389,21 @@ ProxyLite, ProxyRack, Repocket and Traffmonetizer, plus Bitping under
 TUN device, or Storj, whose disk traffic would pay gVisor's overhead on every
 read and write.
 
-CashPilot's deploy spec accepts a `runtime`, allowed only when your Docker daemon
-reports it (see
-[container runtimes](security-defaults.md#container-runtimes-gvisor-where-it-works)).
-Nothing selects gVisor for you.
+To make that stick across redeploys, set it on the worker, next to
+`CASHPILOT_CONTAINER_NETWORK`:
+
+```yaml
+CASHPILOT_CONTAINER_NETWORK: cashpilot-isolated
+CASHPILOT_CONTAINER_RUNTIME: runsc-hostnet
+CASHPILOT_CONTAINER_RUNTIME_OVERRIDES: bitping=runsc-hostnet-raw
+```
+
+The runtime applies to containers on bridge networking when they are next
+deployed; host-networked services such as Mysterium keep Docker's default.
+`slug=runc` in the overrides keeps one service out, Storj for example. If the
+daemon does not provide a runtime you named, the deploy is refused and the running
+container is left alone. Nothing selects gVisor unless you set it
+([container runtimes](security-defaults.md#container-runtimes-gvisor-where-it-works)).
 
 ## What every deploy already gets
 

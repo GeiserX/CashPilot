@@ -1344,6 +1344,10 @@ async def api_deploy_container(request: Request, slug: str, spec: DeploySpec) ->
         # The operator's own setting, and the message says how to fix it; a bare
         # 500 would hide both. Raised before the old container was touched.
         raise HTTPException(status_code=409, detail=str(exc)) from None
+    except orchestrator.ContainerRuntimeError as exc:
+        # Same shape as the network setting, also raised before the old container
+        # was touched; 503 when the daemon could not be asked at all.
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from None
     except Exception:
         logger.exception("Deploy failed for %s", slug)
         raise HTTPException(status_code=500, detail="Container deployment failed")
@@ -1557,7 +1561,7 @@ async def api_runtimes(request: Request) -> dict[str, Any]:
     available = sorted(runtimes)
     return {
         "available": available,
-        "default": None,
+        "default": orchestrator._CONTAINER_RUNTIME or None,
         "supported": False,
         "note": (
             "Selecting a non-default runtime is an advanced, unsupported choice. It is not a "
