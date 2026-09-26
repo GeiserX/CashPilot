@@ -34,7 +34,9 @@ docker:
       # The value lands on the node's command line, so anything but addresses
       # would become an argument: "127.0.0.1, 10.0.0.1" puts a stray word before
       # `service`, the node refuses to start and stops earning.
-      pattern: '(?:localhost|\d{1,3}(?:\.\d{1,3}){3})(?:,(?:localhost|\d{1,3}(?:\.\d{1,3}){3}))*'
+      # Each octet 0 to 255: 256.0.0.1 is not an address, the WebUI listener
+      # would fail to bind while the node kept running.
+      pattern: '(?:localhost|(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(?:\.(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3})(?:,(?:localhost|(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(?:\.(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}))*'
   ports:
     - "4449:4449"
   volumes:
