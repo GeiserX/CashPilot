@@ -119,6 +119,10 @@ def test_localhost_takes_a_machine_back_to_loopback(client):
         "127.0.0.1,",
         "172.18.0.1;reboot",
         "::1",  # the node formats "<addr>:<port>" without brackets, so IPv6 never binds
+        "256.0.0.1",  # not an address: the WebUI listener fails to bind while the node runs on
+        "127.0.0.1,999.999.999.999",
+        "127.0.0.01",  # a leading zero is not how the node parses an octet
+        "\u0661.\u0662.\u0663.\u0664",  # Arabic-Indic digits: Python's \d would take them
     ],
 )
 def test_anything_but_addresses_is_refused_before_a_deploy(client, value):
