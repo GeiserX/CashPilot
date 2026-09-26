@@ -172,6 +172,16 @@ services stop earning. Pick one fix:
 We tested both: with the exception, lookups through the router work and the
 router's web interface stays blocked.
 
+If you enabled IPv6 on the bridge and your router also answers DNS on an IPv6
+address, add the same exception to the [IPv6 script](#the-rules) below, with
+that address. We tested the exception only over IPv4.
+
+```sh
+ROUTER6=fe80::1   # your router's IPv6 DNS address
+add DOCKER-USER -i "$BR" -d "$ROUTER6" -p udp --dport 53 -j RETURN
+add DOCKER-USER -i "$BR" -d "$ROUTER6" -p tcp --dport 53 -j RETURN
+```
+
 **When to run it.** The rules survive a Docker restart but not a reboot, so run
 the script at every boot. It creates the `DOCKER-USER` chain if Docker has not
 started yet, and Docker keeps an existing chain and its rules, so the order does
