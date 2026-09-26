@@ -39,7 +39,7 @@ You can change all of these. None of them require changing for a normal install.
 | `CASHPILOT_ALLOW_EPHEMERAL_KEY` | off | Lets CashPilot start when the encryption key cannot be persisted. Every credential then dies on the next restart. |
 | `allow_delete_critical` (per request) | refuses | Permits deleting a volume that holds irreplaceable state. There is no undo. |
 | Alert delivery (ntfy / webhook / Telegram) | inert | Nothing is sent anywhere until you configure a target. |
-| Image tags | pinned | Service images are pinned by digest or version in the catalog, so an upstream push cannot change what runs on your machine. CashPilot's own images are pinned to a release series in both compose files. |
+| Image tags | mostly unpinned | Only some service images in this catalog carry a version tag; the rest follow the image's default tag, so an upstream push changes what runs on your next deploy. The desktop app pins every service image by digest. CashPilot's own images are pinned to a release series in both compose files. |
 
 ## Tier 3 — preference, no security dimension
 
@@ -86,33 +86,27 @@ Account emails, API URLs, and public relay fingerprints are stored as-is. Emails
 
 See [SECURITY.md](https://github.com/GeiserX/CashPilot/blob/main/SECURITY.md). Please do not open a public issue for a vulnerability.
 
-## Container runtimes: why gVisor is not the answer here
+## Container runtimes: gVisor where it works
 
-CashPilot supports an optional `runtime` on a deploy spec, allowlisted to
-runtimes your Docker daemon actually reports. **It is advanced, unsupported, and
-nothing selects it for you.** That is a deliberate position, not an oversight.
+CashPilot supports an optional `runtime` on a deploy spec, allowed only when your
+Docker daemon reports it. Nothing selects one for you.
 
-gVisor (`runsc`) defends against container escape. That is not the risk in this
-category:
+gVisor's `runsc` runtime puts a user-space kernel between a container and
+yours. That is a real extra layer against a container escaping through a kernel
+bug. It does
+not address the two risks that actually occur in this category: attribution of
+other people's traffic to your IP address, and containers reaching your LAN.
+[Protecting your home network](home-network-security.md) covers those first.
 
-- **The escape path is already closed.** Deploys refuse `privileged`, drop every
-  capability and add back only what a service's own catalog entry declares,
-  allowlist `network_mode`, and block host bind mounts including the Docker
-  socket. There is no documented case of a mainstream proxyware image escaping
-  its container.
-- **It does not address what actually happens.** The evidenced risks are IP
-  attribution and lateral movement into your LAN. gVisor addresses neither. See
-  [Network isolation](isolation.md), which does.
-- **It costs about 1.7x network throughput** on a workload that is *pure network
-  I/O* — you would pay for it in the exact dimension you are being paid for.
-- **It breaks things.** `runsc` only simulates `NET_ADMIN`, and host networking
-  negates the isolation anyway, so a host-networked service either fails or
-  gains nothing.
-- **It does not install cleanly** where this runs: Unraid has no package manager
-  and is not systemd, a Raspberry Pi needs a custom 48-bit-VA kernel, and on
-  macOS Docker Desktop already runs everything inside a Linux VM.
+Measured on a standard Linux host, it cost about a fifth of peak throughput and
+six to nine times the CPU per byte moved. That is minutes of CPU a month for a
+typical bandwidth-sharing service, and more for a busy storage node. It turns
+off raw sockets unless registered with `--net-raw`, gains little for services on
+host networking, and cannot run at all on stock Unraid, where a VM is the better
+boundary. The figures, the install steps and the details are in
+[the gVisor section](home-network-security.md#7-gvisor-optional).
 
-If you have already installed a runtime and want a specific service in it, set
-`runtime` on that service and own the outcome. The allowlist is read from your
-daemon, so you cannot select something the host does not have — that would only
-fail later with an error you could not act on.
+If you have installed a runtime and want a specific service in it, set `runtime`
+on that service and own the outcome. The allowlist is read from your daemon, so
+you cannot select something the host does not have; that would only fail later
+with an error you could not act on.

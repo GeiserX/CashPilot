@@ -64,6 +64,7 @@ defensible on its own; together they are impossible to guess.
 | `CASHPILOT_EGRESS_IP_URL` | unset | Custom IP-echo endpoint. | — |
 | `CASHPILOT_ALLOWED_VOLUME_ROOTS` | unset | Host paths a deploy may bind-mount. | — |
 | `CASHPILOT_PIDS_LIMIT` | unset | `pids` limit applied to managed containers. | — |
+| `CASHPILOT_CONTAINER_NETWORK` | unset | A bridge network you created, which containers that would land on Docker's default bridge join instead, so host firewall rules can confine them. Host-networked services are unaffected. The worker never creates it; a deploy is refused while it is missing. See [Protecting your home network](home-network-security.md). | — |
 | `CASHPILOT_DATA_DIR` | `/data` | Where `.worker_id` and `.worker_key` live. | — |
 
 !!! danger "`CASHPILOT_PORT` does not change the port the worker listens on"

@@ -50,7 +50,8 @@ networks:
   cashpilot-isolated:
     driver: bridge
     driver_opts:
-      com.docker.network.bridge.name: "cashpilot-isolated"
+      # Linux caps interface names at 15 characters; the rules match this one.
+      com.docker.network.bridge.name: "cp-isolated"
 ```
 
 !!! warning "A Docker bridge alone does not stop LAN access"
@@ -65,6 +66,12 @@ networks:
 
     ...while still allowing every exception the guide lists for the services you
     run. Miss one and that service silently stops earning.
+
+    [Protecting your home network](home-network-security.md#2-firewall-the-containers-off-your-lan-and-the-host)
+    has the exact rules, tested, including the one most recipes miss: traffic
+    to the Docker host itself never passes the `DOCKER-USER` chain. It also
+    shows how to make the CashPilot worker deploy onto this bridge with
+    `CASHPILOT_CONTAINER_NETWORK`.
 
 ## A VLAN is stronger
 

@@ -1184,11 +1184,12 @@ def _validate_runtime(runtime: str | None) -> None:
     error the user cannot act on; asking the daemon means the only runtimes
     accepted are ones that exist here.
 
-    Nothing selects a non-default runtime on its own. See docs/security-defaults.md for
-    why gVisor is not adopted as a default or as a supported profile: it costs
-    roughly 1.7x network throughput on a workload that is pure network I/O, it
-    breaks host-networked services outright, and it does not address the risks
-    that actually occur in this category.
+    Nothing selects a non-default runtime on its own. See
+    docs/home-network-security.md for when gVisor is worth it: measured, it costs
+    about a fifth of peak throughput and six to nine times the CPU per byte, it
+    turns off raw sockets unless registered with --net-raw, it gains little for
+    host-networked services, it cannot run on stock Unraid, and it does not
+    address the risks that actually occur in this category.
     """
     if not runtime:
         return
@@ -1339,6 +1340,10 @@ async def api_deploy_container(request: Request, slug: str, spec: DeploySpec) ->
         if kept_mounts:
             response["kept_mounts"] = kept_mounts
         return response
+    except orchestrator.ContainerNetworkError as exc:
+        # The operator's own setting, and the message says how to fix it; a bare
+        # 500 would hide both. Raised before the old container was touched.
+        raise HTTPException(status_code=409, detail=str(exc)) from None
     except Exception:
         logger.exception("Deploy failed for %s", slug)
         raise HTTPException(status_code=500, detail="Container deployment failed")

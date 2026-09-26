@@ -191,6 +191,7 @@ nav:
     - Fleet Management: fleet.md
     - Running on ARM: arm.md
   - Security:
+    - Protecting Your Home Network: home-network-security.md
     - Security Defaults: security-defaults.md
     - Network Isolation: isolation.md
   - Operations:
