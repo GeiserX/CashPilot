@@ -1,6 +1,7 @@
 # EarnApp
 
 > **Category:** Bandwidth Sharing | **Status:** Active
+>
 > **Website:** [https://earnapp.com](https://earnapp.com)
 
 !!! danger "EarnApp prohibits the way CashPilot runs it — read this first"

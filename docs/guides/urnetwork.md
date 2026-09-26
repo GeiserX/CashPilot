@@ -1,6 +1,7 @@
 # URnetwork
 
 > **Category:** Bandwidth Sharing | **Status:** Active
+>
 > **Website:** [https://ur.io](https://ur.io)
 
 ## Description

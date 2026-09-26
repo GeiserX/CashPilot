@@ -1,6 +1,7 @@
 # Sentinel dVPN
 
 > **Category:** DePIN | **Status:** Active
+>
 > **Website:** [https://sentinel.co](https://sentinel.co)
 
 ## Description

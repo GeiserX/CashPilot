@@ -1,6 +1,7 @@
 # Anyone Protocol
 
 > **Category:** DePIN | **Status:** Active
+>
 > **Website:** [https://anyone.io](https://anyone.io)
 
 ## Description

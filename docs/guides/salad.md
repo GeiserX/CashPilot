@@ -1,6 +1,7 @@
 # Salad
 
 > **Category:** GPU Compute | **Status:** Active
+>
 > **Website:** [https://salad.io](https://salad.io)
 
 ## Description

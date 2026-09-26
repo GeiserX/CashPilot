@@ -1,6 +1,7 @@
 # Helium
 
 > **Category:** DePIN | **Status:** Active
+>
 > **Website:** [https://helium.com](https://helium.com)
 
 ## Description

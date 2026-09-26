@@ -1,6 +1,7 @@
 # Titan Network
 
 > **Category:** DePIN | **Status:** Active
+>
 > **Website:** [https://titannet.io](https://titannet.io)
 
 ## Description

@@ -1,6 +1,7 @@
 # Spide
 
 > **Category:** Bandwidth Sharing | **Status:** Active
+>
 > **Website:** [https://spide.io](https://spide.io)
 
 ## Description

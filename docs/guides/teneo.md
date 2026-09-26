@@ -1,6 +1,7 @@
 # Teneo Protocol
 
 > **Category:** DePIN | **Status:** Active
+>
 > **Website:** [https://teneo.pro](https://teneo.pro)
 
 ## Description

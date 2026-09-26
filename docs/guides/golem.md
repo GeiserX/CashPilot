@@ -1,6 +1,7 @@
 # Golem Network
 
 > **Category:** GPU Compute | **Status:** Active
+>
 > **Website:** [https://golem.network](https://golem.network)
 
 ## Description

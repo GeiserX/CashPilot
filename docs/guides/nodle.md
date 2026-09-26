@@ -1,6 +1,7 @@
 # Nodle
 
 > **Category:** DePIN | **Status:** Active
+>
 > **Website:** [https://nodle.com](https://nodle.com)
 
 ## Description

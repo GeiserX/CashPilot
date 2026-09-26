@@ -1,6 +1,7 @@
 # Uprock
 
 > **Category:** DePIN | **Status:** Active
+>
 > **Website:** [https://uprock.com](https://uprock.com)
 
 ## Description

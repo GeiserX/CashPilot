@@ -1,6 +1,7 @@
 # Network3
 
 > **Category:** DePIN | **Status:** Broken
+>
 > **Website:** [https://network3.io](https://network3.io)
 
 ## Description

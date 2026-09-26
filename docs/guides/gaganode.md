@@ -1,6 +1,7 @@
 # GagaNode
 
 > **Category:** DePIN | **Status:** Dropped
+>
 > **Website:** [https://www.gaganode.com](https://www.gaganode.com)
 
 ## Description

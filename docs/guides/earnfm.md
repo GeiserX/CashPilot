@@ -1,6 +1,7 @@
 # Earn.fm
 
 > **Category:** Bandwidth Sharing | **Status:** Active
+>
 > **Website:** [https://earn.fm](https://earn.fm)
 
 ## Description

@@ -1,6 +1,7 @@
 # Flux
 
 > **Category:** GPU Compute | **Status:** Active
+>
 > **Website:** [https://runonflux.io](https://runonflux.io)
 
 ## Description
