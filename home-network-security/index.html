@@ -1,0 +1,3899 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Self-hosted passive income orchestrator. Deploy, manage, and monitor 50 services from a single dashboard.">
+      
+      
+        <meta name="author" content="Sergio Fernandez">
+      
+      
+        <link rel="canonical" href="https://geiserx.github.io/CashPilot/home-network-security/">
+      
+      
+        <link rel="prev" href="../arm/">
+      
+      
+        <link rel="next" href="../security-defaults/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../icon.svg">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Protecting Your Home Network - CashPilot</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../stylesheets/theme.css">
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="slate" data-md-color-primary="custom" data-md-color-accent="custom">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#protecting-your-home-network" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="CashPilot" class="md-header__button md-logo" aria-label="CashPilot" data-md-component="logo">
+      
+  <img src="../logo.svg" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            CashPilot
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Protecting Your Home Network
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="slate" data-md-color-primary="custom" data-md-color-accent="custom"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="default" data-md-color-primary="custom" data-md-color-accent="custom"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/GeiserX/CashPilot" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    GeiserX/CashPilot
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href=".." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../getting-started/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Getting Started
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../guides/" class="md-tabs__link">
+          
+  
+  
+  Service Guides
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../configuration/" class="md-tabs__link">
+          
+  
+  
+  Configuration
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="./" class="md-tabs__link">
+          
+  
+  
+  Security
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../backup-restore/" class="md-tabs__link">
+          
+  
+  
+  Operations
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../architecture/" class="md-tabs__link">
+          
+  
+  
+  Reference
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="CashPilot" class="md-nav__button md-logo" aria-label="CashPilot" data-md-component="logo">
+      
+  <img src="../logo.svg" alt="logo">
+
+    </a>
+    CashPilot
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/GeiserX/CashPilot" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    GeiserX/CashPilot
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../getting-started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Service Guides
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Service Guides
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_3_2" id="__nav_3_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Bandwidth Sharing
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Bandwidth Sharing
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/bitping/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Bitping
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/bytebenefit/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Bytebenefit
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/bytelixir/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Bytelixir
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/earncc/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    earn.cc
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/earnfm/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Earn.fm
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/earnapp/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    EarnApp
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/ebesucher/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Ebesucher
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/honeygain/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Honeygain
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/iproyal/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    IPRoyal Pawns
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/mysterium/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    MystNodes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/packetshare/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    PacketShare
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/packetstream/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    PacketStream
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/peer2profit/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Peer2Profit
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/proxybase/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ProxyBase
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/proxybase-xyz/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ProxyBase Markets
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/proxylite/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ProxyLite
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/proxyrack/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ProxyRack
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/repocket/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Repocket
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/speedshare/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SpeedShare
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/spide/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Spide
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/traffmonetizer/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Traffmonetizer
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/urnetwork/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    URnetwork
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/wizardgain/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    WizardGain
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3_3" id="__nav_3_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DePIN
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    DePIN
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/anyone-protocol/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Anyone Protocol
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/blockmesh/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    BlockMesh (Perceptron Network)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/dawn/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Dawn Internet
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/deeper-network/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Deeper Network
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/gaganode/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    GagaNode
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/gradient/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Gradient Network
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/grass/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Grass
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/helium/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Helium
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/koii/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Koii Network
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/network3/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Network3
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/nodepay/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Nodepay
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/nodle/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Nodle
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/passiveapp/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    PassiveApp
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/presearch/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Presearch
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/sentinel-dvpn/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Sentinel dVPN
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/teneo/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Teneo Protocol
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/theta-edge/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Theta Edge Node
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/titan/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Titan Network
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/uprock/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Uprock
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/wipter/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Wipter
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_3_4" id="__nav_3_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    GPU Compute
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    GPU Compute
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/flux/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Flux
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/golem/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Golem Network
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/ionet/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    io.net
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/nosana/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Nosana
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/salad/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Salad
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/vast-ai/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Vast.ai
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_3_5" id="__nav_3_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Storage
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Storage
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/storj/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Storj
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Configuration
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../fleet/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Fleet Management
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../arm/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Running on ARM
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Security
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Security
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Protecting Your Home Network
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Protecting Your Home Network
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#the-short-version" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The short version
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#1-give-it-its-own-network-segment" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Give it its own network segment
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-firewall-the-containers-off-your-lan-and-the-host" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Firewall the containers off your LAN and the host
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="2. Firewall the containers off your LAN and the host">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#put-the-containers-on-their-own-bridge" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Put the containers on their own bridge
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#the-rules" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The rules
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#name-lookups-need-a-resolver-the-rules-allow" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Name lookups need a resolver the rules allow
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#check-it-yourself" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Check it yourself
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-keep-cashpilots-control-plane-private" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Keep CashPilot's control plane private
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-dont-run-it-next-to-what-you-cannot-lose" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Don't run it next to what you cannot lose
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-router-hygiene" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. Router hygiene
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-accounts-and-payouts" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. Accounts and payouts
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#7-gvisor-optional" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7. gVisor, optional
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="7. gVisor, optional">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#what-it-costs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What it costs
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#what-breaks" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What breaks
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#installing-it-on-a-standard-linux-host" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Installing it on a standard Linux host
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#what-we-ran-under-it" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What we ran under it
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-every-deploy-already-gets" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What every deploy already gets
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../security-defaults/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Security Defaults
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../isolation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Network Isolation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Operations
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Operations
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../backup-restore/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Backup and Restore
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../backup/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Backing Up Node Identities
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/prometheus-metrics/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Prometheus Metrics
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../upgrade-v1/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Upgrade to v1.0.0
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_7" >
+        
+          
+          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../roadmap/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Direction and Roadmap
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../research/idle-network-traffic/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    What "idle" looks like on the wire
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../research/per-ip-device-limits/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Per-IP device limits
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../research/self-hosting-operability/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Self-hosting operability review
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../research/fleet-upgrades-and-onboarding/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Fleet upgrades & onboarding (design)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../research/earnings-benchmarks/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Earnings benchmarks (design)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#the-short-version" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The short version
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#1-give-it-its-own-network-segment" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Give it its own network segment
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-firewall-the-containers-off-your-lan-and-the-host" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Firewall the containers off your LAN and the host
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="2. Firewall the containers off your LAN and the host">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#put-the-containers-on-their-own-bridge" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Put the containers on their own bridge
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#the-rules" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The rules
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#name-lookups-need-a-resolver-the-rules-allow" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Name lookups need a resolver the rules allow
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#check-it-yourself" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Check it yourself
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-keep-cashpilots-control-plane-private" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Keep CashPilot's control plane private
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-dont-run-it-next-to-what-you-cannot-lose" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Don't run it next to what you cannot lose
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-router-hygiene" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. Router hygiene
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-accounts-and-payouts" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. Accounts and payouts
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#7-gvisor-optional" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7. gVisor, optional
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="7. gVisor, optional">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#what-it-costs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What it costs
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#what-breaks" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What breaks
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#installing-it-on-a-standard-linux-host" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Installing it on a standard Linux host
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#what-we-ran-under-it" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What we ran under it
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-every-deploy-already-gets" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What every deploy already gets
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+    <a href="https://github.com/GeiserX/CashPilot/edit/main/docs/home-network-security.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M10 20H6V4h7v5h5v3.1l2-2V8l-6-6H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h4zm10.2-7c.1 0 .3.1.4.2l1.3 1.3c.2.2.2.6 0 .8l-1 1-2.1-2.1 1-1c.1-.1.2-.2.4-.2m0 3.9L14.1 23H12v-2.1l6.1-6.1z"/></svg>
+    </a>
+  
+  
+
+
+<h1 id="protecting-your-home-network">Protecting your home network<a class="headerlink" href="#protecting-your-home-network" title="Permanent link">&para;</a></h1>
+<p>CashPilot runs closed-source containers from companies you have never met, on a
+machine inside your home. This page is about keeping that from costing you more
+than the earnings are worth.</p>
+<p>Three things can go wrong, in order of how likely they are:</p>
+<ol>
+<li><strong>Someone else's traffic leaves under your IP address.</strong> That is what most
+   bandwidth-sharing services sell, and nothing on your side can filter it.
+   <a href="../isolation/">Network isolation</a> explains the attribution risk, and the
+   dashboard warns you before deploying a service that does this.</li>
+<li><strong>A container reaches the rest of your network.</strong> Your NAS, your Home
+   Assistant, your router's admin page, the machine CashPilot runs on. For a
+   hostile image, those are the prize, not your bandwidth.</li>
+<li><strong>A container escapes to the host</strong> through a kernel bug. CashPilot's
+   defaults already make this hard, as
+   <a href="#what-every-deploy-already-gets">what every deploy gets</a> lists, and gVisor can
+   make it harder on some hosts.</li>
+</ol>
+<p>You cannot fix the first one, only decide whether to accept it. The rest of this
+page is about the second and third.</p>
+<h2 id="the-short-version">The short version<a class="headerlink" href="#the-short-version" title="Permanent link">&para;</a></h2>
+<ol>
+<li><a href="#1-give-it-its-own-network-segment">Put the earning machine on its own network segment</a>,
+   a guest network or VLAN.</li>
+<li><a href="#2-firewall-the-containers-off-your-lan-and-the-host">Firewall the containers off your LAN and off the host</a>.</li>
+<li><a href="#3-keep-cashpilots-control-plane-private">Keep CashPilot's own dashboard and worker private</a>.</li>
+<li><a href="#4-dont-run-it-next-to-what-you-cannot-lose">Don't run it next to your valuable data</a>,
+   or put it in a VM.</li>
+<li><a href="#5-router-hygiene">Tidy up the router</a>.</li>
+<li><a href="#6-accounts-and-payouts">Protect the accounts and the money</a>.</li>
+<li>Optionally, <a href="#7-gvisor-optional">run the containers under gVisor</a> on a host
+   that supports it.</li>
+</ol>
+<p>Do the first two and you have removed most of the risk.</p>
+<h2 id="1-give-it-its-own-network-segment">1. Give it its own network segment<a class="headerlink" href="#1-give-it-its-own-network-segment" title="Permanent link">&para;</a></h2>
+<p>The strongest and simplest protection is a network the earning machine shares
+with nothing else you care about.</p>
+<ul>
+<li><strong>A guest network</strong> on your router is often enough. Most consumer routers keep
+  guest devices off the main LAN. To check yours, open your NAS or another
+  computer from a device on the guest network. It should fail.</li>
+<li><strong>A VLAN</strong> does the same thing on a wired network, with a firewall rule on the
+  router that lets the VLAN reach the internet but not your other VLANs.</li>
+</ul>
+<p>A segment protects against everything on that machine, including services that
+use the host's network directly, such as Mysterium. The container firewall
+below cannot confine those.</p>
+<p>Storj and Anyone Protocol need an inbound port forwarded. Point those forwards
+into the new segment and nothing else changes.</p>
+<h2 id="2-firewall-the-containers-off-your-lan-and-the-host">2. Firewall the containers off your LAN and the host<a class="headerlink" href="#2-firewall-the-containers-off-your-lan-and-the-host" title="Permanent link">&para;</a></h2>
+<p>When the machine has to stay on your main network, the host firewall can still
+keep the containers off it. Two separate things need blocking:</p>
+<ul>
+<li><strong>Other machines on your networks.</strong> Traffic from a container to another
+  machine is <em>forwarded</em> by the host, and Docker's <code>DOCKER-USER</code> chain is where
+  you filter it.</li>
+<li><strong>The host itself.</strong> Traffic from a container to the machine it runs on never
+  reaches <code>DOCKER-USER</code>; it arrives on the host's <code>INPUT</code> chain. On a NAS this is
+  the part that matters most, because the host <em>is</em> the NAS.</li>
+</ul>
+<p>A Docker network on its own does neither. It only keeps containers off <em>other
+Docker networks</em>.</p>
+<h3 id="put-the-containers-on-their-own-bridge">Put the containers on their own bridge<a class="headerlink" href="#put-the-containers-on-their-own-bridge" title="Permanent link">&para;</a></h3>
+<p>Create a bridge whose interface name the rules can match. Linux limits interface
+names to 15 characters, so the network is <code>cashpilot-isolated</code> and its interface
+is <code>cp-isolated</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>docker<span class="w"> </span>network<span class="w"> </span>create<span class="w"> </span>--driver<span class="w"> </span>bridge<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="w">  </span>-o<span class="w"> </span>com.docker.network.bridge.name<span class="o">=</span>cp-isolated<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="w">  </span>cashpilot-isolated
+</code></pre></div>
+<p>Then tell the CashPilot worker to use it, by adding this to the worker's
+environment and recreating the worker:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="nt">CASHPILOT_CONTAINER_NETWORK</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">cashpilot-isolated</span>
+</code></pre></div>
+<p>From then on, every service the worker deploys onto a bridge joins
+<code>cashpilot-isolated</code> instead of Docker's default bridge. Services that use host
+networking are unaffected. The worker never creates the network or any firewall
+rule itself. If the network is missing, it refuses the deploy and tells you the
+command above, and it checks before it touches the running container.</p>
+<p>Already-deployed services move over on their next redeploy. To move one now
+without recreating it, keeping its configuration and identity as they are:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>docker<span class="w"> </span>network<span class="w"> </span>connect<span class="w"> </span>cashpilot-isolated<span class="w"> </span>cashpilot-honeygain
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>docker<span class="w"> </span>network<span class="w"> </span>disconnect<span class="w"> </span>bridge<span class="w"> </span>cashpilot-honeygain
+</code></pre></div>
+<p>Published ports move with it and survive a restart. A service that holds a
+long-lived connection may keep trying the old one for a while; Bitping did, and a
+<code>docker restart</code> of that one service fixed it.</p>
+<p>If you run the services from an exported compose file instead, add
+<code>networks: [cashpilot-isolated]</code> to each service and declare the network as
+<code>external: true</code> at the bottom of the file.</p>
+<h3 id="the-rules">The rules<a class="headerlink" href="#the-rules" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="ch">#!/bin/sh</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="c1"># Containers on the cp-isolated bridge may reach the internet, but not your</span>
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="c1"># private networks and not this host. Safe to run more than once.</span>
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="nv">BR</span><span class="o">=</span>cp-isolated
+<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>iptables<span class="w"> </span>-N<span class="w"> </span>DOCKER-USER<span class="w"> </span><span class="m">2</span>&gt;/dev/null<span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nb">true</span><span class="w">   </span><span class="c1"># Docker keeps it if it exists</span>
+<a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a>add<span class="o">()</span><span class="w"> </span><span class="o">{</span><span class="w"> </span>iptables<span class="w"> </span>-C<span class="w"> </span><span class="s2">"</span><span class="nv">$@</span><span class="s2">"</span><span class="w"> </span><span class="m">2</span>&gt;/dev/null<span class="w"> </span><span class="o">||</span><span class="w"> </span>iptables<span class="w"> </span>-I<span class="w"> </span><span class="s2">"</span><span class="nv">$@</span><span class="s2">"</span><span class="p">;</span><span class="w"> </span><span class="o">}</span>
+<a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a><span class="k">for</span><span class="w"> </span>net<span class="w"> </span><span class="k">in</span><span class="w"> </span><span class="m">10</span>.0.0.0/8<span class="w"> </span><span class="m">172</span>.16.0.0/12<span class="w"> </span><span class="m">192</span>.168.0.0/16<span class="w"> </span><span class="m">169</span>.254.0.0/16<span class="w"> </span><span class="m">100</span>.64.0.0/10<span class="p">;</span><span class="w"> </span><span class="k">do</span>
+<a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a><span class="w">  </span>add<span class="w"> </span>DOCKER-USER<span class="w"> </span>-i<span class="w"> </span><span class="s2">"</span><span class="nv">$BR</span><span class="s2">"</span><span class="w"> </span>-d<span class="w"> </span><span class="s2">"</span><span class="nv">$net</span><span class="s2">"</span><span class="w"> </span>-j<span class="w"> </span>REJECT
+<a id="__codelineno-3-9" name="__codelineno-3-9" href="#__codelineno-3-9"></a><span class="k">done</span>
+<a id="__codelineno-3-10" name="__codelineno-3-10" href="#__codelineno-3-10"></a>add<span class="w"> </span>DOCKER-USER<span class="w"> </span>-i<span class="w"> </span><span class="s2">"</span><span class="nv">$BR</span><span class="s2">"</span><span class="w"> </span>-m<span class="w"> </span>conntrack<span class="w"> </span>--ctstate<span class="w"> </span>ESTABLISHED,RELATED<span class="w"> </span>-j<span class="w"> </span>RETURN
+<a id="__codelineno-3-11" name="__codelineno-3-11" href="#__codelineno-3-11"></a>add<span class="w"> </span>INPUT<span class="w"> </span>-i<span class="w"> </span><span class="s2">"</span><span class="nv">$BR</span><span class="s2">"</span><span class="w"> </span>-j<span class="w"> </span>REJECT
+<a id="__codelineno-3-12" name="__codelineno-3-12" href="#__codelineno-3-12"></a>add<span class="w"> </span>INPUT<span class="w"> </span>-i<span class="w"> </span><span class="s2">"</span><span class="nv">$BR</span><span class="s2">"</span><span class="w"> </span>-m<span class="w"> </span>conntrack<span class="w"> </span>--ctstate<span class="w"> </span>ESTABLISHED,RELATED<span class="w"> </span>-j<span class="w"> </span>ACCEPT
+</code></pre></div>
+<p>What each part does:</p>
+<ul>
+<li>The five ranges are the private networks, link-local addresses (including
+  the <code>169.254.169.254</code> metadata address a cloud VPS exposes), and
+  <code>100.64.0.0/10</code>, which carrier-grade NAT and Tailscale use.</li>
+<li>The <code>ESTABLISHED,RELATED</code> rules let replies through. Without them a port you
+  published, such as Storj's dashboard, stops answering: the request gets in and
+  the reply is rejected on its way out.</li>
+<li>Each rule is inserted at the top, and the reply rules are inserted last, so
+  they end up first. <code>iptables -C</code> skips a rule that already exists, so running
+  the script again adds nothing.</li>
+</ul>
+<p>We ran this script twice on a Docker host and checked the result:</p>
+<table>
+<thead>
+<tr>
+<th>From a container on <code>cp-isolated</code></th>
+<th>Result</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>A web service on the host itself</td>
+<td>blocked</td>
+</tr>
+<tr>
+<td>Another machine on the LAN</td>
+<td>blocked</td>
+</tr>
+<tr>
+<td>The internet, by address and by name</td>
+<td>works</td>
+</tr>
+<tr>
+<td>A port published from the container, reached from the host</td>
+<td>works</td>
+</tr>
+<tr>
+<td>The same port with the reply rule removed</td>
+<td>times out</td>
+</tr>
+</tbody>
+</table>
+<h3 id="name-lookups-need-a-resolver-the-rules-allow">Name lookups need a resolver the rules allow<a class="headerlink" href="#name-lookups-need-a-resolver-the-rules-allow" title="Permanent link">&para;</a></h3>
+<p>Docker answers a container's lookups and forwards them to the DNS servers it was
+given, <strong>from inside the container's network</strong>. On most home networks that
+server is the router, which the rules above block, so every lookup fails and the
+services stop earning. Pick one fix:</p>
+<ul>
+<li><strong>Give Docker public resolvers.</strong> In <code>/etc/docker/daemon.json</code>, set
+  <code>"dns": ["1.1.1.1", "9.9.9.9"]</code> and restart Docker (this restarts every
+  container). If you keep a local resolver first in that list, lookups still
+  work, a little slower, because Docker falls through to the next server.</li>
+<li><strong>Or let the containers reach the router's DNS port and nothing else on it,</strong>
+  by adding this to the script, with your router's address:</li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="nv">ROUTER</span><span class="o">=</span><span class="m">192</span>.168.1.1
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>add<span class="w"> </span>DOCKER-USER<span class="w"> </span>-i<span class="w"> </span><span class="s2">"</span><span class="nv">$BR</span><span class="s2">"</span><span class="w"> </span>-d<span class="w"> </span><span class="s2">"</span><span class="nv">$ROUTER</span><span class="s2">"</span><span class="w"> </span>-p<span class="w"> </span>udp<span class="w"> </span>--dport<span class="w"> </span><span class="m">53</span><span class="w"> </span>-j<span class="w"> </span>RETURN
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>add<span class="w"> </span>DOCKER-USER<span class="w"> </span>-i<span class="w"> </span><span class="s2">"</span><span class="nv">$BR</span><span class="s2">"</span><span class="w"> </span>-d<span class="w"> </span><span class="s2">"</span><span class="nv">$ROUTER</span><span class="s2">"</span><span class="w"> </span>-p<span class="w"> </span>tcp<span class="w"> </span>--dport<span class="w"> </span><span class="m">53</span><span class="w"> </span>-j<span class="w"> </span>RETURN
+</code></pre></div>
+<p>We tested both: with the exception, lookups through the router work and the
+router's web interface stays blocked.</p>
+<p>If you enabled IPv6 on the bridge and your router also answers DNS on an IPv6
+address, add the same exception to the <a href="#the-rules">IPv6 script</a> below, with
+that address. We tested the exception only over IPv4.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="nv">ROUTER6</span><span class="o">=</span>fe80::1<span class="w">   </span><span class="c1"># your router's IPv6 DNS address</span>
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>add<span class="w"> </span>DOCKER-USER<span class="w"> </span>-i<span class="w"> </span><span class="s2">"</span><span class="nv">$BR</span><span class="s2">"</span><span class="w"> </span>-d<span class="w"> </span><span class="s2">"</span><span class="nv">$ROUTER6</span><span class="s2">"</span><span class="w"> </span>-p<span class="w"> </span>udp<span class="w"> </span>--dport<span class="w"> </span><span class="m">53</span><span class="w"> </span>-j<span class="w"> </span>RETURN
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>add<span class="w"> </span>DOCKER-USER<span class="w"> </span>-i<span class="w"> </span><span class="s2">"</span><span class="nv">$BR</span><span class="s2">"</span><span class="w"> </span>-d<span class="w"> </span><span class="s2">"</span><span class="nv">$ROUTER6</span><span class="s2">"</span><span class="w"> </span>-p<span class="w"> </span>tcp<span class="w"> </span>--dport<span class="w"> </span><span class="m">53</span><span class="w"> </span>-j<span class="w"> </span>RETURN
+</code></pre></div>
+<p><strong>When to run it.</strong> The rules survive a Docker restart but not a reboot, so run
+the script at every boot. It creates the <code>DOCKER-USER</code> chain if Docker has not
+started yet, and Docker keeps an existing chain and its rules, so the order does
+not matter. A systemd unit works, as does Unraid's User Scripts plugin set to
+run at array start.</p>
+<p><strong>IPv6.</strong> Docker bridges have IPv6 off unless you enabled it. If you did, the
+IPv6 rules need your LAN's own prefix as well as the private and link-local
+ranges, because a home network with IPv6 usually has a globally routed prefix
+that <code>fc00::/7</code> does not cover. <code>ip -6 route</code> lists it; the <code>2001:db8:1:2::/64</code>
+below is only an example:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="ch">#!/bin/sh</span>
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="nv">BR</span><span class="o">=</span>cp-isolated
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="nv">LAN6</span><span class="o">=</span><span class="m">2001</span>:db8:1:2::/64<span class="w">   </span><span class="c1"># replace with your LAN's prefix</span>
+<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a>ip6tables<span class="w"> </span>-N<span class="w"> </span>DOCKER-USER<span class="w"> </span><span class="m">2</span>&gt;/dev/null<span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nb">true</span>
+<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a>add<span class="o">()</span><span class="w"> </span><span class="o">{</span><span class="w"> </span>ip6tables<span class="w"> </span>-C<span class="w"> </span><span class="s2">"</span><span class="nv">$@</span><span class="s2">"</span><span class="w"> </span><span class="m">2</span>&gt;/dev/null<span class="w"> </span><span class="o">||</span><span class="w"> </span>ip6tables<span class="w"> </span>-I<span class="w"> </span><span class="s2">"</span><span class="nv">$@</span><span class="s2">"</span><span class="p">;</span><span class="w"> </span><span class="o">}</span>
+<a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a><span class="k">for</span><span class="w"> </span>net<span class="w"> </span><span class="k">in</span><span class="w"> </span>fc00::/7<span class="w"> </span>fe80::/10<span class="w"> </span><span class="s2">"</span><span class="nv">$LAN6</span><span class="s2">"</span><span class="p">;</span><span class="w"> </span><span class="k">do</span>
+<a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a><span class="w">  </span>add<span class="w"> </span>DOCKER-USER<span class="w"> </span>-i<span class="w"> </span><span class="s2">"</span><span class="nv">$BR</span><span class="s2">"</span><span class="w"> </span>-d<span class="w"> </span><span class="s2">"</span><span class="nv">$net</span><span class="s2">"</span><span class="w"> </span>-j<span class="w"> </span>REJECT
+<a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a><span class="k">done</span>
+<a id="__codelineno-6-9" name="__codelineno-6-9" href="#__codelineno-6-9"></a>add<span class="w"> </span>DOCKER-USER<span class="w"> </span>-i<span class="w"> </span><span class="s2">"</span><span class="nv">$BR</span><span class="s2">"</span><span class="w"> </span>-m<span class="w"> </span>conntrack<span class="w"> </span>--ctstate<span class="w"> </span>ESTABLISHED,RELATED<span class="w"> </span>-j<span class="w"> </span>RETURN
+<a id="__codelineno-6-10" name="__codelineno-6-10" href="#__codelineno-6-10"></a>add<span class="w"> </span>INPUT<span class="w"> </span>-i<span class="w"> </span><span class="s2">"</span><span class="nv">$BR</span><span class="s2">"</span><span class="w"> </span>-j<span class="w"> </span>REJECT
+<a id="__codelineno-6-11" name="__codelineno-6-11" href="#__codelineno-6-11"></a>add<span class="w"> </span>INPUT<span class="w"> </span>-i<span class="w"> </span><span class="s2">"</span><span class="nv">$BR</span><span class="s2">"</span><span class="w"> </span>-m<span class="w"> </span>conntrack<span class="w"> </span>--ctstate<span class="w"> </span>ESTABLISHED,RELATED<span class="w"> </span>-j<span class="w"> </span>ACCEPT
+</code></pre></div>
+<p>We checked that these rules load, but tested the blocking only for IPv4.</p>
+<p><strong>What it cannot cover.</strong> A service on host networking uses the host's own
+interfaces, so a rule on a bridge does not apply to it. That is Mysterium today.
+Use a separate segment for the machine, or run such services somewhere else.</p>
+<h3 id="check-it-yourself">Check it yourself<a class="headerlink" href="#check-it-yourself" title="Permanent link">&para;</a></h3>
+<p>After applying the rules, from the host:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="c1"># should FAIL: another machine on your LAN (use a real address of yours)</span>
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>docker<span class="w"> </span>run<span class="w"> </span>--rm<span class="w"> </span>--network<span class="w"> </span>cashpilot-isolated<span class="w"> </span>busybox<span class="w"> </span>wget<span class="w"> </span>-T3<span class="w"> </span>-qO-<span class="w"> </span>http://192.168.1.1/
+<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="c1"># should work: the internet, by name</span>
+<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a>docker<span class="w"> </span>run<span class="w"> </span>--rm<span class="w"> </span>--network<span class="w"> </span>cashpilot-isolated<span class="w"> </span>busybox<span class="w"> </span>wget<span class="w"> </span>-T5<span class="w"> </span>-qO-<span class="w"> </span>http://example.com/<span class="w"> </span><span class="p">|</span><span class="w"> </span>head<span class="w"> </span>-3
+</code></pre></div>
+<p>If the first command succeeds, the rules are not in place. Check that
+<code>iptables -S DOCKER-USER</code> shows them and that the interface really is
+<code>cp-isolated</code> (<code>ip link show cp-isolated</code>). If the second fails with a name
+error but <code>wget http://1.1.1.1/</code> works, it is DNS: see
+<a href="#name-lookups-need-a-resolver-the-rules-allow">name lookups</a>.</p>
+<h2 id="3-keep-cashpilots-control-plane-private">3. Keep CashPilot's control plane private<a class="headerlink" href="#3-keep-cashpilots-control-plane-private" title="Permanent link">&para;</a></h2>
+<p>The dashboard can command the worker, and the worker holds the Docker socket,
+which is as good as root on that machine. Both bind to <code>127.0.0.1</code> out of the box
+(<a href="../security-defaults/">security defaults</a>). Keep it that way:</p>
+<ul>
+<li><strong>Never port-forward</strong> the dashboard (8080) or the worker (8081) from your
+  router.</li>
+<li><strong>Use a VPN</strong> such as Tailscale or WireGuard to reach the dashboard from
+  elsewhere, or put an authenticating reverse proxy in front of it.</li>
+<li><strong>Bind the worker to one address</strong>, on a multi-machine setup, with
+  <code>CASHPILOT_WORKER_BIND_ADDR</code>: the one the dashboard reaches it on, never
+  <code>0.0.0.0</code> on a machine with a public address.</li>
+<li><strong>Don't publish a node's own management UI to your LAN</strong> unless you need it.
+  Mysterium's WebUI and API bind to the machine itself by default. Reach them
+  over an SSH tunnel, or add only your reverse proxy's address.</li>
+</ul>
+<h2 id="4-dont-run-it-next-to-what-you-cannot-lose">4. Don't run it next to what you cannot lose<a class="headerlink" href="#4-dont-run-it-next-to-what-you-cannot-lose" title="Permanent link">&para;</a></h2>
+<p>The machine that runs these containers should hold nothing you would hate to see
+leak. On a NAS or a server with your photos, documents and password vault, the
+best move is a <strong>virtual machine</strong>:</p>
+<ul>
+<li>Proxmox, Unraid and most NAS systems can run a small Linux VM.</li>
+<li>Install Docker and the CashPilot worker inside it, and give the VM its own
+  network segment if you can.</li>
+<li>A container that escapes lands in the VM, not on your NAS. A VM is a stronger
+  boundary than any container runtime, and it works everywhere, including on
+  Unraid, where gVisor cannot run.</li>
+</ul>
+<p>A Raspberry Pi or an old laptop dedicated to earning does the same job for very
+little money.</p>
+<h2 id="5-router-hygiene">5. Router hygiene<a class="headerlink" href="#5-router-hygiene" title="Permanent link">&para;</a></h2>
+<ul>
+<li><strong>Turn off UPnP.</strong> It lets any device on your network open ports on your
+  router without asking you. Forward the few ports a service documents by hand.</li>
+<li><strong>Change the router's admin password</strong> and turn off remote administration.</li>
+<li><strong>Keep the router's firmware updated.</strong></li>
+<li><strong>Watch the traffic.</strong> CashPilot shows network use per container. A service
+  that suddenly moves far more than usual deserves a look.</li>
+</ul>
+<h2 id="6-accounts-and-payouts">6. Accounts and payouts<a class="headerlink" href="#6-accounts-and-payouts" title="Permanent link">&para;</a></h2>
+<ul>
+<li><strong>Use a unique password, and two-factor authentication where offered,</strong> for
+  every earning account. These accounts hold money.</li>
+<li><strong>Pay out to a wallet you control,</strong> never to an exchange deposit address
+  unless the provider says that is supported. See each service's guide.</li>
+<li><strong>Back up CashPilot's encryption key.</strong> It decrypts every stored credential.
+  See <a href="../security-defaults/#backing-up-the-encryption-key">backing up the encryption key</a>.</li>
+<li><strong>Check your ISP's terms.</strong> Many consumer contracts forbid reselling the
+  connection, and the account that gets suspended is yours.</li>
+</ul>
+<h2 id="7-gvisor-optional">7. gVisor, optional<a class="headerlink" href="#7-gvisor-optional" title="Permanent link">&para;</a></h2>
+<p><a href="https://gvisor.dev/">gVisor</a> runs a container against a kernel written in user
+space instead of the host's kernel. A container that exploits a kernel bug hits
+gVisor's kernel, not yours. It adds a layer against risk 3 above. It does
+nothing for risks 1 and 2: traffic still leaves under your IP address, and a
+container can still reach your LAN unless you firewall it.</p>
+<h3 id="what-it-costs">What it costs<a class="headerlink" href="#what-it-costs" title="Permanent link">&para;</a></h3>
+<p>We measured it on an x86_64 Ubuntu 24.04 server with kernel 6.8, running gVisor
+<code>release-20260921.0</code> on its default platform. Each run downloaded the same 1 GiB
+file in a container under each runtime:</p>
+<table>
+<thead>
+<tr>
+<th></th>
+<th>runc (Docker's default)</th>
+<th>runsc (gVisor)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Throughput, three runs</td>
+<td>64, 61, 57 MB/s</td>
+<td>53, 44, 45 MB/s</td>
+</tr>
+<tr>
+<td>CPU time for 1 GiB</td>
+<td>3.3 s</td>
+<td>20 to 30 s</td>
+</tr>
+<tr>
+<td>Connection setup, median of 10</td>
+<td>10.8 ms</td>
+<td>11.4 ms</td>
+</tr>
+</tbody>
+</table>
+<p>gVisor reached about 78 % of runc's throughput and used six to nine times the CPU
+for the same traffic. For a typical bandwidth-sharing service moving a few tens
+of gigabytes a month, that is minutes of CPU a month. For a busy storage node,
+or on a Raspberry Pi, it adds up.</p>
+<p>With network passthrough, the setup that works on a CashPilot network (see
+below), throughput matched runc's in two runs each, 38 to 44 MB/s on a link that
+was the limit that day, and CPU stayed at about six times runc's: 19 to 20 s for
+1 GiB against 3 s.</p>
+<h3 id="what-breaks">What breaks<a class="headerlink" href="#what-breaks" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>Docker's DNS on your own networks.</strong> Plain <code>runsc</code> cannot resolve names on
+  any network you create, <code>cashpilot-isolated</code> included. Docker answers lookups
+  at <code>127.0.0.11</code> through firewall rules inside the container's network, and
+  gVisor's own network stack does not apply them. This is
+  <a href="https://github.com/google/gvisor/issues/7469">gVisor issue 7469</a>, still open.
+  The fix that works is to register gVisor with <code>--network=host</code>, which, despite
+  the name, uses the kernel network stack <em>inside the container's own network</em>:
+  Docker's DNS works, and the container stays on the firewalled bridge. It
+  weakens gVisor's network isolation, and every other system call is still
+  handled by gVisor.</li>
+<li><strong>Raw sockets are off by default.</strong> <code>ping</code> fails under gVisor even when the
+  container is granted <code>NET_RAW</code>. Bitping declares <code>NET_RAW</code> to probe the
+  network, so it needs gVisor registered with the <code>--net-raw</code> flag, which gives
+  that capability back.</li>
+<li><strong>A service on host networking gains little.</strong> gVisor's own documentation says
+  network passthrough "decreases the isolation to the host", and a service that
+  already shares the host's network, like Mysterium, has nothing left to
+  confine it there. A service that needs host networking
+  plus a TUN device, like Mysterium, is a poor fit.</li>
+<li><strong>Stock Unraid cannot run it at all.</strong> Unraid runs from its initial RAM
+  filesystem. That root has no parent mount, so gVisor cannot <code>pivot_root</code> out
+  of it, and working around that with a chroot hits a second kernel rule: no new
+  user namespace inside a chroot, which gVisor needs. We tested this on Unraid
+  7.3.2. On Unraid, use <a href="#4-dont-run-it-next-to-what-you-cannot-lose">a VM</a>
+  instead.</li>
+<li><strong>Docker Desktop</strong> on macOS and Windows already runs every container inside a
+  Linux VM, so gVisor there adds a second layer rather than the first.</li>
+</ul>
+<h3 id="installing-it-on-a-standard-linux-host">Installing it on a standard Linux host<a class="headerlink" href="#installing-it-on-a-standard-linux-host" title="Permanent link">&para;</a></h3>
+<p>gVisor supports x86_64 and ARM64 on Linux 5.6 or newer. The
+<a href="https://gvisor.dev/docs/user_guide/install/">official install guide</a> installs a
+checksummed release and registers it with Docker, without restarting Docker or
+your running containers:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="o">(</span>
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="w">  </span><span class="nb">set</span><span class="w"> </span>-e
+<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a><span class="w">  </span><span class="nv">ARCH</span><span class="o">=</span><span class="k">$(</span>uname<span class="w"> </span>-m<span class="k">)</span>
+<a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a><span class="w">  </span><span class="nv">URL</span><span class="o">=</span>https://storage.googleapis.com/gvisor/releases/release/latest/<span class="si">${</span><span class="nv">ARCH</span><span class="si">}</span>
+<a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a><span class="w">  </span>wget<span class="w"> </span><span class="si">${</span><span class="nv">URL</span><span class="si">}</span>/gvisor.tar.zstd<span class="w"> </span><span class="si">${</span><span class="nv">URL</span><span class="si">}</span>/gvisor.tar.zstd.sha512
+<a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a><span class="w">  </span>sha512sum<span class="w"> </span>-c<span class="w"> </span>gvisor.tar.zstd.sha512
+<a id="__codelineno-8-7" name="__codelineno-8-7" href="#__codelineno-8-7"></a><span class="w">  </span>sudo<span class="w"> </span>tar<span class="w"> </span>--zstd<span class="w"> </span>-xf<span class="w"> </span>gvisor.tar.zstd<span class="w"> </span>-C<span class="w"> </span>/usr/local/bin
+<a id="__codelineno-8-8" name="__codelineno-8-8" href="#__codelineno-8-8"></a><span class="w">  </span>rm<span class="w"> </span>-f<span class="w"> </span>gvisor.tar.zstd<span class="w"> </span>gvisor.tar.zstd.sha512
+<a id="__codelineno-8-9" name="__codelineno-8-9" href="#__codelineno-8-9"></a><span class="o">)</span>
+<a id="__codelineno-8-10" name="__codelineno-8-10" href="#__codelineno-8-10"></a>sudo<span class="w"> </span>/usr/local/bin/runsc<span class="w"> </span>install
+<a id="__codelineno-8-11" name="__codelineno-8-11" href="#__codelineno-8-11"></a>sudo<span class="w"> </span>systemctl<span class="w"> </span>reload<span class="w"> </span>docker
+<a id="__codelineno-8-12" name="__codelineno-8-12" href="#__codelineno-8-12"></a>docker<span class="w"> </span>run<span class="w"> </span>--rm<span class="w"> </span>--runtime<span class="o">=</span>runsc<span class="w"> </span>hello-world
+</code></pre></div>
+<p>For CashPilot's networks, add the passthrough runtimes to
+<code>/etc/docker/daemon.json</code>, next to the <code>runsc</code> entry the install wrote, and run
+<code>sudo systemctl reload docker</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="nt">"runtimes"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a><span class="w">  </span><span class="nt">"runsc"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"path"</span><span class="p">:</span><span class="w"> </span><span class="s2">"/usr/local/bin/runsc"</span><span class="w"> </span><span class="p">},</span>
+<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a><span class="w">  </span><span class="nt">"runsc-hostnet"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"path"</span><span class="p">:</span><span class="w"> </span><span class="s2">"/usr/local/bin/runsc"</span><span class="p">,</span><span class="w"> </span><span class="nt">"runtimeArgs"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">"--network=host"</span><span class="p">]</span><span class="w"> </span><span class="p">},</span>
+<a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a><span class="w">  </span><span class="nt">"runsc-hostnet-raw"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"path"</span><span class="p">:</span><span class="w"> </span><span class="s2">"/usr/local/bin/runsc"</span><span class="p">,</span><span class="w"> </span><span class="nt">"runtimeArgs"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">"--network=host"</span><span class="p">,</span><span class="w"> </span><span class="s2">"--net-raw"</span><span class="p">]</span><span class="w"> </span><span class="p">}</span>
+<a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a><span class="p">}</span>
+</code></pre></div>
+<p><code>runsc-hostnet-raw</code> is for a service that needs raw sockets, such as Bitping.</p>
+<h3 id="what-we-ran-under-it">What we ran under it<a class="headerlink" href="#what-we-ran-under-it" title="Permanent link">&para;</a></h3>
+<p>On an Ubuntu 24.04 host, each of these ran under <code>runsc-hostnet</code> on
+<code>cashpilot-isolated</code> without restarting and without name-lookup errors: EarnApp, Earn.fm, Honeygain, IPRoyal Pawns, PacketStream, ProxyBase,
+ProxyLite, ProxyRack, Repocket and Traffmonetizer, plus Bitping under
+<code>runsc-hostnet-raw</code>. We did not try Mysterium, which needs host networking and a
+TUN device, or Storj, whose disk traffic would pay gVisor's overhead on every
+read and write.</p>
+<p>CashPilot's deploy spec accepts a <code>runtime</code>, allowed only when your Docker daemon
+reports it (see
+<a href="../security-defaults/#container-runtimes-gvisor-where-it-works">container runtimes</a>).
+Nothing selects gVisor for you.</p>
+<h2 id="what-every-deploy-already-gets">What every deploy already gets<a class="headerlink" href="#what-every-deploy-already-gets" title="Permanent link">&para;</a></h2>
+<p>You do not have to configure any of this; it is always on
+(<a href="../security-defaults/">security defaults</a>):</p>
+<ul>
+<li>every Linux capability dropped, and only the ones a service's own catalog
+  entry declares added back;</li>
+<li><code>no-new-privileges</code>, and a limit on the number of processes;</li>
+<li>no privileged containers, and no host device unless the service's own entry
+  declares it and it is on a fixed allow-list, which today holds only
+  <code>/dev/net/tun</code>, for Mysterium;</li>
+<li>no bind mounts of system paths, including the Docker socket;</li>
+<li>credentials encrypted at rest.</li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+    <div class="md-copyright__highlight">
+      Copyright &copy; 2026 Sergio Fernandez
+    </div>
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+        
+<div class="md-social">
+  
+    
+    
+    
+    
+      
+      
+    
+    <a href="https://github.com/GeiserX/CashPilot" target="_blank" rel="noopener" title="github.com" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+    </a>
+  
+    
+    
+    
+    
+      
+      
+    
+    <a href="https://hub.docker.com/r/drumsergio/cashpilot" target="_blank" rel="noopener" title="hub.docker.com" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M349.9 236.3h-66.1v-59.4h66.1zm0-204.3h-66.1v60.7h66.1zm78.2 144.8H362v59.4h66.1zm-156.3-72.1h-66.1v60.1h66.1zm78.1 0h-66.1v60.1h66.1zm276.8 100c-14.4-9.7-47.6-13.2-73.1-8.4-3.3-24-16.7-44.9-41.1-63.7l-14-9.3-9.3 14c-18.4 27.8-23.4 73.6-3.7 103.8-8.7 4.7-25.8 11.1-48.4 10.7H2.4c-8.7 50.8 5.8 116.8 44 162.1 37.1 43.9 92.7 66.2 165.4 66.2 157.4 0 273.9-72.5 328.4-204.2 21.4.4 67.6.1 91.3-45.2 1.5-2.5 6.6-13.2 8.5-17.1zm-511.1-27.9h-66v59.4h66.1v-59.4zm78.1 0h-66.1v59.4h66.1zm78.1 0h-66.1v59.4h66.1zm-78.1-72.1h-66.1v60.1h66.1z"/></svg>
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.tabs", "navigation.sections", "navigation.expand", "navigation.top", "content.code.copy", "content.action.edit", "search.highlight", "search.suggest", "toc.follow"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>
