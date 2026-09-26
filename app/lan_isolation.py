@@ -231,6 +231,9 @@ def compose_snippet(network_name: str = DEFAULT_NETWORK_NAME, bridge_interface: 
     return (
         f"networks:\n"
         f"  {network_name}:\n"
+        # Without an explicit name Compose prefixes the project name, and the
+        # worker (CASHPILOT_CONTAINER_NETWORK) looks up the unprefixed one.
+        f"    name: {network_name}\n"
         f"    driver: bridge\n"
         f"    driver_opts:\n"
         f'      com.docker.network.bridge.name: "{bridge_interface}"\n'

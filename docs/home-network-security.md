@@ -147,9 +147,27 @@ started yet, and Docker keeps an existing chain and its rules, so the order does
 not matter. A systemd unit works, as does Unraid's User Scripts plugin set to
 run at array start.
 
-**IPv6.** Docker bridges have IPv6 off unless you enabled it. If you did, add
-the same rules with `ip6tables` for `fc00::/7` and `fe80::/10`. We tested only
-the IPv4 rules.
+**IPv6.** Docker bridges have IPv6 off unless you enabled it. If you did, the
+IPv6 rules need your LAN's own prefix as well as the private and link-local
+ranges, because a home network with IPv6 usually has a globally routed prefix
+that `fc00::/7` does not cover. `ip -6 route` lists it; the `2001:db8:1:2::/64`
+below is only an example:
+
+```sh
+#!/bin/sh
+BR=cp-isolated
+LAN6=2001:db8:1:2::/64   # replace with your LAN's prefix
+ip6tables -N DOCKER-USER 2>/dev/null || true
+add() { ip6tables -C "$@" 2>/dev/null || ip6tables -I "$@"; }
+for net in fc00::/7 fe80::/10 "$LAN6"; do
+  add DOCKER-USER -i "$BR" -d "$net" -j REJECT
+done
+add DOCKER-USER -i "$BR" -m conntrack --ctstate ESTABLISHED,RELATED -j RETURN
+add INPUT -i "$BR" -j REJECT
+add INPUT -i "$BR" -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+```
+
+We checked that these rules load, but tested the blocking only for IPv4.
 
 **What it cannot cover.** A service on host networking uses the host's own
 interfaces, so a rule on a bridge does not apply to it. That is Mysterium today.

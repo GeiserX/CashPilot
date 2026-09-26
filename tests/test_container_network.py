@@ -84,6 +84,22 @@ class TestItIsRefusedBeforeAnythingIsTouched:
         old.remove.assert_not_called()
         client.containers.run.assert_not_called()
 
+    def test_dockers_default_bridge_is_refused(self):
+        """Every other container shares it, so no rule can single out the earners."""
+        client = _client({"bridge": "bridge"})
+        client.networks.get.side_effect = None
+        default = MagicMock()
+        default.name = "bridge"
+        default.attrs = {
+            "Name": "bridge",
+            "Driver": "bridge",
+            "Options": {"com.docker.network.bridge.default_bridge": "true"},
+        }
+        client.networks.get.return_value = default
+        with pytest.raises(orchestrator.ContainerNetworkError, match="default bridge"):
+            _deploy(client, "bridge")
+        client.containers.run.assert_not_called()
+
     def test_a_network_that_is_not_a_bridge_is_refused(self):
         with pytest.raises(orchestrator.ContainerNetworkError, match="macvlan"):
             _deploy(_client({"cashpilot-isolated": "macvlan"}), "cashpilot-isolated")
@@ -112,3 +128,7 @@ class TestTheSnippetIsOneDockerAccepts:
         snippet = lan_isolation.compose_snippet()
         assert f'com.docker.network.bridge.name: "{lan_isolation.BRIDGE_INTERFACE}"' in snippet
         assert 'bridge.name: "cashpilot-isolated"' not in snippet
+
+    def test_the_network_keeps_its_name_under_compose(self):
+        """Compose prefixes the project name unless the network names itself."""
+        assert f"    name: {lan_isolation.DEFAULT_NETWORK_NAME}\n" in lan_isolation.compose_snippet()

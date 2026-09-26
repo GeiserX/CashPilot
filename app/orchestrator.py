@@ -270,7 +270,15 @@ def container_network(network_mode: str | None) -> str | None:
             f"this host. Create it first: docker network create --driver bridge "
             f"-o com.docker.network.bridge.name=cp-isolated {_CONTAINER_NETWORK}"
         ) from None
-    driver = (network.attrs or {}).get("Driver")
+    attrs = network.attrs or {}
+    if (attrs.get("Name") or getattr(network, "name", "")) == "bridge" or (attrs.get("Options") or {}).get(
+        "com.docker.network.bridge.default_bridge"
+    ) == "true":
+        raise ContainerNetworkError(
+            "CASHPILOT_CONTAINER_NETWORK names Docker's default bridge, which every other container shares, "
+            "so no firewall rule can single out the earners. Name the bridge you created for them."
+        )
+    driver = attrs.get("Driver")
     if driver != "bridge":
         raise ContainerNetworkError(
             f"CASHPILOT_CONTAINER_NETWORK is {_CONTAINER_NETWORK!r}, a {driver!r} network. Only a bridge keeps "

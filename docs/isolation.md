@@ -48,6 +48,8 @@ Put the managed containers on their own bridge:
 ```yaml
 networks:
   cashpilot-isolated:
+    # Without it Compose prefixes the project name to the network.
+    name: cashpilot-isolated
     driver: bridge
     driver_opts:
       # Linux caps interface names at 15 characters; the rules match this one.
