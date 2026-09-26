@@ -94,14 +94,16 @@
 .md-typeset .md-button--primary,
 .md-typeset .md-button--primary:focus,
 .md-typeset .md-button--primary:hover {
-  background: linear-gradient(90deg, #f43f5e 0%, #fb7185 100%);
+  /* A darker cut of the wordmark's rose: white on #f43f5e is only 3.7:1,
+     #e11d48 -> #be123c keeps every point above 4.5:1. */
+  background: linear-gradient(90deg, #e11d48 0%, #be123c 100%);
   border-color: transparent;
   color: #ffffff;
 }
 
 .md-typeset .md-button--primary:focus,
 .md-typeset .md-button--primary:hover {
-  box-shadow: 0 0.2rem 0.8rem #f43f5e59;
+  box-shadow: 0 0.2rem 0.8rem #e11d4859;
 }
 
 /* FAQ entries (??? question). Material draws them lime green, a colour that
