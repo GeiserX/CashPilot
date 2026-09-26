@@ -93,7 +93,18 @@ From then on, every service the worker deploys onto a bridge joins
 networking are unaffected. The worker never creates the network or any firewall
 rule itself. If the network is missing, it refuses the deploy and tells you the
 command above, and it checks before it touches the running container.
-Already-deployed services move over on their next redeploy.
+
+Already-deployed services move over on their next redeploy. To move one now
+without recreating it, keeping its configuration and identity as they are:
+
+```bash
+docker network connect cashpilot-isolated cashpilot-honeygain
+docker network disconnect bridge cashpilot-honeygain
+```
+
+Published ports move with it and survive a restart. A service that holds a
+long-lived connection may keep trying the old one for a while; Bitping did, and a
+`docker restart` of that one service fixed it.
 
 If you run the services from an exported compose file instead, add
 `networks: [cashpilot-isolated]` to each service and declare the network as
@@ -138,8 +149,38 @@ We ran this script twice on a Docker host and checked the result:
 | A port published from the container, reached from the host | works |
 | The same port with the reply rule removed | times out |
 
-Name lookups keep working because Docker answers them for the container and
-forwards them from the host side, so your router's DNS can stay blocked.
+### Name lookups need a resolver the rules allow
+
+Docker answers a container's lookups and forwards them to the DNS servers it was
+given, **from inside the container's network**. On most home networks that
+server is the router, which the rules above block, so every lookup fails and the
+services stop earning. Pick one fix:
+
+- **Give Docker public resolvers.** In `/etc/docker/daemon.json`, set
+  `"dns": ["1.1.1.1", "9.9.9.9"]` and restart Docker (this restarts every
+  container). If you keep a local resolver first in that list, lookups still
+  work, a little slower, because Docker falls through to the next server.
+- **Or let the containers reach the router's DNS port and nothing else on it,**
+  by adding this to the script, with your router's address:
+
+  ```sh
+  ROUTER=192.168.1.1
+  add DOCKER-USER -i "$BR" -d "$ROUTER" -p udp --dport 53 -j RETURN
+  add DOCKER-USER -i "$BR" -d "$ROUTER" -p tcp --dport 53 -j RETURN
+  ```
+
+We tested both: with the exception, lookups through the router work and the
+router's web interface stays blocked.
+
+If you enabled IPv6 on the bridge and your router also answers DNS on an IPv6
+address, add the same exception to the [IPv6 script](#the-rules) below, with
+that address. We tested the exception only over IPv4.
+
+```sh
+ROUTER6=fe80::1   # your router's IPv6 DNS address
+add DOCKER-USER -i "$BR" -d "$ROUTER6" -p udp --dport 53 -j RETURN
+add DOCKER-USER -i "$BR" -d "$ROUTER6" -p tcp --dport 53 -j RETURN
+```
 
 **When to run it.** The rules survive a Docker restart but not a reboot, so run
 the script at every boot. It creates the `DOCKER-USER` chain if Docker has not
@@ -180,13 +221,15 @@ After applying the rules, from the host:
 ```bash
 # should FAIL: another machine on your LAN (use a real address of yours)
 docker run --rm --network cashpilot-isolated busybox wget -T3 -qO- http://192.168.1.1/
-# should work: the internet
+# should work: the internet, by name
 docker run --rm --network cashpilot-isolated busybox wget -T5 -qO- http://example.com/ | head -3
 ```
 
 If the first command succeeds, the rules are not in place. Check that
 `iptables -S DOCKER-USER` shows them and that the interface really is
-`cp-isolated` (`ip link show cp-isolated`).
+`cp-isolated` (`ip link show cp-isolated`). If the second fails with a name
+error but `wget http://1.1.1.1/` works, it is DNS: see
+[name lookups](#name-lookups-need-a-resolver-the-rules-allow).
 
 ## 3. Keep CashPilot's control plane private
 
@@ -266,15 +309,31 @@ for the same traffic. For a typical bandwidth-sharing service moving a few tens
 of gigabytes a month, that is minutes of CPU a month. For a busy storage node,
 or on a Raspberry Pi, it adds up.
 
+With network passthrough, the setup that works on a CashPilot network (see
+below), throughput matched runc's in two runs each, 38 to 44 MB/s on a link that
+was the limit that day, and CPU stayed at about six times runc's: 19 to 20 s for
+1 GiB against 3 s.
+
 ### What breaks
 
+- **Docker's DNS on your own networks.** Plain `runsc` cannot resolve names on
+  any network you create, `cashpilot-isolated` included. Docker answers lookups
+  at `127.0.0.11` through firewall rules inside the container's network, and
+  gVisor's own network stack does not apply them. This is
+  [gVisor issue 7469](https://github.com/google/gvisor/issues/7469), still open.
+  The fix that works is to register gVisor with `--network=host`, which, despite
+  the name, uses the kernel network stack *inside the container's own network*:
+  Docker's DNS works, and the container stays on the firewalled bridge. It
+  weakens gVisor's network isolation, and every other system call is still
+  handled by gVisor.
 - **Raw sockets are off by default.** `ping` fails under gVisor even when the
   container is granted `NET_RAW`. Bitping declares `NET_RAW` to probe the
   network, so it needs gVisor registered with the `--net-raw` flag, which gives
   that capability back.
-- **Host networking gives up much of the point.** gVisor can use the host's
-  network stack with `--network=host`, and its own documentation says that
-  "decreases the isolation to the host". A service that needs host networking
+- **A service on host networking gains little.** gVisor's own documentation says
+  network passthrough "decreases the isolation to the host", and a service that
+  already shares the host's network, like Mysterium, has nothing left to
+  confine it there. A service that needs host networking
   plus a TUN device, like Mysterium, is a poor fit.
 - **Stock Unraid cannot run it at all.** Unraid runs from its initial RAM
   filesystem. That root has no parent mount, so gVisor cannot `pivot_root` out
@@ -306,6 +365,29 @@ sudo /usr/local/bin/runsc install
 sudo systemctl reload docker
 docker run --rm --runtime=runsc hello-world
 ```
+
+For CashPilot's networks, add the passthrough runtimes to
+`/etc/docker/daemon.json`, next to the `runsc` entry the install wrote, and run
+`sudo systemctl reload docker`:
+
+```json
+"runtimes": {
+  "runsc": { "path": "/usr/local/bin/runsc" },
+  "runsc-hostnet": { "path": "/usr/local/bin/runsc", "runtimeArgs": ["--network=host"] },
+  "runsc-hostnet-raw": { "path": "/usr/local/bin/runsc", "runtimeArgs": ["--network=host", "--net-raw"] }
+}
+```
+
+`runsc-hostnet-raw` is for a service that needs raw sockets, such as Bitping.
+
+### What we ran under it
+
+On an Ubuntu 24.04 host, each of these ran under `runsc-hostnet` on
+`cashpilot-isolated` without restarting and without name-lookup errors: EarnApp, Earn.fm, Honeygain, IPRoyal Pawns, PacketStream, ProxyBase,
+ProxyLite, ProxyRack, Repocket and Traffmonetizer, plus Bitping under
+`runsc-hostnet-raw`. We did not try Mysterium, which needs host networking and a
+TUN device, or Storj, whose disk traffic would pay gVisor's overhead on every
+read and write.
 
 CashPilot's deploy spec accepts a `runtime`, allowed only when your Docker daemon
 reports it (see
