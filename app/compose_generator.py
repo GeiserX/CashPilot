@@ -151,8 +151,12 @@ def _service_to_compose(
         default = var.get("default", "")
         if default:
             default = default.replace("{hostname}", hostname or socket.gethostname())
-        if env_vars and key in env_vars:
-            env[key] = env_vars[key]
+        supplied = env_vars.get(key) if env_vars else None
+        # A blank value for a REQUIRED setting is not a value: as a host path it
+        # would export the mount ":/app/identity", which Compose rejects without
+        # naming the setting. It is unfilled, like one never supplied.
+        if supplied is not None and (str(supplied).strip() or not var.get("required")):
+            env[key] = supplied
         elif default:
             env[key] = default
         elif var.get("required"):

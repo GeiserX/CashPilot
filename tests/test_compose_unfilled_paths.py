@@ -57,3 +57,22 @@ def test_the_message_cannot_break_out_of_the_variable():
     volume = compose_generator._service_to_compose(entry)["volumes"][0]
     message = volume[len("${DATA:?") : volume.rindex("}")]
     assert "}" not in message and "$" not in message, volume
+
+
+def test_a_blank_required_path_is_unfilled_too():
+    """Supplied but empty must not export the mount ":/app/identity"."""
+    compose = _storj({"IDENTITY_DIR": "", "STORAGE_DIR": "   "})
+    volumes = compose["services"]["cashpilot-storj"]["volumes"]
+    assert any(v.startswith("${IDENTITY_DIR:?") for v in volumes), volumes
+    assert any(v.startswith("${STORAGE_DIR:?") for v in volumes), volumes
+    assert not any(v.startswith(":") or v.startswith(" ") for v in volumes), volumes
+
+
+def test_a_blank_optional_value_is_still_written_as_given():
+    """Only REQUIRED settings fall back: a deliberately empty optional value stays empty."""
+    entry = {
+        "name": "X",
+        "slug": "x",
+        "docker": {"image": "x/x:1.0.0", "env": [{"key": "OPT", "required": False, "default": "d"}]},
+    }
+    assert compose_generator._service_to_compose(entry, env_vars={"OPT": ""})["environment"]["OPT"] == ""
