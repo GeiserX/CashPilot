@@ -1183,7 +1183,7 @@ def get_status() -> list[dict[str, Any]]:
                 "slug": slug,
                 "name": c.name,
                 "status": c.status,
-                "image": c.image.tags[0] if c.image.tags else str(c.image.short_id),
+                "image": _image_ref(c.image, (c.attrs.get("Config") or {}).get("Image", "")) or str(c.image.short_id),
                 "cpu_percent": cpu_pct,
                 "memory_mb": mem_mb,
                 # Cumulative since container start; None when unavailable.
@@ -1220,10 +1220,10 @@ def get_status() -> list[dict[str, Any]]:
             try:
                 if c.id in seen_ids:
                     continue
-                image_name = c.image.tags[0] if c.image.tags else ""
+                image_name = _image_ref(c.image, (c.attrs.get("Config") or {}).get("Image", ""))
                 slug = image_map.get(image_name, "")
                 if not slug and image_name:
-                    slug = image_map.get(image_name.split(":")[0], "")
+                    slug = image_map.get(_image_repository(image_name), "")
                 if slug:
                     seen_ids.add(c.id)
                     matched.append((c, slug, image_name))
@@ -1283,6 +1283,32 @@ def get_status_cached(max_age: int = 600) -> list[dict[str, Any]]:
     return get_status_light()
 
 
+def _image_ref(image: Any, created_from: str = "") -> str:
+    """The name an image was pulled by: its first tag, else its digest reference.
+
+    An image pulled by digest, as the catalog pins ProxyBase, has no tag at all,
+    only ``repo@sha256:...`` in RepoDigests. Reporting its bare ID instead made
+    the dashboard compare "sha256" against the catalog's repository and flag a
+    current container as outdated.
+
+    ``created_from`` is the reference the container was created with. When that
+    is a digest reference it wins: it is exactly what the catalog pinned, while
+    RepoDigests is sorted alphabetically and an image can carry several.
+    """
+    if "@sha256:" in created_from:
+        return created_from
+    if image.tags:
+        return image.tags[0]
+    attrs = getattr(image, "attrs", None)
+    digests = attrs.get("RepoDigests") if isinstance(attrs, dict) else None
+    return digests[0] if isinstance(digests, list) and digests and isinstance(digests[0], str) else ""
+
+
+def _image_repository(image_name: str) -> str:
+    """The repository of an image reference: no tag, no digest."""
+    return image_name.split("@")[0].split(":")[0]
+
+
 def _build_image_slug_map() -> dict[str, str]:
     """Build a map of Docker image names to service slugs from catalog."""
     if not get_services:
@@ -1294,7 +1320,11 @@ def _build_image_slug_map() -> dict[str, str]:
         if image:
             # Map both "image" and "image:latest" to the slug
             mapping[image] = svc["slug"]
-            if ":" not in image:
+            if "@" in image:
+                # A digest-pinned image: an external container on an older
+                # digest of the same repository is still this service.
+                mapping[image.split("@")[0]] = svc["slug"]
+            elif ":" not in image:
                 mapping[f"{image}:latest"] = svc["slug"]
     return mapping
 
@@ -1336,7 +1366,7 @@ def get_status_light() -> list[dict[str, Any]]:
                 "slug": slug,
                 "name": c.name,
                 "status": c.status,
-                "image": c.image.tags[0] if c.image.tags else str(c.image.short_id),
+                "image": _image_ref(c.image, (c.attrs.get("Config") or {}).get("Image", "")) or str(c.image.short_id),
                 "cpu_percent": 0.0,
                 "memory_mb": 0.0,
                 "created": c.attrs.get("Created", ""),
@@ -1366,12 +1396,10 @@ def get_status_light() -> list[dict[str, Any]]:
             try:
                 if c.id in seen_ids:
                     continue
-                image_name = c.image.tags[0] if c.image.tags else ""
+                image_name = _image_ref(c.image, (c.attrs.get("Config") or {}).get("Image", ""))
                 slug = image_map.get(image_name, "")
                 if not slug and image_name:
-                    # Try without tag
-                    base = image_name.split(":")[0]
-                    slug = image_map.get(base, "")
+                    slug = image_map.get(_image_repository(image_name), "")
                 # Dedupe on container ID only, NOT on slug. get_status does the
                 # same, and get_status_cached serves whichever of the two is
                 # current -- so a host running two containers of one external
