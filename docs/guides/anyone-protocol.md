@@ -43,18 +43,15 @@ Anyone Protocol requires an `anonrc` configuration file. Create it before deploy
 ```
 User anond
 DataDirectory /var/lib/anon
-ControlSocket /run/anon/control
-ControlSocketsGroupWritable 1
-CookieAuthentication 1
-CookieAuthFile /run/anon/control.authcookie
-CookieAuthFileGroupReadable 1
 Log notice file /etc/anon/notices.log
-ORPort 9001
+ORPort 9001 IPv4Only
 ExitRelay 0
 Nickname YourRelayName
 ContactInfo your@email.com
 AgreeToTerms 1
 ```
+
+There is no `ControlSocket` in this config on purpose. Nothing uses the control socket: CashPilot reads earnings by relay fingerprint, and the image has no healthcheck that needs it. When it is configured, the relay refuses to create it in a `/run/anon` that other users can read, which is how Docker creates that directory, and it logs two warnings a minute. Over six months that grew `notices.log` to about 150 MB. `IPv4Only` stops an hourly notice about a missing IPv6 address; leave it off if your relay has a public IPv6 address.
 
 **Important:** `AgreeToTerms 1` is required since version 0.4.9.7-live. Without it, the container exits immediately with "User has not agreed to the terms and conditions."
 
@@ -68,7 +65,15 @@ If running behind a firewall (e.g. ufw), also allow port 9001/tcp inbound.
 
 ### 4. Deploy with CashPilot
 
-In the CashPilot web UI, find **Anyone Protocol** in the service catalog and click **Deploy**. CashPilot will handle the anonrc creation and volume setup.
+The deploy creates two named volumes, `anon-config` (mounted at `/etc/anon`) and `anon-data` (the relay identity). CashPilot does not write `anonrc` for you: put it in the config volume on the worker host first, owned by the relay user, or the container exits at once.
+
+```bash
+docker volume create anon-config
+docker run --rm -i -v anon-config:/etc/anon alpine \
+  sh -c 'cat > /etc/anon/anonrc && chown -R 100:101 /etc/anon' < anonrc
+```
+
+If you change the volumes in the deploy form to host directories instead, write the file into the directory mounted at `/etc/anon`. Then, in the CashPilot web UI, find **Anyone Protocol** in the service catalog and click **Deploy**. If you change `anonrc` later, `docker kill -s HUP <container>` reloads it without a restart.
 
 ## Docker Configuration
 
