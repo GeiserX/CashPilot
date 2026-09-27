@@ -400,7 +400,7 @@ CASHPILOT_CONTAINER_RUNTIME_OVERRIDES: bitping=runsc-hostnet-raw
 
 The runtime applies to containers on bridge networking when they are next
 deployed; host-networked services such as Mysterium keep Docker's default.
-`slug=runc` in the overrides keeps one service out, Storj for example. If the
+`slug=runc` in the overrides runs one service under `runc`, the runtime Docker ships with; Storj is a good candidate. If the
 daemon does not provide a runtime you named, the deploy is refused and the running
 container is left alone. Nothing selects gVisor unless you set it
 ([container runtimes](security-defaults.md#container-runtimes-gvisor-where-it-works)).

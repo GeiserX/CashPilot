@@ -292,8 +292,8 @@ def container_network(network_mode: str | None) -> str | None:
 #: Docker's default, as before. CashPilot never picks one for the operator.
 _CONTAINER_RUNTIME = os.getenv("CASHPILOT_CONTAINER_RUNTIME", "").strip()
 #: Per-service exceptions, "slug=runtime,slug=runtime": a service that needs
-#: raw sockets gets a runtime registered with --net-raw, and "runc" opts one
-#: out of the default.
+#: raw sockets gets a runtime registered with --net-raw, and "runc" runs one
+#: under the runtime Docker ships with.
 _CONTAINER_RUNTIME_OVERRIDES = os.getenv("CASHPILOT_CONTAINER_RUNTIME_OVERRIDES", "").strip()
 
 
