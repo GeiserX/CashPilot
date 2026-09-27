@@ -43,7 +43,7 @@ Anyone Protocol requires an `anonrc` configuration file. Create it before deploy
 ```
 User anond
 DataDirectory /var/lib/anon
-Log notice file /etc/anon/notices.log
+Log [~guard]notice [guard]warn file /etc/anon/notices.log
 ORPort 9001 IPv4Only
 ExitRelay 0
 Nickname YourRelayName
@@ -52,6 +52,8 @@ AgreeToTerms 1
 ```
 
 There is no `ControlSocket` in this config on purpose. Nothing uses the control socket: CashPilot reads earnings by relay fingerprint, and the image has no healthcheck that needs it. When it is configured, the relay refuses to create it in a `/run/anon` that other users can read, which is how Docker creates that directory, and it logs two warnings a minute. Over six months that grew `notices.log` to about 150 MB. `IPv4Only` stops an hourly notice about a missing IPv6 address; leave it off if your relay has a public IPv6 address.
+
+The `Log` line keeps every notice except those from guard selection, where only warnings get through. On the Anyone network the relay's own circuits often run out of distinct guards, and each time it logs "All current guards excluded by path restriction type 2", about once a minute. That notice is harmless ([Tor issue 40886](https://gitlab.torproject.org/tpo/core/tor/-/issues/40886)) and would otherwise add about 55 MB to the log every six months. Do not set `ConfluxEnabled 0` to silence it: on a relay that logs an hourly warning and risks the relay being flagged.
 
 **Important:** `AgreeToTerms 1` is required since version 0.4.9.7-live. Without it, the container exits immediately with "User has not agreed to the terms and conditions."
 
