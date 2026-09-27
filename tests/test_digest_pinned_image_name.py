@@ -62,6 +62,17 @@ class TestTheImageName:
         assert orchestrator._image_ref(_image(["a/b:1"]), created_from="a/b:latest") == "a/b:1"
 
 
+class TestTheRepository:
+    def test_a_tag_is_dropped(self):
+        assert orchestrator._image_repository("honeygain/honeygain:latest") == "honeygain/honeygain"
+
+    def test_a_digest_is_dropped(self):
+        assert orchestrator._image_repository(PINNED) == "ghcr.io/proxybaseorg/peer-cli"
+
+    def test_a_bare_repository_is_itself(self):
+        assert orchestrator._image_repository("honeygain/honeygain") == "honeygain/honeygain"
+
+
 class TestTheOutdatedCheck:
     def test_a_bare_image_id_is_unknown_not_outdated(self):
         assert main._image_outdated("sha256:ca262f32663d", PINNED) is False
@@ -92,6 +103,15 @@ class TestBothStatusPaths:
         [entry] = self._run(fn, [[], [external]])
         assert entry["slug"] == "proxybase"
         assert entry["image"] == PINNED
+
+    def test_an_external_container_on_an_old_digest_is_recognised_and_flagged(self, fn):
+        """The exact lookup fails for an old digest; the repository still names the service."""
+        old = "ghcr.io/proxybaseorg/peer-cli@sha256:0000"
+        external = _container(_image(digests=[old]), cid="external-old-proxybase")
+        [entry] = self._run(fn, [[], [external]])
+        assert entry["slug"] == "proxybase"
+        assert entry["image"] == old
+        assert main._image_outdated(entry["image"], PINNED) is True
 
     def test_a_container_created_from_the_pin_is_not_outdated_despite_a_stale_digest(self, fn):
         stale = "ghcr.io/proxybaseorg/peer-cli@sha256:0000"

@@ -1223,7 +1223,7 @@ def get_status() -> list[dict[str, Any]]:
                 image_name = _image_ref(c.image, (c.attrs.get("Config") or {}).get("Image", ""))
                 slug = image_map.get(image_name, "")
                 if not slug and image_name:
-                    slug = image_map.get(image_name.split(":")[0], "")
+                    slug = image_map.get(_image_repository(image_name), "")
                 if slug:
                     seen_ids.add(c.id)
                     matched.append((c, slug, image_name))
@@ -1304,6 +1304,11 @@ def _image_ref(image: Any, created_from: str = "") -> str:
     return digests[0] if isinstance(digests, list) and digests and isinstance(digests[0], str) else ""
 
 
+def _image_repository(image_name: str) -> str:
+    """The repository of an image reference: no tag, no digest."""
+    return image_name.split("@")[0].split(":")[0]
+
+
 def _build_image_slug_map() -> dict[str, str]:
     """Build a map of Docker image names to service slugs from catalog."""
     if not get_services:
@@ -1315,7 +1320,11 @@ def _build_image_slug_map() -> dict[str, str]:
         if image:
             # Map both "image" and "image:latest" to the slug
             mapping[image] = svc["slug"]
-            if ":" not in image:
+            if "@" in image:
+                # A digest-pinned image: an external container on an older
+                # digest of the same repository is still this service.
+                mapping[image.split("@")[0]] = svc["slug"]
+            elif ":" not in image:
                 mapping[f"{image}:latest"] = svc["slug"]
     return mapping
 
@@ -1390,9 +1399,7 @@ def get_status_light() -> list[dict[str, Any]]:
                 image_name = _image_ref(c.image, (c.attrs.get("Config") or {}).get("Image", ""))
                 slug = image_map.get(image_name, "")
                 if not slug and image_name:
-                    # Try without tag
-                    base = image_name.split(":")[0]
-                    slug = image_map.get(base, "")
+                    slug = image_map.get(_image_repository(image_name), "")
                 # Dedupe on container ID only, NOT on slug. get_status does the
                 # same, and get_status_cached serves whichever of the two is
                 # current -- so a host running two containers of one external
