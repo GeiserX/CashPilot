@@ -1536,6 +1536,10 @@ def _image_outdated(deployed: str, catalog_image: str) -> bool:
     """
     if not deployed or not catalog_image:
         return False
+    # A bare image ID: the image has neither a tag nor a digest (loaded or built
+    # locally), so there is no repository to compare. Unknown, not outdated.
+    if deployed.startswith("sha256:"):
+        return False
     d_repo, _, d_digest = _split_image(deployed)
     c_repo, _, c_digest = _split_image(catalog_image)
     if d_repo != c_repo:

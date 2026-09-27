@@ -29,7 +29,7 @@ def _image(tags=(), digests=()):
     return image
 
 
-def _container(image, *, cid, slug=None):
+def _container(image, *, cid, slug=None, created_from=""):
     c = MagicMock()
     c.id = cid
     c.short_id = cid[:12]
@@ -37,7 +37,7 @@ def _container(image, *, cid, slug=None):
     c.status = "running"
     c.labels = {LABEL_SERVICE: slug, LABEL_DEPLOYED_BY: "worker"} if slug else {}
     c.image = image
-    c.attrs = {"Created": "2026-09-27T00:00:00Z"}
+    c.attrs = {"Created": "2026-09-27T00:00:00Z", "Config": {"Image": created_from}}
     return c
 
 
@@ -52,6 +52,22 @@ class TestTheImageName:
 
     def test_neither_gives_nothing(self):
         assert orchestrator._image_ref(_image()) == ""
+
+    def test_the_digest_the_container_was_created_from_wins(self):
+        """RepoDigests is sorted, so with two digests the first may be the old one."""
+        stale = "ghcr.io/proxybaseorg/peer-cli@sha256:0000"
+        assert orchestrator._image_ref(_image(digests=[stale, PINNED]), created_from=PINNED) == PINNED
+
+    def test_a_tag_the_container_was_created_from_does_not_override(self):
+        assert orchestrator._image_ref(_image(["a/b:1"]), created_from="a/b:latest") == "a/b:1"
+
+
+class TestTheOutdatedCheck:
+    def test_a_bare_image_id_is_unknown_not_outdated(self):
+        assert main._image_outdated("sha256:ca262f32663d", PINNED) is False
+
+    def test_the_same_repository_on_an_old_digest_is_outdated(self):
+        assert main._image_outdated("ghcr.io/proxybaseorg/peer-cli@sha256:0000", PINNED) is True
 
 
 @pytest.mark.parametrize("fn", ["get_status", "get_status_light"])
@@ -76,6 +92,14 @@ class TestBothStatusPaths:
         [entry] = self._run(fn, [[], [external]])
         assert entry["slug"] == "proxybase"
         assert entry["image"] == PINNED
+
+    def test_a_container_created_from_the_pin_is_not_outdated_despite_a_stale_digest(self, fn):
+        stale = "ghcr.io/proxybaseorg/peer-cli@sha256:0000"
+        managed = _container(
+            _image(digests=[stale, PINNED]), cid="managed-proxybase", slug="proxybase", created_from=PINNED
+        )
+        [entry] = self._run(fn, [[managed], [managed]])
+        assert main._image_outdated(entry["image"], PINNED) is False
 
     def test_a_really_different_repository_is_still_flagged(self, fn):
         old = _container(_image(digests=["proxybase/old-cli@sha256:1"]), cid="managed-old", slug="proxybase")

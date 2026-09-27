@@ -1183,7 +1183,7 @@ def get_status() -> list[dict[str, Any]]:
                 "slug": slug,
                 "name": c.name,
                 "status": c.status,
-                "image": _image_ref(c.image) or str(c.image.short_id),
+                "image": _image_ref(c.image, (c.attrs.get("Config") or {}).get("Image", "")) or str(c.image.short_id),
                 "cpu_percent": cpu_pct,
                 "memory_mb": mem_mb,
                 # Cumulative since container start; None when unavailable.
@@ -1220,7 +1220,7 @@ def get_status() -> list[dict[str, Any]]:
             try:
                 if c.id in seen_ids:
                     continue
-                image_name = _image_ref(c.image)
+                image_name = _image_ref(c.image, (c.attrs.get("Config") or {}).get("Image", ""))
                 slug = image_map.get(image_name, "")
                 if not slug and image_name:
                     slug = image_map.get(image_name.split(":")[0], "")
@@ -1283,14 +1283,20 @@ def get_status_cached(max_age: int = 600) -> list[dict[str, Any]]:
     return get_status_light()
 
 
-def _image_ref(image: Any) -> str:
+def _image_ref(image: Any, created_from: str = "") -> str:
     """The name an image was pulled by: its first tag, else its digest reference.
 
     An image pulled by digest, as the catalog pins ProxyBase, has no tag at all,
     only ``repo@sha256:...`` in RepoDigests. Reporting its bare ID instead made
     the dashboard compare "sha256" against the catalog's repository and flag a
     current container as outdated.
+
+    ``created_from`` is the reference the container was created with. When that
+    is a digest reference it wins: it is exactly what the catalog pinned, while
+    RepoDigests is sorted alphabetically and an image can carry several.
     """
+    if "@sha256:" in created_from:
+        return created_from
     if image.tags:
         return image.tags[0]
     attrs = getattr(image, "attrs", None)
@@ -1351,7 +1357,7 @@ def get_status_light() -> list[dict[str, Any]]:
                 "slug": slug,
                 "name": c.name,
                 "status": c.status,
-                "image": _image_ref(c.image) or str(c.image.short_id),
+                "image": _image_ref(c.image, (c.attrs.get("Config") or {}).get("Image", "")) or str(c.image.short_id),
                 "cpu_percent": 0.0,
                 "memory_mb": 0.0,
                 "created": c.attrs.get("Created", ""),
@@ -1381,7 +1387,7 @@ def get_status_light() -> list[dict[str, Any]]:
             try:
                 if c.id in seen_ids:
                     continue
-                image_name = _image_ref(c.image)
+                image_name = _image_ref(c.image, (c.attrs.get("Config") or {}).get("Image", ""))
                 slug = image_map.get(image_name, "")
                 if not slug and image_name:
                     # Try without tag
