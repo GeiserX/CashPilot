@@ -65,7 +65,15 @@ If running behind a firewall (e.g. ufw), also allow port 9001/tcp inbound.
 
 ### 4. Deploy with CashPilot
 
-In the CashPilot web UI, find **Anyone Protocol** in the service catalog and click **Deploy**. CashPilot will handle the anonrc creation and volume setup.
+The deploy creates two named volumes, `anon-config` (mounted at `/etc/anon`) and `anon-data` (the relay identity). CashPilot does not write `anonrc` for you: put it in the config volume on the worker host first, owned by the relay user, or the container exits at once.
+
+```bash
+docker volume create anon-config
+docker run --rm -i -v anon-config:/etc/anon alpine \
+  sh -c 'cat > /etc/anon/anonrc && chown -R 100:101 /etc/anon' < anonrc
+```
+
+If you change the volumes in the deploy form to host directories instead, write the file into the directory mounted at `/etc/anon`. Then, in the CashPilot web UI, find **Anyone Protocol** in the service catalog and click **Deploy**. If you change `anonrc` later, `docker kill -s HUP <container>` reloads it without a restart.
 
 ## Docker Configuration
 
