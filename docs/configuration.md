@@ -65,6 +65,8 @@ defensible on its own; together they are impossible to guess.
 | `CASHPILOT_ALLOWED_VOLUME_ROOTS` | unset | Host paths a deploy may bind-mount. | — |
 | `CASHPILOT_PIDS_LIMIT` | unset | `pids` limit applied to managed containers. | — |
 | `CASHPILOT_CONTAINER_NETWORK` | unset | A bridge network you created, which containers that would land on Docker's default bridge join instead, so host firewall rules can confine them. Host-networked services are unaffected. The worker never creates it; a deploy is refused while it is missing. See [Protecting your home network](home-network-security.md). | — |
+| `CASHPILOT_CONTAINER_RUNTIME` | unset | A Docker runtime, such as a gVisor runtime you registered in `daemon.json`, for containers on bridge networking. Host-networked services keep Docker's default. A deploy is refused while the daemon does not provide it. See [gVisor](home-network-security.md#7-gvisor-optional). | — |
+| `CASHPILOT_CONTAINER_RUNTIME_OVERRIDES` | unset | Per-service exceptions, `slug=runtime` separated by commas, e.g. `bitping=runsc-hostnet-raw`. `slug=runc` runs that service under `runc`, the runtime Docker ships with, whatever the daemon's default is. | — |
 | `CASHPILOT_DATA_DIR` | `/data` | Where `.worker_id` and `.worker_key` live. | — |
 
 !!! danger "`CASHPILOT_PORT` does not change the port the worker listens on"

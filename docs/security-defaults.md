@@ -107,7 +107,9 @@ registered with `--net-raw`, gains little for services on host networking, and
 cannot run at all on stock Unraid, where a VM is the better boundary. The figures, the install steps and the details are in
 [the gVisor section](home-network-security.md#7-gvisor-optional).
 
-If you have installed a runtime and want a specific service in it, set `runtime`
-on that service and own the outcome. The allowlist is read from your daemon, so
+If you have installed a runtime, `CASHPILOT_CONTAINER_RUNTIME` on the worker puts
+its bridge-networked services in it, and `CASHPILOT_CONTAINER_RUNTIME_OVERRIDES`
+sets exceptions per service ([configuration](configuration.md)). A deploy spec can
+also name a `runtime` for one service. Either way you own the outcome. The allowlist is read from your daemon, so
 you cannot select something the host does not have; that would only fail later
 with an error you could not act on.
