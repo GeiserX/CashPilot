@@ -42,17 +42,24 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          if grep -q '^All good' report.md; then
-            echo "No dead references found."
-            exit 0
-          fi
-
           # Label may not exist yet on a fresh repo.
           gh label create catalog-liveness \
             --description "Automated weekly catalog liveness findings" \
             --color ededed 2>/dev/null || true
 
           existing=$(gh issue list --state open --label catalog-liveness --limit 1 --json number --jq '.[0].number // empty')
+          if grep -q '^All good' report.md; then
+            # A clean report resolves the open rollup: leaving it open with last
+            # week's problems in the body is how a fixed issue stays "action needed".
+            if [ -n "$existing" ]; then
+              gh issue close "$existing" --comment "$(cat report.md)"
+              echo "Closed issue #$existing: this week's report is clean."
+            else
+              echo "No dead references found."
+            fi
+            exit 0
+          fi
+
           if [ -n "$existing" ]; then
             gh issue edit "$existing" --body-file report.md
             echo "Updated issue #$existing"

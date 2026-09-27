@@ -1,6 +1,9 @@
 # WizardGain
 
-> **Category:** Bandwidth Sharing | **Status:** Broken
+> [!CAUTION]
+> **Dead:** the site went into indefinite maintenance in March 2026 and the domain has had no name servers since at least August 2026. Deployment is blocked. This guide is kept for reference only.
+
+> **Category:** Bandwidth Sharing | **Status:** Dead
 >
 > **Website:** [https://wizardgain.com](https://wizardgain.com)
 

@@ -362,8 +362,8 @@ Services that were evaluated but are no longer listed in the catalog due to bein
 | SpeedShare | Dead | Project confirmed dead in Discord | Mar 2026 |
 | Peer2Profit | Dead | Domain unreachable | Mar 2026 |
 | PacketShare | Dead | Signup process broken, no progress | Mar 2026 |
-| earn.cc | Broken | Server error on signup | Mar 2026 |
-| WizardGain | Broken | Under maintenance indefinitely | Mar 2026 |
+| earn.cc | Dead | Signup broke in March 2026 and the site stopped resolving by August 2026 | Sep 2026 |
+| WizardGain | Dead | Indefinite maintenance, then the domain lost its name servers | Sep 2026 |
 | Koii Network | Broken | Website says paused | Mar 2026 |
 | Network3 | Broken | No SSL, no updates in months | Mar 2026 |
 | GagaNode | Shady | Poorly made website, untrustworthy | Mar 2026 |
