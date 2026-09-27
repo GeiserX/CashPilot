@@ -43,18 +43,15 @@ Anyone Protocol requires an `anonrc` configuration file. Create it before deploy
 ```
 User anond
 DataDirectory /var/lib/anon
-ControlSocket /run/anon/control
-ControlSocketsGroupWritable 1
-CookieAuthentication 1
-CookieAuthFile /run/anon/control.authcookie
-CookieAuthFileGroupReadable 1
 Log notice file /etc/anon/notices.log
-ORPort 9001
+ORPort 9001 IPv4Only
 ExitRelay 0
 Nickname YourRelayName
 ContactInfo your@email.com
 AgreeToTerms 1
 ```
+
+There is no `ControlSocket` in this config on purpose. Nothing uses the control socket: CashPilot reads earnings by relay fingerprint, and the image has no healthcheck that needs it. When it is configured, the relay refuses to create it in a `/run/anon` that other users can read, which is how Docker creates that directory, and it logs two warnings a minute. Over six months that grew `notices.log` to about 150 MB. `IPv4Only` stops an hourly notice about a missing IPv6 address; leave it off if your relay has a public IPv6 address.
 
 **Important:** `AgreeToTerms 1` is required since version 0.4.9.7-live. Without it, the container exits immediately with "User has not agreed to the terms and conditions."
 
