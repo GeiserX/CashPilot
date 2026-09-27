@@ -1,13 +1,14 @@
 name: WizardGain
 slug: wizardgain
 category: bandwidth
-status: broken
+status: dead
+# Domain registered but has no name servers since at least August 2026.
 website: https://wizardgain.com
 description: >
   WizardGain turns your unused internet bandwidth into a recurring revenue stream.
   Uses email-based authentication. Pays in cryptocurrency. Official Docker image
   available as wizardgain/worker.
-short_description: Bandwidth sharing - crypto payout, under maintenance
+short_description: Bandwidth sharing - SITE GONE, domain has no name servers
 
 referral:
   signup_url: "https://wizardgain.com"

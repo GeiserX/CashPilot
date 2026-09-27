@@ -1,13 +1,14 @@
 name: earn.cc
 slug: earncc
 category: bandwidth
-status: broken
+status: dead
+# Domain registered, no address records at public resolvers since at least August 2026.
 website: https://earn.cc
 description: >
   earn.cc is a bandwidth monetization service similar to Honeygain. Desktop
   GUI only, no Docker support. Very new with limited information available.
   Residential IP required. Crypto payouts.
-short_description: Bandwidth sharing - new service, server error on signup
+short_description: Bandwidth sharing - SITE GONE, no DNS records since 2026
 
 referral:
   signup_url: "https://earn.cc"
@@ -38,7 +39,7 @@ earnings:
   monthly_high: 0
   currency: USD
   per: "device"
-  notes: "Server error on signup as of March 2026. Service may not be functional."
+  notes: "Signup broke in March 2026; the site stopped resolving by August 2026."
 
 cashout:
   method: manual

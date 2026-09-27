@@ -1,6 +1,9 @@
 # earn.cc
 
-> **Category:** Bandwidth Sharing | **Status:** Broken
+> [!CAUTION]
+> **Dead:** signup broke in March 2026 and the site stopped resolving by August 2026. The domain is still registered but has no address records. Deployment is blocked. This guide is kept for reference only.
+
+> **Category:** Bandwidth Sharing | **Status:** Dead
 >
 > **Website:** [https://earn.cc](https://earn.cc)
 
