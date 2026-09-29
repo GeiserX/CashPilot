@@ -101,9 +101,10 @@ extra_css:
 # real Mysterium node identity address, which links this public repository to a
 # specific earning node.
 #
-# `mkdocs build --strict` does NOT catch this: validation.nav.omitted_files
-# defaults to `info`, and --strict only promotes `warn` to an error. Exclusion
-# has to be explicit.
+# `mkdocs build --strict` does not catch this by default, because
+# validation.nav.omitted_files defaults to `info`. Setting it to `warn` makes
+# the strict build fail on any page left out of nav (files listed below are
+# exempt). This list is what keeps these files off the site.
 exclude_docs: |
   GOAL.md
   AUTOPILOT-WORKLOG.md
