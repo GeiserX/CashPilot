@@ -178,22 +178,40 @@ class TestTheDocsBuildRunsBeforeMergeNotAfter:
     def test_the_deploy_does_not_run_on_a_pull_request(self):
         """A fork PR must never be able to publish to the site.
 
-        The EXACT condition, not a substring. `"push" in condition` is satisfied
-        by `github.event_name != 'push'` too — an inversion that would deploy on
-        every pull request and on nothing else.
+        The EXACT condition, not a substring. `"pull_request" in condition` is
+        satisfied by `github.event_name == 'pull_request'` too — an inversion
+        that would deploy on every pull request and on nothing else. The deploy
+        runs on push to main and on a manual dispatch, both from main.
         """
         condition = str(self._doc()["jobs"]["deploy"].get("if", "")).strip()
-        assert condition == "github.event_name == 'push'", f"deploy `if:` is {condition!r}"
+        assert condition == "github.event_name != 'pull_request'", f"deploy `if:` is {condition!r}"
 
-    def test_only_the_deploy_job_can_write(self):
+    def test_only_the_deploy_job_can_publish(self):
         """Least privilege: the PR build needs to read the checkout and nothing
         more, and it is the job a fork can trigger.
 
+        The site is a Pages artifact, so the deploy needs `pages` and the OIDC
+        token that deploy-pages uses, and no write access to the repository.
         The exact maps, because a permissions block that GAINED a write scope
-        (`packages: write`, say) would satisfy a check that only looked at
-        `contents`.
+        (`contents: write`, say) would satisfy a check that only looked at
+        `pages`.
         """
         doc = self._doc()
         assert doc["permissions"] == {"contents": "read"}, doc["permissions"]
-        assert doc["jobs"]["deploy"]["permissions"] == {"contents": "write"}, doc["jobs"]["deploy"]["permissions"]
+        assert doc["jobs"]["deploy"]["permissions"] == {"pages": "write", "id-token": "write"}, doc["jobs"]["deploy"][
+            "permissions"
+        ]
         assert "permissions" not in doc["jobs"]["build"], "the build job declares its own permissions"
+
+    def test_the_site_is_never_pushed_to_a_branch(self):
+        """`mkdocs gh-deploy` rewrote the gh-pages branch on every docs change
+        and needed `contents: write`. The site is uploaded as a Pages artifact
+        and deployed by deploy-pages instead; gh-pages no longer exists."""
+        steps = [
+            step for job in self._doc()["jobs"].values() for step in job.get("steps", []) if isinstance(step, dict)
+        ]
+        runs = [step.get("run", "") for step in steps]
+        assert not any("gh-deploy" in run for run in runs), runs
+        uses = [step.get("uses", "") for step in steps]
+        assert any(u.startswith("actions/upload-pages-artifact@") for u in uses), uses
+        assert any(u.startswith("actions/deploy-pages@") for u in uses), uses
