@@ -24,7 +24,7 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 LOGO = ROOT / "docs" / "logo.svg"
-BANNER = ROOT / "docs" / "banner.svg"
+BANNER = ROOT / "docs" / "images" / "banner.svg"
 THEME_CSS = ROOT / "docs" / "stylesheets" / "theme.css"
 
 # The banner's own values, which are what "official" means here.
