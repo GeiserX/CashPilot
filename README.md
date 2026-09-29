@@ -10,15 +10,7 @@
   <a href="https://codecov.io/gh/GeiserX/CashPilot"><img alt="codecov" src="https://codecov.io/gh/GeiserX/CashPilot/graph/badge.svg"></a>
 </p>
 
----
-
-## What is CashPilot?
-
-CashPilot is a self-hosted platform that lets you deploy, manage, and monitor passive income services from a single web interface. Instead of manually setting up dozens of Docker containers, configuring credentials, and checking multiple dashboards, CashPilot handles everything from one place.
-
-It supports both **Docker-based services** (deployed and managed automatically) and **browser extension / desktop-only services** (tracked via the web UI with signup links, earning estimates, and balance monitoring). Whether a service runs in a container or in your browser, CashPilot aggregates all your earnings into a unified dashboard with historical tracking.
-
-The key differentiator: a browser-based setup wizard guides you through account creation and service deployment, orchestrates containers through Docker workers, and collects earnings from 40+ services across bandwidth sharing, DePIN, storage, and GPU compute categories.
+CashPilot is a self-hosted platform to deploy, manage and monitor passive income services from one web interface. It deploys the Docker-based services for you, tracks the browser-extension and desktop-only ones with signup links and balance monitoring, and collects earnings from 40+ services across bandwidth sharing, DePIN, storage and GPU compute into one dashboard with history.
 
 ![Dashboard](docs/screenshot-dashboard.png)
 
@@ -35,29 +27,16 @@ The key differentiator: a browser-based setup wizard guides you through account 
 - **Runs on x86-64 and ARM** -- Raspberry Pi, Apple Silicon and ARM cloud boxes; see [Running on ARM](docs/arm.md)
 - **Service catalog** with earning estimates, requirements, and platform details
 
-> **Every setting, and which source wins:** [Configuration reference](docs/configuration.md)
-
-> **Upgrading an existing install?** Read [UPGRADING.md](UPGRADING.md) first. It lists only the releases that need you to do something.
-
 ## Quick Start
-
-With Docker Compose (recommended):
 
 ```bash
 docker compose up -d
 # Open http://localhost:8080
 ```
 
-This starts two containers:
+This starts **cashpilot-ui** (dashboard, earnings collection, catalog, port 8080) and **cashpilot-worker** (Docker agent, port 8081, needs the Docker socket). Open [http://localhost:8080](http://localhost:8080) and enter the one-time **setup token** from `docker compose logs cashpilot-ui` to create the owner account. See [Getting Started](https://geiserx.github.io/CashPilot/getting-started/) for details.
 
-- **cashpilot-ui** -- Web dashboard, earnings collection, service catalog (port 8080)
-- **cashpilot-worker** -- Docker agent that deploys and monitors service containers (port 8081, requires Docker socket)
-
-Then open [http://localhost:8080](http://localhost:8080) and follow the setup wizard. On first start, CashPilot prints a one-time **setup token** to the `cashpilot-ui` container logs (`docker compose logs cashpilot-ui`) — enter it on the registration form to create the first (owner) account. See [Getting Started](https://geiserx.github.io/CashPilot/getting-started/) for details.
-
-> **Security — network exposure.** By default the dashboard is published on **loopback only** (`127.0.0.1:8080`), because it can command the Docker-socket worker. To reach it from another machine, set `CASHPILOT_BIND_ADDR` to a specific interface (e.g. a Tailscale/VPN IP) or, preferably, run an authenticating reverse proxy in front. **Never publish the worker's port (`8081`) on a public interface** — it exposes a Docker-socket API equivalent to root on the host.
-
-> **Note:** The worker container requires access to the Docker socket (`/var/run/docker.sock`) to deploy and manage service containers. Both containers are required for full functionality.
+> **Security.** The dashboard is published on loopback only (`127.0.0.1:8080`) because it can command the Docker-socket worker. **Never publish the worker's port (`8081`) on a public interface.** Remote access and fleet setup are in the [configuration reference](docs/configuration.md) and [fleet guide](docs/fleet.md).
 
 ## Supported Services
 
@@ -137,254 +116,22 @@ GPU-intensive computing services. Requires compatible hardware.
 | [Vast.ai](https://cloud.vast.ai/?ref_id=452772) | [Guide](docs/guides/vast-ai.md) | ❌ | ✅ | 100GB | Crypto, Bank Transfer | Active |
 <!-- END GENERATED: gpu-services -->
 
-> **Note:** Earnings vary widely by location, hardware, and demand -- see individual guide pages in `docs/guides/` for details.
-
-## How It Works
-
-1. **Deploy CashPilot** -- a single `docker compose up -d` gets you running
-2. **Open the web UI** -- browse the full service catalog at `http://localhost:8080`
-3. **Browse services** -- filter by category, see earning estimates and requirements
-4. **Sign up** -- each service card has a signup link; create accounts as needed
-5. **Enter your credentials** -- the setup wizard collects only what each service needs
-6. **CashPilot deploys and monitors** -- the worker launches containers, health-checks them, and the UI tracks earnings automatically
-
-## Architecture
-
-CashPilot uses a split UI + Worker architecture:
-
-- **UI container** (`drumsergio/cashpilot`) -- FastAPI web application with dashboard, earnings collection, service catalog, and credential storage. No Docker socket needed.
-- **Worker container** (`drumsergio/cashpilot-worker`) -- Agent with Docker socket access that deploys, monitors, and manages service containers. Reports status to the UI via API.
-- **Database:** SQLite -- zero configuration, backed up via the mounted volume
-- **Service definitions:** YAML files in `services/` are the single source of truth for all service metadata, Docker configuration, and earning estimates
-- **Frontend:** Server-rendered templates with a responsive dark UI
-
-```
-cashpilot/
-  app/            # FastAPI application (UI + worker API)
-  services/       # YAML service definitions (source of truth)
-    bandwidth/    # Bandwidth sharing services
-    depin/        # DePIN services
-    storage/      # Storage sharing services
-    compute/      # GPU compute services
-  docs/           # Documentation and guides
-```
-
-## Configuration
-
-### UI Environment Variables
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `TZ` | `UTC` | Timezone for scheduling and display |
-| `CASHPILOT_SECRET_KEY` | *(auto-generated)* | Signing key for login sessions. Persisted at `/data/.secret_key`. **Does not encrypt credentials** |
-| `CASHPILOT_ENCRYPTION_KEY` | *(auto-generated)* | Fernet key encrypting stored credentials at rest. Persisted at `/data/.fernet_key`. Set this only to restore a backup — see [Backing up the encryption key](#backing-up-the-encryption-key) |
-| `CASHPILOT_ALLOW_EPHEMERAL_KEY` | `false` | Allow startup when the encryption key cannot be written to disk. Credentials are then lost on restart, so this is off by default |
-| `CASHPILOT_API_KEY` | -- | Enrollment/bootstrap key; each worker then gets its own key (per-worker fleet keys, v1.0.0+) |
-| `CASHPILOT_COLLECT_INTERVAL` | `60` | Minutes between earnings collection cycles |
-| `CASHPILOT_METRICS_ENABLED` | `false` | Set to `true` to expose Prometheus metrics at `/metrics` |
-| `CASHPILOT_BIND_ADDR` | `127.0.0.1` | Host interface the UI port is published on. Loopback by default; set a specific IP (e.g. a VPN address) or `0.0.0.0` to expose it — prefer a reverse proxy with auth |
-
-The UI's web port inside the container is fixed at `8080` (set via the container's `CMD`); `CASHPILOT_BIND_ADDR` controls only which host interface it is published on.
-
-### Worker Environment Variables
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `TZ` | `UTC` | Timezone |
-| `CASHPILOT_UI_URL` | -- | URL of the UI container, e.g. `http://cashpilot-ui:8080` |
-| `CASHPILOT_API_KEY` | -- | Must match the UI's API key |
-| `CASHPILOT_WORKER_NAME` | *(hostname)* | Display name for this worker in the fleet dashboard |
-| `CASHPILOT_WORKER_URL` | *(auto-detected)* | URL the UI uses to reach this worker, e.g. `http://192.168.10.50:8081`. Set explicitly for remote/cross-host workers |
-| `CASHPILOT_WORKER_BIND_ADDR` | `127.0.0.1` | Host interface the worker's Docker-socket API port is published on. Loopback by default — for a remote worker set a private/VPN interface, **never** a public IP |
-| `CASHPILOT_PORT` | `8081` | Port the worker **advertises** to the UI. It does *not* change the listen port, which is fixed by the image's `CMD` — see the [configuration reference](docs/configuration.md) |
-| `CASHPILOT_WORKER_NETWORK` | *(detected)* | `residential` or `hosting`. Overrides the hardware-based guess used to warn about residential-only services |
-| `CASHPILOT_EGRESS_DETECT` | on | Set to `off` to stop this worker looking up its own public IP (see below) |
-| `CASHPILOT_EGRESS_IP` | -- | State this worker's public IP directly instead of looking it up. Must be a public address |
-| `CASHPILOT_EGRESS_IP_URL` | -- | Use your own IP-echo endpoint (returning a bare IP) instead of the public ones. Used **exclusively** — no fallback |
-
-#### Why the worker looks up its public IP
-
-Bandwidth providers cap earnings **per IP address, not per machine**. Two
-workers behind one home connection are two rows on your dashboard and *one*
-customer to the provider, so the second one usually earns nothing. To warn you
-before that happens, each worker asks a public IP-echo service what address it
-comes from — one request per hour.
-
-That is the only outbound call CashPilot makes purely to learn about your setup.
-Turn it off with `CASHPILOT_EGRESS_DETECT=off`, point it at your own endpoint
-with `CASHPILOT_EGRESS_IP_URL`, or skip the lookup entirely by stating the
-address with `CASHPILOT_EGRESS_IP`. With detection off, the fleet simply reports
-that worker's exit as undetermined and raises no conflict warnings for it.
-
-Known limitation: grouping matches on the exact address, so on a **native-IPv6**
-connection each machine has its own global address and no conflict is detected.
-The check is therefore best-effort — it can miss a conflict, but it will not
-invent one.
-
-
-## Multi-Node Fleet Management
-
-For power users running services across multiple servers, deploy a single CashPilot UI and connect workers from each server. The UI aggregates everything into a unified fleet view; workers report via HTTP API.
-
-```
-CashPilot UI (dashboard + earnings + catalog)
-        ^                ^                ^
-        | HTTP           | HTTP           | HTTP
-  Worker (server-a)  Worker (server-b)  Worker (server-n)
-  + Docker socket    + Docker socket    + Docker socket
-```
-
-### Setting up the fleet
-
-Use `docker-compose.fleet.yml` on your main server to run both the UI and a local worker:
-
-```bash
-docker compose -f docker-compose.fleet.yml up -d
-```
-
-### Adding remote workers
-
-On each additional server, deploy only a worker pointing to the UI:
-
-```yaml
-services:
-  cashpilot-worker:
-    image: drumsergio/cashpilot-worker:1.19
-    pull_policy: always
-    container_name: cashpilot-worker
-    ports:
-      # The worker's API is backed by the Docker socket -- deploy, stop or
-      # remove ANY container -- so publishing it is publishing full control of
-      # this host. It binds LOOPBACK by default for that reason.
-      #
-      # A remote UI does need to reach it, so set CASHPILOT_WORKER_BIND_ADDR to
-      # this server's PRIVATE or VPN address (a Tailscale IP, say). Never a
-      # public one, and never 0.0.0.0.
-      - "${CASHPILOT_WORKER_BIND_ADDR:-127.0.0.1}:8081:8081"
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
-      - cashpilot_worker_data:/data
-    environment:
-      - TZ=Europe/Madrid
-      - CASHPILOT_UI_URL=http://main-server:8080
-      - CASHPILOT_API_KEY=your-shared-api-key
-      - CASHPILOT_WORKER_NAME=server-b
-      - CASHPILOT_WORKER_URL=http://server-b:8081
-    restart: unless-stopped
-    security_opt:
-      - no-new-privileges:true
-
-volumes:
-  cashpilot_worker_data:
-```
-
-Communication goes both ways: workers connect outbound to the UI via HTTP for heartbeats, and the UI connects outbound to each worker's `:8081` API to push commands (deploy, stop, restart). This means **the worker must be reachable from the UI** (LAN, Tailscale, or port forwarding) -- set `CASHPILOT_WORKER_URL` to the address the UI should use, since auto-detection falls back to the container's own network interface, which is often unreachable from another host. The UI's fleet dashboard shows all connected workers, their containers, and live status.
+> **Disclosure.** The signup links in CashPilot and in this README are referral links. If you sign up through one, the maintainer may earn a commission, at no cost to you, which helps fund CashPilot's development. To avoid them, sign up on the provider's own website instead.
 
 ## FAQ
 
-**Is bandwidth sharing safe?**
+Is bandwidth sharing safe? How much can I earn? Can I run on a VPS? How are credentials stored, and how do I back up the key? The answers are in the [FAQ](docs/faq.md).
 
-Bandwidth sharing services generally route legitimate traffic (market research, ad verification, price comparison, content delivery) through your connection. That said, you are sharing your IP address, so review each service's terms of service and privacy policy carefully before signing up. Running these on a VPS rather than residential IP is an option for some services. **This is not legal advice -- consult with the particular services you intend to use and, if needed, seek independent legal counsel regarding your jurisdiction.**
+## Documentation
 
-**How much can I earn?**
+Full documentation: [geiserx.github.io/CashPilot](https://geiserx.github.io/CashPilot/).
 
-Earnings vary widely based on location, ISP, number of devices, and which services you run. The dashboard tracks your actual earnings over time so you can optimize your setup.
-
-**Can I run on a VPS or cloud server?**
-
-Some services require a residential IP and will not pay (or will ban) VPS/datacenter IPs. These are marked as "Residential Only" in the service catalog. Services that work on VPS are a good way to scale up without additional home hardware.
-
-**How are credentials stored?**
-
-All service credentials are encrypted at rest in the SQLite database using a Fernet key stored at `/data/.fernet_key`, which is generated automatically on first run. The database file lives in the mounted Docker volume (`cashpilot_data:/data`). No credentials are ever sent anywhere except to the service containers themselves.
-
-Note that this is a different key from `CASHPILOT_SECRET_KEY`, which only signs login sessions.
-
-### Backing up the encryption key
-
-Your credentials are only as recoverable as `/data/.fernet_key`. If you lose that file you will have to re-enter every credential, because there is no way to decrypt the stored values without it.
-
-```bash
-# Back it up
-docker exec cashpilot-ui cat /data/.fernet_key
-
-# Restore onto a fresh volume: pass the saved value when starting CashPilot.
-# It must reach the container, so put it on the same command line (or export it,
-# or set it in your .env) - a bare shell assignment on its own line does nothing.
-CASHPILOT_ENCRYPTION_KEY=<the value you saved> docker compose up -d
-```
-
-The file always takes precedence over the environment variable, so setting `CASHPILOT_ENCRYPTION_KEY` on an instance that already has a key changes nothing and is safe. It is adopted only when no key file exists, which is exactly the restore case.
-
-If the key cannot be written to disk at all — an unwritable or unmounted `/data` — CashPilot refuses to start rather than encrypting your credentials under a key that disappears on the next restart. Set `CASHPILOT_ALLOW_EPHEMERAL_KEY=true` if that is genuinely what you want.
-
-**What about security?**
-
-Every service CashPilot deploys runs in its own container with every Linux capability dropped (a few services add back only the ones they declare) and `--security-opt no-new-privileges` set, so a process inside cannot gain privileges. Containers cannot see your host filesystem beyond the volumes a service declares. They CAN reach your local network by default, because Docker does not block that; [Protecting Your Home Network](docs/home-network-security.md) shows how to put them on a firewalled bridge that reaches the internet but not your LAN, router or host. That bridge does not cover a service on host networking (Mysterium, today); the guide says what to do about those. Service credentials are encrypted at rest using Fernet symmetric encryption. Only the worker container requires Docker socket access; the UI container has no privileged access.
-
-That said, no setup is bulletproof. You are still running third-party software that routes external traffic through your network. Docker isolation significantly reduces the attack surface compared to running these services directly on your host, but it does not eliminate all risk. We recommend running CashPilot on a dedicated machine or VLAN, keeping Docker and your host OS up to date, and reviewing the open-source code of any service before deploying it.
-
-**What happens if a service container crashes?**
-
-CashPilot monitors container health continuously. If a service container exits unexpectedly, it is automatically restarted. The dashboard shows uptime and health status for every running service.
-
-## Disclosure
-
-The signup links in CashPilot and in this README are referral links. If you sign up through one, the maintainer may earn a commission, at no cost to you, which helps fund CashPilot's development. To avoid them, sign up on the provider's own website instead.
-
-## Ecosystem
-
-| Project | Type | Description |
-|---------|------|-------------|
-| [CashPilot-android](https://github.com/GeiserX/CashPilot-android) | Android Agent | Monitoring agent for passive income apps running on Android devices |
-| [cashpilot-mcp](https://github.com/GeiserX/cashpilot-mcp) | MCP Server | Monitor earnings from AI assistants via the Model Context Protocol |
-| [cashpilot-ha](https://github.com/GeiserX/cashpilot-ha) | Home Assistant Integration | Earnings and service status sensors for your smart home dashboard |
-| [n8n-nodes-cashpilot](https://github.com/GeiserX/n8n-nodes-cashpilot) | n8n Community Node | Automate earnings workflows in n8n |
-
-## Contributing
-
-Contributions are welcome. To add a new service:
-
-1. Create a YAML file in the appropriate `services/` subdirectory following `services/_schema.yml`
-2. Add a guide page in `docs/guides/` for the service
-3. Update the service tables in this README
-4. Submit a pull request
-
-For bug reports and feature requests, open an issue on GitHub.
-
-## Discontinued / Broken Services
-
-Services that were evaluated but are no longer listed in the catalog due to being dead, broken, or untrustworthy. Kept here for reference so they are not re-added.
-
-| Service | Status | Reason | Last checked |
-|---------|--------|--------|:------------:|
-| Presearch | Dead | Company shut down July 24-28, 2026; node program and backend decommissioned | Aug 2026 |
-| SpeedShare | Dead | Project confirmed dead in Discord | Mar 2026 |
-| Peer2Profit | Dead | Domain unreachable | Mar 2026 |
-| PacketShare | Dead | Signup process broken, no progress | Mar 2026 |
-| earn.cc | Dead | Signup broke in March 2026 and the site stopped resolving by August 2026 | Sep 2026 |
-| WizardGain | Dead | Indefinite maintenance, then the domain lost its name servers | Sep 2026 |
-| Koii Network | Broken | Website says paused | Mar 2026 |
-| Network3 | Broken | No SSL, no updates in months | Mar 2026 |
-| GagaNode | Shady | Poorly made website, untrustworthy | Mar 2026 |
-| BlockMesh (Perceptron) | Dropped | Rebranded, requires browser dev mode, shady | Mar 2026 |
-| Wipter | Dead | Domain resolves to DNS sinkhole, infrastructure gone | Mar 2026 |
-| Filecoin | Not viable | Enterprise-only (10 TiB min, datacenter infrastructure required) | Mar 2026 |
-| AntGain | Dead | Telegram channel unavailable | Mar 2026 |
-
-## How CashPilot Compares
-
-There are several good open-source projects in this space, and the honest summary is that they overlap more than they differ. [money4band](https://github.com/MRColorR/money4band) is the most mature of them: it supports 20+ apps, ships a web dashboard, and is actively developed. If you want to run a handful of bandwidth-sharing apps on one machine, it is a perfectly good choice and has been doing this longer than CashPilot has.
-
-CashPilot is built around three things that shape its whole design:
-
-- **A fleet, not a machine.** One dashboard holds the state for many servers, each running a worker. Earnings are collected centrally exactly once, so nothing is double-counted, and every figure drills down per server and per service.
-- **Earnings pulled from the providers themselves.** 15 collectors authenticate against provider APIs and dashboards and record real balances into a local history, rather than reporting that a container is running. That is what makes "running but not earning" detectable at all.
-- **Breadth beyond bandwidth.** 50 catalogued services spanning bandwidth sharing, DePIN, storage and GPU compute, each with a setup guide, a payout method, and a status that is re-checked weekly in CI.
-
-If none of those matter to you, use whichever tool you prefer — they will all start the same containers.
-
-> **On this section.** It deliberately avoids a feature matrix claiming what other projects lack. Those tables go stale the moment someone ships a release, and a comparison a reader can falsify in thirty seconds is worse than no comparison at all. If anything above is out of date, please open an issue.
+- [Getting Started](docs/getting-started.md) and [Configuration reference](docs/configuration.md) (every setting, and which source wins)
+- [Multi-node fleet management](docs/fleet.md) and [Running on ARM](docs/arm.md)
+- [Protecting Your Home Network](docs/home-network-security.md) and [Architecture](docs/architecture.md)
+- [Service guides](docs/guides/README.md) and [discontinued services](docs/discontinued-services.md)
+- [How CashPilot compares](docs/comparison.md), [ecosystem](docs/ecosystem.md) and [contributing](docs/contributing.md)
+- **Upgrading an existing install?** Read [UPGRADING.md](UPGRADING.md) first. It lists only the releases that need you to do something.
 
 ## License
 

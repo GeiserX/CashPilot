@@ -289,6 +289,14 @@ Turn it off with `CASHPILOT_EGRESS_DETECT=off`, point it at your own endpoint
 with `CASHPILOT_EGRESS_IP_URL`, or skip it entirely by stating the address with
 `CASHPILOT_EGRESS_IP`.
 
+With detection off, the fleet simply reports that worker's exit as undetermined
+and raises no conflict warnings for it.
+
+Known limitation: grouping matches on the exact address, so on a **native-IPv6**
+connection each machine has its own global address and no conflict is detected.
+The check is therefore best-effort — it can miss a conflict, but it will not
+invent one.
+
 ### Volume mounts
 
 A worker refuses to bind-mount host paths under system roots such as `/`, `/etc`, `/var/run` (which covers the Docker socket), `/var/lib/docker` and `/mnt`, so a fleet-key holder cannot mount the host filesystem or a co-located app's secrets into a service container.
