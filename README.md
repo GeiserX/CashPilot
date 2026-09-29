@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/banner.svg" alt="CashPilot" width="100%">
+  <img src="https://raw.githubusercontent.com/GeiserX/CashPilot/main/docs/images/banner.svg" alt="CashPilot" width="100%">
 </p>
 
 <p align="center">

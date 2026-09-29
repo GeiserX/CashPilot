@@ -6,7 +6,7 @@ hide:
 # CashPilot { .cp-visually-hidden }
 
 <p align="center">
-  <img src="banner.svg" alt="CashPilot" width="100%">
+  <img src="images/banner.svg" alt="CashPilot" width="100%">
 </p>
 
 <p align="center">
