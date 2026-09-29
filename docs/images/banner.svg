@@ -1,4 +1,5 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 300" width="1200" height="300">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 200" width="900" height="200" role="img" aria-label="CashPilot">
+  <!-- 900x200 cut of docs/banner.svg: the same artwork scaled by 0.75 and centred on the sun and title. -->
   <defs>
     <linearGradient id="bg" x1="0%" y1="0%" x2="0%" y2="100%">
       <stop offset="0%" stop-color="#000010"/>
@@ -25,7 +26,10 @@
     <clipPath id="sc"><circle cx="900" cy="150" r="80"/></clipPath>
   </defs>
 
-  <rect width="1200" height="300" fill="url(#bg)"/>
+  <rect width="900" height="200" fill="url(#bg)"/>
+  <g transform="translate(0,-12.5) scale(0.75)">
+
+  
 
   <!-- Stars -->
   <g fill="#fff" filter="url(#sg)">
@@ -89,7 +93,8 @@
         font-size="17" font-weight="600" fill="url(#cy)" letter-spacing="6" filter="url(#cg)">
     PASSIVE INCOME ON AUTOPILOT
   </text>
+  </g>
 
-  <rect x="0" y="0" width="1200" height="2" fill="url(#pk)" filter="url(#pg)"/>
-  <rect x="0" y="298" width="1200" height="2" fill="url(#cy)" filter="url(#cg)"/>
+  <rect x="0" y="0" width="900" height="2" fill="url(#pk)" filter="url(#pg)"/>
+  <rect x="0" y="198" width="900" height="2" fill="url(#cy)" filter="url(#cg)"/>
 </svg>
