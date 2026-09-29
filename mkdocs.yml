@@ -1,6 +1,6 @@
 site_name: CashPilot
 site_url: https://geiserx.github.io/CashPilot
-site_description: Self-hosted passive income orchestrator. Deploy, manage, and monitor 50 services from a single dashboard.
+site_description: Self-hosted passive income orchestrator. Deploy, manage, and monitor 39 active services (50 catalogued) from a single dashboard.
 site_author: Sergio Fernandez
 repo_url: https://github.com/GeiserX/CashPilot
 repo_name: GeiserX/CashPilot
@@ -41,6 +41,13 @@ theme:
 
 plugins:
   - search
+  # Renamed pages keep their old URLs alive (README-STANDARD 3.8).
+  - redirects:
+      redirect_maps:
+        architecture.md: how-it-works.md
+        contributing.md: development.md
+        ecosystem.md: related.md
+        guides/README.md: guides/index.md
 
 markdown_extensions:
   - admonition
@@ -116,23 +123,12 @@ exclude_docs: |
   # docs/guides/proxybase.md) rather than to the site tree — which is also why
   # --strict fails on them if they are published.
   changelog-0.x-handwritten.md
-  # An internal working checklist, not a product page. It opens "Track status of
-  # each action here", lists promotion tactics in candid internal wording, and
-  # ticks off features that do not exist yet. Publishing it told visitors what we
-  # do to acquire them, and a checklist published as a page is a checklist nobody
-  # updates. It was reachable at /growth-strategy/ (verified 200) even though no
-  # nav entry linked it.
-  #
-  # This stops it being a PAGE. It does NOT make it private: the repository is
-  # public, so the file is still readable on GitHub. Removing it from history is
-  # a separate, deliberate decision.
-  growth-strategy.md
 
 nav:
   - Home: index.md
   - Getting Started: getting-started.md
   - Service Guides:
-    - Overview: guides/README.md
+    - Overview: guides/index.md
     - Bandwidth Sharing:
       - Bitping: guides/bitping.md
       - Bytebenefit: guides/bytebenefit.md
@@ -189,7 +185,7 @@ nav:
       - Storj: guides/storj.md
   - Configuration:
     - Configuration: configuration.md
-    - Fleet Management: fleet.md
+    - Multi-Node Fleet Management: fleet.md
     - Running on ARM: arm.md
   - Security:
     - Protecting Your Home Network: home-network-security.md
@@ -201,7 +197,7 @@ nav:
     - Prometheus Metrics: guides/prometheus-metrics.md
     - Upgrade to v1.0.0: upgrade-v1.md
   - Reference:
-    - Architecture: architecture.md
+    - How it works: how-it-works.md
     - Direction and Roadmap: roadmap.md
     - What "idle" looks like on the wire: research/idle-network-traffic.md
     - Per-IP device limits: research/per-ip-device-limits.md
@@ -211,5 +207,5 @@ nav:
     - FAQ: faq.md
     - How CashPilot compares: comparison.md
     - Discontinued services: discontinued-services.md
-    - Ecosystem: ecosystem.md
-    - Contributing: contributing.md
+    - Related projects: related.md
+    - Development: development.md

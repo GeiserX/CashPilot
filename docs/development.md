@@ -1,4 +1,4 @@
-# Contributing
+# Development
 
 Contributions are welcome. To add a new service:
 

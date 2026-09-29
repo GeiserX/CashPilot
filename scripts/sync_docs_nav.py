@@ -20,7 +20,7 @@ WHAT IT WRITES
 --------------
 1. The ``Service Guides`` section of ``mkdocs.yml``'s nav, grouped by the
    catalog's own four categories instead of one flat alphabetical list of 52.
-2. ``docs/guides/README.md`` — a filterable index table carrying the fields a
+2. ``docs/guides/index.md`` — a filterable index table carrying the fields a
    visitor actually chooses on: category, what it needs (GPU / residential IP /
    storage), whether it runs in Docker or is app-only, payout minimum, status.
 
@@ -44,7 +44,7 @@ import yaml
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 GUIDES = ROOT / "docs" / "guides"
 MKDOCS = ROOT / "mkdocs.yml"
-INDEX = GUIDES / "README.md"
+INDEX = GUIDES / "index.md"
 
 #: Display order and headings. Deliberately not alphabetical: bandwidth is what
 #: most visitors can actually run, and storage/compute need hardware.
@@ -56,7 +56,7 @@ CATEGORY_TITLES = [
 ]
 
 #: Guides under docs/guides/ that are not service guides and must be left alone.
-NON_SERVICE_GUIDES = {"README", "prometheus-metrics"}
+NON_SERVICE_GUIDES = {"index", "prometheus-metrics"}
 
 
 def load_services() -> list[dict]:
@@ -156,7 +156,7 @@ def render_index(services: list[dict]) -> str:
 def render_nav(services: list[dict]) -> str:
     """The nav block, grouped by category and indented for mkdocs.yml."""
     grouped = by_category(services)
-    lines = ["  - Service Guides:", "    - Overview: guides/README.md"]
+    lines = ["  - Service Guides:", "    - Overview: guides/index.md"]
     for key, title in CATEGORY_TITLES:
         items = grouped.get(key)
         if not items:

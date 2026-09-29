@@ -1,4 +1,4 @@
-# Architecture
+# How it works
 
 CashPilot uses a split **UI + Worker** architecture. The UI never touches Docker -- all container operations go through workers. This separation is a core design principle and what enables multi-server fleet management.
 

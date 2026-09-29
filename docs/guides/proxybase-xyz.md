@@ -2,7 +2,7 @@
 
 > **Category:** Bandwidth Sharing | **Status:** Active
 >
-> **Website:** [https://proxybase.xyz](https://proxybase.xyz)
+> **Website:** [proxybase.xyz](https://proxybase.xyz?referral=nXzS3c6iTO)
 
 ## Description
 

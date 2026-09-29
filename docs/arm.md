@@ -12,7 +12,7 @@ CashPilot's UI and worker run on 64-bit ARM as well as x86-64. A Raspberry Pi 4 
 
 The UI and worker images are published for `linux/amd64` and `linux/arm64`. A 32-bit Pi cannot run them. A Pi 3, 4 or 5 on the 64-bit Pi OS can.
 
-Which services have an ARM build is a fact about the provider, not about CashPilot. Each [service guide](guides/README.md) lists it under Docker Configuration, and the catalog entry's `docker.platforms` field (see [the schema](https://github.com/GeiserX/CashPilot/blob/main/services/_schema.yml)) is where that line comes from. As of September 2026, [ProxyLite](guides/proxylite.md) and [ProxyRack](guides/proxyrack.md) publish x86-64 only. Every other Docker-deployable service in the catalog has an arm64 build.
+Which services have an ARM build is a fact about the provider, not about CashPilot. Each [service guide](guides/index.md) lists it under Docker Configuration, and the catalog entry's `docker.platforms` field (see [the schema](https://github.com/GeiserX/CashPilot/blob/main/services/_schema.yml)) is where that line comes from. As of September 2026, [ProxyLite](guides/proxylite.md) and [ProxyRack](guides/proxyrack.md) publish x86-64 only. Every other Docker-deployable service in the catalog has an arm64 build.
 
 ## How a deploy picks the right build
 

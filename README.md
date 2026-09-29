@@ -3,21 +3,21 @@
 </p>
 
 <p align="center">
-  <a href="https://hub.docker.com/r/drumsergio/cashpilot"><img alt="Docker Pulls" src="https://img.shields.io/docker/pulls/drumsergio/cashpilot?style=flat-square&logo=docker"></a>
-  <a href="https://github.com/GeiserX/CashPilot/stargazers"><img alt="GitHub Stars" src="https://img.shields.io/github/stars/GeiserX/CashPilot?style=flat-square&logo=github"></a>
-  <a href="https://github.com/GeiserX/CashPilot/blob/main/LICENSE"><img alt="License: GPL-3.0" src="https://img.shields.io/github/license/GeiserX/CashPilot?style=flat-square"></a>
+  <a href="https://github.com/GeiserX/CashPilot/releases/latest"><img alt="Release" src="https://img.shields.io/github/v/release/GeiserX/CashPilot?style=flat-square"></a>
   <a href="https://github.com/GeiserX/CashPilot/actions/workflows/test.yml"><img alt="Tests" src="https://img.shields.io/github/actions/workflow/status/GeiserX/CashPilot/test.yml?style=flat-square&label=tests"></a>
+  <a href="https://github.com/GeiserX/CashPilot/blob/main/LICENSE"><img alt="License" src="https://img.shields.io/github/license/GeiserX/CashPilot?style=flat-square"></a>
+  <a href="https://hub.docker.com/r/drumsergio/cashpilot"><img alt="Docker Pulls" src="https://img.shields.io/docker/pulls/drumsergio/cashpilot?style=flat-square&logo=docker"></a>
   <a href="https://codecov.io/gh/GeiserX/CashPilot"><img alt="codecov" src="https://codecov.io/gh/GeiserX/CashPilot/graph/badge.svg"></a>
 </p>
 
-CashPilot is a self-hosted platform to deploy, manage and monitor passive income services from one web interface. It deploys the Docker-based services for you, tracks the browser-extension and desktop-only ones with signup links and balance monitoring, and collects earnings from 40+ services across bandwidth sharing, DePIN, storage and GPU compute into one dashboard with history.
+CashPilot is a self-hosted platform to deploy, manage and monitor passive income services from one web interface. It runs as two Docker containers, deploys the Docker-based services for you, and tracks the browser-extension and desktop-only ones with signup links and balance monitoring. Its catalog covers 39 active services (50 in total) across bandwidth sharing, DePIN, storage and GPU compute, and it collects their earnings into one dashboard with history.
 
-![Dashboard](https://raw.githubusercontent.com/GeiserX/CashPilot/main/docs/screenshot-dashboard.png)
+![Dashboard](https://raw.githubusercontent.com/GeiserX/CashPilot/main/docs/images/screenshots/dashboard.png)
 
 ## Features
 
 - **Web-based setup wizard** with guided account creation for each service
-- **One-click container deployment** for 16+ passive income services
+- **One-click container deployment** for 16 passive income services
 - **Real-time earnings dashboard** with historical charts and trend analysis
 - **Container health monitoring** -- CPU, memory, network, and uptime at a glance
 - **Multi-category support** -- bandwidth sharing, DePIN, storage sharing, GPU compute
@@ -30,8 +30,9 @@ CashPilot is a self-hosted platform to deploy, manage and monitor passive income
 ## Quick Start
 
 ```bash
+curl -fsSLO https://raw.githubusercontent.com/GeiserX/CashPilot/main/docker-compose.yml
 docker compose up -d
-# Open http://localhost:8080
+docker compose logs cashpilot-ui | grep -i "setup token"   # then open http://localhost:8080
 ```
 
 This starts **cashpilot-ui** (dashboard, earnings collection, catalog, port 8080) and **cashpilot-worker** (Docker agent, port 8081, needs the Docker socket). Open [http://localhost:8080](http://localhost:8080) and enter the one-time **setup token** from `docker compose logs cashpilot-ui` to create the owner account. See [Getting Started](https://geiserx.github.io/CashPilot/getting-started/) for details.
@@ -126,13 +127,16 @@ Is bandwidth sharing safe? How much can I earn? Can I run on a VPS? How are cred
 
 Full documentation: [geiserx.github.io/CashPilot](https://geiserx.github.io/CashPilot/).
 
-- [Getting Started](https://github.com/GeiserX/CashPilot/blob/main/docs/getting-started.md) and [Configuration reference](https://github.com/GeiserX/CashPilot/blob/main/docs/configuration.md) (every setting, and which source wins)
-- [Multi-node fleet management](https://github.com/GeiserX/CashPilot/blob/main/docs/fleet.md) and [Running on ARM](https://github.com/GeiserX/CashPilot/blob/main/docs/arm.md)
-- [Protecting Your Home Network](https://github.com/GeiserX/CashPilot/blob/main/docs/home-network-security.md) and [Architecture](https://github.com/GeiserX/CashPilot/blob/main/docs/architecture.md)
-- [Service guides](https://github.com/GeiserX/CashPilot/blob/main/docs/guides/README.md) and [discontinued services](https://github.com/GeiserX/CashPilot/blob/main/docs/discontinued-services.md)
-- [How CashPilot compares](https://github.com/GeiserX/CashPilot/blob/main/docs/comparison.md), [ecosystem](https://github.com/GeiserX/CashPilot/blob/main/docs/ecosystem.md) and [contributing](https://github.com/GeiserX/CashPilot/blob/main/docs/contributing.md)
-- **Upgrading an existing install?** Read [UPGRADING.md](https://github.com/GeiserX/CashPilot/blob/main/UPGRADING.md) first. It lists only the releases that need you to do something.
+- [Getting started](https://geiserx.github.io/CashPilot/getting-started/): install, first run, updating
+- [Configuration](https://geiserx.github.io/CashPilot/configuration/): every setting and which source wins; also [fleet management](https://geiserx.github.io/CashPilot/fleet/), [running on ARM](https://geiserx.github.io/CashPilot/arm/) and [protecting your home network](https://geiserx.github.io/CashPilot/home-network-security/)
+- [Service guides](https://geiserx.github.io/CashPilot/guides/): one page per service, plus [discontinued services](https://geiserx.github.io/CashPilot/discontinued-services/)
+- [How it works](https://geiserx.github.io/CashPilot/how-it-works/): the UI and worker split
+- [FAQ](https://geiserx.github.io/CashPilot/faq/)
+- [Development](https://geiserx.github.io/CashPilot/development/): adding a service, running the tests
+- [Related projects](https://geiserx.github.io/CashPilot/related/) and [how CashPilot compares](https://geiserx.github.io/CashPilot/comparison/)
+
+Upgrading an existing install? Read [UPGRADING.md](https://github.com/GeiserX/CashPilot/blob/main/UPGRADING.md) first. It lists only the releases that need you to do something.
 
 ## License
 
-[GPL-3.0](https://github.com/GeiserX/CashPilot/blob/main/LICENSE) -- Sergio Fernandez, 2026
+[GPL-3.0-or-later](https://github.com/GeiserX/CashPilot/blob/main/LICENSE). Sergio Fernandez, 2026.

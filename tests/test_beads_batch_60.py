@@ -31,12 +31,12 @@ import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
 MKDOCS = ROOT / "mkdocs.yml"
-INDEX = ROOT / "docs" / "guides" / "README.md"
+INDEX = ROOT / "docs" / "guides" / "index.md"
 GUIDES = ROOT / "docs" / "guides"
 SCRIPT = ROOT / "scripts" / "sync_docs_nav.py"
 
 #: Files under docs/guides/ that are not service guides.
-NON_SERVICE = {"README", "prometheus-metrics"}
+NON_SERVICE = {"index", "prometheus-metrics"}
 
 
 def catalog_slugs() -> set[str]:

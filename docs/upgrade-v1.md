@@ -1,4 +1,4 @@
-# Upgrading to v1.0.0 — Per-worker fleet keys
+# Upgrade to v1.0.0
 
 v1.0.0 hardens fleet authentication. Instead of one shared key doing everything,
 **each worker now gets its own key**. This is a breaking change for existing
