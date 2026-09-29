@@ -85,7 +85,7 @@ def _link(service: dict) -> str:
 
 
 def _guide(service: dict) -> str:
-    return f"[Guide](docs/guides/{service['slug']}.md)"
+    return f"[Guide](https://github.com/GeiserX/CashPilot/blob/main/docs/guides/{service['slug']}.md)"
 
 
 _METHOD_NAMES = {

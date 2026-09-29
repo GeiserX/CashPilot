@@ -10,9 +10,10 @@ Between them they published this project's internal planning verbatim, quoted
 the maintainer directly, and printed a real Mysterium node identity address —
 which links this public repository to a specific earning node.
 
-``mkdocs build --strict`` does **not** catch this. ``validation.nav.omitted_files``
-defaults to ``info`` and ``--strict`` only promotes ``warn`` to an error, so the
-orphans are reported and the build stays green. Exclusion has to be explicit.
+``mkdocs build --strict`` does **not** catch this by default:
+``validation.nav.omitted_files`` defaults to ``info``, so the orphans are reported
+and the build stays green. Setting it to ``warn`` would make the strict build fail
+on them; the exclusion list is what keeps them off the site.
 
 This test is the guard: any file matching the agent-artifact patterns must be
 excluded from the built site, and the exclusion is asserted against the parsed

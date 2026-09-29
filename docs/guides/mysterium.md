@@ -174,7 +174,7 @@ docker run -d --name cashpilot-mysterium \
   --device /dev/net/tun \
   --security-opt no-new-privileges:true \
   -v /path/to/your/myst/data:/var/lib/mysterium-node \
-  mysteriumnetwork/myst:latest \
+  mysteriumnetwork/myst:1.39.7-alpine \
   --ui.address=127.0.0.1 --tequilapi.address=127.0.0.1 service --agreed-terms-and-conditions
 ```
 
