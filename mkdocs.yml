@@ -207,3 +207,8 @@ nav:
     - Self-hosting operability review: research/self-hosting-operability.md
     - Fleet upgrades & onboarding (design): research/fleet-upgrades-and-onboarding.md
     - Earnings benchmarks (design): research/earnings-benchmarks.md
+    - FAQ: faq.md
+    - How CashPilot compares: comparison.md
+    - Discontinued services: discontinued-services.md
+    - Ecosystem: ecosystem.md
+    - Contributing: contributing.md
