@@ -116,7 +116,7 @@ class TestNoPageIsLostInTheMove:
         for page in (
             "index.md",
             "getting-started.md",
-            "architecture.md",
+            "how-it-works.md",
             "configuration.md",
             "roadmap.md",
             "security-defaults.md",

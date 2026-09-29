@@ -35,7 +35,7 @@ It supports both **Docker-based services** (deployed and managed automatically) 
 
     ---
 
-    Deploy 16+ passive income services with a single click from the browser.
+    Deploy 16 passive income services with a single click from the browser.
 
 -   :material-chart-line: **Real-Time Earnings Dashboard**
 
@@ -61,11 +61,11 @@ It supports both **Docker-based services** (deployed and managed automatically) 
 
     All credentials encrypted at rest with Fernet symmetric encryption.
 
--   :material-view-grid: **50 Services, 4 Categories**
+-   :material-view-grid: **39 Active Services, 4 Categories**
 
     ---
 
-    Bandwidth sharing, DePIN, storage, and GPU compute, each with a setup guide.
+    Bandwidth sharing, DePIN, storage, and GPU compute; 50 catalogued in total, each with a setup guide.
 
 -   :material-cellphone: **Mobile-Responsive Dark UI**
 
@@ -77,13 +77,14 @@ It supports both **Docker-based services** (deployed and managed automatically) 
 
 ## Dashboard
 
-![CashPilot Dashboard](screenshot-dashboard.png)
+![CashPilot Dashboard](images/screenshots/dashboard.png)
 
 ## Quick Start
 
 ```bash
+curl -fsSLO https://raw.githubusercontent.com/GeiserX/CashPilot/main/docker-compose.yml
 docker compose up -d
-# Open http://localhost:8080
+docker compose logs cashpilot-ui | grep -i "setup token"   # then open http://localhost:8080
 ```
 
 This starts two containers:
@@ -91,7 +92,7 @@ This starts two containers:
 - **cashpilot-ui**: web dashboard, earnings collection, service catalog (port 8080)
 - **cashpilot-worker**: Docker agent that deploys and monitors service containers (port 8081)
 
-Then open [http://localhost:8080](http://localhost:8080) and follow the setup wizard.
+Then open [http://localhost:8080](http://localhost:8080), enter the one-time setup token from the log to create the owner account, and follow the setup wizard.
 
 !!! note
     The worker container requires access to the Docker socket (`/var/run/docker.sock`) to deploy and manage service containers. Both containers are required for full functionality.
@@ -99,20 +100,19 @@ Then open [http://localhost:8080](http://localhost:8080) and follow the setup wi
 [Get Started](getting-started.md){ .md-button .md-button--primary }
 [View on GitHub](https://github.com/GeiserX/CashPilot){ .md-button }
 
-## How CashPilot Compares
+## Documentation
 
-| Feature | CashPilot | money4band | CashFactory | income-generator | InternetIncome |
-|---------|:---------:|:----------:|:-----------:|:----------------:|:--------------:|
-| Web UI with guided setup | **Yes** | No (CLI) | Partial (links only) | No (CLI) | No (CLI) |
-| One-click container deploy | **Yes** | No (compose) | No (compose) | No | No (compose) |
-| Earnings dashboard | **Yes** | No | No | No | No |
-| Historical charts | **Yes** | No | No | No | No |
-| Multi-node fleet management | **Yes** | No | No | No | No |
-| Service catalog with guides | **50 services** | 17 | 8 | 14 | 8 |
-| Automated earnings collection | **15 collectors** | 0 | 0 | 0 | 0 |
-| Multi-arch (amd64 + arm64) | **Yes** | Yes | Yes | No | No |
-| Credential encryption | **Yes** | No | No | No | No |
-| Compose export | **Yes** | Yes | Yes | Yes | Yes |
+- [Getting started](getting-started.md): install, first run, updating
+- [Configuration](configuration.md): every setting and which source wins
+    - [Multi-node fleet management](fleet.md), [running on ARM](arm.md)
+    - [Protecting your home network](home-network-security.md), [security defaults](security-defaults.md), [network isolation](isolation.md)
+- [Service guides](guides/index.md): one page per service, plus [Prometheus metrics](guides/prometheus-metrics.md)
+- Operations: [backup and restore](backup-restore.md), [backing up node identities](backup.md), [upgrade to v1.0.0](upgrade-v1.md)
+- [How it works](how-it-works.md): the UI and worker split
+- [FAQ](faq.md)
+- [Development](development.md): adding a service, running the tests
+- [Related projects](related.md)
+- Reference: [how CashPilot compares](comparison.md), [discontinued services](discontinued-services.md), [direction and roadmap](roadmap.md), [what "idle" looks like on the wire](research/idle-network-traffic.md), [per-IP device limits](research/per-ip-device-limits.md), [self-hosting operability review](research/self-hosting-operability.md), [fleet upgrades and onboarding](research/fleet-upgrades-and-onboarding.md), [earnings benchmarks](research/earnings-benchmarks.md)
 
 ## FAQ
 
@@ -140,4 +140,4 @@ The signup links in CashPilot and in these docs are referral links. If you sign 
 
 ## License
 
-[GPL-3.0](https://github.com/GeiserX/CashPilot/blob/main/LICENSE) · Sergio Fernandez, 2026
+[GPL-3.0-or-later](https://github.com/GeiserX/CashPilot/blob/main/LICENSE) · Sergio Fernandez, 2026

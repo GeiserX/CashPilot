@@ -179,11 +179,11 @@ CashPilot tracks **50 services** across four categories:
 
 Of these, **16 services** can be deployed and managed automatically via Docker. The rest are browser extension or desktop-only services tracked in the catalog with signup links and earning estimates.
 
-Browse the full catalog in the [Service Guides](guides/README.md) section.
+Browse the full catalog in the [Service Guides](guides/index.md) section.
 
 ## Next Steps
 
-- [Architecture](architecture.md) -- Understand the UI + Worker split design
+- [How it works](how-it-works.md) -- Understand the UI + Worker split design
 - [Fleet Management](fleet.md) -- Deploy across multiple servers
 - [Protecting your home network](home-network-security.md) -- Keep the containers off your LAN, and when gVisor helps
-- [Service Guides](guides/README.md) -- Detailed setup instructions for each service
+- [Service Guides](guides/index.md) -- Detailed setup instructions for each service
