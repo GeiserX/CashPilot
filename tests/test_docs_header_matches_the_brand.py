@@ -34,18 +34,12 @@ OFFICIAL_PINK_TO = "#fb7185"
 
 
 def _plane_fill(svg_text: str) -> str | None:
-    """The fill on the aircraft path, wherever it sits in the file."""
-    for match in re.finditer(r'<path\b[^>]*d="M0,-\d+[^"]*"[^>]*>', svg_text, re.S):
-        fill = re.search(r'fill="([^"]+)"', match.group(0))
-        if fill:
-            return fill.group(1).lower()
-    # The attribute order varies; fall back to the path element as a whole.
-    for match in re.finditer(r"<path\b[^>]*?>", svg_text, re.S):
-        if "M0,-" in match.group(0):
-            fill = re.search(r'fill="([^"]+)"', match.group(0))
-            if fill:
-                return fill.group(1).lower()
-    return None
+    """The fill on the aircraft group (``<g id="plane">``), wherever it sits in the file."""
+    match = re.search(r'<g\b[^>]*\bid="plane"[^>]*>', svg_text, re.S)
+    if match is None:
+        return None
+    fill = re.search(r'\bfill="([^"]+)"', match.group(0))
+    return fill.group(1).lower() if fill else None
 
 
 class TestThePlaneIsTheOfficialSilhouette:
@@ -71,6 +65,39 @@ class TestThePlaneIsTheOfficialSilhouette:
         """The control: this must not have been "fixed" by darkening the sun."""
         text = LOGO.read_text(encoding="utf-8")
         assert "#FFD54F" in text and "#FF9800" in text
+
+
+# Every place the mark is drawn. The favicon, icon and logo are standalone
+# files; the templates inline the same SVG so the header needs no extra request.
+MARKS = [
+    ROOT / "app" / "static" / "favicon.svg",
+    ROOT / "docs" / "icon.svg",
+    ROOT / "docs" / "images" / "icon.svg",
+    LOGO,
+    ROOT / "app" / "templates" / "auth.html",
+    ROOT / "app" / "templates" / "base.html",
+    ROOT / "app" / "templates" / "onboarding.html",
+]
+
+
+def _plane_paths(svg_text: str) -> list[str]:
+    """The path data inside the aircraft group."""
+    block = re.search(r'<g\b[^>]*\bid="plane"[^>]*>(.*?)</g>', svg_text, re.S)
+    return re.findall(r'\bd="([^"]+)"', block.group(1)) if block else []
+
+
+@pytest.mark.parametrize("mark", MARKS, ids=lambda p: str(p.relative_to(ROOT)))
+def test_every_mark_flies_the_banner_jet(mark):
+    """One aircraft across the brand: the business jet the banner draws."""
+    jet = _plane_paths(BANNER.read_text(encoding="utf-8"))
+    assert len(jet) == 5, "banner.svg no longer has the five-part business jet"
+    text = mark.read_text(encoding="utf-8")
+    # One jet per sun: onboarding.html inlines the mark three times.
+    suns = text.count('mask="url(#cpBands)"')
+    assert suns >= 1, f"{mark.name} has no sun disc"
+    wrong = [d for d in jet if text.count(d) != suns]
+    assert not wrong, f"{mark.name} does not draw the banner's business jet on every sun"
+    assert "M0,-46" not in text, f"{mark.name} still draws the old plane"
 
 
 class TestTheWordmarkMatchesTheBanner:
