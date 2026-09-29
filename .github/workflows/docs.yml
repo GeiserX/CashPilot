@@ -6,7 +6,8 @@ name: Docs
 # is the sign the source was changed back.
 #
 # Every pull request runs the strict build, so a broken link, a missing page
-# or an unreachable page fails the check instead of reaching the site. A push to main deploys, and only after the same build has passed.
+# or an unreachable page fails the check instead of reaching the site. A push
+# to main deploys, and only after the same build has passed.
 #
 # The site is published as a Pages artifact, never with `mkdocs gh-deploy`:
 # no gh-pages branch, no `contents: write`, and one artifact is the whole site.
