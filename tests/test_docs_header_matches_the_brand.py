@@ -98,12 +98,15 @@ def test_every_mark_flies_the_banner_jet(mark):
     jet = _plane_paths(BANNER.read_text(encoding="utf-8"))
     assert len(jet) == 5, "banner.svg no longer has the five-part business jet"
     text = mark.read_text(encoding="utf-8")
-    # One jet per sun: onboarding.html inlines the mark three times.
-    suns = text.count('mask="url(#cpBands)"')
+    # One jet per sun: onboarding.html inlines the mark three times, and its
+    # welcome background draws one more, larger sun that kept the old plane
+    # after the rebrand because only the small discs were counted here.
+    suns = text.count('mask="url(#cpBands)"') + text.count('clip-path="url(#sun-clip)"')
     assert suns >= 1, f"{mark.name} has no sun disc"
     wrong = [d for d in jet if text.count(d) != suns]
     assert not wrong, f"{mark.name} does not draw the banner's business jet on every sun"
-    assert "M0,-46" not in text, f"{mark.name} still draws the old plane"
+    for old_plane in ("M0,-46", "M0,-25"):
+        assert old_plane not in text, f"{mark.name} still draws an old plane"
 
 
 class TestTheWordmarkMatchesTheBanner:
