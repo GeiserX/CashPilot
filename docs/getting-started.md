@@ -8,11 +8,10 @@
 
 ## Quick Start
 
-### 1. Clone and launch
+### 1. Fetch the compose file and launch
 
 ```bash
-git clone https://github.com/GeiserX/CashPilot.git
-cd CashPilot
+curl -fsSLO https://raw.githubusercontent.com/GeiserX/CashPilot/main/docker-compose.yml
 docker compose up -d
 ```
 
@@ -99,7 +98,7 @@ The UI's web port inside the container is fixed at `8080` (set via the container
 | `CASHPILOT_API_KEY` | -- | Must match the UI's API key |
 | `CASHPILOT_WORKER_NAME` | *(hostname)* | Display name for this worker in the fleet dashboard |
 | `CASHPILOT_WORKER_URL` | *(auto-detected)* | URL the UI uses to reach this worker, e.g. `http://192.168.10.50:8081`. Set explicitly for cross-host fleets — auto-detection can report an unreachable container-internal IP |
-| `CASHPILOT_WORKER_BIND_ADDR` | `127.0.0.1` | Host interface the worker's Docker-socket API port is published on. **Loopback by default.** The worker API can deploy/stop any container (= root on the host), so for a remote worker bind a private/VPN interface (e.g. a Tailscale IP), **never** a public IP |
+| `CASHPILOT_WORKER_BIND_ADDR` | `127.0.0.1` | **Fleet and remote-worker compose only** (`docker-compose.fleet.yml`): host interface the worker's Docker-socket API port is published on, loopback by default. The default `docker-compose.yml` does not publish port 8081 at all. The worker API can deploy/stop any container (= root on the host), so for a remote worker bind a private/VPN interface (e.g. a Tailscale IP), **never** a public IP |
 | `CASHPILOT_PORT` | `8081` | Port the worker **advertises** to the UI. It does *not* change the listen port, which is fixed by the image's `CMD` — see the [configuration reference](configuration.md) |
 
 ### Docker Compose Example
@@ -127,7 +126,7 @@ The UI's web port inside the container is fixed at `8080` (set via the container
 
 ## Updating CashPilot
 
-The published images use floating tags, so updating is just a pull + recreate:
+The compose file pins the `1.39` series, so `pull` fetches the newest patch of that series:
 
 ```bash
 docker compose pull
@@ -149,11 +148,11 @@ latest image first.
 
 ### Pinning a specific version
 
-`:latest` always tracks the newest release. To stay on a fixed version,
-replace the tag (e.g. `drumsergio/cashpilot:0.6.13`) and remove
-`pull_policy: always`. Browse available tags on
-[Docker Hub](https://hub.docker.com/r/drumsergio/cashpilot/tags). The minor
-tag (e.g. `:0.6`) tracks the latest patch within that minor series.
+To stay on one exact release, replace `1.39` with the patch tag, for example
+`drumsergio/cashpilot:1.39.4` and `drumsergio/cashpilot-worker:1.39.4` (always
+the same tag on both), and remove `pull_policy: always`. To move to a newer
+series, edit both tags. Browse tags on
+[Docker Hub](https://hub.docker.com/r/drumsergio/cashpilot/tags).
 
 ### Automating updates (optional)
 
@@ -177,7 +176,7 @@ CashPilot tracks **50 services** across four categories:
 - **GPU Compute** (6 services): rent out your GPU for AI and compute workloads
 - **Storage** (1 service): share disk space on decentralized storage networks
 
-Of these, **16 services** can be deployed and managed automatically via Docker. The rest are browser extension or desktop-only services tracked in the catalog with signup links and earning estimates.
+Of these, **16 services** can be deployed and managed automatically via Docker. The other 23 (17 browser or desktop apps, 6 GPU nodes) are listed in the catalog with signup links, and their balances are read where a collector exists.
 
 Browse the full catalog in the [Service Guides](guides/index.md) section.
 

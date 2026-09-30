@@ -29,7 +29,7 @@ More info: https://github.com/GeiserX/CashPilot</Overview>
   <Category>Crypto: Tools: Productivity:</Category>
   <WebUI>http://[IP]:[PORT:8080]/</WebUI>
   <TemplateURL>https://raw.githubusercontent.com/selfhosters/unRAID-CA-templates/master/templates/cashpilot.xml</TemplateURL>
-  <Icon>https://raw.githubusercontent.com/GeiserX/CashPilot/main/docs/icon.svg</Icon>
+  <Icon>https://raw.githubusercontent.com/GeiserX/CashPilot/main/docs/images/icon.svg</Icon>
   <ExtraSearchTerms>passive income bandwidth sharing earnings money</ExtraSearchTerms>
   <Requires>CashPilot Worker container (cashpilot-worker) for container management</Requires>
   <Config Name="WebUI Port" Target="8080" Default="8080" Mode="tcp" Description="Port for the CashPilot web dashboard" Type="Port" Display="always" Required="true" Mask="false"/>

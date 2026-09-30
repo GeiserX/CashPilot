@@ -23,7 +23,7 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
-LOGO = ROOT / "docs" / "logo.svg"
+LOGO = ROOT / "docs" / "images" / "logo.svg"
 BANNER = ROOT / "docs" / "images" / "banner.svg"
 THEME_CSS = ROOT / "docs" / "stylesheets" / "theme.css"
 
@@ -45,7 +45,7 @@ def _plane_fill(svg_text: str) -> str | None:
 class TestThePlaneIsTheOfficialSilhouette:
     def test_the_header_logo_plane_is_not_white(self):
         fill = _plane_fill(LOGO.read_text(encoding="utf-8"))
-        assert fill is not None, "no aircraft path found in docs/logo.svg"
+        assert fill is not None, "no aircraft path found in docs/images/logo.svg"
         assert fill not in ("#fff", "#ffffff", "white"), (
             "the plane is white again — on the #FFD54F top of the sun gradient it disappears"
         )
@@ -66,12 +66,18 @@ class TestThePlaneIsTheOfficialSilhouette:
         text = LOGO.read_text(encoding="utf-8")
         assert "#FFD54F" in text and "#FF9800" in text
 
+    def test_the_favicon_has_a_plate_and_the_logo_does_not(self):
+        """The tab needs a plate so the warm disc reads on a light or dark strip;
+        the header sits on the banner sky already, where a plate would be a box."""
+        icon = (ROOT / "docs" / "images" / "icon.svg").read_text(encoding="utf-8")
+        assert 'rx="56"' in icon and 'fill="#0d0025"' in icon
+        assert "rx=" not in LOGO.read_text(encoding="utf-8")
+
 
 # Every place the mark is drawn. The favicon, icon and logo are standalone
 # files; the templates inline the same SVG so the header needs no extra request.
 MARKS = [
     ROOT / "app" / "static" / "favicon.svg",
-    ROOT / "docs" / "icon.svg",
     ROOT / "docs" / "images" / "icon.svg",
     LOGO,
     ROOT / "app" / "templates" / "auth.html",
@@ -140,5 +146,6 @@ class TestTheDocsStillBuild:
     def test_mkdocs_points_at_this_logo_and_stylesheet(self):
         """A perfect logo the site does not load is not a fix."""
         config = (ROOT / "mkdocs.yml").read_text(encoding="utf-8")
-        assert "logo: logo.svg" in config
+        assert "logo: images/logo.svg" in config
+        assert "favicon: images/icon.svg" in config
         assert "stylesheets/theme.css" in config

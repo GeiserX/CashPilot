@@ -104,14 +104,14 @@ class TestTheIndexMatchesTheCatalog:
 class TestGuidesAreGroupedByCategory:
     def test_the_nav_uses_the_catalog_categories(self):
         text = MKDOCS.read_text(encoding="utf-8")
-        block = text[text.index("  - Service Guides:") :]
+        block = text[text.index("  - Service guides:") :]
         for heading in ("Bandwidth Sharing", "DePIN", "GPU Compute", "Storage"):
             assert f"- {heading}:" in block, f"nav is not grouped by {heading}"
 
     def test_the_guides_are_not_one_flat_list(self):
         """The original shape: 52 alphabetical siblings under one heading."""
         text = MKDOCS.read_text(encoding="utf-8")
-        block = text[text.index("  - Service Guides:") :]
+        block = text[text.index("  - Service guides:") :]
         block = block[: block.index("\n  - ", 1)] if "\n  - " in block[1:] else block
         # Guides sit one level deeper than the category headings that hold them.
         assert re.search(r"^      - .+: guides/", block, re.M), "no guide is nested under a category"

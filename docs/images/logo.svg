@@ -1,10 +1,9 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256" role="img" aria-label="CashPilot">
   <!--
-    Header logo. Deliberately NOT the same artwork as icon.svg (the favicon):
-    this one is drawn to survive being scaled to ~24px on the theme's coloured
-    header bar. That means no background plate (it would read as a dark blob
-    against the purple), no sub-pixel strokes, and no fine detail that turns to
-    mud. Bold shapes and high contrast only.
+    The CashPilot mark, the same file as app/static/favicon.svg. No plate: the
+    header bar is #000010, the banner's own background, and the disc sits on it
+    directly. Bands and jet are drawn thick enough to survive 1.6rem.
+    docs/images/icon.svg is this mark on a plate, for the browser tab.
   -->
   <defs>
     <linearGradient id="cpSun" x1="0%" y1="0%" x2="0%" y2="100%">

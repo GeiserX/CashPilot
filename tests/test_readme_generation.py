@@ -1,4 +1,4 @@
-"""README tables generated from the catalog (CashPilot-9q1).
+"""README service lists generated from the catalog (CashPilot-9q1).
 
 "YAML is the single source of truth" is the rule this project is built on, and
 the README service tables were the one place it was violated. They drifted: the
@@ -37,10 +37,10 @@ def _referral_urls(text: str) -> set[str]:
 
 class TestTheReadmeCannotDriftFromTheCatalog:
     def test_the_checked_in_readme_is_up_to_date(self):
-        """The whole point: this fails if someone edits the table by hand."""
+        """The whole point: this fails if someone edits the lists by hand."""
         current = README.read_text(encoding="utf-8")
         assert gen.render(current) == current, (
-            "README service tables are out of date with the catalog. Run: python scripts/generate_readme_tables.py"
+            "README service lists are out of date with the catalog. Run: python scripts/generate_readme_tables.py"
         )
 
     def test_generation_is_idempotent(self):
@@ -80,7 +80,7 @@ class TestGenerationNeverDestroysRevenue:
         assert not lost, f"generation dropped referral URLs: {lost}"
 
     def test_the_generator_prefers_the_referral_url_over_the_bare_website(self):
-        """A bare website link in the table is lost revenue on every signup."""
+        """A bare website link in the lists is lost revenue on every signup."""
         svc = {
             "slug": "x",
             "name": "X",
@@ -104,53 +104,8 @@ class TestWarningsSurviveRegeneration:
 
     def test_the_real_earnapp_row_still_carries_the_marker(self):
         readme = README.read_text(encoding="utf-8")
-        row = next(line for line in readme.splitlines() if "docs/guides/earnapp.md" in line)
-        assert "\\*\\*\\*\\*" in row
-
-
-class TestAbsentIsNotFalse:
-    """The confusion that has bitten this catalog repeatedly."""
-
-    def test_an_undeclared_flag_renders_as_unknown_not_no(self):
-        assert gen._yes_no(None) == "?"
-        assert gen._yes_no(True) == "✅"
-        assert gen._yes_no(False) == "❌"
-
-    def test_an_undocumented_device_limit_is_not_rendered_as_a_number(self):
-        rendered = gen._devices(None)
-        assert "?" in rendered
-        assert "1" not in rendered
-
-    def test_a_documented_zero_means_unlimited(self):
-        assert gen._devices(0) == "Unlimited"
-
-    def test_a_real_limit_is_rendered_plainly(self):
-        assert gen._devices(1) == "1"
-
-    def test_vps_uses_the_schemas_documented_default(self):
-        """services/_schema.yml: vps_ip defaults to the opposite of residential_ip.
-
-        Using a DOCUMENTED default is not guessing; printing "?" for two thirds
-        of the catalog instead would be less true and less useful.
-        """
-        assert gen._vps_allowed({"residential_ip": True}) is False
-        assert gen._vps_allowed({"residential_ip": False}) is True
-        assert gen._vps_allowed({"residential_ip": True, "vps_ip": True}) is True
-        assert gen._vps_allowed({}) is None
-
-
-class TestPayoutRendering:
-    def test_crypto_names_its_token_when_the_catalog_records_one(self):
-        assert gen._payout({"payment": {"methods": ["crypto"], "crypto_token": "SOL"}}) == "Crypto (SOL)"
-
-    def test_crypto_without_a_token_is_just_crypto(self):
-        assert gen._payout({"payment": {"methods": ["crypto"]}}) == "Crypto"
-
-    def test_underscored_methods_are_made_readable(self):
-        assert gen._payout({"payment": {"methods": ["amazon_giftcard"]}}) == "Amazon Gift Card"
-
-    def test_a_service_with_no_methods_says_so(self):
-        assert gen._payout({}) == "--"
+        row = next(line for line in readme.splitlines() if "[EarnApp](" in line)
+        assert "\\*" in row
 
 
 class TestEveryServiceHasAGuide:

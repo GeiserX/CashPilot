@@ -1,7 +1,7 @@
-"""Generate the README service tables from the catalog (CashPilot-9q1).
+"""Generate the README service lists from the catalog (CashPilot-9q1).
 
 "YAML is the single source of truth" is the rule this project is built on, and
-the README service tables were the one place it was violated: hand-maintained,
+the README service lists were the one place it was violated: hand-maintained,
 so they drifted. That is not hypothetical — the README kept publishing a per-IP
 device limit for weeks after the catalog dropped it for being unsourced, which
 is the same wrong number in the more visible place.
@@ -30,53 +30,11 @@ from app import catalog  # noqa: E402
 BEGIN = "<!-- BEGIN GENERATED: {name} -->"
 END = "<!-- END GENERATED: {name} -->"
 
-# Services shown in each table. Anything broken, dead or dropped is excluded
+# Services shown in each list. Anything broken, dead or dropped is excluded
 # from the catalog loader already.
 DOCKER = "docker-services"
 EXTENSION = "extension-services"
 GPU = "gpu-services"
-
-
-def _yes_no(value: object) -> str:
-    """Three-valued, because absent is not false.
-
-    The hand-maintained table used ✅/❌ only, so a service that simply never
-    declared the field rendered as a definite "no". That is the same
-    absent-versus-false confusion that has bitten this catalog repeatedly.
-    """
-    if value is None:
-        return "?"
-    return "✅" if value else "❌"
-
-
-def _vps_allowed(reqs: dict) -> object:
-    """Delegates to app.catalog.vps_allowed.
-
-    This function and app/preflight.py used to interpret `vps_ip` differently —
-    this one applied the schema's documented default, preflight demanded the
-    literal boolean — so the catalog page said "VPS not allowed" for 21
-    services that preflight then deployed onto a hosting worker without a word.
-    One reader now, so they cannot drift apart again.
-    """
-    from app.catalog import vps_allowed
-
-    return vps_allowed(reqs)
-
-
-def _devices(value: object) -> str:
-    """Render a device limit, keeping absent distinct from a documented number.
-
-    ``?`` is not decoration: an undocumented limit is genuinely unknown, and
-    printing ``1`` for it — which is what the hand-maintained table did for
-    roughly thirty services — asserts something no provider ever said.
-    """
-    if value is None:
-        return "? \\*\\*\\*"
-    try:
-        number = int(value)
-    except (TypeError, ValueError):
-        return "? \\*\\*\\*"
-    return "Unlimited" if number == 0 else str(number)
 
 
 def _link(service: dict) -> str:
@@ -84,90 +42,39 @@ def _link(service: dict) -> str:
     return f"[{service.get('name', service.get('slug'))}]({url})"
 
 
-def _guide(service: dict) -> str:
-    return f"[Guide](https://github.com/GeiserX/CashPilot/blob/main/docs/guides/{service['slug']}.md)"
-
-
-_METHOD_NAMES = {
-    "paypal": "PayPal",
-    "bank": "Bank Transfer",
-    "giftcard": "Gift Cards",
-    "amazon_giftcard": "Amazon Gift Card",
-    "wise": "Wise",
-    "revolut": "Revolut",
-    "payeer": "Payeer",
-}
-
-
-def _payout(service: dict) -> str:
-    payment = service.get("payment") or {}
-    token = payment.get("crypto_token") or ""
-    rendered = []
-    for method in payment.get("methods") or []:
-        if method == "crypto":
-            rendered.append(f"Crypto ({token})" if token else "Crypto")
-        else:
-            rendered.append(_METHOD_NAMES.get(method, method.replace("_", " ").title()))
-    return ", ".join(rendered) or "--"
-
-
 def _markers(service: dict) -> str:
     """Footnote markers, DERIVED from the catalog rather than hand-placed.
 
-    A hand-placed marker is lost the first time the table is regenerated, which
+    A hand-placed marker is lost the first time the list is regenerated, which
     would silently delete the warning that EarnApp forbids the way CashPilot
     runs it — the most consequential sentence in this file.
     """
     if (service.get("requirements") or {}).get("container_prohibited"):
-        return " \\*\\*\\*\\*"
+        return " \\*"
     return ""
-
-
-def _row(service: dict, kind: str) -> str:
-    reqs = service.get("requirements") or {}
-    cells = [_link(service) + _markers(service), _guide(service)]
-    if kind == GPU:
-        cells += [
-            _yes_no(reqs.get("residential_ip")),
-            _yes_no(reqs.get("gpu")),
-            str(reqs.get("min_storage") or "N/A"),
-            _payout(service),
-            str(service.get("status", "")).title(),
-        ]
-    else:
-        cells += [
-            _yes_no(reqs.get("residential_ip")),
-            _yes_no(_vps_allowed(reqs)),
-            _devices(reqs.get("devices_per_account")),
-            _devices(reqs.get("devices_per_ip")),
-            _payout(service),
-        ]
-        if kind == EXTENSION:
-            cells.append(str(service.get("status", "")).title())
-    return "| " + " | ".join(cells) + " |"
 
 
 def _is_dockerable(service: dict) -> bool:
     return bool((service.get("docker") or {}).get("image"))
 
 
-def _table(kind: str) -> str:
+_LABELS = {
+    DOCKER: "Run in Docker by CashPilot",
+    EXTENSION: "Browser extension or desktop app, tracked",
+    GPU: "GPU compute, tracked",
+}
+
+
+def _line(kind: str) -> str:
     services = [s for s in catalog.get_services() if str(s.get("status")) in {"active", "beta"}]
     if kind == GPU:
         selected = [s for s in services if s.get("category") == "compute"]
-        header = "| Service | Guide | Residential IP required | GPU | Min Storage | Payout | Status |"
-        divider = "|---------|-------|:-:|:-:|:-:|--------|--------|"
     elif kind == DOCKER:
         selected = [s for s in services if s.get("category") != "compute" and _is_dockerable(s)]
-        header = "| Service | Guide | Residential IP required | VPS allowed | Devices / Acct | Devices / IP | Payout |"
-        divider = "|---------|-------|:-:|:-:|:-:|:-:|--------|"
     else:
         selected = [s for s in services if s.get("category") != "compute" and not _is_dockerable(s)]
-        header = "| Service | Guide | Residential IP required | VPS allowed | Devices / Acct | Devices / IP | Payout | Status |"
-        divider = "|---------|-------|:-:|:-:|:-:|:-:|--------|--------|"
-
     selected.sort(key=lambda s: str(s.get("name", "")).lower())
-    return "\n".join([header, divider, *(_row(s, kind) for s in selected)])
+    return f"**{_LABELS[kind]} ({len(selected)}):** " + ", ".join(_link(s) + _markers(s) for s in selected)
 
 
 def render(readme: str) -> str:
@@ -177,11 +84,11 @@ def render(readme: str) -> str:
         if begin not in readme or end not in readme:
             raise SystemExit(
                 f"README is missing the {kind} markers. Add:\n  {begin}\n  {end}\n"
-                "around the table so it can be generated."
+                "around the list so it can be generated."
             )
         head, rest = readme.split(begin, 1)
         _stale, tail = rest.split(end, 1)
-        readme = f"{head}{begin}\n{_table(kind)}\n{end}{tail}"
+        readme = f"{head}{begin}\n{_line(kind)}\n{end}{tail}"
     return readme
 
 
@@ -195,16 +102,16 @@ def main() -> int:
     updated = render(current)
 
     if current == updated:
-        print("README service tables are up to date.")
+        print("README service lists are up to date.")
         return 0
     if args.check:
         print(
-            "README service tables are out of date with the catalog.\nRun: python scripts/generate_readme_tables.py",
+            "README service lists are out of date with the catalog.\nRun: python scripts/generate_readme_tables.py",
             file=sys.stderr,
         )
         return 1
     path.write_text(updated, encoding="utf-8")
-    print("README service tables regenerated.")
+    print("README service lists regenerated.")
     return 0
 
 

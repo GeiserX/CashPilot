@@ -1,6 +1,6 @@
 site_name: CashPilot
 site_url: https://geiserx.github.io/CashPilot/
-site_description: Self-hosted passive income orchestrator. Deploy, manage, and monitor 39 active services (50 catalogued) from a single dashboard.
+site_description: Self-hosted passive income platform. Deploy, monitor and track 39 active services (50 catalogued) from one dashboard.
 site_author: Sergio Fernandez
 repo_url: https://github.com/GeiserX/CashPilot
 repo_name: GeiserX/CashPilot
@@ -15,8 +15,8 @@ copyright: Copyright &copy; 2026 Sergio Fernandez
 theme:
   name: material
   language: en
-  logo: logo.svg
-  favicon: icon.svg
+  logo: images/logo.svg
+  favicon: images/icon.svg
   palette:
     - scheme: slate
       primary: custom
@@ -160,8 +160,12 @@ exclude_docs: |
 
 nav:
   - Home: index.md
-  - Getting Started: getting-started.md
-  - Service Guides:
+  - Get started:
+    - Getting started: getting-started.md
+    - How it works: how-it-works.md
+    - FAQ: faq.md
+    - How CashPilot compares: comparison.md
+  - Service guides:
     - Overview: guides/index.md
     - Bandwidth Sharing:
       - Bitping: guides/bitping.md
@@ -218,28 +222,28 @@ nav:
     - Storage:
       - Storj: guides/storj.md
   - Configuration:
-    - Configuration: configuration.md
-    - Multi-Node Fleet Management: fleet.md
+    - Configuration reference: configuration.md
+    - Multi-node fleet management: fleet.md
     - Running on ARM: arm.md
   - Security:
-    - Protecting Your Home Network: home-network-security.md
-    - Security Defaults: security-defaults.md
-    - Network Isolation: isolation.md
+    - Security defaults: security-defaults.md
+    - Protecting your home network: home-network-security.md
+    - Network isolation: isolation.md
   - Operations:
-    - Backup and Restore: backup-restore.md
-    - Backing Up Node Identities: backup.md
-    - Prometheus Metrics: guides/prometheus-metrics.md
+    - Backing up and restoring: backup-restore.md
+    - Backing up node identities: backup.md
+    - Prometheus metrics: guides/prometheus-metrics.md
     - Upgrade to v1.0.0: upgrade-v1.md
   - Reference:
-    - How it works: how-it-works.md
-    - Direction and Roadmap: roadmap.md
-    - What "idle" looks like on the wire: research/idle-network-traffic.md
-    - Per-IP device limits: research/per-ip-device-limits.md
-    - Self-hosting operability review: research/self-hosting-operability.md
-    - Fleet upgrades & onboarding (design): research/fleet-upgrades-and-onboarding.md
-    - Earnings benchmarks (design): research/earnings-benchmarks.md
-    - FAQ: faq.md
-    - How CashPilot compares: comparison.md
     - Discontinued services: discontinued-services.md
     - Related projects: related.md
+    - Research:
+      - What "idle" looks like on the wire: research/idle-network-traffic.md
+      - Per-IP device limits: research/per-ip-device-limits.md
+      - Self-hosting operability review: research/self-hosting-operability.md
+  - Development:
     - Development: development.md
+    - Direction and roadmap: roadmap.md
+    - Design notes:
+      - Fleet upgrades and onboarding: research/fleet-upgrades-and-onboarding.md
+      - Earnings benchmarks: research/earnings-benchmarks.md

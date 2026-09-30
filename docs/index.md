@@ -12,127 +12,133 @@ hide:
 <p align="center">
   <a href="https://hub.docker.com/r/drumsergio/cashpilot"><img alt="Docker Pulls" src="https://img.shields.io/docker/pulls/drumsergio/cashpilot?style=flat-square&logo=docker"></a>
   <a href="https://github.com/GeiserX/CashPilot/stargazers"><img alt="GitHub Stars" src="https://img.shields.io/github/stars/GeiserX/CashPilot?style=flat-square&logo=github"></a>
+  <a href="https://github.com/GeiserX/CashPilot/releases"><img alt="Release" src="https://img.shields.io/github/v/release/GeiserX/CashPilot?style=flat-square"></a>
   <a href="https://github.com/GeiserX/CashPilot/blob/main/LICENSE"><img alt="License: GPL-3.0" src="https://img.shields.io/github/license/GeiserX/CashPilot?style=flat-square"></a>
 </p>
 
 ---
 
-**CashPilot** is a self-hosted platform that lets you deploy, manage, and monitor passive income services from a single web interface. Instead of manually setting up dozens of Docker containers, configuring credentials, and checking multiple dashboards, CashPilot handles everything from one place.
-
-It supports both **Docker-based services** (deployed and managed automatically) and **browser extension / desktop-only services** (tracked via the web UI with signup links, earning estimates, and balance monitoring). Whether a service runs in a container or in your browser, CashPilot aggregates all your earnings into a unified dashboard with historical tracking.
-
-## Features
+**CashPilot** runs passive income services on your own servers and shows what they earn in one dashboard. It is two Docker containers: a UI that holds the catalog, the credentials and the earnings history, and a worker on each server that starts and watches the service containers. Start with [Getting started](getting-started.md), then pick services in the [Service guides](guides/index.md).
 
 <div class="grid cards" markdown>
 
--   :material-wizard-hat: **Web-Based Setup Wizard**
+-   :material-docker: **[Getting started](getting-started.md)**
 
     ---
 
-    Guided account creation for each service. No CLI or YAML editing needed.
+    Fetch the compose file, start the two containers, create the owner account with the setup token.
 
--   :material-rocket-launch: **One-Click Container Deployment**
-
-    ---
-
-    Deploy 16 passive income services with a single click from the browser.
-
--   :material-chart-line: **Real-Time Earnings Dashboard**
+-   :material-view-grid-outline: **[Service guides](guides/index.md)**
 
     ---
 
-    Historical charts, trend analysis, and per-service breakdowns with progress toward payout.
+    50 services: what each one needs, whether it runs in Docker, the payout minimum, and a setup guide.
 
--   :material-heart-pulse: **Container Health Monitoring**
-
-    ---
-
-    CPU, memory, network, uptime, and health scores at a glance.
-
--   :material-server-network: **Multi-Node Fleet Management**
+-   :material-server-network: **[Fleet management](fleet.md)**
 
     ---
 
-    Run services across multiple servers. One UI aggregates everything.
+    One worker per server, one dashboard for all of them, every figure per server and per service.
 
--   :material-shield-lock: **Credential Encryption**
-
-    ---
-
-    All credentials encrypted at rest with Fernet symmetric encryption.
-
--   :material-view-grid: **39 Active Services, 4 Categories**
+-   :material-format-list-bulleted: **[Configuration reference](configuration.md)**
 
     ---
 
-    Bandwidth sharing, DePIN, storage, and GPU compute; 50 catalogued in total, each with a setup guide.
-
--   :material-cellphone: **Mobile-Responsive Dark UI**
-
-    ---
-
-    Manage your fleet from any device with a modern dark theme.
+    Every setting, its default, and which source wins when two disagree.
 
 </div>
 
-## Dashboard
+## The dashboard
 
-![CashPilot Dashboard](images/screenshots/dashboard.png)
+The dashboard is what you look at every day: the balances, a 7-day or 30-day earnings chart, the payouts waiting for your confirmation, and every deployed service with its status, balance, CPU and memory. Collectors read the balances of 15 providers every hour; the rest you enter by hand.
 
-## Quick Start
+![The CashPilot dashboard: total, today and this-month balance tiles, a 30-day earnings chart, a Honeygain payout waiting to be confirmed, and the deployed services table with status, balance, CPU and memory for eight services](images/screenshots/dashboard.png)
 
-```bash
-curl -fsSLO https://raw.githubusercontent.com/GeiserX/CashPilot/main/docker-compose.yml
-docker compose up -d
-docker compose logs cashpilot-ui | grep -i "setup token"   # then open http://localhost:8080
+<div class="cp-phone-gallery" markdown>
+<figure markdown>
+![The dashboard on a phone: balance tiles stacked, the earnings chart, the services table](images/screenshots/dashboard-mobile.png)
+<figcaption>The dashboard on a phone</figcaption>
+</figure>
+<figure markdown>
+![The service catalog on a phone, filtered to bandwidth services](images/screenshots/catalog-mobile.png)
+<figcaption>The catalog</figcaption>
+</figure>
+<figure markdown>
+![Step 2 of the setup wizard on a phone, choosing services in the bandwidth category](images/screenshots/setup-wizard-mobile.png)
+<figcaption>The setup wizard</figcaption>
+</figure>
+</div>
+
+<div class="cp-shot-gallery" markdown>
+<figure markdown>
+![The first-run welcome page that appears after docker compose up, asking for the setup token from the log](images/screenshots/onboarding.png)
+<figcaption>First run: the welcome page asks for the setup token from the log</figcaption>
+</figure>
+<figure markdown>
+![The service catalog: cards for every service with its category, whether it needs a residential IP, and a Deploy or Visit button](images/screenshots/catalog.png)
+<figcaption>The catalog: 50 services, filterable by category</figcaption>
+</figure>
+<figure markdown>
+![Step 2 of the setup wizard with the bandwidth category chosen and two services ticked](images/screenshots/setup-wizard.png)
+<figcaption>The wizard: pick categories, pick services, enter credentials, deploy</figcaption>
+</figure>
+<figure markdown>
+![The fleet page: one worker online with its host resources and eight running containers, and the environment block to add another worker](images/screenshots/fleet.png)
+<figcaption>The fleet: every worker, its host, and how to add the next one</figcaption>
+</figure>
+</div>
+
+## What it runs
+
+- **16 services run in Docker**, started by the worker from the catalog: no compose file to write. Bandwidth sharing (Honeygain, EarnApp, IPRoyal Pawns, PacketStream, Repocket, Traffmonetizer, ProxyRack, and more), MystNodes, Anyone Protocol and Storj.
+- **17 services run as a browser extension or a desktop app** (Grass, Nodepay, Dawn, Helium, and more). CashPilot lists them with signup links and reads their balances where a collector exists.
+- **6 GPU compute services** (Salad, Vast.ai, io.net, Nosana, Golem, Flux) need an NVIDIA card and run on their own software; CashPilot tracks them the same way.
+- 39 active services in total, 50 catalogued; the 11 that died or broke are kept on [Discontinued services](discontinued-services.md) so nobody re-adds them.
+
+The [Service guides](guides/index.md) table shows, for every service, what it needs (residential IP, GPU, disk), how it runs, the minimum payout and its status. Services marked residential-only do not pay a datacenter IP; the rest run on a VPS.
+
+## How it runs
+
+```mermaid
+graph LR
+    A[You, in a browser] -->|Configure and deploy| B[CashPilot UI<br>port 8080, loopback]
+    B -->|Container specs| C[CashPilot worker<br>one per server]
+    C -->|Docker socket| D[Service containers]
+    D -->|Status and resources| C
+    C -->|Heartbeat every 60 s| B
+    B -->|Collect balances every 60 min| E[Provider APIs]
+    E -->|Balances| B
 ```
 
-This starts two containers:
+- The UI never touches Docker. It holds the catalog, the encrypted credentials, the earnings history and the users, and it is the only component that collects earnings, so nothing is counted twice.
+- A worker holds the Docker socket on its server, starts the containers the UI asks for, and reports their status every 60 seconds. Every server that runs containers needs a worker; the UI can run on a machine without Docker.
+- Both images (`drumsergio/cashpilot`, `drumsergio/cashpilot-worker`) share one version number and run on amd64 and arm64. See [How it works](how-it-works.md) and [Running on ARM](arm.md).
+- An upgrade is `docker compose pull && docker compose up -d`. [UPGRADING.md](https://github.com/GeiserX/CashPilot/blob/main/UPGRADING.md) lists only the releases that need more.
 
-- **cashpilot-ui**: web dashboard, earnings collection, service catalog (port 8080)
-- **cashpilot-worker**: Docker agent that deploys and monitors service containers (port 8081)
+## What it does not do
 
-Then open [http://localhost:8080](http://localhost:8080), enter the one-time setup token from the log to create the owner account, and follow the setup wizard.
+- It does not create provider accounts. Each service needs your own signup; the wizard links to it and tells you which credentials to enter.
+- It does not run the browser and desktop apps. It lists them, links their signup, and reads their balances where a collector exists.
+- It does not collect in real time. Collectors run every 60 minutes by default (`CASHPILOT_COLLECT_INTERVAL`).
+- It does not count a balance drop as a payout on its own. The dashboard asks you to confirm each one, because a drop can also be a provider correction.
+- It does not keep the containers off your LAN by itself. Docker lets them reach it; [Protecting your home network](home-network-security.md) puts them on a firewalled bridge.
+- It cannot promise earnings. As a rough guide, one home server running 10 to 15 services makes about $30 to $100 a month, and it can make less, down to zero; see the [FAQ](faq.md).
 
-!!! note
-    The worker container requires access to the Docker socket (`/var/run/docker.sock`) to deploy and manage service containers. Both containers are required for full functionality.
+## Security
 
-[Get Started](getting-started.md){ .md-button .md-button--primary }
-[View on GitHub](https://github.com/GeiserX/CashPilot){ .md-button }
+- Every service container runs with all Linux capabilities dropped (a few services add back only the ones they declare), `no-new-privileges` set and a PID limit.
+- Stored credentials are encrypted at rest with a Fernet key at `/data/.fernet_key`. Back that file up: without it nothing can be decrypted. `CASHPILOT_ENCRYPTION_KEY` is adopted only when that file is absent, so on an instance that already has a key the variable changes nothing. It is not `CASHPILOT_SECRET_KEY`, which only signs login sessions.
+- Only the worker touches the Docker socket. The UI is published on loopback by default, and the worker's port 8081 is never published, because either could command the socket.
+- [Security defaults](security-defaults.md) lists what ships enabled, [Protecting your home network](home-network-security.md) and [Network isolation](isolation.md) show how to keep the earners away from your LAN, router and host.
+- To report a security problem, follow the [security policy](https://github.com/GeiserX/CashPilot/blob/main/SECURITY.md) and do not open a public issue.
 
-## Documentation
+## Getting help
 
-- [Getting started](getting-started.md): install, first run, updating
-- [Configuration](configuration.md): every setting and which source wins
-    - [Multi-node fleet management](fleet.md), [running on ARM](arm.md)
-    - [Protecting your home network](home-network-security.md), [security defaults](security-defaults.md), [network isolation](isolation.md)
-- [Service guides](guides/index.md): one page per service, plus [Prometheus metrics](guides/prometheus-metrics.md)
-- Operations: [backup and restore](backup-restore.md), [backing up node identities](backup.md), [upgrade to v1.0.0](upgrade-v1.md)
-- [How it works](how-it-works.md): the UI and worker split
-- [FAQ](faq.md)
-- [Development](development.md): adding a service, running the tests
-- [Related projects](related.md)
-- Reference: [how CashPilot compares](comparison.md), [discontinued services](discontinued-services.md), [direction and roadmap](roadmap.md), [what "idle" looks like on the wire](research/idle-network-traffic.md), [per-IP device limits](research/per-ip-device-limits.md), [self-hosting operability review](research/self-hosting-operability.md), [fleet upgrades and onboarding](research/fleet-upgrades-and-onboarding.md), [earnings benchmarks](research/earnings-benchmarks.md)
-
-## FAQ
-
-??? question "Is bandwidth sharing safe?"
-    Bandwidth sharing services generally route legitimate traffic (market research, ad verification, price comparison, content delivery) through your connection. That said, you are sharing your IP address, so review each service's terms of service and privacy policy carefully before signing up. Running these on a VPS rather than residential IP is an option for some services. **This is not legal advice.**
-
-??? question "How much can I earn?"
-    Earnings vary widely based on location, number of devices, and which services you run. A realistic expectation for a single residential server running 10-15 services is **$30 - $100/month**. Adding more servers or GPU compute services can increase this significantly. The dashboard shows your actual earnings over time so you can optimize.
-
-??? question "Can I run on a VPS or cloud server?"
-    Some services require a residential IP and will not pay (or will ban) VPS/datacenter IPs. These are marked as "Residential Only" in the service catalog. Services that work on VPS are a good way to scale up without additional home hardware.
-
-??? question "How are credentials stored?"
-    All service credentials are encrypted at rest in the SQLite database with a Fernet key kept at `/data/.fernet_key`. `CASHPILOT_ENCRYPTION_KEY` is adopted only when that file is absent — the file always wins, so on an instance that already has a key the variable changes nothing. This is not `CASHPILOT_SECRET_KEY`, which only signs login sessions. The database file lives in the mounted Docker volume. No credentials are ever sent anywhere except to the service containers themselves.
-
-??? question "What about security?"
-    Every service CashPilot deploys runs in its own container with every Linux capability dropped (a few services add back only the ones they declare) and `no-new-privileges` set. Credentials are encrypted at rest, and only the worker touches the Docker socket. A container can still reach your home network by default, though: Docker does not block that. To close it, follow [Protecting Your Home Network](home-network-security.md), which puts the earners on a firewalled bridge that can reach the internet but not your LAN, router or host. That bridge does not cover a service on host networking (Mysterium, today); the guide says what to do about those.
-
-??? question "What happens if a service container crashes?"
-    CashPilot monitors container health continuously. If a service container exits unexpectedly, it is automatically restarted. The dashboard shows uptime and health status for every running service.
+- Something broken: read the [FAQ](faq.md), then open an [issue](https://github.com/GeiserX/CashPilot/issues) with your version and the `docker compose logs cashpilot-ui` lines around the error.
+- Upgrading: [UPGRADING.md](https://github.com/GeiserX/CashPilot/blob/main/UPGRADING.md) first, then the [release notes](https://github.com/GeiserX/CashPilot/releases).
+- Scraping metrics: [Prometheus metrics](guides/prometheus-metrics.md).
+- Adding a service or sending a fix: [Development](development.md).
+- The rest of the family: [Related projects](related.md).
 
 ## Disclosure
 
@@ -140,4 +146,4 @@ The signup links in CashPilot and in these docs are referral links. If you sign 
 
 ## License
 
-[GPL-3.0-or-later](https://github.com/GeiserX/CashPilot/blob/main/LICENSE) · Sergio Fernandez, 2026
+CashPilot is released under the [GPL-3.0-or-later](https://github.com/GeiserX/CashPilot/blob/main/LICENSE) license.

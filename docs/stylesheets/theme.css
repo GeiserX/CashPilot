@@ -1,40 +1,40 @@
-/* Match the docs to the product.
+/* Match the docs to the banner and the app.
  *
- * The app ships a dark UI (#0f1117 background, #1a1d26 cards, #3b82f6 accent).
- * The docs shipped mkdocs-material's "deep purple + pink", so the site and the
- * thing it documents looked like two different products — and the warm sunset
- * logo, drawn for a dark backdrop, clashed with the purple header on top of it.
- *
- * These are the app's own values, so the header the logo sits on is the same
- * colour as the dashboard behind it.
+ * banner.svg is a night sky from #000010 to #0d0025, the name in the pink
+ * gradient #f43f5e -> #fb7185, and the tagline and rules in cyan #06b6d4 ->
+ * #22d3ee. The app's dark theme uses the same pair (--accent #fb7185,
+ * --accent-secondary #22d3ee) on a #06060f page. The header, the page, links
+ * and buttons below use only those values, so the site, the banner and the
+ * screenshots read as one product.
  */
 :root {
-  --md-primary-fg-color:        #0f1117;  /* app background */
-  --md-primary-fg-color--light: #1a1d26;  /* app card       */
-  --md-primary-fg-color--dark:  #08090d;
-  --md-primary-bg-color:        #ffffff;
-  --md-primary-bg-color--light: #ffffffb3;
+  --md-primary-fg-color:        #000010;  /* banner sky, header bar */
+  --md-primary-fg-color--light: #0d0025;  /* banner mid sky */
+  --md-primary-fg-color--dark:  #000008;
+  --md-primary-bg-color:        #e8e6f0;  /* app text on the header */
+  --md-primary-bg-color--light: #a59cb5;  /* app muted text */
 
-  --md-accent-fg-color:         #3b82f6;  /* app accent */
-  --md-accent-fg-color--transparent: #3b82f61a;
+  --md-accent-fg-color:         #22d3ee;  /* banner cyan */
+  --md-accent-fg-color--transparent: #22d3ee1a;
 }
 
-/* Dark scheme: keep the body close to the app rather than material's default
-   slate, so scrolling from the header into the page is continuous. */
+/* Dark scheme: the page body is the app's own background, so the screenshots
+   sit on the page without a visible edge. */
 [data-md-color-scheme="slate"] {
-  --md-default-bg-color:        #0f1117;
-  --md-code-bg-color:           #1a1d26;
-  --md-typeset-a-color:         #3b82f6;
+  --md-default-bg-color:        #06060f;
+  --md-code-bg-color:           #0e0e1a;
+  --md-typeset-a-color:         #22d3ee;
 }
 
-/* Light scheme keeps a light page, but links pick up the app accent so the two
-   schemes still read as the same product. */
+/* Light scheme: #22d3ee on white is 1.7:1, unreadable. #0e7490 is the same hue
+   at 5.4:1. */
 [data-md-color-scheme="default"] {
-  --md-typeset-a-color:         #2563eb;
+  --md-typeset-a-color:         #0e7490;
+  --md-accent-fg-color:         #0e7490;  /* hovered links, same contrast */
+  --md-accent-fg-color--transparent: #0e74901a;
 }
 
-/* The header logo is a warm mark on a near-black bar; give it a touch of room
-   so it does not crowd the wordmark at small sizes. */
+/* Fixed header logo size, so it does not crowd the site name. */
 .md-header__button.md-logo img,
 .md-header__button.md-logo svg {
   height: 1.6rem;
@@ -44,13 +44,10 @@
 /* The wordmark, matching banner.svg.
  *
  * The banner draws "CashPilot" in the pink gradient #f43f5e -> #fb7185 right
- * beside the sun mark, as one lockup. The header rendered it in plain white
- * with a wide gap, so the two read as an icon and some unrelated text rather
- * than the product's mark.
- *
- * Only the FIRST topic is styled. Material puts the site name in one
- * .md-header__topic and the current page title in a second one, swapping them
- * on scroll — painting both would turn every page heading pink.
+ * beside the sun mark, as one lockup. Only the FIRST topic is styled: Material
+ * puts the site name in one .md-header__topic and the current page title in a
+ * second one, swapping them on scroll, and painting both would turn every page
+ * heading pink.
  */
 .md-header__topic:first-child .md-ellipsis {
   background: linear-gradient(90deg, #f43f5e 0%, #fb7185 100%);
@@ -61,8 +58,7 @@
   letter-spacing: -0.01em;
 }
 
-/* Close the gap so the mark and the wordmark read as one unit, the way the
-   banner sets them. */
+/* Keep the mark and the wordmark close, the way the banner sets them. */
 .md-header__button.md-logo {
   padding-right: 0.2rem;
 }
@@ -73,11 +69,11 @@
 
 /* Buttons.
  *
- * Material paints .md-button in --md-primary-fg-color, which is the header
- * colour above, #0f1117. On the dark page that is the page background, so
- * "Get Started" and "View on GitHub" rendered as text with no visible button.
- * The primary button takes the wordmark's pink gradient; the secondary one is
- * outlined in the app accent. */
+ * Material paints .md-button in --md-primary-fg-color, the header colour. On
+ * the dark page that is next to the page background, so a button would show
+ * as plain text. Outline buttons take the link colour; the primary button
+ * takes a darker cut of the wordmark's rose (white on #f43f5e is 3.7:1,
+ * #e11d48 -> #be123c keeps every point above 4.5:1). */
 .md-typeset .md-button {
   color: var(--md-typeset-a-color);
   border-color: var(--md-typeset-a-color);
@@ -94,8 +90,6 @@
 .md-typeset .md-button--primary,
 .md-typeset .md-button--primary:focus,
 .md-typeset .md-button--primary:hover {
-  /* A darker cut of the wordmark's rose: white on #f43f5e is only 3.7:1,
-     #e11d48 -> #be123c keeps every point above 4.5:1. */
   background: linear-gradient(90deg, #e11d48 0%, #be123c 100%);
   border-color: transparent;
   color: #ffffff;
@@ -106,35 +100,49 @@
   box-shadow: 0 0.2rem 0.8rem #e11d4859;
 }
 
+/* Grid cards: the border picks up the cyan on hover, matching links. */
+.md-typeset .grid.cards > ul > li,
+.md-typeset .grid > .card {
+  border-radius: 0.5rem;
+}
+
+.md-typeset .grid.cards > ul > li:focus-within,
+.md-typeset .grid.cards > ul > li:hover,
+.md-typeset .grid > .card:focus-within,
+.md-typeset .grid > .card:hover {
+  border-color: #22d3ee;
+}
+
 /* FAQ entries (??? question). Material draws them lime green, a colour that
-   appears nowhere else in the product; use the app accent instead. */
+   appears nowhere else in the product; use the cyan instead. */
 .md-typeset .admonition.question,
 .md-typeset details.question {
-  border-color: #3b82f6;
+  border-color: #22d3ee;
 }
 
 .md-typeset .admonition.question:focus-within,
 .md-typeset details.question:focus-within {
-  box-shadow: 0 0 0 0.2rem #3b82f61a;
+  box-shadow: 0 0 0 0.2rem #22d3ee1a;
 }
 
 .md-typeset .question > .admonition-title::after,
 .md-typeset .question > summary::after {
-  color: #3b82f6;
+  color: #22d3ee;
 }
 
 .md-typeset .question > .admonition-title,
 .md-typeset .question > summary {
-  background-color: #3b82f61a;
+  background-color: #22d3ee1a;
 }
 
 .md-typeset .question > .admonition-title::before,
 .md-typeset .question > summary::before {
-  background-color: #3b82f6;
+  background-color: #22d3ee;
 }
 
-/* The home page keeps an H1 for search, screen readers and the browser tab,
-   but the banner right under it already shows the name, so hide it visually. */
+/* The home page keeps an H1 for search, screen readers and the browser tab.
+   The banner under it already shows the name, so the H1 is hidden visually.
+   Use it as: # CashPilot { .cp-visually-hidden } */
 .md-typeset h1.cp-visually-hidden {
   position: absolute;
   width: 1px;
@@ -152,4 +160,44 @@
    scrolls sideways instead. */
 .md-typeset table:not([class]) code {
   white-space: nowrap;
+}
+
+/* Screenshots are dark on a dark page; a faint rim shows where they end. */
+.md-typeset img[src*="screenshots/"] {
+  border: 1px solid #ffffff14;
+  border-radius: 0.4rem;
+}
+
+/* Phone screenshots on the home page: three in a row on a wide screen, as
+   many as fit on a narrow one, each with a short caption. */
+.md-typeset .cp-phone-gallery {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+  gap: 0.8rem;
+  margin: 1em 0;
+}
+
+/* Desktop screenshots on the home page: two per row. */
+.md-typeset .cp-shot-gallery {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 0.8rem;
+  margin: 1em 0;
+}
+
+.md-typeset .cp-phone-gallery figure,
+.md-typeset .cp-shot-gallery figure {
+  margin: 0;
+}
+
+.md-typeset .cp-phone-gallery figcaption,
+.md-typeset .cp-shot-gallery figcaption {
+  margin-top: 0.3rem;
+  font-size: 0.7rem;
+}
+
+@media screen and (max-width: 44.9375em) {
+  .md-typeset .cp-shot-gallery {
+    grid-template-columns: 1fr;
+  }
 }

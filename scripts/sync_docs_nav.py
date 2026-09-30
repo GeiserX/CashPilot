@@ -156,7 +156,7 @@ def render_index(services: list[dict]) -> str:
 def render_nav(services: list[dict]) -> str:
     """The nav block, grouped by category and indented for mkdocs.yml."""
     grouped = by_category(services)
-    lines = ["  - Service Guides:", "    - Overview: guides/index.md"]
+    lines = ["  - Service guides:", "    - Overview: guides/index.md"]
     for key, title in CATEGORY_TITLES:
         items = grouped.get(key)
         if not items:
@@ -172,9 +172,9 @@ def render_nav(services: list[dict]) -> str:
 
 def splice_nav(mkdocs_text: str, nav_block: str) -> str:
     """Replace the existing Service Guides section, leaving the rest untouched."""
-    pattern = re.compile(r"^  - Service Guides:\n(?:^ {4,}.*\n?)*", re.M)
+    pattern = re.compile(r"^  - Service guides:\n(?:^ {4,}.*\n?)*", re.M)
     if not pattern.search(mkdocs_text):
-        raise SystemExit("mkdocs.yml has no '  - Service Guides:' section to replace")
+        raise SystemExit("mkdocs.yml has no '  - Service guides:' section to replace")
     return pattern.sub(nav_block + "\n", mkdocs_text, count=1)
 
 
