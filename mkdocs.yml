@@ -1,10 +1,14 @@
 site_name: CashPilot
-site_url: https://geiserx.github.io/CashPilot
+site_url: https://geiserx.github.io/CashPilot/
 site_description: Self-hosted passive income orchestrator. Deploy, manage, and monitor 39 active services (50 catalogued) from a single dashboard.
 site_author: Sergio Fernandez
 repo_url: https://github.com/GeiserX/CashPilot
 repo_name: GeiserX/CashPilot
 edit_uri: edit/main/docs/
+
+# A warning is a broken link, a missing page or a page nobody can reach. All of
+# them fail the build, locally and in CI, so nobody has to remember --strict.
+strict: true
 
 copyright: Copyright &copy; 2026 Sergio Fernandez
 
@@ -38,6 +42,29 @@ theme:
     - toc.follow
   icon:
     repo: fontawesome/brands/github
+
+# MkDocs reports most link problems as `info`, which --strict ignores. Every
+# line here promotes one of them to a warning so the build fails on it:
+#   nav.omitted_files   a Markdown file under docs/ that is in no nav entry and
+#                       not in exclude_docs (a page nobody can reach, published
+#                       at a public URL anyway);
+#   nav.not_found       a nav entry whose file does not exist;
+#   links.not_found     a relative link to a page or file that does not exist;
+#   links.anchors       a link to a heading that does not exist;
+#   links.absolute_links  a link written as /path/ (breaks under the /CashPilot/
+#                       prefix of the site);
+#   links.unrecognized_links  a relative link that leaves docs/ (../README.md).
+#                       Repo files are linked by absolute GitHub URL instead.
+validation:
+  nav:
+    omitted_files: warn
+    not_found: warn
+    absolute_links: warn
+  links:
+    not_found: warn
+    anchors: warn
+    absolute_links: warn
+    unrecognized_links: warn
 
 plugins:
   - search
@@ -113,6 +140,13 @@ extra_css:
 # the strict build fail on any page left out of nav (files listed below are
 # exempt). This list is what keeps these files off the site.
 exclude_docs: |
+  # Any name with a capital letter is a repo-facing note, never a page
+  # (ROADMAP.md, CHANGELOG.md). design/ and notes/ hold material read on
+  # GitHub. research/ is NOT excluded: its pages are listed in the nav below.
+  [A-Z]*.md
+  design/
+  notes/
+  requirements-docs.txt
   GOAL.md
   AUTOPILOT-WORKLOG.md
   DEFERRED-QUESTIONS.md
