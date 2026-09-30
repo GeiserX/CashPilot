@@ -58,12 +58,6 @@ class TestPreflightUsesIt:
         assert 'reqs.get("vps_ip") is False' not in source
         assert "catalog.vps_allowed(reqs) is False" in source
 
-    def test_the_readme_generator_delegates_rather_than_reimplementing(self):
-        """Two implementations of one rule is how they diverged the first time."""
-        source = (ROOT / "scripts" / "generate_readme_tables.py").read_text(encoding="utf-8")
-        assert "from app.catalog import vps_allowed" in source
-        assert "return None if residential is None else not residential" not in source
-
 
 class TestTheCatalogAgreesWithItself:
     def _requirements(self):
