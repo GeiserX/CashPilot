@@ -122,7 +122,7 @@ graph LR
 - It does not collect in real time. Collectors run every 60 minutes by default (`CASHPILOT_COLLECT_INTERVAL`).
 - It does not count a balance drop as a payout on its own. The dashboard asks you to confirm each one, because a drop can also be a provider correction.
 - It does not keep the containers off your LAN by itself. Docker lets them reach it; [Protecting your home network](home-network-security.md) puts them on a firewalled bridge.
-- It cannot promise earnings. One home server running 10 to 15 services makes about $30 to $100 a month; see the [FAQ](faq.md).
+- It cannot promise earnings. As a rough guide, one home server running 10 to 15 services makes about $30 to $100 a month, and it can make less, down to zero; see the [FAQ](faq.md).
 
 ## Security
 
