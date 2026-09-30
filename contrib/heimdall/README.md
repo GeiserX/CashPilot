@@ -47,7 +47,7 @@ are deleted. Steps 1–2 are a web form and cannot be scripted.
    | Description | Self-hosted passive income orchestrator. Deploy, manage and monitor bandwidth-sharing, DePIN, storage and GPU compute containers from one dashboard, with earnings tracked across 49 services. |
    | Enhanced | yes |
    | Tile background | `dark` |
-   | Icon | `docs/logo.svg` from this repository — the official mark, transparent, disc filling the frame edge to edge |
+   | Icon | `docs/images/logo.svg` from this repository — the official mark, transparent, disc filling the frame edge to edge |
 
 2. Once the request exists, use the **Enhanced** download button on their site to
    get the scaffold.

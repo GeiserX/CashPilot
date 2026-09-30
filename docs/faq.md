@@ -6,7 +6,7 @@ Bandwidth sharing services generally route legitimate traffic (market research, 
 
 **How much can I earn?**
 
-Earnings vary widely based on location, ISP, number of devices, and which services you run. The dashboard tracks your actual earnings over time so you can optimize your setup.
+Earnings vary widely based on location, ISP, number of devices, and which services you run. The dashboard tracks your actual earnings over time so you can optimize your setup. As a rough guide, one home server running 10 to 15 services makes about $30 to $100 a month; more servers, or GPU compute, add to that.
 
 **Can I run on a VPS or cloud server?**
 

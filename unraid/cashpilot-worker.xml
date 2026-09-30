@@ -28,7 +28,7 @@ The worker exposes a minimal status page on port 8081 showing connection status 
 More info: https://github.com/GeiserX/CashPilot</Overview>
   <Category>Crypto: Tools: Productivity:</Category>
   <TemplateURL>https://raw.githubusercontent.com/selfhosters/unRAID-CA-templates/master/templates/cashpilot-worker.xml</TemplateURL>
-  <Icon>https://raw.githubusercontent.com/GeiserX/CashPilot/main/docs/icon.svg</Icon>
+  <Icon>https://raw.githubusercontent.com/GeiserX/CashPilot/main/docs/images/icon.svg</Icon>
   <ExtraSearchTerms>passive income bandwidth sharing earnings money</ExtraSearchTerms>
   <Requires>CashPilot UI container (cashpilot) must be running and accessible</Requires>
   <Config Name="Worker Port" Target="8081" Default="8081" Mode="tcp" Description="Port for the worker mini-UI and API" Type="Port" Display="always" Required="true" Mask="false"/>

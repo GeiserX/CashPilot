@@ -80,16 +80,17 @@ class TestTheTopLevelIsGroupedRatherThanFlat:
         anything else."""
         names = top_level()
         assert names[0] == "Home"
-        assert names[1] == "Getting Started"
+        assert names[1] == "Get started"
 
     def test_the_service_guides_are_near_the_top(self):
         """They are the reason most visitors arrive — 50 of the site's ~62
         pages. Third, straight after Getting Started."""
-        assert top_level()[2] == "Service Guides"
+        assert top_level()[2] == "Service guides"
 
-    def test_reference_comes_last(self):
-        """Architecture and the roadmap are the least likely first stop."""
-        assert top_level()[-1] == "Reference"
+    def test_reference_and_development_come_last(self):
+        """The roadmap and the design notes are the least likely first stop, so
+        Development (which holds them) closes the nav, with Reference before it."""
+        assert top_level()[-2:] == ["Reference", "Development"]
 
     def test_no_section_holds_a_single_page(self):
         """A group of one is a rename with extra clicks, not a grouping."""

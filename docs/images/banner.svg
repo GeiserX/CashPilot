@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 200" width="900" height="200" role="img" aria-label="CashPilot">
-  <!-- 900x200 cut of docs/banner.svg: the same artwork scaled by 0.75 and centred on the sun and title. -->
+  <!-- 900x200 cut of docs/images/banner.svg: the same artwork scaled by 0.75 and centred on the sun and title. -->
   <defs>
     <linearGradient id="bg" x1="0%" y1="0%" x2="0%" y2="100%">
       <stop offset="0%" stop-color="#000010"/>
