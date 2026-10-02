@@ -57,7 +57,7 @@ call_lefthook()
   fi
 }
 
-call_lefthook run "pre-commit" "$@"
+call_lefthook run "pre-commit" "$@" || exit $?
 
 # --- BEGIN BEADS INTEGRATION v1.1.0 ---
 # This section is managed by beads. Do not remove these markers.

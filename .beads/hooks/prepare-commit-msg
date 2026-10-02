@@ -68,7 +68,7 @@ call_lefthook()
   fi
 }
 
-call_lefthook run "prepare-commit-msg" "$@"
+call_lefthook run "prepare-commit-msg" "$@" || exit $?
 
 # --- BEGIN BEADS INTEGRATION v1.1.0 ---
 # This section is managed by beads. Do not remove these markers.

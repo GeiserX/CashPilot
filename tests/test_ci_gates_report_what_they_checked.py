@@ -42,6 +42,7 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
+from urllib.parse import urlparse
 
 import pytest
 import yaml
@@ -401,4 +402,6 @@ class TestTheBacklogCannotBeCommitted:
             if line.startswith("sync.remote:")
         ]
         assert remotes, "sync.remote is not set, so the tracker remote is not pinned"
-        assert all("github.com" not in r for r in remotes), f"tracker remote is public: {remotes}"
+        assert all(urlparse(r).hostname == "gitea.geiser.cloud" for r in remotes), (
+            f"tracker remote is not the private Gitea host: {remotes}"
+        )
