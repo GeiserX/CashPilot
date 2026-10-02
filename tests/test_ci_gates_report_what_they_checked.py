@@ -34,13 +34,15 @@ what the project can conclude from a green run.
 5. ``.beads/`` was kept out of git only by ``.git/info/exclude``, which is local
    to one clone and is not itself tracked. The backlog holds real wallet
    addresses and this repository is public, so the protection had to travel with
-   the repo.
+   the repo. Since then only the tracker's scaffolding is committed; bead text
+   lives in the Dolt tracker, whose remote is a private repository.
 """
 
 from __future__ import annotations
 
 import re
 from pathlib import Path
+from urllib.parse import urlparse
 
 import pytest
 import yaml
@@ -326,52 +328,80 @@ class TestEveryLintGateReachesTheSameVerdict:
 class TestTheBacklogCannotBeCommitted:
     """It holds real wallet addresses and this repository is public."""
 
-    def test_the_committed_gitignore_excludes_it(self):
+    # The only .beads paths git may carry: the tracker's scaffolding, no data.
+    SCAFFOLDING = {".beads/.gitignore", ".beads/README.md", ".beads/config.yaml", ".beads/metadata.json"}
+    DATA_RULES = (".beads/*.jsonl", ".beads/embeddeddolt/", ".beads/dolt/", ".beads/backup/", ".beads/*.db")
+
+    def test_the_committed_gitignore_excludes_the_data(self):
         """.git/info/exclude is local to one clone and is not tracked."""
         entries = {
             line.strip() for line in (ROOT / ".gitignore").read_text(encoding="utf-8").splitlines() if line.strip()
         }
-        assert ".beads/" in entries
+        missing = [rule for rule in self.DATA_RULES if rule not in entries]
+        assert not missing, f"root .gitignore no longer ignores {missing}"
 
-    def test_git_agrees_that_it_is_ignored_by_that_file(self):
+    @pytest.mark.parametrize(
+        "path",
+        [
+            ".beads/issues.jsonl",
+            ".beads/interactions.jsonl",
+            ".beads/backup/issues.jsonl",
+            ".beads/embeddeddolt/CashPilot/.dolt/manifest",
+        ],
+    )
+    def test_git_agrees_that_the_data_is_ignored_by_a_tracked_file(self, path):
         """Proves the rule is effective, not merely present."""
         import subprocess
 
         if not (ROOT / ".git").exists():
             pytest.skip("not a git checkout (sdist/export); the .gitignore assertion above still holds")
-        # Checks a path INSIDE the directory, not the directory itself.
-        # `.beads/` is a directory-only pattern, and git can only tell that a
-        # path is a directory if it exists on disk -- so `check-ignore .beads`
-        # answers "not ignored" on any fresh checkout where the tracker has not
-        # been initialised, which is every CI run. This test passed locally and
-        # failed on CI for exactly that reason.
+        # Checks paths INSIDE the directories: a directory-only pattern can only
+        # match a path git knows is a directory, and on a fresh CI checkout the
+        # tracker has never been initialised, so the directory does not exist.
         result = subprocess.run(
-            ["git", "check-ignore", "-v", ".beads/config.yaml"],
+            ["git", "check-ignore", "-v", path],
             cwd=ROOT,
             capture_output=True,
             text=True,
             check=False,
         )
-        assert result.returncode == 0, ".beads contents are not ignored at all"
-        assert result.stdout.startswith(".gitignore:"), (
+        assert result.returncode == 0, f"{path} is not ignored at all"
+        source = result.stdout.split(":", 1)[0]
+        assert source in (".gitignore", ".beads/.gitignore"), (
             f"still relying on a non-portable exclude: {result.stdout.strip()}"
         )
 
     def test_the_reason_is_recorded_next_to_the_rule(self):
-        """Without it, a later 'fix' restores the usual commit-the-beads convention."""
+        """Without it, a later 'fix' restores the usual commit-the-export convention."""
         # Anchored on the RULE line, not the first occurrence of the string:
         # the explanation itself mentions .beads/, so `text.index` landed inside
         # the comment it was meant to be reading.
         lines = (ROOT / ".gitignore").read_text(encoding="utf-8").splitlines()
-        rule = next(i for i, line in enumerate(lines) if line.strip() == ".beads/")
+        rule = next(i for i, line in enumerate(lines) if line.strip() == self.DATA_RULES[0])
         preceding = "\n".join(lines[max(0, rule - 12) : rule])
         assert "PUBLIC" in preceding and "wallet addresses" in preceding
 
-    def test_no_beads_file_is_tracked(self):
-        """The rule only prevents new adds; this catches one already in the index."""
+    def test_only_scaffolding_is_tracked(self):
+        """The rules only prevent new adds; this catches data already in the index."""
         import subprocess
 
         tracked = subprocess.run(
             ["git", "ls-files", ".beads"], cwd=ROOT, capture_output=True, text=True, check=False
-        ).stdout.strip()
-        assert not tracked, f"wallet addresses are committed to a public repo: {tracked}"
+        ).stdout.split()
+        data = [p for p in tracked if p not in self.SCAFFOLDING and not p.startswith(".beads/hooks/")]
+        assert not data, f"wallet addresses may be committed to a public repo: {data}"
+
+    def test_the_tracker_never_syncs_to_this_public_repo(self):
+        """A Dolt push to GitHub would publish every bead as refs/dolt/data."""
+        config = ROOT / ".beads" / "config.yaml"
+        if not config.exists():
+            pytest.skip("no tracker scaffolding in this tree")
+        remotes = [
+            line.split(":", 1)[1].strip().strip('"')
+            for line in config.read_text(encoding="utf-8").splitlines()
+            if line.startswith("sync.remote:")
+        ]
+        assert remotes, "sync.remote is not set, so the tracker remote is not pinned"
+        assert all(urlparse(r).hostname == "gitea.geiser.cloud" for r in remotes), (
+            f"tracker remote is not the private Gitea host: {remotes}"
+        )

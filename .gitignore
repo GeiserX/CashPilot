@@ -18,12 +18,19 @@ htmlcov/
 
 # Agent / tooling working dirs (not part of the project)
 #
-# .beads/ is NOT optional here and must not be "helpfully" committed later. The
-# usual beads convention is to commit the export so the tracker travels with the
-# repo; this repository is the exception, because the backlog contains real
-# wallet addresses and this repo is PUBLIC. It was previously protected only by
-# .git/info/exclude, which is local to one clone and travels with nothing.
-.beads/
+# .beads/ data never enters git. This repository is PUBLIC and the backlog
+# holds real wallet addresses, so bead text lives only in the Dolt tracker,
+# whose remote is a private repository, never this one. Only the tracker's
+# scaffolding (config.yaml, README.md, hooks/, metadata.json, .gitignore) is
+# committed. These lines repeat the data rules of .beads/.gitignore so the
+# protection does not depend on that file alone.
+.beads/*.jsonl
+.beads/embeddeddolt/
+.beads/dolt/
+.beads/backup/
+.beads/*.db
+.beads/.beads-credential-key
+.beads/.local_version
 .omc/
 .claude/
 .sddw/
