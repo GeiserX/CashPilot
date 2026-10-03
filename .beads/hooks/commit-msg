@@ -1,0 +1,15 @@
+#!/usr/bin/env sh
+# Every commit in this repository has one author. Clones that point
+# core.hooksPath at .beads/hooks skip the machine-wide git hooks, so this
+# hook does the one job those had here: it removes Co-Authored-By trailer
+# lines from the commit message. A mention inside a sentence is kept.
+msg="$1"
+[ -f "$msg" ] || exit 0
+tmp="$msg.strip.$$"
+grep -v -i '^[[:space:]]*co-authored-by:' "$msg" > "$tmp" || true
+awk '{ line[NR] = $0 }
+     END { n = NR
+           while (n > 0 && line[n] ~ /^[[:space:]]*$/) n--
+           for (i = 1; i <= n; i++) print line[i] }' "$tmp" > "$msg"
+rm -f "$tmp"
+exit 0
