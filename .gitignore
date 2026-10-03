@@ -32,7 +32,8 @@ htmlcov/
 .beads/.beads-credential-key
 .beads/.local_version
 .omc/
-.claude/
+.claude/*
+!.claude/settings.json
 .sddw/
 .superset/
 .tbd/
