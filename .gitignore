@@ -36,7 +36,6 @@ htmlcov/
 !.claude/settings.json
 .sddw/
 .superset/
-.tbd/
 
 # Agent working files. These are scratch, not documentation, and they must never
 # be committed: they carried this project's internal planning verbatim, quoted
