@@ -402,6 +402,6 @@ class TestTheBacklogCannotBeCommitted:
             if line.startswith("sync.remote:")
         ]
         assert remotes, "sync.remote is not set, so the tracker remote is not pinned"
-        assert all(urlparse(r).hostname == "gitea.geiser.cloud" for r in remotes), (
-            f"tracker remote is not the private Gitea host: {remotes}"
+        assert all(urlparse(r).hostname == "beads-tracker" for r in remotes), (
+            f"tracker remote is not the private tracker alias: {remotes}"
         )
