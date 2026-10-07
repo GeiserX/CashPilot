@@ -101,7 +101,7 @@ payout:
   model: minted
   chain: base
   address_source: app
-  notes: "The app creates the node wallet on first launch and mints a free soulbound Utility NFT to it. Back up the encrypted keystore from the app: losing the device loses the node identity. Rewards are on Base Sepolia (testnet) during the beta."
+  notes: "The app creates the node wallet on first launch and mints a free soulbound Utility NFT to it. Back up the wallet from the app: losing the device loses the node identity. Rewards are on Base Sepolia (testnet) during the beta."
 
 platforms: [android, windows, macos, browser-extension]
 
