@@ -4,7 +4,7 @@
 
 Setup and configuration for every service CashPilot supports.
 
-**50 services** across 4 categories. The table is sortable — click a heading to reorder it.
+**51 services** across 4 categories. The table is sortable — click a heading to reorder it.
 
 !!! tip "Choosing what to run"
 
@@ -55,6 +55,7 @@ Setup and configuration for every service CashPilot supports.
 | [Koii Network](koii.md) | — | App only | — | broken |
 | [Network3](network3.md) | — | App only | — | broken |
 | [Nodepay](nodepay.md) | Residential IP | App only | — | active |
+| [Noderr Micronodes](noderr.md) | — | App only | — | beta |
 | [Nodle](nodle.md) | — | App only | — | active |
 | [PassiveApp](passiveapp.md) | Residential IP | App only | $5 | active |
 | [Presearch](presearch.md) | — | Docker | — | dead |

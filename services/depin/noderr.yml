@@ -1,0 +1,110 @@
+name: Noderr Micronodes
+slug: noderr
+category: depin
+status: beta
+# Listed on request of the project (issue #409). Link-only: CashPilot does not
+# deploy, run or collect anything for it. Everything below comes from
+# micronodes.noderr.xyz and docs.noderr.xyz as read on 2026-10-07.
+website: https://micronodes.noderr.xyz
+description: >
+  Noderr Micronodes is the free entry tier of the Noderr Protocol, a DeFi
+  project on Base L2. A micronode is a small agent on a spare Android phone,
+  a Windows PC, a Mac or a Chromium browser. On Android it shares the phone's
+  mobile connection: other Noderr traffic exits through the phone's carrier
+  IP, so it needs a SIM with mobile data. On a PC or in the browser it runs
+  automation tasks for the protocol with spare compute. Rewards are designed
+  to be paid in NODR, scaled by an on-chain uptime and reliability score, but
+  the network is on the Base Sepolia testnet during its beta: node rewards
+  are unfunded and none have been paid yet.
+short_description: Free micronode (Android connection sharing, Windows, Mac, browser) - testnet, rewards unfunded so far
+
+referral:
+  signup_url: "https://micronodes.noderr.xyz/"
+  # The project confirmed on 2026-10-07 that there is no referral programme
+  # and no invite parameter on the download page (issue #409).
+  program: false
+
+docker:
+  image: ""
+  platforms: []
+  env: []
+  ports: []
+  volumes: []
+  command: ""
+  network_mode: ""
+
+disclosure:
+  sells: >-
+    Depends on the device. An Android phone sells its mobile connection: other
+    Noderr traffic exits through the phone's carrier IP address and counts
+    against its data plan. A Windows PC, a Mac or a browser sells spare compute
+    for what the provider calls social media and content automation tasks.
+  third_party_traffic: >-
+    Yes. On Android, other Noderr traffic exits through your phone's mobile IP
+    address; the app asks for a recorded consent before it starts and you can
+    stop sharing from the same screen. For the Windows, Mac and browser
+    clients the provider describes automation tasks and does not say whether
+    those carry traffic for other people.
+  data_collected: >-
+    The node's wallet address and its uptime and task-completion figures go
+    on-chain as a reputation score (the TrustFingerprint). The provider says
+    tasks are anonymised, run in a sandbox and that wallet keys never leave
+    the device. Nothing more specific is published.
+  isp_risk: >-
+    On Android the shared connection is a carrier mobile plan: the provider's
+    own docs warn that sharing may not be allowed under some carriers'
+    acceptable-use policies, and shared traffic uses the plan's allowance. For
+    the desktop and browser clients the provider says nothing about ISP terms.
+  account_rules: >-
+    One node per device, each with its own soulbound Utility NFT; running
+    several devices is allowed and encouraged. No per-IP limit is published.
+    There is no account in the usual sense: the identity is a wallet the app
+    generates on first launch.
+
+requirements:
+  # Android: a SIM with mobile data is required (Wi-Fi alone shares nothing).
+  # Desktop and browser: the provider publishes no IP requirement, so neither
+  # residential_ip nor vps_ip is asserted here.
+  devices_per_account: 0
+  min_bandwidth: ""
+  gpu: false
+  min_storage: ""
+  note: "Android needs a SIM with mobile data; the desktop and browser clients publish no IP requirement."
+
+payment:
+  methods: [crypto]
+  crypto_token: NODR
+  minimum_payout: ""
+  currency: NODR
+  frequency: "On request"
+
+earnings:
+  # Not an estimate: the provider's own docs state that node rewards are
+  # unfunded on testnet and none have been paid (2026-10-07). The 5-10% APY
+  # the site mentions is a design target, not observed earnings.
+  monthly_low: 0
+  monthly_high: 0
+  currency: USD
+  per: "device"
+  notes: "Testnet beta: node rewards are unfunded and none have been paid yet. The 5-10% APY on the site is a design target. Revisit when the network leaves Base Sepolia."
+
+cashout:
+  method: manual
+  dashboard_url: "https://dapp.noderr.xyz/nodes"
+  # Undocumented: the provider publishes no minimum. NOT 0, which would mean
+  # "no minimum, cash out anything".
+  min_amount: null
+  currency: NODR
+  notes: "Rewards accrue to the node's own wallet and are claimed from the app or the dApp. During the beta they are Base Sepolia testnet tokens with no market value."
+
+payout:
+  model: minted
+  chain: base
+  address_source: app
+  notes: "The app creates the node wallet on first launch and mints a free soulbound Utility NFT to it. Back up the encrypted keystore from the app: losing the device loses the node identity. Rewards are on Base Sepolia (testnet) during the beta."
+
+platforms: [android, windows, macos, browser-extension]
+
+collector:
+  type: manual
+  notes: "No public API found. The dashboard at dapp.noderr.xyz/nodes sits behind a wallet signature. Nothing to collect while rewards are unfunded on testnet."
