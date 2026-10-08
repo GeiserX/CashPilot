@@ -153,6 +153,7 @@ Two separate Docker images:
 | `CASHPILOT_EGRESS_IP` | No | -- | State the public IP directly (validated; a LAN/tailnet address is rejected) |
 | `CASHPILOT_EGRESS_IP_URL` | No | -- | Custom IP-echo endpoint returning a bare IP |
 | `CASHPILOT_CONTAINER_NETWORK` | No | -- | A bridge you created; bridge-networked containers join it instead of Docker's default, so host firewall rules can confine them (docs/home-network-security.md). Missing = deploy refused |
+| `CASHPILOT_CONTAINER_DNS` | No | `1.1.1.1,9.9.9.9` | Resolvers for containers on that bridge only, so their lookups skip a LAN/tailnet resolver the firewall rejects. Empty = the daemon's list |
 
 ### Egress IP awareness (CashPilot-5qc)
 
