@@ -8,6 +8,7 @@ inspection for cashpilot-managed containers via the Docker SDK.
 from __future__ import annotations
 
 import contextlib
+import ipaddress
 import logging
 import os
 import time
@@ -287,6 +288,36 @@ def container_network(network_mode: str | None) -> str | None:
     return _CONTAINER_NETWORK
 
 
+#: Resolvers for containers on CASHPILOT_CONTAINER_NETWORK. Docker's embedded
+#: resolver forwards their lookups from inside that network, so a daemon whose
+#: list starts with a LAN or tailnet resolver gets refused by the very rules
+#: that isolate the bridge, and every lookup waits about 4 s before Docker
+#: falls through to the next server. Empty keeps the daemon's own list.
+_CONTAINER_DNS = os.getenv("CASHPILOT_CONTAINER_DNS", "1.1.1.1,9.9.9.9")
+
+
+def container_dns(network: str | None) -> list[str] | None:
+    """The resolvers a new container gets, or None for the daemon's own.
+
+    Only a container joined to the operator's isolated bridge gets them; every
+    other container, and the host, keep Docker's default. A setting that is not
+    a list of IP addresses is refused here, before the running container is
+    touched, for the same reason as container_network.
+    """
+    if not network:
+        return None
+    servers = [entry.strip() for entry in _CONTAINER_DNS.split(",") if entry.strip()]
+    for server in servers:
+        try:
+            ipaddress.ip_address(server)
+        except ValueError:
+            raise ContainerNetworkError(
+                f"CASHPILOT_CONTAINER_DNS has {server!r}; it takes IP addresses separated by commas, "
+                f"for example 1.1.1.1,9.9.9.9, or nothing to keep the Docker daemon's resolvers."
+            ) from None
+    return servers or None
+
+
 #: The runtime for containers on bridge networking when the deploy request
 #: names none, e.g. a gVisor runtime registered in daemon.json. Empty means
 #: Docker's default, as before. CashPilot never picks one for the operator.
@@ -395,8 +426,10 @@ def deploy_raw(
 
     # Decided before the old container is touched: a network or runtime that
     # cannot be used must fail the deploy while the running service is still running.
+    # The resolvers are checked here for the same reason.
     network = container_network(network_mode)
     runtime = container_runtime(slug, network_mode, runtime)
+    dns = container_dns(network)
 
     # Remove any existing container with the same name
     try:
@@ -468,6 +501,8 @@ def deploy_raw(
         # onto the operator's bridge is joined to it and nothing else.
         network_mode=None if network else network_mode,
         network=network,
+        # Only set on the isolated bridge; see container_dns.
+        dns=dns,
         # These images are third-party and closed-source, so they get the minimum
         # kernel surface: every capability dropped, then only the ones the service's
         # own catalog entry declares added back (docs/fleet.md lists them; most

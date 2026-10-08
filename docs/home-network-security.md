@@ -153,24 +153,38 @@ We ran this script twice on a Docker host and checked the result:
 
 Docker answers a container's lookups and forwards them to the DNS servers it was
 given, **from inside the container's network**. On most home networks that
-server is the router, which the rules above block, so every lookup fails and the
-services stop earning. Pick one fix:
+server is the router, which the rules above block. With a VPN such as Tailscale
+on the host, it is often `100.100.100.100`, which the `100.64.0.0/10` rule
+blocks. Every lookup then fails, or waits about four seconds for Docker to fall
+through to the next server on its list.
 
-- **Give Docker public resolvers.** In `/etc/docker/daemon.json`, set
-  `"dns": ["1.1.1.1", "9.9.9.9"]` and restart Docker (this restarts every
-  container). If you keep a local resolver first in that list, lookups still
-  work, a little slower, because Docker falls through to the next server.
-- **Or let the containers reach the router's DNS port and nothing else on it,**
-  by adding this to the script, with your router's address:
+The worker handles this for you. A container it puts on
+`CASHPILOT_CONTAINER_NETWORK` gets its own DNS servers, `1.1.1.1` and `9.9.9.9`
+by default, which the rules allow. Containers on other networks, and the host
+itself, keep the Docker daemon's list. To pick other servers, give the worker
+their addresses:
 
-  ```sh
-  ROUTER=192.168.1.1
-  add DOCKER-USER -i "$BR" -d "$ROUTER" -p udp --dport 53 -j RETURN
-  add DOCKER-USER -i "$BR" -d "$ROUTER" -p tcp --dport 53 -j RETURN
-  ```
+```yaml
+CASHPILOT_CONTAINER_DNS: 9.9.9.9,149.112.112.112
+```
 
-We tested both: with the exception, lookups through the router work and the
-router's web interface stays blocked.
+Set it empty to give the isolated containers the daemon's list instead. A value
+that is not a list of IP addresses is refused before the running container is
+touched. The setting applies when a container is next deployed: a container
+keeps the DNS servers it was created with until then.
+
+To use your router's DNS instead, set `CASHPILOT_CONTAINER_DNS` to the router's
+address and let the containers reach its DNS port and nothing else on it, by
+adding this to the script:
+
+```sh
+ROUTER=192.168.1.1
+add DOCKER-USER -i "$BR" -d "$ROUTER" -p udp --dport 53 -j RETURN
+add DOCKER-USER -i "$BR" -d "$ROUTER" -p tcp --dport 53 -j RETURN
+```
+
+We tested the exception: lookups through the router work and the router's web
+interface stays blocked.
 
 If you enabled IPv6 on the bridge and your router also answers DNS on an IPv6
 address, add the same exception to the [IPv6 script](#the-rules) below, with
