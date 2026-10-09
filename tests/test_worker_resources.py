@@ -205,6 +205,27 @@ class TestDeployRawResources:
         assert kwargs["ports"] is None
         assert kwargs["network_mode"] == "host"
 
+    def test_a_loopback_port_reaches_docker_as_an_address_binding(self):
+        """The UI sends [address, port] over JSON; Docker needs a tuple.
+
+        docker-py reads a LIST as several bindings, so ["127.0.0.1", 9980]
+        would publish host ports "127.0.0.1" and "9980" on every interface,
+        which is exactly what the loopback bind exists to prevent.
+        """
+        from docker.utils import convert_port_bindings
+
+        spec = DeploySpec.model_validate_json(
+            '{"image": "img", "ports": {"9980/tcp": ["127.0.0.1", 9980], "9981/tcp": 9981}}'
+        )
+        client = self._mock_client()
+        with patch.object(orchestrator, "_get_client", return_value=client):
+            orchestrator.deploy_raw(slug="sia-hostd", image="img", ports=spec.ports)
+        sent = client.containers.run.call_args.kwargs["ports"]
+        assert convert_port_bindings(sent) == {
+            "9980/tcp": [{"HostIp": "127.0.0.1", "HostPort": "9980"}],
+            "9981/tcp": [{"HostIp": "", "HostPort": "9981"}],
+        }
+
 
 class TestDeployRawHardening:
     """Third-party images must get the minimum kernel surface (CashPilot-a5p)."""

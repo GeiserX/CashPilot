@@ -941,7 +941,9 @@ class ResourceSpec(BaseModel):
 class DeploySpec(BaseModel):
     image: str
     env: dict[str, str] = {}
-    ports: dict[str, int] = {}
+    # A host port, or (host address, host port) for a bind to one interface.
+    # Docker reads a list as several bindings, so the pair must be a tuple.
+    ports: dict[str, int | tuple[str, int]] = {}
     volumes: dict[str, dict[str, str]] = {}
     # Mount targets the operator relocated on purpose this deploy. Every other
     # mount of a container being replaced is kept where it is.

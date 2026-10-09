@@ -393,7 +393,7 @@ def deploy_raw(
     slug: str,
     image: str,
     env: dict[str, str] | None = None,
-    ports: dict[str, int] | None = None,
+    ports: dict[str, int | tuple[str, int]] | None = None,
     volumes: dict[str, dict[str, str]] | None = None,
     network_mode: str | None = None,
     cap_add: list[str] | None = None,

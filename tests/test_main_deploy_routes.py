@@ -185,6 +185,46 @@ class TestApiDeploy:
             assert isinstance(kept, list) and kept
             assert any("command" in line for line in kept)
 
+    def test_a_port_with_a_host_address_keeps_the_address(self, client):
+        """'127.0.0.1:9980:9980' used to crash the deploy on int('127.0.0.1').
+
+        A wallet dashboard (Sia hostd) must bind to loopback only, so the
+        address has to reach the worker rather than be dropped or misread.
+        """
+        svc = {
+            "slug": "sia-hostd",
+            "name": "Sia (hostd)",
+            "docker": {
+                "image": "ghcr.io/siafoundation/hostd",
+                "env": [],
+                "ports": ["127.0.0.1:9980:9980", "9981:9981", "9984:9984/udp"],
+            },
+        }
+        worker = _online_worker()
+        sent = {}
+
+        async def _fake_deploy(worker_id, slug, spec):
+            sent.update(spec)
+            return {"container_id": "abc123"}
+
+        with (
+            _auth_owner(),
+            patch("app.main.database.list_workers", new_callable=AsyncMock, return_value=[worker]),
+            patch("app.main.catalog.get_service", return_value=svc),
+            patch("app.main.database.get_worker", new_callable=AsyncMock, return_value=worker),
+            patch("app.main._proxy_worker_deploy", side_effect=_fake_deploy),
+            patch("app.main.database.save_deployment", new_callable=AsyncMock),
+            patch("app.main.database.record_health_event", new_callable=AsyncMock),
+            patch("app.main._run_collection", new_callable=AsyncMock),
+        ):
+            resp = client.post("/api/deploy/sia-hostd", json={"env": {}})
+        assert resp.status_code == 200, resp.text
+        assert sent["ports"] == {
+            "9980/tcp": ["127.0.0.1", 9980],
+            "9981/tcp": 9981,
+            "9984/udp": 9984,
+        }
+
     def test_plain_deploy_response_has_no_kept_key(self, client):
         # Negative control: without a recorded spec there is no divergence and
         # the key must be absent — the toast only fires when there is news.

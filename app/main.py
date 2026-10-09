@@ -1975,18 +1975,23 @@ async def api_deploy(
     if invalid:
         raise HTTPException(status_code=400, detail=f"Invalid value for: {', '.join(invalid)}")
 
-    # Ports — key is "container_port/protocol" per Docker SDK
-    ports: dict[str, int] = {}
+    # Ports — key is "container_port/protocol" per Docker SDK. A mapping with a
+    # host address ("127.0.0.1:9980:9980") becomes [address, port]: a web UI
+    # that controls a wallet must not be published on every interface. The
+    # worker turns the pair into the (address, port) tuple Docker expects.
+    ports: dict[str, int | list[str | int]] = {}
     for mapping in docker_conf.get("ports", []):
         raw = str(mapping)
         if ":" not in raw:
             continue
         parts = raw.split(":")
-        host_port = int(parts[0])
-        container_part = parts[1]  # e.g. "28967/tcp" or "28967"
+        container_part = parts[-1]  # e.g. "28967/tcp" or "28967"
         if "/" not in container_part:
             container_part += "/tcp"
-        ports[container_part] = host_port
+        if len(parts) == 3:
+            ports[container_part] = [parts[0], int(parts[1])]
+        else:
+            ports[container_part] = int(parts[0])
 
     # Volumes: resolve ${VAR} in host paths using env
     volumes: dict[str, dict[str, str]] = {}
