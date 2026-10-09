@@ -4,7 +4,7 @@
 
 Setup and configuration for every service CashPilot supports.
 
-**51 services** across 4 categories. The table is sortable — click a heading to reorder it.
+**52 services** across 4 categories. The table is sortable — click a heading to reorder it.
 
 !!! tip "Choosing what to run"
 
@@ -81,6 +81,7 @@ Setup and configuration for every service CashPilot supports.
 
 | Service | Needs | Runs as | Minimum payout | Status |
 |---|---|---|---|---|
+| [Sia (hostd)](sia-hostd.md) | Storage 256GB | Docker | $0 | active |
 | [Storj](storj.md) | Storage 550GB, 5 Mbps upload | Docker | 4x the Ethereum transaction fee, smaller balances roll over | active |
 
 ## Not a service guide

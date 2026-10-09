@@ -1,0 +1,157 @@
+name: Sia (hostd)
+slug: sia-hostd
+category: storage
+status: active
+website: https://sia.tech
+description: >
+  Sia is a decentralized storage marketplace run by the Sia Foundation (a Swiss
+  non-profit) that has operated since 2015. Run the Foundation's official hostd
+  node to rent out spare disk space and earn Siacoin from storage and bandwidth
+  contracts. You must buy some Siacoin before the node can earn: hosts lock
+  collateral against every contract and pay a fee for each storage proof. The
+  collateral comes back when a contract completes and is burned if the node
+  goes offline or loses data, so it needs an always-on machine (Sia says 95%
+  uptime at least). Earnings depend on how much data renters actually store;
+  Sia recommends pricing storage at $1 per TB per month, so it suits machines
+  with large spare disks rather than small VPS slices.
+short_description: Sia Foundation storage node - official Docker image, earn Siacoin
+
+referral:
+  signup_url: "https://docs.sia.tech/provide-storage/setting-up-hostd/docker"
+  # Permissionless: no account to sign up for, and the Sia Foundation runs no
+  # referral programme for hosts (checked on sia.tech and docs.sia.tech).
+  program: false
+
+docker:
+  image: ghcr.io/siafoundation/hostd
+  platforms: [linux/amd64, linux/arm64]
+  resources:
+    # Measured on hostd 2.11.0: 1.9 GiB within four minutes of the initial
+    # sync, so a 2g limit would OOM-kill it mid-sync.
+    mem_limit: "4g"
+    # A storage node the network dials back into; keep it weighted above the
+    # default so a contended host does not make it answer slowly (see the
+    # cpu_shares note in _schema.yml).
+    cpu_shares: 4096
+  env:
+    - key: HOSTD_WALLET_SEED
+      label: "Wallet seed phrase"
+      required: true
+      secret: true
+      description: "BIP-39 seed phrase that controls the host's Siacoin wallet. Generate one with `docker run --rm ghcr.io/siafoundation/hostd seed` and back it up -- it is the ONLY way to reach the earnings"
+    - key: HOSTD_API_PASSWORD
+      label: "Dashboard password"
+      required: true
+      secret: true
+      description: "Password for the hostd web UI and local API (BasicAuth). Any long passphrase"
+    - key: SIA_STORAGE_DIR
+      label: "Storage directory"
+      required: true
+      secret: false
+      description: "Host path on your largest disk where renter data is stored (e.g. /srv/sia). Needs at least 256GB free"
+  ports:
+    # Dashboard/API. Its API can spend the wallet, so it binds to loopback as
+    # Sia's own Docker guide does; reach it with an SSH tunnel (see the guide).
+    - "127.0.0.1:9980:9980"
+    # Sia consensus: peer-to-peer sync with the rest of the network.
+    - "9981:9981"
+    # RHP4, the renter-host protocol: SiaMux on TCP, QUIC on UDP.
+    - "9984:9984/tcp"
+    - "9984:9984/udp"
+  volumes:
+    # Consensus + host databases (named volume; recreated nodes re-sync).
+    - "sia-hostd-data:/data"
+    # Where renter data is actually stored. Point it at the largest disk.
+    - "${SIA_STORAGE_DIR}:/storage"
+  critical_volumes:
+    - target: "/data"
+      holds: >-
+        Wallet database, host settings and contract state. Losing it loses the
+        node's identity and contract revenue tracking; the seed phrase remains
+        the only recovery path for funds.
+    - target: "/storage"
+      holds: >-
+        Stored renter data. Losing it fails storage proofs and forfeits the
+        collateral locked against those contracts.
+  command: ""
+  network_mode: ""
+  setup: >
+    Before first run, generate a seed with
+    `docker run --rm ghcr.io/siafoundation/hostd seed` and back it up. After
+    the deploy, send some Siacoin to the node's wallet for collateral and
+    fees, then add the storage folder (/storage), set prices and announce the
+    host in the dashboard.
+
+requirements:
+  residential_ip: false
+  vps_ip: true
+  min_storage: "256GB"
+  gpu: false
+  note: "A stable public address with ports 9981 (TCP, consensus) and 9984 (TCP and UDP, renter contracts) forwarded. Datacenter/VPS hosting is common on Sia. The wallet needs Siacoin before the node can take contracts."
+
+payment:
+  methods: [crypto]
+  crypto_token: "SC"
+  minimum_payout: "$0"
+  currency: USD
+  frequency: "On request"
+
+earnings:
+  monthly_low: 0
+  monthly_high: 2
+  currency: USD
+  per: "TB"
+  notes: >
+    Hosts set their own prices. Sia recommends $1 per TB stored per month and
+    over $5 per TB downloaded, and 3.9% of every contract payout goes to
+    Siafund holders. Income scales with how much renter data lands on the
+    node, which starts at zero and grows with uptime and price. Collateral
+    (Sia suggests 2x the storage price) is locked per contract and returned on
+    successful completion.
+
+cashout:
+  method: manual
+  dashboard_url: "http://localhost:9980"
+  min_amount: 0
+  currency: USD
+  notes: >
+    Earnings accrue in the host's own Siacoin wallet (seed-controlled). Convert
+    SC on an exchange and withdraw to bank/card from there; there is no
+    provider-side payout request.
+
+platforms: [docker, linux, windows, macos]
+
+collector:
+  type: manual
+  notes: >
+    hostd exposes a local REST API on port 9980 (BasicAuth with the API
+    password): GET /api/wallet returns the wallet balance, GET /api/metrics and
+    GET /api/settings return host revenue and configuration. A future collector can
+    read those endpoints the same way the Storj collector reads the local
+    storagenode API -- but adding it requires an app-side change
+    (app/collectors), so it is proposed upstream rather than shipped here.
+
+payout:
+  model: external
+  chain: sia
+  address_source: app
+  notes: >
+    Funds live in the seed-controlled Sia wallet inside the node. CashPilot
+    never holds the key; the seed phrase is the only recovery path and must be
+    backed up before first deploy.
+
+disclosure:
+  sells: >-
+    Disk space and the bandwidth to serve it.
+  third_party_traffic: >-
+    No. Renters store encrypted file fragments on your disk and fetch them
+    back. Other people do not route arbitrary traffic through your IP.
+  data_collected: >-
+    Your Sia wallet address, host public key, and the public IP:port the node
+    announces so renters can reach it.
+  isp_risk: >-
+    Sustained upload/download traffic on the line, similar to running any
+    storage server; no anonymised third-party web traffic is attributed to you.
+  account_rules: >-
+    Permissionless: no signup or account. Collateral is burned if the node
+    misses storage proofs, by going offline or losing data.

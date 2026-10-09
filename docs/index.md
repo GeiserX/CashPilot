@@ -32,7 +32,7 @@ hide:
 
     ---
 
-    51 services: what each one needs, whether it runs in Docker, the payout minimum, and a setup guide.
+    52 services: what each one needs, whether it runs in Docker, the payout minimum, and a setup guide.
 
 -   :material-server-network: **[Fleet management](fleet.md)**
 
@@ -76,7 +76,7 @@ The dashboard is what you look at every day: the balances, a 7-day or 30-day ear
 </figure>
 <figure markdown>
 ![The service catalog: cards for every service with its category, whether it needs a residential IP, and a Deploy or Visit button](images/screenshots/catalog.png)
-<figcaption>The catalog: 51 services, filterable by category</figcaption>
+<figcaption>The catalog: 52 services, filterable by category</figcaption>
 </figure>
 <figure markdown>
 ![Step 2 of the setup wizard with the bandwidth category chosen and two services ticked](images/screenshots/setup-wizard.png)
@@ -90,10 +90,10 @@ The dashboard is what you look at every day: the balances, a 7-day or 30-day ear
 
 ## What it runs
 
-- **16 services run in Docker**, started by the worker from the catalog: no compose file to write. Bandwidth sharing (Honeygain, EarnApp, IPRoyal Pawns, PacketStream, Repocket, Traffmonetizer, ProxyRack, and more), MystNodes, Anyone Protocol and Storj.
+- **17 services run in Docker**, started by the worker from the catalog: no compose file to write. Bandwidth sharing (Honeygain, EarnApp, IPRoyal Pawns, PacketStream, Repocket, Traffmonetizer, ProxyRack, and more), MystNodes, Anyone Protocol, Storj and Sia (hostd).
 - **18 services run as a browser extension or a desktop app** (Grass, Nodepay, Dawn, Helium, and more). CashPilot lists them with signup links and reads their balances where a collector exists.
 - **6 GPU compute services** (Salad, Vast.ai, io.net, Nosana, Golem, Flux) need an NVIDIA card and run on their own software; CashPilot tracks them the same way.
-- 39 active services in total, 50 catalogued; the 11 that died or broke are kept on [Discontinued services](discontinued-services.md) so nobody re-adds them.
+- 40 active services in total, 52 catalogued; the 11 that died or broke are kept on [Discontinued services](discontinued-services.md) so nobody re-adds them.
 
 The [Service guides](guides/index.md) table shows, for every service, what it needs (residential IP, GPU, disk), how it runs, the minimum payout and its status. Services marked residential-only do not pay a datacenter IP; the rest run on a VPS.
 
