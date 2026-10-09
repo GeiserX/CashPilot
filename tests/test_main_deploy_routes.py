@@ -225,6 +225,26 @@ class TestApiDeploy:
             "9984/udp": 9984,
         }
 
+    def test_a_malformed_port_is_a_400_not_a_500(self, client):
+        """The loader rejects these, but a 500 is the wrong answer if one slips by."""
+        svc = {
+            "slug": "x",
+            "name": "X",
+            "docker": {"image": "x/x", "env": [], "ports": [":9980"]},
+        }
+        worker = _online_worker()
+        with (
+            _auth_owner(),
+            patch("app.main.database.list_workers", new_callable=AsyncMock, return_value=[worker]),
+            patch("app.main.catalog.get_service", return_value=svc),
+            patch("app.main.database.get_worker", new_callable=AsyncMock, return_value=worker),
+            patch("app.main._proxy_worker_deploy") as deploy,
+        ):
+            resp = client.post("/api/deploy/x", json={"env": {}})
+        assert resp.status_code == 400, resp.text
+        assert "':9980'" in resp.json()["detail"]
+        deploy.assert_not_called()
+
     def test_plain_deploy_response_has_no_kept_key(self, client):
         # Negative control: without a recorded spec there is no divergence and
         # the key must be absent — the toast only fires when there is news.

@@ -28,9 +28,10 @@ isolated, names every exception and why, and leaves the act to the operator.
 
 from __future__ import annotations
 
+import ipaddress
 from typing import Any
 
-from app import disclosure
+from app import catalog, disclosure
 
 # Verdicts for whether a service can be confined to an isolated bridge.
 ISOLATABLE = "isolatable"
@@ -66,8 +67,17 @@ def published_ports(service: dict[str, Any] | None) -> list[str]:
     A port bound to loopback ("127.0.0.1:9980:9980") is reachable only from the
     host itself, so it needs no inbound exception.
     """
-    ports = _docker(service).get("ports") or []
-    return [str(p) for p in ports if str(p).strip() and not str(p).startswith("127.0.0.1:")]
+    found = []
+    for mapping in _docker(service).get("ports") or []:
+        try:
+            _key, binding = catalog.parse_port(mapping)
+        except ValueError:
+            # Not a mapping Docker can publish; the loader rejects the entry.
+            continue
+        if isinstance(binding, list) and ipaddress.ip_address(binding[0]).is_loopback:
+            continue
+        found.append(str(mapping))
+    return found
 
 
 def exceptions_for(service: dict[str, Any] | None) -> list[dict[str, str]]:

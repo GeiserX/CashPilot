@@ -7,6 +7,7 @@ Reload on SIGHUP.
 
 from __future__ import annotations
 
+import ipaddress
 import logging
 import re
 import signal
@@ -36,6 +37,36 @@ _CATEGORIES = {"bandwidth", "depin", "storage", "compute"}
 #: set could never be chosen, so it is a mistake and the entry is rejected.
 IMAGE_ARCH_FAMILIES = arch.FAMILIES
 _VALID_STATUSES = {"active", "beta", "broken", "dead", "dropped"}
+
+_PORT_RE = re.compile(r"(?:(?P<address>[^:]+):)?(?P<host>\d+):(?P<container>\d+)(?:/(?P<protocol>tcp|udp))?")
+
+
+def parse_port(mapping: object) -> tuple[str, int | list[str | int]]:
+    """One catalog port mapping as the Docker SDK's key and host binding.
+
+    ``"9981:9981"`` gives ``("9981/tcp", 9981)``; ``"127.0.0.1:9980:9980"``
+    gives ``("9980/tcp", ["127.0.0.1", 9980])``, a list because the binding
+    travels to the worker as JSON. Raises ValueError saying what is wrong, so
+    the loader can reject the entry and name the mistake.
+    """
+    raw = str(mapping).strip()
+    match = _PORT_RE.fullmatch(raw)
+    if not match:
+        raise ValueError(
+            f"port {raw!r} must be 'HOST:CONTAINER', 'ADDRESS:HOST:CONTAINER', optionally ending in /tcp or /udp"
+        )
+    host, container = int(match["host"]), int(match["container"])
+    if not (1 <= host <= 65535 and 1 <= container <= 65535):
+        raise ValueError(f"port {raw!r} is outside 1-65535")
+    key = f"{container}/{match['protocol'] or 'tcp'}"
+    address = match["address"]
+    if address is None:
+        return key, host
+    try:
+        ipaddress.IPv4Address(address)
+    except ValueError:
+        raise ValueError(f"port {raw!r} must bind to an IPv4 address, not {address!r}") from None
+    return key, [address, host]
 
 
 def _validate(data: dict[str, Any], path: Path) -> list[str]:
@@ -94,6 +125,17 @@ def _validate(data: dict[str, Any], path: Path) -> list[str]:
                         re.compile(pattern)
                     except (re.error, TypeError):
                         errors.append(f"{path.name}: docker.env[{i}].pattern must be a valid regular expression")
+        ports = docker.get("ports")
+        if ports is not None and not isinstance(ports, list):
+            errors.append(f"{path.name}: docker.ports must be a list")
+        elif isinstance(ports, list):
+            # A bad mapping used to load fine and then 500 the deploy, on
+            # int("127.0.0.1") or an empty host port.
+            for i, mapping in enumerate(ports):
+                try:
+                    parse_port(mapping)
+                except ValueError as exc:
+                    errors.append(f"{path.name}: docker.ports[{i}]: {exc}")
 
     reqs = data.get("requirements")
     if isinstance(reqs, dict):

@@ -1981,17 +1981,12 @@ async def api_deploy(
     # worker turns the pair into the (address, port) tuple Docker expects.
     ports: dict[str, int | list[str | int]] = {}
     for mapping in docker_conf.get("ports", []):
-        raw = str(mapping)
-        if ":" not in raw:
-            continue
-        parts = raw.split(":")
-        container_part = parts[-1]  # e.g. "28967/tcp" or "28967"
-        if "/" not in container_part:
-            container_part += "/tcp"
-        if len(parts) == 3:
-            ports[container_part] = [parts[0], int(parts[1])]
-        else:
-            ports[container_part] = int(parts[0])
+        try:
+            key, binding = catalog.parse_port(mapping)
+        except ValueError as exc:
+            # The loader rejects these, so only a hand-edited cache gets here.
+            raise HTTPException(status_code=400, detail=f"Invalid catalog port for {slug}: {exc}") from exc
+        ports[key] = binding
 
     # Volumes: resolve ${VAR} in host paths using env
     volumes: dict[str, dict[str, str]] = {}

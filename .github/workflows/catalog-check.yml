@@ -41,13 +41,17 @@ jobs:
       - name: Every service entry loads under the strict validator
         run: |
           python - <<'PY'
+          import pathlib
           import sys
           from app import catalog
 
-          services = catalog.get_services()
-          if not services:
-              sys.exit("The catalog loaded ZERO services — an invalid entry is silently dropped at load.")
-          print(f"{len(services)} service(s) loaded and valid.")
+          # An invalid entry is dropped at load with only a log line, so count
+          # against the files on disk: one bad entry must fail, not just all.
+          on_disk = {p.stem for p in pathlib.Path("services").rglob("*.yml") if not p.name.startswith("_")}
+          loaded = {s["slug"] for s in catalog.get_services()}
+          if on_disk - loaded:
+              sys.exit(f"Rejected by the catalog validator (see the warnings above): {sorted(on_disk - loaded)}")
+          print(f"{len(loaded)} service(s) loaded and valid.")
           PY
 
       - name: README service tables match the catalog

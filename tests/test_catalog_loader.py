@@ -1,10 +1,12 @@
 """Tests for the catalog module's load/get logic."""
 
 import os
+from pathlib import Path
 from unittest.mock import patch
 
 os.environ.setdefault("CASHPILOT_API_KEY", "test-fleet-key")
 
+import pytest  # noqa: E402
 import yaml
 
 from app import catalog
@@ -196,5 +198,37 @@ class TestValidate:
         assert catalog._validate({**self._base(), "docker": {"image": ""}}, tmp_path / "t.yml") == []
 
     def test_all_shipped_services_pass_validation(self):
-        # Guard: no real catalog entry is dropped by the loader's validation.
-        assert len(catalog.load_services()) >= 40
+        # The loader drops an invalid entry and only logs it, so the UI simply
+        # loses that service. Every file on disk must come back as a service;
+        # "at least 40" let one entry vanish without failing anything.
+        services_dir = Path(catalog.__file__).resolve().parents[1] / "services"
+        on_disk = {p.stem for p in services_dir.rglob("*.yml") if not p.name.startswith("_")}
+        loaded = {s["slug"] for s in catalog.load_services()}
+        assert on_disk - loaded == set()
+
+    def test_validate_rejects_a_malformed_port(self, tmp_path):
+        p = tmp_path / "t.yml"
+        for bad in ["", "9980", ":9980", "x:9980", "localhost:9980:9980", "70000:80", "9980:9980/sctp"]:
+            errors = catalog._validate({**self._base(), "docker": {"image": "i", "ports": [bad]}}, p)
+            assert errors and "docker.ports[0]" in errors[0], bad
+        assert catalog._validate({**self._base(), "docker": {"image": "i", "ports": "9980:9980"}}, p)
+
+
+class TestParsePort:
+    @pytest.mark.parametrize(
+        ("mapping", "expected"),
+        [
+            ("9981:9981", ("9981/tcp", 9981)),
+            ("28967:28967/udp", ("28967/udp", 28967)),
+            ("8080:80/tcp", ("80/tcp", 8080)),
+            ("127.0.0.1:9980:9980", ("9980/tcp", ["127.0.0.1", 9980])),
+            ("127.0.0.1:19980:9980/tcp", ("9980/tcp", ["127.0.0.1", 19980])),
+        ],
+    )
+    def test_reads_every_form_docker_publishes(self, mapping, expected):
+        assert catalog.parse_port(mapping) == expected
+
+    @pytest.mark.parametrize("bad", ["", "9980", "[::1]:9980:9980", "0:80", "a.b.c.d:1:1"])
+    def test_rejects_with_the_mapping_named(self, bad):
+        with pytest.raises(ValueError, match="port"):
+            catalog.parse_port(bad)
