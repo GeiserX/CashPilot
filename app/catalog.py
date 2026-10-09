@@ -7,6 +7,7 @@ Reload on SIGHUP.
 
 from __future__ import annotations
 
+import ipaddress
 import logging
 import re
 import signal
@@ -36,6 +37,36 @@ _CATEGORIES = {"bandwidth", "depin", "storage", "compute"}
 #: set could never be chosen, so it is a mistake and the entry is rejected.
 IMAGE_ARCH_FAMILIES = arch.FAMILIES
 _VALID_STATUSES = {"active", "beta", "broken", "dead", "dropped"}
+
+_PORT_RE = re.compile(r"(?:(?P<address>[^:]+):)?(?P<host>\d+):(?P<container>\d+)(?:/(?P<protocol>tcp|udp))?")
+
+
+def parse_port(mapping: object) -> tuple[str, int | list[str | int]]:
+    """One catalog port mapping as the Docker SDK's key and host binding.
+
+    ``"9981:9981"`` gives ``("9981/tcp", 9981)``; ``"127.0.0.1:9980:9980"``
+    gives ``("9980/tcp", ["127.0.0.1", 9980])``, a list because the binding
+    travels to the worker as JSON. Raises ValueError saying what is wrong, so
+    the loader can reject the entry and name the mistake.
+    """
+    raw = str(mapping).strip()
+    match = _PORT_RE.fullmatch(raw)
+    if not match:
+        raise ValueError(
+            f"port {raw!r} must be 'HOST:CONTAINER', 'ADDRESS:HOST:CONTAINER', optionally ending in /tcp or /udp"
+        )
+    host, container = int(match["host"]), int(match["container"])
+    if not (1 <= host <= 65535 and 1 <= container <= 65535):
+        raise ValueError(f"port {raw!r} is outside 1-65535")
+    key = f"{container}/{match['protocol'] or 'tcp'}"
+    address = match["address"]
+    if address is None:
+        return key, host
+    try:
+        ipaddress.IPv4Address(address)
+    except ValueError:
+        raise ValueError(f"port {raw!r} must bind to an IPv4 address, not {address!r}") from None
+    return key, [address, host]
 
 
 def _validate(data: dict[str, Any], path: Path) -> list[str]:
@@ -80,10 +111,13 @@ def _validate(data: dict[str, Any], path: Path) -> list[str]:
                 f"{path.name}: docker.image_by_arch must map an architecture family "
                 f"({', '.join(sorted(IMAGE_ARCH_FAMILIES))}) to an image string"
             )
+        # A bare `ports:` loads as None, and the deploy iterates these three
+        # without a fallback, so a present key must hold a list.
+        for field in ("env", "ports", "volumes"):
+            if field in docker and not isinstance(docker[field], list):
+                errors.append(f"{path.name}: docker.{field} must be a list")
         env = docker.get("env")
-        if env is not None and not isinstance(env, list):
-            errors.append(f"{path.name}: docker.env must be a list")
-        elif isinstance(env, list):
+        if isinstance(env, list):
             for i, item in enumerate(env):
                 key = item.get("key") if isinstance(item, dict) else None
                 if not isinstance(key, str) or not key.strip():
@@ -94,6 +128,25 @@ def _validate(data: dict[str, Any], path: Path) -> list[str]:
                         re.compile(pattern)
                     except (re.error, TypeError):
                         errors.append(f"{path.name}: docker.env[{i}].pattern must be a valid regular expression")
+        ports = docker.get("ports")
+        if isinstance(ports, list):
+            # A bad mapping used to load fine and then 500 the deploy, on
+            # int("127.0.0.1") or an empty host port. Two mappings of one
+            # container port collapse into one binding at deploy, so the later
+            # one would silently replace a loopback bind with a public one.
+            seen: dict[str, int] = {}
+            for i, mapping in enumerate(ports):
+                try:
+                    key, _binding = parse_port(mapping)
+                except ValueError as exc:
+                    errors.append(f"{path.name}: docker.ports[{i}]: {exc}")
+                    continue
+                if key in seen:
+                    errors.append(
+                        f"{path.name}: docker.ports[{i}] maps container port {key} again "
+                        f"(already docker.ports[{seen[key]}])"
+                    )
+                seen.setdefault(key, i)
 
     reqs = data.get("requirements")
     if isinstance(reqs, dict):
