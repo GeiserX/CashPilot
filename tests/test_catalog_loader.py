@@ -202,7 +202,8 @@ class TestValidate:
         # loses that service. Every file on disk must come back as a service;
         # "at least 40" let one entry vanish without failing anything.
         services_dir = Path(catalog.__file__).resolve().parents[1] / "services"
-        on_disk = {p.stem for p in services_dir.rglob("*.yml") if not p.name.startswith("_")}
+        files = [*services_dir.rglob("*.yml"), *services_dir.rglob("*.yaml")]
+        on_disk = {p.stem for p in files if not p.name.startswith("_")}
         loaded = {s["slug"] for s in catalog.load_services()}
         assert on_disk - loaded == set()
 
@@ -212,6 +213,21 @@ class TestValidate:
             errors = catalog._validate({**self._base(), "docker": {"image": "i", "ports": [bad]}}, p)
             assert errors and "docker.ports[0]" in errors[0], bad
         assert catalog._validate({**self._base(), "docker": {"image": "i", "ports": "9980:9980"}}, p)
+
+    @pytest.mark.parametrize("field", ["env", "ports", "volumes"])
+    def test_validate_rejects_a_bare_list_key(self, tmp_path, field):
+        # `ports:` with nothing after it loads as None and 500'd the deploy.
+        errors = catalog._validate({**self._base(), "docker": {"image": "i", field: None}}, tmp_path / "t.yml")
+        assert errors == [f"t.yml: docker.{field} must be a list"]
+
+    def test_validate_rejects_a_second_mapping_of_one_container_port(self, tmp_path):
+        """The second mapping would replace the loopback bind with a public one."""
+        docker = {"image": "i", "ports": ["127.0.0.1:9980:9980", "9981:9980"]}
+        errors = catalog._validate({**self._base(), "docker": docker}, tmp_path / "t.yml")
+        assert errors == ["t.yml: docker.ports[1] maps container port 9980/tcp again (already docker.ports[0])"]
+        # The same number on another protocol is a different port.
+        docker = {"image": "i", "ports": ["9984:9984/tcp", "9984:9984/udp"]}
+        assert catalog._validate({**self._base(), "docker": docker}, tmp_path / "t.yml") == []
 
 
 class TestParsePort:

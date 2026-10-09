@@ -111,10 +111,13 @@ def _validate(data: dict[str, Any], path: Path) -> list[str]:
                 f"{path.name}: docker.image_by_arch must map an architecture family "
                 f"({', '.join(sorted(IMAGE_ARCH_FAMILIES))}) to an image string"
             )
+        # A bare `ports:` loads as None, and the deploy iterates these three
+        # without a fallback, so a present key must hold a list.
+        for field in ("env", "ports", "volumes"):
+            if field in docker and not isinstance(docker[field], list):
+                errors.append(f"{path.name}: docker.{field} must be a list")
         env = docker.get("env")
-        if env is not None and not isinstance(env, list):
-            errors.append(f"{path.name}: docker.env must be a list")
-        elif isinstance(env, list):
+        if isinstance(env, list):
             for i, item in enumerate(env):
                 key = item.get("key") if isinstance(item, dict) else None
                 if not isinstance(key, str) or not key.strip():
@@ -126,16 +129,24 @@ def _validate(data: dict[str, Any], path: Path) -> list[str]:
                     except (re.error, TypeError):
                         errors.append(f"{path.name}: docker.env[{i}].pattern must be a valid regular expression")
         ports = docker.get("ports")
-        if ports is not None and not isinstance(ports, list):
-            errors.append(f"{path.name}: docker.ports must be a list")
-        elif isinstance(ports, list):
+        if isinstance(ports, list):
             # A bad mapping used to load fine and then 500 the deploy, on
-            # int("127.0.0.1") or an empty host port.
+            # int("127.0.0.1") or an empty host port. Two mappings of one
+            # container port collapse into one binding at deploy, so the later
+            # one would silently replace a loopback bind with a public one.
+            seen: dict[str, int] = {}
             for i, mapping in enumerate(ports):
                 try:
-                    parse_port(mapping)
+                    key, _binding = parse_port(mapping)
                 except ValueError as exc:
                     errors.append(f"{path.name}: docker.ports[{i}]: {exc}")
+                    continue
+                if key in seen:
+                    errors.append(
+                        f"{path.name}: docker.ports[{i}] maps container port {key} again "
+                        f"(already docker.ports[{seen[key]}])"
+                    )
+                seen.setdefault(key, i)
 
     reqs = data.get("requirements")
     if isinstance(reqs, dict):

@@ -47,7 +47,8 @@ jobs:
 
           # An invalid entry is dropped at load with only a log line, so count
           # against the files on disk: one bad entry must fail, not just all.
-          on_disk = {p.stem for p in pathlib.Path("services").rglob("*.yml") if not p.name.startswith("_")}
+          files = [*pathlib.Path("services").rglob("*.yml"), *pathlib.Path("services").rglob("*.yaml")]
+          on_disk = {p.stem for p in files if not p.name.startswith("_")}
           loaded = {s["slug"] for s in catalog.get_services()}
           if on_disk - loaded:
               sys.exit(f"Rejected by the catalog validator (see the warnings above): {sorted(on_disk - loaded)}")
