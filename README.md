@@ -10,14 +10,14 @@
   <a href="https://github.com/GeiserX/CashPilot/stargazers"><img alt="GitHub Stars" src="https://img.shields.io/github/stars/GeiserX/CashPilot?style=flat-square&logo=github"></a>
 </p>
 
-CashPilot is a self-hosted platform that runs passive income services on your own servers and shows what they earn in one web dashboard. Two Docker containers start the 17 services that run in Docker, keep track of the 24 that run as a browser extension, a desktop app or a GPU node, and read the balances of 15 providers into one earnings history. Without it, each provider is a container you write by hand and a dashboard you log into separately.
+CashPilot is a self-hosted platform that runs passive income services on your own servers and shows what they earn in one web dashboard. Two Docker containers start the <!-- n:docker -->17<!-- /n --> services that run in Docker, keep track of the <!-- n:tracked -->24<!-- /n --> that run as a browser extension, a desktop app or a GPU node, and read the balances of <!-- n:collectors -->15<!-- /n --> providers into one earnings history. Without it, each provider is a container you write by hand and a dashboard you log into separately.
 
 ![The CashPilot dashboard: balance tiles, a 30-day earnings chart, a payout waiting to be confirmed, and the deployed services table](https://raw.githubusercontent.com/GeiserX/CashPilot/main/docs/images/screenshots/dashboard.png)
 
 ## Features
 
 - Starts a Docker service with one click from the catalog; no compose file to write, no YAML to edit.
-- Keeps every balance as history: 15 providers are read by built-in collectors every hour, so "running but not earning" shows as a flat line.
+- Keeps every balance as history: <!-- n:collectors -->15<!-- /n --> providers are read by built-in collectors every hour, so "running but not earning" shows as a flat line.
 - Treats a balance drop as a probable payout and asks you to confirm it; nothing is counted as income by guess.
 - Runs a fleet: one worker per server, one dashboard for all of them, every figure per server and per service.
 - Checks before you deploy whether the machine fits (residential IP, GPU, disk), and warns when a stored credential is about to expire.
@@ -38,7 +38,7 @@ You need Docker on a Linux, macOS or Windows host, amd64 or arm64. Open [http://
 
 ## Supported Services
 
-40 active services, 52 catalogued. Each has a [guide](https://geiserx.github.io/CashPilot/guides/) with what it needs, whether it runs in Docker, the payout method and the minimum payout. Services that need a residential IP are marked there; the rest run on a VPS.
+<!-- n:active -->40<!-- /n --> active services and <!-- n:beta -->1<!-- /n --> in beta, <!-- n:catalogued -->52<!-- /n --> catalogued. Each has a [guide](https://geiserx.github.io/CashPilot/guides/) with what it needs, whether it runs in Docker, the payout method and the minimum payout. Services that need a residential IP are marked there; the rest run on a VPS.
 
 <!-- BEGIN GENERATED: docker-services -->
 **Run in Docker by CashPilot (17):** [Anyone Protocol](https://anyone.io), [Bitping](https://app.bitping.com), [Earn.fm](https://earn.fm/ref/GEISYB91), [EarnApp](https://earnapp.com/i/TSMD9wSm) \*, [Honeygain](https://dashboard.honeygain.com/ref/SERGIB4014), [IPRoyal Pawns](https://pawns.app?r=19266874), [MystNodes](https://mystnodes.co/?referral_code=do7v7YOoBBpbOstKQovX2pUvZYKia4ZhH3QIdNtE), [PacketStream](https://packetstream.io/?psr=7xgZ), [ProxyBase](https://peer.proxybase.org?referral=nXzS3c6iTO), [ProxyBase Markets](https://proxybase.xyz?referral=nXzS3c6iTO), [ProxyLite](https://proxylite.ru/?r=KMUPRZIZ), [ProxyRack](https://peer.proxyrack.com/ref/mpwiok3xlaxeycnn5znqlg7ipjeutxyxr6xl7vmn), [Repocket](https://repocket.com/), [Sia (hostd)](https://docs.sia.tech/provide-storage/setting-up-hostd/docker), [Storj](https://storj.dev/node/get-started/setup), [Traffmonetizer](https://traffmonetizer.com/?aff=2111758), [URnetwork](https://ur.io/?referral_code=1Q3G19)

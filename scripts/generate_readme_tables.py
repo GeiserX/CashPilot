@@ -14,11 +14,17 @@ Run with --check in CI to fail on drift; run with no arguments to rewrite.
 
 Only the regions between the markers are touched, so the surrounding prose,
 footnotes and hand-written notes are preserved.
+
+The same goes for every service COUNT in the README and the docs: a number
+written as ``<!-- n:docker -->17<!-- /n -->`` is rewritten from the catalog.
+Hand-typed counts drifted the same way the lists did; after one new service the
+README still said "50 catalogued" while the guide index said 51.
 """
 
 from __future__ import annotations
 
 import argparse
+import re
 import sys
 from pathlib import Path
 
@@ -35,6 +41,10 @@ END = "<!-- END GENERATED: {name} -->"
 DOCKER = "docker-services"
 EXTENSION = "extension-services"
 GPU = "gpu-services"
+
+#: Files whose counts are generated. The README also carries the lists above.
+COUNTED_FILES = ["README.md", "docs/index.md", "docs/getting-started.md", "docs/comparison.md"]
+_COUNT = re.compile(r"<!-- n:(\w+) -->\d*<!-- /n -->")
 
 
 def _link(service: dict) -> str:
@@ -65,16 +75,56 @@ _LABELS = {
 }
 
 
-def _line(kind: str) -> str:
-    services = [s for s in catalog.get_services() if str(s.get("status")) in {"active", "beta"}]
+def _live() -> list[dict]:
+    return [s for s in catalog.get_services() if str(s.get("status")) in {"active", "beta"}]
+
+
+def _selected(kind: str) -> list[dict]:
+    services = _live()
     if kind == GPU:
-        selected = [s for s in services if s.get("category") == "compute"]
-    elif kind == DOCKER:
-        selected = [s for s in services if s.get("category") != "compute" and _is_dockerable(s)]
-    else:
-        selected = [s for s in services if s.get("category") != "compute" and not _is_dockerable(s)]
-    selected.sort(key=lambda s: str(s.get("name", "")).lower())
+        return [s for s in services if s.get("category") == "compute"]
+    if kind == DOCKER:
+        return [s for s in services if s.get("category") != "compute" and _is_dockerable(s)]
+    return [s for s in services if s.get("category") != "compute" and not _is_dockerable(s)]
+
+
+def _line(kind: str) -> str:
+    selected = sorted(_selected(kind), key=lambda s: str(s.get("name", "")).lower())
     return f"**{_LABELS[kind]} ({len(selected)}):** " + ", ".join(_link(s) + _markers(s) for s in selected)
+
+
+def counts() -> dict[str, int]:
+    """Every number the docs state about the catalog, by marker name."""
+    from app.collectors import COLLECTOR_MAP
+
+    every = catalog.get_services()
+    live = _live()
+    status = [str(s.get("status")) for s in every]
+    out = {
+        "catalogued": len(every),
+        "live": len(live),
+        "active": status.count("active"),
+        "beta": status.count("beta"),
+        "retired": sum(st in {"broken", "dead", "dropped"} for st in status),
+        "docker": len(_selected(DOCKER)),
+        "extension": len(_selected(EXTENSION)),
+        "gpu": len(_selected(GPU)),
+        "collectors": len(COLLECTOR_MAP),
+    }
+    out["tracked"] = out["extension"] + out["gpu"]
+    for category in ("bandwidth", "depin", "compute", "storage"):
+        out[category] = sum(s.get("category") == category for s in live)
+    return out
+
+
+def render_counts(text: str, values: dict[str, int], name: str) -> str:
+    def _sub(match: re.Match) -> str:
+        key = match.group(1)
+        if key not in values:
+            raise SystemExit(f"{name}: unknown count marker n:{key}; known: {', '.join(sorted(values))}")
+        return f"<!-- n:{key} -->{values[key]}<!-- /n -->"
+
+    return _COUNT.sub(_sub, text)
 
 
 def render(readme: str) -> str:
@@ -94,24 +144,32 @@ def render(readme: str) -> str:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--check", action="store_true", help="fail if the README is out of date")
+    parser.add_argument("--check", action="store_true", help="fail if the README or docs are out of date")
     args = parser.parse_args()
 
-    path = ROOT / "README.md"
-    current = path.read_text(encoding="utf-8")
-    updated = render(current)
+    values = counts()
+    stale = []
+    for name in COUNTED_FILES:
+        path = ROOT / name
+        current = path.read_text(encoding="utf-8")
+        updated = render(current) if name == "README.md" else current
+        updated = render_counts(updated, values, name)
+        if current == updated:
+            continue
+        stale.append(name)
+        if not args.check:
+            path.write_text(updated, encoding="utf-8")
 
-    if current == updated:
-        print("README service lists are up to date.")
+    if not stale:
+        print("README service lists and doc counts are up to date.")
         return 0
     if args.check:
         print(
-            "README service lists are out of date with the catalog.\nRun: python scripts/generate_readme_tables.py",
+            f"Out of date with the catalog: {', '.join(stale)}\nRun: python scripts/generate_readme_tables.py",
             file=sys.stderr,
         )
         return 1
-    path.write_text(updated, encoding="utf-8")
-    print("README service lists regenerated.")
+    print(f"Regenerated: {', '.join(stale)}")
     return 0
 
 

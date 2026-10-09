@@ -169,14 +169,14 @@ are entirely optional — CashPilot does not bundle an updater.
 
 ## Supported Services
 
-CashPilot tracks **50 services** across four categories:
+CashPilot supports **<!-- n:live -->41<!-- /n --> services** that are active or in beta, across four categories:
 
-- **Bandwidth Sharing** (23 services): share your internet bandwidth for passive income
-- **DePIN** (20 services): decentralized physical infrastructure networks
-- **GPU Compute** (6 services): rent out your GPU for AI and compute workloads
-- **Storage** (1 service): share disk space on decentralized storage networks
+- **Bandwidth Sharing** (<!-- n:bandwidth -->18<!-- /n -->): share your internet bandwidth for passive income
+- **DePIN** (<!-- n:depin -->15<!-- /n -->): decentralized physical infrastructure networks
+- **GPU Compute** (<!-- n:compute -->6<!-- /n -->): rent out your GPU for AI and compute workloads
+- **Storage** (<!-- n:storage -->2<!-- /n -->): share disk space on decentralized storage networks
 
-Of these, **16 services** can be deployed and managed automatically via Docker. The other 23 (17 browser or desktop apps, 6 GPU nodes) are listed in the catalog with signup links, and their balances are read where a collector exists.
+Of these, **<!-- n:docker -->17<!-- /n -->** can be deployed and managed automatically via Docker. The other <!-- n:tracked -->24<!-- /n --> (<!-- n:extension -->18<!-- /n --> browser or desktop apps, <!-- n:gpu -->6<!-- /n --> GPU nodes) are listed in the catalog with signup links, and their balances are read where a collector exists.
 
 Browse the full catalog in the [Service Guides](guides/index.md) section.
 

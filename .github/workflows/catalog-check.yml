@@ -14,6 +14,11 @@ on:
     paths:
       - "services/**"
       - "README.md"
+      # Their service counts are generated from the catalog and checked below.
+      - "docs/index.md"
+      - "docs/getting-started.md"
+      - "docs/comparison.md"
+      - "app/collectors/__init__.py"
       - "scripts/generate_readme_tables.py"
       - "scripts/referral_check.py"
       - ".github/workflows/catalog-check.yml"
@@ -36,7 +41,9 @@ jobs:
           python-version: "3.13"
 
       - name: Install the minimum needed to read the catalog
-        run: pip install pyyaml
+        # httpx: the docs state how many collectors exist, and counting
+        # COLLECTOR_MAP imports the collector modules.
+        run: pip install pyyaml httpx
 
       - name: Every service entry loads under the strict validator
         run: |
@@ -50,7 +57,7 @@ jobs:
           print(f"{len(services)} service(s) loaded and valid.")
           PY
 
-      - name: README service tables match the catalog
+      - name: README service lists and doc counts match the catalog
         run: python scripts/generate_readme_tables.py --check
 
       # Referral links are revenue. This fails on regressions (a recorded code

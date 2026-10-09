@@ -44,7 +44,7 @@ Two containers: `cashpilot-ui` (port 8080, web dashboard + earnings collection) 
 
 1. Create `services/{category}/{slug}.yml` following `_schema.yml`
 2. **Include a `cashout` section** in the YAML — every service must define how users can cash out (API endpoint, redirect URL, or manual instructions). This is mandatory.
-3. Manually update README.md service tables and `docs/guides/{slug}.md`
+3. Write `docs/guides/{slug}.md` (`scripts/new_service_stub.py {slug}` drafts it), then run `scripts/generate_readme_tables.py` and `scripts/sync_docs_nav.py`: they regenerate the README lists, every service count in the docs, and the guide nav
 4. Add a collector in `app/collectors/{slug}.py` and register it in `__init__.py`
 5. Submit a PR (one service per PR)
 
@@ -96,7 +96,7 @@ cashpilot/
 - **Container naming:** All managed containers are `cashpilot-{slug}` with labels `cashpilot.managed=true` and `cashpilot.service={slug}`.
 - **Data directory:** `/data` volume holds SQLite DB and persistent config. Never write outside `/data` at runtime.
 - **Credentials:** Encrypted at rest with Fernet using a key at `/data/.fernet_key`, auto-generated when absent and overridable via `CASHPILOT_ENCRYPTION_KEY` (the file wins; the env var is adopted whenever no key file exists, which covers both a fresh install and a restore). This is NOT `CASHPILOT_SECRET_KEY`, which signs sessions (`/data/.secret_key`).
-- **README table is manually maintained.** Update the tables in README.md directly when adding/changing services.
+- **README lists and doc counts are generated.** Never type a service count by hand: write `<!-- n:docker -->17<!-- /n -->` and `scripts/generate_readme_tables.py` fills it in (CI runs it with `--check`).
 
 ## UI + Worker Architecture
 
@@ -275,14 +275,9 @@ Working collectors (15 total, in `app/collectors/__init__.py` `COLLECTOR_MAP`):
 
 ## Service Status
 
-### 49 services across 4 categories
+### Counts
 
-| Category | Active | Broken | Dead | Shady | Total |
-|----------|--------|--------|------|-------|-------|
-| Bandwidth | 14 | 2 | 4 | 0 | 22 |
-| DePIN | 7 | 4 | 1 | 2 | 20 |
-| Compute | 4 | 1 | 0 | 0 | 6 |
-| Storage | 1 | 0 | 0 | 0 | 1 |
+Per-status and per-category counts come from `services/*/*.yml`; `scripts/generate_readme_tables.py` prints them into the README and docs. Do not keep a copy here.
 
 ### Services Without Docker Support (Extension/App Only)
 
