@@ -82,6 +82,11 @@ class TestWhatCanActuallyBeIsolated:
         kinds = {e["kind"] for e in out["exceptions"]}
         assert "inbound_port" in kinds
 
+    def test_a_port_bound_to_loopback_needs_no_inbound_exception(self):
+        svc = {"slug": "x", "docker": {"ports": ["127.0.0.1:9980:9980", "9981:9981"]}}
+        details = [e["detail"] for e in li.exceptions_for(svc) if e["kind"] == "inbound_port"]
+        assert details == ["Port 9981:9981 must accept inbound connections, or the node cannot do its job."]
+
     def test_a_plain_outbound_only_service_is_isolatable(self):
         out = li.assess(catalog.get_service("honeygain"))
         assert out["verdict"] == li.ISOLATABLE

@@ -61,9 +61,13 @@ def uses_host_network(service: dict[str, Any] | None) -> bool:
 
 
 def published_ports(service: dict[str, Any] | None) -> list[str]:
-    """Ports the service must accept connections on."""
+    """Ports the service must accept connections on.
+
+    A port bound to loopback ("127.0.0.1:9980:9980") is reachable only from the
+    host itself, so it needs no inbound exception.
+    """
     ports = _docker(service).get("ports") or []
-    return [str(p) for p in ports if str(p).strip()]
+    return [str(p) for p in ports if str(p).strip() and not str(p).startswith("127.0.0.1:")]
 
 
 def exceptions_for(service: dict[str, Any] | None) -> list[dict[str, str]]:
