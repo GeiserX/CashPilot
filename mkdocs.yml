@@ -221,6 +221,7 @@ nav:
       - Salad: guides/salad.md
       - Vast.ai: guides/vast-ai.md
     - Storage:
+      - Sia (hostd): guides/sia-hostd.md
       - Storj: guides/storj.md
   - Configuration:
     - Configuration reference: configuration.md
