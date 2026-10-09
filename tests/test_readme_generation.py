@@ -144,3 +144,31 @@ class TestTheGuideStubGenerator:
     def test_an_unknown_slug_fails_loudly(self):
         with pytest.raises(SystemExit, match="No catalog entry"):
             self._render("no-such-service")
+
+
+class TestGeneratedCounts:
+    """Service counts in the docs come from the catalog, never typed by hand."""
+
+    def test_a_count_is_filled_even_when_empty_or_wrong(self):
+        values = {"docker": 17}
+        text = "run <!-- n:docker -->3<!-- /n --> and <!-- n:docker --><!-- /n -->"
+        assert gen.render_counts(text, values, "x.md") == (
+            "run <!-- n:docker -->17<!-- /n --> and <!-- n:docker -->17<!-- /n -->"
+        )
+
+    def test_an_unknown_marker_fails_rather_than_staying_stale(self):
+        with pytest.raises(SystemExit, match="unknown count marker n:dockr"):
+            gen.render_counts("<!-- n:dockr -->17<!-- /n -->", {"docker": 17}, "x.md")
+
+    def test_the_counts_add_up(self):
+        c = gen.counts()
+        assert c["active"] + c["beta"] + c["retired"] == c["catalogued"]
+        assert c["docker"] + c["extension"] + c["gpu"] == c["live"]
+        assert c["bandwidth"] + c["depin"] + c["compute"] + c["storage"] == c["live"]
+
+    def test_every_counted_doc_uses_markers_and_is_current(self):
+        values = gen.counts()
+        for name in gen.COUNTED_FILES:
+            text = (ROOT / name).read_text(encoding="utf-8")
+            assert gen._COUNT.search(text), f"{name} has no count markers"
+            assert gen.render_counts(text, values, name) == text, f"{name} is stale"

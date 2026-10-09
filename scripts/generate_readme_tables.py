@@ -44,7 +44,7 @@ GPU = "gpu-services"
 
 #: Files whose counts are generated. The README also carries the lists above.
 COUNTED_FILES = ["README.md", "docs/index.md", "docs/getting-started.md", "docs/comparison.md"]
-_COUNT = re.compile(r"<!-- n:(\w+) -->\d+<!-- /n -->")
+_COUNT = re.compile(r"<!-- n:(\w+) -->\d*<!-- /n -->")
 
 
 def _link(service: dict) -> str:
