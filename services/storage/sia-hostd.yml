@@ -7,19 +7,28 @@ description: >
   Sia is a decentralized storage marketplace run by the Sia Foundation (a Swiss
   non-profit) that has operated since 2015. Run the Foundation's official hostd
   node to rent out spare disk space and earn Siacoin from storage and bandwidth
-  contracts. hostd ships an official Docker image and a built-in web UI. Hosts
-  lock a small collateral per stored TB that is returned when contracts complete
-  successfully, so a stable, always-on machine is required. Earnings depend on
-  how much data renters actually store on the node; storage prices hover around
-  $0.4-1.5 per TB per month, so it suits machines with large spare disks rather
-  than small VPS slices.
+  contracts. You must buy some Siacoin before the node can earn: hosts lock
+  collateral against every contract and pay a fee for each storage proof. The
+  collateral comes back when a contract completes and is burned if the node
+  goes offline or loses data, so it needs an always-on machine (Sia says 95%
+  uptime at least). Earnings depend on how much data renters actually store;
+  Sia recommends pricing storage at $1 per TB per month, so it suits machines
+  with large spare disks rather than small VPS slices.
 short_description: Sia Foundation storage node - official Docker image, earn Siacoin
 
+referral:
+  signup_url: "https://docs.sia.tech/provide-storage/setting-up-hostd/docker"
+  # Permissionless: no account to sign up for, and the Sia Foundation runs no
+  # referral programme for hosts (checked on sia.tech and docs.sia.tech).
+  program: false
+
 docker:
-  image: ghcr.io/siafoundation/hostd:latest
+  image: ghcr.io/siafoundation/hostd
   platforms: [linux/amd64, linux/arm64]
   resources:
-    mem_limit: "2g"
+    # Measured on hostd 2.11.0: 1.9 GiB within four minutes of the initial
+    # sync, so a 2g limit would OOM-kill it mid-sync.
+    mem_limit: "4g"
     # A storage node the network dials back into; keep it weighted above the
     # default so a contended host does not make it answer slowly (see the
     # cpu_shares note in _schema.yml).
@@ -29,7 +38,7 @@ docker:
       label: "Wallet seed phrase"
       required: true
       secret: true
-      description: "BIP-39 seed phrase that controls the host's Siacoin wallet. Generate one with `docker run --rm ghcr.io/siafoundation/hostd:latest seed` and back it up -- it is the ONLY way to reach the earnings"
+      description: "BIP-39 seed phrase that controls the host's Siacoin wallet. Generate one with `docker run --rm ghcr.io/siafoundation/hostd seed` and back it up -- it is the ONLY way to reach the earnings"
     - key: HOSTD_API_PASSWORD
       label: "Dashboard password"
       required: true
@@ -41,15 +50,12 @@ docker:
       secret: false
       description: "Host path on your largest disk where renter data is stored (e.g. /srv/sia). Needs at least 256GB free"
   ports:
-    # Dashboard/API. Every endpoint sits behind BasicAuth with the API
-    # password, but Sia's own Docker guide binds this port to 127.0.0.1 --
-    # a restriction CashPilot's port format cannot express -- so restrict
-    # it at your firewall when the machine has a public address (see the
-    # guide).
-    - "9980:9980"
-    # RHP4 (TCP) must be reachable so renters can form contracts.
+    # Dashboard/API. Its API can spend the wallet, so it binds to loopback as
+    # Sia's own Docker guide does; reach it with an SSH tunnel (see the guide).
+    - "127.0.0.1:9980:9980"
+    # Sia consensus: peer-to-peer sync with the rest of the network.
     - "9981:9981"
-    # RHP4 over QUIC: TCP and UDP, matching Sia's official compose guide.
+    # RHP4, the renter-host protocol: SiaMux on TCP, QUIC on UDP.
     - "9984:9984/tcp"
     - "9984:9984/udp"
   volumes:
@@ -69,31 +75,19 @@ docker:
         collateral locked against those contracts.
   command: ""
   network_mode: ""
-  health_signals:
-    # hostd logs "failed to" lines from its contract manager when the network
-    # cannot reach it (port not forwarded, wrong address). Only a pattern
-    # actually observed in hostd logs should ship; this entry documents the
-    # mechanism pending a live deployment log capture.
-    - pattern: "failed to"
-      means: >-
-        hostd reported an operational failure in its logs. Read the surrounding
-        log lines: contract and network errors usually mean the RHP4 ports
-        (9981, 9984 TCP+UDP) are not reachable from the internet at this
-        machine's address.
-      state: failing
   setup: >
-    Before first run, generate a seed and write the config:
-    `docker run --rm -it ghcr.io/siafoundation/hostd:latest seed`
-    then `docker compose run --rm -it hostd config` (official Sia Docs
-    procedure). Alternatively pass HOSTD_WALLET_SEED and HOSTD_API_PASSWORD as
-    environment variables and start directly.
+    Before first run, generate a seed with
+    `docker run --rm ghcr.io/siafoundation/hostd seed` and back it up. After
+    the deploy, send some Siacoin to the node's wallet for collateral and
+    fees, then add the storage folder (/storage), set prices and announce the
+    host in the dashboard.
 
 requirements:
   residential_ip: false
   vps_ip: true
   min_storage: "256GB"
   gpu: false
-  note: "A stable public address with ports 9981 and 9984 (TCP; 9984 also UDP) forwarded is required for contract formation. Datacenter/VPS hosting is common on Sia."
+  note: "A stable public address with ports 9981 (TCP, consensus) and 9984 (TCP and UDP, renter contracts) forwarded. Datacenter/VPS hosting is common on Sia. The wallet needs Siacoin before the node can take contracts."
 
 payment:
   methods: [crypto]
@@ -104,14 +98,15 @@ payment:
 
 earnings:
   monthly_low: 0
-  monthly_high: 10
+  monthly_high: 2
   currency: USD
   per: "TB"
   notes: >
-    Sia storage prices are set by a free market; recent typical pricing is
-    roughly $0.4-1.5 per TB stored per month (Sia Central pricing history), so
-    income scales with how much renter data lands on the node. Collateral of a
-    similar size to the storage price is locked per contract and returned on
+    Hosts set their own prices. Sia recommends $1 per TB stored per month and
+    over $5 per TB downloaded, and 3.9% of every contract payout goes to
+    Siafund holders. Income scales with how much renter data lands on the
+    node, which starts at zero and grows with uptime and price. Collateral
+    (Sia suggests 2x the storage price) is locked per contract and returned on
     successful completion.
 
 cashout:
@@ -130,8 +125,8 @@ collector:
   type: manual
   notes: >
     hostd exposes a local REST API on port 9980 (BasicAuth with the API
-    password): GET /wallet returns the wallet balance, GET /metrics and
-    GET /settings return host revenue and configuration. A future collector can
+    password): GET /api/wallet returns the wallet balance, GET /api/metrics and
+    GET /api/settings return host revenue and configuration. A future collector can
     read those endpoints the same way the Storj collector reads the local
     storagenode API -- but adding it requires an app-side change
     (app/collectors), so it is proposed upstream rather than shipped here.
@@ -158,5 +153,5 @@ disclosure:
     Sustained upload/download traffic on the line, similar to running any
     storage server; no anonymised third-party web traffic is attributed to you.
   account_rules: >-
-    Permissionless: no signup or account. One wallet per seed; running several
-    hosts from one /24 subnet splits renter demand between them.
+    Permissionless: no signup or account. Collateral is burned if the node
+    misses storage proofs, by going offline or losing data.
