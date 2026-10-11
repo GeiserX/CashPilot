@@ -5,14 +5,24 @@ status: active
 website: https://www.storj.io
 description: >
   Storj is a decentralized cloud storage network where you earn by renting out
-  your unused disk space. Run the storage node via Docker and get paid approximately
-  $1.50/TB stored per month plus $2/TB egress. Payouts are monthly in USDC, a
-  US-dollar stablecoin, on Ethereum mainnet to a wallet you control, once the
-  balance clears a fee-based minimum (STORJ token until the September 2026
-  payout). Requires at least 550GB of available disk space and a stable internet
-  connection. One of the most mature and truly passive storage income services.
-  No account or signup needed -- nodes are permissionless since mid-2025.
-short_description: Decentralized storage node - ~$1.50/TB stored + $2/TB egress
+  your unused disk space. Run the storage node via Docker and get paid
+  $1.35/TB stored per month plus $1/TB egress (rates since 1 September 2026).
+  Payouts are monthly in USDC, a US-dollar stablecoin, on Ethereum mainnet to
+  a wallet you control, once the balance clears a fee-based minimum (STORJ
+  token until the September 2026 payout). Requires at least 550GB of available
+  disk space and a stable internet connection. No account or signup needed --
+  nodes are permissionless since mid-2025.
+  CAUTION (October 2026): Storj Labs filed for Chapter 11 on 26 July 2026 (US
+  Bankruptcy Court, Northern District of West Virginia, case 5:26-bk-00512) to
+  restructure legacy debt. The network keeps running and Storj keeps paying
+  active nodes, but node earnings from before the filing are frozen until the
+  court rules on them. The STORJ token is down about 98% from its 2021 peak.
+  Binance delisted it on 3 September 2026, and Coinbase suspended trading in
+  it on 28 September 2026. A new node withholds part of its earnings during
+  its first nine months and fills only as customer demand allows, so starting
+  one now ties a long payback to a company in restructuring that could still
+  wind down.
+short_description: Decentralized storage node - $1.35/TB stored + $1/TB egress
 
 referral:
   signup_url: "https://storj.dev/node/get-started/setup"
@@ -154,7 +164,7 @@ earnings:
   monthly_high: 15
   currency: USD
   per: "TB"
-  notes: "~$1.50/TB stored + $2/TB egress + $2.74/TB audit/repair. Earnings scale with disk allocated and node age. First 9 months have held-back escrow. Port 28967 must be forwarded."
+  notes: "$1.35/TB stored + $1/TB egress + $1/TB audit/repair since 1 September 2026. Earnings scale with data stored and node age. The first 9 months withhold 75%, then 50%, then 25% of earnings; half the held amount returns in month 16 and the rest on graceful exit. Port 28967 must be forwarded."
 
 cashout:
   method: redirect

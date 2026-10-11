@@ -6,7 +6,10 @@
 
 ## Description
 
-Storj is a decentralized cloud storage network where you earn by renting out your unused disk space. Run the storage node via Docker and get paid approximately $1.50/TB stored per month plus $2/TB egress. Payouts are monthly in USDC, a US-dollar stablecoin, on Ethereum mainnet to a wallet you control, once the balance clears a fee-based minimum (STORJ token until the September 2026 payout). Requires at least 550GB of available disk space and a stable internet connection. One of the most mature and truly passive storage income services.
+Storj is a decentralized cloud storage network where you earn by renting out your unused disk space. Run the storage node via Docker and get paid $1.35/TB stored per month plus $1/TB egress (rates since 1 September 2026). Payouts are monthly in USDC, a US-dollar stablecoin, on Ethereum mainnet to a wallet you control, once the balance clears a fee-based minimum (STORJ token until the September 2026 payout). Requires at least 550GB of available disk space and a stable internet connection. No account or signup needed -- nodes are permissionless since mid-2025.
+
+!!! warning "Storj Labs is in Chapter 11 (October 2026)"
+    Storj Labs filed for Chapter 11 on 26 July 2026 (US Bankruptcy Court, Northern District of West Virginia, case 5:26-bk-00512) to restructure legacy debt. The network keeps running and Storj keeps paying active nodes, but node earnings from before the filing are frozen until the court rules on them. The STORJ token is down about 98% from its 2021 peak. Binance delisted it on 3 September 2026, and Coinbase suspended trading in it on 28 September 2026. A new node withholds part of its earnings during its first nine months and fills only as customer demand allows, so starting one now ties a long payback to a company in restructuring that could still wind down.
 
 ## Earning Estimates
 
@@ -14,11 +17,11 @@ Storj is a decentralized cloud storage network where you earn by renting out you
 |--------|-------|
 | Monthly range | $0 - $15 (estimate) |
 | Per | TB |
-| Minimum payout | $4 |
+| Minimum payout | 4x the Ethereum transaction fee; smaller balances roll over |
 | Payout frequency | Monthly |
 | Payment methods | Crypto |
 
-> ~$1.50/TB stored + $2/TB egress + $2.74/TB audit/repair. Earnings scale with disk allocated and node age. First 9 months have held-back escrow. Port 28967 (TCP+UDP) must be forwarded.
+> $1.35/TB stored + $1/TB egress + $1/TB audit/repair since 1 September 2026. Earnings scale with data stored and node age. The first 9 months withhold part of the earnings (see Important Notes). Port 28967 (TCP+UDP) must be forwarded.
 
 ## Requirements
 
@@ -95,7 +98,7 @@ CashPilot will handle the container creation with proper volume mounts.
 
 - **Use a DDNS hostname for `ADDRESS`, never a literal IP.** Satellites dial your node back at exactly the address it advertises. Residential ISPs re-provision public IPs without notice, and when that happens a node advertising the old literal IP is counted offline around the clock — container healthy, dashboard green, earnings from new data at zero — until someone notices the provider's offline emails. A dynamic-DNS hostname (DuckDNS, Cloudflare DDNS, your router's DDNS client) self-heals through an IP change. If satellites cannot reach the node, CashPilot's producer state for Storj reports it with the exact reason; you can also check yourself with `curl -s http://<server>:14002/api/sno/` (`lastPinged` stale or `quicStatus: "Misconfigured"` means unreachable).
 - **No signup required**: Storj nodes are permissionless since mid-2025. No auth token, no account creation.
-- **Escrow period**: First 9 months of operation have held-back escrow (75% of storage fees held, released gradually). This incentivizes long-term operation.
+- **Held-back earnings**: a new node's satellites withhold 75% of its earnings in months 1 to 3, 50% in months 4 to 6 and 25% in months 7 to 9. Half of the held amount comes back in month 16; the rest only when the node exits gracefully. Earnings from before Storj Labs' 26 July 2026 Chapter 11 filing are frozen until the bankruptcy court rules on them.
 - **One node per public IP**: Storj recommends one node per public IP for optimal satellite allocation. Nodes on the same /24 subnet share data allocation.
 - **Uptime matters**: Nodes with poor uptime get less data. Aim for 99.5%+ uptime.
 - **Disk selection**: Always use spinning disks (HDD). Storj data is cold storage — IOPS don't matter, capacity does. SSDs offer no advantage and cost more per TB.
