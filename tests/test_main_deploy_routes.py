@@ -549,6 +549,7 @@ class TestApiDeploy:
     )
     @pytest.mark.parametrize("recorded", [False, True])
     def test_repocket_rejects_invalid_key_before_worker_call(self, client, key, recorded):
+        """Reject invalid submitted or recorded keys without exposing them or contacting the worker."""
         from app import catalog
 
         catalog.load_services()
@@ -570,6 +571,7 @@ class TestApiDeploy:
 
     @pytest.mark.parametrize("replace", [False, True])
     def test_repocket_redeploy_preserves_or_corrects_key(self, client, deploy_capture, replace):
+        """Preserve a valid saved UUIDv4 key or replace an old password with a trimmed valid key."""
         from app import catalog
 
         catalog.load_services()

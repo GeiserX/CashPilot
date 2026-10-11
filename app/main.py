@@ -1880,6 +1880,7 @@ async def api_deploy(
     worker_id: int | None = None,
     _auth: dict[str, Any] = Depends(_require_owner),
 ) -> dict[str, Any]:
+    """Validate the effective service configuration and deploy it to the selected worker."""
     # dict[str, Any], not dict[str, str]: kept_from_previous_deployment is a
     # list, and FastAPI validates the response against this annotation AFTER
     # the deploy has run and persisted — a stricter type turns the successful
