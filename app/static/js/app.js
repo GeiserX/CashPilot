@@ -975,6 +975,8 @@ const CP = (() => {
                data-slug="${svc.slug}" data-key="${env.key}"
                placeholder="${escapeHtml(defaultIsTemplate ? String(env.default) : (env.description || ''))}"
                value="${escapeHtml(defaultIsTemplate ? '' : (env.default || ''))}"
+               ${env.secret ? 'autocomplete="new-password"' : ''}
+               ${env.pattern ? `pattern="${escapeHtml(env.pattern)}"` : ''}
                ${env.required ? 'required' : ''}>
         ${hint}
       </div>`;
