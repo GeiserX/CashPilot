@@ -319,6 +319,18 @@ Base URL: `https://api.bringyour.com`
 - Keep Docker image under 100 MB
 - All Python code must pass `ruff` linting
 
+## CashPilot-Desktop mirrors this repo
+
+[CashPilot-Desktop](https://github.com/GeiserX/CashPilot-Desktop) is the same product as a Go and TypeScript app. It vendors `services/` byte for byte (`make catalog-sync SRC=../CashPilot` over there, with the Desktop-only digest pins in `catalog-overlay/image-pins.yml`), and it re-implements the deploy form, the deploy validation and the catalog's facts in its own code. A fix that lands here alone is a fix half the users never get.
+
+Every PR here that touches one of these gets a Desktop follow-up in the same session, and the follow-up's link goes in the report next to this repo's:
+
+- `services/`: sync the catalog in Desktop. A new live service with a floating image needs a digest pin there first, or the sync refuses.
+- The deploy route or the deploy form (`api_deploy` in `app/main.py`; `envInputFields` and `_deployToWorkers` in `app/static/js/app.js`): port the behaviour to `internal/services` and `frontend/src/render` in Desktop, with its test.
+- `docs/guides/`: Desktop has no guides, but a fact that changed there (a payout rate, a caution, a recovery step) usually also sits in the catalog text, which the sync carries.
+
+When Desktop needs nothing, the PR body says so and why. The PR template asks for it. Desktop's weekly drift check (`catalog-drift.yml`, the standing "Catalog drift" issue) is the backstop, not the plan: it sees the catalog and never a behaviour change.
+
 ## What NOT to Build Yet
 
 - Auto-discovery (mDNS, Tailscale API)
