@@ -46,7 +46,7 @@ In the CashPilot web UI, find **Repocket** in the service catalog and click **De
 
 ### Recover a container that keeps restarting
 
-A Repocket container started with a password, or any other wrong value, in `RP_API_KEY` logs a 403 `Access denied` error (Repocket spells it "denined"), exits, and Docker restarts it. Changing the CashPilot image or restarting the container does not touch its environment, so the only way out is a new container:
+A Repocket container started with a password, or any other wrong value, in `RP_API_KEY` logs a 403 `Access denined.` error (that spelling is Repocket's), exits, and Docker restarts it. Changing the CashPilot image or restarting the container does not touch its environment, so the only way out is a new container:
 
 1. Open Repocket on the dashboard and click **Remove**. Nothing is lost: Repocket keeps your balance and devices on its side.
 2. Deploy Repocket again and enter the API key from the [bandwidth-earnings page](https://app.repocket.com/bandwidth-earnings). CashPilot now rejects the old recorded value, so a redeploy cannot bring it back.
