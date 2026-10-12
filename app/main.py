@@ -1880,6 +1880,7 @@ async def api_deploy(
     worker_id: int | None = None,
     _auth: dict[str, Any] = Depends(_require_owner),
 ) -> dict[str, Any]:
+    """Validate the effective service configuration and deploy it to the selected worker."""
     # dict[str, Any], not dict[str, str]: kept_from_previous_deployment is a
     # list, and FastAPI validates the response against this annotation AFTER
     # the deploy has run and persisted — a stricter type turns the successful
@@ -1961,20 +1962,6 @@ async def api_deploy(
     if missing:
         raise HTTPException(status_code=400, detail=f"Missing required fields: {', '.join(missing)}")
 
-    # A value the catalog constrains must match before anything is deployed:
-    # it may land on the command line, where "127.0.0.1, 10.0.0.1" becomes two
-    # arguments and the service refuses to start. Only what was posted is
-    # checked; defaults and recorded values were accepted when they were set.
-    invalid = [
-        var.get("label", var["key"])
-        for var in docker_conf.get("env", [])
-        if var.get("pattern")
-        and posted_env.get(var["key"])
-        and not re.fullmatch(var["pattern"], posted_env[var["key"]])
-    ]
-    if invalid:
-        raise HTTPException(status_code=400, detail=f"Invalid value for: {', '.join(invalid)}")
-
     # Ports — key is "container_port/protocol" per Docker SDK. A mapping with a
     # host address ("127.0.0.1:9980:9980") becomes [address, port]: a web UI
     # that controls a wallet must not be published on every interface. The
@@ -2055,6 +2042,24 @@ async def api_deploy(
     # values and left the placeholders unfilled, which is why the record had to
     # win before.
     merged_env = spec.get("env") or {}
+    # A value the catalog constrains must match before anything is deployed:
+    # it may land on the command line, where "127.0.0.1, 10.0.0.1" becomes two
+    # arguments and the service refuses to start. Checked on the MERGED env,
+    # so a recorded value is held to a constraint added after it was stored
+    # (a Repocket password saved as RP_API_KEY would otherwise ride every blank
+    # redeploy into another restart loop). A blank optional value is not a
+    # value, so it is not checked. The rejected value is never echoed: it may
+    # be a credential.
+    invalid = [
+        var.get("label", var["key"])
+        for var in docker_conf.get("env", [])
+        if var.get("pattern")
+        and str(merged_env.get(var["key"], ""))
+        and not re.fullmatch(var["pattern"], str(merged_env.get(var["key"], "")))
+    ]
+    if invalid:
+        raise HTTPException(status_code=400, detail=f"Invalid value for: {', '.join(invalid)}")
+
     if raw_command:
         spec["command"] = re.sub(r"\$\{(\w+)\}", lambda m: merged_env.get(m.group(1), m.group(0)), raw_command)
     else:

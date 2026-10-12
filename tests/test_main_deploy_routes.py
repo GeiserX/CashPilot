@@ -533,15 +533,62 @@ class TestApiDeploy:
         ):
             resp = client.post(
                 "/api/deploy/repocket",
-                json={"env": {"RP_EMAIL": "me@example.com", "RP_API_KEY": "key123"}},
+                json={"env": {"RP_EMAIL": "me@example.com", "RP_API_KEY": "12345678-1234-4abc-8def-123456789abc"}},
             )
             assert resp.status_code == 200, resp.text
             spec_env = captured["spec"]["env"]
             assert set(spec_env) == {"RP_EMAIL", "RP_API_KEY"}, (
                 f"repocket container spec must carry exactly RP_EMAIL + RP_API_KEY, got {set(spec_env)}"
             )
-            assert spec_env["RP_API_KEY"] == "key123"
+            assert spec_env["RP_API_KEY"] == "12345678-1234-4abc-8def-123456789abc"
             assert spec_env["RP_EMAIL"] == "me@example.com"
+
+    @pytest.mark.parametrize(
+        "key",
+        ["account-password", "12345678-1234-1abc-8def-123456789abc", "12345678-1234-4abc-7def-123456789abc"],
+    )
+    @pytest.mark.parametrize("recorded", [False, True])
+    def test_repocket_rejects_invalid_key_before_worker_call(self, client, key, recorded):
+        """Reject invalid submitted or recorded keys without exposing them or contacting the worker."""
+        from app import catalog
+
+        catalog.load_services()
+        previous = {"env": {"RP_EMAIL": "me@example.com", "RP_API_KEY": key}} if recorded else None
+        posted = {} if recorded else {"RP_EMAIL": "me@example.com", "RP_API_KEY": key}
+        with (
+            _auth_owner(),
+            patch("app.main._resolve_worker_id", new_callable=AsyncMock, return_value=1),
+            patch("app.main.database.get_deployment_spec", new_callable=AsyncMock, return_value=previous),
+            patch("app.main._proxy_worker_deploy", new_callable=AsyncMock) as deploy,
+            patch("app.main.database.save_deployment", new_callable=AsyncMock) as save,
+        ):
+            resp = client.post("/api/deploy/repocket", json={"env": posted})
+        assert resp.status_code == 400, resp.text
+        assert "UUIDv4" in resp.json()["detail"]
+        assert key not in resp.text
+        deploy.assert_not_awaited()
+        save.assert_not_awaited()
+
+    @pytest.mark.parametrize("replace", [False, True])
+    def test_repocket_redeploy_preserves_or_corrects_key(self, client, deploy_capture, replace):
+        """Preserve a valid saved UUIDv4 key or replace an old password with a trimmed valid key."""
+        from app import catalog
+
+        catalog.load_services()
+        valid = "12345678-1234-4ABC-BDEF-123456789ABC"
+        previous = {"env": {"RP_EMAIL": "me@example.com", "RP_API_KEY": "old-password" if replace else valid}}
+        captured, capture = deploy_capture
+        with (
+            _auth_owner(),
+            patch("app.main._resolve_worker_id", new_callable=AsyncMock, return_value=1),
+            patch("app.main.database.get_deployment_spec", new_callable=AsyncMock, return_value=previous),
+            patch("app.main._proxy_worker_deploy", side_effect=capture),
+            patch("app.main.database.save_deployment", new_callable=AsyncMock),
+            patch("app.main.database.record_health_event", new_callable=AsyncMock),
+        ):
+            resp = client.post("/api/deploy/repocket", json={"env": {"RP_API_KEY": f" {valid} " if replace else ""}})
+        assert resp.status_code == 200, resp.text
+        assert captured["spec"]["env"] == {"RP_EMAIL": "me@example.com", "RP_API_KEY": valid}
 
     def test_deploy_forwards_resources_from_yaml(self, client, deploy_capture):
         """A resources block in the service YAML must reach the worker spec."""

@@ -28,9 +28,10 @@ docker:
       secret: false
       description: "Your Repocket account email"
     - key: RP_API_KEY
-      label: "API Key"
+      label: "API Key (UUIDv4, not your password)"
       required: true
       secret: true
+      pattern: '[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}'
       description: "Your Repocket API key — log in at <a href=\"https://app.repocket.com/bandwidth-earnings\">app.repocket.com</a> and copy the API key shown on the bandwidth-earnings page (this is NOT your account password)"
   ports: []
   volumes: []

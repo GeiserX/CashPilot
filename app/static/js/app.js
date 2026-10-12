@@ -975,6 +975,8 @@ const CP = (() => {
                data-slug="${svc.slug}" data-key="${env.key}"
                placeholder="${escapeHtml(defaultIsTemplate ? String(env.default) : (env.description || ''))}"
                value="${escapeHtml(defaultIsTemplate ? '' : (env.default || ''))}"
+               ${env.secret ? 'autocomplete="new-password"' : ''}
+               ${env.pattern ? `pattern="${escapeHtml(env.pattern)}"` : ''}
                ${env.required ? 'required' : ''}>
         ${hint}
       </div>`;
@@ -2351,7 +2353,12 @@ const CP = (() => {
     const envInputs = document.querySelectorAll(`input[data-slug="${slug}"][data-key]`);
     const env = {};
     let missingRequired = false;
+    let invalidInput = null;
     envInputs.forEach(input => {
+      if (input.pattern && input.value.trim()) {
+        input.value = input.value.trim();
+        if (!input.checkValidity()) invalidInput ||= input;
+      }
       env[input.dataset.key] = input.value;
       if (input.required && !input.value.trim()) {
         input.style.borderColor = 'var(--error)';
@@ -2360,6 +2367,12 @@ const CP = (() => {
         input.style.borderColor = '';
       }
     });
+
+    if (invalidInput) {
+      invalidInput.reportValidity();
+      if (statusEl) statusEl.textContent = 'Enter a valid value for the highlighted field.';
+      return;
+    }
 
     if (missingRequired) {
       toast('Fill in all required fields', 'warning');
