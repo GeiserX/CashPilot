@@ -44,8 +44,8 @@ jobs:
       - name: Currency formatting behaviour
         run: node scripts/currency_check.mjs
 
-      - name: Repocket deploy fields
-        run: node scripts/repocket_form_check.mjs
+      - name: Catalog patterns reach the deploy form
+        run: node scripts/deploy_field_check.mjs
 
       # Also browser-free. A string test can prove the Settings catch is no
       # longer empty; only running it proves BOTH panels get written and that

@@ -42,11 +42,15 @@ Log in at [app.repocket.com](https://app.repocket.com/bandwidth-earnings) and co
 
 ### 3. Deploy with CashPilot
 
-In the CashPilot web UI, find **Repocket** in the service catalog and click **Deploy**. Enter your account email and the UUIDv4 API key. CashPilot rejects a password or malformed key before contacting the worker. Earnings tracking under **Settings → Collectors** separately uses your account email and password; those credentials do not configure the Docker container.
+In the CashPilot web UI, find **Repocket** in the service catalog and click **Deploy**. Enter your account email and the API key. The key is a UUID (eight hex characters, then three groups of four, then twelve, separated by hyphens), and CashPilot refuses anything else before it contacts the worker, so a password pasted in by mistake never reaches the container. The earnings collector under **Settings**, **Collectors** is a separate login with your account email and password; it does not configure the container.
 
 ### Recover a container that keeps restarting
 
-If the logs say `RP_API_KEY must be a valid UUIDv4`, update CashPilot first, then open Repocket's deploy form and explicitly enter the API key from the bandwidth-earnings page. Redeploy Repocket on the affected worker. Updating the CashPilot image or restarting the Repocket container alone does not change an existing container's environment. A blank API-key field preserves the recorded key, and an invalid recorded key is now rejected until you replace it. Check Repocket's logs and restart count after redeploying to confirm it connects.
+A Repocket container started with a password, or any other wrong value, in `RP_API_KEY` logs a 403 `Access denied` error (Repocket spells it "denined"), exits, and Docker restarts it. Changing the CashPilot image or restarting the container does not touch its environment, so the only way out is a new container:
+
+1. Open Repocket on the dashboard and click **Remove**. Nothing is lost: Repocket keeps your balance and devices on its side.
+2. Deploy Repocket again and enter the API key from the [bandwidth-earnings page](https://app.repocket.com/bandwidth-earnings). CashPilot now rejects the old recorded value, so a redeploy cannot bring it back.
+3. Check the container's logs and restart count after a minute to confirm it connects.
 
 ## Docker Configuration
 

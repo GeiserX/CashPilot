@@ -2042,14 +2042,20 @@ async def api_deploy(
     # values and left the placeholders unfilled, which is why the record had to
     # win before.
     merged_env = spec.get("env") or {}
-    # Validate what the worker will actually receive, including recorded values.
-    # Older deployments may predate a catalog constraint: Repocket passwords
-    # stored as RP_API_KEY must not be reused on a blank redeploy. Never echo
-    # the rejected value, because it can be a credential.
+    # A value the catalog constrains must match before anything is deployed:
+    # it may land on the command line, where "127.0.0.1, 10.0.0.1" becomes two
+    # arguments and the service refuses to start. Checked on the MERGED env,
+    # so a recorded value is held to a constraint added after it was stored
+    # (a Repocket password saved as RP_API_KEY would otherwise ride every blank
+    # redeploy into another restart loop). A blank optional value is not a
+    # value, so it is not checked. The rejected value is never echoed: it may
+    # be a credential.
     invalid = [
         var.get("label", var["key"])
         for var in docker_conf.get("env", [])
-        if var.get("pattern") and not re.fullmatch(var["pattern"], str(merged_env.get(var["key"], "")))
+        if var.get("pattern")
+        and str(merged_env.get(var["key"], ""))
+        and not re.fullmatch(var["pattern"], str(merged_env.get(var["key"], "")))
     ]
     if invalid:
         raise HTTPException(status_code=400, detail=f"Invalid value for: {', '.join(invalid)}")

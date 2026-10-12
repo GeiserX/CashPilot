@@ -992,14 +992,13 @@ const CP = (() => {
     let allDeployed = true;
     for (const w of onlineWorkers) {
       const deployed = (w.containers || []).map((c) => c.slug).includes(svc.slug);
-      const canUpdateKey = deployed && svc.slug === 'repocket';
-      if (!deployed || canUpdateKey) allDeployed = false;
+      if (!deployed) allDeployed = false;
       rows += `
-      <label style="display:flex; align-items:center; gap:8px; padding:6px 0; ${deployed && !canUpdateKey ? 'opacity:0.5;' : ''}">
-        <input type="checkbox" class="${checkboxClass}" data-slug="${svc.slug}" data-wid="${w.id}" ${deployed && !canUpdateKey ? 'disabled checked' : ''}>
+      <label style="display:flex; align-items:center; gap:8px; padding:6px 0; ${deployed ? 'opacity:0.5;' : ''}">
+        <input type="checkbox" class="${checkboxClass}" data-slug="${svc.slug}" data-wid="${w.id}" ${deployed ? 'disabled checked' : ''}>
         <span>${escapeHtml(w.name)}</span>
         ${deployed
-          ? `<span class="badge badge-deployed" style="font-size:0.75rem;">${canUpdateKey ? 'Deployed — select to update API key' : 'Deployed'}</span>`
+          ? '<span class="badge badge-deployed" style="font-size:0.75rem;">Deployed</span>'
           : '<span class="badge badge-available" style="font-size:0.75rem;">Available</span>'}
       </label>`;
     }
@@ -2287,7 +2286,7 @@ const CP = (() => {
         </div>
         <div style="display:flex; gap:8px; align-items:center;">
           <button class="btn btn-success" data-action="deployService" data-a1="${svc.slug}"${_isOwner ? '' : ' disabled title="Owner access required"'}>
-            ${svc.slug === 'repocket' && isDeployed ? 'Deploy / Update API key' : `Deploy ${escapeHtml(svc.name)}`}
+            Deploy ${escapeHtml(svc.name)}
           </button>
           <span class="deploy-status" id="deploy-status-${svc.slug}" style="margin-left: 4px; font-size: 0.85rem;"></span>
         </div>`;
@@ -2361,9 +2360,7 @@ const CP = (() => {
         if (!input.checkValidity()) invalidInput ||= input;
       }
       env[input.dataset.key] = input.value;
-      // Only the API knows which Repocket worker has a valid saved key/email.
-      // Blank fields can preserve those values on an existing deployment.
-      if (input.required && !input.value.trim() && slug !== 'repocket') {
+      if (input.required && !input.value.trim()) {
         input.style.borderColor = 'var(--error)';
         missingRequired = true;
       } else {
@@ -2697,7 +2694,7 @@ const CP = (() => {
           <div id="deploy-worker-list">${workerRows}</div>
         </div>
         <div style="display:flex; gap:8px; align-items:center;">
-          <button class="btn btn-success" data-action="deployServiceToWorkers" data-a1="${svc.slug}"${_isOwner ? '' : ' disabled title="Owner access required"'}>${svc.slug === 'repocket' && isDeployed ? 'Deploy / Update API key' : 'Deploy'}</button>
+          <button class="btn btn-success" data-action="deployServiceToWorkers" data-a1="${svc.slug}"${_isOwner ? '' : ' disabled title="Owner access required"'}>Deploy</button>
           <span id="deploy-status-${svc.slug}" style="font-size:0.85rem;"></span>
         </div>`;
       }
