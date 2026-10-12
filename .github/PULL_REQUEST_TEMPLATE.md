@@ -19,3 +19,4 @@
 - [ ] Guide page added in `docs/guides/` (if new service)
 - [ ] README service table updated (if new service)
 - [ ] No credentials or secrets committed
+- [ ] CashPilot-Desktop follow-up linked, or the Summary says why Desktop needs nothing (catalog, deploy form, deploy validation and guide facts all have a counterpart there)
