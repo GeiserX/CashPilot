@@ -125,7 +125,14 @@ CREDENTIAL_LIFETIMES: dict[str, dict[str, dict[str, object]]] = {
         "access_token": {
             "hours": None,
             "durable": True,
-            "why": "Bearer token from browser localStorage. Re-copy it if Grass signs you out.",
+            "why": "Bearer token from browser localStorage, a JWT that states its own expiry (about a year); the date shown comes from the token.",
+        },
+    },
+    "traffmonetizer": {
+        "token": {
+            "hours": 24 * 7,
+            "durable": False,
+            "why": "The dashboard's authToken from browser localStorage lives 7 days, and the login form is captcha-gated, so only a person can renew it.",
         },
     },
     "salad": {

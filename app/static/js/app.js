@@ -2830,6 +2830,10 @@ const CP = (() => {
             ? `${Math.round(row.expected_lifetime_hours / 24)} days`
             : `${row.expected_lifetime_hours} hours`}`
         : '';
+      // A JWT states its own expiry; that date is the fact, the lifetime a guess.
+      const expires = row.expires_at
+        ? ` · expires ${new Date(row.expires_at).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}`
+        : '';
       // The durable alternative is the actual fix, not a nag: swapping to it
       // ends the expiry cycle instead of restarting it.
       const durable = (row.durable_alternative_missing || []).length
@@ -2841,7 +2845,7 @@ const CP = (() => {
         <div class="credential-health-item">
           <div>
             <div class="credential-health-name">${escapeHtml(row.service)} <span style="color:var(--text-muted); font-weight:400;">· ${escapeHtml(String(row.field).replace(/_/g, ' '))}</span></div>
-            <div class="credential-health-detail">${escapeHtml(age)}${escapeHtml(lifetime)}</div>
+            <div class="credential-health-detail">${escapeHtml(age)}${escapeHtml(lifetime)}${escapeHtml(expires)}</div>
             ${why}${durable}
           </div>
           <div class="credential-health-actions">

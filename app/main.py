@@ -2856,8 +2856,17 @@ async def api_credential_health(request: Request) -> list[dict[str, Any]]:
     _require_auth_api(request)
 
     from app.collectors import _COLLECTOR_ARGS, credential_lifetime, durable_alternative
+    from app.credential_expiry import jwt_times
 
     updated = await database.get_config_updated_at()
+    # The values themselves, decrypted, so a JWT's own expiry can be read. They
+    # stay inside this function: the report carries dates, never the value.
+    try:
+        values = await database.get_config()
+    except Exception:  # noqa: BLE001 - a value-less report is still a report
+        values = {}
+    if not isinstance(values, dict):
+        values = {}
     now = datetime.now(UTC)
     report: list[dict[str, Any]] = []
 
@@ -2886,6 +2895,29 @@ async def api_credential_health(request: Request) -> list[dict[str, Any]]:
             else:
                 status = "fresh"
 
+            # A JWT says when it dies. That beats both the paste date and the
+            # per-service guess: a token pasted half-spent, or one the provider
+            # now issues for 7 days instead of a year, is judged on its own
+            # claim. The 25% window mirrors the age-based one; 48 h is the floor
+            # so a short token still gets a warning a human can act on.
+            issued_at, expires_at = jwt_times(str(values.get(key) or ""))
+            if expires_at is not None:
+                remaining_hours = (expires_at - now).total_seconds() / 3600
+                span_hours = (
+                    (expires_at - issued_at).total_seconds() / 3600
+                    if issued_at is not None and expires_at > issued_at
+                    else None
+                )
+                warn_hours = max(48.0, span_hours * 0.25) if span_hours else 48.0
+                if remaining_hours <= 0:
+                    status = "likely_expired"
+                elif remaining_hours <= warn_hours:
+                    status = "expiring_soon"
+                else:
+                    status = "fresh"
+                if span_hours:
+                    hours_total = round(span_hours)
+
             entry: dict[str, Any] = {
                 "service": slug,
                 "field": field,
@@ -2893,6 +2925,8 @@ async def api_credential_health(request: Request) -> list[dict[str, Any]]:
                 "expected_lifetime_hours": hours_total,
                 "status": status,
             }
+            if expires_at is not None:
+                entry["expires_at"] = expires_at.isoformat()
             if meta.get("why"):
                 entry["why"] = meta["why"]
             # Only nag about a durable alternative when the short-lived credential
