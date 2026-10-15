@@ -34,7 +34,7 @@ Deeper Network is a decentralized VPN and web3 infrastructure project. Primarily
 
 ### 1. Create an account
 
-Sign up at [Deeper Network](https://deeper.network).
+Get a Deeper Connect device from the [Deeper shop](https://shop.deeper.network?sca_ref=12020100.q8Vxm3SliA) (coupon `SERGIO` takes 5% off), then set it up at [deeper.network](https://deeper.network).
 
 ### 2. Get your credentials
 
