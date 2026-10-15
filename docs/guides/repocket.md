@@ -34,7 +34,7 @@ Repocket lets you earn passive income by sharing your unused internet bandwidth.
 
 ### 1. Create an account
 
-Sign up at [Repocket](https://repocket.com/).
+Sign up at [Repocket](https://link.repocket.com/b1zM).
 
 ### 2. Get your API key
 
