@@ -199,22 +199,37 @@ class TestTheRealCatalog:
         )
         assert result.returncode == 0, result.stdout + result.stderr
 
-    def test_strict_mode_currently_fails_on_the_deeper_network_gap(self):
-        """Control for --strict: it must be a genuinely harder gate. Repocket
-        was the gap until its code landed on 2026-10-15, and Salad turned out
-        to have retired its programme the same day; deeper-network still has
-        a known programme and no code. When that code lands, move this
-        assertion to expect success rather than deleting it."""
+    def test_strict_mode_passes_now_that_every_known_programme_has_a_code(self):
+        """--strict was the harder gate while Repocket, Salad and Deeper
+        Network were known programmes with no code. All three were settled on
+        2026-10-15 (two codes found, one programme retired), so the real
+        catalog now passes it; the synthetic test below keeps proving the gate
+        can still fail."""
         result = subprocess.run(
             [sys.executable, "scripts/referral_check.py", "--strict"],
             cwd=ROOT,
             capture_output=True,
             text=True,
         )
-        assert result.returncode == 1, result.stdout
-        assert "deeper-network" in result.stdout
-        assert "salad" not in result.stdout
-        assert "repocket" not in result.stdout
+        assert result.returncode == 0, result.stdout
+        assert "ACTION" not in result.stdout
+
+    def test_strict_mode_fails_on_a_known_programme_with_no_code(self, tmp_path):
+        """The red control: a provider verified to pay referrers, with no code
+        recorded, must fail --strict. Without this the passing real catalog
+        above could be a gate that never bites."""
+        (tmp_path / "bandwidth").mkdir()
+        (tmp_path / "bandwidth" / "gap.yml").write_text(
+            'slug: gap\nstatus: active\nreferral:\n  signup_url: "https://example.com"\n  program: true\n'
+        )
+        result = subprocess.run(
+            [sys.executable, "scripts/referral_check.py", "--strict", "--services-dir", str(tmp_path)],
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+        )
+        assert result.returncode == 1, result.stdout + result.stderr
+        assert "ACTION" in result.stdout and "gap" in result.stdout
 
     def test_strict_mode_passes_on_a_clean_catalog(self, tmp_path):
         """The control for the control: if --strict always exited 1, the test

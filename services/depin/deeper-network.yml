@@ -10,8 +10,14 @@ description: >
 short_description: Decentralized VPN - requires proprietary hardware device
 
 referral:
-  signup_url: "https://deeper.network"
+  # Deeper pays referrers on the device sale (UpPromote affiliate), not on node earnings;
+  # a node needs the Deeper Connect box, so the shop is the one paid step on the way in.
+  signup_url: "https://shop.deeper.network?sca_ref=12020100.q8Vxm3SliA"
+  code: "12020100.q8Vxm3SliA"
   program: true
+  bonus:
+    referrer: "Commission on the device sale"
+    referee: "5% off the Deeper Connect device with coupon SERGIO"
 
 docker:
   image: ""
