@@ -10,6 +10,10 @@
 #   confirmed on this date that the programme is gone. The weekly liveness check stops
 #   reporting a possible resurrection for a year from that date, then asks again.
 #   - dropped: evaluated then removed; hidden from catalog (alongside broken/dead)
+# priority: (optional) integer, 1 first. Entries with a priority come before the rest, in that
+#   order, everywhere the catalog is listed (web catalog, README lists, Desktop); the rest keep
+#   their usual order (category, then name). Used to lead with the services that pay the project
+#   best, so a reorder is a number change, never a new page.
 # website: Main URL
 # description: One paragraph description
 # short_description: One line (for tables)

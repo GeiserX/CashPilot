@@ -2,6 +2,7 @@ name: Honeygain
 slug: honeygain
 category: bandwidth
 status: active
+priority: 1
 website: https://www.honeygain.com
 description: >
   Share your unused internet bandwidth and earn passive income. Honeygain routes

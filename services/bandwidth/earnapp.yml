@@ -2,6 +2,7 @@ name: EarnApp
 slug: earnapp
 category: bandwidth
 status: active
+priority: 7
 website: https://earnapp.com
 description: >
   EarnApp by Bright Data lets you sell your unused bandwidth for passive income.

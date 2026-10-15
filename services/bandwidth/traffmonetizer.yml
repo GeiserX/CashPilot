@@ -2,6 +2,7 @@ name: Traffmonetizer
 slug: traffmonetizer
 category: bandwidth
 status: active
+priority: 6
 website: https://traffmonetizer.com
 description: >
   Traffmonetizer lets you monetize your internet traffic by sharing bandwidth with
