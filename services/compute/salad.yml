@@ -13,7 +13,10 @@ short_description: GPU sharing for AI - Windows only, gift card or cash payout
 
 referral:
   signup_url: "https://salad.io"
-  program: true
+  # Checked logged in on 2026-10-15: the account has no referral section, the referrals URL
+  # answers "page doesn't exist", the old support article and the affiliate page redirect
+  # away, and the docs never mention referrals. The programme is gone.
+  program: false
 
 docker:
   image: ""

@@ -199,12 +199,12 @@ class TestTheRealCatalog:
         )
         assert result.returncode == 0, result.stdout + result.stderr
 
-    def test_strict_mode_currently_fails_on_the_salad_and_deeper_gaps(self):
+    def test_strict_mode_currently_fails_on_the_deeper_network_gap(self):
         """Control for --strict: it must be a genuinely harder gate. Repocket
-        was the gap until its code landed on 2026-10-15; salad and
-        deeper-network still have a known programme and no code. When those
-        codes land, move this assertion to expect success rather than
-        deleting it."""
+        was the gap until its code landed on 2026-10-15, and Salad turned out
+        to have retired its programme the same day; deeper-network still has
+        a known programme and no code. When that code lands, move this
+        assertion to expect success rather than deleting it."""
         result = subprocess.run(
             [sys.executable, "scripts/referral_check.py", "--strict"],
             cwd=ROOT,
@@ -212,8 +212,8 @@ class TestTheRealCatalog:
             text=True,
         )
         assert result.returncode == 1, result.stdout
-        assert "salad" in result.stdout
         assert "deeper-network" in result.stdout
+        assert "salad" not in result.stdout
         assert "repocket" not in result.stdout
 
     def test_strict_mode_passes_on_a_clean_catalog(self, tmp_path):
