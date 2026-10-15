@@ -6,7 +6,7 @@ extract a JWT from their browser session.
 
 To get the token: open app.traffmonetizer.com, log in, press F12,
 go to Application > Local Storage > https://app.traffmonetizer.com,
-and copy the `access_token` value (a long JWT string).
+and copy the `authToken` value (a long JWT string). It lives 7 days.
 """
 
 from __future__ import annotations
@@ -38,7 +38,7 @@ class TraffmonetizerCollector(BaseCollector):
             return EarningsResult(
                 platform=self.platform,
                 balance=0.0,
-                error="No token configured — extract access_token from browser Local Storage",
+                error="No token configured — copy authToken from browser Local Storage",
             )
 
         try:
@@ -60,7 +60,7 @@ class TraffmonetizerCollector(BaseCollector):
                 return EarningsResult(
                     platform=self.platform,
                     balance=0.0,
-                    error="Token expired — refresh access_token from browser Local Storage",
+                    error="Token expired — copy a fresh authToken from browser Local Storage (it lives 7 days)",
                 )
 
             resp.raise_for_status()
