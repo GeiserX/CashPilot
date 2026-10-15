@@ -154,7 +154,21 @@ def _validate(data: dict[str, Any], path: Path) -> list[str]:
             if field in reqs and not isinstance(reqs[field], bool):
                 errors.append(f"{path.name}: requirements.{field} must be a boolean")
 
+    priority = data.get("priority")
+    if priority is not None and (isinstance(priority, bool) or not isinstance(priority, int) or priority < 1):
+        errors.append(f"{path.name}: priority must be a positive integer (1 first), got {priority!r}")
+
     return errors
+
+
+def priority_key(service: dict[str, Any]) -> tuple[bool, int]:
+    """Sort key that puts prioritised entries first, lowest number first.
+
+    Everything without a priority sorts after them and keeps whatever order it
+    already had (the sort is stable), so a reorder never touches the rest.
+    """
+    priority = service.get("priority")
+    return (priority is None, priority if isinstance(priority, int) else 0)
 
 
 def _load_from_disk() -> list[dict[str, Any]]:
@@ -202,6 +216,7 @@ def _load_from_disk() -> list[dict[str, Any]]:
                 continue
             services.append(data)
 
+    services.sort(key=priority_key)
     return services
 
 

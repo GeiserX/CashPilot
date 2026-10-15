@@ -89,7 +89,7 @@ def _selected(kind: str) -> list[dict]:
 
 
 def _line(kind: str) -> str:
-    selected = sorted(_selected(kind), key=lambda s: str(s.get("name", "")).lower())
+    selected = sorted(_selected(kind), key=lambda s: (*catalog.priority_key(s), str(s.get("name", "")).lower()))
     return f"**{_LABELS[kind]} ({len(selected)}):** " + ", ".join(_link(s) + _markers(s) for s in selected)
 
 

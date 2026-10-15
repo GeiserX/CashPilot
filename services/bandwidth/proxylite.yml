@@ -2,6 +2,7 @@ name: ProxyLite
 slug: proxylite
 category: bandwidth
 status: active
+priority: 4
 website: https://proxylite.ru
 description: >
   ProxyLite monetizes your internet traffic by sharing bandwidth with verified

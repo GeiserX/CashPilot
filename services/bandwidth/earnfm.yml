@@ -2,6 +2,7 @@ name: Earn.fm
 slug: earnfm
 category: bandwidth
 status: active
+priority: 5
 website: https://earn.fm
 description: >
   Earn.fm pays you for sharing your internet bandwidth. Earnings collector

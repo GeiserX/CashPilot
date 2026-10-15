@@ -2,6 +2,7 @@ name: Bytelixir
 slug: bytelixir
 category: bandwidth
 status: active
+priority: 2
 website: https://bytelixir.com
 description: >
   Bytelixir lets you earn passive income by sharing unused internet bandwidth.

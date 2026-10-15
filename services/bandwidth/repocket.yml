@@ -2,6 +2,7 @@ name: Repocket
 slug: repocket
 category: bandwidth
 status: active
+priority: 8
 website: https://repocket.com
 description: >
   Repocket lets you earn passive income by sharing your unused internet bandwidth.
