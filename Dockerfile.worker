@@ -35,7 +35,10 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PATH="/app/.venv/bin:$PATH"
 
-RUN apk add --no-cache su-exec
+# Both packages: upgrading only ca-certificates-bundle leaves the old hashed
+# links in /etc/ssl/certs, which still trust the compromised eMudhra roots.
+RUN apk add --no-cache su-exec \
+    && apk upgrade --no-cache ca-certificates ca-certificates-bundle
 
 RUN adduser -D -u 1000 cashpilot \
     && mkdir -p /data && chown cashpilot:root /data
