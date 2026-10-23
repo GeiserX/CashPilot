@@ -26,10 +26,15 @@ def _referral_services() -> list[dict]:
 
 
 def _guide_cases() -> list[tuple[str, Path]]:
+    """Every guide of a live service that has a referral code.
+
+    Not filtered on the guide's content: a guide that lost its signup link must
+    fail below, not drop out of the list.
+    """
     cases = []
     for svc in _referral_services():
         guide = ROOT / "docs" / "guides" / f"{svc['slug']}.md"
-        if guide.exists() and svc["referral"]["signup_url"] in guide.read_text(encoding="utf-8"):
+        if guide.exists() and svc.get("status") in {"active", "beta"}:
             cases.append((svc["slug"], guide))
     return cases
 
@@ -43,7 +48,9 @@ def test_there_are_guides_to_check():
 def test_every_guide_notes_its_referral_link_right_under_it(slug, guide):
     svc = catalog.get_service(slug)
     lines = guide.read_text(encoding="utf-8").splitlines()
-    first = next(i for i, line in enumerate(lines) if svc["referral"]["signup_url"] in line)
+    hits = [i for i, line in enumerate(lines) if svc["referral"]["signup_url"] in line]
+    assert hits, f"{guide.name}: the catalog's signup link is missing"
+    first = hits[0]
     # The next non-blank line, with a blockquote marker stripped.
     following = [line.lstrip("> ").strip() for line in lines[first + 1 : first + 4]]
     following = [line for line in following if line]
