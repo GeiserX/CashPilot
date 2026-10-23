@@ -36,7 +36,7 @@ Uprock is a DePIN (Decentralized Physical Infrastructure Network) platform that 
 
 Sign up at [Uprock](https://link.uprock.com/i/33e8492e).
 
-<small>Referral link: the CashPilot maintainer may earn a commission, at no cost to you. To sign up without it, go to [uprock.com](https://uprock.com).</small>
+<small>Referral link: the CashPilot maintainer may earn a commission from it.</small>
 
 ### 2. Install the extension or app
 

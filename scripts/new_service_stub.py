@@ -15,7 +15,6 @@ from __future__ import annotations
 import argparse
 import sys
 from pathlib import Path
-from urllib.parse import urlparse
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
@@ -82,11 +81,7 @@ def referral_note(service: dict) -> str:
     ref = service.get("referral") or {}
     if not ref.get("code") or not ref.get("signup_url"):
         return ""
-    note = "Referral link: the CashPilot maintainer may earn a commission, at no cost to you."
-    website = service.get("website") or ""
-    if website and website != ref["signup_url"]:
-        host = urlparse(website).netloc.removeprefix("www.") or website
-        note += f" To sign up without it, go to [{host}]({website})."
+    note = "Referral link: the CashPilot maintainer may earn a commission from it."
     return f"<small>{note}</small>"
 
 

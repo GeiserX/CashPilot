@@ -1010,10 +1010,6 @@ img { max-width: 100%; }
   margin: 6px 0 12px;
 }
 
-.referral-note a {
-  text-decoration: underline;
-}
-
 .form-input,
 .form-select,
 .form-textarea {

@@ -36,7 +36,7 @@ Teneo Protocol is a DePIN network that rewards users for sharing bandwidth via a
 
 Sign up at [Teneo Protocol](https://dashboard.teneo.pro/?code=CAqef).
 
-<small>Referral link: the CashPilot maintainer may earn a commission, at no cost to you. To sign up without it, go to [teneo.pro](https://teneo.pro).</small>
+<small>Referral link: the CashPilot maintainer may earn a commission from it.</small>
 
 ### 2. Get your credentials
 

@@ -36,7 +36,7 @@ Gradient Network is a decentralized compute and bandwidth sharing platform backe
 
 Sign up at [Gradient Network](https://app.gradient.network/signup?referralCode=YSKMY7).
 
-<small>Referral link: the CashPilot maintainer may earn a commission, at no cost to you. To sign up without it, go to [gradient.network](https://gradient.network).</small>
+<small>Referral link: the CashPilot maintainer may earn a commission from it.</small>
 
 ### 2. Get your credentials
 

@@ -36,7 +36,7 @@ PacketStream is a peer-to-peer bandwidth marketplace where you can sell your unu
 
 Sign up at [PacketStream](https://packetstream.io/?psr=7xgZ).
 
-<small>Referral link: the CashPilot maintainer may earn a commission, at no cost to you. To sign up without it, go to [packetstream.io](https://packetstream.io).</small>
+<small>Referral link: the CashPilot maintainer may earn a commission from it.</small>
 
 ### 2. Get your credentials
 

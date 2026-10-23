@@ -36,7 +36,7 @@ IPRoyal Pawns lets you earn by sharing your unused bandwidth. IPRoyal is a well-
 
 Sign up at [IPRoyal Pawns](https://pawns.app?r=19266874).
 
-<small>Referral link: the CashPilot maintainer may earn a commission, at no cost to you. To sign up without it, go to [pawns.app](https://pawns.app).</small>
+<small>Referral link: the CashPilot maintainer may earn a commission from it.</small>
 
 ### 2. Get your credentials
 

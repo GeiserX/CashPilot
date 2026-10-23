@@ -36,7 +36,7 @@ Ebesucher is a traffic exchange platform where you earn credits by visiting webs
 
 Sign up at [Ebesucher](https://www.ebesucher.com/?ref=geiserx).
 
-<small>Referral link: the CashPilot maintainer may earn a commission, at no cost to you. To sign up without it, go to [ebesucher.com](https://www.ebesucher.com).</small>
+<small>Referral link: the CashPilot maintainer may earn a commission from it.</small>
 
 ### 2. Get your credentials
 

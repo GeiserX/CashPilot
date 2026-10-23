@@ -36,7 +36,7 @@ PassiveApp is a DePIN platform that lets you earn crypto and PayPal rewards by s
 
 Sign up at [PassiveApp](https://passiveapp.com/i/bqpC4M).
 
-<small>Referral link: the CashPilot maintainer may earn a commission, at no cost to you. To sign up without it, go to [passiveapp.com](https://passiveapp.com).</small>
+<small>Referral link: the CashPilot maintainer may earn a commission from it.</small>
 
 ### 2. Install the Windows app
 

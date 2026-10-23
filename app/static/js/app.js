@@ -2190,18 +2190,11 @@ const CP = (() => {
   // The Sign Up buttons open the maintainer's referral link, and the person
   // clicking should know that before the click, not from a README section they
   // never open. Shown only where the catalog records a referral code: a bare
-  // signup_url (no programme, or none found yet) is not a referral link. The
-  // provider's own website is offered as the way around it.
+  // signup_url (no programme, or none found yet) is not a referral link.
   function referralNote(svc) {
     const ref = svc.referral || {};
     if (!ref.code || !ref.signup_url) return '';
-    let direct = '';
-    if (svc.website && svc.website !== ref.signup_url) {
-      let host = svc.website;
-      try { host = new URL(svc.website).host.replace(/^www\./, ''); } catch (e) { /* keep the raw URL */ }
-      direct = ` To sign up without it, go to <a href="${escapeHtml(svc.website)}" target="_blank" rel="noopener">${escapeHtml(host)}</a>.`;
-    }
-    return `<p class="referral-note">Referral link: the CashPilot maintainer may earn a commission, at no cost to you.${direct}</p>`;
+    return '<p class="referral-note">Referral link: the CashPilot maintainer may earn a commission from it.</p>';
   }
 
   function collectorCredentialsNotice(slug) {

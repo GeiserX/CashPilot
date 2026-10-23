@@ -36,7 +36,7 @@ Dawn Internet is a decentralized wireless network that rewards users for sharing
 
 Sign up at [Dawn Internet](https://dawninternet.com/?code=2QLQV97F).
 
-<small>Referral link: the CashPilot maintainer may earn a commission, at no cost to you. To sign up without it, go to [dawninternet.com](https://dawninternet.com).</small>
+<small>Referral link: the CashPilot maintainer may earn a commission from it.</small>
 
 ### 2. Get your credentials
 

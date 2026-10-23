@@ -38,7 +38,7 @@ Traffmonetizer lets you monetize your internet traffic by sharing bandwidth with
 
 Sign up at [Traffmonetizer](https://traffmonetizer.com/?aff=2111758).
 
-<small>Referral link: the CashPilot maintainer may earn a commission, at no cost to you. To sign up without it, go to [traffmonetizer.com](https://traffmonetizer.com).</small>
+<small>Referral link: the CashPilot maintainer may earn a commission from it.</small>
 
 ### 2. Get your credentials
 

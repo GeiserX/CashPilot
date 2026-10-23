@@ -54,7 +54,7 @@ EarnApp by Bright Data lets you sell your unused bandwidth for passive income. B
 
 Sign up at [EarnApp](https://earnapp.com/i/TSMD9wSm).
 
-<small>Referral link: the CashPilot maintainer may earn a commission, at no cost to you. To sign up without it, go to [earnapp.com](https://earnapp.com).</small>
+<small>Referral link: the CashPilot maintainer may earn a commission from it.</small>
 
 ### 2. Get your credentials
 

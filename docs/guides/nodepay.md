@@ -36,7 +36,7 @@ Nodepay is a DePIN network that rewards users for sharing bandwidth through a br
 
 Sign up at [Nodepay](https://app.nodepay.ai/register?ref=0wzzyznen64j9zx).
 
-<small>Referral link: the CashPilot maintainer may earn a commission, at no cost to you. To sign up without it, go to [nodepay.ai](https://nodepay.ai).</small>
+<small>Referral link: the CashPilot maintainer may earn a commission from it.</small>
 
 ### 2. Get your credentials
 

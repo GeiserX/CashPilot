@@ -36,7 +36,7 @@ Share your unused internet bandwidth and earn passive income. Honeygain routes w
 
 Sign up at [Honeygain](https://dashboard.honeygain.com/ref/SERGIB4014).
 
-<small>Referral link: the CashPilot maintainer may earn a commission, at no cost to you. To sign up without it, go to [honeygain.com](https://www.honeygain.com).</small>
+<small>Referral link: the CashPilot maintainer may earn a commission from it.</small>
 
 ### 2. Get your credentials
 

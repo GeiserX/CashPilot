@@ -54,11 +54,12 @@ def test_a_bare_signup_url_gets_no_note():
     assert referral_note({"referral": {"signup_url": "https://x.example"}, "website": "https://x.example"}) == ""
 
 
-def test_the_note_offers_the_website_when_it_differs():
+def test_the_note_only_states_the_commission():
+    """No alternative link: the note says what the link is, nothing more."""
     note = referral_note(
         {"referral": {"code": "A1", "signup_url": "https://x.example/r/A1"}, "website": "https://www.x.example"}
     )
-    assert "[x.example](https://www.x.example)" in note
+    assert note == "<small>Referral link: the CashPilot maintainer may earn a commission from it.</small>"
 
 
 def test_the_readme_discloses_before_the_first_list_of_links():

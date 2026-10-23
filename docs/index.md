@@ -142,7 +142,7 @@ graph LR
 
 ## Disclosure
 
-The signup links in CashPilot and in these docs are referral links. If you sign up through one, the maintainer may earn a commission, at no cost to you. To avoid them, sign up on the provider's own website instead.
+The signup links in CashPilot and in these docs are referral links. If you sign up through one, the maintainer may earn a commission, at no cost to you.
 
 ## License
 

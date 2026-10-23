@@ -36,7 +36,7 @@ Earn.fm pays you for sharing your internet bandwidth. Authenticates via a UUID A
 
 Sign up at [Earn.fm](https://earn.fm/ref/GEISYB91).
 
-<small>Referral link: the CashPilot maintainer may earn a commission, at no cost to you. To sign up without it, go to [earn.fm](https://earn.fm).</small>
+<small>Referral link: the CashPilot maintainer may earn a commission from it.</small>
 
 ### 2. Get your API key
 
