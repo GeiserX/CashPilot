@@ -1591,6 +1591,28 @@ async def _worker_deployment_spec(slug: str, worker_id: int) -> dict[str, Any] |
     return None
 
 
+async def get_custom_images(slug: str) -> dict[int, str]:
+    """The image each worker runs ``slug`` from, where the operator chose one.
+
+    Read from the per-worker records, where a deploy with a custom image stores
+    it as ``custom_image``. Workers on the catalog image are absent, so an empty
+    answer means every deployment of the service follows the catalog.
+    """
+    db = await _get_db()
+    try:
+        cursor = await db.execute("SELECT worker_id, spec_encrypted FROM deployment_specs WHERE slug = ?", (slug,))
+        rows = await cursor.fetchall()
+    finally:
+        await db.close()
+    images: dict[int, str] = {}
+    for row in rows:
+        spec = _decode_spec(row["spec_encrypted"] or "", slug) or {}
+        custom = spec.get("custom_image")
+        if isinstance(custom, str) and custom:
+            images[int(row["worker_id"])] = custom
+    return images
+
+
 def _decode_spec(blob: str, slug: str) -> dict[str, Any] | None:
     if not blob:
         return None
