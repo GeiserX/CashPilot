@@ -41,9 +41,11 @@ let toasts = 0;
 const requests = [];
 const document = { getElementById: () => null, querySelectorAll: () => inputs };
 const api = async (...args) => { requests.push(args); return {}; };
-const deploy = new Function('document', 'api', 'toast', '_confirmPreflight', 'wizardState',
+// _imageChoice and _instancesFor read the form's Advanced box and Instances
+// box; undefined is "unchanged", so the request body is the env alone.
+const deploy = new Function('document', 'api', 'toast', '_confirmPreflight', 'wizardState', '_imageChoice', '_instancesFor',
   `${grab('_deployToWorkers')}\nreturn _deployToWorkers;`)(document, api, () => { toasts++; },
-  async () => { preflights++; return true; }, { deployed: [] });
+  async () => { preflights++; return true; }, { deployed: [] }, () => undefined, () => undefined);
 const input = (key, value, { valid, required }) => ({ value, required, pattern: '[a-f0-9-]+',
   dataset: { key }, style: {}, checkValidity: () => valid, reportValidity: () => { reports++; } });
 
