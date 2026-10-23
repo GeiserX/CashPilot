@@ -2187,6 +2187,23 @@ const CP = (() => {
   //
   // One function rather than two copies: a notice that exists twice drifts, and
   // the wizard's version is the one that matters most.
+  // The Sign Up buttons open the maintainer's referral link, and the person
+  // clicking should know that before the click, not from a README section they
+  // never open. Shown only where the catalog records a referral code: a bare
+  // signup_url (no programme, or none found yet) is not a referral link. The
+  // provider's own website is offered as the way around it.
+  function referralNote(svc) {
+    const ref = svc.referral || {};
+    if (!ref.code || !ref.signup_url) return '';
+    let direct = '';
+    if (svc.website && svc.website !== ref.signup_url) {
+      let host = svc.website;
+      try { host = new URL(svc.website).host.replace(/^www\./, ''); } catch (e) { /* keep the raw URL */ }
+      direct = ` To sign up without it, go to <a href="${escapeHtml(svc.website)}" target="_blank" rel="noopener">${escapeHtml(host)}</a>.`;
+    }
+    return `<p class="referral-note">Referral link: the CashPilot maintainer may earn a commission, at no cost to you.${direct}</p>`;
+  }
+
   function collectorCredentialsNotice(slug) {
     return `
         <div style="font-size:0.8rem; color:var(--text-muted); background:var(--bg-subtle, rgba(255,255,255,0.03)); border:1px solid var(--border); border-radius:6px; padding:8px 10px; margin:10px 0;">
@@ -2234,6 +2251,7 @@ const CP = (() => {
             Setup Guide
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 3h6a4 4 0 014 4v14a3 3 0 00-3-3H2z"/><path d="M22 3h-6a4 4 0 00-4 4v14a3 3 0 013-3h7z"/></svg>
           </a>
+          ${isDeployed && dashboardUrl ? '' : referralNote(svc)}
           ${manualEnvFields ? `<div style="margin-top: 16px;">${manualEnvFields}</div>` : ''}
         </div>
       </div>`;
@@ -2260,6 +2278,7 @@ const CP = (() => {
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 3h6a4 4 0 014 4v14a3 3 0 00-3-3H2z"/><path d="M22 3h-6a4 4 0 00-4 4v14a3 3 0 013-3h7z"/></svg>
           </a>
         </p>
+        ${isDeployed && dashboardUrl ? '' : referralNote(svc)}
         <p style="color: var(--text-muted); font-size: 0.85rem;">Already have an account? Enter your credentials below.</p>
       </div>
 
@@ -2657,6 +2676,7 @@ const CP = (() => {
           Sign Up / Log In for ${escapeHtml(svc.name)}
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
         </a>
+        ${referralNote(svc)}
       </div>`;
     }
 

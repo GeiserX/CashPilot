@@ -36,6 +36,8 @@ Grass is a decentralized network that lets you sell your unused bandwidth for AI
 
 Sign up at [Grass](https://app.grass.io/register?referralCode=kn8FNEPnUr2tMqE).
 
+<small>Referral link: the CashPilot maintainer may earn a commission, at no cost to you. To sign up without it, go to [grass.io](https://www.grass.io).</small>
+
 ### 2. Get your credentials
 
 After signing up, locate the credentials needed for Docker deployment. These are typically your email/password or an API token found in the dashboard.

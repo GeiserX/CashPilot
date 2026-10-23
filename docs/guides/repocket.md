@@ -36,6 +36,8 @@ Repocket lets you earn passive income by sharing your unused internet bandwidth.
 
 Sign up at [Repocket](https://link.repocket.com/b1zM).
 
+<small>Referral link: the CashPilot maintainer may earn a commission, at no cost to you. To sign up without it, go to [repocket.com](https://repocket.com).</small>
+
 ### 2. Get your API key
 
 Log in at [app.repocket.com](https://app.repocket.com/bandwidth-earnings) and copy the **API key** shown on the bandwidth-earnings page. This API key — not your account password — is what the Docker container uses to authenticate.

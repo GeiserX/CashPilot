@@ -37,6 +37,8 @@ ProxyBase is a bandwidth-sharing platform that pays users in cryptocurrency for 
 
 Sign up at [ProxyBase](https://peer.proxybase.org?referral=nXzS3c6iTO). If the referral field is not pre-filled, enter referral code `nXzS3c6iTO` in the **Referral Code** box before creating your account.
 
+<small>Referral link: the CashPilot maintainer may earn a commission, at no cost to you. To sign up without it, go to [proxybase.org](https://proxybase.org).</small>
+
 ### 2. Get your Access Token
 
 After signing up and verifying your email, open your [dashboard](https://peer.proxybase.org/dashboard) and copy your **Access Token** — it is shown in the Docker command on the setup page and looks like a short alphanumeric string.

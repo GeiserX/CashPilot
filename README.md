@@ -40,6 +40,8 @@ You need Docker on a Linux, macOS or Windows host, amd64 or arm64. Open [http://
 
 <!-- n:active -->40<!-- /n --> active services and <!-- n:beta -->1<!-- /n --> in beta, <!-- n:catalogued -->52<!-- /n --> catalogued. Each has a [guide](https://geiserx.github.io/CashPilot/guides/) with what it needs, whether it runs in Docker, the payout method and the minimum payout. Services that need a residential IP are marked there; the rest run on a VPS.
 
+<sub>**Disclosure.** Most signup links below, and the Sign Up buttons in CashPilot, are referral links: if you sign up through one, the maintainer may earn a commission, at no cost to you, which helps fund CashPilot's development. To avoid them, sign up on the provider's own website instead.</sub>
+
 <!-- BEGIN GENERATED: docker-services -->
 **Run in Docker by CashPilot (17):** [Honeygain](https://dashboard.honeygain.com/ref/SERGIB4014), [ProxyLite](https://proxylite.ru/?r=KMUPRZIZ), [Earn.fm](https://earn.fm/ref/GEISYB91), [Traffmonetizer](https://traffmonetizer.com/?aff=2111758), [EarnApp](https://earnapp.com/i/TSMD9wSm) \*, [Repocket](https://link.repocket.com/b1zM), [IPRoyal Pawns](https://pawns.app?r=19266874), [Anyone Protocol](https://anyone.io), [Bitping](https://app.bitping.com), [MystNodes](https://mystnodes.co/?referral_code=do7v7YOoBBpbOstKQovX2pUvZYKia4ZhH3QIdNtE), [PacketStream](https://packetstream.io/?psr=7xgZ), [ProxyBase](https://peer.proxybase.org?referral=nXzS3c6iTO), [ProxyBase Markets](https://proxybase.xyz?referral=nXzS3c6iTO), [ProxyRack](https://peer.proxyrack.com/ref/mpwiok3xlaxeycnn5znqlg7ipjeutxyxr6xl7vmn), [Sia (hostd)](https://docs.sia.tech/provide-storage/setting-up-hostd/docker), [Storj](https://storj.dev/node/get-started/setup), [URnetwork](https://ur.io/?referral_code=1Q3G19)
 <!-- END GENERATED: docker-services -->
@@ -55,8 +57,6 @@ You need Docker on a Linux, macOS or Windows host, amd64 or arm64. Open [http://
 > \* EarnApp's help centre **prohibits** Docker containers, VMs, hosting services and home servers, with account termination and cancellation of pending payments as the stated penalty, which is exactly how CashPilot deploys it. Read the [guide](https://geiserx.github.io/CashPilot/guides/earnapp/) before deploying.
 >
 > These lists are **generated from the service YAML** by `scripts/generate_readme_tables.py` and checked in CI, so they cannot drift from the catalog. Edit the YAML, not the list.
-
-> **Disclosure.** The signup links in CashPilot and in this README are referral links. If you sign up through one, the maintainer may earn a commission, at no cost to you, which helps fund CashPilot's development. To avoid them, sign up on the provider's own website instead.
 
 ## FAQ
 

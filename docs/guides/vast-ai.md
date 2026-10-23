@@ -36,6 +36,8 @@ Vast.ai is a GPU cloud marketplace where you rent out your NVIDIA GPU to AI/ML r
 
 Sign up at [Vast.ai](https://cloud.vast.ai/?ref_id=452772).
 
+<small>Referral link: the CashPilot maintainer may earn a commission, at no cost to you. To sign up without it, go to [vast.ai](https://vast.ai).</small>
+
 ### 2. Get your credentials
 
 After signing up, locate the credentials needed for Docker deployment. These are typically your email/password or an API token found in the dashboard.

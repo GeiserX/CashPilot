@@ -1003,6 +1003,17 @@ img { max-width: 100%; }
   margin-top: 4px;
 }
 
+/* Smaller and muted, but next to the link it describes, never only in a footer. */
+.referral-note {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin: 6px 0 12px;
+}
+
+.referral-note a {
+  text-decoration: underline;
+}
+
 .form-input,
 .form-select,
 .form-textarea {

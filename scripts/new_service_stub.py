@@ -15,6 +15,7 @@ from __future__ import annotations
 import argparse
 import sys
 from pathlib import Path
+from urllib.parse import urlparse
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
@@ -50,7 +51,7 @@ TEMPLATE = """# {name}
 
 ## Setup
 
-1. Sign up at [{name}]({signup}).
+1. Sign up at [{name}]({signup}).{referral_note}
 2. Copy the credentials listed in the service's catalog entry.
 3. Deploy from the CashPilot catalog and paste them when prompted.
 
@@ -68,6 +69,25 @@ def _fmt(value: object, unknown: str = "Not documented") -> str:
     if value == 0:
         return "Unlimited"
     return str(value)
+
+
+def referral_note(service: dict) -> str:
+    """The line that sits under a guide's signup link when that link is a referral.
+
+    Smaller than the text around it, but next to the link, so the reader learns
+    it before the click. Empty when the catalog has no referral code: a bare
+    signup URL is not a referral link. tests/test_referral_disclosure.py checks
+    every guide against it.
+    """
+    ref = service.get("referral") or {}
+    if not ref.get("code") or not ref.get("signup_url"):
+        return ""
+    note = "Referral link: the CashPilot maintainer may earn a commission, at no cost to you."
+    website = service.get("website") or ""
+    if website and website != ref["signup_url"]:
+        host = urlparse(website).netloc.removeprefix("www.") or website
+        note += f" To sign up without it, go to [{host}]({website})."
+    return f"<small>{note}</small>"
 
 
 def render(slug: str) -> str:
@@ -93,6 +113,7 @@ def render(slug: str) -> str:
         per_account=_fmt(reqs.get("devices_per_account")),
         per_ip=_fmt(reqs.get("devices_per_ip")),
         signup=(service.get("referral") or {}).get("signup_url") or service.get("website", ""),
+        referral_note=(f"\n\n    {note}\n" if (note := referral_note(service)) else ""),
     )
 
 

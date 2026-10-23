@@ -36,6 +36,8 @@ Ebesucher is a traffic exchange platform where you earn credits by visiting webs
 
 Sign up at [Ebesucher](https://www.ebesucher.com/?ref=geiserx).
 
+<small>Referral link: the CashPilot maintainer may earn a commission, at no cost to you. To sign up without it, go to [ebesucher.com](https://www.ebesucher.com).</small>
+
 ### 2. Get your credentials
 
 After signing up, locate the credentials needed for Docker deployment. These are typically your email/password or an API token found in the dashboard.
