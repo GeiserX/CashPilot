@@ -36,6 +36,8 @@ Nodepay is a DePIN network that rewards users for sharing bandwidth through a br
 
 Sign up at [Nodepay](https://app.nodepay.ai/register?ref=0wzzyznen64j9zx).
 
+<small>Referral link: the CashPilot maintainer may earn a commission from it.</small>
+
 ### 2. Get your credentials
 
 After signing up, locate the credentials needed for Docker deployment. These are typically your email/password or an API token found in the dashboard.

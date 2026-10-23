@@ -36,6 +36,8 @@ Spide is a bandwidth-sharing service that lets you monetize unused internet band
 
 Sign up at [Spide](https://spide.network/register.html?f3bc51).
 
+<small>Referral link: the CashPilot maintainer may earn a commission from it.</small>
+
 ### 2. Get your credentials
 
 After signing up, locate the credentials needed for Docker deployment. These are typically your email/password or an API token found in the dashboard.

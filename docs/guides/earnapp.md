@@ -54,6 +54,8 @@ EarnApp by Bright Data lets you sell your unused bandwidth for passive income. B
 
 Sign up at [EarnApp](https://earnapp.com/i/TSMD9wSm).
 
+<small>Referral link: the CashPilot maintainer may earn a commission from it.</small>
+
 ### 2. Get your credentials
 
 After signing up, locate the credentials needed for Docker deployment. These are typically your email/password or an API token found in the dashboard.

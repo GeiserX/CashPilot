@@ -3,6 +3,8 @@
 > **Category:** Bandwidth Sharing | **Status:** Active
 >
 > **Website:** [proxybase.xyz](https://proxybase.xyz?referral=nXzS3c6iTO)
+>
+> <small>Referral link: the CashPilot maintainer may earn a commission from it.</small>
 
 ## Description
 

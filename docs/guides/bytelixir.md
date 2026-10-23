@@ -36,6 +36,8 @@ Bytelixir lets you earn passive income by sharing unused internet bandwidth. Sup
 
 Sign up at [Bytelixir](https://bytelixir.com/r/OYEIRE0VSZBZ).
 
+<small>Referral link: the CashPilot maintainer may earn a commission from it.</small>
+
 ### 2. Install the app
 
 Download the Windows or Android app from the **Download** section of your dashboard at

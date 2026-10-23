@@ -38,6 +38,8 @@ Traffmonetizer lets you monetize your internet traffic by sharing bandwidth with
 
 Sign up at [Traffmonetizer](https://traffmonetizer.com/?aff=2111758).
 
+<small>Referral link: the CashPilot maintainer may earn a commission from it.</small>
+
 ### 2. Get your credentials
 
 After signing up, locate the credentials needed for Docker deployment. These are typically your email/password or an API token found in the dashboard.

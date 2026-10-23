@@ -36,6 +36,8 @@ IPRoyal Pawns lets you earn by sharing your unused bandwidth. IPRoyal is a well-
 
 Sign up at [IPRoyal Pawns](https://pawns.app?r=19266874).
 
+<small>Referral link: the CashPilot maintainer may earn a commission from it.</small>
+
 ### 2. Get your credentials
 
 After signing up, locate the credentials needed for Docker deployment. These are typically your email/password or an API token found in the dashboard.

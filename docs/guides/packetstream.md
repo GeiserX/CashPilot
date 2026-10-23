@@ -36,6 +36,8 @@ PacketStream is a peer-to-peer bandwidth marketplace where you can sell your unu
 
 Sign up at [PacketStream](https://packetstream.io/?psr=7xgZ).
 
+<small>Referral link: the CashPilot maintainer may earn a commission from it.</small>
+
 ### 2. Get your credentials
 
 After signing up, locate the credentials needed for Docker deployment. These are typically your email/password or an API token found in the dashboard.

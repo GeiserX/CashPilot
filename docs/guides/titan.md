@@ -36,6 +36,8 @@ Titan Network is a DePIN platform that shares your IP address, storage, and band
 
 Sign up at [Titan Network](https://edge.titannet.info/signup?inviteCode=2GKKJ495).
 
+<small>Referral link: the CashPilot maintainer may earn a commission from it.</small>
+
 ### 2. Get a Device ID
 
 Log into the Titan Edge dashboard to obtain a Device ID for your node. **Note**: As of March 2026, the WebUI cannot generate device IDs and the Android app buttons are non-functional. You may need to wait for Titan to fix these issues.

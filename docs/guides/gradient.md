@@ -36,6 +36,8 @@ Gradient Network is a decentralized compute and bandwidth sharing platform backe
 
 Sign up at [Gradient Network](https://app.gradient.network/signup?referralCode=YSKMY7).
 
+<small>Referral link: the CashPilot maintainer may earn a commission from it.</small>
+
 ### 2. Get your credentials
 
 After signing up, locate the credentials needed for Docker deployment. These are typically your email/password or an API token found in the dashboard.

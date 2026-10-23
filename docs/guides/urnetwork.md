@@ -36,6 +36,8 @@ URnetwork is a decentralized VPN and bandwidth-sharing network. You earn by prov
 
 Sign up at [URnetwork](https://ur.io/?referral_code=1Q3G19).
 
+<small>Referral link: the CashPilot maintainer may earn a commission from it.</small>
+
 ### 2. Get your credentials
 
 The provider logs in with your normal URnetwork account: the email and password you use at [ur.io](https://ur.io). If you created the account with Google or Apple sign-in, set a password on it first — the headless provider has no browser to run an SSO flow in.

@@ -36,6 +36,8 @@ ProxyLite monetizes your internet traffic by sharing bandwidth with verified org
 
 Sign up at [ProxyLite](https://proxylite.ru/?r=KMUPRZIZ).
 
+<small>Referral link: the CashPilot maintainer may earn a commission from it.</small>
+
 ### 2. Get your credentials
 
 After signing up at [proxylite.ru](https://proxylite.ru), your User ID is visible in the dashboard at `lk.proxylite.ru`. It's a numeric ID (e.g. `521465`).

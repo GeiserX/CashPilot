@@ -36,6 +36,8 @@ Bytebenefit is a bandwidth-sharing service that pays through PayPal and Stripe. 
 
 Sign up at [Bytebenefit](https://bytebenefit.io/invited?ref=Brl4z3) — signing up through this link gives you a **$1 (10,000 Coins) welcome bonus**.
 
+<small>Referral link: the CashPilot maintainer may earn a commission from it.</small>
+
 ### 2. Get your credentials
 
 After signing up, locate the credentials needed for Docker deployment. These are typically your email/password or an API token found in the dashboard.
