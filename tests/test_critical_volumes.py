@@ -203,7 +203,10 @@ class TestWorkerEndpoint:
         client, worker_api = client
         removal = {"container": "cashpilot-storj", "deleted_volumes": [], "failed_volumes": []}
 
-        with patch("app.worker_api.orchestrator.remove_service", return_value=removal) as mock:
+        with (
+            patch("app.worker_api.orchestrator.remove_service", return_value=removal) as mock,
+            patch("app.worker_api.orchestrator.remove_extra_instances", return_value=[]),
+        ):
             resp = client.delete(
                 "/api/containers/storj?delete_volumes=true&allow_delete_critical=true",
                 headers={"Authorization": f"Bearer {worker_api.API_KEY}"},

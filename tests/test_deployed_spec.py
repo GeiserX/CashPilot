@@ -425,6 +425,7 @@ class TestRedeployUsesTheRecordedSpec:
         body = MagicMock()
         body.env = body_env or {}
         body.hostname = None
+        body.instances = None
 
         async def run():
             with (

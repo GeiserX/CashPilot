@@ -1010,6 +1010,25 @@ img { max-width: 100%; }
   margin: 6px 0 12px;
 }
 
+.instances-box {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.instances-box .form-input {
+  width: 64px;
+  padding: 5px 8px;
+}
+
+.instances-box .form-input:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .form-input,
 .form-select,
 .form-textarea {

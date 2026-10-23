@@ -38,6 +38,7 @@ from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 
 from app import egress, fleet_key, orchestrator, state_backup, version
+from app.constants import MAX_INSTANCES
 
 try:
     from app.catalog import get_services as _catalog_get_services
@@ -639,6 +640,10 @@ async def _send_heartbeat() -> None:
             # releases. An older worker sends nothing here, which reads as
             # unknown rather than as a mismatch (CashPilot-l6c).
             "version": version.current(),
+            # What this worker can do that an older one cannot. The UI sends a
+            # second copy of a service only to a worker listing "instances": an
+            # older worker would read the deploy as the first copy and replace it.
+            "features": ["instances"],
             # Providers count devices per public IP, so the UI needs the address
             # the provider sees — not this container's LAN or tailnet address.
             "egress_ip": await _detect_egress_ip(),
@@ -959,6 +964,8 @@ class DeploySpec(BaseModel):
     # Advanced and unsupported. Absent means Docker's default runtime, which is
     # what everything uses and what everything is tested against.
     runtime: str | None = None
+    # Which copy of the service this is; see constants.LABEL_INSTANCE.
+    instance: int = 1
 
 
 _BLOCKED_VOLUME_ROOTS = {
@@ -1215,8 +1222,20 @@ def _validate_runtime(runtime: str | None) -> None:
         )
 
 
+def _validate_instance(instance: int) -> None:
+    if not 1 <= instance <= MAX_INSTANCES:
+        raise HTTPException(status_code=400, detail=f"instance must be between 1 and {MAX_INSTANCES}")
+
+
 def _validate_deploy_spec(spec: DeploySpec, slug: str | None = None) -> None:
     _validate_runtime(spec.runtime)
+    _validate_instance(spec.instance)
+    if spec.instance > 1 and (spec.volumes or spec.ports):
+        # Two copies would share the same host directories and fight over the
+        # same host ports. The UI refuses this first; this is the backstop.
+        raise HTTPException(
+            status_code=400, detail="Only services without volumes or published ports can run more than once"
+        )
     if spec.privileged:
         raise HTTPException(status_code=403, detail="Privileged containers are not allowed")
     if spec.cap_add:
@@ -1337,6 +1356,7 @@ async def api_deploy_container(request: Request, slug: str, spec: DeploySpec) ->
             moved_mounts=spec.moved_mounts,
             kept_mounts=kept_mounts,
             keep_targets=_catalog_volume_targets(slug),
+            instance=spec.instance,
         )
         response: dict[str, Any] = {"status": "deployed", "container_id": container_id}
         if kept_mounts:
@@ -1356,10 +1376,11 @@ async def api_deploy_container(request: Request, slug: str, spec: DeploySpec) ->
 
 
 @app.post("/api/containers/{slug}/restart")
-async def api_restart_container(request: Request, slug: str) -> dict[str, str]:
+async def api_restart_container(request: Request, slug: str, instance: int = 1) -> dict[str, str]:
     _verify_api_key(request)
+    _validate_instance(instance)
     try:
-        await asyncio.to_thread(orchestrator.restart_service, slug)
+        await asyncio.to_thread(orchestrator.restart_service, slug, instance)
         return {"status": "restarted"}
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
@@ -1368,10 +1389,11 @@ async def api_restart_container(request: Request, slug: str) -> dict[str, str]:
 
 
 @app.post("/api/containers/{slug}/stop")
-async def api_stop_container(request: Request, slug: str) -> dict[str, str]:
+async def api_stop_container(request: Request, slug: str, instance: int = 1) -> dict[str, str]:
     _verify_api_key(request)
+    _validate_instance(instance)
     try:
-        await asyncio.to_thread(orchestrator.stop_service, slug)
+        await asyncio.to_thread(orchestrator.stop_service, slug, instance)
         return {"status": "stopped"}
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
@@ -1380,10 +1402,11 @@ async def api_stop_container(request: Request, slug: str) -> dict[str, str]:
 
 
 @app.post("/api/containers/{slug}/start")
-async def api_start_container(request: Request, slug: str) -> dict[str, str]:
+async def api_start_container(request: Request, slug: str, instance: int = 1) -> dict[str, str]:
     _verify_api_key(request)
+    _validate_instance(instance)
     try:
-        await asyncio.to_thread(orchestrator.start_service, slug)
+        await asyncio.to_thread(orchestrator.start_service, slug, instance)
         return {"status": "started"}
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
@@ -1406,6 +1429,9 @@ async def api_remove_container(
             delete_volumes=delete_volumes,
             allow_delete_critical=allow_delete_critical,
         )
+        extras = await asyncio.to_thread(orchestrator.remove_extra_instances, slug)
+        if extras:
+            result["extra_instances"] = extras
         return {"status": "removed", **result}
     except orchestrator.CriticalVolumeError as exc:
         # 409, not 400: the request is well-formed, the state is what refuses.
@@ -1428,11 +1454,26 @@ async def api_remove_container(
         raise HTTPException(status_code=503, detail=str(exc))
 
 
-@app.get("/api/containers/{slug}/logs")
-async def api_container_logs(request: Request, slug: str, lines: int = 50) -> dict[str, str]:
+@app.delete("/api/containers/{slug}/instances/{instance}")
+async def api_remove_instance(request: Request, slug: str, instance: int) -> dict[str, Any]:
+    """Remove one extra copy of a service, when the UI scales it down."""
     _verify_api_key(request)
+    _validate_instance(instance)
     try:
-        logs = await asyncio.to_thread(orchestrator.get_service_logs, slug, lines=min(lines, 1000))
+        result = await asyncio.to_thread(orchestrator.remove_instance, slug, instance)
+        return {"status": "removed", **result}
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
+
+
+@app.get("/api/containers/{slug}/logs")
+async def api_container_logs(request: Request, slug: str, lines: int = 50, instance: int = 1) -> dict[str, str]:
+    _verify_api_key(request)
+    _validate_instance(instance)
+    try:
+        logs = await asyncio.to_thread(orchestrator.get_service_logs, slug, lines=min(lines, 1000), instance=instance)
         return {"logs": logs}
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc))

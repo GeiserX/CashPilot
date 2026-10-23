@@ -218,6 +218,24 @@ Re-measure on your own install rather than trusting these:
 docker exec cashpilot-ui cat /sys/fs/cgroup/memory.peak
 ```
 
+## Running a service more than once on one worker
+
+Open the service and set **Instances** next to a node. Each extra copy is its own container
+(`cashpilot-<service>-2`, `-3`, ...) and registers with the provider as its own device: every
+device name the catalog derives from the host name gets `-2`, `-3` added.
+
+- Providers count devices per public IP, and copies on one machine share its connection. Extra
+  copies add devices, not bandwidth, so they only help where the provider pays per device and
+  allows several per IP (Traffmonetizer and Mysterium document that). Where a provider allows one
+  device per IP, the box is locked at 1; add workers on other connections instead.
+- A service that keeps data in a host directory or publishes a host port runs once per worker,
+  because its copies would share the directory and fight over the port.
+- The count is saved per worker and kept by every redeploy. Lowering it removes the highest copies
+  first; removing the service from a worker removes all of them.
+- Each copy has its own Restart, Stop and Logs under Running Instances and on the dashboard.
+- A worker runs more than one copy only once it is on a release that supports it; older workers
+  keep the box locked until they are updated.
+
 ## Update check
 
 CashPilot asks GitHub once a day whether a newer release exists, and shows a

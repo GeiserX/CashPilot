@@ -990,19 +990,67 @@ const CP = (() => {
   function workerCheckboxList(svc, onlineWorkers, checkboxClass) {
     let rows = '';
     let allDeployed = true;
+    // The Instances box appears only where the service detail said how many
+    // copies one worker may run (the setup wizard's list has no such answer).
+    const maxInstances = svc.max_instances;
     for (const w of onlineWorkers) {
-      const deployed = (w.containers || []).map((c) => c.slug).includes(svc.slug);
+      const copies = (w.containers || []).filter((c) => c.slug === svc.slug).length;
+      const deployed = copies > 0;
       if (!deployed) allDeployed = false;
+      let instancesBox = '';
+      if (maxInstances) {
+        const capable = ((w.system_info || {}).features || []).includes('instances');
+        const locked = maxInstances <= 1 || !capable;
+        const why = maxInstances <= 1 ? '' : (capable ? '' : ' title="Update this worker to run more than one copy"');
+        instancesBox = `
+        <span class="instances-box"${why}>Instances
+          <input class="form-input instances-input" type="number" min="1" max="${maxInstances}" step="1"
+                 data-slug="${escapeHtml(svc.slug)}" data-wid="${w.id}" data-current="${copies}" value="${copies || 1}"${locked ? ' disabled' : ''}>
+        </span>`;
+      }
       rows += `
-      <label style="display:flex; align-items:center; gap:8px; padding:6px 0; ${deployed ? 'opacity:0.5;' : ''}">
+      <label style="display:flex; align-items:center; gap:8px; padding:6px 0;">
         <input type="checkbox" class="${checkboxClass}" data-slug="${svc.slug}" data-wid="${w.id}" ${deployed ? 'disabled checked' : ''}>
-        <span>${escapeHtml(w.name)}</span>
+        <span style="${deployed ? 'opacity:0.5;' : ''}">${escapeHtml(w.name)}</span>
         ${deployed
           ? '<span class="badge badge-deployed" style="font-size:0.75rem;">Deployed</span>'
           : '<span class="badge badge-available" style="font-size:0.75rem;">Available</span>'}
+        ${instancesBox}
       </label>`;
     }
     return { rows, allDeployed };
+  }
+
+  // What the Instances boxes mean for this provider, under the node list.
+  function instancesHint(svc) {
+    if (!svc.max_instances) return '';
+    const name = escapeHtml(svc.name);
+    if (svc.max_instances <= 1) {
+      return svc.max_instances_reason
+        ? `<div class="form-hint instances-hint">${escapeHtml(svc.max_instances_reason)} To run more, add workers on other connections.</div>`
+        : '';
+    }
+    const perIp = (svc.requirements || {}).devices_per_ip;
+    if (perIp === 0) {
+      return `<div class="form-hint instances-hint">${name} allows several devices per IP, so each extra instance registers as its own device (<code>cashpilot-&lt;host&gt;-2</code>). They share the machine's connection: more instances add devices, not bandwidth.</div>`;
+    }
+    return `<div class="form-hint instances-hint">${name} does not document how many devices it allows per IP. Extra instances share this machine's connection and may earn nothing.</div>`;
+  }
+
+  // Workers whose Instances box was changed. A deployed worker cannot be
+  // ticked again, so a changed count is how it joins a deploy.
+  function _rescaledWorkerIds(slug) {
+    return Array.from(document.querySelectorAll(`.instances-input[data-slug="${slug}"]:not(:disabled)`))
+      .filter((input) => Number(input.dataset.current) > 0 && Number(input.value) !== Number(input.dataset.current))
+      .map((input) => parseInt(input.dataset.wid))
+      .filter((id) => !Number.isNaN(id));
+  }
+
+  function _instancesFor(slug, wid) {
+    const input = document.querySelector(`.instances-input[data-slug="${slug}"][data-wid="${wid}"]`);
+    if (!input || input.disabled) return undefined;
+    const n = parseInt(input.value);
+    return Number.isNaN(n) ? undefined : n;
   }
 
   function renderServiceRow(svc, bk) {
@@ -1227,8 +1275,12 @@ const CP = (() => {
       for (const inst of details) {
         const iStatus = (inst.status || 'unknown').toLowerCase();
         const iStatusLabel = iStatus.charAt(0).toUpperCase() + iStatus.slice(1);
-        const nodeLabel = inst.node === 'local' ? 'Local' : escapeHtml(inst.node);
-        const wParam = inst.worker_id != null ? ` data-a2="${inst.worker_id}"` : '';
+        const copyLabel = (inst.instance || 1) > 1 || details.some(d => d !== inst && d.worker_id === inst.worker_id)
+          ? ` #${inst.instance || 1}` : '';
+        const nodeLabel = (inst.node === 'local' ? 'Local' : escapeHtml(inst.node)) + copyLabel;
+        const wParam = inst.worker_id != null
+          ? ` data-a2="${inst.worker_id}"${(inst.instance || 1) > 1 ? ` data-a3="${inst.instance}"` : ''}`
+          : '';
         const iNoDocker = !inst.has_docker || inst.is_android;
         // The mixed case this whole change is built around. The ROW keeps its
         // buttons because a managed instance can still be controlled — but the
@@ -1813,8 +1865,8 @@ const CP = (() => {
   // -----------------------------------------------------------
   // Service actions
   // -----------------------------------------------------------
-  async function restartService(slug, workerId) {
-    const q = workerId != null ? `?worker_id=${workerId}` : '';
+  async function restartService(slug, workerId, instance) {
+    const q = workerId != null ? `?worker_id=${workerId}${_instanceQuery(instance)}` : '';
     try {
       await api(`/api/services/${slug}/restart${q}`, { method: 'POST' });
       toast(`${slug} restarting...`, 'success');
@@ -1824,8 +1876,8 @@ const CP = (() => {
     }
   }
 
-  async function stopService(slug, workerId) {
-    const q = workerId != null ? `?worker_id=${workerId}` : '';
+  async function stopService(slug, workerId, instance) {
+    const q = workerId != null ? `?worker_id=${workerId}${_instanceQuery(instance)}` : '';
     try {
       await api(`/api/services/${slug}/stop${q}`, { method: 'POST' });
       toast(`${slug} stopped`, 'success');
@@ -1862,16 +1914,17 @@ const CP = (() => {
   // -----------------------------------------------------------
   let logPollTimer = null;
 
-  async function viewLogs(slug, workerId) {
+  async function viewLogs(slug, workerId, instance) {
     openModal('logs-modal');
     const title = document.getElementById('logs-modal-title');
     const viewer = document.getElementById('log-content');
-    const label = workerId != null ? `${slug} (worker #${workerId})` : slug;
+    const copy = parseInt(instance) > 1 ? `, copy ${parseInt(instance)}` : '';
+    const label = workerId != null ? `${slug} (worker #${workerId}${copy})` : slug;
     if (title) title.textContent = `Logs: ${label}`;
     if (viewer) viewer.textContent = 'Loading logs...';
 
     if (logPollTimer) clearInterval(logPollTimer);
-    const q = workerId != null ? `lines=200&worker_id=${workerId}` : 'lines=200';
+    const q = workerId != null ? `lines=200&worker_id=${workerId}${_instanceQuery(instance)}` : 'lines=200';
 
     async function fetchLogs() {
       try {
@@ -2353,7 +2406,7 @@ const CP = (() => {
     );
   }
 
-  async function _deployToWorkers(slug, workerIds) {
+  async function _deployToWorkers(slug, workerIds, { rescaleOnly = false } = {}) {
     const statusEl = document.getElementById(`deploy-status-${slug}`);
     if (workerIds.length === 0) {
       toast('Select at least one worker node', 'warning');
@@ -2372,7 +2425,7 @@ const CP = (() => {
         if (!input.checkValidity()) invalidInput ||= input;
       }
       env[input.dataset.key] = input.value;
-      if (input.required && !input.value.trim()) {
+      if (input.required && !input.value.trim() && !rescaleOnly) {
         input.style.borderColor = 'var(--error)';
         missingRequired = true;
       } else {
@@ -2414,7 +2467,10 @@ const CP = (() => {
     let ok = 0, fail = 0;
     for (const wid of workerIds) {
       try {
-        const res = await api(`/api/deploy/${slug}?worker_id=${wid}`, { method: 'POST', body: { env } });
+        const body = { env };
+        const instances = _instancesFor(slug, wid);
+        if (instances !== undefined) body.instances = instances;
+        const res = await api(`/api/deploy/${slug}?worker_id=${wid}`, { method: 'POST', body });
         ok++;
         // A redeploy rebuilds from the RECORDED spec where it diverges from
         // the catalog. The API has always reported what it kept; nothing
@@ -2698,13 +2754,16 @@ const CP = (() => {
         html += collectorCredentialsNotice(svc.slug);
       }
 
-      if (allDeployed && onlineWorkers.length > 0) {
+      // A service that can run more than once keeps its node list on screen
+      // when every node has it, since the Instances boxes are how it scales.
+      if (allDeployed && onlineWorkers.length > 0 && !(svc.max_instances > 1)) {
         html += `<p style="color:var(--success); font-size:0.9rem; margin:12px 0;">Deployed on all nodes.</p>`;
       } else {
         html += `
         <div style="margin-bottom:12px;">
           <div style="font-size:0.85rem; color:var(--text-muted); margin-bottom:6px;">Select target nodes:</div>
           <div id="deploy-worker-list">${workerRows}</div>
+          ${instancesHint(svc)}
         </div>
         <div style="display:flex; gap:8px; align-items:center;">
           <button class="btn btn-success" data-action="deployServiceToWorkers" data-a1="${svc.slug}"${_isOwner ? '' : ' disabled title="Owner access required"'}>Deploy</button>
@@ -2717,8 +2776,9 @@ const CP = (() => {
     const onlineWorkers = (workers || []).filter(w => w.status === 'online');
     const instances = [];
     for (const w of onlineWorkers) {
-      const container = (w.containers || []).find(c => c.slug === svc.slug);
-      if (container) instances.push({ worker: w, container });
+      const copies = (w.containers || []).filter(c => c.slug === svc.slug)
+        .sort((a, b) => (a.instance || 1) - (b.instance || 1));
+      for (const container of copies) instances.push({ worker: w, container, several: copies.length > 1 });
     }
 
     if (instances.length > 0) {
@@ -2730,15 +2790,15 @@ const CP = (() => {
         const badgeClass = s === 'running' ? 'badge-deployed' : 'badge-broken';
         html += `
         <div style="display:flex; align-items:center; gap:10px; padding:8px 0; border-bottom:1px solid var(--border-color);">
-          <strong style="min-width:100px;">${escapeHtml(inst.worker.name)}</strong>
+          <strong style="min-width:100px;">${escapeHtml(inst.worker.name)}${inst.several ? ` #${inst.container.instance || 1}` : ''}</strong>
           <span class="badge ${badgeClass}" style="font-size:0.75rem;">${escapeHtml(s)}</span>
           ${_canWrite ? `<div style="margin-left:auto; display:flex; gap:4px;">
-            <button class="btn btn-secondary btn-sm" data-action="workerAction" data-a1="${svc.slug}" data-a2="restart" data-a3="${inst.worker.id}">Restart</button>
-            <button class="btn btn-secondary btn-sm" data-action="workerAction" data-a1="${svc.slug}" data-a2="stop" data-a3="${inst.worker.id}">Stop</button>
-            <button class="btn btn-ghost btn-sm" data-action="loadWorkerLogs" data-a1="${svc.slug}" data-a2="${inst.worker.id}" data-a3="logs-${svc.slug}-${inst.worker.id}">Logs</button>
+            <button class="btn btn-secondary btn-sm" data-action="workerAction" data-a1="${svc.slug}" data-a2="restart" data-a3="${inst.worker.id}" data-a4="${inst.container.instance || 1}">Restart</button>
+            <button class="btn btn-secondary btn-sm" data-action="workerAction" data-a1="${svc.slug}" data-a2="stop" data-a3="${inst.worker.id}" data-a4="${inst.container.instance || 1}">Stop</button>
+            <button class="btn btn-ghost btn-sm" data-action="loadWorkerLogs" data-a1="${svc.slug}" data-a2="${inst.worker.id}" data-a3="logs-${svc.slug}-${inst.worker.id}-${inst.container.instance || 1}" data-a4="${inst.container.instance || 1}">Logs</button>
           </div>` : ''}
         </div>
-        <div class="log-viewer" id="logs-${svc.slug}-${inst.worker.id}" style="display:none; max-height:200px;"></div>`;
+        <div class="log-viewer" id="logs-${svc.slug}-${inst.worker.id}-${inst.container.instance || 1}" style="display:none; max-height:200px;"></div>`;
       }
       html += `</div>`;
     }
@@ -2747,12 +2807,22 @@ const CP = (() => {
   }
 
   async function deployServiceToWorkers(slug) {
-    await _deployToWorkers(slug, _selectedWorkerIds(`.deploy-worker-cb[data-slug="${slug}"]:checked:not(:disabled)`));
+    const fresh = _selectedWorkerIds(`.deploy-worker-cb[data-slug="${slug}"]:checked:not(:disabled)`);
+    const rescaled = _rescaledWorkerIds(slug).filter((id) => !fresh.includes(id));
+    // Only rescaling nodes that already run the service: their recorded
+    // credentials are reused, so the empty credential boxes are not missing.
+    await _deployToWorkers(slug, [...fresh, ...rescaled], { rescaleOnly: fresh.length === 0 && rescaled.length > 0 });
   }
 
-  async function workerAction(slug, action, workerId) {
+  // `?instance=` only for copies 2+: the first copy is addressed the way it always was.
+  function _instanceQuery(instance) {
+    const n = parseInt(instance);
+    return n > 1 ? `&instance=${n}` : '';
+  }
+
+  async function workerAction(slug, action, workerId, instance) {
     try {
-      await api(`/api/services/${slug}/${action}?worker_id=${workerId}`, { method: 'POST' });
+      await api(`/api/services/${slug}/${action}?worker_id=${workerId}${_instanceQuery(instance)}`, { method: 'POST' });
       // Refresh the modal
       openServiceDetail(slug);
     } catch (err) {
@@ -2760,14 +2830,14 @@ const CP = (() => {
     }
   }
 
-  async function loadWorkerLogs(slug, workerId, elemId) {
+  async function loadWorkerLogs(slug, workerId, elemId, instance) {
     const viewer = document.getElementById(elemId);
     if (!viewer) return;
     if (viewer.style.display === 'none') {
       viewer.style.display = 'block';
       viewer.textContent = 'Loading...';
       try {
-        const data = await api(`/api/services/${slug}/logs?worker_id=${workerId}&lines=100`);
+        const data = await api(`/api/services/${slug}/logs?worker_id=${workerId}&lines=100${_instanceQuery(instance)}`);
         viewer.textContent = data.logs || '(no logs)';
         viewer.scrollTop = viewer.scrollHeight;
       } catch (err) {
