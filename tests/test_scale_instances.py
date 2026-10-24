@@ -82,6 +82,25 @@ class TestTheCopySpec:
         assert copy["hostname"] is None
         assert spec["env"]["DEVICE"] == "cashpilot-box", "the first copy's spec must not change"
 
+    def test_a_command_carrying_the_device_name_names_the_copy(self):
+        docker_conf = {**SCALABLE["docker"], "command": "start --token ${TOKEN} --device-name ${DEVICE}"}
+        spec = {
+            "env": {"TOKEN": "t", "DEVICE": "cashpilot-box"},
+            "command": "start --token t --device-name cashpilot-box",
+            "hostname": None,
+        }
+        copy = main._instance_spec(spec, 2, docker_conf)
+        assert copy["command"] == "start --token t --device-name cashpilot-box-2"
+        assert spec["command"].endswith("cashpilot-box")
+
+    def test_the_real_traffmonetizer_copy_registers_its_own_device(self):
+        from app import catalog
+
+        svc = catalog.get_service("traffmonetizer")
+        deploys, _, _ = _deploy(2, svc={**svc, "slug": "demo"}, env={"TRAFFMONETIZER_TOKEN": "t"})
+        names = [d["command"].split("--device-name ")[1] for d in deploys]
+        assert names[1] == names[0] + "-2"
+
     def test_a_set_hostname_is_suffixed_too(self):
         copy = main._instance_spec({"env": {}, "hostname": "box"}, 3, SCALABLE["docker"])
         assert copy["hostname"] == "box-3"
@@ -95,7 +114,7 @@ def _worker(features=("instances",), copies=(1,)):
     }
 
 
-def _deploy(instances, *, svc=SCALABLE, recorded=None, worker=None, image=None):
+def _deploy(instances, *, svc=SCALABLE, recorded=None, worker=None, image=None, env=None):
     deploys, deletes = [], []
 
     async def _deploy_hop(worker_id, slug, spec):
@@ -107,7 +126,7 @@ def _deploy(instances, *, svc=SCALABLE, recorded=None, worker=None, image=None):
         return {"status": "removed"}
 
     body = MagicMock()
-    body.env = {"TOKEN": "t"}
+    body.env = env or {"TOKEN": "t"}
     body.hostname = None
     body.instances = instances
     body.image = image
@@ -413,3 +432,23 @@ class TestTheUiPassthrough:
         worker = {"containers": json.dumps([{"slug": "demo", "instance": "x"}, {"slug": "demo", "instance": 3}])}
         with patch.object(main.database, "get_worker", AsyncMock(return_value=worker)):
             assert asyncio.run(main._worker_instances(1, "demo")) == {1, 3}
+
+
+class TestTheDashboardCopies:
+    """A copy's number survives the trip from the heartbeat to the dashboard rows."""
+
+    def test_copy_two_reaches_the_instance_details(self):
+        worker = {
+            "id": 1,
+            "name": "box",
+            "status": "online",
+            "system_info": json.dumps({"docker_available": True}),
+            "containers": json.dumps(
+                [
+                    {"slug": "demo", "name": "cashpilot-demo", "status": "running"},
+                    {"slug": "demo", "name": "cashpilot-demo-2", "status": "running", "instance": 2},
+                ]
+            ),
+        }
+        rows = asyncio.run(main._get_all_worker_containers([worker]))
+        assert sorted(r["instance"] for r in rows) == [1, 2]

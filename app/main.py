@@ -237,6 +237,9 @@ async def _get_all_worker_containers(workers: list[dict[str, Any]] | None = None
                             # found" for a row the same screen called Running.
                             # The node name is already carried by _node.
                             "deployed_by": c.get("deployed_by") or worker_name,
+                            # Which copy on that worker. Without it every copy
+                            # reads as #1 and its buttons act on the first one.
+                            "instance": c.get("instance") or 1,
                             # The dial-back address the worker read from the ONE
                             # env var the service's catalog entry declares. None
                             # when undeclared/unreported — this dict is a key
@@ -1963,6 +1966,10 @@ def _instance_spec(spec: dict[str, Any], instance: int, docker_conf: dict[str, A
     }
     copy = {**spec, "env": env, "instance": instance, "moved_mounts": []}
     copy["hostname"] = f"{spec['hostname']}-{instance}" if spec.get("hostname") else None
+    # A command that carries a device name (Traffmonetizer's --device-name) is
+    # filled again from this copy's env, or every copy registers as the first.
+    if spec.get("command") and docker_conf.get("command"):
+        copy["command"] = re.sub(r"\$\{(\w+)\}", lambda m: env.get(m.group(1), m.group(0)), docker_conf["command"])
     return copy
 
 
