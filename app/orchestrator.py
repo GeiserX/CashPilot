@@ -41,6 +41,7 @@ from app.constants import (  # noqa: E402
     CONTAINER_PREFIX,
     LABEL_CATEGORY,
     LABEL_DEPLOYED_BY,
+    LABEL_INSTANCE,
     LABEL_MANAGED,
     LABEL_SERVICE,
     LABEL_VERSION,
@@ -126,11 +127,27 @@ def _get_client() -> docker.DockerClient:
         ) from exc
 
 
-def _container_name(slug: str) -> str:
-    return f"{CONTAINER_PREFIX}{slug}"
+def _container_name(slug: str, instance: int = 1) -> str:
+    base = f"{CONTAINER_PREFIX}{slug}"
+    return base if instance <= 1 else f"{base}-{instance}"
 
 
-def _find_container(slug: str):
+def _instance_of(container: Any) -> int:
+    """Which copy of its service a container is; 1 when unlabelled."""
+    try:
+        return max(1, int((container.labels or {}).get(LABEL_INSTANCE) or 1))
+    except (TypeError, ValueError):
+        return 1
+
+
+def service_instances(slug: str) -> list[Any]:
+    """Every managed container of ``slug`` on this worker, first copy first."""
+    client = _get_client()
+    found = client.containers.list(all=True, filters={"label": [f"{LABEL_SERVICE}={slug}", f"{LABEL_MANAGED}=true"]})
+    return sorted(found, key=_instance_of)
+
+
+def _find_container(slug: str, instance: int = 1):
     """Find a MANAGED container by name, falling back to label-based lookup.
 
     The name match must verify the cashpilot.managed label, not just the
@@ -141,14 +158,16 @@ def _find_container(slug: str):
     label is treated exactly like NotFound.
     """
     client = _get_client()
-    name = _container_name(slug)
+    name = _container_name(slug, instance)
     try:
         container = client.containers.get(name)
-        if (container.labels or {}).get(LABEL_MANAGED) == "true":
+        if (container.labels or {}).get(LABEL_MANAGED) == "true" and _instance_of(container) == instance:
             return container
     except NotFound:
         pass
-    # Fallback: find by label (handles renamed containers)
+    # Fallback: find by label (handles renamed containers). Only the copy asked
+    # for: with several copies running, "the first match" would stop or remove
+    # whichever one Docker happened to list first.
     matches = client.containers.list(
         all=True,
         filters={
@@ -158,9 +177,10 @@ def _find_container(slug: str):
             ]
         },
     )
-    if matches:
-        return matches[0]
-    raise ValueError(f"Container for {slug} not found")
+    for match in matches:
+        if _instance_of(match) == instance:
+            return match
+    raise ValueError(f"Container for {slug} not found" if instance <= 1 else f"Instance {instance} of {slug} not found")
 
 
 def _normalize_resources(resources: Any) -> dict[str, Any]:
@@ -407,6 +427,7 @@ def deploy_raw(
     moved_mounts: list[str] | None = None,
     kept_mounts: list[dict[str, str]] | None = None,
     keep_targets: set[str] | None = None,
+    instance: int = 1,
 ) -> str:
     """Deploy a container from a raw spec (no catalog lookup).
 
@@ -422,7 +443,7 @@ def deploy_raw(
     container ID.
     """
     client = _get_client()
-    name = _container_name(slug)
+    name = _container_name(slug, instance)
 
     # Decided before the old container is touched: a network or runtime that
     # cannot be used must fail the deploy while the running service is still running.
@@ -468,6 +489,8 @@ def deploy_raw(
     }
     if labels:
         all_labels.update(labels)
+    if instance > 1:
+        all_labels[LABEL_INSTANCE] = str(instance)
 
     logger.info("Pulling image %s", image)
     try:
@@ -527,7 +550,7 @@ def deploy_raw(
         # ones this worker sends with an explicit timeout.
         stop_timeout=_get_stop_timeout(slug),
         labels=all_labels,
-        hostname=hostname or f"cashpilot-{slug}",
+        hostname=hostname or name,
         detach=True,
         restart_policy={"Name": "unless-stopped"},
         # None means Docker's default runtime. See container_runtime for when
@@ -574,16 +597,16 @@ def _get_stop_timeout(slug: str) -> int:
     return 30
 
 
-def stop_service(slug: str) -> None:
+def stop_service(slug: str, instance: int = 1) -> None:
     """Stop the container for a service."""
-    container = _find_container(slug)
+    container = _find_container(slug, instance)
     container.stop(timeout=_get_stop_timeout(slug))
     logger.info("Stopped container %s", container.name)
 
 
-def restart_service(slug: str) -> None:
+def restart_service(slug: str, instance: int = 1) -> None:
     """Restart the container for a service."""
-    container = _find_container(slug)
+    container = _find_container(slug, instance)
     container.restart(timeout=_get_stop_timeout(slug))
     logger.info("Restarted container %s", container.name)
 
@@ -764,6 +787,39 @@ def read_critical_state(slug: str) -> tuple[bytes, list[str]]:
     return b"".join(chunks), read
 
 
+def remove_instance(slug: str, instance: int) -> dict[str, Any]:
+    """Remove one extra copy of a service (scaling down). Never the first.
+
+    Extra copies are refused for services with volumes (see the deploy route),
+    so there is no data to keep or delete here: the container goes, nothing else.
+    """
+    if instance <= 1:
+        raise ValueError("The first instance is removed with the service, not on its own")
+    container = _find_container(slug, instance)
+    try:
+        container.stop(timeout=_get_stop_timeout(slug))
+    except APIError as exc:
+        logger.warning("Could not stop %s cleanly before removing it: %s", container.name, exc)
+    container.remove(force=True)
+    logger.info("Removed container %s", container.name)
+    return {"container": container.name}
+
+
+def remove_extra_instances(slug: str) -> list[str]:
+    """Remove every copy of ``slug`` after the first; returns their names.
+
+    Called when a service is removed from a worker, or the extra copies would
+    keep running unmanaged once the UI forgets the deployment.
+    """
+    removed: list[str] = []
+    for extra in service_instances(slug):
+        if _instance_of(extra) > 1:
+            extra.remove(force=True)
+            logger.info("Removed container %s", extra.name)
+            removed.append(extra.name)
+    return removed
+
+
 def remove_service(slug: str, delete_volumes: bool = False, allow_delete_critical: bool = False) -> dict[str, Any]:
     """Stop and remove the container for a service.
 
@@ -845,9 +901,9 @@ def remove_service(slug: str, delete_volumes: bool = False, allow_delete_critica
     }
 
 
-def start_service(slug: str) -> None:
+def start_service(slug: str, instance: int = 1) -> None:
     """Start a stopped container for a service."""
-    container = _find_container(slug)
+    container = _find_container(slug, instance)
     container.start()
     logger.info("Started container %s", container.name)
 
@@ -1228,6 +1284,7 @@ def get_status() -> list[dict[str, Any]]:
                 "container_id": c.short_id,
                 "deployed_by": c.labels.get(LABEL_DEPLOYED_BY, "unknown"),
                 "category": c.labels.get(LABEL_CATEGORY, ""),
+                "instance": _instance_of(c),
             }
             # Present only when the service declares a dial-back address var;
             # the key's absence is "nothing to say", never "checked and fine".
@@ -1408,6 +1465,7 @@ def get_status_light() -> list[dict[str, Any]]:
                 "container_id": c.short_id,
                 "deployed_by": c.labels.get(LABEL_DEPLOYED_BY, "unknown"),
                 "category": c.labels.get(LABEL_CATEGORY, ""),
+                "instance": _instance_of(c),
             }
             # Same contract as get_status: key present only when declared+set.
             if advertised := _advertised_address(c, slug):
@@ -1471,7 +1529,7 @@ def get_status_light() -> list[dict[str, Any]]:
     return results
 
 
-def get_service_logs(slug: str, lines: int = 50) -> str:
+def get_service_logs(slug: str, lines: int = 50, instance: int = 1) -> str:
     """Return the last N lines of logs for a service container."""
-    container = _find_container(slug)
+    container = _find_container(slug, instance)
     return container.logs(tail=lines, timestamps=True).decode("utf-8", errors="replace")

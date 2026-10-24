@@ -237,6 +237,9 @@ async def _get_all_worker_containers(workers: list[dict[str, Any]] | None = None
                             # found" for a row the same screen called Running.
                             # The node name is already carried by _node.
                             "deployed_by": c.get("deployed_by") or worker_name,
+                            # Which copy on that worker. Without it every copy
+                            # reads as #1 and its buttons act on the first one.
+                            "instance": c.get("instance") or 1,
                             # The dial-back address the worker read from the ONE
                             # env var the service's catalog entry declares. None
                             # when undeclared/unreported — this dict is a key
@@ -1503,6 +1506,7 @@ def _collector_needs_setup(slug: str, config: dict[str, str]) -> bool:
 # can't drift apart again — previously the listing hid all three but deploy only
 # refused "dead", so a direct link or a stale page could still deploy a broken or
 # dropped service and then silently earn nothing.
+from app.constants import MAX_INSTANCES  # noqa: E402
 from app.constants import UNDEPLOYABLE_STATUSES as _UNDEPLOYABLE_STATUSES  # noqa: E402 - single source, see constants
 
 
@@ -1670,6 +1674,8 @@ async def api_services_deployed(request: Request) -> list[dict[str, Any]]:
                 # container commands cannot target it and the UI must not offer
                 # them.
                 "unmanaged": inst.get("deployed_by") == "external",
+                # Which copy on that worker; the UI labels copies 2+ as "#N".
+                "instance": inst.get("instance") or 1,
                 "custom_image": custom_images.get(inst.get("_worker_id")),
             }
             if inst.get("_is_android"):
@@ -1860,6 +1866,8 @@ async def api_get_service(request: Request, slug: str) -> dict[str, Any]:
     from app.collectors import COLLECTOR_MAP
 
     svc["has_collector"] = slug in COLLECTOR_MAP
+    # The deploy form's Instances box: its ceiling, and why it is 1 when it is.
+    svc["max_instances"], svc["max_instances_reason"] = scaling_limit(svc)
     # Worker id -> the image chosen instead of the catalog's, for the deploy
     # form's Image box and the custom-image badge. Absent workers use the catalog.
     svc["custom_images"] = {str(wid): image for wid, image in (await database.get_custom_images(slug)).items()}
@@ -1881,6 +1889,9 @@ async def api_status(request: Request) -> list[dict[str, Any]]:
 class DeployRequest(BaseModel):
     env: dict[str, str] = {}
     hostname: str | None = None
+    # How many copies of the service this worker runs. None (left out) keeps
+    # the number this worker's deployment already has, 1 for a new one.
+    instances: int | None = None
     # The image to run instead of the catalog's. None (the field left out) keeps
     # whatever this worker's deployment already uses, so a redeploy from a form
     # that never showed the box cannot drop a choice. "" goes back to the
@@ -1913,6 +1924,53 @@ def _custom_image(requested: str | None, recorded: dict[str, Any] | None) -> str
     if image and (len(image) > 255 or not _IMAGE_REF.fullmatch(image)):
         raise HTTPException(status_code=400, detail="Image is not a valid image reference (repository[:tag][@digest])")
     return image
+
+
+def _instance_param(instance: int) -> int:
+    if not 1 <= instance <= MAX_INSTANCES:
+        raise HTTPException(status_code=400, detail=f"instance must be between 1 and {MAX_INSTANCES}")
+    return instance
+
+
+def scaling_limit(svc: dict[str, Any]) -> tuple[int, str]:
+    """How many copies of ``svc`` one worker may run, and why not more.
+
+    One per worker where the provider allows one device per IP (a second copy
+    behind the same address earns nothing), and where the service has host
+    volumes or published ports (copies would share the directories and fight
+    over the ports). Otherwise the ceiling is MAX_INSTANCES. The reason is ""
+    when more than one is allowed. The deploy form shows the same answer.
+    """
+    docker_conf = svc.get("docker") or {}
+    name = svc.get("name") or svc.get("slug") or "This service"
+    if egress.devices_per_ip_limit(svc) == 1:
+        return 1, f"{name} allows one device per IP address, so a second copy on one machine earns nothing."
+    if docker_conf.get("volumes"):
+        return 1, f"{name} keeps data in a host directory, which two copies would share."
+    if docker_conf.get("ports"):
+        return 1, f"{name} publishes a port on the host, which two copies cannot share."
+    return MAX_INSTANCES, ""
+
+
+def _instance_spec(spec: dict[str, Any], instance: int, docker_conf: dict[str, Any]) -> dict[str, Any]:
+    """The spec of copy ``instance``: the first copy's, under its own names.
+
+    The env values the catalog derives from {hostname} are device names the
+    provider counts by, so each copy gets its own (cashpilot-box-2). Nothing
+    else differs: same image, credentials, capabilities and limits.
+    """
+    named = {var["key"] for var in docker_conf.get("env", []) if "{hostname}" in str(var.get("default", ""))}
+    env = {
+        key: (f"{value}-{instance}" if key in named and value else value)
+        for key, value in (spec.get("env") or {}).items()
+    }
+    copy = {**spec, "env": env, "instance": instance, "moved_mounts": []}
+    copy["hostname"] = f"{spec['hostname']}-{instance}" if spec.get("hostname") else None
+    # A command that carries a device name (Traffmonetizer's --device-name) is
+    # filled again from this copy's env, or every copy registers as the first.
+    if spec.get("command") and docker_conf.get("command"):
+        copy["command"] = re.sub(r"\$\{(\w+)\}", lambda m: env.get(m.group(1), m.group(0)), docker_conf["command"])
+    return copy
 
 
 @app.post("/api/deploy/{slug}")
@@ -2005,6 +2063,26 @@ async def api_deploy(
     ]
     if missing:
         raise HTTPException(status_code=400, detail=f"Missing required fields: {', '.join(missing)}")
+
+    # How many copies this worker runs, decided before anything is deployed.
+    instances = body.instances if body.instances is not None else int((recorded or {}).get("instances") or 1)
+    _instance_param(instances)
+    # Read only when copies are involved, so a plain deploy asks the worker
+    # record nothing it did not ask before.
+    running_copies = (
+        await _worker_instances(worker_id, slug)
+        if body.instances is not None or (recorded or {}).get("instances")
+        else set()
+    )
+    if instances > 1:
+        limit, why = scaling_limit(svc)
+        if instances > limit:
+            raise HTTPException(status_code=400, detail=why)
+        if "instances" not in await _worker_features(worker_id):
+            raise HTTPException(
+                status_code=409,
+                detail="This worker is too old to run a service more than once. Update the worker first.",
+            )
 
     # Ports — key is "container_port/protocol" per Docker SDK. A mapping with a
     # host address ("127.0.0.1:9980:9980") becomes [address, port]: a web UI
@@ -2145,7 +2223,17 @@ async def api_deploy(
                 f"mounts: {k.get('target')} stays on {k.get('kept')}, where the running container keeps it, "
                 f"instead of {k.get('requested')}"
             )
+    if instances > 1:
+        spec["instances"] = instances
+    else:
+        spec.pop("instances", None)
     await database.save_deployment(slug=slug, container_id=container_id, spec=spec, worker_id=worker_id)
+    # The extra copies, after the record: if one fails, the next redeploy still
+    # knows how many this worker should run and tries again.
+    for n in range(2, instances + 1):
+        await _proxy_worker_deploy(worker_id, slug, _instance_spec(spec, n, docker_conf))
+    for n in sorted(c for c in running_copies if c > instances):
+        await _proxy_to_worker(worker_id, "DELETE", f"/api/containers/{slug}/instances/{n}")
     await database.record_health_event(slug, "start", f"deployed to worker {worker_id}")
     metrics.record_container_lifecycle("deploy", slug)
     _spawn(_run_collection())
@@ -2310,19 +2398,19 @@ def _merge_recorded_spec(
 # /api/{action}/{slug} and the service-scoped /api/services/{slug}/... — with identical
 # behavior. Both sets of routes delegate to these helpers so the writer-guard, worker
 # resolution, proxy, and bookkeeping live in exactly one place per action.
-async def _svc_stop(request: Request, slug: str, worker_id: int | None) -> dict[str, str]:
+async def _svc_stop(request: Request, slug: str, worker_id: int | None, instance: int = 1) -> dict[str, str]:
     _require_writer(request)
     worker_id = await _resolve_worker_id(worker_id)
-    result = await _proxy_worker_command(worker_id, "stop", slug)
+    result = await _proxy_worker_command(worker_id, "stop", slug, instance=instance)
     await database.record_health_event(slug, "stop")
     metrics.record_container_lifecycle("stop", slug)
     return result
 
 
-async def _svc_restart(request: Request, slug: str, worker_id: int | None) -> dict[str, str]:
+async def _svc_restart(request: Request, slug: str, worker_id: int | None, instance: int = 1) -> dict[str, str]:
     _require_writer(request)
     worker_id = await _resolve_worker_id(worker_id)
-    result = await _proxy_worker_command(worker_id, "restart", slug)
+    result = await _proxy_worker_command(worker_id, "restart", slug, instance=instance)
     await database.record_health_event(slug, "restart")
     metrics.record_container_lifecycle("restart", slug)
     return result
@@ -2518,12 +2606,41 @@ async def _proxy_to_worker(
 
 
 async def _proxy_worker_command(
-    worker_id: int, command: str, slug: str, *, params: dict[str, str] | None = None
+    worker_id: int, command: str, slug: str, *, params: dict[str, str] | None = None, instance: int = 1
 ) -> dict[str, Any]:
-    """Forward a container command (restart/stop/start/remove) to a worker."""
+    """Forward a container command (restart/stop/start/remove) to a worker.
+
+    ``instance`` picks one copy of a service that runs more than once; the first
+    copy is addressed without it, so an older worker sees the request it always did.
+    """
     if command == "remove":
         return await _proxy_to_worker(worker_id, "DELETE", f"/api/containers/{slug}", params=params)
-    return await _proxy_to_worker(worker_id, "POST", f"/api/containers/{slug}/{command}")
+    return await _proxy_to_worker(
+        worker_id,
+        "POST",
+        f"/api/containers/{slug}/{command}",
+        params={"instance": str(instance)} if instance > 1 else None,
+    )
+
+
+async def _worker_features(worker_id: int) -> set[str]:
+    """What the worker said it can do in its last heartbeat."""
+    worker = await database.get_worker(worker_id) or {}
+    features = _safe_json(worker.get("system_info", "{}"), {}).get("features")
+    return {str(f) for f in features} if isinstance(features, list) else set()
+
+
+async def _worker_instances(worker_id: int, slug: str) -> set[int]:
+    """The copies of ``slug`` the worker's last heartbeat listed."""
+    worker = await database.get_worker(worker_id) or {}
+    copies: set[int] = set()
+    for entry in _safe_json(worker.get("containers", "[]"), []):
+        if isinstance(entry, dict) and entry.get("slug") == slug:
+            try:
+                copies.add(max(1, int(entry.get("instance") or 1)))
+            except (TypeError, ValueError):
+                copies.add(1)
+    return copies
 
 
 async def _proxy_worker_deploy(worker_id: int, slug: str, spec: dict[str, Any]) -> dict[str, Any]:
@@ -2557,9 +2674,12 @@ async def _proxy_worker_deploy(worker_id: int, slug: str, spec: dict[str, Any]) 
     )
 
 
-async def _proxy_worker_logs(worker_id: int, slug: str, lines: int = 50) -> dict[str, str]:
+async def _proxy_worker_logs(worker_id: int, slug: str, lines: int = 50, instance: int = 1) -> dict[str, str]:
     """Forward a logs request to a worker."""
-    return await _proxy_to_worker(worker_id, "GET", f"/api/containers/{slug}/logs", params={"lines": min(lines, 1000)})
+    params = {"lines": min(lines, 1000)}
+    if instance > 1:
+        params["instance"] = instance
+    return await _proxy_to_worker(worker_id, "GET", f"/api/containers/{slug}/logs", params=params)
 
 
 # ---------------------------------------------------------------------------
@@ -2568,20 +2688,26 @@ async def _proxy_worker_logs(worker_id: int, slug: str, lines: int = 50) -> dict
 
 
 @app.post("/api/services/{slug}/restart")
-async def api_service_restart(request: Request, slug: str, worker_id: int | None = None) -> dict[str, str]:
-    return await _svc_restart(request, slug, worker_id)
+async def api_service_restart(
+    request: Request, slug: str, worker_id: int | None = None, instance: int = 1
+) -> dict[str, str]:
+    return await _svc_restart(request, slug, worker_id, _instance_param(instance))
 
 
 @app.post("/api/services/{slug}/stop")
-async def api_service_stop(request: Request, slug: str, worker_id: int | None = None) -> dict[str, str]:
-    return await _svc_stop(request, slug, worker_id)
+async def api_service_stop(
+    request: Request, slug: str, worker_id: int | None = None, instance: int = 1
+) -> dict[str, str]:
+    return await _svc_stop(request, slug, worker_id, _instance_param(instance))
 
 
 @app.post("/api/services/{slug}/start")
-async def api_service_start(request: Request, slug: str, worker_id: int | None = None) -> dict[str, str]:
+async def api_service_start(
+    request: Request, slug: str, worker_id: int | None = None, instance: int = 1
+) -> dict[str, str]:
     _require_writer(request)
     worker_id = await _resolve_worker_id(worker_id)
-    result = await _proxy_worker_command(worker_id, "start", slug)
+    result = await _proxy_worker_command(worker_id, "start", slug, instance=_instance_param(instance))
     await database.record_health_event(slug, "start")
     metrics.record_container_lifecycle("start", slug)
     return result
@@ -2589,11 +2715,11 @@ async def api_service_start(request: Request, slug: str, worker_id: int | None =
 
 @app.get("/api/services/{slug}/logs")
 async def api_service_logs(
-    request: Request, slug: str, lines: int = 50, worker_id: int | None = None
+    request: Request, slug: str, lines: int = 50, worker_id: int | None = None, instance: int = 1
 ) -> dict[str, str]:
     _require_writer(request)
     worker_id = await _resolve_worker_id(worker_id)
-    return await _proxy_worker_logs(worker_id, slug, lines)
+    return await _proxy_worker_logs(worker_id, slug, lines, instance=_instance_param(instance))
 
 
 @app.delete("/api/services/{slug}")

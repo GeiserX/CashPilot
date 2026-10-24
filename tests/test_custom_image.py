@@ -88,6 +88,7 @@ def _deploy(recorded, image):
     body.env = {"TOKEN": "t"}
     body.hostname = None
     body.image = image
+    body.instances = None
     saved = AsyncMock()
 
     async def run():
@@ -192,7 +193,7 @@ class TestTheDashboard:
         body = js[js.index("async function _deployToWorkers(") :]
         body = body[: body.index("\n  function ", 1)]
         assert "_imageChoice(slug)" in body
-        assert "image === undefined ? { env } : { env, image }" in body
+        assert "if (image !== undefined) body.image = image" in body
 
     def test_the_redeploy_button_has_a_handler(self):
         js = (ROOT / "app" / "static" / "js" / "app.js").read_text(encoding="utf-8")

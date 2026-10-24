@@ -372,7 +372,7 @@ class TestStopRestartStartEndpoints:
             resp = _client().post("/api/containers/honeygain/stop", headers=_auth())
         assert resp.status_code == 200
         assert resp.json() == {"status": "stopped"}
-        mock_stop.assert_called_once_with("honeygain")
+        mock_stop.assert_called_once_with("honeygain", 1)
 
     def test_stop_not_found_returns_404(self):
         with patch("app.worker_api.orchestrator.stop_service", side_effect=ValueError("not found")):
@@ -389,7 +389,7 @@ class TestStopRestartStartEndpoints:
             resp = _client().post("/api/containers/honeygain/restart", headers=_auth())
         assert resp.status_code == 200
         assert resp.json() == {"status": "restarted"}
-        mock_restart.assert_called_once_with("honeygain")
+        mock_restart.assert_called_once_with("honeygain", 1)
 
     def test_restart_not_found_returns_404(self):
         with patch("app.worker_api.orchestrator.restart_service", side_effect=ValueError("gone")):
@@ -406,7 +406,7 @@ class TestStopRestartStartEndpoints:
             resp = _client().post("/api/containers/honeygain/start", headers=_auth())
         assert resp.status_code == 200
         assert resp.json() == {"status": "started"}
-        mock_start.assert_called_once_with("honeygain")
+        mock_start.assert_called_once_with("honeygain", 1)
 
     def test_start_not_found_returns_404(self):
         with patch("app.worker_api.orchestrator.start_service", side_effect=ValueError("gone")):
@@ -422,7 +422,10 @@ class TestStopRestartStartEndpoints:
 class TestRemoveEndpoint:
     def test_remove_success(self):
         removal = {"container": "cashpilot-honeygain", "deleted_volumes": [], "failed_volumes": []}
-        with patch("app.worker_api.orchestrator.remove_service", return_value=removal) as mock_remove:
+        with (
+            patch("app.worker_api.orchestrator.remove_service", return_value=removal) as mock_remove,
+            patch("app.worker_api.orchestrator.remove_extra_instances", return_value=[]),
+        ):
             resp = _client().delete("/api/containers/honeygain", headers=_auth())
         assert resp.status_code == 200
         body = resp.json()
@@ -432,7 +435,10 @@ class TestRemoveEndpoint:
 
     def test_remove_with_delete_volumes_query_param(self):
         removal = {"container": "cashpilot-honeygain", "deleted_volumes": ["v1"], "failed_volumes": []}
-        with patch("app.worker_api.orchestrator.remove_service", return_value=removal) as mock_remove:
+        with (
+            patch("app.worker_api.orchestrator.remove_service", return_value=removal) as mock_remove,
+            patch("app.worker_api.orchestrator.remove_extra_instances", return_value=[]),
+        ):
             resp = _client().delete("/api/containers/honeygain?delete_volumes=true", headers=_auth())
         assert resp.status_code == 200
         mock_remove.assert_called_once_with("honeygain", delete_volumes=True, allow_delete_critical=False)
@@ -454,13 +460,13 @@ class TestLogsEndpoint:
             resp = _client().get("/api/containers/honeygain/logs", headers=_auth())
         assert resp.status_code == 200
         assert resp.json() == {"logs": "line1\nline2"}
-        mock_logs.assert_called_once_with("honeygain", lines=50)
+        mock_logs.assert_called_once_with("honeygain", lines=50, instance=1)
 
     def test_logs_lines_capped_at_1000(self):
         with patch("app.worker_api.orchestrator.get_service_logs", return_value="") as mock_logs:
             resp = _client().get("/api/containers/honeygain/logs?lines=5000", headers=_auth())
         assert resp.status_code == 200
-        mock_logs.assert_called_once_with("honeygain", lines=1000)
+        mock_logs.assert_called_once_with("honeygain", lines=1000, instance=1)
 
     def test_logs_not_found_returns_404(self):
         with patch("app.worker_api.orchestrator.get_service_logs", side_effect=ValueError("gone")):

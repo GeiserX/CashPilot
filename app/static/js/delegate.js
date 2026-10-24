@@ -41,7 +41,7 @@ document.addEventListener('click', (event) => {
   };
 
   const args = [];
-  for (let i = 1; i <= 3; i += 1) {
+  for (let i = 1; i <= 4; i += 1) {
     const value = el.dataset[`a${i}`];
     if (value === undefined) break;
     args.push(value);
