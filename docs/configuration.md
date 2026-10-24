@@ -236,6 +236,23 @@ device name the catalog derives from the host name gets `-2`, `-3` added.
 - A worker runs more than one copy only once it is on a release that supports it; older workers
   keep the box locked until they are updated.
 
+## A service's image
+
+Each service runs from the image its catalog entry names. To run it from another one, open the
+service, expand **Advanced** and type the image in the **Image** box: a pinned tag of an image the
+catalog leaves floating (`honeygain/honeygain:0.8.1`), a registry mirror, or a community build for
+an architecture the provider does not publish.
+
+- Blank means the catalog image. Clearing the box and deploying goes back to it.
+- The choice is saved per worker with the rest of the deployment, and every redeploy keeps it
+  until you clear the box. **Redeploy running instances with this image** applies it to the
+  workers that already run the service, keeping their credentials.
+- Only the image changes. Capabilities, devices, ports, the entrypoint and the stop timeout still
+  come from the worker's catalog entry, so a custom image gets nothing the service does not
+  already have. It does receive the service's credentials, so use an image you trust.
+- The dashboard marks such an instance **custom image** and judges "update available" against
+  the image you chose, not the catalog's.
+
 ## Update check
 
 CashPilot asks GitHub once a day whether a newer release exists, and shows a

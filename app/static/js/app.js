@@ -2468,6 +2468,8 @@ const CP = (() => {
     for (const wid of workerIds) {
       try {
         const body = { env };
+        const image = _imageChoice(slug);
+        if (image !== undefined) body.image = image;
         const instances = _instancesFor(slug, wid);
         if (instances !== undefined) body.instances = instances;
         const res = await api(`/api/deploy/${slug}?worker_id=${wid}`, { method: 'POST', body });
@@ -2655,6 +2657,72 @@ const CP = (() => {
     }
   }
 
+  // The Image box under Advanced. Blank means the catalog image. It is filled
+  // with the image the deployments already use when they all agree, and only
+  // sent when the operator changes it: a box left alone keeps each worker's
+  // recorded choice. Running instances are redeployed with it from here,
+  // because the node list cannot select a node that already runs the service.
+  function imageChoiceSection(svc, workers) {
+    const catalogImage = (svc.docker && svc.docker.image) || '';
+    const chosen = Object.values(svc.custom_images || {});
+    const common = chosen.length && chosen.every(i => i === chosen[0]) ? chosen[0] : '';
+    const running = (workers || []).filter(w => w.status === 'online' && (w.containers || []).some(c => c.slug === svc.slug));
+    const name = escapeHtml(svc.name);
+    return `
+      <details class="image-choice"${chosen.length ? ' open' : ''}>
+        <summary>Advanced</summary>
+        <div class="form-group">
+          <label class="form-label" for="image-input-${escapeHtml(svc.slug)}">Image</label>
+          <input class="form-input" type="text" id="image-input-${escapeHtml(svc.slug)}" data-initial="${escapeHtml(common)}"
+                 placeholder="${escapeHtml(catalogImage)}" value="${escapeHtml(common)}" spellcheck="false" autocomplete="off">
+          <div class="form-hint">Leave blank to use the catalog image${catalogImage ? ` (<code>${escapeHtml(catalogImage)}</code>)` : ''}.
+            A custom image receives your ${name} credentials and runs with exactly what the catalog grants ${name}:
+            no extra capabilities, devices or ports. CashPilot keeps it on every redeploy until you clear this box.</div>
+          ${chosen.length > 1 && !common ? '<div class="form-hint">Your nodes use different images; see Running Instances. Type one here to set it on the nodes you deploy.</div>' : ''}
+        </div>
+        ${running.length && _isOwner ? `<button class="btn btn-secondary btn-sm" data-action="redeployWithImage" data-a1="${escapeHtml(svc.slug)}">Redeploy running instances with this image</button>
+          <span id="image-status-${escapeHtml(svc.slug)}" style="font-size:0.85rem; margin-left:6px;"></span>` : ''}
+      </details>`;
+  }
+
+  // The image to send with a deploy: undefined when the box is absent or left
+  // as it was (the server then keeps each worker's recorded choice), "" to go
+  // back to the catalog image, otherwise the typed reference.
+  function _imageChoice(slug) {
+    const input = document.getElementById(`image-input-${slug}`);
+    if (!input) return undefined;
+    const value = input.value.trim();
+    return value === (input.dataset.initial || '') ? undefined : value;
+  }
+
+  async function redeployWithImage(slug) {
+    const input = document.getElementById(`image-input-${slug}`);
+    const statusEl = document.getElementById(`image-status-${slug}`);
+    if (!input) return;
+    const image = input.value.trim();
+    const workers = (await api('/api/workers')).filter(w => w.status === 'online' && (w.containers || []).some(c => c.slug === slug));
+    if (!workers.length) { toast('No running instances to redeploy', 'warning'); return; }
+    const what = image || 'the catalog image';
+    if (!window.confirm(`Redeploy ${slug} on ${workers.map(w => w.name).join(', ')} with ${what}?`)) return;
+    if (statusEl) statusEl.textContent = 'Redeploying...';
+    let ok = 0, fail = 0;
+    for (const w of workers) {
+      try {
+        // No env: a blank redeploy keeps the credentials this worker was deployed with.
+        await api(`/api/deploy/${slug}?worker_id=${w.id}`, { method: 'POST', body: { env: {}, image } });
+        ok++;
+      } catch (err) {
+        fail++;
+        toast(`Redeploy on ${w.name} failed: ${err.message}`, 'error');
+      }
+    }
+    input.dataset.initial = image;
+    if (statusEl) {
+      statusEl.textContent = fail === 0 ? `Redeployed on ${ok} node(s)` : `${ok} ok, ${fail} failed`;
+      statusEl.style.color = fail === 0 ? 'var(--success)' : 'var(--error)';
+    }
+  }
+
   function renderServiceDetail(svc, workers) {
     const earning = svc.earnings
       ? `$${svc.earnings.monthly_low}-$${svc.earnings.monthly_high} per ${svc.earnings.per || 'month'}`
@@ -2746,6 +2814,7 @@ const CP = (() => {
 
       html += `<h4 style="margin-bottom: 12px; font-size: 0.95rem;">Deploy</h4>`;
       html += envFields;
+      html += imageChoiceSection(svc, workers);
 
       // Earnings tracking uses SEPARATE credentials (Settings → Collectors).
       // The fields above only configure the container that earns; they don't
@@ -2792,6 +2861,7 @@ const CP = (() => {
         <div style="display:flex; align-items:center; gap:10px; padding:8px 0; border-bottom:1px solid var(--border-color);">
           <strong style="min-width:100px;">${escapeHtml(inst.worker.name)}${inst.several ? ` #${inst.container.instance || 1}` : ''}</strong>
           <span class="badge ${badgeClass}" style="font-size:0.75rem;">${escapeHtml(s)}</span>
+          ${(svc.custom_images || {})[String(inst.worker.id)] ? `<span class="badge badge-category" style="font-size:0.75rem;" title="${escapeHtml(svc.custom_images[String(inst.worker.id)])}">custom image</span>` : ''}
           ${_canWrite ? `<div style="margin-left:auto; display:flex; gap:4px;">
             <button class="btn btn-secondary btn-sm" data-action="workerAction" data-a1="${svc.slug}" data-a2="restart" data-a3="${inst.worker.id}" data-a4="${inst.container.instance || 1}">Restart</button>
             <button class="btn btn-secondary btn-sm" data-action="workerAction" data-a1="${svc.slug}" data-a2="stop" data-a3="${inst.worker.id}" data-a4="${inst.container.instance || 1}">Stop</button>
@@ -3855,6 +3925,7 @@ const CP = (() => {
     loadServicesTable,
     toggleInstances,
     deployServiceToWorkers,
+    redeployWithImage,
     workerAction,
     loadWorkerLogs,
     openCredentialModal,

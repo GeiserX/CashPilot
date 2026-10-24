@@ -27,6 +27,25 @@ def schema_path():
 
 
 @pytest.fixture(autouse=True)
+def _no_custom_images(request):
+    """No worker runs a custom image, unless a test asks for the real lookup.
+
+    The deployed-services and service-detail routes read every worker's
+    recorded image choice from the database. Most route tests mock the database
+    call by call and never create its tables, so without this each of them
+    would fail on a lookup it does not care about. Tests marked
+    ``real_custom_images`` get the real function.
+    """
+    if request.node.get_closest_marker("real_custom_images"):
+        yield
+        return
+    from unittest.mock import AsyncMock, patch
+
+    with patch("app.database.get_custom_images", new_callable=AsyncMock, return_value={}):
+        yield
+
+
+@pytest.fixture(autouse=True)
 def _seed_fiat_rates():
     """Give every test the exchange rates a RUNNING CashPilot always has.
 

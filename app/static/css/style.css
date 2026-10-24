@@ -1029,6 +1029,17 @@ img { max-width: 100%; }
   cursor: not-allowed;
 }
 
+.image-choice {
+  margin: 4px 0 16px;
+}
+
+.image-choice summary {
+  cursor: pointer;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  margin-bottom: 10px;
+}
+
 .form-input,
 .form-select,
 .form-textarea {

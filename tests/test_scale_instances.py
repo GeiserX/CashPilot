@@ -95,7 +95,7 @@ def _worker(features=("instances",), copies=(1,)):
     }
 
 
-def _deploy(instances, *, svc=SCALABLE, recorded=None, worker=None):
+def _deploy(instances, *, svc=SCALABLE, recorded=None, worker=None, image=None):
     deploys, deletes = [], []
 
     async def _deploy_hop(worker_id, slug, spec):
@@ -110,6 +110,7 @@ def _deploy(instances, *, svc=SCALABLE, recorded=None, worker=None):
     body.env = {"TOKEN": "t"}
     body.hostname = None
     body.instances = instances
+    body.image = image
     saved = AsyncMock()
 
     async def run():
@@ -165,6 +166,11 @@ class TestTheDeploy:
         assert [d.get("instance", 1) for d in deploys] == [1]
         assert "instance" not in deploys[0]
         assert "instances" not in record
+
+    def test_every_copy_runs_the_chosen_image(self):
+        deploys, _, record = _deploy(2, image="mirror.example/demo:1.2")
+        assert [d["image"] for d in deploys] == ["mirror.example/demo:1.2"] * 2
+        assert record["custom_image"] == "mirror.example/demo:1.2"
 
     def test_one_device_per_ip_refuses_a_second_copy(self):
         with pytest.raises(HTTPException) as err:

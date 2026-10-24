@@ -39,7 +39,7 @@ You can change all of these. None of them require changing for a normal install.
 | `CASHPILOT_ALLOW_EPHEMERAL_KEY` | off | Lets CashPilot start when the encryption key cannot be persisted. Every credential then dies on the next restart. |
 | `allow_delete_critical` (per request) | refuses | Permits deleting a volume that holds irreplaceable state. There is no undo. |
 | Alert delivery (ntfy / webhook / Telegram) | inert | Nothing is sent anywhere until you configure a target. |
-| Image tags | mostly unpinned | Only some service images in this catalog carry a version tag; the rest follow the image's default tag, so an upstream push changes what runs on your next deploy. The desktop app pins every service image by digest. CashPilot's own images are pinned to a release series in both compose files. |
+| Image tags | mostly unpinned | Only some service images in this catalog carry a version tag; the rest follow the image's default tag, so an upstream push changes what runs on your next deploy. The desktop app pins every service image by digest. In the web app you can pin one yourself under the service's **Advanced** box ([Configuration](configuration.md#a-services-image)). CashPilot's own images are pinned to a release series in both compose files. |
 
 ## Tier 3 — preference, no security dimension
 

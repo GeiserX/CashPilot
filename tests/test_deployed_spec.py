@@ -426,6 +426,7 @@ class TestRedeployUsesTheRecordedSpec:
         body.env = body_env or {}
         body.hostname = None
         body.instances = None
+        body.image = None
 
         async def run():
             with (

@@ -1650,6 +1650,7 @@ async def api_services_deployed(request: Request) -> list[dict[str, Any]]:
     for slug, agg in slug_agg.items():
         svc = catalog.get_service(slug)
         health = health_map.get(slug, {})
+        custom_images = await database.get_custom_images(slug) if svc else {}
 
         # Build per-instance detail list (local first)
         instance_details = []
@@ -1672,6 +1673,7 @@ async def api_services_deployed(request: Request) -> list[dict[str, Any]]:
                 "unmanaged": inst.get("deployed_by") == "external",
                 # Which copy on that worker; the UI labels copies 2+ as "#N".
                 "instance": inst.get("instance") or 1,
+                "custom_image": custom_images.get(inst.get("_worker_id")),
             }
             if inst.get("_is_android"):
                 detail["net_tx_24h"] = inst.get("_net_tx_24h", 0)
@@ -1732,7 +1734,13 @@ async def api_services_deployed(request: Request) -> list[dict[str, Any]]:
         }
         _apply_service_meta(entry, svc)
         if svc:
-            entry["image_outdated"] = _image_outdated(agg["image"], (svc.get("docker") or {}).get("image", ""))
+            # Each instance against the image it was deployed from: the catalog's,
+            # or the one the operator chose for that worker, which is not drift.
+            catalog_image = (svc.get("docker") or {}).get("image", "")
+            entry["image_outdated"] = any(
+                _image_outdated(inst.get("image", ""), custom_images.get(inst.get("_worker_id")) or catalog_image)
+                for inst in agg["instances"]
+            )
         result.append(entry)
 
     # Include external services (no Docker container, e.g. Grass, Bytelixir)
@@ -1857,6 +1865,9 @@ async def api_get_service(request: Request, slug: str) -> dict[str, Any]:
     svc["has_collector"] = slug in COLLECTOR_MAP
     # The deploy form's Instances box: its ceiling, and why it is 1 when it is.
     svc["max_instances"], svc["max_instances_reason"] = scaling_limit(svc)
+    # Worker id -> the image chosen instead of the catalog's, for the deploy
+    # form's Image box and the custom-image badge. Absent workers use the catalog.
+    svc["custom_images"] = {str(wid): image for wid, image in (await database.get_custom_images(slug)).items()}
     return svc
 
 
@@ -1878,6 +1889,38 @@ class DeployRequest(BaseModel):
     # How many copies of the service this worker runs. None (left out) keeps
     # the number this worker's deployment already has, 1 for a new one.
     instances: int | None = None
+    # The image to run instead of the catalog's. None (the field left out) keeps
+    # whatever this worker's deployment already uses, so a redeploy from a form
+    # that never showed the box cannot drop a choice. "" goes back to the
+    # catalog image; anything else must be a plain image reference.
+    image: str | None = None
+
+
+# repository[:tag][@sha256:digest], with an optional registry host (and port) in
+# front. No scheme, no spaces, nothing a shell or Docker would read as an option.
+_IMAGE_REF = re.compile(
+    r"(?:[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?(?::[0-9]{1,5})?/)?"
+    r"[a-z0-9]+(?:(?:[._]|__|-+)[a-z0-9]+)*"
+    r"(?:/[a-z0-9]+(?:(?:[._]|__|-+)[a-z0-9]+)*)*"
+    r"(?::[A-Za-z0-9_][A-Za-z0-9_.-]{0,127})?"
+    r"(?:@sha256:[a-f0-9]{64})?"
+)
+
+
+def _custom_image(requested: str | None, recorded: dict[str, Any] | None) -> str:
+    """The image this deploy uses instead of the catalog's, or "" for the catalog's.
+
+    An image the operator typed wins; a box left out of the request keeps the
+    one this worker's record already has. A typed value that is not an image
+    reference is refused before any worker is contacted.
+    """
+    if requested is None:
+        kept = (recorded or {}).get("custom_image")
+        return kept if isinstance(kept, str) else ""
+    image = requested.strip()
+    if image and (len(image) > 255 or not _IMAGE_REF.fullmatch(image)):
+        raise HTTPException(status_code=400, detail="Image is not a valid image reference (repository[:tag][@digest])")
+    return image
 
 
 def _instance_param(instance: int) -> int:
@@ -1986,6 +2029,7 @@ async def api_deploy(
     # THIS worker's record: another machine's carries another machine's env.
     recorded = await database.get_deployment_spec(slug, worker_id=worker_id)
     recorded_env = (recorded or {}).get("env") or {}
+    custom_image = _custom_image(body.image, recorded)
 
     # What the operator actually TYPED on this deploy. The dashboard has no
     # separate redeploy action: it posts the deploy form, and the form posts
@@ -2138,6 +2182,16 @@ async def api_deploy(
     if recorded and "command" in recorded and recorded.get("command") != spec.get("command"):
         # Never the command itself: it carries credentials.
         divergence.append("command: using the catalog's current command; this service last ran a different one")
+    # The image is the catalog's unless the operator chose another; the choice is
+    # recorded with the spec, so the next redeploy on this worker keeps it.
+    # Capabilities, devices, the entrypoint and the stop timeout still come from
+    # the worker's own catalog entry, so a different image gains nothing the
+    # service does not already have.
+    if custom_image:
+        spec["image"] = custom_image
+        spec["custom_image"] = custom_image
+    else:
+        spec.pop("custom_image", None)
     if divergence:
         logger.info("Redeploying %s from its recorded spec: %s", slug, "; ".join(divergence))
 
@@ -2600,7 +2654,9 @@ async def _proxy_worker_deploy(worker_id: int, slug: str, spec: dict[str, Any]) 
     # architecture in its heartbeat. The deployment record stays on the
     # catalog's default image: it is one row for the whole fleet, and a
     # Raspberry Pi's tag must not be replayed onto an x86 box.
-    if isinstance(docker_conf.get("image_by_arch"), dict):
+    # A custom image is the operator's choice for this worker and is sent as is.
+    custom = spec.pop("custom_image", None)
+    if not custom and isinstance(docker_conf.get("image_by_arch"), dict):
         worker = await database.get_worker(worker_id) or {}
         arch = _safe_json(worker.get("system_info", "{}"), {}).get("arch")
         image = _image_for_arch(docker_conf, arch)
