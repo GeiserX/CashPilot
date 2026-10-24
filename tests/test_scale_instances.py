@@ -271,3 +271,139 @@ class TestTheForm:
     def test_the_dispatcher_passes_a_fourth_argument(self):
         delegate = (ROOT / "app" / "static" / "js" / "delegate.js").read_text(encoding="utf-8")
         assert "i <= 4" in delegate
+
+
+class TestTheCopyContainer:
+    """deploy_raw names and labels copy N; copy 1 is created as it always was."""
+
+    def _run(self, instance):
+        client = MagicMock()
+        client.networks.get.return_value = MagicMock(attrs={"Driver": "bridge"})
+        client.containers.get.side_effect = orchestrator.NotFound("nope")
+        client.containers.run.return_value = MagicMock(id="new", short_id="new")
+        with (
+            patch.object(orchestrator, "_CONTAINER_NETWORK", ""),
+            patch.object(orchestrator, "_get_client", return_value=client),
+        ):
+            orchestrator.deploy_raw(slug="demo", image="demo/demo", instance=instance)
+        return client.containers.run.call_args.kwargs
+
+    def test_copy_two_is_named_and_labelled(self):
+        kwargs = self._run(2)
+        assert kwargs["name"] == "cashpilot-demo-2"
+        assert kwargs["labels"][LABEL_INSTANCE] == "2"
+
+    def test_copy_one_carries_no_instance_label(self):
+        kwargs = self._run(1)
+        assert kwargs["name"] == "cashpilot-demo"
+        assert LABEL_INSTANCE not in kwargs["labels"]
+
+    def test_an_unreadable_label_reads_as_the_first_copy(self):
+        assert orchestrator._instance_of(_container("x", instance="two")) == 1
+
+
+class TestCopyCommands:
+    """Stop, restart, start, logs and remove reach the copy they were asked for."""
+
+    def _client(self):
+        first, second = _container("cashpilot-demo"), _container("cashpilot-demo-2", instance=2)
+        second.logs.return_value = b"copy two"
+        client = MagicMock()
+        client.containers.get.side_effect = lambda name: {"cashpilot-demo": first, "cashpilot-demo-2": second}[name]
+        client.containers.list.return_value = [first, second]
+        return client, first, second
+
+    def test_each_command_hits_copy_two_only(self):
+        client, first, second = self._client()
+        with patch.object(orchestrator, "_get_client", return_value=client):
+            orchestrator.stop_service("demo", 2)
+            orchestrator.restart_service("demo", 2)
+            orchestrator.start_service("demo", 2)
+            assert orchestrator.get_service_logs("demo", 10, 2) == "copy two"
+            assert orchestrator.remove_instance("demo", 2) == {"container": "cashpilot-demo-2"}
+        second.stop.assert_called()
+        second.restart.assert_called_once()
+        second.start.assert_called_once()
+        second.remove.assert_called_once_with(force=True)
+        for call in ("stop", "restart", "start", "remove", "logs"):
+            getattr(first, call).assert_not_called()
+
+    def test_a_copy_that_will_not_stop_is_still_removed(self):
+        from docker.errors import APIError
+
+        client, _, second = self._client()
+        second.stop.side_effect = APIError("busy")
+        with patch.object(orchestrator, "_get_client", return_value=client):
+            orchestrator.remove_instance("demo", 2)
+        second.remove.assert_called_once_with(force=True)
+
+
+class TestTheWorkerRoutes:
+    def teardown_method(self):
+        if getattr(self, "_key", None):
+            self._key.stop()
+
+    def _client(self):
+        from contextlib import asynccontextmanager
+
+        from fastapi.testclient import TestClient
+
+        from app import worker_api
+
+        @asynccontextmanager
+        async def _noop(a):
+            yield
+
+        worker_api.app.router.lifespan_context = _noop
+        # The key is read from the environment at import; whichever test file
+        # imported the worker first decided it, so this test sets its own.
+        self._key = patch.object(worker_api, "API_KEY", "scale-test-key")
+        self._key.start()
+        return TestClient(worker_api.app, raise_server_exceptions=False), {
+            "Authorization": f"Bearer {worker_api.API_KEY}"
+        }
+
+    def test_scaling_down_removes_one_copy(self):
+        client, auth = self._client()
+        with patch("app.worker_api.orchestrator.remove_instance", return_value={"container": "c-2"}) as rm:
+            resp = client.delete("/api/containers/demo/instances/2", headers=auth)
+        assert resp.status_code == 200 and resp.json() == {"status": "removed", "container": "c-2"}
+        rm.assert_called_once_with("demo", 2)
+
+    @pytest.mark.parametrize(("error", "status"), [(ValueError("gone"), 404), (RuntimeError("no docker"), 503)])
+    def test_scaling_down_errors_map_to_http(self, error, status):
+        client, auth = self._client()
+        with patch("app.worker_api.orchestrator.remove_instance", side_effect=error):
+            assert client.delete("/api/containers/demo/instances/2", headers=auth).status_code == status
+
+    def test_an_out_of_range_copy_is_refused_before_docker(self):
+        client, auth = self._client()
+        with patch("app.worker_api.orchestrator.remove_instance") as rm:
+            assert client.delete(f"/api/containers/demo/instances/{MAX_INSTANCES + 1}", headers=auth).status_code == 400
+        rm.assert_not_called()
+
+    def test_removing_the_service_reports_the_extra_copies(self):
+        client, auth = self._client()
+        removal = {"container": "cashpilot-demo", "deleted_volumes": [], "failed_volumes": []}
+        with (
+            patch("app.worker_api.orchestrator.remove_service", return_value=removal),
+            patch("app.worker_api.orchestrator.remove_extra_instances", return_value=["cashpilot-demo-2"]) as extra,
+        ):
+            resp = client.delete("/api/containers/demo", headers=auth)
+        assert resp.json()["extra_instances"] == ["cashpilot-demo-2"]
+        extra.assert_called_once_with("demo")
+
+
+class TestTheUiPassthrough:
+    def test_copy_logs_name_the_copy_and_copy_one_does_not(self):
+        hop = AsyncMock(return_value={"logs": ""})
+        with patch.object(main, "_proxy_to_worker", hop):
+            asyncio.run(main._proxy_worker_logs(1, "demo", 50, instance=2))
+            asyncio.run(main._proxy_worker_logs(1, "demo", 50))
+        assert hop.call_args_list[0].kwargs["params"] == {"lines": 50, "instance": 2}
+        assert hop.call_args_list[1].kwargs["params"] == {"lines": 50}
+
+    def test_a_heartbeat_entry_with_a_bad_instance_counts_as_the_first_copy(self):
+        worker = {"containers": json.dumps([{"slug": "demo", "instance": "x"}, {"slug": "demo", "instance": 3}])}
+        with patch.object(main.database, "get_worker", AsyncMock(return_value=worker)):
+            assert asyncio.run(main._worker_instances(1, "demo")) == {1, 3}
