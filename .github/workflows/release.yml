@@ -39,7 +39,7 @@ jobs:
           # tagged and pushed to Docker Hub while its 3.14 suite was red.
           # uv sync --frozen resolves markers per interpreter, so the two really
           # did install different wheels. Same class as CashPilot-de1.
-          python-version: '3.14'
+          python-version: '3.15'
       - name: Install uv
         run: pip install uv --quiet
       - name: Install dependencies

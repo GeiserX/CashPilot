@@ -1,5 +1,5 @@
 # -- Build stage --
-FROM python:3.14-alpine AS builder
+FROM python:3.15-alpine AS builder
 
 WORKDIR /build
 
@@ -16,7 +16,7 @@ RUN uv sync --frozen --no-dev --no-install-project \
        find .venv -type d -name "test" -exec rm -rf {} + 2>/dev/null; true
 
 # -- Runtime stage --
-FROM python:3.14-alpine
+FROM python:3.15-alpine
 
 # The release tag this image was built from, so the app can report what it is.
 # Both apps used to hardcode "0.1.0" while releases were tag-driven and past
