@@ -74,7 +74,7 @@ Full documentation: [geiserx.github.io/CashPilot](https://geiserx.github.io/Cash
 
 - [Getting started](https://geiserx.github.io/CashPilot/getting-started/): install, first run, updating, pinning a version
 - [Configuration](https://geiserx.github.io/CashPilot/configuration/): every setting and which source wins; [fleet management](https://geiserx.github.io/CashPilot/fleet/) and [running on ARM](https://geiserx.github.io/CashPilot/arm/)
-- Security: [security defaults](https://geiserx.github.io/CashPilot/security-defaults/), [protecting your home network](https://geiserx.github.io/CashPilot/home-network-security/), [network isolation](https://geiserx.github.io/CashPilot/isolation/)
+- Security: [security defaults](https://geiserx.github.io/CashPilot/security-defaults/), [protecting your home network](https://geiserx.github.io/CashPilot/home-network-security/), [network isolation](https://geiserx.github.io/CashPilot/isolation/), [testing your isolation](https://geiserx.github.io/CashPilot/isolation-check/)
 - [Service guides](https://geiserx.github.io/CashPilot/guides/): one page per service, plus [discontinued services](https://geiserx.github.io/CashPilot/discontinued-services/)
 - Operations: [backup and restore](https://geiserx.github.io/CashPilot/backup-restore/), [backing up node identities](https://geiserx.github.io/CashPilot/backup/), [Prometheus metrics](https://geiserx.github.io/CashPilot/guides/prometheus-metrics/)
 - [How it works](https://geiserx.github.io/CashPilot/how-it-works/): the UI and worker split

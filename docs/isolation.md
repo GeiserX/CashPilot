@@ -75,6 +75,9 @@ networks:
     shows how to make the CashPilot worker deploy onto this bridge with
     `CASHPILOT_CONTAINER_NETWORK`.
 
+Whatever you apply, [test it from inside an earner](isolation-check.md): a rule
+that looks right can still be skipped, and the test shows it in one command.
+
 ## A VLAN is stronger
 
 A separate VLAN with its own firewall policy contains host-networked services
