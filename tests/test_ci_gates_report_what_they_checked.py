@@ -50,7 +50,7 @@ import yaml
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOWS = ROOT / ".github" / "workflows"
 
-SHIPPED_PYTHON = "3.14"
+SHIPPED_PYTHON = "3.15"
 """The interpreter both Dockerfiles use. Derived below, never assumed."""
 
 

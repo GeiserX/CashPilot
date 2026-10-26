@@ -76,7 +76,7 @@ jobs:
       - uses: actions/checkout@v7.0.1
       - uses: actions/setup-python@v7.0.0
         with:
-          python-version: "3.14"
+          python-version: "3.15"
       # The lockfile's ruff, not whatever released today. This job gates
       # build-ui/build-worker/retag-*, so a floating ruff that adds a default
       # rule turns the RELEASE red on a commit that changed nothing -- in the

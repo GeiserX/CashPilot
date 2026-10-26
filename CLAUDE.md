@@ -7,7 +7,7 @@ Self-hosted passive income platform with a web UI that guides setup, deploys Doc
 
 | Technology | Purpose |
 |---|---|
-| FastAPI | Backend framework (Python 3.14, async) |
+| FastAPI | Backend framework (Python 3.15, async) |
 | Jinja2 | Server-rendered HTML templates |
 | SQLite | Database (aiosqlite, zero-config, stored in `/data`) |
 | Docker SDK for Python | Container lifecycle management via socket |
@@ -81,7 +81,7 @@ cashpilot/
     compute/            # 4 services (vast-ai, salad, nosana, golem)
   docs/guides/          # Per-service setup guides (manually maintained)
   unraid/               # Unraid-specific deployment templates
-  Dockerfile            # UI image: multi-stage python:3.14-alpine, su-exec, non-root
+  Dockerfile            # UI image: multi-stage python:3.15-alpine, su-exec, non-root
   Dockerfile.worker     # Worker image: minimal deps, no collectors/templates
   docker-compose.yml    # Example deployment (UI + worker on same server)
   docker-compose.fleet.yml  # Multi-server example (UI + remote workers)

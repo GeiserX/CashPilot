@@ -51,7 +51,7 @@ cashpilot/
     compute/                # GPU compute services
   docs/                     # Documentation and guides
     guides/                 # Per-service setup guides
-  Dockerfile                # UI image: multi-stage python:3.14-alpine, su-exec, non-root
+  Dockerfile                # UI image: multi-stage python:3.15-alpine, su-exec, non-root
   Dockerfile.worker         # Worker image: minimal deps, no collectors/templates
   docker-compose.yml        # Single-server deployment
   docker-compose.fleet.yml  # Multi-server fleet deployment
@@ -131,7 +131,7 @@ The UI runs scheduled collectors for each configured service:
 
 | Technology | Purpose |
 |---|---|
-| FastAPI | Backend framework (Python 3.14, async) |
+| FastAPI | Backend framework (Python 3.15, async) |
 | Jinja2 | Server-rendered HTML templates |
 | SQLite | Database (aiosqlite, zero-config, stored in `/data`) |
 | Docker SDK for Python | Container lifecycle management via socket |

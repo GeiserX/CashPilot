@@ -16,7 +16,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v7.0.0
         with:
-          python-version: "3.14"
+          python-version: "3.15"
 
       # The lockfile's ruff, so this gate and release.yml's cannot reach
       # different verdicts about the same commit.
