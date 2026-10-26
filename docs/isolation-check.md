@@ -43,9 +43,11 @@ docker run --rm --network "$TARGET" -e CHECKS="$CHECKS" alpine:3.22 sh -c '
 What you want to see: every check `blocked`, and `internet works`.
 
 **Then run the control.** Change `TARGET` to `bridge` (Docker's default network,
-which you have not fenced) and run it again. Your checks should now say
-`REACHABLE`. If they still say `blocked`, the addresses or ports are wrong, and
-the first run told you nothing. Fix the list until the control passes.
+which you have not fenced) and run it again. The addresses you put in `CHECKS`
+should now say `REACHABLE`. If one still says `blocked`, its address or port is
+wrong, and the first run told you nothing about it. Fix the list until the
+control passes. The metadata address `169.254.169.254` stays `blocked` in both
+runs unless the machine is a cloud server.
 
 The same command works on every platform below, including Docker Desktop, a
 Synology and Unraid. On a Linux host you can also enter the namespace directly,
@@ -114,6 +116,11 @@ iptables -t mangle -C INPUT -i cp-isolated -j EARNER-IN 2>/dev/null || iptables 
   the host counts as private too.
 - It drops instead of rejecting, because the `mangle` table cannot reject. That
   only matters for name lookups, below.
+- It is IPv4 only. Docker bridges have IPv6 off unless you turned it on. If you
+  did, add the same two chains with `ip6tables`, dropping `fc00::/7` (private
+  addresses, Tailscale's included), `fe80::/10` and your LAN's own IPv6 prefix
+  (`ip -6 route` shows it). We checked that those rules load, but tested the
+  blocking only over IPv4.
 
 **Name lookups.** Docker gives containers the host's DNS servers. With Tailscale,
 that list often starts with `100.100.100.100`. Dropped, every lookup waits about
@@ -324,8 +331,9 @@ iptables -t mangle -L EARNER-FWD -v -n | grep DROP
 Every check should be `blocked`, the internet line should show `200`, and the
 drop counters should go up. As a control, run it once with
 `iptables -t mangle -I EARNER-FWD 1 -s 10.182.250.0/24 -j RETURN` added first:
-the LAN checks should then be reachable. Delete it afterwards with the same
-command and `-D` in place of `-I EARNER-FWD 1`.
+the LAN checks should then be reachable. Then delete it, or test traffic keeps
+skipping the fence:
+`iptables -t mangle -D EARNER-FWD -s 10.182.250.0/24 -j RETURN`.
 
 If you cannot run this, or the node runs somewhere you do not control, put the
 whole machine on its own network segment. That covers Mysterium without relying
