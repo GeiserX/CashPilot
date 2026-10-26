@@ -231,6 +231,7 @@ nav:
     - Security defaults: security-defaults.md
     - Protecting your home network: home-network-security.md
     - Network isolation: isolation.md
+    - Test your isolation: isolation-check.md
   - Operations:
     - Backing up and restoring: backup-restore.md
     - Backing up node identities: backup.md

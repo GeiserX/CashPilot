@@ -226,9 +226,22 @@ We checked that these rules load, but tested the blocking only for IPv4.
 
 **What it cannot cover.** A service on host networking uses the host's own
 interfaces, so a rule on a bridge does not apply to it. That is Mysterium today.
-Use a separate segment for the machine, or run such services somewhere else.
+Use a separate segment for the machine, run such services somewhere else, or
+fence its session interfaces as in
+[Mysterium, which uses host networking](isolation-check.md#mysterium-which-uses-host-networking).
+
+!!! warning "Tailscale on the host can bypass these rules"
+
+    `tailscaled` puts its own chain at the top of `FORWARD` when it starts, and
+    that chain accepts everything bound for `tailscale0` before `DOCKER-USER`
+    runs. Containers then reach your tailnet and its subnet routes despite the
+    `100.64.0.0/10` rule above. [Test your isolation](isolation-check.md) shows
+    how to check it and a version of the rules that holds in either order.
 
 ### Check it yourself
+
+A fuller test, with a control that proves the test itself works, is in
+[Test your isolation](isolation-check.md).
 
 After applying the rules, from the host:
 
