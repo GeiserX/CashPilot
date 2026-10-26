@@ -56,23 +56,25 @@ requirements:
 
 payment:
   methods: [crypto]
-  minimum_payout: "$5"
+  crypto_token: "SN25α"
+  minimum_payout: ""
   currency: USD
-  frequency: "On request"
+  frequency: "Epoch-based"
 
 earnings:
   monthly_low: 0
   monthly_high: 5
   currency: USD
   per: "device"
-  notes: "Works on VPS and residential. Crypto payouts. Supports proxy mode for multi-IP setups."
+  notes: "Works on VPS and residential. Paid in SN25α (Bittensor subnet 25) per weekly epoch since 2026-10-06. Supports proxy mode for multi-IP setups."
 
 cashout:
   method: redirect
-  # urnetwork.com is dead (v6-only DNS remnants, no HTTP answer — issue #344);
-  # the live provider stats page is on the ur.network app domain.
-  dashboard_url: "https://app.ur.network/stats"
-  min_amount: 5.0
+  # Since 2026-10-06 earnings are points per epoch, claimed as SN25α on the
+  # Earnings page of the web app (GET /account/epochs backs it). The old USDC
+  # sweep with a $5 minimum is gone.
+  dashboard_url: "https://ur.io/app/account/earnings"
+  min_amount: null
   currency: USD
 
 platforms: [docker, windows, macos, linux]
@@ -83,6 +85,6 @@ collector:
 
 payout:
   model: external
-  chain: solana
+  chain: bittensor
   address_source: app
-  notes: "Wallet is linked inside the URnetwork app. AN UNLINKED WALLET FORFEITS PAYOUT AFTER 30 DAYS."
+  notes: "Set a Bittensor coldkey on ur.io/app/account/earnings (signed with Talisman, TAO.com or a WalletConnect wallet), then claim each finalized epoch. A claim pays gas in TAO from an EVM gas key. UNCLAIMED EPOCHS EXPIRE, and the old USDC payouts were canceled when no wallet was linked within 30 days."

@@ -14,11 +14,11 @@ URnetwork is a decentralized VPN and bandwidth-sharing network. You earn by prov
 |--------|-------|
 | Monthly range | $0 - $5 (estimate) |
 | Per | device |
-| Minimum payout | $5 |
-| Payout frequency | On request |
-| Payment methods | Crypto |
+| Minimum payout | None stated |
+| Payout frequency | Per epoch (weekly), claimed |
+| Payment methods | Crypto (SN25α on Bittensor) |
 
-> Works on VPS and residential. Crypto payouts. Supports proxy mode for multi-IP setups.
+> Works on VPS and residential. Paid in SN25α (Bittensor subnet 25) per weekly epoch since 2026-10-06. Supports proxy mode for multi-IP setups.
 
 ## Requirements
 
@@ -46,7 +46,15 @@ The provider logs in with your normal URnetwork account: the email and password 
 
 In the CashPilot web UI, find **URnetwork** in the service catalog and click **Deploy**. Enter your email and password; the provider authenticates on first start (`Jwt written to /root/.urnetwork/jwt` in its log), keeps the session in the `urnetwork-data` volume, and starts providing.
 
-Your provider stats and earnings live at [app.ur.network/stats](https://app.ur.network/stats). Link a wallet in the URnetwork app — an unlinked wallet forfeits payouts after 30 days.
+### 4. Get paid
+
+Since 2026-10-06 URnetwork pays providers in SN25α, the token of Bittensor subnet 25, not in USDC. Your points add up per weekly epoch, and each finalized epoch becomes a claim.
+
+1. Sign in at [ur.io/app/account/earnings](https://ur.io/app/account/earnings). The pay.ur.io portal is for subscriptions, not payouts.
+2. Set your Bittensor coldkey there. You prove you own it by signing a message with Talisman, TAO.com or a WalletConnect wallet such as Nova.
+3. Claim each finalized epoch. The claim goes to a contract on Bittensor's EVM side, so you need a small amount of TAO on an EVM key for gas. The SN25α lands on your coldkey.
+
+Claims expire, so don't leave them. Earnings from before 2026-10-06 go out as one final USDC payout.
 
 > **Deployed URnetwork before and it never earned anything?** CashPilot releases before this fix asked for a `UR_AUTH_TOKEN` variable that the provider binary has never read — the container simply ran unauthenticated (issue #344). Upgrade CashPilot, then **Deploy** URnetwork again from the catalog with your email and password.
 
