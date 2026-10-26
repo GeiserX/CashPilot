@@ -152,10 +152,10 @@ class TestTheThingsTheResearchEstablished:
         assert block["model"] == "internal"
         assert "chain" not in block
 
-    def test_urnetwork_warns_about_the_thirty_day_forfeit(self):
-        """A user who never links a wallet LOSES the money. That is the single
-        most valuable sentence in this registry."""
-        assert "30 days" in self._payout("urnetwork").get("notes", "").lower()
+    def test_urnetwork_warns_that_unclaimed_epochs_expire(self):
+        """A user who never claims LOSES the money. Under the USDC sweep that
+        was a 30-day forfeit; since the SN25α switch it is claim expiry."""
+        assert "expire" in self._payout("urnetwork").get("notes", "").lower()
 
     def test_the_minted_services_are_marked_for_tier_three(self):
         """CORRECTED. This originally asserted `proxybase` was minted, which

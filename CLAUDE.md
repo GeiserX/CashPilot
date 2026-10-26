@@ -304,6 +304,9 @@ Base URL: `https://api.bringyour.com`
 | `POST` | `/auth/login-with-password` | None | Login → `{network:{by_jwt:"..."}}` |
 | `GET` | `/auth/refresh` | Bearer JWT | Refresh token |
 | `GET` | `/account/referral-code` | Bearer JWT | Returns referral code + total referrals |
+| `GET` | `/account/epochs` | Bearer JWT | Points and share per epoch (the SN25α payout basis since 2026-10-06) |
+| `GET` | `/account/payout-wallet` | Bearer JWT | The Bittensor coldkey set for claims (`wallet_id` null when none) |
+| `GET` | `/account/payments` | Bearer JWT | The old USDC payments, with `canceled` and `wallet_address` |
 
 ### Services Requiring Special Setup
 
