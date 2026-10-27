@@ -42,6 +42,21 @@ docker run --rm --network "$TARGET" -e CHECKS="$CHECKS" alpine:3.22 sh -c '
 
 What you want to see: every check `blocked`, and `internet works`.
 
+One line can read `REACHABLE` on a fenced host and still be fine:
+`100.100.100.100:53`, Tailscale's DNS address. If you added the DNS rewrite from
+the name-lookups paragraph under [With Tailscale on the host](#with-tailscale-or-another-overlay-network-on-the-host), the host sends port 53 traffic to that
+address on to a public resolver before the fence sees it, so the probe connects
+to `1.1.1.1`, not to Tailscale. Ask who answered, from the same namespace:
+
+```sh
+docker run --rm --network "$TARGET" alpine:3.22 sh -c \
+  'apk add -q bind-tools && dig +short CHAOS TXT id.server @100.100.100.100'
+```
+
+A Cloudflare site code such as `"mad07"` means the rewrite did its job. No
+answer at all means the query reached Tailscale's resolver and the fence is
+missing. Any other port on that address must stay `blocked`.
+
 **Then run the control.** Change `TARGET` to `bridge` (Docker's default network,
 which you have not fenced) and run it again. The addresses you put in `CHECKS`
 should now say `REACHABLE`. If one still says `blocked`, its address or port is
