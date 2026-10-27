@@ -69,6 +69,12 @@ In the CashPilot web UI, find **EarnApp** in the service catalog and click **Dep
 - **Image:** `fazalfarhan01/earnapp:lite`
 - **Platforms:** linux/amd64, linux/arm64, linux/arm/v7
 
+If the device never shows online with that image, try `venatum/earnapp:lite` in the deploy
+form's **Advanced** box: it takes the same `EARNAPP_UUID`, registers under CashPilot's
+capability drop, and keeps the Running Instances health check. Only the `lite` tag works:
+`venatum/earnapp` and `venatum/earnapp:debian` boot systemd and need a privileged container,
+so CashPilot refuses them.
+
 ### Environment Variables
 
 | Variable | Label | Required | Secret | Description |

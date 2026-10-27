@@ -452,6 +452,18 @@ def deploy_raw(
     runtime = container_runtime(slug, network_mode, runtime)
     dns = container_dns(network)
 
+    # The pull is on this side of the line for the same reason: a registry outage
+    # or a typo'd image must not cost the running container. And once the image
+    # is here, what it would run as PID 1 is known, so an image that cannot run
+    # under this worker's hardening is refused now, not left to loop.
+    logger.info("Pulling image %s", image)
+    try:
+        client.images.pull(image)
+    except APIError as exc:
+        logger.warning("Failed to pull image %s: %s (trying local)", image, exc)
+    entrypoint = _get_entrypoint(slug)
+    _refuse_systemd_image(client, image, entrypoint, command)
+
     # Remove any existing container with the same name
     try:
         old = client.containers.get(name)
@@ -491,12 +503,6 @@ def deploy_raw(
         all_labels.update(labels)
     if instance > 1:
         all_labels[LABEL_INSTANCE] = str(instance)
-
-    logger.info("Pulling image %s", image)
-    try:
-        client.images.pull(image)
-    except APIError as exc:
-        logger.warning("Failed to pull image %s: %s (trying local)", image, exc)
 
     # Durable resource limits (only passed when explicitly set, so Docker
     # defaults are preserved otherwise). memswap is deliberately left unset:
@@ -544,7 +550,7 @@ def deploy_raw(
         pids_limit=_PIDS_LIMIT,
         # From the worker's own catalog (see _get_entrypoint), like the stop
         # timeout below: neither is something the deploy request can set.
-        entrypoint=_get_entrypoint(slug),
+        entrypoint=entrypoint,
         command=command if command else None,
         # The container keeps the catalog's grace for every stop, not only the
         # ones this worker sends with an explicit timeout.
@@ -561,6 +567,53 @@ def deploy_raw(
 
     logger.info("Container %s started: %s", name, container.short_id)
     return container.id
+
+
+# What an image boots when its PID 1 is an init system. systemd needs a
+# privileged container with the host's cgroup tree; under the capability drop
+# every deploy gets here it exits 255 at once, with nothing in the logs, and
+# Docker's restart policy starts it again forever.
+_SYSTEMD_INITS = frozenset(
+    {"/sbin/init", "/usr/sbin/init", "/lib/systemd/systemd", "/usr/lib/systemd/systemd", "systemd"}
+)
+
+
+def _boots_systemd(image_config: dict[str, Any], entrypoint: list[str] | None, command: str | None) -> bool:
+    """True when the container would start systemd as PID 1.
+
+    The catalog's entrypoint, when it declares one, replaces the image's; the
+    request's command replaces the image's CMD but never its ENTRYPOINT. Only
+    the first word of what finally runs matters.
+    """
+    if entrypoint:
+        first = entrypoint[0]
+    elif image_config.get("Entrypoint"):
+        first = str(image_config["Entrypoint"][0])
+    elif command:
+        first = command.split()[0]
+    else:
+        cmd = image_config.get("Cmd") or []
+        first = str(cmd[0]) if cmd else ""
+    return first in _SYSTEMD_INITS
+
+
+def _refuse_systemd_image(client: Any, image: str, entrypoint: list[str] | None, command: str | None) -> None:
+    """Fail the deploy of an image that boots systemd, before anything runs.
+
+    Raised as a 409 like the network and runtime settings: the message says
+    what to do instead. An image Docker cannot describe (not pulled, no local
+    copy) is left to containers.run, whose error already names it.
+    """
+    try:
+        config = client.images.get(image).attrs.get("Config") or {}
+    except (DockerException, AttributeError):
+        return
+    if _boots_systemd(config, entrypoint, command):
+        raise ContainerRuntimeError(
+            f"{image} boots systemd as its main process, which needs a privileged container with the "
+            "host's cgroup tree. CashPilot never grants that, so the container would exit 255 and "
+            "restart forever. Use the image's non-systemd tag (often ':lite') or the catalog image."
+        )
 
 
 def _parse_stop_timeout(value: Any) -> int:

@@ -250,6 +250,11 @@ an architecture the provider does not publish.
 - Only the image changes. Capabilities, devices, ports, the entrypoint and the stop timeout still
   come from the worker's catalog entry, so a custom image gets nothing the service does not
   already have. It does receive the service's credentials, so use an image you trust.
+- An image that boots systemd (its main process is `/sbin/init`, and its own docs ask for
+  `--privileged`) is refused at deploy time with that reason: it needs the host's cgroup tree,
+  which CashPilot never grants, so it would exit 255 and restart forever with empty logs. Pick
+  the image's non-systemd tag instead, usually `lite` (`venatum/earnapp:lite`, never
+  `venatum/earnapp`).
 - The dashboard marks such an instance **custom image** and judges "update available" against
   the image you chose, not the catalog's.
 
