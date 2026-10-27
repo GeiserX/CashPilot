@@ -42,6 +42,27 @@ docker run --rm --network "$TARGET" -e CHECKS="$CHECKS" alpine:3.22 sh -c '
 
 What you want to see: every check `blocked`, and `internet works`.
 
+One line can read `REACHABLE` on a fenced host and still be fine:
+`100.100.100.100:53`, Tailscale's DNS address. If you added the DNS rewrite from
+the name-lookups paragraph under [With Tailscale on the host](#with-tailscale-or-another-overlay-network-on-the-host),
+the host sends port 53 traffic to that address on to a public resolver before
+the fence sees it, so the probe connects to `1.1.1.1`, not to Tailscale. Two
+checks tell the rewrite apart from a missing fence, and neither can be fooled by
+Tailscale's resolver forwarding the query to the same public server:
+
+- The rewrite rule's packet counter goes up with the query. Read it, send one
+  lookup from the earner, read it again:
+
+  ```sh
+  sudo iptables -t nat -L PREROUTING -v -n -x | grep 100.100.100.100
+  docker run --rm --network "$TARGET" alpine:3.22 nslookup example.com 100.100.100.100
+  sudo iptables -t nat -L PREROUTING -v -n -x | grep 100.100.100.100
+  ```
+
+- Every other port on that address stays `blocked`. `tailscaled` serves a status
+  page on `100.100.100.100:80`, so add `100.100.100.100:80` to `CHECKS`: the
+  control below reaches it, the fenced earner must not.
+
 **Then run the control.** Change `TARGET` to `bridge` (Docker's default network,
 which you have not fenced) and run it again. The addresses you put in `CHECKS`
 should now say `REACHABLE`. If one still says `blocked`, its address or port is
