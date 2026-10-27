@@ -457,12 +457,23 @@ def deploy_raw(
     # is here, what it would run as PID 1 is known, so an image that cannot run
     # under this worker's hardening is refused now, not left to loop.
     logger.info("Pulling image %s", image)
+    pull_error: APIError | None = None
     try:
         client.images.pull(image)
     except APIError as exc:
+        pull_error = exc
         logger.warning("Failed to pull image %s: %s (trying local)", image, exc)
+    try:
+        image_config = client.images.get(image).attrs.get("Config") or {}
+    except DockerException as exc:
+        # No local copy after a failed pull, or a daemon that cannot describe
+        # the image it just pulled: either way there is nothing to run, and
+        # removing the old container first would only make that worse.
+        raise ContainerRuntimeError(
+            f"{image} is not available on this worker: {pull_error or exc}. The running container was not touched."
+        ) from None
     entrypoint = _get_entrypoint(slug)
-    _refuse_systemd_image(client, image, entrypoint, command)
+    _refuse_init_image(image, image_config, entrypoint, command)
 
     # Remove any existing container with the same name
     try:
@@ -569,17 +580,19 @@ def deploy_raw(
     return container.id
 
 
-# What an image boots when its PID 1 is an init system. systemd needs a
-# privileged container with the host's cgroup tree; under the capability drop
-# every deploy gets here it exits 255 at once, with nothing in the logs, and
-# Docker's restart policy starts it again forever.
-_SYSTEMD_INITS = frozenset(
+# The main process of an image built to boot like a machine. Almost always
+# systemd, which needs a privileged container with the host's cgroup tree;
+# under the capability drop every deploy gets here it exits 255 at once, with
+# nothing in the logs, and Docker's restart policy starts it again forever.
+# /sbin/init is BusyBox init on Alpine, which has no more business as PID 1 of
+# an earner, so the path is refused without naming the implementation.
+_INIT_SYSTEMS = frozenset(
     {"/sbin/init", "/usr/sbin/init", "/lib/systemd/systemd", "/usr/lib/systemd/systemd", "systemd"}
 )
 
 
-def _boots_systemd(image_config: dict[str, Any], entrypoint: list[str] | None, command: str | None) -> bool:
-    """True when the container would start systemd as PID 1.
+def _boots_init_system(image_config: dict[str, Any], entrypoint: list[str] | None, command: str | None) -> bool:
+    """True when the container would start an init system as PID 1.
 
     The catalog's entrypoint, when it declares one, replaces the image's; the
     request's command replaces the image's CMD but never its ENTRYPOINT. Only
@@ -594,25 +607,23 @@ def _boots_systemd(image_config: dict[str, Any], entrypoint: list[str] | None, c
     else:
         cmd = image_config.get("Cmd") or []
         first = str(cmd[0]) if cmd else ""
-    return first in _SYSTEMD_INITS
+    return first in _INIT_SYSTEMS
 
 
-def _refuse_systemd_image(client: Any, image: str, entrypoint: list[str] | None, command: str | None) -> None:
-    """Fail the deploy of an image that boots systemd, before anything runs.
+def _refuse_init_image(
+    image: str, image_config: dict[str, Any], entrypoint: list[str] | None, command: str | None
+) -> None:
+    """Fail the deploy of an image that boots an init system, before anything runs.
 
     Raised as a 409 like the network and runtime settings: the message says
-    what to do instead. An image Docker cannot describe (not pulled, no local
-    copy) is left to containers.run, whose error already names it.
+    what to do instead.
     """
-    try:
-        config = client.images.get(image).attrs.get("Config") or {}
-    except (DockerException, AttributeError):
-        return
-    if _boots_systemd(config, entrypoint, command):
+    if _boots_init_system(image_config, entrypoint, command):
         raise ContainerRuntimeError(
-            f"{image} boots systemd as its main process, which needs a privileged container with the "
-            "host's cgroup tree. CashPilot never grants that, so the container would exit 255 and "
-            "restart forever. Use the image's non-systemd tag (often ':lite') or the catalog image."
+            f"{image} runs an init system as its main process (/sbin/init, usually systemd), which needs a "
+            "privileged container with the host's cgroup tree. CashPilot never grants that, so the "
+            "container would exit at once and restart forever. Use the image's non-init tag (often "
+            "':lite') or the catalog image."
         )
 
 

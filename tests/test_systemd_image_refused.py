@@ -46,7 +46,7 @@ class TestRefusal:
         with pytest.raises(orchestrator.ContainerRuntimeError) as exc:
             _deploy(client)
         assert exc.value.status_code == 409
-        assert "systemd" in str(exc.value)
+        assert "init system" in str(exc.value)
         assert "':lite'" in str(exc.value)
         client.containers.run.assert_not_called()
 
@@ -72,30 +72,51 @@ class TestRefusal:
         client = _client({"Entrypoint": ["entrypoint"], "Cmd": None})
         assert _deploy(client, image="venatum/earnapp:lite") == "new"
 
-    def test_an_image_docker_cannot_describe_is_left_to_run(self):
-        """No local copy after a failed pull: containers.run names that error itself."""
-        client = _client({})
+    def test_an_image_the_worker_cannot_find_is_refused_before_removal(self):
+        """A failed pull with no local copy: nothing to run, so nothing is removed."""
+        old = MagicMock()
+        client = _client({}, old=old)
+        client.images.pull.side_effect = orchestrator.APIError("registry down")
         client.images.get.side_effect = orchestrator.DockerException("no such image")
+        with pytest.raises(orchestrator.ContainerRuntimeError) as exc:
+            _deploy(client)
+        assert "registry down" in str(exc.value)
+        assert "venatum/earnapp:latest" in str(exc.value)
+        old.remove.assert_not_called()
+        client.containers.run.assert_not_called()
+
+    def test_a_pull_that_fails_still_deploys_a_local_copy(self):
+        client = _client({"Entrypoint": ["entrypoint"]})
+        client.images.pull.side_effect = orchestrator.APIError("registry down")
         assert _deploy(client) == "new"
+
+    def test_an_inspect_that_fails_after_the_pull_is_refused(self):
+        """The daemon cannot say what it would run: the old container stays."""
+        old = MagicMock()
+        client = _client({}, old=old)
+        client.images.get.side_effect = orchestrator.DockerException("inspect failed")
+        with pytest.raises(orchestrator.ContainerRuntimeError):
+            _deploy(client)
+        old.remove.assert_not_called()
 
 
 class TestWhatRunsFirst:
     """Only the first word of what finally runs as PID 1 decides."""
 
-    @pytest.mark.parametrize("init", sorted(orchestrator._SYSTEMD_INITS))
+    @pytest.mark.parametrize("init", sorted(orchestrator._INIT_SYSTEMS))
     def test_every_init_spelling(self, init):
-        assert orchestrator._boots_systemd({"Cmd": [init]}, None, None)
+        assert orchestrator._boots_init_system({"Cmd": [init]}, None, None)
 
     def test_the_image_entrypoint_wins_over_its_cmd(self):
-        assert orchestrator._boots_systemd({"Entrypoint": ["/sbin/init"], "Cmd": ["bash"]}, None, None)
-        assert not orchestrator._boots_systemd({"Entrypoint": ["entrypoint"], "Cmd": ["/sbin/init"]}, None, None)
+        assert orchestrator._boots_init_system({"Entrypoint": ["/sbin/init"], "Cmd": ["bash"]}, None, None)
+        assert not orchestrator._boots_init_system({"Entrypoint": ["entrypoint"], "Cmd": ["/sbin/init"]}, None, None)
 
     def test_the_catalog_entrypoint_replaces_the_images(self):
-        assert not orchestrator._boots_systemd({"Cmd": ["/sbin/init"]}, ["/run.sh"], None)
+        assert not orchestrator._boots_init_system({"Cmd": ["/sbin/init"]}, ["/run.sh"], None)
 
     def test_the_request_command_replaces_the_cmd_but_not_the_entrypoint(self):
-        assert not orchestrator._boots_systemd({"Cmd": ["/sbin/init"]}, None, "earnapp run")
-        assert orchestrator._boots_systemd({"Entrypoint": ["/sbin/init"]}, None, "earnapp run")
+        assert not orchestrator._boots_init_system({"Cmd": ["/sbin/init"]}, None, "earnapp run")
+        assert orchestrator._boots_init_system({"Entrypoint": ["/sbin/init"]}, None, "earnapp run")
 
     def test_an_empty_config_is_not_systemd(self):
-        assert not orchestrator._boots_systemd({}, None, None)
+        assert not orchestrator._boots_init_system({}, None, None)
