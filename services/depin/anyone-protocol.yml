@@ -87,7 +87,7 @@ collector:
     run <b>docker exec cashpilot-anyone-protocol cat /var/lib/anon/fingerprint</b> on
     the host running the relay, or look the relay up at
     <a href="https://api.ec.anyone.tech/relays/">api.ec.anyone.tech/relays/</a>.
-  notes: "Queries AO relay-rewards contract by fingerprint, converts ANYONE tokens to USD via CoinGecko."
+  notes: "Reads each fingerprint's cumulative reward from the relay-rewards contract's `rewards` view on hb.anyone.tech, in native ANYONE."
 
 # What this service does with the user's machine (CashPilot-66x).
 # Written to be read by someone deciding whether to trust it.

@@ -816,8 +816,8 @@ class TestMissingBalanceFieldErrors:
         from app.collectors.anyone import AnyoneCollector
 
         client = _make_async_client()
-        # AO contract returns a non-numeric Data payload → must error, not crash silently
-        client.post.return_value = _mock_response(200, {"Messages": [{"Data": "not-a-number"}]})
+        # The rewards view returns a non-numeric reward → must error, not crash silently
+        client.get.return_value = _mock_response(200, {"fingerprint": "ABC", "reward": "not-a-number"})
         with patch("app.collectors.anyone.httpx.AsyncClient", return_value=client):
             c = AnyoneCollector(fingerprints="ABC")
             result = asyncio.run(c.collect())

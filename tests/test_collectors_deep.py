@@ -503,23 +503,23 @@ class TestBitpingDeep:
 
 
 # ---------------------------------------------------------------------------
-# Anyone Protocol — AO dry-run
+# Anyone Protocol — relay-rewards `rewards` view on HyperBEAM
 # ---------------------------------------------------------------------------
+
+
+def _anyone_reward(fingerprint, reward=None, status_code=200):
+    body = {"fingerprint": fingerprint}
+    if reward is not None:
+        body["reward"] = reward
+    return _mock_response(status_code, body)
 
 
 class TestAnyoneProtocolDeep:
     def test_collect_success(self):
         from app.collectors.anyone import AnyoneCollector
 
-        ao_resp = _mock_response(
-            200,
-            {"Messages": [{"Data": "5000000000000000000"}]},
-        )
-        price_resp = _mock_response(200, {"airtor-protocol": {"usd": 0.10}})
-
         client = _make_async_client()
-        client.post.return_value = ao_resp
-        client.get.return_value = price_resp
+        client.get.return_value = _anyone_reward("ABC123", "5000000000000000000")
 
         with patch("app.collectors.anyone.httpx.AsyncClient", return_value=client):
             c = AnyoneCollector(fingerprints="ABC123")
@@ -531,6 +531,57 @@ class TestAnyoneProtocolDeep:
         # read as earnings. The delta is taken natively and priced after.
         assert result.balance == 5.0
         assert result.currency == "ANYONE"
+
+    def test_reads_the_rewards_view_by_fingerprint(self):
+        """The legacy AO dry-run on cu.anyone.tech answers 404 for everything.
+        The reward lives in the native contract's `rewards` view, a plain GET."""
+        from app.collectors.anyone import HYPERBEAM_URL, RELAY_REWARDS_PROCESS_ID, AnyoneCollector
+
+        client = _make_async_client()
+        client.get.return_value = _anyone_reward("ABC123", "1")
+
+        with patch("app.collectors.anyone.httpx.AsyncClient", return_value=client):
+            asyncio.run(AnyoneCollector(fingerprints="ABC123").collect())
+        client.post.assert_not_called()
+        url = client.get.call_args.args[0]
+        assert url == f"{HYPERBEAM_URL}/{RELAY_REWARDS_PROCESS_ID}~process@1.0/as/rewards"
+        assert client.get.call_args.kwargs["params"] == {"fingerprint": "ABC123"}
+
+    def test_never_rewarded_relay_reads_zero(self):
+        """The contract omits `reward` for a relay it never paid: a real zero."""
+        from app.collectors.anyone import AnyoneCollector
+
+        client = _make_async_client()
+        client.get.return_value = _anyone_reward("ABC123")
+
+        with patch("app.collectors.anyone.httpx.AsyncClient", return_value=client):
+            result = asyncio.run(AnyoneCollector(fingerprints="ABC123").collect())
+        assert result.error is None
+        assert result.balance == 0.0
+
+    def test_stale_process_id_is_an_error_not_zero(self):
+        """A 404 means the node no longer routes the process id. Reading it as
+        zero would hide a dead collector behind a plausible balance."""
+        from app.collectors.anyone import AnyoneCollector
+
+        client = _make_async_client()
+        client.get.return_value = _mock_response(404, text="404 page not found")
+
+        with patch("app.collectors.anyone.httpx.AsyncClient", return_value=client):
+            result = asyncio.run(AnyoneCollector(fingerprints="ABC123").collect())
+        assert result.error is not None
+        assert "process" in result.error
+
+    def test_response_without_fingerprint_is_a_shape_error(self):
+        from app.collectors.anyone import AnyoneCollector
+
+        client = _make_async_client()
+        client.get.return_value = _mock_response(200, {"reward": "1"})
+
+        with patch("app.collectors.anyone.httpx.AsyncClient", return_value=client):
+            result = asyncio.run(AnyoneCollector(fingerprints="ABC123").collect())
+        assert result.error is not None
+        assert "fingerprint" in result.error
 
     def test_collect_no_fingerprints(self):
         from app.collectors.anyone import AnyoneCollector
@@ -540,57 +591,20 @@ class TestAnyoneProtocolDeep:
         assert result.error is not None
         assert "fingerprints" in result.error.lower()
 
-    def test_collect_ao_error(self):
-        from app.collectors.anyone import AnyoneCollector
-
-        ao_resp = _mock_response(200, {"error": "Process scheduler not found"})
-
-        client = _make_async_client()
-        client.post.return_value = ao_resp
-
-        with patch("app.collectors.anyone.httpx.AsyncClient", return_value=client):
-            c = AnyoneCollector(fingerprints="ABC123")
-            result = asyncio.run(c.collect())
-        assert result.error is not None
-        assert "AO CU error" in result.error
-
     def test_collect_multiple_fingerprints(self):
         from app.collectors.anyone import AnyoneCollector
 
-        ao_resp1 = _mock_response(200, {"Messages": [{"Data": "2000000000000000000"}]})
-        ao_resp2 = _mock_response(200, {"Messages": [{"Data": "3000000000000000000"}]})
-        price_resp = _mock_response(200, {"airtor-protocol": {"usd": 0.10}})
-
         client = _make_async_client()
-        client.post.side_effect = [ao_resp1, ao_resp2]
-        client.get.return_value = price_resp
+        client.get.side_effect = [
+            _anyone_reward("FP1", "2000000000000000000"),
+            _anyone_reward("FP2", "3000000000000000000"),
+        ]
 
         with patch("app.collectors.anyone.httpx.AsyncClient", return_value=client):
             c = AnyoneCollector(fingerprints="FP1,FP2")
             result = asyncio.run(c.collect())
         assert result.error is None
-        # 5 tokens, reported as 5 tokens. This used to assert 0.50 — the USD
-        # value at a $0.10 price — which is precisely the bug: balance is
-        # CUMULATIVE, so pricing it before the delta made a token price move
-        # read as earnings. The delta is taken natively and priced after.
         assert result.balance == 5.0
-        assert result.currency == "ANYONE"
-
-    def test_collect_no_price_returns_tokens(self):
-        from app.collectors.anyone import AnyoneCollector
-
-        ao_resp = _mock_response(200, {"Messages": [{"Data": "1000000000000000000"}]})
-        price_resp = _mock_response(200, {})
-
-        client = _make_async_client()
-        client.post.return_value = ao_resp
-        client.get.return_value = price_resp
-
-        with patch("app.collectors.anyone.httpx.AsyncClient", return_value=client):
-            c = AnyoneCollector(fingerprints="ABC123")
-            result = asyncio.run(c.collect())
-        assert result.error is None
-        assert result.balance == 1.0
         assert result.currency == "ANYONE"
 
 
