@@ -76,9 +76,16 @@ lowercase hex characters, which is what `earnapp showid` prints. If `earnapp run
 image restarts it inside the same container and says so in the log: the container itself
 keeps running. A device moved from `fazalfarhan01/earnapp:lite` keeps its UUID and volume.
 
-If you need another image, put it in the deploy form's **Advanced** box. Only `lite` tags
-work: `venatum/earnapp` and `venatum/earnapp:debian` boot systemd and need a privileged
-container, so CashPilot refuses them.
+One exception to the pin: Bright Data's CDN keeps only the build its installer serves today.
+If the pinned build is gone and the volume holds no cached copy, the image runs the build the
+installer names instead, checked only against the CDN's own unsigned `.sha256` file, and logs
+that it did. A cached copy is always checked against the pin. See the Upgrades section of
+https://github.com/GeiserX/CashPilot/blob/main/images/earnapp/README.md
+
+If you need another image, put it in the deploy form's **Advanced** box. For `venatum/earnapp`
+only the `lite` tag works: `venatum/earnapp` (`latest`) and `venatum/earnapp:debian` boot
+systemd and need a privileged container, so CashPilot refuses them, as it refuses any image
+that boots an init system.
 
 ### Environment Variables
 
