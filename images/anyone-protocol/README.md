@@ -15,6 +15,8 @@ The vendor's multi-arch image, `ghcr.io/anyone-protocol/ator-protocol:latest`, w
 
 The `--User ""` is there because every anonrc written for the vendor image says `User anond`. Already running as anond, anon cannot switch users, and with that line it crashes at start. The command-line value overrides the file, also after a reload, so an existing anonrc works unedited. You can delete the line from your anonrc, but you do not need to.
 
+anon sizes its cell queues from the host's RAM, three quarters of it, and knows nothing about the container's memory limit. On a 32 GB host a busy relay could grow its queues far past 1536 MB and be killed. So when the container has a memory limit and your anonrc sets no `MaxMemInQueues`, the entrypoint passes `--MaxMemInQueues` at half the limit, 768 MB under the catalog's 1536 MB, never below anon's 256 MB floor. A `MaxMemInQueues` line in your anonrc wins. It is read at start, so a line you add later takes effect on the next restart, not on a `SIGHUP` reload: the command-line value outranks the file until then.
+
 It runs under the hardening CashPilot gives every earner, with no capability added back: all capabilities dropped, `no-new-privileges`, not privileged, 512 pids and the catalog's 1536 MB. A relay uses about 250 MB after start.
 
 ## Volumes and anonrc
@@ -39,7 +41,7 @@ docker run -d --name anyone-relay \
   -p 9001:9001 \
   -v anon-data:/var/lib/anon -v anon-config:/etc/anon -v anon-run:/run/anon \
   --restart unless-stopped \
-  drumsergio/cashpilot-anyone:0.4.10.2-r1
+  drumsergio/cashpilot-anyone:0.4.10.2-r2
 ```
 
 `docker kill -s HUP <container>` reloads anonrc. `docker stop` shuts the relay down at once and cleanly.
