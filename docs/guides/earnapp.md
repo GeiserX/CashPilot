@@ -91,4 +91,4 @@ that boots an init system.
 
 | Variable | Label | Required | Secret | Description |
 |----------|-------|:--------:|:------:|-------------|
-| `EARNAPP_UUID` | Node UUID | Yes | No | Your EarnApp node ID (run 'earnapp showid' to get it, or generate one with the sdk-node-id format) |
+| `EARNAPP_UUID` | Node UUID | Yes | No | Your EarnApp node ID: sdk-node- followed by 32 lowercase hex characters, as 'earnapp showid' prints it |
