@@ -79,7 +79,7 @@ keeps running. A device moved from `fazalfarhan01/earnapp:lite` keeps its UUID a
 One exception to the pin: Bright Data's CDN keeps only the build its installer serves today.
 If the pinned build is gone and the volume holds no cached copy, the image runs the build the
 installer names instead, checked only against the CDN's own unsigned `.sha256` file, and logs
-that it did. A cached copy is always checked against the pin. See the Upgrades section of
+that it did on every start. A cached copy of the pinned build is checked against the pin on every start. See the Upgrades section of
 https://github.com/GeiserX/CashPilot/blob/main/images/earnapp/README.md
 
 If you need another image, put it in the deploy form's **Advanced** box. For `venatum/earnapp`
