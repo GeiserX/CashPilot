@@ -30,7 +30,10 @@ docker:
       label: "Node UUID"
       required: true
       secret: false
-      description: "Your EarnApp node ID (run 'earnapp showid' to get it, or generate one with the sdk-node-id format)"
+      description: "Your EarnApp node ID: sdk-node- followed by 32 lowercase hex characters, as 'earnapp showid' prints it"
+      # The image refuses any other form at start, so check it here instead of
+      # letting a typo deploy and then exit on every restart.
+      pattern: 'sdk-node-[0-9a-f]{32}'
   ports: []
   volumes:
     - "earnapp-data:/etc/earnapp"
