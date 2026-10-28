@@ -34,12 +34,13 @@ from __future__ import annotations
 import contextlib
 import ipaddress
 import json
+import logging
 import re
 import threading
 from typing import Any
 
 import docker
-from docker.errors import DockerException
+from docker.errors import DockerException, NotFound
 
 from app import orchestrator
 from app.constants import LABEL_MANAGED, LABEL_SERVICE
@@ -96,6 +97,11 @@ EARNER_PROBE = "cashpilot-isolation-probe-earner"
 #: they run in parallel, so a healthy probe finishes in a few seconds.
 PROBE_TIMEOUT = 30
 
+#: The ports a user recognises, in the order the report prefers them when it
+#: picks one port to stand for an address: SSH, then the web interface.
+WELL_KNOWN = (22, 80, 443)
+
+logger = logging.getLogger(__name__)
 _lock = threading.Lock()
 
 
@@ -119,6 +125,16 @@ VIRTUAL = ("docker", "br-", "veth", "myst")
 # LAN, the tailnet) and the earner's own gateway are always tested; the other
 # bridge gateways fill what is left.
 MAX_OWN = 24
+# Wildcard ports tried per address. Sockets bound to one interface (wsdd,
+# LLMNR) read 0.0.0.0 in /proc too and answer nowhere else, so a small number
+# lets them crowd out the host's real services. 24 addresses times this many
+# stays a few seconds with 32 connects in parallel.
+WILD_PORTS = 6
+# Tried first when only a few of an address's ports are: SSH, then the web.
+WELL_KNOWN = (22, 80, 443)
+
+def rank(port):
+    return (WELL_KNOWN.index(port), 0) if port in WELL_KNOWN else (len(WELL_KNOWN), port)
 
 def reach(t):
     try:
@@ -128,7 +144,20 @@ def reach(t):
         return False
 
 def ip(hexval):
+    if len(hexval) == 32:
+        return ip6(hexval)
     return socket.inet_ntoa(struct.pack("=I", int(hexval, 16)))
+
+def ip6(hexval):
+    # /proc/net/tcp6 prints four 32-bit words in host byte order. A [::]
+    # socket is dual-stack unless it set IPV6_V6ONLY, so it stands for the
+    # IPv4 wildcard; the control drops it if it does not answer on IPv4. An
+    # IPv4-mapped address is that IPv4 address. Anything else is IPv6 proper,
+    # which this check does not test: None.
+    a = ipaddress.IPv6Address(b"".join(struct.pack("=I", int(hexval[i : i + 8], 16)) for i in range(0, 32, 8)))
+    if a.is_unspecified:
+        return "0.0.0.0"
+    return str(a.ipv4_mapped) if a.ipv4_mapped else None
 
 def read(path):
     try:
@@ -138,13 +167,16 @@ def read(path):
         return ""
 
 def tcp(text, state):
+    # /proc/net/tcp and /proc/net/tcp6, header lines included: only rows in
+    # the asked state count, and an IPv6-only address is skipped.
     found = []
-    for line in text.splitlines()[1:]:
+    for line in text.splitlines():
         p = line.split()
         if len(p) > 3 and p[3] == state:
             la, lp = p[1].split(":")
             ra, rp = p[2].split(":")
-            found.append((ip(la), int(lp, 16), ip(ra), int(rp, 16)))
+            if ip(la) and ip(ra):
+                found.append((ip(la), int(lp, 16), ip(ra), int(rp, 16)))
     return found
 
 def own_addresses(ifaces, first=()):
@@ -215,10 +247,10 @@ def candidates(ifaces, route, tcp_text, resolv, first=(), published=()):
     # every address, so a published port (often the only wildcard listener,
     # as docker-proxy) never stands in for the host's own services.
     listen = tcp(tcp_text, "0A")
-    wild = sorted({lp for la, lp, _r, _q in listen if la == "0.0.0.0"}, key=lambda p: (p != 22, p))
+    wild = sorted({lp for la, lp, _r, _q in listen if la == "0.0.0.0"}, key=rank)
     forwarded = sorted({p for _a, p in published})
     for a in own:
-        for port in [p for p in wild if not published_on(published, a, p)][:3]:
+        for port in [p for p in wild if not published_on(published, a, p)][:WILD_PORTS]:
             add("host", a, port, "this host, port %d" % port, "host")
         for port in [p for p in forwarded if published_on(published, a, p)][:2]:
             add("host", a, port, "this host, port %d, forwarded to a container" % port, "forwarded")
@@ -250,7 +282,12 @@ if __name__ == "__main__":
         first = json.loads(os.environ.get("PROBE_FIRST") or "[]")
         published = [(a, int(p)) for a, p in json.loads(os.environ.get("PROBE_PUBLISHED") or "[]")]
         found = candidates(
-            interfaces(), read("/proc/net/route"), read("/proc/net/tcp"), read("/etc/resolv.conf"), first, published
+            interfaces(),
+            read("/proc/net/route"),
+            read("/proc/net/tcp") + read("/proc/net/tcp6"),
+            read("/etc/resolv.conf"),
+            first,
+            published,
         )
         for t, ok in zip(found["candidates"], run(found["candidates"])):
             t["ok"] = ok
@@ -260,11 +297,22 @@ if __name__ == "__main__":
 """
 
 
-def _remove_probe(client: Any, name: str) -> None:
-    with contextlib.suppress(Exception):
+def _remove_probe(client: Any, name: str) -> bool:
+    """Remove a probe and its volumes by name. False when it may still be there.
+
+    Not finding it is success. Any other failure is logged and never raised:
+    the check's answer stands, and the report names the leftover instead.
+    """
+    try:
         # v=True: the worker image declares VOLUME /data, and without it each
         # probe's anonymous volume outlives the container.
         client.containers.get(name).remove(force=True, v=True)
+    except NotFound:
+        pass
+    except Exception as exc:  # noqa: BLE001 - logged and reported, never raised
+        logger.warning("Could not remove isolation probe %s: %s", name, exc)
+        return False
+    return True
 
 
 def run_probe(
@@ -278,12 +326,14 @@ def run_probe(
     targets: list[dict[str, Any]] | None = None,
     first: list[str] | None = None,
     published: list[tuple[str, int]] | None = None,
+    leftovers: list[str] | None = None,
 ) -> dict[str, Any]:
     """Run one probe container to completion and return what it printed.
 
     The container is removed on every path: success, a non-zero exit, a wait
     that times out, or Docker refusing halfway through. Removal goes by name,
     so a container created by a ``run`` that then failed to start goes too.
+    A probe Docker would not remove is appended to ``leftovers``.
     """
     _remove_probe(client, name)
     try:
@@ -317,7 +367,8 @@ def run_probe(
             raise RuntimeError(f"the probe exited with status {(status or {}).get('StatusCode')}")
         return json.loads(container.logs(stdout=True, stderr=False))
     finally:
-        _remove_probe(client, name)
+        if not _remove_probe(client, name) and leftovers is not None:
+            leftovers.append(name)
 
 
 def _network_mode(container: Any) -> str:
@@ -506,7 +557,7 @@ def _keep(candidates: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """The candidates that answered from the host: per address and path, one port, plus 53.
 
     A fence drops by destination address, so one open port per address is
-    enough to test it, except on the host itself, which has two paths: a port
+    enough to test it (the best known one, see ``_rank``), except on the host itself, which has two paths: a port
     it serves (INPUT) and a port Docker publishes (DNAT, then FORWARD). One of
     each is kept, so a published port that answered first cannot push out the
     host's own services. Port 53 is kept beside them: the documented DNS
@@ -514,17 +565,23 @@ def _keep(candidates: list[dict[str, Any]]) -> list[dict[str, Any]]:
     host, and the other port on the same address is how the report tells them
     from a missing fence.
     """
-    kept, seen = [], set()
+    best: dict[tuple[str, Any], dict[str, Any]] = {}
     for t in candidates:
-        if not t.get("ok"):
-            continue
-        if t["port"] != 53:
+        if t.get("ok") and t["port"] != 53:
             key = (t["host"], t.get("via"))
-            if key in seen:
-                continue
-            seen.add(key)
-        kept.append({k: t[k] for k in ("group", "host", "port", "label") if k in t})
-    return kept
+            if key not in best or _rank(t["port"]) < _rank(best[key]["port"]):
+                best[key] = t
+    chosen = {id(t) for t in best.values()}
+    return [
+        {k: t[k] for k in ("group", "host", "port", "label") if k in t}
+        for t in candidates
+        if t.get("ok") and (t["port"] == 53 or id(t) in chosen)
+    ]
+
+
+def _rank(port: int) -> tuple[int, int]:
+    """SSH, then the web, then the rest ascending: the port the report row names."""
+    return (WELL_KNOWN.index(port), 0) if port in WELL_KNOWN else (len(WELL_KNOWN), port)
 
 
 def published_ports(client: Any) -> list[tuple[str, int]]:
@@ -646,6 +703,7 @@ def _run(client: Any) -> dict[str, Any]:
         "addresses_left_out": [],
         "findings": placement_findings(every, network) + ipv6_findings(client, every, network),
         "node_firewall": None,
+        "leftover_probes": [],
         "reason": "",
     }
 
@@ -690,6 +748,7 @@ def _probe(client: Any, report: dict[str, Any], running: list[Any], every: list[
             network_mode="host",
             first=_gateways(client, earner, network),
             published=published_ports(client),
+            leftovers=report["leftover_probes"],
         )
     except Exception as exc:  # noqa: BLE001 - the report says what went wrong
         return f"The control probe on the host network failed: {exc}"
@@ -719,7 +778,12 @@ def _probe(client: Any, report: dict[str, Any], running: list[Any], every: list[
 
     targets = kept + [INTERNET]
     try:
-        results = run_probe(client, image, EARNER_PROBE, "test", targets=targets, **kwargs).get("results") or []
+        results = (
+            run_probe(
+                client, image, EARNER_PROBE, "test", targets=targets, leftovers=report["leftover_probes"], **kwargs
+            ).get("results")
+            or []
+        )
     except Exception as exc:  # noqa: BLE001
         return f"The probe on the earner side failed: {exc}"
     if len(results) != len(targets):

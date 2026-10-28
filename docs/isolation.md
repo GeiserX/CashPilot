@@ -88,7 +88,9 @@ not offer the button.
 The worker starts two short-lived containers from its own image, so it pulls
 nothing. They have no capabilities, run as `nobody`, and the worker removes
 them and their volumes when the check ends, whether it passed, failed or timed
-out. It touches no firewall rule.
+out. If Docker refuses to remove one, the result names it and gives the
+`docker rm -fv` line to clear it; the check's answer still stands. It touches
+no firewall rule.
 
 1. **The control** runs on the host's network. It collects addresses to try:
    the default gateway, the host's own addresses with ports it listens on, your
@@ -100,7 +102,10 @@ out. It touches no firewall rule.
    serves itself, such as SSH or its web interface, which arrives on the
    `INPUT` chain, and a port Docker publishes for a container, which Docker
    forwards to that container through `FORWARD`. The result labels the second
-   kind "forwarded to a container". The host's LAN and tailnet addresses and the
+   kind "forwarded to a container". Listeners on `[::]` count too, since a
+   dual-stack socket also accepts IPv4. When an address has several open
+   ports, the result names SSH, then 80, then 443 before any other, so the
+   line is one you recognise. The host's LAN and tailnet addresses and the
    earner's own bridge gateway are always tried. On a host with many Docker
    networks, the other bridge gateways are tried up to a limit, and the result
    counts the ones it left out.
@@ -112,7 +117,8 @@ out. It touches no firewall rule.
 ### Reading the result
 
 - **Isolated.** The earner reached none of the addresses, and it reached the
-  internet.
+  internet. The one exception is an expected DNS line (see below): when one
+  got through, the result says so and names it.
 - **Not isolated.** The result lists each problem with a link to its fix,
   grouped as your LAN, this host, overlay network and cloud metadata. It also
   flags two things the probes cannot see:

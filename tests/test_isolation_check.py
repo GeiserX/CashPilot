@@ -11,7 +11,9 @@ control drops what does not answer from the host, "could not test" is never
 from __future__ import annotations
 
 import asyncio
+import ipaddress
 import json
+import logging
 import os
 import shutil
 import socket
@@ -85,6 +87,8 @@ class FakeDocker:
         self.removed: list[str] = []
         self.removed_with_volumes: list[str] = []
         self.live: set[str] = set()
+        # Probe names whose removal Docker refuses.
+        self.stuck: set[str] = set()
         self.containers = MagicMock()
         self.containers.run.side_effect = self._run
         self.containers.get.side_effect = self._get
@@ -107,6 +111,8 @@ class FakeDocker:
         c = MagicMock()
 
         def remove(force=False, v=False):
+            if name in self.stuck:
+                raise APIError("removal of container is already in progress")
             self.removed.append(name)
             if v:
                 self.removed_with_volumes.append(name)
@@ -344,6 +350,24 @@ class TestProbesAreAlwaysRemoved:
         _check(fake)
         assert fake.removed and fake.removed_with_volumes == fake.removed
 
+    def test_a_probe_docker_will_not_remove_is_logged_and_reported(self, caplog):
+        """A swallowed removal error left a probe behind with no word to anyone."""
+        fake = FakeDocker(_ok(GATEWAY), INTERNET_OK)
+        fake.stuck = {isolation_check.EARNER_PROBE}
+        with caplog.at_level(logging.WARNING, logger="app.isolation_check"):
+            report = _check(fake)
+        assert report["leftover_probes"] == [isolation_check.EARNER_PROBE]
+        assert report["status"] == "isolated", "a probe left behind does not fail the check"
+        assert isolation_check.EARNER_PROBE in caplog.text
+
+    def test_a_clean_run_leaves_nothing_to_report(self, caplog):
+        # The removal before each run finds nothing; that is not a failure.
+        fake = FakeDocker(_ok(GATEWAY), INTERNET_OK)
+        with caplog.at_level(logging.WARNING, logger="app.isolation_check"):
+            report = _check(fake)
+        assert report["leftover_probes"] == []
+        assert "remove" not in caplog.text
+
     def test_a_second_check_while_one_runs_is_refused(self):
         assert isolation_check._lock.acquire(blocking=False)
         try:
@@ -568,6 +592,18 @@ def _tcp_line(local, lport, remote, rport, state):
 
 
 TCP_HEADER = "  sl  local_address rem_address   st tx_queue rx_queue\n"
+
+
+def _hex6(addr):
+    packed = ipaddress.IPv6Address(addr).packed
+    return "".join(f"{struct.unpack('=I', packed[i : i + 4])[0]:08X}" for i in range(0, 16, 4))
+
+
+def _tcp6_line(local, lport, state="0A"):
+    return f"   0: {_hex6(local)}:{lport:04X} {_hex6('::')}:0000 {state} 0 0 0\n"
+
+
+TCP6_HEADER = "  sl  local_address                         remote_address                        st tx_queue\n"
 ROUTE = (
     "Iface\tDestination\tGateway\tFlags\n"
     f"br0\t00000000\t{_hex('192.168.10.1')}\t0003\n"
@@ -654,8 +690,72 @@ class TestDiscovery:
         )
         out = probe["candidates"]({"eth0": "192.168.1.10"}, "Iface\n", tcp, "")
         host = [t["port"] for t in out["candidates"] if t["group"] == "host"]
-        # sshd first, then the lowest two; an address-bound port always.
-        assert host == [22, 21, 25, 9000]
+        # sshd first, then ascending; an address-bound port always.
+        assert host == [22, 21, 25, 8080, 9000]
+
+    def test_a_dual_stack_listener_is_a_wildcard_ipv4_candidate(self, probe):
+        """syncthing, node_exporter and dockerd metrics on geiserback bind [::] only.
+
+        A dual-stack socket accepts IPv4 too, so it is the host's own service on
+        every IPv4 address. Loopback and real IPv6 listeners stay out of scope.
+        """
+        tcp = TCP_HEADER + _tcp_line("0.0.0.0", 3551, "0.0.0.0", 0, "0A")
+        tcp6 = (
+            TCP6_HEADER
+            + _tcp6_line("::", 9100)
+            + _tcp6_line("::", 22000)
+            + _tcp6_line("::1", 631)
+            + _tcp6_line("fd00::10", 8443)
+            + _tcp6_line("::ffff:192.168.1.10", 7000)
+        )
+        assert 'read("/proc/net/tcp6")' in isolation_check.PROBE_SCRIPT
+        out = probe["candidates"]({"eth0": "192.168.1.10"}, "Iface\n", tcp + tcp6, "")
+        host = [(t["host"], t["port"]) for t in out["candidates"] if t["group"] == "host"]
+        assert host == [
+            ("192.168.1.10", 3551),
+            ("192.168.1.10", 9100),
+            ("192.168.1.10", 22000),
+            ("192.168.1.10", 7000),
+        ]
+        assert not [t for t in out["candidates"] if ":" in t["host"]], "IPv6 targets stay out of scope"
+
+    def test_dual_stack_listeners_are_not_crowded_out_on_geiserback(self, probe):
+        """geiserback, read off the box: apcupsd 3551 on 0.0.0.0, wsdd 3702 and
+        LLMNR 5355 bound per interface (they read 0.0.0.0 in /proc and answer
+        on none of the other addresses), then syncthing, node_exporter and
+        dockerd metrics on [::]. Three ports per address went to the first three."""
+        tcp = TCP_HEADER + "".join(_tcp_line("0.0.0.0", p, "0.0.0.0", 0, "0A") for p in (3551, 3702, 5355))
+        tcp6 = TCP6_HEADER + "".join(_tcp6_line("::", p) for p in (8384, 9100, 9323, 22000))
+        out = probe["candidates"]({"docker0": "172.17.0.1"}, "Iface\n", tcp + tcp6, "")
+        ports = {t["port"] for t in out["candidates"] if t["group"] == "host"}
+        assert {9100, 9323} <= ports
+
+    def test_well_known_ports_are_tried_first(self, probe):
+        tcp = TCP_HEADER + "".join(_tcp_line("0.0.0.0", p, "0.0.0.0", 0, "0A") for p in (3551, 443, 21, 80))
+        out = probe["candidates"]({"eth0": "192.168.1.10"}, "Iface\n", tcp, "")
+        assert [t["port"] for t in out["candidates"] if t["group"] == "host"] == [80, 443, 21, 3551]
+
+
+class TestTheHostRowNamesAKnownService:
+    """One port per address is kept; it should be one a user recognises."""
+
+    @pytest.mark.parametrize(
+        ("ports", "chosen"),
+        [((3551, 9100, 443, 22), 22), ((3551, 8080, 443, 80), 80), ((3551, 8080, 443), 443), ((9100, 3551), 3551)],
+    )
+    def test_keep_prefers_ssh_then_web(self, ports, chosen):
+        cands = [
+            {
+                "group": "host",
+                "host": "192.168.1.10",
+                "port": p,
+                "label": f"this host, port {p}",
+                "via": "host",
+                "ok": True,
+            }
+            for p in ports
+        ]
+        assert [t["port"] for t in isolation_check._keep(cands)] == [chosen]
 
 
 class TestTheHostsTwoPaths:
@@ -712,6 +812,102 @@ class TestTheHostsTwoPaths:
         """With userland-proxy off nothing listens, and the DNAT path is still there."""
         out = probe["candidates"]({"eth0": "192.168.1.10"}, "Iface\n", TCP_HEADER, "", (), [("", 8443)])
         assert [(t["port"], t["via"]) for t in out["candidates"] if t["group"] == "host"] == [(8443, "forwarded")]
+
+
+FLEET_HARNESS = r"""
+import {readFileSync} from 'node:fs';
+const html = readFileSync('app/templates/fleet.html', 'utf8');
+function extract(name) {
+  const start = html.indexOf(`function ${name}(`);
+  if (start < 0) throw new Error(`fleet.html no longer defines ${name}()`);
+  let depth = 0;
+  for (let j = html.indexOf('{', start); j < html.length; j++) {
+    if (html[j] === '{') depth++;
+    else if (html[j] === '}' && --depth === 0) return html.slice(start, j + 1);
+  }
+  throw new Error(`unbalanced braces reading ${name}()`);
+}
+const esc = s => String(s).replace(/[&<>"']/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]));
+const _isolation = {};
+let delays = [];
+const loadFleet = () => {};
+const CP = {api: (url, opts) => new Promise((_ok, fail) => {
+  opts.signal.addEventListener('abort', () => fail(Object.assign(new Error('aborted'), {name: 'AbortError'})));
+})};
+const setTimeout = (fn, ms) => { delays.push(ms); Promise.resolve().then(fn); return 1; };
+const clearTimeout = () => {};
+const renderIsolation = eval('(' + extract('renderIsolation') + ')');
+const checkIsolation = eval('(async ' + extract('checkIsolation') + ')');
+const out = {};
+for (const [k, r] of Object.entries(JSON.parse(process.argv[process.argv.length - 1]))) out[k] = renderIsolation(r);
+await checkIsolation(7);
+out.timedOut = _isolation[7];
+out.delays = delays;
+console.log(JSON.stringify(out));
+"""
+
+
+class TestTheFleetCardTellsTheTruth:
+    """The real renderIsolation and checkIsolation from fleet.html, run in node."""
+
+    def _render(self, reports):
+        node = shutil.which("node")
+        if node is None:
+            pytest.skip("node is not installed")
+        out = subprocess.run(
+            [node, "--input-type=module", "-e", FLEET_HARNESS, json.dumps(reports)],
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        assert out.returncode == 0, out.stderr
+        return json.loads(out.stdout)
+
+    def _isolated(self, dns_reachable):
+        return {
+            "status": "isolated",
+            "checked_at": "2026-10-28T10:15:00Z",
+            "groups": [
+                {
+                    "group": "overlay",
+                    "label": "Overlay network",
+                    "targets": [
+                        {
+                            "address": "100.100.100.100:53",
+                            "label": "Tailscale DNS",
+                            "reachable": dns_reachable,
+                            "expected": dns_reachable,
+                        },
+                        {"address": "100.100.100.100:80", "label": "Tailscale status page", "reachable": False},
+                    ],
+                }
+            ],
+            "internet": {"address": "1.1.1.1:443", "reachable": True},
+            "leftover_probes": [],
+        }
+
+    def test_isolated_with_dns_through_names_the_dns_line(self):
+        out = self._render({"dns": self._isolated(True), "none": self._isolated(False)})
+        assert "reached none" not in out["dns"]
+        headline = out["dns"].split("Isolated over IPv4.")[1].split("</div>")[0]
+        assert "100.100.100.100:53" in headline and "100.100.100.100:80" not in headline
+        assert "reached none of the addresses below" in out["none"]
+
+    def test_the_check_time_is_shown(self):
+        out = self._render({"r": self._isolated(False)})
+        assert "Checked" in out["r"]
+
+    def test_a_probe_left_behind_is_shown(self):
+        r = dict(self._isolated(False), leftover_probes=[isolation_check.EARNER_PROBE])
+        out = self._render({"r": r})
+        assert isolation_check.EARNER_PROBE in out["r"] and "docker rm -fv" in out["r"]
+
+    def test_the_browser_gives_up_a_little_after_the_proxy(self):
+        out = self._render({})
+        assert out["delays"] and 120_000 < out["delays"][0] <= 150_000
+        assert out["timedOut"]["error"] and "aborted" not in out["timedOut"]["error"]
+        assert out["timedOut"].get("checked_at")
 
 
 @asynccontextmanager
