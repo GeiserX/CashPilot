@@ -2535,7 +2535,10 @@ def _safe_worker_detail(resp: Any) -> dict[str, Any] | None:
     # commands instead"). Without this, the sanitizer replaced it with the
     # generic "Worker request failed" and the promised manual instructions
     # never reached the operator.
-    if error == "self_update_unavailable":
+    # The isolation check's "already running" and "no Docker socket" answers
+    # are fixed worker-authored strings too; without them the card read
+    # "Worker request failed" and busy looked the same as broken.
+    if error in ("self_update_unavailable", "isolation_check_busy", "isolation_check_unavailable"):
         return {"error": error, "message": str(detail.get("message") or "")}
     if error not in _FORWARDABLE_WORKER_ERRORS:
         return None
@@ -5164,16 +5167,18 @@ async def api_get_worker(request: Request, worker_id: int) -> dict[str, Any]:
     return worker
 
 
-@app.get("/api/workers/{worker_id}/isolation-check")
+@app.post("/api/workers/{worker_id}/isolation-check")
 async def api_worker_isolation_check(request: Request, worker_id: int) -> dict[str, Any]:
     """What an earner on this worker's host can reach (issue #451).
 
     Owner only: the worker starts two short-lived probe containers on its
-    host, one of them on host networking, to answer.
+    host, one of them on host networking, to answer. POST, because it starts
+    containers: the session cookie is SameSite=lax, which still rides a
+    cross-site GET navigation.
     """
     _require_owner(request)
     # Two probes of up to 30 s each, plus starting and removing them.
-    return await _proxy_to_worker(worker_id, "GET", "/api/isolation-check", timeout=120)
+    return await _proxy_to_worker(worker_id, "POST", "/api/isolation-check", timeout=120)
 
 
 @app.delete("/api/workers/{worker_id}")

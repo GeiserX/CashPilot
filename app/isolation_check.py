@@ -13,6 +13,8 @@ the worker's own image, and removes them on every path.
    private resolvers, Tailscale's 100.100.100.100 and one tailnet peer, cloud
    metadata) and keeps only the ones that answer from the host. A closed port
    therefore never counts as "blocked", which is what lets this check fail.
+   Addresses on real interfaces and the earner's own gateway are always
+   listed; other Docker bridge gateways fill a cap, and the rest are reported.
 2. **Earner side.** A second probe joins a running earner's network namespace
    (or CASHPILOT_CONTAINER_NETWORK when none runs) and tries the kept targets,
    plus one internet address as the positive check.
@@ -36,6 +38,7 @@ FIX_PAGE = DOCS + "isolation-check/#2-fix-it-by-platform"
 OVERLAY_PAGE = DOCS + "isolation-check/#with-tailscale-or-another-overlay-network-on-the-host"
 MYSTERIUM_PAGE = DOCS + "isolation-check/#mysterium-which-uses-host-networking"
 BRIDGE_PAGE = DOCS + "home-network-security/#put-the-containers-on-their-own-bridge"
+RULES_PAGE = DOCS + "home-network-security/#the-rules"
 DNS_PAGE = DOCS + "home-network-security/#name-lookups-need-a-resolver-the-rules-allow"
 
 GROUPS = {
@@ -53,6 +56,20 @@ TAILSCALE_DNS = "100.100.100.100"
 PROTECTED_FLAG = "--firewall.protected.networks="
 MYST_BLACKHOLE = "240.0.0.1"
 
+#: Reads the node's MYST chain from every iptables backend without creating
+#: anything. The node runs on host networking as root, so a legacy lookup of a
+#: nat table that does not exist would make the kernel load ``iptable_nat`` and
+#: register an empty legacy table on the host. The legacy backend is asked only
+#: when the host already has its nat table; the image's plain ``iptables`` only
+#: when it is the nf_tables one or that table exists.
+IPT_NAMES = "/proc/net/ip_tables_names"
+MYST_READ = (
+    "iptables-nft -t nat -S MYST 2>/dev/null; "
+    f"if grep -qx nat {IPT_NAMES} 2>/dev/null; then "
+    "iptables-legacy -t nat -S MYST 2>/dev/null; iptables -t nat -S MYST 2>/dev/null; "
+    'else case "$(iptables -V 2>/dev/null)" in *nf_tables*) iptables -t nat -S MYST 2>/dev/null;; esac; fi'
+)
+
 PROBE_LABEL = "cashpilot.probe"
 HOST_PROBE = "cashpilot-isolation-probe-host"
 EARNER_PROBE = "cashpilot-isolation-probe-earner"
@@ -69,10 +86,20 @@ class CheckBusy(RuntimeError):
 
 # Runs inside the probe containers: stdlib only, no file writes, prints JSON.
 # "discover" (host network) lists candidates and tries each; "test" tries the
-# targets given in PROBE_TARGETS and prints one boolean per target.
+# targets given in PROBE_TARGETS and prints one boolean per target. The parsing
+# is split into functions over file text so tests can feed it fixtures.
 PROBE_SCRIPT = r"""
 import fcntl, ipaddress, json, os, socket, struct, sys
 from concurrent.futures import ThreadPoolExecutor
+
+CGNAT = ipaddress.ip_network("100.64.0.0/10")
+# Interfaces Docker and Mysterium create: their addresses are bridge gateways
+# and tunnel ends, not where the host's own services listen for the LAN.
+VIRTUAL = ("docker", "br-", "veth", "myst")
+# How many host addresses to test in all. Addresses on real interfaces (the
+# LAN, the tailnet) and the earner's own gateway are always tested; the other
+# bridge gateways fill what is left.
+MAX_OWN = 24
 
 def reach(t):
     try:
@@ -84,74 +111,79 @@ def reach(t):
 def ip(hexval):
     return socket.inet_ntoa(struct.pack("=I", int(hexval, 16)))
 
-def tcp(state):
+def read(path):
+    try:
+        with open(path) as f:
+            return f.read()
+    except OSError:
+        return ""
+
+def tcp(text, state):
     found = []
-    with open("/proc/net/tcp") as f:
-        next(f)
-        for line in f:
-            p = line.split()
-            if p[3] == state:
-                la, lp = p[1].split(":")
-                ra, rp = p[2].split(":")
-                found.append((ip(la), int(lp, 16), ip(ra), int(rp, 16)))
+    for line in text.splitlines()[1:]:
+        p = line.split()
+        if len(p) > 3 and p[3] == state:
+            la, lp = p[1].split(":")
+            ra, rp = p[2].split(":")
+            found.append((ip(la), int(lp, 16), ip(ra), int(rp, 16)))
     return found
 
-def discover():
-    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    ifaces = {}
-    for _i, name in socket.if_nameindex():
-        try:
-            raw = fcntl.ioctl(s.fileno(), 0x8915, struct.pack("256s", name[:15].encode()))
-            ifaces[name] = socket.inet_ntoa(raw[20:24])
-        except OSError:
-            pass
-    own = sorted({a for a in ifaces.values() if not a.startswith("127.")})[:24]
-    cgnat = ipaddress.ip_network("100.64.0.0/10")
+def own_addresses(ifaces, first=()):
+    # (addresses to test, addresses left out). A host with many Docker bridges
+    # must not push its LAN address out of the list.
+    def pick(virtual):
+        return sorted({a for n, a in ifaces.items() if not a.startswith("127.") and n.startswith(VIRTUAL) == virtual})
+    keep = pick(False)
+    keep += [a for a in first if a in ifaces.values() and a not in keep]
+    rest = [a for a in pick(True) if a not in keep]
+    room = max(0, MAX_OWN - len(keep))
+    return keep + rest[:room], rest[room:]
+
+def candidates(ifaces, route, tcp_text, resolv, first=()):
+    own, left_out = own_addresses(ifaces, first)
+    mine_all = {a for a in ifaces.values() if not a.startswith("127.")}
     out, seen = [], set()
     def add(group, host, port, label):
         if (host, port) not in seen:
             seen.add((host, port))
             out.append({"group": group, "host": host, "port": port, "label": label})
-    with open("/proc/net/route") as f:
-        next(f)
-        for line in f:
-            p = line.split()
-            if p[1] == "00000000" and p[2] != "00000000":
-                for port in (80, 443, 53, 22):
-                    add("lan", ip(p[2]), port, "default gateway")
+    for line in route.splitlines()[1:]:
+        p = line.split()
+        if len(p) > 2 and p[1] == "00000000" and p[2] != "00000000":
+            # Port 53 last: a router that allows DNS from the earners (the
+            # documented exception) is judged on another port too.
+            for port in (80, 443, 22, 53):
+                add("lan", ip(p[2]), port, "default gateway")
     # Tailscale names its interface tailscale0, or tailscale1 on Unraid's
     # plugin; any address of ours in 100.64.0.0/10 says the same.
-    if any(n.startswith("tailscale") for n in ifaces) or any(ipaddress.ip_address(a) in cgnat for a in own):
+    if any(n.startswith("tailscale") for n in ifaces) or any(ipaddress.ip_address(a) in CGNAT for a in mine_all):
         add("overlay", "100.100.100.100", 53, "Tailscale DNS")
         add("overlay", "100.100.100.100", 80, "Tailscale status page")
         # A connection this host opened, so the peer's port is a service port.
-        mine = {lp for _l, lp, _r, _q in tcp("0A")}
-        for _l, lp, ra, rp in tcp("01"):
-            if lp not in mine and ipaddress.ip_address(ra) in cgnat and ra != "100.100.100.100" and ra not in own:
+        listening = {lp for _l, lp, _r, _q in tcp(tcp_text, "0A")}
+        for _l, lp, ra, rp in tcp(tcp_text, "01"):
+            if lp not in listening and ipaddress.ip_address(ra) in CGNAT and ra != "100.100.100.100" and ra not in mine_all:
                 add("overlay", ra, rp, "tailnet peer")
                 break
     resolvers = []
-    try:
-        with open("/etc/resolv.conf") as f:
-            for line in f:
-                p = line.split()
-                if len(p) > 1 and p[0] == "nameserver":
-                    resolvers.append(p[1])
-    except OSError:
-        pass
+    for line in resolv.splitlines():
+        p = line.split()
+        if len(p) > 1 and p[0] == "nameserver":
+            resolvers.append(p[1])
     for r in resolvers:
         try:
             a = ipaddress.ip_address(r)
         except ValueError:
             continue
-        if a.version != 4 or a.is_loopback or r in own:
+        if a.version != 4 or a.is_loopback or r in mine_all:
             continue
-        if a in cgnat:
+        if a in CGNAT:
             add("overlay", r, 53, "DNS resolver")
         elif a.is_private:
-            add("lan", r, 53, "DNS resolver")
+            for port in (80, 443, 22, 53):
+                add("lan", r, port, "DNS resolver")
     add("metadata", "169.254.169.254", 80, "cloud metadata")
-    listen = tcp("0A")
+    listen = tcp(tcp_text, "0A")
     wild = sorted({lp for la, lp, _r, _q in listen if la == "0.0.0.0"}, key=lambda p: (p != 22, p))[:3]
     for a in own:
         for port in wild:
@@ -159,19 +191,32 @@ def discover():
     for la, lp, _r, _q in listen:
         if la != "0.0.0.0" and not la.startswith("127."):
             add("host", la, lp, "this host, port %d" % lp)
-    return {"candidates": out, "resolvers": resolvers}
+    return {"candidates": out, "resolvers": resolvers, "addresses_left_out": left_out}
+
+def interfaces():
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    found = {}
+    for _i, name in socket.if_nameindex():
+        try:
+            raw = fcntl.ioctl(s.fileno(), 0x8915, struct.pack("256s", name[:15].encode()))
+            found[name] = socket.inet_ntoa(raw[20:24])
+        except OSError:
+            pass
+    return found
 
 def run(targets):
     with ThreadPoolExecutor(32) as pool:
         return list(pool.map(reach, targets))
 
-if sys.argv[1] == "discover":
-    found = discover()
-    for t, ok in zip(found["candidates"], run(found["candidates"])):
-        t["ok"] = ok
-    print(json.dumps(found))
-else:
-    print(json.dumps({"results": run(json.loads(os.environ["PROBE_TARGETS"]))}))
+if __name__ == "__main__":
+    if sys.argv[1] == "discover":
+        first = json.loads(os.environ.get("PROBE_FIRST") or "[]")
+        found = candidates(interfaces(), read("/proc/net/route"), read("/proc/net/tcp"), read("/etc/resolv.conf"), first)
+        for t, ok in zip(found["candidates"], run(found["candidates"])):
+            t["ok"] = ok
+        print(json.dumps(found))
+    else:
+        print(json.dumps({"results": run(json.loads(os.environ["PROBE_TARGETS"]))}))
 """
 
 
@@ -189,6 +234,7 @@ def run_probe(
     network_mode: str | None = None,
     network: str | None = None,
     targets: list[dict[str, Any]] | None = None,
+    first: list[str] | None = None,
 ) -> dict[str, Any]:
     """Run one probe container to completion and return what it printed.
 
@@ -203,7 +249,7 @@ def run_probe(
             name=name,
             entrypoint=["python", "-c", PROBE_SCRIPT],
             command=[mode],
-            environment={"PROBE_TARGETS": json.dumps(targets or [])},
+            environment={"PROBE_TARGETS": json.dumps(targets or []), "PROBE_FIRST": json.dumps(first or [])},
             network_mode=network_mode,
             network=network,
             # The same floor as every earner, and lower: no capabilities, no
@@ -330,7 +376,8 @@ def read_myst_chain(client: Any) -> dict[str, Any] | None:
     Read from inside the node's own container with the iptables it ships, so
     the answer comes from the backend that wrote the rules. On Unraid the host's
     ``iptables -t nat -S MYST`` shows nothing because the node writes through
-    nf_tables, so every backend is asked and the lines are merged.
+    nf_tables, so every backend that already has a nat table is asked and the
+    lines are merged (see ``MYST_READ``).
     """
     nodes, required = [], []
     for slug, networks in protected_networks().items():
@@ -341,9 +388,8 @@ def read_myst_chain(client: Any) -> dict[str, Any] | None:
     if not nodes:
         return None
     node = nodes[0]
-    cmd = "for b in iptables-nft iptables-legacy iptables; do $b -t nat -S MYST 2>/dev/null; done"
     try:
-        code, output = node.exec_run(["sh", "-c", cmd])
+        code, output = node.exec_run(["sh", "-c", MYST_READ])
     except Exception as exc:  # noqa: BLE001 - reported, never raised
         return {"container": _name(node), "readable": False, "detail": f"Could not read the MYST chain: {exc}"}
     lines = sorted({ln.strip() for ln in (output or b"").decode(errors="replace").splitlines() if ln.strip()})
@@ -370,17 +416,22 @@ def read_myst_chain(client: Any) -> dict[str, Any] | None:
 
 
 def _keep(candidates: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """The candidates that answered from the host, one port per address.
+    """The candidates that answered from the host: per address, one port plus 53.
 
     A fence drops by destination address, so one open port per address is
-    enough to test it. Tailscale's 100.100.100.100 keeps both its ports: port 80
-    is how the report tells the DNS rewrite on port 53 from a missing fence.
+    enough to test it. Port 53 is kept beside it: the documented DNS exception
+    and Tailscale's DNS rewrite let port 53 through on a fenced host, and the
+    other port on the same address is how the report tells them from a
+    missing fence.
     """
     kept, hosts = [], set()
     for t in candidates:
-        if not t.get("ok") or (t["host"] in hosts and t["host"] != TAILSCALE_DNS):
+        if not t.get("ok"):
             continue
-        hosts.add(t["host"])
+        if t["port"] != 53:
+            if t["host"] in hosts:
+                continue
+            hosts.add(t["host"])
         kept.append({k: t[k] for k in ("group", "host", "port", "label")})
     return kept
 
@@ -389,6 +440,48 @@ def _pick_earner(earners: list[Any], network: str) -> Any | None:
     bridge = [c for c in earners if _is_bridge(c)]
     on_network = [c for c in bridge if network and network in _networks(c)]
     return (on_network or bridge or [None])[0]
+
+
+def _gateways(client: Any, earner: Any | None, network: str) -> list[str]:
+    """The bridge gateways of the side under test: the host as an earner sees it."""
+    if earner is not None:
+        nets = (((earner.attrs or {}).get("NetworkSettings") or {}).get("Networks") or {}).values()
+        return sorted({n.get("Gateway") for n in nets if n.get("Gateway")})
+    with contextlib.suppress(Exception):
+        conf = ((client.networks.get(network).attrs or {}).get("IPAM") or {}).get("Config") or []
+        return sorted({c.get("Gateway") for c in conf if c.get("Gateway")})
+    return []
+
+
+def ipv6_findings(client: Any, earners: list[Any], network: str) -> list[dict[str, Any]]:
+    """The probes try IPv4 only, so an earner with IPv6 was not fully tested."""
+    names = sorted(
+        _name(c)
+        for c in earners
+        if any(
+            n.get("GlobalIPv6Address")
+            for n in ((((c.attrs or {}).get("NetworkSettings") or {}).get("Networks") or {}).values())
+        )
+    )
+    enabled = False
+    if network:
+        with contextlib.suppress(Exception):
+            enabled = bool((client.networks.get(network).attrs or {}).get("EnableIPv6"))
+    if not names and not enabled:
+        return []
+    where = f"{network} has IPv6 enabled" if enabled else "These earners have an IPv6 address"
+    listed = f": {', '.join(names)}" if names else ""
+    return [
+        {
+            "kind": "ipv6_not_tested",
+            "exposure": False,
+            "detail": (
+                f"{where}{listed}. This check tries IPv4 only, so it did not test whether an earner reaches "
+                "your LAN over IPv6. That needs its own ip6tables rules."
+            ),
+            "docs": RULES_PAGE,
+        }
+    ]
 
 
 def _self_image(client: Any) -> str | None:
@@ -408,14 +501,20 @@ def run() -> dict[str, Any]:
 
 def _run(client: Any) -> dict[str, Any]:
     network = orchestrator._CONTAINER_NETWORK
-    earners = client.containers.list(filters={"label": f"{LABEL_MANAGED}=true"})
+    managed = {"label": f"{LABEL_MANAGED}=true"}
+    # Placement, DNS and IPv6 read static settings, so a stopped earner counts:
+    # it is exposed again the moment it starts. Only a running one can host
+    # the earner-side probe.
+    every = client.containers.list(all=True, filters=managed)
+    running = client.containers.list(filters=managed)
     report: dict[str, Any] = {
         "status": "could_not_test",
         "tested_from": None,
         "groups": [],
         "internet": None,
         "not_answering_from_host": [],
-        "findings": placement_findings(earners, network),
+        "addresses_left_out": [],
+        "findings": placement_findings(every, network) + ipv6_findings(client, every, network),
         "node_firewall": None,
         "reason": "",
     }
@@ -435,7 +534,7 @@ def _run(client: Any) -> dict[str, Any]:
             }
         )
 
-    report["reason"] = _probe(client, report, earners, network)
+    report["reason"] = _probe(client, report, running, every, network)
     exposed = any(f.get("exposure") for f in report["findings"])
     if exposed:
         report["status"] = "exposed"
@@ -444,26 +543,29 @@ def _run(client: Any) -> dict[str, Any]:
     return report
 
 
-def _probe(client: Any, report: dict[str, Any], earners: list[Any], network: str) -> str:
+def _probe(client: Any, report: dict[str, Any], running: list[Any], every: list[Any], network: str) -> str:
     """Fill the probe part of ``report``. Returns why it could not test, or ""."""
     image = _self_image(client)
     if not image:
         return "The worker cannot find its own container, so it has no image to run the probes from."
 
+    earner = _pick_earner(running, network)
     try:
-        found = run_probe(client, image, HOST_PROBE, "discover", network_mode="host")
+        found = run_probe(
+            client, image, HOST_PROBE, "discover", network_mode="host", first=_gateways(client, earner, network)
+        )
     except Exception as exc:  # noqa: BLE001 - the report says what went wrong
         return f"The control probe on the host network failed: {exc}"
     candidates = found.get("candidates") or []
     kept = _keep(candidates)
     report["not_answering_from_host"] = [f"{t['host']}:{t['port']}" for t in candidates if not t.get("ok")]
+    report["addresses_left_out"] = list(found.get("addresses_left_out") or [])
     if not kept:
         return (
             "Nothing answered from the host itself, so there is nothing to compare against. "
             "A blocked result here would prove nothing."
         )
 
-    earner = _pick_earner(earners, network)
     kwargs: dict[str, Any]
     if earner is not None:
         kwargs = {"network_mode": f"container:{earner.id}"}
@@ -491,11 +593,11 @@ def _probe(client: Any, report: dict[str, Any], earners: list[Any], network: str
     ]
     internet = outcome.pop()
     report["internet"] = {"address": internet["address"], "reachable": internet["reachable"]}
-    _tailscale_dns_note(outcome)
+    _dns_notes(outcome)
 
     for group, (label, docs) in GROUPS.items():
         rows = [
-            {k: t[k] for k in ("address", "label", "reachable", "note") if k in t}
+            {k: t[k] for k in ("address", "label", "reachable", "expected", "note") if k in t}
             for t in outcome
             if t["group"] == group
         ]
@@ -514,7 +616,7 @@ def _probe(client: Any, report: dict[str, Any], earners: list[Any], network: str
             )
 
     blocked = {t["host"] for t in outcome if t["port"] == 53 and not t["reachable"]}
-    report["findings"].extend(dns_findings(earners, network, found.get("resolvers") or [], blocked))
+    report["findings"].extend(dns_findings(every, network, found.get("resolvers") or [], blocked))
 
     if not internet["reachable"]:
         return (
@@ -524,25 +626,43 @@ def _probe(client: Any, report: dict[str, Any], earners: list[Any], network: str
     return ""
 
 
-def _tailscale_dns_note(outcome: list[dict[str, Any]]) -> None:
-    """Tell the DNS rewrite apart from a missing fence (docs/isolation-check.md).
+def _dns_notes(outcome: list[dict[str, Any]]) -> None:
+    """Tell an allowed DNS port apart from a missing fence.
 
-    With the documented rewrite, port 53 on 100.100.100.100 is sent on to a
-    public resolver before the fence sees it, so it reads reachable on a fenced
-    host. Port 80 on the same address (tailscaled's status page) is not
-    rewritten: blocked there means the fence works and port 53 is the rewrite.
+    Port 53 can read reachable on a fenced host for two documented reasons:
+    Tailscale's DNS rewrite (docs/isolation-check.md) sends 100.100.100.100:53
+    to a public resolver before the fence sees it, and the router DNS exception
+    (docs/home-network-security.md) lets a LAN resolver's port 53 through. A
+    second port on the same address is not covered by either: blocked there
+    means the fence works and port 53 is the exception.
     """
-    by_port = {t["port"]: t for t in outcome if t["host"] == TAILSCALE_DNS}
-    dns, page = by_port.get(53), by_port.get(80)
-    if not dns or not dns["reachable"]:
-        return
-    if page and not page["reachable"]:
-        dns["expected"] = True
-        dns["note"] = (
-            "Expected with the DNS rewrite: port 80 on the same address is blocked, so the fence works and "
-            "this lookup went to a public resolver."
-        )
-    else:
-        dns["note"] = (
-            "Can also mean the DNS rewrite is in place. Check the rewrite rule's packet counter as the docs show."
-        )
+    for dns in outcome:
+        if dns["port"] != 53 or not dns["reachable"]:
+            continue
+        others = [t for t in outcome if t["host"] == dns["host"] and t["port"] != 53]
+        if dns["host"] == TAILSCALE_DNS:
+            page = next((t for t in others if t["port"] == 80), None)
+            if page and not page["reachable"]:
+                dns["expected"] = True
+                dns["note"] = (
+                    "Expected with the DNS rewrite: port 80 on the same address is blocked, so the fence works "
+                    "and this lookup went to a public resolver."
+                )
+            else:
+                dns["note"] = (
+                    "Can also mean the DNS rewrite is in place. Check the rewrite rule's packet counter as the "
+                    "docs show."
+                )
+        elif dns["group"] == "lan":
+            if others and not any(t["reachable"] for t in others):
+                dns["expected"] = True
+                dns["note"] = (
+                    f"Expected with the DNS exception: port {others[0]['port']} on the same address is blocked, "
+                    "so only DNS gets through."
+                )
+            elif not others:
+                dns["expected"] = True
+                dns["note"] = (
+                    "Expected if you added the DNS exception. Nothing else on this address answered from the "
+                    "host, so this line cannot tell the exception from a missing fence."
+                )

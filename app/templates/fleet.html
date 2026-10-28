@@ -408,7 +408,7 @@ CASHPILOT_WORKER_NAME=server-name</code>
       return html + `<div style="color:var(--error);">Isolation check failed: ${esc(r.error)}</div></div>`;
     }
     const head = {
-      isolated: ['var(--success)', 'Isolated. An earner reached none of the addresses below, and it reached the internet.'],
+      isolated: ['var(--success)', 'Isolated over IPv4. An earner reached none of the addresses below, and it reached the internet.'],
       exposed: ['var(--error)', 'Not isolated. See what to fix below.'],
       could_not_test: ['var(--warning)', 'Could not test. ' + (r.reason || '')],
     }[r.status] || ['var(--text-muted)', String(r.status)];
@@ -422,7 +422,7 @@ CASHPILOT_WORKER_NAME=server-name</code>
     for (const g of r.groups || []) {
       html += `<div style="margin:4px 0;"><span style="color:var(--text-muted); display:inline-block; min-width:9rem;">${esc(g.label)}</span>`;
       for (const t of g.targets) {
-        const bad = t.reachable && !t.note;
+        const bad = t.reachable && !t.expected;
         const color = t.reachable ? (bad ? 'var(--error)' : 'var(--warning)') : 'var(--success)';
         const tip = `${t.label}${t.note ? '. ' + t.note : ''}`;
         html += `<span style="font-size:0.75rem; padding:2px 6px; margin:2px; border-radius:4px; background:var(--bg-hover); color:${color}; display:inline-block;" title="${esc(tip)}">${esc(t.address)} ${t.reachable ? 'reachable' : 'blocked'}</span>`;
@@ -439,6 +439,9 @@ CASHPILOT_WORKER_NAME=server-name</code>
     if (m) {
       html += `<div style="margin-top:6px; color:var(--text-muted);">Mysterium (${esc(m.container)}): ${m.readable ? 'blackholes ' + esc((m.blackholed || []).join(', ') || 'nothing') : esc(m.detail || '')}</div>`;
     }
+    if ((r.addresses_left_out || []).length) {
+      html += `<div style="margin-top:6px; color:var(--text-muted);" title="${esc(r.addresses_left_out.join(' '))}">${r.addresses_left_out.length} Docker bridge address(es) of this host were left out to keep the check short, so they were not tested.</div>`;
+    }
     if ((r.not_answering_from_host || []).length) {
       html += `<div style="margin-top:6px; color:var(--text-muted);" title="${esc(r.not_answering_from_host.join(' '))}">${r.not_answering_from_host.length} address(es) did not answer from the host itself, so they were not tested.</div>`;
     }
@@ -449,7 +452,7 @@ CASHPILOT_WORKER_NAME=server-name</code>
     _isolation[workerId] = 'running';
     loadFleet();
     try {
-      _isolation[workerId] = await CP.api(`/api/workers/${workerId}/isolation-check`);
+      _isolation[workerId] = await CP.api(`/api/workers/${workerId}/isolation-check`, { method: 'POST' });
     } catch (err) {
       _isolation[workerId] = { error: err.message || 'error' };
     }

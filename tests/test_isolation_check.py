@@ -13,6 +13,7 @@ from __future__ import annotations
 import json
 import os
 import socket
+import struct
 import subprocess
 import sys
 from contextlib import asynccontextmanager
@@ -28,6 +29,7 @@ from docker.errors import APIError
 from fastapi.testclient import TestClient
 
 from app import isolation_check, worker_api
+from app import main as main_module
 from app.main import app as ui_app
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -37,16 +39,27 @@ CLOSED = {"group": "lan", "host": "192.168.1.1", "port": 22, "label": "default g
 HOST = {"group": "host", "host": "192.168.1.10", "port": 22, "label": "this host, port 22"}
 TS_DNS = {"group": "overlay", "host": "100.100.100.100", "port": 53, "label": "Tailscale DNS"}
 TS_PAGE = {"group": "overlay", "host": "100.100.100.100", "port": 80, "label": "Tailscale status page"}
+PIHOLE_WEB = {"group": "lan", "host": "192.168.1.2", "port": 80, "label": "DNS resolver"}
+PIHOLE_DNS = {"group": "lan", "host": "192.168.1.2", "port": 53, "label": "DNS resolver"}
 METADATA = {"group": "metadata", "host": "169.254.169.254", "port": 80, "label": "cloud metadata"}
 
 
-def _earner(name="cashpilot-honeygain", networks=("cashpilot-isolated",), mode="cashpilot-isolated", dns=None):
+def _earner(
+    name="cashpilot-honeygain",
+    networks=("cashpilot-isolated",),
+    mode="cashpilot-isolated",
+    dns=None,
+    status="running",
+    gateway="172.30.0.1",
+    ipv6="",
+):
     c = MagicMock()
     c.name = name
     c.id = f"id-{name}"
+    c.status = status
     c.attrs = {
         "HostConfig": {"NetworkMode": mode, "Dns": dns or []},
-        "NetworkSettings": {"Networks": {n: {} for n in networks}},
+        "NetworkSettings": {"Networks": {n: {"Gateway": gateway, "GlobalIPv6Address": ipv6} for n in networks}},
     }
     return c
 
@@ -58,7 +71,7 @@ class FakeDocker:
     maps a target's "host:port" to whether it answers from the earner side.
     """
 
-    def __init__(self, control, earner=None, earners=None, resolvers=None, fail=None):
+    def __init__(self, control, earner=None, earners=None, resolvers=None, fail=None, network_attrs=None):
         self.control = control
         self.earner = earner or {}
         self.fail = fail or {}
@@ -71,10 +84,14 @@ class FakeDocker:
         self.containers.run.side_effect = self._run
         self.containers.get.side_effect = self._get
         self.containers.list.side_effect = self._list
+        self.networks = MagicMock()
+        self.networks.get.return_value.attrs = network_attrs or {}
 
-    def _list(self, filters=None):
+    def _list(self, all=False, filters=None):
         label = (filters or {}).get("label", "")
-        return [] if label == "cashpilot.service=mysterium" else list(self.earners)
+        if label == "cashpilot.service=mysterium":
+            return []
+        return [c for c in self.earners if all or c.status == "running"]
 
     def _get(self, name):
         if name not in self.live:
@@ -196,6 +213,36 @@ class TestTheEarnerSide:
         assert report["status"] == "exposed"
         assert report["findings"][0]["docs"] == isolation_check.OVERLAY_PAGE
 
+    def test_tailscale_dns_reachable_with_no_port_80_control_is_a_finding(self):
+        """Port 53 alone cannot tell the rewrite from a missing fence, so it is not waved through."""
+        fake = FakeDocker(_ok(TS_DNS) + _ok(TS_PAGE, ok=False), {"100.100.100.100:53": True, **INTERNET_OK})
+        report = _check(fake)
+        assert report["status"] == "exposed"
+        assert [f["kind"] for f in report["findings"]] == ["reachable_overlay"]
+        assert "Can also mean the DNS rewrite" in report["groups"][0]["targets"][0]["note"]
+
+    def test_a_lan_resolver_with_the_dns_exception_is_isolated(self):
+        """docs/home-network-security.md: the router's port 53 allowed, its web interface blocked."""
+        fake = FakeDocker(_ok(PIHOLE_WEB, PIHOLE_DNS), {"192.168.1.2:53": True, **INTERNET_OK})
+        report = _check(fake)
+        assert _earner_targets(fake) == ["192.168.1.2:80", "192.168.1.2:53", "1.1.1.1:443"]
+        assert report["status"] == "isolated"
+        dns = report["groups"][0]["targets"][1]
+        assert dns["expected"] is True and "DNS exception" in dns["note"]
+
+    def test_a_lan_resolver_reachable_on_its_other_port_is_a_finding(self):
+        fake = FakeDocker(_ok(PIHOLE_WEB, PIHOLE_DNS), {"192.168.1.2:53": True, "192.168.1.2:80": True, **INTERNET_OK})
+        report = _check(fake)
+        assert report["status"] == "exposed"
+        assert "192.168.1.2:80" in report["findings"][0]["detail"]
+        assert "192.168.1.2:53" in report["findings"][0]["detail"]
+
+    def test_a_lan_resolver_answering_only_on_53_says_it_cannot_tell(self):
+        fake = FakeDocker(_ok(PIHOLE_DNS) + _ok(PIHOLE_WEB, ok=False), {"192.168.1.2:53": True, **INTERNET_OK})
+        report = _check(fake)
+        assert report["status"] == "isolated"
+        assert "cannot tell" in report["groups"][0]["targets"][0]["note"]
+
 
 class TestCouldNotTest:
     def test_nothing_answering_from_the_host_is_never_isolated(self):
@@ -254,6 +301,36 @@ class TestPlacementAndDns:
         found = isolation_check.placement_findings([_earner(networks=("bridge",), mode="bridge")], "")
         assert found[0]["kind"] == "no_isolated_network"
 
+    def test_a_stopped_earner_off_the_isolated_bridge_is_flagged(self):
+        """It is unfenced again the moment it starts, so 'isolated' would be wrong."""
+        stray = _earner("cashpilot-repocket", networks=("bridge",), mode="bridge", status="exited")
+        fake = FakeDocker(_ok(GATEWAY), INTERNET_OK, earners=[_earner(), stray])
+        report = _check(fake)
+        assert report["status"] == "exposed"
+        assert "cashpilot-repocket" in report["findings"][0]["detail"]
+        assert fake.runs[1]["network_mode"] == "container:id-cashpilot-honeygain", "the probe joins a running one"
+
+    def test_ipv6_on_the_earner_network_is_never_a_silent_isolated(self):
+        fake = FakeDocker(_ok(GATEWAY), INTERNET_OK, network_attrs={"EnableIPv6": True})
+        report = _check(fake)
+        assert [f["kind"] for f in report["findings"]] == ["ipv6_not_tested"]
+        assert report["findings"][0]["exposure"] is False
+        assert "IPv4 only" in report["findings"][0]["detail"]
+
+    def test_an_earner_with_an_ipv6_address_is_named(self):
+        fake = FakeDocker(_ok(GATEWAY), INTERNET_OK, earners=[_earner(ipv6="2001:db8:1:2::5")])
+        report = _check(fake)
+        assert "cashpilot-honeygain" in report["findings"][0]["detail"]
+
+    def test_no_ipv6_no_finding(self):
+        report = _check(FakeDocker(_ok(GATEWAY), INTERNET_OK, network_attrs={"EnableIPv6": False}))
+        assert report["findings"] == []
+
+    def test_the_earner_gateway_goes_to_the_control_first(self):
+        fake = FakeDocker(_ok(GATEWAY), INTERNET_OK)
+        _check(fake)
+        assert json.loads(fake.runs[0]["environment"]["PROBE_FIRST"]) == ["172.30.0.1"]
+
     def test_an_earner_asking_a_blocked_resolver_is_flagged(self):
         old = _earner("cashpilot-old")
         new = _earner("cashpilot-new", dns=["1.1.1.1"])
@@ -281,6 +358,33 @@ class TestMysterium:
         assert myst["missing"] == ["100.64.0.0/10", "169.254.0.0/16"]
         cmd = node.exec_run.call_args.args[0][-1]
         assert "iptables-nft" in cmd and "-S MYST" in cmd and "-A " not in cmd and "-I " not in cmd
+
+    @pytest.mark.parametrize(
+        ("legacy_nat", "default_backend", "asked"),
+        [
+            (False, "legacy", ["iptables-nft"]),
+            (False, "nf_tables", ["iptables-nft", "iptables"]),
+            (True, "legacy", ["iptables-nft", "iptables-legacy", "iptables"]),
+        ],
+    )
+    def test_the_legacy_backend_is_asked_only_when_its_nat_table_exists(
+        self, tmp_path, legacy_nat, default_backend, asked
+    ):
+        """Asking legacy for a missing nat table loads iptable_nat on the host."""
+        bin_dir = tmp_path / "bin"
+        bin_dir.mkdir()
+        log = tmp_path / "calls"
+        for name in ("iptables-nft", "iptables-legacy", "iptables"):
+            script = bin_dir / name
+            version = f'[ "$1" = -V ] && {{ echo "iptables v1.8.9 ({default_backend})"; exit 0; }}\n'
+            script.write_text(f"#!/bin/sh\n{version if name == 'iptables' else ''}echo {name} >> {log}\n")
+            script.chmod(0o755)
+        names = tmp_path / "ip_tables_names"
+        names.write_text("filter\nnat\n" if legacy_nat else "filter\n")
+        cmd = isolation_check.MYST_READ.replace(isolation_check.IPT_NAMES, str(names))
+        assert cmd != isolation_check.MYST_READ
+        subprocess.run(["sh", "-c", cmd], env={"PATH": f"{bin_dir}:/usr/bin:/bin"}, check=False)
+        assert (log.read_text().split() if log.exists() else []) == asked
 
     def test_the_required_list_comes_from_the_catalog(self):
         assert isolation_check.protected_networks()["mysterium"][-2:] == ["100.64.0.0/10", "169.254.0.0/16"]
@@ -317,6 +421,105 @@ class TestTheProbeScript:
         assert json.loads(out.stdout) == {"results": [True, False]}
 
 
+def _hex(addr):
+    return f"{struct.unpack('=I', socket.inet_aton(addr))[0]:08X}"
+
+
+def _tcp_line(local, lport, remote, rport, state):
+    return f"   0: {_hex(local)}:{lport:04X} {_hex(remote)}:{rport:04X} {state} 0 0 0\n"
+
+
+TCP_HEADER = "  sl  local_address rem_address   st tx_queue rx_queue\n"
+ROUTE = (
+    "Iface\tDestination\tGateway\tFlags\n"
+    f"br0\t00000000\t{_hex('192.168.10.1')}\t0003\n"
+    f"br0\t{_hex('192.168.10.0')}\t00000000\t0001\n"
+)
+
+
+@pytest.fixture(scope="module")
+def probe():
+    ns = {"__name__": "probe"}
+    exec(isolation_check.PROBE_SCRIPT, ns)  # noqa: S102 - our own constant
+    return ns
+
+
+class TestDiscovery:
+    """The discover half of the probe script, fed fixture text instead of /proc."""
+
+    def _watchtower(self):
+        """45 addresses, as on watchtower: Docker bridges in 10.x and 172.x sort ahead of br0."""
+        ifaces = {"lo": "127.0.0.1", "br0": "192.168.10.100", "tailscale1": "100.70.1.2"}
+        ifaces.update({f"br-a{i}": f"10.{i}.0.1" for i in range(14)})
+        ifaces.update({f"br-b{i}": f"172.{17 + i}.0.1" for i in range(15)})
+        ifaces.update({f"br-c{i}": f"192.168.{100 + i}.1" for i in range(14)})
+        return ifaces
+
+    def test_the_lan_address_survives_many_docker_bridges(self, probe):
+        tcp = TCP_HEADER + _tcp_line("0.0.0.0", 22, "0.0.0.0", 0, "0A")
+        out = probe["candidates"](self._watchtower(), ROUTE, tcp, "", ["172.99.0.1", "172.31.0.1"])
+        hosts = {t["host"] for t in out["candidates"] if t["group"] == "host"}
+        assert {"192.168.10.100", "100.70.1.2", "172.31.0.1"} <= hosts
+        assert "172.99.0.1" not in hosts, "a first address that is not ours is not added"
+        assert len(hosts) == probe["MAX_OWN"]
+        assert len(out["addresses_left_out"]) == 45 - probe["MAX_OWN"]
+        assert not hosts & set(out["addresses_left_out"])
+
+    def test_the_default_gateway_comes_from_the_route_table(self, probe):
+        out = probe["candidates"]({"eth0": "192.168.10.100"}, ROUTE, TCP_HEADER, "")
+        gw = [t["port"] for t in out["candidates"] if t["host"] == "192.168.10.1"]
+        assert gw == [80, 443, 22, 53]
+
+    # tailscale1 on a custom range (Headscale): only the name gives it away.
+    # tun9 in 100.64.0.0/10: only the address does.
+    @pytest.mark.parametrize("ifaces", [{"tailscale1": "10.200.0.5"}, {"tun9": "100.70.1.2"}])
+    def test_tailscale_by_interface_name_or_cgnat_address(self, probe, ifaces):
+        out = probe["candidates"](dict(ifaces, eth0="192.168.10.100"), ROUTE, TCP_HEADER, "")
+        assert {"100.100.100.100:53", "100.100.100.100:80"} <= {
+            f"{t['host']}:{t['port']}" for t in out["candidates"] if t["group"] == "overlay"
+        }
+
+    def test_no_tailscale_no_overlay_targets(self, probe):
+        out = probe["candidates"]({"eth0": "192.168.10.100"}, ROUTE, TCP_HEADER, "")
+        assert not [t for t in out["candidates"] if t["group"] == "overlay"]
+
+    def test_the_tailnet_peer_is_one_this_host_connected_to(self, probe):
+        tcp = (
+            TCP_HEADER
+            + _tcp_line("0.0.0.0", 22, "0.0.0.0", 0, "0A")
+            # A peer connected to our sshd: its port is ephemeral, not a service.
+            + _tcp_line("100.70.1.2", 22, "100.90.0.9", 51234, "01")
+            + _tcp_line("100.70.1.2", 41000, "100.80.3.4", 443, "01")
+        )
+        out = probe["candidates"]({"tailscale0": "100.70.1.2"}, ROUTE, tcp, "")
+        peers = [f"{t['host']}:{t['port']}" for t in out["candidates"] if t["label"] == "tailnet peer"]
+        assert peers == ["100.80.3.4:443"]
+
+    def test_a_private_resolver_is_tried_on_a_port_besides_53(self, probe):
+        out = probe["candidates"](
+            {"eth0": "192.168.1.10"}, "Iface\n", TCP_HEADER, "nameserver 192.168.1.2\nnameserver 9.9.9.9\n"
+        )
+        ports = [t["port"] for t in out["candidates"] if t["host"] == "192.168.1.2"]
+        assert ports == [80, 443, 22, 53]
+        assert not [t for t in out["candidates"] if t["host"] == "9.9.9.9"]
+        assert out["resolvers"] == ["192.168.1.2", "9.9.9.9"]
+
+    def test_the_host_is_tried_on_the_ports_it_listens_on(self, probe):
+        tcp = (
+            TCP_HEADER
+            + _tcp_line("0.0.0.0", 8080, "0.0.0.0", 0, "0A")
+            + _tcp_line("0.0.0.0", 25, "0.0.0.0", 0, "0A")
+            + _tcp_line("0.0.0.0", 21, "0.0.0.0", 0, "0A")
+            + _tcp_line("0.0.0.0", 22, "0.0.0.0", 0, "0A")
+            + _tcp_line("192.168.1.10", 9000, "0.0.0.0", 0, "0A")
+            + _tcp_line("127.0.0.1", 5432, "0.0.0.0", 0, "0A")
+        )
+        out = probe["candidates"]({"eth0": "192.168.1.10"}, "Iface\n", tcp, "")
+        host = [t["port"] for t in out["candidates"] if t["group"] == "host"]
+        # sshd first, then the lowest two; an address-bound port always.
+        assert host == [22, 21, 25, 9000]
+
+
 @asynccontextmanager
 async def _noop_lifespan(a):
     yield
@@ -327,7 +530,7 @@ class TestEndpoints:
         worker_api.app.router.lifespan_context = _noop_lifespan
         client = TestClient(worker_api.app, raise_server_exceptions=False)
         with patch.object(isolation_check, "run") as run:
-            resp = client.get("/api/isolation-check", headers={"Authorization": "Bearer nope"})
+            resp = client.post("/api/isolation-check", headers={"Authorization": "Bearer nope"})
         assert resp.status_code == 401
         run.assert_not_called()
 
@@ -335,7 +538,7 @@ class TestEndpoints:
         worker_api.app.router.lifespan_context = _noop_lifespan
         client = TestClient(worker_api.app, raise_server_exceptions=False)
         with patch.object(isolation_check, "run", return_value={"status": "isolated"}):
-            resp = client.get("/api/isolation-check", headers={"Authorization": f"Bearer {worker_api.API_KEY}"})
+            resp = client.post("/api/isolation-check", headers={"Authorization": f"Bearer {worker_api.API_KEY}"})
         assert resp.status_code == 200 and resp.json() == {"status": "isolated"}
 
     def test_the_ui_route_is_owner_only(self):
@@ -345,7 +548,7 @@ class TestEndpoints:
             patch("app.main.auth.get_current_user", return_value={"uid": 2, "u": "w", "r": "writer"}),
             patch("app.main._proxy_to_worker", new_callable=AsyncMock) as proxy,
         ):
-            resp = client.get("/api/workers/1/isolation-check")
+            resp = client.post("/api/workers/1/isolation-check")
         assert resp.status_code in (401, 403)
         proxy.assert_not_called()
 
@@ -356,9 +559,52 @@ class TestEndpoints:
             patch("app.main.auth.get_current_user", return_value={"uid": 1, "u": "admin", "r": "owner"}),
             patch("app.main._proxy_to_worker", new_callable=AsyncMock, return_value={"status": "exposed"}) as proxy,
         ):
-            resp = client.get("/api/workers/1/isolation-check")
+            resp = client.post("/api/workers/1/isolation-check")
         assert resp.status_code == 200 and resp.json() == {"status": "exposed"}
-        assert proxy.call_args.args[:3] == (1, "GET", "/api/isolation-check")
+        assert proxy.call_args.args[:3] == (1, "POST", "/api/isolation-check")
+        # Two probes of up to PROBE_TIMEOUT each; the proxy's 30 s default
+        # would give up while the worker is still checking.
+        assert proxy.call_args.kwargs["timeout"] >= 2 * isolation_check.PROBE_TIMEOUT
+
+    def test_starting_the_check_is_not_a_get(self):
+        """It starts containers; a lax session cookie rides a cross-site GET."""
+        ui_app.router.lifespan_context = _noop_lifespan
+        worker_api.app.router.lifespan_context = _noop_lifespan
+        with (
+            patch("app.main.auth.get_current_user", return_value={"uid": 1, "u": "admin", "r": "owner"}),
+            patch("app.main._proxy_to_worker", new_callable=AsyncMock) as proxy,
+            patch.object(isolation_check, "run") as run,
+        ):
+            ui = TestClient(ui_app, raise_server_exceptions=False).get("/api/workers/1/isolation-check")
+            worker = TestClient(worker_api.app, raise_server_exceptions=False).get(
+                "/api/isolation-check", headers={"Authorization": f"Bearer {worker_api.API_KEY}"}
+            )
+        assert ui.status_code == 405 and worker.status_code == 405
+        proxy.assert_not_called()
+        run.assert_not_called()
+
+    @pytest.mark.parametrize(
+        ("raised", "code", "error"),
+        [
+            (
+                isolation_check.CheckBusy("An isolation check is already running on this worker."),
+                409,
+                "isolation_check_busy",
+            ),
+            (RuntimeError("Docker socket not available at /var/run/docker.sock"), 503, "isolation_check_unavailable"),
+        ],
+    )
+    def test_busy_and_no_docker_reach_the_user(self, raised, code, error):
+        worker_api.app.router.lifespan_context = _noop_lifespan
+        client = TestClient(worker_api.app, raise_server_exceptions=False)
+        with patch.object(isolation_check, "run", side_effect=raised):
+            resp = client.post("/api/isolation-check", headers={"Authorization": f"Bearer {worker_api.API_KEY}"})
+        assert resp.status_code == code
+        detail = resp.json()["detail"]
+        assert detail["error"] == error and "/var/run" not in detail["message"]
+        # The UI proxy forwards this shape instead of "Worker request failed".
+        forwarded = main_module._safe_worker_detail(resp)
+        assert forwarded == {"error": error, "message": detail["message"]}
 
 
 def test_mysterium_blackholes_cgnat_and_metadata_for_its_customers():

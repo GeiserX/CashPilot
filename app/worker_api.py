@@ -1613,22 +1613,30 @@ async def api_runtimes(request: Request) -> dict[str, Any]:
     }
 
 
-@app.get("/api/isolation-check")
+@app.post("/api/isolation-check")
 async def api_isolation_check(request: Request) -> dict[str, Any]:
     """What an earner on this host can reach (issue #451).
 
     Starts two short-lived probe containers from the worker's own image and
     removes them on every path. Creates nothing else and changes no firewall
-    rule; see app/isolation_check.py.
+    rule; see app/isolation_check.py. The errors are structured so the UI
+    forwards them (main._safe_worker_detail).
     """
     _verify_api_key(request)
     try:
         return await asyncio.to_thread(isolation_check.run)
     except isolation_check.CheckBusy as exc:
-        raise HTTPException(status_code=409, detail=str(exc))
-    except RuntimeError as exc:
-        # No Docker socket, the same outage split as the rest of this API.
-        raise HTTPException(status_code=503, detail=str(exc))
+        raise HTTPException(status_code=409, detail={"error": "isolation_check_busy", "message": str(exc)})
+    except RuntimeError:
+        # No Docker socket, the same outage split as the rest of this API. A
+        # fixed message: the exception text can name internal paths.
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "error": "isolation_check_unavailable",
+                "message": "The worker cannot reach the Docker socket, so it cannot run the check.",
+            },
+        )
 
 
 @app.get("/api/update/info")
