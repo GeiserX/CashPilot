@@ -1,0 +1,218 @@
+name: EarnApp image
+
+# drumsergio/cashpilot-earnapp: CashPilot's own EarnApp container
+# (images/earnapp/README.md says why it exists and what it never contains).
+#
+# - pull_request: build all three platforms, smoke-test under CashPilot's
+#   hardening, verify every pinned sha256. Pushes nothing.
+# - push to main: the same tests, then publish <version> and <version>-r<revision>.
+# - schedule (daily): read the version Bright Data's installer serves; when it
+#   moved, run the same tests on the bumped pin and open a PR with it. The CDN
+#   keeps only the served build, so a stale pin falls back at runtime (see
+#   entrypoint.sh); the daily bump keeps that window short.
+
+on:
+  pull_request:
+    paths:
+      - "images/earnapp/**"
+      - ".github/workflows/earnapp-image.yml"
+  push:
+    branches: [main]
+    paths:
+      - "images/earnapp/**"
+      - ".github/workflows/earnapp-image.yml"
+  schedule:
+    - cron: "41 5 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: earnapp-image-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  REPO: drumsergio/cashpilot-earnapp
+
+jobs:
+  # Not named `test`: that is the required check from test.yml in the ruleset.
+  image:
+    if: github.event_name == 'pull_request' || github.event_name == 'push'
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.tag.outputs.version }}
+      tag: ${{ steps.tag.outputs.tag }}
+      published: ${{ steps.tag.outputs.published }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Shellcheck
+        run: shellcheck images/earnapp/*.sh
+
+      - name: Work out the tag, and refuse to reuse a published one
+        id: tag
+        env:
+          # The PR's base, or on push the commit main was at before it.
+          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          version=$(tr -d '[:space:]' < images/earnapp/VERSION)
+          revision=$(tr -d '[:space:]' < images/earnapp/REVISION)
+          tag="$version-r$revision"
+          code=$(curl -s -o /dev/null -w '%{http_code}' "https://hub.docker.com/v2/repositories/$REPO/tags/$tag")
+          case "$code" in
+            200) published=true ;;
+            404) published=false ;;
+            *) echo "::error::Docker Hub answered $code for $REPO:$tag; cannot tell whether it is published"; exit 1 ;;
+          esac
+          echo "$REPO:$tag published: $published"
+          if [ "$published" = true ] && [ -n "$BASE" ] && \
+             ! git diff --quiet "$BASE" HEAD -- images/earnapp/Dockerfile images/earnapp/entrypoint.sh images/earnapp/health.sh images/earnapp/VERSION images/earnapp/SHA256SUMS; then
+            echo "::error::This change alters what goes into the image, but $REPO:$tag is already published, so main would skip it. Raise images/earnapp/REVISION so main publishes a new tag."
+            exit 1
+          fi
+          {
+            echo "version=$version"
+            echo "tag=$tag"
+            echo "published=$published"
+          } >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4
+
+      - name: Build every platform, smoke-test amd64, verify arm64 and arm/v7
+        run: images/earnapp/test.sh
+
+  # Runs on every push to main, also when the tag is already published, so a
+  # rerun checks the live tag again instead of skipping it.
+  publish:
+    needs: image
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - if: needs.image.outputs.published == 'false'
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7
+        with:
+          context: images/earnapp
+          platforms: linux/amd64,linux/arm64,linux/arm/v7
+          push: true
+          # Never :latest. <version>-r<revision> never changes once pushed;
+          # <version> follows the newest revision of that EarnApp version.
+          tags: |
+            ${{ env.REPO }}:${{ needs.image.outputs.tag }}
+            ${{ env.REPO }}:${{ needs.image.outputs.version }}
+      # A push that wrote <version>-r<revision> but not <version> leaves the
+      # alias behind, and the next run skips the build. Point it at this
+      # revision, but only while this commit is still main's head, so a rerun
+      # of an older run never moves the alias backwards.
+      - name: Point <version> at this revision
+        if: needs.image.outputs.published == 'true'
+        env:
+          TAG: ${{ needs.image.outputs.tag }}
+          VERSION: ${{ needs.image.outputs.version }}
+        run: |
+          head=$(git ls-remote origin refs/heads/main | cut -f1)
+          if [ "$head" != "$GITHUB_SHA" ]; then
+            echo "main is at $head now, not $GITHUB_SHA; leaving $REPO:$VERSION alone"
+            exit 0
+          fi
+          want=$(docker buildx imagetools inspect "$REPO:$TAG" --format '{{.Manifest.Digest}}')
+          have=$(docker buildx imagetools inspect "$REPO:$VERSION" --format '{{.Manifest.Digest}}' 2>/dev/null || true)
+          if [ "$want" = "$have" ]; then
+            echo "$REPO:$VERSION already points at $TAG ($want)"
+          else
+            echo "$REPO:$VERSION is at ${have:-nothing}; pointing it at $TAG ($want)"
+            docker buildx imagetools create -t "$REPO:$VERSION" "$REPO:$TAG"
+          fi
+      # The pushed image is a fresh build, not the one test.sh ran, so check
+      # what users will pull: every platform fetches and verifies its build.
+      - name: Verify the pushed tag on every platform
+        env:
+          TAG: ${{ needs.image.outputs.tag }}
+          VERSION: ${{ needs.image.outputs.version }}
+        run: |
+          for platform in linux/amd64 linux/arm64 linux/arm/v7; do
+            echo "== $platform"
+            out=$(docker run --rm --pull always --platform "$platform" --cap-drop ALL \
+              --security-opt no-new-privileges:true --pids-limit 512 --memory 256m "$REPO:$TAG" verify)
+            echo "$out"
+            if ! grep -q "sha256 matches the pin" <<<"$out" || ! grep -qF "$VERSION" <<<"$out"; then
+              echo "::error::$REPO:$TAG on $platform did not verify the pinned $VERSION"
+              exit 1
+            fi
+          done
+
+  description:
+    needs: [image, publish]
+    # After the publish job, which runs on every push to main.
+    if: always() && github.event_name == 'push' && needs.image.result == 'success' && needs.publish.result != 'failure'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: peter-evans/dockerhub-description@1b9a80c056b620d92cedb9d9b5a223409c68ddfa # v5
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          repository: ${{ env.REPO }}
+          readme-filepath: images/earnapp/README.md
+          short-description: "Unofficial EarnApp lite container for CashPilot: fetches the pinned build from Bright Data, checks its sha256"
+
+  bump:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Read the version Bright Data serves
+        id: bump
+        run: |
+          before=$(cat images/earnapp/VERSION)
+          images/earnapp/bump.sh
+          after=$(cat images/earnapp/VERSION)
+          echo "from=$before" >> "$GITHUB_OUTPUT"
+          echo "to=$after" >> "$GITHUB_OUTPUT"
+          [ "$before" != "$after" ] && echo "changed=true" >> "$GITHUB_OUTPUT" || echo "changed=false" >> "$GITHUB_OUTPUT"
+
+      # A PR opened with GITHUB_TOKEN does not start this workflow's
+      # pull_request run, so the bumped pin is tested here, before the PR exists.
+      - if: steps.bump.outputs.changed == 'true'
+        uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4
+      - if: steps.bump.outputs.changed == 'true'
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4
+      - name: Test the bumped pin on every platform
+        if: steps.bump.outputs.changed == 'true'
+        run: images/earnapp/test.sh
+
+      - name: Open or update the bump PR
+        if: steps.bump.outputs.changed == 'true'
+        uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8.1.1
+        with:
+          branch: chore/earnapp-image-bump
+          add-paths: |
+            images/earnapp/VERSION
+            images/earnapp/SHA256SUMS
+            images/earnapp/REVISION
+          commit-message: "chore(earnapp-image): pin EarnApp ${{ steps.bump.outputs.to }}"
+          title: "chore(earnapp-image): pin EarnApp ${{ steps.bump.outputs.to }}, the build Bright Data serves now (was ${{ steps.bump.outputs.from }})"
+          body: |
+            Bright Data's installer now serves EarnApp ${{ steps.bump.outputs.to }}; the image pins ${{ steps.bump.outputs.from }}.
+
+            This moves the pin and the three sha256 values, read from the CDN's own `.sha256` files. Those hashes are not signed: they catch a swapped or corrupt file only from here on, so check that the version jump looks like a normal release before merging.
+
+            The bumped pin was built for amd64, arm64 and arm/v7 and tested in this run, before the PR was opened (smoke test under CashPilot's hardening on amd64, download and `earnapp --version` on the arm builds): ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+            Merging publishes `${{ env.REPO }}:${{ steps.bump.outputs.to }}-r1`. Then point `services/bandwidth/earnapp.yml` at it. Until then, devices on the old tag that have no cached binary fall back to the served build at start and log a warning.
+
+            This PR was opened with the workflow token, so GitHub starts no pull_request checks on it and the ruleset's required `test` and `build (strict)` never report. It changes only `images/earnapp/`, which this run already tested; merge it with the admin bypass.
