@@ -78,7 +78,8 @@ If you change the volumes in the deploy form to host directories instead, write 
 
 ## Docker Configuration
 
-- **Image:** `drumsergio/cashpilot-anyone:0.4.10.2-r1`, CashPilot's own build of the project's signed `anon` package. It runs as `anond` (uid 100, gid 101) with no added capabilities. An existing `anonrc` with a `User anond` line still works.
+- **Image:** `drumsergio/cashpilot-anyone:0.4.10.2-r2`, CashPilot's own build of the project's signed `anon` package. It runs as `anond` (uid 100, gid 101) with no added capabilities. An existing `anonrc` with a `User anond` line still works.
+- **Memory:** anon sizes its cell queues from the host's RAM, not the container's limit, so the image sets `MaxMemInQueues` to half the 1536 MB limit (768 MB) unless your `anonrc` sets it. A value you add to `anonrc` later applies on the next restart, not on a reload.
 - **Platforms:** linux/amd64, linux/arm64
 
 ### Environment Variables
