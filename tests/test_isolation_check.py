@@ -79,6 +79,7 @@ class FakeDocker:
         self.resolvers = resolvers or []
         self.runs: list[dict] = []
         self.removed: list[str] = []
+        self.removed_with_volumes: list[str] = []
         self.live: set[str] = set()
         self.containers = MagicMock()
         self.containers.run.side_effect = self._run
@@ -97,7 +98,14 @@ class FakeDocker:
         if name not in self.live:
             raise isolation_check.orchestrator.NotFound("gone")
         c = MagicMock()
-        c.remove.side_effect = lambda force=False: (self.removed.append(name), self.live.discard(name))
+
+        def remove(force=False, v=False):
+            self.removed.append(name)
+            if v:
+                self.removed_with_volumes.append(name)
+            self.live.discard(name)
+
+        c.remove.side_effect = remove
         return c
 
     def _run(self, **kwargs):
@@ -279,6 +287,13 @@ class TestProbesAreAlwaysRemoved:
         _check(fake)
         assert fake.live == set()
         assert {isolation_check.HOST_PROBE, isolation_check.EARNER_PROBE} <= set(fake.removed)
+
+    def test_removal_takes_the_anonymous_data_volume_too(self):
+        # The worker image declares VOLUME /data, so each probe gets an
+        # anonymous volume that outlives a removal without v=True.
+        fake = FakeDocker(_ok(GATEWAY), INTERNET_OK)
+        _check(fake)
+        assert fake.removed and fake.removed_with_volumes == fake.removed
 
     def test_a_second_check_while_one_runs_is_refused(self):
         assert isolation_check._lock.acquire(blocking=False)

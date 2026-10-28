@@ -86,17 +86,18 @@ this release or later.
 
 The worker starts two short-lived containers from its own image, so it pulls
 nothing. They have no capabilities, run as `nobody`, and the worker removes
-them when the check ends, whether it passed, failed or timed out. It touches no
-firewall rule.
+them and their volumes when the check ends, whether it passed, failed or timed
+out. It touches no firewall rule.
 
 1. **The control** runs on the host's network. It collects addresses to try:
    the default gateway, the host's own addresses with ports it listens on, your
-   private DNS resolvers, `100.100.100.100` and one tailnet peer when Tailscale
-   runs, and `169.254.169.254`. It keeps only the ones that answer from the
-   host, so a closed port can never pass for a blocked one. The host's LAN and
-   tailnet addresses and the earner's own bridge gateway are always tried. On a
-   host with many Docker networks, the other bridge gateways are tried up to a
-   limit, and the result counts the ones it left out.
+   private DNS resolvers, `100.100.100.100` when Tailscale runs, one tailnet
+   peer when the host has a connection open to one, and `169.254.169.254`. It
+   keeps only the ones that answer from the host, so a closed port can never
+   pass for a blocked one. The host's LAN and tailnet addresses and the
+   earner's own bridge gateway are always tried. On a host with many Docker
+   networks, the other bridge gateways are tried up to a limit, and the result
+   counts the ones it left out.
 2. **The earner side** joins a running earner's network, or
    [`CASHPILOT_CONTAINER_NETWORK`](home-network-security.md#put-the-containers-on-their-own-bridge)
    when no earner runs, and tries the same addresses. It also tries

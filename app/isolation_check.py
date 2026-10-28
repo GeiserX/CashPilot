@@ -6,13 +6,14 @@ its own chain ahead of DOCKER-USER, a script flushes another script's rules, a
 service lands on Docker's default bridge. This module tells the truth about the
 result, in the same stance as ``app.lan_isolation``: it changes no firewall rule
 and leaves nothing behind. It only starts two short-lived probe containers from
-the worker's own image, and removes them on every path.
+the worker's own image, and removes them and their volumes on every path.
 
 1. **Control.** A probe on host networking lists targets the worker could not
    guess (default gateway, the host's addresses with ports it listens on,
-   private resolvers, Tailscale's 100.100.100.100 and one tailnet peer, cloud
-   metadata) and keeps only the ones that answer from the host. A closed port
-   therefore never counts as "blocked", which is what lets this check fail.
+   private resolvers, Tailscale's 100.100.100.100 and one tailnet peer the host
+   has a connection open to, cloud metadata) and keeps only the ones that
+   answer from the host. A closed port therefore never counts as "blocked",
+   which is what lets this check fail.
    Addresses on real interfaces and the earner's own gateway are always
    listed; other Docker bridge gateways fill a cap, and the rest are reported.
 2. **Earner side.** A second probe joins a running earner's network namespace
@@ -222,7 +223,9 @@ if __name__ == "__main__":
 
 def _remove_probe(client: Any, name: str) -> None:
     with contextlib.suppress(Exception):
-        client.containers.get(name).remove(force=True)
+        # v=True: the worker image declares VOLUME /data, and without it each
+        # probe's anonymous volume outlives the container.
+        client.containers.get(name).remove(force=True, v=True)
 
 
 def run_probe(
