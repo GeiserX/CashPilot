@@ -26,10 +26,10 @@ for platform in linux/amd64 linux/arm64 linux/arm/v7; do
 		out=$(docker run --rm --platform "$platform" --cap-drop ALL --security-opt no-new-privileges:true \
 			--pids-limit 512 --memory 256m "$img" verify)
 		echo "$out"
-		grep -q "sha256 matches the pin" <<<"$out" && grep -qF "$VERSION" <<<"$out" || {
+		if ! grep -q "sha256 matches the pin" <<<"$out" || ! grep -qF "$VERSION" <<<"$out"; then
 			echo "FAILED: $platform did not verify and report $VERSION" >&2
 			exit 1
-		}
+		fi
 	fi
 done
 echo "All platforms passed"
