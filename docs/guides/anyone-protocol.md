@@ -41,7 +41,6 @@ No account creation is needed. Anyone Protocol relays are permissionless -- you 
 Anyone Protocol requires an `anonrc` configuration file. Create it before deploying:
 
 ```
-User anond
 DataDirectory /var/lib/anon
 Log [~guard]notice [guard]warn file /etc/anon/notices.log
 ORPort 9001 IPv4Only
@@ -51,7 +50,7 @@ ContactInfo your@email.com
 AgreeToTerms 1
 ```
 
-There is no `ControlSocket` in this config on purpose. Nothing uses the control socket: CashPilot reads earnings by relay fingerprint, and the image has no healthcheck that needs it. When it is configured, the relay refuses to create it in a `/run/anon` that other users can read, which is how Docker creates that directory, and it logs two warnings a minute. Over six months that grew `notices.log` to about 150 MB. `IPv4Only` stops an hourly notice about a missing IPv6 address; leave it off if your relay has a public IPv6 address.
+There is no `ControlSocket` in this config on purpose. Nothing uses the control socket: CashPilot reads earnings by relay fingerprint, and the image's healthcheck only checks that the ORPort is listening. When it is configured, the relay refuses to create it in a `/run/anon` that other users can read, which is how Docker creates that directory, and it logs two warnings a minute. Over six months that grew `notices.log` to about 150 MB. `IPv4Only` stops an hourly notice about a missing IPv6 address; leave it off if your relay has a public IPv6 address.
 
 The `Log` line keeps every notice except those from guard selection, where only warnings get through. On the Anyone network the relay's own circuits often run out of distinct guards, and each time it logs "All current guards excluded by path restriction type 2", about once a minute. That notice is harmless ([Tor issue 40886](https://gitlab.torproject.org/tpo/core/tor/-/issues/40886)) and would otherwise add about 55 MB to the log every six months. Do not set `ConfluxEnabled 0` to silence it: on a relay that logs an hourly warning and risks the relay being flagged.
 
@@ -79,15 +78,13 @@ If you change the volumes in the deploy form to host directories instead, write 
 
 ## Docker Configuration
 
-- **Image:** `ghcr.io/anyone-protocol/ator-protocol`
+- **Image:** `drumsergio/cashpilot-anyone:0.4.10.2-r1`, CashPilot's own build of the project's signed `anon` package. It runs as `anond` (uid 100, gid 101) with no added capabilities. An existing `anonrc` with a `User anond` line still works.
 - **Platforms:** linux/amd64, linux/arm64
 
 ### Environment Variables
 
-| Variable | Label | Required | Secret | Description |
-|----------|-------|:--------:|:------:|-------------|
-| `CONTACT_EMAIL` | Contact Email | No | No | Operator email (set in anonrc ContactInfo if not already present) |
+None. Nickname, ContactInfo and everything else go in `anonrc`.
 
 ### Required Configuration
 
-The `anonrc` file must contain `AgreeToTerms 1` to accept the [Anyone Protocol Terms](https://www.anyone.io/terms). The entrypoint script only handles Nickname and ContactInfo -- the terms check is in the `anon` binary itself.
+The `anonrc` file must contain `AgreeToTerms 1` to accept the [Anyone Protocol Terms](https://www.anyone.io/terms). The image changes nothing in it: the terms check is in the `anon` binary itself.

@@ -757,7 +757,7 @@ const CP = (() => {
       known.length > 1 ? `Showing the tightest of ${known.length} hosts running this service.` : '',
       unreported > 0 ? `${unreported} host${unreported > 1 ? 's' : ''} did not report.` : '',
     ].filter(Boolean).join(' ');
-    const warn = usedPct >= 90 ? ' style="color:var(--danger);"' : usedPct >= 80 ? ' style="color:var(--warning);"' : '';
+    const warn = usedPct >= 90 ? ' style="color:var(--error);"' : usedPct >= 80 ? ' style="color:var(--warning);"' : '';
     return `<span${warn} title="${escapeHtml(detail)}">${fmtBytes(free)}</span>`;
   }
 
@@ -2944,7 +2944,7 @@ const CP = (() => {
   //
   // Worst first, because the only rows that need acting on are the bad ones.
   const CREDENTIAL_STATUS = {
-    likely_expired: {rank: 0, label: 'Likely expired', tone: 'var(--danger)'},
+    likely_expired: {rank: 0, label: 'Likely expired', tone: 'var(--error)'},
     expiring_soon: {rank: 1, label: 'Expiring soon', tone: 'var(--warning)'},
     no_known_expiry: {rank: 2, label: 'No known expiry', tone: 'var(--text-muted)'},
     fresh: {rank: 3, label: 'Fresh', tone: 'var(--success)'},

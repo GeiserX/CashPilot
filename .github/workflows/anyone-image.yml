@@ -1,0 +1,213 @@
+name: Anyone Protocol image
+
+# drumsergio/cashpilot-anyone: CashPilot's own Anyone Protocol relay container
+# (images/anyone-protocol/README.md says why it exists).
+#
+# - pull_request: check the vendor key, build amd64 and arm64, smoke-test
+#   amd64 under CashPilot's hardening (including taking over a relay the
+#   vendor image created), run anon --version on arm64. Pushes nothing.
+# - push to main: the same tests, then publish <anon version> and
+#   <anon version>-r<revision>.
+# - schedule (weekly): read the newest anon in the vendor's live bookworm
+#   repository; when it moved, run the same tests on the bumped pin and open a
+#   PR with it.
+
+on:
+  pull_request:
+    paths:
+      - "images/anyone-protocol/**"
+      - "services/depin/anyone-protocol.yml"
+      - ".github/workflows/anyone-image.yml"
+  push:
+    branches: [main]
+    paths:
+      - "images/anyone-protocol/**"
+      - ".github/workflows/anyone-image.yml"
+  schedule:
+    - cron: "17 6 * * 2"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: anyone-image-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  REPO: drumsergio/cashpilot-anyone
+
+jobs:
+  # Not named `test`: that is the required check from test.yml in the ruleset.
+  image:
+    if: github.event_name == 'pull_request' || github.event_name == 'push'
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.tag.outputs.version }}
+      tag: ${{ steps.tag.outputs.tag }}
+      published: ${{ steps.tag.outputs.published }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Shellcheck
+        run: shellcheck images/anyone-protocol/*.sh
+
+      - name: Work out the tag, and refuse to reuse a published one
+        id: tag
+        env:
+          # The PR's base, or on push the commit main was at before it.
+          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          deb=$(tr -d '[:space:]' < images/anyone-protocol/VERSION)
+          version=${deb%%-live*}
+          revision=$(tr -d '[:space:]' < images/anyone-protocol/REVISION)
+          tag="$version-r$revision"
+          code=$(curl -s -o /dev/null -w '%{http_code}' "https://hub.docker.com/v2/repositories/$REPO/tags/$tag")
+          case "$code" in
+            200) published=true ;;
+            404) published=false ;;
+            *) echo "::error::Docker Hub answered $code for $REPO:$tag; cannot tell whether it is published"; exit 1 ;;
+          esac
+          echo "$REPO:$tag published: $published"
+          # <version> must point at the newest revision. A push that stopped
+          # between the two tags leaves it missing or stale, and nothing would
+          # repair it, because main skips a published revision.
+          if [ "$published" = true ]; then
+            digest() { curl -fsS "https://hub.docker.com/v2/repositories/$REPO/tags/$1" | jq -r '.digest // empty' || true; }
+            want=$(digest "$tag")
+            have=$(digest "$version")
+            if [ -z "$want" ] || [ "$want" != "$have" ]; then
+              echo "::error::$REPO:$version is at '${have:-missing}', not at $REPO:$tag ($want). Raise images/anyone-protocol/REVISION so main publishes both tags again."
+              exit 1
+            fi
+          fi
+          if [ "$published" = true ] && [ -n "$BASE" ] && \
+             ! git diff --quiet "$BASE" HEAD -- images/anyone-protocol/Dockerfile images/anyone-protocol/entrypoint.sh images/anyone-protocol/health.sh images/anyone-protocol/VERSION images/anyone-protocol/anon.asc; then
+            echo "::error::This change alters what goes into the image, but $REPO:$tag is already published, so main would skip it. Raise images/anyone-protocol/REVISION so main publishes a new tag."
+            exit 1
+          fi
+          {
+            echo "version=$version"
+            echo "tag=$tag"
+            echo "published=$published"
+          } >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4
+
+      - name: Check the key, build both platforms, smoke-test amd64, verify arm64
+        run: images/anyone-protocol/test.sh
+
+  publish:
+    needs: image
+    if: github.event_name == 'push' && needs.image.outputs.published == 'false'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7
+        with:
+          context: images/anyone-protocol
+          platforms: linux/amd64,linux/arm64
+          push: true
+          # Never :latest. <version>-r<revision> never changes once pushed;
+          # <version> follows the newest revision of that anon version.
+          tags: |
+            ${{ env.REPO }}:${{ needs.image.outputs.tag }}
+            ${{ env.REPO }}:${{ needs.image.outputs.version }}
+      # The pushed image is a fresh build, not the one test.sh ran, so check
+      # what users will pull on both platforms.
+      - name: Verify the pushed tag on every platform
+        env:
+          TAG: ${{ needs.image.outputs.tag }}
+          VERSION: ${{ needs.image.outputs.version }}
+        run: |
+          for platform in linux/amd64 linux/arm64; do
+            echo "== $platform"
+            out=$(docker run --rm --pull always --platform "$platform" --cap-drop ALL \
+              --security-opt no-new-privileges:true --pids-limit 512 --memory 1536m \
+              --entrypoint anon "$REPO:$TAG" --version)
+            echo "$out"
+            if ! grep -qF "Anon version $VERSION-live" <<<"$out"; then
+              echo "::error::$REPO:$TAG on $platform does not carry anon $VERSION"
+              exit 1
+            fi
+          done
+
+  description:
+    needs: [image, publish]
+    # After a publish, or on its own when only the README changed.
+    if: always() && github.event_name == 'push' && needs.image.result == 'success' && needs.publish.result != 'failure'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: peter-evans/dockerhub-description@1b9a80c056b620d92cedb9d9b5a223409c68ddfa # v5
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          repository: ${{ env.REPO }}
+          readme-filepath: images/anyone-protocol/README.md
+          short-description: "Unofficial Anyone Protocol relay for CashPilot: the vendor's signed anon package, no capabilities needed"
+
+  bump:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Read the newest anon in the vendor's repository
+        id: bump
+        run: |
+          before=$(cat images/anyone-protocol/VERSION)
+          images/anyone-protocol/bump.sh
+          after=$(cat images/anyone-protocol/VERSION)
+          changed=false
+          [ "$before" != "$after" ] && changed=true
+          {
+            echo "from=$before"
+            echo "to=$after"
+            echo "short=${after%%-live*}"
+            echo "revision=$(cat images/anyone-protocol/REVISION)"
+            echo "changed=$changed"
+          } >> "$GITHUB_OUTPUT"
+
+      # A PR opened with GITHUB_TOKEN does not start this workflow's
+      # pull_request run, so the bumped pin is tested here, before the PR exists.
+      - if: steps.bump.outputs.changed == 'true'
+        uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4
+      - if: steps.bump.outputs.changed == 'true'
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4
+      - name: Test the bumped pin on every platform
+        if: steps.bump.outputs.changed == 'true'
+        run: images/anyone-protocol/test.sh
+
+      - name: Open or update the bump PR
+        if: steps.bump.outputs.changed == 'true'
+        uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8.1.1
+        with:
+          branch: chore/anyone-image-bump
+          add-paths: |
+            images/anyone-protocol/VERSION
+            images/anyone-protocol/REVISION
+          commit-message: "chore(anyone-image): pin anon ${{ steps.bump.outputs.to }}"
+          title: "chore(anyone-image): pin anon ${{ steps.bump.outputs.to }}, the newest live release (was ${{ steps.bump.outputs.from }})"
+          body: |
+            The vendor's live bookworm repository now serves anon `${{ steps.bump.outputs.to }}`; the image pins `${{ steps.bump.outputs.from }}`.
+
+            This moves the pin. apt installs it only after checking the repository signature against the committed key, so the package is the vendor's.
+
+            The bumped pin was built for amd64 and arm64 and tested in this run, before the PR was opened (smoke test under CashPilot's hardening on amd64, including a takeover of a relay the vendor image created; `anon --version` on arm64): ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+            Merging publishes `${{ env.REPO }}:${{ steps.bump.outputs.short }}-r${{ steps.bump.outputs.revision }}`. Then point `services/depin/anyone-protocol.yml` at it.
+
+            This PR was opened with the workflow token, so GitHub starts no pull_request checks on it and the ruleset's required `test` and `build (strict)` never report. It changes only `images/anyone-protocol/`, which this run already tested; merge it with the admin bypass.

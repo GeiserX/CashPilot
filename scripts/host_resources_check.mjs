@@ -80,8 +80,8 @@ check('and says it is the tightest of several', /tightest of 2 hosts/.test(spann
 // was flagged and failed, because the code is right and the expectation was
 // wrong. Thresholds are 80% (warning) and 90% (danger), so the fixtures now
 // straddle them deliberately.
-check('a host at 76% is not yet flagged', !/var\(--warning\)|var\(--danger\)/.test(spanning), spanning);
-check('a roomy host is not flagged', !/var\(--danger\)/.test(one), one);
+check('a host at 76% is not yet flagged', !/var\(--warning\)|var\(--error\)/.test(spanning), spanning);
+check('a roomy host is not flagged', !/var\(--error\)/.test(one), one);
 
 api.setHosts(api.buildHostResourceMap([
   ...FLEET,
@@ -91,7 +91,7 @@ api.setHosts(api.buildHostResourceMap([
 const warned = api.diskCell(svc(4));
 const danger = api.diskCell(svc(5));
 check('a host at 85% is warned', /var\(--warning\)/.test(warned), warned);
-check('a host at 96% escalates to danger', /var\(--danger\)/.test(danger), danger);
+check('a host at 96% escalates to danger', /var\(--error\)/.test(danger), danger);
 check('the used percentage is stated, not just free space', /85% used/.test(warned), warned);
 api.setHosts(api.buildHostResourceMap(FLEET));
 
@@ -200,7 +200,7 @@ api.setHosts(api.buildHostResourceMap(REAL));
 
 const ct = api.diskCell(svc(3));
 check('the real tightest host is surfaced', /23 GB/.test(ct), ct);
-check('and flagged, since 76% is under the 80% threshold it is NOT', !/var\(--danger\)/.test(ct), ct);
+check('and flagged, since 76% is under the 80% threshold it is NOT', !/var\(--error\)/.test(ct), ct);
 const fleetWide = api.diskCell(svc(1, 2, 3));
 check('a service across the whole real fleet reports the tightest', /23 GB/.test(fleetWide), fleetWide);
 
