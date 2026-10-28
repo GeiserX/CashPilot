@@ -42,14 +42,20 @@ wait_for() {
 	done
 	return 1
 }
-logs_have() { docker logs "$1" 2>&1 | grep -qF -- "$2"; }
+# Capture first: under pipefail, grep -q closing the pipe early can fail
+# docker logs with SIGPIPE and turn a present message into a miss.
+logs_have() {
+	local out
+	out=$(docker logs "$1" 2>&1)
+	grep -qF -- "$2" <<<"$out"
+}
 exit_code() { docker inspect -f '{{.State.ExitCode}}' "$1"; }
 
 echo "== $IMAGE"
 
 echo "-- the image carries no Bright Data code"
 check "no earnapp binary in the image" \
-	docker run --rm --entrypoint sh "$IMAGE" -c '! find / -xdev -name "earnapp-*" -type f | grep -q . && [ ! -e /usr/bin/earnapp ]'
+	docker run --rm --entrypoint sh "$IMAGE" -c '! find / -xdev -name "earnapp*" -type f | grep -q . && [ ! -e /usr/bin/earnapp ]'
 
 echo "-- fails closed"
 docker run --name "$P-nouuid" "${HARDEN[@]}" -v "$P-nouuid:/etc/earnapp" "$IMAGE" >/dev/null 2>&1
@@ -96,6 +102,7 @@ echo "-- restarts earnapp run inside the container, not the container"
 # find it through /proc.
 docker exec "$P-run" bash -c 'for d in /proc/[0-9]*; do tr "\0" " " <"$d/cmdline" 2>/dev/null | grep -q "^/usr/bin/earnapp run" && kill -9 "${d#/proc/}"; done' >/dev/null 2>&1
 check "logs an internal restart" wait_for 15 logs_have "$P-run" "the container itself keeps running"
+check "earnapp run is back after the backoff" wait_for 60 docker exec "$P-run" /usr/local/bin/cashpilot-earnapp-health
 check "container kept running" test "$(docker inspect -f '{{.State.Running}}' "$P-run")" = true
 check "container restart count is 0" test "$(docker inspect -f '{{.RestartCount}}' "$P-run")" = 0
 
@@ -111,10 +118,17 @@ docker rm "$P-run" >/dev/null
 docker run -d --name "$P-run2" "${HARDEN[@]}" -e EARNAPP_UUID="$uuid" -v "$P-data:/etc/earnapp" "$IMAGE" >/dev/null
 check "uses the cached copy" wait_for 30 logs_have "$P-run2" "Using cached"
 check "does not download again" bash -c "! docker logs $P-run2 2>&1 | grep -q Downloading"
+docker rm -f "$P-run2" >/dev/null
+
+echo "-- a cached binary that lost its execute bit still runs"
+docker run --rm -v "$P-data:/etc/earnapp" --entrypoint sh "$IMAGE" -c 'chmod 644 /etc/earnapp/bin/earnapp-*'
+docker run --name "$P-noexec" "${HARDEN[@]}" -v "$P-data:/etc/earnapp" "$IMAGE" verify >/dev/null 2>&1
+check "verify exits 0 on the cached copy" test "$(exit_code "$P-noexec")" = 0
+check "uses the cached copy, no download" bash -c "! docker logs $P-noexec 2>&1 | grep -q Downloading"
 
 if ((FAILURES)); then
-	echo "-- logs of $P-run2"
-	docker logs --tail 30 "$P-run2" 2>&1
+	echo "-- logs of $P-noexec"
+	docker logs --tail 30 "$P-noexec" 2>&1
 	echo "FAILED: $FAILURES check(s)"
 	exit 1
 fi

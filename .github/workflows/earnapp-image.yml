@@ -85,9 +85,11 @@ jobs:
       - name: Build every platform, smoke-test amd64, verify arm64 and arm/v7
         run: images/earnapp/test.sh
 
+  # Runs on every push to main, also when the tag is already published, so a
+  # rerun checks the live tag again instead of skipping it.
   publish:
     needs: image
-    if: github.event_name == 'push' && needs.image.outputs.published == 'false'
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -97,7 +99,8 @@ jobs:
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
-      - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7
+      - if: needs.image.outputs.published == 'false'
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7
         with:
           context: images/earnapp
           platforms: linux/amd64,linux/arm64,linux/arm/v7
@@ -107,6 +110,29 @@ jobs:
           tags: |
             ${{ env.REPO }}:${{ needs.image.outputs.tag }}
             ${{ env.REPO }}:${{ needs.image.outputs.version }}
+      # A push that wrote <version>-r<revision> but not <version> leaves the
+      # alias behind, and the next run skips the build. Point it at this
+      # revision, but only while this commit is still main's head, so a rerun
+      # of an older run never moves the alias backwards.
+      - name: Point <version> at this revision
+        if: needs.image.outputs.published == 'true'
+        env:
+          TAG: ${{ needs.image.outputs.tag }}
+          VERSION: ${{ needs.image.outputs.version }}
+        run: |
+          head=$(git ls-remote origin refs/heads/main | cut -f1)
+          if [ "$head" != "$GITHUB_SHA" ]; then
+            echo "main is at $head now, not $GITHUB_SHA; leaving $REPO:$VERSION alone"
+            exit 0
+          fi
+          want=$(docker buildx imagetools inspect "$REPO:$TAG" --format '{{.Manifest.Digest}}')
+          have=$(docker buildx imagetools inspect "$REPO:$VERSION" --format '{{.Manifest.Digest}}' 2>/dev/null || true)
+          if [ "$want" = "$have" ]; then
+            echo "$REPO:$VERSION already points at $TAG ($want)"
+          else
+            echo "$REPO:$VERSION is at ${have:-nothing}; pointing it at $TAG ($want)"
+            docker buildx imagetools create -t "$REPO:$VERSION" "$REPO:$TAG"
+          fi
       # The pushed image is a fresh build, not the one test.sh ran, so check
       # what users will pull: every platform fetches and verifies its build.
       - name: Verify the pushed tag on every platform
@@ -127,7 +153,7 @@ jobs:
 
   description:
     needs: [image, publish]
-    # After a publish, or on its own when only the README changed.
+    # After the publish job, which runs on every push to main.
     if: always() && github.event_name == 'push' && needs.image.result == 'success' && needs.publish.result != 'failure'
     runs-on: ubuntu-latest
     steps:

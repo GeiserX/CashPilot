@@ -21,6 +21,9 @@ PIN_DIR=/opt/cashpilot-earnapp
 CDN_BASE=https://cdn-earnapp.b-cdn.net/static
 INSTALLER=https://brightdata.com/static/earnapp/install.sh
 EARNAPP=/usr/bin/earnapp # a symlink to $BIN_DIR/earnapp, made in the Dockerfile
+# Give up on a transfer that stalls (under 1 KB/s for 60 s) instead of hanging
+# at startup forever; the container then exits and its restart policy retries.
+CURL=(curl --retry 3 --connect-timeout 20 --speed-time 60 --speed-limit 1024)
 
 log() { echo "[cashpilot-earnapp] $*"; }
 die() {
@@ -59,6 +62,8 @@ use_build() {
 	mkdir -p "$BIN_DIR"
 	if [[ -f "$cached" ]]; then
 		if [[ "$(sha_of "$cached")" == "$expected" ]]; then
+			# A volume restored from a backup can lose the execute bit.
+			chmod 755 "$cached"
 			log "Using cached $file (sha256 matches $what)"
 		else
 			log "Cached $file does not match its sha256; downloading it again"
@@ -68,7 +73,7 @@ use_build() {
 	if [[ ! -f "$cached" ]]; then
 		local tmp="$BIN_DIR/.download" code got
 		log "Downloading $CDN_BASE/$file"
-		code=$(curl -sSL --retry 3 --connect-timeout 20 -o "$tmp" -w '%{http_code}' "$CDN_BASE/$file") || code=failed
+		code=$("${CURL[@]}" -sSL -o "$tmp" -w '%{http_code}' "$CDN_BASE/$file") || code=failed
 		if [[ "$code" != 200 ]]; then
 			rm -f "$tmp"
 			if [[ "$code" == 404 ]]; then
@@ -98,13 +103,13 @@ use_build() {
 # from, without a person looking at it first; the log says so on every start.
 use_served_build() {
 	local served file line hash
-	served=$(curl -fsSL --retry 3 --connect-timeout 20 "$INSTALLER" | sed -nE 's/^VERSION="([0-9]+\.[0-9]+\.[0-9]+)"$/\1/p' | head -n1) ||
+	served=$("${CURL[@]}" -fsSL "$INSTALLER" | sed -nE 's/^VERSION="([0-9]+\.[0-9]+\.[0-9]+)"$/\1/p' | head -n1) ||
 		die "the pinned $FILE is gone from the CDN and $INSTALLER could not be read. Nothing was started."
 	[[ -n "$served" ]] || die "the pinned $FILE is gone from the CDN and $INSTALLER names no VERSION. Nothing was started."
 	[[ "$(printf '%s\n' "$VERSION" "$served" | sort -V | tail -n1)" == "$served" && "$served" != "$VERSION" ]] ||
 		die "the pinned $FILE is gone from the CDN and the installer serves $served, which is not newer. Nothing was started."
 	file="earnapp-ssl3-$arch-$served"
-	line=$(curl -fsSL --retry 3 --connect-timeout 20 "$CDN_BASE/$file.sha256") ||
+	line=$("${CURL[@]}" -fsSL "$CDN_BASE/$file.sha256") ||
 		die "no sha256 file for $file on the CDN. Nothing was started."
 	hash=${line%% *}
 	[[ "$hash" =~ ^[0-9a-f]{64}$ && "$line" == *"$file" ]] || die "unexpected sha256 file for $file: $line"

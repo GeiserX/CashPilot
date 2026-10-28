@@ -44,7 +44,9 @@ for arch in "${ARCHES[@]}"; do
 	sums+="$hash  $file"$'\n'
 done
 
+# VERSION goes last: it is what marks the bump done. A run interrupted before
+# it leaves the old VERSION, so the next run redoes the whole bump.
 printf '%s' "$sums" >"$DIR/SHA256SUMS"
-printf '%s\n' "$version" >"$DIR/VERSION"
 printf '1\n' >"$DIR/REVISION"
+printf '%s\n' "$version" >"$DIR/VERSION"
 echo "$version (was $current)"

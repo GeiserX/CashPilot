@@ -16,7 +16,7 @@ It runs under the hardening CashPilot gives every earner: all capabilities dropp
 
 ## Use
 
-CashPilot deploys it for you. By hand:
+CashPilot's EarnApp entry (`services/bandwidth/earnapp.yml`) still deploys `fazalfarhan01/earnapp:lite`; switching it to this image is a separate change. Until then, run it by hand:
 
 ```sh
 docker run -d --name earnapp \
