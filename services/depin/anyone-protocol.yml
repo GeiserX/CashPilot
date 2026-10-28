@@ -81,7 +81,7 @@ collector:
   # guidance on screen.
   credential_hint: >
     Comma-separated relay fingerprints. This one is not in a web dashboard:
-    run <b>docker exec cashpilot-anyone-protocol anon --list-fingerprint</b> on
+    run <b>docker exec cashpilot-anyone-protocol cat /var/lib/anon/fingerprint</b> on
     the host running the relay, or look the relay up at
     <a href="https://api.ec.anyone.tech/relays/">api.ec.anyone.tech/relays/</a>.
   notes: "Queries AO relay-rewards contract by fingerprint, converts ANYONE tokens to USD via CoinGecko."
