@@ -33,6 +33,8 @@ from typing import Any
 from urllib.parse import urlsplit
 
 import httpx
+import requests
+from docker.errors import DockerException
 from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
@@ -626,6 +628,9 @@ async def _send_heartbeat() -> None:
     except Exception as exc:
         logger.warning("Failed to get container status for heartbeat: %s", exc)
 
+    # The isolation check needs the Docker socket, so a worker without one
+    # does not offer it in "features": the button could only fail.
+    docker_ok = await asyncio.to_thread(orchestrator.docker_available)
     payload = {
         "name": WORKER_NAME,
         "client_id": CLIENT_ID,
@@ -635,7 +640,7 @@ async def _send_heartbeat() -> None:
             "os": f"{platform.system()} {platform.release()}",
             "arch": platform.machine(),
             "hostname": socket.gethostname(),
-            "docker_available": await asyncio.to_thread(orchestrator.docker_available),
+            "docker_available": docker_ok,
             # So the UI can tell an operator when the two halves are different
             # releases. An older worker sends nothing here, which reads as
             # unknown rather than as a mismatch (CashPilot-l6c).
@@ -643,7 +648,7 @@ async def _send_heartbeat() -> None:
             # What this worker can do that an older one cannot. The UI sends a
             # second copy of a service only to a worker listing "instances": an
             # older worker would read the deploy as the first copy and replace it.
-            "features": ["instances", "isolation_check"],
+            "features": ["instances", "isolation_check"] if docker_ok else ["instances"],
             # Providers count devices per public IP, so the UI needs the address
             # the provider sees — not this container's LAN or tailnet address.
             "egress_ip": await _detect_egress_ip(),
@@ -1627,14 +1632,16 @@ async def api_isolation_check(request: Request) -> dict[str, Any]:
         return await asyncio.to_thread(isolation_check.run)
     except isolation_check.CheckBusy as exc:
         raise HTTPException(status_code=409, detail={"error": "isolation_check_busy", "message": str(exc)})
-    except RuntimeError:
-        # No Docker socket, the same outage split as the rest of this API. A
-        # fixed message: the exception text can name internal paths.
+    except (RuntimeError, DockerException, requests.exceptions.RequestException):
+        # No Docker socket, or a daemon that failed or stalled past the check's
+        # own timeout halfway through: the same outage split as the rest of
+        # this API, never a bare 500. A fixed message: the exception text can
+        # name internal paths.
         raise HTTPException(
             status_code=503,
             detail={
                 "error": "isolation_check_unavailable",
-                "message": "The worker cannot reach the Docker socket, so it cannot run the check.",
+                "message": "The worker's Docker daemon did not answer, so it cannot run the check.",
             },
         )
 

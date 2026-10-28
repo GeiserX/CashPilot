@@ -10,8 +10,10 @@ control drops what does not answer from the host, "could not test" is never
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
+import shutil
 import socket
 import struct
 import subprocess
@@ -25,7 +27,7 @@ os.environ.setdefault("CASHPILOT_API_KEY", "test-fleet-key")
 import pytest
 import requests
 import yaml
-from docker.errors import APIError
+from docker.errors import APIError, DockerException
 from fastapi.testclient import TestClient
 
 from app import isolation_check, worker_api
@@ -71,7 +73,9 @@ class FakeDocker:
     maps a target's "host:port" to whether it answers from the earner side.
     """
 
-    def __init__(self, control, earner=None, earners=None, resolvers=None, fail=None, network_attrs=None):
+    def __init__(
+        self, control, earner=None, earners=None, resolvers=None, fail=None, network_attrs=None, published=None
+    ):
         self.control = control
         self.earner = earner or {}
         self.fail = fail or {}
@@ -87,6 +91,9 @@ class FakeDocker:
         self.containers.list.side_effect = self._list
         self.networks = MagicMock()
         self.networks.get.return_value.attrs = network_attrs or {}
+        # client.api.containers(): the low-level list, with each container's ports.
+        self.api = MagicMock()
+        self.api.containers.return_value = published or []
 
     def _list(self, all=False, filters=None):
         label = (filters or {}).get("label", "")
@@ -164,6 +171,48 @@ class TestTheControl:
         fake = FakeDocker(_ok(GATEWAY, second, TS_DNS, TS_PAGE), INTERNET_OK)
         _check(fake)
         assert _earner_targets(fake) == ["192.168.1.1:80", "100.100.100.100:53", "100.100.100.100:80", "1.1.1.1:443"]
+
+    def test_the_host_keeps_a_port_it_serves_beside_a_forwarded_one(self):
+        """geiserback: docker-proxy on 0.0.0.0:1993 answered first and pushed sshd out.
+
+        A published port is DNAT'd and crosses FORWARD; the host's own sshd
+        arrives on INPUT. Keeping only the first port per address tested the
+        FORWARD path alone and never the host's own services.
+        """
+        forwarded = {
+            "group": "host",
+            "host": "192.168.10.110",
+            "port": 1993,
+            "label": "this host, port 1993, forwarded to a container",
+            "via": "forwarded",
+        }
+        second_forwarded = dict(forwarded, port=2020)
+        sshd = dict(HOST, host="192.168.10.110", via="host")
+        nginx = dict(sshd, port=80, label="this host, port 80")
+        fake = FakeDocker(_ok(forwarded, second_forwarded, sshd, nginx), INTERNET_OK)
+        _check(fake)
+        assert _earner_targets(fake) == ["192.168.10.110:1993", "192.168.10.110:22", "1.1.1.1:443"]
+
+    def test_the_control_is_told_which_ports_docker_publishes(self):
+        published = [
+            {"Ports": [{"IP": "0.0.0.0", "PrivatePort": 80, "PublicPort": 1993, "Type": "tcp"}]},
+            {"Ports": [{"IP": "::", "PrivatePort": 80, "PublicPort": 1993, "Type": "tcp"}]},
+            {"Ports": [{"IP": "192.168.10.110", "PrivatePort": 53, "PublicPort": 5353, "Type": "udp"}]},
+            {"Ports": [{"PrivatePort": 9000, "Type": "tcp"}]},
+            {"Ports": [{"IP": "192.168.10.110", "PrivatePort": 8080, "PublicPort": 8081, "Type": "tcp"}]},
+        ]
+        fake = FakeDocker(_ok(GATEWAY), INTERNET_OK, published=published)
+        _check(fake)
+        sent = json.loads(fake.runs[0]["environment"]["PROBE_PUBLISHED"])
+        # TCP and IPv4 only; an unpublished container port is not a host port.
+        assert sent == [["0.0.0.0", 1993], ["192.168.10.110", 8081]]
+
+    def test_docker_refusing_the_port_list_does_not_stop_the_check(self):
+        fake = FakeDocker(_ok(GATEWAY), INTERNET_OK)
+        fake.api.containers.side_effect = APIError("no")
+        report = _check(fake)
+        assert report["status"] == "isolated"
+        assert json.loads(fake.runs[0]["environment"]["PROBE_PUBLISHED"]) == []
 
     def test_the_control_runs_on_host_networking_and_the_earner_probe_in_its_namespace(self):
         fake = FakeDocker(_ok(GATEWAY), INTERNET_OK)
@@ -312,6 +361,15 @@ class TestPlacementAndDns:
         assert len(found) == 1 and "cashpilot-repocket" in found[0]["detail"]
         assert "mysterium" not in found[0]["detail"]
 
+    def test_an_earner_also_on_another_network_is_flagged(self):
+        """The probe samples one earner; a second network is a way round the fence."""
+        both = _earner("cashpilot-traffmonetizer", networks=("cashpilot-isolated", "bridge"))
+        found = isolation_check.placement_findings([_earner(), both], "cashpilot-isolated")
+        assert [f["kind"] for f in found] == ["also_on_other_network"]
+        assert "cashpilot-traffmonetizer (bridge)" in found[0]["detail"]
+        assert "honeygain" not in found[0]["detail"]
+        assert found[0]["exposure"] is True
+
     def test_no_isolated_network_is_flagged(self):
         found = isolation_check.placement_findings([_earner(networks=("bridge",), mode="bridge")], "")
         assert found[0]["kind"] == "no_isolated_network"
@@ -354,7 +412,9 @@ class TestPlacementAndDns:
         assert found[0]["exposure"] is False
 
 
-class TestMysterium:
+class TestNodeFirewall:
+    """A node that firewalls its own customers (Mysterium), declared in its catalog entry."""
+
     def _node(self, output):
         node = MagicMock()
         node.name = "cashpilot-mysterium"
@@ -369,8 +429,9 @@ class TestMysterium:
             for n in ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "127.0.0.0/8")
         )
         client, node = self._node(out + b"-N MYST\n")
-        myst = isolation_check.read_myst_chain(client)
+        myst = isolation_check.read_node_firewall(client)
         assert myst["missing"] == ["100.64.0.0/10", "169.254.0.0/16"]
+        assert myst["service"] == "MystNodes" and myst["chain"] == "MYST"
         cmd = node.exec_run.call_args.args[0][-1]
         assert "iptables-nft" in cmd and "-S MYST" in cmd and "-A " not in cmd and "-I " not in cmd
 
@@ -386,27 +447,89 @@ class TestMysterium:
         self, tmp_path, legacy_nat, default_backend, asked
     ):
         """Asking legacy for a missing nat table loads iptable_nat on the host."""
+        log, _timed = self._run_chain_read(tmp_path, legacy_nat, default_backend)
+        assert log == asked
+
+    def _run_chain_read(self, tmp_path, legacy_nat, default_backend, with_timeout=True):
         bin_dir = tmp_path / "bin"
         bin_dir.mkdir()
         log = tmp_path / "calls"
+        timed = tmp_path / "timed"
         for name in ("iptables-nft", "iptables-legacy", "iptables"):
             script = bin_dir / name
             version = f'[ "$1" = -V ] && {{ echo "iptables v1.8.9 ({default_backend})"; exit 0; }}\n'
             script.write_text(f"#!/bin/sh\n{version if name == 'iptables' else ''}echo {name} >> {log}\n")
             script.chmod(0o755)
+        if with_timeout:
+            wrapper = bin_dir / "timeout"
+            wrapper.write_text(f'#!/bin/sh\n[ "$1" = 5 ] || exit 99\nshift\necho "$1" >> {timed}\nexec "$@"\n')
+            wrapper.chmod(0o755)
+        (bin_dir / "grep").symlink_to(shutil.which("grep"))
         names = tmp_path / "ip_tables_names"
         names.write_text("filter\nnat\n" if legacy_nat else "filter\n")
-        cmd = isolation_check.MYST_READ.replace(isolation_check.IPT_NAMES, str(names))
-        assert cmd != isolation_check.MYST_READ
-        subprocess.run(["sh", "-c", cmd], env={"PATH": f"{bin_dir}:/usr/bin:/bin"}, check=False)
-        assert (log.read_text().split() if log.exists() else []) == asked
+        template = isolation_check.CHAIN_READ.format(chain="MYST")
+        cmd = template.replace(isolation_check.IPT_NAMES, str(names))
+        assert cmd != template
+        # Only the fake binaries and sh's own builtins: no host `timeout`.
+        subprocess.run(["/bin/sh", "-c", cmd], env={"PATH": str(bin_dir)}, check=False)
+        read = lambda f: f.read_text().split() if f.exists() else []  # noqa: E731
+        return read(log), read(timed)
 
-    def test_the_required_list_comes_from_the_catalog(self):
-        assert isolation_check.protected_networks()["mysterium"][-2:] == ["100.64.0.0/10", "169.254.0.0/16"]
+    def test_every_iptables_call_runs_under_timeout(self, tmp_path):
+        """A hung iptables inside the node would otherwise hold the check's lock."""
+        log, timed = self._run_chain_read(tmp_path, True, "legacy")
+        assert log == ["iptables-nft", "iptables-legacy", "iptables"]
+        assert timed == ["iptables-nft", "iptables-legacy", "iptables"]
+
+    def test_an_image_without_timeout_still_reads_the_chain(self, tmp_path):
+        log, timed = self._run_chain_read(tmp_path, True, "legacy", with_timeout=False)
+        assert log == ["iptables-nft", "iptables-legacy", "iptables"] and timed == []
+
+    def test_the_chain_the_address_and_the_list_come_from_the_catalog(self):
+        """services/bandwidth/mysterium.yml docker.node_firewall, not constants in app/."""
+        spec = isolation_check.node_firewalls()["mysterium"]
+        assert spec["required"][-2:] == ["100.64.0.0/10", "169.254.0.0/16"]
+        assert (spec["chain"], spec["blackhole"]) == ("MYST", "240.0.0.1")
+
+    @pytest.mark.parametrize(
+        ("chain", "blackhole"),
+        [("MYST; reboot", "240.0.0.1"), ("$(id)", "240.0.0.1"), ("MYST", "not-an-address"), ("", "240.0.0.1")],
+    )
+    def test_a_declaration_that_does_not_parse_is_never_run(self, chain, blackhole):
+        svc = {
+            "slug": "node",
+            "name": "Node",
+            "docker": {
+                "command": "--protect=10.0.0.0/8 run",
+                "node_firewall": {"flag": "--protect=", "chain": chain, "blackhole": blackhole},
+            },
+        }
+        with patch.object(isolation_check.orchestrator, "get_services", return_value=[svc]):
+            assert isolation_check.node_firewalls() == {}
+
+    def test_another_service_can_declare_its_own_chain(self):
+        svc = {
+            "slug": "node",
+            "name": "Node",
+            "docker": {
+                "command": "--protect=10.0.0.0/8,100.64.0.0/10 run",
+                "node_firewall": {"flag": "--protect=", "chain": "NODE-FW", "blackhole": "240.0.0.9"},
+            },
+        }
+        client, node = self._node(b"-A NODE-FW -d 10.0.0.0/8 -j DNAT --to-destination 240.0.0.9\n")
+        with patch.object(isolation_check.orchestrator, "get_services", return_value=[svc]):
+            fw = isolation_check.read_node_firewall(client)
+        assert "-S NODE-FW" in node.exec_run.call_args.args[0][-1]
+        assert fw["missing"] == ["100.64.0.0/10"] and fw["service"] == "Node"
+
+    def test_a_longer_address_is_not_the_blackhole(self):
+        """240.0.0.10 is not 240.0.0.1."""
+        client, _ = self._node(b"-A MYST -d 10.0.0.0/8 -j DNAT --to-destination 240.0.0.10\n")
+        assert "10.0.0.0/8" in isolation_check.read_node_firewall(client)["missing"]
 
     def test_an_empty_chain_is_not_a_clean_bill(self):
         client, _ = self._node(b"")
-        myst = isolation_check.read_myst_chain(client)
+        myst = isolation_check.read_node_firewall(client)
         assert myst["readable"] is False and myst["missing"] == []
 
 
@@ -535,6 +658,62 @@ class TestDiscovery:
         assert host == [22, 21, 25, 9000]
 
 
+class TestTheHostsTwoPaths:
+    """The host has two paths in, and the control must offer both on every address."""
+
+    # geiserback, read off the box: sshd and the Unraid nginx bind the LAN and
+    # tailnet addresses; the only wildcard listeners are docker-proxy.
+    LAN, TAILNET = "192.168.10.110", "100.111.219.97"
+    PUBLISHED = [("0.0.0.0", 1993), ("0.0.0.0", 2020), ("0.0.0.0", 2993)]
+
+    def _tcp(self):
+        lines = [_tcp_line("0.0.0.0", p, "0.0.0.0", 0, "0A") for _a, p in self.PUBLISHED]
+        for addr in (self.LAN, self.TAILNET):
+            lines += [_tcp_line(addr, p, "0.0.0.0", 0, "0A") for p in (22, 80, 443)]
+        return TCP_HEADER + "".join(lines)
+
+    def _host(self, probe, published=None):
+        out = probe["candidates"](
+            {"br0": self.LAN, "tailscale1": self.TAILNET, "docker0": "172.17.0.1"},
+            ROUTE,
+            self._tcp(),
+            "",
+            (),
+            self.PUBLISHED if published is None else published,
+        )
+        return [t for t in out["candidates"] if t["group"] == "host"]
+
+    def test_each_address_has_a_port_the_host_serves(self, probe):
+        host = self._host(probe)
+        for addr in (self.LAN, self.TAILNET):
+            served = [t["port"] for t in host if t["host"] == addr and t["via"] == "host"]
+            assert served == [22, 80, 443], addr
+
+    def test_a_published_port_is_marked_forwarded_never_host(self, probe):
+        host = self._host(probe)
+        forwarded = {(t["host"], t["port"]) for t in host if t["via"] == "forwarded"}
+        assert (self.LAN, 1993) in forwarded and (self.TAILNET, 1993) in forwarded
+        assert not [t for t in host if t["via"] == "host" and t["port"] in (1993, 2020, 2993)]
+        assert "forwarded to a container" in next(t for t in host if t["port"] == 1993)["label"]
+
+    def test_with_every_candidate_answering_both_paths_are_kept(self, probe):
+        kept = isolation_check._keep([dict(t, ok=True) for t in self._host(probe)])
+        for addr in (self.LAN, self.TAILNET):
+            ports = sorted(t["port"] for t in kept if t["host"] == addr)
+            assert ports == [22, 1993], addr
+
+    def test_a_port_published_on_one_address_only(self, probe):
+        host = self._host(probe, published=[(self.LAN, 80)])
+        via = {(t["host"], t["port"]): t["via"] for t in host}
+        assert via[(self.LAN, 80)] == "forwarded"
+        assert via[(self.TAILNET, 80)] == "host"
+
+    def test_a_published_port_with_no_listener_is_still_tried(self, probe):
+        """With userland-proxy off nothing listens, and the DNAT path is still there."""
+        out = probe["candidates"]({"eth0": "192.168.1.10"}, "Iface\n", TCP_HEADER, "", (), [("", 8443)])
+        assert [(t["port"], t["via"]) for t in out["candidates"] if t["group"] == "host"] == [(8443, "forwarded")]
+
+
 @asynccontextmanager
 async def _noop_lifespan(a):
     yield
@@ -607,6 +786,21 @@ class TestEndpoints:
                 "isolation_check_busy",
             ),
             (RuntimeError("Docker socket not available at /var/run/docker.sock"), 503, "isolation_check_unavailable"),
+            (
+                DockerException("Error while fetching server API version: /var/run/docker.sock"),
+                503,
+                "isolation_check_unavailable",
+            ),
+            (
+                APIError("500 Server Error for http+docker://localhost/v1.47/containers/json"),
+                503,
+                "isolation_check_unavailable",
+            ),
+            (
+                requests.exceptions.ReadTimeout("UnixHTTPConnectionPool: Read timed out"),
+                503,
+                "isolation_check_unavailable",
+            ),
         ],
     )
     def test_busy_and_no_docker_reach_the_user(self, raised, code, error):
@@ -629,3 +823,66 @@ def test_mysterium_blackholes_cgnat_and_metadata_for_its_customers():
     flag = "--firewall.protected.networks=" + ",".join(ranges)
     assert flag in command.split()
     assert command.index(flag) < command.index(" service "), "a global flag must come before `service`"
+
+
+class TestTheChecksOwnClient:
+    def test_every_docker_call_is_bounded(self):
+        client = MagicMock()
+        with patch.object(isolation_check.docker, "from_env", return_value=client) as from_env:
+            assert isolation_check._client() is client
+        assert from_env.call_args.kwargs["timeout"] == isolation_check.DOCKER_TIMEOUT
+        # Well inside the UI proxy's 120 s, and below one probe's wait.
+        assert isolation_check.DOCKER_TIMEOUT < isolation_check.PROBE_TIMEOUT
+
+    def test_no_daemon_is_the_runtime_error_the_route_maps(self):
+        with (
+            patch.object(isolation_check.docker, "from_env", side_effect=DockerException("no socket")),
+            pytest.raises(RuntimeError),
+        ):
+            isolation_check._client()
+
+    def test_a_daemon_that_does_not_answer_the_ping_is_closed(self):
+        client = MagicMock()
+        client.ping.side_effect = requests.exceptions.ReadTimeout("slow")
+        with (
+            patch.object(isolation_check.docker, "from_env", return_value=client),
+            pytest.raises(RuntimeError),
+        ):
+            isolation_check._client()
+        client.close.assert_called_once()
+
+    def test_run_closes_its_client(self):
+        client = MagicMock()
+        with (
+            patch.object(isolation_check, "_client", return_value=client),
+            patch.object(isolation_check, "_run", return_value={"status": "isolated"}),
+        ):
+            assert isolation_check.run() == {"status": "isolated"}
+        client.close.assert_called_once()
+
+
+@pytest.mark.parametrize(("docker_ok", "offered"), [(True, True), (False, False)])
+def test_the_heartbeat_offers_the_check_only_with_docker(docker_ok, offered):
+    """Without a socket the Fleet button could only ever fail with a 503."""
+    sent = {}
+    client = MagicMock()
+    client.__aenter__ = AsyncMock(return_value=client)
+    client.__aexit__ = AsyncMock(return_value=False)
+
+    async def post(url, json=None, **kw):
+        sent.update(json or {})
+        raise RuntimeError("stop after the payload")
+
+    client.post = post
+    with (
+        patch.object(worker_api, "_worker_key", "own"),
+        patch.object(worker_api, "UI_URL", "http://ui:8080"),
+        patch("app.worker_api.orchestrator.get_status", return_value=[]),
+        patch("app.worker_api.orchestrator.docker_available", return_value=docker_ok),
+        patch("app.worker_api.httpx.AsyncClient", return_value=client),
+    ):
+        # The post fails after capturing the payload; the heartbeat logs it.
+        asyncio.run(worker_api._send_heartbeat())
+    features = sent["system_info"]["features"]
+    assert "instances" in features, "older UIs depend on it"
+    assert ("isolation_check" in features) is offered

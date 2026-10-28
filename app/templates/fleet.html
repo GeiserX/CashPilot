@@ -437,7 +437,7 @@ CASHPILOT_WORKER_NAME=server-name</code>
     }
     const m = r.node_firewall;
     if (m) {
-      html += `<div style="margin-top:6px; color:var(--text-muted);">Mysterium (${esc(m.container)}): ${m.readable ? 'blackholes ' + esc((m.blackholed || []).join(', ') || 'nothing') : esc(m.detail || '')}</div>`;
+      html += `<div style="margin-top:6px; color:var(--text-muted);">${esc(m.service || 'Node')} (${esc(m.container)}): ${m.readable ? 'blackholes ' + esc((m.blackholed || []).join(', ') || 'nothing') : esc(m.detail || '')}</div>`;
     }
     if ((r.addresses_left_out || []).length) {
       html += `<div style="margin-top:6px; color:var(--text-muted);" title="${esc(r.addresses_left_out.join(' '))}">${r.addresses_left_out.length} Docker bridge address(es) of this host were left out to keep the check short, so they were not tested.</div>`;

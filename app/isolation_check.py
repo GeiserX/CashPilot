@@ -14,6 +14,10 @@ the worker's own image, and removes them and their volumes on every path.
    has a connection open to, cloud metadata) and keeps only the ones that
    answer from the host. A closed port therefore never counts as "blocked",
    which is what lets this check fail.
+   Each host address is tried on two paths: a port the host serves itself,
+   which arrives on INPUT, and a port Docker publishes (read from the Docker
+   API), which is DNAT'd to a container and crosses FORWARD. One of each is
+   kept, so a published port never stands in for the host's own services.
    Addresses on real interfaces and the earner's own gateway are always
    listed; other Docker bridge gateways fill a cap, and the rest are reported.
 2. **Earner side.** A second probe joins a running earner's network namespace
@@ -21,15 +25,21 @@ the worker's own image, and removes them and their volumes on every path.
    plus one internet address as the positive check.
 
 No kept targets, or no internet from the earner side, is "could not test",
-never "isolated".
+never "isolated". Every Docker call has its own DOCKER_TIMEOUT, so a stalled
+daemon fails the check instead of holding it past the UI's proxy timeout.
 """
 
 from __future__ import annotations
 
 import contextlib
+import ipaddress
 import json
+import re
 import threading
 from typing import Any
+
+import docker
+from docker.errors import DockerException
 
 from app import orchestrator
 from app.constants import LABEL_MANAGED, LABEL_SERVICE
@@ -37,7 +47,7 @@ from app.constants import LABEL_MANAGED, LABEL_SERVICE
 DOCS = "https://geiserx.github.io/CashPilot/"
 FIX_PAGE = DOCS + "isolation-check/#2-fix-it-by-platform"
 OVERLAY_PAGE = DOCS + "isolation-check/#with-tailscale-or-another-overlay-network-on-the-host"
-MYSTERIUM_PAGE = DOCS + "isolation-check/#mysterium-which-uses-host-networking"
+NODE_FIREWALL_PAGE = DOCS + "isolation-check/#mysterium-which-uses-host-networking"
 BRIDGE_PAGE = DOCS + "home-network-security/#put-the-containers-on-their-own-bridge"
 RULES_PAGE = DOCS + "home-network-security/#the-rules"
 DNS_PAGE = DOCS + "home-network-security/#name-lookups-need-a-resolver-the-rules-allow"
@@ -52,24 +62,32 @@ GROUPS = {
 INTERNET = {"group": "internet", "host": "1.1.1.1", "port": 443, "label": "public address"}
 TAILSCALE_DNS = "100.100.100.100"
 
-#: A Mysterium node's own blackhole list. The node reads it from this flag on
-#: its command line, and its NAT chain sends those ranges to this address.
-PROTECTED_FLAG = "--firewall.protected.networks="
-MYST_BLACKHOLE = "240.0.0.1"
-
-#: Reads the node's MYST chain from every iptables backend without creating
-#: anything. The node runs on host networking as root, so a legacy lookup of a
-#: nat table that does not exist would make the kernel load ``iptable_nat`` and
-#: register an empty legacy table on the host. The legacy backend is asked only
-#: when the host already has its nat table; the image's plain ``iptables`` only
-#: when it is the nf_tables one or that table exists.
+#: Reads a node's own nat chain from every iptables backend without creating
+#: anything. The chain name and the blackhole address come from the service's
+#: ``docker.node_firewall`` in the catalog. The node runs on host networking as
+#: root, so a legacy lookup of a nat table that does not exist would make the
+#: kernel load ``iptable_nat`` and register an empty legacy table on the host.
+#: The legacy backend is asked only when the host already has its nat table;
+#: the image's plain ``iptables`` only when it is the nf_tables one or that
+#: table exists. Each call gets ``timeout 5`` when the image has it, so a hung
+#: iptables cannot hold the check.
 IPT_NAMES = "/proc/net/ip_tables_names"
-MYST_READ = (
-    "iptables-nft -t nat -S MYST 2>/dev/null; "
+CHAIN_READ = (
+    'T=""; command -v timeout >/dev/null 2>&1 && T="timeout 5"; '
+    "$T iptables-nft -t nat -S {chain} 2>/dev/null; "
     f"if grep -qx nat {IPT_NAMES} 2>/dev/null; then "
-    "iptables-legacy -t nat -S MYST 2>/dev/null; iptables -t nat -S MYST 2>/dev/null; "
-    'else case "$(iptables -V 2>/dev/null)" in *nf_tables*) iptables -t nat -S MYST 2>/dev/null;; esac; fi'
+    "$T iptables-legacy -t nat -S {chain} 2>/dev/null; $T iptables -t nat -S {chain} 2>/dev/null; "
+    'else case "$($T iptables -V 2>/dev/null)" in *nf_tables*) $T iptables -t nat -S {chain} 2>/dev/null;; esac; fi'
 )
+#: A chain name is interpolated into a shell command, so only iptables'
+#: own character set is accepted from the catalog.
+CHAIN_NAME = re.compile(r"[A-Za-z0-9_-]{1,28}")
+
+#: Seconds any one Docker API call of the check may take. The worker's shared
+#: client keeps the SDK's 60 s default for deploys; here a stalled daemon must
+#: fail the check well inside the UI proxy's 120 s, not hold the lock for
+#: minutes. The probe waits pass their own, longer timeout.
+DOCKER_TIMEOUT = 10
 
 PROBE_LABEL = "cashpilot.probe"
 HOST_PROBE = "cashpilot-isolation-probe-host"
@@ -140,14 +158,21 @@ def own_addresses(ifaces, first=()):
     room = max(0, MAX_OWN - len(keep))
     return keep + rest[:room], rest[room:]
 
-def candidates(ifaces, route, tcp_text, resolv, first=()):
+def published_on(published, host, port):
+    # Docker publishes a port on every address ("" or 0.0.0.0) or on one.
+    return any(p == port and a in ("", "0.0.0.0", host) for a, p in published)
+
+def candidates(ifaces, route, tcp_text, resolv, first=(), published=()):
     own, left_out = own_addresses(ifaces, first)
     mine_all = {a for a in ifaces.values() if not a.startswith("127.")}
     out, seen = [], set()
-    def add(group, host, port, label):
+    def add(group, host, port, label, via=None):
         if (host, port) not in seen:
             seen.add((host, port))
-            out.append({"group": group, "host": host, "port": port, "label": label})
+            t = {"group": group, "host": host, "port": port, "label": label}
+            if via:
+                t["via"] = via
+            out.append(t)
     for line in route.splitlines()[1:]:
         p = line.split()
         if len(p) > 2 and p[1] == "00000000" and p[2] != "00000000":
@@ -184,14 +209,25 @@ def candidates(ifaces, route, tcp_text, resolv, first=()):
             for port in (80, 443, 22, 53):
                 add("lan", r, port, "DNS resolver")
     add("metadata", "169.254.169.254", 80, "cloud metadata")
+    # Two paths into the host, and a fence can close one and miss the other.
+    # A port the host serves itself arrives on INPUT; a port Docker publishes
+    # is DNAT'd to a container and crosses FORWARD instead. Both are tried on
+    # every address, so a published port (often the only wildcard listener,
+    # as docker-proxy) never stands in for the host's own services.
     listen = tcp(tcp_text, "0A")
-    wild = sorted({lp for la, lp, _r, _q in listen if la == "0.0.0.0"}, key=lambda p: (p != 22, p))[:3]
+    wild = sorted({lp for la, lp, _r, _q in listen if la == "0.0.0.0"}, key=lambda p: (p != 22, p))
+    forwarded = sorted({p for _a, p in published})
     for a in own:
-        for port in wild:
-            add("host", a, port, "this host, port %d" % port)
+        for port in [p for p in wild if not published_on(published, a, p)][:3]:
+            add("host", a, port, "this host, port %d" % port, "host")
+        for port in [p for p in forwarded if published_on(published, a, p)][:2]:
+            add("host", a, port, "this host, port %d, forwarded to a container" % port, "forwarded")
     for la, lp, _r, _q in listen:
         if la != "0.0.0.0" and not la.startswith("127."):
-            add("host", la, lp, "this host, port %d" % lp)
+            if published_on(published, la, lp):
+                add("host", la, lp, "this host, port %d, forwarded to a container" % lp, "forwarded")
+            else:
+                add("host", la, lp, "this host, port %d" % lp, "host")
     return {"candidates": out, "resolvers": resolvers, "addresses_left_out": left_out}
 
 def interfaces():
@@ -212,7 +248,10 @@ def run(targets):
 if __name__ == "__main__":
     if sys.argv[1] == "discover":
         first = json.loads(os.environ.get("PROBE_FIRST") or "[]")
-        found = candidates(interfaces(), read("/proc/net/route"), read("/proc/net/tcp"), read("/etc/resolv.conf"), first)
+        published = [(a, int(p)) for a, p in json.loads(os.environ.get("PROBE_PUBLISHED") or "[]")]
+        found = candidates(
+            interfaces(), read("/proc/net/route"), read("/proc/net/tcp"), read("/etc/resolv.conf"), first, published
+        )
         for t, ok in zip(found["candidates"], run(found["candidates"])):
             t["ok"] = ok
         print(json.dumps(found))
@@ -238,6 +277,7 @@ def run_probe(
     network: str | None = None,
     targets: list[dict[str, Any]] | None = None,
     first: list[str] | None = None,
+    published: list[tuple[str, int]] | None = None,
 ) -> dict[str, Any]:
     """Run one probe container to completion and return what it printed.
 
@@ -252,7 +292,11 @@ def run_probe(
             name=name,
             entrypoint=["python", "-c", PROBE_SCRIPT],
             command=[mode],
-            environment={"PROBE_TARGETS": json.dumps(targets or []), "PROBE_FIRST": json.dumps(first or [])},
+            environment={
+                "PROBE_TARGETS": json.dumps(targets or []),
+                "PROBE_FIRST": json.dumps(first or []),
+                "PROBE_PUBLISHED": json.dumps(published or []),
+            },
             network_mode=network_mode,
             network=network,
             # The same floor as every earner, and lower: no capabilities, no
@@ -311,20 +355,40 @@ def placement_findings(earners: list[Any], network: str) -> list[dict[str, Any]]
                 "docs": BRIDGE_PAGE,
             }
         ]
+    found = []
     outside = sorted(_name(c) for c in bridge if network not in _networks(c))
-    if not outside:
-        return []
-    return [
-        {
-            "kind": "not_on_isolated_network",
-            "exposure": True,
-            "detail": (
-                f"These earners are not on {network}, so the rules on its bridge do not cover them: "
-                f"{', '.join(outside)}. Redeploy them from the dashboard."
-            ),
-            "docs": BRIDGE_PAGE,
-        }
-    ]
+    if outside:
+        found.append(
+            {
+                "kind": "not_on_isolated_network",
+                "exposure": True,
+                "detail": (
+                    f"These earners are not on {network}, so the rules on its bridge do not cover them: "
+                    f"{', '.join(outside)}. Redeploy them from the dashboard."
+                ),
+                "docs": BRIDGE_PAGE,
+            }
+        )
+    # The probe samples one earner, so an earner that also sits on another
+    # network would read isolated while it reaches the host through that one.
+    also = sorted(
+        f"{_name(c)} ({', '.join(sorted(_networks(c) - {network}))})"
+        for c in bridge
+        if network in _networks(c) and _networks(c) - {network}
+    )
+    if also:
+        found.append(
+            {
+                "kind": "also_on_other_network",
+                "exposure": True,
+                "detail": (
+                    f"These earners are on {network} and also on another network, which the rules on its bridge "
+                    f"do not cover: {', '.join(also)}. Disconnect them from it with docker network disconnect."
+                ),
+                "docs": BRIDGE_PAGE,
+            }
+        )
+    return found
 
 
 def dns_findings(earners: list[Any], network: str, resolvers: list[str], blocked: set[str]) -> list[dict[str, Any]]:
@@ -359,84 +423,124 @@ def dns_findings(earners: list[Any], network: str, resolvers: list[str], blocked
     ]
 
 
-def protected_networks() -> dict[str, list[str]]:
-    """Services whose catalog command sets the node's blackhole list, and the list.
+def node_firewalls() -> dict[str, dict[str, Any]]:
+    """Services that run their own firewall for their customers, from the catalog.
 
-    The catalog is the source of truth: a service opts in by passing the flag,
-    and the ranges it passes are what its chain must blackhole.
+    A service opts in with ``docker.node_firewall`` (services/_schema.yml): the
+    flag on its command line that carries the ranges, the nat chain the node
+    writes them to, and the address it sends them to. The ranges its catalog
+    command passes are what that chain must blackhole. An entry with a chain
+    name or an address that does not parse is skipped, never run.
     """
     found = {}
     for svc in orchestrator.get_services() if orchestrator.get_services else []:
-        for word in str((svc.get("docker") or {}).get("command") or "").split():
-            if word.startswith(PROTECTED_FLAG):
-                found[svc["slug"]] = [n for n in word.removeprefix(PROTECTED_FLAG).split(",") if n]
+        docker_spec = svc.get("docker") or {}
+        spec = docker_spec.get("node_firewall")
+        if not isinstance(spec, dict):
+            continue
+        flag, chain, blackhole = (str(spec.get(k) or "") for k in ("flag", "chain", "blackhole"))
+        if not flag or not CHAIN_NAME.fullmatch(chain):
+            continue
+        try:
+            ipaddress.ip_address(blackhole)
+        except ValueError:
+            continue
+        for word in str(docker_spec.get("command") or "").split():
+            if word.startswith(flag):
+                found[svc["slug"]] = {
+                    "service": str(svc.get("name") or svc["slug"]),
+                    "chain": chain,
+                    "blackhole": blackhole,
+                    "required": [n for n in word.removeprefix(flag).split(",") if n],
+                }
     return found
 
 
-def read_myst_chain(client: Any) -> dict[str, Any] | None:
-    """What a running Mysterium node blackholes for its customers, or None.
+def read_node_firewall(client: Any) -> dict[str, Any] | None:
+    """What a running node blackholes for its customers, or None.
 
     Read from inside the node's own container with the iptables it ships, so
     the answer comes from the backend that wrote the rules. On Unraid the host's
-    ``iptables -t nat -S MYST`` shows nothing because the node writes through
+    ``iptables -t nat -S MYST`` shows nothing because Mysterium writes through
     nf_tables, so every backend that already has a nat table is asked and the
-    lines are merged (see ``MYST_READ``).
+    lines are merged (see ``CHAIN_READ``).
     """
-    nodes, required = [], []
-    for slug, networks in protected_networks().items():
+    nodes, spec = [], {}
+    for slug, declared in node_firewalls().items():
         running = client.containers.list(filters={"label": f"{LABEL_SERVICE}={slug}"})
         if running:
-            nodes, required = running, networks
+            nodes, spec = running, declared
             break
     if not nodes:
         return None
     node = nodes[0]
+    base = {"service": spec["service"], "chain": spec["chain"], "container": _name(node)}
     try:
-        code, output = node.exec_run(["sh", "-c", MYST_READ])
+        code, output = node.exec_run(["sh", "-c", CHAIN_READ.format(chain=spec["chain"])])
     except Exception as exc:  # noqa: BLE001 - reported, never raised
-        return {"container": _name(node), "readable": False, "detail": f"Could not read the MYST chain: {exc}"}
+        return dict(base, readable=False, detail=f"Could not read the {spec['chain']} chain: {exc}")
     lines = sorted({ln.strip() for ln in (output or b"").decode(errors="replace").splitlines() if ln.strip()})
     blackholed = sorted(
         {
             parts[parts.index("-d") + 1]
             for parts in (ln.split() for ln in lines)
-            if "-d" in parts and MYST_BLACKHOLE in " ".join(parts)
+            if "-d" in parts and any(p == spec["blackhole"] or p.startswith(spec["blackhole"] + ":") for p in parts)
         }
     )
     if not lines:
-        return {
-            "container": _name(node),
-            "readable": False,
-            "blackholed": [],
-            "missing": [],
-            "detail": (
-                "The node's MYST chain is empty or missing. The node builds it when a session starts, so run "
-                "the check again after it has carried a session."
+        return dict(
+            base,
+            readable=False,
+            blackholed=[],
+            missing=[],
+            detail=(
+                f"The node's {spec['chain']} chain is empty or missing. The node builds it when a session starts, "
+                "so run the check again after it has carried a session."
             ),
-        }
-    missing = [net for net in required if net not in blackholed]
-    return {"container": _name(node), "readable": True, "blackholed": blackholed, "missing": missing}
+        )
+    missing = [net for net in spec["required"] if net not in blackholed]
+    return dict(base, readable=True, blackholed=blackholed, missing=missing)
 
 
 def _keep(candidates: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """The candidates that answered from the host: per address, one port plus 53.
+    """The candidates that answered from the host: per address and path, one port, plus 53.
 
     A fence drops by destination address, so one open port per address is
-    enough to test it. Port 53 is kept beside it: the documented DNS exception
-    and Tailscale's DNS rewrite let port 53 through on a fenced host, and the
-    other port on the same address is how the report tells them from a
-    missing fence.
+    enough to test it, except on the host itself, which has two paths: a port
+    it serves (INPUT) and a port Docker publishes (DNAT, then FORWARD). One of
+    each is kept, so a published port that answered first cannot push out the
+    host's own services. Port 53 is kept beside them: the documented DNS
+    exception and Tailscale's DNS rewrite let port 53 through on a fenced
+    host, and the other port on the same address is how the report tells them
+    from a missing fence.
     """
-    kept, hosts = [], set()
+    kept, seen = [], set()
     for t in candidates:
         if not t.get("ok"):
             continue
         if t["port"] != 53:
-            if t["host"] in hosts:
+            key = (t["host"], t.get("via"))
+            if key in seen:
                 continue
-            hosts.add(t["host"])
-        kept.append({k: t[k] for k in ("group", "host", "port", "label")})
+            seen.add(key)
+        kept.append({k: t[k] for k in ("group", "host", "port", "label") if k in t})
     return kept
+
+
+def published_ports(client: Any) -> list[tuple[str, int]]:
+    """The TCP ports Docker publishes on this host, as (host address, port).
+
+    One list call. An empty list when Docker will not say, which leaves every
+    listener counted as the host's own, the behaviour before this existed.
+    """
+    found: set[tuple[str, int]] = set()
+    with contextlib.suppress(Exception):
+        for c in client.api.containers():
+            for p in c.get("Ports") or []:
+                addr = str(p.get("IP") or "")
+                if p.get("Type") == "tcp" and p.get("PublicPort") and ":" not in addr:
+                    found.add((addr, int(p["PublicPort"])))
+    return sorted(found)
 
 
 def _pick_earner(earners: list[Any], network: str) -> Any | None:
@@ -497,9 +601,32 @@ def run() -> dict[str, Any]:
     if not _lock.acquire(blocking=False):
         raise CheckBusy("An isolation check is already running on this worker.")
     try:
-        return _run(orchestrator._get_client())
+        client = _client()
+        try:
+            return _run(client)
+        finally:
+            with contextlib.suppress(Exception):
+                client.close()
     finally:
         _lock.release()
+
+
+def _client() -> Any:
+    """A Docker client of the check's own, with DOCKER_TIMEOUT on every call.
+
+    Raises RuntimeError without a daemon, as ``orchestrator._get_client`` does.
+    """
+    try:
+        client = docker.from_env(timeout=DOCKER_TIMEOUT)
+    except DockerException as exc:
+        raise RuntimeError(f"Docker socket not available: {exc}") from exc
+    try:
+        client.ping()
+    except Exception as exc:
+        with contextlib.suppress(Exception):
+            client.close()
+        raise RuntimeError(f"Docker socket not available: {exc}") from exc
+    return client
 
 
 def _run(client: Any) -> dict[str, Any]:
@@ -522,18 +649,19 @@ def _run(client: Any) -> dict[str, Any]:
         "reason": "",
     }
 
-    myst = read_myst_chain(client)
-    report["node_firewall"] = myst
-    if myst and myst.get("missing"):
+    node_fw = read_node_firewall(client)
+    report["node_firewall"] = node_fw
+    if node_fw and node_fw.get("missing"):
         report["findings"].append(
             {
-                "kind": "mysterium_unprotected",
+                "kind": "node_firewall_unprotected",
                 "exposure": True,
                 "detail": (
-                    f"Mysterium ({myst['container']}) does not blackhole {', '.join(myst['missing'])} for its "
-                    "customers. Redeploy it from the dashboard to pick up the catalog's list."
+                    f"{node_fw['service']} ({node_fw['container']}) does not blackhole "
+                    f"{', '.join(node_fw['missing'])} for its customers. Redeploy it from the dashboard to pick "
+                    "up the catalog's list."
                 ),
-                "docs": MYSTERIUM_PAGE,
+                "docs": NODE_FIREWALL_PAGE,
             }
         )
 
@@ -555,7 +683,13 @@ def _probe(client: Any, report: dict[str, Any], running: list[Any], every: list[
     earner = _pick_earner(running, network)
     try:
         found = run_probe(
-            client, image, HOST_PROBE, "discover", network_mode="host", first=_gateways(client, earner, network)
+            client,
+            image,
+            HOST_PROBE,
+            "discover",
+            network_mode="host",
+            first=_gateways(client, earner, network),
+            published=published_ports(client),
         )
     except Exception as exc:  # noqa: BLE001 - the report says what went wrong
         return f"The control probe on the host network failed: {exc}"
@@ -648,8 +782,8 @@ def _dns_notes(outcome: list[dict[str, Any]]) -> None:
             if page and not page["reachable"]:
                 dns["expected"] = True
                 dns["note"] = (
-                    "Expected with the DNS rewrite: port 80 on the same address is blocked, so the fence works "
-                    "and this lookup went to a public resolver."
+                    "Expected with the DNS rewrite or a DNS exception: port 80 on the same address is blocked, "
+                    "so the fence works and only DNS gets through."
                 )
             else:
                 dns["note"] = (

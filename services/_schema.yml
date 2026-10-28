@@ -104,6 +104,13 @@
 #     no longer has (the classic silent-ISP-re-provision failure). Only declare
 #     it for services that are genuinely dialled back into; for outbound-only
 #     services the comparison would be meaningless.
+#   node_firewall: (optional) a node that firewalls its own customers off private
+#     ranges, so the worker's isolation check can read whether it does:
+#       flag:      "--firewall.protected.networks="  the `command` word carrying the ranges
+#       chain:     MYST          the nat chain the node writes them to (letters, digits, _ -)
+#       blackhole: "240.0.0.1"   the address that chain sends each range to
+#     The check reads the chain from inside the running node and reports every range
+#     in the flag that the chain does not send to the blackhole.
 #   devices: [] (optional) host devices to map in, e.g. ["/dev/net/tun"]
 #     Only devices on the worker's allow-list may be requested, and only by the
 #     service whose own YAML declares them. A device is a direct line to the

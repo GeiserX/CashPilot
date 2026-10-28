@@ -82,7 +82,8 @@ that looks right can still be skipped, and the test shows it in one command.
 
 On the **Fleet** page, the owner sees **Check isolation** on each worker. The
 same check is `POST /api/workers/{id}/isolation-check`. The worker has to run
-this release or later.
+this release or later, and reach its Docker socket: a worker without one does
+not offer the button.
 
 The worker starts two short-lived containers from its own image, so it pulls
 nothing. They have no capabilities, run as `nobody`, and the worker removes
@@ -94,7 +95,12 @@ out. It touches no firewall rule.
    private DNS resolvers, `100.100.100.100` when Tailscale runs, one tailnet
    peer when the host has a connection open to one, and `169.254.169.254`. It
    keeps only the ones that answer from the host, so a closed port can never
-   pass for a blocked one. The host's LAN and tailnet addresses and the
+   pass for a blocked one. Each of the host's addresses is tried on two
+   paths, since a rule can close one and miss the other: a port the host
+   serves itself, such as SSH or its web interface, which arrives on the
+   `INPUT` chain, and a port Docker publishes for a container, which Docker
+   forwards to that container through `FORWARD`. The result labels the second
+   kind "forwarded to a container". The host's LAN and tailnet addresses and the
    earner's own bridge gateway are always tried. On a host with many Docker
    networks, the other bridge gateways are tried up to a limit, and the result
    counts the ones it left out.
@@ -113,16 +119,21 @@ out. It touches no firewall rule.
     - earners on a bridge other than `CASHPILOT_CONTAINER_NETWORK`, which your
       rules do not cover, including stopped ones, which are exposed again as
       soon as they start;
+    - earners on `CASHPILOT_CONTAINER_NETWORK` that are also attached to
+      another network, which is a way round the rules on its bridge;
     - a Mysterium node whose `MYST` chain leaves out a private range, such as
       `100.64.0.0/10` or `169.254.0.0/16`. Redeploy it from the dashboard, since
       the catalog now passes the full list. The check reads the chain from
       inside the node, so it also sees rules written through `nf_tables`, which
       the host's `iptables` misses on Unraid. An empty chain means the node has
-      carried no session since it started. Check again later.
+      carried no session since it started. Check again later. The chain
+      name and the blackhole address come from the service's catalog entry
+      (`docker.node_firewall`), not from CashPilot's code.
 - **Could not test.** Nothing answered from the host, the earner could not
   reach the internet either, or a probe could not run at all: a Docker error,
   no running earner on a bridge and no `CASHPILOT_CONTAINER_NETWORK` to test
-  from, or a network name that does not exist. A "blocked" line would prove
+  from, a network name that does not exist, or a Docker daemon that did not
+  answer within 10 s. A "blocked" line would prove
   nothing then, so the check does not claim isolation, and the result shows
   the exact reason.
 
@@ -130,8 +141,10 @@ Two lines need a closer look.
 
 - `100.100.100.100:53` can read reachable on a fenced host with Tailscale. The
   [DNS rewrite](isolation-check.md#with-tailscale-or-another-overlay-network-on-the-host)
-  sends that traffic to a public resolver before the fence sees it. When port
-  80 on the same address reads blocked, the fence works, and the result says so.
+  sends that traffic to a public resolver before the fence sees it. A rule
+  that lets port 53 to that address through on purpose looks the same. When
+  port 80 on the same address reads blocked, the fence works and only DNS gets
+  through, and the result says so.
 - Port 53 on your router or a LAN resolver can read reachable when you added the
   [router DNS exception](home-network-security.md#name-lookups-need-a-resolver-the-rules-allow).
   The check also tries another port on that address, such as its web
