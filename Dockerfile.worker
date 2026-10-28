@@ -62,6 +62,7 @@ COPY --chown=cashpilot:root app/state_backup.py ./app/
 COPY --chown=cashpilot:root app/version.py ./app/
 COPY --chown=cashpilot:root app/worker_api.py ./app/
 COPY --chown=cashpilot:root app/orchestrator.py ./app/
+COPY --chown=cashpilot:root app/isolation_check.py ./app/
 COPY --chown=cashpilot:root app/arch.py ./app/
 COPY --chown=cashpilot:root app/catalog.py ./app/
 COPY --chown=cashpilot:root services/ ./services/

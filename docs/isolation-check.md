@@ -17,6 +17,10 @@ where the plain recipe does not hold.
 
 ## 1. Test it
 
+The dashboard can run this test for you: **Check isolation** on the Fleet page
+([how to read it](isolation.md#check-it-from-the-dashboard)). The manual steps
+below do the same by hand.
+
 Run this on the machine that runs the earners. It starts a small throwaway
 container inside an earner's own network namespace, so it sees exactly what the
 earner sees, and tries to open connections.
