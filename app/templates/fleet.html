@@ -244,7 +244,7 @@ CASHPILOT_WORKER_NAME=server-name</code>
             <span title="gross earnings per month">${money(m.monthly_gross)}</span>
             <span style="color:var(--text-muted);">−</span>
             <span title="estimated electricity per month">${money(m.monthly_cost)}</span>
-            <span style="color:${losing ? 'var(--danger)' : 'var(--success)'}; font-weight:700;"
+            <span style="color:${losing ? 'var(--error)' : 'var(--success)'}; font-weight:700;"
                   title="net per month">${money(m.monthly_net)}</span>
           </div>
         </div>`;
@@ -266,7 +266,7 @@ CASHPILOT_WORKER_NAME=server-name</code>
             ${attributable.map(s => `
               <div class="economics-service-row">
                 <span>${esc(s.platform)}</span>
-                <span style="color:${s.negative ? 'var(--danger)' : 'var(--text-secondary)'};">
+                <span style="color:${s.negative ? 'var(--error)' : 'var(--text-secondary)'};">
                   ${money(s.gross)} − ${money(s.cost)} = ${money(s.net)}
                 </span>
               </div>`).join('')}
@@ -346,7 +346,12 @@ CASHPILOT_WORKER_NAME=server-name</code>
                   : ''}
                 <code style="font-size:0.68rem; color:var(--text-muted); background:var(--bg-hover); padding:1px 5px; border-radius:3px;" title="This worker's client_id — the id CashPilot keys it on. Two rows with the same name always have different ids; this is how to tell which is which.">${esc(w.client_id || ('#' + w.id))}</code>
               </div>
-              ${_isOwner ? `<button class="btn btn-danger btn-sm btn-remove-worker" data-worker-id="${w.id}" data-worker-name="${esc(w.name)}" data-worker-client="${esc(w.client_id || '')}" title="Remove worker">Remove</button>` : ''}
+              <div style="display: flex; gap: 6px;">
+                ${_isOwner && isOnline && !isAndroid && (sysInfo.features || []).includes('isolation_check')
+                  ? `<button class="btn btn-ghost btn-sm btn-isolation-check" data-worker-id="${w.id}" title="Start two short-lived probe containers on this host and show what an earner can reach: your LAN, this host, an overlay network such as Tailscale, cloud metadata. Changes no firewall rule.">${_isolation[w.id] === 'running' ? 'Checking…' : 'Check isolation'}</button>`
+                  : ''}
+                ${_isOwner ? `<button class="btn btn-danger btn-sm btn-remove-worker" data-worker-id="${w.id}" data-worker-name="${esc(w.name)}" data-worker-client="${esc(w.client_id || '')}" title="Remove worker">Remove</button>` : ''}
+              </div>
             </div>
             <div style="display: flex; gap: 16px; flex-wrap: wrap; font-size: 0.82rem; color: var(--text-muted);">
               <span>${esc(w.url || '-')}</span>
@@ -385,11 +390,99 @@ CASHPILOT_WORKER_NAME=server-name</code>
             </div>
             ${isAndroid && items.length > 0 ? renderApps(items, isOnline, w.last_heartbeat) : ''}
             ${!isAndroid && items.length > 0 ? renderContainers(w, isOnline) : ''}
+            ${_isolation[w.id] && _isolation[w.id] !== 'running' ? renderIsolation(_isolation[w.id]) : ''}
           </div>
         </div>`;
       }
     }
     container.innerHTML = html;
+  }
+
+  // The last isolation check per worker id: 'running', a report, or {error}.
+  // Kept outside the cards so the 60 s refresh does not wipe a result.
+  const _isolation = {};
+
+  function renderIsolation(r) {
+    let html = '<div style="margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border-color); font-size: 0.82rem;">';
+    const when = r.checked_at ? new Date(r.checked_at) : null;
+    if (when && !Number.isNaN(when.getTime())) {
+      html += `<div style="color:var(--text-muted); margin-bottom:4px;" title="${esc(r.checked_at)}">Checked ${esc(when.toLocaleString())}</div>`;
+    }
+    if (r.error) {
+      return html + `<div style="color:var(--error);">Isolation check failed: ${esc(r.error)}</div></div>`;
+    }
+    // Isolated can still have reachable lines: the ones the report marks
+    // expected (DNS through the Tailscale rewrite or a LAN DNS exception).
+    const allowed = (r.groups || []).flatMap(g => g.targets).filter(t => t.reachable).map(t => t.address);
+    const head = {
+      isolated: ['var(--success)', allowed.length
+        ? `Isolated over IPv4. An earner reached only the expected DNS ${allowed.length === 1 ? 'line' : 'lines'} ${allowed.join(', ')} and none of the other addresses below, and it reached the internet.`
+        : 'Isolated over IPv4. An earner reached none of the addresses below, and it reached the internet.'],
+      exposed: ['var(--error)', 'Not isolated. See what to fix below.'],
+      could_not_test: ['var(--warning)', 'Could not test. ' + (r.reason || '')],
+    }[r.status] || ['var(--text-muted)', String(r.status)];
+    html += `<div style="font-weight:600; color:${head[0]}; margin-bottom:6px;">${esc(head[1])}</div>`;
+    if (r.status === 'exposed' && r.reason) {
+      html += `<div style="color:var(--warning); margin-bottom:6px;">The probe part could not run: ${esc(r.reason)}</div>`;
+    }
+    if (r.tested_from) {
+      html += `<div style="color:var(--text-muted); margin-bottom:6px;">Tested from ${esc(r.tested_from.earner || 'a probe')} on ${esc((r.tested_from.network || []).join(', ') || '?')}.</div>`;
+    }
+    for (const g of r.groups || []) {
+      html += `<div style="margin:4px 0;"><span style="color:var(--text-muted); display:inline-block; min-width:9rem;">${esc(g.label)}</span>`;
+      for (const t of g.targets) {
+        const bad = t.reachable && !t.expected;
+        const color = t.reachable ? (bad ? 'var(--error)' : 'var(--warning)') : 'var(--success)';
+        const tip = `${t.label}${t.note ? '. ' + t.note : ''}`;
+        html += `<span style="font-size:0.75rem; padding:2px 6px; margin:2px; border-radius:4px; background:var(--bg-hover); color:${color}; display:inline-block;" title="${esc(tip)}">${esc(t.address)} ${t.reachable ? 'reachable' : 'blocked'}</span>`;
+      }
+      html += '</div>';
+    }
+    if (r.internet) {
+      html += `<div style="margin:4px 0;"><span style="color:var(--text-muted); display:inline-block; min-width:9rem;">Internet</span>${esc(r.internet.address)} ${r.internet.reachable ? 'works' : 'FAILED'}</div>`;
+    }
+    for (const f of r.findings || []) {
+      html += `<div style="margin-top:6px; color:${f.exposure ? 'var(--error)' : 'var(--warning)'};">${esc(f.detail)} <a href="${esc(f.docs)}" target="_blank" rel="noopener noreferrer">How to fix it</a></div>`;
+    }
+    const m = r.node_firewall;
+    if (m) {
+      html += `<div style="margin-top:6px; color:var(--text-muted);">${esc(m.service || 'Node')} (${esc(m.container)}): ${m.readable ? 'blackholes ' + esc((m.blackholed || []).join(', ') || 'nothing') : esc(m.detail || '')}</div>`;
+    }
+    if ((r.addresses_left_out || []).length) {
+      html += `<div style="margin-top:6px; color:var(--text-muted);" title="${esc(r.addresses_left_out.join(' '))}">${r.addresses_left_out.length} Docker bridge address(es) of this host were left out to keep the check short, so they were not tested.</div>`;
+    }
+    if ((r.leftover_probes || []).length) {
+      const names = r.leftover_probes.join(' ');
+      html += `<div style="margin-top:6px; color:var(--warning);">Docker would not remove ${r.leftover_probes.length === 1 ? 'this probe container' : 'these probe containers'}, so ${r.leftover_probes.length === 1 ? 'it is' : 'they are'} still on the host: ${esc(r.leftover_probes.join(', '))}. Remove ${r.leftover_probes.length === 1 ? 'it' : 'them'} with <code>docker rm -fv ${esc(names)}</code>.</div>`;
+    }
+    if ((r.not_answering_from_host || []).length) {
+      html += `<div style="margin-top:6px; color:var(--text-muted);" title="${esc(r.not_answering_from_host.join(' '))}">${r.not_answering_from_host.length} address(es) did not answer from the host itself, so they were not tested.</div>`;
+    }
+    return html + '</div>';
+  }
+
+  async function checkIsolation(workerId) {
+    // The UI proxy gives the worker 120 s; stop waiting a little after that,
+    // so a request lost on the way never leaves the button on "Checking…".
+    const deadlineMs = 130000;
+    _isolation[workerId] = 'running';
+    loadFleet();
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), deadlineMs);
+    let result;
+    try {
+      result = await CP.api(`/api/workers/${workerId}/isolation-check`, { method: 'POST', signal: ctrl.signal });
+    } catch (err) {
+      result = {
+        error: err.name === 'AbortError'
+          ? `no answer after ${deadlineMs / 1000} s. The worker may still be running the check; try again in a minute.`
+          : (err.message || 'error'),
+      };
+    } finally {
+      clearTimeout(timer);
+    }
+    _isolation[workerId] = Object.assign({}, result, { checked_at: new Date().toISOString() });
+    loadFleet();
   }
 
   function fmtBytes(b) {
@@ -573,6 +666,13 @@ CASHPILOT_WORKER_NAME=server-name</code>
       } catch (err) {
         CP.toast('Could not save: ' + err.message, 'error');
       }
+      return;
+    }
+
+    const isoBtn = e.target.closest('.btn-isolation-check');
+    if (isoBtn) {
+      const id = parseInt(isoBtn.dataset.workerId, 10);
+      if (!isNaN(id) && _isolation[id] !== 'running') checkIsolation(id);
       return;
     }
 
