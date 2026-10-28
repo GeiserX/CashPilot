@@ -66,18 +66,22 @@ In the CashPilot web UI, find **EarnApp** in the service catalog and click **Dep
 
 ## Docker Configuration
 
-- **Image:** `fazalfarhan01/earnapp:lite`
+- **Image:** `drumsergio/cashpilot-earnapp:1.665.73-r1`, CashPilot's own image
 - **Platforms:** linux/amd64, linux/arm64, linux/arm/v7
 
-If the device never shows online with that image, try `venatum/earnapp:lite` in the deploy
-form's **Advanced** box: it takes the same `EARNAPP_UUID`, registers under CashPilot's
-capability drop, and keeps the Running Instances health check. Only the `lite` tag works:
-`venatum/earnapp` and `venatum/earnapp:debian` boot systemd and need a privileged container,
-so CashPilot refuses them.
+The image holds no Bright Data code. At first start it downloads the pinned EarnApp build
+from Bright Data's CDN, checks its sha256 and caches it in the `earnapp-data` volume, so the
+first start needs that CDN reachable. `EARNAPP_UUID` must be `sdk-node-` followed by 32
+lowercase hex characters, which is what `earnapp showid` prints. If `earnapp run` exits, the
+image restarts it inside the same container and says so in the log: the container itself
+keeps running. A device moved from `fazalfarhan01/earnapp:lite` keeps its UUID and volume.
+
+If you need another image, put it in the deploy form's **Advanced** box. Only `lite` tags
+work: `venatum/earnapp` and `venatum/earnapp:debian` boot systemd and need a privileged
+container, so CashPilot refuses them.
 
 ### Environment Variables
 
 | Variable | Label | Required | Secret | Description |
 |----------|-------|:--------:|:------:|-------------|
 | `EARNAPP_UUID` | Node UUID | Yes | No | Your EarnApp node ID (run 'earnapp showid' to get it, or generate one with the sdk-node-id format) |
-| `EARNAPP_TERM` | Accept Terms | No | No | Set to 'yes' to accept terms of service (default: `yes`) |

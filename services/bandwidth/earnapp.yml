@@ -7,8 +7,9 @@ website: https://earnapp.com
 description: >
   EarnApp by Bright Data lets you sell your unused bandwidth for passive income.
   Bright Data is the world's largest proxy network, powering data collection for
-  Fortune 500 companies. The community Docker image (fazalfarhan01) makes headless
-  deployment easy with a lite mode that requires only a UUID.
+  Fortune 500 companies. CashPilot runs it from its own image, which downloads the
+  pinned EarnApp build from Bright Data's CDN at first start, checks its sha256 and
+  runs it in lite mode with only a UUID.
 short_description: Bandwidth sharing - backed by Bright Data
 
 referral:
@@ -16,7 +17,10 @@ referral:
   code: "TSMD9wSm"
 
 docker:
-  image: fazalfarhan01/earnapp:lite
+  # CashPilot's own image (images/earnapp/). It carries no Bright Data code: the
+  # pinned build is fetched at first start and checked against SHA256SUMS. The old
+  # default, fazalfarhan01/earnapp:lite, froze the 2022 client 1.294.218.
+  image: drumsergio/cashpilot-earnapp:1.665.73-r1
   platforms: [linux/amd64, linux/arm64, linux/arm/v7]
   resources:
     mem_limit: "256m"
@@ -27,12 +31,6 @@ docker:
       required: true
       secret: false
       description: "Your EarnApp node ID (run 'earnapp showid' to get it, or generate one with the sdk-node-id format)"
-    - key: EARNAPP_TERM
-      label: "Accept Terms"
-      required: false
-      secret: false
-      description: "Set to 'yes' to accept terms of service"
-      default: "yes"
   ports: []
   volumes:
     - "earnapp-data:/etc/earnapp"
