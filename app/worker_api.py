@@ -37,7 +37,7 @@ from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 
-from app import egress, fleet_key, orchestrator, state_backup, version
+from app import egress, fleet_key, isolation_check, orchestrator, state_backup, version
 from app.constants import MAX_INSTANCES
 
 try:
@@ -643,7 +643,7 @@ async def _send_heartbeat() -> None:
             # What this worker can do that an older one cannot. The UI sends a
             # second copy of a service only to a worker listing "instances": an
             # older worker would read the deploy as the first copy and replace it.
-            "features": ["instances"],
+            "features": ["instances", "isolation_check"],
             # Providers count devices per public IP, so the UI needs the address
             # the provider sees — not this container's LAN or tailnet address.
             "egress_ip": await _detect_egress_ip(),
@@ -1611,6 +1611,24 @@ async def api_runtimes(request: Request) -> dict[str, Any]:
             "hardening recommendation — see the docs for why."
         ),
     }
+
+
+@app.get("/api/isolation-check")
+async def api_isolation_check(request: Request) -> dict[str, Any]:
+    """What an earner on this host can reach (issue #451).
+
+    Starts two short-lived probe containers from the worker's own image and
+    removes them on every path. Creates nothing else and changes no firewall
+    rule; see app/isolation_check.py.
+    """
+    _verify_api_key(request)
+    try:
+        return await asyncio.to_thread(isolation_check.run)
+    except isolation_check.CheckBusy as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+    except RuntimeError as exc:
+        # No Docker socket, the same outage split as the rest of this API.
+        raise HTTPException(status_code=503, detail=str(exc))
 
 
 @app.get("/api/update/info")

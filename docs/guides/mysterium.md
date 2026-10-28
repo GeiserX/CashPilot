@@ -177,7 +177,9 @@ docker run -d --name cashpilot-mysterium \
   --security-opt no-new-privileges:true \
   -v /path/to/your/myst/data:/var/lib/mysterium-node \
   mysteriumnetwork/myst:1.39.7-alpine \
-  --ui.address=127.0.0.1 --tequilapi.address=127.0.0.1 service --agreed-terms-and-conditions
+  --ui.address=127.0.0.1 --tequilapi.address=127.0.0.1 \
+  --firewall.protected.networks=10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,127.0.0.0/8,100.64.0.0/10,169.254.0.0/16 \
+  service --agreed-terms-and-conditions
 ```
 
 If a reverse proxy reaches this node's WebUI, use the same `--ui.address` list

@@ -23,7 +23,10 @@ from fastapi.testclient import TestClient
 from app import catalog, compose_generator
 from app.main import app
 
-LOOPBACK = "--ui.address=127.0.0.1 --tequilapi.address=127.0.0.1 service --agreed-terms-and-conditions"
+PROTECTED = (
+    "--firewall.protected.networks=10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,127.0.0.0/8,100.64.0.0/10,169.254.0.0/16"
+)
+LOOPBACK = f"--ui.address=127.0.0.1 --tequilapi.address=127.0.0.1 {PROTECTED} service --agreed-terms-and-conditions"
 
 
 @asynccontextmanager
@@ -90,7 +93,7 @@ def test_an_added_address_reaches_the_webui_and_never_the_api(client):
     resp, sent = _deploy(client, {"env": {"UI_ADDRESS": "127.0.0.1,172.18.0.1"}})
     assert resp.status_code == 200, resp.text
     assert sent["command"] == (
-        "--ui.address=127.0.0.1,172.18.0.1 --tequilapi.address=127.0.0.1 service --agreed-terms-and-conditions"
+        f"--ui.address=127.0.0.1,172.18.0.1 --tequilapi.address=127.0.0.1 {PROTECTED} service --agreed-terms-and-conditions"
     )
 
 

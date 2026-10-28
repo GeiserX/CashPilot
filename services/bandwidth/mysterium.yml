@@ -55,7 +55,10 @@ docker:
   # put a reverse proxy in front by adding the one address it connects to in
   # UI_ADDRESS (the node binds every address in the comma-separated list). The
   # Tequila API stays on loopback: the WebUI proxies to it from inside the node.
-  command: "--ui.address=${UI_ADDRESS} --tequilapi.address=127.0.0.1 service --agreed-terms-and-conditions"
+  # --firewall.protected.networks: the node blackholes these for its customers.
+  # Its default leaves out 100.64.0.0/10 (CGNAT and Tailscale) and
+  # 169.254.0.0/16 (cloud metadata), so a VPN customer could reach the tailnet.
+  command: "--ui.address=${UI_ADDRESS} --tequilapi.address=127.0.0.1 --firewall.protected.networks=10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,127.0.0.0/8,100.64.0.0/10,169.254.0.0/16 service --agreed-terms-and-conditions"
   network_mode: "host"
   # SETUID and SETGID are for sudo. The node runs as root and still configures
   # its interface and firewall through `sudo ip ...` / `sudo iptables ...`, and

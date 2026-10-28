@@ -5164,6 +5164,18 @@ async def api_get_worker(request: Request, worker_id: int) -> dict[str, Any]:
     return worker
 
 
+@app.get("/api/workers/{worker_id}/isolation-check")
+async def api_worker_isolation_check(request: Request, worker_id: int) -> dict[str, Any]:
+    """What an earner on this worker's host can reach (issue #451).
+
+    Owner only: the worker starts two short-lived probe containers on its
+    host, one of them on host networking, to answer.
+    """
+    _require_owner(request)
+    # Two probes of up to 30 s each, plus starting and removing them.
+    return await _proxy_to_worker(worker_id, "GET", "/api/isolation-check", timeout=120)
+
+
 @app.delete("/api/workers/{worker_id}")
 async def api_delete_worker(request: Request, worker_id: int) -> dict[str, str]:
     """Remove a registered worker."""
