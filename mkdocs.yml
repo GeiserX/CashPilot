@@ -74,7 +74,6 @@ plugins:
         architecture.md: how-it-works.md
         contributing.md: development.md
         ecosystem.md: related.md
-        guides/README.md: guides/index.md
 
 markdown_extensions:
   - admonition
