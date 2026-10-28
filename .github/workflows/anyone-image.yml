@@ -16,6 +16,7 @@ on:
   pull_request:
     paths:
       - "images/anyone-protocol/**"
+      - "services/depin/anyone-protocol.yml"
       - ".github/workflows/anyone-image.yml"
   push:
     branches: [main]
@@ -70,6 +71,18 @@ jobs:
             *) echo "::error::Docker Hub answered $code for $REPO:$tag; cannot tell whether it is published"; exit 1 ;;
           esac
           echo "$REPO:$tag published: $published"
+          # <version> must point at the newest revision. A push that stopped
+          # between the two tags leaves it missing or stale, and nothing would
+          # repair it, because main skips a published revision.
+          if [ "$published" = true ]; then
+            digest() { curl -fsS "https://hub.docker.com/v2/repositories/$REPO/tags/$1" | jq -r '.digest // empty' || true; }
+            want=$(digest "$tag")
+            have=$(digest "$version")
+            if [ -z "$want" ] || [ "$want" != "$have" ]; then
+              echo "::error::$REPO:$version is at '${have:-missing}', not at $REPO:$tag ($want). Raise images/anyone-protocol/REVISION so main publishes both tags again."
+              exit 1
+            fi
+          fi
           if [ "$published" = true ] && [ -n "$BASE" ] && \
              ! git diff --quiet "$BASE" HEAD -- images/anyone-protocol/Dockerfile images/anyone-protocol/entrypoint.sh images/anyone-protocol/health.sh images/anyone-protocol/VERSION images/anyone-protocol/anon.asc; then
             echo "::error::This change alters what goes into the image, but $REPO:$tag is already published, so main would skip it. Raise images/anyone-protocol/REVISION so main publishes a new tag."
@@ -164,6 +177,7 @@ jobs:
             echo "from=$before"
             echo "to=$after"
             echo "short=${after%%-live*}"
+            echo "revision=$(cat images/anyone-protocol/REVISION)"
             echo "changed=$changed"
           } >> "$GITHUB_OUTPUT"
 
@@ -185,8 +199,8 @@ jobs:
           add-paths: |
             images/anyone-protocol/VERSION
             images/anyone-protocol/REVISION
-          commit-message: "chore(anyone-image): pin anon ${{ steps.bump.outputs.short }}"
-          title: "chore(anyone-image): pin anon ${{ steps.bump.outputs.short }}, the newest live release (was ${{ steps.bump.outputs.from }})"
+          commit-message: "chore(anyone-image): pin anon ${{ steps.bump.outputs.to }}"
+          title: "chore(anyone-image): pin anon ${{ steps.bump.outputs.to }}, the newest live release (was ${{ steps.bump.outputs.from }})"
           body: |
             The vendor's live bookworm repository now serves anon `${{ steps.bump.outputs.to }}`; the image pins `${{ steps.bump.outputs.from }}`.
 
@@ -194,6 +208,6 @@ jobs:
 
             The bumped pin was built for amd64 and arm64 and tested in this run, before the PR was opened (smoke test under CashPilot's hardening on amd64, including a takeover of a relay the vendor image created; `anon --version` on arm64): ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
 
-            Merging publishes `${{ env.REPO }}:${{ steps.bump.outputs.short }}-r1`. Then point `services/depin/anyone-protocol.yml` at it.
+            Merging publishes `${{ env.REPO }}:${{ steps.bump.outputs.short }}-r${{ steps.bump.outputs.revision }}`. Then point `services/depin/anyone-protocol.yml` at it.
 
             This PR was opened with the workflow token, so GitHub starts no pull_request checks on it and the ruleset's required `test` and `build (strict)` never report. It changes only `images/anyone-protocol/`, which this run already tested; merge it with the admin bypass.

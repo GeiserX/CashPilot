@@ -21,6 +21,10 @@ VENDOR_CAPS=(--cap-add CHOWN --cap-add DAC_OVERRIDE --cap-add FOWNER --cap-add S
 P="anyone-smoke-$$"
 HARDEN=(--cap-drop ALL --security-opt no-new-privileges:true --pids-limit 512 --memory 1536m)
 VERSION=$(tr -d '[:space:]' <"$(dirname "$0")/VERSION")
+# The command CashPilot's UI tells operators to run for the relay fingerprint,
+# taken from the catalog so the hint and this test cannot drift apart.
+HINT=$(sed -n 's#.*<b>docker exec cashpilot-anyone-protocol \([^<]*\)</b>.*#\1#p' \
+	"$(dirname "$0")/../../services/depin/anyone-protocol.yml")
 FAILURES=0
 TMP=$(mktemp -d)
 
@@ -56,12 +60,13 @@ healthy() { test "$(docker inspect -f '{{.State.Health.Status}}' "$1")" = health
 notices_have() { docker exec "$1" grep -qF -- "$2" /etc/anon/notices.log; }
 # The anonrc the fleet's relays use, with a test nickname and the descriptor
 # kept off the network. `User anond` stays in: every existing anonrc has it.
+# ORPORTS replaces the ORPort line.
 anonrc() {
 	cat <<RC
 User anond
 DataDirectory /var/lib/anon
 Log [~guard]notice [guard]warn file /etc/anon/notices.log
-ORPort 9001 IPv4Only
+${ORPORTS:-ORPort 9001 IPv4Only}
 ExitRelay 0
 SocksPort 0
 Nickname $1
@@ -112,6 +117,9 @@ check "bootstraps to 100%" wait_for 180 notices_have "$P-a" "Bootstrapped 100%"
 check "anon is PID 1, as uid 100" bash -c "docker exec $P-a grep -qE '^Uid:\s+100\s' /proc/1/status"
 check "with no effective capabilities" bash -c "docker exec $P-a grep -qE '^CapEff:\s+0+$' /proc/1/status"
 check "made an identity in a fresh named volume, no chown" docker exec "$P-a" test -s /var/lib/anon/keys/ed25519_master_id_secret_key
+# The fingerprint file's line, or --list-fingerprint's spaced form of it.
+check "the catalog's fingerprint command ($HINT) prints the fingerprint" \
+	bash -c "docker exec $P-a $HINT | grep -qE '^CashPilotSmokeA [0-9A-F ]{40,}$'"
 fp_a=$(docker exec "$P-a" cat /var/lib/anon/fingerprint-ed25519 2>/dev/null)
 docker stats --no-stream --format '  info  memory {{.MemUsage}}, pids {{.PIDs}}' "$P-a"
 
@@ -123,6 +131,14 @@ docker kill -s HUP "$P-a" >/dev/null
 check "logs the reload" wait_for 15 notices_have "$P-a" "Received reload signal (hup)"
 sleep 3
 check "still running after the reload" test "$(docker inspect -f '{{.State.Running}}' "$P-a")" = true
+check "still listening on the ORPort after the reload" wait_for 15 docker exec "$P-a" cashpilot-anyone-health
+
+echo "-- health check reads the ORPort anon listens on, not an advertised-only one"
+# The port-forward setup: advertise 9003, listen on 9001, NoListen line first.
+ORPORTS=$'ORPort 9003 NoListen IPv4Only\nORPort 9001 NoAdvertise IPv4Only' put_anonrc "$P-nl-conf" CashPilotSmokeNl "$IMAGE"
+relay "$P-nl" "$P-nl" "${HARDEN[@]}" "$IMAGE"
+check "healthy with a NoListen ORPort listed first" wait_for 60 docker exec "$P-nl" cashpilot-anyone-health
+docker rm -f "$P-nl" >/dev/null
 
 echo "-- stops cleanly and keeps its identity"
 t0=$(date +%s)
@@ -143,6 +159,8 @@ check "the vendor image made an identity" wait_for 120 docker exec "$P-v" test -
 sleep 5
 fp_v=$(docker exec "$P-v" cat /var/lib/anon/fingerprint-ed25519 2>/dev/null)
 rsa_v=$(docker exec "$P-v" cat /var/lib/anon/fingerprint 2>/dev/null)
+check "the catalog's fingerprint command works on the vendor image too" \
+	bash -c "docker exec $P-v $HINT | grep -qE '^CashPilotSmokeV [0-9A-F ]{40,}$'"
 echo "  info  vendor identity ${fp_v:-none}"
 docker stop "$P-v" >/dev/null
 docker rm "$P-v" >/dev/null

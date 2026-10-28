@@ -9,7 +9,7 @@ That is the worst possible service to lose a hint on. Every other credential is
 findable in a provider's web dashboard; this one is a relay fingerprint that
 exists only on the operator's own machine and needs
 
-    docker exec cashpilot-anyone-protocol anon --list-fingerprint
+    docker exec cashpilot-anyone-protocol cat /var/lib/anon/fingerprint
 
 So the single credential that genuinely cannot be guessed was the single
 credential with nothing on screen explaining where to get it. The input rendered
@@ -60,7 +60,7 @@ class TestTheHintReachesTheFieldTheUIReads:
     def test_the_hint_still_carries_the_command(self):
         """The whole value of this hint: the credential is not in any dashboard."""
         hint = catalog()["anyone-protocol"]["collector"]["credential_hint"]
-        assert "anon --list-fingerprint" in hint
+        assert "cat /var/lib/anon/fingerprint" in hint
         assert "docker exec" in hint
 
     def test_the_unread_field_is_gone(self):
@@ -138,4 +138,4 @@ class TestTheHintSurvivesTheSanitiser:
         """A shell command rendered as an anchor invites clicking, not copying."""
         hint = catalog()["anyone-protocol"]["collector"]["credential_hint"]
         anchor_start = hint.find("<a ")
-        assert anchor_start == -1 or "anon --list-fingerprint" not in hint[anchor_start:]
+        assert anchor_start == -1 or "cat /var/lib/anon/fingerprint" not in hint[anchor_start:]

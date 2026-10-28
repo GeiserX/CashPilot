@@ -44,7 +44,7 @@ docker run -d --name anyone-relay \
 
 `docker kill -s HUP <container>` reloads anonrc. `docker stop` shuts the relay down at once and cleanly.
 
-The health check passes while anon is listening on the ORPort set in anonrc. It cannot prove that port is reachable from the internet, which the relay needs before it publishes itself; `notices.log` says so when it is not.
+The health check passes while anon is listening on an ORPort set in anonrc (an advertised-only `NoListen` ORPort is skipped). It cannot prove that port is reachable from the internet, which the relay needs before it publishes itself; `notices.log` says so when it is not.
 
 ## Switching from the vendor image
 

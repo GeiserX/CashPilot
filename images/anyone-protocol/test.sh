@@ -15,9 +15,11 @@ ANON=${VERSION%%-live*}
 FINGERPRINT=DC73B31AA1F797B180A87CBC7571AA42A0CBEFE9
 TAG="cashpilot-anyone-test:$$"
 
-got=$(gpg --show-keys --with-colons "$DIR/anon.asc" | awk -F: '$1 == "fpr" { print $10; exit }')
-if [[ "$got" != "$FINGERPRINT" ]]; then
-	echo "FAILED: anon.asc has primary key $got, not the vendor's $FINGERPRINT" >&2
+# apt trusts every key in the file, so it must hold exactly one primary key:
+# the vendor's. The fpr line straight after a pub line is that key's.
+got=$(gpg --show-keys --with-colons "$DIR/anon.asc" | awk -F: '$1 == "pub" { n++; want = 1; next } want && $1 == "fpr" { if (fpr == "") fpr = $10; want = 0 } END { print n + 0, fpr }')
+if [[ "$got" != "1 $FINGERPRINT" ]]; then
+	echo "FAILED: anon.asc must hold exactly one primary key, the vendor's $FINGERPRINT; it has (count, first) $got" >&2
 	exit 1
 fi
 echo "== anon.asc is the vendor's key $FINGERPRINT"

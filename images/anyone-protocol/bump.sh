@@ -5,7 +5,10 @@
 #   images/anyone-protocol/bump.sh
 #
 # Reads the anon Version from the repository's Packages index for amd64 and
-# arm64, and rewrites VERSION and REVISION beside this script. Prints the
+# arm64, and rewrites VERSION and REVISION beside this script. Image tags carry
+# only the upstream part (0.4.10.2-r<revision>), so REVISION goes back to 1
+# only when that part changes; a repackage of the same anon raises it instead,
+# or main would rebuild a tag that is already published. Prints the
 # version, and writes nothing when it is already pinned. Exits non-zero when
 # the two architectures disagree, when the index has no anon, or when the
 # served version is older than the pin, so the weekly job opens no PR from a
@@ -44,6 +47,10 @@ if dpkg --compare-versions "$served" lt "$current" 2>/dev/null ||
 	exit 1
 fi
 
+revision=1
+if [[ "${served%%-live*}" == "${current%%-live*}" ]]; then
+	revision=$(($(tr -d '[:space:]' <"$DIR/REVISION") + 1))
+fi
 printf '%s\n' "$served" >"$DIR/VERSION"
-printf '1\n' >"$DIR/REVISION"
-echo "$served (was $current)"
+printf '%s\n' "$revision" >"$DIR/REVISION"
+echo "$served (was $current), revision $revision"
