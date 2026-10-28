@@ -6,8 +6,8 @@ website: https://anyone.io
 description: >
   Anyone Protocol (formerly ATOR) is a decentralized onion-routing privacy
   network. Node operators run relay nodes and earn ANYONE tokens for bandwidth
-  contributed. Think "incentivized Tor." Official Docker images available for
-  amd64 and arm64 including Raspberry Pi. Configuration is file-based via an
+  contributed. Think "incentivized Tor." CashPilot runs it from its own image,
+  built from the project's signed Debian package, for amd64 and arm64. Configuration is file-based via an
   anonrc file mounted into the container (Nickname, ContactInfo, ORPort, etc.).
 short_description: Decentralized onion routing - incentivized Tor relay nodes
 
@@ -16,8 +16,11 @@ referral:
   program: false
 
 docker:
-  image: ghcr.io/anyone-protocol/ator-protocol
-  tag: latest
+  # CashPilot's own image (images/anyone-protocol/): the project's signed .deb at a
+  # pinned version, run as anond with no added capabilities. The vendor image
+  # needs CHOWN, DAC_OVERRIDE, FOWNER, SETUID and SETGID, so it crash-loops here.
+  image: drumsergio/cashpilot-anyone
+  tag: "0.4.10.2-r1"
   platforms: [linux/amd64, linux/arm64]
   resources:
     mem_limit: "1536m"
