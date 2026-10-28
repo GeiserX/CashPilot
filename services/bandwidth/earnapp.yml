@@ -30,7 +30,7 @@ docker:
       label: "Node UUID"
       required: true
       secret: false
-      description: "Your EarnApp node ID: sdk-node- followed by 32 lowercase hex characters, as 'earnapp showid' prints it"
+      description: "Your EarnApp node ID: sdk-node- followed by 32 lowercase hex characters, as 'earnapp showid' prints it. After deploying, link it once by opening https://earnapp.com/r/<this UUID> while signed in to EarnApp; an unlinked node earns, but nothing reaches your balance"
       # The image refuses any other form at start, so check it here instead of
       # letting a typo deploy and then exit on every restart.
       pattern: 'sdk-node-[0-9a-f]{32}'

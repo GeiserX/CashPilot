@@ -56,13 +56,41 @@ Sign up at [EarnApp](https://earnapp.com/i/TSMD9wSm).
 
 <small>Referral link: the CashPilot maintainer may earn a commission from it.</small>
 
-### 2. Get your credentials
+### 2. Make a node UUID
 
-After signing up, locate the credentials needed for Docker deployment. These are typically your email/password or an API token found in the dashboard.
+Each device needs its own UUID: `sdk-node-` followed by 32 lowercase hex characters. Make one with:
+
+```sh
+echo sdk-node-$(head -c 16 /dev/urandom | od -An -tx1 | tr -d ' \n')
+```
+
+Use a new UUID on every machine. Two containers with the same UUID count as one device.
 
 ### 3. Deploy with CashPilot
 
-In the CashPilot web UI, find **EarnApp** in the service catalog and click **Deploy**. Enter the required credentials and CashPilot will handle the rest.
+In the CashPilot web UI, find **EarnApp** in the service catalog, click **Deploy** and paste the UUID into **Node UUID**.
+
+### 4. Link the device to your account
+
+This step is easy to miss, and it costs you money if you do. A node that is never linked
+still runs and still carries traffic, but EarnApp credits what it earns to the device, not to
+you. Your balance does not move, so it looks as if the node earns nothing.
+
+While signed in to EarnApp in your browser, open this once for each device:
+
+```text
+https://earnapp.com/r/<your UUID>
+```
+
+The page should say "Device successfully linked". The container log prints the same address
+at every start (`docker logs cashpilot-earnapp`).
+
+To check, open **Passive income** in the EarnApp dashboard. Every device you run should be in
+the list. If one is missing, it is not linked yet. Linking it late is fine: what it earned
+while unlinked moves to your balance when you link it. One of our own nodes ran unlinked for
+95 days, and linking it added that whole period's earnings at once.
+
+Link again whenever you redeploy with a new UUID. A redeploy that keeps the UUID needs nothing.
 
 ## Docker Configuration
 
