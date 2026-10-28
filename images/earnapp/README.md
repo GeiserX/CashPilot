@@ -8,7 +8,7 @@ An unofficial EarnApp container for [CashPilot](https://github.com/GeiserX/CashP
 
 The image holds no Bright Data code. It contains a Debian base, an entrypoint, the EarnApp version it is pinned to (`VERSION`) and the sha256 of that version's build for each architecture (`SHA256SUMS`).
 
-At first start the entrypoint downloads the pinned build straight from Bright Data's CDN (`https://cdn-earnapp.b-cdn.net/static/earnapp-ssl3-<arch>-<version>`), checks its sha256 against the pin, and refuses to start on a mismatch or a failed download. The checked binary is cached in the `/etc/earnapp` volume, so recreating the container checks the copy again instead of downloading it.
+At first start the entrypoint downloads the pinned build straight from Bright Data's CDN (`https://cdn-earnapp.b-cdn.net/static/earnapp-ssl3-<arch>-<version>`), checks its sha256 against the pin, and refuses to start on a mismatch or a failed download. It picks the build from the image's own architecture (`dpkg --print-architecture`), not the kernel's, so a 32-bit Raspberry Pi OS on a 64-bit kernel gets the arm7l build it can run. The checked binary is cached in the `/etc/earnapp` volume, so recreating the container checks the copy again instead of downloading it.
 
 It then runs EarnApp in lite mode: no systemd, no installer, no shims. Bash is PID 1, writes `EARNAPP_UUID` to `/etc/earnapp/uuid`, runs `earnapp start`, then keeps `earnapp run` in the foreground. If `earnapp run` exits, the entrypoint starts it again inside the same container with a backoff from 5 s to 5 minutes, and says so in the log; the container itself is not restarted. `docker stop` stops it cleanly.
 
@@ -33,7 +33,7 @@ Then open `https://earnapp.com/r/<your EARNAPP_UUID>` once while logged in to li
 |---|---|---|
 | `EARNAPP_UUID` | yes | `sdk-node-` followed by 32 lowercase hex characters |
 
-The health check passes once `/etc/earnapp/status` reads `enabled`, which `earnapp start` writes after registering the device.
+The health check passes while `/etc/earnapp/status` reads `enabled` and an `earnapp run` process is alive. It does not prove the device registered or is online: `earnapp start` writes `enabled` even when registration fails, and EarnApp's log is encrypted. Check the device on the EarnApp dashboard.
 
 ## Tags
 
@@ -44,7 +44,9 @@ There is no `latest` tag. Platforms: `linux/amd64`, `linux/arm64`, `linux/arm/v7
 
 ## Upgrades
 
-EarnApp's own upgrader needs systemd, so it never runs here; the image pin is the upgrade path. A weekly job reads `VERSION=` from Bright Data's `install.sh` (it reads the script and never runs it), fetches the CDN's `.sha256` file for each architecture's build, tests the new pin on all three platforms, and opens a pull request. Merging it publishes the new tag.
+EarnApp's own upgrader needs systemd, so it never runs here; the image pin is the upgrade path. A daily job reads `VERSION=` from Bright Data's `install.sh` (it reads the script and never runs it), fetches the CDN's `.sha256` file for each architecture's build, tests the new pin on all three platforms, and opens a pull request. Merging it publishes the new tag.
+
+Bright Data's CDN keeps only the build its installer serves today, so a pinned build disappears from it soon after a new release. A device that already has the pinned build cached keeps running it. A new device, or one with an empty volume, would have nothing to download, so the entrypoint then falls back: it reads the version `install.sh` serves now (only if it is newer than the pin), checks that build against the CDN's `.sha256` file, runs it, and logs a warning on every start that it is not running the pinned build. Upgrade to the newer tag to get back onto a pinned hash.
 
 The CDN's `.sha256` files are not signed. The pin catches a swapped or corrupt download from the moment it is recorded; it cannot prove who published the build.
 

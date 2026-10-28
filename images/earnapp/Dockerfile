@@ -12,6 +12,7 @@ RUN apt-get update \
 
 COPY VERSION SHA256SUMS /opt/cashpilot-earnapp/
 COPY --chmod=755 entrypoint.sh /usr/local/bin/cashpilot-earnapp
+COPY --chmod=755 health.sh /usr/local/bin/cashpilot-earnapp-health
 
 # The binary lives in the volume, next to the device state, so a recreated
 # container reuses the copy it already checked.
@@ -19,9 +20,10 @@ RUN ln -s /etc/earnapp/bin/earnapp /usr/bin/earnapp
 
 VOLUME ["/etc/earnapp"]
 
-# `earnapp start` writes "enabled" here once the device is registered.
+# Healthy = `earnapp start` ran and `earnapp run` is alive. It does not prove
+# the device registered; see health.sh.
 HEALTHCHECK --interval=1m --timeout=10s --start-period=2m --retries=3 \
-	CMD ["grep", "-q", "enabled", "/etc/earnapp/status"]
+	CMD ["/usr/local/bin/cashpilot-earnapp-health"]
 
 ENTRYPOINT ["/usr/local/bin/cashpilot-earnapp"]
 

@@ -6,8 +6,10 @@ name: EarnApp image
 # - pull_request: build all three platforms, smoke-test under CashPilot's
 #   hardening, verify every pinned sha256. Pushes nothing.
 # - push to main: the same tests, then publish <version> and <version>-r<revision>.
-# - schedule: read the version Bright Data's installer serves; when it moved,
-#   run the same tests on the bumped pin and open a PR with it.
+# - schedule (daily): read the version Bright Data's installer serves; when it
+#   moved, run the same tests on the bumped pin and open a PR with it. The CDN
+#   keeps only the served build, so a stale pin falls back at runtime (see
+#   entrypoint.sh); the daily bump keeps that window short.
 
 on:
   pull_request:
@@ -20,7 +22,7 @@ on:
       - "images/earnapp/**"
       - ".github/workflows/earnapp-image.yml"
   schedule:
-    - cron: "41 5 * * 1"
+    - cron: "41 5 * * *"
   workflow_dispatch:
 
 permissions:
@@ -34,7 +36,8 @@ env:
   REPO: drumsergio/cashpilot-earnapp
 
 jobs:
-  test:
+  # Not named `test`: that is the required check from test.yml in the ruleset.
+  image:
     if: github.event_name == 'pull_request' || github.event_name == 'push'
     runs-on: ubuntu-latest
     outputs:
@@ -52,7 +55,8 @@ jobs:
       - name: Work out the tag, and refuse to reuse a published one
         id: tag
         env:
-          BASE: ${{ github.event.pull_request.base.sha }}
+          # The PR's base, or on push the commit main was at before it.
+          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
         run: |
           version=$(tr -d '[:space:]' < images/earnapp/VERSION)
           revision=$(tr -d '[:space:]' < images/earnapp/REVISION)
@@ -65,8 +69,8 @@ jobs:
           esac
           echo "$REPO:$tag published: $published"
           if [ "$published" = true ] && [ -n "$BASE" ] && \
-             ! git diff --quiet "$BASE" HEAD -- images/earnapp/Dockerfile images/earnapp/entrypoint.sh images/earnapp/VERSION images/earnapp/SHA256SUMS; then
-            echo "::error::This PR changes what goes into the image, but $REPO:$tag is already published. Raise images/earnapp/REVISION so main publishes a new tag instead of skipping it."
+             ! git diff --quiet "$BASE" HEAD -- images/earnapp/Dockerfile images/earnapp/entrypoint.sh images/earnapp/health.sh images/earnapp/VERSION images/earnapp/SHA256SUMS; then
+            echo "::error::This change alters what goes into the image, but $REPO:$tag is already published, so main would skip it. Raise images/earnapp/REVISION so main publishes a new tag."
             exit 1
           fi
           {
@@ -82,8 +86,8 @@ jobs:
         run: images/earnapp/test.sh
 
   publish:
-    needs: test
-    if: github.event_name == 'push' && needs.test.outputs.published == 'false'
+    needs: image
+    if: github.event_name == 'push' && needs.image.outputs.published == 'false'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -101,13 +105,30 @@ jobs:
           # Never :latest. <version>-r<revision> never changes once pushed;
           # <version> follows the newest revision of that EarnApp version.
           tags: |
-            ${{ env.REPO }}:${{ needs.test.outputs.tag }}
-            ${{ env.REPO }}:${{ needs.test.outputs.version }}
+            ${{ env.REPO }}:${{ needs.image.outputs.tag }}
+            ${{ env.REPO }}:${{ needs.image.outputs.version }}
+      # The pushed image is a fresh build, not the one test.sh ran, so check
+      # what users will pull: every platform fetches and verifies its build.
+      - name: Verify the pushed tag on every platform
+        env:
+          TAG: ${{ needs.image.outputs.tag }}
+          VERSION: ${{ needs.image.outputs.version }}
+        run: |
+          for platform in linux/amd64 linux/arm64 linux/arm/v7; do
+            echo "== $platform"
+            out=$(docker run --rm --pull always --platform "$platform" --cap-drop ALL \
+              --security-opt no-new-privileges:true --pids-limit 512 --memory 256m "$REPO:$TAG" verify)
+            echo "$out"
+            if ! grep -q "sha256 matches the pin" <<<"$out" || ! grep -qF "$VERSION" <<<"$out"; then
+              echo "::error::$REPO:$TAG on $platform did not verify the pinned $VERSION"
+              exit 1
+            fi
+          done
 
   description:
-    needs: [test, publish]
+    needs: [image, publish]
     # After a publish, or on its own when only the README changed.
-    if: always() && github.event_name == 'push' && needs.test.result == 'success' && needs.publish.result != 'failure'
+    if: always() && github.event_name == 'push' && needs.image.result == 'success' && needs.publish.result != 'failure'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -158,7 +179,7 @@ jobs:
             images/earnapp/SHA256SUMS
             images/earnapp/REVISION
           commit-message: "chore(earnapp-image): pin EarnApp ${{ steps.bump.outputs.to }}"
-          title: "chore(earnapp-image): pin EarnApp ${{ steps.bump.outputs.to }} before Bright Data drops ${{ steps.bump.outputs.from }}"
+          title: "chore(earnapp-image): pin EarnApp ${{ steps.bump.outputs.to }}, the build Bright Data serves now (was ${{ steps.bump.outputs.from }})"
           body: |
             Bright Data's installer now serves EarnApp ${{ steps.bump.outputs.to }}; the image pins ${{ steps.bump.outputs.from }}.
 
@@ -166,4 +187,6 @@ jobs:
 
             The bumped pin was built for amd64, arm64 and arm/v7 and tested in this run, before the PR was opened (smoke test under CashPilot's hardening on amd64, download and `earnapp --version` on the arm builds): ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
 
-            Merging publishes `${{ env.REPO }}:${{ steps.bump.outputs.to }}-r1`. Then point `services/bandwidth/earnapp.yml` at it.
+            Merging publishes `${{ env.REPO }}:${{ steps.bump.outputs.to }}-r1`. Then point `services/bandwidth/earnapp.yml` at it. Until then, devices on the old tag that have no cached binary fall back to the served build at start and log a warning.
+
+            This PR was opened with the workflow token, so GitHub starts no pull_request checks on it and the ruleset's required `test` and `build (strict)` never report. It changes only `images/earnapp/`, which this run already tested; merge it with the admin bypass.

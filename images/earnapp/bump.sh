@@ -7,7 +7,8 @@
 # of each build the image uses, and rewrites VERSION, SHA256SUMS and REVISION
 # beside this script. Prints the version, and writes nothing when it is
 # already pinned. Exits non-zero when anything it reads looks wrong, so the
-# weekly job opens no PR from a half-read answer.
+# daily job opens no PR from a half-read answer, and when the served version
+# is older than the pin, so a Bright Data rollback never moves it backwards.
 set -euo pipefail
 
 DIR=$(cd "$(dirname "$0")" && pwd)
@@ -25,6 +26,10 @@ current=$(tr -d '[:space:]' <"$DIR/VERSION")
 if [[ "$version" == "$current" ]]; then
 	echo "$version (already pinned)"
 	exit 0
+fi
+if [[ "$(printf '%s\n' "$current" "$version" | sort -V | tail -n1)" != "$version" ]]; then
+	echo "the installer serves $version, older than the pinned $current; refusing to move the pin backwards" >&2
+	exit 1
 fi
 
 sums=""

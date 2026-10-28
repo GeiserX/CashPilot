@@ -65,16 +65,30 @@ check "says sha256 mismatch" logs_have "$P-badsum" "sha256 mismatch"
 check "leaves no unverified binary behind" \
 	docker run --rm -v "$P-badsum:/etc/earnapp" --entrypoint sh "$IMAGE" -c '! find /etc/earnapp/bin -type f 2>/dev/null | grep -q .'
 
+echo "-- falls back to the served build when the CDN has dropped the pinned one"
+# 0.0.1 is not on the CDN (404), as an old pin will not be once Bright Data moves on.
+echo 0.0.1 >"$TMP/VERSION"
+for arch in x64 aarch64 arm7l; do echo "$(printf '0%.0s' {1..64})  earnapp-ssl3-$arch-0.0.1"; done >"$TMP/SHA256SUMS.old"
+docker run --name "$P-gone" "${HARDEN[@]}" -v "$P-gone:/etc/earnapp" \
+	-v "$TMP/VERSION:/opt/cashpilot-earnapp/VERSION:ro" -v "$TMP/SHA256SUMS.old:/opt/cashpilot-earnapp/SHA256SUMS:ro" \
+	"$IMAGE" verify >/dev/null 2>&1
+check "exits 0 with a pin the CDN no longer serves" test "$(exit_code "$P-gone")" = 0
+check "warns that it runs the served build instead" logs_have "$P-gone" "no longer serves the pinned EarnApp 0.0.1"
+check "checks the served build against the CDN's .sha256" logs_have "$P-gone" "sha256 matches the CDN's .sha256 file"
+
 echo "-- runs under CashPilot's hardening"
 uuid="sdk-node-$(head -c 16 /dev/urandom | od -An -tx1 | tr -d ' \n')"
 docker run -d --name "$P-run" "${HARDEN[@]}" -e EARNAPP_UUID="$uuid" -v "$P-data:/etc/earnapp" "$IMAGE" >/dev/null
 check "downloads the binary and the sha256 matches" wait_for 120 logs_have "$P-run" "sha256 matches the pin"
-check "earnapp start registers the device (status enabled)" \
+check "earnapp start ran (status enabled)" \
 	wait_for 120 docker exec "$P-run" grep -q enabled /etc/earnapp/status
 check "writes the given device id" test "$(docker exec "$P-run" cat /etc/earnapp/uuid)" = "$uuid"
 sleep 20
 check "earnapp run is still up after 20 s" bash -c "docker exec $P-run sh -c 'cat /proc/[0-9]*/cmdline 2>/dev/null | tr \"\\0\" \" \"' | grep -q 'earnapp run'"
 check "container still running" test "$(docker inspect -f '{{.State.Running}}' "$P-run")" = true
+check "health check passes while earnapp run is up" docker exec "$P-run" /usr/local/bin/cashpilot-earnapp-health
+check "health check fails on status enabled with no earnapp run" \
+	docker run --rm --entrypoint bash "$IMAGE" -c 'mkdir -p /etc/earnapp && echo enabled >/etc/earnapp/status && ! cashpilot-earnapp-health'
 docker stats --no-stream --format '  info  memory {{.MemUsage}}, pids {{.PIDs}}' "$P-run"
 
 echo "-- restarts earnapp run inside the container, not the container"
