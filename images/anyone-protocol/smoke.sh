@@ -119,7 +119,7 @@ check "anon is PID 1, as uid 100" bash -c "docker exec $P-a grep -qE '^Uid:\s+10
 check "with no effective capabilities" bash -c "docker exec $P-a grep -qE '^CapEff:\s+0+$' /proc/1/status"
 # 1536m is CashPilot's limit; half of it, and a relay that bootstrapped with it.
 check "caps MaxMemInQueues at half the container's memory limit" \
-	bash -c "docker exec $P-a tr '\\0' ' ' </proc/1/cmdline | grep -qF -- '--MaxMemInQueues 768 MB'"
+	bash -c "docker exec $P-a cat /proc/1/cmdline | tr '\\0' ' ' | grep -qF -- '--MaxMemInQueues 768 MB'"
 check "made an identity in a fresh named volume, no chown" docker exec "$P-a" test -s /var/lib/anon/keys/ed25519_master_id_secret_key
 # The fingerprint file's line, or --list-fingerprint's spaced form of it.
 check "the catalog's fingerprint command ($HINT) prints the fingerprint" \
@@ -134,8 +134,10 @@ echo "-- leaves MaxMemInQueues alone when anonrc sets it"
 EXTRA="MaxMemInQueues 300 MB" put_anonrc "$P-m-conf" CashPilotSmokeM "$IMAGE"
 relay "$P-m" "$P-m" "${HARDEN[@]}" "$IMAGE"
 check "starts" wait_for 60 logs_have "$P-m" "running as anond"
+check "reads the relay's own command line" \
+	bash -c "docker exec $P-m cat /proc/1/cmdline | tr '\\0' ' ' | grep -qF -- 'anon -f /etc/anon/anonrc --User'"
 check "passes no MaxMemInQueues of its own" \
-	bash -c "! docker exec $P-m tr '\\0' ' ' </proc/1/cmdline | grep -qF -- --MaxMemInQueues"
+	bash -c "! docker exec $P-m cat /proc/1/cmdline | tr '\\0' ' ' | grep -qF -- --MaxMemInQueues"
 docker rm -f "$P-m" >/dev/null
 
 echo "-- reloads anonrc on SIGHUP and keeps running"
