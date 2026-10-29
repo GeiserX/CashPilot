@@ -94,7 +94,7 @@ Link again whenever you redeploy with a new UUID. A redeploy that keeps the UUID
 
 ## Docker Configuration
 
-- **Image:** `drumsergio/cashpilot-earnapp:1.665.73-r1`, CashPilot's own image
+- **Image:** `drumsergio/cashpilot-earnapp:1.665.73-r2`, CashPilot's own image
 - **Platforms:** linux/amd64, linux/arm64, linux/arm/v7
 
 The image holds no Bright Data code. At first start it downloads the pinned EarnApp build

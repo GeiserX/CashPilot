@@ -247,6 +247,11 @@ async def _get_all_worker_containers(workers: list[dict[str, Any]] | None = None
                             # mismatch check depends on would be silently
                             # dropped right here.
                             "advertised_address": c.get("advertised_address"),
+                            # When and how a stopped container stopped, for the
+                            # container-down alert. Absent on a running one.
+                            "finished_at": c.get("finished_at"),
+                            "exit_code": c.get("exit_code"),
+                            "restart_policy": c.get("restart_policy"),
                             "_node": worker_name,
                             "_worker_id": w.get("id"),
                             "_has_docker": worker_has_docker,
@@ -364,7 +369,16 @@ async def _run_health_check() -> None:
         # blind, the container might be on that one. Unknown is not down, so
         # nothing is recorded — the score is left untouched rather than
         # invented.
-        blind = [w for w in online if not _safe_json(w.get("system_info", "{}"), {}).get("docker_available", False)]
+        # A phone has no Docker by design, so it cannot be hiding a missing
+        # container and is not blind in this sense. Counting it switched the
+        # missing-container check off for the whole fleet whenever a phone was
+        # online, and warned about it every five minutes.
+        blind = []
+        for w in online:
+            info = _safe_json(w.get("system_info", "{}"), {})
+            if info.get("device_type") != "android" and not info.get("docker_available", False):
+                blind.append(w)
+        _report_blind_workers(blind)
         if online and not blind:
             deployments = await database.get_deployments()
             for d in deployments:
@@ -372,17 +386,139 @@ async def _run_health_check() -> None:
                 if d.get("status") == "external" or slug in slug_best:
                     continue
                 events.append((slug, "check_down", "missing from heartbeat"))
-        elif blind:
-            logger.warning(
-                "Not recording missing-container downtime: %d online worker(s) cannot read Docker (%s). "
-                "Their containers may be running; recording them as down would be a guess.",
-                len(blind),
-                ", ".join(sorted(str(w.get("name") or w.get("id")) for w in blind)),
-            )
 
         await database.record_health_events(events)
+        await _container_down_check(statuses)
     except Exception as exc:
         logger.warning("Health check skipped: %s", exc)
+
+
+# The blind workers the last warning named. The health check runs every five
+# minutes, so warning on each run repeated one fact hundreds of times a day; it
+# now speaks when the set changes and once when every worker can see again.
+_blind_workers_logged: frozenset[str] | None = None
+
+
+def _report_blind_workers(blind: list[dict[str, Any]]) -> None:
+    global _blind_workers_logged
+    names = frozenset(str(w.get("name") or w.get("id")) for w in blind)
+    if names == (_blind_workers_logged or frozenset()):
+        return
+    _blind_workers_logged = names
+    if names:
+        logger.warning(
+            "Not recording missing-container downtime: %d online worker(s) cannot read Docker (%s). "
+            "Their containers may be running; recording them as down would be a guess.",
+            len(names),
+            ", ".join(sorted(names)),
+        )
+    else:
+        logger.info("Every online worker can read Docker again; missing-container downtime is recorded again.")
+
+
+# How long a managed container may stay exited before it is an alert. Long
+# enough for a deploy, an update or a manual restart to finish; short enough
+# that a node which exited cleanly and stayed down (restart policy "no") is
+# news within the hour instead of after days of check_down rows nobody reads.
+CONTAINER_DOWN_GRACE = timedelta(minutes=30)
+# A stop recorded by CashPilot explains a container that finished within this
+# long after it; a container that finished later stopped for another reason.
+_STOP_EXPLAINS_WITHIN = timedelta(minutes=10)
+# When each stopped container was first seen down, for a worker too old to
+# report Docker's own FinishedAt. Keyed by (worker id, container name).
+_container_first_seen_down: dict[tuple[Any, str], datetime] = {}
+# The bell entries the check currently stands behind, re-added after every
+# collection, which replaces the bell list wholesale.
+_container_down_bell: dict[str, dict[str, str]] = {}
+_RESTARTING_POLICIES = ("unless-stopped", "always")
+
+
+def _docker_time(value: Any) -> datetime | None:
+    """Docker's FinishedAt (RFC 3339 in UTC, nanoseconds) as a datetime."""
+    if not isinstance(value, str) or len(value) < 19:
+        return None
+    try:
+        return datetime.fromisoformat(value[:19]).replace(tzinfo=UTC)
+    except ValueError:
+        return None
+
+
+async def _container_down_check(statuses: list[dict[str, Any]]) -> None:
+    """Alert when a CashPilot-managed container has stayed exited past the grace period.
+
+    The health check already wrote check_down for such a container every five
+    minutes, and nothing read it: three urnetwork containers exited cleanly
+    with restart policy "no" and sat down for two days with no alert. One alert
+    per service, cleared when no managed copy of it is down any more. A stop the
+    user made from CashPilot is not an alert. Never raises.
+    """
+    global _collector_alerts
+    try:
+        now = datetime.now(UTC)
+        down: dict[str, list[dict[str, Any]]] = {}
+        seen_keys: set[tuple[Any, str]] = set()
+        for s in statuses:
+            if s.get("_is_android") or s.get("deployed_by") == "external":
+                continue
+            if s.get("status") not in ("exited", "dead"):
+                continue
+            key = (s.get("_worker_id"), str(s.get("name") or s.get("slug")))
+            seen_keys.add(key)
+            since = _docker_time(s.get("finished_at")) or _container_first_seen_down.setdefault(key, now)
+            down.setdefault(s["slug"], []).append({**s, "_down_since": since})
+        for key in set(_container_first_seen_down) - seen_keys:
+            _container_first_seen_down.pop(key, None)
+
+        alerting: dict[str, str] = {}
+        for slug, copies in down.items():
+            long_down = [c for c in copies if now - c["_down_since"] >= CONTAINER_DOWN_GRACE]
+            if not long_down:
+                continue
+            last = await database.get_last_lifecycle_event(slug)
+            if last and last[0] in ("stop", "remove"):
+                stopped_at = _docker_time(last[1].replace(" ", "T"))
+                if stopped_at is not None:
+                    long_down = [c for c in long_down if c["_down_since"] > stopped_at + _STOP_EXPLAINS_WITHIN]
+            if long_down:
+                alerting[slug] = _container_down_message(slug, long_down)
+
+        # Recovery: nothing of that service is down any more. A copy that is
+        # down but still inside the grace period (or explained by a stop) is
+        # neither raised nor cleared, so a UI restart cannot clear an alert
+        # just because it forgot when an old worker's container went down.
+        for slug in await database.get_alert_subjects("container"):
+            if slug not in down:
+                await database.clear_alerts("container", slug)
+                logger.info("%s is running again; cleared its container-down alert", slug)
+        for slug in list(_container_down_bell):
+            if slug not in alerting:
+                _container_down_bell.pop(slug)
+
+        for slug, message in alerting.items():
+            _container_down_bell[slug] = {"kind": "container", "platform": slug, "error": message}
+            if alert_id := await database.record_alert("container", slug, message):
+                _spawn(_push_alert("container", slug, f"CashPilot: {slug} has stopped running", message, alert_id))
+
+        _collector_alerts = [a for a in _collector_alerts if a.get("kind") != "container"]
+        _collector_alerts.extend(_container_down_bell.values())
+    except Exception as exc:  # noqa: BLE001 - a diagnostic must not break the health check
+        logger.warning("Container-down check failed: %s", exc)
+
+
+def _container_down_message(slug: str, copies: list[dict[str, Any]]) -> str:
+    name = (catalog.get_service(slug) or {}).get("name") or slug
+    since = min(c["_down_since"] for c in copies).strftime("%Y-%m-%d %H:%M")
+    nodes = ", ".join(sorted({str(c.get("_node") or "?") for c in copies}))
+    codes = sorted({c["exit_code"] for c in copies if isinstance(c.get("exit_code"), int)})
+    how = f" (exit code {', '.join(str(code) for code in codes)})" if codes else ""
+    message = f"{name} has not been running since {since} UTC on {nodes}{how}, so it is not earning."
+    policies = sorted({str(c["restart_policy"]) for c in copies if c.get("restart_policy")} - set(_RESTARTING_POLICIES))
+    if policies:
+        message += (
+            f' Its restart policy is "{", ".join(policies)}", so Docker will not start it again by itself;'
+            " redeploying it from CashPilot sets unless-stopped."
+        )
+    return message + " Start it from the dashboard, or remove it if you stopped it on purpose."
 
 
 async def _push_alert(kind: str, subject: str, title: str, message: str, alert_id: int) -> None:
@@ -587,52 +723,104 @@ async def _offline_worker_alerts() -> list[dict[str, str]]:
     return entries
 
 
-async def _flatline_check() -> list[dict[str, str]]:
-    """Alert on services that are running but whose balance has stopped moving.
+def _quiet_days_by_platform() -> dict[str, int]:
+    """Each catalog entry's collector.quiet_days, for the services that declare one."""
+    out: dict[str, int] = {}
+    for svc in catalog.get_services():
+        raw = (svc.get("collector") or {}).get("quiet_days")
+        with contextlib.suppress(TypeError, ValueError):
+            if raw is not None and int(raw) > 0:
+                out[svc["slug"]] = int(raw)
+    return out
+
+
+def _flatline_message(flat: dict[str, Any]) -> str:
+    name = (catalog.get_service(flat["platform"]) or {}).get("name") or flat["platform"]
+    days = flat.get("days_flat")
+    span = f" ({days} days)" if days else ""
+    if flat.get("last_increase") is None:
+        return (
+            f"{name} has not earned anything since CashPilot started reading it"
+            f"{' on ' + str(flat['since']) if flat.get('since') else ''}{span}. "
+            "Common causes: the device is not linked to your account, the provider has no demand for your "
+            "IP or region yet, or the node cannot be reached from outside. "
+            "This clears by itself when the balance grows."
+        )
+    gap = flat.get("usual_gap_days")
+    rhythm = (
+        f"it usually earns every {'day' if gap == 1 else f'{gap} days'}"
+        if gap
+        else "it earned before, though too rarely to say how often"
+    )
+    return (
+        f"{name} hasn't earned since {flat['last_increase']}{span}; {rhythm}. "
+        "Common causes: no demand for your IP or region right now, the device was unlinked from your "
+        "account, or the node cannot be reached from outside. Services often go quiet for a while and "
+        "pick up again; this clears by itself when the balance grows."
+    )
+
+
+# One push per quiet spell. The default 24 h cooldown would repeat the push
+# every day the balance stays flat; the alert row is cleared when the balance
+# grows, and that is what re-arms it.
+_FLATLINE_COOLDOWN_HOURS = 24 * 365 * 10
+
+
+async def _flatline_check(
+    collected: set[str] | None = None,
+    deployments: list[dict[str, Any]] | None = None,
+    statuses: list[dict[str, Any]] | None = None,
+) -> list[dict[str, str]]:
+    """Give a heads-up on a service whose balance has stopped growing.
 
     A container can be up and a collector can authenticate happily while the
     balance never moves. Every other view of the system looks healthy, so
     nothing else would surface it.
 
+    Soft evidence, so it is held back unless everything else is fine: the
+    collector succeeded this run (``collected``), and a service with a container
+    has a copy running on an online worker (``statuses`` only lists online
+    workers). A container that is down has its own alert, and an offline worker
+    its own. When a precondition fails the alert is neither raised nor cleared;
+    it clears only when the balance grows, so a payout or a restart cannot
+    re-arm it into a second push.
+
     Never raises: this is a diagnostic, and a diagnostic must not be able to
-    take down the collection run it is diagnosing. record_alert's per-kind
-    cooldown keeps this to one notification per service rather than one per
-    collection cycle.
+    take down the collection run it is diagnosing.
     """
     bell: list[dict[str, str]] = []
     try:
-        flat_services = await database.get_flatlined_services()
+        first_deployed = {d["slug"]: d.get("deployed_at") or "" for d in deployments or []}
+        flat_services = await database.get_flatlined_services(
+            quiet_days=_quiet_days_by_platform(), first_deployed=first_deployed
+        )
         flat_now = {f["platform"] for f in flat_services}
 
-        # Clear the cooldown for anything that has started earning again.
-        # record_alert suppresses a repeat within the quiet window, so without
-        # this a service that recovered and then went flat again inside that
-        # window would be silently swallowed - the alert nobody gets.
+        # Clear the row for anything that has started earning again, so its
+        # next quiet spell notifies instead of being deduped into silence.
         for recovered in await database.get_alert_subjects("flatline") - flat_now:
             await database.clear_alerts("flatline", recovered)
             logger.info("%s is earning again; cleared its flatline alert", recovered)
 
+        has_container = {d["slug"] for d in deployments or [] if d.get("status") != "external"}
+        running = {s["slug"] for s in statuses or [] if s.get("status") == "running"}
         for flat in flat_services:
-            message = (
-                f"Balance has not moved in {flat['days_flat']} days "
-                f"(still {flat['balance']}). The service is running but not earning."
-            )
+            platform = flat["platform"]
+            if collected is not None and platform not in collected:
+                continue
+            if statuses is not None and platform in has_container and platform not in running:
+                continue
+            message = _flatline_message(flat)
             # Built for EVERY flatlined service, not only the ones that clear
             # record_alert's cooldown. The cooldown exists to stop repeat
-            # NOTIFICATIONS; the bell is a standing statement of what is wrong
-            # right now, so gating it the same way would blank the bell on the
-            # second collection while the service was still not earning.
-            bell.append({"kind": "flatline", "platform": flat["platform"], "error": message})
-            if alert_id := await database.record_alert("flatline", flat["platform"], message):
-                _spawn(
-                    _push_alert(
-                        "flatline",
-                        flat["platform"],
-                        f"CashPilot: {flat['platform']} is running but not earning",
-                        message,
-                        alert_id,
-                    )
-                )
+            # NOTIFICATIONS; the bell is a standing statement of what is true
+            # right now.
+            bell.append({"kind": "flatline", "platform": platform, "error": message})
+            if alert_id := await database.record_alert(
+                "flatline", platform, message, cooldown_hours=_FLATLINE_COOLDOWN_HOURS
+            ):
+                name = (catalog.get_service(platform) or {}).get("name") or platform
+                _spawn(_push_alert("flatline", platform, f"CashPilot: {name} has gone quiet", message, alert_id))
     except Exception as exc:
         logger.warning("Flatline check failed: %s", exc)
         # The check's own failure must not render as health: an empty return
@@ -679,7 +867,7 @@ async def _warm_collector_alerts() -> None:
         # them from the bell while their 24h push-dedupe survived — so a
         # recovery inside the gap skipped clear_alerts and the stale row
         # swallowed the next genuine warning.
-        if alert["kind"] not in ("collector", "payout", "flatline", "worker", "notice"):
+        if alert["kind"] not in ("collector", "payout", "flatline", "worker", "notice", "container"):
             continue
         key = f"{alert['kind']}:{alert['subject']}"
         if key in seen:
@@ -838,6 +1026,7 @@ async def _run_collection() -> None:
             # recovery, and conflating the two would clear the wrong kind.
             previously_noticing = {a["platform"] for a in _collector_alerts if a.get("kind") == "notice"}
             platforms_ok = 0
+            collected_ok: set[str] = set()
             for result in results:
                 if isinstance(result, Exception):
                     # Redacted BEFORE it is logged. A collector exception is
@@ -933,6 +1122,7 @@ async def _run_collection() -> None:
                     )
                     logger.info("Collected %s: %.4f %s", result.platform, result.balance, result.currency)
                     platforms_ok += 1
+                    collected_ok.add(result.platform)
                     if result.platform in previously_alerting:
                         # Recovered — drop the stored alert so a future failure counts
                         # as new and notifies again.
@@ -956,10 +1146,18 @@ async def _run_collection() -> None:
             # none of the NTFY/WEBHOOK/TELEGRAM variables), so the only place the
             # user would ever see it was the one place it never went. The bell
             # said "All collectors healthy".
-            alerts.extend(await _flatline_check())
+            try:
+                fleet = await _get_all_worker_containers()
+            except Exception as exc:  # noqa: BLE001 - unknown fleet: hold the heads-up back
+                logger.warning("Could not read the fleet for the flatline check: %s", exc)
+                fleet = []
+            alerts.extend(await _flatline_check(collected_ok, deployments, fleet))
             # Offline workers re-derived every rebuild, or the hourly wholesale
             # replacement of this list would silently un-report a dead machine.
             alerts.extend(await _offline_worker_alerts())
+            # Kept by the health check, which runs every five minutes; without
+            # this the hourly rebuild would drop a down container from the bell.
+            alerts.extend(_container_down_bell.values())
             _collector_alerts = alerts
             if collectors and platforms_ok == 0:
                 # A run in which EVERY collector failed used to be recorded as
@@ -1640,9 +1838,10 @@ async def api_services_deployed(request: Request) -> list[dict[str, Any]]:
     health_map = {h["slug"]: h for h in health_scores}
 
     # Build set of slugs with collector errors (disconnected)
-    # A notice rides on a reading that SUCCEEDED, so it is not "can't read
-    # balance"; it is shown on the row as itself.
-    alert_slugs = {a["platform"] for a in _collector_alerts if a.get("kind") != "notice"}
+    # A down container is not a collector fault; its own alert says so. A
+    # notice rides on a reading that SUCCEEDED, so it is not "can't read
+    # balance" either; it is shown on the row as itself.
+    alert_slugs = {a["platform"] for a in _collector_alerts if a.get("kind") not in ("notice", "container")}
     notice_map = {a["platform"]: a.get("error", "") for a in _collector_alerts if a.get("kind") == "notice"}
 
     # Config (decrypted) to detect collectors whose credentials aren't set yet.
@@ -2917,7 +3116,9 @@ async def api_earnings_summary(request: Request) -> dict[str, Any]:
             usd_val = _to_usd_with_stored(balance, currency, stored_rate)
             if usd_val is not None:
                 summary["total"] = round(summary["total"] + usd_val, 2)
-            else:
+            elif currency.upper() not in exchange_rates.UNPRICED_BY_DESIGN:
+                # Points are not money, so leaving them out does not make the
+                # Total partial; the card shows them in their own units.
                 unpriced_platforms.append(slug)
             adj_usd = _to_usd_with_stored(adjusted, currency, stored_rate)
             if adj_usd is not None:
@@ -3088,7 +3289,7 @@ _MAX_ALERT_ERROR_LEN = 200
 async def api_earnings_flatlines(request: Request) -> list[dict[str, Any]]:
     """Services that are running but whose balance has stopped moving."""
     _require_auth_api(request)
-    return await database.get_flatlined_services()
+    return await database.get_flatlined_services(quiet_days=_quiet_days_by_platform())
 
 
 @app.get("/api/credentials/health")

@@ -21,6 +21,8 @@ from typing import Any
 import aiosqlite
 from cryptography.fernet import Fernet, InvalidToken
 
+from app.exchange_rates import UNPRICED_BY_DESIGN
+
 _logger = logging.getLogger(__name__)
 
 DB_DIR = Path(os.getenv("CASHPILOT_DATA_DIR", "/data"))
@@ -1170,7 +1172,42 @@ def _usd_rate(currency: str, raw: Any) -> float | None:
     return value if math.isfinite(value) and value > 0 else None
 
 
-async def _usd_earned_per_date(db: Any) -> tuple[dict[str, float], int]:
+# What each "left out of the totals" warning last said, per call site. The
+# totals are recomputed on every page load and API call, so warning each time
+# repeated one fact thousands of times a day; it now speaks when the set of
+# affected platforms changes, and once more when the gap closes.
+_unpriced_logged: dict[str, frozenset[str]] = {}
+
+
+def _report_unpriced(site: str, platforms: set[str], what: str) -> None:
+    """Log a pricing gap in ``what`` once per change in which platforms it hits."""
+    now = frozenset(platforms)
+    before = _unpriced_logged.get(site, frozenset())
+    if now == before:
+        return
+    _unpriced_logged[site] = now
+    if now:
+        _logger.warning(
+            "Earnings readings from %s have no usable USD rate and are left out of %s, "
+            "which are therefore understated.",
+            ", ".join(sorted(now)),
+            what,
+        )
+    else:
+        _logger.info("Every earnings reading in %s is priced again.", what)
+
+
+def _is_a_pricing_gap(currency: str) -> bool:
+    """Whether an unpriced reading in ``currency`` is missing money.
+
+    Points (UNPRICED_BY_DESIGN) are excluded from the totals exactly like any
+    unpriced reading, but they were never money, so leaving them out
+    understates nothing.
+    """
+    return currency not in UNPRICED_BY_DESIGN
+
+
+async def _usd_earned_per_date(db: Any) -> tuple[dict[str, float], set[str]]:
     """USD earned per calendar date, summed across platforms.
 
     ONE implementation behind both the dashboard cards and the trend chart.
@@ -1203,7 +1240,7 @@ async def _usd_earned_per_date(db: Any) -> tuple[dict[str, float], int]:
     # deltas are meaningless, and every drop clamps to zero, so the total comes
     # out understated while looking plausible.
     previous: dict[tuple[str, str], tuple[str, float]] = {}
-    unpriced = 0
+    unpriced: set[str] = set()
     for row in await cursor.fetchall():
         platform = row["platform"]
         # Absent source means a row written before the column existed; those
@@ -1214,7 +1251,8 @@ async def _usd_earned_per_date(db: Any) -> tuple[dict[str, float], int]:
         rate = _usd_rate(currency, row["fx_rate_usd"])
         if rate is None:
             previous.pop(series, None)
-            unpriced += 1
+            if _is_a_pricing_gap(currency):
+                unpriced.add(platform)
             continue
         balance = float(row["balance"] or 0.0)
         before = previous.get(series)
@@ -1257,12 +1295,7 @@ async def get_earnings_dashboard_summary() -> dict[str, Any]:
         # currency = 'USD', so every non-USD platform was missing from all
         # three at once and the cards read $0.00 while balances climbed.
         per_date, unpriced = await _usd_earned_per_date(db)
-        if unpriced:
-            _logger.warning(
-                "%d earnings reading(s) have no usable USD rate and are left out of the "
-                "dashboard totals, which are therefore understated.",
-                unpriced,
-            )
+        _report_unpriced("dashboard", unpriced, "the dashboard totals")
 
         today_earned = per_date.get(today, 0.0)
         # The month is the sum of clamped daily deltas rather than one delta
@@ -1341,12 +1374,7 @@ async def get_daily_earnings(days: int = 7) -> list[dict[str, Any]]:
         # zero, so a newly added service drew a spike the size of its whole
         # opening balance. The shared helper requires a predecessor.
         per_date, unpriced = await _usd_earned_per_date(db)
-        if unpriced:
-            _logger.warning(
-                "%d earnings reading(s) have no usable USD rate and are left out of the "
-                "daily chart, which is therefore understated.",
-                unpriced,
-            )
+        _report_unpriced("chart", unpriced, "the daily chart figures")
 
         now = datetime.now(UTC)
         result = []
@@ -2206,6 +2234,27 @@ async def record_health_event(slug: str, event: str, detail: str = "") -> None:
         await db.close()
 
 
+async def get_last_lifecycle_event(slug: str) -> tuple[str, str] | None:
+    """The latest start/stop/restart/remove CashPilot recorded for ``slug``, with its UTC time.
+
+    Answers "did the user stop this from CashPilot?" for the container-down
+    alert. Scoped to one slug so the slug index does the work; the table holds
+    a check event per service every five minutes.
+    """
+    db = await _get_db()
+    try:
+        cursor = await db.execute(
+            "SELECT event, created_at FROM health_events "
+            "WHERE slug = ? AND event IN ('start', 'stop', 'restart', 'remove') "
+            "ORDER BY id DESC LIMIT 1",
+            (slug,),
+        )
+        row = await cursor.fetchone()
+        return (row["event"], row["created_at"]) if row else None
+    finally:
+        await db.close()
+
+
 async def record_health_events(events: list[tuple[str, str, str]]) -> None:
     """Record many health events in ONE transaction/commit.
 
@@ -2235,7 +2284,78 @@ ALERT_COOLDOWN_HOURS = 24
 # the collector authenticates, and the balance simply never moves. That gap
 # between running and earning is invisible in every other view, because
 # everything it touches looks healthy.
-FLATLINE_MIN_DAYS = 7
+#
+# The bar is set by the service's OWN rhythm, so one quiet day never reads as a
+# fault: a balance must have stood still for longer than three times the
+# service's usual gap between increases, and never less than three days.
+FLATLINE_MIN_DAYS = 3
+FLATLINE_GAP_FACTOR = 3
+# How far back the usual gap is measured.
+FLATLINE_GAP_WINDOW_DAYS = 30
+# How long a service with no increase yet gets before it is mentioned, unless
+# its catalog entry says it is slower to start (collector.quiet_days).
+FLATLINE_NEW_SERVICE_DAYS = 7
+
+
+def _days_between(earlier: str, later: str) -> int:
+    return (datetime.fromisoformat(later) - datetime.fromisoformat(earlier)).days
+
+
+def quiet_verdict(
+    readings: Sequence[tuple[str, str, float, str]],
+    today: str,
+    *,
+    quiet_days: int | None = None,
+    first_deployed: str | None = None,
+) -> dict[str, Any] | None:
+    """Whether one platform's balance has been still for longer than its own rhythm.
+
+    ``readings`` are ``(source, date, balance, currency)`` rows in date order.
+    Only GROWTH counts as earning: a payout makes a balance drop, and a drop is
+    neither an increase that resets the clock nor a sign that anything is wrong.
+    Each source is its own series, because two machines sampling one account
+    interleave into deltas that mean nothing.
+
+    Returns None when the platform is earning, still inside its grace period,
+    or has no reading today (a failing collector stops writing rows, and its old
+    unchanged ones must not read as a flatline).
+    """
+    if not readings or max(r[1] for r in readings) < today:
+        return None
+    increases: set[str] = set()
+    previous: dict[str, tuple[float, str]] = {}
+    for source, day, balance, currency in readings:
+        before = previous.get(source)
+        if before is not None and before[1] == currency and balance > before[0]:
+            increases.add(day)
+        previous[source] = (balance, currency)
+    floor = max(FLATLINE_MIN_DAYS, int(quiet_days or 0))
+
+    if not increases:
+        # Counted from whichever is LATER: the deploy, or the first reading. A
+        # service whose collector only started today has not been watched for
+        # the months since an old deploy, and must not be judged on them.
+        start = max((first_deployed or "")[:10], readings[0][1][:10])
+        grace = int(quiet_days or FLATLINE_NEW_SERVICE_DAYS)
+        days = _days_between(start, today)
+        if days <= grace:
+            return None
+        return {"days_flat": days, "last_increase": None, "since": start, "usual_gap_days": None}
+
+    ordered = sorted(increases)
+    window_start = (datetime.fromisoformat(today) - timedelta(days=FLATLINE_GAP_WINDOW_DAYS)).strftime("%Y-%m-%d")
+    recent = [d for d in ordered if d >= window_start]
+    gaps = sorted(_days_between(a, b) for a, b in zip(recent, recent[1:], strict=False))
+    usual_gap = gaps[len(gaps) // 2] if gaps else None
+    if usual_gap is not None:
+        threshold = max(floor, FLATLINE_GAP_FACTOR * usual_gap)
+    else:
+        # Earned before, but too rarely in the window to know its rhythm.
+        threshold = max(floor, FLATLINE_NEW_SERVICE_DAYS)
+    days = _days_between(ordered[-1], today)
+    if days <= threshold:
+        return None
+    return {"days_flat": days, "last_increase": ordered[-1], "since": ordered[-1], "usual_gap_days": usual_gap}
 
 
 async def get_earned_by_platform(days: int = 30) -> dict[str, float]:
@@ -2274,7 +2394,7 @@ async def get_earned_by_platform(days: int = 30) -> dict[str, float]:
         # one provider account interleave into a single series whose deltas are
         # meaningless: each drop clamps to zero, so the total is understated.
         previous: dict[tuple[str, str], tuple[str, float]] = {}
-        unpriced = 0
+        unpriced: set[str] = set()
         for row in rows:
             platform = row["platform"]
             # Absent source means a row written before the column existed, and
@@ -2294,7 +2414,8 @@ async def get_earned_by_platform(days: int = 30) -> dict[str, float]:
                 # baseline is what stops a later reading from being differenced
                 # across the gap and counting the unpriced period twice.
                 previous.pop(series, None)
-                unpriced += 1
+                if _is_a_pricing_gap(currency):
+                    unpriced.add(platform)
                 continue
 
             before = previous.get(series)
@@ -2304,76 +2425,64 @@ async def get_earned_by_platform(days: int = 30) -> dict[str, float]:
                 earned[platform] += max(0.0, balance - before[1]) * float(rate)
             previous[series] = (currency, balance)
 
-        if unpriced:
-            _logger.warning(
-                "%d earnings reading(s) in the last %d days have no USD rate and were left out "
-                "of the per-platform totals, which are therefore understated.",
-                unpriced,
-                days,
-            )
+        _report_unpriced(f"per-platform:{days}", unpriced, f"the {days}-day per-platform totals")
         return earned
     finally:
         await db.close()
 
 
-async def get_flatlined_services(min_days: int = FLATLINE_MIN_DAYS) -> list[dict[str, Any]]:
-    """Services whose recorded balance has not moved for at least ``min_days``.
+async def get_flatlined_services(
+    quiet_days: Mapping[str, int] | None = None,
+    first_deployed: Mapping[str, str] | None = None,
+) -> list[dict[str, Any]]:
+    """Platforms whose balance has stopped growing for longer than their own rhythm.
 
-    Deliberately conservative, because a report that cries wolf is a report
-    nobody reads:
-
-    * A service with fewer than ``min_days`` of history is NOT reported. A new
-      deployment has not had time to earn anything yet.
-    * A balance of exactly zero throughout is NOT reported either. That is a
-      service that has never paid rather than one that stopped, and it is
-      usually a setup problem the user already knows about.
-    * The window is measured over distinct recorded days, so a collection outage
-      (which records nothing) cannot masquerade as a flat balance.
+    The rule is :func:`quiet_verdict`. ``quiet_days`` carries each catalog
+    entry's ``collector.quiet_days`` and ``first_deployed`` each deployment's
+    date; both are passed in because this module does not read the catalog.
     """
     db = await _get_db()
     try:
         cursor = await db.execute(
             """
-            SELECT platform,
-                   COUNT(DISTINCT date) AS days_recorded,
-                   MIN(balance)         AS min_balance,
-                   MAX(balance)         AS max_balance,
-                   MAX(date)            AS last_date
+            SELECT platform, source, date, balance, currency
             FROM earnings
-            WHERE date >= date('now', ?)
-            GROUP BY platform
-            -- Only platforms that recorded a reading TODAY. A collector that is
-            -- failing stops writing rows, but its earlier readings are still
-            -- there and are, of course, unchanged - so without this a broken
-            -- collector reads as a flatline, and so does a service that was
-            -- removed but kept its history. Those are different faults with
-            -- different fixes, and reporting them as "running but not earning"
-            -- is exactly the crying wolf this feature must avoid.
-            HAVING MAX(date) >= date('now')
-            """,
-            (f"-{min_days} days",),
+            -- Only platforms that recorded a reading TODAY: see quiet_verdict.
+            WHERE platform IN (SELECT platform FROM earnings WHERE date >= date('now'))
+            ORDER BY platform, date, source
+            """
         )
         rows = await cursor.fetchall()
-
-        flat: list[dict[str, Any]] = []
-        for row in rows:
-            if row["days_recorded"] < min_days:
-                continue  # not enough history to call it a flatline
-            if row["max_balance"] != row["min_balance"]:
-                continue  # it moved
-            if row["max_balance"] == 0:
-                continue  # never earned rather than stopped earning
-            flat.append(
-                {
-                    "platform": row["platform"],
-                    "days_flat": row["days_recorded"],
-                    "balance": row["max_balance"],
-                    "last_recorded": row["last_date"],
-                }
-            )
-        return flat
     finally:
         await db.close()
+
+    by_platform: dict[str, list[tuple[str, str, float, str]]] = {}
+    for row in rows:
+        by_platform.setdefault(row["platform"], []).append(
+            (row["source"] or "server", row["date"], float(row["balance"] or 0.0), (row["currency"] or "USD").upper())
+        )
+    today = datetime.now(UTC).strftime("%Y-%m-%d")
+    flat: list[dict[str, Any]] = []
+    for platform, readings in by_platform.items():
+        verdict = quiet_verdict(
+            readings,
+            today,
+            quiet_days=(quiet_days or {}).get(platform),
+            first_deployed=(first_deployed or {}).get(platform),
+        )
+        if verdict is None:
+            continue
+        latest = readings[-1]
+        flat.append(
+            {
+                "platform": platform,
+                **verdict,
+                "balance": latest[2],
+                "currency": latest[3],
+                "last_recorded": latest[1],
+            }
+        )
+    return flat
 
 
 async def record_alert(

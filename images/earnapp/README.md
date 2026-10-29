@@ -10,7 +10,7 @@ The image holds no Bright Data code. It contains a Debian base, an entrypoint, t
 
 At first start the entrypoint downloads the pinned build straight from Bright Data's CDN (`https://cdn-earnapp.b-cdn.net/static/earnapp-ssl3-<arch>-<version>`), checks its sha256 against the pin, and refuses to start on a mismatch or a failed download. It picks the build from the image's own architecture (`dpkg --print-architecture`), not the kernel's, so a 32-bit Raspberry Pi OS on a 64-bit kernel gets the arm7l build it can run. The checked binary is cached in the `/etc/earnapp` volume, so recreating the container checks the copy again instead of downloading it.
 
-It then runs EarnApp in lite mode: no systemd, no installer, no shims. Bash is PID 1, writes `EARNAPP_UUID` to `/etc/earnapp/uuid`, runs `earnapp start`, then keeps `earnapp run` in the foreground. If `earnapp run` exits, the entrypoint starts it again inside the same container with a backoff from 5 s to 5 minutes, and says so in the log; the container itself is not restarted. `docker stop` stops it cleanly.
+It then runs EarnApp in lite mode: no systemd, no installer, no shims. Bash is PID 1, writes `EARNAPP_UUID` to `/etc/earnapp/uuid`, runs `earnapp start`, then keeps `earnapp run` in the foreground. If `earnapp run` exits, the entrypoint starts it again inside the same container after 5 s, and says so in the log. A run that dies within a minute of starting backs off, doubling up to 5 minutes; the container itself is not restarted. `docker stop` stops it cleanly.
 
 It runs under the hardening CashPilot gives every earner: all capabilities dropped, `no-new-privileges`, not privileged, 512 pids and 256 MB of memory. EarnApp uses about 80 MB.
 
@@ -24,7 +24,7 @@ docker run -d --name earnapp \
   -e EARNAPP_UUID=sdk-node-$(head -c 16 /dev/urandom | od -An -tx1 | tr -d ' \n') \
   -v earnapp-data:/etc/earnapp \
   --restart unless-stopped \
-  drumsergio/cashpilot-earnapp:1.665.73-r1
+  drumsergio/cashpilot-earnapp:1.665.73-r2
 ```
 
 Then open `https://earnapp.com/r/<your EARNAPP_UUID>` once while logged in to link the device. The log prints that link. Keep the same `EARNAPP_UUID` and volume when you recreate the container.

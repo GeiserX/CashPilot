@@ -81,10 +81,10 @@ class TestTheTotalUsesTheRateTheReadingWasRecordedAt:
     @pytest.mark.asyncio
     async def test_a_row_with_no_usable_rate_is_reported_not_hidden(self):
         """A total that silently omits holdings looks exactly like a correct one."""
-        rows = [{"platform": "grass", "balance": 1200.0, "currency": "GRASS", "date": "d", "fx_rate_usd": None}]
+        rows = [{"platform": "anyone", "balance": 1200.0, "currency": "ANYONE", "date": "d", "fx_rate_usd": None}]
         out = await self._summary(rows, live_rate=None)
         assert out["total"] == 0.0
-        assert out["unpriced_platforms"] == ["grass"]
+        assert out["unpriced_platforms"] == ["anyone"]
 
     @pytest.mark.asyncio
     async def test_nothing_unpriced_reports_an_empty_list(self):

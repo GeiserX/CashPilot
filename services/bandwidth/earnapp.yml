@@ -20,7 +20,7 @@ docker:
   # CashPilot's own image (images/earnapp/). It carries no Bright Data code: the
   # pinned build is fetched at first start and checked against SHA256SUMS. The old
   # default, fazalfarhan01/earnapp:lite, froze the 2022 client 1.294.218.
-  image: drumsergio/cashpilot-earnapp:1.665.73-r1
+  image: drumsergio/cashpilot-earnapp:1.665.73-r2
   platforms: [linux/amd64, linux/arm64, linux/arm/v7]
   resources:
     mem_limit: "256m"

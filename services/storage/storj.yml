@@ -180,6 +180,10 @@ platforms: [docker, windows, linux]
 
 collector:
   type: api
+  # Days the balance can stand still while this works normally.
+  # A new node is vetted by each satellite for about a month before it is
+  # given much data, so a month of a still balance is normal at the start.
+  quiet_days: 30
   notes: "Local dashboard at port 14002. API at /api/sno for node stats, earnings, bandwidth. No auth needed on local interface."
 
 # What this service does with the user's machine (CashPilot-66x).
