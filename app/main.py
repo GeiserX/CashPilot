@@ -1246,10 +1246,29 @@ async def _run_data_retention() -> None:
         logger.warning("Data retention error: %s", exc)
 
 
+#: Config key holding when the last VACUUM finished (ISO 8601, UTC).
+_LAST_VACUUM_KEY = "_last_vacuum_at"
+_VACUUM_EVERY = timedelta(days=7)
+
+
 async def _run_vacuum() -> None:
-    """Reclaim disk left by retention deletes (SQLite does not auto-shrink)."""
+    """Reclaim disk left by retention deletes (SQLite does not auto-shrink).
+
+    Runs at startup and on a weekly timer, but only when the last VACUUM is more
+    than a week old. The timer alone counts from process start, and every
+    release recreates this container, so an install that restarts more than
+    once a week never reached it. The stamp is what makes a startup run cheap:
+    a restart soon after a VACUUM does not rewrite the whole file again.
+    """
+    try:
+        last = datetime.fromisoformat(str(await database.get_config(_LAST_VACUUM_KEY)))
+        if datetime.now(UTC) - last < _VACUUM_EVERY:
+            return
+    except Exception:
+        pass  # no stamp yet, or an unreadable one: vacuum rather than never
     try:
         await database.vacuum_database()
+        await database.set_config(_LAST_VACUUM_KEY, datetime.now(UTC).isoformat())
         logger.info("Database VACUUM complete")
     except Exception as exc:
         logger.warning("Database VACUUM error: %s", exc)
@@ -1597,6 +1616,9 @@ async def lifespan(app: FastAPI):
     # process start, so an install that restarts more than once a day (every
     # release recreates this container) never purged anything at all.
     _spawn(_run_data_retention())
+    # And VACUUM, which has the same trap on a weekly interval; it checks its
+    # own last run, so this rewrites the file at most once a week.
+    _spawn(_run_vacuum())
     _spawn(_run_collection())
     logger.info("CashPilot UI started (container ops via workers)")
 
