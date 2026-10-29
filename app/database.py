@@ -2779,6 +2779,30 @@ async def record_probable_payout(
         await db.close()
 
 
+async def withdraw_recovered_payout(platform: str, balance: float, within_hours: int = 24) -> bool:
+    """Delete a recent unconfirmed payout guess once the balance has come back.
+
+    A provider that answers 0 (or a bad number) for one reading and then recovers
+    looks exactly like a cashout to ``record_probable_payout``, and the question
+    then waits forever for someone to reject it: Honeygain did this on 2026-08-31,
+    25.72 -> one low reading -> 25.79 the next day, with no payout in its history.
+    After a real payout the balance restarts near zero, so getting back to the
+    size of the drop (at least the provider's minimum cashout) within a day means
+    the drop was not money leaving.
+    """
+    db = await _get_db()
+    try:
+        cursor = await db.execute(
+            "DELETE FROM payouts WHERE platform = ? AND confirmed = 0 AND amount <= ? "
+            "AND detected_at >= datetime('now', ?)",
+            (platform, float(balance), f"-{int(within_hours)} hours"),
+        )
+        await db.commit()
+        return cursor.rowcount > 0
+    finally:
+        await db.close()
+
+
 async def confirm_payout(payout_id: int, method: str = "") -> bool:
     """Mark a probable payout as real. Only a human should reach this."""
     db = await _get_db()
