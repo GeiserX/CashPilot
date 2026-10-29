@@ -90,6 +90,7 @@ async function unclampModal(page, overlayId) {
     Object.assign(modal.style, { maxHeight: 'none' });
     if (body) Object.assign(body.style, { maxHeight: 'none', overflow: 'visible' });
     document.body.style.minHeight = overlay.scrollHeight + 96 + 'px';
+    window.scrollTo(0, 0);
   }, overlayId);
   await page.waitForTimeout(200);
 }
@@ -132,13 +133,13 @@ export const STATES = [
     await p.click('#notify-toggle');
     await p.waitForTimeout(300);
   } },
-  { name: 'credential-modal', server: 'seed', path: '/', full: false, before: async (p) => {
+  { name: 'credential-modal', server: 'seed', path: '/', element: '#cred-modal .modal', before: async (p) => {
     await p.click('.breakdown-row[data-slug="repocket"] [data-action="openCredentialModal"].btn-icon');
     await waitTitle(p, 'cred-modal-title');
     await settle(p);
     await unclampModal(p, 'cred-modal');
   } },
-  { name: 'claim-modal', server: 'seed', path: '/', full: false, before: async (p) => {
+  { name: 'claim-modal', server: 'seed', path: '/', element: '#claim-modal .modal', before: async (p) => {
     await p.click('.breakdown-row[data-slug="mysterium"] [data-action="openClaimModal"]');
     await waitTitle(p, 'claim-modal-title');
     await settle(p);
