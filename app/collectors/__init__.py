@@ -130,14 +130,15 @@ CREDENTIAL_LIFETIMES: dict[str, dict[str, dict[str, object]]] = {
     },
     "traffmonetizer": {
         "token": {
-            "hours": 24 * 7,
+            # No age verdict: tokens have lasted from about a week to 12 days,
+            # so any fixed figure says "expired" about one that still works.
+            # The provider's own rejection is what marks it expired.
+            "hours": None,
             "durable": False,
-            # Not a known lifetime: tokens have lasted from about a week to 12
-            # days. The week only drives the early warning (soon from day 5,
-            # likely expired from day 7); the texts must not promise it.
             "why": (
                 "The dashboard's authToken from browser localStorage expires after some days, with no "
-                "fixed lifetime, and the login form is captcha-gated, so only a person can renew it."
+                "fixed lifetime, and the login form is captcha-gated, so only a person can renew it. "
+                "It shows as expired once Traffmonetizer rejects it."
             ),
         },
     },

@@ -3255,6 +3255,14 @@ async def api_credential_health(request: Request) -> list[dict[str, Any]]:
         values = {}
     now = datetime.now(UTC)
     report: list[dict[str, Any]] = []
+    # Services whose latest collection was REJECTED by the provider. That is
+    # evidence about the credential, where its age is only a guess, so it wins
+    # over both the lifetime table and a JWT's own claim.
+    rejected = {
+        a.get("platform")
+        for a in _collector_alerts
+        if a.get("kind", "collector") == "collector" and a.get("category") == "auth"
+    }
 
     for slug, args in _COLLECTOR_ARGS.items():
         missing_durable = [field for field in durable_alternative(slug) if f"{slug}_{field}" not in updated]
@@ -3303,6 +3311,9 @@ async def api_credential_health(request: Request) -> list[dict[str, Any]]:
                     status = "fresh"
                 if span_hours:
                     hours_total = round(span_hours)
+
+            if slug in rejected:
+                status = "likely_expired"
 
             entry: dict[str, Any] = {
                 "service": slug,
