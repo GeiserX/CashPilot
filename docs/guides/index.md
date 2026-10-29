@@ -29,7 +29,7 @@ Setup and configuration for every service CashPilot supports.
 | [PacketShare](packetshare.md) | Residential IP | Docker | $5 | dead |
 | [PacketStream](packetstream.md) | Residential IP | Docker | $5 | active |
 | [Peer2Profit](peer2profit.md) | — | Docker | $2 | dead |
-| [ProxyBase](proxybase.md) | — | Docker | None | active |
+| [ProxyBase](proxybase.md) | — | Docker | $0.20 | active |
 | [ProxyBase Markets](proxybase-xyz.md) | — | Docker | $1 | active |
 | [ProxyLite](proxylite.md) | — | Docker | $5 | active |
 | [ProxyRack](proxyrack.md) | — | Docker | $20 | active |

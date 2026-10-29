@@ -26,7 +26,7 @@ MystNodes (Mysterium Network) is a decentralized VPN and proxy network built on 
 
 ## Cashing out
 
-No button to press. Each node settles on Polygon by itself once it holds 5 MYST unsettled, and about 21% goes in fees (the 20% Hermes fee plus a small transaction fee), so roughly 3.9 MYST reaches the beneficiary wallet per settlement. Each node's TequilAPI lists its settlements at /transactor/settle/history. The "total earnings" figure on MystNodes covers the last 30 days only; it is neither a balance nor a lifetime total.
+No button to press. Each node settles on Polygon by itself once it holds 5 MYST unsettled, and about 21% goes in fees (the 20% Hermes fee plus a small transaction fee), so roughly 3.9 MYST reaches the beneficiary wallet per settlement. Each node's TequilAPI lists its settlements at /transactor/settle/history. The "total earnings" figure on MystNodes covers the last 30 days only; it is neither a balance nor a lifetime total. Bonus MYST from the MystNodes rewards program does not settle by itself: claim it on the Rewards page, within 30 days of distribution according to the MystNodes help center.
 
 ## Requirements
 

@@ -126,6 +126,9 @@ cashout:
     per settlement. Each node's TequilAPI lists its settlements at
     /transactor/settle/history. The "total earnings" figure on MystNodes covers
     the last 30 days only; it is neither a balance nor a lifetime total.
+    Bonus MYST from the MystNodes rewards program does not settle by itself:
+    claim it on the Rewards page, within 30 days of distribution according to
+    the MystNodes help center.
 
 platforms: [docker, windows, macos, linux, android, browser-extension]
 
