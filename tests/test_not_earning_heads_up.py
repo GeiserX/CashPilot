@@ -241,8 +241,34 @@ class TestADeviceNotOnTheAccountNamesTheCauseAlready:
 
     def test_the_collection_run_passes_what_collectors_reported(self):
         """The finding travels on EarningsResult.unlinked_devices, not on the notice text."""
-        import inspect
+        from types import SimpleNamespace
 
-        source = inspect.getsource(main._run_collection)
-        assert 'getattr(result, "unlinked_devices", None)' in source
-        assert "unlinked=" in source
+        results = [
+            SimpleNamespace(
+                platform="earnapp", balance=1.0, currency="USD", error=None, warning=None, unlinked_devices=["d1"]
+            ),
+            SimpleNamespace(
+                platform="honeygain", balance=2.0, currency="USD", error=None, warning=None, unlinked_devices=[]
+            ),
+        ]
+        seq = iter(results)
+        flatline = AsyncMock(return_value=[])
+        with (
+            patch.object(main.database, "get_deployments", AsyncMock(return_value=[{"slug": "x"}])),
+            patch.object(main.database, "get_config", AsyncMock(return_value={})),
+            patch.object(main.database, "upsert_earnings", AsyncMock()),
+            patch.object(main.database, "record_alert", AsyncMock(return_value=None)),
+            patch.object(main.database, "clear_alerts", AsyncMock()),
+            patch.object(main, "_detect_payout", AsyncMock(return_value=None)),
+            patch.object(main, "_flatline_check", flatline),
+            patch.object(main, "_pending_payout_alerts", AsyncMock(return_value=[])),
+            patch.object(main, "_offline_worker_alerts", AsyncMock(return_value=[])),
+            patch.object(main, "_get_all_worker_containers", AsyncMock(return_value=[])),
+            patch.object(main, "_collect_bounded", AsyncMock(side_effect=lambda c: next(seq))),
+            patch.object(main, "_collector_alerts", []),
+            patch("app.collectors.make_collectors", lambda deployments, config: [object() for _ in results]),
+            patch("app.collectors._close_stale", AsyncMock()),
+            patch.object(main, "_spawn", lambda coro: coro.close()),
+        ):
+            asyncio.run(main._run_collection())
+        assert flatline.call_args.kwargs["unlinked"] == {"earnapp"}
