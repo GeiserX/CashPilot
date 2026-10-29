@@ -155,8 +155,8 @@ const CP = (() => {
   // -----------------------------------------------------------
   // Keyboard navigation
   //
-  // "g" then a letter jumps to a page (the letters are the <kbd> hints in the
-  // top bar, read from data-key so the two cannot drift). "/" focuses the
+  // "g" then a page's first letter jumps to it (read from each top bar link's
+  // data-key; the footer names the shortcut, the bar stays quiet). "/" focuses the
   // page's search box, "r" refreshes the dashboard. Ignored while typing.
   // -----------------------------------------------------------
   function initSidebar() {
