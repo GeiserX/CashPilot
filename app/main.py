@@ -757,6 +757,33 @@ async def _track_fully_configured_services() -> int:
         return 0
 
 
+async def _register_device(slug: str, device_id: str, env: dict[str, Any]) -> bool:
+    """Add a deployed device to the user's account with the stored collector credentials.
+
+    Only where the provider's API can do it and the credentials are saved; anything
+    else is False, and the deploy form shows the manual step instead. Never fails
+    the deploy, which has already happened.
+    """
+    from app.collectors import build_collector
+
+    try:
+        collector = build_collector(slug, await database.get_config() or {})
+    except Exception:
+        return False
+    if collector is None:
+        return False
+    try:
+        name = str(env.get("DEVICE_NAME") or "").strip()
+        if not name or "${" in name:  # an unfilled catalog default is not a name
+            name = f"cashpilot-{device_id[:8]}"
+        return bool(await asyncio.wait_for(collector.register_device(device_id, name), 20))
+    except Exception as exc:
+        logger.warning("Could not add the %s device to the account: %s", slug, notify.redact(str(exc)))
+        return False
+    finally:
+        await collector.close()
+
+
 def _unlinked_devices_warning(result: Any) -> str:
     """The notice for deployed devices the provider says are not on the account."""
     ids = sorted(getattr(result, "unlinked_devices", None) or [])
@@ -2271,6 +2298,7 @@ async def api_deploy(
     response: dict[str, Any] = {"status": "deployed", "container_id": container_id}
     # From the merged env: a redeploy with a blank form still runs the recorded id.
     if link := catalog.device_link_step(svc, merged_env):
+        link["registered"] = await _register_device(slug, link["id"], merged_env)
         response["device_link"] = link
     if divergence:
         response["kept_from_previous_deployment"] = divergence

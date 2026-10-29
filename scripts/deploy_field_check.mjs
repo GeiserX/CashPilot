@@ -96,4 +96,8 @@ assert.match(inserted, /^afterend\|/);
 assert.match(inserted, /Link this device to your account/);
 assert.match(inserted, new RegExp(`data-action="copyText" data-a1="${link.id}"`));
 assert.match(inserted, /href="https:\/\/earnapp.com\/r\/x"/);
+// A device the deploy already added to the account asks for nothing.
+show('proxyrack', { parentElement: { insertAdjacentHTML: (where, html) => { inserted = html; } } }, [{ ...link, registered: true }]);
+assert.match(inserted, /Added to your account/);
+assert.doesNotMatch(inserted, /Link this device|Open link/);
 console.log('A deploy that returns a device_link shows the link step with the id, a copy button and the link.');

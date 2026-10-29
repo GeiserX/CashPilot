@@ -87,6 +87,14 @@ class BaseCollector(abc.ABC):
         # `device_link` block. Empty means nothing to check.
         self.device_ids: set[str] = set()
 
+    async def register_device(self, device_id: str, name: str) -> bool | None:
+        """Add a deployed device to the account, where the provider's API allows it.
+
+        True when the device is on the account afterwards, False when it is not,
+        None when this provider has no way to do it (the user links it by hand).
+        """
+        return None
+
     def _get_client(self, **kwargs: Any) -> httpx.AsyncClient:
         """Return a reusable httpx client, creating one if needed."""
         if self._client is None or self._client.is_closed:

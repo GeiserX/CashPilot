@@ -27,6 +27,38 @@ class ProxyRackCollector(BaseCollector):
         super().__init__()
         self.api_key = api_key
 
+    def _headers(self) -> dict[str, str]:
+        # Without a User-Agent the peer API answers "Invalid headers."
+        return {
+            "Api-Key": self.api_key,
+            "User-Agent": "Mozilla/5.0",
+            "Accept": "application/json",
+            "Content-Type": "application/json",
+        }
+
+    async def register_device(self, device_id: str, name: str) -> bool | None:
+        """Add the UUID to the account with /device/add, the same call the dashboard makes.
+
+        A redeploy adds a UUID that is already there, which the API refuses, so a
+        refused add is followed by one /device/status: a known id is linked. The
+        API allows 5 requests a minute; a rate-limited answer is a False here, and
+        the user gets the manual step instead of a wrong "added".
+        """
+        try:
+            client = self._get_client(timeout=15)
+            resp = await client.post(
+                f"{API_BASE}/device/add", headers=self._headers(), json={"device_id": device_id, "device_name": name}
+            )
+            if resp.status_code == 200 and (resp.json() or {}).get("status") == "success":
+                return True
+            resp = await client.post(
+                f"{API_BASE}/device/status", headers=self._headers(), json={"device_id": device_id}
+            )
+            return resp.status_code == 200 and (resp.json() or {}).get("status") == "success"
+        except Exception as exc:
+            logger.warning("ProxyRack device registration failed: %s", exc)
+            return False
+
     async def _unlinked(self, headers: dict) -> list[str] | None:
         """Deployed device UUIDs ProxyRack does not know on this account.
 
@@ -55,12 +87,7 @@ class ProxyRackCollector(BaseCollector):
     async def collect(self) -> EarningsResult:
         """Fetch current ProxyRack balance."""
         try:
-            headers = {
-                "Api-Key": self.api_key,
-                "User-Agent": "Mozilla/5.0",
-                "Accept": "application/json",
-                "Content-Type": "application/json",
-            }
+            headers = self._headers()
 
             async def _fetch_balance() -> httpx.Response:
                 client = self._get_client(timeout=30)

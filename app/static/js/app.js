@@ -2514,17 +2514,26 @@ const CP = (() => {
     document.getElementById(id)?.remove();
     const row = statusEl && statusEl.parentElement;
     if (!row || !links.length) return;
-    const items = links.map(l => `
+    // Added through the provider's API with the saved collector credentials:
+    // nothing left to do, so say so instead of asking for a manual step.
+    const todo = links.filter(l => !l.registered);
+    const done = links.filter(l => l.registered);
+    const item = (l, linkBtn) => `
       <div class="device-link-item">
         <code class="device-link-id">${escapeHtml(l.id)}</code>
         <button class="btn btn-ghost btn-sm" data-action="copyText" data-a1="${escapeHtml(l.id)}">Copy</button>
-        ${l.url ? `<a href="${escapeHtml(l.url)}" target="_blank" rel="noopener" class="btn btn-primary btn-sm">Open link</a>` : ''}
-      </div>`).join('');
+        ${linkBtn && l.url ? `<a href="${escapeHtml(l.url)}" target="_blank" rel="noopener" class="btn btn-primary btn-sm">Open link</a>` : ''}
+      </div>`;
     row.insertAdjacentHTML('afterend', `
-      <div class="device-link" id="${id}">
+      <div class="device-link${todo.length ? '' : ' device-link-done'}" id="${id}">
+        ${todo.length ? `
         <div class="device-link-title">Link this device to your account</div>
-        <p class="device-link-text">${escapeHtml(links[0].steps)}</p>
-        ${items}
+        <p class="device-link-text">${escapeHtml(todo[0].steps)}</p>
+        ${todo.map(l => item(l, true)).join('')}` : ''}
+        ${done.length ? `
+        <div class="device-link-title">Added to your account</div>
+        <p class="device-link-text">CashPilot added this device with the credentials saved under Settings → Collectors.</p>
+        ${done.map(l => item(l, false)).join('')}` : ''}
       </div>`);
   }
 
