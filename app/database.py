@@ -2796,26 +2796,28 @@ async def withdraw_recovered_payout(platform: str, regained: float, within_hours
     partial cashout from 40 to 25 records 15, and a following reading of 25 must
     not count as 15 coming back. A real payout never jumps back by its own amount
     (at least the provider's minimum cashout) in one reading; a bad reading does.
-    The question and its alert go in one commit, so a failure leaves both for the
-    next run rather than an alert with no question behind it.
+    The question and its alert go in one transaction on a connection of its own.
+    On the shared connection another task could commit between the two deletes
+    (leaving an alert with no question behind it if the second one failed), and a
+    rollback there would also throw away that task's unsaved work.
     """
-    db = await _get_db()
-    try:
-        cursor = await db.execute(
-            "DELETE FROM payouts WHERE platform = ? AND confirmed = 0 AND amount <= ? "
-            "AND detected_at >= datetime('now', ?)",
-            (platform, float(regained), f"-{int(within_hours)} hours"),
-        )
-        withdrawn = cursor.rowcount > 0
-        if withdrawn:
-            await db.execute("DELETE FROM alerts WHERE kind = 'payout' AND subject = ?", (platform,))
-        await db.commit()
-        return withdrawn
-    except Exception:
-        await db.rollback()
-        raise
-    finally:
-        await db.close()
+    DB_DIR.mkdir(parents=True, exist_ok=True)
+    async with aiosqlite.connect(str(DB_PATH), timeout=30) as db:
+        await db.execute("BEGIN IMMEDIATE")
+        try:
+            cursor = await db.execute(
+                "DELETE FROM payouts WHERE platform = ? AND confirmed = 0 AND amount <= ? "
+                "AND detected_at >= datetime('now', ?)",
+                (platform, float(regained), f"-{int(within_hours)} hours"),
+            )
+            withdrawn = cursor.rowcount > 0
+            if withdrawn:
+                await db.execute("DELETE FROM alerts WHERE kind = 'payout' AND subject = ?", (platform,))
+            await db.commit()
+            return withdrawn
+        except BaseException:
+            await db.rollback()
+            raise
 
 
 async def confirm_payout(payout_id: int, method: str = "") -> bool:

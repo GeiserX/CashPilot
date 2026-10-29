@@ -91,3 +91,28 @@ def test_detection_withdraws_a_one_reading_dip(db):
     with patch.object(main.database, "get_latest_balance", AsyncMock(return_value=0.07)):
         assert asyncio.run(main._detect_payout(result)) is None
     assert _pending("honeygain") == []
+
+
+def test_withdraw_neither_commits_nor_rolls_back_another_tasks_write(db):
+    # The two deletes used to run on the shared connection: their commit also
+    # committed another task's half-done write, and a rollback would discard it.
+    async def run():
+        await database.record_probable_payout("honeygain", 25.65)
+        shared = await database._get_db()
+        await shared.execute("INSERT INTO config (key, value) VALUES ('half_done', 'x')")
+        assert shared.in_transaction
+
+        async def other_task_rolls_back():
+            await asyncio.sleep(0.3)
+            await shared.rollback()
+
+        withdrawn, _ = await asyncio.gather(
+            database.withdraw_recovered_payout("honeygain", 25.79), other_task_rolls_back()
+        )
+        assert withdrawn
+        cur = await shared.execute("SELECT COUNT(*) FROM config WHERE key = 'half_done'")
+        assert (await cur.fetchone())[0] == 0
+        assert [p for p in await database.get_payouts("honeygain") if not p["confirmed"]] == []
+        await database.close_shared()
+
+    asyncio.run(run())
