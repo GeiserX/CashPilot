@@ -43,6 +43,7 @@ def test_the_purge_runs_once_at_startup():
             patch("app.main.update_check.refresh_android", new_callable=AsyncMock),
             patch("app.main._run_collection", new_callable=AsyncMock),
             patch("app.main._run_data_retention", retention),
+            patch("app.main._run_vacuum", new_callable=AsyncMock),
         ):
             async with main.lifespan(main.app):
                 await asyncio.sleep(0)

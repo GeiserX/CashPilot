@@ -2174,6 +2174,10 @@ class TestLifespanScheduler:
     External I/O (init_db, exchange refresh, collection) is mocked, but the real
     AsyncIOScheduler is started so we can assert every interval job is registered
     with the hardening kwargs and the EVENT_JOB_ERROR/MISSED listener is attached.
+
+    The startup purge and VACUUM are stubbed too. With connect_shared mocked,
+    the real ones open a connection on this test's loop; asyncio.run then closes
+    that loop, and conftest's drain awaits the connection's close forever.
     """
 
     def test_lifespan_registers_jobs_and_error_listener(self):
@@ -2191,6 +2195,8 @@ class TestLifespanScheduler:
                 patch("app.main.catalog.register_sighup"),
                 patch("app.main.exchange_rates.refresh", new_callable=AsyncMock),
                 patch("app.main._run_collection", new_callable=AsyncMock),
+                patch("app.main._run_data_retention", new_callable=AsyncMock),
+                patch("app.main._run_vacuum", new_callable=AsyncMock),
                 patch("app.main.close_all_collectors", new_callable=AsyncMock, create=True),
             ):
                 async with main_mod.lifespan(main_mod.app):
@@ -2239,6 +2245,8 @@ class TestLifespanScheduler:
                 patch("app.main.catalog.register_sighup"),
                 patch("app.main.exchange_rates.refresh", new_callable=AsyncMock),
                 patch("app.main._run_collection", new_callable=AsyncMock),
+                patch("app.main._run_data_retention", new_callable=AsyncMock),
+                patch("app.main._run_vacuum", new_callable=AsyncMock),
                 patch("app.main.close_all_collectors", new_callable=AsyncMock, create=True),
                 patch("app.main.logger.error") as err,
             ):
@@ -2271,6 +2279,8 @@ class TestLifespanScheduler:
                 patch("app.main.catalog.register_sighup"),
                 patch("app.main.exchange_rates.refresh", new_callable=AsyncMock),
                 patch("app.main._run_collection", new_callable=AsyncMock),
+                patch("app.main._run_data_retention", new_callable=AsyncMock),
+                patch("app.main._run_vacuum", new_callable=AsyncMock),
                 patch("app.main.close_all_collectors", new_callable=AsyncMock, create=True),
                 patch("app.main.scheduler"),  # isolate from the real module scheduler
             ):
