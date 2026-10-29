@@ -220,3 +220,29 @@ def test_batch_earners_declare_their_quiet_days(slug):
     """The catalog carries the override; app/ holds no per-service numbers."""
     catalog.load_services()
     assert main._quiet_days_by_platform().get(slug, 0) >= 7
+
+
+class TestADeviceNotOnTheAccountNamesTheCauseAlready:
+    """A notice saying a deployed device is not on the account is the specific cause.
+
+    A second, vaguer "gone quiet" for the same service would only repeat it.
+    """
+
+    def test_it_holds_back_while_the_device_is_not_linked(self):
+        check = _Check([_flat()])
+        bell = check.run(collected={"honeygain"}, deployments=DEPLOYED, statuses=RUNNING, unlinked={"honeygain"})
+        assert bell == [] and not check.pushes
+
+    def test_another_service_is_unaffected(self):
+        """The control: only the service the notice is about is held back."""
+        check = _Check([_flat()])
+        bell = check.run(collected={"honeygain"}, deployments=DEPLOYED, statuses=RUNNING, unlinked={"earnapp"})
+        assert [b["platform"] for b in bell] == ["honeygain"]
+
+    def test_the_collection_run_passes_what_collectors_reported(self):
+        """The finding travels on EarningsResult.unlinked_devices, not on the notice text."""
+        import inspect
+
+        source = inspect.getsource(main._run_collection)
+        assert 'getattr(result, "unlinked_devices", None)' in source
+        assert "unlinked=" in source

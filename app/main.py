@@ -770,6 +770,7 @@ async def _flatline_check(
     collected: set[str] | None = None,
     deployments: list[dict[str, Any]] | None = None,
     statuses: list[dict[str, Any]] | None = None,
+    unlinked: set[str] | None = None,
 ) -> list[dict[str, str]]:
     """Give a heads-up on a service whose balance has stopped growing.
 
@@ -807,6 +808,11 @@ async def _flatline_check(
         for flat in flat_services:
             platform = flat["platform"]
             if collected is not None and platform not in collected:
+                continue
+            # A collector found a deployed device that is not on the account,
+            # and its notice already names that cause; a vaguer heads-up for
+            # the same service would only repeat it.
+            if unlinked and platform in unlinked:
                 continue
             if statuses is not None and platform in has_container and platform not in running:
                 continue
@@ -976,6 +982,7 @@ async def _run_collection() -> None:
             previously_noticing = {a["platform"] for a in _collector_alerts if a.get("kind") == "notice"}
             platforms_ok = 0
             collected_ok: set[str] = set()
+            unlinked_ok: set[str] = set()
             for result in results:
                 if isinstance(result, Exception):
                     # Redacted BEFORE it is logged. A collector exception is
@@ -1070,6 +1077,8 @@ async def _run_collection() -> None:
                     logger.info("Collected %s: %.4f %s", result.platform, result.balance, result.currency)
                     platforms_ok += 1
                     collected_ok.add(result.platform)
+                    if getattr(result, "unlinked_devices", None):
+                        unlinked_ok.add(result.platform)
                     if result.platform in previously_alerting:
                         # Recovered — drop the stored alert so a future failure counts
                         # as new and notifies again.
@@ -1098,7 +1107,7 @@ async def _run_collection() -> None:
             except Exception as exc:  # noqa: BLE001 - unknown fleet: hold the heads-up back
                 logger.warning("Could not read the fleet for the flatline check: %s", exc)
                 fleet = []
-            alerts.extend(await _flatline_check(collected_ok, deployments, fleet))
+            alerts.extend(await _flatline_check(collected_ok, deployments, fleet, unlinked=unlinked_ok))
             # Offline workers re-derived every rebuild, or the hourly wholesale
             # replacement of this list would silently un-report a dead machine.
             alerts.extend(await _offline_worker_alerts())
