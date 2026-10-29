@@ -14,11 +14,15 @@ ProxyBase is a bandwidth-sharing platform that pays users in cryptocurrency for 
 |--------|-------|
 | Monthly range | $0 - $5 (estimate) |
 | Per | device |
-| Minimum payout | $1 |
+| Minimum payout | None |
 | Payout frequency | On request |
 | Payment methods | Crypto |
 
 > Crypto payouts. Earnings depend on location and bandwidth usage.
+
+## Cashing out
+
+No minimum: a $0.75 request went through in October 2026. A request always withdraws the full balance, as USDC on Polygon, POL or Litecoin, to an address you type in. ProxyBase covers the network fee.
 
 ## Requirements
 

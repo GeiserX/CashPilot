@@ -54,9 +54,13 @@ earnings:
 
 cashout:
   method: redirect
-  dashboard_url: "https://packetstream.io/dashboard"
+  dashboard_url: "https://app.packetstream.io/dashboard/payouts"
   min_amount: 5.0
   currency: USD
+  notes: >-
+    PayPal only, minimum $5, 3% fee shown before you confirm. The first
+    withdrawal saves your PayPal email; changing it later needs an email
+    confirmation and a 7-day wait. Requests are reviewed and sent within 7 days.
 
 platforms: [docker, windows, linux, android]
 

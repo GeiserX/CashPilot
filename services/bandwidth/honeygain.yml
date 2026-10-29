@@ -68,10 +68,16 @@ earnings:
 
 cashout:
   method: redirect
-  dashboard_url: "https://dashboard.honeygain.com/earnings"
+  dashboard_url: "https://dashboard.honeygain.com/payout/request"
   min_amount: 20.0
   currency: USD
-  notes: "PayPal payout or BTC/JumpToken via dashboard. Lucky Pot daily bonus available."
+  notes: >-
+    Minimum $20 (20,000 credits). Two options: PayPal through Tipalti, about
+    15% fee, or JumpTask credits with no fee, paid into a JumpTask wallet.
+    A request needs a 6-digit code sent by email. The first PayPal payout
+    stays "waiting for details" until you register on Tipalti from the link
+    they email (personal details and PayPal address); payment follows within
+    2 business days.
 
 platforms: [docker, windows, macos, linux, android]
 

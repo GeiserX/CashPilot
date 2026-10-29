@@ -20,6 +20,10 @@ Bytelixir lets you earn passive income by sharing unused internet bandwidth. Sup
 
 > Earnings vary heavily by location. No Docker image, and the official FAQ says none is planned. Windows desktop app or Android app required.
 
+## Cashing out
+
+Crypto only. The minimum depends on the coin: USDT $5, USDC $5, TON $8, LTC $10, ETH $40, BTC $250. You type the address in each request. Requests are handled in working hours, within 24 hours.
+
 ## Requirements
 
 | Requirement | Value |

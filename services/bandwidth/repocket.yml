@@ -55,7 +55,7 @@ requirements:
 
 payment:
   methods: [paypal, crypto]
-  minimum_payout: "$20"
+  minimum_payout: "$4 ($2 after the first payout)"
   currency: USD
   frequency: "On request"
 
@@ -68,9 +68,15 @@ earnings:
 
 cashout:
   method: redirect
-  dashboard_url: "https://app.repocket.com/dashboard"
-  min_amount: 20.0
+  dashboard_url: "https://repocket.com/dashboard/wallet"
+  min_amount: 4.0
   currency: USD
+  notes: >-
+    Repocket sets the minimum per account: $4 before the first payout and $2
+    after it in October 2026, far below the $20 it used to advertise. Methods:
+    Tremendous (to your email) or USDT on Polygon. Each request is confirmed
+    from an emailed link within 2 hours, and only one request can be pending
+    at a time.
 
 platforms: [docker, windows, macos, linux, android]
 

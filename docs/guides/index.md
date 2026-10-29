@@ -25,15 +25,15 @@ Setup and configuration for every service CashPilot supports.
 | [Ebesucher](ebesucher.md) | Residential IP | App only | $2 | active |
 | [Honeygain](honeygain.md) | Residential IP | Docker | $20 | active |
 | [IPRoyal Pawns](iproyal.md) | Residential IP | Docker | $5 | active |
-| [MystNodes](mysterium.md) | — | Docker | 4 MYST | active |
+| [MystNodes](mysterium.md) | — | Docker | 5 MYST | active |
 | [PacketShare](packetshare.md) | Residential IP | Docker | $5 | dead |
 | [PacketStream](packetstream.md) | Residential IP | Docker | $5 | active |
 | [Peer2Profit](peer2profit.md) | — | Docker | $2 | dead |
-| [ProxyBase](proxybase.md) | — | Docker | $1 | active |
+| [ProxyBase](proxybase.md) | — | Docker | None | active |
 | [ProxyBase Markets](proxybase-xyz.md) | — | Docker | $1 | active |
 | [ProxyLite](proxylite.md) | — | Docker | $5 | active |
 | [ProxyRack](proxyrack.md) | — | Docker | $20 | active |
-| [Repocket](repocket.md) | Residential IP | Docker | $20 | active |
+| [Repocket](repocket.md) | Residential IP | Docker | $4 ($2 after the first payout) | active |
 | [SpeedShare](speedshare.md) | Residential IP | Docker | $5 | dead |
 | [Spide](spide.md) | Residential IP | App only | $5 | active |
 | [Traffmonetizer](traffmonetizer.md) | — | Docker | $10 | active |
