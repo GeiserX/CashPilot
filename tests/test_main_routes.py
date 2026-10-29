@@ -828,6 +828,35 @@ class TestApiServices:
             assert row["collector_disconnected"] is True
             assert row["collector_needs_setup"] is False
 
+    def test_a_notice_is_shown_as_itself_not_as_a_failed_read(self, client):
+        # A notice rides on a reading that succeeded (an unlinked device, an
+        # unreachable node); "can't read balance" would be false.
+        workers = [
+            {
+                "id": 1,
+                "name": "w1",
+                "status": "online",
+                "system_info": json.dumps({"docker_available": True}),
+                "containers": json.dumps([{"slug": "earnapp", "name": "ea", "status": "running"}]),
+                "apps": "[]",
+            }
+        ]
+        notice = "A deployed device is not on your EarnApp account and earns for nobody."
+        with (
+            _auth_owner(),
+            patch("app.main.database.list_workers", new_callable=AsyncMock, return_value=workers),
+            patch("app.main.database.get_earnings_summary", new_callable=AsyncMock, return_value=[]),
+            patch("app.main.database.get_health_scores", new_callable=AsyncMock, return_value=[]),
+            patch("app.main.database.get_deployments", new_callable=AsyncMock, return_value=[]),
+            patch("app.main.database.get_config", new_callable=AsyncMock, return_value={}),
+            patch("app.main._collector_alerts", [{"kind": "notice", "platform": "earnapp", "error": notice}]),
+            patch("app.main.catalog.get_service", return_value={"name": "EarnApp", "category": "bandwidth"}),
+        ):
+            resp = client.get("/api/services/deployed")
+            row = next(r for r in resp.json() if r["slug"] == "earnapp")
+            assert row["collector_disconnected"] is False
+            assert row["collector_notice"] == notice
+
     def test_collector_needs_setup_helper(self):
         # Service with no collector → never needs setup.
         from app.main import _collector_needs_setup

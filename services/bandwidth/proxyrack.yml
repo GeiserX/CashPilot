@@ -44,6 +44,14 @@ docker:
   network_mode: ""
   privileged: false
 
+device_link:
+  id_env: UUID
+  url: "https://peer.proxyrack.com"
+  steps: >-
+    Sign in to ProxyRack, open Devices, choose Add device and paste this UUID.
+    Until the device is on your account it earns for nobody. If you entered an
+    API key, the container registers itself: check the device is listed there.
+
 requirements:
   residential_ip: false
   devices_per_account: 500

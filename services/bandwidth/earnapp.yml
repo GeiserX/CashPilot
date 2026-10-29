@@ -41,6 +41,13 @@ docker:
   network_mode: ""
   privileged: false
 
+device_link:
+  id_env: EARNAPP_UUID
+  url: "https://earnapp.com/r/${EARNAPP_UUID}"
+  steps: >-
+    Open this link while signed in to EarnApp to add the node to your account.
+    Until you do, the node earns but nothing reaches your balance.
+
 requirements:
   residential_ip: true
   vps_ip: false

@@ -14,6 +14,7 @@ import signal
 import sys
 from pathlib import Path
 from typing import Any
+from urllib.parse import quote
 
 import yaml
 
@@ -154,6 +155,24 @@ def _validate(data: dict[str, Any], path: Path) -> list[str]:
             if field in reqs and not isinstance(reqs[field], bool):
                 errors.append(f"{path.name}: requirements.{field} must be a boolean")
 
+    link = data.get("device_link")
+    if link is not None:
+        # The id is shown on screen and put in a link, so it must be a value the
+        # catalog already treats as public: a declared, non-secret env var.
+        env_vars = (docker.get("env") if isinstance(docker, dict) else None) or []
+        # A key declared secret anywhere is secret, even if declared twice.
+        declared = [v for v in env_vars if isinstance(v, dict)]
+        public = {v.get("key") for v in declared} - {v.get("key") for v in declared if v.get("secret")}
+        url = str(link.get("url") or "") if isinstance(link, dict) else ""
+        if not isinstance(link, dict) or link.get("id_env") not in public:
+            errors.append(f"{path.name}: device_link.id_env must name a non-secret docker.env key")
+        elif not isinstance(link.get("steps"), str) or not link["steps"].strip():
+            errors.append(f"{path.name}: device_link.steps must say what to do with the id")
+        elif url and not url.startswith("https://"):
+            errors.append(f"{path.name}: device_link.url must be an https:// link")
+        elif not set(re.findall(r"\$\{(\w+)\}", url)) <= public:
+            errors.append(f"{path.name}: device_link.url may only fill in non-secret docker.env keys")
+
     priority = data.get("priority")
     if priority is not None and (isinstance(priority, bool) or not isinstance(priority, int) or priority < 1):
         errors.append(f"{path.name}: priority must be a positive integer (1 first), got {priority!r}")
@@ -287,6 +306,26 @@ def critical_volume_targets(slug: str) -> dict[str, str] | None:
         if target:
             targets[str(target)] = str(entry.get("holds") or "Irreplaceable service state.")
     return targets
+
+
+def device_link_step(svc: dict[str, Any], env: dict[str, Any]) -> dict[str, str] | None:
+    """What the user must do so a deployed device earns for their account.
+
+    Some providers create the device id on the machine and pay nobody until
+    the user adds it to their account (EarnApp, ProxyRack). Returns the id, the
+    link with the id filled in, and the steps, from the service's ``device_link``
+    block and the env the container was deployed with; None when the service
+    needs no linking or the env has no id.
+    """
+    link = svc.get("device_link")
+    if not isinstance(link, dict):
+        return None
+    device_id = str(env.get(link.get("id_env"), "") or "").strip()
+    if not device_id:
+        return None
+    url = str(link.get("url") or "")
+    url = re.sub(r"\$\{(\w+)\}", lambda m: quote(str(env.get(m.group(1), "")), safe=""), url)
+    return {"id": device_id, "url": url, "steps": str(link["steps"]).strip()}
 
 
 def vps_allowed(requirements: dict[str, Any] | None) -> bool | None:

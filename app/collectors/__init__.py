@@ -175,6 +175,35 @@ async def _close_stale() -> None:
     _stale = []
 
 
+def _collector_kwargs(slug: str, config: dict[str, str]) -> tuple[dict[str, str], list[str]]:
+    """Constructor kwargs for ``slug``'s collector from config, and the required keys missing."""
+    kwargs: dict[str, str] = {}
+    missing: list[str] = []
+    for arg in _COLLECTOR_ARGS.get(slug, []):
+        optional = arg.startswith("?")
+        arg_name = arg.lstrip("?")
+        config_key = f"{slug}_{arg_name}"
+        val = config.get(config_key, "")
+        if not val and not optional:
+            missing.append(config_key)
+        elif val:
+            kwargs[arg_name] = val
+    return kwargs, missing
+
+
+def build_collector(slug: str, config: dict[str, str]) -> BaseCollector | None:
+    """A fresh, uncached collector for one-off calls, or None without full credentials.
+
+    Outside the collection cache on purpose: make_collectors() evicts every slug it
+    is not given, so asking it for one service would drop all the others. The
+    caller closes it.
+    """
+    if slug not in COLLECTOR_MAP:
+        return None
+    kwargs, missing = _collector_kwargs(slug, config)
+    return None if missing else COLLECTOR_MAP[slug](**kwargs)
+
+
 def make_collectors(
     deployments: list[dict[str, Any]],
     config: dict[str, str],
@@ -193,20 +222,7 @@ def make_collectors(
             continue
 
         cls = COLLECTOR_MAP[slug]
-        arg_keys = _COLLECTOR_ARGS.get(slug, [])
-
-        # Resolve constructor kwargs from config
-        kwargs: dict[str, str] = {}
-        missing: list[str] = []
-        for arg in arg_keys:
-            optional = arg.startswith("?")
-            arg_name = arg.lstrip("?")
-            config_key = f"{slug}_{arg_name}"
-            val = config.get(config_key, "")
-            if not val and not optional:
-                missing.append(config_key)
-            elif val:
-                kwargs[arg_name] = val
+        kwargs, missing = _collector_kwargs(slug, config)
 
         if missing:
             logger.warning(

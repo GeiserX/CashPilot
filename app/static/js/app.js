@@ -1121,6 +1121,8 @@ const CP = (() => {
     let disconnectedLabel = '';
     if (svc.collector_disconnected) {
       disconnectedLabel = `<div title="CashPilot couldn't read this balance — check the earnings-tracking credentials" style="font-size:0.6rem; color:var(--error); font-weight:500; display:flex; align-items:center; justify-content:flex-end; gap:4px;">can't read balance${_isOwner ? ` <button class="btn btn-ghost" data-action="openCredentialModal" data-stop="1" data-a1="${escapeHtml(svc.slug)}" style="font-size:0.6rem; padding:1px 5px; line-height:1.2; color:var(--error); border:1px solid #ef4444; border-radius:3px; cursor:pointer;">fix</button>` : ''}</div>`;
+    } else if (svc.collector_notice) {
+      disconnectedLabel = `<div title="${escapeHtml(svc.collector_notice)}" style="font-size:0.6rem; color:var(--warning, #f59e0b); font-weight:500; text-align:right;">needs attention</div>`;
     } else if (svc.collector_needs_setup) {
       disconnectedLabel = `<div title="This service is running and earning. To show its balance here, add its earnings-tracking credentials." style="font-size:0.6rem; color:var(--text-muted); font-weight:500; display:flex; align-items:center; justify-content:flex-end; gap:4px;">tracking not set up${_isOwner ? ` <button class="btn btn-ghost" data-action="openCredentialModal" data-stop="1" data-a1="${escapeHtml(svc.slug)}" style="font-size:0.6rem; padding:1px 5px; line-height:1.2; color:var(--text-muted); border:1px solid var(--border); border-radius:3px; cursor:pointer;">set up</button>` : ''}</div>`;
     }
@@ -2465,6 +2467,7 @@ const CP = (() => {
     }
 
     let ok = 0, fail = 0;
+    const links = new Map();
     for (const wid of workerIds) {
       try {
         const body = { env };
@@ -2474,6 +2477,7 @@ const CP = (() => {
         if (instances !== undefined) body.instances = instances;
         const res = await api(`/api/deploy/${slug}?worker_id=${wid}`, { method: 'POST', body });
         ok++;
+        if (res && res.device_link && res.device_link.id) links.set(res.device_link.id, res.device_link);
         // A redeploy rebuilds from the RECORDED spec where it diverges from
         // the catalog. The API has always reported what it kept; nothing
         // rendered it, so the operator saw a plain success while e.g. their
@@ -2492,11 +2496,54 @@ const CP = (() => {
       statusEl.textContent = fail === 0 ? `Deployed to ${ok} node(s)` : `${ok} ok, ${fail} failed`;
       statusEl.style.color = fail === 0 ? 'var(--success)' : 'var(--error)';
     }
+    _showDeviceLink(slug, statusEl, [...links.values()]);
     if (ok > 0) {
       toast(`${slug} deployed to ${ok} node(s)`, 'success');
       if (!wizardState.deployed.includes(slug)) {
         wizardState.deployed.push(slug);
       }
+    }
+  }
+
+  // Some providers pay a device only once the user adds its id to their
+  // account (EarnApp, ProxyRack); a node left unlinked earns for nobody, and
+  // nothing else on screen says so. The deploy API returns the step from the
+  // catalog's `device_link` block, so it is shown right where the deploy succeeded.
+  function _showDeviceLink(slug, statusEl, links) {
+    const id = `device-link-${slug}`;
+    document.getElementById(id)?.remove();
+    const row = statusEl && statusEl.parentElement;
+    if (!row || !links.length) return;
+    // Added through the provider's API with the saved collector credentials:
+    // nothing left to do, so say so instead of asking for a manual step.
+    const todo = links.filter(l => !l.registered);
+    const done = links.filter(l => l.registered);
+    const item = (l, linkBtn) => `
+      <div class="device-link-item">
+        <code class="device-link-id">${escapeHtml(l.id)}</code>
+        <button class="btn btn-ghost btn-sm" data-action="copyText" data-a1="${escapeHtml(l.id)}">Copy</button>
+        ${linkBtn && l.url ? `<a href="${escapeHtml(l.url)}" target="_blank" rel="noopener" class="btn btn-primary btn-sm">Open link</a>` : ''}
+      </div>`;
+    row.insertAdjacentHTML('afterend', `
+      <div class="device-link${todo.length ? '' : ' device-link-done'}" id="${id}">
+        ${todo.length ? `
+        <div class="device-link-title">Link this device to your account</div>
+        <p class="device-link-text">${escapeHtml(todo[0].steps)}</p>
+        ${todo.map(l => item(l, true)).join('')}` : ''}
+        ${done.length ? `
+        <div class="device-link-title">Added to your account</div>
+        <p class="device-link-text">CashPilot added this device with the credentials saved under Settings → Collectors.</p>
+        ${done.map(l => item(l, false)).join('')}` : ''}
+      </div>`);
+  }
+
+  async function copyText(text) {
+    try {
+      await navigator.clipboard.writeText(text);
+      toast('Copied', 'success');
+    } catch (err) {
+      // No clipboard outside a secure context (plain http on a LAN address).
+      window.prompt('Copy this:', text);
     }
   }
 
@@ -3916,6 +3963,7 @@ const CP = (() => {
     viewLogs,
     stopLogPolling,
     deployService,
+    copyText,
     toggleWizardService,
     wizardNext,
     wizardPrev,

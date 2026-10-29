@@ -951,6 +951,52 @@ async def _track_fully_configured_services() -> int:
         return 0
 
 
+async def _register_device(slug: str, device_id: str, env: dict[str, Any]) -> bool:
+    """Add a deployed device to the user's account with the stored collector credentials.
+
+    Only where the provider's API can do it and the credentials are saved; anything
+    else is False, and the deploy form shows the manual step instead. Never fails
+    the deploy, which has already happened.
+    """
+    from app.collectors import build_collector
+
+    try:
+        collector = build_collector(slug, await database.get_config() or {})
+    except Exception:
+        return False
+    if collector is None:
+        return False
+    try:
+        name = str(env.get("DEVICE_NAME") or "").strip()
+        if not name or "${" in name:  # an unfilled catalog default is not a name
+            name = f"cashpilot-{device_id[:8]}"
+        return bool(await asyncio.wait_for(collector.register_device(device_id, name), 20))
+    except Exception as exc:
+        logger.warning("Could not add the %s device to the account: %s", slug, notify.redact(str(exc)))
+        return False
+    finally:
+        await collector.close()
+
+
+def _unlinked_devices_warning(result: Any) -> str:
+    """The notice for deployed devices the provider says are not on the account."""
+    ids = sorted(getattr(result, "unlinked_devices", None) or [])
+    if not ids:
+        return ""
+    svc = catalog.get_service(result.platform) or {}
+    link = svc.get("device_link") or {}
+    steps = []
+    for device_id in ids:
+        step = catalog.device_link_step(svc, {link.get("id_env"): device_id}) or {}
+        steps.append(f"{device_id} ({step['url']})" if step.get("url") else device_id)
+    name = svc.get("name") or result.platform
+    which = "A deployed device is" if len(ids) == 1 else f"{len(ids)} deployed devices are"
+    earns = "earns" if len(ids) == 1 else "earn"
+    return (
+        f"{which} not on your {name} account and {earns} for nobody: {'; '.join(steps)}. {link.get('steps', '')}"
+    ).strip()
+
+
 async def _run_collection() -> None:
     """Collect earnings from all deployed services that have collectors."""
     global _collector_alerts
@@ -971,6 +1017,21 @@ async def _run_collection() -> None:
 
             collectors = make_collectors(deployments, config)
             await _close_stale()
+            # Platforms whose collector was asked to check deployed device ids.
+            device_checked: set[str] = set()
+            for c in collectors:
+                slug = getattr(c, "platform", "")
+                link = (catalog.get_service(slug) or {}).get("device_link") if slug else None
+                if not isinstance(link, dict):
+                    continue
+                try:
+                    c.device_ids = await database.get_deployed_env_values(slug, link["id_env"])
+                except Exception as exc:
+                    # Only this service's device check is lost, never the run.
+                    logger.warning("Could not read the deployed %s device ids: %s", slug, exc)
+                    continue
+                if c.device_ids:
+                    device_checked.add(slug)
             results = await asyncio.gather(*(_collect_bounded(c) for c in collectors), return_exceptions=True)
             alerts: list[dict[str, str]] = []
             # Platforms that were already failing before this run: used to detect a
@@ -1035,6 +1096,8 @@ async def _run_collection() -> None:
                     # A caveat on a SUCCESSFUL reading. It is shown, because the
                     # figure is partial and the user should know, but it is not
                     # a failure: the balance below is stored exactly as any other.
+                    if unlinked := _unlinked_devices_warning(result):
+                        result.warning = f"{result.warning} {unlinked}" if result.warning else unlinked
                     if getattr(result, "warning", None):
                         safe_warning = notify.redact(result.warning)
                         logger.info("Collector notice for %s: %s", result.platform, safe_warning)
@@ -1054,6 +1117,19 @@ async def _run_collection() -> None:
                                     alert_id,
                                 )
                             )
+                    elif (
+                        result.platform in previously_noticing
+                        and result.platform in device_checked
+                        and getattr(result, "unlinked_devices", None) is None
+                    ):
+                        # The device check could not finish (provider error, rate
+                        # limit): that proves nothing, so the notice stays rather
+                        # than being cleared now and pushed again next hour.
+                        alerts.extend(
+                            a
+                            for a in _collector_alerts
+                            if a.get("kind") == "notice" and a["platform"] == result.platform
+                        )
                     elif result.platform in previously_noticing:
                         # A warning-free success is the notice's recovery: drop
                         # the stored row so the NEXT warning pushes again rather
@@ -1794,8 +1870,11 @@ async def api_services_deployed(request: Request) -> list[dict[str, Any]]:
     health_map = {h["slug"]: h for h in health_scores}
 
     # Build set of slugs with collector errors (disconnected)
-    # A down container is not a collector fault; its own alert says so.
-    alert_slugs = {a["platform"] for a in _collector_alerts if a.get("kind") != "container"}
+    # A down container is not a collector fault; its own alert says so. A
+    # notice rides on a reading that SUCCEEDED, so it is not "can't read
+    # balance" either; it is shown on the row as itself.
+    alert_slugs = {a["platform"] for a in _collector_alerts if a.get("kind") not in ("notice", "container")}
+    notice_map = {a["platform"]: a.get("error", "") for a in _collector_alerts if a.get("kind") == "notice"}
 
     # Config (decrypted) to detect collectors whose credentials aren't set yet.
     # A config-read failure must not blank the dashboard — degrade to "unknown".
@@ -1938,6 +2017,7 @@ async def api_services_deployed(request: Request) -> list[dict[str, Any]]:
             "instance_details": instance_details,
             "collector_disconnected": slug in alert_slugs,
             "collector_needs_setup": slug not in alert_slugs and _collector_needs_setup(slug, config),
+            "collector_notice": notice_map.get(slug, ""),
             # True when the running container's image no longer matches the catalog
             # (provider migrated / re-pinned) — the dashboard prompts a re-deploy so a
             # retired image doesn't keep looking healthy while it silently stops earning.
@@ -1998,6 +2078,7 @@ async def api_services_deployed(request: Request) -> list[dict[str, Any]]:
             "instance_details": [],
             "collector_disconnected": slug in alert_slugs,
             "collector_needs_setup": slug not in alert_slugs and _collector_needs_setup(slug, config),
+            "collector_notice": notice_map.get(slug, ""),
         }
         _apply_service_meta(entry, svc)
         result.append(entry)
@@ -2446,6 +2527,10 @@ async def api_deploy(
     metrics.record_container_lifecycle("deploy", slug)
     _spawn(_run_collection())
     response: dict[str, Any] = {"status": "deployed", "container_id": container_id}
+    # From the merged env: a redeploy with a blank form still runs the recorded id.
+    if link := catalog.device_link_step(svc, merged_env):
+        link["registered"] = await _register_device(slug, link["id"], merged_env)
+        response["device_link"] = link
     if divergence:
         response["kept_from_previous_deployment"] = divergence
     return response
