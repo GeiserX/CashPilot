@@ -23,6 +23,12 @@ logger = logging.getLogger(__name__)
 # Note: Grass *points* are NOT the GRASS token — they're an internal reward
 # that converts to tokens only during airdrops at unknown ratios, so we
 # intentionally do NOT map GRASS here.
+# Currencies left unpriced ON PURPOSE. A reading in one of these has no rate
+# because there is none to have, so it is not a gap in any total and must not
+# be reported as one: Grass users were warned about "understated totals" on
+# every computation, forever, about points that were never money.
+UNPRICED_BY_DESIGN: frozenset[str] = frozenset({"GRASS"})
+
 CRYPTO_IDS: dict[str, str] = {
     "MYST": "mysterium",
     # Anyone Protocol. The id really is "airtor-protocol" — the project was

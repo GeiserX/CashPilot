@@ -21,6 +21,8 @@ from typing import Any
 import aiosqlite
 from cryptography.fernet import Fernet, InvalidToken
 
+from app.exchange_rates import UNPRICED_BY_DESIGN
+
 _logger = logging.getLogger(__name__)
 
 DB_DIR = Path(os.getenv("CASHPILOT_DATA_DIR", "/data"))
@@ -1170,7 +1172,42 @@ def _usd_rate(currency: str, raw: Any) -> float | None:
     return value if math.isfinite(value) and value > 0 else None
 
 
-async def _usd_earned_per_date(db: Any) -> tuple[dict[str, float], int]:
+# What each "left out of the totals" warning last said, per call site. The
+# totals are recomputed on every page load and API call, so warning each time
+# repeated one fact thousands of times a day; it now speaks when the set of
+# affected platforms changes, and once more when the gap closes.
+_unpriced_logged: dict[str, frozenset[str]] = {}
+
+
+def _report_unpriced(site: str, platforms: set[str], what: str) -> None:
+    """Log a pricing gap in ``what`` once per change in which platforms it hits."""
+    now = frozenset(platforms)
+    before = _unpriced_logged.get(site, frozenset())
+    if now == before:
+        return
+    _unpriced_logged[site] = now
+    if now:
+        _logger.warning(
+            "Earnings readings from %s have no usable USD rate and are left out of %s, "
+            "which are therefore understated.",
+            ", ".join(sorted(now)),
+            what,
+        )
+    else:
+        _logger.info("Every earnings reading in %s is priced again.", what)
+
+
+def _is_a_pricing_gap(currency: str) -> bool:
+    """Whether an unpriced reading in ``currency`` is missing money.
+
+    Points (UNPRICED_BY_DESIGN) are excluded from the totals exactly like any
+    unpriced reading, but they were never money, so leaving them out
+    understates nothing.
+    """
+    return currency not in UNPRICED_BY_DESIGN
+
+
+async def _usd_earned_per_date(db: Any) -> tuple[dict[str, float], set[str]]:
     """USD earned per calendar date, summed across platforms.
 
     ONE implementation behind both the dashboard cards and the trend chart.
@@ -1203,7 +1240,7 @@ async def _usd_earned_per_date(db: Any) -> tuple[dict[str, float], int]:
     # deltas are meaningless, and every drop clamps to zero, so the total comes
     # out understated while looking plausible.
     previous: dict[tuple[str, str], tuple[str, float]] = {}
-    unpriced = 0
+    unpriced: set[str] = set()
     for row in await cursor.fetchall():
         platform = row["platform"]
         # Absent source means a row written before the column existed; those
@@ -1214,7 +1251,8 @@ async def _usd_earned_per_date(db: Any) -> tuple[dict[str, float], int]:
         rate = _usd_rate(currency, row["fx_rate_usd"])
         if rate is None:
             previous.pop(series, None)
-            unpriced += 1
+            if _is_a_pricing_gap(currency):
+                unpriced.add(platform)
             continue
         balance = float(row["balance"] or 0.0)
         before = previous.get(series)
@@ -1257,12 +1295,7 @@ async def get_earnings_dashboard_summary() -> dict[str, Any]:
         # currency = 'USD', so every non-USD platform was missing from all
         # three at once and the cards read $0.00 while balances climbed.
         per_date, unpriced = await _usd_earned_per_date(db)
-        if unpriced:
-            _logger.warning(
-                "%d earnings reading(s) have no usable USD rate and are left out of the "
-                "dashboard totals, which are therefore understated.",
-                unpriced,
-            )
+        _report_unpriced("dashboard", unpriced, "the dashboard totals")
 
         today_earned = per_date.get(today, 0.0)
         # The month is the sum of clamped daily deltas rather than one delta
@@ -1341,12 +1374,7 @@ async def get_daily_earnings(days: int = 7) -> list[dict[str, Any]]:
         # zero, so a newly added service drew a spike the size of its whole
         # opening balance. The shared helper requires a predecessor.
         per_date, unpriced = await _usd_earned_per_date(db)
-        if unpriced:
-            _logger.warning(
-                "%d earnings reading(s) have no usable USD rate and are left out of the "
-                "daily chart, which is therefore understated.",
-                unpriced,
-            )
+        _report_unpriced("chart", unpriced, "the daily chart figures")
 
         now = datetime.now(UTC)
         result = []
@@ -2273,7 +2301,7 @@ async def get_earned_by_platform(days: int = 30) -> dict[str, float]:
         # one provider account interleave into a single series whose deltas are
         # meaningless: each drop clamps to zero, so the total is understated.
         previous: dict[tuple[str, str], tuple[str, float]] = {}
-        unpriced = 0
+        unpriced: set[str] = set()
         for row in rows:
             platform = row["platform"]
             # Absent source means a row written before the column existed, and
@@ -2293,7 +2321,8 @@ async def get_earned_by_platform(days: int = 30) -> dict[str, float]:
                 # baseline is what stops a later reading from being differenced
                 # across the gap and counting the unpriced period twice.
                 previous.pop(series, None)
-                unpriced += 1
+                if _is_a_pricing_gap(currency):
+                    unpriced.add(platform)
                 continue
 
             before = previous.get(series)
@@ -2303,13 +2332,7 @@ async def get_earned_by_platform(days: int = 30) -> dict[str, float]:
                 earned[platform] += max(0.0, balance - before[1]) * float(rate)
             previous[series] = (currency, balance)
 
-        if unpriced:
-            _logger.warning(
-                "%d earnings reading(s) in the last %d days have no USD rate and were left out "
-                "of the per-platform totals, which are therefore understated.",
-                unpriced,
-                days,
-            )
+        _report_unpriced(f"per-platform:{days}", unpriced, f"the {days}-day per-platform totals")
         return earned
     finally:
         await db.close()

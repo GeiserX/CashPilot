@@ -1,8 +1,8 @@
 """Anyone Protocol (formerly ATOR) earnings collector.
 
-Queries the relay-rewards AO smart contract via dry-run to get
-accumulated ANYONE token rewards per relay fingerprint, then converts
-to USD via CoinGecko.
+Reads the cumulative ANYONE reward of each relay fingerprint from the
+relay-rewards contract's ``rewards`` view on Anyone's HyperBEAM node, and
+reports it in native tokens (priced later, after the delta is taken).
 """
 
 from __future__ import annotations
@@ -16,14 +16,23 @@ from app.collectors.base import BaseCollector, EarningsResult
 
 logger = logging.getLogger(__name__)
 
-RELAY_REWARDS_PROCESS_ID = "QZJTY63XZtHOHo_qPaEX7VdtemZh4rpj821xcanPGXA"
-AO_CU_URL = "https://cu.anyone.tech"
+# The relay-rewards process on the live node, as published in the runtime
+# config of https://dashboard.anyone.io. Anyone spawns a new process on every
+# contract redeploy, and the public edge routes only the current id, so a stale
+# id answers 404 rather than serving old data. The legacy AO compute unit
+# (cu.anyone.tech/dry-run) this collector used to call answers 404 for
+# everything since the move to native HyperBEAM contracts.
+#
+# Reads are free, unauthenticated GETs:
+# https://github.com/anyone-protocol/smart-contracts/blob/main/ao/docs/READING-THE-CONTRACTS.md
+HYPERBEAM_URL = "https://hb.anyone.tech"
+RELAY_REWARDS_PROCESS_ID = "pb-19qeB0qlobop3QHOCiR_rQLUR7phal0avuJQJLSs"
 RELAY_API = "https://api.ec.anyone.tech"
 TOKEN_DECIMALS = 18
 
 
 class AnyoneCollector(BaseCollector):
-    """Collect earnings from Anyone Protocol relays via AO dry-run."""
+    """Collect earnings from Anyone Protocol relays via the relay-rewards contract."""
 
     platform = "anyone-protocol"
 
@@ -32,59 +41,40 @@ class AnyoneCollector(BaseCollector):
         self.fingerprints = [fp.strip() for fp in fingerprints.split(",") if fp.strip()]
 
     async def _get_rewards_for_fingerprint(self, client: httpx.AsyncClient, fingerprint: str) -> float:
-        """Query AO relay-rewards contract for a single fingerprint's total reward."""
-        payload = {
-            "Id": "1234",
-            "Target": RELAY_REWARDS_PROCESS_ID,
-            "Owner": "1234",
-            "Anchor": "0",
-            "Tags": [
-                {"name": "Action", "value": "Get-Rewards"},
-                {"name": "Fingerprint", "value": fingerprint},
-                {"name": "Address", "value": "0x0000000000000000000000000000000000000000"},
-                {"name": "Data-Protocol", "value": "ao"},
-                {"name": "Type", "value": "Message"},
-                {"name": "Variant", "value": "ao.TN.1"},
-            ],
-            "Data": "1234",
-        }
-        resp = await client.post(
-            f"{AO_CU_URL}/dry-run",
-            params={"process-id": RELAY_REWARDS_PROCESS_ID},
-            json=payload,
-            headers={"Content-Type": "application/json"},
+        """Read one fingerprint's cumulative reward from the relay-rewards contract."""
+        resp = await client.get(
+            f"{HYPERBEAM_URL}/{RELAY_REWARDS_PROCESS_ID}~process@1.0/as/rewards",
+            params={"fingerprint": fingerprint},
             timeout=60,
         )
+        if resp.status_code == 404:
+            # Not "no rewards": the view answers 200 for any fingerprint. A 404
+            # means the node does not route this process id any more.
+            raise RuntimeError(
+                "Anyone relay-rewards process not found (404): the process id is stale "
+                "or the node is down; check relayRewardsHyperbeamProcessId on dashboard.anyone.io"
+            )
         resp.raise_for_status()
         result = resp.json()
 
-        if "error" in result:
-            raise RuntimeError(f"AO CU error: {result['error']}")
-
-        messages = result.get("Messages", [])
-        if not messages:
-            logger.debug("No messages returned for fingerprint %s", fingerprint)
-            return 0.0
-
-        # A missing Data key is a shape change, not zero rewards. Defaulting
-        # to "0" made an unparseable AO contract response indistinguishable
-        # from a relay that genuinely earned nothing — and the resulting 0.0
-        # was written as a real reading with no error, so no alert, no
-        # flatline warning (that detector skips zero balances), and no way for
-        # the user to tell.
-        if "Data" not in messages[0]:
+        # The view echoes the requested fingerprint back. Without that echo this
+        # is not the view's answer for this relay, and reading it would record a
+        # fake real reading.
+        if not isinstance(result, dict) or result.get("fingerprint") != fingerprint:
             raise ValueError(
-                f"AO response for {fingerprint} has no Data field "
-                f"(saw: {sorted(messages[0])[:6]}) — the contract shape may have changed"
+                f"Anyone rewards response for {fingerprint} does not echo that fingerprint "
+                f"(saw: {sorted(result)[:6] if isinstance(result, dict) else type(result).__name__}) "
+                "— the contract shape may have changed"
             )
-        data = messages[0]["Data"]
-        if not data or data == "null":
+        # The contract omits `reward` for a relay that has never been rewarded.
+        reward = result.get("reward")
+        if reward in (None, ""):
             return 0.0
 
         try:
-            raw_tokens = int(data)
+            raw_tokens = int(reward)
         except (ValueError, TypeError):
-            raise ValueError(f"unexpected reward format: {data!r}")
+            raise ValueError(f"unexpected reward format: {reward!r}")
         return raw_tokens / (10**TOKEN_DECIMALS)
 
     async def collect(self) -> EarningsResult:

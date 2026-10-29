@@ -1,13 +1,13 @@
 {
   "currency": "ANYONE",
   "fields": [
-    "Data",
-    "Messages"
+    "fingerprint",
+    "reward"
   ],
-  "note": "AO smart-contract dry-run per relay fingerprint. Reports NATIVE ANYONE; pricing is exchange_rates' job, because converting a cumulative balance before the delta turns a token price move into fabricated earnings.",
+  "note": "relay-rewards contract `rewards` view on HyperBEAM, one GET per relay fingerprint; `reward` is cumulative atomic units (18 decimals) and is omitted for a relay never rewarded. Reports NATIVE ANYONE; pricing is exchange_rates' job, because converting a cumulative balance before the delta turns a token price move into fabricated earnings.",
   "parsed": 0.0,
   "sample": {
-    "Messages": []
+    "fingerprint": "603FEB30B549F3DC702C222E1FDBFFA3DEB7D76F"
   },
   "slug": "anyone-protocol"
 }
