@@ -100,9 +100,29 @@ docker stats --no-stream --format '  info  memory {{.MemUsage}}, pids {{.PIDs}}'
 echo "-- restarts earnapp run inside the container, not the container"
 # Kill `earnapp run` the way a crash would. procps is not in the image, so
 # find it through /proc.
-docker exec "$P-run" bash -c 'for d in /proc/[0-9]*; do tr "\0" " " <"$d/cmdline" 2>/dev/null | grep -q "^/usr/bin/earnapp run" && kill -9 "${d#/proc/}"; done' >/dev/null 2>&1
+kill_run() {
+	docker exec "$1" bash -c 'for d in /proc/[0-9]*; do tr "\0" " " <"$d/cmdline" 2>/dev/null | grep -q "^/usr/bin/earnapp run" && kill -9 "${d#/proc/}"; done' >/dev/null 2>&1
+}
+# restarts_are <container> <waits...>: the internal restarts logged so far
+# waited exactly these many seconds, in order.
+restarts_are() {
+	local out
+	out=$(docker logs "$1" 2>&1 | sed -nE 's/.*Restarting it inside this container in ([0-9]+)s;.*/\1/p' | paste -sd' ' -)
+	shift
+	[[ "$out" == "$*" ]]
+}
+kill_run "$P-run"
 check "logs an internal restart" wait_for 15 logs_have "$P-run" "the container itself keeps running"
 check "earnapp run is back after the backoff" wait_for 60 docker exec "$P-run" /usr/local/bin/cashpilot-earnapp-health
+
+echo "-- a run that lasted over a minute is restarted after 5 s, not a doubled wait"
+# EarnApp 1.665.73 exits after about 100 s whenever one of the agents Bright
+# Data assigns to the IP is down. A doubling wait left such a node offline for
+# 300 s after every 100 s run.
+sleep 65
+kill_run "$P-run"
+check "second restart also waits 5 s" wait_for 15 restarts_are "$P-run" 5 5
+check "earnapp run is back" wait_for 60 docker exec "$P-run" /usr/local/bin/cashpilot-earnapp-health
 check "container kept running" test "$(docker inspect -f '{{.State.Running}}' "$P-run")" = true
 check "container restart count is 0" test "$(docker inspect -f '{{.RestartCount}}' "$P-run")" = 0
 
