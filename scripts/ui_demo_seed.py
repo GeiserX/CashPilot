@@ -12,7 +12,9 @@ address and credential below is invented. Nothing here talks to a provider.
 
 Login: user ``demo``, password ``demo-password-1`` (owner).
 
-The data dir is wiped first. Expect 8 deployed services on 4 workers (box-a to
+The data dir is wiped first, but only if it is empty or was seeded by this
+script before (it carries a ``.cashpilot-ui-demo`` marker); anything else is
+refused. Expect 8 deployed services on 4 workers (box-a to
 box-d, box-d offline for three hours), 60 days of balance history in USD, MYST
 and GRASS points, two confirmed payouts, one pending payout prompt, a failing
 collector and a stopped container.
@@ -186,10 +188,24 @@ def _prepare_env(data_dir: Path) -> None:
     os.environ.setdefault("CASHPILOT_WORKER_URL_POLICY", "permissive")
 
 
+# Written into every dir this script seeds. A dir is only ever wiped when it
+# carries this marker or is empty, so pointing the script at a real CashPilot
+# data dir stops instead of deleting its database.
+_MARKER = ".cashpilot-ui-demo"
+
+
 def _fresh_dir(data_dir: Path) -> None:
     if data_dir.exists():
+        if not data_dir.is_dir():
+            sys.exit(f"{data_dir} is not a directory; refusing to touch it.")
+        if any(data_dir.iterdir()) and not (data_dir / _MARKER).is_file():
+            sys.exit(
+                f"{data_dir} is not empty and was not made by this script (no {_MARKER} file). "
+                "Refusing to wipe it; pass a new or empty directory."
+            )
         shutil.rmtree(data_dir)
     (data_dir / "fleet").mkdir(parents=True)
+    (data_dir / _MARKER).write_text("Demo data from scripts/ui_demo_seed.py; safe to delete.\n")
 
 
 def _image(slug: str) -> str:
@@ -453,8 +469,12 @@ def main_cli() -> None:
         import subprocess
 
         extra = [
-            subprocess.Popen([sys.executable, __file__, str(data_dir) + "-fresh", "--serve", str(args.serve + 1), "--fresh"]),
-            subprocess.Popen([sys.executable, __file__, str(data_dir) + "-empty", "--serve", str(args.serve + 2), "--empty"]),
+            subprocess.Popen(
+                [sys.executable, __file__, str(data_dir) + "-fresh", "--serve", str(args.serve + 1), "--fresh"]
+            ),
+            subprocess.Popen(
+                [sys.executable, __file__, str(data_dir) + "-empty", "--serve", str(args.serve + 2), "--empty"]
+            ),
         ]
         try:
             print(

@@ -239,12 +239,12 @@ CASHPILOT_WORKER_NAME=server-name</code>
             <div class="economics-summary">${esc(m.summary)}</div>
           </div>
           <div class="economics-figures">
-            <span title="gross earnings per month">${money(m.monthly_gross)}</span>
+            <span title="gross earnings per month">${money(m.monthly_gross)}</span>${m.monthly_cost == null ? '' : `
             <span class="muted">−</span>
             <span title="estimated electricity per month">${money(m.monthly_cost)}</span>
             <span class="muted">=</span>
             <span class="${losing ? 'text-fail' : ''} econ-net"
-                  title="net per month">${money(m.monthly_net)}</span>
+                  title="net per month">${money(m.monthly_net)}</span>`}
           </div>
         </div>`;
     }).join('');
@@ -343,6 +343,11 @@ CASHPILOT_WORKER_NAME=server-name</code>
       ].join('');
       let version;
       if (sysInfo.version) {
+        // What this worker was actually judged against. An Android
+        // client is compared to the newest CashPilot-android
+        // release, not to the UI: the two ship on separate tracks,
+        // so "v0.3.0 != UI v1.24.1" was never skew, it was two
+        // different products, and it flagged every phone forever.
         const isAndroidOs = String(sysInfo.os || '').toLowerCase() === 'android';
         const ref = w.reference_version || w.ui_version || '?';
         const refLabel = isAndroidOs ? `latest v${esc(ref)}` : `UI v${esc(ref)}`;
@@ -398,6 +403,8 @@ CASHPILOT_WORKER_NAME=server-name</code>
       </table>`;
   }
 
+  // The last isolation check per worker id: 'running', a report, or {error}.
+  // Kept outside the cards so the 60 s refresh does not wipe a result.
   const _isolation = {};
 
   function renderIsolation(r) {
@@ -496,6 +503,8 @@ CASHPILOT_WORKER_NAME=server-name</code>
       html += `<div class="ctr-stale">Last known state, not reachable</div>`;
     }
     for (const a of apps) {
+      // Same rule as the containers: an unreachable device cannot be reporting
+      // an app as running, whatever its last heartbeat said.
       const isRunning = isOnline !== false && a.running;
       const tx = a.net_tx_24h || 0;
       const rx = a.net_rx_24h || 0;
@@ -508,6 +517,12 @@ CASHPILOT_WORKER_NAME=server-name</code>
     return html + '</div>';
   }
 
+  // A container's colour is a claim about RIGHT NOW, and it can only be made
+  // while the worker is reachable. When it is not, every chip stayed the colour
+  // frozen into the last heartbeat, so a host that is powered off rendered a
+  // row of success-green containers next to a grey dot, and green is the louder
+  // signal. The state is still shown, because "what was running when we last
+  // heard" is useful, but it is shown as a memory rather than a measurement.
   function staleNote(lastSeen) {
     return `Last reported ${CP.fmtTimestamp(lastSeen).text}. This host is not reachable, so this is the last known state, not the current one.`;
   }

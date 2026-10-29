@@ -1267,8 +1267,8 @@ const CP = (() => {
       ? escapeHtml(svc.image)
       : (isExternal ? 'App / Browser' : '');
 
-    // Health badge — external services always show --
-    let healthBadge = '<span class="muted">--</span>';
+    // Health badge — external services always show a muted dash
+    let healthBadge = '<span class="muted">&mdash;</span>';
     if (!isExternal && svc.health_score !== null && svc.health_score !== undefined) {
       const score = svc.health_score;
       const crashes = svc.crashes_7d || 0;
@@ -1293,8 +1293,9 @@ const CP = (() => {
     const currency = (bk && bk.currency) || svc.currency || 'USD';
     const delta = bk ? bk.delta : 0;
     const deltaSign = delta > 0 ? '+' : '';
-    const deltaClass = delta > 0 ? 'positive' : delta < 0 ? 'negative' : '';
-    const deltaStr = delta !== 0 ? `${deltaSign}${formatCurrency(delta, currency)}` : '--';
+    // Money deltas are deliberately uncoloured: colour on this page means state
+    // (ok / warn / fail) only, so a rise or dip carries just its sign.
+    const deltaStr = delta !== 0 ? `${deltaSign}${formatCurrency(delta, currency)}` : '<span class="muted">&mdash;</span>';
     const displayBalance = signupBonus > 0 ? balanceAdj : balance;
     const nativeLabel = formatNative(displayBalance, currency);
     const bonusLabel = signupBonus > 0
@@ -1336,8 +1337,8 @@ const CP = (() => {
     // CPU/Memory — skip for external; show avg for multi-instance
     let cpuStr, memStr;
     if (isExternal) {
-      cpuStr = '--';
-      memStr = '--';
+      cpuStr = '<span class="muted">&mdash;</span>';
+      memStr = '<span class="muted">&mdash;</span>';
     } else if (svc.cpu == null || svc.memory == null) {
       // Nothing could be measured: every instance's Docker stats call failed.
       // `|| '0'` used to render that as a confident 0%, which reads as idle for
@@ -1385,7 +1386,7 @@ const CP = (() => {
         <div class="payout-progress-bar ${eligible ? 'eligible' : ''}" style="width:${pctToMin.toFixed(0)}%"></div>
       </div>
       <span class="payout-label">${pctToMin.toFixed(0)}%</span>
-    ` : '<span class="muted">--</span>';
+    ` : '<span class="muted">&mdash;</span>';
 
     // Payout (claim) button — always visible in main row
     const claimTitle = co.dashboard_url
@@ -1466,7 +1467,7 @@ const CP = (() => {
         : `<span class="badge badge-${statusClass}"><span class="status-dot ${statusClass}"></span> ${statusLabel}</span>${instanceLabel}`}${unmanagedLabel}${outdatedBadge}</td>
       <td class="c-health c-num">${healthBadge}</td>
       <td class="c-bal c-num">${balanceHtml}</td>
-      <td class="c-chg c-num"><span class="delta ${deltaClass}">${deltaStr}</span></td>
+      <td class="c-chg c-num"><span class="delta">${deltaStr}</span></td>
       <td class="c-cpu c-num">${cpuStr}</td>
       <td class="c-mem c-num">${memStr}</td>
       <td class="c-disk c-num">${diskCell(svc)}</td>
@@ -2814,7 +2815,7 @@ const CP = (() => {
 
   function renderCatalogCard(svc) {
     const earning = svc.earnings
-      ? `$${svc.earnings.monthly_low}-${svc.earnings.monthly_high}`
+      ? `$${svc.earnings.monthly_low}-${svc.earnings.monthly_high} / ${escapeHtml(svc.earnings.per || 'month')}`
       : 'varies';
     const isDeployed = svc.deployed || false;
     const broken = svc.status === 'broken';
@@ -3722,7 +3723,8 @@ const CP = (() => {
     }
     const sign = pct >= 0 ? '+' : '';
     el.textContent = `${sign}${pct.toFixed(1)}%`;
-    el.className = `stat-change ${pct >= 0 ? 'positive' : 'negative'}`;
+    // Uncoloured on purpose: colour means state only, the sign says the direction.
+    el.className = 'stat-change';
   }
 
   function debounce(fn, ms) {

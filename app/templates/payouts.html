@@ -206,9 +206,18 @@
 
   var _entries = [];
   var _balances = {};
+  // Whether the "Not deployed" fold was open before a filter opened it, so
+  // clearing the filter puts the page back the way the user left it.
+  var _restOpenBeforeFilter = null;
 
   function applyFilter() {
     var q = (document.getElementById('payout-filter').value || '').trim().toLowerCase();
+    var fold = document.getElementById('payout-rest');
+    if (q && _restOpenBeforeFilter === null) _restOpenBeforeFilter = fold.open;
+    if (!q && _restOpenBeforeFilter !== null) {
+      fold.open = _restOpenBeforeFilter;
+      _restOpenBeforeFilter = null;
+    }
     var rows = !q ? _entries : _entries.filter(function (e) {
       return [e.name, e.slug, e.chain, e.address, e.model]
         .some(function (v) { return v && String(v).toLowerCase().indexOf(q) !== -1; });
@@ -218,7 +227,6 @@
     var rest = rows.filter(function (e) { return !e.deployed; });
     document.getElementById('payout-table-container').innerHTML = renderTable(deployed,
       q ? 'No deployed service matches that filter.' : 'Nothing is deployed yet. Every service in the catalog is listed under Not deployed.');
-    var fold = document.getElementById('payout-rest');
     fold.hidden = !rest.length;
     document.getElementById('payout-rest-count').textContent = String(rest.length);
     document.getElementById('payout-rest-container').innerHTML = renderTable(rest);

@@ -145,7 +145,7 @@ def assess_machine(
             "break_even_watts": None,
             "summary": (
                 f"{name} earned {gross:.2f} last month. Without {missing} CashPilot cannot say "
-                "whether that covers the electricity — and guessing would be worse than not saying."
+                "whether that covers the electricity, and guessing would be worse than not saying."
             ),
         }
 
@@ -173,7 +173,7 @@ def assess_machine(
 def _summary(name: str, gross: float, cost: float, net: float, verdict: str, dedicated: bool) -> str:
     if verdict == LOSING_MONEY:
         base = (
-            f"{name} earns about {gross:.2f} a month and costs about {cost:.2f} in electricity — "
+            f"{name} earns about {gross:.2f} a month and costs about {cost:.2f} in electricity, "
             f"roughly {abs(net):.2f} a month out of pocket."
         )
         return base + (

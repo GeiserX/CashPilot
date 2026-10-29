@@ -1005,7 +1005,7 @@ img { max-width: 100%; }
   margin-left: 8px;
 }
 
-.collectors-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 4px; }
+.collectors-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 4px; align-items: start; }
 .collectors-grid .collector-section {
   min-width: 0;
   overflow: hidden;
@@ -1232,7 +1232,7 @@ pre,
 .num,
 .cell-mono {
   font-family: var(--font-mono);
-  font-size: 0.92em;
+  font-size: max(12px, 0.92em);
 }
 kbd { font-family: var(--font-mono); }
 code { background: none; padding: 0; color: var(--text-primary); }
@@ -1293,7 +1293,9 @@ kbd {
 .block-meta { font-size: var(--fs-2); color: var(--text-muted); }
 .block-empty { color: var(--text-muted); padding: 12px 0; }
 .loading-line { display: flex; align-items: center; gap: 8px; padding: 12px 0; color: var(--text-muted); }
-.table-scroll { overflow-x: auto; }
+/* position: relative keeps absolutely placed .sr-only labels inside the scroll box;
+   without it they sit at the table's far edge and widen the whole page. */
+.table-scroll { overflow-x: auto; position: relative; }
 
 section { margin-bottom: 28px; }
 
@@ -1506,6 +1508,7 @@ a.svc-name:hover { text-decoration: underline; }
   font-size: var(--fs-3); }
 
 .form-input:focus { border-color: var(--text-secondary); outline: none; }
+.form-input:focus-visible { outline: 2px solid var(--text-primary); outline-offset: -1px; }
 .form-input::placeholder { color: var(--text-muted); opacity: 0.8; }
 .form-input-sm { height: 24px; width: 4.2rem; padding: 0 6px; font-family: var(--font-mono); font-size: var(--fs-2); }
 input[type="checkbox"] { accent-color: var(--text-primary); }
@@ -1869,6 +1872,7 @@ body.gate { display: flex; flex-direction: column; }
 
 /* Payouts: the rest of the catalog, folded */
 .payout-rest { margin-top: 18px; border-top: 1px solid var(--border-color); }
+.payout-rest[hidden] { display: none; }
 .payout-rest-summary { cursor: pointer; padding: 10px 0; font-weight: 600; color: var(--text-secondary); list-style-position: inside; }
 .payout-rest-summary:hover { color: var(--text-primary); }
 .payout-rest[open] .payout-rest-summary { color: var(--text-primary); }
@@ -1887,6 +1891,8 @@ body.gate { display: flex; flex-direction: column; }
   .topbar-brand { height: 40px; }
   .topnav { order: 3; flex-basis: 100%; overflow-x: auto; height: 34px; margin: 0 -12px; padding: 0 6px; border-top: 1px solid var(--border-color); }
   .topnav .sidebar-link { padding: 0 8px; }
+  /* "Add" alone on a phone so all six tabs fit in 390 without a hidden scroll. */
+  .topnav .nav-more { display: none; }
   .topbar-currency-select { display: none; }
   .page-content { padding: 14px 12px 24px; }
   .page-foot { padding: 12px; }
@@ -1950,7 +1956,9 @@ body.gate { display: flex; flex-direction: column; }
   .payout-table .p-chain { grid-area: chain; font-size: var(--fs-2); color: var(--text-muted); }
   .payout-table .p-chain:has(.payout-na) { display: none; }
   .payout-table .payout-address { white-space: normal; word-break: break-all; max-width: none; }
-  .table-scroll { overflow-x: visible; }
+  /* Only the wrappers whose tables stack into blocks drop their scroll box.
+     The fleet table keeps its own horizontal scroll so the page stays 390 wide. */
+  #services-table-container, #catalog-grid, .table-scroll:has(> .payout-table) { overflow-x: visible; }
   .kv-row { grid-template-columns: minmax(0, 1fr); gap: 6px; }
   .iso-group { grid-template-columns: minmax(0, 1fr); gap: 2px; }
   .claim-figures { flex-direction: column; gap: 2px; }
