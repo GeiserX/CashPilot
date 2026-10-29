@@ -29,6 +29,24 @@ class EarnAppCollector(BaseCollector):
         self.oauth_token = oauth_token
         self.brd_sess_id = brd_sess_id
 
+    async def _unlinked(self, client, headers: dict, params: dict) -> list[str] | None:
+        """Deployed node UUIDs missing from the account's device list.
+
+        None when there is nothing to check or the list cannot be read: a
+        failed lookup must never claim a node is unlinked.
+        """
+        if not self.device_ids:
+            return None
+        try:
+            resp = await client.get(f"{API_BASE}/devices", headers=headers, params=params)
+            resp.raise_for_status()
+            devices = resp.json()
+            linked = {d["uuid"] for d in devices}
+        except Exception as exc:
+            logger.debug("EarnApp device list unreadable: %s", exc)
+            return None
+        return sorted(self.device_ids - linked)
+
     async def collect(self) -> EarningsResult:
         """Fetch current EarnApp balance."""
         try:
@@ -101,6 +119,7 @@ class EarnAppCollector(BaseCollector):
                 platform=self.platform,
                 balance=round(balance, 4),
                 currency="USD",
+                unlinked_devices=await self._unlinked(client, headers, api_params),
             )
         except Exception as exc:
             base.log_failure(logger, "EarnApp", exc)

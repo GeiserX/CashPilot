@@ -27,6 +27,31 @@ class ProxyRackCollector(BaseCollector):
         super().__init__()
         self.api_key = api_key
 
+    async def _unlinked(self, headers: dict) -> list[str] | None:
+        """Deployed device UUIDs ProxyRack does not know on this account.
+
+        /device/status answers 400 with details.device_id "The selected device
+        id is invalid." for a UUID that is not on the account, and 200 with the
+        device's status otherwise. Only that exact refusal counts; a failed
+        lookup must never claim a device is unlinked.
+        """
+        if not self.device_ids:
+            return None
+        unlinked: list[str] = []
+        try:
+            client = self._get_client(timeout=30)
+            for device_id in sorted(self.device_ids):
+                resp = await client.post(f"{API_BASE}/device/status", headers=headers, json={"device_id": device_id})
+                if resp.status_code != 400:
+                    continue
+                detail = str(((resp.json() or {}).get("details") or {}).get("device_id") or "")
+                if "device id is invalid" in detail.lower():
+                    unlinked.append(device_id)
+        except Exception as exc:
+            logger.debug("ProxyRack device status unreadable: %s", exc)
+            return None
+        return unlinked
+
     async def collect(self) -> EarningsResult:
         """Fetch current ProxyRack balance."""
         try:
@@ -66,6 +91,7 @@ class ProxyRackCollector(BaseCollector):
                 platform=self.platform,
                 balance=round(balance, 4),
                 currency="USD",
+                unlinked_devices=await self._unlinked(headers),
             )
         except Exception as exc:
             base.log_failure(logger, "ProxyRack", exc)

@@ -37,6 +37,10 @@ class EarningsResult:
     # unknown labelled "transient" teaches the user to wait for something that
     # will not heal.
     error_kind: str | None = None
+    # Device ids CashPilot deployed that the provider says are NOT on this
+    # account, so they earn for nobody. None when the collector did not or
+    # could not check; the collection loop turns a non-empty list into a notice.
+    unlinked_devices: list[str] | None = None
 
 
 #: The stored credential was REJECTED (401/403/login redirect). Only a human
@@ -78,6 +82,10 @@ class BaseCollector(abc.ABC):
 
     def __init__(self) -> None:
         self._client: httpx.AsyncClient | None = None
+        # The device ids CashPilot deployed for this service, set by the
+        # collection loop before each run for services with a catalog
+        # `device_link` block. Empty means nothing to check.
+        self.device_ids: set[str] = set()
 
     def _get_client(self, **kwargs: Any) -> httpx.AsyncClient:
         """Return a reusable httpx client, creating one if needed."""

@@ -40,12 +40,15 @@ let preflights = 0;
 let toasts = 0;
 const requests = [];
 const document = { getElementById: () => null, querySelectorAll: () => inputs };
-const api = async (...args) => { requests.push(args); return {}; };
+let deployAnswer = {};
+const api = async (...args) => { requests.push(args); return deployAnswer; };
+const shownLinks = [];
 // _imageChoice and _instancesFor read the form's Advanced box and Instances
 // box; undefined is "unchanged", so the request body is the env alone.
-const deploy = new Function('document', 'api', 'toast', '_confirmPreflight', 'wizardState', '_imageChoice', '_instancesFor',
+const deploy = new Function('document', 'api', 'toast', '_confirmPreflight', 'wizardState', '_imageChoice', '_instancesFor', '_showDeviceLink',
   `${grab('_deployToWorkers')}\nreturn _deployToWorkers;`)(document, api, () => { toasts++; },
-  async () => { preflights++; return true; }, { deployed: [] }, () => undefined, () => undefined);
+  async () => { preflights++; return true; }, { deployed: [] }, () => undefined, () => undefined,
+  (slug, statusEl, links) => shownLinks.push(links));
 const input = (key, value, { valid, required }) => ({ value, required, pattern: '[a-f0-9-]+',
   dataset: { key }, style: {}, checkValidity: () => valid, reportValidity: () => { reports++; } });
 
@@ -71,3 +74,26 @@ await deploy('svc', [1]);
 assert.equal(requests.length, 2, 'a blank optional patterned field never blocks the deploy');
 assert.equal(requests[1][1].body.env.UI_ADDRESS, '');
 console.log('An invalid typed value stops before preflight; valid values go out trimmed; blanks keep their old meaning.');
+
+// A deploy whose answer carries a device_link shows the step once per id, even
+// when two workers report the same one; an answer without it shows nothing.
+const link = { id: 'sdk-node-' + 'a'.repeat(32), url: 'https://earnapp.com/r/x', steps: 'Open this link.' };
+deployAnswer = { status: 'deployed', device_link: link };
+inputs = [input('API_KEY', '12345678-1234-4abc-8def-123456789abc', { valid: true, required: true })];
+shownLinks.length = 0;
+await deploy('svc', [1, 2]);
+assert.deepEqual(shownLinks.at(-1), [link], 'the step is shown with the id from the deploy answer');
+deployAnswer = { status: 'deployed' };
+await deploy('svc', [1]);
+assert.deepEqual(shownLinks.at(-1), [], 'no device_link, nothing to link');
+
+// The step itself: the id, a copy button and the link, after the status row.
+let inserted = '';
+const docStub = { getElementById: () => null };
+const show = new Function('document', 'escapeHtml', `${grab('_showDeviceLink')}\nreturn _showDeviceLink;`)(docStub, escapeHtml);
+show('earnapp', { parentElement: { insertAdjacentHTML: (where, html) => { inserted = `${where}|${html}`; } } }, [link]);
+assert.match(inserted, /^afterend\|/);
+assert.match(inserted, /Link this device to your account/);
+assert.match(inserted, new RegExp(`data-action="copyText" data-a1="${link.id}"`));
+assert.match(inserted, /href="https:\/\/earnapp.com\/r\/x"/);
+console.log('A deploy that returns a device_link shows the link step with the id, a copy button and the link.');

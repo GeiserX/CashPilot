@@ -1613,6 +1613,28 @@ async def get_custom_images(slug: str) -> dict[int, str]:
     return images
 
 
+async def get_deployed_env_values(slug: str, key: str) -> set[str]:
+    """Every value of env var ``key`` across the workers ``slug`` is deployed on.
+
+    Read from the per-worker records only, so a container made by hand or
+    before specs were kept per worker contributes nothing: an empty answer is
+    "not known", never "none deployed".
+    """
+    db = await _get_db()
+    try:
+        cursor = await db.execute("SELECT spec_encrypted FROM deployment_specs WHERE slug = ?", (slug,))
+        rows = await cursor.fetchall()
+    finally:
+        await db.close()
+    values: set[str] = set()
+    for row in rows:
+        env = (_decode_spec(row["spec_encrypted"] or "", slug) or {}).get("env") or {}
+        value = str(env.get(key) or "").strip() if isinstance(env, dict) else ""
+        if value:
+            values.add(value)
+    return values
+
+
 def _decode_spec(blob: str, slug: str) -> dict[str, Any] | None:
     if not blob:
         return None
