@@ -12,7 +12,7 @@
 
 CashPilot is a self-hosted platform that runs passive income services on your own servers and shows what they earn in one web dashboard. Two Docker containers start the <!-- n:docker -->17<!-- /n --> services that run in Docker, keep track of the <!-- n:tracked -->24<!-- /n --> that run as a browser extension, a desktop app or a GPU node, and read the balances of <!-- n:collectors -->15<!-- /n --> providers into one earnings history. Without it, each provider is a container you write by hand and a dashboard you log into separately.
 
-![The CashPilot dashboard: balance tiles, a 30-day earnings chart, a payout waiting to be confirmed, and the deployed services table](https://raw.githubusercontent.com/GeiserX/CashPilot/main/docs/images/screenshots/dashboard.png)
+![The CashPilot dashboard: the balance first, a short list of what needs attention (an offline box, a stopped container, a balance it could not read, a payout to confirm), which service runs on which box, earnings per day, and the deployed services table](https://raw.githubusercontent.com/GeiserX/CashPilot/main/docs/images/screenshots/dashboard.png)
 
 ## Features
 

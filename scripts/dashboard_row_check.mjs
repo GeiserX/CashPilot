@@ -72,7 +72,7 @@ const half = rows.renderServiceRow(deployed('honeygain', 20), breakdown('honeyga
 check('a row with a known minimum shows its progress', /payout-label">50%/.test(half), half.match(/<td[^>]*>[^<]*(<span[^>]*>--<\/span>)/)?.[1] || 'no 50% label');
 
 const none = rows.renderServiceRow(deployed('mystery', 5), undefined);
-check('a row with no breakdown still says it cannot tell', !/payout-label/.test(none) && /--/.test(none), 'rendered a bar without a comparable minimum');
+check('a row with no breakdown still says it cannot tell', !/payout-label/.test(none) && /<span class="muted">&mdash;<\/span>/.test(none), 'rendered a bar without a comparable minimum');
 
 const services = [deployed('far', 100), deployed('close', 10), deployed('mid', 20)];
 const bmap = {far: breakdown('far', 10, 100), close: breakdown('close', 9, 10), mid: breakdown('mid', 10, 20)};

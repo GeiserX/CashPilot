@@ -258,7 +258,9 @@ for (const theme of ["dark", "light"]) {
       fail(`[${theme}] ${b.probe} contrast ${b.contrast}:1 (need ${MIN_CONTRAST}:1) — ${b.color} on ${b.bg}`);
     }
     // A filled control that is underlined means link styling leaked into it.
-    if (b.underlined) {
+    // .btn-link is the exception: it has no fill, and its underline is the
+    // only thing that marks it as clickable.
+    if (b.underlined && !b.probe.startsWith("btn-link|")) {
       fail(`[${theme}] ${b.probe} is underlined — link styling has leaked into a button`);
     }
   }

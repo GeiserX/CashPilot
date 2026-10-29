@@ -8,3 +8,6 @@ Contributions are welcome. To add a new service:
 4. Submit a pull request
 
 For bug reports and feature requests, open an issue on GitHub.
+
+For UI work, `uv run python scripts/ui_demo_seed.py /tmp/cp-demo --serve 8100` serves the app with invented demo data (login `demo` / `demo-password-1`), and never touches a real data dir.
+`node scripts/ui_screenshots.mjs http://127.0.0.1:8100 /tmp/shots both` then takes full-page shots of every page and state in both themes (`CP_SCALE=2` for retina, `CP_SHOT_ONLY=<regex>` to pick states).

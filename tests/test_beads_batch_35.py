@@ -52,7 +52,7 @@ class TestTheIdIsVisible:
 
     def _id_element(self) -> str:
         source = without_comments(fleet_html())
-        marker = '<code style="font-size:0.68rem'
+        marker = '<code class="worker-id'
         assert marker in source, "no element renders the worker id on the card"
         start = source.index(marker)
         return source[start : source.index("</code>", start)]
