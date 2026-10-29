@@ -3668,7 +3668,7 @@ const CP = (() => {
           : isShape ? ' — page changed (our bug)'
           : '';
         const muted = isNotice || isTransient;
-        const showFix = !isPayout && !isNotice && !isContainer && !isTransient && !isShape && _isOwner;
+        const showFix = !isPayout && !isNotice && !isTransient && !isShape && _isOwner && !isContainer;
         return `
         <div class="notify-item" data-platform="${escapeHtml(a.platform)}" data-kind="${escapeHtml(a.kind || 'collector')}"${category ? ` data-category="${escapeHtml(category)}"` : ''}>
           <div class="notify-item-icon"${muted ? ' style="color:var(--text-muted);"' : ''}>
