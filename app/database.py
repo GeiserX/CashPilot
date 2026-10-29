@@ -2730,17 +2730,22 @@ async def vacuum_database() -> None:
 
     SQLite never shrinks the file on DELETE alone, so without a periodic VACUUM the
     database keeps its high-water-mark size forever even as old rows are purged.
-    Run off-peak (weekly) — VACUUM rewrites the whole file and briefly locks it. We
-    commit first because VACUUM cannot run inside an open transaction, and checkpoint
-    the WAL afterwards so the freed space is actually returned to the filesystem.
+    Run off-peak (weekly) — VACUUM rewrites the whole file and briefly locks it, and
+    the WAL is checkpointed afterwards so the freed space is actually returned to the
+    filesystem.
+
+    It runs on a connection of its own. VACUUM cannot run inside an open transaction,
+    and on the shared connection another task's transaction can open between a commit
+    and the VACUUM: at startup, beside retention and the first collection, it failed
+    every time ("cannot VACUUM from within a transaction"). Committing first would also
+    commit that other task's half-done work. A separate connection just waits for the
+    write lock.
     """
-    db = await _get_db()
-    try:
-        await db.commit()
+    DB_DIR.mkdir(parents=True, exist_ok=True)
+    # timeout= is the busy timeout; a PRAGMA cursor left open would itself block VACUUM.
+    async with aiosqlite.connect(str(DB_PATH), timeout=30) as db:
         await db.execute("VACUUM")
         await db.execute("PRAGMA wal_checkpoint(TRUNCATE)")
-    finally:
-        await db.close()
 
 
 # ---------------------------------------------------------------------------
