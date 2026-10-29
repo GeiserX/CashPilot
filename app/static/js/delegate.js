@@ -44,7 +44,11 @@ document.addEventListener('click', (event) => {
   for (let i = 1; i <= 4; i += 1) {
     const value = el.dataset[`a${i}`];
     if (value === undefined) break;
-    args.push(value);
+    // The literal "event" stands for the click itself, as it did in the inline
+    // handlers this replaced. A dashboard row needs it to tell a click on its
+    // own cells from one on a link inside it; passed on as the string, the row
+    // read .target off a string and threw on every click.
+    args.push(value === 'event' ? event : value);
   }
   run(el.dataset.action, args);
   // A few controls did two things in one inline handler.
