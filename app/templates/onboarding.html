@@ -8,245 +8,52 @@
   <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" data-async-style>
-  <noscript><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet"></noscript>
+  <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Condensed:wght@400;500;600&display=swap" data-async-style>
+  <noscript><link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Condensed:wght@400;500;600&display=swap" rel="stylesheet"></noscript>
   <style>
+    /* First run: one column of plain form, the same graphite and type as the app. */
     * { margin: 0; padding: 0; box-sizing: border-box; }
-
     body {
-      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      background: #06060f;
-      color: #e4e4e7;
-      height: 100vh;
-      overflow: hidden;
-      position: relative;
+      font-family: 'IBM Plex Sans Condensed', 'Arial Narrow', system-ui, sans-serif;
+      font-size: 13px; line-height: 1.45; background: #15171a; color: #e2e5e9; min-height: 100vh;
     }
-
-    .synthwave-bg {
-      position: absolute;
-      inset: 0;
-      width: 100%;
-      height: 100%;
-      z-index: 0;
-    }
-
-    .content-overlay {
-      position: absolute;
-      inset: 0;
-      z-index: 1;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      padding: 2rem;
-    }
-
-    .container {
-      max-width: 440px;
-      width: 100%;
-      text-align: center;
-      position: relative;
-    }
-
+    .content-overlay { min-height: 100vh; display: flex; align-items: flex-start; justify-content: center; padding: 18vh 20px 40px; }
+    .container { width: 100%; max-width: 380px; }
     .step { display: none; }
-    .step.active {
-      display: block;
-      animation: fadeIn 0.35s ease-out;
-    }
-    @keyframes fadeIn {
-      from { opacity: 0; transform: translateY(10px); }
-      to { opacity: 1; transform: translateY(0); }
-    }
-
-    .card {
-      background: rgba(10, 8, 20, 0.8);
-      backdrop-filter: blur(12px);
-      border: 1px solid rgba(139, 92, 246, 0.15);
-      border-radius: 16px;
-      padding: 2.5rem;
-      box-shadow: 0 16px 48px rgba(0, 0, 0, 0.5), 0 0 1px rgba(139, 92, 246, 0.2);
-    }
-
-    .brand {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 0.5rem;
-      margin-bottom: 0.5rem;
-    }
-    .brand-text {
-      font-size: 1.6rem;
-      font-weight: 700;
-      background: linear-gradient(135deg, #fb7185, #e11d48);
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-      background-clip: text;
-    }
-
-    h1 {
-      font-size: 1.8rem;
-      font-weight: 700;
-      margin-bottom: 0.5rem;
-      color: #e4e4e7;
-      letter-spacing: -0.02em;
-    }
-
-    .subtitle {
-      color: #a1a1aa;
-      margin-bottom: 1.5rem;
-      font-size: 1rem;
-      font-weight: 400;
-    }
-
-    .field {
-      margin-bottom: 1rem;
-      text-align: left;
-    }
-    .field label {
-      display: block;
-      color: #a1a1aa;
-      font-size: 0.85rem;
-      margin-bottom: 0.35rem;
-      font-weight: 500;
-    }
+    .step.active { display: block; }
+    .card { background: none; border: none; padding: 0; }
+    .brand { display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 600; margin-bottom: 18px; }
+    .brand-text { color: #e2e5e9; }
+    h1 { font-size: 18px; font-weight: 600; margin-bottom: 6px; }
+    .subtitle { color: #aab1b9; margin-bottom: 18px; }
+    .field { margin-bottom: 12px; }
+    .field label { display: block; font-size: 12px; font-weight: 500; color: #aab1b9; margin-bottom: 3px; }
     .field input {
-      width: 100%;
-      padding: 0.7rem 0.85rem;
-      background: rgba(6, 6, 15, 0.8);
-      border: 1px solid rgba(63, 63, 70, 0.5);
-      border-radius: 8px;
-      color: #e4e4e7;
-      font-size: 0.95rem;
-      font-family: inherit;
-      outline: none;
-      transition: border-color 0.2s, box-shadow 0.2s;
+      width: 100%; height: 30px; padding: 0 8px; background: #101214; border: 1px solid #353a41;
+      border-radius: 2px; color: #e2e5e9; font: inherit; outline: none;
     }
-    .field input:focus {
-      border-color: #fb7185;
-      box-shadow: 0 0 0 2px rgba(251, 113, 133, 0.12), 0 0 16px rgba(251, 113, 133, 0.1);
-    }
-
+    .field input:focus { border-color: #aab1b9; }
+    .field-hint { font-size: 12px; color: #8d949d; margin-top: 4px; }
+    .field-hint code { font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 11.5px; color: #e2e5e9; }
     .btn {
-      display: inline-block;
-      padding: 0.8rem 2.2rem;
-      background: linear-gradient(135deg, #fb7185, #e11d48);
-      color: #fff;
-      border-radius: 50px;
-      font-weight: 600;
-      cursor: pointer;
-      border: none;
-      font-size: 1rem;
-      font-family: inherit;
-      transition: transform 0.2s, box-shadow 0.3s;
-      box-shadow: 0 4px 20px rgba(251, 113, 133, 0.3);
-      text-decoration: none;
+      display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 30px; padding: 0 14px;
+      background: #e2e5e9; color: #15171a; border: 1px solid #e2e5e9; border-radius: 2px;
+      font: inherit; font-weight: 600; cursor: pointer; text-decoration: none;
     }
-    .btn:hover {
-      transform: translateY(-1px);
-      box-shadow: 0 6px 28px rgba(251, 113, 133, 0.45);
-    }
-    .btn:disabled {
-      background: #27272a;
-      color: #52525b;
-      cursor: not-allowed;
-      box-shadow: none;
-      transform: none;
-    }
-
-    .btn-ghost {
-      background: transparent;
-      border: 1px solid rgba(63, 63, 70, 0.5);
-      box-shadow: none;
-      color: #a1a1aa;
-    }
-    .btn-ghost:hover {
-      border-color: rgba(139, 92, 246, 0.4);
-      color: #e4e4e7;
-      box-shadow: none;
-      transform: none;
-    }
-
-    .field-hint {
-      color: #71717a;
-      font-size: 0.75rem;
-      margin-top: 0.35rem;
-      line-height: 1.45;
-    }
-    .field-hint code {
-      background: rgba(63, 63, 70, 0.4);
-      padding: 0.05rem 0.3rem;
-      border-radius: 4px;
-      font-size: 0.72rem;
-    }
-
-    .error-msg {
-      background: rgba(248, 113, 113, 0.1);
-      color: #f87171;
-      padding: 0.5rem 0.75rem;
-      border-radius: 6px;
-      font-size: 0.85rem;
-      margin-bottom: 1rem;
-      display: none;
-    }
+    .btn:hover { background: #ffffff; }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .btn-ghost { background: none; color: #e2e5e9; border-color: #353a41; }
+    .btn-ghost:hover { background: #23272c; }
+    .btn:focus-visible, .field input:focus-visible { outline: 2px solid #e2e5e9; outline-offset: 1px; }
+    .error-msg { display: none; border-left: 2px solid #f06a5f; background: rgba(240, 106, 95, 0.12); padding: 6px 10px; margin-bottom: 12px; font-size: 12px; }
     .error-msg.visible { display: block; }
-
-    .info-badge {
-      background: rgba(251, 113, 133, 0.1);
-      color: #fb7185;
-      padding: 0.5rem 0.75rem;
-      border-radius: 6px;
-      font-size: 0.85rem;
-      margin-bottom: 1rem;
-    }
-
-    .actions {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 0.75rem;
-      margin-top: 1.5rem;
-    }
-
-    .step-dots {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 0.5rem;
-      margin-bottom: 1.5rem;
-    }
-    .dot {
-      width: 8px;
-      height: 8px;
-      border-radius: 50%;
-      background: #27272a;
-      transition: background 0.3s, box-shadow 0.3s;
-    }
-    .dot.active {
-      background: #fb7185;
-      box-shadow: 0 0 8px rgba(251, 113, 133, 0.4);
-    }
-
-    .success-icon {
-      width: 64px;
-      height: 64px;
-      margin: 0 auto 1rem;
-      border-radius: 50%;
-      background: rgba(34, 197, 94, 0.1);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-    }
-
-    .spinner {
-      width: 18px;
-      height: 18px;
-      border: 2px solid transparent;
-      border-top-color: #fff;
-      border-radius: 50%;
-      animation: spin 0.6s linear infinite;
-      display: inline-block;
-      vertical-align: middle;
-      margin-right: 0.5rem;
-    }
+    .info-badge { border-left: 2px solid #4a5059; color: #aab1b9; padding: 4px 10px; margin-bottom: 14px; font-size: 12px; }
+    .actions { display: flex; gap: 8px; margin-top: 16px; }
+    .step-dots { display: flex; gap: 4px; margin-bottom: 14px; }
+    .dot { width: 18px; height: 3px; background: #353a41; }
+    .dot.active { background: #e2e5e9; }
+    .success-icon { margin-bottom: 10px; }
+    .spinner { width: 12px; height: 12px; border: 2px solid transparent; border-top-color: currentColor; border-radius: 50%; animation: spin 0.6s linear infinite; }
     @keyframes spin { to { transform: rotate(360deg); } }
   </style>
   <script nonce="{{ csp_nonce(request) }}">
@@ -257,88 +64,6 @@
   </script>
 </head>
 <body>
-  <!-- Synthwave background -->
-  <svg class="synthwave-bg" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 800" preserveAspectRatio="xMidYMid slice">
-    <defs>
-      <linearGradient id="sky" x1="0%" y1="0%" x2="0%" y2="100%">
-        <stop offset="0%" stop-color="#06060f"/>
-        <stop offset="25%" stop-color="#0d0022"/>
-        <stop offset="40%" stop-color="#1a003a"/>
-        <stop offset="50%" stop-color="#2d0055"/>
-        <stop offset="100%" stop-color="#06060f"/>
-      </linearGradient>
-      <linearGradient id="sun" x1="0%" y1="0%" x2="0%" y2="100%">
-        <stop offset="0%" stop-color="#fde68a"/>
-        <stop offset="25%" stop-color="#fbbf24"/>
-        <stop offset="45%" stop-color="#fb923c"/>
-        <stop offset="65%" stop-color="#e11d48"/>
-        <stop offset="85%" stop-color="#9f1239"/>
-        <stop offset="100%" stop-color="#6d28d9"/>
-      </linearGradient>
-      <radialGradient id="halo" cx="50%" cy="50%">
-        <stop offset="35%" stop-color="#fb923c" stop-opacity="0.2"/>
-        <stop offset="65%" stop-color="#e11d48" stop-opacity="0.08"/>
-        <stop offset="100%" stop-color="transparent"/>
-      </radialGradient>
-      <clipPath id="sun-clip"><circle cx="600" cy="240" r="120"/></clipPath>
-      <linearGradient id="reflect" x1="0%" y1="0%" x2="0%" y2="100%">
-        <stop offset="0%" stop-color="#fb923c" stop-opacity="0.12"/>
-        <stop offset="100%" stop-color="transparent"/>
-      </linearGradient>
-    </defs>
-    <rect width="1200" height="800" fill="url(#sky)"/>
-    <g fill="#fff">
-      <circle cx="80" cy="30" r="1.2" opacity="0.8"/><circle cx="220" cy="70" r="0.7" opacity="0.5"/>
-      <circle cx="370" cy="20" r="1" opacity="0.7"/><circle cx="520" cy="55" r="0.8" opacity="0.4"/>
-      <circle cx="680" cy="35" r="1.1" opacity="0.6"/><circle cx="840" cy="60" r="0.6" opacity="0.4"/>
-      <circle cx="980" cy="25" r="1.2" opacity="0.7"/><circle cx="1120" cy="50" r="0.9" opacity="0.6"/>
-    </g>
-    <rect x="0" y="237" width="1200" height="3" fill="#fb7185" opacity="0.8"/>
-    <rect x="0" y="236" width="1200" height="1" fill="#fde68a" opacity="0.3"/>
-    <circle cx="600" cy="240" r="180" fill="url(#halo)"/>
-    <circle cx="600" cy="240" r="120" fill="url(#sun)"/>
-    <g clip-path="url(#sun-clip)">
-      <rect x="475" y="240" width="250" height="3" fill="#06060f"/>
-      <rect x="475" y="249" width="250" height="5" fill="#06060f"/>
-      <rect x="475" y="260" width="250" height="7" fill="#06060f"/>
-      <rect x="475" y="273" width="250" height="9" fill="#06060f"/>
-      <rect x="475" y="288" width="250" height="11" fill="#06060f"/>
-      <rect x="475" y="306" width="250" height="14" fill="#06060f"/>
-      <rect x="475" y="328" width="250" height="18" fill="#06060f"/>
-      <!-- The jet from the CashPilot mark (docs/images/banner.svg), scaled to this sun. -->
-      <g transform="translate(598.5,186) rotate(-17) scale(1.425)" fill="#000010" opacity="0.65">
-        <path d="M37,1.2 C35.8,-1.8 32,-3.8 26,-3.9 L-22,-3.9 L-36.5,-4.8 L-37.6,-3.2 L-15,3.6 L24,3.8 C30.5,3.8 35,3 37,1.2 Z"/>
-        <path d="M-25,-3.9 L-31.8,-18.4 L-37.2,-18.6 L-36.4,-4.6 Z"/>
-        <path d="M-28.8,-18.6 L-42.5,-19.6 L-42.2,-17.6 L-31,-16.8 Z"/>
-        <path d="M-10,-7.2 L-23,-7.2 C-25.4,-7.2 -25.4,-1.8 -23,-1.8 L-10,-1.8 C-8.4,-1.8 -8.4,-7.2 -10,-7.2 Z"/>
-        <path d="M9,3 L-6,3.4 L-16.8,12.6 L-19.5,9.4 L-20.2,9.6 L-18.6,13.4 L-12.2,13.2 Z"/>
-      </g>
-    </g>
-    <ellipse cx="600" cy="280" rx="80" ry="20" fill="url(#reflect)"/>
-    <g stroke="#8b5cf6" opacity="0.4">
-      <line x1="0" y1="280" x2="1200" y2="280" stroke-width="0.7"/>
-      <line x1="0" y1="330" x2="1200" y2="330" stroke-width="0.6"/>
-      <line x1="0" y1="390" x2="1200" y2="390" stroke-width="0.6"/>
-      <line x1="0" y1="460" x2="1200" y2="460" stroke-width="0.5"/>
-      <line x1="0" y1="540" x2="1200" y2="540" stroke-width="0.5"/>
-      <line x1="0" y1="635" x2="1200" y2="635" stroke-width="0.4"/>
-      <line x1="0" y1="740" x2="1200" y2="740" stroke-width="0.4"/>
-    </g>
-    <g stroke="#fb7185" opacity="0.15">
-      <line x1="600" y1="242" x2="-50" y2="800" stroke-width="0.6"/>
-      <line x1="600" y1="242" x2="150" y2="800" stroke-width="0.6"/>
-      <line x1="600" y1="242" x2="300" y2="800" stroke-width="0.6"/>
-      <line x1="600" y1="242" x2="450" y2="800" stroke-width="0.6"/>
-      <line x1="600" y1="242" x2="600" y2="800" stroke-width="0.6"/>
-      <line x1="600" y1="242" x2="750" y2="800" stroke-width="0.6"/>
-      <line x1="600" y1="242" x2="900" y2="800" stroke-width="0.6"/>
-      <line x1="600" y1="242" x2="1050" y2="800" stroke-width="0.6"/>
-      <line x1="600" y1="242" x2="1250" y2="800" stroke-width="0.6"/>
-    </g>
-    <rect x="0" y="3" width="1200" height="2" fill="#fb7185" opacity="0.5"/>
-    <rect x="0" y="795" width="1200" height="2" fill="#22d3ee" opacity="0.3"/>
-  </svg>
-
   <!-- Content -->
   <div class="content-overlay">
     <div class="container">
@@ -346,32 +71,32 @@
       <div class="step active" id="step-1">
         <div class="card">
           <div class="brand">
-            <svg width="28" height="28" viewBox="0 0 256 256" role="img" aria-label="CashPilot">
-              <defs>
-                <linearGradient id="cpSun" x1="0%" y1="0%" x2="0%" y2="100%">
-                  <stop offset="0%" stop-color="#FFD54F"/>
-                  <stop offset="40%" stop-color="#FF9800"/>
-                  <stop offset="72%" stop-color="#E91E63"/>
-                  <stop offset="100%" stop-color="#AB47BC"/>
-                </linearGradient>
-                <mask id="cpBands">
-                  <rect width="256" height="256" fill="#fff"/>
-                  <rect x="16" y="150" width="224" height="10" fill="#000"/>
-                  <rect x="16" y="172" width="224" height="13" fill="#000"/>
-                  <rect x="16" y="197" width="224" height="16" fill="#000"/>
-                </mask>
-              </defs>
-              <g transform="translate(128,128) scale(1.3333333) translate(-128,-132)">
-                <circle cx="128" cy="132" r="96" fill="url(#cpSun)" mask="url(#cpBands)"/>
-                <g transform="translate(130,112) rotate(-17) scale(1.85)" fill="#000010" opacity="0.65">
-                  <path d="M37,1.2 C35.8,-1.8 32,-3.8 26,-3.9 L-22,-3.9 L-36.5,-4.8 L-37.6,-3.2 L-15,3.6 L24,3.8 C30.5,3.8 35,3 37,1.2 Z"/>
-                  <path d="M-25,-3.9 L-31.8,-18.4 L-37.2,-18.6 L-36.4,-4.6 Z"/>
-                  <path d="M-28.8,-18.6 L-42.5,-19.6 L-42.2,-17.6 L-31,-16.8 Z"/>
-                  <path d="M-10,-7.2 L-23,-7.2 C-25.4,-7.2 -25.4,-1.8 -23,-1.8 L-10,-1.8 C-8.4,-1.8 -8.4,-7.2 -10,-7.2 Z"/>
-                  <path d="M9,3 L-6,3.4 L-16.8,12.6 L-19.5,9.4 L-20.2,9.6 L-18.6,13.4 L-12.2,13.2 Z"/>
-                </g>
-              </g>
-            </svg>
+      <svg width="20" height="20" viewBox="0 0 256 256" role="img" aria-label="CashPilot">
+        <defs>
+          <linearGradient id="cpSun" x1="0%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%" stop-color="#FFD54F"/>
+            <stop offset="40%" stop-color="#FF9800"/>
+            <stop offset="72%" stop-color="#E91E63"/>
+            <stop offset="100%" stop-color="#AB47BC"/>
+          </linearGradient>
+          <mask id="cpBands">
+            <rect width="256" height="256" fill="#fff"/>
+            <rect x="16" y="150" width="224" height="10" fill="#000"/>
+            <rect x="16" y="172" width="224" height="13" fill="#000"/>
+            <rect x="16" y="197" width="224" height="16" fill="#000"/>
+          </mask>
+        </defs>
+        <g transform="translate(128,128) scale(1.3333333) translate(-128,-132)">
+          <circle cx="128" cy="132" r="96" fill="url(#cpSun)" mask="url(#cpBands)"/>
+          <g transform="translate(130,112) rotate(-17) scale(1.85)" fill="#000010" opacity="0.65">
+            <path d="M37,1.2 C35.8,-1.8 32,-3.8 26,-3.9 L-22,-3.9 L-36.5,-4.8 L-37.6,-3.2 L-15,3.6 L24,3.8 C30.5,3.8 35,3 37,1.2 Z"/>
+            <path d="M-25,-3.9 L-31.8,-18.4 L-37.2,-18.6 L-36.4,-4.6 Z"/>
+            <path d="M-28.8,-18.6 L-42.5,-19.6 L-42.2,-17.6 L-31,-16.8 Z"/>
+            <path d="M-10,-7.2 L-23,-7.2 C-25.4,-7.2 -25.4,-1.8 -23,-1.8 L-10,-1.8 C-8.4,-1.8 -8.4,-7.2 -10,-7.2 Z"/>
+            <path d="M9,3 L-6,3.4 L-16.8,12.6 L-19.5,9.4 L-20.2,9.6 L-18.6,13.4 L-12.2,13.2 Z"/>
+          </g>
+        </g>
+      </svg>
             <span class="brand-text">CashPilot</span>
           </div>
           <div class="step-dots">
@@ -389,18 +114,32 @@
       <div class="step" id="step-2">
         <div class="card">
           <div class="brand">
-            <svg width="28" height="28" viewBox="0 0 256 256" role="img" aria-label="CashPilot">
-              <g transform="translate(128,128) scale(1.3333333) translate(-128,-132)">
-                <circle cx="128" cy="132" r="96" fill="url(#cpSun)" mask="url(#cpBands)"/>
-                <g transform="translate(130,112) rotate(-17) scale(1.85)" fill="#000010" opacity="0.65">
-                  <path d="M37,1.2 C35.8,-1.8 32,-3.8 26,-3.9 L-22,-3.9 L-36.5,-4.8 L-37.6,-3.2 L-15,3.6 L24,3.8 C30.5,3.8 35,3 37,1.2 Z"/>
-                  <path d="M-25,-3.9 L-31.8,-18.4 L-37.2,-18.6 L-36.4,-4.6 Z"/>
-                  <path d="M-28.8,-18.6 L-42.5,-19.6 L-42.2,-17.6 L-31,-16.8 Z"/>
-                  <path d="M-10,-7.2 L-23,-7.2 C-25.4,-7.2 -25.4,-1.8 -23,-1.8 L-10,-1.8 C-8.4,-1.8 -8.4,-7.2 -10,-7.2 Z"/>
-                  <path d="M9,3 L-6,3.4 L-16.8,12.6 L-19.5,9.4 L-20.2,9.6 L-18.6,13.4 L-12.2,13.2 Z"/>
-                </g>
-              </g>
-            </svg>
+      <svg width="20" height="20" viewBox="0 0 256 256" role="img" aria-label="CashPilot">
+        <defs>
+          <linearGradient id="cpSun" x1="0%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%" stop-color="#FFD54F"/>
+            <stop offset="40%" stop-color="#FF9800"/>
+            <stop offset="72%" stop-color="#E91E63"/>
+            <stop offset="100%" stop-color="#AB47BC"/>
+          </linearGradient>
+          <mask id="cpBands">
+            <rect width="256" height="256" fill="#fff"/>
+            <rect x="16" y="150" width="224" height="10" fill="#000"/>
+            <rect x="16" y="172" width="224" height="13" fill="#000"/>
+            <rect x="16" y="197" width="224" height="16" fill="#000"/>
+          </mask>
+        </defs>
+        <g transform="translate(128,128) scale(1.3333333) translate(-128,-132)">
+          <circle cx="128" cy="132" r="96" fill="url(#cpSun)" mask="url(#cpBands)"/>
+          <g transform="translate(130,112) rotate(-17) scale(1.85)" fill="#000010" opacity="0.65">
+            <path d="M37,1.2 C35.8,-1.8 32,-3.8 26,-3.9 L-22,-3.9 L-36.5,-4.8 L-37.6,-3.2 L-15,3.6 L24,3.8 C30.5,3.8 35,3 37,1.2 Z"/>
+            <path d="M-25,-3.9 L-31.8,-18.4 L-37.2,-18.6 L-36.4,-4.6 Z"/>
+            <path d="M-28.8,-18.6 L-42.5,-19.6 L-42.2,-17.6 L-31,-16.8 Z"/>
+            <path d="M-10,-7.2 L-23,-7.2 C-25.4,-7.2 -25.4,-1.8 -23,-1.8 L-10,-1.8 C-8.4,-1.8 -8.4,-7.2 -10,-7.2 Z"/>
+            <path d="M9,3 L-6,3.4 L-16.8,12.6 L-19.5,9.4 L-20.2,9.6 L-18.6,13.4 L-12.2,13.2 Z"/>
+          </g>
+        </g>
+      </svg>
             <span class="brand-text">CashPilot</span>
           </div>
           <div class="step-dots">
@@ -453,18 +192,32 @@
       <div class="step" id="step-3">
         <div class="card">
           <div class="brand">
-            <svg width="28" height="28" viewBox="0 0 256 256" role="img" aria-label="CashPilot">
-              <g transform="translate(128,128) scale(1.3333333) translate(-128,-132)">
-                <circle cx="128" cy="132" r="96" fill="url(#cpSun)" mask="url(#cpBands)"/>
-                <g transform="translate(130,112) rotate(-17) scale(1.85)" fill="#000010" opacity="0.65">
-                  <path d="M37,1.2 C35.8,-1.8 32,-3.8 26,-3.9 L-22,-3.9 L-36.5,-4.8 L-37.6,-3.2 L-15,3.6 L24,3.8 C30.5,3.8 35,3 37,1.2 Z"/>
-                  <path d="M-25,-3.9 L-31.8,-18.4 L-37.2,-18.6 L-36.4,-4.6 Z"/>
-                  <path d="M-28.8,-18.6 L-42.5,-19.6 L-42.2,-17.6 L-31,-16.8 Z"/>
-                  <path d="M-10,-7.2 L-23,-7.2 C-25.4,-7.2 -25.4,-1.8 -23,-1.8 L-10,-1.8 C-8.4,-1.8 -8.4,-7.2 -10,-7.2 Z"/>
-                  <path d="M9,3 L-6,3.4 L-16.8,12.6 L-19.5,9.4 L-20.2,9.6 L-18.6,13.4 L-12.2,13.2 Z"/>
-                </g>
-              </g>
-            </svg>
+      <svg width="20" height="20" viewBox="0 0 256 256" role="img" aria-label="CashPilot">
+        <defs>
+          <linearGradient id="cpSun" x1="0%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%" stop-color="#FFD54F"/>
+            <stop offset="40%" stop-color="#FF9800"/>
+            <stop offset="72%" stop-color="#E91E63"/>
+            <stop offset="100%" stop-color="#AB47BC"/>
+          </linearGradient>
+          <mask id="cpBands">
+            <rect width="256" height="256" fill="#fff"/>
+            <rect x="16" y="150" width="224" height="10" fill="#000"/>
+            <rect x="16" y="172" width="224" height="13" fill="#000"/>
+            <rect x="16" y="197" width="224" height="16" fill="#000"/>
+          </mask>
+        </defs>
+        <g transform="translate(128,128) scale(1.3333333) translate(-128,-132)">
+          <circle cx="128" cy="132" r="96" fill="url(#cpSun)" mask="url(#cpBands)"/>
+          <g transform="translate(130,112) rotate(-17) scale(1.85)" fill="#000010" opacity="0.65">
+            <path d="M37,1.2 C35.8,-1.8 32,-3.8 26,-3.9 L-22,-3.9 L-36.5,-4.8 L-37.6,-3.2 L-15,3.6 L24,3.8 C30.5,3.8 35,3 37,1.2 Z"/>
+            <path d="M-25,-3.9 L-31.8,-18.4 L-37.2,-18.6 L-36.4,-4.6 Z"/>
+            <path d="M-28.8,-18.6 L-42.5,-19.6 L-42.2,-17.6 L-31,-16.8 Z"/>
+            <path d="M-10,-7.2 L-23,-7.2 C-25.4,-7.2 -25.4,-1.8 -23,-1.8 L-10,-1.8 C-8.4,-1.8 -8.4,-7.2 -10,-7.2 Z"/>
+            <path d="M9,3 L-6,3.4 L-16.8,12.6 L-19.5,9.4 L-20.2,9.6 L-18.6,13.4 L-12.2,13.2 Z"/>
+          </g>
+        </g>
+      </svg>
             <span class="brand-text">CashPilot</span>
           </div>
           <div class="step-dots">
@@ -473,7 +226,7 @@
             <div class="dot active"></div>
           </div>
           <div class="success-icon">
-            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#22c55e" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#46b37f" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>
             </svg>
           </div>

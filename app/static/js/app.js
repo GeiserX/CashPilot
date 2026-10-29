@@ -153,26 +153,35 @@ const CP = (() => {
   });
 
   // -----------------------------------------------------------
-  // Sidebar toggle (mobile)
+  // Keyboard navigation
+  //
+  // "g" then a letter jumps to a page (the letters are the <kbd> hints in the
+  // top bar, read from data-key so the two cannot drift). "/" focuses the
+  // page's search box, "r" refreshes the dashboard. Ignored while typing.
   // -----------------------------------------------------------
   function initSidebar() {
-    const hamburger = document.querySelector('.hamburger');
-    const sidebar = document.querySelector('.sidebar');
-    const overlay = document.querySelector('.sidebar-overlay');
-
-    if (!hamburger) return;
-
-    hamburger.addEventListener('click', () => {
-      sidebar.classList.toggle('open');
-      overlay.classList.toggle('open');
+    let armed = 0;
+    const typing = (el) => el && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName));
+    document.addEventListener('keydown', (e) => {
+      if (e.metaKey || e.ctrlKey || e.altKey || typing(e.target)) return;
+      if (document.querySelector('.modal-overlay.open')) return;
+      if (armed && Date.now() - armed < 1200) {
+        armed = 0;
+        const link = document.querySelector(`.topnav a[data-key="${CSS.escape(e.key)}"]`);
+        if (link) { e.preventDefault(); window.location.href = link.getAttribute('href'); }
+        return;
+      }
+      if (e.key === 'g') { armed = Date.now(); return; }
+      if (e.key === '/') {
+        const search = document.querySelector('#catalog-search, #payout-filter');
+        if (search) { e.preventDefault(); search.focus(); }
+        return;
+      }
+      if (e.key === 'r' && document.body.dataset.page === 'dashboard') {
+        e.preventDefault();
+        refreshServices();
+      }
     });
-
-    if (overlay) {
-      overlay.addEventListener('click', () => {
-        sidebar.classList.remove('open');
-        overlay.classList.remove('open');
-      });
-    }
   }
 
   // -----------------------------------------------------------
@@ -292,6 +301,8 @@ const CP = (() => {
       return;
     }
 
+    _attentionCount.payouts = pending.length;
+    updateAttentionSummary(null, null);
     if (!pending.length) {
       card.style.display = 'none';
       list.innerHTML = '';
@@ -319,17 +330,16 @@ const CP = (() => {
         ? ` <span style="color:var(--text-muted);">(≈ ${escapeHtml(formatCurrency(p.amount, nativeCurrency))})</span>`
         : '';
       return `
-        <div class="payout-queue-item" data-payout-id="${escapeHtml(String(p.id))}">
-          <div class="payout-queue-body">
-            <div class="payout-queue-platform">${escapeHtml(p.platform || '')}</div>
-            <div class="payout-queue-detail">Balance dropped by ${escapeHtml(native)}${approx}${p.detected_at ? ` on ${escapeHtml(String(p.detected_at).slice(0, 10))}` : ''}</div>
-          </div>
-          <div class="payout-queue-actions">
+        <div class="payout-queue-item attn-row attn-ask" data-payout-id="${escapeHtml(String(p.id))}">
+          <span class="attn-tag">Paid?</span>
+          <span class="attn-what payout-queue-platform">${escapeHtml(p.platform || '')}</span>
+          <span class="attn-why payout-queue-detail">Balance dropped by ${escapeHtml(native)}${approx}${p.detected_at ? ` on ${escapeHtml(String(p.detected_at).slice(0, 10))}` : ''}</span>
+          <span class="attn-actions payout-queue-actions">
             ${_canWrite ? `
             <button class="btn btn-primary btn-sm" data-action="confirmPayout" data-a1="${escapeHtml(String(p.id))}" data-a2="${escapeHtml(p.platform || '')}">Yes, I was paid</button>
-            <button class="btn btn-ghost btn-sm" data-action="rejectPayout" data-a1="${escapeHtml(String(p.id))}" data-a2="${escapeHtml(p.platform || '')}">No, not a payout</button>
-            ` : `<span style="font-size:0.72rem; color:var(--text-muted);">Writer access required to answer this.</span>`}
-          </div>
+            <button class="btn btn-ghost btn-sm" data-action="rejectPayout" data-a1="${escapeHtml(String(p.id))}" data-a2="${escapeHtml(p.platform || '')}">Not a payout</button>
+            ` : `<span class="muted">Writer access required to answer this.</span>`}
+          </span>
         </div>
       `;
     }).join('');
@@ -819,6 +829,8 @@ const CP = (() => {
         api('/api/workers').catch(() => null),
       ]);
       _hostResources = buildHostResourceMap(workers);
+      renderPlacement(services || [], workers);
+      renderAttention(services || [], workers);
 
       if (!services || services.length === 0) {
         // An empty list means one of two very different things, and saying the
@@ -933,6 +945,175 @@ const CP = (() => {
           </div>`;
       }
     }
+  }
+
+  // -----------------------------------------------------------
+  // Operator view: placement grid and the attention list
+  //
+  // Both read the payloads loadServicesTable already fetched, so they never
+  // disagree with the table under them.
+  // -----------------------------------------------------------
+  function instanceState(status) {
+    const s = String(status || 'unknown').toLowerCase();
+    if (s === 'running') return 'ok';
+    if (s === 'exited' || s === 'stopped' || s === 'dead') return 'fail';
+    return 'warn';
+  }
+
+  function renderPlacement(services, workers) {
+    const holder = document.getElementById('placement-grid');
+    if (!holder) return;
+    if (workers === null) {
+      holder.innerHTML = '<p class="block-empty">Could not read the workers, so placement is unknown.</p>';
+      return;
+    }
+    const boxes = (workers || []).slice().sort((a, b) => String(a.name).localeCompare(String(b.name)));
+    if (!services.length || !boxes.length) {
+      holder.innerHTML = '<p class="block-empty">Nothing placed yet. Deploy a service to a worker and it shows up here.</p>';
+      return;
+    }
+    const rank = { fail: 0, warn: 1, ok: 2 };
+    const rows = services.map((svc) => {
+      const details = svc.instance_details || [];
+      const external = svc.container_status === 'external';
+      const byBox = {};
+      for (const inst of details) {
+        const key = inst.worker_id != null ? String(inst.worker_id) : String(inst.node);
+        (byBox[key] = byBox[key] || []).push(inst);
+      }
+      const states = details.map(d => instanceState(d.status));
+      const worst = states.reduce((w, st) => (rank[st] < rank[w] ? st : w), 'ok');
+      const up = states.filter(st => st === 'ok').length;
+      return { svc, byBox, external, worst: external ? 'ext' : worst, up, total: details.length };
+    });
+    rows.sort((a, b) => {
+      const ra = a.external ? 3 : rank[a.worst];
+      const rb = b.external ? 3 : rank[b.worst];
+      return ra - rb || String(a.svc.name).localeCompare(String(b.svc.name));
+    });
+
+    const head = boxes.map((w) => {
+      const online = w.status === 'online';
+      return `<th class="pg-box${online ? '' : ' pg-box-off'}" scope="col" title="${escapeHtml(w.name)}: ${online ? 'online' : 'not reporting'}">${escapeHtml(w.name)}</th>`;
+    }).join('');
+
+    const body = rows.map((r) => {
+      const name = `<th scope="row" class="pg-svc">${escapeHtml(r.svc.name)}</th>`;
+      if (r.external) {
+        return `<tr class="pg-row pg-ext">${name}<td class="pg-ext-note" colspan="${boxes.length}">runs outside the fleet (app or browser)</td><td class="pg-count">ext</td></tr>`;
+      }
+      const cells = boxes.map((w) => {
+        const insts = r.byBox[String(w.id)] || r.byBox[String(w.name)] || [];
+        if (!insts.length) return '<td><span class="cell cell-none" aria-label="not placed"></span></td>';
+        const st = insts.map(i => instanceState(i.status)).reduce((x, y) => (rank[y] < rank[x] ? y : x), 'ok');
+        const words = insts.map(i => i.status || 'unknown').join(', ');
+        const n = insts.length > 1 ? `<span class="cell-n">${insts.length}</span>` : '';
+        return `<td><span class="cell cell-${st}" title="${escapeHtml(r.svc.name)} on ${escapeHtml(w.name)}: ${escapeHtml(words)}" aria-label="${escapeHtml(words)}">${n}</span></td>`;
+      }).join('');
+      const countCls = r.up < r.total ? ` pg-count-${r.worst}` : '';
+      return `<tr class="pg-row">${name}${cells}<td class="pg-count${countCls}">${r.up}/${r.total}</td></tr>`;
+    }).join('');
+
+    holder.innerHTML = `
+      <table class="placement-table">
+        <thead><tr><th scope="col" class="pg-svc">Service</th>${head}<th scope="col" class="pg-count">Up</th></tr></thead>
+        <tbody>${body}</tbody>
+      </table>`;
+  }
+
+  async function renderAttention(services, workers) {
+    const list = document.getElementById('attention-list');
+    if (!list) return;
+    const items = [];
+    const boxName = {};
+    for (const w of (workers || [])) boxName[String(w.id)] = w.name;
+
+    for (const w of (workers || [])) {
+      if (w.status !== 'online') {
+        items.push({ level: 'fail', tag: 'Offline', what: w.name, why: `has not reported since ${fmtTimestamp(w.last_heartbeat).text}. Its containers keep running; CashPilot just cannot see them.`, actions: '<a class="btn btn-ghost btn-sm" href="/fleet">Open fleet</a>' });
+      }
+    }
+    for (const svc of services) {
+      for (const inst of (svc.instance_details || [])) {
+        const st = instanceState(inst.status);
+        if (st === 'ok') continue;
+        const where = inst.node === 'local' ? 'local' : (boxName[String(inst.worker_id)] || inst.node);
+        const wid = inst.worker_id != null ? ` data-a2="${escapeHtml(String(inst.worker_id))}"` : '';
+        const controllable = _canWrite && !inst.unmanaged && !svc.unmanaged && inst.has_docker && !inst.is_android;
+        items.push({
+          level: st,
+          tag: st === 'fail' ? 'Down' : 'Degraded',
+          what: svc.name,
+          where,
+          why: `container is ${escapeHtml(inst.status || 'unknown')}${inst.container_name ? ` (<code>${escapeHtml(inst.container_name)}</code>)` : ''}`,
+          actions: controllable
+            ? `<button class="btn btn-ghost btn-sm" data-action="viewLogs" data-a1="${escapeHtml(svc.slug)}"${wid}>Logs</button>
+               <button class="btn btn-primary btn-sm" data-action="startService" data-a1="${escapeHtml(svc.slug)}"${wid}>Start</button>`
+            : '',
+        });
+      }
+      if (svc.unstable === true) {
+        items.push({ level: 'warn', tag: 'Unstable', what: svc.name, why: `${svc.crashes_7d || 0} crashes in the last 7 days` });
+      }
+      if (svc.collector_disconnected) {
+        items.push({
+          level: 'warn', tag: 'No reading', what: svc.name,
+          why: 'CashPilot could not read this balance. The figure shown is the last one it read.',
+          actions: _isOwner ? `<button class="btn btn-ghost btn-sm" data-action="openCredentialModal" data-a1="${escapeHtml(svc.slug)}">Fix credentials</button>` : '',
+        });
+      }
+      if (svc.image_outdated === true) {
+        items.push({ level: 'warn', tag: 'Outdated', what: svc.name, why: 'runs an image that no longer matches the catalog. Re-deploy it to update.', actions: `<button class="btn btn-ghost btn-sm" data-action="openServiceDetail" data-a1="${escapeHtml(svc.slug)}">Open</button>` });
+      }
+    }
+
+    if (_isOwner) {
+      let health = [];
+      try { health = await api('/api/credentials/health'); } catch (err) { health = []; }
+      for (const row of (Array.isArray(health) ? health : [])) {
+        if (row.status !== 'expiring_soon' && row.status !== 'likely_expired') continue;
+        if (items.some(i => i.tag === 'No reading' && String(i.what).toLowerCase() === String(row.service).toLowerCase())) continue;
+        items.push({
+          level: 'warn', tag: row.status === 'likely_expired' ? 'Expired' : 'Expiring',
+          what: row.name || row.service,
+          why: row.status === 'likely_expired' ? 'credential is past its usual lifetime. Renew it before collection stops.' : 'credential is close to its usual lifetime.',
+          actions: `<button class="btn btn-ghost btn-sm" data-action="openCredentialModal" data-a1="${escapeHtml(row.service)}">Renew</button>`,
+        });
+      }
+    }
+
+    const order = { fail: 0, warn: 1 };
+    items.sort((a, b) => order[a.level] - order[b.level]);
+    list.innerHTML = items.map(i => `
+      <div class="attn-row attn-${i.level}">
+        <span class="attn-tag">${escapeHtml(i.tag)}</span>
+        <span class="attn-what">${escapeHtml(i.what)}${i.where ? ` <span class="attn-where">${escapeHtml(i.where)}</span>` : ''}</span>
+        <span class="attn-why">${i.why}</span>
+        <span class="attn-actions">${i.actions || ''}</span>
+      </div>`).join('');
+    _attentionCount.problems = items.length;
+    updateAttentionSummary(services, workers);
+  }
+
+  const _attentionCount = { problems: 0, payouts: 0, services: null, workers: null };
+
+  function updateAttentionSummary(services, workers) {
+    if (services) { _attentionCount.services = services; _attentionCount.workers = workers; }
+    services = _attentionCount.services;
+    workers = _attentionCount.workers;
+    const total = _attentionCount.problems + _attentionCount.payouts;
+    const count = document.getElementById('attention-count');
+    if (count) count.textContent = total ? String(total) : '';
+    const clear = document.getElementById('attention-clear');
+    const section = document.getElementById('attention');
+    if (section) section.classList.toggle('attention-quiet', total === 0);
+    if (!clear) return;
+    if (total) { clear.hidden = true; return; }
+    const online = (workers || []).filter(w => w.status === 'online').length;
+    clear.textContent = services
+      ? `Nothing needs you. ${online} of ${(workers || []).length} boxes reporting.`
+      : 'Nothing needs you.';
+    clear.hidden = false;
   }
 
   // Action-button icons, extracted so the single-instance row and the per-node sub-row
@@ -1067,8 +1248,8 @@ const CP = (() => {
     const nameLink = dashUrl || svc.referral_url;
     const nameTitle = dashUrl ? 'Open dashboard' : 'Referral link';
     const nameHtml = nameLink
-      ? `<a href="${escapeHtml(nameLink)}" target="_blank" rel="noopener" title="${nameTitle}" style="color:var(--accent); text-decoration:none; font-weight:600;">${name}</a>`
-      : `<span style="font-weight:600;">${name}</span>`;
+      ? `<a href="${escapeHtml(nameLink)}" target="_blank" rel="noopener" title="${nameTitle}" class="svc-name">${name}</a>`
+      : `<span class="svc-name">${name}</span>`;
 
     // Subtitle: image for Docker, empty for external
     const subtitle = svc.image
@@ -1106,7 +1287,7 @@ const CP = (() => {
     const displayBalance = signupBonus > 0 ? balanceAdj : balance;
     const nativeLabel = formatNative(displayBalance, currency);
     const bonusLabel = signupBonus > 0
-      ? `<div style="font-size:0.6rem; color:var(--text-muted);">\u2212${formatCurrency(signupBonus, currency)} promo</div>`
+      ? `<div class="cell-sub">\u2212${formatCurrency(signupBonus, currency)} promo</div>`
       : '';
     // Image drift: the running container no longer matches the catalog image
     // (provider migrated or re-pinned). Prompt a re-deploy — otherwise a retired
@@ -1120,19 +1301,23 @@ const CP = (() => {
     // earning, but its (separate) earnings-tracking credentials aren't set yet.
     let disconnectedLabel = '';
     if (svc.collector_disconnected) {
-      disconnectedLabel = `<div title="CashPilot couldn't read this balance — check the earnings-tracking credentials" style="font-size:0.6rem; color:var(--error); font-weight:500; display:flex; align-items:center; justify-content:flex-end; gap:4px;">can't read balance${_isOwner ? ` <button class="btn btn-ghost" data-action="openCredentialModal" data-stop="1" data-a1="${escapeHtml(svc.slug)}" style="font-size:0.6rem; padding:1px 5px; line-height:1.2; color:var(--error); border:1px solid #ef4444; border-radius:3px; cursor:pointer;">fix</button>` : ''}</div>`;
+      disconnectedLabel = `<div title="CashPilot couldn't read this balance — check the earnings-tracking credentials" class="cell-sub cell-sub-warn">no reading${_isOwner ? ` <button class="btn btn-link" data-action="openCredentialModal" data-stop="1" data-a1="${escapeHtml(svc.slug)}">fix</button>` : ''}</div>`;
     } else if (svc.collector_notice) {
-      disconnectedLabel = `<div title="${escapeHtml(svc.collector_notice)}" style="font-size:0.6rem; color:var(--warning, #f59e0b); font-weight:500; text-align:right;">needs attention</div>`;
+      disconnectedLabel = `<div title="${escapeHtml(svc.collector_notice)}" class="cell-sub">see note</div>`;
     } else if (svc.collector_needs_setup) {
-      disconnectedLabel = `<div title="This service is running and earning. To show its balance here, add its earnings-tracking credentials." style="font-size:0.6rem; color:var(--text-muted); font-weight:500; display:flex; align-items:center; justify-content:flex-end; gap:4px;">tracking not set up${_isOwner ? ` <button class="btn btn-ghost" data-action="openCredentialModal" data-stop="1" data-a1="${escapeHtml(svc.slug)}" style="font-size:0.6rem; padding:1px 5px; line-height:1.2; color:var(--text-muted); border:1px solid var(--border); border-radius:3px; cursor:pointer;">set up</button>` : ''}</div>`;
+      disconnectedLabel = `<div title="This service is running and earning. To show its balance here, add its earnings-tracking credentials." class="cell-sub">not tracked${_isOwner ? ` <button class="btn btn-link" data-action="openCredentialModal" data-stop="1" data-a1="${escapeHtml(svc.slug)}">set up</button>` : ''}</div>`;
     }
     let balanceHtml;
     if (!balanceKnown) {
       // Never read. An em dash, not a number — the user must be able to tell
       // "nothing has looked at this" from "this earned nothing".
       balanceHtml = `<span style="color:var(--text-muted);" title="CashPilot has not read a balance for this service yet">&mdash;</span>${disconnectedLabel}`;
+    } else if (nativeLabel && formatCurrency(displayBalance, currency).includes(currency)) {
+      // No price for this unit, so the "converted" figure already IS the
+      // native one. Printing it twice read as two different numbers.
+      balanceHtml = `${formatCurrency(displayBalance, currency)}<div class="cell-sub">no price, shown as is</div>${bonusLabel}${disconnectedLabel}`;
     } else if (nativeLabel) {
-      balanceHtml = `${formatCurrency(displayBalance, currency)}<div style="font-size:0.65rem;color:var(--text-muted);">${nativeLabel}</div>${bonusLabel}${disconnectedLabel}`;
+      balanceHtml = `${formatCurrency(displayBalance, currency)}<div class="cell-sub">${nativeLabel}</div>${bonusLabel}${disconnectedLabel}`;
     } else {
       balanceHtml = `${formatCurrency(displayBalance, currency)}${bonusLabel}${disconnectedLabel}`;
     }
@@ -1200,6 +1385,11 @@ const CP = (() => {
            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>
          </button>`;
 
+    // A row whose instances are not all up says so. The server reports the
+    // BEST status per service, so "Running 2x" used to hide a dead copy.
+    const downCount = details.filter(d => instanceState(d.status) !== 'ok').length;
+    const partialDown = !isExternal && isMulti && downCount > 0 && downCount < details.length;
+
     // Instance badge (shown next to status)
     const instanceLabel = !isExternal && instances > 0
       ? ` <span class="badge badge-instances" title="${instances} instance${instances > 1 ? 's' : ''}">${instances}x</span>`
@@ -1259,8 +1449,10 @@ const CP = (() => {
     // Main row
     let html = `
     <tr class="breakdown-row${isMulti ? ' expandable' : ''}" data-slug="${escapeHtml(svc.slug)}"${isMulti ? ` data-action="toggleInstances" data-a1="${escapeHtml(svc.slug)}" data-a2="event" style="cursor:pointer;"` : ''}>
-      <td>${nameHtml}<div style="font-size:0.7rem; color:var(--text-muted);">${subtitle}</div></td>
-      <td style="text-align:center;"><span class="badge badge-${statusClass}"><span class="status-dot ${statusClass}"></span> ${statusLabel}</span>${instanceLabel}${unmanagedLabel}${outdatedBadge}</td>
+      <td>${nameHtml}<div class="cell-sub cell-mono">${subtitle}</div></td>
+      <td style="text-align:center;">${partialDown
+        ? `<span class="badge badge-stopped" title="${downCount} of ${details.length} instances are not running"><span class="status-dot stopped"></span> ${details.length - downCount} of ${details.length} up</span>`
+        : `<span class="badge badge-${statusClass}"><span class="status-dot ${statusClass}"></span> ${statusLabel}</span>${instanceLabel}`}${unmanagedLabel}${outdatedBadge}</td>
       <td style="text-align:center;">${healthBadge}</td>
       <td style="text-align:right; font-weight:600;">${balanceHtml}</td>
       <td style="text-align:right;"><span class="stat-change ${deltaClass}">${deltaStr}</span></td>
@@ -1426,8 +1618,14 @@ const CP = (() => {
     const textSecondary = cs.getPropertyValue('--text-secondary').trim();
     const bgSecondary = cs.getPropertyValue('--bg-secondary').trim();
     const borderColor = cs.getPropertyValue('--border-color').trim();
-    const accent = cs.getPropertyValue('--accent').trim();
+    const accent = cs.getPropertyValue('--chart-bar').trim() || cs.getPropertyValue('--accent').trim();
 
+    // Tick labels are measured once; measuring with the fallback font and
+    // drawing with the webfont clipped the y axis.
+    if (document.fonts && document.fonts.ready) {
+      try { await document.fonts.ready; } catch (err) { /* draw with whatever loaded */ }
+    }
+    if (earningsChart) return;
     earningsChart = new Chart(ctx, {
       type: 'bar',
       data: {
@@ -1435,11 +1633,11 @@ const CP = (() => {
         datasets: [{
           label: 'Daily Earnings',
           data: values,
-          backgroundColor: accent + '66',
-          borderColor: accent,
-          borderWidth: 1,
-          borderRadius: 4,
-          hoverBackgroundColor: accent + '99',
+          backgroundColor: accent,
+          borderWidth: 0,
+          borderRadius: 0,
+          maxBarThickness: 28,
+          hoverBackgroundColor: textPrimary,
         }],
       },
       options: {
@@ -1461,15 +1659,18 @@ const CP = (() => {
         },
         scales: {
           x: {
-            grid: { color: borderColor },
-            ticks: { color: textMuted, font: { size: 11 } },
+            grid: { display: false },
+            border: { color: borderColor },
+            ticks: { color: textMuted, font: { size: 11, family: 'IBM Plex Mono' }, maxRotation: 0, autoSkipPadding: 12 },
           },
           y: {
             beginAtZero: true,
             grid: { color: borderColor },
+            border: { display: false },
             ticks: {
               color: textMuted,
-              font: { size: 11 },
+              maxTicksLimit: 4,
+              font: { size: 11, family: 'IBM Plex Mono' },
               callback: (v) => formatCurrency(v),
             },
           },
@@ -2601,27 +2802,36 @@ const CP = (() => {
       return;
     }
 
-    container.innerHTML = filtered.map(renderCatalogCard).join('');
+    // What you run, then what you could add. Within each, by name.
+    const byName = (x, y) => String(x.name).localeCompare(String(y.name));
+    const running = filtered.filter(x => x.deployed).sort(byName);
+    const rest = filtered.filter(x => !x.deployed).sort(byName);
+    const group = (label, rows) => rows.length
+      ? `<tbody class="cat-group"><tr class="cat-group-row"><th colspan="6" scope="colgroup">${label} <span class="count">${rows.length}</span></th></tr>${rows.map(renderCatalogCard).join('')}</tbody>`
+      : '';
+    container.innerHTML = `
+      <table class="catalog-table">
+        <thead><tr>
+          <th scope="col">Service</th><th scope="col">Kind</th><th scope="col">Runs on</th>
+          <th scope="col" class="num">Est. per month</th><th scope="col">Needs</th><th scope="col"><span class="sr-only">Action</span></th>
+        </tr></thead>
+        ${group('Running in your fleet', running)}${group('Not running', rest)}
+      </table>`;
   }
 
   function renderCatalogCard(svc) {
-    const initial = (svc.name || '?')[0].toUpperCase();
     const earning = svc.earnings
-      ? `$${svc.earnings.monthly_low}-$${svc.earnings.monthly_high}/${svc.earnings.per || 'mo'}`
-      : 'Varies';
+      ? `$${svc.earnings.monthly_low}-${svc.earnings.monthly_high}`
+      : 'varies';
     const isDeployed = svc.deployed || false;
-    const statusBadge = svc.status === 'broken'
-      ? '<span class="badge badge-broken">Broken</span>'
-      : isDeployed
-        ? '<span class="badge badge-deployed">Deployed</span>'
-        : '<span class="badge badge-available">Available</span>';
+    const broken = svc.status === 'broken';
 
     const hasDocker = svc.docker && svc.docker.image;
     let actionBtn;
     if (isDeployed) {
       actionBtn = `<button class="btn btn-secondary btn-sm" data-action="openServiceDetail" data-a1="${svc.slug}">Manage</button>`;
     } else if (hasDocker) {
-      actionBtn = `<button class="btn btn-primary btn-sm" data-action="openServiceDetail" data-a1="${svc.slug}">Deploy</button>`;
+      actionBtn = `<button class="btn btn-ghost btn-sm" data-action="openServiceDetail" data-a1="${svc.slug}">Deploy</button>`;
     } else {
       const url = (svc.referral && svc.referral.signup_url) || svc.website || '#';
       actionBtn = `<a href="${escapeHtml(url)}" target="_blank" rel="noopener" class="btn btn-ghost btn-sm">Visit</a>`;
@@ -2630,32 +2840,27 @@ const CP = (() => {
     // Platform list — add Docker if service has a Docker image
     const allPlatforms = [...(svc.platforms || [])];
     if (hasDocker && !allPlatforms.includes('docker')) allPlatforms.unshift('docker');
-    const platformBadges = allPlatforms.map(p =>
-      `<span class="platform-badge">${escapeHtml(p)}</span>`
-    ).join('');
+    const platforms = allPlatforms.map(p => escapeHtml(p)).join(', ');
 
-    const deployedClass = isDeployed ? ' service-card-deployed' : '';
+    const needs = [];
+    if (svc.requirements && svc.requirements.residential_ip) needs.push('residential IP');
+    if (svc.requirements && svc.requirements.gpu) needs.push('GPU');
+    const state = broken
+      ? '<span class="state state-fail">broken upstream</span>'
+      : '';
 
     return `
-    <div class="service-card${deployedClass}" data-slug="${svc.slug}">
-      <div class="service-card-header">
-        <div class="service-icon">${initial}</div>
-        <div style="flex:1;">
-          <div class="service-name">${escapeHtml(svc.name)}</div>
-          <div class="service-desc" style="margin-top:2px;">${escapeHtml(svc.short_description || '')}</div>
-        </div>
-      </div>
-      <div class="service-meta">
-        <span class="badge badge-category">${escapeHtml(capFirst(svc.category))}</span>
-        ${statusBadge}
-        ${svc.requirements && svc.requirements.residential_ip ? '<span class="badge badge-residential">Residential IP</span>' : ''}
-      </div>
-      ${platformBadges ? `<div class="platform-badges" style="margin-top:8px;">${platformBadges}</div>` : ''}
-      <div class="service-stats" style="margin-top:12px; padding-top:12px; border-top:1px solid var(--border-color);">
-        <span></span>
-        ${actionBtn}
-      </div>
-    </div>`;
+    <tr class="service-card cat-row${isDeployed ? ' service-card-deployed' : ''}" data-slug="${svc.slug}">
+      <td class="cat-svc">
+        <span class="service-name">${escapeHtml(svc.name)}</span>${state}
+        <span class="service-desc">${escapeHtml(svc.short_description || '')}</span>
+      </td>
+      <td class="cat-kind">${escapeHtml(svc.category === 'depin' ? 'DePIN' : capFirst(svc.category))}</td>
+      <td class="cat-plat">${platforms || '<span class="muted">none listed</span>'}</td>
+      <td class="num cat-est">${escapeHtml(earning)}</td>
+      <td class="cat-needs">${needs.length ? escapeHtml(needs.join(', ')) : '<span class="muted">nothing special</span>'}</td>
+      <td class="cat-act">${actionBtn}</td>
+    </tr>`;
   }
 
   function initCatalogFilters() {
@@ -2783,30 +2988,30 @@ const CP = (() => {
 
     // --- Info grid (no referral bonus) ---
     let html = `
-    <p style="color: var(--text-secondary); margin-bottom: 16px;">${escapeHtml(svc.description || svc.short_description || '')}</p>
+    <p class="sd-desc">${escapeHtml(svc.description || svc.short_description || '')}</p>
     <!-- Filled in by loadPayoutProgress once the modal is in the DOM. Hidden
          until it has a real answer: an empty "Payout progress" heading on a
          service that has never been collected is worse than no heading. -->
     <div id="payout-progress-card" data-slug="${escapeHtml(svc.slug || '')}"
-         data-currency="${escapeHtml(svc.cashout?.currency || '')}" style="display:none; margin-bottom:20px;">
-      <div class="detail-label" style="margin-bottom:8px;">Payout progress</div>
+         data-currency="${escapeHtml(svc.cashout?.currency || '')}" class="sd-block" style="display:none;">
+      <h4 class="sd-h">Payout progress</h4>
       <div id="payout-progress-body"></div>
     </div>
     <!-- What running this actually does with the machine and the connection.
          Filled by loadDeployRisk once the modal exists. This belongs at the
          deploy step rather than in a FAQ nobody opens, which is what the
          backend's own comments say and what it never got. -->
-    <div id="deploy-risk-card" data-slug="${escapeHtml(svc.slug || '')}" style="display:none; margin-bottom:20px;">
+    <div id="deploy-risk-card" class="sd-block" data-slug="${escapeHtml(svc.slug || '')}" style="display:none;">
       <div id="deploy-risk-body"></div>
     </div>
-    <div class="detail-grid" style="margin-bottom: 20px;">
+    <div class="detail-grid sd-facts">
       <div class="detail-item">
         <div class="detail-label">Category</div>
         <div class="detail-value">${escapeHtml(capFirst(svc.category))}</div>
       </div>
       <div class="detail-item">
-        <div class="detail-label">Estimated Earnings</div>
-        <div class="detail-value" style="color: var(--success);">${earning}</div>
+        <div class="detail-label">Estimated earnings</div>
+        <div class="detail-value num">${earning}</div>
       </div>
       <div class="detail-item">
         <div class="detail-label">Payout</div>
@@ -2817,34 +3022,31 @@ const CP = (() => {
     // --- Setup guide link ---
     const guideUrl = `https://geiserx.github.io/CashPilot/guides/${svc.slug}/`;
     html += `
-    <div style="margin-bottom: 16px;">
+    <div class="sd-links">
       <a href="${guideUrl}" target="_blank" rel="noopener" class="btn btn-ghost btn-sm">
-        Setup Guide
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 3h6a4 4 0 014 4v14a3 3 0 00-3-3H2z"/><path d="M22 3h-6a4 4 0 00-4 4v14a3 3 0 013-3h7z"/></svg>
-      </a>
-    </div>`;
+        Setup guide
+      </a>`;
 
     // --- Dashboard link for deployed services, Sign Up for non-deployed ---
     if (isDeployed && dashboardUrl) {
       html += `
-      <div style="margin-bottom: 20px;">
-        <a href="${escapeHtml(dashboardUrl)}" target="_blank" rel="noopener" class="btn btn-primary btn-sm">
-          Open Dashboard
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
-        </a>
-      </div>`;
+        <a href="${escapeHtml(dashboardUrl)}" target="_blank" rel="noopener" class="btn btn-ghost btn-sm">
+          Provider dashboard
+        </a>`;
     } else if (!isDeployed) {
       html += `
-      <div style="margin-bottom: 20px;">
         <a href="${escapeHtml(signupUrl)}" target="_blank" rel="noopener" class="btn btn-primary btn-sm">
-          Sign Up / Log In for ${escapeHtml(svc.name)}
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+          Sign up or log in to ${escapeHtml(svc.name)}
         </a>
-        ${referralNote(svc)}
-      </div>`;
+        ${referralNote(svc)}`;
     }
+    html += `</div>`;
 
     // --- Deploy section (worker-aware) ---
+    // Built separately so a service that already runs shows its instances
+    // first and keeps the deploy form folded away below them.
+    const infoHtml = html;
+    html = '';
     const hasDocker = svc.docker && svc.docker.image;
     if (hasDocker) {
       const envFields = envInputFields(svc, svc.docker.env, { withId: false, withHint: false });
@@ -2856,10 +3058,10 @@ const CP = (() => {
       ({ rows: workerRows, allDeployed } = workerCheckboxList(svc, onlineWorkers, 'deploy-worker-cb'));
 
       if (onlineWorkers.length === 0) {
-        workerRows = '<p style="color:var(--text-muted); font-size:0.85rem;">No workers online.</p>';
+        workerRows = '<p class="muted">No workers online.</p>';
       }
 
-      html += `<h4 style="margin-bottom: 12px; font-size: 0.95rem;">Deploy</h4>`;
+      html += isDeployed ? '' : `<h4 class="sd-h">Deploy</h4>`;
       html += envFields;
       html += imageChoiceSection(svc, workers);
 
@@ -2873,20 +3075,23 @@ const CP = (() => {
       // A service that can run more than once keeps its node list on screen
       // when every node has it, since the Instances boxes are how it scales.
       if (allDeployed && onlineWorkers.length > 0 && !(svc.max_instances > 1)) {
-        html += `<p style="color:var(--success); font-size:0.9rem; margin:12px 0;">Deployed on all nodes.</p>`;
+        html += `<p class="sd-note">Already on every online box.</p>`;
       } else {
         html += `
-        <div style="margin-bottom:12px;">
-          <div style="font-size:0.85rem; color:var(--text-muted); margin-bottom:6px;">Select target nodes:</div>
+        <div class="sd-targets">
+          <div class="form-label">Deploy to</div>
           <div id="deploy-worker-list">${workerRows}</div>
           ${instancesHint(svc)}
         </div>
-        <div style="display:flex; gap:8px; align-items:center;">
-          <button class="btn btn-success" data-action="deployServiceToWorkers" data-a1="${svc.slug}"${_isOwner ? '' : ' disabled title="Owner access required"'}>Deploy</button>
-          <span id="deploy-status-${svc.slug}" style="font-size:0.85rem;"></span>
+        <div class="sd-actions">
+          <button class="btn btn-primary" data-action="deployServiceToWorkers" data-a1="${svc.slug}"${_isOwner ? '' : ' disabled title="Owner access required"'}>Deploy</button>
+          <span id="deploy-status-${svc.slug}" class="sd-status"></span>
         </div>`;
       }
     }
+
+    const deployHtml = html;
+    html = '';
 
     // --- Container management (per worker) ---
     const onlineWorkers = (workers || []).filter(w => w.status === 'online');
@@ -2899,17 +3104,18 @@ const CP = (() => {
 
     if (instances.length > 0) {
       html += `
-      <div style="margin-top: 24px; padding-top: 16px; border-top: 1px solid var(--border-color);">
-        <h4 style="margin-bottom: 12px; font-size: 0.95rem;">Running Instances</h4>`;
+      <div class="sd-block sd-instances">
+        <h4 class="sd-h">Running on ${instances.length} ${instances.length === 1 ? 'box' : 'boxes'}</h4>`;
       for (const inst of instances) {
         const s = inst.container.status || 'unknown';
-        const badgeClass = s === 'running' ? 'badge-deployed' : 'badge-broken';
+        const st = instanceState(s);
         html += `
-        <div style="display:flex; align-items:center; gap:10px; padding:8px 0; border-bottom:1px solid var(--border-color);">
-          <strong style="min-width:100px;">${escapeHtml(inst.worker.name)}${inst.several ? ` #${inst.container.instance || 1}` : ''}</strong>
-          <span class="badge ${badgeClass}" style="font-size:0.75rem;">${escapeHtml(s)}</span>
-          ${(svc.custom_images || {})[String(inst.worker.id)] ? `<span class="badge badge-category" style="font-size:0.75rem;" title="${escapeHtml(svc.custom_images[String(inst.worker.id)])}">custom image</span>` : ''}
-          ${_canWrite ? `<div style="margin-left:auto; display:flex; gap:4px;">
+        <div class="sd-inst">
+          <span class="cell cell-${st}"></span>
+          <strong class="sd-inst-box">${escapeHtml(inst.worker.name)}${inst.several ? ` #${inst.container.instance || 1}` : ''}</strong>
+          <span class="state state-${st}">${escapeHtml(s)}</span>
+          ${(svc.custom_images || {})[String(inst.worker.id)] ? `<span class="muted" title="${escapeHtml(svc.custom_images[String(inst.worker.id)])}">custom image</span>` : ''}
+          ${_canWrite ? `<div class="sd-inst-actions">
             <button class="btn btn-secondary btn-sm" data-action="workerAction" data-a1="${svc.slug}" data-a2="restart" data-a3="${inst.worker.id}" data-a4="${inst.container.instance || 1}">Restart</button>
             <button class="btn btn-secondary btn-sm" data-action="workerAction" data-a1="${svc.slug}" data-a2="stop" data-a3="${inst.worker.id}" data-a4="${inst.container.instance || 1}">Stop</button>
             <button class="btn btn-ghost btn-sm" data-action="loadWorkerLogs" data-a1="${svc.slug}" data-a2="${inst.worker.id}" data-a3="logs-${svc.slug}-${inst.worker.id}-${inst.container.instance || 1}" data-a4="${inst.container.instance || 1}">Logs</button>
@@ -2920,7 +3126,12 @@ const CP = (() => {
       html += `</div>`;
     }
 
-    return html;
+    const instancesHtml = html;
+    if (isDeployed && instancesHtml) {
+      return infoHtml.replace('<p class="sd-desc">', instancesHtml + '<p class="sd-desc">')
+        + (deployHtml ? `<details class="sd-more"><summary>Deploy to more boxes, or change the image</summary>${deployHtml}</details>` : '');
+    }
+    return infoHtml + deployHtml + instancesHtml;
   }
 
   async function deployServiceToWorkers(slug) {

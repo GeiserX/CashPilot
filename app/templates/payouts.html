@@ -2,11 +2,10 @@
 
 {% block title %}Payouts - CashPilot{% endblock %}
 {% block page %}payouts{% endblock %}
-{% block topbar_title %}Payout Destinations{% endblock %}
+{% block topbar_title %}Payouts{% endblock %}
 
 {% block content %}
-<h2 class="section-title" style="margin-bottom: 8px;">Where your money goes</h2>
-<p class="settings-section-desc" style="margin-bottom: 24px; max-width: 70ch;">
+<p class="page-lede">
   Every service in the catalog and the address it pays to. Addresses are read from
   the spec each container was <em>actually deployed</em> with &mdash; not from the
   catalog default &mdash; so what you see here is what your machines are really using.
@@ -14,7 +13,7 @@
   wallet is <em>before</em> you deploy it.
 </p>
 
-<div class="stats-grid" style="margin-bottom: 24px;">
+<div class="stats-grid">
   <div class="stat-card">
     <div class="stat-label">Services</div>
     <div class="stat-value" id="payout-total">&mdash;</div>
@@ -38,8 +37,8 @@
   </div>
 </div>
 
-<div class="card" id="payout-actionable-card" style="display:none; border-color: var(--warning, #f59e0b);">
-  <h3 class="settings-section-title">Deployed, earning, and paying to nowhere</h3>
+<div class="card problem-panel problem-warn" id="payout-actionable-card" style="display:none;">
+  <h3 class="settings-section-title"><span class="attn-tag">No address</span> Deployed, earning, and paying to nowhere</h3>
   <p class="settings-section-desc">
     These services are running and expect an address you have not given them.
     Whatever they earn may be going somewhere you cannot reach.
@@ -47,8 +46,8 @@
   <div id="payout-actionable-body"></div>
 </div>
 
-<div class="card" id="payout-critical-card" style="display:none; border-color: var(--error, #ef4444);">
-  <h3 class="settings-section-title">These are one deleted volume away from gone</h3>
+<div class="card problem-panel problem-fail" id="payout-critical-card" style="display:none;">
+  <h3 class="settings-section-title"><span class="attn-tag">At risk</span> These are one deleted volume away from gone</h3>
   <p class="settings-section-desc">
     These running services keep money-bearing state on disk that exists
     <strong>nowhere else</strong>. There is no server-side copy and no reset
@@ -59,16 +58,19 @@
   <div id="payout-critical-body"></div>
 </div>
 
-<div class="card">
-  <div class="card-header">
-    <h3 class="card-title">All services</h3>
-    <input type="search" id="payout-filter" class="form-input" placeholder="Filter by name, chain or address&hellip;"
-           style="max-width: 280px;" aria-label="Filter payout destinations">
+<section class="payout-all">
+  <div class="block-head">
+    <h2 class="block-title">Every service</h2>
+    <div class="search-box search-box-sm">
+      <input type="search" id="payout-filter" class="form-input" placeholder="Filter by name, chain or address"
+             aria-label="Filter payout destinations" aria-keyshortcuts="/">
+      <kbd class="search-kbd">/</kbd>
+    </div>
   </div>
   <div id="payout-table-container">
     <p style="color: var(--text-muted); font-size: 0.85rem;">Loading&hellip;</p>
   </div>
-</div>
+</section>
 {% endblock %}
 
 {% block scripts %}
@@ -167,11 +169,12 @@
   function payoutRow(entry) {
     var chain = entry.chain ? esc(entry.chain) : '<span class="payout-na">&mdash;</span>';
     var deployed = entry.deployed
-      ? '<span class="badge badge-deployed">Deployed</span>'
-      : '<span class="badge badge-unknown">Not deployed</span>';
+      ? '<span class="state state-ok">deployed</span>'
+      : '<span class="state state-idle">not deployed</span>';
     // Only a DEPLOYED service with a missing address is urgent. An undeployed
     // one is information, not a problem to solve today.
-    var rowClass = (entry.address_missing && entry.deployed) ? ' class="payout-row-actionable"' : '';
+    var rowClass = (entry.address_missing && entry.deployed) ? ' class="payout-row-actionable"'
+      : (entry.deployed ? '' : ' class="payout-row-idle"');
     return '<tr' + rowClass + ' data-slug="' + esc(entry.slug) + '">'
       + '<td>' + esc(entry.name || entry.slug) + '</td>'
       + '<td>' + deployed + '</td>'
