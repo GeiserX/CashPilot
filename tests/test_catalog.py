@@ -88,15 +88,11 @@ def _construct_unique_mapping(loader, node, deep=False):
     keys = [loader.construct_object(key, deep=deep) for key, _ in node.value]
     repeated = sorted({k for k in keys if keys.count(k) > 1}, key=str)
     if repeated:
-        raise yaml.constructor.ConstructorError(
-            None, None, f"duplicate key(s) {repeated}", node.start_mark
-        )
+        raise yaml.constructor.ConstructorError(None, None, f"duplicate key(s) {repeated}", node.start_mark)
     return yaml.SafeLoader.construct_mapping(loader, node, deep=deep)
 
 
-_NoDuplicateKeysLoader.add_constructor(
-    yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG, _construct_unique_mapping
-)
+_NoDuplicateKeysLoader.add_constructor(yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG, _construct_unique_mapping)
 
 
 @pytest.mark.parametrize("yml_path", ALL_YAMLS, ids=lambda p: p.stem)
