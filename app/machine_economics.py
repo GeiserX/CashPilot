@@ -112,7 +112,7 @@ def assess_machine(
             "break_even_watts": None,
             "summary": (
                 f"{name} is not reporting, so CashPilot cannot see what it earns. Nothing here "
-                "says whether it is worth running — the last figures it sent are not evidence "
+                "says whether it is worth running. The last figures it sent are not evidence "
                 "about now."
             ),
         }

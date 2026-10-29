@@ -176,7 +176,7 @@ CASHPILOT_WORKER_NAME=server-name</code>
           const w = summary.unreachable_workers || 0;
           note.textContent = `${hidden} container${hidden === 1 ? '' : 's'} on `
             + `${w} unreachable worker${w === 1 ? '' : 's'} ${hidden === 1 ? 'is' : 'are'} not counted above. `
-            + `They keep running and earning while their worker is offline — CashPilot just cannot see them right now.`;
+            + `They keep running and earning while their worker is offline. CashPilot just cannot see them right now.`;
           note.style.display = '';
         } else {
           note.style.display = 'none';
@@ -336,7 +336,7 @@ CASHPILOT_WORKER_NAME=server-name</code>
         isAndroid ? flag('plain', '', 'Android') : '',
         nameCounts[String(w.name || '')] > 1 ? flag('warn', 'More than one worker is registered under this name. That usually means this host was redeployed with a new or empty /data, so it re-registered under a new id and the old row stayed behind. Compare the ids and the last-seen times before removing one.', 'duplicate name') : '',
         w.enrollment === 'incomplete'
-          ? flag('warn', 'This worker enrolled but never used its own key, so it is still authenticating with the shared CASHPILOT_API_KEY. The shared key is no longer accepted for it. It usually means the worker cannot persist /data/.worker_key — an old image, or a /data that is read-only or not a persistent volume. Upgrade it to 1.0.0+ with a writable persistent /data, then remove it here so it can enroll again.', 'enrollment incomplete')
+          ? flag('warn', 'This worker enrolled but never used its own key, so it is still authenticating with the shared CASHPILOT_API_KEY. The shared key is no longer accepted for it. It usually means the worker cannot persist /data/.worker_key: an old image, or a /data that is read-only or not a persistent volume. Upgrade it to 1.0.0+ with a writable persistent /data, then remove it here so it can enroll again.', 'enrollment incomplete')
           : w.enrollment === 'pending'
           ? flag('plain', 'This worker has been issued its own key but has not used it yet, so the shared key still works for it for a short while. It clears itself on the worker\'s next heartbeat.', 'enrolling')
           : '',
@@ -353,7 +353,7 @@ CASHPILOT_WORKER_NAME=server-name</code>
         const refLabel = isAndroidOs ? `latest v${esc(ref)}` : `UI v${esc(ref)}`;
         const why = isAndroidOs
           ? `This phone is on an older CashPilot Android release than the newest published one (${esc(ref)}). Install the newer APK from the GitHub releases page.`
-          : `This worker is on a different release series from the UI (${esc(ref)}). Update whichever is behind — on Unraid the UI and the worker are two separate apps, so updating one leaves the other.`;
+          : `This worker is on a different release series from the UI (${esc(ref)}). Update whichever is behind. On Unraid the UI and the worker are two separate apps, so updating one leaves the other.`;
         version = `<span class="num${w.version_skew ? ' text-warn' : ''}"${w.version_skew ? ` title="${why}"` : ''}>v${esc(sysInfo.version)}${w.version_skew ? ` ≠ ${refLabel}` : ''}</span>`;
       } else {
         version = `<span class="muted" title="This worker predates version reporting, so CashPilot cannot tell which release it is. Update it to find out.">version unknown</span>`;
@@ -363,7 +363,7 @@ CASHPILOT_WORKER_NAME=server-name</code>
           <td class="w-name">
             <span class="cell cell-${isOnline ? 'ok' : 'fail'}" aria-label="${isOnline ? 'online' : 'not reporting'}"></span>
             <strong>${esc(w.name)}</strong>${flags}
-            <div class="cell-sub"><code class="worker-id" title="This worker's client_id — the id CashPilot keys it on. Two rows with the same name always have different ids; this is how to tell which is which.">${esc(w.client_id || ('#' + w.id))}</code></div>
+            <div class="cell-sub"><code class="worker-id" title="This worker's client_id, the id CashPilot keys it on. Two rows with the same name always have different ids; this is how to tell which is which.">${esc(w.client_id || ('#' + w.id))}</code></div>
           </td>
           <td class="w-sys">
             <span>${esc(sysInfo.os || '-')}${sysInfo.os_version ? ' ' + esc(sysInfo.os_version) : ''}</span>
@@ -510,7 +510,7 @@ CASHPILOT_WORKER_NAME=server-name</code>
       const rx = a.net_rx_24h || 0;
       const staleTip = isOnline === false ? esc(staleNote(lastSeen)) : '';
       const trafficTip = (tx || rx) ? `24h: ↑${fmtBytes(tx)} ↓${fmtBytes(rx)}` : '';
-      const tipText = [staleTip, trafficTip].filter(Boolean).join(' — ');
+      const tipText = [staleTip, trafficTip].filter(Boolean).join(' · ');
       const netTip = tipText ? ` title="${tipText}"` : '';
       html += `<span class="ctr ctr-${isRunning ? 'ok' : 'idle'}${isOnline === false ? ' ctr-stale-item' : ''}"${netTip}>${esc(a.slug)}</span>`;
     }
@@ -691,7 +691,7 @@ CASHPILOT_WORKER_NAME=server-name</code>
     // CASHPILOT_API_KEY=(error) into their compose file and then debugged a
     // worker that could never enrol (CashPilot-0p4).
     if (!_apiKey || _apiKey.startsWith('(')) {
-      CP.toast(`Nothing to copy — the API key reads ${_apiKey || 'as unset'}. Reveal it first.`, 'error');
+      CP.toast(`Nothing to copy: the API key reads ${_apiKey || 'as unset'}. Reveal it first.`, 'error');
       return;
     }
     const text = `CASHPILOT_UI_URL=${uiUrl}\nCASHPILOT_API_KEY=${_apiKey}\nCASHPILOT_WORKER_NAME=server-name`;
@@ -721,7 +721,7 @@ CASHPILOT_WORKER_NAME=server-name</code>
     box.style.display = '';
     box.querySelector('textarea').value = text;
     box.querySelector('textarea').select();
-    CP.toast('This page is not on https, so CashPilot cannot reach the clipboard. The text is selected — press Ctrl/Cmd+C.', 'warning');
+    CP.toast('This page is not on https, so CashPilot cannot reach the clipboard. The text is selected, press Ctrl/Cmd+C.', 'warning');
   }
 
   loadApiKeyStatus();
