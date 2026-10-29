@@ -6,7 +6,8 @@ extract a JWT from their browser session.
 
 To get the token: open app.traffmonetizer.com, log in, press F12,
 go to Application > Local Storage > https://app.traffmonetizer.com,
-and copy the `authToken` value (a long JWT string). It lives 7 days.
+and copy the `authToken` value. It expires after some days, with no fixed
+lifetime (one lasted about 12), and a rejected token is reported as such.
 """
 
 from __future__ import annotations
@@ -60,7 +61,7 @@ class TraffmonetizerCollector(BaseCollector):
                 return EarningsResult(
                     platform=self.platform,
                     balance=0.0,
-                    error="Token expired — copy a fresh authToken from browser Local Storage (it lives 7 days)",
+                    error="Token rejected, so it has expired or was revoked — copy a fresh authToken from browser Local Storage",
                 )
 
             resp.raise_for_status()

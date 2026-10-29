@@ -472,7 +472,7 @@ class TestNonUsdEarningsArePricedOnTheDeltaNotTheBalance:
         import logging
 
         with caplog.at_level(logging.WARNING, logger="app.database"):
-            self._earned(tmp_path, "warn", [(2, 100.0, "GRASS", None), (1, 110.0, "GRASS", None)])
+            self._earned(tmp_path, "warn", [(2, 100.0, "MYST", None), (1, 110.0, "MYST", None)])
         assert any("understated" in r.getMessage() for r in caplog.records)
 
 

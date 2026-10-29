@@ -364,7 +364,16 @@ async def _run_health_check() -> None:
         # blind, the container might be on that one. Unknown is not down, so
         # nothing is recorded — the score is left untouched rather than
         # invented.
-        blind = [w for w in online if not _safe_json(w.get("system_info", "{}"), {}).get("docker_available", False)]
+        # A phone has no Docker by design, so it cannot be hiding a missing
+        # container and is not blind in this sense. Counting it switched the
+        # missing-container check off for the whole fleet whenever a phone was
+        # online, and warned about it every five minutes.
+        blind = []
+        for w in online:
+            info = _safe_json(w.get("system_info", "{}"), {})
+            if info.get("device_type") != "android" and not info.get("docker_available", False):
+                blind.append(w)
+        _report_blind_workers(blind)
         if online and not blind:
             deployments = await database.get_deployments()
             for d in deployments:
@@ -372,17 +381,33 @@ async def _run_health_check() -> None:
                 if d.get("status") == "external" or slug in slug_best:
                     continue
                 events.append((slug, "check_down", "missing from heartbeat"))
-        elif blind:
-            logger.warning(
-                "Not recording missing-container downtime: %d online worker(s) cannot read Docker (%s). "
-                "Their containers may be running; recording them as down would be a guess.",
-                len(blind),
-                ", ".join(sorted(str(w.get("name") or w.get("id")) for w in blind)),
-            )
 
         await database.record_health_events(events)
     except Exception as exc:
         logger.warning("Health check skipped: %s", exc)
+
+
+# The blind workers the last warning named. The health check runs every five
+# minutes, so warning on each run repeated one fact hundreds of times a day; it
+# now speaks when the set changes and once when every worker can see again.
+_blind_workers_logged: frozenset[str] | None = None
+
+
+def _report_blind_workers(blind: list[dict[str, Any]]) -> None:
+    global _blind_workers_logged
+    names = frozenset(str(w.get("name") or w.get("id")) for w in blind)
+    if names == (_blind_workers_logged or frozenset()):
+        return
+    _blind_workers_logged = names
+    if names:
+        logger.warning(
+            "Not recording missing-container downtime: %d online worker(s) cannot read Docker (%s). "
+            "Their containers may be running; recording them as down would be a guess.",
+            len(names),
+            ", ".join(sorted(names)),
+        )
+    else:
+        logger.info("Every online worker can read Docker again; missing-container downtime is recorded again.")
 
 
 async def _push_alert(kind: str, subject: str, title: str, message: str, alert_id: int) -> None:
@@ -2914,7 +2939,9 @@ async def api_earnings_summary(request: Request) -> dict[str, Any]:
             usd_val = _to_usd_with_stored(balance, currency, stored_rate)
             if usd_val is not None:
                 summary["total"] = round(summary["total"] + usd_val, 2)
-            else:
+            elif currency.upper() not in exchange_rates.UNPRICED_BY_DESIGN:
+                # Points are not money, so leaving them out does not make the
+                # Total partial; the card shows them in their own units.
                 unpriced_platforms.append(slug)
             adj_usd = _to_usd_with_stored(adjusted, currency, stored_rate)
             if adj_usd is not None:

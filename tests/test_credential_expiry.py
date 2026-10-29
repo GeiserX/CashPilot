@@ -139,9 +139,34 @@ class TestHealthReportUsesTheTokenExpiry:
         assert self._grass(report)["status"] == "no_known_expiry"
 
 
-class TestTraffmonetizerDeclaresItsSevenDays:
-    def test_the_token_has_a_declared_lifetime(self):
+class TestTraffmonetizerWarnsWithoutClaimingALifetime:
+    def test_the_token_still_gets_an_early_warning(self):
         meta = CREDENTIAL_LIFETIMES["traffmonetizer"]["token"]
         assert meta["hours"] == 24 * 7
         assert meta["durable"] is False
         assert "authToken" in meta["why"]
+
+    def test_no_text_states_a_fixed_lifetime(self):
+        # The 7-day figure was a guess presented as fact: the token is now a
+        # short id|secret pair, and one lasted about 12 days. The texts the user
+        # reads must not promise a number of days.
+        from app.collectors import traffmonetizer
+
+        texts = [CREDENTIAL_LIFETIMES["traffmonetizer"]["token"]["why"], traffmonetizer.__doc__ or ""]
+        for text in texts:
+            assert "lives 7 days" not in text and "7 days" not in text, text
+
+    def test_the_rejection_error_does_not_claim_a_lifetime(self):
+        from app.collectors.traffmonetizer import TraffmonetizerCollector
+
+        resp = MagicMock()
+        resp.status_code = 401
+        client = MagicMock()
+        client.get = AsyncMock(return_value=resp)
+        client.is_closed = False
+        collector = TraffmonetizerCollector(token="rejected")
+        with patch.object(collector, "_get_client", return_value=client):
+            result = asyncio.run(collector.collect())
+        assert result.error
+        assert "days" not in result.error, result.error
+        assert "authToken" in result.error

@@ -121,19 +121,18 @@ class TestACollectorShapeChangeIsAnError:
         source = Path(storj.__file__).read_text(encoding="utf-8")
         assert "sum(month.get(k, 0) for k in known)" in source
 
-    def test_anyone_raises_on_a_missing_data_field(self):
+    def test_anyone_raises_on_a_missing_fingerprint_echo(self):
         from app.collectors import anyone
 
         source = Path(anyone.__file__).read_text(encoding="utf-8")
-        assert '"Data" not in messages[0]' in source
-        assert 'messages[0].get("Data", "0")' not in source
+        assert 'result.get("fingerprint") != fingerprint' in source
 
     def test_anyone_still_returns_zero_for_a_genuine_zero(self):
-        """ "0" and "null" are real answers and must stay non-fatal."""
+        """An omitted reward is the contract's real answer for a relay it never paid."""
         from app.collectors import anyone
 
         source = Path(anyone.__file__).read_text(encoding="utf-8")
-        assert 'data == "null"' in source
+        assert 'reward in (None, "")' in source
 
     def test_grass_checks_for_the_key_not_truthiness(self):
         from app.collectors import grass
