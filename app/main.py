@@ -2243,7 +2243,8 @@ def scaling_limit(svc: dict[str, Any]) -> tuple[int, str]:
     if isinstance(link, dict) and link.get("id_env"):
         # Copies get the same env, so they would all report one device id.
         label = next(
-            (v.get("label") for v in docker_conf.get("env", []) if v.get("key") == link["id_env"]), link["id_env"]
+            (v.get("label") or link["id_env"] for v in docker_conf.get("env", []) if v.get("key") == link["id_env"]),
+            link["id_env"],
         )
         return 1, f"{name} knows each device by its {label}, which two copies would share."
     return MAX_INSTANCES, ""

@@ -73,6 +73,12 @@ class TestTheCeiling:
         limit, why = main.scaling_limit(svc)
         assert limit == 1 and "Token" in why
 
+    def test_an_unlabelled_device_id_is_named_by_its_key(self):
+        docker = {**SCALABLE["docker"], "env": [{"key": "TOKEN"}]}
+        svc = {**SCALABLE, "docker": docker, "device_link": {"id_env": "TOKEN", "steps": "Add it."}}
+        limit, why = main.scaling_limit(svc)
+        assert limit == 1 and "by its TOKEN" in why
+
     def test_the_real_catalog_runs_one_proxyrack_copy_per_worker(self):
         from app import catalog
 
