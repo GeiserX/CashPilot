@@ -798,12 +798,24 @@ class TestDataRetention:
 
         asyncio.run(run())
 
-    def test_vacuum_runs_clean(self, db):
+    def test_vacuum_reclaims_the_pages_a_delete_left(self, db):
+        # A no-op vacuum_database() must fail this: the DELETE leaves free pages
+        # (checked first, so the final check cannot pass vacuously), and only a
+        # real VACUUM returns them.
         async def run():
-            await database.record_health_event("hg", "check_ok")
-            # Must not raise (VACUUM cannot run inside a transaction — the impl
-            # commits first); a no-op-ish call on a small DB simply succeeds.
+            conn = await database._get_db()
+            await conn.execute(
+                "WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < 2000) "
+                "INSERT INTO health_events (slug, event, detail) SELECT 'hg', 'check_ok', printf('%0500d', i) FROM n"
+            )
+            await conn.commit()
+            await conn.execute("DELETE FROM health_events")
+            await conn.commit()
+            async with conn.execute("PRAGMA freelist_count") as cur:
+                assert (await cur.fetchone())[0] > 0
             await database.vacuum_database()
+            async with conn.execute("PRAGMA freelist_count") as cur:
+                assert (await cur.fetchone())[0] == 0
 
         asyncio.run(run())
 
