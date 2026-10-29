@@ -57,7 +57,7 @@
   --shadow-glow-rose: none;
   --shadow-glow-cyan: none;
 
-  --font-ui: 'IBM Plex Sans Condensed', 'Roboto Condensed', 'Arial Narrow', system-ui, sans-serif;
+  --font-ui: 'IBM Plex Sans', system-ui, sans-serif;
   --font-mono: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
 
   /* Type scale. Nothing is set under 12px; body text is 14px. */
@@ -133,7 +133,7 @@ body {
   min-height: 100vh;
   font-family: var(--font-ui);
   font-size: var(--fs-3);
-  line-height: 1.45;
+  line-height: 1.4;
   background: var(--bg-primary);
   color: var(--text-primary);
   font-variant-numeric: tabular-nums;
