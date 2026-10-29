@@ -3225,6 +3225,16 @@ async def api_earnings_summary(request: Request) -> dict[str, Any]:
     summary["unpriced_platforms"] = sorted(set(unpriced_platforms))
     summary["total_bonus"] = round(total_bonus_usd, 2)
     summary["total_adjusted"] = round(total_adjusted, 2)
+    # The balance total drops every time the user cashes out, so on its own it
+    # says how much is waiting, never how much the services have made. Confirmed
+    # payouts, valued at the rate they landed at, are the rest of that answer.
+    paid_out = 0.0
+    try:
+        paid_out = sum((await database.get_confirmed_payout_totals()).values())
+    except Exception as exc:  # noqa: BLE001 - the balance cards must still render
+        logger.warning("Could not total confirmed payouts: %s", exc)
+    summary["paid_out"] = round(paid_out, 2)
+    summary["earned_all_time"] = round(summary["total"] + paid_out, 2)
     return summary
 
 
@@ -4046,6 +4056,69 @@ async def _retire_payout_alert(payout_id: int, platform: str | None = None) -> N
     _collector_alerts = [
         a for a in _collector_alerts if not (a.get("kind") == "payout" and a.get("platform") == platform)
     ]
+
+
+class ManualPayout(BaseModel):
+    """A cash-out the user records by hand."""
+
+    platform: str = Field(min_length=1, max_length=64)
+    amount: float = Field(gt=0, allow_inf_nan=False)
+    #: Defaults to the unit the service's balance is recorded in.
+    currency: str | None = Field(default=None, max_length=12)
+    method: str = Field(default="", max_length=40)
+    #: YYYY-MM-DD; defaults to today.
+    date: str | None = None
+
+    @field_validator("date")
+    @classmethod
+    def _past_iso_date(cls, value: str | None) -> str | None:
+        if value in (None, ""):
+            return None
+        value = value.strip()
+        if not _ISO_DATE.match(value):
+            raise ValueError("date must be YYYY-MM-DD")
+        try:
+            day = datetime.strptime(value, "%Y-%m-%d").date()  # noqa: DTZ007 -- a calendar date
+        except ValueError as exc:
+            raise ValueError("date must be a real calendar date") from exc
+        if day > datetime.now(UTC).date():
+            raise ValueError("date cannot be in the future")
+        return value
+
+
+@app.post("/api/earnings/payouts")
+async def api_add_payout(request: Request, body: ManualPayout) -> dict[str, Any]:
+    """Record a cash-out CashPilot did not detect, so lifetime earnings keep it."""
+    _require_writer(request)
+    if not catalog.get_service(body.platform):
+        raise HTTPException(status_code=404, detail=f"Unknown service '{body.platform}'")
+    currency = (body.currency or "").strip().upper()
+    if not currency:
+        history = await database.get_balance_history(body.platform, days=3650)
+        currency = (
+            (history[-1].get("currency") if history else None)
+            or ((catalog.get_service(body.platform) or {}).get("cashout") or {}).get("currency")
+            or "USD"
+        )
+    fx = 1.0 if currency == "USD" else exchange_rates.to_usd(1.0, currency)
+    payout_id = await database.add_manual_payout(
+        platform=body.platform,
+        amount=body.amount,
+        currency=currency,
+        fx_rate_usd=fx,
+        method=body.method.strip(),
+        paid_on=body.date,
+    )
+    return {"ok": True, "id": payout_id, "currency": currency, "priced": fx is not None}
+
+
+@app.delete("/api/earnings/payouts/{payout_id}")
+async def api_delete_payout(request: Request, payout_id: int) -> dict[str, Any]:
+    """Remove a confirmed payout recorded by mistake."""
+    _require_writer(request)
+    if not await database.delete_confirmed_payout(payout_id):
+        raise HTTPException(status_code=404, detail="No confirmed payout with that id")
+    return {"ok": True, "id": payout_id, "removed": True}
 
 
 @app.post("/api/earnings/payouts/{payout_id}/confirm")

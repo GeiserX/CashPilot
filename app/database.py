@@ -2809,6 +2809,51 @@ async def reject_payout(payout_id: int) -> bool:
         await db.close()
 
 
+async def add_manual_payout(
+    platform: str,
+    amount: float,
+    currency: str = "USD",
+    fx_rate_usd: float | None = None,
+    method: str = "",
+    paid_on: str | None = None,
+) -> int:
+    """Record a cash-out the user tells us about, confirmed from the start.
+
+    Detection only sees a drop between two readings, so it misses cash-outs made
+    before CashPilot was installed, ones on services with no documented minimum,
+    and ones a user rejected by mistake. Without a way to enter them, lifetime
+    earnings stay low forever. ``paid_on`` (YYYY-MM-DD) dates it; default now.
+    """
+    detected_at = f"{paid_on} 12:00:00" if paid_on else None
+    db = await _get_db()
+    try:
+        cursor = await db.execute(
+            "INSERT INTO payouts (platform, amount, currency, fx_rate_usd, confirmed, method, detected_at, confirmed_at) "
+            "VALUES (?, ?, ?, ?, 1, ?, COALESCE(?, datetime('now')), datetime('now'))",
+            (platform, float(amount), currency, fx_rate_usd, method, detected_at),
+        )
+        await db.commit()
+        return int(cursor.lastrowid)
+    finally:
+        await db.close()
+
+
+async def delete_confirmed_payout(payout_id: int) -> bool:
+    """Remove a confirmed payout entered or confirmed by mistake.
+
+    The way back out of ``confirm_payout`` and ``add_manual_payout``: a wrong
+    entry would otherwise inflate lifetime earnings with no means to correct it.
+    Unconfirmed guesses keep their own route, ``reject_payout``.
+    """
+    db = await _get_db()
+    try:
+        cursor = await db.execute("DELETE FROM payouts WHERE id = ? AND confirmed = 1", (payout_id,))
+        await db.commit()
+        return cursor.rowcount > 0
+    finally:
+        await db.close()
+
+
 async def get_payouts(platform: str | None = None, confirmed_only: bool = False) -> list[dict[str, Any]]:
     """Payout rows, newest first."""
     query = "SELECT * FROM payouts"
