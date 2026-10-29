@@ -62,6 +62,7 @@ class TraffmonetizerCollector(BaseCollector):
                     platform=self.platform,
                     balance=0.0,
                     error="Token rejected, so it has expired or was revoked — copy a fresh authToken from browser Local Storage",
+                    error_kind=base.KIND_AUTH,
                 )
 
             resp.raise_for_status()

@@ -130,14 +130,15 @@ CREDENTIAL_LIFETIMES: dict[str, dict[str, dict[str, object]]] = {
     },
     "traffmonetizer": {
         "token": {
-            "hours": 24 * 7,
+            # No age verdict: tokens have lasted from about a week to 12 days,
+            # so any fixed figure says "expired" about one that still works.
+            # The provider's own rejection is what marks it expired.
+            "hours": None,
             "durable": False,
-            # Not a known lifetime: tokens have lasted from about a week to 12
-            # days. The week only drives the early warning (soon from day 5,
-            # likely expired from day 7); the texts must not promise it.
             "why": (
                 "The dashboard's authToken from browser localStorage expires after some days, with no "
-                "fixed lifetime, and the login form is captcha-gated, so only a person can renew it."
+                "fixed lifetime, and the login form is captcha-gated, so only a person can renew it. "
+                "It shows as expired once Traffmonetizer rejects it."
             ),
         },
     },
@@ -174,6 +175,35 @@ async def _close_stale() -> None:
     _stale = []
 
 
+def _collector_kwargs(slug: str, config: dict[str, str]) -> tuple[dict[str, str], list[str]]:
+    """Constructor kwargs for ``slug``'s collector from config, and the required keys missing."""
+    kwargs: dict[str, str] = {}
+    missing: list[str] = []
+    for arg in _COLLECTOR_ARGS.get(slug, []):
+        optional = arg.startswith("?")
+        arg_name = arg.lstrip("?")
+        config_key = f"{slug}_{arg_name}"
+        val = config.get(config_key, "")
+        if not val and not optional:
+            missing.append(config_key)
+        elif val:
+            kwargs[arg_name] = val
+    return kwargs, missing
+
+
+def build_collector(slug: str, config: dict[str, str]) -> BaseCollector | None:
+    """A fresh, uncached collector for one-off calls, or None without full credentials.
+
+    Outside the collection cache on purpose: make_collectors() evicts every slug it
+    is not given, so asking it for one service would drop all the others. The
+    caller closes it.
+    """
+    if slug not in COLLECTOR_MAP:
+        return None
+    kwargs, missing = _collector_kwargs(slug, config)
+    return None if missing else COLLECTOR_MAP[slug](**kwargs)
+
+
 def make_collectors(
     deployments: list[dict[str, Any]],
     config: dict[str, str],
@@ -192,20 +222,7 @@ def make_collectors(
             continue
 
         cls = COLLECTOR_MAP[slug]
-        arg_keys = _COLLECTOR_ARGS.get(slug, [])
-
-        # Resolve constructor kwargs from config
-        kwargs: dict[str, str] = {}
-        missing: list[str] = []
-        for arg in arg_keys:
-            optional = arg.startswith("?")
-            arg_name = arg.lstrip("?")
-            config_key = f"{slug}_{arg_name}"
-            val = config.get(config_key, "")
-            if not val and not optional:
-                missing.append(config_key)
-            elif val:
-                kwargs[arg_name] = val
+        kwargs, missing = _collector_kwargs(slug, config)
 
         if missing:
             logger.warning(

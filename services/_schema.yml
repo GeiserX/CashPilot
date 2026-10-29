@@ -149,6 +149,14 @@
 #   provider does not say" is a legitimate and useful entry. Do NOT guess: an absent
 #   block is reported as undocumented, which is safer than a confident wrong answer.
 
+# device_link: (optional) for a device id the user must add to their account by hand,
+#   or the node earns for nobody (EarnApp, ProxyRack). Shown right after a
+#   successful deploy as a "Link this device to your account" step.
+#     id_env: EARNAPP_UUID    the docker.env key holding the id; must not be secret
+#     url: "https://earnapp.com/r/${EARNAPP_UUID}"   (optional) where to claim it;
+#          ${VAR} is filled from the deployed env, URL-encoded
+#     steps: "Open this link while signed in..."      what to do, in plain words
+
 # requirements:
 #   residential_ip: true/false
 #   vps_ip: true/false  (default: opposite of residential_ip)
