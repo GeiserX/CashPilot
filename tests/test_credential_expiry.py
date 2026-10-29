@@ -140,9 +140,10 @@ class TestHealthReportUsesTheTokenExpiry:
 
 
 class TestTraffmonetizerWarnsWithoutClaimingALifetime:
-    def test_the_token_still_gets_an_early_warning(self):
+    def test_the_token_has_no_age_based_verdict(self):
+        """Age said "Likely expired" from day 7 while the token kept working."""
         meta = CREDENTIAL_LIFETIMES["traffmonetizer"]["token"]
-        assert meta["hours"] == 24 * 7
+        assert meta["hours"] is None
         assert meta["durable"] is False
         assert "authToken" in meta["why"]
 
@@ -170,3 +171,60 @@ class TestTraffmonetizerWarnsWithoutClaimingALifetime:
         assert result.error
         assert "days" not in result.error, result.error
         assert "authToken" in result.error
+
+
+class TestARejectedCredentialIsWhatReadsExpired:
+    """ "Likely expired" is shown when the provider rejected the credential, not by age."""
+
+    def _report(self, stamps, values, alerts):
+        async def run():
+            with (
+                patch.object(main.database, "get_config_updated_at", AsyncMock(return_value=stamps)),
+                patch.object(main.database, "get_config", AsyncMock(return_value=values)),
+                patch.object(main, "_require_auth_api", lambda r: None),
+                patch.object(main, "_collector_alerts", alerts),
+            ):
+                return await main.api_credential_health(MagicMock())
+
+        return asyncio.run(run())
+
+    def _traffmonetizer(self, days_old, alerts):
+        stamp = (datetime.now(UTC) - timedelta(days=days_old)).isoformat()
+        report = self._report({"traffmonetizer_token": stamp}, {"traffmonetizer_token": "id|secret"}, alerts)
+        return next(e for e in report if e["service"] == "traffmonetizer")
+
+    def test_a_working_token_twelve_days_old_is_not_called_expired(self):
+        entry = self._traffmonetizer(12, [])
+        assert entry["status"] == "no_known_expiry"
+        assert entry["age_hours"] > 24 * 11, "the age is still reported as plain information"
+
+    def test_a_rejected_token_reads_expired(self):
+        alerts = [{"kind": "collector", "platform": "traffmonetizer", "category": "auth", "error": "rejected"}]
+        assert self._traffmonetizer(1, alerts)["status"] == "likely_expired"
+
+    def test_a_provider_outage_is_not_a_rejection(self):
+        """The control: only an auth failure is evidence about the credential."""
+        alerts = [{"kind": "collector", "platform": "traffmonetizer", "category": "transient", "error": "timeout"}]
+        assert self._traffmonetizer(1, alerts)["status"] == "no_known_expiry"
+
+    def test_a_rejection_beats_a_jwt_that_claims_to_be_fresh(self):
+        now = datetime.now(UTC)
+        token = _jwt(now + timedelta(days=300), now - timedelta(days=5))
+        stamp = (now - timedelta(days=5)).isoformat()
+        alerts = [{"kind": "collector", "platform": "grass", "category": "auth", "error": "rejected"}]
+        report = self._report({"grass_access_token": stamp}, {"grass_access_token": token}, alerts)
+        assert next(e for e in report if e["service"] == "grass")["status"] == "likely_expired"
+
+    def test_the_traffmonetizer_rejection_is_classified_as_auth(self):
+        from app.collectors import base
+        from app.collectors.traffmonetizer import TraffmonetizerCollector
+
+        resp = MagicMock()
+        resp.status_code = 401
+        client = MagicMock()
+        client.get = AsyncMock(return_value=resp)
+        client.is_closed = False
+        collector = TraffmonetizerCollector(token="rejected")
+        with patch.object(collector, "_get_client", return_value=client):
+            result = asyncio.run(collector.collect())
+        assert result.error_kind == base.KIND_AUTH
