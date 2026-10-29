@@ -3645,6 +3645,8 @@ const CP = (() => {
       list.innerHTML = alerts.map(a => {
         const isPayout = a.kind === 'payout';
         const isNotice = a.kind === 'notice';
+        // A stopped container: the fix is starting it, never a credential.
+        const isContainer = a.kind === 'container';
         // The failure TAXONOMY (CashPilot-5bdm). Only 'auth' means "your
         // credential needs replacing"; a transient provider outage self-heals
         // and a shape change is our bug, so pointing the user at their
@@ -3658,6 +3660,7 @@ const CP = (() => {
         const isExpiring = category === 'expiring';
         const icon = isPayout ? PAYOUT_ICON : (isNotice || isTransient) ? NOTICE_ICON : WARNING_ICON;
         const suffix = isPayout ? ' — payout?'
+          : isContainer ? ' — not running'
           : isNotice ? ' — note'
           : isAuth ? ' — credential expired'
           : isExpiring ? ' — credential expiring'
@@ -3665,7 +3668,7 @@ const CP = (() => {
           : isShape ? ' — page changed (our bug)'
           : '';
         const muted = isNotice || isTransient;
-        const showFix = !isPayout && !isNotice && !isTransient && !isShape && _isOwner;
+        const showFix = !isPayout && !isNotice && !isContainer && !isTransient && !isShape && _isOwner;
         return `
         <div class="notify-item" data-platform="${escapeHtml(a.platform)}" data-kind="${escapeHtml(a.kind || 'collector')}"${category ? ` data-category="${escapeHtml(category)}"` : ''}>
           <div class="notify-item-icon"${muted ? ' style="color:var(--text-muted);"' : ''}>
