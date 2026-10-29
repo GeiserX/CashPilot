@@ -220,3 +220,55 @@ def test_batch_earners_declare_their_quiet_days(slug):
     """The catalog carries the override; app/ holds no per-service numbers."""
     catalog.load_services()
     assert main._quiet_days_by_platform().get(slug, 0) >= 7
+
+
+class TestADeviceNotOnTheAccountNamesTheCauseAlready:
+    """A notice saying a deployed device is not on the account is the specific cause.
+
+    A second, vaguer "gone quiet" for the same service would only repeat it.
+    """
+
+    def test_it_holds_back_while_the_device_is_not_linked(self):
+        check = _Check([_flat()])
+        bell = check.run(collected={"honeygain"}, deployments=DEPLOYED, statuses=RUNNING, unlinked={"honeygain"})
+        assert bell == [] and not check.pushes
+
+    def test_another_service_is_unaffected(self):
+        """The control: only the service the notice is about is held back."""
+        check = _Check([_flat()])
+        bell = check.run(collected={"honeygain"}, deployments=DEPLOYED, statuses=RUNNING, unlinked={"earnapp"})
+        assert [b["platform"] for b in bell] == ["honeygain"]
+
+    def test_the_collection_run_passes_what_collectors_reported(self):
+        """The finding travels on EarningsResult.unlinked_devices, not on the notice text."""
+        from types import SimpleNamespace
+
+        results = [
+            SimpleNamespace(
+                platform="earnapp", balance=1.0, currency="USD", error=None, warning=None, unlinked_devices=["d1"]
+            ),
+            SimpleNamespace(
+                platform="honeygain", balance=2.0, currency="USD", error=None, warning=None, unlinked_devices=[]
+            ),
+        ]
+        seq = iter(results)
+        flatline = AsyncMock(return_value=[])
+        with (
+            patch.object(main.database, "get_deployments", AsyncMock(return_value=[{"slug": "x"}])),
+            patch.object(main.database, "get_config", AsyncMock(return_value={})),
+            patch.object(main.database, "upsert_earnings", AsyncMock()),
+            patch.object(main.database, "record_alert", AsyncMock(return_value=None)),
+            patch.object(main.database, "clear_alerts", AsyncMock()),
+            patch.object(main, "_detect_payout", AsyncMock(return_value=None)),
+            patch.object(main, "_flatline_check", flatline),
+            patch.object(main, "_pending_payout_alerts", AsyncMock(return_value=[])),
+            patch.object(main, "_offline_worker_alerts", AsyncMock(return_value=[])),
+            patch.object(main, "_get_all_worker_containers", AsyncMock(return_value=[])),
+            patch.object(main, "_collect_bounded", AsyncMock(side_effect=lambda c: next(seq))),
+            patch.object(main, "_collector_alerts", []),
+            patch("app.collectors.make_collectors", lambda deployments, config: [object() for _ in results]),
+            patch("app.collectors._close_stale", AsyncMock()),
+            patch.object(main, "_spawn", lambda coro: coro.close()),
+        ):
+            asyncio.run(main._run_collection())
+        assert flatline.call_args.kwargs["unlinked"] == {"earnapp"}
