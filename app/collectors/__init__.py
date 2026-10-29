@@ -132,7 +132,13 @@ CREDENTIAL_LIFETIMES: dict[str, dict[str, dict[str, object]]] = {
         "token": {
             "hours": 24 * 7,
             "durable": False,
-            "why": "The dashboard's authToken from browser localStorage lives 7 days, and the login form is captcha-gated, so only a person can renew it.",
+            # Not a known lifetime: tokens have lasted from about a week to 12
+            # days. The week only drives the early warning (soon from day 5,
+            # likely expired from day 7); the texts must not promise it.
+            "why": (
+                "The dashboard's authToken from browser localStorage expires after some days, with no "
+                "fixed lifetime, and the login form is captcha-gated, so only a person can renew it."
+            ),
         },
     },
     "salad": {
