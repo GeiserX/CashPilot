@@ -857,6 +857,43 @@ class TestApiServices:
             assert row["collector_disconnected"] is False
             assert row["collector_notice"] == notice
 
+    @pytest.mark.parametrize(
+        ("kind", "expected"),
+        [
+            # A payout question exists because the balance was read and fell.
+            ("payout", False),
+            # A flatline exists because the balance was read and did not move.
+            ("flatline", False),
+            # The one kind that does mean the read failed.
+            ("collector", True),
+        ],
+    )
+    def test_only_a_collector_alert_reads_as_cant_read_balance(self, client, kind, expected):
+        workers = [
+            {
+                "id": 1,
+                "name": "w1",
+                "status": "online",
+                "system_info": json.dumps({"docker_available": True}),
+                "containers": json.dumps([{"slug": "traffmonetizer", "name": "tm", "status": "running"}]),
+                "apps": "[]",
+            }
+        ]
+        alert = {"kind": kind, "platform": "traffmonetizer", "error": "Balance dropped: did you get paid?"}
+        with (
+            _auth_owner(),
+            patch("app.main.database.list_workers", new_callable=AsyncMock, return_value=workers),
+            patch("app.main.database.get_earnings_summary", new_callable=AsyncMock, return_value=[]),
+            patch("app.main.database.get_health_scores", new_callable=AsyncMock, return_value=[]),
+            patch("app.main.database.get_deployments", new_callable=AsyncMock, return_value=[]),
+            patch("app.main.database.get_config", new_callable=AsyncMock, return_value={}),
+            patch("app.main._collector_alerts", [alert]),
+            patch("app.main.catalog.get_service", return_value={"name": "Traffmonetizer", "category": "bandwidth"}),
+        ):
+            resp = client.get("/api/services/deployed")
+            row = next(r for r in resp.json() if r["slug"] == "traffmonetizer")
+            assert row["collector_disconnected"] is expected
+
     def test_collector_needs_setup_helper(self):
         # Service with no collector → never needs setup.
         from app.main import _collector_needs_setup

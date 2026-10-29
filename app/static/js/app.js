@@ -556,6 +556,15 @@ const CP = (() => {
     }
   }
 
+  // The cashout terms to judge a row's payout by. The breakdown's block is the
+  // only one carrying min_amount_comparable and eligible, both worked out
+  // against the balance's own unit; the deployed list carries the catalog's raw
+  // block, which has neither. Reading the deployed one is what left every
+  // Payout cell at "--" and made the Payout sort a no-op.
+  function cashoutFor(svc, bk) {
+    return (bk && bk.cashout) || svc.cashout || {};
+  }
+
   function sortServices(services, breakdownMap) {
     const statusOrder = { running: 0, external: 1, restarting: 2, paused: 3, stopped: 4, exited: 5, error: 6 };
     services.sort((a, b) => {
@@ -612,8 +621,8 @@ const CP = (() => {
           vb = sortableGpu(b);
           break;
         case 'payout': {
-          const coA = a.cashout || {};
-          const coB = b.cashout || {};
+          const coA = cashoutFor(a, breakdownMap[a.slug]);
+          const coB = cashoutFor(b, breakdownMap[b.slug]);
           const balA = (breakdownMap[a.slug] && breakdownMap[a.slug].balance) || a.balance || 0;
           const balB = (breakdownMap[b.slug] && breakdownMap[b.slug].balance) || b.balance || 0;
           // Sorting by "closest to payout" needs the same like-for-like ratio;
@@ -1167,7 +1176,7 @@ const CP = (() => {
     }
 
     // Payout progress
-    const co = svc.cashout || {};
+    const co = cashoutFor(svc, bk);
     // The minimum in the SAME unit as the balance beside it. co.min_amount is
     // whatever the provider declared — STORJ for a Storj balance recorded in USD
     // — so comparing against it directly rated a $3.50 balance as 87% of the way
