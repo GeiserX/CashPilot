@@ -103,7 +103,15 @@ def _errors(tmp_path: Path, link) -> list[str]:
         "category": "bandwidth",
         "status": "active",
         "description": "x",
-        "docker": {"image": "x/x:1", "env": [{"key": "ID"}, {"key": "TOKEN", "secret": True}]},
+        "docker": {
+            "image": "x/x:1",
+            "env": [
+                {"key": "ID"},
+                {"key": "TOKEN", "secret": True},
+                {"key": "TWICE"},
+                {"key": "TWICE", "secret": True},
+            ],
+        },
         "device_link": link,
     }
     return catalog._validate(data, tmp_path / "x.yml")
@@ -120,6 +128,9 @@ def test_the_loader_accepts_a_well_formed_block(tmp_path):
         {"id_env": "NOPE", "steps": "Open it."},  # not a declared env var
         {"id_env": "ID", "steps": ""},  # no instructions
         {"id_env": "ID", "url": "http://x.test", "steps": "Open it."},  # not https
+        {"id_env": "ID", "url": "https://x.test/${TOKEN}", "steps": "Open it."},  # a secret in the link
+        {"id_env": "ID", "url": "https://x.test/${NOPE}", "steps": "Open it."},  # an undeclared placeholder
+        {"id_env": "TWICE", "steps": "Open it."},  # declared twice, once secret: secret
         "EARNAPP_UUID",  # not a mapping
     ],
 )
@@ -184,3 +195,23 @@ def test_a_redeploy_of_a_device_already_on_the_account_counts_as_added(client):
 def test_a_rate_limited_add_leaves_the_manual_step(client):
     link, _ = _pr_deploy(client, {"/device/add": LIMITED, "/device/status": LIMITED})
     assert link["registered"] is False
+
+
+def test_a_deleted_workers_device_ids_are_not_checked(tmp_path, monkeypatch):
+    """Deleting a worker leaves its spec rows; its device is nobody's to report."""
+    import asyncio
+
+    from app import database
+
+    monkeypatch.setattr(database, "DB_PATH", tmp_path / "cashpilot.db")
+
+    async def run():
+        await database.init_db()
+        live = await database.upsert_worker("client-live", name="w1")
+        for worker_id, uuid in ((live, "live-node"), (live + 1, "orphan-node")):
+            await database.save_deployment(
+                slug="earnapp", container_id="c", spec={"env": {"EARNAPP_UUID": uuid}}, worker_id=worker_id
+            )
+        return await database.get_deployed_env_values("earnapp", "EARNAPP_UUID")
+
+    assert asyncio.run(run()) == {"live-node"}

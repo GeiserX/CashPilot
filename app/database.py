@@ -1644,13 +1644,18 @@ async def get_custom_images(slug: str) -> dict[int, str]:
 async def get_deployed_env_values(slug: str, key: str) -> set[str]:
     """Every value of env var ``key`` across the workers ``slug`` is deployed on.
 
-    Read from the per-worker records only, so a container made by hand or
-    before specs were kept per worker contributes nothing: an empty answer is
-    "not known", never "none deployed".
+    Read from the per-worker records of workers that still exist, so a container
+    made by hand or before specs were kept per worker contributes nothing: an
+    empty answer is "not known", never "none deployed".
     """
     db = await _get_db()
     try:
-        cursor = await db.execute("SELECT spec_encrypted FROM deployment_specs WHERE slug = ?", (slug,))
+        # Only workers that still exist: deleting a worker leaves its records, and
+        # an id nobody runs any more must not be reported as unlinked.
+        cursor = await db.execute(
+            "SELECT spec_encrypted FROM deployment_specs WHERE slug = ? AND worker_id IN (SELECT id FROM workers)",
+            (slug,),
+        )
         rows = await cursor.fetchall()
     finally:
         await db.close()

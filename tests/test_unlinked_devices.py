@@ -154,6 +154,66 @@ def test_a_proxyrack_lookup_that_fails_claims_nothing():
     assert result.unlinked_devices is None
 
 
-def test_another_proxyrack_400_is_not_read_as_unlinked():
-    result = _pr_collect({PR_UNLINKED}, lambda _id: _resp({"status": "error", "error": "Rate limited"}, 400))
-    assert result.unlinked_devices == []
+def test_a_rate_limited_proxyrack_check_is_unknown_not_unlinked_or_linked():
+    limited = {"status": "error", "error": "Requests limit exceeded (5 per minute)."}
+
+    def status(device_id):
+        if device_id == PR_UNLINKED:
+            return _resp(PR_INVALID, status_code=400)
+        return _resp(limited, status_code=400)
+
+    result = _pr_collect({PR_LINKED, PR_UNLINKED}, status)
+    assert result.error is None and result.balance == 2.0
+    assert result.unlinked_devices is None
+
+
+def _run_loop(results_by_call, lookup=None, previous=None):
+    """Run _run_collection with one EarnApp collector; return the alerts it leaves."""
+    from app import main
+
+    collector = EarnAppCollector(oauth_token="t")
+    collector.collect = AsyncMock(return_value=results_by_call)
+    with (
+        patch("app.main._collector_alerts", list(previous or [])),
+        patch("app.main.database.get_deployments", new_callable=AsyncMock, return_value=[{"slug": "earnapp"}]),
+        patch("app.main.database.get_config", new_callable=AsyncMock, return_value={}),
+        patch("app.collectors.make_collectors", return_value=[collector]),
+        patch("app.collectors._close_stale", new_callable=AsyncMock),
+        patch(
+            "app.main.database.get_deployed_env_values",
+            new_callable=AsyncMock,
+            **(lookup or {"return_value": {UNLINKED}}),
+        ),
+        patch("app.main.database.record_alert", new_callable=AsyncMock, return_value=None),
+        patch("app.main.database.clear_alerts", new_callable=AsyncMock) as clear,
+        patch("app.main.database.upsert_earnings", new_callable=AsyncMock) as upsert,
+        patch("app.main._detect_payout", new_callable=AsyncMock, return_value=None),
+        patch("app.main._pending_payout_alerts", new_callable=AsyncMock, return_value=[]),
+        patch("app.main._flatline_check", new_callable=AsyncMock, return_value=[]),
+        patch("app.main._offline_worker_alerts", new_callable=AsyncMock, return_value=[]),
+    ):
+        asyncio.run(main._run_collection())
+        return list(main._collector_alerts), clear, upsert
+
+
+def test_an_unfinished_device_check_keeps_the_notice_instead_of_clearing_it():
+    notice = {"kind": "notice", "platform": "earnapp", "error": f"A deployed device is not on your account: {UNLINKED}"}
+    alerts, clear, _ = _run_loop(EarningsResult(platform="earnapp", balance=1.0), previous=[notice])
+    assert notice in alerts
+    assert ("notice", "earnapp") not in [c.args for c in clear.await_args_list]
+
+
+def test_a_finished_check_with_nothing_unlinked_clears_the_notice():
+    notice = {"kind": "notice", "platform": "earnapp", "error": "old"}
+    alerts, clear, _ = _run_loop(
+        EarningsResult(platform="earnapp", balance=1.0, unlinked_devices=[]), previous=[notice]
+    )
+    assert notice not in alerts
+    clear.assert_any_await("notice", "earnapp")
+
+
+def test_a_failed_device_id_lookup_still_collects_the_balance():
+    _, _, upsert = _run_loop(
+        EarningsResult(platform="earnapp", balance=1.0), lookup={"side_effect": RuntimeError("db locked")}
+    )
+    upsert.assert_awaited()

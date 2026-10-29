@@ -41,7 +41,8 @@ let toasts = 0;
 const requests = [];
 const document = { getElementById: () => null, querySelectorAll: () => inputs };
 let deployAnswer = {};
-const api = async (...args) => { requests.push(args); return deployAnswer; };
+let answers = [];
+const api = async (...args) => { requests.push(args); return answers.shift() ?? deployAnswer; };
 const shownLinks = [];
 // _imageChoice and _instancesFor read the form's Advanced box and Instances
 // box; undefined is "unchanged", so the request body is the env alone.
@@ -83,6 +84,12 @@ inputs = [input('API_KEY', '12345678-1234-4abc-8def-123456789abc', { valid: true
 shownLinks.length = 0;
 await deploy('svc', [1, 2]);
 assert.deepEqual(shownLinks.at(-1), [link], 'the step is shown with the id from the deploy answer');
+answers = [
+  { status: 'deployed', device_link: { ...link, id: 'dev-a' } },
+  { status: 'deployed', device_link: { ...link, id: 'dev-b' } },
+];
+await deploy('svc', [1, 2]);
+assert.deepEqual(shownLinks.at(-1).map(l => l.id).sort(), ['dev-a', 'dev-b'], 'each worker device id is shown');
 deployAnswer = { status: 'deployed' };
 await deploy('svc', [1]);
 assert.deepEqual(shownLinks.at(-1), [], 'no device_link, nothing to link');

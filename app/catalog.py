@@ -160,13 +160,18 @@ def _validate(data: dict[str, Any], path: Path) -> list[str]:
         # The id is shown on screen and put in a link, so it must be a value the
         # catalog already treats as public: a declared, non-secret env var.
         env_vars = (docker.get("env") if isinstance(docker, dict) else None) or []
-        public = {v.get("key") for v in env_vars if isinstance(v, dict) and not v.get("secret")}
+        # A key declared secret anywhere is secret, even if declared twice.
+        declared = [v for v in env_vars if isinstance(v, dict)]
+        public = {v.get("key") for v in declared} - {v.get("key") for v in declared if v.get("secret")}
+        url = str(link.get("url") or "") if isinstance(link, dict) else ""
         if not isinstance(link, dict) or link.get("id_env") not in public:
             errors.append(f"{path.name}: device_link.id_env must name a non-secret docker.env key")
         elif not isinstance(link.get("steps"), str) or not link["steps"].strip():
             errors.append(f"{path.name}: device_link.steps must say what to do with the id")
-        elif link.get("url") is not None and not str(link["url"]).startswith("https://"):
+        elif url and not url.startswith("https://"):
             errors.append(f"{path.name}: device_link.url must be an https:// link")
+        elif not set(re.findall(r"\$\{(\w+)\}", url)) <= public:
+            errors.append(f"{path.name}: device_link.url may only fill in non-secret docker.env keys")
 
     priority = data.get("priority")
     if priority is not None and (isinstance(priority, bool) or not isinstance(priority, int) or priority < 1):

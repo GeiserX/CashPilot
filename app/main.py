@@ -1011,11 +1011,21 @@ async def _run_collection() -> None:
 
             collectors = make_collectors(deployments, config)
             await _close_stale()
+            # Platforms whose collector was asked to check deployed device ids.
+            device_checked: set[str] = set()
             for c in collectors:
                 slug = getattr(c, "platform", "")
                 link = (catalog.get_service(slug) or {}).get("device_link") if slug else None
-                if isinstance(link, dict):
+                if not isinstance(link, dict):
+                    continue
+                try:
                     c.device_ids = await database.get_deployed_env_values(slug, link["id_env"])
+                except Exception as exc:
+                    # Only this service's device check is lost, never the run.
+                    logger.warning("Could not read the deployed %s device ids: %s", slug, exc)
+                    continue
+                if c.device_ids:
+                    device_checked.add(slug)
             results = await asyncio.gather(*(_collect_bounded(c) for c in collectors), return_exceptions=True)
             alerts: list[dict[str, str]] = []
             # Platforms that were already failing before this run: used to detect a
@@ -1100,6 +1110,19 @@ async def _run_collection() -> None:
                                     alert_id,
                                 )
                             )
+                    elif (
+                        result.platform in previously_noticing
+                        and result.platform in device_checked
+                        and getattr(result, "unlinked_devices", None) is None
+                    ):
+                        # The device check could not finish (provider error, rate
+                        # limit): that proves nothing, so the notice stays rather
+                        # than being cleared now and pushed again next hour.
+                        alerts.extend(
+                            a
+                            for a in _collector_alerts
+                            if a.get("kind") == "notice" and a["platform"] == result.platform
+                        )
                     elif result.platform in previously_noticing:
                         # A warning-free success is the notice's recovery: drop
                         # the stored row so the NEXT warning pushes again rather

@@ -64,8 +64,9 @@ class ProxyRackCollector(BaseCollector):
 
         /device/status answers 400 with details.device_id "The selected device
         id is invalid." for a UUID that is not on the account, and 200 with the
-        device's status otherwise. Only that exact refusal counts; a failed
-        lookup must never claim a device is unlinked.
+        device's status otherwise. Only that exact refusal counts; any other
+        answer makes the whole check unknown (None), never "unlinked" and never
+        "all linked".
         """
         if not self.device_ids:
             return None
@@ -74,11 +75,15 @@ class ProxyRackCollector(BaseCollector):
             client = self._get_client(timeout=30)
             for device_id in sorted(self.device_ids):
                 resp = await client.post(f"{API_BASE}/device/status", headers=headers, json={"device_id": device_id})
-                if resp.status_code != 400:
+                body = resp.json() or {}
+                if resp.status_code == 200 and body.get("status") == "success":
                     continue
-                detail = str(((resp.json() or {}).get("details") or {}).get("device_id") or "")
-                if "device id is invalid" in detail.lower():
-                    unlinked.append(device_id)
+                detail = str((body.get("details") or {}).get("device_id") or "")
+                if resp.status_code != 400 or "device id is invalid" not in detail.lower():
+                    # Rate limit (5 a minute), outage, anything else: the check is
+                    # incomplete, which proves nothing either way.
+                    return None
+                unlinked.append(device_id)
         except Exception as exc:
             logger.debug("ProxyRack device status unreadable: %s", exc)
             return None
