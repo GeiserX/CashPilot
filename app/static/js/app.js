@@ -298,9 +298,12 @@ const CP = (() => {
       // Unknown is not "nothing pending". Leave whatever is on screen rather
       // than hiding a question the user still owes an answer to.
       console.warn('Could not load pending payouts:', err);
+      _attentionCount.payoutsUnknown = true;
+      updateAttentionSummary(null, null);
       return;
     }
 
+    _attentionCount.payoutsUnknown = false;
     _attentionCount.payouts = pending.length;
     updateAttentionSummary(null, null);
     if (!pending.length) {
@@ -842,9 +845,10 @@ const CP = (() => {
       // fleet without one every row read "None" or a dash. The cells are still
       // rendered, so the row keeps the header's shape; the container class
       // hides the column (style.css, .no-gpu).
-      container.classList.toggle('no-gpu', !Object.values(_hostResources || {}).some(h => h.gpu && h.gpu.available === true));
+      // A failed worker list keeps the column, so its cells can say why.
+      container.classList.toggle('no-gpu', workers !== null && !Object.values(_hostResources || {}).some(h => h.gpu && h.gpu.available === true));
       renderPlacement(services || [], workers);
-      renderAttention(services || [], workers);
+      renderAttention(services || [], workers, ++_attentionSeq);
 
       if (!services || services.length === 0) {
         // An empty list means one of two very different things, and saying the
@@ -1032,16 +1036,23 @@ const CP = (() => {
       </table>`;
   }
 
-  async function renderAttention(services, workers) {
+  // A refresh that started later wins: renderAttention awaits the credential
+  // check, so an older call can finish last and must not overwrite the newer list.
+  let _attentionSeq = 0;
+
+  async function renderAttention(services, workers, seq) {
     const list = document.getElementById('attention-list');
     if (!list) return;
     const items = [];
+    if (workers === null) {
+      items.push({ level: 'warn', tag: 'Unknown', what: 'Boxes', why: 'CashPilot could not load the worker list, so it cannot tell which boxes are reporting.' });
+    }
     const boxName = {};
     for (const w of (workers || [])) boxName[String(w.id)] = w.name;
 
     for (const w of (workers || [])) {
       if (w.status !== 'online') {
-        items.push({ level: 'fail', tag: 'Offline', what: w.name, why: `has not reported since ${fmtTimestamp(w.last_heartbeat).text}. Its containers keep running; CashPilot just cannot see them.`, actions: '<a class="btn btn-ghost btn-sm" href="/fleet">Open fleet</a>' });
+        items.push({ level: 'fail', tag: 'Offline', what: w.name, why: `has not reported since ${fmtTimestamp(w.last_heartbeat).text}. Its containers may still be running, but CashPilot cannot see them.`, actions: '<a class="btn btn-ghost btn-sm" href="/fleet">Open fleet</a>' });
       }
     }
     for (const svc of services) {
@@ -1049,7 +1060,10 @@ const CP = (() => {
         const st = instanceState(inst.status);
         if (st === 'ok') continue;
         const where = inst.node === 'local' ? 'local' : (boxName[String(inst.worker_id)] || inst.node);
-        const wid = inst.worker_id != null ? ` data-a2="${escapeHtml(String(inst.worker_id))}"` : '';
+        // The copy number rides along, or Start and Logs act on copy one.
+        const wid = inst.worker_id != null
+          ? ` data-a2="${escapeHtml(String(inst.worker_id))}"${inst.instance > 1 ? ` data-a3="${escapeHtml(String(inst.instance))}"` : ''}`
+          : '';
         const controllable = _canWrite && !inst.unmanaged && !svc.unmanaged && inst.has_docker && !inst.is_android;
         items.push({
           level: st,
@@ -1080,7 +1094,13 @@ const CP = (() => {
 
     if (_isOwner) {
       let health = [];
-      try { health = await api('/api/credentials/health'); } catch (err) { health = []; }
+      try {
+        health = await api('/api/credentials/health');
+      } catch (err) {
+        console.warn('Could not load credential health:', err);
+        items.push({ level: 'warn', tag: 'Unknown', what: 'Credentials', why: 'CashPilot could not check credential expiry. Reload the page to try again.' });
+      }
+      if (seq !== _attentionSeq) return;
       for (const row of (Array.isArray(health) ? health : [])) {
         if (row.status !== 'expiring_soon' && row.status !== 'likely_expired') continue;
         if (items.some(i => i.tag === 'No reading' && String(i.what).toLowerCase() === String(row.service).toLowerCase())) continue;
@@ -1106,7 +1126,7 @@ const CP = (() => {
     updateAttentionSummary(services, workers);
   }
 
-  const _attentionCount = { problems: 0, payouts: 0, services: null, workers: null };
+  const _attentionCount = { problems: 0, payouts: 0, payoutsUnknown: false, services: null, workers: null };
 
   function updateAttentionSummary(services, workers) {
     if (services) { _attentionCount.services = services; _attentionCount.workers = workers; }
@@ -1121,7 +1141,9 @@ const CP = (() => {
     if (!clear) return;
     if (total) { clear.hidden = true; return; }
     const online = (workers || []).filter(w => w.status === 'online').length;
-    clear.textContent = services
+    clear.textContent = _attentionCount.payoutsUnknown
+      ? 'CashPilot could not check for payouts waiting on an answer. Reload the page to try again.'
+      : services
       ? `Nothing needs you. ${online} of ${(workers || []).length} boxes reporting.`
       : 'Nothing needs you.';
     clear.hidden = false;
@@ -2044,6 +2066,10 @@ const CP = (() => {
              <p class="claim-why">${methodLabel[co.method] || methodLabel.redirect}</p>
              <a href="${escapeHtml(co.dashboard_url)}" target="_blank" rel="noopener" class="btn btn-primary">${extIcon} Open the provider dashboard</a>
            </div>`;
+      } else if (eligibilityUnknown) {
+        actionSection = co.dashboard_url
+          ? `<div class="claim-action"><a href="${escapeHtml(co.dashboard_url)}" target="_blank" rel="noopener" class="btn btn-ghost">${extIcon} Open the provider dashboard</a></div>`
+          : '';
       } else if (!eligible) {
         actionSection = `<p class="claim-why">Keep the service running to build up the balance.</p>`;
       }
@@ -2084,8 +2110,8 @@ const CP = (() => {
     }
   }
 
-  async function startService(slug, workerId) {
-    const q = workerId != null ? `?worker_id=${workerId}` : '';
+  async function startService(slug, workerId, instance) {
+    const q = workerId != null ? `?worker_id=${workerId}${_instanceQuery(instance)}` : '';
     try {
       await api(`/api/services/${slug}/start${q}`, { method: 'POST' });
       toast(`${slug} starting...`, 'success');
@@ -3099,7 +3125,7 @@ const CP = (() => {
     if (instances.length > 0) {
       html += `
       <div class="sd-block sd-instances">
-        <h4 class="sd-h">Running on ${instances.length} ${instances.length === 1 ? 'box' : 'boxes'}</h4>`;
+        <h4 class="sd-h">Deployed on ${instances.length} ${instances.length === 1 ? 'box' : 'boxes'}</h4>`;
       for (const inst of instances) {
         const s = inst.container.status || 'unknown';
         const st = instanceState(s);
@@ -3216,10 +3242,13 @@ const CP = (() => {
       console.warn('Could not load credential health:', err);
       return;
     }
+    const indexLink = document.getElementById('credential-health-link');
     if (!Array.isArray(rows) || !rows.length) {
       card.style.display = 'none';
+      if (indexLink) indexLink.hidden = true;
       return;
     }
+    if (indexLink) indexLink.hidden = false;
 
     const meta = status => CREDENTIAL_STATUS[status] || CREDENTIAL_STATUS.no_known_expiry;
     rows.sort((a, b) => meta(a.status).rank - meta(b.status).rank);

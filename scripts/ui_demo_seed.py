@@ -403,7 +403,7 @@ def serve(port: int, data_dir: Path) -> None:
     """Run the seeded UI with every outbound job stubbed (see module docstring)."""
     import uvicorn
 
-    from app import database, exchange_rates, main, update_check
+    from app import collectors, database, exchange_rates, main, update_check
 
     async def _noop(*_a, **_kw) -> None:
         return None
@@ -430,6 +430,9 @@ def serve(port: int, data_dir: Path) -> None:
     update_check.refresh = _noop
     update_check.refresh_android = _noop
     main._run_collection = _noop
+    # The credential test and the per-node breakdown build a live collector
+    # from the seeded placeholder tokens; with no collector they answer locally.
+    collectors.build_one = lambda _slug, _config: (None, [])
     main._check_stale_workers = _keep_workers_fresh
 
     uvicorn.run(main.app, host="127.0.0.1", port=port, log_level="warning")

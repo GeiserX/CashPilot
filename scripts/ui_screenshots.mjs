@@ -220,6 +220,10 @@ export async function openState(browser, st, { urls, sessions, theme, problems, 
   });
   const res = await page.goto(urls[st.server] + st.path, { waitUntil: 'domcontentloaded' });
   if (!res || res.status() >= 400) problems.push(`${label}: HTTP ${res && res.status()}`);
+  // An expired session lands on /login with a 200; that must not be saved
+  // under the name of the page that was asked for.
+  const landed = new URL(page.url()).pathname;
+  if (landed !== st.path) { await ctx.close(); throw new Error(`${label}: asked for ${st.path}, landed on ${landed}`); }
   await settle(page);
   if (st.before) await st.before(page);
   return { ctx, page };
@@ -238,6 +242,7 @@ async function main() {
   mkdirSync(outDir, { recursive: true });
   const browser = await chromium.launch({ channel: channel || undefined, headless: true });
   const problems = [];
+  let captured = 0;
   const sessions = { seed: await login(browser, urls.seed), empty: await login(browser, urls.empty) };
 
   for (const theme of themes) {
@@ -249,6 +254,7 @@ async function main() {
         if (st.element) await page.locator(st.element).screenshot({ path: file });
         else await page.screenshot({ path: file, fullPage: st.full !== false });
         await ctx.close();
+        captured++;
         console.log(`${file}  ${st.path}`);
       } catch (err) {
         problems.push(`${st.name} (${theme}): ${err.message.split('\n')[0]}`);
@@ -256,6 +262,7 @@ async function main() {
     }
   }
   await browser.close();
+  if (only && captured === 0) problems.push(`CP_SHOT_ONLY=${process.env.CP_SHOT_ONLY} matched no state`);
   if (problems.length) {
     console.error('problems:\n  ' + problems.join('\n  '));
     process.exit(1);
