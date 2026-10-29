@@ -20,6 +20,10 @@ PacketStream is a peer-to-peer bandwidth marketplace where you can sell your unu
 
 > Pays $0.10/GB for bandwidth shared. Earnings depend heavily on demand for your IP's location.
 
+## Cashing out
+
+PayPal only, minimum $5, 3% fee shown before you confirm. The first withdrawal saves your PayPal email; changing it later needs an email confirmation and a 7-day wait. Requests are reviewed and sent within 7 days.
+
 ## Requirements
 
 | Requirement | Value |

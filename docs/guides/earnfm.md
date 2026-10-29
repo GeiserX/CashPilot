@@ -14,11 +14,15 @@ Earn.fm pays you for sharing your internet bandwidth. Authenticates via a UUID A
 |--------|-------|
 | Monthly range | $0 - $3 (estimate) |
 | Per | device |
-| Minimum payout | $3 |
+| Minimum payout | $15 |
 | Payout frequency | On request |
-| Payment methods | Crypto |
+| Payment methods | Crypto, Paypal, Giftcard, Bank |
 
 > Relatively new platform. Earnings vary by location and bandwidth availability.
+
+## Cashing out
+
+Minimum $15. Methods: USDT on BEP20 or Polygon ($1 fee) or TRC20 ($3 fee), PayPal, Amazon or Starbucks gift cards from $15, or a bank wire from $1,000 with transfer fees deducted. Before the first payout you fill in a billing profile (legal name and address), used for the payout receipts.
 
 ## Requirements
 

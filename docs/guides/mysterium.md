@@ -14,8 +14,8 @@ MystNodes (Mysterium Network) is a decentralized VPN and proxy network built on 
 |--------|-------|
 | Monthly range | $0 - $10 (estimate) |
 | Per | device |
-| Minimum payout | $2 |
-| Payout frequency | On request |
+| Minimum payout | 5 MYST |
+| Payout frequency | Automatic on-chain settlement each time a node holds 5 MYST unsettled |
 | Payment methods | Crypto |
 
 > Earnings in MYST tokens. Residential IPs earn significantly more. Node WebUI at port 4449 for management, bound to the machine it runs on; from another machine open an SSH tunnel first (`ssh -L 4449:127.0.0.1:4449 <host>`, then browse `http://127.0.0.1:4449`), or put a reverse proxy in front (see **WebUI address** below). VPS accepted. Important: after first run, set your beneficiary (settlement) wallet via the node WebUI or CLI to match your mystnodes.com account -- this links on-chain earnings to your cloud dashboard.
@@ -23,6 +23,10 @@ MystNodes (Mysterium Network) is a decentralized VPN and proxy network built on 
 > **One node per public IP.** Mysterium strictly enforces one active node per public IP address. Additional nodes on the same IP show as offline and earn nothing. Do not run on a phone if a Docker node is already running on the same network. Use separate public IPs (e.g. dual WAN, different locations) for additional nodes.
 
 > **Port forwarding recommended.** Forward **UDP 56000-56100** to maximize earnings. Without this, nodes get "Strict NAT" status — many VPN/proxy sessions fail to connect, severely reducing income. Alternatives: enable UPnP on your router (Mysterium uses it automatically), or as last resort, use DMZ. The Docker image runs with `--net host` and the `NET_ADMIN`, `SETUID` and `SETGID` capabilities.
+
+## Cashing out
+
+No button to press. Each node settles on Polygon by itself once it holds 5 MYST unsettled, and about 21% goes in fees (the 20% Hermes fee plus a small transaction fee), so roughly 3.9 MYST reaches the beneficiary wallet per settlement. Each node's TequilAPI lists its settlements at /transactor/settle/history. The "total earnings" figure on MystNodes covers the last 30 days only; it is neither a balance nor a lifetime total. Bonus MYST from the MystNodes rewards program does not settle by itself: claim it on the Rewards page, within 30 days of distribution according to the MystNodes help center.
 
 ## Requirements
 

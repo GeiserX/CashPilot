@@ -61,9 +61,13 @@ earnings:
 
 cashout:
   method: redirect
-  dashboard_url: "https://dash.bytelixir.com"
+  dashboard_url: "https://dash.bytelixir.com/payouts"
   min_amount: 5.0
   currency: USD
+  notes: >-
+    Crypto only. The minimum depends on the coin: USDT $5, USDC $5, TON $8,
+    LTC $10, ETH $40, BTC $250. You type the address in each request.
+    Requests are handled in working hours, within 24 hours.
 
 platforms: [windows, android]
 
@@ -73,5 +77,5 @@ collector:
   credential_hint: "Log in at <a href='https://dash.bytelixir.com' target='_blank'>dash.bytelixir.com</a> <b>ticking Remember Me</b>, press F12 → Application → expand <b>Cookies</b> in the left sidebar → click <code>https://dash.bytelixir.com</code>, then copy three values: <b>bytelixir_session</b>, <b>remember_web_…</b> (the long one starting with that prefix) and <b>XSRF-TOKEN</b>. The session cookie alone expires about two hours after you copy it, so collection stops the same afternoon; the remember_web cookie lasts a year and is what keeps it working."
 
 payout:
-  model: unknown
-  notes: "Not yet determined. Flagged rather than shown blank -- see CashPilot-luj."
+  model: internal
+  notes: "Balance held by Bytelixir; the wallet address is typed into each payout request, never stored on the container."

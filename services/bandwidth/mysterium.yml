@@ -103,9 +103,9 @@ requirements:
 
 payment:
   methods: [crypto]
-  minimum_payout: "4 MYST"
+  minimum_payout: "5 MYST"
   currency: MYST
-  frequency: "Auto-settle every 4 MYST to your beneficiary wallet"
+  frequency: "Automatic on-chain settlement each time a node holds 5 MYST unsettled"
 
 earnings:
   monthly_low: 0
@@ -117,9 +117,18 @@ earnings:
 cashout:
   method: auto
   dashboard_url: "https://my.mystnodes.com/rewards"
-  min_amount: 4.0
+  min_amount: 5.0
   currency: MYST
-  notes: "Auto-settles every 4 MYST to your beneficiary wallet. No manual cashout needed. Visit Rewards page to claim bonus MYST."
+  notes: >-
+    No button to press. Each node settles on Polygon by itself once it holds
+    5 MYST unsettled, and about 21% goes in fees (the 20% Hermes fee plus a
+    small transaction fee), so roughly 3.9 MYST reaches the beneficiary wallet
+    per settlement. Each node's TequilAPI lists its settlements at
+    /transactor/settle/history. The "total earnings" figure on MystNodes covers
+    the last 30 days only; it is neither a balance nor a lifetime total.
+    Bonus MYST from the MystNodes rewards program does not settle by itself:
+    claim it on the Rewards page, within 30 days of distribution according to
+    the MystNodes help center.
 
 platforms: [docker, windows, macos, linux, android, browser-extension]
 
