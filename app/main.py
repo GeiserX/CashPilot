@@ -3231,13 +3231,22 @@ async def api_earnings_summary(request: Request) -> dict[str, Any]:
     # The balance total drops every time the user cashes out, so on its own it
     # says how much is waiting, never how much the services have made. Confirmed
     # payouts, valued at the rate they landed at, are the rest of that answer.
-    paid_out = 0.0
+    # None, not 0, when the payouts could not be read: 0 would claim nothing was
+    # ever cashed out. The base is the figure the balance card shows, so promo
+    # credit the card subtracts is not counted back in here.
+    paid_out: float | None = None
+    unpriced_payouts = 0
     try:
         paid_out = sum((await database.get_confirmed_payout_totals()).values())
+        unpriced_payouts = await database.count_unpriced_confirmed_payouts()
     except Exception as exc:  # noqa: BLE001 - the balance cards must still render
-        logger.warning("Could not total confirmed payouts: %s", exc)
-    summary["paid_out"] = round(paid_out, 2)
-    summary["earned_all_time"] = round(summary["total"] + paid_out, 2)
+        logger.warning("Could not total confirmed payouts, reporting them as unknown: %s", exc)
+    balance_shown = summary["total_adjusted"] if summary["total_bonus"] > 0 else summary["total"]
+    summary["paid_out"] = None if paid_out is None else round(paid_out, 2)
+    summary["earned_all_time"] = None if paid_out is None else round(balance_shown + paid_out, 2)
+    # Payouts in a token with no recorded rate are left out of paid_out, so the
+    # all-time figure is an understatement by that many; the card says so.
+    summary["unpriced_payouts"] = unpriced_payouts
     return summary
 
 
@@ -4104,14 +4113,25 @@ async def api_add_payout(request: Request, body: ManualPayout) -> dict[str, Any]
             or "USD"
         )
     fx = 1.0 if currency == "USD" else exchange_rates.to_usd(1.0, currency)
-    payout_id = await database.add_manual_payout(
-        platform=body.platform,
-        amount=body.amount,
-        currency=currency,
-        fx_rate_usd=fx,
-        method=body.method.strip(),
-        paid_on=body.date,
-    )
+    if currency != "USD" and body.date and body.date != datetime.now(UTC).date().isoformat():
+        # Only today's quote exists. A past cash-out priced at it would be restated
+        # by today's price, so it stays unpriced and is counted as such.
+        fx = None
+    try:
+        payout_id = await database.add_manual_payout(
+            platform=body.platform,
+            amount=body.amount,
+            currency=currency,
+            fx_rate_usd=fx,
+            method=body.method.strip(),
+            paid_on=body.date,
+        )
+    except database.PendingPayoutError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail="CashPilot detected a cash-out for this service that is waiting in the alerts. "
+            "Confirm or reject it first, so the same cash-out is not counted twice.",
+        ) from exc
     return {"ok": True, "id": payout_id, "currency": currency, "priced": fx is not None}
 
 

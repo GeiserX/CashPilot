@@ -29,10 +29,10 @@ def _add(**kw):
 
 
 def test_a_recorded_cash_out_is_confirmed_and_counts(db):
-    out = _add(platform="earnapp", amount=37.54, method="PayPal", date="2026-10-29")
+    out = _add(platform="earnapp", amount=37.54, method="PayPal", date="2026-01-15")
     assert out["ok"] and out["currency"] == "USD"
     rows = asyncio.run(database.get_payouts("earnapp", confirmed_only=True))
-    assert len(rows) == 1 and rows[0]["method"] == "PayPal" and rows[0]["detected_at"].startswith("2026-10-29")
+    assert len(rows) == 1 and rows[0]["method"] == "PayPal" and rows[0]["detected_at"].startswith("2026-01-15")
     assert asyncio.run(database.get_confirmed_payout_totals()) == {"earnapp": 37.54}
 
 
@@ -79,3 +79,60 @@ def test_removing_never_touches_an_unanswered_question(db):
     pid = asyncio.run(database.record_probable_payout("honeygain", 25.65))
     assert not asyncio.run(database.delete_confirmed_payout(pid))
     assert len(asyncio.run(database.get_payouts("honeygain"))) == 1
+
+
+def _summary(**patches):
+    with (
+        patch("app.main._require_reader", lambda request: None),
+        patch.object(main, "_get_all_worker_containers", AsyncMock(return_value=[])),
+    ):
+        for target, value in patches.items():
+            patch.object(main.database, target, value).start()
+        try:
+            return asyncio.run(main.api_earnings_summary(MagicMock()))
+        finally:
+            patch.stopall()
+
+
+def test_promo_credit_the_balance_card_subtracts_is_not_counted_back(db):
+    # Real rows, no mocked dashboard summary: $25 balance of which $5 is signup
+    # bonus, so the card shows $20; a $10 cash-out makes $30 earned, not $35.
+    asyncio.run(database.upsert_earnings("honeygain", 25.0, "USD"))
+    asyncio.run(database.set_config("honeygain_signup_bonus", "5"))
+    asyncio.run(database.add_manual_payout("honeygain", 10.0, "USD", 1.0, "PayPal", "2026-01-15"))
+    s = _summary()
+    assert s["total_adjusted"] == 20.0 and s["total_bonus"] == 5.0
+    assert s["paid_out"] == 10.0
+    assert s["earned_all_time"] == 30.0
+
+
+def test_payouts_that_cannot_be_read_are_unknown_not_zero(db):
+    asyncio.run(database.upsert_earnings("honeygain", 25.0, "USD"))
+    s = _summary(get_confirmed_payout_totals=AsyncMock(side_effect=RuntimeError("database is locked")))
+    assert s["paid_out"] is None and s["earned_all_time"] is None
+
+
+def test_unpriced_payouts_reach_the_summary(db):
+    asyncio.run(database.add_manual_payout("mysterium", 500.0, "MYST", None, "", "2026-01-15"))
+    asyncio.run(database.add_manual_payout("honeygain", 10.0, "USD", 1.0))
+    s = _summary()
+    assert s["paid_out"] == 10.0 and s["unpriced_payouts"] == 1
+
+
+def test_a_backdated_token_cash_out_is_not_priced_at_todays_rate(db):
+    with patch.object(main.exchange_rates, "to_usd", lambda amount, currency: amount * 0.03):
+        old = _add(platform="mysterium", amount=500, currency="MYST", date="2026-01-15")
+        today = _add(platform="mysterium", amount=100, currency="MYST")
+    assert old["priced"] is False and today["priced"] is True
+    assert asyncio.run(database.get_confirmed_payout_totals()) == {"mysterium": pytest.approx(3.0)}
+    assert asyncio.run(database.count_unpriced_confirmed_payouts()) == 1
+
+
+def test_a_cash_out_cannot_be_recorded_while_a_detected_one_waits(db):
+    # The bell prompt may be this same cash-out; recording it as well and then
+    # confirming the prompt would count it twice.
+    asyncio.run(database.record_probable_payout("earnapp", 37.54))
+    with pytest.raises(HTTPException) as exc:
+        _add(platform="earnapp", amount=37.54)
+    assert exc.value.status_code == 409
+    assert asyncio.run(database.get_payouts("earnapp", confirmed_only=True)) == []

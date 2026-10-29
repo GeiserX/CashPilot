@@ -2814,6 +2814,14 @@ async def reject_payout(payout_id: int) -> bool:
         await db.close()
 
 
+class PendingPayoutError(Exception):
+    """A detected payout for this platform is still waiting for the user's answer."""
+
+    def __init__(self, payout_id: int) -> None:
+        super().__init__(f"payout {payout_id} is pending")
+        self.payout_id = payout_id
+
+
 async def add_manual_payout(
     platform: str,
     amount: float,
@@ -2828,19 +2836,35 @@ async def add_manual_payout(
     before CashPilot was installed, ones on services with no documented minimum,
     and ones a user rejected by mistake. Without a way to enter them, lifetime
     earnings stay low forever. ``paid_on`` (YYYY-MM-DD) dates it; default now.
+
+    Raises ``PendingPayoutError`` while a detected payout for the platform waits
+    for confirmation: that prompt may be this same cash-out, so it is answered first.
     """
     detected_at = f"{paid_on} 12:00:00" if paid_on else None
-    db = await _get_db()
-    try:
-        cursor = await db.execute(
-            "INSERT INTO payouts (platform, amount, currency, fx_rate_usd, confirmed, method, detected_at, confirmed_at) "
-            "VALUES (?, ?, ?, ?, 1, ?, COALESCE(?, datetime('now')), datetime('now'))",
-            (platform, float(amount), currency, fx_rate_usd, method, detected_at),
-        )
-        await db.commit()
-        return int(cursor.lastrowid)
-    finally:
-        await db.close()
+    # Own connection and BEGIN IMMEDIATE: the pending check and the insert must
+    # be one step, or the collector can file a probable payout between them and
+    # the same cash-out gets counted twice once the user confirms the prompt.
+    DB_DIR.mkdir(parents=True, exist_ok=True)
+    async with aiosqlite.connect(str(DB_PATH), timeout=30) as db:
+        await db.execute("BEGIN IMMEDIATE")
+        try:
+            cursor = await db.execute(
+                "SELECT id FROM payouts WHERE platform = ? AND confirmed = 0 LIMIT 1",
+                (platform,),
+            )
+            pending = await cursor.fetchone()
+            if pending:
+                raise PendingPayoutError(int(pending[0]))
+            cursor = await db.execute(
+                "INSERT INTO payouts (platform, amount, currency, fx_rate_usd, confirmed, method, detected_at, "
+                "confirmed_at) VALUES (?, ?, ?, ?, 1, ?, COALESCE(?, datetime('now')), datetime('now'))",
+                (platform, float(amount), currency, fx_rate_usd, method, detected_at),
+            )
+            await db.commit()
+            return int(cursor.lastrowid)
+        except BaseException:
+            await db.rollback()
+            raise
 
 
 async def delete_confirmed_payout(payout_id: int) -> bool:
@@ -2917,6 +2941,19 @@ async def get_confirmed_payout_totals() -> dict[str, float]:
                     row["unpriced"],
                 )
         return totals
+    finally:
+        await db.close()
+
+
+async def count_unpriced_confirmed_payouts() -> int:
+    """Confirmed non-USD payouts with no recorded rate, which the USD totals leave out."""
+    db = await _get_db()
+    try:
+        cursor = await db.execute(
+            "SELECT COUNT(*) FROM payouts WHERE confirmed = 1 AND currency != 'USD' AND fx_rate_usd IS NULL"
+        )
+        row = await cursor.fetchone()
+        return int(row[0] or 0)
     finally:
         await db.close()
 
