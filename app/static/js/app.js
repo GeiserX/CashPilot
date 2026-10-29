@@ -1091,7 +1091,7 @@ const CP = (() => {
 
     const head = boxes.map((w) => {
       const online = w.status === 'online';
-      return `<th class="pg-box${online ? '' : ' pg-box-off'}" scope="col" title="${escapeHtml(w.name)}: ${online ? 'online' : 'not reporting'}">${escapeHtml(w.name)}</th>`;
+      return `<th class="pg-box${online ? '' : ' pg-box-off'}" scope="col" title="${escapeHtml(w.name)}: ${online ? 'online' : 'not reporting'}"><span class="pg-box-name">${escapeHtml(w.name)}</span></th>`;
     }).join('');
 
     const body = rows.map((r) => {
@@ -1112,10 +1112,12 @@ const CP = (() => {
     }).join('');
 
     holder.innerHTML = `
-      <table class="placement-table">
-        <thead><tr><th scope="col" class="pg-svc">Service</th>${head}<th scope="col" class="pg-count">Up</th></tr></thead>
-        <tbody>${body}</tbody>
-      </table>`;
+      <div class="table-scroll">
+        <table class="placement-table">
+          <thead><tr><th scope="col" class="pg-svc">Service</th>${head}<th scope="col" class="pg-count">Up</th></tr></thead>
+          <tbody>${body}</tbody>
+        </table>
+      </div>`;
   }
 
   async function renderAttention(services, workers, seq) {
@@ -1561,7 +1563,7 @@ const CP = (() => {
     // Main row
     let html = `
     <tr class="breakdown-row${isMulti ? ' expandable' : ''}" data-slug="${escapeHtml(svc.slug)}"${isMulti ? ` data-action="toggleInstances" data-a1="${escapeHtml(svc.slug)}" data-a2="event"` : ''}>
-      <td class="c-name">${nameHtml}<div class="cell-sub cell-mono">${subtitle}</div></td>
+      <td class="c-name">${nameHtml}<div class="cell-sub cell-mono c-name-image"${subtitle ? ` title="${subtitle}"` : ''}>${subtitle}</div></td>
       <td class="c-status">${partialDown
         ? `<span class="badge badge-stopped" title="${downCount} of ${details.length} instances are not running"><span class="status-dot stopped"></span> ${details.length - downCount} of ${details.length} up</span>`
         : `<span class="badge badge-${statusClass}"><span class="status-dot ${statusClass}"></span> ${statusLabel}</span>${instanceLabel}`}${unmanagedLabel}${outdatedBadge}</td>
