@@ -8,110 +8,84 @@
   <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/static/css/style.css">
   <script nonce="{{ csp_nonce(request) }}">
     (function(){var t=localStorage.getItem('cp-theme')||'dark';document.documentElement.setAttribute('data-theme',t)})();
   </script>
   <style>
+    /* Ledger: a plain sign-in sheet. No backdrop, no card glow; the form sits
+       on the page ground, ruled off from the wordmark. */
     body {
       display: flex;
-      align-items: center;
+      align-items: flex-start;
       justify-content: center;
       min-height: 100vh;
+      padding-top: 18vh;
       background: var(--bg-primary);
-      background-image:
-        radial-gradient(ellipse at 20% 50%, rgba(244, 63, 94, 0.08) 0%, transparent 60%),
-        radial-gradient(ellipse at 80% 20%, rgba(139, 92, 246, 0.06) 0%, transparent 50%),
-        radial-gradient(ellipse at 60% 80%, rgba(6, 182, 212, 0.05) 0%, transparent 50%);
     }
-    .auth-card {
-      background: var(--bg-secondary);
-      background-image: var(--gradient-card);
-      border: 1px solid var(--border-color);
-      border-radius: var(--radius-lg);
-      padding: 2.5rem;
-      width: 100%;
-      max-width: 400px;
-      box-shadow: 0 16px 48px rgba(0, 0, 0, 0.4), 0 0 1px rgba(139, 92, 246, 0.15);
-    }
+    .auth-card { width: 100%; max-width: 360px; padding: 0 24px; }
     .auth-brand {
       display: flex;
       align-items: center;
-      gap: 0.5rem;
-      font-size: 1.5rem;
-      font-weight: 700;
-      margin-bottom: 0.5rem;
-      background: var(--gradient-rose);
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-      background-clip: text;
+      gap: 10px;
+      font-size: 1.05rem;
+      font-weight: 600;
+      color: var(--text-primary);
+      padding-bottom: 14px;
+      border-bottom: 1px solid var(--border-light);
+      margin-bottom: 20px;
     }
-    .auth-brand svg { -webkit-text-fill-color: initial; }
-    .auth-subtitle { color: var(--text-muted); margin-bottom: 1.5rem; font-size: 0.93rem; }
+    .auth-subtitle { color: var(--text-secondary); margin-bottom: 1.5rem; font-size: 0.93rem; }
     .auth-field { margin-bottom: 1rem; }
     .auth-field label {
       display: block;
       color: var(--text-secondary);
       font-size: 0.85rem;
       margin-bottom: 0.35rem;
-      font-weight: 500;
     }
     .auth-field input {
       width: 100%;
-      padding: 0.6rem 0.75rem;
-      background: var(--bg-primary);
+      padding: 0.6rem 0.7rem;
+      background: var(--bg-tertiary);
       border: 1px solid var(--border-color);
       border-radius: var(--radius);
       color: var(--text-primary);
       font-size: 0.93rem;
       font-family: inherit;
       outline: none;
-      transition: border-color var(--transition), box-shadow var(--transition);
     }
-    .auth-field input:focus {
-      border-color: var(--accent);
-      box-shadow: 0 0 0 2px var(--accent-soft), 0 0 16px rgba(244, 63, 94, 0.15);
-    }
+    .auth-field input:focus { border-color: var(--text-secondary); outline: 2px solid var(--border-light); outline-offset: 1px; }
     .auth-btn {
       width: 100%;
       padding: 0.65rem;
-      background: var(--gradient-rose);
-      color: #fff;
+      background: var(--text-primary);
+      color: var(--bg-primary);
       border: none;
       border-radius: var(--radius);
-      font-size: 0.95rem;
+      font-size: 0.93rem;
       font-weight: 600;
       font-family: inherit;
       cursor: pointer;
       margin-top: 0.5rem;
-      transition: box-shadow var(--transition), transform var(--transition);
     }
-    .auth-btn:hover {
-      box-shadow: 0 0 20px rgba(244, 63, 94, 0.3);
-      transform: translateY(-1px);
-    }
+    .auth-btn:hover { background: var(--accent-hover); }
+    .auth-btn:focus-visible { outline: 2px solid var(--text-secondary); outline-offset: 2px; }
     .auth-error {
-      background: var(--error-soft);
-      color: var(--error);
-      padding: 0.5rem 0.75rem;
-      border-radius: var(--radius-sm);
+      border-left: 2px solid var(--warning);
+      color: var(--text-primary);
+      padding: 0.4rem 0.75rem;
       font-size: 0.85rem;
       margin-bottom: 1rem;
     }
     .auth-footer {
-      text-align: center;
-      margin-top: 1rem;
+      margin-top: 1.25rem;
       color: var(--text-muted);
       font-size: 0.85rem;
     }
-    .auth-footer a { color: var(--accent); text-decoration: none; }
-    .auth-footer a:hover { text-decoration: underline; }
+    .auth-footer a { color: var(--text-primary); text-decoration: underline; text-underline-offset: 3px; }
     .auth-role-info {
-      background: var(--accent-soft);
-      color: var(--accent);
-      padding: 0.5rem 0.75rem;
-      border-radius: var(--radius-sm);
+      color: var(--text-secondary);
       font-size: 0.85rem;
       margin-bottom: 1rem;
     }
@@ -120,7 +94,7 @@
 <body>
   <div class="auth-card">
     <div class="auth-brand">
-      <svg width="28" height="28" viewBox="0 0 256 256" role="img" aria-label="CashPilot">
+      <svg width="20" height="20" viewBox="0 0 256 256" role="img" aria-label="CashPilot">
         <defs>
           <linearGradient id="cpSun" x1="0%" y1="0%" x2="0%" y2="100%">
             <stop offset="0%" stop-color="#FFD54F"/>

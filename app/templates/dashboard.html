@@ -5,85 +5,91 @@
 {% block topbar_title %}Dashboard{% endblock %}
 
 {% block content %}
-<!-- Stats Row -->
-<div class="stats-grid">
-  <div class="stat-card">
-    <div class="stat-label">Total Balance</div>
-    <div class="stat-value highlight" id="total-earnings">—</div>
-    <div id="total-bonus-note" style="display:none; font-size:0.7rem; color:var(--text-muted); margin-top:2px;"></div>
-    <div id="no-readings-note" style="display:none; font-size:0.7rem; color:var(--text-muted); margin-top:2px;">Nothing collected yet</div>
+<!-- The statement head. One figure leads: what these services have earned
+     so far, which is the balance still held plus every payout the user
+     confirmed. The ids below are the ones app.js fills. -->
+<section class="ledger-head" aria-labelledby="ledger-figure-label">
+  <div class="ledger-head-main">
+    <div class="ledger-figure-label" id="ledger-figure-label">Earned to date</div>
+    <div class="ledger-figure" id="lifetime-earned">—</div>
+    <p class="ledger-figure-note" id="lifetime-note">Balance held plus confirmed payouts.</p>
+    <div id="total-bonus-note" class="ledger-footnote" style="display:none;"></div>
+    <div id="no-readings-note" class="ledger-footnote" style="display:none;">Nothing collected yet</div>
     <!-- app/exchange_rates.py tracks per-source staleness and publishes it on
          /api/exchange-rates, and nothing ever read it: a MYST balance kept
          being converted at a price that could be hours or days old with no
          indication on screen (CashPilot-dfw). -->
-    <div id="rates-stale-note" style="display:none; font-size:0.7rem; color:var(--warning); margin-top:2px;"></div>
+    <div id="rates-stale-note" class="ledger-footnote ledger-footnote-mark" style="display:none;"></div>
   </div>
-  <div class="stat-card">
-    <div class="stat-label">Today</div>
-    <div class="stat-value" id="today-earnings">—</div>
-    <div class="stat-change" id="today-change"></div>
-  </div>
-  <div class="stat-card">
-    <div class="stat-label">This Month</div>
-    <div class="stat-value" id="month-earnings">—</div>
-    <div class="stat-change" id="month-change"></div>
-  </div>
-  <div class="stat-card">
-    <div class="stat-label">Active Services</div>
-    {# Em-dash, like every sibling card. app.js already renders the em-dash when
-       the count comes back null, and its catch deliberately PRESERVES whatever
-       is displayed so a transient fetch failure cannot look like earnings
-       dropping to zero. On a FIRST load that fails, what it preserved was this
-       literal 0 — so the one card fixed for this in JS was the one where a
-       template character undid the fix (CashPilot-pmi). #}
-    <div class="stat-value" id="active-services">&mdash;</div>
-  </div>
-</div>
+  <dl class="ledger-figures">
+    <div class="ledger-figures-row">
+      <dt>Held in balances</dt>
+      <dd><div class="stat-value" id="total-earnings">—</div></dd>
+    </div>
+    <div class="ledger-figures-row">
+      <dt>Paid out</dt>
+      <dd><div class="stat-value" id="paid-out-total">—</div></dd>
+    </div>
+    <div class="ledger-figures-row">
+      <dt>Today</dt>
+      <dd><span class="stat-change" id="today-change"></span><div class="stat-value" id="today-earnings">—</div></dd>
+    </div>
+    <div class="ledger-figures-row">
+      <dt>This month</dt>
+      <dd><span class="stat-change" id="month-change"></span><div class="stat-value" id="month-earnings">—</div></dd>
+    </div>
+    <div class="ledger-figures-row">
+      <dt>Containers running</dt>
+      {# Em-dash, like every sibling figure. app.js already renders the em-dash
+         when the count comes back null, and its catch deliberately PRESERVES
+         whatever is displayed so a transient fetch failure cannot look like
+         earnings dropping to zero. On a FIRST load that fails, what it
+         preserved was a literal 0 (CashPilot-pmi). #}
+      <dd><div class="stat-value" id="active-services">&mdash;</div></dd>
+    </div>
+  </dl>
+</section>
 
-<!-- Payouts awaiting an answer.
-     Hidden until there is something to answer: an empty card every day would
-     train people to ignore the one day it matters. A balance drop is only a
-     PROBABLE payout — it can equally be a provider correction — so nothing is
-     ever counted as income until the answer comes from here. -->
-<div class="card" id="payout-queue-card" style="margin-bottom: 24px; display:none;">
-  <div class="card-header">
-    <span class="card-title">Did you get paid?</span>
-    <span style="font-size:0.72rem; color:var(--text-muted);">
-      A balance drop can be a payout or a provider correction. Nothing counts as earned until you say.
-    </span>
+<!-- What needs a decision or a fix. The only place the accent colour leads.
+     Hidden when empty: an empty box every day would train people to ignore
+     the one day it matters. A balance drop is only a PROBABLE payout, it can
+     equally be a provider correction, so nothing is counted as income until
+     the answer comes from here. -->
+<section class="ledger-attention" id="ledger-attention" hidden>
+  <h2 class="ledger-section-title">Needs your attention</h2>
+  <div id="payout-queue-card" style="display:none;">
+    <div id="payout-queue-list"></div>
   </div>
-  <div id="payout-queue-list"></div>
-</div>
+  <div id="attention-list"></div>
+</section>
 
-<!-- Earnings Chart -->
-<div class="card" style="margin-bottom: 24px;">
-  <div class="card-header">
-    <span class="card-title">Earnings</span>
+<!-- Deployed Services: the statement itself -->
+<section class="ledger-section">
+  <div class="ledger-section-head">
+    <h2 class="ledger-section-title">Services</h2>
+    <div class="ledger-section-tools">
+      <button class="btn btn-ghost btn-sm" data-action="refreshServices" title="Refresh">Refresh</button>
+      <a href="/setup" class="btn btn-secondary btn-sm">Add a service</a>
+    </div>
+  </div>
+  <div id="services-table-container" class="ledger-table-wrap">
+    <div class="ledger-loading"><div class="spinner"></div> Loading services</div>
+  </div>
+</section>
+
+<!-- Earnings Chart: daily totals, kept short; the table above is the record. -->
+<section class="ledger-section">
+  <div class="ledger-section-head">
+    <h2 class="ledger-section-title">Earned per day</h2>
     <div class="tab-strip">
       <button class="tab-btn chart-period-btn active" data-days="7" data-action="loadEarningsChart" data-a1="7">7 days</button>
       <button class="tab-btn chart-period-btn" data-days="30" data-action="loadEarningsChart" data-a1="30">30 days</button>
     </div>
   </div>
-  <div class="chart-container">
+  <div class="chart-container ledger-chart">
     <canvas id="earnings-chart"></canvas>
   </div>
-</div>
-
-<!-- Deployed Services Table -->
-<div class="card" style="margin-bottom: 24px;">
-  <div class="card-header">
-    <span class="card-title">Deployed Services</span>
-    <div style="display:flex; gap:8px; align-items:center;">
-      <button class="btn btn-ghost btn-sm" data-action="refreshServices" title="Refresh">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg>
-      </button>
-      <a href="/setup" class="btn btn-primary btn-sm">+ Add Service</a>
-    </div>
-  </div>
-  <div id="services-table-container" style="overflow-x:auto;">
-    <div style="display:flex; align-items:center; justify-content:center; gap:8px; padding:24px 0; color:var(--text-muted);"><div class="spinner"></div> Loading services...</div>
-  </div>
-</div>
+</section>
 
 <!-- Credential Update Modal -->
 <div class="modal-overlay" id="cred-modal">

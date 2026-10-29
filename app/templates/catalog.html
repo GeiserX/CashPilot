@@ -2,11 +2,12 @@
 
 {% block title %}Service Catalog - CashPilot{% endblock %}
 {% block page %}catalog{% endblock %}
-{% block topbar_title %}Service Catalog{% endblock %}
+{% block topbar_title %}Catalog{% endblock %}
 
 {% block content %}
-<div class="section-header">
-  <h2 class="section-title">Available Services</h2>
+<div class="ledger-page-head">
+  <h1 class="ledger-page-title">Catalog</h1>
+  <p class="ledger-page-lede">Every service CashPilot knows how to run or track. The ones you already use come first.</p>
 </div>
 
 <!-- Filter Bar -->
@@ -26,9 +27,9 @@
   </div>
 </div>
 
-<!-- Service Grid -->
-<div class="services-grid" id="catalog-grid">
-  <div class="spinner" style="margin: 48px auto;"></div>
+<!-- Service list -->
+<div class="ledger-table-wrap" id="catalog-grid">
+  <div class="ledger-loading"><div class="spinner"></div> Loading the catalog</div>
 </div>
 <p class="referral-note">Visit and Sign Up links to providers with a referral programme are referral links: the CashPilot maintainer may earn a commission from them.</p>
 {% endblock %}

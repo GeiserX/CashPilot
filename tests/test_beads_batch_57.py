@@ -38,44 +38,56 @@ def _js() -> str:
 
 
 class TestTheTableStillLinesUp:
-    """A column added to one row shape and not the others shifts the rest."""
+    """A column added to one row shape and not the others shifts the rest.
 
-    def _header_columns(self) -> list[str]:
+    The ledger layout keeps money in the columns and moves the host facts
+    (CPU, memory, host disk, GPU) into one spanning cell of each per-instance
+    sub-row, so the count here includes colspan.
+    """
+
+    def _header_columns(self) -> int:
         js = _js()
-        start = js.index('<table class="breakdown-table">')
+        start = js.index('<table class="breakdown-table ledger-table">')
         head = js[start : js.index("</thead>", start)]
-        return re.findall(r"sortTh\('([a-z]+)'|<th[^>]*>([A-Za-z]+)</th>", head)
+        # Sortable headings are emitted by sortTh(), the rest are literal.
+        return len(re.findall(r"<th[\s>]", head)) + head.count("sortTh(")
 
     def _count_cells(self, marker: str) -> int:
         """Cells in one <tr> template, counted from the opening tag."""
         js = _js()
         start = js.index(marker)
         row = js[start : js.index("</tr>", start)]
-        return row.count("<td")
+        spans = sum(int(n) - 1 for n in re.findall(r'colspan="(\d+)"', row))
+        return row.count("<td") + spans
 
-    def test_the_header_has_the_expected_columns(self):
-        cols = [a or b for a, b in self._header_columns()]
-        assert "disk" in cols, "the Host disk column is gone"
-        assert "gpu" in cols, "the GPU column is gone"
+    def _sub_row(self) -> str:
+        js = _js()
+        start = js.index('<tr class="instance-row')
+        return js[start : js.index("</tr>", start)]
+
+    def test_the_host_facts_are_still_rendered(self):
+        row = self._sub_row()
+        assert "diskCellForHosts(" in row, "the host disk reading is gone"
+        assert "gpuCellForHosts(" in row, "the GPU reading is gone"
 
     def test_the_main_row_matches_the_header(self):
-        header = len(self._header_columns())
+        header = self._header_columns()
         assert self._count_cells('<tr class="breakdown-row') == header, (
             "the main row and the header disagree on column count, so every cell after the "
             "mismatch is drawn under the wrong heading"
         )
 
     def test_the_instance_sub_row_matches_the_header(self):
-        header = len(self._header_columns())
+        header = self._header_columns()
         assert self._count_cells('<tr class="instance-row') == header, (
             "the per-instance sub-row has a different column count from the header"
         )
 
-    def test_the_new_columns_sit_together_after_memory(self):
-        """Grouping the resource columns is the point; scattered they read worse."""
-        cols = [a or b for a, b in self._header_columns()]
-        assert cols.index("disk") == cols.index("memory") + 1
-        assert cols.index("gpu") == cols.index("disk") + 1
+    def test_the_host_facts_sit_together_after_memory(self):
+        """Grouping the resource readings is the point; scattered they read worse."""
+        row = self._sub_row()
+        order = [row.index(k) for k in ("CPU", "memory", "diskCellForHosts(", "gpuCellForHosts(")]
+        assert order == sorted(order)
 
 
 class TestTheColumnsSayWhatTheyMean:
@@ -85,7 +97,7 @@ class TestTheColumnsSayWhatTheyMean:
         Showing one under the other's name would be worse than showing neither,
         and "Disk" alone would be read as the service's usage.
         """
-        assert "'Host disk'" in _js()
+        assert "free on the host" in _js()
 
     def test_the_tooltip_denies_the_wrong_reading_explicitly(self):
         js = _js()
