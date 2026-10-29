@@ -24,7 +24,7 @@ docker run -d --name earnapp \
   -e EARNAPP_UUID=sdk-node-$(head -c 16 /dev/urandom | od -An -tx1 | tr -d ' \n') \
   -v earnapp-data:/etc/earnapp \
   --restart unless-stopped \
-  drumsergio/cashpilot-earnapp:1.665.73-r1
+  drumsergio/cashpilot-earnapp:1.665.73-r2
 ```
 
 Then open `https://earnapp.com/r/<your EARNAPP_UUID>` once while logged in to link the device. The log prints that link. Keep the same `EARNAPP_UUID` and volume when you recreate the container.
