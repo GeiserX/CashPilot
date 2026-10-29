@@ -16,6 +16,8 @@
 //
 // Needs the `playwright` npm package and Google Chrome (channel "chrome"); set
 // PW_CHANNEL="" to use Playwright's own Chromium instead.
+// CP_SCALE=2 takes retina shots (the README ones); CP_SHOT_ONLY=<regex> limits
+// the run to matching state names.
 import { chromium } from 'playwright';
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
@@ -202,7 +204,7 @@ export async function openState(browser, st, { urls, sessions, theme, problems, 
   const viewport = st.viewport || DESKTOP;
   const mobile = viewport === MOBILE;
   const ctx = await browser.newContext({
-    viewport, colorScheme: theme, deviceScaleFactor: 1,
+    viewport, colorScheme: theme, deviceScaleFactor: Number(process.env.CP_SCALE || 1),
     isMobile: mobile, hasTouch: mobile,
     storageState: st.auth === false ? undefined : sessions[st.server],
   });
