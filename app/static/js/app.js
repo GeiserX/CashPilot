@@ -816,6 +816,10 @@ const CP = (() => {
       : 'This worker did not report GPU information; it may predate the feature');
   }
 
+  // A refresh that started later wins: an older one whose requests answer
+  // last must not overwrite the newer attention list.
+  let _attentionSeq = 0;
+
   async function loadServicesTable() {
     const container = document.getElementById('services-table-container');
     if (!container) return;
@@ -835,6 +839,9 @@ const CP = (() => {
       // workers", and the columns would render a confident em-dash for every
       // row. null means the lookup itself failed, which is a different answer
       // and gets a different tooltip.
+      // Taken before the requests, so an older refresh that answers last
+      // cannot claim the newest number.
+      const seq = ++_attentionSeq;
       const [services, breakdown, workers] = await Promise.all([
         api('/api/services/deployed'),
         api('/api/earnings/breakdown').catch(() => []),
@@ -848,7 +855,7 @@ const CP = (() => {
       // A failed worker list keeps the column, so its cells can say why.
       container.classList.toggle('no-gpu', workers !== null && !Object.values(_hostResources || {}).some(h => h.gpu && h.gpu.available === true));
       renderPlacement(services || [], workers);
-      renderAttention(services || [], workers, ++_attentionSeq);
+      renderAttention(services || [], workers, seq);
 
       if (!services || services.length === 0) {
         // An empty list means one of two very different things, and saying the
@@ -1036,10 +1043,6 @@ const CP = (() => {
       </table>`;
   }
 
-  // A refresh that started later wins: renderAttention awaits the credential
-  // check, so an older call can finish last and must not overwrite the newer list.
-  let _attentionSeq = 0;
-
   async function renderAttention(services, workers, seq) {
     const list = document.getElementById('attention-list');
     if (!list) return;
@@ -1100,7 +1103,6 @@ const CP = (() => {
         console.warn('Could not load credential health:', err);
         items.push({ level: 'warn', tag: 'Unknown', what: 'Credentials', why: 'CashPilot could not check credential expiry. Reload the page to try again.' });
       }
-      if (seq !== _attentionSeq) return;
       for (const row of (Array.isArray(health) ? health : [])) {
         if (row.status !== 'expiring_soon' && row.status !== 'likely_expired') continue;
         if (items.some(i => i.tag === 'No reading' && String(i.what).toLowerCase() === String(row.service).toLowerCase())) continue;
@@ -1113,6 +1115,7 @@ const CP = (() => {
       }
     }
 
+    if (seq !== undefined && seq !== _attentionSeq) return;
     const order = { fail: 0, warn: 1 };
     items.sort((a, b) => order[a.level] - order[b.level]);
     list.innerHTML = items.map(i => `
@@ -3123,9 +3126,11 @@ const CP = (() => {
     }
 
     if (instances.length > 0) {
+      // Copies on one box count once: the heading is about boxes.
+      const boxCount = new Set(instances.map(i => i.worker.id)).size;
       html += `
       <div class="sd-block sd-instances">
-        <h4 class="sd-h">Deployed on ${instances.length} ${instances.length === 1 ? 'box' : 'boxes'}</h4>`;
+        <h4 class="sd-h">Deployed on ${boxCount} ${boxCount === 1 ? 'box' : 'boxes'}</h4>`;
       for (const inst of instances) {
         const s = inst.container.status || 'unknown';
         const st = instanceState(s);
