@@ -80,12 +80,6 @@ cashout:
     Tron TRC20 (high network fees), or a bank transfer from $1,000. Changing a
     saved method needs an email confirmation. Before the first withdrawal the
     dashboard also asks for a messenger contact.
-  notes: >-
-    Minimum $10. PayPal is no longer offered. Save one payout method in the
-    profile first: USDT on Solana or TON (lowest fees), Arbitrum (low fees) or
-    Tron TRC20 (high network fees), or a bank transfer from $1,000. Changing a
-    saved method needs an email confirmation. Before the first withdrawal the
-    dashboard also asks for a messenger contact.
 
 platforms: [docker, windows, macos, android]
 
