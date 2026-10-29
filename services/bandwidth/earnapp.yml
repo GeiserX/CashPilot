@@ -75,6 +75,11 @@ cashout:
   dashboard_url: "https://earnapp.com/dashboard/cashout"
   min_amount: 10.0
   currency: USD
+  notes: >-
+    Turn on auto-redeem once and EarnApp pays by itself whenever the balance
+    reaches the method's minimum: PayPal $10, Wise $10, Amazon $50. PayPal
+    payments arrive from Bright Data Ltd. In October 2026 a $37.54 balance
+    arrived as $36.81 in PayPal, about 2% less.
 
 platforms: [docker, windows, macos, linux, android]
 

@@ -80,9 +80,13 @@ earnings:
 
 cashout:
   method: redirect
-  dashboard_url: "https://app.bitping.com/dashboard"
+  dashboard_url: "https://nodes.bitping.com/dashboard"
   min_amount: 5.0
   currency: USD
+  notes: >-
+    Node earnings live on nodes.bitping.com; app.bitping.com is the API
+    customer dashboard. Withdrawals are SOL only: type the Solana address into
+    the request, processed within 24 hours.
 
 platforms: [docker, windows, macos, linux]
 

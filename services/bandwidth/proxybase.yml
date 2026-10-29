@@ -54,7 +54,7 @@ requirements:
 
 payment:
   methods: [crypto]
-  minimum_payout: "$1"
+  minimum_payout: "$0.20"
   currency: USD
   frequency: "On request"
 
@@ -67,9 +67,14 @@ earnings:
 
 cashout:
   method: redirect
-  dashboard_url: "https://peer.proxybase.org/dashboard"
-  min_amount: 1.0
+  dashboard_url: "https://peer.proxybase.org/dashboard/withdraw"
+  min_amount: 0.2
   currency: USD
+  notes: >-
+    The site lists a $0.20 minimum, and a $0.75 request went through in
+    October 2026. A request always withdraws the full balance, as USDC on
+    Polygon, POL or Litecoin, to an address you type in. ProxyBase covers the
+    network fee.
 
 platforms: [docker, windows, linux]
 

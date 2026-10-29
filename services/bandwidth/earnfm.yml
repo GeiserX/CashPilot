@@ -41,7 +41,7 @@ requirements:
   min_storage: ""
 
 payment:
-  methods: [crypto]
+  methods: [crypto, paypal, giftcard, bank]
   minimum_payout: "$15"
   currency: USD
   frequency: "On request"
@@ -58,6 +58,11 @@ cashout:
   dashboard_url: "https://app.earn.fm/#/payout"
   min_amount: 15.0
   currency: USD
+  notes: >-
+    Minimum $15. Methods: USDT on BEP20 or Polygon ($1 fee) or TRC20 ($3
+    fee), PayPal, Amazon or Starbucks gift cards from $15, or a bank wire from
+    $1,000 with transfer fees deducted. Before the first payout you fill in a
+    billing profile (legal name and address), used for the payout receipts.
 
 platforms: [docker, linux]
 

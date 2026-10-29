@@ -32,11 +32,15 @@ EarnApp by Bright Data lets you sell your unused bandwidth for passive income. B
 |--------|-------|
 | Monthly range | $0 - $5 (estimate) |
 | Per | device |
-| Minimum payout | $2.50 |
+| Minimum payout | $10 |
 | Payout frequency | On request (auto-redeem available: PayPal $10 min, Wise $10 min, Amazon $50 min) |
 | Payment methods | Paypal, Amazon Giftcard, Wise |
 
 > Highly location-dependent. US/EU IPs earn the most. Earnings scale with bandwidth consumed.
+
+## Cashing out
+
+Turn on auto-redeem once and EarnApp pays by itself whenever the balance reaches the method's minimum: PayPal $10, Wise $10, Amazon $50. PayPal payments arrive from Bright Data Ltd. In October 2026 a $37.54 balance arrived as $36.81 in PayPal, about 2% less.
 
 ## Requirements
 
