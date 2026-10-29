@@ -464,7 +464,7 @@ def main_cli() -> None:
     _fresh_dir(data_dir)
     _prepare_env(data_dir)
     asyncio.run(seed(data_dir))
-    print(f"Seeded {data_dir}. Login: {DEMO_USER} / {DEMO_PASSWORD}")
+    print(f"Seeded {data_dir}. Log in as {DEMO_USER}; the demo password is in this script's docstring.")
     if args.serve:
         import subprocess
 
