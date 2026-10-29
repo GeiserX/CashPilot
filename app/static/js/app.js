@@ -419,11 +419,38 @@ const CP = (() => {
     // Confirmed payouts alone are worth showing, so this hides the card only
     // when BOTH are absent. Same defect filed three times: CashPilot-3oa
     // (the API), -s2b (the lifetime figure), -jkd (the card and bar).
+    // The record form stays reachable even with nothing collected: a cash-out
+    // made before CashPilot was installed is exactly the one to enter.
+    // null, not [], when the list could not be read: an empty list would invite
+    // the user to record again a cash-out that is already there.
+    const confirmed = await api(`/api/earnings/payouts?platform=${encodeURIComponent(slug)}`)
+      .then(r => r.confirmed || [])
+      .catch(err => { console.warn('Could not load cash-outs', err); return null; });
+    card.style.display = '';
+    const payoutRows = (confirmed || []).map(p => `
+        <li class="payout-row">
+          <span class="num">${escapeHtml(String(p.detected_at || '').slice(0, 10))} · ${escapeHtml(Number(p.amount).toFixed(2))} ${escapeHtml(p.currency || '')}${p.method ? ` · ${escapeHtml(p.method)}` : ''}</span>
+          ${_canWrite ? `<button type="button" class="btn btn-ghost btn-sm" data-remove-payout="${escapeHtml(String(p.id))}" title="Remove this cash-out">Remove</button>` : ''}
+        </li>`).join('');
+    const payoutList = confirmed === null
+      ? '<p class="form-hint text-warn">Cash-outs could not be loaded.</p>'
+      : (payoutRows ? `<ul class="payout-list">${payoutRows}</ul>` : '');
+    const recordForm = (_canWrite ? `
+      <details class="payout-record">
+        <summary>Record a cash-out</summary>
+        <form id="record-payout-form" class="payout-record-form">
+          <input class="form-input form-input-price" name="amount" type="number" step="any" min="0" required placeholder="Amount${unit ? ` (${escapeHtml(unit)})` : ''}">
+          <input class="form-input" name="method" type="text" maxlength="40" placeholder="Method, e.g. PayPal">
+          <input class="form-input" name="date" type="date">
+          <button type="submit" class="btn btn-primary btn-sm">Save</button>
+        </form>
+        <p class="form-hint">For a cash-out CashPilot did not catch, such as one made before it was installed. It counts toward the total earned.</p>
+      </details>` : '') + payoutList;
     if (!data.balance_known && !paid) {
-      card.style.display = 'none';
+      body.innerHTML = recordForm;
+      wirePayoutForm(card, slug);
       return;
     }
-    card.style.display = '';
     body.innerHTML = `
       <div class="detail-grid">
         <div class="detail-item">
@@ -438,7 +465,40 @@ const CP = (() => {
       </div>
       ${bar}
       <p class="sd-note">${escapeHtml(projection.summary || '')}</p>
+      ${recordForm}
     `;
+    wirePayoutForm(card, slug);
+  }
+
+  function wirePayoutForm(card, slug) {
+    const form = card.querySelector('#record-payout-form');
+    if (form) {
+      form.addEventListener('submit', async (ev) => {
+        ev.preventDefault();
+        const fd = new FormData(form);
+        try {
+          const out = await api('/api/earnings/payouts', {
+            method: 'POST',
+            body: { platform: slug, amount: Number(fd.get('amount')), method: String(fd.get('method') || ''), date: String(fd.get('date') || '') || null },
+          });
+          toast(out.priced === false ? 'Cash-out recorded; no exchange rate for that date, so it is left out of the USD total' : 'Cash-out recorded', 'success');
+          await Promise.all([loadPayoutProgress(), loadDashboardStats()]);
+        } catch (err) {
+          toast(err.message || 'Could not record the cash-out', 'error');
+        }
+      });
+    }
+    card.querySelectorAll('[data-remove-payout]').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        if (!window.confirm('Remove this cash-out? It will no longer count toward the total earned.')) return;
+        try {
+          await api(`/api/earnings/payouts/${encodeURIComponent(btn.dataset.removePayout)}`, { method: 'DELETE' });
+          await Promise.all([loadPayoutProgress(), loadDashboardStats()]);
+        } catch (err) {
+          toast(err.message || 'Could not remove the cash-out', 'error');
+        }
+      });
+    });
   }
 
   // What running this service actually does with the machine and connection.
@@ -549,6 +609,21 @@ const CP = (() => {
           bonusNote.style.display = '';
         } else {
           bonusNote.style.display = 'none';
+        }
+      }
+
+      const allTime = document.getElementById('all-time-note');
+      if (allTime) {
+        const unpriced = data.unpriced_payouts || 0;
+        const unpricedNote = unpriced > 0 ? `, plus ${unpriced} cash-out${unpriced === 1 ? '' : 's'} with no USD rate` : '';
+        if (data.paid_out === null) {
+          allTime.textContent = 'Earned all time: cash-outs could not be read';
+          allTime.style.display = '';
+        } else if ((data.paid_out || 0) > 0 || unpriced > 0) {
+          allTime.textContent = `Earned all time ${formatCurrency(data.earned_all_time || 0)} (${formatCurrency(data.paid_out)} cashed out${unpricedNote})`;
+          allTime.style.display = '';
+        } else {
+          allTime.style.display = 'none';
         }
       }
 

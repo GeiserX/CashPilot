@@ -18,6 +18,9 @@
     <div class="stat-label">Balance</div>
     <div class="stat-value highlight" id="total-earnings">—</div>
     <div id="total-bonus-note" class="stat-note" style="display:none;"></div>
+    <!-- What the balance cannot say: it drops on every cash-out. Shown once a
+         payout is confirmed or recorded, so lifetime earnings survive cashing out. -->
+    <div id="all-time-note" class="stat-note" style="display:none;"></div>
     <div id="no-readings-note" class="stat-note" style="display:none;">Nothing collected yet</div>
     <!-- app/exchange_rates.py tracks per-source staleness and publishes it on
          /api/exchange-rates, and nothing ever read it: a MYST balance kept

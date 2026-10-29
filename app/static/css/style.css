@@ -1581,6 +1581,11 @@ input[type="checkbox"] { accent-color: var(--text-primary); }
 .sd-actions { display: flex; gap: 8px; align-items: center; }
 .sd-status { font-size: var(--fs-2); color: var(--text-secondary); }
 .sd-note { color: var(--text-secondary); margin: 10px 0; }
+.payout-list { list-style: none; padding: 0; margin: 8px 0 0; }
+.payout-row { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 4px 0; border-bottom: 1px solid var(--border-color); font-size: var(--fs-2); }
+.payout-record { margin-top: 12px; }
+.payout-record > summary { cursor: pointer; font-size: var(--fs-2); color: var(--text-secondary); }
+.payout-record-form { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
 .sd-instances { margin-bottom: 18px; }
 .sd-inst { display: flex; align-items: center; gap: 10px; padding: 5px 0; border-bottom: 1px solid var(--border-color); }
 .sd-inst .cell { width: 10px; height: 10px; }
