@@ -1593,6 +1593,10 @@ async def lifespan(app: FastAPI):
     # already lands on UNKNOWN.
     _spawn(update_check.refresh())
     _spawn(update_check.refresh_android())
+    # Retention too, for the same reason: its 24-hour interval counts from
+    # process start, so an install that restarts more than once a day (every
+    # release recreates this container) never purged anything at all.
+    _spawn(_run_data_retention())
     _spawn(_run_collection())
     logger.info("CashPilot UI started (container ops via workers)")
 
