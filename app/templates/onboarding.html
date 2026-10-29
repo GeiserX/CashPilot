@@ -248,6 +248,28 @@
       margin-right: 0.5rem;
     }
     @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* Calm theme: same structure, no poster. Warm neutral ground, one blue. */
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI Variable Text", "Segoe UI", system-ui, Roboto, sans-serif; background: #191816; color: #efebe5; }
+    .synthwave-bg { display: none; }
+    .container { text-align: left; max-width: 420px; }
+    .card { background: transparent; backdrop-filter: none; border: none; box-shadow: none; padding: 0; }
+    .brand { justify-content: flex-start; margin-bottom: 2rem; }
+    .brand-text { background: none; -webkit-text-fill-color: #efebe5; color: #efebe5; font-size: 1.1rem; font-weight: 600; }
+    h1 { font-size: 1.9rem; font-weight: 600; color: #efebe5; }
+    .subtitle { color: #c0b9ae; }
+    .field label { color: #c0b9ae; }
+    .field input { background: #211f1c; border: 1px solid #34312d; color: #efebe5; }
+    .field input:focus { border-color: #8eaef2; box-shadow: 0 0 0 3px rgba(142,174,242,.14); }
+    .btn { background: #8eaef2; color: #141c2e; border-radius: 8px; box-shadow: none; padding: 0.7rem 1.4rem; }
+    .btn:hover { transform: none; box-shadow: none; background: #adc4f6; }
+    .btn-ghost { background: transparent !important; color: #c0b9ae !important; border: none !important; }
+    .step-dots { justify-content: flex-start; }
+    .step.active { animation: none; }
+    .info-badge { background: #211f1c; color: #c0b9ae; }
+    .dot { background: #34312d; }
+    .dot.active { background: #8eaef2; box-shadow: none; }
+    .success-icon { margin: 0 0 1rem; }
   </style>
   <script nonce="{{ csp_nonce(request) }}">
     document.querySelectorAll('link[data-async-style]').forEach((link) => {

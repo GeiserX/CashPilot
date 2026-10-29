@@ -6,11 +6,7 @@
   <meta name="color-scheme" content="dark light">
   <title>{% block title %}CashPilot{% endblock %}</title>
   <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="/static/css/style.css?v={{ app_version() }}">
-  <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" data-async-style>
-  <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"></noscript>
   <script nonce="{{ csp_nonce(request) }}">
     (function(){var t=localStorage.getItem('cp-theme')||'dark';document.documentElement.setAttribute('data-theme',t)})();
   </script>
@@ -43,7 +39,7 @@
   <!-- Sidebar -->
   <aside class="sidebar">
     <div class="sidebar-brand">
-      <svg width="28" height="28" viewBox="0 0 256 256" role="img" aria-label="CashPilot">
+      <svg width="22" height="22" viewBox="0 0 256 256" role="img" aria-label="CashPilot">
         <defs>
           <linearGradient id="cpSun" x1="0%" y1="0%" x2="0%" y2="100%">
             <stop offset="0%" stop-color="#FFD54F"/>
@@ -71,24 +67,24 @@
       </svg>
       CashPilot
     </div>
-    <nav class="sidebar-nav">
+    <nav class="sidebar-nav" aria-label="Main">
       <a href="/" class="sidebar-link {% if active_page == 'dashboard' %}active{% endif %}">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/>
         </svg>
-        Dashboard
-      </a>
-      <a href="/setup" class="sidebar-link {% if active_page == 'setup' %}active{% endif %}">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M14.7 6.3a1 1 0 000 1.4l1.6 1.6a1 1 0 001.4 0l3.77-3.77a6 6 0 01-7.94 7.94l-6.91 6.91a2.12 2.12 0 01-3-3l6.91-6.91a6 6 0 017.94-7.94l-3.76 3.76z"/>
-        </svg>
-        Setup Wizard
+        Overview
       </a>
       <a href="/catalog" class="sidebar-link {% if active_page == 'catalog' %}active{% endif %}">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <path d="M4 19.5A2.5 2.5 0 016.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z"/>
         </svg>
-        Service Catalog
+        Services
+      </a>
+      <a href="/fleet" class="sidebar-link {% if active_page == 'fleet' %}active{% endif %}">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="2" y="2" width="9" height="9" rx="1"/><rect x="13" y="2" width="9" height="9" rx="1"/><rect x="2" y="13" width="9" height="9" rx="1"/><rect x="13" y="13" width="9" height="9" rx="1"/>
+        </svg>
+        Machines
       </a>
       {% if user and user.r == 'owner' %}
       <!-- Owner-only, matching /payouts and /api/payout-registry. This view maps
@@ -106,11 +102,12 @@
         Settings
       </a>
       {% endif %}
-      <a href="/fleet" class="sidebar-link {% if active_page == 'fleet' %}active{% endif %}">
+      <div class="sidebar-nav-gap"></div>
+      <a href="/setup" class="sidebar-link sidebar-link-add {% if active_page == 'setup' %}active{% endif %}">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <rect x="2" y="2" width="9" height="9" rx="1"/><rect x="13" y="2" width="9" height="9" rx="1"/><rect x="2" y="13" width="9" height="9" rx="1"/><rect x="13" y="13" width="9" height="9" rx="1"/>
+          <path d="M14.7 6.3a1 1 0 000 1.4l1.6 1.6a1 1 0 001.4 0l3.77-3.77a6 6 0 01-7.94 7.94l-6.91 6.91a2.12 2.12 0 01-3-3l6.91-6.91a6 6 0 017.94-7.94l-3.76 3.76z"/>
         </svg>
-        Fleet
+        Add a service
       </a>
     </nav>
     <div class="sidebar-footer">

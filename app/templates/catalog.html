@@ -1,13 +1,11 @@
 {% extends "base.html" %}
 
-{% block title %}Service Catalog - CashPilot{% endblock %}
+{% block title %}Services - CashPilot{% endblock %}
 {% block page %}catalog{% endblock %}
-{% block topbar_title %}Service Catalog{% endblock %}
+{% block topbar_title %}Services{% endblock %}
 
 {% block content %}
-<div class="section-header">
-  <h2 class="section-title">Available Services</h2>
-</div>
+<p class="page-intro">Each service pays you for something your machines already have: spare bandwidth, disk or compute. Pick one to see what it pays and how to start it.</p>
 
 <!-- Filter Bar -->
 <div class="filter-bar">
@@ -22,13 +20,13 @@
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
       <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
     </svg>
-    <input class="form-input" type="search" id="catalog-search" placeholder="Search services...">
+    <input class="form-input" type="search" id="catalog-search" placeholder="Search services" aria-label="Search services">
   </div>
 </div>
 
 <!-- Service Grid -->
-<div class="services-grid" id="catalog-grid">
-  <div class="spinner" style="margin: 48px auto;"></div>
+<div class="catalog" id="catalog-grid">
+  <div class="loading-line"><div class="spinner"></div> Loading services</div>
 </div>
 <p class="referral-note">Visit and Sign Up links to providers with a referral programme are referral links: the CashPilot maintainer may earn a commission from them.</p>
 {% endblock %}

@@ -2,53 +2,33 @@
 
 {% block title %}Payouts - CashPilot{% endblock %}
 {% block page %}payouts{% endblock %}
-{% block topbar_title %}Payout Destinations{% endblock %}
+{% block topbar_title %}Payouts{% endblock %}
 
 {% block content %}
-<h2 class="section-title" style="margin-bottom: 8px;">Where your money goes</h2>
-<p class="settings-section-desc" style="margin-bottom: 24px; max-width: 70ch;">
-  Every service in the catalog and the address it pays to. Addresses are read from
-  the spec each container was <em>actually deployed</em> with &mdash; not from the
-  catalog default &mdash; so what you see here is what your machines are really using.
-  Undeployed services are listed too, because the time to learn a service needs a
-  wallet is <em>before</em> you deploy it.
+<p class="page-intro">
+  Where each service sends your money. Addresses are read from what each container was
+  actually deployed with, not from the catalog default, so this is what your machines really use.
 </p>
 
-<div class="stats-grid" style="margin-bottom: 24px;">
-  <div class="stat-card">
-    <div class="stat-label">Services</div>
-    <div class="stat-value" id="payout-total">&mdash;</div>
-  </div>
-  <div class="stat-card">
-    <div class="stat-label">Deployed</div>
-    <div class="stat-value" id="payout-deployed">&mdash;</div>
-  </div>
+<div class="payout-summary">
+  <span><span class="stat-value" id="payout-deployed">&mdash;</span> of <span class="stat-value" id="payout-total">&mdash;</span> services deployed.</span>
   <!-- The only number on this page that asks the user to DO something. -->
-  <div class="stat-card">
-    <div class="stat-label">Need an address</div>
-    <div class="stat-value" id="payout-needs-address">&mdash;</div>
-  </div>
-  <div class="stat-card">
-    <div class="stat-label">Irreplaceable state</div>
-    <div class="stat-value" id="payout-critical-count">&mdash;</div>
-  </div>
-  <div class="stat-card">
-    <div class="stat-label">Not classified</div>
-    <div class="stat-value" id="payout-unclassified">&mdash;</div>
-  </div>
+  <span><span class="stat-value" id="payout-needs-address">&mdash;</span> need an address.</span>
+  <span><span class="stat-value" id="payout-critical-count">&mdash;</span> keep money on a local disk.</span>
+  <span class="payout-summary-muted"><span class="stat-value" id="payout-unclassified">&mdash;</span> not classified yet.</span>
 </div>
 
-<div class="card" id="payout-actionable-card" style="display:none; border-color: var(--warning, #f59e0b);">
-  <h3 class="settings-section-title">Deployed, earning, and paying to nowhere</h3>
+<section class="notice notice-warn" id="payout-actionable-card" style="display:none;">
+  <h2 class="notice-title">Deployed, earning, and paying to nowhere</h2>
   <p class="settings-section-desc">
     These services are running and expect an address you have not given them.
     Whatever they earn may be going somewhere you cannot reach.
   </p>
   <div id="payout-actionable-body"></div>
-</div>
+</section>
 
-<div class="card" id="payout-critical-card" style="display:none; border-color: var(--error, #ef4444);">
-  <h3 class="settings-section-title">These are one deleted volume away from gone</h3>
+<section class="notice notice-bad" id="payout-critical-card" style="display:none;">
+  <h2 class="notice-title">These are one deleted volume away from gone</h2>
   <p class="settings-section-desc">
     These running services keep money-bearing state on disk that exists
     <strong>nowhere else</strong>. There is no server-side copy and no reset
@@ -57,18 +37,23 @@
     <code>docker volume rm</code>, a wiped disk, or a rebuilt machine.
   </p>
   <div id="payout-critical-body"></div>
-</div>
+</section>
 
-<div class="card">
-  <div class="card-header">
-    <h3 class="card-title">All services</h3>
-    <input type="search" id="payout-filter" class="form-input" placeholder="Filter by name, chain or address&hellip;"
-           style="max-width: 280px;" aria-label="Filter payout destinations">
+<section class="block">
+  <div class="block-head">
+    <h2 class="block-title">Your services</h2>
+    <div class="block-tools">
+      <label class="quiet-toggle" for="payout-show-all">
+        <input type="checkbox" id="payout-show-all"> Include services you don't run
+      </label>
+      <input type="search" id="payout-filter" class="form-input block-search" placeholder="Filter by name, chain or address"
+             aria-label="Filter payout destinations">
+    </div>
   </div>
   <div id="payout-table-container">
-    <p style="color: var(--text-muted); font-size: 0.85rem;">Loading&hellip;</p>
+    <div class="loading-line"><div class="spinner"></div> Loading</div>
   </div>
-</div>
+</section>
 {% endblock %}
 
 {% block scripts %}
@@ -167,15 +152,14 @@
   function payoutRow(entry) {
     var chain = entry.chain ? esc(entry.chain) : '<span class="payout-na">&mdash;</span>';
     var deployed = entry.deployed
-      ? '<span class="badge badge-deployed">Deployed</span>'
-      : '<span class="badge badge-unknown">Not deployed</span>';
+      ? '<span class="state state-on"><span class="status-dot running"></span> Deployed</span>'
+      : '<span class="state">Not deployed</span>';
     // Only a DEPLOYED service with a missing address is urgent. An undeployed
     // one is information, not a problem to solve today.
     var rowClass = (entry.address_missing && entry.deployed) ? ' class="payout-row-actionable"' : '';
     return '<tr' + rowClass + ' data-slug="' + esc(entry.slug) + '">'
-      + '<td>' + esc(entry.name || entry.slug) + '</td>'
+      + '<td class="svc-name">' + esc(entry.name || entry.slug) + '</td>'
       + '<td>' + deployed + '</td>'
-      + '<td><span class="badge badge-category">' + esc(entry.model || 'unknown') + '</span></td>'
       + '<td>' + chain + '</td>'
       + '<td>' + payoutAddressCell(entry) + '</td>'
       + '<td class="payout-balance-cell" data-slug="' + esc(entry.slug) + '">'
@@ -185,10 +169,10 @@
 
   function renderTable(entries) {
     if (!entries.length) {
-      return '<p style="color: var(--text-muted); font-size: 0.85rem;">Nothing matches that filter.</p>';
+      return '<div class="empty-state"><div class="empty-state-text">Nothing matches. Clear the filter or include services you don\'t run.</div></div>';
     }
-    return '<div style="overflow-x:auto;"><table class="breakdown-table"><thead><tr>'
-      + '<th>Service</th><th>Status</th><th>Payout model</th><th>Chain</th><th>Address</th>'
+    return '<div class="table-scroll"><table class="breakdown-table"><thead><tr>'
+      + '<th>Service</th><th>Status</th><th>Chain</th><th>Paid to</th>'
       + '<th>On-chain</th>'
       + '</tr></thead><tbody>'
       + entries.map(payoutRow).join('')
@@ -200,7 +184,11 @@
 
   function applyFilter() {
     var q = (document.getElementById('payout-filter').value || '').trim().toLowerCase();
-    var rows = !q ? _entries : _entries.filter(function (e) {
+    // Deployed first and by default: 40-odd "not deployed" rows bury the eight
+    // that matter. A search always looks at everything.
+    var all = document.getElementById('payout-show-all').checked || q;
+    var base = all ? _entries : _entries.filter(function (e) { return e.deployed; });
+    var rows = !q ? base : _entries.filter(function (e) {
       return [e.name, e.slug, e.chain, e.address, e.model]
         .some(function (v) { return v && String(v).toLowerCase().indexOf(q) !== -1; });
     });
@@ -246,7 +234,7 @@
     } catch (err) {
       // Say the registry could not be read. Never render an empty table, which
       // would look like "no services pay you anything".
-      container.innerHTML = '<p style="color: var(--error);">Could not load payout destinations: '
+      container.innerHTML = '<p class="page-error">Could not load payout destinations: '
         + esc((err && err.message) || 'error') + '</p>';
     }
   }
@@ -271,6 +259,7 @@
   document.addEventListener('DOMContentLoaded', function () {
     if (document.body.dataset.page !== 'payouts') return;
     document.getElementById('payout-filter').addEventListener('input', applyFilter);
+    document.getElementById('payout-show-all').addEventListener('change', applyFilter);
     loadPayouts();
   });
 })();

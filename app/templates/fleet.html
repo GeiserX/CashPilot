@@ -1,75 +1,26 @@
 {% extends "base.html" %}
 
-{% block title %}Fleet - CashPilot{% endblock %}
+{% block title %}Machines - CashPilot{% endblock %}
 {% block page %}fleet{% endblock %}
-{% block topbar_title %}Fleet Management{% endblock %}
+{% block topbar_title %}Machines{% endblock %}
 
 {% block content %}
-<!-- Fleet Stats -->
-<div class="stats-grid">
-  <div class="stat-card">
-    <div class="stat-label">Workers</div>
-    <div class="stat-value highlight" id="fleet-total-workers">-</div>
-  </div>
-  <div class="stat-card">
-    <div class="stat-label">Online</div>
-    <div class="stat-value" id="fleet-online-workers">-</div>
-  </div>
+<!-- Fleet summary: one line, not four tiles. -->
+<div class="fleet-summary">
+  <div class="stat-card"><div class="stat-value" id="fleet-online-workers">-</div> <div class="stat-label">of</div></div>
+  <div class="stat-card"><div class="stat-value" id="fleet-total-workers">-</div> <div class="stat-label">machines online.</div></div>
   {# "Workers" and "Online" are fleet-wide; these two count ONLY online workers
      (api_fleet_summary skips offline ones before accumulating). Nothing said so,
      so a host rebooting made "Services" drop and read as containers lost --
      contradicting the dashboard note that routes the user to this very page:
      "Containers keep running and earning while a worker is offline."
      (CashPilot-wij) #}
-  <div class="stat-card">
-    <div class="stat-label" title="Counted across workers that are currently online. Containers on an offline worker keep running and earning; they are not included here.">Services <span style="opacity:0.6;">(online)</span></div>
-    <div class="stat-value" id="fleet-total-containers">-</div>
-  </div>
-  <div class="stat-card">
-    <div class="stat-label" title="Counted across workers that are currently online. Containers on an offline worker keep running and earning; they are not included here.">Running <span style="opacity:0.6;">(online)</span></div>
-    <div class="stat-value" id="fleet-running-containers">-</div>
-  </div>
+  <div class="stat-card" title="Counted across workers that are currently online. Containers on an offline worker keep running and earning; they are not included here."><div class="stat-label">Services <span class="stat-qual">(online)</span>:</div> <div class="stat-value" id="fleet-running-containers">-</div> <div class="stat-label">of</div> <div class="stat-value" id="fleet-total-containers">-</div> <div class="stat-label">running.</div></div>
 </div>
-<div id="fleet-unreachable-note" style="display:none; margin:-8px 0 16px; font-size:0.82rem; color:var(--warning);"></div>
+<div id="fleet-unreachable-note" class="page-warn" style="display:none;"></div>
 
-<!-- Add Worker Info -->
-<div class="card" style="margin-bottom: 24px;">
-  <div class="card-header">
-    <span class="card-title">Add Worker</span>
-  </div>
-  <div style="padding: 0 20px 20px;">
-    <p style="color: var(--text-secondary); margin-bottom: 12px; font-size: 0.9rem;">
-      Deploy <code>drumsergio/cashpilot-worker</code> on each server, or install the
-      <a href="https://github.com/GeiserX/CashPilot-android" style="color: var(--accent);">Android app</a> on your phone.
-      For Docker workers, set these environment variables:
-    </p>
-    <div style="background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 8px; padding: 12px;">
-      <code id="worker-env" style="display: block; word-break: break-all; color: var(--text-primary); font-size: 0.85rem; white-space: pre-wrap;">CASHPILOT_UI_URL=<span id="env-ui-url"></span>
-CASHPILOT_API_KEY=<span id="env-api-key">••••••••</span>
-CASHPILOT_WORKER_NAME=server-name</code>
-      <div style="display: flex; gap: 8px; align-items: center; margin-top: 8px;">
-        <span id="api-key-status" class="badge badge-category" style="font-size:0.72rem;">Checking…</span>
-        {% if user.r == 'owner' %}
-        <button class="btn btn-ghost btn-sm" data-action="toggleApiKey" id="reveal-btn">Reveal API Key</button>
-        <button class="btn btn-ghost btn-sm" data-action="copyWorkerEnv">Copy</button>
-        {% endif %}
-      </div>
-      {# Shown only when the clipboard API is unreachable — which is the normal
-         case on the plain-http LAN origin docs/fleet.md documents, because
-         navigator.clipboard is gated on a secure context. #}
-      <div id="worker-env-fallback" style="display:none; margin-top:8px;">
-        <textarea readonly rows="3" class="form-input" style="width:100%; font-family:monospace; font-size:0.78rem;"></textarea>
-      </div>
-    </div>
-    <p style="color: var(--text-muted); margin-top: 8px; font-size: 0.82rem;">
-      The API key is set via <code>CASHPILOT_API_KEY</code> env var on the UI container. Use the same key on all workers.
-    </p>
-  </div>
-</div>
-
-<!-- Worker List -->
-<div class="section-header">
-  <h2 class="section-title">Workers</h2>
+<div id="fleet-workers" class="machine-list">
+  <div class="loading-line"><div class="spinner"></div> Loading machines</div>
 </div>
 
 <!-- Is this fleet worth running?
@@ -78,36 +29,63 @@ CASHPILOT_WORKER_NAME=server-name</code>
      in the app ever wrote them. A user who only uses the app saw "unknown"
      forever with no route out of it (CashPilot-jm6). The inputs below are that
      route. The verdict area stays hidden until there is something to say. -->
-<div class="card" style="margin-bottom: 24px; display:none;" id="fleet-economics-card">
-  <div class="card-header">
-    <span class="card-title">Running costs</span>
-    <span style="font-size:0.72rem; color:var(--text-muted);" id="fleet-economics-quality"></span>
+<section class="block" style="display:none;" id="fleet-economics-card">
+  <div class="block-head">
+    <h2 class="block-title">Is each machine worth its electricity?</h2>
+    <span class="block-meta" id="fleet-economics-quality"></span>
   </div>
 
-  <div id="power-settings" style="display:flex; gap:12px; flex-wrap:wrap; align-items:flex-end; padding:12px 0; border-bottom:1px solid var(--border-color); margin-bottom:12px;">
+  <div id="power-settings" class="power-settings">
     <div>
-      <label for="power-price" style="display:block; font-size:0.7rem; color:var(--text-muted); margin-bottom:4px;">Electricity price per kWh</label>
-      <input id="power-price" class="form-input" type="number" step="0.001" min="0" style="width:9rem;"
+      <label for="power-price" class="form-label">Electricity price per kWh</label>
+      <input id="power-price" class="form-input" type="number" step="0.001" min="0"
              placeholder="0.30" aria-describedby="power-help">
     </div>
     <div>
-      <label for="power-currency" style="display:block; font-size:0.7rem; color:var(--text-muted); margin-bottom:4px;">Currency</label>
-      <input id="power-currency" class="form-input" type="text" maxlength="4" style="width:5.5rem;" placeholder="EUR">
+      <label for="power-currency" class="form-label">Currency</label>
+      <input id="power-currency" class="form-input power-currency" type="text" maxlength="4" placeholder="EUR">
     </div>
-    <button class="btn btn-primary btn-sm" id="power-save">Save</button>
-    <span id="power-help" style="font-size:0.7rem; color:var(--text-muted);">
-      Your tariff, as it appears on your bill. Figures below are converted to USD.
+    <button class="btn btn-secondary" id="power-save">Save price</button>
+    <span id="power-help" class="power-help">
+      As it appears on your bill. Results are shown in USD.
     </span>
   </div>
 
   <div id="fleet-economics-body"></div>
-</div>
+</section>
 
-<div id="fleet-workers">
-  <div class="empty-state">
-    <div class="empty-state-title">Loading fleet...</div>
+<!-- Add Worker Info -->
+<details class="fold fleet-add" id="fleet-add">
+  <summary>Add a machine</summary>
+  <div class="fold-body">
+    <p class="fold-text">
+      Run <code>drumsergio/cashpilot-worker</code> on each computer with Docker, or install the
+      <a href="https://github.com/GeiserX/CashPilot-android">Android app</a> on a phone.
+      A Docker worker needs these three settings:
+    </p>
+    <div class="env-block">
+      <code id="worker-env" class="env-code">CASHPILOT_UI_URL=<span id="env-ui-url"></span>
+CASHPILOT_API_KEY=<span id="env-api-key">••••••••</span>
+CASHPILOT_WORKER_NAME=server-name</code>
+      <div class="env-actions">
+        <span id="api-key-status" class="badge badge-category">Checking…</span>
+        {% if user.r == 'owner' %}
+        <button class="btn btn-ghost btn-sm" data-action="toggleApiKey" id="reveal-btn">Reveal API Key</button>
+        <button class="btn btn-secondary btn-sm" data-action="copyWorkerEnv">Copy</button>
+        {% endif %}
+      </div>
+      {# Shown only when the clipboard API is unreachable — which is the normal
+         case on the plain-http LAN origin docs/fleet.md documents, because
+         navigator.clipboard is gated on a secure context. #}
+      <div id="worker-env-fallback" style="display:none; margin-top:8px;">
+        <textarea readonly rows="3" class="form-input env-fallback"></textarea>
+      </div>
+    </div>
+    <p class="fold-text fold-text-muted">
+      The key comes from <code>CASHPILOT_API_KEY</code> on this container. Every worker uses the same key to join.
+    </p>
   </div>
-</div>
+</details>
 {% endblock %}
 
 {% block scripts %}
@@ -132,15 +110,13 @@ CASHPILOT_WORKER_NAME=server-name</code>
         if (_apiKeySet) {
           statusEl.textContent = 'Configured';
           statusEl.className = 'badge badge-deployed';
-          statusEl.style.fontSize = '0.72rem';
         } else {
           statusEl.textContent = 'Not set';
           statusEl.className = 'badge badge-category';
-          statusEl.style.fontSize = '0.72rem';
         }
       }
     } catch {
-      if (statusEl) { statusEl.textContent = 'Unknown'; statusEl.style.fontSize = '0.72rem'; }
+      if (statusEl) { statusEl.textContent = 'Unknown'; }
     }
   }
 
@@ -318,60 +294,53 @@ CASHPILOT_WORKER_NAME=server-name</code>
     let html = '';
 
     if (workers.length === 0) {
-      html = `<div class="empty-state" style="padding: 40px 20px;">
-        <div class="empty-state-title">No workers registered</div>
-        <div class="empty-state-text">Deploy a CashPilot Worker on your servers to see them here.</div>
+      html = `<div class="empty-state">
+        <div class="empty-state-title">No machines yet</div>
+        <div class="empty-state-text">A machine is any computer or phone running the CashPilot worker. Open Add a machine below for the three settings it needs.</div>
       </div>`;
+      const add = document.getElementById('fleet-add');
+      if (add) add.open = true;
     } else {
       for (const w of workers) {
         const isOnline = w.status === 'online';
         const statusClass = isOnline ? 'running' : 'stopped';
-        const borderColor = isOnline ? 'var(--success)' : 'var(--text-muted)';
         const sysInfo = w.system_info || {};
         const isAndroid = (sysInfo.device_type === 'android');
         const items = isAndroid ? (w.apps || []) : (w.containers || []);
+        const wid = esc(w.client_id || w.id);
         html += `
-        <div class="card" style="margin-bottom: 12px; border-left: 3px solid ${borderColor};">
-          <div style="padding: 16px;">
-            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 12px;">
-              <div style="display: flex; align-items: center; gap: 8px;">
+        <div class="machine${isOnline ? '' : ' machine-offline'}">
+            <div class="machine-head">
+              <div class="machine-title">
                 <span class="status-dot ${statusClass}"></span>
-                <span style="font-weight: 600; color: var(--text-primary);">${esc(w.name)}</span>
-                ${isAndroid ? '<span style="font-size:0.7rem; padding:2px 6px; border-radius:4px; background:var(--bg-hover); color:var(--text-muted);">Android</span>' : ''}
-                ${nameCounts[String(w.name || '')] > 1 ? `<span style="font-size:0.7rem; padding:2px 6px; border-radius:4px; background:var(--warning-soft, var(--bg-hover)); color:var(--warning);" title="More than one worker is registered under this name. That usually means this host was redeployed with a new or empty /data, so it re-registered under a new id and the old row stayed behind. Compare the ids and the last-seen times before removing one.">duplicate name</span>` : ''}
+                <span class="machine-name">${esc(w.name)}</span>
+                <span class="machine-state">${isOnline ? 'Online' : 'Not reporting'}</span>
+                ${isAndroid ? '<span class="machine-tag">Android</span>' : ''}
+                ${nameCounts[String(w.name || '')] > 1 ? `<span class="machine-tag machine-tag-warn" title="More than one worker is registered under this name. That usually means this host was redeployed with a new or empty /data, so it re-registered under a new id and the old row stayed behind. Compare the ids and the last-seen times before removing one.">duplicate name</span>` : ''}
                 ${w.enrollment === 'incomplete'
-                  ? `<span style="font-size:0.7rem; padding:2px 6px; border-radius:4px; background:var(--warning-soft, var(--bg-hover)); color:var(--warning);" title="This worker enrolled but never used its own key, so it is still authenticating with the shared CASHPILOT_API_KEY. The shared key is no longer accepted for it. It usually means the worker cannot persist /data/.worker_key — an old image, or a /data that is read-only or not a persistent volume. Upgrade it to 1.0.0+ with a writable persistent /data, then remove it here so it can enroll again.">enrollment incomplete</span>`
+                  ? `<span class="machine-tag machine-tag-warn" title="This worker enrolled but never used its own key, so it is still authenticating with the shared CASHPILOT_API_KEY. The shared key is no longer accepted for it. It usually means the worker cannot persist /data/.worker_key — an old image, or a /data that is read-only or not a persistent volume. Upgrade it to 1.0.0+ with a writable persistent /data, then remove it here so it can enroll again.">enrollment incomplete</span>`
                   : w.enrollment === 'pending'
-                  ? `<span style="font-size:0.7rem; padding:2px 6px; border-radius:4px; background:var(--bg-hover); color:var(--text-muted);" title="This worker has been issued its own key but has not used it yet, so the shared key still works for it for a short while. It clears itself on the worker's next heartbeat.">enrolling</span>`
+                  ? `<span class="machine-tag" title="This worker has been issued its own key but has not used it yet, so the shared key still works for it for a short while. It clears itself on the worker's next heartbeat.">enrolling</span>`
                   : ''}
-                <code style="font-size:0.68rem; color:var(--text-muted); background:var(--bg-hover); padding:1px 5px; border-radius:3px;" title="This worker's client_id — the id CashPilot keys it on. Two rows with the same name always have different ids; this is how to tell which is which.">${esc(w.client_id || ('#' + w.id))}</code>
               </div>
-              <div style="display: flex; gap: 6px;">
+              <div class="machine-actions">
+                <span class="machine-seen" title="${esc(CP.fmtTimestamp(w.last_heartbeat).title)}">Last seen ${esc(CP.fmtTimestamp(w.last_heartbeat).text)}</span>
                 ${_isOwner && isOnline && !isAndroid && (sysInfo.features || []).includes('isolation_check')
                   ? `<button class="btn btn-ghost btn-sm btn-isolation-check" data-worker-id="${w.id}" title="Start two short-lived probe containers on this host and show what an earner can reach: your LAN, this host, an overlay network such as Tailscale, cloud metadata. Changes no firewall rule.">${_isolation[w.id] === 'running' ? 'Checking…' : 'Check isolation'}</button>`
                   : ''}
-                ${_isOwner ? `<button class="btn btn-danger btn-sm btn-remove-worker" data-worker-id="${w.id}" data-worker-name="${esc(w.name)}" data-worker-client="${esc(w.client_id || '')}" title="Remove worker">Remove</button>` : ''}
               </div>
             </div>
-            <div style="display: flex; gap: 16px; flex-wrap: wrap; font-size: 0.82rem; color: var(--text-muted);">
-              <span>${esc(w.url || '-')}</span>
-              <span>${esc(sysInfo.os || '-')}${sysInfo.os_version ? ' ' + esc(sysInfo.os_version) : ''}</span>
-              <span>${esc(sysInfo.arch || '-')}</span>
-              <span title="${esc(CP.fmtTimestamp(w.last_heartbeat).title)}">Last seen: ${esc(CP.fmtTimestamp(w.last_heartbeat).text)}</span>
-              <span>
-                <label for="watts-${esc(w.client_id || w.id)}" style="color:var(--text-muted);">Draw</label>
-                <input id="watts-${esc(w.client_id || w.id)}" class="power-watts form-input" type="number" min="0" step="1"
-                       data-client-id="${esc(w.client_id || w.id)}" value="${esc(w.watts ?? '')}"
-                       placeholder="65" style="width:5rem; padding:2px 6px; font-size:0.78rem;"
-                       title="Wall power this machine draws, in watts. Without it CashPilot cannot say what the machine costs to run.">W
-                <label style="color:var(--text-muted); margin-left:8px;">
-                  <input type="checkbox" class="power-dedicated" data-client-id="${esc(w.client_id || w.id)}" ${w.dedicated ? 'checked' : ''}>
-                  dedicated
-                </label>
-                <button class="btn btn-ghost btn-sm power-save-worker" data-client-id="${esc(w.client_id || w.id)}"
-                        style="font-size:0.7rem; padding:1px 6px;">Save</button>
-              </span>
-              ${sysInfo.version
+            ${isAndroid && items.length > 0 ? renderApps(items, isOnline, w.last_heartbeat) : ''}
+            ${!isAndroid && items.length > 0 ? renderContainers(w, isOnline) : ''}
+            ${_isolation[w.id] && _isolation[w.id] !== 'running' ? renderIsolation(_isolation[w.id]) : ''}
+            <details class="fold machine-more">
+              <summary>Details and power use</summary>
+              <div class="machine-meta">
+                <span><code style="font-size:0.68rem; color:var(--text-muted);" title="This worker's client_id — the id CashPilot keys it on. Two rows with the same name always have different ids; this is how to tell which is which.">${esc(w.client_id || ('#' + w.id))}</code></span>
+                <span>${esc(w.url || '-')}</span>
+                <span>${esc(sysInfo.os || '-')}${sysInfo.os_version ? ' ' + esc(sysInfo.os_version) : ''}</span>
+                <span>${esc(sysInfo.arch || '-')}</span>
+                ${sysInfo.version
                 ? (() => {
                     // What this worker was actually judged against. An Android
                     // client is compared to the newest CashPilot-android
@@ -384,14 +353,23 @@ CASHPILOT_WORKER_NAME=server-name</code>
                     const why = isAndroid
                       ? `This phone is on an older CashPilot Android release than the newest published one (${esc(ref)}). Install the newer APK from the GitHub releases page.`
                       : `This worker is on a different release series from the UI (${esc(ref)}). Update whichever is behind — on Unraid the UI and the worker are two separate apps, so updating one leaves the other.`;
-                    return `<span${w.version_skew ? ` style="color:var(--warning); font-weight:600;" title="${why}"` : ''}>v${esc(sysInfo.version)}${w.version_skew ? ` \u2260 ${refLabel}` : ''}</span>`;
+                    return `<span${w.version_skew ? ` class="machine-skew" title="${why}"` : ''}>v${esc(sysInfo.version)}${w.version_skew ? ` ≠ ${refLabel}` : ''}</span>`;
                   })()
                 : `<span title="This worker predates version reporting, so CashPilot cannot tell which release it is. Update it to find out.">version unknown</span>`}
-            </div>
-            ${isAndroid && items.length > 0 ? renderApps(items, isOnline, w.last_heartbeat) : ''}
-            ${!isAndroid && items.length > 0 ? renderContainers(w, isOnline) : ''}
-            ${_isolation[w.id] && _isolation[w.id] !== 'running' ? renderIsolation(_isolation[w.id]) : ''}
-          </div>
+              </div>
+              <div class="machine-power">
+                <label for="watts-${wid}">Power draw</label>
+                <input id="watts-${wid}" class="power-watts form-input" type="number" min="0" step="1"
+                       data-client-id="${wid}" value="${esc(w.watts ?? '')}" placeholder="65"
+                       title="Wall power this machine draws, in watts. Without it CashPilot cannot say what the machine costs to run."> W
+                <label class="machine-check">
+                  <input type="checkbox" class="power-dedicated" data-client-id="${wid}" ${w.dedicated ? 'checked' : ''}>
+                  Only on for CashPilot
+                </label>
+                <button class="btn btn-ghost btn-sm power-save-worker" data-client-id="${wid}">Save</button>
+                ${_isOwner ? `<button class="btn btn-ghost btn-sm btn-danger-quiet btn-remove-worker" data-worker-id="${w.id}" data-worker-name="${esc(w.name)}" data-worker-client="${esc(w.client_id || '')}" title="Remove worker">Remove machine</button>` : ''}
+              </div>
+            </details>
         </div>`;
       }
     }
@@ -493,25 +471,24 @@ CASHPILOT_WORKER_NAME=server-name</code>
   }
 
   function renderApps(apps, isOnline, lastSeen) {
-    let html = '<div style="margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border-color);">';
+    let html = '<div class="machine-services">';
     if (isOnline === false) {
-      html += `<div style="font-size:0.7rem; color:var(--text-muted); margin-bottom:6px;">Last known state — not reachable</div>`;
+      html += `<div class="machine-stale">Last known state. This device is not reachable.</div>`;
     }
-    html += '<div style="display: flex; gap: 6px; flex-wrap: wrap;">';
+    html += '<div class="chips">';
     for (const a of apps) {
       // Same rule as the containers: an unreachable device cannot be reporting
       // an app as running, whatever its last heartbeat said.
       const isRunning = isOnline !== false && a.running;
-      const color = isRunning ? 'var(--success)' : 'var(--text-muted)';
-      const bg = isRunning ? 'var(--success-soft)' : 'var(--bg-hover)';
       const tx = a.net_tx_24h || 0;
       const rx = a.net_rx_24h || 0;
       const staleTip = isOnline === false ? esc(staleNote(lastSeen)) : '';
       const trafficTip = (tx || rx) ? `24h: ↑${fmtBytes(tx)} ↓${fmtBytes(rx)}` : '';
       const tipText = [staleTip, trafficTip].filter(Boolean).join(' — ');
       const netTip = tipText ? ` title="${tipText}"` : '';
-      const appStyle = isOnline === false ? ' border:1px dashed var(--border-color); opacity:0.75;' : '';
-      html += `<span style="font-size:0.75rem; padding:3px 8px; border-radius:4px; background:${bg}; color:${color}; font-weight:500;${appStyle}"${netTip}>${esc(a.slug)}</span>`;
+      const cls = isOnline === false ? 'chip chip-stale' : isRunning ? 'chip' : 'chip chip-down';
+      const dot = isRunning ? '<i class="chip-dot" style="background:var(--success);"></i>' : '<i class="chip-dot"></i>';
+      html += `<span class="${cls}"${netTip}>${dot}${esc(a.slug)}</span>`;
     }
     html += '</div></div>';
     return html;
@@ -528,19 +505,18 @@ CASHPILOT_WORKER_NAME=server-name</code>
   }
 
   function renderContainers(worker, isOnline) {
-    let html = '<div style="margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border-color);">';
+    let html = '<div class="machine-services">';
     if (!isOnline) {
-      html += `<div style="font-size:0.7rem; color:var(--text-muted); margin-bottom:6px;">Last known state — not reachable</div>`;
+      html += `<div class="machine-stale">Last known state. This machine is not reachable.</div>`;
     }
-    html += '<div style="display: flex; gap: 6px; flex-wrap: wrap;">';
+    html += '<div class="chips">';
     for (const c of worker.containers) {
       const status = (c.status || 'stopped').toLowerCase();
       const isRunning = isOnline && status === 'running';
-      const color = isRunning ? 'var(--success)' : 'var(--text-muted)';
-      const bg = isRunning ? 'var(--success-soft)' : 'var(--bg-hover)';
-      const style = isOnline ? '' : ' border:1px dashed var(--border-color); opacity:0.75;';
-      const tip = isOnline ? '' : ` title="${esc(staleNote(worker.last_heartbeat))}"`;
-      html += `<span style="font-size:0.75rem; padding:3px 8px; border-radius:4px; background:${bg}; color:${color}; font-weight:500;${style}"${tip}>${esc(c.slug || c.name)}</span>`;
+      const cls = !isOnline ? 'chip chip-stale' : isRunning ? 'chip' : 'chip chip-down';
+      const tip = isOnline ? (isRunning ? '' : ` title="${esc(status)}"`) : ` title="${esc(staleNote(worker.last_heartbeat))}"`;
+      const dot = isRunning ? '<i class="chip-dot" style="background:var(--success);"></i>' : '<i class="chip-dot"></i>';
+      html += `<span class="${cls}"${tip}>${dot}${esc(c.slug || c.name)}${isOnline && !isRunning ? ` <em>${esc(status)}</em>` : ''}</span>`;
     }
     html += '</div></div>';
     return html;

@@ -1,65 +1,56 @@
 {% extends "base.html" %}
 
-{% block title %}Dashboard - CashPilot{% endblock %}
+{% block title %}Overview - CashPilot{% endblock %}
 {% block page %}dashboard{% endblock %}
-{% block topbar_title %}Dashboard{% endblock %}
+{% block topbar_title %}Overview{% endblock %}
 
 {% block content %}
-<!-- Stats Row -->
-<div class="stats-grid">
-  <div class="stat-card">
-    <div class="stat-label">Total Balance</div>
-    <div class="stat-value highlight" id="total-earnings">—</div>
-    <div id="total-bonus-note" style="display:none; font-size:0.7rem; color:var(--text-muted); margin-top:2px;"></div>
-    <div id="no-readings-note" style="display:none; font-size:0.7rem; color:var(--text-muted); margin-top:2px;">Nothing collected yet</div>
+<!-- Overview: how much, and is anything wrong. One sentence each, no tiles. -->
+<section class="overview" aria-labelledby="overview-heading">
+  <div class="overview-heading" id="overview-heading" role="heading" aria-level="1">
+    <div class="stat-value overview-amount" id="total-earnings">—</div>
+    <span class="overview-heading-rest">in your accounts</span>
+  </div>
+  <div class="overview-notes">
+    <div id="total-bonus-note" style="display:none;"></div>
+    <div id="no-readings-note" style="display:none;">Nothing collected yet. Balances appear after the first hourly collection.</div>
     <!-- app/exchange_rates.py tracks per-source staleness and publishes it on
          /api/exchange-rates, and nothing ever read it: a MYST balance kept
          being converted at a price that could be hours or days old with no
          indication on screen (CashPilot-dfw). -->
-    <div id="rates-stale-note" style="display:none; font-size:0.7rem; color:var(--warning); margin-top:2px;"></div>
+    <div id="rates-stale-note" class="overview-note-warn" style="display:none;"></div>
   </div>
-  <div class="stat-card">
-    <div class="stat-label">Today</div>
-    <div class="stat-value" id="today-earnings">—</div>
-    <div class="stat-change" id="today-change"></div>
-  </div>
-  <div class="stat-card">
-    <div class="stat-label">This Month</div>
-    <div class="stat-value" id="month-earnings">—</div>
-    <div class="stat-change" id="month-change"></div>
-  </div>
-  <div class="stat-card">
-    <div class="stat-label">Active Services</div>
-    {# Em-dash, like every sibling card. app.js already renders the em-dash when
+  <div class="overview-line">
+    <span class="overview-fig"><div class="stat-value" id="today-earnings">—</div> today<span class="stat-change" id="today-change"></span></span>
+    <span class="overview-fig"><div class="stat-value" id="month-earnings">—</div> this month<span class="stat-change" id="month-change"></span></span>
+    {# Em-dash, like every sibling. app.js already renders the em-dash when
        the count comes back null, and its catch deliberately PRESERVES whatever
        is displayed so a transient fetch failure cannot look like earnings
        dropping to zero. On a FIRST load that fails, what it preserved was this
-       literal 0 — so the one card fixed for this in JS was the one where a
-       template character undid the fix (CashPilot-pmi). #}
-    <div class="stat-value" id="active-services">&mdash;</div>
+       literal 0 (CashPilot-pmi). #}
+    <span class="overview-fig"><div class="stat-value" id="active-services">&mdash;</div> containers running</span>
   </div>
-</div>
+  <!-- Filled by renderDashHealth() from the services list: either one calm
+       "all good" line, or the short list of things that need a look. -->
+  <div class="dash-health" id="dash-health" role="status" aria-live="polite"></div>
+</section>
 
 <!-- Payouts awaiting an answer.
      Hidden until there is something to answer: an empty card every day would
      train people to ignore the one day it matters. A balance drop is only a
      PROBABLE payout — it can equally be a provider correction — so nothing is
      ever counted as income until the answer comes from here. -->
-<div class="card" id="payout-queue-card" style="margin-bottom: 24px; display:none;">
-  <div class="card-header">
-    <span class="card-title">Did you get paid?</span>
-    <span style="font-size:0.72rem; color:var(--text-muted);">
-      A balance drop can be a payout or a provider correction. Nothing counts as earned until you say.
-    </span>
-  </div>
+<section class="ask" id="payout-queue-card" style="display:none;" aria-labelledby="ask-heading">
+  <h2 class="ask-title" id="ask-heading">Did you get paid?</h2>
+  <p class="ask-text">A balance went down. That is usually a payout, sometimes a correction by the provider. Nothing counts as earned until you answer.</p>
   <div id="payout-queue-list"></div>
-</div>
+</section>
 
 <!-- Earnings Chart -->
-<div class="card" style="margin-bottom: 24px;">
-  <div class="card-header">
-    <span class="card-title">Earnings</span>
-    <div class="tab-strip">
+<section class="block" aria-labelledby="chart-heading">
+  <div class="block-head">
+    <h2 class="block-title" id="chart-heading">Earned per day</h2>
+    <div class="tab-strip" role="group" aria-label="Period">
       <button class="tab-btn chart-period-btn active" data-days="7" data-action="loadEarningsChart" data-a1="7">7 days</button>
       <button class="tab-btn chart-period-btn" data-days="30" data-action="loadEarningsChart" data-a1="30">30 days</button>
     </div>
@@ -67,23 +58,26 @@
   <div class="chart-container">
     <canvas id="earnings-chart"></canvas>
   </div>
-</div>
+</section>
 
 <!-- Deployed Services Table -->
-<div class="card" style="margin-bottom: 24px;">
-  <div class="card-header">
-    <span class="card-title">Deployed Services</span>
-    <div style="display:flex; gap:8px; align-items:center;">
-      <button class="btn btn-ghost btn-sm" data-action="refreshServices" title="Refresh">
+<section class="block" aria-labelledby="services-heading">
+  <div class="block-head">
+    <h2 class="block-title" id="services-heading">Your services</h2>
+    <div class="block-tools">
+      <label class="quiet-toggle" for="show-tech">
+        <input type="checkbox" id="show-tech"> Show technical details
+      </label>
+      <button class="btn btn-ghost btn-sm btn-icon-only" data-action="refreshServices" title="Refresh" aria-label="Refresh">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg>
       </button>
-      <a href="/setup" class="btn btn-primary btn-sm">+ Add Service</a>
+      <a href="/setup" class="btn btn-secondary btn-sm">Add a service</a>
     </div>
   </div>
-  <div id="services-table-container" style="overflow-x:auto;">
-    <div style="display:flex; align-items:center; justify-content:center; gap:8px; padding:24px 0; color:var(--text-muted);"><div class="spinner"></div> Loading services...</div>
+  <div id="services-table-container" class="table-scroll">
+    <div class="loading-line"><div class="spinner"></div> Loading services</div>
   </div>
-</div>
+</section>
 
 <!-- Credential Update Modal -->
 <div class="modal-overlay" id="cred-modal">
