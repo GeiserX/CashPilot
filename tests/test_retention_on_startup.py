@@ -11,8 +11,10 @@ running it once at startup; retention now does the same, and keeps its timer.
 from __future__ import annotations
 
 import ast
+import asyncio
 import inspect
 import textwrap
+from unittest.mock import AsyncMock, patch
 
 from app import main
 
@@ -23,9 +25,32 @@ def _lifespan_calls() -> set[str]:
 
 
 def test_the_purge_runs_once_at_startup():
-    assert "_run_data_retention" in _lifespan_calls(), (
-        "retention only runs 24 h after start, which an install restarting daily never reaches"
-    )
+    """Runs the real lifespan: the call must happen before it yields, not merely exist."""
+    retention = AsyncMock()
+
+    async def run():
+        with (
+            patch("app.main.database.init_db", new_callable=AsyncMock),
+            patch("app.main.database.connect_shared", new_callable=AsyncMock),
+            patch("app.main.database.close_shared", new_callable=AsyncMock),
+            patch("app.main.database.list_users_with_pwd_epoch", new_callable=AsyncMock, return_value=[]),
+            patch("app.main.database.list_session_revocations", new_callable=AsyncMock, return_value=[]),
+            patch("app.main.database.has_any_users", new_callable=AsyncMock, return_value=True),
+            patch("app.main.catalog.load_services"),
+            patch("app.main.catalog.register_sighup"),
+            patch("app.main.exchange_rates.refresh", new_callable=AsyncMock),
+            patch("app.main.update_check.refresh", new_callable=AsyncMock),
+            patch("app.main.update_check.refresh_android", new_callable=AsyncMock),
+            patch("app.main._run_collection", new_callable=AsyncMock),
+            patch("app.main._run_data_retention", retention),
+        ):
+            async with main.lifespan(main.app):
+                await asyncio.sleep(0)
+                assert retention.await_count == 1, (
+                    "retention only runs 24 h after start, which an install restarting daily never reaches"
+                )
+
+    asyncio.run(run())
 
 
 def test_the_daily_timer_is_kept():
