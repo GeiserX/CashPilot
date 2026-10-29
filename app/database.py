@@ -2212,6 +2212,27 @@ async def record_health_event(slug: str, event: str, detail: str = "") -> None:
         await db.close()
 
 
+async def get_last_lifecycle_event(slug: str) -> tuple[str, str] | None:
+    """The latest start/stop/restart/remove CashPilot recorded for ``slug``, with its UTC time.
+
+    Answers "did the user stop this from CashPilot?" for the container-down
+    alert. Scoped to one slug so the slug index does the work; the table holds
+    a check event per service every five minutes.
+    """
+    db = await _get_db()
+    try:
+        cursor = await db.execute(
+            "SELECT event, created_at FROM health_events "
+            "WHERE slug = ? AND event IN ('start', 'stop', 'restart', 'remove') "
+            "ORDER BY id DESC LIMIT 1",
+            (slug,),
+        )
+        row = await cursor.fetchone()
+        return (row["event"], row["created_at"]) if row else None
+    finally:
+        await db.close()
+
+
 async def record_health_events(events: list[tuple[str, str, str]]) -> None:
     """Record many health events in ONE transaction/commit.
 

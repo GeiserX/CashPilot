@@ -140,6 +140,33 @@ def _instance_of(container: Any) -> int:
         return 1
 
 
+def _stop_facts(container: Any) -> dict[str, Any]:
+    """When a stopped container stopped, how, and whether Docker will start it again.
+
+    Only for an exited or dead container, so a running fleet's heartbeat does
+    not grow. The UI uses these to alert on a container that has stayed down:
+    the timestamp says for how long, and a restart policy of "no" is why a
+    clean exit stayed down for days instead of being restarted.
+    """
+    if getattr(container, "status", "") not in ("exited", "dead"):
+        return {}
+    attrs = container.attrs if isinstance(getattr(container, "attrs", None), dict) else {}
+    state = attrs.get("State") if isinstance(attrs.get("State"), dict) else {}
+    host = attrs.get("HostConfig") if isinstance(attrs.get("HostConfig"), dict) else {}
+    policy = host.get("RestartPolicy") if isinstance(host.get("RestartPolicy"), dict) else None
+    facts: dict[str, Any] = {}
+    finished = state.get("FinishedAt")
+    # Docker's zero time means "never finished", which is not a date.
+    if isinstance(finished, str) and finished and not finished.startswith("0001-"):
+        facts["finished_at"] = finished
+    if isinstance(state.get("ExitCode"), int):
+        facts["exit_code"] = state["ExitCode"]
+    if policy is not None:
+        # An empty name is Docker's "no".
+        facts["restart_policy"] = str(policy.get("Name") or "no")
+    return facts
+
+
 def service_instances(slug: str) -> list[Any]:
     """Every managed container of ``slug`` on this worker, first copy first."""
     client = _get_client()
@@ -1349,6 +1376,7 @@ def get_status() -> list[dict[str, Any]]:
                 "deployed_by": c.labels.get(LABEL_DEPLOYED_BY, "unknown"),
                 "category": c.labels.get(LABEL_CATEGORY, ""),
                 "instance": _instance_of(c),
+                **_stop_facts(c),
             }
             # Present only when the service declares a dial-back address var;
             # the key's absence is "nothing to say", never "checked and fine".
@@ -1530,6 +1558,7 @@ def get_status_light() -> list[dict[str, Any]]:
                 "deployed_by": c.labels.get(LABEL_DEPLOYED_BY, "unknown"),
                 "category": c.labels.get(LABEL_CATEGORY, ""),
                 "instance": _instance_of(c),
+                **_stop_facts(c),
             }
             # Same contract as get_status: key present only when declared+set.
             if advertised := _advertised_address(c, slug):
