@@ -807,6 +807,25 @@ class TestDataRetention:
 
         asyncio.run(run())
 
+    def test_vacuum_waits_for_another_tasks_transaction_instead_of_committing_it(self, db):
+        # Live on 1.50.1: at startup another task's transaction on the shared
+        # connection made every VACUUM fail. VACUUM must neither fail nor commit
+        # that transaction; here the other task rolls back, so its row must vanish.
+        async def run():
+            shared = await database._get_db()
+            await shared.execute("INSERT INTO config (key, value) VALUES ('half_done', 'x')")
+            assert shared.in_transaction
+
+            async def other_task_rolls_back():
+                await asyncio.sleep(0.3)
+                await shared.rollback()
+
+            await asyncio.gather(database.vacuum_database(), other_task_rolls_back())
+            cur = await shared.execute("SELECT COUNT(*) FROM config WHERE key = 'half_done'")
+            assert (await cur.fetchone())[0] == 0
+
+        asyncio.run(run())
+
 
 class TestEncryption:
     def test_encrypt_decrypt_round_trip(self):
