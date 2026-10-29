@@ -39,6 +39,7 @@ DOCUMENTED_COLLECTOR_KEYS = {
     "credential_hint",
     "credential_lifetime",
     "durable_alternative",
+    "quiet_days",
 }
 
 
@@ -105,7 +106,7 @@ class TestNoServiceHidesGuidanceInAFieldNothingReads:
         schema = (SERVICES / "_schema.yml").read_text(encoding="utf-8")
         start = schema.index("# collector:")
         block = schema[start : start + 2000]
-        for key in ("type", "notes", "credential_hint", "per_node_earnings"):
+        for key in ("type", "notes", "credential_hint", "per_node_earnings", "quiet_days"):
             assert f"#   {key}:" in block, f"{key} is in the allowlist but not documented in _schema.yml"
 
     def test_the_documented_field_is_actually_used(self):

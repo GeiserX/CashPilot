@@ -587,52 +587,104 @@ async def _offline_worker_alerts() -> list[dict[str, str]]:
     return entries
 
 
-async def _flatline_check() -> list[dict[str, str]]:
-    """Alert on services that are running but whose balance has stopped moving.
+def _quiet_days_by_platform() -> dict[str, int]:
+    """Each catalog entry's collector.quiet_days, for the services that declare one."""
+    out: dict[str, int] = {}
+    for svc in catalog.get_services():
+        raw = (svc.get("collector") or {}).get("quiet_days")
+        with contextlib.suppress(TypeError, ValueError):
+            if raw is not None and int(raw) > 0:
+                out[svc["slug"]] = int(raw)
+    return out
+
+
+def _flatline_message(flat: dict[str, Any]) -> str:
+    name = (catalog.get_service(flat["platform"]) or {}).get("name") or flat["platform"]
+    days = flat.get("days_flat")
+    span = f" ({days} days)" if days else ""
+    if flat.get("last_increase") is None:
+        return (
+            f"{name} has not earned anything since CashPilot started reading it"
+            f"{' on ' + str(flat['since']) if flat.get('since') else ''}{span}. "
+            "Common causes: the device is not linked to your account, the provider has no demand for your "
+            "IP or region yet, or the node cannot be reached from outside. "
+            "This clears by itself when the balance grows."
+        )
+    gap = flat.get("usual_gap_days")
+    rhythm = (
+        f"it usually earns every {'day' if gap == 1 else f'{gap} days'}"
+        if gap
+        else "it earned before, though too rarely to say how often"
+    )
+    return (
+        f"{name} hasn't earned since {flat['last_increase']}{span}; {rhythm}. "
+        "Common causes: no demand for your IP or region right now, the device was unlinked from your "
+        "account, or the node cannot be reached from outside. Services often go quiet for a while and "
+        "pick up again; this clears by itself when the balance grows."
+    )
+
+
+# One push per quiet spell. The default 24 h cooldown would repeat the push
+# every day the balance stays flat; the alert row is cleared when the balance
+# grows, and that is what re-arms it.
+_FLATLINE_COOLDOWN_HOURS = 24 * 365 * 10
+
+
+async def _flatline_check(
+    collected: set[str] | None = None,
+    deployments: list[dict[str, Any]] | None = None,
+    statuses: list[dict[str, Any]] | None = None,
+) -> list[dict[str, str]]:
+    """Give a heads-up on a service whose balance has stopped growing.
 
     A container can be up and a collector can authenticate happily while the
     balance never moves. Every other view of the system looks healthy, so
     nothing else would surface it.
 
+    Soft evidence, so it is held back unless everything else is fine: the
+    collector succeeded this run (``collected``), and a service with a container
+    has a copy running on an online worker (``statuses`` only lists online
+    workers). A container that is down has its own alert, and an offline worker
+    its own. When a precondition fails the alert is neither raised nor cleared;
+    it clears only when the balance grows, so a payout or a restart cannot
+    re-arm it into a second push.
+
     Never raises: this is a diagnostic, and a diagnostic must not be able to
-    take down the collection run it is diagnosing. record_alert's per-kind
-    cooldown keeps this to one notification per service rather than one per
-    collection cycle.
+    take down the collection run it is diagnosing.
     """
     bell: list[dict[str, str]] = []
     try:
-        flat_services = await database.get_flatlined_services()
+        first_deployed = {d["slug"]: d.get("deployed_at") or "" for d in deployments or []}
+        flat_services = await database.get_flatlined_services(
+            quiet_days=_quiet_days_by_platform(), first_deployed=first_deployed
+        )
         flat_now = {f["platform"] for f in flat_services}
 
-        # Clear the cooldown for anything that has started earning again.
-        # record_alert suppresses a repeat within the quiet window, so without
-        # this a service that recovered and then went flat again inside that
-        # window would be silently swallowed - the alert nobody gets.
+        # Clear the row for anything that has started earning again, so its
+        # next quiet spell notifies instead of being deduped into silence.
         for recovered in await database.get_alert_subjects("flatline") - flat_now:
             await database.clear_alerts("flatline", recovered)
             logger.info("%s is earning again; cleared its flatline alert", recovered)
 
+        has_container = {d["slug"] for d in deployments or [] if d.get("status") != "external"}
+        running = {s["slug"] for s in statuses or [] if s.get("status") == "running"}
         for flat in flat_services:
-            message = (
-                f"Balance has not moved in {flat['days_flat']} days "
-                f"(still {flat['balance']}). The service is running but not earning."
-            )
+            platform = flat["platform"]
+            if collected is not None and platform not in collected:
+                continue
+            if statuses is not None and platform in has_container and platform not in running:
+                continue
+            message = _flatline_message(flat)
             # Built for EVERY flatlined service, not only the ones that clear
             # record_alert's cooldown. The cooldown exists to stop repeat
-            # NOTIFICATIONS; the bell is a standing statement of what is wrong
-            # right now, so gating it the same way would blank the bell on the
-            # second collection while the service was still not earning.
-            bell.append({"kind": "flatline", "platform": flat["platform"], "error": message})
-            if alert_id := await database.record_alert("flatline", flat["platform"], message):
-                _spawn(
-                    _push_alert(
-                        "flatline",
-                        flat["platform"],
-                        f"CashPilot: {flat['platform']} is running but not earning",
-                        message,
-                        alert_id,
-                    )
-                )
+            # NOTIFICATIONS; the bell is a standing statement of what is true
+            # right now.
+            bell.append({"kind": "flatline", "platform": platform, "error": message})
+            if alert_id := await database.record_alert(
+                "flatline", platform, message, cooldown_hours=_FLATLINE_COOLDOWN_HOURS
+            ):
+                name = (catalog.get_service(platform) or {}).get("name") or platform
+                _spawn(_push_alert("flatline", platform, f"CashPilot: {name} has gone quiet", message, alert_id))
     except Exception as exc:
         logger.warning("Flatline check failed: %s", exc)
         # The check's own failure must not render as health: an empty return
@@ -787,6 +839,7 @@ async def _run_collection() -> None:
             # recovery, and conflating the two would clear the wrong kind.
             previously_noticing = {a["platform"] for a in _collector_alerts if a.get("kind") == "notice"}
             platforms_ok = 0
+            collected_ok: set[str] = set()
             for result in results:
                 if isinstance(result, Exception):
                     # Redacted BEFORE it is logged. A collector exception is
@@ -880,6 +933,7 @@ async def _run_collection() -> None:
                     )
                     logger.info("Collected %s: %.4f %s", result.platform, result.balance, result.currency)
                     platforms_ok += 1
+                    collected_ok.add(result.platform)
                     if result.platform in previously_alerting:
                         # Recovered — drop the stored alert so a future failure counts
                         # as new and notifies again.
@@ -903,7 +957,12 @@ async def _run_collection() -> None:
             # none of the NTFY/WEBHOOK/TELEGRAM variables), so the only place the
             # user would ever see it was the one place it never went. The bell
             # said "All collectors healthy".
-            alerts.extend(await _flatline_check())
+            try:
+                fleet = await _get_all_worker_containers()
+            except Exception as exc:  # noqa: BLE001 - unknown fleet: hold the heads-up back
+                logger.warning("Could not read the fleet for the flatline check: %s", exc)
+                fleet = []
+            alerts.extend(await _flatline_check(collected_ok, deployments, fleet))
             # Offline workers re-derived every rebuild, or the hourly wholesale
             # replacement of this list would silently un-report a dead machine.
             alerts.extend(await _offline_worker_alerts())
@@ -3026,7 +3085,7 @@ _MAX_ALERT_ERROR_LEN = 200
 async def api_earnings_flatlines(request: Request) -> list[dict[str, Any]]:
     """Services that are running but whose balance has stopped moving."""
     _require_auth_api(request)
-    return await database.get_flatlined_services()
+    return await database.get_flatlined_services(quiet_days=_quiet_days_by_platform())
 
 
 @app.get("/api/credentials/health")

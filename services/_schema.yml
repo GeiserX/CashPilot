@@ -253,6 +253,13 @@
 #   type: api | scrape | manual | auto
 #     - auto: earnings accrue/settle automatically; no active collection needed
 #   notes: "Implementation hints for the earnings collector" (for developers)
+#   quiet_days: 14
+#     How many days the balance can stand still while the service is working
+#     normally: earnings that start late (a vetting period) or arrive in
+#     batches (settlements, epochs). The "gone quiet" heads-up waits at least
+#     this long, and a new deployment gets this long instead of 7 days before
+#     a balance that never grew is mentioned. Omit it for a service that earns
+#     a little every day; its own rhythm is learned from its history.
 #   per_node_earnings: true|false
 #     The collector can break earnings down per node/machine, not just an
 #     account total. Declared here rather than branched on in app/ so adding a

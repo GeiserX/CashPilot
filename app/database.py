@@ -2213,7 +2213,78 @@ ALERT_COOLDOWN_HOURS = 24
 # the collector authenticates, and the balance simply never moves. That gap
 # between running and earning is invisible in every other view, because
 # everything it touches looks healthy.
-FLATLINE_MIN_DAYS = 7
+#
+# The bar is set by the service's OWN rhythm, so one quiet day never reads as a
+# fault: a balance must have stood still for longer than three times the
+# service's usual gap between increases, and never less than three days.
+FLATLINE_MIN_DAYS = 3
+FLATLINE_GAP_FACTOR = 3
+# How far back the usual gap is measured.
+FLATLINE_GAP_WINDOW_DAYS = 30
+# How long a service with no increase yet gets before it is mentioned, unless
+# its catalog entry says it is slower to start (collector.quiet_days).
+FLATLINE_NEW_SERVICE_DAYS = 7
+
+
+def _days_between(earlier: str, later: str) -> int:
+    return (datetime.fromisoformat(later) - datetime.fromisoformat(earlier)).days
+
+
+def quiet_verdict(
+    readings: Sequence[tuple[str, str, float, str]],
+    today: str,
+    *,
+    quiet_days: int | None = None,
+    first_deployed: str | None = None,
+) -> dict[str, Any] | None:
+    """Whether one platform's balance has been still for longer than its own rhythm.
+
+    ``readings`` are ``(source, date, balance, currency)`` rows in date order.
+    Only GROWTH counts as earning: a payout makes a balance drop, and a drop is
+    neither an increase that resets the clock nor a sign that anything is wrong.
+    Each source is its own series, because two machines sampling one account
+    interleave into deltas that mean nothing.
+
+    Returns None when the platform is earning, still inside its grace period,
+    or has no reading today (a failing collector stops writing rows, and its old
+    unchanged ones must not read as a flatline).
+    """
+    if not readings or max(r[1] for r in readings) < today:
+        return None
+    increases: set[str] = set()
+    previous: dict[str, tuple[float, str]] = {}
+    for source, day, balance, currency in readings:
+        before = previous.get(source)
+        if before is not None and before[1] == currency and balance > before[0]:
+            increases.add(day)
+        previous[source] = (balance, currency)
+    floor = max(FLATLINE_MIN_DAYS, int(quiet_days or 0))
+
+    if not increases:
+        # Counted from whichever is LATER: the deploy, or the first reading. A
+        # service whose collector only started today has not been watched for
+        # the months since an old deploy, and must not be judged on them.
+        start = max((first_deployed or "")[:10], readings[0][1][:10])
+        grace = int(quiet_days or FLATLINE_NEW_SERVICE_DAYS)
+        days = _days_between(start, today)
+        if days <= grace:
+            return None
+        return {"days_flat": days, "last_increase": None, "since": start, "usual_gap_days": None}
+
+    ordered = sorted(increases)
+    window_start = (datetime.fromisoformat(today) - timedelta(days=FLATLINE_GAP_WINDOW_DAYS)).strftime("%Y-%m-%d")
+    recent = [d for d in ordered if d >= window_start]
+    gaps = sorted(_days_between(a, b) for a, b in zip(recent, recent[1:], strict=False))
+    usual_gap = gaps[len(gaps) // 2] if gaps else None
+    if usual_gap is not None:
+        threshold = max(floor, FLATLINE_GAP_FACTOR * usual_gap)
+    else:
+        # Earned before, but too rarely in the window to know its rhythm.
+        threshold = max(floor, FLATLINE_NEW_SERVICE_DAYS)
+    days = _days_between(ordered[-1], today)
+    if days <= threshold:
+        return None
+    return {"days_flat": days, "last_increase": ordered[-1], "since": ordered[-1], "usual_gap_days": usual_gap}
 
 
 async def get_earned_by_platform(days: int = 30) -> dict[str, float]:
@@ -2294,64 +2365,58 @@ async def get_earned_by_platform(days: int = 30) -> dict[str, float]:
         await db.close()
 
 
-async def get_flatlined_services(min_days: int = FLATLINE_MIN_DAYS) -> list[dict[str, Any]]:
-    """Services whose recorded balance has not moved for at least ``min_days``.
+async def get_flatlined_services(
+    quiet_days: Mapping[str, int] | None = None,
+    first_deployed: Mapping[str, str] | None = None,
+) -> list[dict[str, Any]]:
+    """Platforms whose balance has stopped growing for longer than their own rhythm.
 
-    Deliberately conservative, because a report that cries wolf is a report
-    nobody reads:
-
-    * A service with fewer than ``min_days`` of history is NOT reported. A new
-      deployment has not had time to earn anything yet.
-    * A balance of exactly zero throughout is NOT reported either. That is a
-      service that has never paid rather than one that stopped, and it is
-      usually a setup problem the user already knows about.
-    * The window is measured over distinct recorded days, so a collection outage
-      (which records nothing) cannot masquerade as a flat balance.
+    The rule is :func:`quiet_verdict`. ``quiet_days`` carries each catalog
+    entry's ``collector.quiet_days`` and ``first_deployed`` each deployment's
+    date; both are passed in because this module does not read the catalog.
     """
     db = await _get_db()
     try:
         cursor = await db.execute(
             """
-            SELECT platform,
-                   COUNT(DISTINCT date) AS days_recorded,
-                   MIN(balance)         AS min_balance,
-                   MAX(balance)         AS max_balance,
-                   MAX(date)            AS last_date
+            SELECT platform, source, date, balance, currency
             FROM earnings
-            WHERE date >= date('now', ?)
-            GROUP BY platform
-            -- Only platforms that recorded a reading TODAY. A collector that is
-            -- failing stops writing rows, but its earlier readings are still
-            -- there and are, of course, unchanged - so without this a broken
-            -- collector reads as a flatline, and so does a service that was
-            -- removed but kept its history. Those are different faults with
-            -- different fixes, and reporting them as "running but not earning"
-            -- is exactly the crying wolf this feature must avoid.
-            HAVING MAX(date) >= date('now')
-            """,
-            (f"-{min_days} days",),
+            -- Only platforms that recorded a reading TODAY: see quiet_verdict.
+            WHERE platform IN (SELECT platform FROM earnings WHERE date >= date('now'))
+            ORDER BY platform, date, source
+            """
         )
         rows = await cursor.fetchall()
-
-        flat: list[dict[str, Any]] = []
-        for row in rows:
-            if row["days_recorded"] < min_days:
-                continue  # not enough history to call it a flatline
-            if row["max_balance"] != row["min_balance"]:
-                continue  # it moved
-            if row["max_balance"] == 0:
-                continue  # never earned rather than stopped earning
-            flat.append(
-                {
-                    "platform": row["platform"],
-                    "days_flat": row["days_recorded"],
-                    "balance": row["max_balance"],
-                    "last_recorded": row["last_date"],
-                }
-            )
-        return flat
     finally:
         await db.close()
+
+    by_platform: dict[str, list[tuple[str, str, float, str]]] = {}
+    for row in rows:
+        by_platform.setdefault(row["platform"], []).append(
+            (row["source"] or "server", row["date"], float(row["balance"] or 0.0), (row["currency"] or "USD").upper())
+        )
+    today = datetime.now(UTC).strftime("%Y-%m-%d")
+    flat: list[dict[str, Any]] = []
+    for platform, readings in by_platform.items():
+        verdict = quiet_verdict(
+            readings,
+            today,
+            quiet_days=(quiet_days or {}).get(platform),
+            first_deployed=(first_deployed or {}).get(platform),
+        )
+        if verdict is None:
+            continue
+        latest = readings[-1]
+        flat.append(
+            {
+                "platform": platform,
+                **verdict,
+                "balance": latest[2],
+                "currency": latest[3],
+                "last_recorded": latest[1],
+            }
+        )
+    return flat
 
 
 async def record_alert(

@@ -49,14 +49,16 @@ async def _seed(platform: str, balances: list[float]) -> None:
 class TestFlatlineIsDetected:
     def test_a_stuck_balance_is_reported(self, db):
         async def run():
-            await _seed("stuck", [12.5] * 8)
-            return await database.get_flatlined_services(min_days=7)
+            # Earned every day, then stopped six days ago.
+            await _seed("stuck", [10.0, 11.0, 12.5] + [12.5] * 6)
+            return await database.get_flatlined_services()
 
         flat = asyncio.run(run())
         assert len(flat) == 1
         assert flat[0]["platform"] == "stuck"
         assert flat[0]["balance"] == 12.5
-        assert flat[0]["days_flat"] >= 7
+        assert flat[0]["days_flat"] == 6
+        assert flat[0]["usual_gap_days"] == 1
 
 
 class TestFlatlineRestraint:
@@ -65,7 +67,7 @@ class TestFlatlineRestraint:
     def test_a_moving_balance_is_not_reported(self, db):
         async def run():
             await _seed("earning", [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0])
-            return await database.get_flatlined_services(min_days=7)
+            return await database.get_flatlined_services()
 
         assert asyncio.run(run()) == []
 
@@ -74,7 +76,7 @@ class TestFlatlineRestraint:
 
         async def run():
             await _seed("slow", [5.0, 5.0, 5.0, 5.0, 5.0, 5.0, 5.0, 5.01])
-            return await database.get_flatlined_services(min_days=7)
+            return await database.get_flatlined_services()
 
         assert asyncio.run(run()) == []
 
@@ -83,18 +85,28 @@ class TestFlatlineRestraint:
 
         async def run():
             await _seed("fresh", [3.0, 3.0, 3.0])
-            return await database.get_flatlined_services(min_days=7)
+            return await database.get_flatlined_services()
 
         assert asyncio.run(run()) == []
 
-    def test_a_permanently_zero_balance_is_not_reported(self, db):
-        """Never earned is a setup problem, not a service that stopped paying."""
+    def test_a_zero_balance_inside_its_first_week_is_not_reported(self, db):
+        """A new service gets 7 days before a balance that never grew is mentioned."""
 
         async def run():
             await _seed("zero", [0.0] * 8)
-            return await database.get_flatlined_services(min_days=7)
+            return await database.get_flatlined_services()
 
         assert asyncio.run(run()) == []
+
+    def test_a_balance_that_never_grew_is_mentioned_after_the_first_week(self, db):
+        """The other side of the grace period: a device never linked earns nothing, ever."""
+
+        async def run():
+            await _seed("zero", [0.0] * 10)
+            return await database.get_flatlined_services()
+
+        [flat] = asyncio.run(run())
+        assert flat["last_increase"] is None and flat["days_flat"] == 9
 
     def test_a_collection_outage_cannot_look_like_a_flatline(self, db):
         """Gaps record nothing, so distinct recorded days stay below the window."""
@@ -103,16 +115,16 @@ class TestFlatlineRestraint:
             # Same balance, but only 3 days were ever recorded across a long span.
             for offset in (30, 20, 10):
                 await database.upsert_earnings("gappy", 9.0, date=_day(offset))
-            return await database.get_flatlined_services(min_days=7)
+            return await database.get_flatlined_services()
 
         assert asyncio.run(run()) == []
 
     def test_only_the_flat_service_is_reported_among_many(self, db):
         async def run():
             await _seed("good", [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0])
-            await _seed("bad", [4.25] * 8)
+            await _seed("bad", [1.0, 2.0, 3.0, 4.25, 4.25, 4.25, 4.25, 4.25, 4.25])
             await _seed("young", [1.0, 1.0])
-            return await database.get_flatlined_services(min_days=7)
+            return await database.get_flatlined_services()
 
         flat = asyncio.run(run())
         assert [f["platform"] for f in flat] == ["bad"]
@@ -155,7 +167,17 @@ class TestFlatlineReachesTheUser:
                 patch.object(
                     main.database,
                     "get_flatlined_services",
-                    AsyncMock(return_value=[{"platform": "stuck", "days_flat": 9, "balance": 4.25}]),
+                    AsyncMock(
+                        return_value=[
+                            {
+                                "platform": "stuck",
+                                "days_flat": 9,
+                                "balance": 4.25,
+                                "last_increase": "2026-10-20",
+                                "usual_gap_days": 1,
+                            }
+                        ]
+                    ),
                 ),
                 patch.object(main.database, "record_alert", AsyncMock(return_value=True)),
                 patch.object(main.database, "get_alert_subjects", AsyncMock(return_value=set())),
@@ -169,7 +191,8 @@ class TestFlatlineReachesTheUser:
         assert sent, "a newly detected flatline must notify"
         title, message = sent[0]
         assert "stuck" in title
-        assert "9 days" in message
+        assert "9 days" in message and "2026-10-20" in message
+        assert "every day" in message
 
     def test_a_flatline_already_in_cooldown_does_not_notify_again(self):
         from unittest.mock import AsyncMock
@@ -183,7 +206,17 @@ class TestFlatlineReachesTheUser:
                 patch.object(
                     main.database,
                     "get_flatlined_services",
-                    AsyncMock(return_value=[{"platform": "stuck", "days_flat": 9, "balance": 4.25}]),
+                    AsyncMock(
+                        return_value=[
+                            {
+                                "platform": "stuck",
+                                "days_flat": 9,
+                                "balance": 4.25,
+                                "last_increase": "2026-10-20",
+                                "usual_gap_days": 1,
+                            }
+                        ]
+                    ),
                 ),
                 # record_alert returns False while the subject is in cooldown
                 patch.object(main.database, "record_alert", AsyncMock(return_value=False)),
@@ -222,7 +255,7 @@ class TestFalsePositivesFromStaleHistory:
             # Seven unchanged days, but nothing recorded today: the collector broke.
             for i in range(8, 1, -1):
                 await database.upsert_earnings("broken", 5.0, date=_day(i))
-            return await database.get_flatlined_services(min_days=7)
+            return await database.get_flatlined_services()
 
         assert asyncio.run(run()) == []
 
@@ -230,7 +263,7 @@ class TestFalsePositivesFromStaleHistory:
         async def run():
             for i in range(30, 20, -1):
                 await database.upsert_earnings("removed", 9.0, date=_day(i))
-            return await database.get_flatlined_services(min_days=7)
+            return await database.get_flatlined_services()
 
         assert asyncio.run(run()) == []
 
