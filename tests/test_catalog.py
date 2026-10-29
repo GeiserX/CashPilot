@@ -80,6 +80,29 @@ class TestServiceYAML:
         assert data["slug"] == yml_path.stem, f"Slug '{data['slug']}' does not match filename '{yml_path.stem}'"
 
 
+class _NoDuplicateKeysLoader(yaml.SafeLoader):
+    """SafeLoader that refuses a mapping with the same key twice."""
+
+
+def _construct_unique_mapping(loader, node, deep=False):
+    keys = [loader.construct_object(key, deep=deep) for key, _ in node.value]
+    repeated = sorted({k for k in keys if keys.count(k) > 1}, key=str)
+    if repeated:
+        raise yaml.constructor.ConstructorError(None, None, f"duplicate key(s) {repeated}", node.start_mark)
+    return yaml.SafeLoader.construct_mapping(loader, node, deep=deep)
+
+
+_NoDuplicateKeysLoader.add_constructor(yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG, _construct_unique_mapping)
+
+
+@pytest.mark.parametrize("yml_path", ALL_YAMLS, ids=lambda p: p.stem)
+def test_no_duplicate_keys(yml_path):
+    """PyYAML keeps the last of two equal keys without a word, but the Desktop
+    app's Go decoder rejects the whole file, so its catalog stops loading."""
+    with open(yml_path) as f:
+        yaml.load(f, Loader=_NoDuplicateKeysLoader)
+
+
 def test_no_duplicate_slugs():
     slugs = []
     for yml_path in ALL_YAMLS:

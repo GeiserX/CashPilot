@@ -16,9 +16,13 @@ IPRoyal Pawns lets you earn by sharing your unused bandwidth. IPRoyal is a well-
 | Per | device |
 | Minimum payout | $5 |
 | Payout frequency | On request |
-| Payment methods | Paypal, Crypto, Bank |
+| Payment methods | Paypal, Crypto, Giftcard |
 
 > Earnings depend on location and bandwidth usage. US/EU residential IPs earn more.
+
+## Cashing out
+
+Minimum $5. Select your country first; the methods depend on it. From Spain (October 2026): PayPal 4% with a $0.25 minimum fee, paid through Tremendous, which emails a link where you enter your name and PayPal address; USDT (BEP20, ERC20, TRC20) or USDC (BEP20, ERC20) with a $1 network fee; Bitcoin with a $2 minimum fee; gift cards with no fee. The first payout needs a one-time SMS check of your phone number.
 
 ## Requirements
 

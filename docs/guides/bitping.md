@@ -20,6 +20,10 @@ Bitping is a decentralized network monitoring platform that pays you for running
 
 > Earnings depend on network quality and demand for monitoring from your location. VPS nodes accepted.
 
+## Cashing out
+
+Node earnings live on nodes.bitping.com; app.bitping.com is the API customer dashboard. Withdrawals are SOL only: type the Solana address into the request, processed within 24 hours.
+
 ## Requirements
 
 | Requirement | Value |

@@ -56,7 +56,7 @@ requirements:
   min_storage: ""
 
 payment:
-  methods: [crypto, paypal]
+  methods: [crypto, bank]
   crypto_token: USDT
   minimum_payout: "$10"
   currency: USD
@@ -74,6 +74,12 @@ cashout:
   dashboard_url: "https://app.traffmonetizer.com/dashboard"
   min_amount: 10.0
   currency: USD
+  notes: >-
+    Minimum $10. PayPal is no longer offered. Save one payout method in the
+    profile first: USDT on Solana or TON (lowest fees), Arbitrum (low fees) or
+    Tron TRC20 (high network fees), or a bank transfer from $1,000. Changing a
+    saved method needs an email confirmation. Before the first withdrawal the
+    dashboard also asks for a messenger contact.
 
 platforms: [docker, windows, macos, android]
 
@@ -84,4 +90,4 @@ collector:
 
 payout:
   model: internal
-  notes: "USDT, but the CHAIN IS CHOSEN PER WITHDRAWAL (Arbitrum/Tron/Solana/TON), so there is no persistent on-chain identity to register."
+  notes: "USDT on the chain saved in the profile's payout settings (Solana, TON, Arbitrum or Tron), or a bank transfer. The address lives in Traffmonetizer's settings, not on the container."

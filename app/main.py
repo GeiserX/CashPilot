@@ -1904,11 +1904,14 @@ async def api_services_deployed(request: Request) -> list[dict[str, Any]]:
     health_scores = await database.get_health_scores(7)
     health_map = {h["slug"]: h for h in health_scores}
 
-    # Build set of slugs with collector errors (disconnected)
-    # A down container is not a collector fault; its own alert says so. A
-    # notice rides on a reading that SUCCEEDED, so it is not "can't read
-    # balance" either; it is shown on the row as itself.
-    alert_slugs = {a["platform"] for a in _collector_alerts if a.get("kind") not in ("notice", "container")}
+    # Slugs whose balance could not be read, shown as "can't read balance".
+    # Only a collector alert means that. Every other kind rides on a reading
+    # that SUCCEEDED or is about something else: a payout question exists
+    # because the balance was read and dropped, a flatline because it was read
+    # and did not move, a notice is shown on the row as itself, a down
+    # container has its own alert, and a worker alert names a worker, not a
+    # service. Listing the exceptions let each new kind leak in as a failure.
+    alert_slugs = {a["platform"] for a in _collector_alerts if a.get("kind", "collector") == "collector"}
     notice_map = {a["platform"]: a.get("error", "") for a in _collector_alerts if a.get("kind") == "notice"}
 
     # Config (decrypted) to detect collectors whose credentials aren't set yet.

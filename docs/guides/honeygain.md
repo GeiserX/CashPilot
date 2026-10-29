@@ -20,6 +20,10 @@ Share your unused internet bandwidth and earn passive income. Honeygain routes w
 
 > Varies by location. US/EU IPs earn more. Max 10 devices per account.
 
+## Cashing out
+
+Minimum $20 (20,000 credits). Two options: PayPal through Tipalti, about 15% fee, or JumpTask credits with no fee, paid into a JumpTask wallet. A request needs a 6-digit code sent by email. The first PayPal payout stays "waiting for details" until you register on Tipalti from the link they email (personal details and PayPal address); payment follows within 2 business days.
+
 ## Requirements
 
 | Requirement | Value |
