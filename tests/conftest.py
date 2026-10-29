@@ -95,6 +95,14 @@ def _reset_shared_db():
     a tmp location, so a stale cached connection (pointing at a previous tmp DB
     or a closed loop) must never leak across tests. After each test we close
     any surviving connections and clear the cache so the next test binds fresh.
+
+    Trap: a connection opened on a loop that has since closed never finishes
+    closing here, because aiosqlite answers through that dead loop, and the
+    whole run hangs (on Linux CI, rarely on macOS). The usual cause is a test
+    that enters the real ``lifespan`` with ``connect_shared`` mocked: every
+    startup task it spawns that touches the DB (``_run_data_retention``,
+    ``_run_vacuum``, ...) must be stubbed there too. A timeout does not help,
+    since aiosqlite's cancel path awaits the same dead future.
     """
     yield
 

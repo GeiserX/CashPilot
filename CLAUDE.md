@@ -40,6 +40,10 @@ mkdocs serve
 
 Two containers: `cashpilot-ui` (port 8080, web dashboard + earnings collection) and `cashpilot-worker` (port 8081, Docker agent requiring socket access).
 
+### Testing traps
+
+- **A test that enters the real `lifespan` with `database.connect_shared` mocked must also stub every startup task that touches the DB** (`_run_data_retention`, `_run_vacuum`, and any new `_spawn(...)` you add). Otherwise that task opens a connection on the test's loop, and conftest `_reset_shared_db` waits forever to close it once the loop is gone. The CI test job then hangs with no failure, on Linux only. See `TestLifespanScheduler` in `tests/test_main_routes.py`.
+
 ### Adding a New Service
 
 1. Create `services/{category}/{slug}.yml` following `_schema.yml`
