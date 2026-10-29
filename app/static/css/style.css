@@ -758,7 +758,9 @@ img { max-width: 100%; }
    .btn-success (0,1,0) and repaints every modal button's label in the link
    colour: the "Go to Dashboard" button rendered cyan-on-green with an
    underline, effectively invisible against its own background. */
-.modal-body a:not(.btn) { text-decoration: underline; text-underline-offset: 2px; color: var(--text-primary); }
+/* --accent-hover (pure white in dark, pure black in light) keeps a link apart
+   from the prose around it without spending a state colour on it. */
+.modal-body a:not(.btn) { text-decoration: underline; text-underline-offset: 2px; color: var(--accent-hover); }
 
 .modal-body a:not(.btn):hover {
   color: var(--accent-secondary);
