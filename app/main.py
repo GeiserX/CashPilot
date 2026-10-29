@@ -2251,9 +2251,10 @@ def scaling_limit(svc: dict[str, Any]) -> tuple[int, str]:
     """How many copies of ``svc`` one worker may run, and why not more.
 
     One per worker where the provider allows one device per IP (a second copy
-    behind the same address earns nothing), and where the service has host
+    behind the same address earns nothing), where the service has host
     volumes or published ports (copies would share the directories and fight
-    over the ports). Otherwise the ceiling is MAX_INSTANCES. The reason is ""
+    over the ports), and where a typed device id (``device_link``) names the
+    device, since every copy would carry the same one. Otherwise the ceiling is MAX_INSTANCES. The reason is ""
     when more than one is allowed. The deploy form shows the same answer.
     """
     docker_conf = svc.get("docker") or {}
@@ -2264,6 +2265,14 @@ def scaling_limit(svc: dict[str, Any]) -> tuple[int, str]:
         return 1, f"{name} keeps data in a host directory, which two copies would share."
     if docker_conf.get("ports"):
         return 1, f"{name} publishes a port on the host, which two copies cannot share."
+    link = svc.get("device_link")
+    if isinstance(link, dict) and link.get("id_env"):
+        # Copies get the same env, so they would all report one device id.
+        label = next(
+            (v.get("label") or link["id_env"] for v in docker_conf.get("env", []) if v.get("key") == link["id_env"]),
+            link["id_env"],
+        )
+        return 1, f"{name} knows each device by its {label}, which two copies would share."
     return MAX_INSTANCES, ""
 
 
