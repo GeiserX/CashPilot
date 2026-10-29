@@ -79,6 +79,13 @@ jobs:
       - name: Payout destination states
         run: node scripts/payout_registry_check.mjs
 
+      # The dashboard row: its Payout cell and sort read the breakdown's
+      # cashout terms, and clicking an expandable row reaches toggleInstances
+      # with the click itself. Both broke silently once (every Payout "--", a
+      # TypeError on every row click); only running the code shows either.
+      - name: Dashboard row behaviour
+        run: node scripts/dashboard_row_check.mjs
+
       # The only check here that needs a real browser, because it measures a
       # property of the RENDERED page. A button's label colour is decided by the
       # cascade, so `.modal-body a` (0,1,1) silently outranked `.btn-success`
