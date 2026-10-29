@@ -13,32 +13,11 @@
   <script nonce="{{ csp_nonce(request) }}">
     (function(){var t=localStorage.getItem('cp-theme')||'dark';document.documentElement.setAttribute('data-theme',t)})();
   </script>
-  <style>
-    body { display: flex; align-items: center; justify-content: center; min-height: 100vh; background: var(--bg-primary); }
-    .auth-card { width: 100%; max-width: 340px; padding: 0 20px; }
-    .auth-brand { display: flex; align-items: center; gap: 8px; font-size: 15px; font-weight: 600; color: var(--text-primary); margin-bottom: 20px; }
-    .auth-subtitle { color: var(--text-secondary); margin-bottom: 20px; font-size: 13px; }
-    .auth-field { margin-bottom: 12px; }
-    .auth-field label { display: block; color: var(--text-secondary); font-size: 12px; margin-bottom: 4px; }
-    .auth-field input {
-      width: 100%; height: 32px; padding: 0 8px; background: var(--bg-input); border: 1px solid var(--border-light);
-      border-radius: var(--radius-sm); color: var(--text-primary); font: inherit; font-size: 13px; outline: none;
-    }
-    .auth-field input:focus { border-color: var(--text-primary); }
-    .auth-btn {
-      width: 100%; height: 32px; margin-top: 8px; background: var(--text-primary); color: var(--bg-primary);
-      border: none; border-radius: var(--radius-sm); font: inherit; font-size: 13px; font-weight: 600; cursor: pointer;
-    }
-    .auth-btn:hover { background: var(--text-secondary); }
-    .auth-error { border-left: 2px solid var(--error); color: var(--text-primary); padding: 6px 10px; font-size: 12px; margin-bottom: 12px; background: var(--error-soft); }
-    .auth-footer { margin-top: 16px; color: var(--text-muted); font-size: 12px; }
-    .auth-footer a { color: var(--text-primary); text-decoration: underline; text-underline-offset: 2px; }
-    .auth-role-info { border-left: 2px solid var(--border-strong); color: var(--text-secondary); padding: 6px 10px; font-size: 12px; margin-bottom: 12px; }
-  </style>
 </head>
-<body>
-  <div class="auth-card">
-    <div class="auth-brand">
+<body class="gate">
+  <!-- The same bar as the app, so signing in looks like the console it opens. -->
+  <header class="gate-bar">
+    <span class="topbar-brand">
       <svg width="20" height="20" viewBox="0 0 256 256" role="img" aria-label="CashPilot">
         <defs>
           <linearGradient id="cpSun" x1="0%" y1="0%" x2="0%" y2="100%">
@@ -66,51 +45,58 @@
         </g>
       </svg>
       CashPilot
-    </div>
-    <div class="auth-subtitle">{{ subtitle }}</div>
+    </span>
+  </header>
 
-    {% if error %}
-    <div class="auth-error">{{ error }}</div>
-    {% endif %}
+  <main class="gate-main">
+    <div class="gate-panel">
+      <h1 class="gate-title">{{ button_text }}</h1>
+      <p class="gate-lede">{{ subtitle }}</p>
 
-    {% if mode == "register" and is_first %}
-    <div class="auth-role-info">First account will be the owner with full admin access.</div>
-    {% endif %}
+      {% if error %}
+      <div class="auth-error">{{ error }}</div>
+      {% endif %}
 
-    <form method="POST" action="{{ action }}">
       {% if mode == "register" and is_first %}
-      <div class="auth-field">
-        <label for="setup_token">Setup token</label>
-        <input type="text" id="setup_token" name="setup_token" value="{{ setup_token | default('') }}" required autocomplete="off" placeholder="Shown in the server logs on first start">
-      </div>
+      <div class="gate-note">First account will be the owner with full admin access.</div>
       {% endif %}
-      <div class="auth-field">
-        <label for="username">Username</label>
-        <input type="text" id="username" name="username" required autocomplete="username" autofocus>
-      </div>
-      <div class="auth-field">
-        <label for="password">Password</label>
-        <input type="password" id="password" name="password" required autocomplete="{{ 'new-password' if mode == 'register' else 'current-password' }}">
-      </div>
-      {% if mode == "register" %}
-      <div class="auth-field">
-        <label for="password_confirm">Confirm Password</label>
-        <input type="password" id="password_confirm" name="password_confirm" required autocomplete="new-password">
-      </div>
-      {% endif %}
-      <button type="submit" class="auth-btn">{{ button_text }}</button>
-    </form>
 
-    {% if mode == "login" %}
-    <div class="auth-footer">
-      No account? <a href="/register">Create one</a>
+      <form method="POST" action="{{ action }}">
+        {% if mode == "register" and is_first %}
+        <div class="form-group">
+          <label class="form-label" for="setup_token">Setup token</label>
+          <input class="form-input" type="text" id="setup_token" name="setup_token" value="{{ setup_token | default('') }}" required autocomplete="off" placeholder="Shown in the server logs on first start">
+        </div>
+        {% endif %}
+        <div class="form-group">
+          <label class="form-label" for="username">Username</label>
+          <input class="form-input" type="text" id="username" name="username" required autocomplete="username" autofocus>
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="password">Password</label>
+          <input class="form-input" type="password" id="password" name="password" required autocomplete="{{ 'new-password' if mode == 'register' else 'current-password' }}">
+        </div>
+        {% if mode == "register" %}
+        <div class="form-group">
+          <label class="form-label" for="password_confirm">Confirm password</label>
+          <input class="form-input" type="password" id="password_confirm" name="password_confirm" required autocomplete="new-password">
+        </div>
+        {% endif %}
+        <button type="submit" class="btn btn-primary btn-lg gate-submit">{{ button_text }}</button>
+      </form>
+
+      {% if mode == "login" %}
+      <p class="gate-foot-note">No account? <a href="/register">Create one</a></p>
+      {% elif mode == "register" and not is_first %}
+      <p class="gate-foot-note">Already have an account? <a href="/login">Sign in</a></p>
+      {% endif %}
     </div>
-    {% elif mode == "register" and not is_first %}
-    <div class="auth-footer">
-      Already have an account? <a href="/login">Sign in</a>
-    </div>
-    {% endif %}
-  </div>
+  </main>
+
+  <footer class="gate-foot">
+    <a href="https://github.com/GeiserX/CashPilot" target="_blank" rel="noopener">Source</a>
+    <a href="https://github.com/GeiserX/CashPilot/issues" target="_blank" rel="noopener">Report a problem</a>
+  </footer>
   <script src="/static/js/delegate.js"></script>
 </body>
 </html>

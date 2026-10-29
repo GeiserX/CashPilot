@@ -158,7 +158,7 @@
 
   <!-- Logs Modal (global) -->
   <div class="modal-overlay" id="logs-modal">
-    <div class="modal" style="max-width: 800px;">
+    <div class="modal modal-lg">
       <div class="modal-header">
         <h3 class="modal-title" id="logs-modal-title">Logs</h3>
         <button class="modal-close" data-action="closeModal" data-a1="logs-modal" data-then="stopLogPolling" aria-label="Close">
@@ -173,7 +173,7 @@
 
   <!-- Service Detail Modal (global) -->
   <div class="modal-overlay" id="service-detail-modal">
-    <div class="modal" style="max-width: 700px;">
+    <div class="modal modal-md">
       <div class="modal-header">
         <h3 class="modal-title" id="service-detail-title">Service</h3>
         <button class="modal-close" data-action="closeModal" data-a1="service-detail-modal" aria-label="Close">
@@ -188,9 +188,9 @@
   {% if user %}
   <!-- Change Password Modal (global) -->
   <div class="modal-overlay" id="password-modal">
-    <div class="modal" style="max-width: 420px;">
+    <div class="modal modal-sm">
       <div class="modal-header">
-        <h3 class="modal-title">Change Password</h3>
+        <h3 class="modal-title">Change password</h3>
         <button class="modal-close" data-action="closeModal" data-a1="password-modal" aria-label="Close">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
         </button>
@@ -209,10 +209,10 @@
           <label class="form-label" for="chpw-confirm">Confirm new password</label>
           <input class="form-input" type="password" id="chpw-confirm" autocomplete="new-password" placeholder="Re-enter new password">
         </div>
-        <div id="chpw-error" style="display:none; color:var(--error); font-size:0.82rem; margin-bottom:12px;"></div>
-        <div style="display:flex; gap:8px; justify-content:flex-end;">
-          <button class="btn btn-ghost btn-sm" data-action="closeModal" data-a1="password-modal">Cancel</button>
-          <button class="btn btn-primary btn-sm" id="pwd-submit" data-action="submitPasswordChange">Change Password</button>
+        <div id="chpw-error" class="form-error" style="display:none;"></div>
+        <div class="modal-actions modal-actions-end">
+          <button class="btn btn-ghost" data-action="closeModal" data-a1="password-modal">Cancel</button>
+          <button class="btn btn-primary" id="pwd-submit" data-action="submitPasswordChange">Change password</button>
         </div>
       </div>
     </div>

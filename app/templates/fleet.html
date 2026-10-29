@@ -58,12 +58,12 @@
   <div id="power-settings" class="power-settings">
     <div>
       <label for="power-price" class="form-label">Electricity price per kWh</label>
-      <input id="power-price" class="form-input" type="number" step="0.001" min="0" style="width:9rem;"
+      <input id="power-price" class="form-input form-input-price" type="number" step="0.001" min="0"
              placeholder="0.30" aria-describedby="power-help">
     </div>
     <div>
       <label for="power-currency" class="form-label">Currency</label>
-      <input id="power-currency" class="form-input" type="text" maxlength="4" style="width:5.5rem;" placeholder="EUR">
+      <input id="power-currency" class="form-input form-input-code" type="text" maxlength="4" placeholder="EUR">
     </div>
     <button class="btn btn-primary btn-sm" id="power-save">Save</button>
     <span id="power-help" class="muted">
@@ -96,8 +96,8 @@ CASHPILOT_WORKER_NAME=server-name</code>
       {# Shown only when the clipboard API is unreachable — which is the normal
          case on the plain-http LAN origin docs/fleet.md documents, because
          navigator.clipboard is gated on a secure context. #}
-      <div id="worker-env-fallback" style="display:none; margin-top:8px;">
-        <textarea readonly rows="3" class="form-input" style="width:100%; font-family:monospace; font-size:0.78rem;"></textarea>
+      <div id="worker-env-fallback" class="env-fallback" style="display:none;">
+        <textarea readonly rows="3" class="form-input form-input-wide mono"></textarea>
       </div>
     </div>
     <p class="muted add-worker-text">
@@ -401,60 +401,60 @@ CASHPILOT_WORKER_NAME=server-name</code>
   const _isolation = {};
 
   function renderIsolation(r) {
-    let html = '<div style="margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border-color); font-size: 0.82rem;">';
+    let html = '<div class="iso-report">';
     const when = r.checked_at ? new Date(r.checked_at) : null;
     if (when && !Number.isNaN(when.getTime())) {
-      html += `<div style="color:var(--text-muted); margin-bottom:4px;" title="${esc(r.checked_at)}">Checked ${esc(when.toLocaleString())}</div>`;
+      html += `<div class="iso-line muted" title="${esc(r.checked_at)}">Checked ${esc(when.toLocaleString())}</div>`;
     }
     if (r.error) {
-      return html + `<div style="color:var(--error);">Isolation check failed: ${esc(r.error)}</div></div>`;
+      return html + `<div class="iso-line text-fail">Isolation check failed: ${esc(r.error)}</div></div>`;
     }
     // Isolated can still have reachable lines: the ones the report marks
     // expected (DNS through the Tailscale rewrite or a LAN DNS exception).
     const allowed = (r.groups || []).flatMap(g => g.targets).filter(t => t.reachable).map(t => t.address);
     const head = {
-      isolated: ['var(--success)', allowed.length
+      isolated: ['text-ok', allowed.length
         ? `Isolated over IPv4. An earner reached only the expected DNS ${allowed.length === 1 ? 'line' : 'lines'} ${allowed.join(', ')} and none of the other addresses below, and it reached the internet.`
         : 'Isolated over IPv4. An earner reached none of the addresses below, and it reached the internet.'],
-      exposed: ['var(--error)', 'Not isolated. See what to fix below.'],
-      could_not_test: ['var(--warning)', 'Could not test. ' + (r.reason || '')],
-    }[r.status] || ['var(--text-muted)', String(r.status)];
-    html += `<div style="font-weight:600; color:${head[0]}; margin-bottom:6px;">${esc(head[1])}</div>`;
+      exposed: ['text-fail', 'Not isolated. See what to fix below.'],
+      could_not_test: ['text-warn', 'Could not test. ' + (r.reason || '')],
+    }[r.status] || ['muted', String(r.status)];
+    html += `<div class="iso-head ${head[0]}">${esc(head[1])}</div>`;
     if (r.status === 'exposed' && r.reason) {
-      html += `<div style="color:var(--warning); margin-bottom:6px;">The probe part could not run: ${esc(r.reason)}</div>`;
+      html += `<div class="iso-line text-warn">The probe part could not run: ${esc(r.reason)}</div>`;
     }
     if (r.tested_from) {
-      html += `<div style="color:var(--text-muted); margin-bottom:6px;">Tested from ${esc(r.tested_from.earner || 'a probe')} on ${esc((r.tested_from.network || []).join(', ') || '?')}.</div>`;
+      html += `<div class="iso-line muted">Tested from ${esc(r.tested_from.earner || 'a probe')} on ${esc((r.tested_from.network || []).join(', ') || '?')}.</div>`;
     }
     for (const g of r.groups || []) {
-      html += `<div style="margin:4px 0;"><span style="color:var(--text-muted); display:inline-block; min-width:9rem;">${esc(g.label)}</span>`;
+      html += `<div class="iso-group"><span class="iso-label">${esc(g.label)}</span><span class="iso-targets">`;
       for (const t of g.targets) {
         const bad = t.reachable && !t.expected;
-        const color = t.reachable ? (bad ? 'var(--error)' : 'var(--warning)') : 'var(--success)';
+        const tone = t.reachable ? (bad ? 'iso-fail' : 'iso-warn') : 'iso-ok';
         const tip = `${t.label}${t.note ? '. ' + t.note : ''}`;
-        html += `<span style="font-size:0.75rem; padding:2px 6px; margin:2px; border-radius:4px; background:var(--bg-hover); color:${color}; display:inline-block;" title="${esc(tip)}">${esc(t.address)} ${t.reachable ? 'reachable' : 'blocked'}</span>`;
+        html += `<span class="iso-target ${tone}" title="${esc(tip)}"><span class="mono">${esc(t.address)}</span> ${t.reachable ? 'reachable' : 'blocked'}</span>`;
       }
-      html += '</div>';
+      html += '</span></div>';
     }
     if (r.internet) {
-      html += `<div style="margin:4px 0;"><span style="color:var(--text-muted); display:inline-block; min-width:9rem;">Internet</span>${esc(r.internet.address)} ${r.internet.reachable ? 'works' : 'FAILED'}</div>`;
+      html += `<div class="iso-group"><span class="iso-label">Internet</span><span class="iso-target ${r.internet.reachable ? 'iso-ok' : 'iso-fail'}"><span class="mono">${esc(r.internet.address)}</span> ${r.internet.reachable ? 'works' : 'failed'}</span></div>`;
     }
     for (const f of r.findings || []) {
-      html += `<div style="margin-top:6px; color:${f.exposure ? 'var(--error)' : 'var(--warning)'};">${esc(f.detail)} <a href="${esc(f.docs)}" target="_blank" rel="noopener noreferrer">How to fix it</a></div>`;
+      html += `<div class="iso-line ${f.exposure ? 'text-fail' : 'text-warn'}">${esc(f.detail)} <a href="${esc(f.docs)}" target="_blank" rel="noopener noreferrer">How to fix it</a></div>`;
     }
     const m = r.node_firewall;
     if (m) {
-      html += `<div style="margin-top:6px; color:var(--text-muted);">${esc(m.service || 'Node')} (${esc(m.container)}): ${m.readable ? 'blackholes ' + esc((m.blackholed || []).join(', ') || 'nothing') : esc(m.detail || '')}</div>`;
+      html += `<div class="iso-line muted">${esc(m.service || 'Node')} (${esc(m.container)}): ${m.readable ? 'blackholes ' + esc((m.blackholed || []).join(', ') || 'nothing') : esc(m.detail || '')}</div>`;
     }
     if ((r.addresses_left_out || []).length) {
-      html += `<div style="margin-top:6px; color:var(--text-muted);" title="${esc(r.addresses_left_out.join(' '))}">${r.addresses_left_out.length} Docker bridge address(es) of this host were left out to keep the check short, so they were not tested.</div>`;
+      html += `<div class="iso-line muted" title="${esc(r.addresses_left_out.join(' '))}">${r.addresses_left_out.length} Docker bridge address(es) of this host were left out to keep the check short, so they were not tested.</div>`;
     }
     if ((r.leftover_probes || []).length) {
       const names = r.leftover_probes.join(' ');
-      html += `<div style="margin-top:6px; color:var(--warning);">Docker would not remove ${r.leftover_probes.length === 1 ? 'this probe container' : 'these probe containers'}, so ${r.leftover_probes.length === 1 ? 'it is' : 'they are'} still on the host: ${esc(r.leftover_probes.join(', '))}. Remove ${r.leftover_probes.length === 1 ? 'it' : 'them'} with <code>docker rm -fv ${esc(names)}</code>.</div>`;
+      html += `<div class="iso-line text-warn">Docker would not remove ${r.leftover_probes.length === 1 ? 'this probe container' : 'these probe containers'}, so ${r.leftover_probes.length === 1 ? 'it is' : 'they are'} still on the host: ${esc(r.leftover_probes.join(', '))}. Remove ${r.leftover_probes.length === 1 ? 'it' : 'them'} with <code>docker rm -fv ${esc(names)}</code>.</div>`;
     }
     if ((r.not_answering_from_host || []).length) {
-      html += `<div style="margin-top:6px; color:var(--text-muted);" title="${esc(r.not_answering_from_host.join(' '))}">${r.not_answering_from_host.length} address(es) did not answer from the host itself, so they were not tested.</div>`;
+      html += `<div class="iso-line muted" title="${esc(r.not_answering_from_host.join(' '))}">${r.not_answering_from_host.length} address(es) did not answer from the host itself, so they were not tested.</div>`;
     }
     return html + '</div>';
   }

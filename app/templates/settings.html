@@ -23,7 +23,7 @@
   </p>
 
   <div id="collectors-container">
-    <p style="color: var(--text-muted); font-size: 0.85rem;">Loading...</p>
+    <p class="loading-line">Loading...</p>
   </div>
 
   <div class="settings-actions">
@@ -54,7 +54,7 @@
     These are read from the environment when CashPilot starts. Variables set via Docker <code>-e</code> flags are shown locked; the rest can be stored here, but <strong>a stored value does not take effect</strong> &mdash; set it in your compose file or Unraid template and restart. Several of them cannot change at runtime at all: the session key signs logins already in use, the data directory is where the open database lives, and the fleet key is what enrolled workers already hold.
   </p>
   <div id="env-vars-container">
-    <p style="color: var(--text-muted); font-size: 0.85rem;">Loading...</p>
+    <p class="loading-line">Loading...</p>
   </div>
 </div>
 
@@ -69,7 +69,7 @@
     image tags. Installs not managed by Compose get the manual commands instead.
   </p>
   <div id="update-card-container">
-    <p style="color: var(--text-muted); font-size: 0.85rem;">Loading...</p>
+    <p class="loading-line">Loading...</p>
   </div>
 </div>
 </div>

@@ -7,10 +7,10 @@
 {% block content %}
 <p class="page-lede">
   Every service in the catalog and the address it pays to. Addresses are read from
-  the spec each container was <em>actually deployed</em> with &mdash; not from the
-  catalog default &mdash; so what you see here is what your machines are really using.
-  Undeployed services are listed too, because the time to learn a service needs a
-  wallet is <em>before</em> you deploy it.
+  the spec each container was <em>actually deployed</em> with, not from the
+  catalog default, so what you see here is what your machines are really using.
+  Services you have not deployed are folded at the bottom: the time to learn a
+  service needs a wallet is <em>before</em> you deploy it.
 </p>
 
 <div class="stats-grid">
@@ -60,7 +60,7 @@
 
 <section class="payout-all">
   <div class="block-head">
-    <h2 class="block-title">Every service</h2>
+    <h2 class="block-title">Deployed</h2>
     <div class="search-box search-box-sm">
       <input type="search" id="payout-filter" class="form-input" placeholder="Filter by name, chain or address"
              aria-label="Filter payout destinations" aria-keyshortcuts="/">
@@ -68,8 +68,14 @@
     </div>
   </div>
   <div id="payout-table-container">
-    <p style="color: var(--text-muted); font-size: 0.85rem;">Loading&hellip;</p>
+    <p class="loading-line">Loading&hellip;</p>
   </div>
+  <!-- The rest of the catalog, one click away. Opened by the filter when it
+       matches something in here, so a search never hides its own result. -->
+  <details class="payout-rest" id="payout-rest" hidden>
+    <summary class="payout-rest-summary">Not deployed <span class="muted" id="payout-rest-count"></span></summary>
+    <div id="payout-rest-container"></div>
+  </details>
 </section>
 {% endblock %}
 
@@ -176,23 +182,23 @@
     var rowClass = (entry.address_missing && entry.deployed) ? ' class="payout-row-actionable"'
       : (entry.deployed ? '' : ' class="payout-row-idle"');
     return '<tr' + rowClass + ' data-slug="' + esc(entry.slug) + '">'
-      + '<td>' + esc(entry.name || entry.slug) + '</td>'
-      + '<td>' + deployed + '</td>'
-      + '<td><span class="badge badge-category">' + esc(entry.model || 'unknown') + '</span></td>'
-      + '<td>' + chain + '</td>'
-      + '<td>' + payoutAddressCell(entry) + '</td>'
-      + '<td class="payout-balance-cell" data-slug="' + esc(entry.slug) + '">'
+      + '<td class="p-name">' + esc(entry.name || entry.slug) + '</td>'
+      + '<td class="p-state">' + deployed + '</td>'
+      + '<td class="p-model"><span class="badge badge-category">' + esc(entry.model || 'unknown') + '</span></td>'
+      + '<td class="p-chain">' + chain + '</td>'
+      + '<td class="p-addr">' + payoutAddressCell(entry) + '</td>'
+      + '<td class="p-bal payout-balance-cell" data-slug="' + esc(entry.slug) + '">'
       + balanceCell(_balances[entry.slug]) + '</td>'
       + '</tr>';
   }
 
-  function renderTable(entries) {
+  function renderTable(entries, empty) {
     if (!entries.length) {
-      return '<p style="color: var(--text-muted); font-size: 0.85rem;">Nothing matches that filter.</p>';
+      return '<p class="block-empty">' + esc(empty || 'Nothing matches that filter.') + '</p>';
     }
-    return '<div style="overflow-x:auto;"><table class="breakdown-table"><thead><tr>'
-      + '<th>Service</th><th>Status</th><th>Payout model</th><th>Chain</th><th>Address</th>'
-      + '<th>On-chain</th>'
+    return '<div class="table-scroll"><table class="breakdown-table payout-table"><thead><tr>'
+      + '<th class="p-name">Service</th><th class="p-state">Status</th><th class="p-model">Payout model</th>'
+      + '<th class="p-chain">Chain</th><th class="p-addr">Address</th><th class="p-bal">On-chain</th>'
       + '</tr></thead><tbody>'
       + entries.map(payoutRow).join('')
       + '</tbody></table></div>';
@@ -207,7 +213,16 @@
       return [e.name, e.slug, e.chain, e.address, e.model]
         .some(function (v) { return v && String(v).toLowerCase().indexOf(q) !== -1; });
     });
-    document.getElementById('payout-table-container').innerHTML = renderTable(rows);
+    // Deployed services lead; the rest of the catalog sits folded beneath.
+    var deployed = rows.filter(function (e) { return e.deployed; });
+    var rest = rows.filter(function (e) { return !e.deployed; });
+    document.getElementById('payout-table-container').innerHTML = renderTable(deployed,
+      q ? 'No deployed service matches that filter.' : 'Nothing is deployed yet. Every service in the catalog is listed under Not deployed.');
+    var fold = document.getElementById('payout-rest');
+    fold.hidden = !rest.length;
+    document.getElementById('payout-rest-count').textContent = String(rest.length);
+    document.getElementById('payout-rest-container').innerHTML = renderTable(rest);
+    if (q && rest.length) fold.open = true;
   }
 
   async function loadPayouts() {
@@ -249,7 +264,7 @@
     } catch (err) {
       // Say the registry could not be read. Never render an empty table, which
       // would look like "no services pay you anything".
-      container.innerHTML = '<p style="color: var(--error);">Could not load payout destinations: '
+      container.innerHTML = '<p class="text-fail">Could not load payout destinations: '
         + esc((err && err.message) || 'error') + '</p>';
     }
   }

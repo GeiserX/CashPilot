@@ -327,7 +327,7 @@ const CP = (() => {
       // suppress. The codes are the thing that actually decides whether a
       // conversion happened.
       const approx = effectiveDisplayCurrency(nativeCurrency) !== nativeCurrency
-        ? ` <span style="color:var(--text-muted);">(≈ ${escapeHtml(formatCurrency(p.amount, nativeCurrency))})</span>`
+        ? ` <span class="muted">(≈ ${escapeHtml(formatCurrency(p.amount, nativeCurrency))})</span>`
         : '';
       return `
         <div class="payout-queue-item attn-row attn-ask" data-payout-id="${escapeHtml(String(p.id))}">
@@ -425,16 +425,16 @@ const CP = (() => {
       <div class="detail-grid">
         <div class="detail-item">
           <div class="detail-label">Balance now</div>
-          <div class="detail-value">${data.balance_known ? escapeHtml(money(balance)) : '<span style="color:var(--text-muted);">not collected yet</span>'}</div>
+          <div class="detail-value">${data.balance_known ? escapeHtml(money(balance)) : '<span class="muted">not collected yet</span>'}</div>
         </div>
         <div class="detail-item">
           <div class="detail-label">Earned in total</div>
-          <div class="detail-value">${data.balance_known || paid ? escapeHtml(money(data.lifetime_earned || 0)) : '<span style="color:var(--text-muted);">not collected yet</span>'}</div>
-          ${paid ? `<div style="font-size:0.7rem; color:var(--text-muted);">includes ${escapeHtml(String(paid))} confirmed payout${paid === 1 ? '' : 's'}</div>` : ''}
+          <div class="detail-value">${data.balance_known || paid ? escapeHtml(money(data.lifetime_earned || 0)) : '<span class="muted">not collected yet</span>'}</div>
+          ${paid ? `<div class="detail-sub">includes ${escapeHtml(String(paid))} confirmed payout${paid === 1 ? '' : 's'}</div>` : ''}
         </div>
       </div>
       ${bar}
-      <p style="margin-top:12px; color:var(--text-secondary); font-size:0.85rem;">${escapeHtml(projection.summary || '')}</p>
+      <p class="sd-note">${escapeHtml(projection.summary || '')}</p>
     `;
   }
 
@@ -472,9 +472,9 @@ const CP = (() => {
     if (attribution) {
       // documented === false means nobody checked, which is a different claim
       // from "no risk" and is styled to say so rather than to reassure.
-      const tone = attribution.documented ? 'var(--warning)' : 'var(--text-muted)';
+      const tone = attribution.documented ? 'deploy-risk-known' : 'deploy-risk-unknown';
       html += `
-        <div class="deploy-risk-block" style="border-left-color:${tone};">
+        <div class="deploy-risk-block ${tone}">
           <div class="deploy-risk-headline">${escapeHtml(attribution.headline || '')}</div>
           <div class="deploy-risk-body-text">${escapeHtml(attribution.body || '')}</div>
           ${attribution.lateral_note ? `<div class="deploy-risk-body-text">${escapeHtml(attribution.lateral_note)}</div>` : ''}
@@ -483,7 +483,7 @@ const CP = (() => {
     }
     if (isolation.summary) {
       html += `
-        <div class="deploy-risk-block" style="border-left-color:var(--border-color);">
+        <div class="deploy-risk-block deploy-risk-info">
           <div class="deploy-risk-headline">Keeping it off your LAN</div>
           <div class="deploy-risk-body-text">${escapeHtml(isolation.summary)}</div>
         </div>`;
@@ -731,7 +731,7 @@ const CP = (() => {
     return hosts.length ? hosts : null;
   }
 
-  const UNKNOWN_CELL = (why) => `<span style="color:var(--text-muted);" title="${escapeHtml(why)}">&mdash;</span>`;
+  const UNKNOWN_CELL = (why) => `<span class="muted" title="${escapeHtml(why)}">&mdash;</span>`;
 
   // Free space on the host filesystem, NOT the service's own volume.
   //
@@ -802,7 +802,7 @@ const CP = (() => {
     }
     // No host says yes. Only call it "None" when every host actually SAID no.
     if (hosts.every(h => h.gpu && h.gpu.available === false)) {
-      return `<span style="color:var(--text-muted);" title="No GPU is visible on the host${hosts.length > 1 ? 's' : ''} running this service">None</span>`;
+      return `<span class="muted" title="No GPU is visible on the host${hosts.length > 1 ? 's' : ''} running this service">None</span>`;
     }
     if (hosts.every(h => h.android)) {
       return UNKNOWN_CELL('The Android client does not report GPU information');
@@ -819,7 +819,7 @@ const CP = (() => {
 
     // Show spinner while loading (only on first load, not refresh)
     if (!container.querySelector('.breakdown-table')) {
-      container.innerHTML = `<div style="display:flex; align-items:center; justify-content:center; gap:8px; padding:24px 0; color:var(--text-muted);"><div class="spinner"></div> Loading services...</div>`;
+      container.innerHTML = `<div class="loading-line"><div class="spinner"></div> Loading services</div>`;
     }
 
     try {
@@ -838,6 +838,11 @@ const CP = (() => {
         api('/api/workers').catch(() => null),
       ]);
       _hostResources = buildHostResourceMap(workers);
+      // The GPU column only earns its width when some box has a GPU: on a
+      // fleet without one every row read "None" or a dash. The cells are still
+      // rendered, so the row keeps the header's shape; the container class
+      // hides the column (style.css, .no-gpu).
+      container.classList.toggle('no-gpu', !Object.values(_hostResources || {}).some(h => h.gpu && h.gpu.available === true));
       renderPlacement(services || [], workers);
       renderAttention(services || [], workers);
 
@@ -860,16 +865,16 @@ const CP = (() => {
         }
         container.innerHTML = unreachable === 0
           ? `
-          <div class="empty-state" style="padding:32px 0; text-align:center;">
+          <div class="empty-state empty-state-first">
             <div class="empty-state-title">No services deployed yet</div>
-            <div class="empty-state-text">Get started by deploying your first passive income service.</div>
-            <a href="/setup" class="btn btn-primary" style="margin-top:12px;">Setup Wizard</a>
+            <div class="empty-state-text">Pick the services you want to run and the boxes to run them on. Their balances, status and payouts show up here.</div>
+            <a href="/setup" class="btn btn-primary">Add services</a>
           </div>`
           : `
-          <div class="empty-state" style="padding:32px 0; text-align:center;">
+          <div class="empty-state">
             <div class="empty-state-title">Can't reach ${unreachable > 0 ? escapeHtml(String(unreachable)) + ' worker' + (unreachable === 1 ? '' : 's') : 'the workers'}</div>
             <div class="empty-state-text">Services running on ${unreachable === 1 ? 'it' : 'them'} are not shown here — this does not mean they stopped. Containers keep running and earning while a worker is offline.</div>
-            <a href="/fleet" class="btn btn-ghost" style="margin-top:12px;">Check the fleet</a>
+            <a href="/fleet" class="btn btn-ghost">Check the fleet</a>
           </div>`;
         return;
       }
@@ -895,26 +900,23 @@ const CP = (() => {
           ? '<span class="sort-indicator active">&#9650;</span>'
           : '<span class="sort-indicator active">&#9660;</span>';
       };
-      const sortTh = (col, label, align) => {
-        const style = align ? ` style="text-align:${align};"` : '';
-        return `<th class="sortable" data-sort="${col}"${style}>${label}${sortIcon(col)}</th>`;
-      };
+      const sortTh = (col, label, cls) => `<th class="sortable ${cls}" data-sort="${col}">${label}${sortIcon(col)}</th>`;
 
       container.innerHTML = `
         <table class="breakdown-table">
           <thead>
             <tr>
-              ${sortTh('name', 'Service', '')}
-              ${sortTh('status', 'Status', 'center')}
-              ${sortTh('health', 'Health', 'center')}
-              ${sortTh('balance', 'Balance', 'right')}
-              ${sortTh('change', 'Change', 'right')}
-              ${sortTh('cpu', 'CPU', 'right')}
-              ${sortTh('memory', 'Memory', 'right')}
-              ${sortTh('disk', 'Host disk', 'right')}
-              ${sortTh('gpu', 'GPU', 'center')}
-              ${sortTh('payout', 'Payout', 'center')}
-              <th style="text-align:center;">Actions</th>
+              ${sortTh('name', 'Service', 'c-name')}
+              ${sortTh('status', 'Status', 'c-status')}
+              ${sortTh('health', 'Health', 'c-health c-num')}
+              ${sortTh('balance', 'Balance', 'c-bal c-num')}
+              ${sortTh('change', 'Change', 'c-chg c-num')}
+              ${sortTh('cpu', 'CPU', 'c-cpu c-num')}
+              ${sortTh('memory', 'Memory', 'c-mem c-num')}
+              ${sortTh('disk', 'Host disk', 'c-disk c-num')}
+              ${sortTh('gpu', 'GPU', 'c-gpu')}
+              ${sortTh('payout', 'Payout', 'c-pay')}
+              <th class="c-act">Actions</th>
             </tr>
           </thead>
           <tbody>${rows}</tbody>
@@ -948,7 +950,7 @@ const CP = (() => {
       // when there was nothing on screen yet.
       if (!container.querySelector('.breakdown-table')) {
         container.innerHTML = `
-          <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; gap:8px; padding:24px 0; color:var(--text-muted); text-align:center;">
+          <div class="block-empty block-error">
             <span>Couldn't load services${err && err.message ? `: ${escapeHtml(err.message)}` : ''}.</span>
             <button class="btn btn-ghost btn-sm" data-action="loadServicesTable">Retry</button>
           </div>`;
@@ -1199,12 +1201,12 @@ const CP = (() => {
         </span>`;
       }
       rows += `
-      <label style="display:flex; align-items:center; gap:8px; padding:6px 0;">
+      <label class="worker-pick">
         <input type="checkbox" class="${checkboxClass}" data-slug="${svc.slug}" data-wid="${w.id}" ${deployed ? 'disabled checked' : ''}>
-        <span style="${deployed ? 'opacity:0.5;' : ''}">${escapeHtml(w.name)}</span>
+        <span class="worker-pick-name${deployed ? ' is-deployed' : ''}">${escapeHtml(w.name)}</span>
         ${deployed
-          ? '<span class="badge badge-deployed" style="font-size:0.75rem;">Deployed</span>'
-          : '<span class="badge badge-available" style="font-size:0.75rem;">Available</span>'}
+          ? '<span class="badge badge-deployed">Deployed</span>'
+          : '<span class="badge badge-available">Available</span>'}
         ${instancesBox}
       </label>`;
     }
@@ -1266,7 +1268,7 @@ const CP = (() => {
       : (isExternal ? 'App / Browser' : '');
 
     // Health badge — external services always show --
-    let healthBadge = '<span style="color:var(--text-muted);">--</span>';
+    let healthBadge = '<span class="muted">--</span>';
     if (!isExternal && svc.health_score !== null && svc.health_score !== undefined) {
       const score = svc.health_score;
       const crashes = svc.crashes_7d || 0;
@@ -1320,7 +1322,7 @@ const CP = (() => {
     if (!balanceKnown) {
       // Never read. An em dash, not a number — the user must be able to tell
       // "nothing has looked at this" from "this earned nothing".
-      balanceHtml = `<span style="color:var(--text-muted);" title="CashPilot has not read a balance for this service yet">&mdash;</span>${disconnectedLabel}`;
+      balanceHtml = `<span class="muted" title="CashPilot has not read a balance for this service yet">&mdash;</span>${disconnectedLabel}`;
     } else if (nativeLabel && formatCurrency(displayBalance, currency).includes(currency)) {
       // No price for this unit, so the "converted" figure already IS the
       // native one. Printing it twice read as two different numbers.
@@ -1379,11 +1381,11 @@ const CP = (() => {
     const eligible = co.eligible === true;
     const pctToMin = comparable && minAmount > 0 ? Math.min(100, (balance / minAmount) * 100) : 0;
     const progressBar = comparable && minAmount > 0 ? `
-      <div class="payout-progress" title="${formatCurrency(balance, currency)} / ${formatCurrency(minAmount, currency)}" style="min-width:60px;">
+      <div class="payout-progress" title="${formatCurrency(balance, currency)} / ${formatCurrency(minAmount, currency)}">
         <div class="payout-progress-bar ${eligible ? 'eligible' : ''}" style="width:${pctToMin.toFixed(0)}%"></div>
       </div>
       <span class="payout-label">${pctToMin.toFixed(0)}%</span>
-    ` : '<span style="color:var(--text-muted);">--</span>';
+    ` : '<span class="muted">--</span>';
 
     // Payout (claim) button — always visible in main row
     const claimTitle = co.dashboard_url
@@ -1457,20 +1459,20 @@ const CP = (() => {
 
     // Main row
     let html = `
-    <tr class="breakdown-row${isMulti ? ' expandable' : ''}" data-slug="${escapeHtml(svc.slug)}"${isMulti ? ` data-action="toggleInstances" data-a1="${escapeHtml(svc.slug)}" data-a2="event" style="cursor:pointer;"` : ''}>
-      <td>${nameHtml}<div class="cell-sub cell-mono">${subtitle}</div></td>
-      <td style="text-align:center;">${partialDown
+    <tr class="breakdown-row${isMulti ? ' expandable' : ''}" data-slug="${escapeHtml(svc.slug)}"${isMulti ? ` data-action="toggleInstances" data-a1="${escapeHtml(svc.slug)}" data-a2="event"` : ''}>
+      <td class="c-name">${nameHtml}<div class="cell-sub cell-mono">${subtitle}</div></td>
+      <td class="c-status">${partialDown
         ? `<span class="badge badge-stopped" title="${downCount} of ${details.length} instances are not running"><span class="status-dot stopped"></span> ${details.length - downCount} of ${details.length} up</span>`
         : `<span class="badge badge-${statusClass}"><span class="status-dot ${statusClass}"></span> ${statusLabel}</span>${instanceLabel}`}${unmanagedLabel}${outdatedBadge}</td>
-      <td style="text-align:center;">${healthBadge}</td>
-      <td style="text-align:right; font-weight:600;">${balanceHtml}</td>
-      <td style="text-align:right;"><span class="stat-change ${deltaClass}">${deltaStr}</span></td>
-      <td style="text-align:right;">${cpuStr}</td>
-      <td style="text-align:right;">${memStr}</td>
-      <td style="text-align:right;">${diskCell(svc)}</td>
-      <td style="text-align:center;">${gpuCell(svc)}</td>
-      <td style="text-align:center;">${progressBar}</td>
-      <td style="text-align:center; white-space:nowrap;">${actionBtns}</td>
+      <td class="c-health c-num">${healthBadge}</td>
+      <td class="c-bal c-num">${balanceHtml}</td>
+      <td class="c-chg c-num"><span class="delta ${deltaClass}">${deltaStr}</span></td>
+      <td class="c-cpu c-num">${cpuStr}</td>
+      <td class="c-mem c-num">${memStr}</td>
+      <td class="c-disk c-num">${diskCell(svc)}</td>
+      <td class="c-gpu">${gpuCell(svc)}</td>
+      <td class="c-pay">${progressBar}</td>
+      <td class="c-act">${actionBtns}</td>
     </tr>`;
 
     // Sub-rows for multi-instance (hidden by default)
@@ -1508,20 +1510,20 @@ const CP = (() => {
           : (inst.memory == null ? '<span title="Docker could not report this container\'s stats">—</span>' : inst.memory);
         html += `
         <tr class="instance-row" data-parent="${escapeHtml(svc.slug)}" style="display:none;">
-          <td style="padding-left:28px;">
+          <td class="c-name">
             <span class="instance-node-label">${nodeLabel}</span>
-            ${subLabel ? `<span style="font-size:0.7rem; color:var(--text-muted); margin-left:4px;">${subLabel}</span>` : ''}
+            ${subLabel ? `<span class="instance-ctr">${subLabel}</span>` : ''}
           </td>
-          <td style="text-align:center;"><span class="badge badge-${iStatus}"><span class="status-dot ${iStatus}"></span> ${iStatusLabel}</span></td>
-          <td></td>
-          <td></td>
-          <td></td>
-          <td style="text-align:right;">${cpuCell}</td>
-          <td style="text-align:right;">${memCell}</td>
-          <td style="text-align:right;">${diskCellForHosts(hostForWorker(inst.worker_id))}</td>
-          <td style="text-align:center;">${gpuCellForHosts(hostForWorker(inst.worker_id))}</td>
-          <td></td>
-          <td style="text-align:center; white-space:nowrap;">
+          <td class="c-status"><span class="badge badge-${iStatus}"><span class="status-dot ${iStatus}"></span> ${iStatusLabel}</span></td>
+          <td class="c-health c-empty"></td>
+          <td class="c-bal c-empty"></td>
+          <td class="c-chg c-empty"></td>
+          <td class="c-cpu c-num">${cpuCell}</td>
+          <td class="c-mem c-num">${memCell}</td>
+          <td class="c-disk c-num">${diskCellForHosts(hostForWorker(inst.worker_id))}</td>
+          <td class="c-gpu">${gpuCellForHosts(hostForWorker(inst.worker_id))}</td>
+          <td class="c-pay c-empty"></td>
+          <td class="c-act">
             <div class="action-btns">
               ${_canWrite ? `
               <button class="btn btn-icon" data-action="restartService" data-a1="${escapeHtml(svc.slug)}"${wParam} title="Restart on ${nodeLabel}"${disabledAttr}>
@@ -1603,11 +1605,11 @@ const CP = (() => {
         const holder = ctx.parentElement;
         if (holder) {
           holder.innerHTML =
-            '<div class="empty-state" style="padding:32px 0;">'
+            '<div class="empty-state">'
             + '<div class="empty-state-text">Could not load earnings. This is not a reading of zero — '
             + 'the figures could not be fetched.</div>'
             + '<button class="btn btn-ghost btn-sm" data-action="loadEarningsChart" data-a1="'
-            + escapeHtml(String(days)) + '" style="margin-top:10px;">Retry</button>'
+            + escapeHtml(String(days)) + '">Retry</button>'
             + '</div>';
         }
       }
@@ -1703,7 +1705,7 @@ const CP = (() => {
     const title = document.getElementById('cred-modal-title');
     const body = document.getElementById('cred-modal-body');
     if (title) title.textContent = 'Update Credentials';
-    if (body) body.innerHTML = '<div class="spinner" style="margin:24px auto;"></div>';
+    if (body) body.innerHTML = '<div class="spinner spinner-block"></div>';
 
     try {
       if (!_collectorMetaCache) {
@@ -1712,7 +1714,7 @@ const CP = (() => {
       const config = await api('/api/config');
       const col = _collectorMetaCache.find(c => c.slug === slug);
       if (!col || !col.fields.length) {
-        if (body) body.innerHTML = '<p style="color:var(--text-muted);">No credentials needed for this service.</p>';
+        if (body) body.innerHTML = '<p class="muted">No credentials needed for this service.</p>';
         return;
       }
       if (title) title.textContent = `${col.name} — Credentials`;
@@ -1731,7 +1733,7 @@ const CP = (() => {
       // inputs at all.
       const fieldsHtml = col.fields.map(f => {
         const inputType = f.secret ? 'password' : 'text';
-        const optionalSuffix = f.required ? '' : ' <span style="color:var(--text-muted); font-weight:400;">(optional)</span>';
+        const optionalSuffix = f.required ? '' : ' <span class="optional">(optional)</span>';
         // Secret inputs are write-only: empty, with a placeholder that reflects
         // whether a value is already stored (per _secrets). Non-secret fields keep
         // their plain placeholder.
@@ -1739,14 +1741,13 @@ const CP = (() => {
           ? (secrets[f.key] ? '•••••••• (set — leave blank to keep)' : escapeHtml(f.label))
           : escapeHtml(f.label);
         return `
-        <div style="margin-bottom:10px;">
-          <label style="display:block; font-size:0.8rem; color:var(--text-secondary); margin-bottom:4px;">${escapeHtml(f.label)}${optionalSuffix}</label>
-          <input class="form-input cred-modal-input" type="${inputType}"
+        <div class="form-group">
+          <label class="form-label">${escapeHtml(f.label)}${optionalSuffix}</label>
+          <input class="form-input form-input-wide cred-modal-input" type="${inputType}"
                  data-config="${escapeHtml(f.key)}"
                  value=""
                  placeholder="${placeholder}"
-                 ${f.secret ? 'autocomplete="new-password"' : ''}
-                 style="width:100%;">
+                 ${f.secret ? 'autocomplete="new-password"' : ''}>
         </div>`;
       }).join('');
       const hint = col.hint || '';
@@ -1757,29 +1758,28 @@ const CP = (() => {
       const payCurrency = col.currency || 'USD';
       const currencyLabel = payCurrency === 'USD' ? '$' : payCurrency;
       const bonusHtml = `
-        <div style="margin-top:14px; padding-top:12px; border-top:1px solid var(--border);">
-          <label style="display:block; font-size:0.8rem; color:var(--text-secondary); margin-bottom:4px;">Signup Bonus Offset (${escapeHtml(currencyLabel)})</label>
-          <div style="display:flex; align-items:center; gap:6px;">
-            <input class="form-input cred-modal-input" type="number" step="0.01" min="0"
+        <div class="modal-section">
+          <label class="form-label">Signup bonus offset (${escapeHtml(currencyLabel)})</label>
+          <div class="inline-field">
+            <input class="form-input form-input-num cred-modal-input" type="number" step="0.01" min="0"
                    data-config="${escapeHtml(bonusKey)}"
                    value="${escapeHtml(currentBonus)}"
-                   placeholder="0.00"
-                   style="width:100px;">
-            <span style="font-size:0.75rem; color:var(--text-muted);">Subtract promotional credits from displayed balance</span>
+                   placeholder="0.00">
+            <span class="form-hint">Subtracted from the balance shown, for promotional credit you cannot cash out.</span>
           </div>
         </div>`;
 
       body.innerHTML = `
-        ${hint ? `<p style="font-size:0.875rem; color:var(--text-secondary); margin:0 0 14px; line-height:1.5;">${sanitizeHint(hint)}</p>` : ''}
+        ${hint ? `<p class="modal-hint">${sanitizeHint(hint)}</p>` : ''}
         ${fieldsHtml}
         ${bonusHtml}
-        <div style="display:flex; gap:8px; margin-top:14px;">
-          <button class="btn btn-primary btn-sm" data-action="saveCredentialModal" data-a1="${escapeHtml(slug)}">Save</button>
-          <button class="btn btn-ghost btn-sm" data-action="closeModal" data-a1="cred-modal">Cancel</button>
-          <button class="btn btn-ghost btn-sm" style="color:var(--error); margin-left:auto;" data-action="clearServiceCredentials" data-a1="${escapeHtml(slug)}" data-a2="${escapeHtml(col.name)}">Clear</button>
+        <div class="modal-actions">
+          <button class="btn btn-primary" data-action="saveCredentialModal" data-a1="${escapeHtml(slug)}">Save</button>
+          <button class="btn btn-ghost" data-action="closeModal" data-a1="cred-modal">Cancel</button>
+          <button class="btn btn-danger push-right" data-action="clearServiceCredentials" data-a1="${escapeHtml(slug)}" data-a2="${escapeHtml(col.name)}">Clear</button>
         </div>`;
     } catch (err) {
-      if (body) body.innerHTML = `<p style="color:var(--error);">Failed to load: ${escapeHtml(err.message)}</p>`;
+      if (body) body.innerHTML = `<p class="text-fail">Failed to load: ${escapeHtml(err.message)}</p>`;
     }
   }
 
@@ -1959,7 +1959,7 @@ const CP = (() => {
     const body = document.getElementById('claim-modal-body');
 
     if (title) title.textContent = 'Checking eligibility...';
-    if (body) body.innerHTML = '<div class="spinner" style="margin:24px auto;"></div>';
+    if (body) body.innerHTML = '<div class="spinner spinner-block"></div>';
 
     try {
       const data = await api('/api/earnings/breakdown');
@@ -1988,45 +1988,39 @@ const CP = (() => {
       const comparable = typeof minAmount === 'number';
       const currency = svc.currency || 'USD';
 
-      if (title) title.textContent = `Claim — ${svc.name}`;
+      if (title) title.textContent = `${svc.name} payout`;
 
-      const unknownIcon = '<svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="8" y1="12" x2="16" y2="12"/></svg>';
-      const statusIcon = eligibilityUnknown
-        ? unknownIcon
-        : eligible
-        ? '<svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--success)" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="16 8 10 16 7 13"/></svg>'
-        : '<svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--warning)" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>';
-
+      // One state line in the Console's colour-only-for-state language: a
+      // square and a word, then the reason. No hero icon.
+      const stateClass = eligibilityUnknown ? 'claim-unknown' : eligible ? 'claim-ok' : 'claim-warn';
       const statusText = eligibilityUnknown
-        ? `<span style="color:var(--text-muted); font-weight:600; font-size:1.1rem;">Cannot tell yet</span>
-           <div style="color:var(--text-muted); font-size:0.85rem; margin-top:6px;">
+        ? `<span class="claim-state ${stateClass}">Cannot tell yet</span>
+           <p class="claim-why">
              This provider's minimum is set in ${escapeHtml(String(co.min_amount_currency || 'another currency'))} and the balance is
              recorded in ${escapeHtml(String(currency))}. Without an exchange rate the two cannot be compared, so
              CashPilot will not guess. Check the provider's own dashboard.
-           </div>`
+           </p>`
         : eligible
-        ? `<span style="color:var(--success); font-weight:600; font-size:1.1rem;">Eligible for payout!</span>`
-        : `<span style="color:var(--warning); font-weight:600; font-size:1.1rem;">Below minimum payout</span>`;
+        ? `<span class="claim-state ${stateClass}">Eligible for payout</span>`
+        : `<span class="claim-state ${stateClass}">Below minimum payout</span>`;
 
       const pctToMin = comparable && minAmount > 0 ? Math.min(100, (svc.balance / minAmount) * 100) : 0;
       const remaining = comparable ? Math.max(0, minAmount - svc.balance) : 0;
 
       const progressSection = comparable && minAmount > 0 ? `
-        <div style="margin: 20px 0;">
-          <div style="display:flex; justify-content:space-between; font-size:0.85rem; margin-bottom:6px;">
-            <span>Current: <strong>${formatCurrency(svc.balance, currency)}</strong></span>
-            <span>Minimum: <strong>${formatCurrency(minAmount, currency)}</strong></span>
+        <div class="claim-progress">
+          <div class="claim-figures">
+            <span>Balance <strong>${formatCurrency(svc.balance, currency)}</strong></span>
+            <span>Minimum <strong>${formatCurrency(minAmount, currency)}</strong></span>
           </div>
-          <div class="payout-progress" style="height:10px; border-radius:5px;">
-            <div class="payout-progress-bar ${eligible ? 'eligible' : ''}" style="width:${pctToMin.toFixed(0)}%; height:100%; border-radius:5px;"></div>
+          <div class="payout-progress payout-progress-lg">
+            <div class="payout-progress-bar ${eligible ? 'eligible' : ''}" style="width:${pctToMin.toFixed(0)}%"></div>
           </div>
-          ${!eligible ? `<div style="font-size:0.85rem; color:var(--text-muted); margin-top:8px;">Need ${formatCurrency(remaining, currency)} more to reach minimum payout.</div>` : ''}
+          ${!eligible ? `<p class="claim-why">${formatCurrency(remaining, currency)} more to reach the minimum.</p>` : ''}
         </div>` : '';
 
       const notesSection = co.notes
-        ? `<div style="background:var(--bg-tertiary); border:1px solid var(--border-color); border-radius:var(--radius); padding:12px; margin:16px 0; font-size:0.85rem; color:var(--text-secondary);">
-             <strong style="color:var(--text-primary);">Notes:</strong> ${escapeHtml(co.notes)}
-           </div>`
+        ? `<p class="claim-notes"><strong>Notes</strong> ${escapeHtml(co.notes)}</p>`
         : '';
 
       const methodLabel = {
@@ -2035,42 +2029,32 @@ const CP = (() => {
         manual: 'Follow the instructions below to claim your earnings.',
         auto: 'Payouts happen automatically when the minimum threshold is reached.',
       };
+      const extIcon = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>';
 
       let actionSection = '';
       if (co.method === 'auto') {
         // Auto-settle services — always show the dashboard link (e.g. rewards page)
-        actionSection = `<div style="margin-top:20px; text-align:center;">
-             <p style="font-size:0.85rem; color:var(--text-secondary); margin-bottom:12px;">${methodLabel.auto}</p>
-             ${co.dashboard_url ? `<a href="${escapeHtml(co.dashboard_url)}" target="_blank" rel="noopener" class="btn btn-primary btn-lg" style="min-width:200px;">
-               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
-               Claim Rewards
-             </a>` : ''}
+        actionSection = `<div class="claim-action">
+             <p class="claim-why">${methodLabel.auto}</p>
+             ${co.dashboard_url ? `<a href="${escapeHtml(co.dashboard_url)}" target="_blank" rel="noopener" class="btn btn-primary">${extIcon} Open the rewards page</a>` : ''}
            </div>`;
       } else if (eligible && co.dashboard_url) {
-        actionSection = `<div style="margin-top:20px; text-align:center;">
-             <p style="font-size:0.85rem; color:var(--text-secondary); margin-bottom:12px;">${methodLabel[co.method] || methodLabel.redirect}</p>
-             <a href="${escapeHtml(co.dashboard_url)}" target="_blank" rel="noopener" class="btn btn-success btn-lg" style="min-width:200px;">
-               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
-               Go to Dashboard
-             </a>
+        actionSection = `<div class="claim-action">
+             <p class="claim-why">${methodLabel[co.method] || methodLabel.redirect}</p>
+             <a href="${escapeHtml(co.dashboard_url)}" target="_blank" rel="noopener" class="btn btn-primary">${extIcon} Open the provider dashboard</a>
            </div>`;
       } else if (!eligible) {
-        actionSection = `<div style="margin-top:16px; text-align:center;">
-               <p style="font-size:0.85rem; color:var(--text-muted);">Keep your service running to accumulate more earnings.</p>
-             </div>`;
+        actionSection = `<p class="claim-why">Keep the service running to build up the balance.</p>`;
       }
 
       if (body) body.innerHTML = `
-        <div style="text-align:center; padding:8px 0;">
-          ${statusIcon}
-          <div style="margin-top:12px;">${statusText}</div>
-        </div>
+        <div class="claim-head">${statusText}</div>
         ${progressSection}
         ${notesSection}
         ${actionSection}
       `;
     } catch (err) {
-      if (body) body.innerHTML = `<p style="color:var(--error);">Error: ${escapeHtml(err.message)}</p>`;
+      if (body) body.innerHTML = `<p class="text-fail">Error: ${escapeHtml(err.message)}</p>`;
     }
   }
 
@@ -2392,7 +2376,7 @@ const CP = (() => {
       </div>
       <div class="service-desc">${escapeHtml(svc.short_description || '')}</div>
       ${manualNotice}
-      <div class="service-meta" style="margin-top: 8px;">
+      <div class="service-meta">
         ${svc.requirements && svc.requirements.residential_ip ? '<span class="badge badge-residential">Residential IP</span>' : ''}
         ${deployedBadge}
       </div>
@@ -2427,7 +2411,7 @@ const CP = (() => {
     const container = document.getElementById('wizard-setup-forms');
     if (!container) return;
 
-    container.innerHTML = '<div class="spinner" style="margin:24px auto;"></div>';
+    container.innerHTML = '<div class="spinner spinner-block"></div>';
 
     try {
       const [services, workers] = await Promise.all([
@@ -2464,10 +2448,10 @@ const CP = (() => {
 
   function collectorCredentialsNotice(slug) {
     return `
-        <div style="font-size:0.8rem; color:var(--text-muted); background:var(--bg-subtle, rgba(255,255,255,0.03)); border:1px solid var(--border); border-radius:6px; padding:8px 10px; margin:10px 0;">
+        <div class="inline-note">
           The credentials above run the service. To also see its <strong>balance</strong> on the dashboard,
           add earnings-tracking credentials under
-          <a href="#" data-action="openCredentialModal" data-prevent="1" data-a1="${escapeHtml(slug)}" style="color:var(--accent, #3b82f6);">Settings → Collectors</a>
+          <a href="#" data-action="openCredentialModal" data-prevent="1" data-a1="${escapeHtml(slug)}">Settings → Collectors</a>
           after deploying. This is optional — the service earns either way.
         </div>`;
   }
@@ -2489,28 +2473,28 @@ const CP = (() => {
         ? `Dashboard for ${escapeHtml(svc.name)}`
         : `Sign Up for ${escapeHtml(svc.name)}`;
       return `
-      <div class="card" style="margin-bottom: 16px;" id="setup-${svc.slug}">
+      <div class="card setup-card" id="setup-${svc.slug}">
         <div class="card-header">
           <h3 class="section-title">${escapeHtml(svc.name)}</h3>
           <span class="badge badge-category">${escapeHtml(capFirst(svc.category))}</span>
         </div>
-        <div style="padding: 8px 0;">
-          <p style="color: var(--warning, #f59e0b); margin-bottom: 12px;">
-            <strong>${platforms || 'Desktop'} only</strong> — no Docker image available for automated deployment.
+        <div class="setup-body">
+          <p class="setup-line text-warn">
+            <strong>${platforms || 'Desktop'} only.</strong> There is no Docker image, so CashPilot cannot deploy it.
           </p>
-          <p style="color: var(--text-secondary); margin-bottom: 16px;">
+          <p class="setup-line">
             Install the app on your device, then CashPilot will track your earnings automatically.
           </p>
           <a href="${escapeHtml(linkUrl)}" target="_blank" rel="noopener" class="btn btn-primary btn-sm">
             ${manualBtnLabel}
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
           </a>
-          <a href="https://geiserx.github.io/CashPilot/guides/${svc.slug}/" target="_blank" rel="noopener" class="btn btn-ghost btn-sm" style="margin-left: 8px;">
-            Setup Guide
+          <a href="https://geiserx.github.io/CashPilot/guides/${svc.slug}/" target="_blank" rel="noopener" class="btn btn-ghost btn-sm">
+            Setup guide
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 3h6a4 4 0 014 4v14a3 3 0 00-3-3H2z"/><path d="M22 3h-6a4 4 0 00-4 4v14a3 3 0 013-3h7z"/></svg>
           </a>
           ${isDeployed && dashboardUrl ? '' : referralNote(svc)}
-          ${manualEnvFields ? `<div style="margin-top: 16px;">${manualEnvFields}</div>` : ''}
+          ${manualEnvFields ? `<div class="setup-fields">${manualEnvFields}</div>` : ''}
         </div>
       </div>`;
     }
@@ -2518,26 +2502,26 @@ const CP = (() => {
     const envFields = envInputFields(svc, svc.docker && svc.docker.env);
 
     return `
-    <div class="card" style="margin-bottom: 16px;" id="setup-${svc.slug}">
+    <div class="card setup-card" id="setup-${svc.slug}">
       <div class="card-header">
         <h3 class="section-title">${escapeHtml(svc.name)}</h3>
         <span class="badge badge-category">${escapeHtml(capFirst(svc.category))}</span>
       </div>
 
-      <div style="margin-bottom: 16px;">
-        <p style="color: var(--text-secondary); margin-bottom: 12px;">
-          ${isDeployed && dashboardUrl ? '' : `New to ${escapeHtml(svc.name)}?`}
-          <a href="${escapeHtml(linkUrl)}" target="_blank" rel="noopener" class="btn btn-primary btn-sm" style="margin-left: 8px;">
+      <div class="setup-body">
+        <p class="setup-line setup-links">
+          ${isDeployed && dashboardUrl ? '' : `<span>New to ${escapeHtml(svc.name)}?</span>`}
+          <a href="${escapeHtml(linkUrl)}" target="_blank" rel="noopener" class="btn btn-primary btn-sm">
             ${linkLabel}
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
           </a>
-          <a href="https://geiserx.github.io/CashPilot/guides/${svc.slug}/" target="_blank" rel="noopener" class="btn btn-ghost btn-sm" style="margin-left: 8px;">
-            Setup Guide
+          <a href="https://geiserx.github.io/CashPilot/guides/${svc.slug}/" target="_blank" rel="noopener" class="btn btn-ghost btn-sm">
+            Setup guide
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 3h6a4 4 0 014 4v14a3 3 0 00-3-3H2z"/><path d="M22 3h-6a4 4 0 00-4 4v14a3 3 0 013-3h7z"/></svg>
           </a>
         </p>
         ${isDeployed && dashboardUrl ? '' : referralNote(svc)}
-        <p style="color: var(--text-muted); font-size: 0.85rem;">Already have an account? Enter your credentials below.</p>
+        <p class="setup-line muted">Already have an account? Enter your credentials below.</p>
       </div>
 
       ${envFields}
@@ -2549,23 +2533,23 @@ const CP = (() => {
         const { rows: workerRows, allDeployed } = workerCheckboxList(svc, onlineWorkers, 'setup-deploy-worker-cb');
 
         if (onlineWorkers.length === 0) {
-          return `<p style="color:var(--text-muted); font-size:0.85rem; margin-bottom:12px;">No workers online.</p>`;
+          return `<p class="setup-line muted">No workers online.</p>`;
         }
 
         if (allDeployed) {
-          return `<p style="color:var(--success); font-size:0.9rem; margin:12px 0;">Deployed on all nodes.</p>`;
+          return `<p class="setup-line"><span class="status-dot running"></span> Deployed on all nodes.</p>`;
         }
 
         return `
-        <div style="margin-bottom:12px;">
-          <div style="font-size:0.85rem; color:var(--text-muted); margin-bottom:6px;">Deploy to Workers:</div>
+        <div class="setup-workers">
+          <div class="form-label">Deploy to</div>
           <div id="setup-worker-list-${svc.slug}">${workerRows}</div>
         </div>
-        <div style="display:flex; gap:8px; align-items:center;">
-          <button class="btn btn-success" data-action="deployService" data-a1="${svc.slug}"${_isOwner ? '' : ' disabled title="Owner access required"'}>
+        <div class="setup-deploy">
+          <button class="btn btn-primary" data-action="deployService" data-a1="${svc.slug}"${_isOwner ? '' : ' disabled title="Owner access required"'}>
             Deploy ${escapeHtml(svc.name)}
           </button>
-          <span class="deploy-status" id="deploy-status-${svc.slug}" style="margin-left: 4px; font-size: 0.85rem;"></span>
+          <span class="deploy-status" id="deploy-status-${svc.slug}"></span>
         </div>`;
       })()}
     </div>`;
@@ -2673,7 +2657,7 @@ const CP = (() => {
     }
 
     if (statusEl) {
-      statusEl.innerHTML = '<span class="spinner" style="display:inline-block;width:14px;height:14px;vertical-align:middle;"></span> Deploying...';
+      statusEl.innerHTML = '<span class="spinner spinner-inline"></span> Deploying';
     }
 
     let ok = 0, fail = 0;
@@ -2897,7 +2881,7 @@ const CP = (() => {
     openModal('service-detail-modal');
     const body = document.getElementById('service-detail-body');
     const title = document.getElementById('service-detail-title');
-    if (body) body.innerHTML = '<div class="spinner" style="margin:24px auto;"></div>';
+    if (body) body.innerHTML = '<div class="spinner spinner-block"></div>';
     if (title) title.textContent = 'Loading...';
 
     try {
@@ -2942,7 +2926,7 @@ const CP = (() => {
           ${chosen.length > 1 && !common ? '<div class="form-hint">Your nodes use different images; see Running Instances. Type one here to set it on the nodes you deploy.</div>' : ''}
         </div>
         ${running.length && _isOwner ? `<button class="btn btn-secondary btn-sm" data-action="redeployWithImage" data-a1="${escapeHtml(svc.slug)}">Redeploy running instances with this image</button>
-          <span id="image-status-${escapeHtml(svc.slug)}" style="font-size:0.85rem; margin-left:6px;"></span>` : ''}
+          <span id="image-status-${escapeHtml(svc.slug)}" class="form-hint"></span>` : ''}
       </details>`;
   }
 
@@ -3130,7 +3114,7 @@ const CP = (() => {
             <button class="btn btn-ghost btn-sm" data-action="loadWorkerLogs" data-a1="${svc.slug}" data-a2="${inst.worker.id}" data-a3="logs-${svc.slug}-${inst.worker.id}-${inst.container.instance || 1}" data-a4="${inst.container.instance || 1}">Logs</button>
           </div>` : ''}
         </div>
-        <div class="log-viewer" id="logs-${svc.slug}-${inst.worker.id}-${inst.container.instance || 1}" style="display:none; max-height:200px;"></div>`;
+        <div class="log-viewer log-viewer-inline" id="logs-${svc.slug}-${inst.worker.id}-${inst.container.instance || 1}" style="display:none;"></div>`;
       }
       html += `</div>`;
     }
@@ -3211,10 +3195,10 @@ const CP = (() => {
   //
   // Worst first, because the only rows that need acting on are the bad ones.
   const CREDENTIAL_STATUS = {
-    likely_expired: {rank: 0, label: 'Likely expired', tone: 'var(--error)'},
-    expiring_soon: {rank: 1, label: 'Expiring soon', tone: 'var(--warning)'},
-    no_known_expiry: {rank: 2, label: 'No known expiry', tone: 'var(--text-muted)'},
-    fresh: {rank: 3, label: 'Fresh', tone: 'var(--success)'},
+    likely_expired: {rank: 0, label: 'Likely expired', tone: 'text-fail'},
+    expiring_soon: {rank: 1, label: 'Expiring soon', tone: 'text-warn'},
+    no_known_expiry: {rank: 2, label: 'No known expiry', tone: 'muted'},
+    fresh: {rank: 3, label: 'Fresh', tone: 'text-ok'},
   };
 
   async function loadCredentialHealth() {
@@ -3264,12 +3248,12 @@ const CP = (() => {
       return `
         <div class="credential-health-item">
           <div>
-            <div class="credential-health-name">${escapeHtml(row.service)} <span style="color:var(--text-muted); font-weight:400;">· ${escapeHtml(String(row.field).replace(/_/g, ' '))}</span></div>
+            <div class="credential-health-name">${escapeHtml(row.service)} <span class="optional">${escapeHtml(String(row.field).replace(/_/g, ' '))}</span></div>
             <div class="credential-health-detail">${escapeHtml(age)}${escapeHtml(lifetime)}${escapeHtml(expires)}</div>
             ${why}${durable}
           </div>
           <div class="credential-health-actions">
-            <span class="credential-health-status" style="color:${info.tone};">${escapeHtml(info.label)}</span>
+            <span class="credential-health-status ${info.tone}">${escapeHtml(info.label)}</span>
             ${needsAction && _isOwner ? `<button class="btn btn-ghost btn-sm" data-action="openCredentialModal" data-a1="${escapeHtml(row.service)}">Update</button>` : ''}
           </div>
         </div>
@@ -3318,7 +3302,7 @@ const CP = (() => {
     const message = settingsLoadFailureMessage(err);
     ['env-vars-container', 'collectors-container'].forEach(id => {
       const el = document.getElementById(id);
-      if (el) el.innerHTML = `<p style="color:var(--error);font-size:0.85rem;">${escapeHtml(message)}</p>`;
+      if (el) el.innerHTML = `<p class="text-fail">${escapeHtml(message)}</p>`;
     });
   }
 
@@ -3335,7 +3319,7 @@ const CP = (() => {
       const workers = await api('/api/workers').catch(() => []);
       const online = (workers || []).filter(w => w.status === 'online');
       if (!online.length) {
-        container.innerHTML = `<p style="color:var(--text-muted);font-size:0.85rem;">No worker is online, so the install cannot be inspected or updated right now.</p>`;
+        container.innerHTML = `<p class="block-empty">No worker is online, so the install cannot be inspected or updated right now.</p>`;
         return;
       }
       if (!online.some(w => w.id === updateCardWorkerId)) updateCardWorkerId = online[0].id;
@@ -3345,7 +3329,7 @@ const CP = (() => {
       // The card must render something honest even with the worker down — the
       // rest of the settings page is still usable.
       const detail = (err && err.message) ? `: ${err.message}` : '';
-      container.innerHTML = `<p style="color:var(--text-muted);font-size:0.85rem;">${escapeHtml(`Could not read update state${detail}. The local worker may be unreachable.`)}</p>`;
+      container.innerHTML = `<p class="block-empty">${escapeHtml(`Could not read update state${detail}. The local worker may be unreachable.`)}</p>`;
     }
   }
 
@@ -3360,9 +3344,9 @@ const CP = (() => {
     const current = info.current_display || info.current || 'dev';
     const latest = (info.known && info.latest) ? `v${String(info.latest).replace(/^v/, '')}` : null;
     const line = (label, value) => `
-      <div style="display:grid;grid-template-columns:220px 1fr;gap:12px;padding:8px 0;border-bottom:1px solid var(--border-color);">
-        <div style="font-weight:600;font-size:0.9rem;color:var(--text-primary);">${escapeHtml(label)}</div>
-        <div style="font-size:0.9rem;color:var(--text-secondary);font-family:monospace;">${escapeHtml(value)}</div>
+      <div class="kv-row">
+        <div class="kv-key">${escapeHtml(label)}</div>
+        <div class="kv-val mono">${escapeHtml(value)}</div>
       </div>`;
     let html = '';
     if ((onlineWorkers || []).length > 1) {
@@ -3370,9 +3354,9 @@ const CP = (() => {
         `<option value="${escapeHtml(String(w.id))}" ${w.id === updateCardWorkerId ? 'selected' : ''}>${escapeHtml(w.name || `worker ${w.id}`)}</option>`
       ).join('');
       html += `
-      <div style="display:grid;grid-template-columns:220px 1fr;gap:12px;padding:8px 0;border-bottom:1px solid var(--border-color);">
-        <div style="font-weight:600;font-size:0.9rem;color:var(--text-primary);">Server</div>
-        <div><select id="update-worker-select" class="form-input" style="max-width:280px;">${options}</select></div>
+      <div class="kv-row">
+        <div class="kv-key">Server</div>
+        <div><select id="update-worker-select" class="form-input form-input-select">${options}</select></div>
       </div>`;
     }
     html += line('Running', current);
@@ -3382,9 +3366,9 @@ const CP = (() => {
 
     let action;
     if (info.updater_running) {
-      action = `<p style="font-size:0.85rem;color:var(--text-secondary);margin-top:12px;">An update is already running — the dashboard may restart at any moment. Reload this page in a minute.</p>`;
+      action = `<p class="kv-note">An update is already running — the dashboard may restart at any moment. Reload this page in a minute.</p>`;
     } else if (!info.compose_managed) {
-      action = `<p style="font-size:0.85rem;color:var(--text-muted);margin-top:12px;">This install is not managed by Docker Compose, so CashPilot cannot update itself. Update manually: pull the new images, then recreate the <code>cashpilot-ui</code> and <code>cashpilot-worker</code> containers the way you created them.</p>`;
+      action = `<p class="kv-note muted">This install is not managed by Docker Compose, so CashPilot cannot update itself. Update manually: pull the new images, then recreate the <code>cashpilot-ui</code> and <code>cashpilot-worker</code> containers the way you created them.</p>`;
     } else {
       let label; let note;
       if (info.patch_available) {
@@ -3400,11 +3384,11 @@ const CP = (() => {
           : 'The newest release is unknown; the button still runs the documented pull for your pinned series.';
       }
       action = `
-      <div style="display:flex;gap:12px;align-items:center;margin-top:14px;">
+      <div class="kv-actions">
         <button class="btn btn-primary" data-action="runSelfUpdate">${escapeHtml(label)}</button>
-        <span id="update-run-status" style="font-size:0.85rem;color:var(--text-muted);"></span>
+        <span id="update-run-status" class="form-hint"></span>
       </div>
-      <div class="form-hint" style="margin-top:8px;">${escapeHtml(note)}</div>`;
+      <div class="form-hint">${escapeHtml(note)}</div>`;
     }
     container.innerHTML = html + action;
     const sel = container.querySelector('#update-worker-select');
@@ -3431,7 +3415,7 @@ const CP = (() => {
     const container = document.getElementById('env-vars-container');
     if (!container) return;
     if (!envInfo.length) {
-      container.innerHTML = '<p style="color:var(--text-muted);font-size:0.85rem;">No environment variable info available.</p>';
+      container.innerHTML = '<p class="block-empty">No environment variable info available.</p>';
       return;
     }
     const rows = envInfo.map(v => {
@@ -3444,37 +3428,36 @@ const CP = (() => {
       const displayVal = v.secret ? '' : (dbVal || v.value);
       const inputType = v.secret ? 'password' : 'text';
       const lockIcon = locked
-        ? '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" stroke-width="2" style="vertical-align:middle;margin-left:6px;"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>'
+        ? '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="kv-lock" aria-label="Locked"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>'
         : '';
       let badge;
-      if (fromEnv) badge = '<span class="badge badge-deployed" style="font-size:0.7rem;margin-left:8px;">ENV</span>';
-      else if (v.read_only) badge = '<span class="badge" style="font-size:0.7rem;margin-left:8px;opacity:0.6;">Read-only</span>';
+      if (fromEnv) badge = '<span class="badge badge-deployed kv-badge">From env</span>';
+      else if (v.read_only) badge = '<span class="badge kv-badge">Read-only</span>';
       // No "DB" badge. It asserted that a stored value was in force, and
       // nothing reads these from the database: every one is resolved once from
       // the environment at import (main.py:639-640, auth.py, fleet_key.py), so
       // a saved value could never take effect. A stored-but-inert value is
       // worth flagging as exactly that.
-      else if (dbVal) badge = '<span class="badge badge-warning" style="font-size:0.7rem;margin-left:8px;" title="Stored in the database but NOT in use — these are read from the environment at startup">Stored, not applied</span>';
-      else if (isSet) badge = '<span class="badge" style="font-size:0.7rem;margin-left:8px;opacity:0.5;">Default</span>';
-      else badge = '<span class="badge" style="font-size:0.7rem;margin-left:8px;opacity:0.5;">Not set</span>';
+      else if (dbVal) badge = '<span class="badge badge-warning kv-badge" title="Stored in the database but NOT in use — these are read from the environment at startup">Stored, not applied</span>';
+      else if (isSet) badge = '<span class="badge kv-badge muted">Default</span>';
+      else badge = '<span class="badge kv-badge muted">Not set</span>';
       // Secret fields render empty; placeholder communicates whether a value is stored.
       const placeholder = v.secret
         ? (isSet ? '•••••••• (set — leave blank to keep)' : 'Not set')
         : v.description;
       return `
-      <div style="display:grid;grid-template-columns:220px 1fr;gap:12px;align-items:start;padding:10px 0;border-bottom:1px solid var(--border-color);">
+      <div class="kv-row">
         <div>
-          <div style="font-weight:600;font-size:0.9rem;color:var(--text-primary);">${escapeHtml(v.label)}${lockIcon}${badge}</div>
-          <div style="font-size:0.75rem;color:var(--text-muted);margin-top:2px;font-family:monospace;">${escapeHtml(v.key)}</div>
+          <div class="kv-key">${escapeHtml(v.label)}${lockIcon}${badge}</div>
+          <div class="kv-sub mono">${escapeHtml(v.key)}</div>
         </div>
         <div>
-          <div style="display:flex;gap:6px;align-items:center;">
+          <div class="inline-field">
             <input class="form-input env-var-input" type="${inputType}" id="env-${v.key}"
                    data-env-key="${escapeHtml(v.key)}"
                    value="${escapeHtml(displayVal)}"
                    placeholder="${escapeHtml(placeholder)}"
                    ${v.secret ? 'autocomplete="new-password"' : ''}
-                   style="flex:1;${locked ? 'opacity:0.6;cursor:not-allowed;' : ''}"
                    ${locked ? 'disabled' : ''}>
           </div>
           <div class="form-hint">${escapeHtml(v.description)}</div>
@@ -3482,14 +3465,14 @@ const CP = (() => {
       </div>`;
     }).join('');
     container.innerHTML = rows + `
-    <div class="form-hint" style="margin-top:12px;">
+    <div class="form-hint kv-note">
       These are read from the environment when CashPilot starts, so changing one
       here does not take effect. Set it in your <code>docker-compose.yml</code>
       (or Unraid template) and restart the container. Saving stores the value but
       nothing reads it back — the field is kept so an existing stored value stays
       visible rather than disappearing.
     </div>
-    <div style="display:flex;justify-content:flex-end;margin-top:12px;">
+    <div class="kv-actions kv-actions-end">
       <button class="btn btn-ghost" data-action="saveEnvSettings" title="Stores the value; it will not take effect until it is set in the environment and the container restarts">Save anyway</button>
     </div>`;
   }
@@ -3530,7 +3513,7 @@ const CP = (() => {
     const container = document.getElementById('collectors-container');
     if (!container) return;
     if (!meta.length) {
-      container.innerHTML = '<p style="color:var(--text-muted);font-size:0.85rem;">No collectors available.</p>';
+      container.innerHTML = '<p class="block-empty">No collectors available.</p>';
       return;
     }
     const secrets = config._secrets || {};
@@ -3564,20 +3547,19 @@ const CP = (() => {
           ? (isSecretSet ? '•••••••• (set — leave blank to keep)' : 'Not set')
           : f.label;
         return `
-        <div class="form-group" style="margin-bottom:8px;">
-          <label class="form-label" style="font-size:0.8rem;">${escapeHtml(f.label)}${f.required ? '' : ' <span style="opacity:0.5;">(optional)</span>'}</label>
-          <div style="display:flex;gap:6px;align-items:center;">
+        <div class="form-group">
+          <label class="form-label">${escapeHtml(f.label)}${f.required ? '' : ' <span class="optional">(optional)</span>'}</label>
+          <div class="inline-field">
             <input class="form-input collector-input" type="${inputType}" id="${inputId}"
                    data-config="${escapeHtml(f.key)}"
                    value="${escapeHtml(savedVal)}"
                    placeholder="${escapeHtml(placeholder)}"
-                   ${f.secret ? 'autocomplete="new-password"' : ''}
-                   style="flex:1;">
+                   ${f.secret ? 'autocomplete="new-password"' : ''}>
           </div>
         </div>`;
       }).join('');
       const clearBtn = configured && _isOwner
-        ? `<div style="margin-top:8px; text-align:right;"><button class="btn btn-ghost btn-sm" style="color:var(--error); font-size:0.75rem;" data-action="clearServiceCredentials" data-a1="${escapeHtml(col.slug)}" data-a2="${escapeHtml(col.name)}">Clear Credentials</button></div>`
+        ? `<div class="kv-actions kv-actions-end"><button class="btn btn-danger btn-sm" data-action="clearServiceCredentials" data-a1="${escapeHtml(col.slug)}" data-a2="${escapeHtml(col.name)}">Clear credentials</button></div>`
         : '';
       return `
       <details class="collector-section" id="collector-${col.slug}">
@@ -3586,7 +3568,7 @@ const CP = (() => {
           ${statusBadge}
         </summary>
         <div class="collector-body">
-          ${col.hint ? `<div class="form-hint" style="margin-bottom:12px;">${sanitizeHint(col.hint)}</div>` : ''}
+          ${col.hint ? `<div class="form-hint collector-hint">${sanitizeHint(col.hint)}</div>` : ''}
           ${fields}
           ${clearBtn}
         </div>
@@ -3941,14 +3923,14 @@ const CP = (() => {
         const showFix = !isPayout && !isNotice && !isTransient && !isShape && _isOwner && !isContainer;
         return `
         <div class="notify-item" data-platform="${escapeHtml(a.platform)}" data-kind="${escapeHtml(a.kind || 'collector')}"${category ? ` data-category="${escapeHtml(category)}"` : ''}>
-          <div class="notify-item-icon"${muted ? ' style="color:var(--text-muted);"' : ''}>
+          <div class="notify-item-icon${muted ? ' muted' : ''}">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">${icon}</svg>
           </div>
           <div class="notify-item-body">
             <div class="notify-item-platform">${escapeHtml(a.platform)}${suffix}</div>
             <div class="notify-item-msg" title="${escapeHtml(a.error)}">${escapeHtml(a.error)}</div>
           </div>
-          ${showFix ? `<button class="btn btn-ghost btn-sm" data-action="openCredentialModal" data-stop="1" data-a1="${escapeHtml(a.platform)}" style="font-size:0.65rem; padding:2px 6px; white-space:nowrap; flex-shrink:0;">${isAuth ? 'Fix credential' : 'Update'}</button>` : ''}
+          ${showFix ? `<button class="btn btn-ghost btn-sm" data-action="openCredentialModal" data-stop="1" data-a1="${escapeHtml(a.platform)}">${isAuth ? 'Fix credential' : 'Update'}</button>` : ''}
         </div>
       `;
       }).join('');

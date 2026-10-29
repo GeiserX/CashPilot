@@ -3,74 +3,26 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="color-scheme" content="dark">
+  <meta name="color-scheme" content="dark light">
   <title>Welcome - CashPilot</title>
   <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Condensed:wght@400;500;600&display=swap" data-async-style>
   <noscript><link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Condensed:wght@400;500;600&display=swap" rel="stylesheet"></noscript>
-  <style>
-    /* First run: one column of plain form, the same graphite and type as the app. */
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body {
-      font-family: 'IBM Plex Sans Condensed', 'Arial Narrow', system-ui, sans-serif;
-      font-size: 13px; line-height: 1.45; background: #15171a; color: #e2e5e9; min-height: 100vh;
-    }
-    .content-overlay { min-height: 100vh; display: flex; align-items: flex-start; justify-content: center; padding: 18vh 20px 40px; }
-    .container { width: 100%; max-width: 380px; }
-    .step { display: none; }
-    .step.active { display: block; }
-    .card { background: none; border: none; padding: 0; }
-    .brand { display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 600; margin-bottom: 18px; }
-    .brand-text { color: #e2e5e9; }
-    h1 { font-size: 18px; font-weight: 600; margin-bottom: 6px; }
-    .subtitle { color: #aab1b9; margin-bottom: 18px; }
-    .field { margin-bottom: 12px; }
-    .field label { display: block; font-size: 12px; font-weight: 500; color: #aab1b9; margin-bottom: 3px; }
-    .field input {
-      width: 100%; height: 30px; padding: 0 8px; background: #101214; border: 1px solid #353a41;
-      border-radius: 2px; color: #e2e5e9; font: inherit; outline: none;
-    }
-    .field input:focus { border-color: #aab1b9; }
-    .field-hint { font-size: 12px; color: #8d949d; margin-top: 4px; }
-    .field-hint code { font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 11.5px; color: #e2e5e9; }
-    .btn {
-      display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 30px; padding: 0 14px;
-      background: #e2e5e9; color: #15171a; border: 1px solid #e2e5e9; border-radius: 2px;
-      font: inherit; font-weight: 600; cursor: pointer; text-decoration: none;
-    }
-    .btn:hover { background: #ffffff; }
-    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
-    .btn-ghost { background: none; color: #e2e5e9; border-color: #353a41; }
-    .btn-ghost:hover { background: #23272c; }
-    .btn:focus-visible, .field input:focus-visible { outline: 2px solid #e2e5e9; outline-offset: 1px; }
-    .error-msg { display: none; border-left: 2px solid #f06a5f; background: rgba(240, 106, 95, 0.12); padding: 6px 10px; margin-bottom: 12px; font-size: 12px; }
-    .error-msg.visible { display: block; }
-    .info-badge { border-left: 2px solid #4a5059; color: #aab1b9; padding: 4px 10px; margin-bottom: 14px; font-size: 12px; }
-    .actions { display: flex; gap: 8px; margin-top: 16px; }
-    .step-dots { display: flex; gap: 4px; margin-bottom: 14px; }
-    .dot { width: 18px; height: 3px; background: #353a41; }
-    .dot.active { background: #e2e5e9; }
-    .success-icon { margin-bottom: 10px; }
-    .spinner { width: 12px; height: 12px; border: 2px solid transparent; border-top-color: currentColor; border-radius: 50%; animation: spin 0.6s linear infinite; }
-    @keyframes spin { to { transform: rotate(360deg); } }
-  </style>
+  <link rel="stylesheet" href="/static/css/style.css">
   <script nonce="{{ csp_nonce(request) }}">
+    (function(){var t=localStorage.getItem('cp-theme')||'dark';document.documentElement.setAttribute('data-theme',t)})();
     document.querySelectorAll('link[data-async-style]').forEach((link) => {
       link.addEventListener('load', () => { link.rel = 'stylesheet'; }, { once: true });
       if (link.sheet) link.rel = 'stylesheet';
     });
   </script>
 </head>
-<body>
-  <!-- Content -->
-  <div class="content-overlay">
-    <div class="container">
-      <!-- Step 1: Welcome -->
-      <div class="step active" id="step-1">
-        <div class="card">
-          <div class="brand">
+<body class="gate">
+  <!-- First run: the same bar and type as the app, one step at a time. -->
+  <header class="gate-bar">
+    <span class="topbar-brand">
       <svg width="20" height="20" viewBox="0 0 256 256" role="img" aria-label="CashPilot">
         <defs>
           <linearGradient id="cpSun" x1="0%" y1="0%" x2="0%" y2="100%">
@@ -97,146 +49,93 @@
           </g>
         </g>
       </svg>
-            <span class="brand-text">CashPilot</span>
-          </div>
-          <div class="step-dots">
-            <div class="dot active"></div>
-            <div class="dot"></div>
-            <div class="dot"></div>
-          </div>
-          <h1>Welcome</h1>
-          <p class="subtitle">Your self-hosted passive income platform. Deploy and monitor bandwidth, storage, and compute services via Docker.</p>
-          <button class="btn" data-action="goToStep" data-a1="2">Get Started</button>
+      CashPilot
+    </span>
+  </header>
+
+  <main class="gate-main">
+    <div class="gate-panel">
+      <!-- Step 1: Welcome -->
+      <div class="step active" id="step-1">
+        <ol class="gate-steps" aria-label="Step 1 of 3">
+        <li class="gate-step active"><span class="wizard-step-number">1</span>Welcome</li>
+        <li class="gate-step"><span class="wizard-step-number">2</span>Owner account</li>
+        <li class="gate-step"><span class="wizard-step-number">3</span>Done</li>
+        </ol>
+        <h1 class="gate-title">Welcome to CashPilot</h1>
+        <p class="gate-lede">Run bandwidth, storage and compute services on your own machines, and see what each one earns in one place.</p>
+        <p class="gate-lede">First, create the owner account. You need the setup token from the server logs.</p>
+        <div class="gate-actions">
+          <button class="btn btn-primary btn-lg" data-action="goToStep" data-a1="2">Create the owner account</button>
         </div>
       </div>
 
       <!-- Step 2: Create Account -->
       <div class="step" id="step-2">
-        <div class="card">
-          <div class="brand">
-      <svg width="20" height="20" viewBox="0 0 256 256" role="img" aria-label="CashPilot">
-        <defs>
-          <linearGradient id="cpSun" x1="0%" y1="0%" x2="0%" y2="100%">
-            <stop offset="0%" stop-color="#FFD54F"/>
-            <stop offset="40%" stop-color="#FF9800"/>
-            <stop offset="72%" stop-color="#E91E63"/>
-            <stop offset="100%" stop-color="#AB47BC"/>
-          </linearGradient>
-          <mask id="cpBands">
-            <rect width="256" height="256" fill="#fff"/>
-            <rect x="16" y="150" width="224" height="10" fill="#000"/>
-            <rect x="16" y="172" width="224" height="13" fill="#000"/>
-            <rect x="16" y="197" width="224" height="16" fill="#000"/>
-          </mask>
-        </defs>
-        <g transform="translate(128,128) scale(1.3333333) translate(-128,-132)">
-          <circle cx="128" cy="132" r="96" fill="url(#cpSun)" mask="url(#cpBands)"/>
-          <g transform="translate(130,112) rotate(-17) scale(1.85)" fill="#000010" opacity="0.65">
-            <path d="M37,1.2 C35.8,-1.8 32,-3.8 26,-3.9 L-22,-3.9 L-36.5,-4.8 L-37.6,-3.2 L-15,3.6 L24,3.8 C30.5,3.8 35,3 37,1.2 Z"/>
-            <path d="M-25,-3.9 L-31.8,-18.4 L-37.2,-18.6 L-36.4,-4.6 Z"/>
-            <path d="M-28.8,-18.6 L-42.5,-19.6 L-42.2,-17.6 L-31,-16.8 Z"/>
-            <path d="M-10,-7.2 L-23,-7.2 C-25.4,-7.2 -25.4,-1.8 -23,-1.8 L-10,-1.8 C-8.4,-1.8 -8.4,-7.2 -10,-7.2 Z"/>
-            <path d="M9,3 L-6,3.4 L-16.8,12.6 L-19.5,9.4 L-20.2,9.6 L-18.6,13.4 L-12.2,13.2 Z"/>
-          </g>
-        </g>
-      </svg>
-            <span class="brand-text">CashPilot</span>
-          </div>
-          <div class="step-dots">
-            <div class="dot active"></div>
-            <div class="dot active"></div>
-            <div class="dot"></div>
-          </div>
-          <h1>Create Account</h1>
-          <p class="subtitle">Set up your admin account to get started.</p>
-          <div class="info-badge">This will be the owner account with full access.</div>
-          <div class="error-msg" id="reg-error"></div>
-          <form id="register-form">
-            <div class="field">
-              <label for="username">Username</label>
-              <input type="text" id="username" name="username" required autocomplete="username" autofocus>
-            </div>
-            <div class="field">
-              <label for="password">Password</label>
-              <input type="password" id="password" name="password" required autocomplete="new-password">
-            </div>
-            <div class="field">
-              <label for="password_confirm">Confirm Password</label>
-              <input type="password" id="password_confirm" name="password_confirm" required autocomplete="new-password">
-            </div>
-            <!-- Without this the owner account cannot be created AT ALL.
-                 /register requires the one-time setup token on first run, and
-                 this page — the default landing page of a fresh install — did
-                 not ask for it, so every new installation answered the form
-                 with a 403 and a message that did not say why. -->
-            <div class="field">
-              <label for="setup_token">Setup token</label>
-              <input type="text" id="setup_token" name="setup_token" required autocomplete="off"
-                     spellcheck="false" placeholder="Printed in the server logs on first start">
-              <div class="field-hint">
-                Shown once in the container logs when CashPilot first started, on a line beginning
-                &ldquo;Setup token to create the owner account&rdquo;. Run
-                <code>docker logs cashpilot-ui</code> to see it. It proves you are the person who
-                installed this, so nobody else can claim the owner account first.
-              </div>
-            </div>
-            <div class="actions">
-              <button type="button" class="btn btn-ghost" data-action="goToStep" data-a1="1">Back</button>
-              <button type="submit" class="btn" id="submit-btn">Create Account</button>
-            </div>
-          </form>
+        <ol class="gate-steps" aria-label="Step 2 of 3">
+        <li class="gate-step completed"><span class="wizard-step-number">1</span>Welcome</li>
+        <li class="gate-step active"><span class="wizard-step-number">2</span>Owner account</li>
+        <li class="gate-step"><span class="wizard-step-number">3</span>Done</li>
+        </ol>
+        <h1 class="gate-title">Owner account</h1>
+        <p class="gate-lede">This account has full access: it adds services, workers and other users.</p>
+        <div class="auth-error error-msg" id="reg-error"></div>
+      <form id="register-form">
+        <div class="form-group">
+          <label class="form-label" for="username">Username</label>
+          <input class="form-input" type="text" id="username" name="username" required autocomplete="username" autofocus>
         </div>
+        <div class="form-group">
+          <label class="form-label" for="password">Password</label>
+          <input class="form-input" type="password" id="password" name="password" required autocomplete="new-password">
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="password_confirm">Confirm password</label>
+          <input class="form-input" type="password" id="password_confirm" name="password_confirm" required autocomplete="new-password">
+        </div>
+        <!-- Without this the owner account cannot be created AT ALL.
+             /register requires the one-time setup token on first run, and
+             this page — the default landing page of a fresh install — did
+             not ask for it, so every new installation answered the form
+             with a 403 and a message that did not say why. -->
+        <div class="form-group">
+          <label class="form-label" for="setup_token">Setup token</label>
+          <input class="form-input" type="text" id="setup_token" name="setup_token" required autocomplete="off"
+                 spellcheck="false" placeholder="Printed in the server logs on first start">
+          <div class="form-hint">
+            Shown once in the container logs when CashPilot first started, on a line beginning
+            &ldquo;Setup token to create the owner account&rdquo;. Run
+            <code>docker logs cashpilot-ui</code> to see it. It proves you are the person who
+            installed this, so nobody else can claim the owner account first.
+          </div>
+        </div>
+        <div class="gate-actions">
+          <button type="button" class="btn btn-ghost btn-lg" data-action="goToStep" data-a1="1">Back</button>
+          <button type="submit" class="btn btn-primary btn-lg" id="submit-btn">Create account</button>
+        </div>
+      </form>
       </div>
 
       <!-- Step 3: Done -->
       <div class="step" id="step-3">
-        <div class="card">
-          <div class="brand">
-      <svg width="20" height="20" viewBox="0 0 256 256" role="img" aria-label="CashPilot">
-        <defs>
-          <linearGradient id="cpSun" x1="0%" y1="0%" x2="0%" y2="100%">
-            <stop offset="0%" stop-color="#FFD54F"/>
-            <stop offset="40%" stop-color="#FF9800"/>
-            <stop offset="72%" stop-color="#E91E63"/>
-            <stop offset="100%" stop-color="#AB47BC"/>
-          </linearGradient>
-          <mask id="cpBands">
-            <rect width="256" height="256" fill="#fff"/>
-            <rect x="16" y="150" width="224" height="10" fill="#000"/>
-            <rect x="16" y="172" width="224" height="13" fill="#000"/>
-            <rect x="16" y="197" width="224" height="16" fill="#000"/>
-          </mask>
-        </defs>
-        <g transform="translate(128,128) scale(1.3333333) translate(-128,-132)">
-          <circle cx="128" cy="132" r="96" fill="url(#cpSun)" mask="url(#cpBands)"/>
-          <g transform="translate(130,112) rotate(-17) scale(1.85)" fill="#000010" opacity="0.65">
-            <path d="M37,1.2 C35.8,-1.8 32,-3.8 26,-3.9 L-22,-3.9 L-36.5,-4.8 L-37.6,-3.2 L-15,3.6 L24,3.8 C30.5,3.8 35,3 37,1.2 Z"/>
-            <path d="M-25,-3.9 L-31.8,-18.4 L-37.2,-18.6 L-36.4,-4.6 Z"/>
-            <path d="M-28.8,-18.6 L-42.5,-19.6 L-42.2,-17.6 L-31,-16.8 Z"/>
-            <path d="M-10,-7.2 L-23,-7.2 C-25.4,-7.2 -25.4,-1.8 -23,-1.8 L-10,-1.8 C-8.4,-1.8 -8.4,-7.2 -10,-7.2 Z"/>
-            <path d="M9,3 L-6,3.4 L-16.8,12.6 L-19.5,9.4 L-20.2,9.6 L-18.6,13.4 L-12.2,13.2 Z"/>
-          </g>
-        </g>
-      </svg>
-            <span class="brand-text">CashPilot</span>
-          </div>
-          <div class="step-dots">
-            <div class="dot active"></div>
-            <div class="dot active"></div>
-            <div class="dot active"></div>
-          </div>
-          <div class="success-icon">
-            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#46b37f" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>
-            </svg>
-          </div>
-          <h1>You're all set!</h1>
-          <p class="subtitle">Your account is ready. Let's deploy your first passive income services.</p>
-          <a href="/setup" class="btn">Launch Setup Wizard</a>
+        <ol class="gate-steps" aria-label="Step 3 of 3">
+        <li class="gate-step completed"><span class="wizard-step-number">1</span>Welcome</li>
+        <li class="gate-step completed"><span class="wizard-step-number">2</span>Owner account</li>
+        <li class="gate-step active"><span class="wizard-step-number">3</span>Done</li>
+        </ol>
+        <h1 class="gate-title">The owner account is ready</h1>
+        <p class="gate-lede">Next, pick the services you want to run and the machines to run them on.</p>
+        <div class="gate-actions">
+          <a href="/setup" class="btn btn-primary btn-lg">Add services</a>
         </div>
       </div>
     </div>
-  </div>
+  </main>
+
+  <footer class="gate-foot">
+    <a href="https://github.com/GeiserX/CashPilot" target="_blank" rel="noopener">Source</a>
+    <a href="https://github.com/GeiserX/CashPilot/issues" target="_blank" rel="noopener">Report a problem</a>
+  </footer>
 
   <script nonce="{{ csp_nonce(request) }}">
     document.getElementById('register-form')?.addEventListener('submit', handleRegister);
@@ -314,7 +213,7 @@
       }
 
       btn.disabled = false;
-      btn.textContent = 'Create Account';
+      btn.textContent = 'Create account';
       return false;
     }
   </script>
