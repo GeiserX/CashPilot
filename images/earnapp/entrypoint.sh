@@ -169,8 +169,11 @@ while true; do
 	rc=0
 	wait_child "$EARNAPP" run || rc=$?
 	ran=$(($(date +%s) - started))
-	# A run that lasted ten minutes was a healthy one: start over from 5 s.
-	((ran >= 600)) && backoff=5
+	# A run that lasted a minute started fine, so restart it after 5 s. EarnApp
+	# 1.665.73 exits after about 100 s whenever one of the agents Bright Data
+	# assigns to the IP is down, and a doubling wait left such a node offline
+	# 300 s out of every 400. Only runs that die within the minute back off.
+	((ran >= 60)) && backoff=5
 	log "earnapp run exited with code $rc after ${ran}s. Restarting it inside this container in ${backoff}s; the container itself keeps running and was not restarted."
 	"$EARNAPP" stop >/dev/null 2>&1 || true
 	wait_child sleep "$backoff" || true

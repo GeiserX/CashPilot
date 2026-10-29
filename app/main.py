@@ -247,6 +247,11 @@ async def _get_all_worker_containers(workers: list[dict[str, Any]] | None = None
                             # mismatch check depends on would be silently
                             # dropped right here.
                             "advertised_address": c.get("advertised_address"),
+                            # When and how a stopped container stopped, for the
+                            # container-down alert. Absent on a running one.
+                            "finished_at": c.get("finished_at"),
+                            "exit_code": c.get("exit_code"),
+                            "restart_policy": c.get("restart_policy"),
                             "_node": worker_name,
                             "_worker_id": w.get("id"),
                             "_has_docker": worker_has_docker,
@@ -383,6 +388,7 @@ async def _run_health_check() -> None:
                 events.append((slug, "check_down", "missing from heartbeat"))
 
         await database.record_health_events(events)
+        await _container_down_check(statuses)
     except Exception as exc:
         logger.warning("Health check skipped: %s", exc)
 
@@ -408,6 +414,111 @@ def _report_blind_workers(blind: list[dict[str, Any]]) -> None:
         )
     else:
         logger.info("Every online worker can read Docker again; missing-container downtime is recorded again.")
+
+
+# How long a managed container may stay exited before it is an alert. Long
+# enough for a deploy, an update or a manual restart to finish; short enough
+# that a node which exited cleanly and stayed down (restart policy "no") is
+# news within the hour instead of after days of check_down rows nobody reads.
+CONTAINER_DOWN_GRACE = timedelta(minutes=30)
+# A stop recorded by CashPilot explains a container that finished within this
+# long after it; a container that finished later stopped for another reason.
+_STOP_EXPLAINS_WITHIN = timedelta(minutes=10)
+# When each stopped container was first seen down, for a worker too old to
+# report Docker's own FinishedAt. Keyed by (worker id, container name).
+_container_first_seen_down: dict[tuple[Any, str], datetime] = {}
+# The bell entries the check currently stands behind, re-added after every
+# collection, which replaces the bell list wholesale.
+_container_down_bell: dict[str, dict[str, str]] = {}
+_RESTARTING_POLICIES = ("unless-stopped", "always")
+
+
+def _docker_time(value: Any) -> datetime | None:
+    """Docker's FinishedAt (RFC 3339 in UTC, nanoseconds) as a datetime."""
+    if not isinstance(value, str) or len(value) < 19:
+        return None
+    try:
+        return datetime.fromisoformat(value[:19]).replace(tzinfo=UTC)
+    except ValueError:
+        return None
+
+
+async def _container_down_check(statuses: list[dict[str, Any]]) -> None:
+    """Alert when a CashPilot-managed container has stayed exited past the grace period.
+
+    The health check already wrote check_down for such a container every five
+    minutes, and nothing read it: three urnetwork containers exited cleanly
+    with restart policy "no" and sat down for two days with no alert. One alert
+    per service, cleared when no managed copy of it is down any more. A stop the
+    user made from CashPilot is not an alert. Never raises.
+    """
+    global _collector_alerts
+    try:
+        now = datetime.now(UTC)
+        down: dict[str, list[dict[str, Any]]] = {}
+        seen_keys: set[tuple[Any, str]] = set()
+        for s in statuses:
+            if s.get("_is_android") or s.get("deployed_by") == "external":
+                continue
+            if s.get("status") not in ("exited", "dead"):
+                continue
+            key = (s.get("_worker_id"), str(s.get("name") or s.get("slug")))
+            seen_keys.add(key)
+            since = _docker_time(s.get("finished_at")) or _container_first_seen_down.setdefault(key, now)
+            down.setdefault(s["slug"], []).append({**s, "_down_since": since})
+        for key in set(_container_first_seen_down) - seen_keys:
+            _container_first_seen_down.pop(key, None)
+
+        alerting: dict[str, str] = {}
+        for slug, copies in down.items():
+            long_down = [c for c in copies if now - c["_down_since"] >= CONTAINER_DOWN_GRACE]
+            if not long_down:
+                continue
+            last = await database.get_last_lifecycle_event(slug)
+            if last and last[0] in ("stop", "remove"):
+                stopped_at = _docker_time(last[1].replace(" ", "T"))
+                if stopped_at is not None:
+                    long_down = [c for c in long_down if c["_down_since"] > stopped_at + _STOP_EXPLAINS_WITHIN]
+            if long_down:
+                alerting[slug] = _container_down_message(slug, long_down)
+
+        # Recovery: nothing of that service is down any more. A copy that is
+        # down but still inside the grace period (or explained by a stop) is
+        # neither raised nor cleared, so a UI restart cannot clear an alert
+        # just because it forgot when an old worker's container went down.
+        for slug in await database.get_alert_subjects("container"):
+            if slug not in down:
+                await database.clear_alerts("container", slug)
+                logger.info("%s is running again; cleared its container-down alert", slug)
+        for slug in list(_container_down_bell):
+            if slug not in alerting:
+                _container_down_bell.pop(slug)
+
+        for slug, message in alerting.items():
+            _container_down_bell[slug] = {"kind": "container", "platform": slug, "error": message}
+            if alert_id := await database.record_alert("container", slug, message):
+                _spawn(_push_alert("container", slug, f"CashPilot: {slug} has stopped running", message, alert_id))
+
+        _collector_alerts = [a for a in _collector_alerts if a.get("kind") != "container"]
+        _collector_alerts.extend(_container_down_bell.values())
+    except Exception as exc:  # noqa: BLE001 - a diagnostic must not break the health check
+        logger.warning("Container-down check failed: %s", exc)
+
+
+def _container_down_message(slug: str, copies: list[dict[str, Any]]) -> str:
+    name = (catalog.get_service(slug) or {}).get("name") or slug
+    since = min(c["_down_since"] for c in copies).strftime("%Y-%m-%d %H:%M")
+    nodes = ", ".join(sorted({str(c.get("_node") or "?") for c in copies}))
+    codes = sorted({c["exit_code"] for c in copies if isinstance(c.get("exit_code"), int)})
+    how = f" (exit code {', '.join(str(code) for code in codes)})" if codes else ""
+    message = f"{name} has not been running since {since} UTC on {nodes}{how}, so it is not earning."
+    policies = sorted({str(c["restart_policy"]) for c in copies if c.get("restart_policy")} - set(_RESTARTING_POLICIES))
+    if policies:
+        message += (
+            f' Its restart policy is "{", ".join(policies)}", so Docker will not start it again by itself;'
+            " redeploying it from CashPilot sets unless-stopped."
+        )
+    return message + " Start it from the dashboard, or remove it if you stopped it on purpose."
 
 
 async def _push_alert(kind: str, subject: str, title: str, message: str, alert_id: int) -> None:
@@ -756,7 +867,7 @@ async def _warm_collector_alerts() -> None:
         # them from the bell while their 24h push-dedupe survived — so a
         # recovery inside the gap skipped clear_alerts and the stale row
         # swallowed the next genuine warning.
-        if alert["kind"] not in ("collector", "payout", "flatline", "worker", "notice"):
+        if alert["kind"] not in ("collector", "payout", "flatline", "worker", "notice", "container"):
             continue
         key = f"{alert['kind']}:{alert['subject']}"
         if key in seen:
@@ -991,6 +1102,9 @@ async def _run_collection() -> None:
             # Offline workers re-derived every rebuild, or the hourly wholesale
             # replacement of this list would silently un-report a dead machine.
             alerts.extend(await _offline_worker_alerts())
+            # Kept by the health check, which runs every five minutes; without
+            # this the hourly rebuild would drop a down container from the bell.
+            alerts.extend(_container_down_bell.values())
             _collector_alerts = alerts
             if collectors and platforms_ok == 0:
                 # A run in which EVERY collector failed used to be recorded as
@@ -1671,7 +1785,8 @@ async def api_services_deployed(request: Request) -> list[dict[str, Any]]:
     health_map = {h["slug"]: h for h in health_scores}
 
     # Build set of slugs with collector errors (disconnected)
-    alert_slugs = {a["platform"] for a in _collector_alerts}
+    # A down container is not a collector fault; its own alert says so.
+    alert_slugs = {a["platform"] for a in _collector_alerts if a.get("kind") != "container"}
 
     # Config (decrypted) to detect collectors whose credentials aren't set yet.
     # A config-read failure must not blank the dashboard — degrade to "unknown".
