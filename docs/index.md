@@ -52,19 +52,19 @@ hide:
 
 The dashboard is what you look at every day: the balances, a 7-day or 30-day earnings chart, the payouts waiting for your confirmation, and every deployed service with its status, balance, CPU and memory. Collectors read the balances of <!-- n:collectors -->15<!-- /n --> providers every hour; the rest you enter by hand.
 
-![The CashPilot dashboard: total, today and this-month balance tiles, a 30-day earnings chart, a Honeygain payout waiting to be confirmed, and the deployed services table with status, balance, CPU and memory for eight services](images/screenshots/dashboard.png)
+![The CashPilot dashboard: the balance first, a short list of what needs attention with a button for each, which service runs on which box, earnings per day, and the deployed services table with status, balance, CPU, memory and payout progress for eight services](images/screenshots/dashboard.png)
 
 <div class="cp-phone-gallery" markdown>
 <figure markdown>
-![The dashboard on a phone: balance tiles stacked, the earnings chart, the services table](images/screenshots/dashboard-mobile.png)
+![The dashboard on a phone: the balance, then the problems to act on, each with its button](images/screenshots/dashboard-mobile.png)
 <figcaption>The dashboard on a phone</figcaption>
 </figure>
 <figure markdown>
-![The service catalog on a phone, filtered to bandwidth services](images/screenshots/catalog-mobile.png)
+![The service catalog on a phone, with the services already running in the fleet listed first](images/screenshots/catalog-mobile.png)
 <figcaption>The catalog</figcaption>
 </figure>
 <figure markdown>
-![Step 2 of the setup wizard on a phone, choosing services in the bandwidth category](images/screenshots/setup-wizard-mobile.png)
+![Step 2 of the setup wizard on a phone, picking bandwidth services](images/screenshots/setup-wizard-mobile.png)
 <figcaption>The setup wizard</figcaption>
 </figure>
 </div>
@@ -75,7 +75,7 @@ The dashboard is what you look at every day: the balances, a 7-day or 30-day ear
 <figcaption>First run: the welcome page asks for the setup token from the log</figcaption>
 </figure>
 <figure markdown>
-![The service catalog: cards for every service with its category, whether it needs a residential IP, and a Deploy or Visit button](images/screenshots/catalog.png)
+![The service catalog: one row per service with its monthly estimate and a Manage, Deploy or Visit button, filterable by category](images/screenshots/catalog.png)
 <figcaption>The catalog, filterable by category</figcaption>
 </figure>
 <figure markdown>
@@ -83,7 +83,7 @@ The dashboard is what you look at every day: the balances, a 7-day or 30-day ear
 <figcaption>The wizard: pick categories, pick services, enter credentials, deploy</figcaption>
 </figure>
 <figure markdown>
-![The fleet page: one worker online with its host resources and eight running containers, and the environment block to add another worker](images/screenshots/fleet.png)
+![The fleet page: four boxes with their system, last report, power draw and containers, one of them offline, the running cost of each machine, and the block to add another box](images/screenshots/fleet.png)
 <figcaption>The fleet: every worker, its host, and how to add the next one</figcaption>
 </figure>
 </div>

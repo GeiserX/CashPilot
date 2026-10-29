@@ -8,119 +8,17 @@
   <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Condensed:wght@400;500;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/static/css/style.css">
   <script nonce="{{ csp_nonce(request) }}">
     (function(){var t=localStorage.getItem('cp-theme')||'dark';document.documentElement.setAttribute('data-theme',t)})();
   </script>
-  <style>
-    body {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      min-height: 100vh;
-      background: var(--bg-primary);
-      background-image:
-        radial-gradient(ellipse at 20% 50%, rgba(244, 63, 94, 0.08) 0%, transparent 60%),
-        radial-gradient(ellipse at 80% 20%, rgba(139, 92, 246, 0.06) 0%, transparent 50%),
-        radial-gradient(ellipse at 60% 80%, rgba(6, 182, 212, 0.05) 0%, transparent 50%);
-    }
-    .auth-card {
-      background: var(--bg-secondary);
-      background-image: var(--gradient-card);
-      border: 1px solid var(--border-color);
-      border-radius: var(--radius-lg);
-      padding: 2.5rem;
-      width: 100%;
-      max-width: 400px;
-      box-shadow: 0 16px 48px rgba(0, 0, 0, 0.4), 0 0 1px rgba(139, 92, 246, 0.15);
-    }
-    .auth-brand {
-      display: flex;
-      align-items: center;
-      gap: 0.5rem;
-      font-size: 1.5rem;
-      font-weight: 700;
-      margin-bottom: 0.5rem;
-      background: var(--gradient-rose);
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-      background-clip: text;
-    }
-    .auth-brand svg { -webkit-text-fill-color: initial; }
-    .auth-subtitle { color: var(--text-muted); margin-bottom: 1.5rem; font-size: 0.93rem; }
-    .auth-field { margin-bottom: 1rem; }
-    .auth-field label {
-      display: block;
-      color: var(--text-secondary);
-      font-size: 0.85rem;
-      margin-bottom: 0.35rem;
-      font-weight: 500;
-    }
-    .auth-field input {
-      width: 100%;
-      padding: 0.6rem 0.75rem;
-      background: var(--bg-primary);
-      border: 1px solid var(--border-color);
-      border-radius: var(--radius);
-      color: var(--text-primary);
-      font-size: 0.93rem;
-      font-family: inherit;
-      outline: none;
-      transition: border-color var(--transition), box-shadow var(--transition);
-    }
-    .auth-field input:focus {
-      border-color: var(--accent);
-      box-shadow: 0 0 0 2px var(--accent-soft), 0 0 16px rgba(244, 63, 94, 0.15);
-    }
-    .auth-btn {
-      width: 100%;
-      padding: 0.65rem;
-      background: var(--gradient-rose);
-      color: #fff;
-      border: none;
-      border-radius: var(--radius);
-      font-size: 0.95rem;
-      font-weight: 600;
-      font-family: inherit;
-      cursor: pointer;
-      margin-top: 0.5rem;
-      transition: box-shadow var(--transition), transform var(--transition);
-    }
-    .auth-btn:hover {
-      box-shadow: 0 0 20px rgba(244, 63, 94, 0.3);
-      transform: translateY(-1px);
-    }
-    .auth-error {
-      background: var(--error-soft);
-      color: var(--error);
-      padding: 0.5rem 0.75rem;
-      border-radius: var(--radius-sm);
-      font-size: 0.85rem;
-      margin-bottom: 1rem;
-    }
-    .auth-footer {
-      text-align: center;
-      margin-top: 1rem;
-      color: var(--text-muted);
-      font-size: 0.85rem;
-    }
-    .auth-footer a { color: var(--accent); text-decoration: none; }
-    .auth-footer a:hover { text-decoration: underline; }
-    .auth-role-info {
-      background: var(--accent-soft);
-      color: var(--accent);
-      padding: 0.5rem 0.75rem;
-      border-radius: var(--radius-sm);
-      font-size: 0.85rem;
-      margin-bottom: 1rem;
-    }
-  </style>
 </head>
-<body>
-  <div class="auth-card">
-    <div class="auth-brand">
-      <svg width="28" height="28" viewBox="0 0 256 256" role="img" aria-label="CashPilot">
+<body class="gate">
+  <!-- The same bar as the app, so signing in looks like the console it opens. -->
+  <header class="gate-bar">
+    <span class="topbar-brand">
+      <svg width="20" height="20" viewBox="0 0 256 256" role="img" aria-label="CashPilot">
         <defs>
           <linearGradient id="cpSun" x1="0%" y1="0%" x2="0%" y2="100%">
             <stop offset="0%" stop-color="#FFD54F"/>
@@ -147,51 +45,58 @@
         </g>
       </svg>
       CashPilot
-    </div>
-    <div class="auth-subtitle">{{ subtitle }}</div>
+    </span>
+  </header>
 
-    {% if error %}
-    <div class="auth-error">{{ error }}</div>
-    {% endif %}
+  <main class="gate-main">
+    <div class="gate-panel">
+      <h1 class="gate-title">{{ button_text }}</h1>
+      <p class="gate-lede">{{ subtitle }}</p>
 
-    {% if mode == "register" and is_first %}
-    <div class="auth-role-info">First account will be the owner with full admin access.</div>
-    {% endif %}
+      {% if error %}
+      <div class="auth-error">{{ error }}</div>
+      {% endif %}
 
-    <form method="POST" action="{{ action }}">
       {% if mode == "register" and is_first %}
-      <div class="auth-field">
-        <label for="setup_token">Setup token</label>
-        <input type="text" id="setup_token" name="setup_token" value="{{ setup_token | default('') }}" required autocomplete="off" placeholder="Shown in the server logs on first start">
-      </div>
+      <div class="gate-note">First account will be the owner with full admin access.</div>
       {% endif %}
-      <div class="auth-field">
-        <label for="username">Username</label>
-        <input type="text" id="username" name="username" required autocomplete="username" autofocus>
-      </div>
-      <div class="auth-field">
-        <label for="password">Password</label>
-        <input type="password" id="password" name="password" required autocomplete="{{ 'new-password' if mode == 'register' else 'current-password' }}">
-      </div>
-      {% if mode == "register" %}
-      <div class="auth-field">
-        <label for="password_confirm">Confirm Password</label>
-        <input type="password" id="password_confirm" name="password_confirm" required autocomplete="new-password">
-      </div>
-      {% endif %}
-      <button type="submit" class="auth-btn">{{ button_text }}</button>
-    </form>
 
-    {% if mode == "login" %}
-    <div class="auth-footer">
-      No account? <a href="/register">Create one</a>
+      <form method="POST" action="{{ action }}">
+        {% if mode == "register" and is_first %}
+        <div class="form-group">
+          <label class="form-label" for="setup_token">Setup token</label>
+          <input class="form-input" type="text" id="setup_token" name="setup_token" value="{{ setup_token | default('') }}" required autocomplete="off" placeholder="Shown in the server logs on first start">
+        </div>
+        {% endif %}
+        <div class="form-group">
+          <label class="form-label" for="username">Username</label>
+          <input class="form-input" type="text" id="username" name="username" required autocomplete="username" autofocus>
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="password">Password</label>
+          <input class="form-input" type="password" id="password" name="password" required autocomplete="{{ 'new-password' if mode == 'register' else 'current-password' }}">
+        </div>
+        {% if mode == "register" %}
+        <div class="form-group">
+          <label class="form-label" for="password_confirm">Confirm password</label>
+          <input class="form-input" type="password" id="password_confirm" name="password_confirm" required autocomplete="new-password">
+        </div>
+        {% endif %}
+        <button type="submit" class="btn btn-primary btn-lg gate-submit">{{ button_text }}</button>
+      </form>
+
+      {% if mode == "login" %}
+      <p class="gate-foot-note">No account? <a href="/register">Create one</a></p>
+      {% elif mode == "register" and not is_first %}
+      <p class="gate-foot-note">Already have an account? <a href="/login">Sign in</a></p>
+      {% endif %}
     </div>
-    {% elif mode == "register" and not is_first %}
-    <div class="auth-footer">
-      Already have an account? <a href="/login">Sign in</a>
-    </div>
-    {% endif %}
-  </div>
+  </main>
+
+  <footer class="gate-foot">
+    <a href="https://github.com/GeiserX/CashPilot" target="_blank" rel="noopener">Source</a>
+    <a href="https://github.com/GeiserX/CashPilot/issues" target="_blank" rel="noopener">Report a problem</a>
+  </footer>
   <script src="/static/js/delegate.js"></script>
 </body>
 </html>

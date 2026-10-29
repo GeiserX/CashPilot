@@ -2,17 +2,17 @@
 
 {% block title %}Fleet - CashPilot{% endblock %}
 {% block page %}fleet{% endblock %}
-{% block topbar_title %}Fleet Management{% endblock %}
+{% block topbar_title %}Fleet{% endblock %}
 
 {% block content %}
 <!-- Fleet Stats -->
 <div class="stats-grid">
   <div class="stat-card">
-    <div class="stat-label">Workers</div>
+    <div class="stat-label">Boxes</div>
     <div class="stat-value highlight" id="fleet-total-workers">-</div>
   </div>
   <div class="stat-card">
-    <div class="stat-label">Online</div>
+    <div class="stat-label">Reporting</div>
     <div class="stat-value" id="fleet-online-workers">-</div>
   </div>
   {# "Workers" and "Online" are fleet-wide; these two count ONLY online workers
@@ -22,33 +22,72 @@
      "Containers keep running and earning while a worker is offline."
      (CashPilot-wij) #}
   <div class="stat-card">
-    <div class="stat-label" title="Counted across workers that are currently online. Containers on an offline worker keep running and earning; they are not included here.">Services <span style="opacity:0.6;">(online)</span></div>
+    <div class="stat-label" title="Counted across workers that are currently online. Containers on an offline worker keep running and earning; they are not included here.">Containers <span class="stat-qual">(online)</span></div>
     <div class="stat-value" id="fleet-total-containers">-</div>
   </div>
   <div class="stat-card">
-    <div class="stat-label" title="Counted across workers that are currently online. Containers on an offline worker keep running and earning; they are not included here.">Running <span style="opacity:0.6;">(online)</span></div>
+    <div class="stat-label" title="Counted across workers that are currently online. Containers on an offline worker keep running and earning; they are not included here.">Running <span class="stat-qual">(online)</span></div>
     <div class="stat-value" id="fleet-running-containers">-</div>
   </div>
 </div>
-<div id="fleet-unreachable-note" style="display:none; margin:-8px 0 16px; font-size:0.82rem; color:var(--warning);"></div>
+<div id="fleet-unreachable-note" class="inline-note inline-note-warn" style="display:none;"></div>
 
-<!-- Add Worker Info -->
-<div class="card" style="margin-bottom: 24px;">
-  <div class="card-header">
-    <span class="card-title">Add Worker</span>
+
+<section class="fleet-boxes" aria-labelledby="boxes-title">
+  <div class="block-head">
+    <h2 class="block-title" id="boxes-title">Boxes</h2>
+    <span class="block-meta">Each box runs one CashPilot worker. Containers list in the order the worker reported them.</span>
   </div>
-  <div style="padding: 0 20px 20px;">
-    <p style="color: var(--text-secondary); margin-bottom: 12px; font-size: 0.9rem;">
+  <div id="fleet-workers" class="table-scroll">
+    <div class="loading-line"><div class="spinner"></div> Loading fleet</div>
+  </div>
+</section>
+
+<!-- Is this fleet worth running?
+     The card needs an electricity price to answer that, and until now there was
+     no way to enter one: the keys existed, the backend read them, and nothing
+     in the app ever wrote them. A user who only uses the app saw "unknown"
+     forever with no route out of it (CashPilot-jm6). The inputs below are that
+     route. The verdict area stays hidden until there is something to say. -->
+<section class="fleet-economics" style="display:none;" id="fleet-economics-card">
+  <div class="block-head">
+    <h2 class="block-title">Running costs</h2>
+    <span class="block-meta" id="fleet-economics-quality"></span>
+  </div>
+
+  <div id="power-settings" class="power-settings">
+    <div>
+      <label for="power-price" class="form-label">Electricity price per kWh</label>
+      <input id="power-price" class="form-input form-input-price" type="number" step="0.001" min="0"
+             placeholder="0.30" aria-describedby="power-help">
+    </div>
+    <div>
+      <label for="power-currency" class="form-label">Currency</label>
+      <input id="power-currency" class="form-input form-input-code" type="text" maxlength="4" placeholder="EUR">
+    </div>
+    <button class="btn btn-primary btn-sm" id="power-save">Save</button>
+    <span id="power-help" class="muted">
+      Your tariff, as it appears on your bill. Figures below are converted to USD.
+    </span>
+  </div>
+
+  <div id="fleet-economics-body"></div>
+</section>
+
+<details class="add-worker" id="add-worker">
+  <summary>Add a box</summary>
+  <div class="add-worker-body">
+    <p class="add-worker-text">
       Deploy <code>drumsergio/cashpilot-worker</code> on each server, or install the
-      <a href="https://github.com/GeiserX/CashPilot-android" style="color: var(--accent);">Android app</a> on your phone.
+      <a href="https://github.com/GeiserX/CashPilot-android">Android app</a> on your phone.
       For Docker workers, set these environment variables:
     </p>
-    <div style="background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 8px; padding: 12px;">
-      <code id="worker-env" style="display: block; word-break: break-all; color: var(--text-primary); font-size: 0.85rem; white-space: pre-wrap;">CASHPILOT_UI_URL=<span id="env-ui-url"></span>
+    <div class="env-block">
+      <code id="worker-env">CASHPILOT_UI_URL=<span id="env-ui-url"></span>
 CASHPILOT_API_KEY=<span id="env-api-key">••••••••</span>
 CASHPILOT_WORKER_NAME=server-name</code>
-      <div style="display: flex; gap: 8px; align-items: center; margin-top: 8px;">
-        <span id="api-key-status" class="badge badge-category" style="font-size:0.72rem;">Checking…</span>
+      <div class="env-actions">
+        <span id="api-key-status" class="badge badge-category">Checking…</span>
         {% if user.r == 'owner' %}
         <button class="btn btn-ghost btn-sm" data-action="toggleApiKey" id="reveal-btn">Reveal API Key</button>
         <button class="btn btn-ghost btn-sm" data-action="copyWorkerEnv">Copy</button>
@@ -57,57 +96,16 @@ CASHPILOT_WORKER_NAME=server-name</code>
       {# Shown only when the clipboard API is unreachable — which is the normal
          case on the plain-http LAN origin docs/fleet.md documents, because
          navigator.clipboard is gated on a secure context. #}
-      <div id="worker-env-fallback" style="display:none; margin-top:8px;">
-        <textarea readonly rows="3" class="form-input" style="width:100%; font-family:monospace; font-size:0.78rem;"></textarea>
+      <div id="worker-env-fallback" class="env-fallback" style="display:none;">
+        <textarea readonly rows="3" class="form-input form-input-wide mono"></textarea>
       </div>
     </div>
-    <p style="color: var(--text-muted); margin-top: 8px; font-size: 0.82rem;">
+    <p class="muted add-worker-text">
       The API key is set via <code>CASHPILOT_API_KEY</code> env var on the UI container. Use the same key on all workers.
     </p>
   </div>
-</div>
+</details>
 
-<!-- Worker List -->
-<div class="section-header">
-  <h2 class="section-title">Workers</h2>
-</div>
-
-<!-- Is this fleet worth running?
-     The card needs an electricity price to answer that, and until now there was
-     no way to enter one: the keys existed, the backend read them, and nothing
-     in the app ever wrote them. A user who only uses the app saw "unknown"
-     forever with no route out of it (CashPilot-jm6). The inputs below are that
-     route. The verdict area stays hidden until there is something to say. -->
-<div class="card" style="margin-bottom: 24px; display:none;" id="fleet-economics-card">
-  <div class="card-header">
-    <span class="card-title">Running costs</span>
-    <span style="font-size:0.72rem; color:var(--text-muted);" id="fleet-economics-quality"></span>
-  </div>
-
-  <div id="power-settings" style="display:flex; gap:12px; flex-wrap:wrap; align-items:flex-end; padding:12px 0; border-bottom:1px solid var(--border-color); margin-bottom:12px;">
-    <div>
-      <label for="power-price" style="display:block; font-size:0.7rem; color:var(--text-muted); margin-bottom:4px;">Electricity price per kWh</label>
-      <input id="power-price" class="form-input" type="number" step="0.001" min="0" style="width:9rem;"
-             placeholder="0.30" aria-describedby="power-help">
-    </div>
-    <div>
-      <label for="power-currency" style="display:block; font-size:0.7rem; color:var(--text-muted); margin-bottom:4px;">Currency</label>
-      <input id="power-currency" class="form-input" type="text" maxlength="4" style="width:5.5rem;" placeholder="EUR">
-    </div>
-    <button class="btn btn-primary btn-sm" id="power-save">Save</button>
-    <span id="power-help" style="font-size:0.7rem; color:var(--text-muted);">
-      Your tariff, as it appears on your bill. Figures below are converted to USD.
-    </span>
-  </div>
-
-  <div id="fleet-economics-body"></div>
-</div>
-
-<div id="fleet-workers">
-  <div class="empty-state">
-    <div class="empty-state-title">Loading fleet...</div>
-  </div>
-</div>
 {% endblock %}
 
 {% block scripts %}
@@ -178,7 +176,7 @@ CASHPILOT_WORKER_NAME=server-name</code>
           const w = summary.unreachable_workers || 0;
           note.textContent = `${hidden} container${hidden === 1 ? '' : 's'} on `
             + `${w} unreachable worker${w === 1 ? '' : 's'} ${hidden === 1 ? 'is' : 'are'} not counted above. `
-            + `They keep running and earning while their worker is offline — CashPilot just cannot see them right now.`;
+            + `They keep running and earning while their worker is offline. CashPilot just cannot see them right now.`;
           note.style.display = '';
         } else {
           note.style.display = 'none';
@@ -241,11 +239,12 @@ CASHPILOT_WORKER_NAME=server-name</code>
             <div class="economics-summary">${esc(m.summary)}</div>
           </div>
           <div class="economics-figures">
-            <span title="gross earnings per month">${money(m.monthly_gross)}</span>
-            <span style="color:var(--text-muted);">−</span>
+            <span title="gross earnings per month">${money(m.monthly_gross)}</span>${m.monthly_cost == null ? '' : `
+            <span class="muted">−</span>
             <span title="estimated electricity per month">${money(m.monthly_cost)}</span>
-            <span style="color:${losing ? 'var(--error)' : 'var(--success)'}; font-weight:700;"
-                  title="net per month">${money(m.monthly_net)}</span>
+            <span class="muted">=</span>
+            <span class="${losing ? 'text-fail' : ''} econ-net"
+                  title="net per month">${money(m.monthly_net)}</span>`}
           </div>
         </div>`;
     }).join('');
@@ -262,11 +261,11 @@ CASHPILOT_WORKER_NAME=server-name</code>
       if (attributable.length) {
         services = `
           <div class="economics-services">
-            <div class="detail-label" style="margin-bottom:6px;">Per service, where the cost can be attributed</div>
+            <div class="detail-label">Per service, where the cost can be attributed</div>
             ${attributable.map(s => `
               <div class="economics-service-row">
                 <span>${esc(s.platform)}</span>
-                <span style="color:${s.negative ? 'var(--error)' : 'var(--text-secondary)'};">
+                <span class="num${s.negative ? ' text-fail' : ''}">
                   ${money(s.gross)} − ${money(s.cost)} = ${money(s.net)}
                 </span>
               </div>`).join('')}
@@ -315,87 +314,93 @@ CASHPILOT_WORKER_NAME=server-name</code>
 
     const nameCounts = countWorkerNames(workers);
 
-    let html = '';
-
     if (workers.length === 0) {
-      html = `<div class="empty-state" style="padding: 40px 20px;">
-        <div class="empty-state-title">No workers registered</div>
-        <div class="empty-state-text">Deploy a CashPilot Worker on your servers to see them here.</div>
+      container.innerHTML = `<div class="empty-state">
+        <div class="empty-state-title">No boxes yet</div>
+        <div class="empty-state-text">Run a CashPilot worker on a server and it appears here. The steps are under Add a box below.</div>
       </div>`;
-    } else {
-      for (const w of workers) {
-        const isOnline = w.status === 'online';
-        const statusClass = isOnline ? 'running' : 'stopped';
-        const borderColor = isOnline ? 'var(--success)' : 'var(--text-muted)';
-        const sysInfo = w.system_info || {};
-        const isAndroid = (sysInfo.device_type === 'android');
-        const items = isAndroid ? (w.apps || []) : (w.containers || []);
-        html += `
-        <div class="card" style="margin-bottom: 12px; border-left: 3px solid ${borderColor};">
-          <div style="padding: 16px;">
-            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 12px;">
-              <div style="display: flex; align-items: center; gap: 8px;">
-                <span class="status-dot ${statusClass}"></span>
-                <span style="font-weight: 600; color: var(--text-primary);">${esc(w.name)}</span>
-                ${isAndroid ? '<span style="font-size:0.7rem; padding:2px 6px; border-radius:4px; background:var(--bg-hover); color:var(--text-muted);">Android</span>' : ''}
-                ${nameCounts[String(w.name || '')] > 1 ? `<span style="font-size:0.7rem; padding:2px 6px; border-radius:4px; background:var(--warning-soft, var(--bg-hover)); color:var(--warning);" title="More than one worker is registered under this name. That usually means this host was redeployed with a new or empty /data, so it re-registered under a new id and the old row stayed behind. Compare the ids and the last-seen times before removing one.">duplicate name</span>` : ''}
-                ${w.enrollment === 'incomplete'
-                  ? `<span style="font-size:0.7rem; padding:2px 6px; border-radius:4px; background:var(--warning-soft, var(--bg-hover)); color:var(--warning);" title="This worker enrolled but never used its own key, so it is still authenticating with the shared CASHPILOT_API_KEY. The shared key is no longer accepted for it. It usually means the worker cannot persist /data/.worker_key — an old image, or a /data that is read-only or not a persistent volume. Upgrade it to 1.0.0+ with a writable persistent /data, then remove it here so it can enroll again.">enrollment incomplete</span>`
-                  : w.enrollment === 'pending'
-                  ? `<span style="font-size:0.7rem; padding:2px 6px; border-radius:4px; background:var(--bg-hover); color:var(--text-muted);" title="This worker has been issued its own key but has not used it yet, so the shared key still works for it for a short while. It clears itself on the worker's next heartbeat.">enrolling</span>`
-                  : ''}
-                <code style="font-size:0.68rem; color:var(--text-muted); background:var(--bg-hover); padding:1px 5px; border-radius:3px;" title="This worker's client_id — the id CashPilot keys it on. Two rows with the same name always have different ids; this is how to tell which is which.">${esc(w.client_id || ('#' + w.id))}</code>
-              </div>
-              <div style="display: flex; gap: 6px;">
-                ${_isOwner && isOnline && !isAndroid && (sysInfo.features || []).includes('isolation_check')
-                  ? `<button class="btn btn-ghost btn-sm btn-isolation-check" data-worker-id="${w.id}" title="Start two short-lived probe containers on this host and show what an earner can reach: your LAN, this host, an overlay network such as Tailscale, cloud metadata. Changes no firewall rule.">${_isolation[w.id] === 'running' ? 'Checking…' : 'Check isolation'}</button>`
-                  : ''}
-                ${_isOwner ? `<button class="btn btn-danger btn-sm btn-remove-worker" data-worker-id="${w.id}" data-worker-name="${esc(w.name)}" data-worker-client="${esc(w.client_id || '')}" title="Remove worker">Remove</button>` : ''}
-              </div>
-            </div>
-            <div style="display: flex; gap: 16px; flex-wrap: wrap; font-size: 0.82rem; color: var(--text-muted);">
-              <span>${esc(w.url || '-')}</span>
-              <span>${esc(sysInfo.os || '-')}${sysInfo.os_version ? ' ' + esc(sysInfo.os_version) : ''}</span>
-              <span>${esc(sysInfo.arch || '-')}</span>
-              <span title="${esc(CP.fmtTimestamp(w.last_heartbeat).title)}">Last seen: ${esc(CP.fmtTimestamp(w.last_heartbeat).text)}</span>
-              <span>
-                <label for="watts-${esc(w.client_id || w.id)}" style="color:var(--text-muted);">Draw</label>
-                <input id="watts-${esc(w.client_id || w.id)}" class="power-watts form-input" type="number" min="0" step="1"
-                       data-client-id="${esc(w.client_id || w.id)}" value="${esc(w.watts ?? '')}"
-                       placeholder="65" style="width:5rem; padding:2px 6px; font-size:0.78rem;"
-                       title="Wall power this machine draws, in watts. Without it CashPilot cannot say what the machine costs to run.">W
-                <label style="color:var(--text-muted); margin-left:8px;">
-                  <input type="checkbox" class="power-dedicated" data-client-id="${esc(w.client_id || w.id)}" ${w.dedicated ? 'checked' : ''}>
-                  dedicated
-                </label>
-                <button class="btn btn-ghost btn-sm power-save-worker" data-client-id="${esc(w.client_id || w.id)}"
-                        style="font-size:0.7rem; padding:1px 6px;">Save</button>
-              </span>
-              ${sysInfo.version
-                ? (() => {
-                    // What this worker was actually judged against. An Android
-                    // client is compared to the newest CashPilot-android
-                    // release, not to the UI: the two ship on separate tracks,
-                    // so "v0.3.0 != UI v1.24.1" was never skew, it was two
-                    // different products, and it flagged every phone forever.
-                    const isAndroid = String(sysInfo.os || '').toLowerCase() === 'android';
-                    const ref = w.reference_version || w.ui_version || '?';
-                    const refLabel = isAndroid ? `latest v${esc(ref)}` : `UI v${esc(ref)}`;
-                    const why = isAndroid
-                      ? `This phone is on an older CashPilot Android release than the newest published one (${esc(ref)}). Install the newer APK from the GitHub releases page.`
-                      : `This worker is on a different release series from the UI (${esc(ref)}). Update whichever is behind — on Unraid the UI and the worker are two separate apps, so updating one leaves the other.`;
-                    return `<span${w.version_skew ? ` style="color:var(--warning); font-weight:600;" title="${why}"` : ''}>v${esc(sysInfo.version)}${w.version_skew ? ` \u2260 ${refLabel}` : ''}</span>`;
-                  })()
-                : `<span title="This worker predates version reporting, so CashPilot cannot tell which release it is. Update it to find out.">version unknown</span>`}
-            </div>
-            ${isAndroid && items.length > 0 ? renderApps(items, isOnline, w.last_heartbeat) : ''}
-            ${!isAndroid && items.length > 0 ? renderContainers(w, isOnline) : ''}
-            ${_isolation[w.id] && _isolation[w.id] !== 'running' ? renderIsolation(_isolation[w.id]) : ''}
-          </div>
-        </div>`;
-      }
+      const add = document.getElementById('add-worker');
+      if (add) add.open = true;
+      return;
     }
-    container.innerHTML = html;
+
+    const flag = (cls, title, text) => `<span class="flag flag-${cls}"${title ? ` title="${title}"` : ''}>${text}</span>`;
+    let rows = '';
+    for (const w of workers) {
+      const isOnline = w.status === 'online';
+      const sysInfo = w.system_info || {};
+      const isAndroid = (sysInfo.device_type === 'android');
+      const items = isAndroid ? (w.apps || []) : (w.containers || []);
+      const cid = esc(w.client_id || w.id);
+      const flags = [
+        isAndroid ? flag('plain', '', 'Android') : '',
+        nameCounts[String(w.name || '')] > 1 ? flag('warn', 'More than one worker is registered under this name. That usually means this host was redeployed with a new or empty /data, so it re-registered under a new id and the old row stayed behind. Compare the ids and the last-seen times before removing one.', 'duplicate name') : '',
+        w.enrollment === 'incomplete'
+          ? flag('warn', 'This worker enrolled but never used its own key, so it is still authenticating with the shared CASHPILOT_API_KEY. The shared key is no longer accepted for it. It usually means the worker cannot persist /data/.worker_key: an old image, or a /data that is read-only or not a persistent volume. Upgrade it to 1.0.0+ with a writable persistent /data, then remove it here so it can enroll again.', 'enrollment incomplete')
+          : w.enrollment === 'pending'
+          ? flag('plain', 'This worker has been issued its own key but has not used it yet, so the shared key still works for it for a short while. It clears itself on the worker\'s next heartbeat.', 'enrolling')
+          : '',
+      ].join('');
+      let version;
+      if (sysInfo.version) {
+        // What this worker was actually judged against. An Android
+        // client is compared to the newest CashPilot-android
+        // release, not to the UI: the two ship on separate tracks,
+        // so "v0.3.0 != UI v1.24.1" was never skew, it was two
+        // different products, and it flagged every phone forever.
+        const isAndroidOs = String(sysInfo.os || '').toLowerCase() === 'android';
+        const ref = w.reference_version || w.ui_version || '?';
+        const refLabel = isAndroidOs ? `latest v${esc(ref)}` : `UI v${esc(ref)}`;
+        const why = isAndroidOs
+          ? `This phone is on an older CashPilot Android release than the newest published one (${esc(ref)}). Install the newer APK from the GitHub releases page.`
+          : `This worker is on a different release series from the UI (${esc(ref)}). Update whichever is behind. On Unraid the UI and the worker are two separate apps, so updating one leaves the other.`;
+        version = `<span class="num${w.version_skew ? ' text-warn' : ''}"${w.version_skew ? ` title="${why}"` : ''}>v${esc(sysInfo.version)}${w.version_skew ? ` ≠ ${refLabel}` : ''}</span>`;
+      } else {
+        version = `<span class="muted" title="This worker predates version reporting, so CashPilot cannot tell which release it is. Update it to find out.">version unknown</span>`;
+      }
+      rows += `
+        <tr class="worker-row${isOnline ? '' : ' worker-off'}">
+          <td class="w-name">
+            <span class="cell cell-${isOnline ? 'ok' : 'fail'}" aria-label="${isOnline ? 'online' : 'not reporting'}"></span>
+            <strong>${esc(w.name)}</strong>${flags}
+            <div class="cell-sub"><code class="worker-id" title="This worker's client_id, the id CashPilot keys it on. Two rows with the same name always have different ids; this is how to tell which is which.">${esc(w.client_id || ('#' + w.id))}</code></div>
+          </td>
+          <td class="w-sys">
+            <span>${esc(sysInfo.os || '-')}${sysInfo.os_version ? ' ' + esc(sysInfo.os_version) : ''}</span>
+            <div class="cell-sub cell-mono">${esc(sysInfo.arch || '-')} &nbsp; ${esc(w.url || '-')}</div>
+          </td>
+          <td class="w-ver">${version}</td>
+          <td class="w-seen${isOnline ? '' : ' text-fail'}" title="${esc(CP.fmtTimestamp(w.last_heartbeat).title)}">${esc(CP.fmtTimestamp(w.last_heartbeat).text)}</td>
+          <td class="w-power">
+            <label for="watts-${cid}" class="sr-only">Draw in watts</label>
+            <input id="watts-${cid}" class="power-watts form-input form-input-sm" type="number" min="0" step="1"
+                   data-client-id="${cid}" value="${esc(w.watts ?? '')}"
+                   placeholder="65"
+                   title="Wall power this machine draws, in watts. Without it CashPilot cannot say what the machine costs to run."><span class="unit">W</span>
+            <label class="w-dedicated">
+              <input type="checkbox" class="power-dedicated" data-client-id="${cid}" ${w.dedicated ? 'checked' : ''}>
+              dedicated
+            </label>
+            <button class="btn btn-link power-save-worker" data-client-id="${cid}">save</button>
+          </td>
+          <td class="w-ctr">${items.length ? (isAndroid ? renderApps(items, isOnline, w.last_heartbeat) : renderContainers(w, isOnline)) : '<span class="muted">none</span>'}</td>
+          <td class="w-act">
+            ${_isOwner && isOnline && !isAndroid && (sysInfo.features || []).includes('isolation_check')
+              ? `<button class="btn btn-ghost btn-sm btn-isolation-check" data-worker-id="${w.id}" title="Start two short-lived probe containers on this host and show what an earner can reach: your LAN, this host, an overlay network such as Tailscale, cloud metadata. Changes no firewall rule.">${_isolation[w.id] === 'running' ? 'Checking…' : 'Check isolation'}</button>`
+              : ''}
+            ${_isOwner ? `<button class="btn btn-danger btn-sm btn-remove-worker" data-worker-id="${w.id}" data-worker-name="${esc(w.name)}" data-worker-client="${esc(w.client_id || '')}" title="Remove worker">Remove</button>` : ''}
+          </td>
+        </tr>
+        ${_isolation[w.id] && _isolation[w.id] !== 'running' ? `<tr class="worker-detail"><td colspan="7">${renderIsolation(_isolation[w.id])}</td></tr>` : ''}`;
+    }
+    container.innerHTML = `
+      <table class="fleet-table">
+        <thead><tr>
+          <th scope="col">Box</th><th scope="col">System</th><th scope="col">Version</th><th scope="col">Last seen</th>
+          <th scope="col">Power draw</th><th scope="col">Containers</th><th scope="col"><span class="sr-only">Actions</span></th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+      </table>`;
   }
 
   // The last isolation check per worker id: 'running', a report, or {error}.
@@ -403,60 +408,60 @@ CASHPILOT_WORKER_NAME=server-name</code>
   const _isolation = {};
 
   function renderIsolation(r) {
-    let html = '<div style="margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border-color); font-size: 0.82rem;">';
+    let html = '<div class="iso-report">';
     const when = r.checked_at ? new Date(r.checked_at) : null;
     if (when && !Number.isNaN(when.getTime())) {
-      html += `<div style="color:var(--text-muted); margin-bottom:4px;" title="${esc(r.checked_at)}">Checked ${esc(when.toLocaleString())}</div>`;
+      html += `<div class="iso-line muted" title="${esc(r.checked_at)}">Checked ${esc(when.toLocaleString())}</div>`;
     }
     if (r.error) {
-      return html + `<div style="color:var(--error);">Isolation check failed: ${esc(r.error)}</div></div>`;
+      return html + `<div class="iso-line text-fail">Isolation check failed: ${esc(r.error)}</div></div>`;
     }
     // Isolated can still have reachable lines: the ones the report marks
     // expected (DNS through the Tailscale rewrite or a LAN DNS exception).
     const allowed = (r.groups || []).flatMap(g => g.targets).filter(t => t.reachable).map(t => t.address);
     const head = {
-      isolated: ['var(--success)', allowed.length
+      isolated: ['text-ok', allowed.length
         ? `Isolated over IPv4. An earner reached only the expected DNS ${allowed.length === 1 ? 'line' : 'lines'} ${allowed.join(', ')} and none of the other addresses below, and it reached the internet.`
         : 'Isolated over IPv4. An earner reached none of the addresses below, and it reached the internet.'],
-      exposed: ['var(--error)', 'Not isolated. See what to fix below.'],
-      could_not_test: ['var(--warning)', 'Could not test. ' + (r.reason || '')],
-    }[r.status] || ['var(--text-muted)', String(r.status)];
-    html += `<div style="font-weight:600; color:${head[0]}; margin-bottom:6px;">${esc(head[1])}</div>`;
+      exposed: ['text-fail', 'Not isolated. See what to fix below.'],
+      could_not_test: ['text-warn', 'Could not test. ' + (r.reason || '')],
+    }[r.status] || ['muted', String(r.status)];
+    html += `<div class="iso-head ${head[0]}">${esc(head[1])}</div>`;
     if (r.status === 'exposed' && r.reason) {
-      html += `<div style="color:var(--warning); margin-bottom:6px;">The probe part could not run: ${esc(r.reason)}</div>`;
+      html += `<div class="iso-line text-warn">The probe part could not run: ${esc(r.reason)}</div>`;
     }
     if (r.tested_from) {
-      html += `<div style="color:var(--text-muted); margin-bottom:6px;">Tested from ${esc(r.tested_from.earner || 'a probe')} on ${esc((r.tested_from.network || []).join(', ') || '?')}.</div>`;
+      html += `<div class="iso-line muted">Tested from ${esc(r.tested_from.earner || 'a probe')} on ${esc((r.tested_from.network || []).join(', ') || '?')}.</div>`;
     }
     for (const g of r.groups || []) {
-      html += `<div style="margin:4px 0;"><span style="color:var(--text-muted); display:inline-block; min-width:9rem;">${esc(g.label)}</span>`;
+      html += `<div class="iso-group"><span class="iso-label">${esc(g.label)}</span><span class="iso-targets">`;
       for (const t of g.targets) {
         const bad = t.reachable && !t.expected;
-        const color = t.reachable ? (bad ? 'var(--error)' : 'var(--warning)') : 'var(--success)';
+        const tone = t.reachable ? (bad ? 'iso-fail' : 'iso-warn') : 'iso-ok';
         const tip = `${t.label}${t.note ? '. ' + t.note : ''}`;
-        html += `<span style="font-size:0.75rem; padding:2px 6px; margin:2px; border-radius:4px; background:var(--bg-hover); color:${color}; display:inline-block;" title="${esc(tip)}">${esc(t.address)} ${t.reachable ? 'reachable' : 'blocked'}</span>`;
+        html += `<span class="iso-target ${tone}" title="${esc(tip)}"><span class="mono">${esc(t.address)}</span> ${t.reachable ? 'reachable' : 'blocked'}</span>`;
       }
-      html += '</div>';
+      html += '</span></div>';
     }
     if (r.internet) {
-      html += `<div style="margin:4px 0;"><span style="color:var(--text-muted); display:inline-block; min-width:9rem;">Internet</span>${esc(r.internet.address)} ${r.internet.reachable ? 'works' : 'FAILED'}</div>`;
+      html += `<div class="iso-group"><span class="iso-label">Internet</span><span class="iso-target ${r.internet.reachable ? 'iso-ok' : 'iso-fail'}"><span class="mono">${esc(r.internet.address)}</span> ${r.internet.reachable ? 'works' : 'failed'}</span></div>`;
     }
     for (const f of r.findings || []) {
-      html += `<div style="margin-top:6px; color:${f.exposure ? 'var(--error)' : 'var(--warning)'};">${esc(f.detail)} <a href="${esc(f.docs)}" target="_blank" rel="noopener noreferrer">How to fix it</a></div>`;
+      html += `<div class="iso-line ${f.exposure ? 'text-fail' : 'text-warn'}">${esc(f.detail)} <a href="${esc(f.docs)}" target="_blank" rel="noopener noreferrer">How to fix it</a></div>`;
     }
     const m = r.node_firewall;
     if (m) {
-      html += `<div style="margin-top:6px; color:var(--text-muted);">${esc(m.service || 'Node')} (${esc(m.container)}): ${m.readable ? 'blackholes ' + esc((m.blackholed || []).join(', ') || 'nothing') : esc(m.detail || '')}</div>`;
+      html += `<div class="iso-line muted">${esc(m.service || 'Node')} (${esc(m.container)}): ${m.readable ? 'blackholes ' + esc((m.blackholed || []).join(', ') || 'nothing') : esc(m.detail || '')}</div>`;
     }
     if ((r.addresses_left_out || []).length) {
-      html += `<div style="margin-top:6px; color:var(--text-muted);" title="${esc(r.addresses_left_out.join(' '))}">${r.addresses_left_out.length} Docker bridge address(es) of this host were left out to keep the check short, so they were not tested.</div>`;
+      html += `<div class="iso-line muted" title="${esc(r.addresses_left_out.join(' '))}">${r.addresses_left_out.length} Docker bridge address(es) of this host were left out to keep the check short, so they were not tested.</div>`;
     }
     if ((r.leftover_probes || []).length) {
       const names = r.leftover_probes.join(' ');
-      html += `<div style="margin-top:6px; color:var(--warning);">Docker would not remove ${r.leftover_probes.length === 1 ? 'this probe container' : 'these probe containers'}, so ${r.leftover_probes.length === 1 ? 'it is' : 'they are'} still on the host: ${esc(r.leftover_probes.join(', '))}. Remove ${r.leftover_probes.length === 1 ? 'it' : 'them'} with <code>docker rm -fv ${esc(names)}</code>.</div>`;
+      html += `<div class="iso-line text-warn">Docker would not remove ${r.leftover_probes.length === 1 ? 'this probe container' : 'these probe containers'}, so ${r.leftover_probes.length === 1 ? 'it is' : 'they are'} still on the host: ${esc(r.leftover_probes.join(', '))}. Remove ${r.leftover_probes.length === 1 ? 'it' : 'them'} with <code>docker rm -fv ${esc(names)}</code>.</div>`;
     }
     if ((r.not_answering_from_host || []).length) {
-      html += `<div style="margin-top:6px; color:var(--text-muted);" title="${esc(r.not_answering_from_host.join(' '))}">${r.not_answering_from_host.length} address(es) did not answer from the host itself, so they were not tested.</div>`;
+      html += `<div class="iso-line muted" title="${esc(r.not_answering_from_host.join(' '))}">${r.not_answering_from_host.length} address(es) did not answer from the host itself, so they were not tested.</div>`;
     }
     return html + '</div>';
   }
@@ -493,33 +498,28 @@ CASHPILOT_WORKER_NAME=server-name</code>
   }
 
   function renderApps(apps, isOnline, lastSeen) {
-    let html = '<div style="margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border-color);">';
+    let html = '<div class="ctr-list">';
     if (isOnline === false) {
-      html += `<div style="font-size:0.7rem; color:var(--text-muted); margin-bottom:6px;">Last known state — not reachable</div>`;
+      html += `<div class="ctr-stale">Last known state, not reachable</div>`;
     }
-    html += '<div style="display: flex; gap: 6px; flex-wrap: wrap;">';
     for (const a of apps) {
       // Same rule as the containers: an unreachable device cannot be reporting
       // an app as running, whatever its last heartbeat said.
       const isRunning = isOnline !== false && a.running;
-      const color = isRunning ? 'var(--success)' : 'var(--text-muted)';
-      const bg = isRunning ? 'var(--success-soft)' : 'var(--bg-hover)';
       const tx = a.net_tx_24h || 0;
       const rx = a.net_rx_24h || 0;
       const staleTip = isOnline === false ? esc(staleNote(lastSeen)) : '';
       const trafficTip = (tx || rx) ? `24h: ↑${fmtBytes(tx)} ↓${fmtBytes(rx)}` : '';
-      const tipText = [staleTip, trafficTip].filter(Boolean).join(' — ');
+      const tipText = [staleTip, trafficTip].filter(Boolean).join(' · ');
       const netTip = tipText ? ` title="${tipText}"` : '';
-      const appStyle = isOnline === false ? ' border:1px dashed var(--border-color); opacity:0.75;' : '';
-      html += `<span style="font-size:0.75rem; padding:3px 8px; border-radius:4px; background:${bg}; color:${color}; font-weight:500;${appStyle}"${netTip}>${esc(a.slug)}</span>`;
+      html += `<span class="ctr ctr-${isRunning ? 'ok' : 'idle'}${isOnline === false ? ' ctr-stale-item' : ''}"${netTip}>${esc(a.slug)}</span>`;
     }
-    html += '</div></div>';
-    return html;
+    return html + '</div>';
   }
 
   // A container's colour is a claim about RIGHT NOW, and it can only be made
   // while the worker is reachable. When it is not, every chip stayed the colour
-  // frozen into the last heartbeat — so a host that is powered off rendered a
+  // frozen into the last heartbeat, so a host that is powered off rendered a
   // row of success-green containers next to a grey dot, and green is the louder
   // signal. The state is still shown, because "what was running when we last
   // heard" is useful, but it is shown as a memory rather than a measurement.
@@ -528,22 +528,19 @@ CASHPILOT_WORKER_NAME=server-name</code>
   }
 
   function renderContainers(worker, isOnline) {
-    let html = '<div style="margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border-color);">';
+    let html = '<div class="ctr-list">';
     if (!isOnline) {
-      html += `<div style="font-size:0.7rem; color:var(--text-muted); margin-bottom:6px;">Last known state — not reachable</div>`;
+      html += `<div class="ctr-stale">Last known state, not reachable</div>`;
     }
-    html += '<div style="display: flex; gap: 6px; flex-wrap: wrap;">';
     for (const c of worker.containers) {
       const status = (c.status || 'stopped').toLowerCase();
-      const isRunning = isOnline && status === 'running';
-      const color = isRunning ? 'var(--success)' : 'var(--text-muted)';
-      const bg = isRunning ? 'var(--success-soft)' : 'var(--bg-hover)';
-      const style = isOnline ? '' : ' border:1px dashed var(--border-color); opacity:0.75;';
-      const tip = isOnline ? '' : ` title="${esc(staleNote(worker.last_heartbeat))}"`;
-      html += `<span style="font-size:0.75rem; padding:3px 8px; border-radius:4px; background:${bg}; color:${color}; font-weight:500;${style}"${tip}>${esc(c.slug || c.name)}</span>`;
+      const state = !isOnline ? 'idle' : status === 'running' ? 'ok'
+        : (status === 'exited' || status === 'stopped' || status === 'dead') ? 'fail' : 'warn';
+      const why = status === 'running' ? '' : `${status}${c.exit_code != null ? `, exit code ${c.exit_code}` : ''}`;
+      const tip = isOnline ? (why ? ` title="${esc(why)}"` : '') : ` title="${esc(staleNote(worker.last_heartbeat))}"`;
+      html += `<span class="ctr ctr-${state}${isOnline ? '' : ' ctr-stale-item'}"${tip}>${esc(c.slug || c.name)}${state === 'fail' ? `<span class="ctr-why">${esc(why)}</span>` : ''}</span>`;
     }
-    html += '</div></div>';
-    return html;
+    return html + '</div>';
   }
 
   function esc(str) {
@@ -694,7 +691,7 @@ CASHPILOT_WORKER_NAME=server-name</code>
     // CASHPILOT_API_KEY=(error) into their compose file and then debugged a
     // worker that could never enrol (CashPilot-0p4).
     if (!_apiKey || _apiKey.startsWith('(')) {
-      CP.toast(`Nothing to copy — the API key reads ${_apiKey || 'as unset'}. Reveal it first.`, 'error');
+      CP.toast(`Nothing to copy: the API key reads ${_apiKey || 'as unset'}. Reveal it first.`, 'error');
       return;
     }
     const text = `CASHPILOT_UI_URL=${uiUrl}\nCASHPILOT_API_KEY=${_apiKey}\nCASHPILOT_WORKER_NAME=server-name`;
@@ -724,7 +721,7 @@ CASHPILOT_WORKER_NAME=server-name</code>
     box.style.display = '';
     box.querySelector('textarea').value = text;
     box.querySelector('textarea').select();
-    CP.toast('This page is not on https, so CashPilot cannot reach the clipboard. The text is selected — press Ctrl/Cmd+C.', 'warning');
+    CP.toast('This page is not on https, so CashPilot cannot reach the clipboard. The text is selected, press Ctrl/Cmd+C.', 'warning');
   }
 
   loadApiKeyStatus();

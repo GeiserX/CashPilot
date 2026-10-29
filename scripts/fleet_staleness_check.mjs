@@ -86,13 +86,13 @@ check('the stale note uses the formatter', !staleNote(utc).includes(utc),
 
 // 1. The defect itself. An unreachable host must not paint anything success-green.
 const offline = renderContainers(WORKER, false);
-check('offline containers are not green', !offline.includes('var(--success)'),
+check('offline containers are not green', !offline.includes('ctr-ok'),
   'a powered-off host still reports its containers as running');
 
 // 2. The control. Without this, the check above passes if the chips never go
 //    green at all — which would be a different bug, not a fix.
 const online = renderContainers(WORKER, true);
-check('online containers stay green', online.includes('var(--success)'),
+check('online containers stay green', online.includes('ctr-ok'),
   'a reachable host stopped reporting running containers');
 
 // 3. The state is still shown — it is useful, it just is not a measurement.
@@ -111,7 +111,7 @@ check('and it is no longer the raw UTC string', !offline.includes('2026-08-04 09
 
 // 4. A stopped container on a LIVE host must still read as stopped, not stale.
 const stoppedLive = renderContainers({...WORKER, containers: [{slug: 'grass', status: 'exited'}]}, true);
-check('a stopped container on a live host is not green', !stoppedLive.includes('var(--success)'),
+check('a stopped container on a live host is not green', !stoppedLive.includes('ctr-ok'),
   'an exited container rendered as running');
 check('a live host carries no staleness note', !stoppedLive.includes('Last known state'),
   'a reachable host is being described as unreachable');
@@ -120,9 +120,9 @@ check('a live host carries no staleness note', !stoppedLive.includes('Last known
 //    same frozen-heartbeat colour was applied one function above.
 const appsOffline = renderApps(APPS, false, '2026-08-04 09:12');
 const appsOnline = renderApps(APPS, true, '2026-08-04 09:12');
-check('offline apps are not green', !appsOffline.includes('var(--success)'),
+check('offline apps are not green', !appsOffline.includes('ctr-ok'),
   'an unreachable phone still reports its apps as running');
-check('online apps stay green', appsOnline.includes('var(--success)'),
+check('online apps stay green', appsOnline.includes('ctr-ok'),
   'a reachable phone stopped reporting running apps');
 check('app traffic tooltip survives', appsOnline.includes('24h:'),
   'the traffic tooltip was lost while adding the staleness one');
