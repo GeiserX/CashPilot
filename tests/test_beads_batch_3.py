@@ -125,7 +125,7 @@ class TestACollectorShapeChangeIsAnError:
         from app.collectors import anyone
 
         source = Path(anyone.__file__).read_text(encoding="utf-8")
-        assert '"fingerprint" not in result' in source
+        assert 'result.get("fingerprint") != fingerprint' in source
 
     def test_anyone_still_returns_zero_for_a_genuine_zero(self):
         """An omitted reward is the contract's real answer for a relay it never paid."""

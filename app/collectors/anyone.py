@@ -57,11 +57,12 @@ class AnyoneCollector(BaseCollector):
         resp.raise_for_status()
         result = resp.json()
 
-        # The view echoes the fingerprint back. Without the echo this is not the
-        # view's answer, and reading it as zero would record a fake real reading.
-        if not isinstance(result, dict) or "fingerprint" not in result:
+        # The view echoes the requested fingerprint back. Without that echo this
+        # is not the view's answer for this relay, and reading it would record a
+        # fake real reading.
+        if not isinstance(result, dict) or result.get("fingerprint") != fingerprint:
             raise ValueError(
-                f"Anyone rewards response for {fingerprint} has no fingerprint field "
+                f"Anyone rewards response for {fingerprint} does not echo that fingerprint "
                 f"(saw: {sorted(result)[:6] if isinstance(result, dict) else type(result).__name__}) "
                 "— the contract shape may have changed"
             )

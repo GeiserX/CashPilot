@@ -583,6 +583,17 @@ class TestAnyoneProtocolDeep:
         assert result.error is not None
         assert "fingerprint" in result.error
 
+    def test_an_answer_for_another_relay_is_not_counted(self):
+        from app.collectors.anyone import AnyoneCollector
+
+        client = _make_async_client()
+        client.get.return_value = _anyone_reward("FP2", "9000000000000000000")
+
+        with patch("app.collectors.anyone.httpx.AsyncClient", return_value=client):
+            result = asyncio.run(AnyoneCollector(fingerprints="FP1").collect())
+        assert result.error is not None
+        assert result.balance == 0.0
+
     def test_collect_no_fingerprints(self):
         from app.collectors.anyone import AnyoneCollector
 
