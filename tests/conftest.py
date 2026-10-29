@@ -74,6 +74,19 @@ def _seed_fiat_rates():
 
 
 @pytest.fixture(autouse=True)
+def _fresh_once_per_change_logs(monkeypatch):
+    """The unpriced and blind-worker warnings remember what they last said.
+
+    That memory is process-wide, so without this a test asserting the warning
+    passes or fails depending on which test ran before it.
+    """
+    from app import database, main
+
+    monkeypatch.setattr(database, "_unpriced_logged", {})
+    monkeypatch.setattr(main, "_blind_workers_logged", None)
+
+
+@pytest.fixture(autouse=True)
 def _reset_shared_db():
     """Drain the per-loop shared SQLite connections after every test.
 
