@@ -6,22 +6,24 @@ address and credential below is invented. Nothing here talks to a provider.
     # seed only
     uv run python scripts/ui_demo_seed.py /tmp/cp-demo
 
-    # seed, then serve the seeded UI on :8100 and an empty first-run UI on :8101
+    # seed, then serve the seeded UI on :8100, a first-run UI on :8101 and an
+    # empty dashboard on :8102
     uv run python scripts/ui_demo_seed.py /tmp/cp-demo --serve 8100
 
 Login: user ``demo``, password ``demo-password-1`` (owner).
 
-The data dir is wiped first. Expect 8 deployed services on 3 workers (box-a,
-box-b, box-c), 60 days of balance history in USD, MYST and GRASS points, two
-confirmed payouts, one pending payout prompt, a failing collector and a stopped
-container.
+The data dir is wiped first. Expect 8 deployed services on 4 workers (box-a to
+box-d, box-d offline for three hours), 60 days of balance history in USD, MYST
+and GRASS points, two confirmed payouts, one pending payout prompt, a failing
+collector and a stopped container.
 
 ``--serve`` runs uvicorn in-process with the network jobs stubbed: earnings
 collection, exchange-rate refresh and the release checks become no-ops, rates
 are fixed, and the stale-worker job re-stamps the demo workers' heartbeats
 instead of marking them offline. Worker URLs point at 127.0.0.1:9, which
 refuses at once, so a button that would reach a worker fails fast and locally.
-The second instance on port+1 has no users, so /onboarding renders there.
+The second instance on port+1 has no users, so /onboarding renders there. The
+third on port+2 has the demo login and nothing deployed: the empty dashboard.
 """
 
 from __future__ import annotations
@@ -129,6 +131,27 @@ WORKERS = {
             ("traffmonetizer", "running", 1.0, 29),
             # The broken thing on the dashboard: a container that died last night.
             ("iproyal", "exited", 0.0, 0),
+        ],
+    },
+    # A box that stopped reporting three hours ago, so the offline state renders.
+    "box-d": {
+        "client_id": "demo-box-d",
+        "offline_hours": 3,
+        "system_info": {
+            "os": "Linux 6.8.0-45-generic",
+            "arch": "x86_64",
+            "hostname": "box-d",
+            "docker_available": True,
+            "features": ["instances", "isolation_check"],
+            "version": "demo",
+            "egress_ip": "198.51.100.61",
+            "egress_network_type": "residential",
+            "disk": {"path": "/data", "free_bytes": 96 * 2**30, "total_bytes": 234 * 2**30},
+            "gpu": None,
+        },
+        "containers": [
+            ("honeygain", "running", 1.6, 34),
+            ("packetstream", "running", 0.6, 18),
         ],
     },
 }
@@ -252,6 +275,14 @@ async def seed(data_dir: Path) -> None:
         )
         await database.confirm_worker_key(w["client_id"])
         worker_ids[name] = wid
+    wdb = await database._get_db()
+    for name, w in WORKERS.items():
+        if w.get("offline_hours"):
+            when = (datetime.now(UTC) - timedelta(hours=w["offline_hours"])).strftime("%Y-%m-%d %H:%M:%S")
+            await wdb.execute(
+                "UPDATE workers SET status = 'offline', last_heartbeat = ? WHERE id = ?", (when, worker_ids[name])
+            )
+    await wdb.commit()
 
     # Deployments: one fleet-wide row per service plus a per-worker spec.
     for name, w in WORKERS.items():
@@ -340,6 +371,18 @@ async def seed(data_dir: Path) -> None:
     await database.close_shared()
 
 
+async def seed_empty() -> None:
+    """The demo login, setup finished, no worker and no service."""
+    from app import auth, catalog, database
+
+    await database.init_db()
+    await database.connect_shared()
+    catalog.load_services()
+    uid = await database.create_first_owner(DEMO_USER, auth.hash_password(DEMO_PASSWORD))
+    await database.save_user_preferences(uid, setup_mode="fresh", timezone="Europe/Madrid", setup_completed=True)
+    await database.close_shared()
+
+
 def serve(port: int, data_dir: Path) -> None:
     """Run the seeded UI with every outbound job stubbed (see module docstring)."""
     import uvicorn
@@ -359,7 +402,12 @@ def serve(port: int, data_dir: Path) -> None:
 
     async def _keep_workers_fresh() -> None:
         db = await database._get_db()
-        await db.execute("UPDATE workers SET status = 'online', last_heartbeat = datetime('now')")
+        offline = [w["client_id"] for w in WORKERS.values() if w.get("offline_hours")]
+        marks = ",".join("?" * len(offline)) or "''"
+        await db.execute(
+            f"UPDATE workers SET status = 'online', last_heartbeat = datetime('now') WHERE client_id NOT IN ({marks})",
+            offline,
+        )
         await db.commit()
 
     exchange_rates.refresh = _fixed_rates
@@ -376,6 +424,7 @@ def main_cli() -> None:
     ap.add_argument("data_dir", type=Path)
     ap.add_argument("--serve", type=int, metavar="PORT", help="serve the seeded UI on PORT, first-run UI on PORT+1")
     ap.add_argument("--fresh", action="store_true", help=argparse.SUPPRESS)
+    ap.add_argument("--empty", action="store_true", help=argparse.SUPPRESS)
     args = ap.parse_args()
     data_dir = args.data_dir.resolve()
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -387,6 +436,15 @@ def main_cli() -> None:
         serve(args.serve, data_dir)
         return
 
+    if args.empty:
+        # Internal: an account that finished setup and has deployed nothing,
+        # so the empty first-run dashboard renders.
+        _fresh_dir(data_dir)
+        _prepare_env(data_dir)
+        asyncio.run(seed_empty())
+        serve(args.serve, data_dir)
+        return
+
     _fresh_dir(data_dir)
     _prepare_env(data_dir)
     asyncio.run(seed(data_dir))
@@ -394,15 +452,20 @@ def main_cli() -> None:
     if args.serve:
         import subprocess
 
-        fresh = subprocess.Popen(
-            [sys.executable, __file__, str(data_dir) + "-fresh", "--serve", str(args.serve + 1), "--fresh"]
-        )
+        extra = [
+            subprocess.Popen([sys.executable, __file__, str(data_dir) + "-fresh", "--serve", str(args.serve + 1), "--fresh"]),
+            subprocess.Popen([sys.executable, __file__, str(data_dir) + "-empty", "--serve", str(args.serve + 2), "--empty"]),
+        ]
         try:
-            print(f"Seeded UI http://127.0.0.1:{args.serve}  first-run UI http://127.0.0.1:{args.serve + 1}")
+            print(
+                f"Seeded UI http://127.0.0.1:{args.serve}  first-run UI http://127.0.0.1:{args.serve + 1}"
+                f"  empty dashboard http://127.0.0.1:{args.serve + 2}"
+            )
             serve(args.serve, data_dir)
         finally:
-            fresh.terminate()
-            fresh.wait(timeout=10)
+            for proc in extra:
+                proc.terminate()
+                proc.wait(timeout=10)
 
 
 if __name__ == "__main__":
