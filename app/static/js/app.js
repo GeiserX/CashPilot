@@ -3644,7 +3644,9 @@ const CP = (() => {
       const NOTICE_ICON = '<circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/>';
       list.innerHTML = alerts.map(a => {
         const isPayout = a.kind === 'payout';
-        const isNotice = a.kind === 'notice';
+        // A quiet balance is a heads-up, not a fault, and no credential fixes it.
+        const isQuiet = a.kind === 'flatline' && a.platform !== 'flatline check';
+        const isNotice = a.kind === 'notice' || isQuiet;
         // A stopped container: the fix is starting it, never a credential.
         const isContainer = a.kind === 'container';
         // The failure TAXONOMY (CashPilot-5bdm). Only 'auth' means "your
@@ -3661,6 +3663,7 @@ const CP = (() => {
         const icon = isPayout ? PAYOUT_ICON : (isNotice || isTransient) ? NOTICE_ICON : WARNING_ICON;
         const suffix = isPayout ? ' — payout?'
           : isContainer ? ' — not running'
+          : isQuiet ? ' — gone quiet'
           : isNotice ? ' — note'
           : isAuth ? ' — credential expired'
           : isExpiring ? ' — credential expiring'

@@ -50,7 +50,7 @@ class TestAFlatlinedServiceReachesTheBell:
     async def test_the_entry_says_what_is_wrong(self):
         bell = await _run_check(FLAT)
         assert bell[0]["kind"] == "flatline"
-        assert "not earning" in bell[0]["error"]
+        assert "has not earned" in bell[0]["error"]
         assert "6 days" in bell[0]["error"]
 
     @pytest.mark.asyncio
@@ -97,7 +97,7 @@ class TestTheCollectionRunKeepsThem:
         from app import main
 
         source = inspect.getsource(main._run_collection)
-        extend_at = source.index("await _flatline_check()")
+        extend_at = source.index("await _flatline_check(")
         assign_at = source.index("_collector_alerts = alerts")
         assert extend_at < assign_at, "_flatline_check still runs after the bell is set"
 
@@ -107,7 +107,7 @@ class TestTheCollectionRunKeepsThem:
         from app import main
 
         source = inspect.getsource(main._run_collection)
-        assert "alerts.extend(await _flatline_check())" in source, "the result is discarded again"
+        assert "alerts.extend(await _flatline_check(" in source, "the result is discarded again"
 
 
 class TestARestartDoesNotClearTheWarning:

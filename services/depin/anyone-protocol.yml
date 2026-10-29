@@ -75,6 +75,10 @@ platforms: [docker, linux]
 
 collector:
   type: auto
+  # Days the balance can stand still while this works normally.
+  # Relay rewards are distributed in batches rather than continuously, and a
+  # new relay must build a track record before it earns.
+  quiet_days: 14
   # Under credential_hint, which is the field the UI actually reads
   # (app/main.py: `(svc.get("collector") or {}).get("credential_hint")`) and the
   # one services/_schema.yml documents. This text previously sat in a

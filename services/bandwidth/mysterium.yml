@@ -125,6 +125,10 @@ platforms: [docker, windows, macos, linux, android, browser-extension]
 
 collector:
   type: api
+  # Days the balance can stand still while this works normally.
+  # Earnings move when someone buys a session through the node, and on a
+  # quiet exit that can be days apart; settlements arrive in batches.
+  quiet_days: 14
   notes: "Tequila API at http://localhost:4449/tequilapi/settlement/total-fees. Returns MYST in wei (10^18). No auth needed."
   # MystNodes reports earnings per registered node, not just an
   # account total, so the UI can break the figure down by machine.
