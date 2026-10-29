@@ -43,6 +43,27 @@ def test_a_real_payout_stays_until_answered(db):
     assert len(_pending("honeygain")) == 1
 
 
+def test_a_partial_payout_is_not_mistaken_for_a_recovery(db):
+    # 40 -> 25 records a drop of 15; the next reading of 25 regained nothing.
+    asyncio.run(database.record_probable_payout("honeygain", 15.0))
+    result = SimpleNamespace(platform="honeygain", balance=25.0, currency="USD")
+    with patch.object(main.database, "get_latest_balance", AsyncMock(return_value=25.0)):
+        asyncio.run(main._detect_payout(result))
+    assert len(_pending("honeygain")) == 1
+
+
+def test_the_alert_goes_with_the_question(db):
+    async def run():
+        await database.record_probable_payout("honeygain", 25.65)
+        await database.record_alert("payout", "honeygain", "was this a payout?")
+        await database.withdraw_recovered_payout("honeygain", 25.72)
+        conn = await database._get_db()
+        cur = await conn.execute("SELECT COUNT(*) FROM alerts WHERE kind = 'payout'")
+        return (await cur.fetchone())[0]
+
+    assert asyncio.run(run()) == 0
+
+
 def test_an_old_question_is_not_withdrawn(db):
     async def run():
         await database.record_probable_payout("honeygain", 25.65)
@@ -64,13 +85,9 @@ def test_a_confirmed_payout_is_never_withdrawn(db):
     assert not asyncio.run(run())
 
 
-def test_detection_withdraws_and_clears_the_alert(db):
+def test_detection_withdraws_a_one_reading_dip(db):
     asyncio.run(database.record_probable_payout("honeygain", 25.65))
     result = SimpleNamespace(platform="honeygain", balance=25.79, currency="USD")
-    with (
-        patch.object(main.database, "get_latest_balance", AsyncMock(return_value=0.07)),
-        patch.object(main.database, "clear_alerts", AsyncMock()) as clear,
-    ):
+    with patch.object(main.database, "get_latest_balance", AsyncMock(return_value=0.07)):
         assert asyncio.run(main._detect_payout(result)) is None
-    clear.assert_awaited_once_with("payout", "honeygain")
     assert _pending("honeygain") == []

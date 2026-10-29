@@ -593,13 +593,12 @@ async def _detect_payout(result: Any) -> dict[str, str] | None:
         if previous is None:
             return None
         try:
-            withdrawn = await database.withdraw_recovered_payout(result.platform, result.balance)
+            withdrawn = await database.withdraw_recovered_payout(result.platform, result.balance - previous)
         except Exception as exc:  # noqa: BLE001 - must never block detecting a new payout
             withdrawn = False
             logger.warning("Could not check %s for a recovered payout: %s", result.platform, exc)
         if withdrawn:
-            # The drop was one bad reading, not a cashout: take the question back.
-            await database.clear_alerts("payout", result.platform)
+            # The drop was one bad reading, not a cashout: the question is taken back.
             logger.info("%s balance recovered; withdrew the probable payout question", result.platform)
             return None
         probable = payouts.detect(previous, result.balance, catalog.get_service(result.platform))
