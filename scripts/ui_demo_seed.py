@@ -262,9 +262,12 @@ async def seed(data_dir: Path) -> None:
 
     rng = random.Random(11)
     udb = await database._get_db()
+    has_table = await (
+        await udb.execute("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'usage_hourly'")
+    ).fetchone()
     now_hour = int(time.time() // 3600) * 3600
     gap = range(now_hour - 3 * 86400 - 5 * 3600, now_hour - 3 * 86400)
-    for name, w in WORKERS.items():
+    for name, w in (WORKERS if has_table else {}).items():
         for slug, status, cpu, mem in w["containers"]:
             if status != "running":
                 continue
