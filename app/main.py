@@ -388,11 +388,9 @@ async def _run_health_check() -> None:
         # container and is not blind in this sense. Counting it switched the
         # missing-container check off for the whole fleet whenever a phone was
         # online, and warned about it every five minutes.
-        blind = []
-        for w in online:
-            info = _safe_json(w.get("system_info", "{}"), {})
-            if not placement.is_android(info) and not info.get("docker_available", False):
-                blind.append(w)
+        # A paired Desktop reports its containers and sends no docker_available
+        # either; counting it as blind did the same to every fleet with one.
+        blind = [w for w in online if placement.is_blind(w)]
         _report_blind_workers(blind)
         if online and not blind:
             deployments = await database.get_deployments()
@@ -3191,14 +3189,7 @@ async def api_forget_deployment(request: Request, slug: str, worker_id: int | No
     running = placement.runs_on(workers).get(slug, [])
     recorded_on = {s["worker_id"] for s in await database.list_deployment_placements() if s["slug"] == slug}
     targets = recorded_on if worker_id is None else {worker_id}
-    blind = [
-        w
-        for w in workers
-        if w.get("id") in targets
-        and w.get("status") == "online"
-        and not placement.is_android(placement.system_info(w))
-        and not placement.can_see_docker(w)
-    ]
+    blind = [w for w in workers if w.get("id") in targets and w.get("status") == "online" and placement.is_blind(w)]
     if blind:
         names = ", ".join(str(w.get("name") or w.get("id")) for w in blind)
         raise HTTPException(
@@ -5623,7 +5614,11 @@ async def api_set_config(
     request: Request, body: ConfigUpdate, _auth: dict[str, Any] = Depends(_require_owner)
 ) -> dict[str, str]:
     sanitized = {k: _sanitize_credential(v) for k, v in body.data.items()}
+    before = await database.get_config() or {}
     await database.set_config_bulk(sanitized)
+    # Settings posts every prefilled field on the page, so a removed service's
+    # unchanged email would bring it back as "balance only". Only a value that
+    # actually changed counts as the user adding it again.
 
     # Auto-create "external" deployment records for manual-only services
     # whose collector credentials were just saved.  Without a deployment
@@ -5645,8 +5640,13 @@ async def api_set_config(
     # shared with the startup backfill so the two can never disagree about which
     # services are ready to collect.
     stored = await database.get_config() or {}
+    removed = {k[len(database._REMOVED_PREFIX) :] for k in stored if k.startswith(database._REMOVED_PREFIX)}
     for slug in fully_configured_slugs(stored):
         if not any(k.startswith(f"{slug}_") for k in sanitized):
+            continue
+        if slug in removed and not any(
+            k.startswith(f"{slug}_") and v and v != before.get(k) for k, v in sanitized.items()
+        ):
             continue
         svc = catalog.get_service(slug)
         if not svc:
