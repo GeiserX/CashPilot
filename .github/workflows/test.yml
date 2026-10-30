@@ -86,6 +86,10 @@ jobs:
       - name: Dashboard row behaviour
         run: node scripts/dashboard_row_check.mjs
 
+      # A catalog row's Add opens the wizard on that service, at the setup step.
+      - name: Add a service from the catalog
+        run: node scripts/setup_preselect_check.mjs
+
       # The resource-use panel: a figure with no reading is a dash, never 0.
       - name: Resource use panel
         run: node scripts/usage_panel_check.mjs

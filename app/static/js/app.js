@@ -167,7 +167,7 @@ const CP = (() => {
       if (document.querySelector('.modal-overlay.open')) return;
       if (armed && Date.now() - armed < 1200) {
         armed = 0;
-        const link = document.querySelector(`.topnav a[data-key="${CSS.escape(e.key)}"]`);
+        const link = document.querySelector(`.topbar a[data-key="${CSS.escape(e.key)}"]`);
         if (link) { e.preventDefault(); window.location.href = link.getAttribute('href'); }
         return;
       }
@@ -2724,6 +2724,30 @@ const CP = (() => {
       // Preferences not available — no pre-population
     }
 
+    // /setup?service=<slug>, from a catalog row: start on the setup step with
+    // that service picked. Back still walks through categories and services.
+    const wanted = new URLSearchParams(window.location.search).get('service');
+    if (wanted) {
+      let services = [];
+      try { services = await api('/api/services/available'); } catch (err) { /* handled below */ }
+      const pre = wizardPreselect(wanted, services, wizardState.categories);
+      if (pre) {
+        Object.assign(wizardState, pre);
+        document.querySelectorAll('.category-card').forEach(card => {
+          const cb = card.querySelector('input[type="checkbox"]');
+          if (cb && pre.categories.includes(cb.value)) {
+            card.classList.add('selected');
+            cb.checked = true;
+          }
+        });
+        updateWizardUI();
+        loadWizardServices();
+        loadWizardSetupForms();
+      } else {
+        toast(`No service called "${wanted}" in the catalog`, 'warning');
+      }
+    }
+
     updateWizardUI();
 
     // Category card toggles
@@ -2736,6 +2760,17 @@ const CP = (() => {
           .map(input => input.value);
       });
     });
+  }
+
+  // What the wizard starts with when it opens on one service: its category
+  // added to the saved ones (so finishing does not overwrite them), the service
+  // selected, step 3. null when the slug is not in the catalog.
+  function wizardPreselect(slug, services, savedCategories) {
+    const svc = (services || []).find(s => s.slug === slug);
+    if (!svc) return null;
+    const categories = [...(savedCategories || [])];
+    if (svc.category && !categories.includes(svc.category)) categories.push(svc.category);
+    return { step: 3, categories, selectedServices: [svc.slug] };
   }
 
   function wizardNext() {
@@ -3367,10 +3402,15 @@ const CP = (() => {
 
     const hasDocker = svc.docker && svc.docker.image;
     let actionBtn;
+    // Add opens the setup wizard on this one service. For a running service the
+    // wizard offers the boxes that do not run it yet, or says it runs on all.
+    const addLink = (label, title) =>
+      `<a href="/setup?service=${encodeURIComponent(svc.slug)}" class="btn btn-ghost btn-sm" title="${escapeHtml(title)}">${label}</a>`;
     if (isDeployed) {
-      actionBtn = `<button class="btn btn-secondary btn-sm" data-action="openServiceDetail" data-a1="${svc.slug}">Manage</button>`;
+      actionBtn = `<button class="btn btn-secondary btn-sm" data-action="openServiceDetail" data-a1="${svc.slug}">Manage</button>`
+        + (hasDocker ? ' ' + addLink('Add', `Run ${svc.name} on another box`) : '');
     } else if (hasDocker) {
-      actionBtn = `<button class="btn btn-ghost btn-sm" data-action="openServiceDetail" data-a1="${svc.slug}">Deploy</button>`;
+      actionBtn = addLink('Add', `Add ${svc.name}`);
     } else {
       const url = (svc.referral && svc.referral.signup_url) || svc.website || '#';
       actionBtn = `<a href="${escapeHtml(url)}" target="_blank" rel="noopener" class="btn btn-ghost btn-sm">Visit</a>`;

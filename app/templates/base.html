@@ -80,9 +80,11 @@
         <a href="/payouts" class="sidebar-link {% if active_page == 'payouts' %}active{% endif %}" data-key="p">Payouts</a>
         <a href="/settings" class="sidebar-link {% if active_page == 'settings' %}active{% endif %}" data-key="s">Settings</a>
         {% endif %}
-        <a href="/setup" class="sidebar-link {% if active_page == 'setup' %}active{% endif %}" data-key="a" aria-label="Add services"><span>Add<span class="nav-more"> services</span></span></a>
       </nav>
       <div class="topbar-right">
+        <!-- The one thing in the bar you DO rather than look at, so it is a
+             button, not the last tab. Every signed-in role reaches /setup. -->
+        <a href="/setup" class="btn btn-primary btn-sm topbar-add{% if active_page == 'setup' %} active{% endif %}" data-key="a" aria-label="Add service"{% if active_page == 'setup' %} aria-current="page"{% endif %}><span aria-hidden="true">+</span><span class="topbar-add-label" aria-hidden="true"> Add service</span></a>
         <div class="topbar-earnings" title="Total balance across every service">
           <span id="topbar-total">&mdash;</span>
           <select id="topbar-currency" class="topbar-currency-select" title="Display currency"></select>
