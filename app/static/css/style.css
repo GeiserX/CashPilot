@@ -1990,7 +1990,7 @@ body.gate { display: flex; flex-direction: column; }
   .payout-table thead { display: none; }
   .payout-table tr {
     display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 12px; row-gap: 3px;
-    grid-template-areas: "name bal" "state model" "addr addr" "chain chain";
+    grid-template-areas: "name bal" "state model" "runs runs" "addr addr" "chain chain";
     padding: 10px 0; border-bottom: 1px solid var(--border-color);
   }
   .payout-table td { display: block; padding: 0; border: none; min-width: 0; }
@@ -1999,6 +1999,7 @@ body.gate { display: flex; flex-direction: column; }
   .payout-table .p-state { grid-area: state; }
   .payout-table .p-model { grid-area: model; text-align: right; }
   .payout-table .p-addr { grid-area: addr; }
+  .payout-table .p-runs { grid-area: runs; font-size: var(--fs-2); }
   .payout-table .p-chain { grid-area: chain; font-size: var(--fs-2); color: var(--text-muted); }
   .payout-table .p-chain:has(.payout-na) { display: none; }
   .payout-table .payout-address { white-space: normal; word-break: break-all; max-width: none; }

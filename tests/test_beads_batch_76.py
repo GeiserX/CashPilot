@@ -28,6 +28,22 @@ def _service(slug: str) -> dict:
     return svc
 
 
+def _box_running(deployments):
+    """A worker that reports every deployed slug: "deployed" is what a box runs."""
+    import json as _json
+
+    return [
+        {
+            "id": 1,
+            "name": "box",
+            "status": "online",
+            "system_info": _json.dumps({"docker_available": True}),
+            "containers": _json.dumps([{"slug": d["slug"], "status": "running"} for d in deployments or []]),
+            "apps": "[]",
+        }
+    ]
+
+
 class TestReadingCriticalStateOffAService:
     def test_a_minted_service_reports_its_wallet_volume(self):
         state = payout_registry.critical_state(_service("proxybase-xyz"))
@@ -68,6 +84,11 @@ class TestTheSummaryCountsOnlyWhatIsAtRisk:
                 "app.payout_registry.database.get_deployments",
                 new_callable=AsyncMock,
                 return_value=deployments,
+            ),
+            patch(
+                "app.payout_registry.database.list_workers",
+                new_callable=AsyncMock,
+                return_value=_box_running(deployments),
             ),
             patch("app.payout_registry.database.get_deployment_spec", new_callable=AsyncMock, return_value=None),
         ):

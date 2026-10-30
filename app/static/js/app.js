@@ -1118,7 +1118,7 @@ const CP = (() => {
         // owner their worker "may predate the feature" would send them to
         // upgrade something that was never going to report it -- verified
         // against the live fleet, where the phone reports neither.
-        android: info.device_type === 'android',
+        android: info.device_type === 'android' || String(info.os || '').trim().toLowerCase() === 'android',
         disk: info.disk || null,
         gpu: info.gpu || null,
       };
@@ -1572,6 +1572,26 @@ const CP = (() => {
         }
         items.push({ level: 'fail', tag: 'Needs fixing', what: svc.name, where, why: `container does not match the catalog: ${what}. ${fix}`, actions });
       }
+    }
+
+    // Deployments CashPilot records that no box runs (the server's "missing"
+    // check, past its grace period). Forget drops only CashPilot's record, so it
+    // is the way out when the container was removed on purpose.
+    try {
+      const bell = await api('/api/collector-alerts');
+      for (const a of (bell.alerts || [])) {
+        if (a.kind !== 'missing') continue;
+        const svc = services.find(s => s.slug === a.platform);
+        let actions = '';
+        if (_canWrite) {
+          const targets = a.everywhere ? [{ worker_id: null, name: '' }] : (a.boxes || []);
+          actions = targets.map(t => `<button class="btn btn-ghost btn-sm" data-action="forgetDeployment" data-a1="${escapeHtml(a.platform)}"${t.worker_id != null ? ` data-a2="${escapeHtml(String(t.worker_id))}"` : ''}>${t.name ? `Forget on ${escapeHtml(t.name)}` : 'Forget'}</button>`).join(' ');
+        }
+        items.push({ level: 'fail', tag: a.everywhere === false ? 'Gone from a box' : a.everywhere ? 'Runs nowhere' : 'Missing', what: a.name || (svc && svc.name) || a.platform, why: escapeHtml(a.error), actions });
+      }
+    } catch (err) {
+      console.warn('Could not load the missing-deployment alerts:', err);
+      items.push({ level: 'warn', tag: 'Unknown', what: 'Deployments', why: 'CashPilot could not check whether every recorded deployment still runs. Reload the page to try again.' });
     }
 
     if (_isOwner) {
@@ -2601,6 +2621,20 @@ const CP = (() => {
       await api(`/api/services/${slug}/start${q}`, { method: 'POST' });
       toast(`${slug} starting...`, 'success');
       loadServicesTable();
+    } catch (err) {
+      toast(err.message, 'error');
+    }
+  }
+
+  async function forgetDeployment(slug, workerId) {
+    const where = workerId != null ? ' on that box' : '';
+    if (!confirm(`Forget the ${slug} deployment${where}? This only drops CashPilot's record; no container is touched.`)) return;
+    const q = workerId != null ? `?worker_id=${encodeURIComponent(workerId)}` : '';
+    try {
+      await api(`/api/deployments/${encodeURIComponent(slug)}${q}`, { method: 'DELETE' });
+      toast(`${slug} deployment forgotten`, 'success');
+      loadServicesTable();
+      loadCollectorAlerts();
     } catch (err) {
       toast(err.message, 'error');
     }
@@ -4449,6 +4483,8 @@ const CP = (() => {
         const isNotice = a.kind === 'notice' || isQuiet;
         // A stopped container: the fix is starting it, never a credential.
         const isContainer = a.kind === 'container';
+        // Recorded as deployed and no box runs it: redeploy or forget, never a credential.
+        const isMissing = a.kind === 'missing';
         // The failure TAXONOMY (CashPilot-5bdm). Only 'auth' means "your
         // credential needs replacing"; a transient provider outage self-heals
         // and a shape change is our bug, so pointing the user at their
@@ -4463,6 +4499,7 @@ const CP = (() => {
         const icon = isPayout ? PAYOUT_ICON : (isNotice || isTransient) ? NOTICE_ICON : WARNING_ICON;
         const suffix = isPayout ? ' — payout?'
           : isContainer ? ' — not running'
+          : isMissing ? (a.everywhere === false ? ' — gone from a box' : a.everywhere ? ' — runs nowhere' : ' — missing')
           : isQuiet ? ' — gone quiet'
           : isNotice ? ' — note'
           : isAuth ? ' — credential expired'
@@ -4471,7 +4508,7 @@ const CP = (() => {
           : isShape ? ' — page changed (our bug)'
           : '';
         const muted = isNotice || isTransient;
-        const showFix = !isPayout && !isNotice && !isTransient && !isShape && _isOwner && !isContainer;
+        const showFix = !isPayout && !isNotice && !isTransient && !isShape && _isOwner && !isContainer && !isMissing;
         return `
         <div class="notify-item" data-platform="${escapeHtml(a.platform)}" data-kind="${escapeHtml(a.kind || 'collector')}"${category ? ` data-category="${escapeHtml(category)}"` : ''}>
           <div class="notify-item-icon${muted ? ' muted' : ''}">
@@ -4716,6 +4753,7 @@ const CP = (() => {
     stopService,
     startService,
     removeService,
+    forgetDeployment,
     viewLogs,
     stopLogPolling,
     deployService,

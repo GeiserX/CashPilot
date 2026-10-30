@@ -123,3 +123,9 @@ payout:
   chain: ethereum
   address_source: manual
   notes: "Set as ContactInfo in anonrc, prefixed '@anon:0x...'."
+  # How the worker reads it back (app/payout_read.py). Only the address leaves
+  # the worker; the rest of ContactInfo (often an email) does not.
+  address_read:
+    command: ["cat", "/etc/anon/anonrc"]
+    # Only a live ContactInfo line: a commented-out old wallet is not where it pays.
+    pattern: '(?m)^[ \t]*ContactInfo[ \t][^\n]*@anon:[ \t]*(0x[0-9a-fA-F]{40})(?![0-9a-fA-F])'

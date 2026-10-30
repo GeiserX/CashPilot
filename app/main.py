@@ -56,6 +56,7 @@ from app import (
     onchain,
     payout_registry,
     payouts,
+    placement,
     power,
     preflight,
     producer_state,
@@ -211,7 +212,7 @@ async def _get_all_worker_containers(workers: list[dict[str, Any]] | None = None
             continue
         sys_info = _safe_json(w.get("system_info", "{}"), {})
         worker_has_docker = sys_info.get("docker_available", False)
-        is_android = sys_info.get("device_type") == "android"
+        is_android = placement.is_android(sys_info)
         worker_name = w.get("name", "worker")
 
         # Docker containers (from Docker-based workers only — skip for Android)
@@ -390,7 +391,7 @@ async def _run_health_check() -> None:
         blind = []
         for w in online:
             info = _safe_json(w.get("system_info", "{}"), {})
-            if info.get("device_type") != "android" and not info.get("docker_available", False):
+            if not placement.is_android(info) and not info.get("docker_available", False):
                 blind.append(w)
         _report_blind_workers(blind)
         if online and not blind:
@@ -403,6 +404,7 @@ async def _run_health_check() -> None:
 
         await database.record_health_events(events)
         await _container_down_check(statuses)
+        await _missing_deployment_check(workers)
     except Exception as exc:
         logger.warning("Health check skipped: %s", exc)
 
@@ -533,6 +535,124 @@ def _container_down_message(slug: str, copies: list[dict[str, Any]]) -> str:
             " redeploying it from CashPilot sets unless-stopped."
         )
     return message + " Start it from the dashboard, or remove it if you stopped it on purpose."
+
+
+# When each recorded deployment was first seen missing from every heartbeat
+# (key: slug and worker id, or None for "no box at all"). See placement.missing.
+_deployment_first_missing: dict[tuple[str, Any], datetime] = {}
+# The bell entries the missing-deployment check stands behind, re-added after
+# every collection like the container-down ones.
+_missing_bell: dict[str, dict[str, Any]] = {}
+
+
+async def _missing_deployment_check(workers: list[dict[str, Any]] | None = None) -> None:
+    """Alert when CashPilot records a deployment that no worker runs any more.
+
+    The deployments table outlives a container removed by hand or a rebuilt box,
+    and every screen that read it went on calling the service deployed. One
+    alert per service, after placement.MISSING_GRACE, through the usual
+    push path; it clears when a worker reports the service again, or when the
+    record is forgotten (DELETE /api/deployments/{slug}). When the fleet
+    cannot tell (no worker online, or a Docker host that cannot read its
+    socket), nothing is raised or cleared. Never raises.
+    """
+    global _collector_alerts
+    try:
+        if workers is None:
+            workers = await database.list_workers()
+        stored = await database.get_alert_subjects("missing")
+        scopes = {slug: _missing_scope(slug) for slug in stored}
+        found = placement.missing(
+            await database.get_deployments(),
+            await database.list_deployment_placements(),
+            workers,
+            now=datetime.now(UTC),
+            first_missing=_deployment_first_missing,
+            alerted=set().union(*scopes.values()) if scopes else set(),
+        )
+        if found is None:
+            return
+        by_id = {w.get("id"): w for w in workers}
+        where = placement.runs_on(workers)
+        for slug in set(stored) | set(_missing_bell):
+            if slug in found:
+                continue
+            # What the alert covered and is still absent, or sits on a box that
+            # cannot be looked at right now: that much of it stands.
+            scope = scopes.get(slug) or _missing_scope(slug)
+            left = [wid for s, wid in _deployment_first_missing if s == slug and ((s, wid) in scope or s in scope)]
+            if not left:
+                if slug in stored:
+                    await database.clear_alerts("missing", slug)
+                    logger.info("%s is no longer recorded on a box that does not run it; cleared its alert", slug)
+                _missing_bell.pop(slug, None)
+                continue
+            entry = _missing_bell.get(slug)
+            if entry is not None and "everywhere" in entry:
+                kept = {
+                    "everywhere": None in left,
+                    "boxes": [
+                        {"worker_id": wid, "name": (by_id.get(wid) or {}).get("name") or str(wid)}
+                        for wid in sorted(w for w in left if w is not None)
+                    ],
+                    "still_on": [r["name"] for r in where.get(slug, [])],
+                }
+                entry.update(
+                    everywhere=kept["everywhere"],
+                    boxes=kept["boxes"],
+                    error=_missing_deployment_message(slug, kept),
+                )
+        for slug, item in found.items():
+            message = _missing_deployment_message(slug, item)
+            _missing_bell[slug] = {
+                "kind": "missing",
+                "platform": slug,
+                "name": (catalog.get_service(slug) or {}).get("name") or slug,
+                "error": message,
+                # What Forget acts on: the whole record, or one box's.
+                "everywhere": item["everywhere"],
+                "boxes": item["boxes"],
+            }
+            if alert_id := await database.record_alert("missing", slug, message):
+                name = (catalog.get_service(slug) or {}).get("name") or slug
+                title = f"CashPilot: {name} " + ("runs on no box" if item["everywhere"] else "is gone from a box")
+                _spawn(_push_alert("missing", slug, title, message, alert_id))
+        _collector_alerts = [a for a in _collector_alerts if a.get("kind") != "missing"]
+        _collector_alerts.extend(_missing_bell.values())
+    except Exception as exc:  # noqa: BLE001 - a diagnostic must not break the health check
+        logger.warning("Missing-deployment check failed: %s", exc)
+
+
+def _missing_scope(slug: str) -> set[Any]:
+    """What a stored missing alert of ``slug`` covers, as placement.missing keys.
+
+    A bare slug means the whole service: an alert restored at startup, whose
+    boxes are not known until the next check names them.
+    """
+    entry = _missing_bell.get(slug)
+    if entry is None or "everywhere" not in entry:
+        return {slug}
+    keys: set[Any] = {(slug, b["worker_id"]) for b in entry.get("boxes") or []}
+    if entry["everywhere"]:
+        keys.add((slug, None))
+    return keys
+
+
+def _missing_deployment_message(slug: str, item: dict[str, Any]) -> str:
+    name = (catalog.get_service(slug) or {}).get("name") or slug
+    boxes = ", ".join(b["name"] for b in item["boxes"])
+    if item["everywhere"]:
+        where = f" (it was deployed on {boxes})" if boxes else ""
+        return (
+            f"CashPilot records {name} as deployed{where}, but no box runs it, so it is not earning. "
+            "Deploy it again, or forget the deployment if you removed it on purpose."
+        )
+    still = ", ".join(item["still_on"])
+    return (
+        f"{name} was deployed on {boxes}, but {'that box no longer runs' if len(item['boxes']) == 1 else 'those boxes no longer run'} it"
+        f"{f' (it still runs on {still})' if still else ''}. "
+        "Deploy it there again, or forget it on that box if you removed it on purpose."
+    )
 
 
 async def _push_alert(kind: str, subject: str, title: str, message: str, alert_id: int) -> None:
@@ -896,7 +1016,7 @@ async def _warm_collector_alerts() -> None:
         # them from the bell while their 24h push-dedupe survived — so a
         # recovery inside the gap skipped clear_alerts and the stale row
         # swallowed the next genuine warning.
-        if alert["kind"] not in ("collector", "payout", "flatline", "worker", "notice", "container"):
+        if alert["kind"] not in ("collector", "payout", "flatline", "worker", "notice", "container", "missing"):
             continue
         key = f"{alert['kind']}:{alert['subject']}"
         if key in seen:
@@ -918,6 +1038,13 @@ async def _warm_collector_alerts() -> None:
                 e["client_id"] = e["platform"]
                 e["platform"] = names.get(e["platform"], e["platform"])
     _collector_alerts = restored
+    # The collection rebuild re-adds _missing_bell, not the restored list, so a
+    # restored missing alert goes there too, with no scope: until the next
+    # health check names its boxes, the bell offers no Forget for it.
+    for e in restored:
+        if e["kind"] == "missing":
+            name = (catalog.get_service(e["platform"]) or {}).get("name") or e["platform"]
+            _missing_bell.setdefault(e["platform"], {**e, "name": name})
     # A restart must not make the bell claim nothing has ever been checked. Any
     # stored alert, or any earnings row, is proof that a collection ran.
     global _collection_has_run
@@ -956,9 +1083,13 @@ async def _track_fully_configured_services() -> int:
         if not isinstance(config, dict):
             return 0
         existing = {d.get("slug") for d in await database.get_deployments()}
+        # Removed from the whole fleet by the user: saved credentials are not a
+        # reason to bring it back. Deploying it or saving its credentials again
+        # lifts this (database.save_deployment).
+        removed = await database.removed_slugs()
         tracked = 0
         for slug in sorted(fully_configured_slugs(config)):
-            if slug in existing or not catalog.get_service(slug):
+            if slug in existing or slug in removed or not catalog.get_service(slug):
                 continue
             await database.save_deployment(slug=slug, container_id="", status="external")
             tracked += 1
@@ -1213,6 +1344,7 @@ async def _run_collection() -> None:
             # Kept by the health check, which runs every five minutes; without
             # this the hourly rebuild would drop a down container from the bell.
             alerts.extend(_container_down_bell.values())
+            alerts.extend(_missing_bell.values())
             _collector_alerts = alerts
             if collectors and platforms_ok == 0:
                 # A run in which EVERY collector failed used to be recorded as
@@ -3043,6 +3175,66 @@ async def api_remove(
     return await _svc_remove(request, slug, worker_id, delete_volumes, allow_delete_critical)
 
 
+@app.delete("/api/deployments/{slug}")
+async def api_forget_deployment(request: Request, slug: str, worker_id: int | None = None) -> dict[str, str]:
+    """Forget a deployment that no box runs: the way out of the missing alert.
+
+    Removing a container through a worker needs the container to exist, so a
+    record whose container is already gone had no way to be dropped. This only
+    touches CashPilot's records, never a worker. With ``worker_id`` it forgets
+    that box's record; without, every record of the service. Refused while a
+    box still reports the service, or while a box holding a record of it cannot
+    read Docker, so it cannot hide a running container.
+    """
+    _require_writer(request)
+    workers = await database.list_workers()
+    running = placement.runs_on(workers).get(slug, [])
+    recorded_on = {s["worker_id"] for s in await database.list_deployment_placements() if s["slug"] == slug}
+    targets = recorded_on if worker_id is None else {worker_id}
+    blind = [
+        w
+        for w in workers
+        if w.get("id") in targets
+        and w.get("status") == "online"
+        and not placement.is_android(placement.system_info(w))
+        and not placement.can_see_docker(w)
+    ]
+    if blind:
+        names = ", ".join(str(w.get("name") or w.get("id")) for w in blind)
+        raise HTTPException(
+            status_code=409,
+            detail=f"{names} cannot read Docker right now, so CashPilot cannot tell whether {slug} runs there.",
+        )
+    if worker_id is None:
+        if running:
+            names = ", ".join(r["name"] for r in running)
+            raise HTTPException(status_code=409, detail=f"{slug} still runs on {names}. Remove it there instead.")
+        await database.forget_deployment(slug)
+    else:
+        if any(r["worker_id"] == worker_id for r in running):
+            raise HTTPException(status_code=409, detail=f"{slug} still runs on that box. Remove it there instead.")
+        await database.remove_deployment(slug, worker_id=worker_id)
+    logger.info("Forgot the %s deployment record%s", slug, "" if worker_id is None else f" on worker {worker_id}")
+    still_recorded = await database.get_deployment(slug) is not None or any(
+        s["slug"] == slug for s in await database.list_deployment_placements()
+    )
+    if not still_recorded:
+        # Nothing is left to be missing, so the alert goes now, even on a fleet
+        # where the check below cannot tell (a blind Docker host elsewhere).
+        await _drop_missing_alert(slug)
+    await _missing_deployment_check(workers)
+    return {"status": "forgotten"}
+
+
+async def _drop_missing_alert(slug: str) -> None:
+    global _collector_alerts
+    await database.clear_alerts("missing", slug)
+    _missing_bell.pop(slug, None)
+    for key in [k for k in _deployment_first_missing if k[0] == slug]:
+        _deployment_first_missing.pop(key, None)
+    _collector_alerts = [a for a in _collector_alerts if not (a.get("kind") == "missing" and a["platform"] == slug)]
+
+
 # ---------------------------------------------------------------------------
 # Helpers: proxy commands / logs to worker nodes
 # ---------------------------------------------------------------------------
@@ -4652,8 +4844,7 @@ def _is_phone(system_info: dict[str, Any] | None) -> bool:
     checking device_type alone let phones into the usage table as rows of
     nothing but dashes: a phone has no Docker stats to give.
     """
-    info = system_info or {}
-    return info.get("device_type") == "android" or str(info.get("os") or "").strip().lower() == "android"
+    return placement.is_android(system_info or {})
 
 
 def _usage_point(rows: list[dict[str, Any]]) -> dict[str, Any]:
@@ -4871,7 +5062,18 @@ async def api_payout_registry(request: Request) -> dict[str, Any]:
     correlation an ordinary viewer has no business being handed.
     """
     _require_owner(request)
-    return await payout_registry.registry()
+    return await payout_registry.registry(read_addresses=_read_payout_addresses)
+
+
+async def _read_payout_addresses(worker_id: int) -> list[dict[str, Any]]:
+    """Addresses set inside one worker's containers (its /api/payout-addresses).
+
+    A worker from before this endpoint answers 404, which the registry shows as
+    "not checked", never as "not set".
+    """
+    result = await _proxy_to_worker(worker_id, "GET", "/api/payout-addresses", timeout=15)
+    rows = result.get("addresses") if isinstance(result, dict) else None
+    return rows if isinstance(rows, list) else []
 
 
 @app.get("/api/payout-balances")
@@ -4891,7 +5093,7 @@ async def api_payout_balances(request: Request) -> dict[str, Any]:
     both pointless and rude.
     """
     _require_owner(request)
-    registry = await payout_registry.registry()
+    registry = await payout_registry.registry(read_addresses=_read_payout_addresses)
 
     wanted = [
         row
@@ -4989,7 +5191,7 @@ async def api_collector_alerts(request: Request) -> dict[str, Any]:
     this.
     """
     _require_auth_api(request)
-    sanitized: list[dict[str, str]] = []
+    sanitized: list[dict[str, Any]] = []
     for alert in _collector_alerts:
         error_msg = alert.get("error", "")
         clean = error_msg[:_MAX_ALERT_ERROR_LEN]
@@ -5002,6 +5204,12 @@ async def api_collector_alerts(request: Request) -> dict[str, Any]:
         entry = {"kind": alert.get("kind", "collector"), "platform": alert["platform"], "error": clean}
         if alert.get("category"):
             entry["category"] = alert["category"]
+        if alert.get("kind") == "missing" and "everywhere" in alert:
+            # What the dashboard's Forget buttons act on. Absent on an entry
+            # restored at startup until the next health check rebuilds it.
+            entry["everywhere"] = bool(alert["everywhere"])
+            entry["name"] = alert.get("name") or alert["platform"]
+            entry["boxes"] = [{"worker_id": b["worker_id"], "name": b["name"]} for b in alert.get("boxes") or []]
         sanitized.append(entry)
     # The staleness flag is what keeps "All collectors healthy" honest: the
     # collected latch below is permanent once set, so after a scheduler death
@@ -5992,7 +6200,7 @@ async def api_list_workers(request: Request) -> list[dict[str, Any]]:
         # reference_version is what the worker was actually judged against, so
         # the UI can say so rather than always claiming "UI vX".
         si = w.get("system_info") or {}
-        is_android = str(si.get("os") or "").strip().lower() == "android"
+        is_android = placement.is_android(si)
         reference = update_check.android_latest() if is_android else ui_version
         w["reference_version"] = reference
         # Unknown reference -> no skew. version.skewed() already returns False
@@ -6034,7 +6242,7 @@ def _parse_worker_json(w: dict[str, Any]) -> None:
     w["containers"] = _safe_json(w.get("containers", "[]"))
     w["apps"] = _safe_json(w.get("apps", "[]"))
     w["system_info"] = _safe_json(w.get("system_info", "{}"), {})
-    is_android = w["system_info"].get("device_type") == "android"
+    is_android = placement.is_android(w["system_info"])
     if is_android:
         w["container_count"] = len(w["apps"])
         w["running_count"] = sum(1 for a in w["apps"] if a.get("running"))

@@ -40,11 +40,11 @@ function extract(name) {
 // Evaluate the real esc/payoutAddressCell/payoutRow together, since they call
 // one another. A stub for esc() here would let escaping break while this stayed
 // green — exactly the failure these harnesses exist to catch.
-const src = [extract('esc'), extract('payoutAddressCell'), extract('balanceCell'), extract('criticalStateRow'), extract('payoutRow')].join('\n');
+const src = [extract('esc'), extract('payoutAddressCell'), extract('balanceCell'), extract('criticalStateRow'), extract('runsOnCell'), extract('stateCell'), extract('payoutRow')].join('\n');
 // payoutRow reads the module-level _balances map, so give it an empty one --
 // the balance cell is exercised directly below.
-const {payoutAddressCell, payoutRow, balanceCell, criticalStateRow} = new Function(
-  `const _balances = {}; ${src}; return {payoutAddressCell, payoutRow, balanceCell, criticalStateRow};`
+const {payoutAddressCell, payoutRow, balanceCell, criticalStateRow, runsOnCell, stateCell} = new Function(
+  `const _balances = {}; ${src}; return {payoutAddressCell, payoutRow, balanceCell, criticalStateRow, runsOnCell, stateCell};`
 )();
 
 let failures = 0;
@@ -204,6 +204,39 @@ check(
   !criticalStateRow({slug: 'x', name: 'X', critical_state: [{target: '/t', holds: '<img src=x>'}]}).includes('<img src=x>'),
   'escaping failed'
 );
+
+// ---------------------------------------------------------------------------
+// Set outside CashPilot, and where each service runs (2026-10-30). Mysterium
+// and Anyone read "Not set" while both wallets were set on every box, and a
+// row no box ran read "deployed".
+// ---------------------------------------------------------------------------
+const outside = payoutAddressCell({model: 'external', address: null, addresses: [], address_missing: false, address_unchecked: 'outside'});
+check('a wallet set outside CashPilot and not read is "not checked"', outside.includes('Set outside CashPilot, not checked'), outside);
+check('... and never "Not set"', !outside.includes('Not set'), outside);
+const inApp = payoutAddressCell({model: 'external', address: null, addresses: [], address_missing: false, address_unchecked: 'app'});
+check('a wallet linked in the provider app says so', inApp.includes("provider's app") && !inApp.includes('Not set'), inApp);
+const read = payoutAddressCell({model: 'external', address: '0xaaa', addresses: [{address: '0xaaa', servers: ['geiserct', 'watchtower']}], address_missing: false, address_unchecked: null});
+check('a wallet a box read back is shown', read.includes('0xaaa') && !read.includes('Not set'), read);
+const differ = payoutAddressCell({model: 'external', address: null, addresses: [{address: '0xaaa', servers: ['watchtower']}, {address: '0xbbb', servers: ['geiserback']}], address_missing: false});
+check('boxes with different wallets each show theirs with the box name', differ.includes('0xaaa') && differ.includes('0xbbb') && differ.includes('geiserback'), differ);
+const hostileAddr = payoutAddressCell({model: 'external', address: null, addresses: [{address: '"><img src=x>', servers: ['watchtower']}, {address: '0xbbb', servers: ['<b>box</b>']}], address_missing: false});
+check('a hostile address or box name in a multi-wallet row is escaped', !hostileAddr.includes('<img src=x>') && !hostileAddr.includes('"><') && !hostileAddr.includes('<b>box'), hostileAddr);
+const recordGap = payoutAddressCell({model: 'external', address: null, addresses: [], address_missing: false, address_unchecked: 'record'});
+check('a box with no deploy record to read says so', recordGap.includes('No deploy record') && !recordGap.includes('Not set'), recordGap);
+check('boxes that could not be read are not called "No box runs it"', runsOnCell({runs_on: [], recorded: true, runs_on_unknown: true}).includes('Could not read the boxes'), 'unknown');
+check('a credentials-only row stays balance only when the boxes are unknown', stateCell({runs_on_unknown: true, tracked_only: true, recorded: true}).includes('balance only'), 'tracked');
+const partlyMissing = payoutAddressCell({model: 'external', address: '0xaaa', addresses: [{address: '0xaaa', servers: ['watchtower']}], address_missing: true, address_missing_on: ['geiserback']});
+check('a box whose record has no wallet is still "Not set", named', partlyMissing.includes('Not set on geiserback'), partlyMissing);
+
+const runs = runsOnCell({runs_on: [{name: 'watchtower', status: 'running', online: true}, {name: 'geiserct', status: 'exited', online: true}, {name: 'geiserback', status: 'running', online: false}]});
+check('runs on names every box', runs.includes('watchtower') && runs.includes('geiserct (exited)') && runs.includes('geiserback (offline)'), runs);
+const nowhere = runsOnCell({runs_on: [], recorded: true, tracked_only: false});
+check('a recorded service no box runs says so', nowhere.includes('No box runs it'), nowhere);
+check('its status is not "deployed"', stateCell({deployed: false, recorded: true}).includes('not running'), stateCell({deployed: false, recorded: true}));
+check('CONTROL: a running one is deployed', stateCell({deployed: true, recorded: true}).includes('deployed'), stateCell({deployed: true}));
+const balanceOnly = runsOnCell({runs_on: [], recorded: true, tracked_only: true});
+check('a credentials-only row is not called broken', balanceOnly.includes('Not seen on any box') && !balanceOnly.includes('No box runs'), balanceOnly);
+check('a hostile box name is escaped', !runsOnCell({runs_on: [{name: '<img src=x>', status: 'running', online: true}]}).includes('<img src=x>'), 'escaping failed');
 
 if (failures) {
   console.error(`\n${failures} payout-registry render check(s) failed`);
