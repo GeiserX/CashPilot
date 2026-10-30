@@ -1475,7 +1475,8 @@ async def _check_windowed_signals() -> None:
                 }
                 if instance > 1:
                     params["instance"] = instance
-                resp = await _proxy_to_worker(wid, "GET", f"/api/containers/{slug}/logs", params=params)
+                # Hours of a chatty node's logs: seconds on a fast box, more on a Pi.
+                resp = await _proxy_to_worker(wid, "GET", f"/api/containers/{slug}/logs", params=params, timeout=120)
                 # A worker older than the filter returns the plain tail, which is
                 # not the window: no verdict from it.
                 if not resp.get("filtered"):
