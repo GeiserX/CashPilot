@@ -171,6 +171,54 @@ def _stop_facts(container: Any) -> dict[str, Any]:
     return facts
 
 
+# How much of a stopped container's log the fatal-pattern check reads. The
+# provider's refusal is the last thing the client prints before it exits.
+_FATAL_LOG_LINES = 20
+_FATAL_LOG_CHARS = 4096
+
+
+def match_fatal(logs: str, patterns: Any) -> str | None:
+    """The ``kind`` of the first catalog fatal pattern found in ``logs``, else None.
+
+    pawns-cli prints "user is disabled" with no newline on every start, so the
+    text is searched as a whole, never line by line. A bad entry is skipped.
+    """
+    if not logs or not isinstance(patterns, list):
+        return None
+    tail = logs[-_FATAL_LOG_CHARS:]
+    for item in patterns:
+        if not isinstance(item, dict) or not item.get("kind") or not item.get("pattern"):
+            continue
+        try:
+            if re.search(str(item["pattern"]), tail, re.IGNORECASE):
+                return str(item["kind"])
+        except re.error:
+            continue
+    return None
+
+
+def _fatal_entry(container: Any, slug: str) -> dict[str, Any]:
+    """``{"fatal": kind}`` when a stopped or crash-looping container's log says the provider refuses it.
+
+    Only for a restarting, exited or dead container of a service whose catalog
+    entry declares ``docker.fatal_log_patterns``, so a healthy fleet costs no
+    log read. Never raises: a log that cannot be read says nothing.
+    """
+    if getattr(container, "status", "") not in ("restarting", "exited", "dead") or not get_service:
+        return {}
+    patterns = ((get_service(slug) or {}).get("docker") or {}).get("fatal_log_patterns")
+    if not patterns:
+        return {}
+    try:
+        raw = container.logs(tail=_FATAL_LOG_LINES)
+    except Exception as exc:  # noqa: BLE001 - an unreadable log is no finding
+        logger.debug("Could not read the log of %s for its fatal patterns: %s", getattr(container, "name", "?"), exc)
+        return {}
+    text = raw.decode("utf-8", errors="replace") if isinstance(raw, bytes) else str(raw or "")
+    kind = match_fatal(text, patterns)
+    return {"fatal": kind} if kind else {}
+
+
 def _shape(container: Any) -> dict[str, Any]:
     """What a container was created with, on the settings that decide whether it works.
 
@@ -1431,6 +1479,7 @@ def get_status() -> list[dict[str, Any]]:
                 "instance": _instance_of(c),
                 **_shape_entry(c),
                 **_stop_facts(c),
+                **_fatal_entry(c, slug),
             }
             # Present only when the service declares a dial-back address var;
             # the key's absence is "nothing to say", never "checked and fine".
@@ -1485,6 +1534,7 @@ def get_status() -> list[dict[str, Any]]:
                     "container_id": c.short_id,
                     "deployed_by": "external",
                     "category": "",
+                    **_fatal_entry(c, slug),
                 }
                 # External nodes are the COMMON storj adoption path (the node
                 # predates CashPilot) — leaving them out of the address check
@@ -1614,6 +1664,7 @@ def get_status_light() -> list[dict[str, Any]]:
                 "instance": _instance_of(c),
                 **_shape_entry(c),
                 **_stop_facts(c),
+                **_fatal_entry(c, slug),
             }
             # Same contract as get_status: key present only when declared+set.
             if advertised := _advertised_address(c, slug):
@@ -1665,6 +1716,7 @@ def get_status_light() -> list[dict[str, Any]]:
                         "container_id": c.short_id,
                         "deployed_by": "external",
                         "category": "",
+                        **_fatal_entry(c, slug),
                     }
                     # Same contract as the labeled loops; external storj nodes
                     # are the common adoption path and must not be blind spots.

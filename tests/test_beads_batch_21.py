@@ -98,7 +98,7 @@ class TestTheCollectionRunKeepsThem:
 
         source = inspect.getsource(main._run_collection)
         extend_at = source.index("await _flatline_check(")
-        assign_at = source.index("_collector_alerts = alerts")
+        assign_at = source.index("_collector_alerts = _with_account_disabled(alerts)")
         assert extend_at < assign_at, "_flatline_check still runs after the bell is set"
 
     def test_its_result_is_actually_used(self):

@@ -38,6 +38,8 @@ _CATEGORIES = {"bandwidth", "depin", "storage", "compute"}
 #: set could never be chosen, so it is a mistake and the entry is rejected.
 IMAGE_ARCH_FAMILIES = arch.FAMILIES
 _VALID_STATUSES = {"active", "beta", "broken", "dead", "dropped"}
+#: What a ``docker.fatal_log_patterns`` entry may say the provider did.
+FATAL_KINDS = {"account_disabled"}
 
 _PORT_RE = re.compile(r"(?:(?P<address>[^:]+):)?(?P<host>\d+):(?P<container>\d+)(?:/(?P<protocol>tcp|udp))?")
 
@@ -129,6 +131,26 @@ def _validate(data: dict[str, Any], path: Path) -> list[str]:
                         re.compile(pattern)
                     except (re.error, TypeError):
                         errors.append(f"{path.name}: docker.env[{i}].pattern must be a valid regular expression")
+        fatal = docker.get("fatal_log_patterns")
+        if fatal is not None:
+            if not isinstance(fatal, list):
+                errors.append(f"{path.name}: docker.fatal_log_patterns must be a list")
+            else:
+                for i, item in enumerate(fatal):
+                    if not isinstance(item, dict) or item.get("kind") not in FATAL_KINDS:
+                        errors.append(
+                            f"{path.name}: docker.fatal_log_patterns[{i}].kind must be one of {sorted(FATAL_KINDS)}"
+                        )
+                        continue
+                    pattern = item.get("pattern")
+                    try:
+                        if not isinstance(pattern, str) or not pattern.strip():
+                            raise TypeError
+                        re.compile(pattern)
+                    except (re.error, TypeError):
+                        errors.append(
+                            f"{path.name}: docker.fatal_log_patterns[{i}].pattern must be a non-empty regular expression"
+                        )
         ports = docker.get("ports")
         if isinstance(ports, list):
             # A bad mapping used to load fine and then 500 the deploy, on
@@ -172,6 +194,10 @@ def _validate(data: dict[str, Any], path: Path) -> list[str]:
             errors.append(f"{path.name}: device_link.url must be an https:// link")
         elif not set(re.findall(r"\$\{(\w+)\}", url)) <= public:
             errors.append(f"{path.name}: device_link.url may only fill in non-secret docker.env keys")
+
+    support = data.get("support_url")
+    if support is not None and (not isinstance(support, str) or not support.startswith("https://")):
+        errors.append(f"{path.name}: support_url must be an https:// link")
 
     priority = data.get("priority")
     if priority is not None and (isinstance(priority, bool) or not isinstance(priority, int) or priority < 1):
