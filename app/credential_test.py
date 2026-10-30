@@ -33,6 +33,7 @@ UNREACHABLE = "unreachable"
 UNEXPECTED_SHAPE = "unexpected_shape"
 RATE_LIMITED = "rate_limited"
 UNSUPPORTED = "unsupported"
+ACCOUNT_DISABLED = "account_disabled"
 
 # One test per service per this many seconds. Generous enough to be useless as a
 # brute-force tool, short enough that fixing a typo does not mean waiting.
@@ -51,6 +52,10 @@ def classify(error: str | None) -> str:
     if not error:
         return OK
     text = error.lower()
+    # Before the auth markers: a disabled account is not a bad password, and
+    # its message may also mention the 401 that led to the re-login.
+    if "account disabled" in text:
+        return ACCOUNT_DISABLED
     if any(m in text for m in _AUTH_MARKERS):
         return BAD_CREDENTIALS
     if any(m in text for m in _NETWORK_MARKERS):
@@ -74,6 +79,11 @@ def message(outcome: str, service_name: str, balance: float | None = None, curre
         return (
             f"{service_name} rejected these credentials. If they are a browser cookie or token, "
             "they have most likely expired — copy a fresh one and try again."
+        )
+    if outcome == ACCOUNT_DISABLED:
+        return (
+            f"{service_name} has disabled this account. The credentials are fine; "
+            f"only {service_name} support can re-enable it."
         )
     if outcome == NOT_CONFIGURED:
         return f"{service_name} has no credentials saved yet."

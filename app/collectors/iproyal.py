@@ -41,6 +41,8 @@ class IPRoyalCollector(BaseCollector):
 
     async def _login(self, client: httpx.AsyncClient) -> str | None:
         """Login and return a JWT access token, or None on failure."""
+        # Reset first: a message from an earlier login must never outlive it.
+        self._login_error = "Login failed — check email/password"
         resp = await client.post(
             f"{API_BASE}/users/tokens",
             json={
@@ -64,10 +66,10 @@ class IPRoyalCollector(BaseCollector):
                 self._login_error = "Account disabled by Pawns — contact Pawns support (the password is fine)"
             else:
                 logger.error("IPRoyal: bad credentials")
-                self._login_error = "Login failed — check email/password"
             return None
         if resp.status_code == 429:
             logger.warning("IPRoyal: rate limited on login")
+            self._login_error = "Pawns rate-limited the login — it will retry on the next run"
             return None
 
         resp.raise_for_status()
@@ -104,7 +106,7 @@ class IPRoyalCollector(BaseCollector):
                     return EarningsResult(
                         platform=self.platform,
                         balance=0.0,
-                        error="Re-login failed after 401",
+                        error=self._login_error,
                     )
                 resp = await self._retry(lambda: self._fetch_balance(client))
 

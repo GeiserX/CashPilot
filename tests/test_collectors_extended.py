@@ -212,6 +212,43 @@ class TestIPRoyalCollector:
         assert "disabled" in result.error
         assert "check email/password" not in result.error
 
+    def test_account_disabled_while_running_says_so_on_the_first_run(self):
+        """A cached token gets a 401, the re-login a 422 user_disabled."""
+        from app.collectors.iproyal import IPRoyalCollector
+
+        disabled = _mock_response(422, {"error": {"code": "user_disabled"}})
+        disabled.raise_for_status = MagicMock()
+        expired = _mock_response(401)
+        expired.raise_for_status = MagicMock()
+
+        client = _make_async_client()
+        client.post.return_value = disabled
+        client.get.return_value = expired
+
+        with patch("app.collectors.iproyal.httpx.AsyncClient", return_value=client):
+            c = IPRoyalCollector(email="e", password="p")
+            c._token = "cached"
+            result = asyncio.run(c.collect())
+        assert "disabled" in result.error
+
+    def test_the_disabled_message_does_not_outlive_a_later_login(self):
+        from app.collectors.iproyal import IPRoyalCollector
+
+        disabled = _mock_response(422, {"error": {"code": "user_disabled"}})
+        disabled.raise_for_status = MagicMock()
+        limited = _mock_response(429)
+        limited.raise_for_status = MagicMock()
+
+        client = _make_async_client()
+        client.post.side_effect = [disabled, limited]
+
+        with patch("app.collectors.iproyal.httpx.AsyncClient", return_value=client):
+            c = IPRoyalCollector(email="e", password="p")
+            assert "disabled" in asyncio.run(c.collect()).error
+            second = asyncio.run(c.collect()).error
+        assert "disabled" not in second
+        assert "rate-limited" in second
+
     def test_collect_network_error(self):
         from app.collectors.iproyal import IPRoyalCollector
 

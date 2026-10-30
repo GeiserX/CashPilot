@@ -3715,9 +3715,20 @@ async def api_credential_health(request: Request) -> list[dict[str, Any]]:
             # A short-lived credential backed by its durable alternative is
             # re-established on every run (Bytelixir's 2 h session cookie by the
             # year-long remember-me cookie), so its own age says nothing.
+            # Its lifetime and its "dies this afternoon" reason would then
+            # contradict the calm status, so the row explains the cover instead.
+            # Assumes every durable field of a service re-creates its
+            # short-lived ones; true for Bytelixir, check it for the next one.
+            why = meta.get("why")
             covered = bool(durable_alternative(slug)) and not missing_durable and not meta.get("durable")
             if covered and expires_at is None:
                 status = "no_known_expiry"
+                hours_total = None
+                why = (
+                    "Short-lived on its own, but re-created on every run from the saved "
+                    + " and ".join(durable_alternative(slug))
+                    + ", so its age does not matter."
+                )
 
             if slug in rejected:
                 status = "likely_expired"
@@ -3731,8 +3742,8 @@ async def api_credential_health(request: Request) -> list[dict[str, Any]]:
             }
             if expires_at is not None:
                 entry["expires_at"] = expires_at.isoformat()
-            if meta.get("why"):
-                entry["why"] = meta["why"]
+            if why:
+                entry["why"] = why
             # Only nag about a durable alternative when the short-lived credential
             # is the one actually at risk.
             if missing_durable and hours_total is not None and not meta.get("durable"):
