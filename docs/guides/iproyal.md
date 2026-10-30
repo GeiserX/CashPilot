@@ -22,7 +22,7 @@ IPRoyal Pawns lets you earn by sharing your unused bandwidth. IPRoyal is a well-
 
 ## Cashing out
 
-Minimum $5. Select your country first; the methods depend on it. From Spain (October 2026): PayPal 4% with a $0.25 minimum fee, paid through Tremendous, which emails a link where you enter your name and PayPal address; USDT (BEP20, ERC20, TRC20) or USDC (BEP20, ERC20) with a $1 network fee; Bitcoin with a $2 minimum fee; gift cards with no fee. The first payout needs a one-time SMS check of your phone number.
+Minimum $5. Select your country first; the methods depend on it. From Spain (October 2026): PayPal 4% with a $0.25 minimum fee, paid through Tremendous, which emails a link where you enter your name and PayPal address; USDT (BEP20, ERC20, TRC20) or USDC (BEP20, ERC20) with a $1 network fee; Bitcoin with a $2 minimum fee; gift cards with no fee. The first payout needs a one-time SMS check of your phone number: Withdraw opens it, and the number goes in with its country code. Every payout then asks for a code sent to your account email and is reviewed for up to 72 hours before it is sent.
 
 ## Requirements
 

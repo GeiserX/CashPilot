@@ -24,7 +24,7 @@ Traffmonetizer lets you monetize your internet traffic by sharing bandwidth with
 
 ## Cashing out
 
-Minimum $10. PayPal is no longer offered. Save one payout method in the profile first: USDT on Solana or TON (lowest fees), Arbitrum (low fees) or Tron TRC20 (high network fees), or a bank transfer from $1,000. Changing a saved method needs an email confirmation. Before the first withdrawal the dashboard also asks for a messenger contact.
+Minimum $10. PayPal is no longer offered. Save one payout method in the profile first: USDT on Solana or TON (lowest fees), Arbitrum (low fees) or Tron TRC20 (high network fees), or a bank transfer from $1,000. The first address you save applies at once; changing it later needs an email confirmation. The dashboard may ask for a messenger contact (WhatsApp, Telegram or Skype) before the first withdrawal. A request pays whole dollars and the cents stay in the balance.
 
 ## Requirements
 

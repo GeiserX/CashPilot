@@ -90,6 +90,11 @@ jobs:
       - name: Resource use panel
         run: node scripts/usage_panel_check.mjs
 
+      # A windowed health signal (Mysterium sessions never connecting directly)
+      # must reach the attention list as an escaped row on its own box.
+      - name: Attention list health hints
+        run: node scripts/attention_hint_check.mjs
+
       # The only check here that needs a real browser, because it measures a
       # property of the RENDERED page. A button's label colour is decided by the
       # cascade, so `.modal-body a` (0,1,1) silently outranked `.btn-success`
