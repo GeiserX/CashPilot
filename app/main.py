@@ -18,6 +18,7 @@ import re
 import secrets
 import socket
 import time
+import urllib.parse
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -1399,6 +1400,92 @@ async def _check_stale_workers() -> None:
             logger.warning("Stale worker check error for worker '%s': %s", w.get("name", w.get("id")), exc)
 
 
+#: Windowed health signals that currently hold, per running copy:
+#: (slug, worker_id, instance) -> the rendered ``means`` of each one. Rebuilt by
+#: every sweep, so a problem that went away clears on the next one. In memory on
+#: purpose: a restart forgets it for at most one sweep.
+_windowed_hints: dict[tuple[str, int, int], list[str]] = {}
+
+
+def _private_ipv4(url: str) -> str | None:
+    """The host of a worker URL when it is a private IPv4 address, else None."""
+    host = urllib.parse.urlparse(url or "").hostname or ""
+    try:
+        addr = ipaddress.ip_address(host)
+    except ValueError:
+        return None
+    return host if addr.version == 4 and addr.is_private and not addr.is_loopback else None
+
+
+async def _render_signal_means(signal: dict[str, Any], slug: str, worker: dict[str, Any] | None) -> str:
+    """The signal's ``means`` with ${VAR} filled from what this copy was deployed with.
+
+    ${HOST_ADDRESS} is the box's LAN address when the worker reports one, so the
+    hint can name the exact router rule to create.
+    """
+    service = catalog.get_service(slug) or {}
+    env = {var["key"]: str(var.get("default", "")) for var in (service.get("docker") or {}).get("env", [])}
+    wid = (worker or {}).get("id")
+    recorded = await database.get_deployment_spec(slug, worker_id=wid) if wid is not None else None
+    env.update({k: str(v) for k, v in ((recorded or {}).get("env") or {}).items() if str(v)})
+    env["HOST_ADDRESS"] = _private_ipv4((worker or {}).get("url", "")) or "this machine's LAN address"
+    text = " ".join(str(signal.get("means") or "").split())
+    return re.sub(r"\$\{(\w+)\}", lambda m: env.get(m.group(1), m.group(0)), text)
+
+
+async def _check_windowed_signals() -> None:
+    """Judge every windowed health signal of every running copy (producer_state.is_windowed).
+
+    A copy whose read fails keeps its last verdict rather than losing it to a
+    blip; a copy no longer running, or no longer declaring the signal, drops it.
+    """
+    global _windowed_hints
+    try:
+        containers = await _get_all_worker_containers()
+    except Exception as exc:
+        logger.warning("Windowed signal check skipped: %s", exc)
+        return
+    hints: dict[tuple[str, int, int], list[str]] = {}
+    workers: dict[int, dict[str, Any] | None] = {}
+    for c in containers:
+        slug = egress.container_slug(c)
+        wid = c.get("_worker_id")
+        if not slug or wid is None or str(c.get("status", "")).lower() != "running":
+            continue
+        signals = [s for s in producer_state.signals_for(catalog.get_service(slug)) if producer_state.is_windowed(s)]
+        if not signals:
+            continue
+        instance = int(c.get("instance") or 1)
+        key = (slug, wid, instance)
+        found: list[str] = []
+        try:
+            if wid not in workers:
+                workers[wid] = await database.get_worker(wid)
+            for signal in signals:
+                params: dict[str, Any] = {
+                    "lines": 1000,
+                    "match": producer_state.window_filter(signal),
+                    "since_hours": float(signal["window_hours"]),
+                }
+                if instance > 1:
+                    params["instance"] = instance
+                resp = await _proxy_to_worker(wid, "GET", f"/api/containers/{slug}/logs", params=params)
+                # A worker older than the filter returns the plain tail, which is
+                # not the window: no verdict from it.
+                if not resp.get("filtered"):
+                    continue
+                if producer_state.windowed_hit(resp.get("logs", ""), signal):
+                    found.append(await _render_signal_means(signal, slug, workers[wid]))
+        except Exception as exc:
+            logger.warning("Windowed signal check failed for %s on worker %s: %s", slug, wid, exc)
+            if key in _windowed_hints:
+                hints[key] = _windowed_hints[key]
+            continue
+        if found:
+            hints[key] = found
+    _windowed_hints = hints
+
+
 async def _raise_worker_offline_alert(w: dict[str, Any]) -> None:
     """Record + push + bell an offline worker, keyed by client_id.
 
@@ -1557,6 +1644,15 @@ async def lifespan(app: FastAPI):
         misfire_grace_time=300,
     )
     scheduler.add_job(
+        _check_windowed_signals,
+        "interval",
+        minutes=30,
+        id="windowed_signals",
+        max_instances=1,
+        coalesce=True,
+        misfire_grace_time=300,
+    )
+    scheduler.add_job(
         _run_data_retention,
         "interval",
         hours=24,
@@ -1629,6 +1725,7 @@ async def lifespan(app: FastAPI):
     # own last run, so this rewrites the file at most once a week.
     _spawn(_run_vacuum())
     _spawn(_run_collection())
+    _spawn(_check_windowed_signals())
     logger.info("CashPilot UI started (container ops via workers)")
 
     yield
@@ -2002,6 +2099,8 @@ async def api_services_deployed(request: Request) -> list[dict[str, Any]]:
                 # Which copy on that worker; the UI labels copies 2+ as "#N".
                 "instance": inst.get("instance") or 1,
                 "custom_image": custom_images.get(inst.get("_worker_id")),
+                # What a windowed health signal says is wrong with this copy.
+                "hints": _windowed_hints.get((slug, inst.get("_worker_id"), int(inst.get("instance") or 1)), []),
             }
             if inst.get("_is_android"):
                 detail["net_tx_24h"] = inst.get("_net_tx_24h", 0)
@@ -3955,6 +4054,12 @@ async def api_producer_state(request: Request, slug: str, worker_id: int | None 
             if wid is not None:
                 logs = (await _proxy_worker_logs(wid, slug, lines=200)).get("logs", "")
                 log_hits = producer_state.match_log_signals(logs, signals)
+                log_hits += [
+                    {"pattern": "", "means": means, "state": producer_state.FAILING}
+                    for (s_slug, s_wid, _), hints in _windowed_hints.items()
+                    if s_slug == slug and s_wid == wid
+                    for means in hints
+                ]
     except Exception as exc:
         # Never let a log or worker problem turn "is it earning?" into a 500;
         # the earnings signal alone is still worth reporting.

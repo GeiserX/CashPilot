@@ -72,6 +72,8 @@
 #       pattern: "" (optional) regex a typed value must match in full, or the
 #         deploy is refused. For values that land on a command line, where a
 #         stray space or word becomes an argument and the service stops starting.
+#       port_range: false (optional) the value is "start:end" with
+#         1 <= start <= end <= 65535. A pattern checks the shape, not the order.
 #   ports: ["port:port"]
 #   volumes: ["host:container"]
 #   critical_volumes:          (optional) mounts holding state that CANNOT be recovered
@@ -92,6 +94,13 @@
 #       - pattern: "login failed"       regex, matched case-insensitively against logs
 #         means:   "The service rejected the stored credentials."   shown to the user
 #         state:   failing              failing (default) | idle
+#         unless:  ""                   (optional) regex whose presence in the same window
+#                                         cancels the signal: the problem is not there
+#         window_hours: 0                 (optional) judge the last N hours of logs (up to 24)
+#                                         instead of the log tail; checked every 30 minutes,
+#                                         shown as "Needs fixing" on the dashboard. ${VAR} in
+#                                         means is filled from that copy's env, ${HOST_ADDRESS}
+#                                         with the box's LAN address
 #     Only add a pattern you have actually seen in that service's logs. A guessed regex
 #     that never matches is dead weight; one that matches the wrong line tells the user
 #     something false.

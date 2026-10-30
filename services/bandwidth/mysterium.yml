@@ -106,6 +106,23 @@ docker:
         node, then redeploy Mysterium from the dashboard; the node identity
         lives in its data volume and is kept.
       state: failing
+    # Judged over 6 hours by the UI's sweep, not over the log tail (a minute of
+    # this node's logs). Each session logs one line per NAT traversal method
+    # tried: "manual" is the forwarded range, and when it fails the session
+    # falls back to hole punching. Seen live (Oct 2026) on three nodes: 325
+    # sessions in 24 h, none direct, because the node was not using the
+    # forwarded range. A node with no sessions logs neither line and stays quiet.
+    - pattern: "Method:manual Success:false"
+      unless: "Method:manual Success:true"
+      window_hours: 6
+      means: >-
+        No VPN session in the last 6 hours reached this node directly. Every one
+        fell back to hole punching, and many buyers fail to connect that way, so
+        the node earns less. Its UDP ports are not reachable from the internet.
+        On your router, forward the UDP port range ${UDP_PORTS} (start:end, the
+        same range on both sides) to ${HOST_ADDRESS}. This clears by itself once
+        a session connects directly.
+      state: failing
 
 requirements:
   residential_ip: false

@@ -1157,6 +1157,12 @@ const CP = (() => {
             : '',
         });
       }
+      for (const inst of (svc.instance_details || [])) {
+        const where = inst.node === 'local' ? 'local' : (boxName[String(inst.worker_id)] || inst.node);
+        for (const hint of (inst.hints || [])) {
+          items.push({ level: 'fail', tag: 'Needs fixing', what: svc.name, where, why: escapeHtml(hint) });
+        }
+      }
       if (svc.unstable === true) {
         items.push({ level: 'warn', tag: 'Unstable', what: svc.name, why: `${svc.crashes_7d || 0} crashes in the last 7 days` });
       }

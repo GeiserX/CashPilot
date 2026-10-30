@@ -2235,6 +2235,7 @@ class TestLifespanScheduler:
                 patch("app.main._run_collection", new_callable=AsyncMock),
                 patch("app.main._run_data_retention", new_callable=AsyncMock),
                 patch("app.main._run_vacuum", new_callable=AsyncMock),
+                patch("app.main._check_windowed_signals", new_callable=AsyncMock),
                 patch("app.main.close_all_collectors", new_callable=AsyncMock, create=True),
             ):
                 async with main_mod.lifespan(main_mod.app):
@@ -2248,6 +2249,7 @@ class TestLifespanScheduler:
                         "data_retention",
                         "db_vacuum",
                         "exchange_rates",
+                        "windowed_signals",
                         "update_check",
                         # The Android client's own release track. Separate job
                         # so a GitHub hiccup fetching one cannot suppress the
@@ -2285,6 +2287,7 @@ class TestLifespanScheduler:
                 patch("app.main._run_collection", new_callable=AsyncMock),
                 patch("app.main._run_data_retention", new_callable=AsyncMock),
                 patch("app.main._run_vacuum", new_callable=AsyncMock),
+                patch("app.main._check_windowed_signals", new_callable=AsyncMock),
                 patch("app.main.close_all_collectors", new_callable=AsyncMock, create=True),
                 patch("app.main.logger.error") as err,
             ):
@@ -2319,6 +2322,7 @@ class TestLifespanScheduler:
                 patch("app.main._run_collection", new_callable=AsyncMock),
                 patch("app.main._run_data_retention", new_callable=AsyncMock),
                 patch("app.main._run_vacuum", new_callable=AsyncMock),
+                patch("app.main._check_windowed_signals", new_callable=AsyncMock),
                 patch("app.main.close_all_collectors", new_callable=AsyncMock, create=True),
                 patch("app.main.scheduler"),  # isolate from the real module scheduler
             ):
