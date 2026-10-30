@@ -42,6 +42,25 @@ class EarningsResult:
     # could not check; the collection loop turns a non-empty list into a notice.
     unlinked_devices: list[str] | None = None
 
+    def __post_init__(self) -> None:
+        # An empty error is falsy, so the collection loop would store the 0.0
+        # balance as a real reading and the credential test would say the
+        # provider "accepted these credentials". A real httpx timeout has an
+        # empty str(exc), so this happened on every timeout. A failure must
+        # always carry text.
+        if self.error is not None and not self.error.strip():
+            self.error = "collection failed with no error message"
+
+
+def describe_exception(exc: BaseException) -> str:
+    """Error text for a caught exception that is never empty.
+
+    ``str(exc)`` is "" for an httpx timeout, so the type name always leads.
+    """
+    text = str(exc).strip()
+    name = type(exc).__name__
+    return f"{name}: {text}" if text else name
+
 
 #: The stored credential was REJECTED (401/403/login redirect). Only a human
 #: pasting a fresh credential fixes this; every hour it stands is $0 collected.

@@ -112,5 +112,5 @@ class RepocketCollector(BaseCollector):
             return EarningsResult(
                 platform=self.platform,
                 balance=0.0,
-                error=str(exc),
+                error=base.describe_exception(exc),
             )
