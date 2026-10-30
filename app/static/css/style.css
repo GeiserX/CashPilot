@@ -1985,6 +1985,7 @@ body.gate { display: flex; flex-direction: column; }
   .wizard-step-label { display: none; }
   .catalog-table .cat-plat, .catalog-table .cat-needs, .catalog-table .cat-kind,
   .catalog-table thead th:nth-child(2), .catalog-table thead th:nth-child(3), .catalog-table thead th:nth-child(5) { display: none; }
+  .catalog-table .cat-est { white-space: normal; }
 }
 
 .attn-clear[hidden] { display: none; }
