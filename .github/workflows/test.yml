@@ -125,6 +125,12 @@ jobs:
       - name: Install dependencies
         run: uv sync --frozen --extra dev
 
+      # Real browser, real Fleet page (the demo UI) with long box names, URLs
+      # and slugs added. Fails if /fleet scrolls sideways anywhere from 320 to
+      # 2560 px. Exits 2, never 0, when Chrome or the UI cannot be reached.
+      - name: Fleet page fits its window (real browser)
+        run: ./scripts/fleet_overflow_check.sh
+
       - name: Run tests
         run: uv run pytest tests/ -v --tb=short
 

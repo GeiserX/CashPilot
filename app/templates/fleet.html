@@ -235,7 +235,7 @@ CASHPILOT_WORKER_NAME=server-name</code>
       return `
         <div class="economics-row">
           <div>
-            <div class="economics-machine">${esc(m.machine)}</div>
+            <div class="economics-machine">${brk(m.machine)}</div>
             <div class="economics-summary">${esc(m.summary)}</div>
           </div>
           <div class="economics-figures">
@@ -362,21 +362,21 @@ CASHPILOT_WORKER_NAME=server-name</code>
         <tr class="worker-row${isOnline ? '' : ' worker-off'}">
           <td class="w-name">
             <span class="cell cell-${isOnline ? 'ok' : 'fail'}" aria-label="${isOnline ? 'online' : 'not reporting'}"></span>
-            <strong>${esc(w.name)}</strong>${flags}
-            <div class="cell-sub"><code class="worker-id" title="This worker's client_id, the id CashPilot keys it on. Two rows with the same name always have different ids; this is how to tell which is which.">${esc(w.client_id || ('#' + w.id))}</code></div>
+            <strong class="w-name-text">${brk(w.name)}</strong>${flags}
+            <div class="cell-sub"><code class="worker-id" title="This worker's client_id, the id CashPilot keys it on. Two rows with the same name always have different ids; this is how to tell which is which.">${brk(w.client_id || ('#' + w.id))}</code></div>
           </td>
           <td class="w-sys">
-            <span>${esc(sysInfo.os || '-')}${sysInfo.os_version ? ' ' + esc(sysInfo.os_version) : ''}</span>
-            <div class="cell-sub cell-mono">${esc(sysInfo.arch || '-')} &nbsp; ${esc(w.url || '-')}</div>
+            <span>${brk(sysInfo.os || '-')}${sysInfo.os_version ? ' ' + brk(sysInfo.os_version) : ''}</span>
+            <div class="cell-sub cell-mono"><span class="w-arch">${brk(sysInfo.arch || '-')}</span> <span>${brk(w.url || '-')}</span></div>
           </td>
           <td class="w-ver">${version}</td>
-          <td class="w-seen${isOnline ? '' : ' text-fail'}" title="${esc(CP.fmtTimestamp(w.last_heartbeat).title)}">${esc(CP.fmtTimestamp(w.last_heartbeat).text)}</td>
-          <td class="w-power">
+          <td class="w-seen${isOnline ? '' : ' text-fail'}" data-label="Last seen" title="${esc(CP.fmtTimestamp(w.last_heartbeat).title)}">${esc(CP.fmtTimestamp(w.last_heartbeat).text)}</td>
+          <td class="w-power" data-label="Power draw">
             <label for="watts-${cid}" class="sr-only">Draw in watts</label>
-            <input id="watts-${cid}" class="power-watts form-input form-input-sm" type="number" min="0" step="1"
+            <span class="w-watts"><input id="watts-${cid}" class="power-watts form-input form-input-sm" type="number" min="0" step="1"
                    data-client-id="${cid}" value="${esc(w.watts ?? '')}"
                    placeholder="65"
-                   title="Wall power this machine draws, in watts. Without it CashPilot cannot say what the machine costs to run."><span class="unit">W</span>
+                   title="Wall power this machine draws, in watts. Without it CashPilot cannot say what the machine costs to run."><span class="unit">W</span></span>
             <label class="w-dedicated">
               <input type="checkbox" class="power-dedicated" data-client-id="${cid}" ${w.dedicated ? 'checked' : ''}>
               dedicated
@@ -538,9 +538,16 @@ CASHPILOT_WORKER_NAME=server-name</code>
         : (status === 'exited' || status === 'stopped' || status === 'dead') ? 'fail' : 'warn';
       const why = status === 'running' ? '' : `${status}${c.exit_code != null ? `, exit code ${c.exit_code}` : ''}`;
       const tip = isOnline ? (why ? ` title="${esc(why)}"` : '') : ` title="${esc(staleNote(worker.last_heartbeat))}"`;
-      html += `<span class="ctr ctr-${state}${isOnline ? '' : ' ctr-stale-item'}"${tip}>${esc(c.slug || c.name)}${state === 'fail' ? `<span class="ctr-why">${esc(why)}</span>` : ''}</span>`;
+      html += `<span class="ctr ctr-${state}${isOnline ? '' : ' ctr-stale-item'}"${tip}>${esc(c.slug || c.name)}${state === 'fail' ? ` <span class="ctr-why">${esc(why)}</span>` : ''}</span>`;
     }
     return html + '</div>';
+  }
+
+  // Escaped text with a break hint after each separator in names, ids and
+  // URLs ("motorola-one_fusion+ (1414f972)", "http://box.ts.net:8081"), so a
+  // long one wraps at a natural point before the CSS has to cut inside a word.
+  function brk(str) {
+    return esc(str).replace(/[-_.\/:@]/g, '$&<wbr>').replace(/\(/g, '<wbr>(');
   }
 
   function esc(str) {
