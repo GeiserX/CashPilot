@@ -1027,9 +1027,13 @@ async def _track_fully_configured_services() -> int:
         if not isinstance(config, dict):
             return 0
         existing = {d.get("slug") for d in await database.get_deployments()}
+        # Removed from the whole fleet by the user: saved credentials are not a
+        # reason to bring it back. Deploying it or saving its credentials again
+        # lifts this (database.save_deployment).
+        removed = await database.removed_slugs()
         tracked = 0
         for slug in sorted(fully_configured_slugs(config)):
-            if slug in existing or not catalog.get_service(slug):
+            if slug in existing or slug in removed or not catalog.get_service(slug):
                 continue
             await database.save_deployment(slug=slug, container_id="", status="external")
             tracked += 1

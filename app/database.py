@@ -1548,6 +1548,8 @@ async def save_deployment(
             """,
             (slug, container_id, env_vars_encrypted, spec_encrypted, status),
         )
+        # Deployed or re-added again: a removal recorded earlier no longer holds.
+        await db.execute("DELETE FROM config WHERE key = ?", (_removed_key(slug),))
         if spec is not None and spec_encrypted and worker_id is not None:
             await db.execute(
                 """
@@ -1718,12 +1720,17 @@ async def remove_deployment(slug: str, worker_id: int | None = None) -> None:
     """
     db = await _get_db()
     try:
+        gone = True
         if worker_id is None:
             await db.execute("DELETE FROM deployments WHERE slug = ?", (slug,))
         else:
             await db.execute("DELETE FROM deployment_specs WHERE slug = ? AND worker_id = ?", (slug, worker_id))
-            if not await _deployed_on_another_worker(db, slug, worker_id):
+            if await _deployed_on_another_worker(db, slug, worker_id):
+                gone = False
+            else:
                 await db.execute("DELETE FROM deployments WHERE slug = ?", (slug,))
+        if gone:
+            await _record_removed(db, slug)
         await db.commit()
     finally:
         await db.close()
@@ -1754,7 +1761,38 @@ async def forget_deployment(slug: str) -> None:
     try:
         await db.execute("DELETE FROM deployment_specs WHERE slug = ?", (slug,))
         await db.execute("DELETE FROM deployments WHERE slug = ?", (slug,))
+        await _record_removed(db, slug)
         await db.commit()
+    finally:
+        await db.close()
+
+
+# A service the user removed from the whole fleet. The startup backfill
+# (main._track_fully_configured_services) gives every service with saved
+# credentials a tracking row, so without this a removal came back as
+# "deployed" on the next restart. Kept in config, underscore-prefixed like
+# _last_vacuum_at so it can never read as a credential; cleared by the next
+# save_deployment for the slug (a deploy, or saving its credentials again).
+_REMOVED_PREFIX = "_removed_deployment:"
+
+
+def _removed_key(slug: str) -> str:
+    return f"{_REMOVED_PREFIX}{slug}"
+
+
+async def _record_removed(db: Any, slug: str) -> None:
+    await db.execute(
+        "INSERT OR REPLACE INTO config (key, value, updated_at) VALUES (?, datetime('now'), datetime('now'))",
+        (_removed_key(slug),),
+    )
+
+
+async def removed_slugs() -> set[str]:
+    """Services removed from the whole fleet and not deployed or re-added since."""
+    db = await _get_db()
+    try:
+        cursor = await db.execute("SELECT key FROM config WHERE key LIKE ?", (_REMOVED_PREFIX + "%",))
+        return {row["key"][len(_REMOVED_PREFIX) :] for row in await cursor.fetchall()}
     finally:
         await db.close()
 

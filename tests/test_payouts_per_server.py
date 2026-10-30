@@ -545,3 +545,88 @@ class TestARemovalThroughTheUIRaisesNothing:
         first = {("bitping", None): NOW - timedelta(days=1), ("bitping", 1): NOW - timedelta(days=1)}
         found = placement.missing(deployments, specs, workers, now=NOW, first_missing=first)
         assert found["bitping"]["everywhere"] is True
+
+
+class TestARemovedServiceStaysRemovedAcrossARestart:
+    """The startup backfill gave every service with saved credentials a row, so a
+    service removed from every box came back as deployed on the next restart."""
+
+    @staticmethod
+    def _creds(slug):
+        from app.collectors import _COLLECTOR_ARGS
+
+        return {f"{slug}_{a}": "x" for a in _COLLECTOR_ARGS[slug] if not a.startswith("?")}
+
+    def _run(self, tmp_path, steps):
+        from app import database
+
+        async def go():
+            await database.init_db()
+            await database.set_config_bulk({**self._creds("honeygain"), **self._creds("earnapp")})
+            await steps(database)
+            # The restart: the real lifespan backfill.
+            await main._track_fully_configured_services()
+            return (
+                {d["slug"] for d in await database.get_deployments()},
+                await database.list_deployment_placements(),
+                await database.get_config(),
+            )
+
+        with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "t.db"):
+            return asyncio.run(go())
+
+    def test_removed_through_the_ui_on_every_box_stays_gone_and_raises_nothing(self, tmp_path):
+        async def steps(database):
+            await database.save_deployment("honeygain", "c1", spec={"env": {}}, worker_id=1)
+            await database.save_deployment("honeygain", "c2", spec={"env": {}}, worker_id=2)
+            # What _svc_remove does on each box.
+            await database.remove_deployment("honeygain", worker_id=1)
+            await database.remove_deployment("honeygain", worker_id=2)
+
+        rows, specs, config = self._run(tmp_path, steps)
+        assert "honeygain" not in rows
+        assert self._creds("honeygain").keys() <= config.keys(), "the saved credentials must survive"
+        deployments = [{"slug": s, "status": "external"} for s in rows]
+        workers = [_docker(1, "watchtower", []), _docker(2, "geiserct", [])]
+        first = {("honeygain", None): NOW - timedelta(days=1)}
+        assert placement.missing(deployments, specs, workers, now=NOW, first_missing=first) == {}
+
+    def test_control_a_collector_only_service_with_credentials_still_gets_its_row(self, tmp_path):
+        async def steps(database):
+            await database.save_deployment("honeygain", "c1", spec={"env": {}}, worker_id=1)
+            await database.remove_deployment("honeygain", worker_id=1)
+
+        rows, _, _ = self._run(tmp_path, steps)
+        assert "earnapp" in rows and "honeygain" not in rows
+
+    def test_removed_from_one_box_while_another_runs_it_is_not_a_removal(self, tmp_path):
+        async def steps(database):
+            await database.save_deployment("honeygain", "c1", spec={"env": {}}, worker_id=1)
+            await database.save_deployment("honeygain", "c2", spec={"env": {}}, worker_id=2)
+            await database.remove_deployment("honeygain", worker_id=1)
+
+        rows, _, _ = self._run(tmp_path, steps)
+        assert "honeygain" in rows
+
+    def test_deploying_it_again_lifts_the_removal(self, tmp_path):
+        async def steps(database):
+            await database.save_deployment("honeygain", "c1", spec={"env": {}}, worker_id=1)
+            await database.remove_deployment("honeygain", worker_id=1)
+            await database.save_deployment("honeygain", "", status="external")
+            await database.remove_deployment("honeygain")
+            await database.save_deployment("honeygain", "c3", spec={"env": {}}, worker_id=1)
+
+        rows, _, _ = self._run(tmp_path, steps)
+        assert "honeygain" in rows
+        from app import database
+
+        with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "t.db"):
+            assert asyncio.run(database.removed_slugs()) == set()
+
+    def test_forget_is_a_removal_too(self, tmp_path):
+        async def steps(database):
+            await database.save_deployment("honeygain", "c1", spec={"env": {}}, worker_id=1)
+            await database.forget_deployment("honeygain")
+
+        rows, _, _ = self._run(tmp_path, steps)
+        assert "honeygain" not in rows
