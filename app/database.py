@@ -1729,6 +1729,36 @@ async def remove_deployment(slug: str, worker_id: int | None = None) -> None:
         await db.close()
 
 
+async def list_deployment_placements() -> list[dict[str, Any]]:
+    """Every (slug, worker_id, deployed_at) a per-worker deploy record exists for.
+
+    The durable answer to "which box was this service deployed on". Specs are
+    not decoded: the caller only needs where, never what.
+    """
+    db = await _get_db()
+    try:
+        cursor = await db.execute("SELECT slug, worker_id, deployed_at FROM deployment_specs ORDER BY slug, worker_id")
+        return [dict(r) for r in await cursor.fetchall()]
+    finally:
+        await db.close()
+
+
+async def forget_deployment(slug: str) -> None:
+    """Drop every record of ``slug`` being deployed: the fleet row and each worker's.
+
+    For a deployment no box runs any more. ``remove_deployment(slug)`` drops only
+    the fleet row, which leaves the per-worker records claiming the service is
+    still deployed on those boxes.
+    """
+    db = await _get_db()
+    try:
+        await db.execute("DELETE FROM deployment_specs WHERE slug = ?", (slug,))
+        await db.execute("DELETE FROM deployments WHERE slug = ?", (slug,))
+        await db.commit()
+    finally:
+        await db.close()
+
+
 async def _deployed_on_another_worker(db: Any, slug: str, worker_id: int) -> bool:
     cursor = await db.execute(
         "SELECT 1 FROM deployment_specs WHERE slug = ? AND worker_id != ? LIMIT 1",

@@ -26,6 +26,22 @@ import pytest
 from app import payout_registry
 
 
+def _box_running(deployments):
+    """A worker that reports every deployed slug: "deployed" is what a box runs."""
+    import json as _json
+
+    return [
+        {
+            "id": 1,
+            "name": "box",
+            "status": "online",
+            "system_info": _json.dumps({"docker_available": True}),
+            "containers": _json.dumps([{"slug": d["slug"], "status": "running"} for d in deployments or []]),
+            "apps": "[]",
+        }
+    ]
+
+
 class TestReadingTheAddressOutOfADeployedSpec:
     def test_a_mapping_style_environment(self):
         spec = {"environment": {"WALLET": "0xabc"}}
@@ -121,6 +137,11 @@ class TestTheRegistryOverTheRealCatalog:
             patch(
                 "app.payout_registry.database.get_deployments", new_callable=AsyncMock, return_value=deployments or []
             ),
+            patch(
+                "app.payout_registry.database.list_workers",
+                new_callable=AsyncMock,
+                return_value=_box_running(deployments or []),
+            ),
             patch("app.payout_registry.database.get_deployment_spec", new_callable=AsyncMock, return_value=spec),
         ):
             return asyncio.run(payout_registry.registry())
@@ -182,6 +203,11 @@ class TestTheRegistryOverTheRealCatalog:
                 "app.payout_registry.database.get_deployments", new_callable=AsyncMock, return_value=[{"slug": "storj"}]
             ),
             patch(
+                "app.payout_registry.database.list_workers",
+                new_callable=AsyncMock,
+                return_value=_box_running([{"slug": "storj"}]),
+            ),
+            patch(
                 "app.payout_registry.database.get_deployment_spec",
                 new_callable=AsyncMock,
                 side_effect=RuntimeError("cannot decrypt"),
@@ -200,6 +226,7 @@ class TestNoSecretIsEverExposed:
 
         with (
             patch("app.payout_registry.database.get_deployments", new_callable=AsyncMock, return_value=[]),
+            patch("app.payout_registry.database.list_workers", new_callable=AsyncMock, return_value=_box_running([])),
             patch("app.payout_registry.database.get_deployment_spec", new_callable=AsyncMock, return_value=None),
         ):
             result = asyncio.run(payout_registry.registry())

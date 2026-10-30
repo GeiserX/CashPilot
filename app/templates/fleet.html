@@ -329,7 +329,7 @@ CASHPILOT_WORKER_NAME=server-name</code>
     for (const w of workers) {
       const isOnline = w.status === 'online';
       const sysInfo = w.system_info || {};
-      const isAndroid = (sysInfo.device_type === 'android');
+      const isAndroid = (sysInfo.device_type === 'android' || String(sysInfo.os || '').toLowerCase() === 'android');
       const items = isAndroid ? (w.apps || []) : (w.containers || []);
       const cid = esc(w.client_id || w.id);
       const flags = [

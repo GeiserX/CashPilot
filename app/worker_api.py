@@ -39,7 +39,7 @@ from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 
-from app import egress, fleet_key, isolation_check, orchestrator, state_backup, version
+from app import egress, fleet_key, isolation_check, orchestrator, payout_read, state_backup, version
 from app.constants import MAX_INSTANCES
 
 try:
@@ -1644,6 +1644,24 @@ async def api_isolation_check(request: Request) -> dict[str, Any]:
                 "message": "The worker's Docker daemon did not answer, so it cannot run the check.",
             },
         )
+
+
+@app.get("/api/payout-addresses")
+async def api_payout_addresses(request: Request) -> dict[str, Any]:
+    """Payout addresses set inside this worker's running containers.
+
+    Only for services whose catalog entry declares ``payout.address_read``
+    (Mysterium's beneficiary, Anyone's anonrc wallet). Read-only: see
+    app/payout_read.py.
+    """
+    _verify_api_key(request)
+    if not _catalog_get_services:
+        return {"addresses": []}
+    try:
+        rows = await asyncio.to_thread(payout_read.read_all, _catalog_get_services())
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
+    return {"addresses": rows}
 
 
 @app.get("/api/update/info")

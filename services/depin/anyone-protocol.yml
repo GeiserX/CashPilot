@@ -120,3 +120,8 @@ payout:
   chain: ethereum
   address_source: manual
   notes: "Set as ContactInfo in anonrc, prefixed '@anon:0x...'."
+  # How the worker reads it back (app/payout_read.py). Only the address leaves
+  # the worker; the rest of ContactInfo (often an email) does not.
+  address_read:
+    command: ["cat", "/etc/anon/anonrc"]
+    pattern: '@anon:\s*(0x[0-9a-fA-F]{40})'

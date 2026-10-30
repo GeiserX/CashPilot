@@ -6,9 +6,11 @@
 
 {% block content %}
 <p class="page-lede">
-  Every service in the catalog and the address it pays to. Addresses are read from
-  the spec each container was <em>actually deployed</em> with, not from the
-  catalog default, so what you see here is what your machines are really using.
+  Every service in the catalog, the boxes that run it and the address it pays to.
+  <em>Runs on</em> comes from each box's own report, not from what CashPilot once
+  deployed. Addresses are read from the spec each box was <em>actually deployed</em>
+  with, or from the running container when the address is set inside it, so what
+  you see here is what your machines are really using.
   Services you have not deployed are folded at the bottom: the time to learn a
   service needs a wallet is <em>before</em> you deploy it.
 </p>
@@ -26,6 +28,11 @@
   <div class="stat-card">
     <div class="stat-label">Need an address</div>
     <div class="stat-value" id="payout-needs-address">&mdash;</div>
+  </div>
+  <!-- Recorded as deployed, and no box reports it. The dashboard raises it too. -->
+  <div class="stat-card">
+    <div class="stat-label">Runs nowhere</div>
+    <div class="stat-value" id="payout-not-running">&mdash;</div>
   </div>
   <div class="stat-card">
     <div class="stat-label">Irreplaceable state</div>
@@ -108,14 +115,34 @@
   //
   // Returns an HTML string and touches no DOM, so scripts/payout_registry_check.mjs
   // can run it for real.
+  //
+  // An external address set OUTSIDE CashPilot (Mysterium's beneficiary, Anyone's
+  // anonrc, a wallet linked in the provider's app) is shown when a box read it
+  // back, and otherwise says it was not checked. It is never "Not set": that
+  // would tell the user to configure something that is configured.
   function payoutAddressCell(entry) {
     var model = entry && entry.model;
     if (model === 'external') {
-      if (entry.address) {
-        return '<code class="payout-address" title="' + esc(entry.address) + '">'
-             + esc(entry.address) + '</code>';
+      var list = entry.addresses || [];
+      if (!list.length && entry.address) list = [{address: entry.address, servers: []}];
+      var html = list.map(function (a) {
+        // Boxes are named only when they disagree, which is the case worth seeing.
+        var where = list.length > 1 && (a.servers || []).length
+          ? ' <span class="payout-na">' + esc(a.servers.join(', ')) + '</span>' : '';
+        return '<code class="payout-address" title="' + esc(a.address) + '">' + esc(a.address) + '</code>' + where;
+      }).join('<br>');
+      if (entry.address_missing) {
+        var on = (entry.address_missing_on || []).length && list.length
+          ? ' on ' + esc(entry.address_missing_on.join(', ')) : '';
+        return html + (html ? '<br>' : '') + '<span class="payout-missing">Not set' + on + '</span>';
       }
-      return '<span class="payout-missing">Not set</span>';
+      if (entry.address_unchecked) {
+        var why = entry.address_unchecked === 'app'
+          ? 'Set in the provider\'s app, not checked'
+          : 'Set outside CashPilot, not checked';
+        return html + (html ? '<br>' : '') + '<span class="payout-unchecked">' + (html ? 'Not checked on every box' : why) + '</span>';
+      }
+      return html || '<span class="payout-missing">Not set</span>';
     }
     if (model === 'internal') {
       return '<span class="payout-na">Held by the service until you withdraw</span>';
@@ -172,11 +199,31 @@
       + '</div>';
   }
 
+  // Which boxes report the service, from their heartbeats. A recorded service
+  // no box reports says so plainly: that row is the one to fix.
+  function runsOnCell(entry) {
+    var boxes = entry.runs_on || [];
+    if (boxes.length) {
+      return boxes.map(function (b) {
+        var note = !b.online ? ' (offline)' : (b.status && b.status !== 'running' ? ' (' + b.status + ')' : '');
+        return '<span class="' + (note ? 'payout-na' : '') + '">' + esc(b.name) + esc(note) + '</span>';
+      }).join(', ');
+    }
+    if (entry.recorded && !entry.tracked_only) return '<span class="payout-missing">No box runs it</span>';
+    if (entry.tracked_only) return '<span class="payout-na">Not seen on any box</span>';
+    return '<span class="payout-na">&mdash;</span>';
+  }
+
+  function stateCell(entry) {
+    if (entry.deployed) return '<span class="state state-ok">deployed</span>';
+    if (entry.recorded && !entry.tracked_only) return '<span class="state state-fail">not running</span>';
+    if (entry.tracked_only) return '<span class="state state-idle">balance only</span>';
+    return '<span class="state state-idle">not deployed</span>';
+  }
+
   function payoutRow(entry) {
     var chain = entry.chain ? esc(entry.chain) : '<span class="payout-na">&mdash;</span>';
-    var deployed = entry.deployed
-      ? '<span class="state state-ok">deployed</span>'
-      : '<span class="state state-idle">not deployed</span>';
+    var deployed = stateCell(entry);
     // Only a DEPLOYED service with a missing address is urgent. An undeployed
     // one is information, not a problem to solve today.
     var rowClass = (entry.address_missing && entry.deployed) ? ' class="payout-row-actionable"'
@@ -184,6 +231,7 @@
     return '<tr' + rowClass + ' data-slug="' + esc(entry.slug) + '">'
       + '<td class="p-name">' + esc(entry.name || entry.slug) + '</td>'
       + '<td class="p-state">' + deployed + '</td>'
+      + '<td class="p-runs">' + runsOnCell(entry) + '</td>'
       + '<td class="p-model"><span class="badge badge-category">' + esc(entry.model || 'unknown') + '</span></td>'
       + '<td class="p-chain">' + chain + '</td>'
       + '<td class="p-addr">' + payoutAddressCell(entry) + '</td>'
@@ -197,7 +245,7 @@
       return '<p class="block-empty">' + esc(empty || 'Nothing matches that filter.') + '</p>';
     }
     return '<div class="table-scroll"><table class="breakdown-table payout-table"><thead><tr>'
-      + '<th class="p-name">Service</th><th class="p-state">Status</th><th class="p-model">Payout model</th>'
+      + '<th class="p-name">Service</th><th class="p-state">Status</th><th class="p-runs">Runs on</th><th class="p-model">Payout model</th>'
       + '<th class="p-chain">Chain</th><th class="p-addr">Address</th><th class="p-bal">On-chain</th>'
       + '</tr></thead><tbody>'
       + entries.map(payoutRow).join('')
@@ -219,12 +267,15 @@
       _restOpenBeforeFilter = null;
     }
     var rows = !q ? _entries : _entries.filter(function (e) {
-      return [e.name, e.slug, e.chain, e.address, e.model]
+      var boxes = (e.runs_on || []).map(function (b) { return b.name; });
+      var addrs = (e.addresses || []).map(function (a) { return a.address; });
+      return [e.name, e.slug, e.chain, e.address, e.model].concat(boxes, addrs)
         .some(function (v) { return v && String(v).toLowerCase().indexOf(q) !== -1; });
     });
     // Deployed services lead; the rest of the catalog sits folded beneath.
-    var deployed = rows.filter(function (e) { return e.deployed; });
-    var rest = rows.filter(function (e) { return !e.deployed; });
+    // A recorded service no box runs stays up here: it is the one to fix.
+    var deployed = rows.filter(function (e) { return e.deployed || e.recorded; });
+    var rest = rows.filter(function (e) { return !e.deployed && !e.recorded; });
     document.getElementById('payout-table-container').innerHTML = renderTable(deployed,
       q ? 'No deployed service matches that filter.' : 'Nothing is deployed yet. Every service in the catalog is listed under Not deployed.');
     fold.hidden = !rest.length;
@@ -244,6 +295,7 @@
       document.getElementById('payout-deployed').textContent = summary.deployed || 0;
       document.getElementById('payout-needs-address').textContent = summary.needs_an_address || 0;
       document.getElementById('payout-unclassified').textContent = summary.unclassified || 0;
+      document.getElementById('payout-not-running').textContent = summary.recorded_not_running || 0;
 
       document.getElementById('payout-critical-count').textContent = summary.holding_irreplaceable_state || 0;
 
