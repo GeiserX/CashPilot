@@ -40,6 +40,7 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 from app.constants import (  # noqa: E402
+    CASHPILOT_DEPLOYED,
     CONTAINER_PREFIX,
     LABEL_CATEGORY,
     LABEL_DEPLOYED_BY,
@@ -47,6 +48,7 @@ from app.constants import (  # noqa: E402
     LABEL_MANAGED,
     LABEL_SERVICE,
     LABEL_VERSION,
+    drift_warnings_enabled,
 )
 
 # Cached Docker availability (checked once at startup, refreshed on demand)
@@ -167,6 +169,55 @@ def _stop_facts(container: Any) -> dict[str, Any]:
         # An empty name is Docker's "no".
         facts["restart_policy"] = str(policy.get("Name") or "no")
     return facts
+
+
+def _shape(container: Any) -> dict[str, Any]:
+    """What a container was created with, on the settings that decide whether it works.
+
+    The UI compares this with what a redeploy would build from the current
+    catalog (app/drift.py), so a container made before a catalog fix is not left
+    broken in silence. Bitping ran three months without NET_RAW, added to the
+    catalog after its containers were made, with every probe failing.
+
+    Names only, never values: env keys without their values, mount targets
+    without their sources. The command is not here at all, since it carries
+    credentials; the UI judges it from the deployment record instead.
+    """
+    attrs = container.attrs if isinstance(getattr(container, "attrs", None), dict) else {}
+    config = attrs.get("Config") if isinstance(attrs.get("Config"), dict) else {}
+    host = attrs.get("HostConfig") if isinstance(attrs.get("HostConfig"), dict) else {}
+    devices = host.get("Devices") if isinstance(host.get("Devices"), list) else []
+    mounts = attrs.get("Mounts") if isinstance(attrs.get("Mounts"), list) else []
+    entrypoint = config.get("Entrypoint")
+    return {
+        "image": str(config.get("Image") or ""),
+        "cap_add": sorted({str(cap).upper().removeprefix("CAP_") for cap in host.get("CapAdd") or []}),
+        "privileged": bool(host.get("Privileged")),
+        "network_mode": str(host.get("NetworkMode") or ""),
+        "devices": sorted(
+            {str(d.get("PathInContainer") or "").rstrip("/") for d in devices if isinstance(d, dict)} - {""}
+        ),
+        "ports": sorted(str(key) for key in (host.get("PortBindings") or {})),
+        "mounts": sorted({str(m.get("Destination") or "").rstrip("/") for m in mounts if isinstance(m, dict)} - {""}),
+        "env_keys": sorted({str(item).split("=", 1)[0] for item in config.get("Env") or []}),
+        "entrypoint": [str(part) for part in entrypoint] if isinstance(entrypoint, list) else None,
+    }
+
+
+def _shape_entry(container: Any) -> dict[str, Any]:
+    """``{"shape": ...}`` for a container CashPilot's worker made, else nothing.
+
+    The cashpilot labels alone do not make a container CashPilot's: a compose
+    file exported from CashPilot carries them too, and the user runs and edits
+    that by hand. Only CashPilot's own deploys write the values in
+    CASHPILOT_DEPLOYED. A hand-made
+    container is never judged against the catalog, and neither is anything
+    when CASHPILOT_DRIFT_WARNINGS is off.
+    """
+    labels = getattr(container, "labels", None) or {}
+    if labels.get(LABEL_DEPLOYED_BY) not in CASHPILOT_DEPLOYED or not drift_warnings_enabled():
+        return {}
+    return {"shape": _shape(container)}
 
 
 def service_instances(slug: str) -> list[Any]:
@@ -1378,6 +1429,7 @@ def get_status() -> list[dict[str, Any]]:
                 "deployed_by": c.labels.get(LABEL_DEPLOYED_BY, "unknown"),
                 "category": c.labels.get(LABEL_CATEGORY, ""),
                 "instance": _instance_of(c),
+                **_shape_entry(c),
                 **_stop_facts(c),
             }
             # Present only when the service declares a dial-back address var;
@@ -1560,6 +1612,7 @@ def get_status_light() -> list[dict[str, Any]]:
                 "deployed_by": c.labels.get(LABEL_DEPLOYED_BY, "unknown"),
                 "category": c.labels.get(LABEL_CATEGORY, ""),
                 "instance": _instance_of(c),
+                **_shape_entry(c),
                 **_stop_facts(c),
             }
             # Same contract as get_status: key present only when declared+set.

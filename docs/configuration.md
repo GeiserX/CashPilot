@@ -40,6 +40,7 @@ defensible on its own; together they are impossible to guess.
 | `CASHPILOT_VERSION` | `dev` | Set by the image build. Shown in the sidebar. | — |
 | `CASHPILOT_METRICS_ENABLED` | `false` | Serve `/metrics`. | — |
 | `CASHPILOT_METRICS_TOKEN` | unset | Require `Authorization: Bearer` on `/metrics`. | — |
+| `CASHPILOT_DRIFT_WARNINGS` | `on` | Set to `off` to stop judging containers against the catalog: no "Needs fixing" row for a container that misses a catalog change. Set it on the worker too, which then stops reporting container settings. A single warning can be muted from its row instead (Ignore). Containers you made by hand are never judged. | — |
 | `CASHPILOT_UPDATE_CHECK` | `on` | Set to `off` to disable the once-a-day check for a newer release. See below. |
 | `CASHPILOT_NTFY_URL` | unset | ntfy endpoint for alerts. | — |
 | `CASHPILOT_WEBHOOK_URL` | unset | Generic webhook for alerts. | — |
@@ -59,6 +60,7 @@ defensible on its own; together they are impossible to guess.
 | `CASHPILOT_WORKER_URL` | detected | The URL this worker **advertises**. | — |
 | `CASHPILOT_PORT` | `8081` | The port this worker **advertises** — see the note below. | — |
 | `CASHPILOT_WORKER_NETWORK` | detected | `residential` or `hosting`. | — |
+| `CASHPILOT_DRIFT_WARNINGS` | on | `off` stops reporting each container's settings, so the UI judges none of this worker's containers against the catalog. | — |
 | `CASHPILOT_EGRESS_DETECT` | on | Hourly public-IP lookup. `off` disables it. | — |
 | `CASHPILOT_EGRESS_IP` | unset | State the public IP directly. A LAN or tailnet address is rejected. | — |
 | `CASHPILOT_EGRESS_IP_URL` | unset | Custom IP-echo endpoint. | — |

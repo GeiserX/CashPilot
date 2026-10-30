@@ -39,9 +39,11 @@ from app import (
     auth,
     catalog,
     compose_generator,
+    constants,
     credential_test,
     database,
     disclosure,
+    drift,
     egress,
     exchange_rates,
     fleet_key,
@@ -253,6 +255,10 @@ async def _get_all_worker_containers(workers: list[dict[str, Any]] | None = None
                             "finished_at": c.get("finished_at"),
                             "exit_code": c.get("exit_code"),
                             "restart_policy": c.get("restart_policy"),
+                            # What the container was created with, for the drift
+                            # check (app/drift.py). None from a worker too old to send it.
+                            "shape": c.get("shape"),
+                            "_arch": sys_info.get("arch"),
                             "_node": worker_name,
                             "_worker_id": w.get("id"),
                             "_has_docker": worker_has_docker,
@@ -1981,6 +1987,69 @@ def _apply_service_meta(entry: dict[str, Any], svc: dict[str, Any] | None) -> No
     entry["website"] = svc.get("website", "")
 
 
+#: Config key holding the muted drift warnings: {"<slug>|<worker id>": catalog fingerprint}.
+_DRIFT_IGNORED_KEY = "drift_ignored"
+# The map is read, extended and written back whole; two Ignores at once must not drop one.
+_drift_ignore_lock = asyncio.Lock()
+
+
+def _drift_ignored(config: dict[str, Any]) -> dict[str, str]:
+    raw = _safe_json(config.get(_DRIFT_IGNORED_KEY) or "{}", {})
+    return {str(k): str(v) for k, v in raw.items()} if isinstance(raw, dict) else {}
+
+
+@app.post("/api/services/{slug}/drift/ignore")
+async def api_drift_ignore(
+    request: Request, slug: str, worker_id: int, _auth: dict[str, Any] = Depends(_require_owner)
+) -> dict[str, str]:
+    """Mute the drift warning of ``slug`` on one worker until the catalog changes it.
+
+    For a container the owner changed on purpose. The mute is tied to the
+    catalog's fingerprint of the judged fields, so a later catalog fix to this
+    service shows again instead of hiding behind an old decision.
+    """
+    svc = catalog.get_service(slug)
+    if not svc:
+        raise HTTPException(status_code=404, detail=f"Service '{slug}' not found")
+    async with _drift_ignore_lock:
+        cfg = await database.get_config()
+        ignored = _drift_ignored(cfg if isinstance(cfg, dict) else {})
+        ignored[f"{slug}|{worker_id}"] = drift.catalog_fingerprint(svc)
+        await database.set_config(_DRIFT_IGNORED_KEY, json.dumps(ignored, sort_keys=True))
+    return {"status": "ignored"}
+
+
+async def _instance_drift(
+    svc: dict[str, Any] | None,
+    slug: str,
+    inst: dict[str, Any],
+    custom_image: str | None,
+    specs: dict[tuple[str, int], dict[str, Any] | None],
+) -> tuple[list[str], bool]:
+    """How this running copy differs from what a redeploy would build, and whether it has a record.
+
+    Never raises: a record that cannot be read leaves the copy judged on the
+    catalog alone, and a check that fails says nothing rather than blanking
+    the dashboard.
+    """
+    wid = inst.get("_worker_id")
+    try:
+        if wid is not None and (slug, wid) not in specs:
+            specs[(slug, wid)] = await database.get_deployment_spec(slug, worker_id=wid)
+    except Exception as exc:
+        logger.warning("Could not read the deployment record of %s on worker %s: %s", slug, wid, exc)
+        specs[(slug, wid)] = None
+    recorded = specs.get((slug, wid)) if wid is not None else None
+    try:
+        found = drift.container_drift(
+            svc, inst.get("shape"), recorded, custom_image=custom_image, worker_arch=inst.get("_arch")
+        )
+    except Exception as exc:
+        logger.warning("Drift check failed for %s on worker %s: %s", slug, wid, exc)
+        return [], False
+    return found, recorded is not None
+
+
 @app.get("/api/services/deployed")
 async def api_services_deployed(request: Request) -> list[dict[str, Any]]:
     """Return deployed services with container status, balance, CPU, memory.
@@ -2072,6 +2141,10 @@ async def api_services_deployed(request: Request) -> list[dict[str, Any]]:
             agg["best_status"] = cur
 
     result = []
+    # Deployment records read for the drift check, one per (slug, worker).
+    specs: dict[tuple[str, int], dict[str, Any] | None] = {}
+    drift_on = constants.drift_warnings_enabled()
+    drift_ignored = _drift_ignored(config) if drift_on else {}
     for slug, agg in slug_agg.items():
         svc = catalog.get_service(slug)
         health = health_map.get(slug, {})
@@ -2102,6 +2175,21 @@ async def api_services_deployed(request: Request) -> list[dict[str, Any]]:
                 # What a windowed health signal says is wrong with this copy.
                 "hints": _windowed_hints.get((slug, inst.get("_worker_id"), int(inst.get("instance") or 1)), []),
             }
+            # Only containers CashPilot made (constants.CASHPILOT_DEPLOYED): a
+            # container the user runs by hand is theirs to shape, even when it
+            # carries CashPilot's labels or a catalog image.
+            if (
+                drift_on
+                and isinstance(inst.get("shape"), dict)
+                and inst.get("deployed_by") in constants.CASHPILOT_DEPLOYED
+                and drift_ignored.get(f"{slug}|{inst.get('_worker_id')}") != drift.catalog_fingerprint(svc)
+            ):
+                drift_found, has_record = await _instance_drift(
+                    svc, slug, inst, custom_images.get(inst.get("_worker_id")), specs
+                )
+                if drift_found:
+                    detail["drift"] = drift_found
+                    detail["drift_has_record"] = has_record
             if inst.get("_is_android"):
                 detail["net_tx_24h"] = inst.get("_net_tx_24h", 0)
                 detail["net_rx_24h"] = inst.get("_net_rx_24h", 0)
