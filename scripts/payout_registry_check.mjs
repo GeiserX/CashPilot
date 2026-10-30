@@ -224,6 +224,7 @@ check('a hostile address or box name in a multi-wallet row is escaped', !hostile
 const recordGap = payoutAddressCell({model: 'external', address: null, addresses: [], address_missing: false, address_unchecked: 'record'});
 check('a box with no deploy record to read says so', recordGap.includes('No deploy record') && !recordGap.includes('Not set'), recordGap);
 check('boxes that could not be read are not called "No box runs it"', runsOnCell({runs_on: [], recorded: true, runs_on_unknown: true}).includes('Could not read the boxes'), 'unknown');
+check('a credentials-only row stays balance only when the boxes are unknown', stateCell({runs_on_unknown: true, tracked_only: true, recorded: true}).includes('balance only'), 'tracked');
 const partlyMissing = payoutAddressCell({model: 'external', address: '0xaaa', addresses: [{address: '0xaaa', servers: ['watchtower']}], address_missing: true, address_missing_on: ['geiserback']});
 check('a box whose record has no wallet is still "Not set", named', partlyMissing.includes('Not set on geiserback'), partlyMissing);
 

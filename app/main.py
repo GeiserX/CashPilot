@@ -555,26 +555,47 @@ async def _missing_deployment_check(workers: list[dict[str, Any]] | None = None)
         if workers is None:
             workers = await database.list_workers()
         stored = await database.get_alert_subjects("missing")
+        scopes = {slug: _missing_scope(slug) for slug in stored}
         found = placement.missing(
             await database.get_deployments(),
             await database.list_deployment_placements(),
             workers,
             now=datetime.now(UTC),
             first_missing=_deployment_first_missing,
-            alerted=stored,
+            alerted=set().union(*scopes.values()) if scopes else set(),
         )
         if found is None:
             return
-        # Still absent, or on a box that cannot be looked at right now: an
-        # alert for it stands even when this run did not re-raise it.
-        pending = {slug for slug, _wid in _deployment_first_missing}
-        for slug in stored:
-            if slug not in found and slug not in pending:
-                await database.clear_alerts("missing", slug)
-                logger.info("%s is no longer recorded on a box that does not run it; cleared its alert", slug)
-        for slug in list(_missing_bell):
-            if slug not in found and slug not in pending:
-                _missing_bell.pop(slug)
+        by_id = {w.get("id"): w for w in workers}
+        where = placement.runs_on(workers)
+        for slug in set(stored) | set(_missing_bell):
+            if slug in found:
+                continue
+            # What the alert covered and is still absent, or sits on a box that
+            # cannot be looked at right now: that much of it stands.
+            scope = scopes.get(slug) or _missing_scope(slug)
+            left = [wid for s, wid in _deployment_first_missing if s == slug and ((s, wid) in scope or s in scope)]
+            if not left:
+                if slug in stored:
+                    await database.clear_alerts("missing", slug)
+                    logger.info("%s is no longer recorded on a box that does not run it; cleared its alert", slug)
+                _missing_bell.pop(slug, None)
+                continue
+            entry = _missing_bell.get(slug)
+            if entry is not None and "everywhere" in entry:
+                kept = {
+                    "everywhere": None in left,
+                    "boxes": [
+                        {"worker_id": wid, "name": (by_id.get(wid) or {}).get("name") or str(wid)}
+                        for wid in sorted(w for w in left if w is not None)
+                    ],
+                    "still_on": [r["name"] for r in where.get(slug, [])],
+                }
+                entry.update(
+                    everywhere=kept["everywhere"],
+                    boxes=kept["boxes"],
+                    error=_missing_deployment_message(slug, kept),
+                )
         for slug, item in found.items():
             message = _missing_deployment_message(slug, item)
             _missing_bell[slug] = {
@@ -594,6 +615,21 @@ async def _missing_deployment_check(workers: list[dict[str, Any]] | None = None)
         _collector_alerts.extend(_missing_bell.values())
     except Exception as exc:  # noqa: BLE001 - a diagnostic must not break the health check
         logger.warning("Missing-deployment check failed: %s", exc)
+
+
+def _missing_scope(slug: str) -> set[Any]:
+    """What a stored missing alert of ``slug`` covers, as placement.missing keys.
+
+    A bare slug means the whole service: an alert restored at startup, whose
+    boxes are not known until the next check names them.
+    """
+    entry = _missing_bell.get(slug)
+    if entry is None or "everywhere" not in entry:
+        return {slug}
+    keys: set[Any] = {(slug, b["worker_id"]) for b in entry.get("boxes") or []}
+    if entry["everywhere"]:
+        keys.add((slug, None))
+    return keys
 
 
 def _missing_deployment_message(slug: str, item: dict[str, Any]) -> str:
@@ -997,8 +1033,8 @@ async def _warm_collector_alerts() -> None:
                 e["platform"] = names.get(e["platform"], e["platform"])
     _collector_alerts = restored
     # The collection rebuild re-adds _missing_bell, not the restored list, so a
-    # restored missing alert goes there too. The next health check fills in
-    # what Forget needs (everywhere, boxes) without waiting out the grace.
+    # restored missing alert goes there too, with no scope: until the next
+    # health check names its boxes, the bell offers no Forget for it.
     for e in restored:
         if e["kind"] == "missing":
             name = (catalog.get_service(e["platform"]) or {}).get("name") or e["platform"]

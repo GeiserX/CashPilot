@@ -1325,7 +1325,7 @@ const CP = (() => {
           const targets = a.everywhere ? [{ worker_id: null, name: '' }] : (a.boxes || []);
           actions = targets.map(t => `<button class="btn btn-ghost btn-sm" data-action="forgetDeployment" data-a1="${escapeHtml(a.platform)}"${t.worker_id != null ? ` data-a2="${escapeHtml(String(t.worker_id))}"` : ''}>${t.name ? `Forget on ${escapeHtml(t.name)}` : 'Forget'}</button>`).join(' ');
         }
-        items.push({ level: 'fail', tag: a.everywhere === false ? 'Gone from a box' : 'Runs nowhere', what: a.name || (svc && svc.name) || a.platform, why: escapeHtml(a.error), actions });
+        items.push({ level: 'fail', tag: a.everywhere === false ? 'Gone from a box' : a.everywhere ? 'Runs nowhere' : 'Missing', what: a.name || (svc && svc.name) || a.platform, why: escapeHtml(a.error), actions });
       }
     } catch (err) {
       console.warn('Could not load the missing-deployment alerts:', err);
@@ -4234,7 +4234,7 @@ const CP = (() => {
         const icon = isPayout ? PAYOUT_ICON : (isNotice || isTransient) ? NOTICE_ICON : WARNING_ICON;
         const suffix = isPayout ? ' — payout?'
           : isContainer ? ' — not running'
-          : isMissing ? (a.everywhere === false ? ' — gone from a box' : ' — runs nowhere')
+          : isMissing ? (a.everywhere === false ? ' — gone from a box' : a.everywhere ? ' — runs nowhere' : ' — missing')
           : isQuiet ? ' — gone quiet'
           : isNotice ? ' — note'
           : isAuth ? ' — credential expired'

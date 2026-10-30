@@ -837,3 +837,72 @@ class TestAnyoneReadsOnlyALiveContactInfo:
             payout_read.extract(f"#ContactInfo @anon: {WALLET_B}\n", _catalog_reader("anyone-protocol")["pattern"])
             is None
         )
+
+
+class TestSecondReviewRound:
+    def test_a_box_newly_missing_beside_an_alerted_one_waits_its_own_grace(self):
+        old = _sql(NOW - timedelta(days=3))
+        specs = [
+            {"slug": "earnapp", "worker_id": 1, "deployed_at": old},
+            {"slug": "earnapp", "worker_id": 2, "deployed_at": old},
+        ]
+        workers = [
+            _docker(1, "watchtower", []),
+            _docker(2, "geiserback", []),
+            _docker(3, "geiserct", [("earnapp", "running")]),
+        ]
+        deps = [{"slug": "earnapp", "status": "running", "deployed_at": old}]
+        found = placement.missing(deps, specs, workers, now=NOW, first_missing={}, alerted={("earnapp", 1)})
+        assert [b["worker_id"] for b in found["earnapp"]["boxes"]] == [1]
+        # Control: an alert of unknown scope (restored) covers every box.
+        found = placement.missing(deps, specs, workers, now=NOW, first_missing={}, alerted={"earnapp"})
+        assert [b["worker_id"] for b in found["earnapp"]["boxes"]] == [1, 2]
+
+    def test_tracked_only_rows_are_not_deployed_when_the_boxes_are_unknown(self):
+        with (
+            patch.object(
+                payout_registry.database,
+                "get_deployments",
+                AsyncMock(return_value=[{"slug": "grass", "status": "external"}]),
+            ),
+            patch.object(payout_registry.database, "list_workers", AsyncMock(side_effect=RuntimeError("db"))),
+            patch.object(payout_registry.database, "get_deployment_spec", AsyncMock(return_value=None)),
+        ):
+            grass = _row(asyncio.run(payout_registry.registry()), "grass")
+        assert grass["tracked_only"] is True and grass["deployed"] is False
+
+    def test_an_overlong_anyone_wallet_is_not_cut_to_a_valid_looking_one(self):
+        pattern = _catalog_reader("anyone-protocol")["pattern"]
+        assert payout_read.extract(f"ContactInfo a @anon: {WALLET_A}f\n", pattern) is None
+        assert payout_read.extract(f"ContactInfo a @anon: {WALLET_A} \n", pattern) == WALLET_A
+
+
+@pytest.mark.usefixtures("_clean_main")
+class TestARetainedAlertNamesOnlyWhatIsStillMissing:
+    def test_a_recovered_box_leaves_the_forget_actions(self):
+        alerts = _Alerts()
+        alerts.rows["earnapp"] = "gone from watchtower and geiserct"
+        main._missing_bell["earnapp"] = {
+            "kind": "missing",
+            "platform": "earnapp",
+            "name": "EarnApp",
+            "error": "gone",
+            "everywhere": False,
+            "boxes": [{"worker_id": 1, "name": "watchtower"}, {"worker_id": 2, "name": "geiserct"}],
+        }
+        main._deployment_first_missing[("earnapp", 2)] = datetime.now(UTC) - timedelta(hours=2)
+        specs = [{"slug": "earnapp", "worker_id": 2, "deployed_at": "2026-01-01 00:00:00"}]
+        workers = [_docker(1, "watchtower", [("earnapp", "running")]), _docker(2, "geiserct", [], status="offline")]
+        p = alerts.patches([{"slug": "earnapp", "status": "running"}], specs)
+        with p[0], p[1], p[2], p[3], p[4], p[5]:
+            asyncio.run(main._missing_deployment_check(workers))
+        assert "earnapp" in alerts.rows
+        assert [b["worker_id"] for b in main._missing_bell["earnapp"]["boxes"]] == [2]
+        assert "watchtower" not in main._missing_bell["earnapp"]["error"].split("still")[0]
+
+    def test_a_restored_alert_has_no_scope_until_a_check_names_it(self):
+        stored = [{"kind": "missing", "subject": "bitping", "message": "runs nowhere"}]
+        with patch.object(main.database, "list_alerts", AsyncMock(return_value=stored)):
+            asyncio.run(main._warm_collector_alerts())
+        assert "everywhere" not in main._missing_bell["bitping"]
+        assert main._missing_scope("bitping") == {"bitping"}

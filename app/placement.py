@@ -140,7 +140,7 @@ def missing(
     now: datetime,
     first_missing: dict[tuple[str, Any], datetime],
     grace: timedelta = MISSING_GRACE,
-    alerted: set[str] | frozenset[str] = frozenset(),
+    alerted: set[Any] | frozenset[Any] = frozenset(),
 ) -> dict[str, dict[str, Any]] | None:
     """Deployments CashPilot records that no worker runs, past the grace period.
 
@@ -165,9 +165,11 @@ def missing(
     seen missing and is updated in place. After the call its keys are exactly
     what is still missing or cannot be judged right now (its box went offline
     or blind): the caller keeps an alert while any key of that service remains,
-    and clears it only once none does. ``alerted`` are services that already
-    have a stored alert: they skip the grace period, so a restart, which empties
-    ``first_missing``, neither clears nor re-pushes them.
+    and clears it only once none does. ``alerted`` holds what stored alerts
+    already cover, as the same keys, or a bare slug for an alert whose boxes are
+    unknown: those skip the grace period, so a restart, which empties
+    ``first_missing``, neither clears nor re-pushes them. A box newly missing
+    beside an alerted one still waits out its own grace.
     """
     online = [w for w in workers if w.get("status") == "online"]
     if not online:
@@ -220,7 +222,7 @@ def missing(
         # A fresh deploy gets the full grace period from the deploy itself, so
         # a slow first pull is not reported while it is still downloading.
         start = max(since, deployed_at) if deployed_at else since
-        if slug not in alerted and now - start < grace:
+        if (slug, wid) not in alerted and slug not in alerted and now - start < grace:
             continue
         item = out.setdefault(
             slug,

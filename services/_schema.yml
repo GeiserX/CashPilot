@@ -260,7 +260,7 @@
 #
 #   address_read:
 #     command: ["cat", "/etc/anon/anonrc"]
-#     pattern: '(?m)^[ \t]*ContactInfo[ \t][^\n]*@anon:[ \t]*(0x[0-9a-fA-F]{40})'
+#     pattern: '(?m)^[ \t]*ContactInfo[ \t][^\n]*@anon:[ \t]*(0x[0-9a-fA-F]{40})(?![0-9a-fA-F])'
 #     `manual` only. How the worker reads a wallet set inside the running
 #     container back: `command` runs in each running copy (it must only read),
 #     and group 1 of `pattern` is the address. Only that group leaves the

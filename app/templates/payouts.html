@@ -218,6 +218,7 @@
   }
 
   function stateCell(entry) {
+    if (entry.runs_on_unknown && entry.tracked_only) return '<span class="state state-idle">balance only</span>';
     if (entry.runs_on_unknown) return entry.recorded ? '<span class="state state-idle">recorded</span>' : '<span class="state state-idle">not deployed</span>';
     if (entry.deployed) return '<span class="state state-ok">deployed</span>';
     if (entry.recorded && !entry.tracked_only) return '<span class="state state-fail">not running</span>';

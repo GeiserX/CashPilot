@@ -342,7 +342,7 @@ async def registry(read_addresses: Any = None) -> dict[str, Any]:
                     server["address_read"] = True
                     server["addresses"] = found
                     server["address"] = found[0] if found else None
-        deployed = bool(servers) if workers is not None else slug in recorded_slugs
+        deployed = bool(servers) if workers is not None else slug in recorded_slugs and slug not in tracked_only
         row = entry(service, spec, deployed=deployed, servers=servers, recorded=slug in recorded_slugs)
         row["tracked_only"] = slug in tracked_only
         row["runs_on_unknown"] = workers is None
