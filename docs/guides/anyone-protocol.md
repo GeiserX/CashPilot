@@ -8,6 +8,15 @@
 
 Anyone Protocol (formerly ATOR) is a decentralized onion-routing privacy network. Node operators run relay nodes and earn ANYONE tokens for bandwidth contributed. Think "incentivized Tor." Official Docker images available for amd64 and arm64 including Raspberry Pi. Configuration is file-based via an anonrc file mounted into the container (Nickname, ContactInfo, ORPort, etc.).
 
+!!! warning "A relay earns nothing without a stake"
+
+    Rewards start only after 100 ANYONE is locked for that relay for at least
+    180 days, and you claim them by signing in your wallet. Without the stake
+    the relay still runs and uses about 1 GB of memory, but earns nothing. The
+    relay also lists your public IP in the network's relay directory, which can
+    hurt the IP reputation residential bandwidth apps pay for. Read
+    [Check two things before you deploy](index.md) first.
+
 ## Earning Estimates
 
 | Metric | Value |
@@ -18,7 +27,7 @@ Anyone Protocol (formerly ATOR) is a decentralized onion-routing privacy network
 | Payout frequency | Epoch-based |
 | Payment methods | Crypto |
 
-> Earnings based on bandwidth contributed and uptime. Open source project with active development.
+> Pays only with 100 ANYONE locked per relay for at least 180 days and a reward claim signed in your wallet. Without the stake a relay earns nothing. With it, earnings depend on bandwidth contributed and uptime.
 
 ## Requirements
 

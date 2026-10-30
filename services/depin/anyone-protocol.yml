@@ -9,6 +9,10 @@ description: >
   contributed. Think "incentivized Tor." CashPilot runs it from its own image,
   built from the project's signed Debian package, for amd64 and arm64. Configuration is file-based via an
   anonrc file mounted into the container (Nickname, ContactInfo, ORPort, etc.).
+  A relay earns nothing until 100 ANYONE is locked for it for at least 180
+  days, and rewards are claimed by signing in your wallet. The relay also
+  lists your public IP in the network's relay directory, which can hurt the IP
+  reputation residential bandwidth apps pay for.
 short_description: Decentralized onion routing - incentivized Tor relay nodes
 
 referral:
@@ -60,7 +64,7 @@ earnings:
   monthly_high: 50
   currency: USD
   per: "relay"
-  notes: "Earnings based on bandwidth contributed and uptime. Open source project with active development."
+  notes: "Pays only with 100 ANYONE locked per relay for at least 180 days and a reward claim signed in your wallet. Without the stake a relay earns nothing. With it, earnings depend on bandwidth contributed and uptime."
 
 cashout:
   method: manual

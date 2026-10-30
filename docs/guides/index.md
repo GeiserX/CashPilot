@@ -12,6 +12,24 @@ Setup and configuration for every service CashPilot supports.
     machine, but run anywhere. **GPU compute** pays most and needs an
     NVIDIA card. **Storage** wants disk and uptime rather than either.
 
+!!! warning "Check two things before you deploy"
+
+    **Does it pay only after a stake?** Some services pay nothing until you
+    lock up their token as a stake or as collateral. [Anyone Protocol](anyone-protocol.md),
+    [Sia](sia-hostd.md) and [Flux](flux.md) work this way. Without the stake
+    the node still runs and uses memory and bandwidth, but earns nothing.
+    Each guide says how much it needs. Buy it before you deploy, or skip
+    the service.
+
+    **Does it publish your IP?** A relay or exit node, such as Anyone
+    Protocol or [MystNodes](mysterium.md), lists your public IP in a
+    directory anyone can read. Residential bandwidth apps such as
+    [EarnApp](earnapp.md), [Repocket](repocket.md) and
+    [PacketStream](packetstream.md) pay for IPs that look like an ordinary
+    home connection. An IP on a relay list can get rated as VPN or
+    datacenter instead, and those apps then pay less on it. Run relays on
+    a different public IP from your bandwidth apps, or pick one kind.
+
 ## Bandwidth Sharing
 
 | Service | Needs | Runs as | Minimum payout | Status |
