@@ -92,5 +92,6 @@ testpaths = ["tests"]
 addopts = "-m 'not live'"
 markers = [
     "real_custom_images: use the real database.get_custom_images instead of the empty default",
+    "real_state_backups: use the real database.get_state_backups instead of the empty default",
     "live: hits a real provider API; needs credentials; excluded from normal runs",
 ]

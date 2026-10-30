@@ -35,7 +35,7 @@
     <div class="stat-value" id="payout-not-running">&mdash;</div>
   </div>
   <div class="stat-card">
-    <div class="stat-label">Irreplaceable state</div>
+    <div class="stat-label">Need a backup</div>
     <div class="stat-value" id="payout-critical-count">&mdash;</div>
   </div>
   <div class="stat-card">
@@ -53,15 +53,23 @@
   <div id="payout-actionable-body"></div>
 </div>
 
-<div class="card problem-panel problem-fail" id="payout-critical-card" style="display:none;">
-  <h3 class="settings-section-title"><span class="attn-tag">At risk</span> These are one deleted volume away from gone</h3>
-  <p class="settings-section-desc">
-    These running services keep money-bearing state on disk that exists
-    <strong>nowhere else</strong>. There is no server-side copy and no reset
-    link: if the volume goes, so does whatever it held. CashPilot will refuse to
-    delete these containers, but it cannot protect you from
-    <code>docker volume rm</code>, a wiped disk, or a rebuilt machine.
-  </p>
+<!-- Advice, not a fault: amber while any box lacks a confirmed backup, one
+     quiet line once every box has one. -->
+<div class="card problem-panel problem-warn" id="payout-critical-card" style="display:none;">
+  <div id="payout-critical-open">
+    <h3 class="settings-section-title"><span class="attn-tag">Back these up</span> State that exists only on your disks</h3>
+    <p class="settings-section-desc">
+      These services keep a node identity, a keystore or a wallet on disk, and
+      nothing else holds a copy. CashPilot refuses to delete these volumes, but it
+      cannot protect them from a wiped disk, a rebuilt machine or
+      <code>docker volume rm</code>. Keep a copy somewhere else, then mark each box
+      as backed up. The page asks again when the volume changes, and after six months.
+      <a href="https://geiserx.github.io/CashPilot/backup/" target="_blank" rel="noopener">How to restore</a>
+    </p>
+  </div>
+  <details class="payout-backup-quiet" id="payout-critical-quiet" hidden>
+    <summary class="muted" id="payout-critical-quiet-text"></summary>
+  </details>
   <div id="payout-critical-body"></div>
 </div>
 
@@ -189,16 +197,66 @@
   // volume IS the money") is what makes someone act. A generic warning trains
   // people to dismiss it.
   //
+  // Below the volumes, one line per box: whether its backup is confirmed, and
+  // the two ways to confirm it.
+  //
   // Pure, string-returning, no DOM — so the harness can run it.
   function criticalStateRow(entry) {
     var items = (entry.critical_state || []).map(function (v) {
       return '<li><code class="payout-address">' + esc(v.target) + '</code>'
            + '<div class="payout-holds">' + esc(v.holds) + '</div></li>';
     }).join('');
+    var boxes = ((entry.backup || {}).boxes || []).map(function (b) { return backupBoxRow(entry, b); }).join('');
     return '<div class="payout-critical-item">'
       + '<div class="payout-critical-name">' + esc(entry.name || entry.slug) + '</div>'
       + '<ul class="payout-critical-list">' + items + '</ul>'
+      + (boxes ? '<div class="payout-backup-boxes">' + boxes + '</div>' : '')
       + '</div>';
+  }
+
+  // One box's backup state. Confirmed is quiet; anything else says why the
+  // page is asking, in words, never a colour alone.
+  function backupBoxRow(entry, box) {
+    var day = esc(String(box.confirmed_at || '').slice(0, 10));
+    var text;
+    if (box.state === 'confirmed') {
+      text = 'Backup confirmed ' + day + (box.method === 'export' ? ' (downloaded here)' : '');
+      if (!box.tracks_changes) text += '. This worker is too old to notice a new volume; update it';
+    } else if (box.state === 'changed') {
+      text = 'The volume changed since the backup of ' + day + '. Back it up again';
+    } else if (box.state === 'recheck') {
+      text = 'Confirmed ' + day + ', before this worker could notice a new volume. Confirm it once more';
+    } else if (box.state === 'expired') {
+      text = 'Last confirmed ' + day + ', more than six months ago';
+    } else {
+      text = 'No backup confirmed';
+    }
+    var ok = box.state === 'confirmed';
+    var data = ' data-slug="' + esc(entry.slug) + '" data-worker="' + esc(box.worker_id) + '"';
+    var actions = ok
+      ? '<button type="button" class="btn btn-link btn-sm" data-backup-action="undo"' + data + '>Undo</button>'
+      : '<button type="button" class="btn btn-ghost btn-sm" data-backup-action="confirm"' + data + '>I have a backup</button>';
+    actions += '<button type="button" class="btn btn-ghost btn-sm" data-backup-action="export"' + data + '>Download backup</button>';
+    return '<div class="payout-backup-box' + (ok ? ' is-confirmed' : '') + '">'
+      + '<span class="payout-backup-where">' + esc(box.name) + (box.online === false ? ' (offline)' : '') + '</span>'
+      + '<span class="' + (ok ? 'payout-na' : 'payout-missing') + '">' + text + '</span>'
+      + '<span class="payout-backup-actions">' + actions + '</span>'
+      + '</div>';
+  }
+
+  // The export form, opened under one box. The secret is typed here, sent once
+  // and cleared; CashPilot keeps nothing that could open the file.
+  function exportForm(slug, workerId) {
+    var data = ' data-slug="' + esc(slug) + '" data-worker="' + esc(workerId) + '"';
+    return '<form class="payout-backup-form"' + data + '>'
+      + '<label><input type="radio" name="mode" value="passphrase" checked> Passphrase (12+ characters)</label>'
+      + '<label><input type="radio" name="mode" value="recipient"> X25519 public key (hex)</label>'
+      + '<input type="password" class="form-input" name="secret" autocomplete="new-password" required'
+      + ' aria-label="Passphrase or public key">'
+      + '<button type="submit" class="btn btn-ghost btn-sm">Encrypt and download</button>'
+      + '<p class="payout-holds">Encrypted on the box, before it leaves. Lose the passphrase or the private key '
+      + 'and this file cannot be opened by anyone, CashPilot included.</p>'
+      + '</form>';
   }
 
   // Which boxes report the service, from their heartbeats. A recorded service
@@ -304,16 +362,9 @@
 
       document.getElementById('payout-critical-count').textContent = summary.holding_irreplaceable_state || 0;
 
-      // DEPLOYED only. A service you are not running cannot lose state you do
-      // not have, and warning about it would be noise on someone's dashboard.
-      var atRisk = _entries.filter(function (e) { return e.deployed && (e.critical_state || []).length; });
-      var criticalCard = document.getElementById('payout-critical-card');
-      if (atRisk.length) {
-        document.getElementById('payout-critical-body').innerHTML = atRisk.map(criticalStateRow).join('');
-        criticalCard.style.display = '';
-      } else {
-        criticalCard.style.display = 'none';
-      }
+      // DEPLOYED only. A service you are not running cannot lose state you
+      // do not have, and warning about it would be noise on someone's dashboard.
+      renderCritical();
 
       var actionable = _entries.filter(function (e) { return e.address_missing && e.deployed; });
       var card = document.getElementById('payout-actionable-card');
@@ -331,6 +382,86 @@
       // would look like "no services pay you anything".
       container.innerHTML = '<p class="text-fail">Could not load payout destinations: '
         + esc((err && err.message) || 'error') + '</p>';
+    }
+  }
+
+  function renderCritical() {
+    var atRisk = _entries.filter(function (e) { return e.deployed && (e.critical_state || []).length; });
+    var card = document.getElementById('payout-critical-card');
+    if (!atRisk.length) { card.style.display = 'none'; return; }
+    var open = atRisk.filter(function (e) { return !(e.backup && e.backup.confirmed); });
+    var quiet = document.getElementById('payout-critical-quiet');
+    document.getElementById('payout-critical-open').hidden = !open.length;
+    card.classList.toggle('problem-warn', open.length > 0);
+    quiet.hidden = open.length > 0;
+    var body = document.getElementById('payout-critical-body');
+    body.innerHTML = atRisk.map(criticalStateRow).join('');
+    if (!open.length) {
+      document.getElementById('payout-critical-quiet-text').textContent =
+        'Backups confirmed for ' + atRisk.length + (atRisk.length === 1 ? ' service' : ' services')
+        + ' with irreplaceable state';
+      quiet.appendChild(body);
+    } else {
+      card.appendChild(body);
+    }
+    card.style.display = '';
+  }
+
+  function download(name, b64) {
+    var bin = atob(b64), bytes = new Uint8Array(bin.length);
+    for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    var url = URL.createObjectURL(new Blob([bytes], {type: 'application/octet-stream'}));
+    var a = document.createElement('a');
+    a.href = url; a.download = name;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+  }
+
+  async function onBackupClick(ev) {
+    var btn = ev.target.closest('[data-backup-action]');
+    if (!btn) return;
+    var slug = btn.dataset.slug, worker = Number(btn.dataset.worker);
+    var path = '/api/payout-registry/' + encodeURIComponent(slug) + '/backup-confirm';
+    try {
+      if (btn.dataset.backupAction === 'confirm') {
+        await CP.api(path, {method: 'POST', body: {worker_id: worker}});
+      } else if (btn.dataset.backupAction === 'undo') {
+        await CP.api(path + '?worker_id=' + worker, {method: 'DELETE'});
+      } else {
+        var row = btn.closest('.payout-backup-box');
+        var next = row.nextElementSibling;
+        if (next && next.classList.contains('payout-backup-form')) { next.remove(); return; }
+        row.insertAdjacentHTML('afterend', exportForm(slug, worker));
+        row.nextElementSibling.querySelector('input[name=secret]').focus();
+        return;
+      }
+      await loadPayouts();
+    } catch (err) {
+      CP.toast((err && err.message) || 'That did not work', 'error');
+    }
+  }
+
+  async function onBackupSubmit(ev) {
+    var form = ev.target.closest('.payout-backup-form');
+    if (!form) return;
+    ev.preventDefault();
+    var input = form.querySelector('input[name=secret]');
+    var body = {worker_id: Number(form.dataset.worker)};
+    body[form.querySelector('input[name=mode]:checked').value === 'recipient' ? 'recipient_public_key' : 'passphrase'] = input.value;
+    input.value = '';
+    var button = form.querySelector('button[type=submit]');
+    button.disabled = true; button.textContent = 'Reading and encrypting\u2026';
+    try {
+      var data = await CP.api('/api/payout-registry/' + encodeURIComponent(form.dataset.slug) + '/backup-export',
+        {method: 'POST', body: body});
+      download(data.filename, data.bundle_b64);
+      CP.toast('Backup downloaded: ' + data.filename, 'success');
+      await loadPayouts();
+    } catch (err) {
+      CP.toast((err && err.message) || 'The backup failed', 'error');
+      button.disabled = false; button.textContent = 'Encrypt and download';
+    } finally {
+      body = null;
     }
   }
 
@@ -354,6 +485,9 @@
   document.addEventListener('DOMContentLoaded', function () {
     if (document.body.dataset.page !== 'payouts') return;
     document.getElementById('payout-filter').addEventListener('input', applyFilter);
+    var critical = document.getElementById('payout-critical-card');
+    critical.addEventListener('click', onBackupClick);
+    critical.addEventListener('submit', onBackupSubmit);
     loadPayouts();
   });
 })();

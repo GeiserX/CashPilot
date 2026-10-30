@@ -1224,6 +1224,15 @@ img { max-width: 100%; }
 .payout-critical-name { margin-bottom: 6px; font-weight: 600; }
 .payout-critical-list { margin: 0; padding-left: 18px; }
 .payout-holds { margin: 2px 0 8px; font-size: var(--fs-2); color: var(--text-muted); }
+/* One line per box: where, whether its backup is confirmed, and the actions. */
+.payout-backup-boxes { margin: 0 0 4px 18px; }
+.payout-backup-box { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: center; padding: 3px 0; }
+.payout-backup-where { min-width: 110px; font-size: var(--fs-2); }
+.payout-backup-actions { display: inline-flex; gap: 8px; margin-left: auto; }
+.payout-backup-form { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center; margin: 4px 0 8px 18px; font-size: var(--fs-2); }
+.payout-backup-form .form-input { width: 260px; max-width: 100%; }
+.payout-backup-form .payout-holds { flex-basis: 100%; margin: 0; }
+.payout-backup-quiet summary { cursor: pointer; font-size: var(--fs-2); }
 
 /* ================================================================
    Console components

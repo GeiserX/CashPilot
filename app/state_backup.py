@@ -288,3 +288,100 @@ def looks_like_bundle(data: bytes) -> bool:
     except BackupError:
         return False
     return True
+
+
+def split_archives(payload: bytes) -> dict[str, bytes]:
+    """The decrypted payload as one tar archive per backed-up mount.
+
+    The worker stores each critical mount as Docker's own archive of it, one
+    after another. Each archive's members sit under the mount's last path
+    component (``/var/lib/mysterium-node`` -> ``mysterium-node/...``), so they
+    are regrouped by that name. Owners, modes and times are kept, which is what
+    ``docker cp`` needs to put the files back as the service expects them.
+    """
+    import io
+    import tarfile
+
+    groups: dict[str, list[tuple[tarfile.TarInfo, bytes | None]]] = {}
+    with tarfile.open(fileobj=io.BytesIO(payload), mode="r:", ignore_zeros=True) as src:
+        for member in src:
+            name = member.name[2:] if member.name.startswith("./") else member.name
+            top = name.lstrip("/").split("/", 1)[0]
+            if not top or top in (".", ".."):
+                raise BackupError("The backup holds a path outside its own folders.")
+            data = src.extractfile(member).read() if member.isfile() else None  # type: ignore[union-attr]
+            groups.setdefault(top, []).append((member, data))
+
+    out: dict[str, bytes] = {}
+    for top, members in groups.items():
+        buf = io.BytesIO()
+        with tarfile.open(fileobj=buf, mode="w", format=tarfile.PAX_FORMAT) as dst:
+            for member, data in members:
+                dst.addfile(member, io.BytesIO(data) if data is not None else None)
+        out[top] = buf.getvalue()
+    return out
+
+
+def _cli(argv: list[str] | None = None) -> int:
+    """``python -m app.state_backup`` -- open a bundle on your own machine.
+
+    Secrets are read from the terminal (or stdin when piped), never from the
+    command line, where they would land in shell history and the process list.
+    Needs only Python and the ``cryptography`` package, so it runs without
+    CashPilot: copy this one file, or run it from the CashPilot image with
+    ``--network none``.
+    """
+    import argparse
+    import getpass
+    import os
+    import sys
+
+    parser = argparse.ArgumentParser(prog="python -m app.state_backup", description=_cli.__doc__)
+    sub = parser.add_subparsers(dest="command", required=True)
+    sub.add_parser("keygen", help="make an X25519 key pair; keep the private key, give CashPilot the public one")
+    dec = sub.add_parser("decrypt", help="open a .cpbackup file into one tar per backed-up folder")
+    dec.add_argument("bundle", help="the .cpbackup file")
+    dec.add_argument("--out", required=True, help="folder to write the tar files into (created if missing)")
+    args = parser.parse_args(argv)
+
+    if args.command == "keygen":
+        private, public = generate_recipient_keypair()
+        print(f"private key (keep this, offline; it opens your backups): {private}")
+        print(f"public key (paste this into CashPilot): {public}")
+        return 0
+
+    with open(args.bundle, "rb") as fh:
+        bundle = fh.read()
+    try:
+        header = read_header(bundle)
+    except BackupError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+    prompt = "Passphrase: " if header.get("mode") == MODE_PASSPHRASE else "Private key (hex): "
+    secret = getpass.getpass(prompt) if sys.stdin.isatty() else sys.stdin.readline().rstrip("\n")
+    try:
+        if header.get("mode") == MODE_PASSPHRASE:
+            payload = open_bundle(bundle, passphrase=secret)
+        else:
+            payload = open_bundle(bundle, recipient_private_key=secret.strip())
+        archives = split_archives(payload)
+    except BackupError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+    finally:
+        del secret
+
+    meta = header.get("metadata") or {}
+    os.makedirs(args.out, exist_ok=True)
+    targets = {str(t).rstrip("/").rsplit("/", 1)[-1]: str(t) for t in meta.get("targets") or []}
+    print(f"{meta.get('slug', '?')} from {meta.get('worker', '?')}, checksum verified.")
+    for name, data in sorted(archives.items()):
+        path = os.path.join(args.out, f"{name}.tar")
+        with open(path, "wb") as fh:
+            fh.write(data)
+        print(f"  {path}  ->  restores {targets.get(name, '/' + name)}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(_cli())

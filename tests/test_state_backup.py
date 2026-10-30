@@ -127,7 +127,12 @@ class TestThereIsNoWayToSendABundleAnywhere:
         assert not (imported & forbidden), f"{imported & forbidden} would make an upload path possible"
 
     def test_it_imports_only_stdlib_and_the_existing_crypto_dependency(self):
-        allowed_prefixes = ("hashlib", "json", "secrets", "typing", "cryptography", "__future__", "os", "pathlib")
+        # argparse, getpass, sys, io and tarfile are the local decrypt command's:
+        # a prompt, a file and an archive, none of which can send anything.
+        allowed_prefixes = (
+            "hashlib", "json", "secrets", "typing", "cryptography", "__future__", "os", "pathlib",
+            "argparse", "getpass", "sys", "io", "tarfile",
+        )  # fmt: skip
         stray = {m for m in _modules_imported() if not m.startswith(allowed_prefixes)}
         assert not stray, f"unexpected dependency in the backup module: {stray}"
 

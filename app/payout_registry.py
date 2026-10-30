@@ -34,7 +34,9 @@ which is precisely why it can ship ahead of the on-chain tiers.
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from app import catalog, database, placement
@@ -251,6 +253,89 @@ def critical_state(service: dict[str, Any]) -> list[dict[str, Any]]:
     return out
 
 
+#: How long a confirmed backup counts before the page asks again. The state
+#: fingerprint catches a new volume or a moved mount; this catches what it
+#: cannot see, such as an identity regenerated inside the same volume.
+BACKUP_MAX_AGE = timedelta(days=183)
+
+
+def state_ids(workers: list[dict[str, Any]]) -> dict[tuple[int, str], str]:
+    """(worker_id, slug) -> the state fingerprint that worker last reported.
+
+    Absent when the worker is older than the fingerprint, or could not read it.
+    """
+    out: dict[tuple[int, str], str] = {}
+    for w in workers:
+        containers = w.get("containers") or []
+        if isinstance(containers, str):
+            try:
+                containers = json.loads(containers)
+            except ValueError:
+                continue
+        for c in containers if isinstance(containers, list) else []:
+            if isinstance(c, dict) and c.get("slug") and isinstance(c.get("state_id"), str) and c["state_id"]:
+                out[(w.get("id"), c["slug"])] = c["state_id"]
+    return out
+
+
+def _sqlite_time(value: Any) -> datetime | None:
+    try:
+        return datetime.fromisoformat(str(value)[:19].replace(" ", "T")).replace(tzinfo=UTC)
+    except (TypeError, ValueError):
+        return None
+
+
+def backup_status(
+    slug: str,
+    servers: list[dict[str, Any]],
+    confirmations: dict[tuple[str, int], dict[str, Any]],
+    current: dict[tuple[int, str], str],
+    *,
+    now: datetime,
+) -> dict[str, Any]:
+    """Whether each box's copy of ``slug`` has a confirmed backup.
+
+    A confirmation is void when the box now reports a different state
+    fingerprint than the one confirmed (a new volume, a moved mount), or when
+    it is older than BACKUP_MAX_AGE. A box that reports no fingerprint (an
+    older worker) is judged on age alone, and says so.
+    """
+    boxes: list[dict[str, Any]] = []
+    for server in servers:
+        if server.get("android"):
+            continue
+        wid = server["worker_id"]
+        found = confirmations.get((slug, wid))
+        live = current.get((wid, slug))
+        state = "none"
+        if found:
+            at = _sqlite_time(found.get("confirmed_at"))
+            if live is not None and found.get("state_id") is None:
+                # Confirmed while the box could not fingerprint its state, so
+                # there is nothing to compare: ask once more, now that it can.
+                state = "recheck"
+            elif live is not None and found.get("state_id") != live:
+                state = "changed"
+            elif at is None or now - at > BACKUP_MAX_AGE:
+                state = "expired"
+            else:
+                state = "confirmed"
+        boxes.append(
+            {
+                "worker_id": wid,
+                "name": server["name"],
+                "online": server.get("online", True),
+                "state": state,
+                "confirmed_at": found.get("confirmed_at") if found else None,
+                "method": found.get("method") if found else None,
+                # False: this box cannot tell when its state changes, so only
+                # the time limit re-arms it.
+                "tracks_changes": live is not None,
+            }
+        )
+    return {"boxes": boxes, "confirmed": bool(boxes) and all(b["state"] == "confirmed" for b in boxes)}
+
+
 async def registry(read_addresses: Any = None) -> dict[str, Any]:
     """Every service's payout destination, deployed or not.
 
@@ -279,6 +364,14 @@ async def registry(read_addresses: Any = None) -> dict[str, Any]:
         logger.warning("Could not read the workers for the payout registry: %s", exc)
         workers = None
     where = placement.runs_on(workers or [])
+
+    current = state_ids(workers or [])
+    try:
+        confirmations = await database.get_state_backups()
+    except Exception as exc:  # noqa: BLE001 - unknown means "not confirmed", never "confirmed"
+        logger.warning("Could not read the confirmed backups: %s", exc)
+        confirmations = {}
+    now = datetime.now(UTC)
 
     services = catalog.get_services()
     readable = {
@@ -346,6 +439,11 @@ async def registry(read_addresses: Any = None) -> dict[str, Any]:
         row = entry(service, spec, deployed=deployed, servers=servers, recorded=slug in recorded_slugs)
         row["tracked_only"] = slug in tracked_only
         row["runs_on_unknown"] = workers is None
+        row["backup"] = (
+            backup_status(slug, servers, confirmations, current, now=now)
+            if row["deployed"] and row["critical_state"]
+            else None
+        )
         entries.append(row)
 
     entries.sort(key=lambda row: (not (row["deployed"] or row["recorded"]), (row["name"] or "").lower()))
@@ -364,7 +462,12 @@ async def registry(read_addresses: Any = None) -> dict[str, Any]:
             "unclassified": sum(1 for row in entries if row["model"] == "unknown"),
             # DEPLOYED only. A service you are not running cannot lose state you
             # do not have, and counting it would put a permanent warning on the
-            # dashboard of someone who has nothing at risk.
-            "holding_irreplaceable_state": sum(1 for row in entries if row["deployed"] and row["critical_state"]),
+            # dashboard of someone who has nothing at risk. A service whose
+            # every box has a confirmed backup is not counted either.
+            "holding_irreplaceable_state": sum(
+                1
+                for row in entries
+                if row["deployed"] and row["critical_state"] and not (row["backup"] or {}).get("confirmed")
+            ),
         },
     }
