@@ -26,9 +26,11 @@ Setup and configuration for every service CashPilot supports.
     directory anyone can read. Residential bandwidth apps such as
     [EarnApp](earnapp.md), [Repocket](repocket.md) and
     [PacketStream](packetstream.md) pay for IPs that look like an ordinary
-    home connection. An IP on a relay list can get rated as VPN or
-    datacenter instead, and those apps then pay less on it. Run relays on
-    a different public IP from your bandwidth apps, or pick one kind.
+    home connection, and an IP on a relay list may get rated as VPN or
+    datacenter. We have not seen that happen, but keep it in mind, and
+    run relays on a different public IP if you can. Those apps also refuse
+    IPs whose range is classed as business or hosting. Look your IP up at
+    [ipinfo.io](https://ipinfo.io) before you deploy them.
 
 ## Bandwidth Sharing
 

@@ -46,7 +46,7 @@ Navigate to [http://localhost:8080](http://localhost:8080) in your browser. Sinc
 
 Filter services by category (bandwidth, DePIN, storage, compute), view earning estimates, and check requirements before deploying.
 
-Two kinds of service need a closer look first: services that pay only after you lock up a token stake, such as Anyone Protocol, Sia and Flux, and relays that publish your IP, which can lower what residential bandwidth apps pay you. See [Check two things before you deploy](guides/index.md).
+Two kinds of service need a closer look first: services that pay only after you lock up a token stake, such as Anyone Protocol, Sia and Flux, and relays that publish your IP, which may lower what residential bandwidth apps pay you. See [Check two things before you deploy](guides/index.md).
 
 ### 4. Sign up for services
 

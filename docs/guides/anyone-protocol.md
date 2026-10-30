@@ -13,8 +13,8 @@ Anyone Protocol (formerly ATOR) is a decentralized onion-routing privacy network
     Rewards start only after 100 ANYONE is locked for that relay for at least
     180 days, and you claim them by signing in your wallet. Without the stake
     the relay still runs and uses about 1 GB of memory, but earns nothing. The
-    relay also lists your public IP in the network's relay directory, which can
-    hurt the IP reputation residential bandwidth apps pay for. Read
+    relay also lists your public IP in the network's relay directory, which
+    may hurt the IP reputation residential bandwidth apps pay for. Read
     [Check two things before you deploy](index.md) first.
 
 ## Earning Estimates

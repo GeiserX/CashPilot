@@ -11,7 +11,7 @@ description: >
   anonrc file mounted into the container (Nickname, ContactInfo, ORPort, etc.).
   A relay earns nothing until 100 ANYONE is locked for it for at least 180
   days, and rewards are claimed by signing in your wallet. The relay also
-  lists your public IP in the network's relay directory, which can hurt the IP
+  lists your public IP in the network's relay directory, which may hurt the IP
   reputation residential bandwidth apps pay for.
 short_description: Decentralized onion routing - incentivized Tor relay nodes
 
