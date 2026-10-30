@@ -516,3 +516,32 @@ class TestTheWorkerRead:
             command = " ".join(_catalog_reader(slug)["command"])
             assert not re.search(r"(^|\s)(rm|mv|cp|tee|chmod|chown|kill)\s|>|-X\s*(POST|PUT|DELETE)", command), slug
             assert catalog.get_service(slug)["payout"]["address_source"] == "manual"
+
+
+class TestARemovalThroughTheUIRaisesNothing:
+    def test_removing_on_every_box_leaves_nothing_for_the_alert(self, tmp_path):
+        """The UI's Remove drops the box's record, and the fleet row with the last one."""
+        from app import database
+
+        async def go():
+            await database.init_db()
+            await database.save_deployment("bitping", "c1", spec={"env": {}}, worker_id=1)
+            await database.save_deployment("bitping", "c2", spec={"env": {}}, worker_id=2)
+            await database.remove_deployment("bitping", worker_id=1)
+            await database.remove_deployment("bitping", worker_id=2)
+            return await database.get_deployments(), await database.list_deployment_placements()
+
+        with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "t.db"):
+            deployments, specs = asyncio.run(go())
+        workers = [_docker(1, "watchtower", []), _docker(2, "geiserct", [])]
+        first = {("bitping", None): NOW - timedelta(days=1), ("bitping", 1): NOW - timedelta(days=1)}
+        assert placement.missing(deployments, specs, workers, now=NOW, first_missing=first) == {}
+        assert first == {}
+
+    def test_control_the_same_containers_gone_without_a_removal_do_alert(self):
+        deployments = [{"slug": "bitping", "status": "running", "deployed_at": "2026-10-01 00:00:00"}]
+        specs = [{"slug": "bitping", "worker_id": 1, "deployed_at": "2026-10-01 00:00:00"}]
+        workers = [_docker(1, "watchtower", []), _docker(2, "geiserct", [])]
+        first = {("bitping", None): NOW - timedelta(days=1), ("bitping", 1): NOW - timedelta(days=1)}
+        found = placement.missing(deployments, specs, workers, now=NOW, first_missing=first)
+        assert found["bitping"]["everywhere"] is True
