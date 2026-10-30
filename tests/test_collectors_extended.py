@@ -852,12 +852,12 @@ class TestMissingBalanceFieldErrors:
         assert result.error is not None
         assert result.balance == 0.0
 
-    def test_mystnodes_missing_earningstotal(self):
+    def test_mystnodes_without_node_readings(self):
         from app.collectors.mystnodes import MystNodesCollector
 
         client = _make_async_client()
         client.post.return_value = _mock_response(200, {"accessToken": "t", "refreshToken": "r"})
-        client.get.return_value = _mock_response(200, {})  # no earningsTotal
+        client.get.return_value = _mock_response(200, {})  # no node read reached it
         with patch("app.collectors.mystnodes.httpx.AsyncClient", return_value=client):
             result = asyncio.run(MystNodesCollector(email="e", password="p").collect())
         assert result.error is not None

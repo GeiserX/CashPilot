@@ -287,6 +287,16 @@
 #     this long, and a new deployment gets this long instead of 7 days before
 #     a balance that never grew is mentioned. Omit it for a service that earns
 #     a little every day; its own rhythm is learned from its history.
+#   node_read: (optional) how the worker reads a node's own earnings from inside
+#     its running container, for a provider whose account API cannot give a
+#     balance or a lifetime (app/node_read.py, issue #488):
+#       command:  ["sh", "-c", "..."]  run inside the container, read-only
+#       node:     regex, group 1 names the node
+#       balance:  regex, group 1 is the amount waiting to settle
+#       lifetime: regex, group 1 is everything the node ever earned
+#     The collector gets one reading per node; the balance is their unsettled
+#     total and earned figures follow the lifetime, so a settlement is never
+#     asked about as a payout.
 #   per_node_earnings: true|false
 #     The collector can break earnings down per node/machine, not just an
 #     account total. Declared here rather than branched on in app/ so adding a

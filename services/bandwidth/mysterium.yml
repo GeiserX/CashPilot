@@ -62,8 +62,9 @@ docker:
         node loses its reputation and any earnings still held against the old one.
   # Loopback by default, on purpose. With host networking, 0.0.0.0 publishes
   # the node's WebUI (4449) and Tequila API (4050) on every interface of the
-  # machine, and nothing off the machine needs them: CashPilot reads earnings
-  # from the mystnodes.com cloud API, not from the node. Reach the WebUI from
+  # machine, and nothing off the machine needs them: the worker reads the
+  # node's earnings from inside the container (collector.node_read below), not
+  # over the network. Reach the WebUI from
   # another machine over an SSH tunnel (ssh -L 4449:127.0.0.1:4449 <host>), or
   # put a reverse proxy in front by adding the one address it connects to in
   # UI_ADDRESS (the node binds every address in the comma-separated list). The
@@ -172,7 +173,25 @@ collector:
   # Earnings move when someone buys a session through the node, and on a
   # quiet exit that can be days apart; settlements arrive in batches.
   quiet_days: 14
-  notes: "Tequila API at http://localhost:4449/tequilapi/settlement/total-fees. Returns MYST in wei (10^18). No auth needed."
+  notes: >-
+    The balance and lifetime come from each node's own TequilAPI identity,
+    read by the worker (node_read). The cloud's earningsTotal is a trailing
+    30-day sum and its per-node lifetimeEarnings is 0, so neither is used.
+  # How the worker reads one node's figures (app/node_read.py): TequilAPI's
+  # identity, on 127.0.0.1:4050 inside the node, which answers reads without a
+  # login there. earnings_tokens is the unsettled amount, the next settlement;
+  # earnings_total_tokens is everything the node ever earned, settled or not,
+  # before the Hermes fee. The first identity is the node's own.
+  node_read:
+    command:
+      - sh
+      - -c
+      - >-
+        id=$(wget -qO- -T 5 http://127.0.0.1:4050/identities | grep -o '0x[0-9a-fA-F]\{40\}' | head -1)
+        && wget -qO- -T 5 "http://127.0.0.1:4050/identities/$id"
+    node: '"id":"(0x[0-9a-fA-F]{40})"'
+    balance: '"earnings_tokens":\{[^}]*"ether":"([0-9]+(?:\.[0-9]+)?)"'
+    lifetime: '"earnings_total_tokens":\{[^}]*"ether":"([0-9]+(?:\.[0-9]+)?)"'
   # MystNodes reports earnings per registered node, not just an
   # account total, so the UI can break the figure down by machine.
   per_node_earnings: true

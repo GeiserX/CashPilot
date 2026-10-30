@@ -39,21 +39,29 @@ def _mock_response(status_code=200, json_data=None, text="", url="https://exampl
 
 class TestMystNodesCollectorDeep:
     def test_collect_success(self):
+        """The balance is what the nodes hold unsettled, never the cloud's 30-day sum (#488)."""
         from app.collectors.mystnodes import MystNodesCollector
 
         login_resp = _mock_response(200, {"accessToken": "at", "refreshToken": "rt"})
-        earnings_resp = _mock_response(200, {"earningsTotal": 12.5})
-
         client = _make_async_client()
         client.post.return_value = login_resp
-        client.get.return_value = earnings_resp
+        client.get.return_value = _mock_response(200, {"earningsTotal": 113.62})
 
         with patch("app.collectors.mystnodes.httpx.AsyncClient", return_value=client):
             c = MystNodesCollector(email="test@test.com", password="pass")
+            c.node_readings = [
+                {"node": "0xa", "balance": 1.32, "lifetime": 166.7},
+                {"node": "0xb", "balance": 2.54, "lifetime": 245.8},
+                {"slug": "mysterium", "error": "timed out"},
+            ]
             result = asyncio.run(c.collect())
         assert result.error is None
-        assert result.balance == 12.5
+        assert result.balance == 3.86
         assert result.currency == "MYST"
+        assert result.nodes == [
+            {"node": "0xa", "balance": 1.32, "lifetime": 166.7},
+            {"node": "0xb", "balance": 2.54, "lifetime": 245.8},
+        ]
 
     def test_collect_no_credentials(self):
         from app.collectors.mystnodes import MystNodesCollector
@@ -63,25 +71,30 @@ class TestMystNodesCollectorDeep:
         assert result.error is not None
         assert "not configured" in result.error
 
-    def test_collect_with_token_refresh(self):
+    def test_no_node_read_is_an_error_not_the_cloud_figure(self):
         from app.collectors.mystnodes import MystNodesCollector
 
-        login_resp = _mock_response(200, {"accessToken": "at", "refreshToken": "rt"})
-        expired_resp = MagicMock()
-        expired_resp.status_code = 401
-        ok_resp = _mock_response(200, {"earningsTotal": 5.0})
-
-        refresh_resp = _mock_response(200, {"accessToken": "new-at", "refreshToken": "new-rt"})
-
         client = _make_async_client()
-        client.post.side_effect = [login_resp, refresh_resp]
-        client.get.side_effect = [expired_resp, ok_resp]
+        client.post.return_value = _mock_response(200, {"accessToken": "at", "refreshToken": "rt"})
+        client.get.return_value = _mock_response(200, {"earningsTotal": 113.62})
 
         with patch("app.collectors.mystnodes.httpx.AsyncClient", return_value=client):
             c = MystNodesCollector(email="test@test.com", password="pass")
+            c.node_readings = []
             result = asyncio.run(c.collect())
-        assert result.error is None
-        assert result.balance == 5.0
+        assert result.error and "30 days" in result.error
+        assert result.balance == 0.0 and result.nodes is None
+
+    def test_one_node_reported_twice_counts_once(self):
+        from app.collectors.mystnodes import MystNodesCollector
+
+        client = _make_async_client()
+        client.post.return_value = _mock_response(200, {"accessToken": "at", "refreshToken": "rt"})
+        with patch("app.collectors.mystnodes.httpx.AsyncClient", return_value=client):
+            c = MystNodesCollector(email="test@test.com", password="pass")
+            c.node_readings = [{"node": "0xa", "balance": 1.0, "lifetime": 9.0}] * 2
+            result = asyncio.run(c.collect())
+        assert result.balance == 1.0 and len(result.nodes) == 1
 
     def test_get_per_node_earnings(self):
         from app.collectors.mystnodes import MystNodesCollector

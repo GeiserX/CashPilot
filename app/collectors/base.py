@@ -41,6 +41,12 @@ class EarningsResult:
     # account, so they earn for nobody. None when the collector did not or
     # could not check; the collection loop turns a non-empty list into a notice.
     unlinked_devices: list[str] | None = None
+    # Each node's own figures, for a provider read node by node (issue #488):
+    # dicts with ``node``, ``balance`` (waiting to settle) and ``lifetime``. The
+    # collection loop stores them and replaces ``balance`` with the total over
+    # every node it knows. A balance that comes with these drops by itself when
+    # a node settles, so it is never asked about as a payout.
+    nodes: list[dict[str, Any]] | None = None
 
     def __post_init__(self) -> None:
         # An empty error is falsy, so the collection loop would store the 0.0

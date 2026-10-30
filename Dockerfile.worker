@@ -65,6 +65,8 @@ COPY --chown=cashpilot:root app/orchestrator.py ./app/
 COPY --chown=cashpilot:root app/isolation_check.py ./app/
 # Reads a payout address set inside a container (Mysterium, Anyone).
 COPY --chown=cashpilot:root app/payout_read.py ./app/
+# Reads a node's own earnings figures from inside it (Mysterium, issue #488).
+COPY --chown=cashpilot:root app/node_read.py ./app/
 COPY --chown=cashpilot:root app/arch.py ./app/
 COPY --chown=cashpilot:root app/catalog.py ./app/
 COPY --chown=cashpilot:root services/ ./services/

@@ -335,7 +335,30 @@ CREATE TABLE IF NOT EXISTS earnings (
     -- comes out SYSTEMATICALLY UNDERSTATED while looking entirely plausible.
     -- Deltas are therefore taken per (platform, source) and only then summed.
     source     TEXT    NOT NULL DEFAULT 'server',
-    created_at TEXT    NOT NULL DEFAULT (datetime('now'))
+    created_at TEXT    NOT NULL DEFAULT (datetime('now')),
+    -- A running total that never falls, for a provider whose balance drops by
+    -- itself when it settles (Mysterium, issue #488): everything earned since
+    -- CashPilot first read each node. Earned figures difference THIS when two
+    -- consecutive readings both carry it, so a settlement is not a drop. NULL
+    -- for every other provider, and for rows written before it existed.
+    earned     REAL
+);
+-- Each node's own figures, for a provider read node by node (issue #488).
+-- Kept per node so a node that one collection could not read still counts
+-- with what it last said, instead of its whole lifetime vanishing for an hour
+-- and coming back as a day's earnings. `baseline` is the lifetime when
+-- CashPilot first read the node: what it earned before then is lifetime, not
+-- earnings of the day it was first seen.
+CREATE TABLE IF NOT EXISTS node_earnings (
+    platform   TEXT NOT NULL,
+    node       TEXT NOT NULL,
+    balance    REAL NOT NULL,
+    lifetime   REAL NOT NULL,
+    baseline   REAL NOT NULL,
+    currency   TEXT NOT NULL,
+    first_seen TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    PRIMARY KEY (platform, node)
 );
 -- NOTE: the (platform, source, date) unique index is created in the MIGRATION,
 -- not here. On an upgraded volume `CREATE TABLE IF NOT EXISTS earnings` is a
@@ -912,6 +935,11 @@ async def init_db() -> None:
         if "source" not in earnings_cols:
             applied.append("earnings.source")
             await db.execute("ALTER TABLE earnings ADD COLUMN source TEXT NOT NULL DEFAULT 'server'")
+        # NULL is the truthful backfill: no reading before this carried a
+        # running total, so their deltas stay balance deltas (issue #488).
+        if "earned" not in earnings_cols:
+            applied.append("earnings.earned")
+            await db.execute("ALTER TABLE earnings ADD COLUMN earned REAL")
         # Unconditional, and only AFTER the column is guaranteed to exist. This
         # is the ONLY place the index is created, so a fresh install and an
         # upgraded volume take the same path -- declaring it in _SCHEMA instead
@@ -1018,8 +1046,12 @@ async def upsert_earnings(
     date: str | None = None,
     fx_rate_usd: float | None = None,
     source: str = "server",
+    earned: float | None = None,
 ) -> None:
     """Insert or update an earnings record for a platform + source + date.
+
+    ``earned`` is the running total of a provider read node by node (see the
+    column in the schema); None for every other provider.
 
     ``fx_rate_usd`` is the currency -> USD rate at collection time. It is stored
     alongside the balance because exchange rates are only cached live: without it,
@@ -1040,11 +1072,12 @@ async def upsert_earnings(
         # WHERE guard preserves created_at when the balance is unchanged.
         await db.execute(
             """
-            INSERT INTO earnings (platform, balance, currency, date, fx_rate_usd, source)
-            VALUES (?, ?, ?, ?, ?, ?)
+            INSERT INTO earnings (platform, balance, currency, date, fx_rate_usd, source, earned)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(platform, source, date) DO UPDATE SET
                 balance = excluded.balance,
                 currency = excluded.currency,
+                earned = excluded.earned,
                 -- COALESCE, not a plain assignment: if the rate lookup failed this
                 -- cycle (provider outage after a restart cleared the cache) the new
                 -- value is NULL, and overwriting a known-good rate with it would
@@ -1058,8 +1091,12 @@ async def upsert_earnings(
             -- skipped entirely. Allow the update through in that one case.
             WHERE earnings.balance != excluded.balance
                OR earnings.fx_rate_usd IS NULL
+               -- A settlement can leave the balance where it was while the
+               -- running total moved, and the first reading of the day after
+               -- an upgrade must gain its running total.
+               OR earnings.earned IS NOT excluded.earned
             """,
-            (platform, balance, currency, date, fx_rate_usd, source),
+            (platform, balance, currency, date, fx_rate_usd, source, earned),
         )
         await db.commit()
     finally:
@@ -1262,6 +1299,19 @@ def _is_a_pricing_gap(currency: str) -> bool:
     return currency not in UNPRICED_BY_DESIGN
 
 
+def _earned_step(before: tuple[str, float, float | None], balance: float, earned: float | None) -> float:
+    """What a series earned between two consecutive readings, before clamping.
+
+    The running total when both readings carry one (issue #488): a Mysterium
+    node's balance drops each time it settles, and differencing the balance
+    would clamp that day to zero although the node earned all of it. Rows
+    without one, and the first reading that has one, use the balance.
+    """
+    if before[2] is not None and earned is not None:
+        return earned - before[2]
+    return balance - before[1]
+
+
 async def _usd_earned_per_date(db: Any) -> tuple[dict[str, float], set[str]]:
     """USD earned per calendar date, summed across platforms.
 
@@ -1284,7 +1334,7 @@ async def _usd_earned_per_date(db: Any) -> tuple[dict[str, float], set[str]]:
     """
     cursor = await db.execute(
         """
-        SELECT platform, date, balance, currency, fx_rate_usd, source
+        SELECT platform, date, balance, currency, fx_rate_usd, source, earned
         FROM earnings
         ORDER BY platform, source, date
         """
@@ -1294,7 +1344,7 @@ async def _usd_earned_per_date(db: Any) -> tuple[dict[str, float], set[str]]:
     # two machines sampling one provider account interleave into a series whose
     # deltas are meaningless, and every drop clamps to zero, so the total comes
     # out understated while looking plausible.
-    previous: dict[tuple[str, str], tuple[str, float]] = {}
+    previous: dict[tuple[str, str], tuple[str, float, float | None]] = {}
     unpriced: set[str] = set()
     for row in await cursor.fetchall():
         platform = row["platform"]
@@ -1310,14 +1360,15 @@ async def _usd_earned_per_date(db: Any) -> tuple[dict[str, float], set[str]]:
                 unpriced.add(platform)
             continue
         balance = float(row["balance"] or 0.0)
+        earned = row["earned"]
         before = previous.get(series)
         if before is not None and before[0] == currency:
             # Clamped per platform BEFORE summing: a payout drops one
             # platform's balance, and an unclamped drop would cancel real
             # earnings on another platform in the same day's total.
-            gained = max(0.0, balance - before[1]) * rate
+            gained = max(0.0, _earned_step(before, balance, earned)) * rate
             per_date[row["date"]] = per_date.get(row["date"], 0.0) + gained
-        previous[series] = (currency, balance)
+        previous[series] = (currency, balance, earned)
     return per_date, unpriced
 
 
@@ -2512,7 +2563,7 @@ async def get_earned_by_platform(days: int = 30, measured: set[str] | None = Non
     try:
         cursor = await db.execute(
             """
-            SELECT platform, date, balance, currency, fx_rate_usd, source
+            SELECT platform, date, balance, currency, fx_rate_usd, source, earned
             FROM earnings
             WHERE date >= date('now', ?)
             ORDER BY platform, source, date
@@ -2525,7 +2576,7 @@ async def get_earned_by_platform(days: int = 30, measured: set[str] | None = Non
         # Keyed by (platform, SOURCE). Keyed by platform alone, two samplers of
         # one provider account interleave into a single series whose deltas are
         # meaningless: each drop clamps to zero, so the total is understated.
-        previous: dict[tuple[str, str], tuple[str, float]] = {}
+        previous: dict[tuple[str, str], tuple[str, float, float | None]] = {}
         unpriced: set[str] = set()
         for row in rows:
             platform = row["platform"]
@@ -2554,12 +2605,12 @@ async def get_earned_by_platform(days: int = 30, measured: set[str] | None = Non
             if before is not None and before[0] == currency:
                 # Summed into the PLATFORM, so each source contributes its own
                 # earnings and the combination happens after differencing.
-                earned[platform] += max(0.0, balance - before[1]) * float(rate)
+                earned[platform] += max(0.0, _earned_step(before, balance, row["earned"])) * float(rate)
                 if measured is not None:
                     # At least one priced delta: the 0.0 a platform starts at is
                     # a measurement now, not just the absence of one.
                     measured.add(platform)
-            previous[series] = (currency, balance)
+            previous[series] = (currency, balance, row["earned"])
 
         _report_unpriced(f"per-platform:{days}", unpriced, f"the {days}-day per-platform totals")
         return earned
@@ -3231,6 +3282,76 @@ async def count_unpriced_confirmed_payouts() -> int:
         await db.close()
 
 
+async def record_node_figures(platform: str, nodes: Sequence[Mapping[str, Any]], currency: str) -> dict[str, float]:
+    """Store what each node said about itself, and return the platform's totals.
+
+    The totals cover EVERY node ever read, not only the ones read this time:
+    a node whose worker missed one collection still counts with what it last
+    said, so lifetime cannot fall and then jump back by a node's whole history
+    (issue #488). A node's lifetime never moves backwards here either.
+
+    Returns ``balance`` (everything waiting to settle), ``lifetime`` (everything
+    ever earned) and ``earned`` (earned since CashPilot first read each node,
+    the running total the earnings row carries).
+    """
+    db = await _get_db()
+    try:
+        for node in nodes:
+            await db.execute(
+                """
+                INSERT INTO node_earnings (platform, node, balance, lifetime, baseline, currency)
+                VALUES (?, ?, ?, ?, ?, ?)
+                ON CONFLICT(platform, node) DO UPDATE SET
+                    balance = excluded.balance,
+                    lifetime = MAX(node_earnings.lifetime, excluded.lifetime),
+                    currency = excluded.currency,
+                    updated_at = datetime('now')
+                """,
+                (
+                    platform,
+                    str(node["node"]),
+                    float(node["balance"]),
+                    float(node["lifetime"]),
+                    float(node["lifetime"]),
+                    currency,
+                ),
+            )
+        await db.commit()
+        cursor = await db.execute(
+            "SELECT SUM(balance) AS balance, SUM(lifetime) AS lifetime, SUM(lifetime - baseline) AS earned "
+            "FROM node_earnings WHERE platform = ? AND currency = ?",
+            (platform, currency),
+        )
+        row = await cursor.fetchone()
+        return {k: round(float(row[k] or 0.0), 6) for k in ("balance", "lifetime", "earned")}
+    finally:
+        await db.close()
+
+
+async def get_node_totals() -> dict[str, dict[str, Any]]:
+    """platform -> lifetime, settled amount and currency, for providers read node by node.
+
+    ``settled`` is what the nodes have already paid out on their own: lifetime
+    minus what is still waiting. It is a payout, not a drop in earnings.
+    """
+    db = await _get_db()
+    try:
+        cursor = await db.execute(
+            "SELECT platform, currency, SUM(lifetime) AS lifetime, SUM(lifetime - balance) AS settled "
+            "FROM node_earnings GROUP BY platform, currency"
+        )
+        return {
+            row["platform"]: {
+                "currency": row["currency"],
+                "lifetime": round(float(row["lifetime"] or 0.0), 6),
+                "settled": round(max(0.0, float(row["settled"] or 0.0)), 6),
+            }
+            for row in await cursor.fetchall()
+        }
+    finally:
+        await db.close()
+
+
 async def get_latest_balance(platform: str) -> float | None:
     """The most recent recorded balance for a platform, or None if never seen.
 
@@ -3256,7 +3377,7 @@ async def get_balance_history(platform: str, days: int = 30) -> list[dict[str, A
     db = await _get_db()
     try:
         cursor = await db.execute(
-            "SELECT date, balance, currency, fx_rate_usd FROM earnings "
+            "SELECT date, balance, currency, fx_rate_usd, earned FROM earnings "
             "WHERE platform = ? AND date >= date('now', ?) ORDER BY date ASC",
             (platform, f"-{int(days)} days"),
         )
