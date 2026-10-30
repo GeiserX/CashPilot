@@ -21,7 +21,7 @@
 
 services:
   cashpilot-ui:
-    image: drumsergio/cashpilot:1.51
+    image: drumsergio/cashpilot:1.53
     pull_policy: always
     container_name: cashpilot-ui
     # Published on loopback by default: the dashboard can command the Docker-socket
@@ -43,6 +43,8 @@ services:
       - CASHPILOT_ALLOW_EPHEMERAL_KEY=${CASHPILOT_ALLOW_EPHEMERAL_KEY:-false}
       - CASHPILOT_API_KEY=${CASHPILOT_API_KEY:-}
       - CASHPILOT_ADMIN_API_KEY=${CASHPILOT_ADMIN_API_KEY:-}
+      # Warn when a container misses a later catalog fix. false turns it off.
+      - CASHPILOT_DRIFT_WARNINGS=${CASHPILOT_DRIFT_WARNINGS:-true}
     init: true
     # The image declares its own HEALTHCHECK, so `docker ps` will show
     # "(unhealthy)" when the app stops answering. NOTHING ACTS ON THAT BY
@@ -62,7 +64,7 @@ services:
       - /tmp:size=64M
 
   cashpilot-worker:
-    image: drumsergio/cashpilot-worker:1.51
+    image: drumsergio/cashpilot-worker:1.53
     pull_policy: always
     container_name: cashpilot-worker
     expose:
@@ -121,6 +123,7 @@ services:
       - CASHPILOT_UI_URL=http://cashpilot-ui:8080
       - CASHPILOT_API_KEY=${CASHPILOT_API_KEY:-}
       - CASHPILOT_WORKER_NAME=local
+      - CASHPILOT_DRIFT_WARNINGS=${CASHPILOT_DRIFT_WARNINGS:-true}
     init: true
     restart: unless-stopped
     security_opt:
