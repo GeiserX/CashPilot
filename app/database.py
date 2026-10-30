@@ -533,25 +533,38 @@ CREATE INDEX IF NOT EXISTS idx_health_events_created
 CREATE INDEX IF NOT EXISTS idx_alerts_created
     ON alerts (created_at);
 
--- What each service used on each worker, per UTC day (app/usage.py). Sums plus
--- sample counts, so an average is sum/n; NULL traffic means no reading carried
--- network counters (a host-network container), never zero traffic.
-CREATE TABLE IF NOT EXISTS usage_daily (
-    worker_id  INTEGER NOT NULL,
-    slug       TEXT    NOT NULL,
-    day        TEXT    NOT NULL,
-    cpu_sum    REAL    NOT NULL DEFAULT 0,
-    cpu_n      INTEGER NOT NULL DEFAULT 0,
-    mem_sum    REAL    NOT NULL DEFAULT 0,
-    mem_n      INTEGER NOT NULL DEFAULT 0,
-    rx_bytes   INTEGER,
-    tx_bytes   INTEGER,
-    -- Heartbeats where a running container of the service had no counters.
-    net_gaps   INTEGER NOT NULL DEFAULT 0,
-    -- Heartbeats where a running container's memory could not be read.
-    mem_gaps   INTEGER NOT NULL DEFAULT 0,
-    PRIMARY KEY (worker_id, slug, day)
+-- The per-day table the first usage panel kept (#497). The panel is now
+-- hourly lines per container (usage_hourly), and the daily rows cannot be split
+-- back into hours or containers, so they are dropped rather than kept unread.
+DROP TABLE IF EXISTS usage_daily;
+
+-- What each container used on each worker, per UTC hour (app/usage.py). Sums
+-- plus sample counts, so an average is sum/n. Traffic is bytes over the
+-- net_seconds the counted deltas cover, so the line is a rate and a half-hour
+-- of readings is not drawn as half the traffic. NULL traffic means no reading
+-- carried a usable delta, never zero traffic; an hour with no row at all is a
+-- gap in the line.
+CREATE TABLE IF NOT EXISTS usage_hourly (
+    worker_id    INTEGER NOT NULL,
+    container    TEXT    NOT NULL,
+    hour         INTEGER NOT NULL,
+    slug         TEXT    NOT NULL,
+    cpu_sum      REAL    NOT NULL DEFAULT 0,
+    cpu_n        INTEGER NOT NULL DEFAULT 0,
+    mem_sum      REAL    NOT NULL DEFAULT 0,
+    mem_n        INTEGER NOT NULL DEFAULT 0,
+    rx_bytes     INTEGER,
+    tx_bytes     INTEGER,
+    net_seconds  REAL    NOT NULL DEFAULT 0,
+    -- Heartbeats where the container had no counters (host network).
+    no_counters  INTEGER NOT NULL DEFAULT 0,
+    -- Heartbeats whose traffic since the last reading was lost (stale baseline).
+    traffic_lost INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (worker_id, container, hour)
 );
+
+CREATE INDEX IF NOT EXISTS idx_usage_hourly_hour
+    ON usage_hourly (hour);
 
 -- The last cumulative network counters seen per container, so the next
 -- heartbeat can be differenced. Persisted so a UI restart does not lose a
@@ -2716,19 +2729,19 @@ async def get_health_scores(days: int = 7) -> list[dict[str, Any]]:
         await db.close()
 
 
-# --- Resource usage per server (app/usage.py) ---
+# --- Resource usage per server and container (app/usage.py) ---
 
-# The panel reads 30 days; a few more so the oldest day is never half-trimmed.
+# The panel reads 30 days; a few more so the oldest hour is never half-trimmed.
 USAGE_RETENTION_DAYS = 35
 
 
 async def record_usage(worker_id: int, containers: list[dict[str, Any]], now: float | None = None) -> None:
-    """Fold one heartbeat's container readings into today's usage rows."""
+    """Fold one heartbeat's container readings into this hour's usage rows."""
     now = time.time() if now is None else now
-    day = datetime.fromtimestamp(now, tz=UTC).strftime("%Y-%m-%d")
+    hour = int(now // 3600) * 3600
     # Own connection and BEGIN IMMEDIATE: reading the baselines, adding the
     # deltas and storing the new baselines must be one step. On the shared
-    # connection a failure halfway left the day rows in an open transaction that
+    # connection a failure halfway left the rows in an open transaction that
     # another task's commit would save without the new baselines, and the next
     # heartbeat then counted the same traffic again.
     DB_DIR.mkdir(parents=True, exist_ok=True)
@@ -2744,12 +2757,14 @@ async def record_usage(worker_id: int, containers: list[dict[str, Any]], now: fl
                 r["container_id"]: (r["rx_bytes"], r["tx_bytes"], r["seen_at"]) for r in await cursor.fetchall()
             }
             samples = usage.samples_from_heartbeat(containers, baselines, now)
-            for slug, s in samples.items():
+            for name, s in samples.items():
                 await db.execute(
                     """
-                    INSERT INTO usage_daily (worker_id, slug, day, cpu_sum, cpu_n, mem_sum, mem_n, rx_bytes, tx_bytes, net_gaps, mem_gaps)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    ON CONFLICT(worker_id, slug, day) DO UPDATE SET
+                    INSERT INTO usage_hourly (worker_id, container, hour, slug, cpu_sum, cpu_n, mem_sum, mem_n,
+                                              rx_bytes, tx_bytes, net_seconds, no_counters, traffic_lost)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(worker_id, container, hour) DO UPDATE SET
+                        slug = excluded.slug,
                         cpu_sum = cpu_sum + excluded.cpu_sum,
                         cpu_n = cpu_n + excluded.cpu_n,
                         mem_sum = mem_sum + excluded.mem_sum,
@@ -2758,24 +2773,27 @@ async def record_usage(worker_id: int, containers: list[dict[str, Any]], now: fl
                                         ELSE COALESCE(rx_bytes, 0) + excluded.rx_bytes END,
                         tx_bytes = CASE WHEN excluded.tx_bytes IS NULL THEN tx_bytes
                                         ELSE COALESCE(tx_bytes, 0) + excluded.tx_bytes END,
-                        net_gaps = net_gaps + excluded.net_gaps,
-                        mem_gaps = mem_gaps + excluded.mem_gaps
+                        net_seconds = net_seconds + excluded.net_seconds,
+                        no_counters = no_counters + excluded.no_counters,
+                        traffic_lost = traffic_lost + excluded.traffic_lost
                     """,
                     (
                         worker_id,
-                        slug,
-                        day,
+                        name,
+                        hour,
+                        s.slug,
                         s.cpu_percent or 0.0,
                         0 if s.cpu_percent is None else 1,
                         s.memory_mb or 0.0,
                         0 if s.memory_mb is None else 1,
                         s.rx_bytes,
                         s.tx_bytes,
-                        1 if s.traffic_gap else 0,
-                        1 if s.memory_gap else 0,
+                        s.net_seconds or 0.0,
+                        1 if s.no_counters else 0,
+                        1 if s.traffic_lost else 0,
                     ),
                 )
-                for cid, rx, tx in s.counters:
+                if s.counters is not None and s.container_id:
                     await db.execute(
                         """
                         INSERT INTO usage_counters (worker_id, container_id, rx_bytes, tx_bytes, seen_at)
@@ -2783,7 +2801,7 @@ async def record_usage(worker_id: int, containers: list[dict[str, Any]], now: fl
                         ON CONFLICT(worker_id, container_id) DO UPDATE SET
                             rx_bytes = excluded.rx_bytes, tx_bytes = excluded.tx_bytes, seen_at = excluded.seen_at
                         """,
-                        (worker_id, cid, rx, tx, now),
+                        (worker_id, s.container_id, s.counters[0], s.counters[1], now),
                     )
             await db.commit()
         except BaseException:
@@ -2791,14 +2809,20 @@ async def record_usage(worker_id: int, containers: list[dict[str, Any]], now: fl
             raise
 
 
-async def get_usage_daily(days: int = 30) -> list[dict[str, Any]]:
-    """Usage rows for the trailing ``days`` UTC days, today included."""
+async def get_usage_hourly(since_hour: int, worker_id: int | None = None) -> list[dict[str, Any]]:
+    """Hourly usage rows from ``since_hour`` (epoch seconds) on, oldest first."""
     db = await _get_db()
     try:
-        cursor = await db.execute(
-            "SELECT * FROM usage_daily WHERE day > date('now', ?) ORDER BY worker_id, slug, day",
-            (f"-{max(1, int(days))} days",),
-        )
+        if worker_id is None:
+            cursor = await db.execute(
+                "SELECT * FROM usage_hourly WHERE hour >= ? ORDER BY worker_id, container, hour",
+                (since_hour,),
+            )
+        else:
+            cursor = await db.execute(
+                "SELECT * FROM usage_hourly WHERE hour >= ? AND worker_id = ? ORDER BY container, hour",
+                (since_hour, worker_id),
+            )
         return [dict(r) for r in await cursor.fetchall()]
     finally:
         await db.close()
@@ -2847,8 +2871,8 @@ async def purge_old_data() -> int:
             (cutoff,),
         )
         c5 = await db.execute(
-            "DELETE FROM usage_daily WHERE day < date('now', ?)",
-            (f"-{USAGE_RETENTION_DAYS} days",),
+            "DELETE FROM usage_hourly WHERE hour < ?",
+            (int(time.time()) - USAGE_RETENTION_DAYS * 86400,),
         )
         # A baseline is useless after an hour (app/usage.py); a day is plenty.
         c6 = await db.execute("DELETE FROM usage_counters WHERE seen_at < ?", (time.time() - 86400,))

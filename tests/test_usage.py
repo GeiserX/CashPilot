@@ -1,17 +1,18 @@
-"""Resource use per server: CPU, memory and traffic from worker heartbeats.
+"""Resource use per server and container: hourly lines from worker heartbeats.
 
 Docker's network counters are cumulative since the container started, so the
 traffic is the difference between two heartbeats. These tests pin the cases
 where a naive difference lies: the first sight of a container, a restart that
 reset the counters, a baseline left over from a long outage, and a
-host-network container that has no counters at all.
+host-network container that has no counters at all. And the graph rule: an
+hour with no reading is a gap (None), never a zero.
 """
 
 from __future__ import annotations
 
 import asyncio
 import contextlib
-from datetime import UTC, datetime, timedelta
+import time
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from app import database, usage
@@ -20,9 +21,10 @@ MB = 1024 * 1024
 GB = 1024 * MB
 
 
-def container(slug="honeygain", cid="abc123", rx=0, tx=0, cpu=1.0, mem=50.0, status="running"):
+def container(slug="honeygain", cid="abc123", rx=0, tx=0, cpu=1.0, mem=50.0, status="running", name=None):
     return {
         "slug": slug,
+        "name": name or f"cashpilot-{slug}-{cid}",
         "container_id": cid,
         "status": status,
         "cpu_percent": cpu,
@@ -51,52 +53,47 @@ class TestCounterDelta:
 
 
 class TestSamplesFromHeartbeat:
-    def test_instances_of_one_service_add_up(self):
+    def test_one_sample_per_container_by_name(self):
         out = usage.samples_from_heartbeat(
-            [container(cid="a", rx=100, tx=10), container(cid="b", rx=200, tx=20)],
+            [container(cid="a", rx=100, tx=10, name="hg-1"), container(cid="b", rx=200, tx=20, name="hg-2")],
             {"a": (50, 5, 940.0), "b": (100, 10, 940.0)},
             now=1000.0,
         )
-        s = out["honeygain"]
-        assert (s.rx_bytes, s.tx_bytes) == (150, 15)
-        assert s.cpu_percent == 2.0
-        assert s.memory_mb == 100.0
+        assert set(out) == {"hg-1", "hg-2"}
+        assert (out["hg-1"].rx_bytes, out["hg-1"].tx_bytes, out["hg-1"].net_seconds) == (50, 5, 60.0)
+        assert (out["hg-2"].rx_bytes, out["hg-2"].tx_bytes) == (100, 10)
 
-    def test_host_network_container_has_unknown_traffic(self):
-        c = container(slug="mysterium")
-        c["net_rx_bytes"] = c["net_tx_bytes"] = None
-        s = usage.samples_from_heartbeat([c], {}, now=1000.0)["mysterium"]
-        assert s.rx_bytes is None and s.tx_bytes is None
-        assert s.cpu_percent == 1.0  # CPU and memory are still measured
-        assert s.counters == []
+    def test_first_sight_is_a_baseline_not_zero_traffic(self):
+        s = usage.samples_from_heartbeat([container(rx=5 * GB)], {}, now=1000.0)["cashpilot-honeygain-abc123"]
+        assert s.rx_bytes is None and s.net_seconds is None
+        assert s.counters == (5 * GB, 0)
+
+    def test_restart_counts_the_new_reading(self):
+        s = usage.samples_from_heartbeat([container(rx=300, tx=3)], {"abc123": (10_000, 100, 940.0)}, now=1000.0)
+        assert (s := s["cashpilot-honeygain-abc123"]).rx_bytes == 300 and s.tx_bytes == 3
+
+    def test_stale_baseline_loses_the_traffic(self):
+        out = usage.samples_from_heartbeat([container(rx=9 * GB)], {"abc123": (0, 0, 0.0)}, now=10_000.0)
+        s = out["cashpilot-honeygain-abc123"]
+        assert s.traffic_lost and s.rx_bytes is None and s.net_seconds is None
+
+    def test_host_network_container_has_no_counters(self):
+        c = container(slug="mysterium", rx=None, tx=None)
+        s = usage.samples_from_heartbeat([c], {}, now=1000.0)["cashpilot-mysterium-abc123"]
+        assert s.no_counters and s.rx_bytes is None and s.counters is None
+        assert s.cpu_percent == 1.0
 
     def test_stopped_container_is_skipped(self):
         assert usage.samples_from_heartbeat([container(status="exited")], {}, now=1000.0) == {}
 
-    def test_container_without_counters_marks_a_gap(self):
-        bridge = container(cid="a", rx=100, tx=10)
-        host = container(cid="b")
-        host["net_rx_bytes"] = host["net_tx_bytes"] = None
-        s = usage.samples_from_heartbeat([bridge, host], {"a": (50, 5, 940.0)}, now=1000.0)["honeygain"]
-        assert s.traffic_gap is True
-        assert (s.rx_bytes, s.tx_bytes) == (50, 5)
-
-    def test_stale_baseline_marks_a_gap(self):
-        s = usage.samples_from_heartbeat(
-            [container(cid="a", rx=500, tx=50)], {"a": (100, 10, 0.0)}, now=usage.MAX_BASELINE_AGE_SECONDS + 1
-        )["honeygain"]
-        assert s.traffic_gap is True and s.rx_bytes == 0
-
-    def test_unreadable_memory_marks_a_gap(self):
-        out = usage.samples_from_heartbeat([container(cid="a"), container(cid="b", mem=None)], {}, now=1000.0)
-        assert out["honeygain"].memory_gap is True
-
     def test_infinite_readings_are_rejected(self):
-        s = usage.samples_from_heartbeat([container(cpu="Infinity", mem=float("nan"))], {}, now=1000.0)["honeygain"]
+        s = usage.samples_from_heartbeat([container(cpu=float("inf"), mem=float("nan"))], {}, now=1000.0)
+        s = s["cashpilot-honeygain-abc123"]
         assert s.cpu_percent is None and s.memory_mb is None
 
     def test_failed_stats_are_unknown_not_zero(self):
-        s = usage.samples_from_heartbeat([container(cpu=None, mem=None)], {}, now=1000.0)["honeygain"]
+        s = usage.samples_from_heartbeat([container(cpu=None, mem=None)], {}, now=1000.0)
+        s = s["cashpilot-honeygain-abc123"]
         assert s.cpu_percent is None and s.memory_mb is None
 
 
@@ -112,17 +109,23 @@ def run_db(tmp_path, coro_factory):
     return asyncio.run(go())
 
 
+async def hourly_rows():
+    db = await database._get_db()
+    cursor = await db.execute("SELECT * FROM usage_hourly ORDER BY container, hour")
+    return [dict(r) for r in await cursor.fetchall()]
+
+
+HOUR = 1_800_000_000 // 3600 * 3600
+
+
 class TestRecordUsage:
     def test_restart_between_heartbeats_is_counted(self, tmp_path):
         async def go():
-            now = 1_800_000_000.0
-            await database.record_usage(1, [container(rx=1 * GB, tx=MB)], now=now)
-            await database.record_usage(1, [container(rx=2 * GB, tx=2 * MB)], now=now + 60)
+            await database.record_usage(1, [container(rx=1 * GB, tx=MB)], now=HOUR + 10)
+            await database.record_usage(1, [container(rx=2 * GB, tx=2 * MB)], now=HOUR + 70)
             # Restarted: counters reset and climbed back to 100 MB / 1 MB.
-            await database.record_usage(1, [container(rx=100 * MB, tx=MB)], now=now + 120)
-            db = await database._get_db()
-            cursor = await db.execute("SELECT * FROM usage_daily")
-            return [dict(r) for r in await cursor.fetchall()]
+            await database.record_usage(1, [container(rx=100 * MB, tx=MB)], now=HOUR + 130)
+            return await hourly_rows()
 
         rows = run_db(tmp_path, go)
         assert len(rows) == 1
@@ -130,51 +133,70 @@ class TestRecordUsage:
         # 1 GB growth, then 100 MB after the restart. The first sight is a baseline.
         assert row["rx_bytes"] == GB + 100 * MB
         assert row["tx_bytes"] == MB + MB
+        assert row["net_seconds"] == 120.0
         assert row["cpu_n"] == 3 and row["mem_n"] == 3
+        assert row["hour"] == HOUR and row["slug"] == "honeygain"
+
+    def test_each_hour_is_its_own_row(self, tmp_path):
+        async def go():
+            await database.record_usage(1, [container(rx=0)], now=HOUR + 3570)
+            await database.record_usage(1, [container(rx=MB)], now=HOUR + 3630)
+            return await hourly_rows()
+
+        rows = run_db(tmp_path, go)
+        assert [(r["hour"], r["rx_bytes"]) for r in rows] == [(HOUR, None), (HOUR + 3600, MB)]
+
+    def test_a_redeployed_container_keeps_its_line(self, tmp_path):
+        """Same name, new id: one line carries on, the new id starts a fresh baseline."""
+
+        async def go():
+            await database.record_usage(1, [container(cid="old", rx=0, name="hg")], now=HOUR + 10)
+            await database.record_usage(1, [container(cid="old", rx=MB, name="hg")], now=HOUR + 70)
+            await database.record_usage(1, [container(cid="new", rx=5 * GB, name="hg")], now=HOUR + 130)
+            return await hourly_rows()
+
+        rows = run_db(tmp_path, go)
+        assert len(rows) == 1 and rows[0]["rx_bytes"] == MB and rows[0]["cpu_n"] == 3
 
     def test_host_network_stays_null_in_the_table(self, tmp_path):
         async def go():
-            c = container(slug="mysterium")
-            c["net_rx_bytes"] = c["net_tx_bytes"] = None
-            await database.record_usage(1, [c], now=1_800_000_000.0)
-            await database.record_usage(1, [c], now=1_800_000_060.0)
-            db = await database._get_db()
-            cursor = await db.execute("SELECT rx_bytes, tx_bytes FROM usage_daily")
-            return [tuple(r) for r in await cursor.fetchall()]
+            c = container(slug="mysterium", rx=None, tx=None)
+            await database.record_usage(1, [c], now=HOUR + 10)
+            await database.record_usage(1, [c], now=HOUR + 70)
+            return await hourly_rows()
 
-        assert run_db(tmp_path, go) == [(None, None)]
+        rows = run_db(tmp_path, go)
+        assert [(r["rx_bytes"], r["tx_bytes"], r["no_counters"]) for r in rows] == [(None, None, 2)]
 
     def test_a_failure_halfway_saves_nothing(self, tmp_path):
-        """Day rows and baselines are one transaction: half of it would double count."""
+        """Hour rows and baselines are one transaction: half of it would double count."""
 
         async def go():
-            now = 1_800_000_000.0
-            await database.record_usage(1, [container(rx=GB, tx=0)], now=now)
+            await database.record_usage(1, [container(rx=GB, tx=0)], now=HOUR + 10)
             real = usage.samples_from_heartbeat
 
             def boom(*a, **kw):
                 out = real(*a, **kw)
-                # The day row goes in, then the baseline write fails (NOT NULL),
-                # so the real baseline after it is never stored.
-                out["honeygain"].counters.insert(0, ("x", 0, None))
+                # The hour row goes in, then the baseline write fails (NOT NULL).
+                out["cashpilot-honeygain-abc123"].counters = (0, None)
                 return out
 
             with patch.object(usage, "samples_from_heartbeat", boom), contextlib.suppress(Exception):
-                await database.record_usage(1, [container(rx=2 * GB, tx=0)], now=now + 60)
+                await database.record_usage(1, [container(rx=2 * GB, tx=0)], now=HOUR + 70)
             # A clean heartbeat afterwards must still measure from the first baseline once.
-            await database.record_usage(1, [container(rx=2 * GB, tx=0)], now=now + 120)
-            db = await database._get_db()
-            row = await (await db.execute("SELECT rx_bytes FROM usage_daily WHERE slug = 'honeygain'")).fetchone()
-            return row[0]
+            await database.record_usage(1, [container(rx=2 * GB, tx=0)], now=HOUR + 130)
+            return await hourly_rows()
 
-        assert run_db(tmp_path, go) == GB
+        rows = run_db(tmp_path, go)
+        assert rows[0]["rx_bytes"] == GB and rows[0]["cpu_n"] == 2
 
-    def test_retention_trims_old_days_and_baselines(self, tmp_path):
+    def test_retention_trims_old_hours_and_baselines(self, tmp_path):
         async def go():
             db = await database._get_db()
+            now = int(time.time())
             await db.execute(
-                "INSERT INTO usage_daily (worker_id, slug, day) VALUES (1, 'x', date('now', '-40 days')), "
-                "(1, 'x', date('now'))"
+                "INSERT INTO usage_hourly (worker_id, container, hour, slug) VALUES (1, 'x', ?, 'x'), (1, 'x', ?, 'x')",
+                (now - 40 * 86400, now - 3600),
             )
             await db.execute(
                 "INSERT INTO usage_counters (worker_id, container_id, rx_bytes, tx_bytes, seen_at) "
@@ -182,165 +204,25 @@ class TestRecordUsage:
             )
             await db.commit()
             await database.purge_old_data()
-            days = await (await db.execute("SELECT COUNT(*) FROM usage_daily")).fetchone()
+            hours = await (await db.execute("SELECT COUNT(*) FROM usage_hourly")).fetchone()
             counters = await (await db.execute("SELECT COUNT(*) FROM usage_counters")).fetchone()
-            return days[0], counters[0]
+            return hours[0], counters[0]
 
         assert run_db(tmp_path, go) == (1, 0)
 
-
-def earned_stub(values, priced=None):
-    """get_earned_by_platform: returns ``values``; ``priced`` (default: all) are reported as measured."""
-
-    async def stub(days=30, measured=None):
-        if measured is not None:
-            measured.update(values if priced is None else priced)
-        return dict(values)
-
-    return stub
-
-
-def usage_rows(*rows, running=(), extra_workers=()):
-    """api_usage_servers over hand-written usage_daily rows (no DB).
-
-    ``running`` lists ``(worker_id, slug)`` copies the workers report right now.
-    """
-    from app import main
-
-    workers = [
-        {"id": 1, "name": "watchtower", "status": "online"},
-        {"id": 2, "name": "geiserback", "status": "online"},
-        *extra_workers,
-    ]
-    today = datetime.now(UTC).strftime("%Y-%m-%d")
-    base = {
-        "day": today,
-        "cpu_sum": 1.0,
-        "cpu_n": 1,
-        "mem_sum": 512.0,
-        "mem_n": 1,
-        "rx_bytes": GB,
-        "tx_bytes": 0,
-        "net_gaps": 0,
-        "mem_gaps": 0,
-    }
-    full = [{**base, **r} for r in rows]
-
-    def run(values, priced=None):
+    def test_the_old_daily_table_is_dropped(self, tmp_path):
         async def go():
-            with (
-                patch.object(main, "_require_auth_api", lambda r: None),
-                patch.object(main.database, "get_usage_daily", AsyncMock(return_value=full)),
-                patch.object(main.database, "list_workers", AsyncMock(return_value=workers)),
-                patch.object(main.database, "get_earned_by_platform", earned_stub(values, priced)),
-                patch.object(
-                    main,
-                    "_get_all_worker_containers",
-                    AsyncMock(return_value=[{"slug": s, "status": "running", "_worker_id": w} for w, s in running]),
-                ),
-            ):
-                return await main.api_usage_servers(MagicMock())
+            db = await database._get_db()
+            await db.execute("CREATE TABLE IF NOT EXISTS usage_daily (worker_id INTEGER)")
+            await db.commit()
+            await database.init_db()
+            row = await (await db.execute("SELECT COUNT(*) FROM sqlite_master WHERE name = 'usage_daily'")).fetchone()
+            return row[0]
 
-        return asyncio.run(go())
-
-    return run
+        assert run_db(tmp_path, go) == 0
 
 
-def service(data, worker, slug):
-    server = next(s for s in data["servers"] if s["name"] == worker)
-    return next(s for s in server["services"] if s["slug"] == slug)
-
-
-class TestRatiosNeedEveryCopyMeasured:
-    def test_one_host_network_copy_makes_per_gb_unknown(self):
-        # Same account earns on both boxes; geiserback's copy has no counters.
-        data = usage_rows(
-            {"worker_id": 1, "slug": "mysterium"},
-            {"worker_id": 2, "slug": "mysterium", "rx_bytes": None, "tx_bytes": None},
-        )({"mysterium": 5.0})
-        assert service(data, "watchtower", "mysterium")["usd_per_gb"] is None
-
-    def test_a_partly_measured_day_makes_per_gb_unknown(self):
-        data = usage_rows({"worker_id": 1, "slug": "honeygain", "net_gaps": 3})({"honeygain": 1.0})
-        assert service(data, "watchtower", "honeygain")["usd_per_gb"] is None
-        assert service(data, "watchtower", "honeygain")["rx"] == GB  # the measured part is still shown
-
-    def test_fully_measured_service_gets_a_ratio(self):
-        data = usage_rows({"worker_id": 1, "slug": "honeygain"})({"honeygain": 1.0})
-        assert abs(service(data, "watchtower", "honeygain")["usd_per_gb"] - 1.0) < 1e-9
-
-    def test_unmeasured_memory_makes_per_gb_ram_unknown(self):
-        data = usage_rows(
-            {"worker_id": 1, "slug": "honeygain"},
-            {"worker_id": 2, "slug": "honeygain", "mem_n": 0, "mem_sum": 0.0},
-        )({"honeygain": 1.0})
-        assert service(data, "watchtower", "honeygain")["usd_per_gb_ram"] is None
-
-    def test_a_running_copy_with_no_usage_row_makes_ratios_unknown(self):
-        # geiserback runs honeygain right now but never reported usage for it.
-        data = usage_rows({"worker_id": 1, "slug": "honeygain"}, running=[(1, "honeygain"), (2, "honeygain")])(
-            {"honeygain": 1.0}
-        )
-        svc = service(data, "watchtower", "honeygain")
-        assert svc["usd_per_gb"] is None and svc["usd_per_gb_ram"] is None
-
-    def test_partly_read_memory_makes_per_gb_ram_unknown(self):
-        data = usage_rows({"worker_id": 1, "slug": "honeygain", "mem_gaps": 2})({"honeygain": 1.0})
-        assert service(data, "watchtower", "honeygain")["usd_per_gb_ram"] is None
-
-    def test_a_server_total_without_every_service_is_marked_partial(self):
-        data = usage_rows(
-            {"worker_id": 1, "slug": "honeygain"},
-            {"worker_id": 1, "slug": "mysterium", "rx_bytes": None, "tx_bytes": None},
-            {"worker_id": 2, "slug": "honeygain"},
-        )({"honeygain": 1.0})
-        totals = {s["name"]: s["total"] for s in data["servers"]}
-        assert totals["watchtower"]["traffic_partial"] is True
-        assert totals["geiserback"]["traffic_partial"] is False
-
-    def test_rows_from_a_phone_are_left_out(self):
-        # Rows 1.54.0 recorded for phones, before they were skipped, must not show.
-        phone = {"id": 3, "name": "OPPO", "status": "online", "system_info": '{"os": "Android"}'}
-        data = usage_rows(
-            {"worker_id": 1, "slug": "honeygain"},
-            {"worker_id": 3, "slug": "traffmonetizer", "cpu_n": 0, "mem_n": 0, "rx_bytes": None, "tx_bytes": None},
-            extra_workers=[phone],
-        )({"honeygain": 1.0})
-        assert [s["name"] for s in data["servers"]] == ["watchtower"]
-
-    def test_a_phone_running_the_service_makes_ratios_unknown_even_offline(self):
-        phone = {
-            "id": 3,
-            "name": "OPPO",
-            "status": "offline",
-            "system_info": '{"os": "Android"}',
-            "containers": '[{"slug": "honeygain", "status": "running"}]',
-        }
-        data = usage_rows({"worker_id": 1, "slug": "honeygain"}, extra_workers=[phone])({"honeygain": 1.0})
-        svc = service(data, "watchtower", "honeygain")
-        assert svc["usd_per_gb"] is None and svc["usd_per_gb_ram"] is None
-        assert svc["earned_usd"] == 1.0
-
-    def test_a_deleted_workers_rows_do_not_stretch_the_window(self):
-        old = (datetime.now(UTC) - timedelta(days=20)).strftime("%Y-%m-%d")
-        data = usage_rows({"worker_id": 1, "slug": "honeygain"}, {"worker_id": 99, "slug": "honeygain", "day": old})(
-            {"honeygain": 1.0}
-        )
-        assert data["window_days"] == 1
-
-
-class TestUnmeasuredEarningsAreUnknown:
-    def test_platform_with_no_priced_delta_is_a_dash_not_zero(self):
-        # get_earned_by_platform reports 0.0 for a platform it could not price
-        # or has only one reading for; that is not "earned nothing".
-        data = usage_rows({"worker_id": 1, "slug": "mysterium"})({"mysterium": 0.0}, priced=set())
-        svc = service(data, "watchtower", "mysterium")
-        assert svc["earned_usd"] is None and svc["usd_per_gb"] is None and svc["usd_per_gb_ram"] is None
-
-    def test_measured_zero_stays_zero(self):
-        data = usage_rows({"worker_id": 1, "slug": "honeygain"})({"honeygain": 0.0})
-        assert service(data, "watchtower", "honeygain")["earned_usd"] == 0.0
-
+class TestEarnedByPlatform:
     def test_get_earned_by_platform_reports_what_it_measured(self, tmp_path):
         from tests.test_dashboard_currency import day
 
@@ -357,59 +239,124 @@ class TestUnmeasuredEarningsAreUnknown:
         assert earned["earnapp"] == 0.0  # the single reading the endpoint must not show
 
 
+WORKERS = [
+    {"id": 1, "name": "watchtower", "status": "online"},
+    {"id": 2, "name": "geiserback", "status": "online"},
+    {"id": 3, "name": "pixel", "status": "online", "system_info": '{"os": "Android"}'},
+]
+
+
+def call_usage(tmp_path, record, **params):
+    """Record some heartbeats, then call /api/usage as the dashboard does."""
+    from app import main
+
+    async def go():
+        await record()
+        with (
+            patch.object(main, "_require_auth_api", lambda r: None),
+            patch.object(main.database, "list_workers", AsyncMock(return_value=WORKERS)),
+        ):
+            return await main.api_usage(MagicMock(), **params)
+
+    return run_db(tmp_path, go)
+
+
+# The last full hour before the one the test runs in, and the one before it.
+def last_hour():
+    return int(time.time() // 3600) * 3600 - 3600
+
+
+async def two_servers():
+    h = last_hour()
+    for wid in (1, 2):
+        for t, rx in ((h + 10, 0), (h + 70, 60 * MB)):
+            await database.record_usage(
+                wid,
+                [
+                    container(cid="a", rx=rx, tx=rx // 10, cpu=10.0, mem=512, name="hg"),
+                    container(slug="earnapp", cid="b", rx=rx * 2, tx=0, cpu=5.0, mem=100, name="ea"),
+                    container(slug="mysterium", cid="m", rx=None, tx=None, cpu=20.0, mem=200, name="myst"),
+                ],
+                now=t,
+            )
+    # A phone's rows, recorded before #510 kept phones out.
+    await database.record_usage(3, [container(cid="p", name="phone-hg")], now=h + 10)
+
+
 class TestUsageEndpoint:
-    def test_per_server_rows_totals_and_ratios(self, tmp_path):
-        from app import main
-
-        workers = [
-            {"id": 1, "name": "watchtower", "status": "online"},
-            {"id": 2, "name": "geiserback", "status": "online"},
-        ]
-
-        async def go():
-            # Noon UTC, so the two samples a minute apart never straddle midnight.
-            now = datetime.now(UTC).replace(hour=12, minute=0, second=0, microsecond=0).timestamp()
-            for wid in (1, 2):
-                await database.record_usage(
-                    wid,
-                    [container(rx=0, tx=0, mem=512), container(slug="mysterium", cid="m", rx=None, tx=None)],
-                    now=now - 60,
-                )
-                await database.record_usage(
-                    wid,
-                    [container(rx=GB, tx=0, mem=512), container(slug="mysterium", cid="m", rx=None, tx=None)],
-                    now=now,
-                )
-            with (
-                patch.object(main, "_require_auth_api", lambda r: None),
-                patch.object(main.database, "list_workers", AsyncMock(return_value=workers)),
-                patch.object(main.database, "get_earned_by_platform", earned_stub({"honeygain": 1.0})),
-            ):
-                return await main.api_usage_servers(MagicMock())
-
-        data = run_db(tmp_path, go)
-        assert data["window_days"] == 1
+    def test_server_total_adds_up_every_container_per_hour(self, tmp_path):
+        data = call_usage(tmp_path, two_servers, days=7)
+        assert len(data["hours"]) == 7 * 24
+        assert data["hours"][-2] == last_hour()
+        # Sorted by name; the phone is not a server.
         assert [s["name"] for s in data["servers"]] == ["geiserback", "watchtower"]
-        server = data["servers"][0]
-        hg = next(s for s in server["services"] if s["slug"] == "honeygain")
-        myst = next(s for s in server["services"] if s["slug"] == "mysterium")
-        assert hg["rx"] == GB and hg["rx_today"] == GB
-        # Earnings are per account: $1 over 2 GB moved on the whole fleet.
-        assert abs(hg["usd_per_gb"] - 0.5) < 1e-9
-        # $1 over 1 GB of average memory across both servers.
-        assert abs(hg["usd_per_gb_ram"] - 1.0) < 1e-9
-        assert myst["rx"] is None and myst["usd_per_gb"] is None and myst["earned_usd"] is None
-        assert server["total"]["rx"] == GB
-        assert server["total"]["memory_mb"] == 562.0
+        assert data["worker_id"] == 2 and data["container"] is None
+        s = data["series"]
+        assert s["cpu_percent"][-2] == 35.0
+        assert s["memory_mb"][-2] == 812.0
+        # 60 MB + 120 MB over the 60 s between the two readings.
+        assert s["rx_rate"][-2] == round(180 * MB / 60, 2)
+        assert s["rx_bytes"][-2] == 180 * MB
+        # Mysterium is on the host network: the total is a floor, and says so.
+        assert s["traffic_partial"][-2] is True
+        myst = next(c for c in data["servers"][0]["containers"] if c["name"] == "myst")
+        assert myst["no_counters"] is True and myst["slug"] == "mysterium"
+
+    def test_an_hour_with_no_reading_is_a_gap_not_zero(self, tmp_path):
+        data = call_usage(tmp_path, two_servers, days=7)
+        s = data["series"]
+        for key in ("cpu_percent", "memory_mb", "rx_rate", "tx_rate"):
+            assert s[key][0] is None, key
+            assert s[key][-3] is None, key
+            assert 0 not in s[key][:-2], key
+
+    def test_drill_down_to_one_container(self, tmp_path):
+        data = call_usage(tmp_path, two_servers, days=7, worker_id=1, container="ea")
+        assert data["worker_id"] == 1 and data["container"] == "ea"
+        s = data["series"]
+        assert s["cpu_percent"][-2] == 5.0 and s["memory_mb"][-2] == 100.0
+        assert s["rx_rate"][-2] == round(120 * MB / 60, 2) and s["tx_rate"][-2] == 0.0
+        assert s["traffic_partial"][-2] is False
+
+    def test_host_network_container_has_an_empty_network_line(self, tmp_path):
+        data = call_usage(tmp_path, two_servers, days=7, worker_id=1, container="myst")
+        s = data["series"]
+        assert s["cpu_percent"][-2] == 20.0
+        assert s["rx_rate"][-2] is None and s["tx_rate"][-2] is None
+        assert s["traffic_partial"][-2] is True
+
+    def test_unknown_picks_fall_back(self, tmp_path):
+        data = call_usage(tmp_path, two_servers, days=99, worker_id=3, container="nope")
+        # A phone is never a server to pick; a container it does not have is "all".
+        assert data["worker_id"] == 2 and data["container"] is None
+        assert data["days"] == 30 and len(data["hours"]) == 30 * 4 and data["step"] == 6 * 3600
+
+    def test_thirty_days_draws_six_hour_points_from_the_hourly_rows(self, tmp_path):
+        """Two hours in one 6-hour point: CPU averages, traffic adds over the seconds measured."""
+        step = 6 * 3600
+        point = int(time.time() // step) * step - step
+
+        async def record():
+            for t, rx, cpu in ((point + 10, 0, 10.0), (point + 70, 60 * MB, 10.0), (point + 3610, 60 * MB, 30.0)):
+                await database.record_usage(1, [container(rx=rx, cpu=cpu, name="hg")], now=t)
+            await database.record_usage(1, [container(rx=120 * MB, cpu=30.0, name="hg")], now=point + 3670)
+
+        data = call_usage(tmp_path, record, days=30, worker_id=1)
+        assert data["hours"][-2] == point
+        s = data["series"]
+        assert s["cpu_percent"][-2] == 20.0
+        assert s["rx_bytes"][-2] == 120 * MB
+        # 60 s + 3540 s + 60 s between the four readings, all under the 1-hour limit.
+        assert s["rx_rate"][-2] == round(120 * MB / 3660, 2)
+        assert s["cpu_percent"][-3] is None
 
     def test_no_rows_is_an_empty_panel(self, tmp_path):
-        from app import main
+        async def nothing():
+            return None
 
-        async def go():
-            with patch.object(main, "_require_auth_api", lambda r: None):
-                return await main.api_usage_servers(MagicMock())
-
-        assert run_db(tmp_path, go)["servers"] == []
+        data = call_usage(tmp_path, nothing, days=7)
+        assert all(not s["containers"] for s in data["servers"])
+        assert set(data["series"]["cpu_percent"]) == {None}
 
 
 class TestHeartbeatRecordsUsage:

@@ -1,8 +1,8 @@
-// Run the real resource-use panel renderer from app/static/js/app.js.
+// Run the real resource-use graph helpers from app/static/js/app.js.
 //
-// What it guards: a figure with no reading renders as a dash, never as 0. A
-// host-network container has no traffic counters, and "0 B" would call the
-// busiest earner on the fleet idle.
+// What it guards: an hour with no reading reaches Chart.js as null, which draws
+// a gap, never as 0, which would draw a drop to idle. And a missing figure in
+// the captions renders as a dash, never as 0.
 //
 //   node scripts/usage_panel_check.mjs
 //
@@ -27,54 +27,44 @@ if (!constLine) {
   console.error('FAIL: USAGE_DASH is not defined in app/static/js/app.js');
   process.exit(1);
 }
-const names = ['escapeHtml', 'fmtBytes', 'effectiveDisplayCurrency', 'formatCurrency', 'usageBytes', 'usagePair',
-  'usageCpu', 'usageMem', 'usageMoney', 'renderUsagePanel'];
-const body = constLine[0] + names.map(grab).join('\n') + '\nreturn renderUsagePanel;';
-const render = new Function('_displayCurrency', '_exchangeRates', body)('USD', {fiat: {USD: 1}, crypto_usd: {}});
+const names = ['fmtBytes', 'usageRate', 'usageCpu', 'usageMem', 'usageLast', 'usagePeak', 'usageModel'];
+const body = constLine[0] + names.map(grab).join('\n') +
+  '\nreturn {usageRate, usageCpu, usageMem, usageLast, usagePeak, usageModel};';
+const fn = new Function(body)();
 
 let bad = 0;
 const check = (label, cond, detail) => {
-  console.log(`  ${cond ? 'ok  ' : 'FAIL'} ${label}${cond ? '' : `  <- ${detail}`}`);
+  console.log(`  ${cond ? 'ok  ' : 'FAIL'} ${label}${cond ? '' : `  <- ${JSON.stringify(detail)}`}`);
   if (!cond) bad++;
 };
 
-const GB = 1024 ** 3;
-const html = render({
-  window_days: 3,
-  since: '2026-10-28',
-  servers: [{
-    worker_id: 1, name: 'watchtower', status: 'online',
-    services: [
-      {slug: 'honeygain', name: 'Honeygain', cpu_percent: 1.25, memory_mb: 48, rx_today: 2 * GB, tx_today: GB,
-        rx: 5 * GB, tx: 3 * GB, earned_usd: 1.2, usd_per_gb: 0.15, usd_per_gb_ram: 25.6},
-      {slug: 'mysterium', name: 'Mysterium', cpu_percent: 8, memory_mb: 2048, rx_today: null, tx_today: null,
-        rx: null, tx: null, earned_usd: null, usd_per_gb: null, usd_per_gb_ram: null},
-    ],
-    total: {cpu_percent: 9.25, memory_mb: 2096, rx_today: 2 * GB, tx_today: GB, rx: 5 * GB, tx: 3 * GB, traffic_partial: true},
-  }],
+const MB = 1024 ** 2;
+const m = fn.usageModel({
+  hours: [0, 3600, 7200, 10800],
+  series: {
+    cpu_percent: [null, 12.5, undefined, 0],
+    memory_mb: [null, 512, null, 600],
+    rx_rate: [null, 2 * MB, null, null],
+    tx_rate: [null, MB, null, null],
+    rx_bytes: [null, 7200 * MB, null, null],
+    tx_bytes: [null, 3600 * MB, null, null],
+    traffic_partial: [false, true, false, true],
+  },
 });
-
-const rows = html.split('<tr').slice(1);
-const myst = rows.find(r => r.includes('Mysterium')) || '';
-const hg = rows.find(r => r.includes('Honeygain')) || '';
-check('server name is shown', html.includes('watchtower'), html.slice(0, 200));
-check('window header says 3 days', html.includes('>3 days<'), 'header');
-check('measured traffic renders in GB', hg.includes('5.0 GB') && hg.includes('3.0 GB'), hg);
-check('per-GB money gets three decimals', hg.includes('$0.150'), hg);
-check('memory over 1 GB renders in GB', myst.includes('2.00 GB'), myst);
-check('no traffic counters renders a dash', (myst.match(/\u2014/g) || []).length >= 5, myst);
-check('no traffic counters never renders 0 B', !/\b0 B\b/.test(myst), myst);
-check('a row with no counters explains the dash', myst.includes('No traffic counters'), myst);
-check('earned keeps two decimals', hg.includes('$1.20'), hg);
-check('a total row is present', html.includes('usage-total'), html);
-const total = rows.find(r => r.includes('usage-total')) || '';
-check('a partial traffic total is marked as a minimum', total.includes('\u2265') && total.includes('minimum'), total);
-
-const empty = render({servers: [], window_days: 0});
-check('no readings yet says so', empty.includes('No readings yet'), empty);
+check('one value per hour', m.cpu.length === 4 && m.rx.length === 4, m);
+check('an hour with no reading stays null (a gap)', m.cpu[0] === null && m.cpu[2] === null && m.rx[3] === null, m.cpu);
+check('a measured zero stays zero', m.cpu[3] === 0, m.cpu);
+check('partial flags carry through', m.partial[1] === true && m.partial[0] === false, m.partial);
+check('a short series is padded with gaps, not zeros', fn.usageModel({hours: [0, 1], series: {cpu_percent: [5]}}).cpu[1] === null, '');
+check('latest skips trailing gaps', fn.usageLast([1, 2, null]) === 2, '');
+check('peak ignores gaps', fn.usagePeak([null, 3, 1]) === 3, '');
+check('no reading renders a dash', fn.usageRate(null) === '—' && fn.usageCpu(null) === '—' && fn.usageMem(null) === '—', '');
+check('rate renders per second', fn.usageRate(2 * MB) === '2.0 MB/s', fn.usageRate(2 * MB));
+check('memory over 1 GB renders in GB', fn.usageMem(2048) === '2.00 GB', fn.usageMem(2048));
+check('empty payload gives empty series', fn.usageModel({}).cpu.length === 0, '');
 
 if (bad) {
   console.error(`${bad} check(s) failed`);
   process.exit(1);
 }
-console.log('all usage panel checks passed');
+console.log('all usage graph checks passed');

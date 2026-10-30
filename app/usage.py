@@ -1,8 +1,9 @@
-"""What each earning service costs its server: CPU, memory and traffic per day.
+"""What each container costs its server: CPU, memory and traffic over time.
 
 The worker already sends every container's CPU %, memory and Docker's network
-counters in its heartbeat. This module turns those readings into per-day usage
-rows, so the dashboard can set what a service uses against what it earns.
+counters in its heartbeat. This module turns one heartbeat into per-container
+samples; app/database.py folds them into hourly rows that the dashboard draws
+as lines, per server and per container.
 
 The network counters are CUMULATIVE since the container started, so traffic is
 the difference between two readings, with three rules:
@@ -19,17 +20,18 @@ the difference between two readings, with three rules:
 
 * **Missing counters are not zero.** A host-network container has no
   per-container counters at all. Its traffic is unknown and stays unknown
-  (``None``), so the panel shows a dash, never 0 B.
+  (``None``), so its line has a gap and a server total without it is marked
+  as a floor, never drawn as 0 B/s.
 """
 
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any
 
 # Heartbeats arrive every 60 s. An hour covers a UI restart or a short worker
-# outage; anything longer is a gap we refuse to attribute to one day.
+# outage; anything longer is a gap we refuse to attribute to one hour.
 MAX_BASELINE_AGE_SECONDS = 3600.0
 
 
@@ -53,21 +55,27 @@ def counter_delta(previous: int | None, current: int | None, seconds_since: floa
 
 
 @dataclass
-class ServiceSample:
-    """One heartbeat's usage for one service on one worker (all its instances)."""
+class ContainerSample:
+    """One heartbeat's reading of one running container."""
 
+    name: str
+    slug: str
+    container_id: str = ""
     cpu_percent: float | None = None
     memory_mb: float | None = None
+    # Bytes moved since the previous reading, and the seconds that covers. All
+    # three are None until there is a baseline to difference against.
     rx_bytes: int | None = None
     tx_bytes: int | None = None
-    # (container_id, rx, tx) to store as the next baseline.
-    counters: list[tuple[str, int, int]] = field(default_factory=list)
-    # A running container of this service had no counters (host network, or a
-    # worker that does not send them), so the traffic above is not the whole
-    # service and no per-GB figure may be built on it.
-    traffic_gap: bool = False
-    # Same for memory: a running copy whose memory could not be read.
-    memory_gap: bool = False
+    net_seconds: float | None = None
+    # (rx, tx) to store as the next baseline, None without counters.
+    counters: tuple[int, int] | None = None
+    # No counters at all: a host-network container, or a worker that does not
+    # send them. Its traffic is unknown, so a server total without it is a floor.
+    no_counters: bool = False
+    # Had counters, but the traffic since the last reading is lost (a baseline
+    # older than MAX_BASELINE_AGE_SECONDS).
+    traffic_lost: bool = False
 
 
 def _num(value: Any) -> float | None:
@@ -81,69 +89,59 @@ def _num(value: Any) -> float | None:
     return out if math.isfinite(out) and out >= 0 else None
 
 
-def _add(total: float | int | None, value: float | int | None) -> float | int | None:
-    if value is None:
-        return total
-    return value if total is None else total + value
-
-
 def samples_from_heartbeat(
     containers: list[dict[str, Any]],
     baselines: dict[str, tuple[int, int, float]],
     now: float,
-) -> dict[str, ServiceSample]:
-    """Per-service usage from one heartbeat's container list.
+) -> dict[str, ContainerSample]:
+    """Per-container usage from one heartbeat, keyed by container name.
 
-    ``baselines`` maps container_id to ``(rx, tx, seen_at)`` from the previous
-    heartbeat. Only running containers count: a stopped one uses nothing, and
-    its last counters are kept as they were.
+    The name, not the id: a redeploy makes a new container under the same name,
+    and its line should carry on. ``baselines`` maps container_id to
+    ``(rx, tx, seen_at)`` from the previous heartbeat. Only running containers
+    count: a stopped one uses nothing, and draws a gap rather than a zero.
     """
-    out: dict[str, ServiceSample] = {}
+    out: dict[str, ContainerSample] = {}
     for c in containers:
         if not isinstance(c, dict):
             continue
         slug = c.get("slug")
         if not slug or str(c.get("status") or "").lower() != "running":
             continue
-        sample = out.setdefault(slug, ServiceSample())
-        sample.cpu_percent = _add(sample.cpu_percent, _num(c.get("cpu_percent")))
-        memory = _num(c.get("memory_mb"))
-        sample.memory_mb = _add(sample.memory_mb, memory)
-        if memory is None:
-            sample.memory_gap = True
-
         cid = str(c.get("container_id") or "")
+        name = str(c.get("name") or cid or "")
+        if not name:
+            continue
+        sample = out.setdefault(name, ContainerSample(name=name, slug=str(slug), container_id=cid))
+        sample.cpu_percent = _num(c.get("cpu_percent"))
+        sample.memory_mb = _num(c.get("memory_mb"))
+
         rx_raw, tx_raw = c.get("net_rx_bytes"), c.get("net_tx_bytes")
-        if not cid or rx_raw is None or tx_raw is None:
-            sample.traffic_gap = True
-            continue
         try:
-            rx, tx = int(rx_raw), int(tx_raw)
+            rx, tx = int(rx_raw), int(tx_raw)  # type: ignore[arg-type]
         except (TypeError, ValueError):
-            sample.traffic_gap = True
+            rx = tx = -1
+        if not cid or rx < 0 or tx < 0:
+            sample.no_counters = True
             continue
+        sample.counters = (rx, tx)
         prev = baselines.get(cid)
-        age = None if prev is None else now - prev[2]
-        if age is not None and age > MAX_BASELINE_AGE_SECONDS:
-            # The traffic since that baseline is lost, so this day is incomplete.
-            sample.traffic_gap = True
-        d_rx = counter_delta(None if prev is None else prev[0], rx, age)
-        d_tx = counter_delta(None if prev is None else prev[1], tx, age)
-        if d_rx is None or d_tx is None:
-            sample.traffic_gap = True
+        if prev is None:
             continue
-        sample.rx_bytes = _add(sample.rx_bytes, d_rx)
-        sample.tx_bytes = _add(sample.tx_bytes, d_tx)
-        sample.counters.append((cid, rx, tx))
+        age = now - prev[2]
+        if age <= 0:
+            continue
+        if age > MAX_BASELINE_AGE_SECONDS:
+            sample.traffic_lost = True
+            continue
+        sample.rx_bytes = counter_delta(prev[0], rx, age)
+        sample.tx_bytes = counter_delta(prev[1], tx, age)
+        sample.net_seconds = age
     return out
 
 
-def per_gb(earned: float | None, byte_count: int | None) -> float | None:
-    """Earnings per GB, or None when either side is unknown or the traffic is tiny.
-
-    Under 10 MB the ratio is noise: a service that moved 2 MB and earned a cent
-    would read as the best earner on the fleet.
-    """
-    if earned is None or byte_count is None or byte_count < 10 * 1024 * 1024:
+def rate(byte_count: int | None, seconds: float | None) -> float | None:
+    """Bytes per second, or None when there is no measured interval."""
+    if byte_count is None or not seconds or seconds <= 0:
         return None
-    return earned / (byte_count / 1024**3)
+    return byte_count / seconds
