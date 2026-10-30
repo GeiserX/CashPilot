@@ -100,17 +100,42 @@
     </div>
   </section>
 
-  <!-- What each service costs its server, next to what it earns. GPU is not a
-       column: Docker's stats carry no GPU figure, and no catalogued service
-       that runs as a container on the reference fleet uses one. -->
+  <!-- Hourly CPU, memory and traffic per server, or per container. GPU is not
+       drawn: Docker's stats carry no GPU figure, and no catalogued service on
+       the reference fleet uses one. -->
   <section class="usage" aria-labelledby="usage-title">
     <div class="block-head">
       <h2 class="block-title" id="usage-title">Resource use per server</h2>
       <span class="block-meta" id="usage-meta"></span>
+      <div class="tab-strip">
+        <button class="tab-btn usage-period-btn active" data-days="7" data-action="setUsageDays" data-a1="7">7 days</button>
+        <button class="tab-btn usage-period-btn" data-days="30" data-action="setUsageDays" data-a1="30">30 days</button>
+      </div>
     </div>
-    <div id="usage-table-container" class="table-scroll">
-      <div class="loading-line"><div class="spinner"></div> Reading usage</div>
+    <div class="usage-pickers">
+      <label class="usage-pick">Server <select id="usage-server" class="form-input"></select></label>
+      <label class="usage-pick">Container <select id="usage-container" class="form-input"><option value="">All containers</option></select></label>
     </div>
+    <div id="usage-empty"><div class="loading-line"><div class="spinner"></div> Reading usage</div></div>
+    <div id="usage-charts" class="usage-charts" hidden>
+      <figure class="usage-fig">
+        <figcaption><span class="usage-name">CPU</span><span class="usage-now" id="usage-cpu-now"></span></figcaption>
+        <div class="usage-plot"><canvas id="usage-cpu" role="img" aria-label="CPU"></canvas></div>
+      </figure>
+      <figure class="usage-fig">
+        <figcaption><span class="usage-name">Memory</span><span class="usage-now" id="usage-mem-now"></span></figcaption>
+        <div class="usage-plot"><canvas id="usage-mem" role="img" aria-label="Memory"></canvas></div>
+      </figure>
+      <figure class="usage-fig">
+        <figcaption>
+          <span class="usage-name">Network</span>
+          <span class="usage-now"><i class="usage-key usage-key-1"></i>down <span id="usage-rx-now"></span></span>
+          <span class="usage-now"><i class="usage-key usage-key-2"></i>up <span id="usage-tx-now"></span></span>
+        </figcaption>
+        <div class="usage-plot"><canvas id="usage-net" role="img" aria-label="Network"></canvas></div>
+      </figure>
+    </div>
+    <p class="usage-foot" id="usage-foot"></p>
   </section>
   </div>
 </div>

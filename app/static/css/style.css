@@ -45,6 +45,9 @@
   --error-soft: rgba(240, 106, 95, 0.12);
 
   --chart-bar: #59616b;
+  /* Line colours (dataviz reference palette, validated on this surface). */
+  --series-1: #3987e5;
+  --series-2: #d95926;
 
   --gradient-rose: var(--text-primary);
   --gradient-cyan: var(--text-primary);
@@ -114,6 +117,8 @@
   --error-soft: rgba(180, 35, 24, 0.09);
 
   --chart-bar: #9aa2ab;
+  --series-1: #2a78d6;
+  --series-2: #eb6834;
 }
 
 /* ----- Reset & Base ----- */
@@ -1385,11 +1390,23 @@ section { margin-bottom: 28px; }
 .dash-split > section { margin-bottom: 28px; min-width: 0; }
 .dash-col { min-width: 0; }
 .dash-col > section { margin-bottom: 28px; min-width: 0; }
-/* Resource use per server: one tbody per server, a name row, its services, a total. */
-.usage-table .usage-server th { color: var(--text-primary); font-weight: 600; font-size: var(--fs-3); padding-top: 14px; }
-.usage-table .usage-total td { color: var(--text-secondary); font-weight: 600; border-bottom-color: var(--border-light); }
+/* Resource use per server: pickers, then CPU, memory and network as small multiples. */
+.usage-pickers { display: flex; flex-wrap: wrap; gap: 8px 16px; margin: 4px 0 10px; }
+.usage-pick { display: flex; align-items: center; gap: 8px; color: var(--text-muted); font-size: var(--fs-2); min-width: 0; max-width: 100%; }
+.usage-pick select { width: auto; min-width: 0; max-width: 260px; }
+.usage-charts { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px 20px; }
+.usage-charts[hidden] { display: none; }
+.usage-fig { margin: 0; min-width: 0; display: flex; flex-direction: column; }
+/* A caption that wraps (Network) must not push its plot below the others. */
+.usage-plot { margin-top: auto; }
+.usage-fig figcaption { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; font-size: var(--fs-2); color: var(--text-muted); }
+.usage-name { color: var(--text-primary); font-weight: 600; }
+.usage-now { font-family: var(--font-mono); color: var(--text-secondary); }
+.usage-key { display: inline-block; width: 10px; height: 2px; margin-right: 5px; vertical-align: middle; }
+.usage-key-1 { background: var(--series-1); }
+.usage-key-2 { background: var(--series-2); }
+.usage-plot { position: relative; height: 140px; width: 100%; }
 .usage-foot { color: var(--text-muted); font-size: var(--fs-2); margin: 8px 0 0; }
-.usage-table .usage-dir { color: var(--text-muted); font-family: var(--font-ui); margin-right: 2px; }
 .placement-table { border-collapse: collapse; width: 100%; }
 .placement-table th, .placement-table td { padding: 0 6px; height: 27px; border-bottom: 1px solid var(--border-color); text-align: center; }
 .placement-table thead th { height: 26px; font-weight: 500; color: var(--text-muted); font-size: var(--fs-2); }

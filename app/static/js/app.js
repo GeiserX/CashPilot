@@ -282,19 +282,17 @@ const CP = (() => {
     }, 3600000);
   }
 
-  // Resource use per server (/api/usage/servers): what each service costs its
-  // box next to what it earns. Every missing figure is a dash, never 0: a
-  // host-network container has no traffic counters, and "0 B" would call the
-  // busiest earner idle.
-  const USAGE_DASH = '\u2014';
+  // Resource use per server (/api/usage): hourly lines for one server's total,
+  // or for one of its containers. A missing reading is null and draws a gap,
+  // never a drop to 0: a host-network container has no traffic counters, and
+  // a worker that was offline sent nothing.
+  const USAGE_DASH = '—';
+  const usageState = { days: '7', worker: null, container: '', step: 3600 };
+  const usageCharts = {};
 
-  function usageBytes(n) {
-    return n === null || n === undefined ? USAGE_DASH : (fmtBytes(n) || USAGE_DASH);
-  }
-
-  function usagePair(rx, tx) {
-    if ((rx === null || rx === undefined) && (tx === null || tx === undefined)) return USAGE_DASH;
-    return `<span class="usage-dir">\u2193</span>${usageBytes(rx)} <span class="usage-dir">\u2191</span>${usageBytes(tx)}`;
+  function usageRate(v) {
+    if (v === null || v === undefined) return USAGE_DASH;
+    return `${fmtBytes(v) || USAGE_DASH}/s`;
   }
 
   function usageCpu(v) {
@@ -306,86 +304,321 @@ const CP = (() => {
     return mb >= 1024 ? `${(mb / 1024).toFixed(2)} GB` : `${Math.round(mb)} MB`;
   }
 
-  // Per-GB figures are often cents or less, so they can ask for a third decimal.
-  function usageMoney(v, precise) {
-    if (v === null || v === undefined) return USAGE_DASH;
-    return formatCurrency(v, 'USD', precise && Math.abs(v) < 1 ? 3 : 2);
+  function usageLastIndex(values) {
+    for (let i = values.length - 1; i >= 0; i -= 1) {
+      if (values[i] !== null && values[i] !== undefined) return i;
+    }
+    return -1;
   }
 
-  function renderUsagePanel(data) {
-    const servers = (data && data.servers) || [];
-    if (!servers.length) {
-      return '<div class="block-empty">No readings yet. Usage builds up from each worker heartbeat.</div>';
+  function usageLast(values) {
+    const i = usageLastIndex(values);
+    return i < 0 ? null : values[i];
+  }
+
+  function usagePeak(values) {
+    let peak = null;
+    for (const v of values) if (v !== null && v !== undefined && (peak === null || v > peak)) peak = v;
+    return peak;
+  }
+
+  // The chart's data from the API payload. Pure, so scripts/usage_panel_check.mjs
+  // can pin that a null reading stays null (a gap) all the way to Chart.js.
+  function usageModel(data) {
+    const s = (data && data.series) || {};
+    const hours = (data && data.hours) || [];
+    const pick = (k) => hours.map((_, i) => {
+      const v = (s[k] || [])[i];
+      return v === null || v === undefined ? null : Number(v);
+    });
+    return {
+      hours,
+      cpu: pick('cpu_percent'),
+      mem: pick('memory_mb'),
+      rx: pick('rx_rate'),
+      tx: pick('tx_rate'),
+      rxBytes: pick('rx_bytes'),
+      txBytes: pick('tx_bytes'),
+      partial: hours.map((_, i) => !!(s.traffic_partial || [])[i]),
+      cpuPartial: hours.map((_, i) => !!(s.cpu_partial || [])[i]),
+      memPartial: hours.map((_, i) => !!(s.memory_partial || [])[i]),
+    };
+  }
+
+  function usageHourTitle(epoch, step) {
+    const d = new Date(epoch * 1000);
+    const start = d.toLocaleString(undefined, { weekday: 'short', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+    if (!step || step <= 3600) return start;
+    const end = new Date((epoch + step) * 1000).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+    return `${start} to ${end}`;
+  }
+
+  // A weekday at each local midnight on 7 days, a date each week on 30. The
+  // charts are small, so a tick label must stay a few characters wide.
+  function usageTick(epoch, days) {
+    const d = new Date(epoch * 1000);
+    const prev = new Date((epoch - (Number(days) > 7 ? 6 * 3600 : 3600)) * 1000);
+    if (d.getDate() === prev.getDate()) return '';
+    if (Number(days) > 7) {
+      const dayIndex = Math.floor((epoch - d.getTimezoneOffset() * 60) / 86400);
+      if (dayIndex % 7 !== 0) return '';
+      // The month only on the first tick in it: "Oct 1", "8", "15".
+      return d.getDate() <= 7 ? d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : String(d.getDate());
     }
-    const days = data.window_days || 0;
-    const windowLabel = days >= 30 ? '30 days' : `${days} day${days === 1 ? '' : 's'}`;
-    const head = `
-      <thead><tr>
-        <th>Service</th>
-        <th class="c-num" title="Average CPU, 100% is one core">CPU</th>
-        <th class="c-num" title="Average memory">Memory</th>
-        <th class="c-num" title="Down and up since midnight UTC">Today</th>
-        <th class="c-num">${windowLabel}</th>
-        <th class="c-num" title="What the service earned on all servers in the same days">Earned</th>
-        <th class="c-num" title="Earned per GB moved, all servers">Per GB</th>
-        <th class="c-num" title="Earned per GB of average memory, all servers">Per GB RAM</th>
-      </tr></thead>`;
-    const bodies = servers.map(server => {
-      const rows = server.services.map(svc => `
-        <tr>
-          <td>${escapeHtml(svc.name)}</td>
-          <td class="c-num">${usageCpu(svc.cpu_percent)}</td>
-          <td class="c-num">${usageMem(svc.memory_mb)}</td>
-          <td class="c-num"${svc.rx === null && svc.tx === null ? ' title="No traffic counters reported, for example a container on the host network"' : ''}>${usagePair(svc.rx_today, svc.tx_today)}</td>
-          <td class="c-num">${usagePair(svc.rx, svc.tx)}</td>
-          <td class="c-num">${usageMoney(svc.earned_usd)}</td>
-          <td class="c-num">${usageMoney(svc.usd_per_gb, true)}</td>
-          <td class="c-num">${usageMoney(svc.usd_per_gb_ram, true)}</td>
-        </tr>`).join('');
-      const t = server.total || {};
-      // At least this much: some service on the server had no traffic reading.
-      const partial = t.traffic_partial ? ' title="Some services here report no traffic, so this is a minimum"' : '';
-      const floor = t.traffic_partial ? '<span class="usage-dir">\u2265</span>' : '';
-      return `
-        <tbody>
-          <tr class="usage-server"><th colspan="8">${escapeHtml(server.name)}${server.status === 'online' ? '' : ' <span class="muted">offline</span>'}</th></tr>
-          ${rows}
-          <tr class="usage-total" title="Each service's average while it ran, added up">
-            <td>Total</td>
-            <td class="c-num">${usageCpu(t.cpu_percent)}</td>
-            <td class="c-num">${usageMem(t.memory_mb)}</td>
-            <td class="c-num"${partial}>${floor}${usagePair(t.rx_today, t.tx_today)}</td>
-            <td class="c-num"${partial}>${floor}${usagePair(t.rx, t.tx)}</td>
-            <td class="c-num" colspan="3"></td>
-          </tr>
-        </tbody>`;
-    }).join('');
-    return `<table class="breakdown-table usage-table">${head}${bodies}</table>
-      <p class="usage-foot">Providers pay per account, not per server, so Earned and the per-GB figures cover each service on all servers. A dash means no reading: a container on the host network has no traffic counters.</p>`;
+    return d.toLocaleDateString(undefined, { weekday: 'short' });
+  }
+
+  // A vertical hairline at the hovered hour, across the plot.
+  const usageCrosshair = {
+    id: 'usageCrosshair',
+    afterDatasetsDraw(chart) {
+      const active = chart.tooltip && chart.tooltip.getActiveElements();
+      if (!active || !active.length) return;
+      const x = active[0].element.x;
+      const { top, bottom } = chart.chartArea;
+      const c = chart.ctx;
+      c.save();
+      c.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--text-muted').trim();
+      c.lineWidth = 1;
+      c.beginPath();
+      c.moveTo(x, top);
+      c.lineTo(x, bottom);
+      c.stroke();
+      c.restore();
+    },
+  };
+
+  function usageChart(id, datasets, yFormat, tooltipLabel) {
+    const canvas = document.getElementById(id);
+    if (!canvas || typeof Chart === 'undefined') return null;
+    const cs = getComputedStyle(document.documentElement);
+    const tok = (n) => cs.getPropertyValue(n).trim();
+    const fontMono = tok('--font-mono');
+    // A point with no neighbour on either side would be invisible with no
+    // marker, so only those get a dot.
+    const isolated = (ctx) => {
+      const d = ctx.dataset.data;
+      const i = ctx.dataIndex;
+      const has = (j) => d[j] !== null && d[j] !== undefined;
+      return has(i) && !has(i - 1) && !has(i + 1) ? 2 : 0;
+    };
+    return new Chart(canvas, {
+      type: 'line',
+      data: {
+        labels: [],
+        datasets: datasets.map(ds => ({
+          label: ds.label,
+          data: [],
+          borderColor: tok(ds.color),
+          backgroundColor: tok(ds.color),
+          borderWidth: 2,
+          pointRadius: isolated,
+          pointHoverRadius: 4,
+          pointHoverBorderColor: tok('--bg-card'),
+          pointHoverBorderWidth: 2,
+          spanGaps: false,
+          tension: 0,
+        })),
+      },
+      plugins: [usageCrosshair],
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        animation: false,
+        interaction: { mode: 'index', intersect: false },
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            backgroundColor: tok('--bg-secondary'),
+            titleColor: tok('--text-primary'),
+            bodyColor: tok('--text-secondary'),
+            borderColor: tok('--border-color'),
+            borderWidth: 1,
+            padding: 10,
+            callbacks: {
+              title: (items) => (items.length ? usageHourTitle(Number(items[0].label), usageState.step) : ''),
+              label: tooltipLabel,
+            },
+          },
+        },
+        scales: {
+          x: {
+            grid: { display: false },
+            border: { color: tok('--border-color') },
+            ticks: {
+              color: tok('--text-muted'),
+              font: { size: 12, family: fontMono },
+              autoSkip: false,
+              maxRotation: 0,
+              align: 'inner',
+              callback: function (value) { return usageTick(Number(this.getLabelForValue(value)), usageState.days); },
+            },
+          },
+          y: {
+            beginAtZero: true,
+            grid: { color: tok('--border-color') },
+            border: { display: false },
+            ticks: { color: tok('--text-muted'), maxTicksLimit: 4, font: { size: 12, family: fontMono }, callback: yFormat },
+          },
+        },
+      },
+    });
+  }
+
+  function usageSetChart(key, labels, columns) {
+    const chart = usageCharts[key];
+    if (!chart) return;
+    chart.data.labels = labels;
+    columns.forEach((values, i) => { chart.data.datasets[i].data = values; });
+    chart.update();
+  }
+
+  function usageFillPickers(data) {
+    const serverSel = document.getElementById('usage-server');
+    const containerSel = document.getElementById('usage-container');
+    if (!serverSel || !containerSel) return null;
+    const servers = data.servers || [];
+    serverSel.innerHTML = servers.map(sv => `<option value="${escapeHtml(String(sv.worker_id))}">${escapeHtml(sv.name)}${sv.status === 'online' ? '' : ' (offline)'}</option>`).join('');
+    serverSel.value = data.worker_id === null || data.worker_id === undefined ? '' : String(data.worker_id);
+    const server = servers.find(sv => sv.worker_id === data.worker_id) || { containers: [], name: '' };
+    containerSel.innerHTML = '<option value="">All containers</option>' + server.containers.map(c =>
+      `<option value="${escapeHtml(c.name)}">${escapeHtml(c.name === `cashpilot-${c.slug}` ? c.service : `${c.service} \u00b7 ${c.name}`)}</option>`).join('');
+    containerSel.value = data.container || '';
+    if (!serverSel.dataset.bound) {
+      serverSel.dataset.bound = '1';
+      serverSel.addEventListener('change', () => { usageState.worker = serverSel.value; usageState.container = ''; loadUsagePanel(); });
+      containerSel.addEventListener('change', () => { usageState.container = containerSel.value; loadUsagePanel(); });
+    }
+    return server;
+  }
+
+  function usageFoot(data, server) {
+    if (data.container) {
+      const c = server.containers.find(x => x.name === data.container);
+      return c && c.no_counters
+        ? 'This container runs on the host network, so Docker counts no traffic for it: its network line stays empty.'
+        : '';
+    }
+    const host = server.containers.filter(c => c.no_counters).map(c => c.service);
+    const parts = ['Each point adds up every container on this server. CPU: 100% is one core.'];
+    if (host.length) {
+      parts.push(`Network leaves out ${[...new Set(host)].join(', ')}: on the host network, Docker counts no traffic for it, so the network line is a minimum.`);
+    }
+    return parts.join(' ');
+  }
+
+  function renderUsage(data) {
+    const charts = document.getElementById('usage-charts');
+    const empty = document.getElementById('usage-empty');
+    const foot = document.getElementById('usage-foot');
+    const server = usageFillPickers(data);
+    const hasData = server && server.containers.length > 0;
+    if (charts) charts.hidden = !hasData;
+    if (empty) {
+      empty.hidden = !!hasData;
+      empty.innerHTML = hasData ? '' : '<div class="block-empty">No readings yet. The graphs fill in from each worker heartbeat, one point per hour.</div>';
+    }
+    if (!hasData) { if (foot) foot.textContent = ''; return; }
+    if (foot) foot.textContent = usageFoot(data, server);
+
+    const m = usageModel(data);
+    if (!usageCharts.cpu) {
+      // A container whose stats read failed is missing from the sum: a floor.
+      const geq = (flags, i) => (usageCharts.net._cpModel[flags][i] ? '\u2265 ' : '');
+      usageCharts.cpu = usageChart('usage-cpu', [{ label: 'CPU', color: '--series-1' }], (v) => `${v}%`,
+        (ctx) => `CPU ${geq('cpuPartial', ctx.dataIndex)}${usageCpu(ctx.parsed.y)}`);
+      usageCharts.mem = usageChart('usage-mem', [{ label: 'Memory', color: '--series-1' }], (v) => usageMem(v),
+        (ctx) => `Memory ${geq('memPartial', ctx.dataIndex)}${usageMem(ctx.parsed.y)}`);
+      usageCharts.net = usageChart('usage-net', [{ label: 'Down', color: '--series-1' }, { label: 'Up', color: '--series-2' }],
+        (v) => usageRate(v), (ctx) => {
+          const cur = usageCharts.net._cpModel;
+          const i = ctx.dataIndex;
+          const bytes = ctx.datasetIndex === 0 ? cur.rxBytes[i] : cur.txBytes[i];
+          const floor = cur.partial[i] ? '\u2265 ' : '';
+          const moved = bytes === null ? '' : `, ${fmtBytes(bytes)}`;
+          return `${ctx.dataset.label} ${floor}${usageRate(ctx.parsed.y)}${moved}`;
+        });
+    }
+    if (usageCharts.net) usageCharts.net._cpModel = m;
+    usageLastData = data;
+    const labels = m.hours.map(String);
+    usageSetChart('cpu', labels, [m.cpu]);
+    usageSetChart('mem', labels, [m.mem]);
+    usageSetChart('net', labels, [m.rx, m.tx]);
+
+    const who = data.container || server.name;
+    const span = `last ${data.days} days`;
+    const describe = (id, title, values, fmt) => {
+      const el = document.getElementById(id);
+      if (el) el.setAttribute('aria-label', `${title} for ${who}, ${span}, hourly: now ${fmt(usageLast(values))}, peak ${fmt(usagePeak(values))}`);
+    };
+    describe('usage-cpu', 'CPU', m.cpu, usageCpu);
+    describe('usage-mem', 'Memory', m.mem, usageMem);
+    const net = document.getElementById('usage-net');
+    if (net) {
+      net.setAttribute('aria-label', `Network for ${who}, ${span}, hourly: down now ${usageRate(usageLast(m.rx))}, peak ${usageRate(usagePeak(m.rx))}; up now ${usageRate(usageLast(m.tx))}, peak ${usageRate(usagePeak(m.tx))}`);
+    }
+    const now = (id, text) => { const el = document.getElementById(id); if (el) el.textContent = text; };
+    // The value and its "at least" mark come from the same point.
+    const latest = (values, flags, fmt) => {
+      const i = usageLastIndex(values);
+      return i < 0 ? fmt(null) : `${flags[i] ? '\u2265 ' : ''}${fmt(values[i])}`;
+    };
+    now('usage-cpu-now', latest(m.cpu, m.cpuPartial, usageCpu));
+    now('usage-mem-now', latest(m.mem, m.memPartial, usageMem));
+    now('usage-rx-now', latest(m.rx, m.partial, usageRate));
+    now('usage-tx-now', latest(m.tx, m.partial, usageRate));
   }
 
   // Each load gets a number; a response that arrives after a newer request
   // started is dropped, so a slow old answer cannot overwrite a newer one.
   let usageLoadSeq = 0;
+  let usageLastData = null;
+
+  // The charts read their colours from the theme once, when built, so a theme
+  // switch rebuilds them from the last payload.
+  new MutationObserver(() => {
+    if (!usageCharts.cpu) return;
+    for (const key of Object.keys(usageCharts)) {
+      if (usageCharts[key]) usageCharts[key].destroy();
+      delete usageCharts[key];
+    }
+    if (usageLastData) renderUsage(usageLastData);
+  }).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+
+  function setUsageDays(days) {
+    usageState.days = String(days);
+    document.querySelectorAll('.usage-period-btn').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.days === usageState.days);
+    });
+    loadUsagePanel();
+  }
 
   async function loadUsagePanel() {
-    const container = document.getElementById('usage-table-container');
-    if (!container) return;
+    const section = document.getElementById('usage-charts');
+    if (!section) return;
     const seq = ++usageLoadSeq;
+    const meta = document.getElementById('usage-meta');
     try {
-      const data = await api('/api/usage/servers');
+      await _waitForChart();
+      const q = new URLSearchParams({ days: usageState.days });
+      if (usageState.worker) q.set('worker_id', usageState.worker);
+      if (usageState.container) q.set('container', usageState.container);
+      const data = await api(`/api/usage?${q}`);
       if (seq !== usageLoadSeq) return;
-      container.innerHTML = renderUsagePanel(data);
-      const meta = document.getElementById('usage-meta');
-      if (meta) meta.textContent = data.since && data.window_days < 30 ? `Measured since ${data.since}` : '';
+      usageState.worker = data.worker_id === null || data.worker_id === undefined ? null : String(data.worker_id);
+      usageState.container = data.container || '';
+      usageState.step = data.step || 3600;
+      renderUsage(data);
+      if (meta) meta.textContent = '';
     } catch (err) {
       if (seq !== usageLoadSeq) return;
-      console.warn('Could not load resource use, keeping the previous table:', err);
-      const meta = document.getElementById('usage-meta');
+      console.warn('Could not load resource use, keeping the previous graphs:', err);
       if (meta) meta.textContent = 'Last refresh failed';
-      // Keep a table already on screen; replace only the spinner.
-      if (!container.querySelector('.usage-table')) {
-        container.innerHTML = `<div class="block-empty block-error"><span>Couldn't load resource use${err && err.message ? `: ${escapeHtml(err.message)}` : ''}.</span></div>`;
+      const empty = document.getElementById('usage-empty');
+      if (empty && !usageCharts.cpu) {
+        empty.hidden = false;
+        empty.innerHTML = `<div class="block-empty block-error"><span>Couldn't load resource use${err && err.message ? `: ${escapeHtml(err.message)}` : ''}. This is not a reading of zero.</span></div>`;
       }
     }
   }
@@ -4478,7 +4711,7 @@ const CP = (() => {
     closeAllModals,
     loadEarningsChart,
     loadUsagePanel,
-    renderUsagePanel,
+    setUsageDays,
     restartService,
     stopService,
     startService,
