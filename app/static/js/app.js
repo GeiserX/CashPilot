@@ -1259,7 +1259,9 @@ const CP = (() => {
 
     for (const w of (workers || [])) {
       if (w.status !== 'online') {
-        items.push({ level: 'fail', tag: 'Offline', what: w.name, why: `has not reported since ${fmtTimestamp(w.last_heartbeat).text}. Its containers may still be running, but CashPilot cannot see them.`, actions: '<a class="btn btn-ghost btn-sm" href="/fleet">Open fleet</a>' });
+        const info = w.system_info || {};
+        const phone = info.device_type === 'android' || String(info.os || '').trim().toLowerCase() === 'android';
+        items.push({ level: 'fail', tag: 'Offline', what: w.name, why: `has not reported since ${fmtTimestamp(w.last_heartbeat).text}. Its ${phone ? 'apps' : 'containers'} may still be running, but CashPilot cannot see them.`, actions: '<a class="btn btn-ghost btn-sm" href="/fleet">Open fleet</a>' });
       }
     }
     for (const svc of services) {
@@ -1270,7 +1272,7 @@ const CP = (() => {
         if (inst.is_android) {
           // An app on a phone: CashPilot cannot start it, only the phone can.
           items.push(st === 'unknown'
-            ? { level: 'warn', tag: 'Unknown', what: svc.name, where, why: 'the phone cannot tell whether this app is running. Give the CashPilot app notification access and usage access on the phone so it can look.' }
+            ? { level: 'unknown', tag: 'Unknown', what: svc.name, where, why: 'the phone cannot tell whether this app is running. Give the CashPilot app notification access and usage access on the phone so it can look.' }
             : { level: 'fail', tag: 'Not running', what: svc.name, where, why: 'app is not running on the phone. Open it on the phone to start it again.' });
           continue;
         }
@@ -1357,7 +1359,7 @@ const CP = (() => {
     }
 
     if (seq !== undefined && seq !== _attentionSeq) return;
-    const order = { fail: 0, warn: 1 };
+    const order = { fail: 0, warn: 1, unknown: 2 };
     items.sort((a, b) => order[a.level] - order[b.level]);
     list.innerHTML = items.map(i => `
       <div class="attn-row attn-${i.level}">
@@ -1366,7 +1368,9 @@ const CP = (() => {
         <span class="attn-why">${i.why}</span>
         <span class="attn-actions">${i.actions || ''}</span>
       </div>`).join('');
-    _attentionCount.problems = items.length;
+    // A phone that cannot see an app is shown, in grey, but it is not a
+    // problem to count: nothing is known to be wrong.
+    _attentionCount.problems = items.filter(i => i.level !== 'unknown').length;
     updateAttentionSummary(services, workers);
   }
 

@@ -37,7 +37,7 @@ const run = new Function(
    ${maybe('function copyWords')}
    ${grab('function renderPlacement')}
    ${grab('async function renderAttention')}
-   return {renderAttention, renderPlacement};`,
+   return {renderAttention, renderPlacement, count: () => _attentionCount.problems};`,
 )(document, escapeHtml, async () => [], () => ({text: ''}));
 
 let bad = 0;
@@ -66,6 +66,8 @@ check('a stopped app is not tagged Down', !/>Down</.test(grass));
 check('an unknown app says the phone cannot tell', /phone cannot tell/.test(wipter));
 check('an unknown app is never Down or red', !/>Down</.test(wipter) && !/attn-fail/.test(wipter));
 check('a running app has no row', !rows.some(r => r.includes('Nodle')));
+check('an unknown app is a grey row, not amber', /attn-unknown/.test(wipter) && !/attn-warn/.test(wipter));
+check('only the stopped app counts as a problem', run.count() === 1);
 check('no Start or Logs button for a phone app', !/startService|viewLogs/.test(list.innerHTML));
 
 run.renderPlacement(services, workers);
@@ -73,6 +75,12 @@ const cell = name => (grid.innerHTML.split('<tr').find(r => r.includes(`>${name}
 check('placement: a stopped app reads as not running on the phone', /app not running on the phone/.test(cell('Grass')));
 check('placement: an unknown app is neither red nor amber', /cell-unknown/.test(cell('Wipter')) && !/cell-fail|cell-warn/.test(cell('Wipter')));
 check('placement: no phone cell says stopped or unknown bare', !/: stopped"|: unknown"/.test(grid.innerHTML));
+
+// An offline phone's apps may still run; it has no containers.
+await run.renderAttention([], [{id: 5, name: 'OPPO', status: 'offline', system_info: {os: 'Android'}}]);
+check('an offline phone says its apps may still be running', /Its apps may still be running/.test(list.innerHTML) && !/container/i.test(list.innerHTML));
+await run.renderAttention([], [{id: 7, name: 'nas', status: 'offline', system_info: {docker_available: true}}]);
+check('an offline server still says containers', /Its containers may still be running/.test(list.innerHTML));
 
 // A Docker copy keeps its container wording.
 await run.renderAttention([{slug: 'honeygain', name: 'Honeygain', instance_details: [{node: 'nas', worker_id: 7, status: 'exited', has_docker: true, container_name: 'cashpilot-honeygain', instance: 1, hints: []}]}], [{id: 7, name: 'nas', status: 'online'}]);

@@ -1343,10 +1343,12 @@ section { margin-bottom: 28px; }
 }
 .attn-fail { border-left-color: var(--error); }
 .attn-warn { border-left-color: var(--warning); }
+.attn-unknown { border-left-color: var(--text-muted); }
 .attn-ask { border-left-color: var(--text-secondary); }
 .attn-tag { font-size: var(--fs-2); font-weight: 600; white-space: nowrap; color: var(--text-primary); }
 .attn-fail .attn-tag, .problem-fail .attn-tag { color: var(--error); }
 .attn-warn .attn-tag, .problem-warn .attn-tag { color: var(--warning); }
+.attn-unknown .attn-tag { color: var(--text-muted); }
 .attn-what { font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .attn-where { font-family: var(--font-mono); font-weight: 400; font-size: var(--fs-2); color: var(--text-secondary); margin-left: 6px; }
 .attn-why { color: var(--text-secondary); min-width: 0; overflow-wrap: anywhere; }

@@ -350,6 +350,12 @@ async def _run_health_check() -> None:
         for s in statuses:
             slug = s["slug"]
             status = s.get("status", "unknown")
+            # A phone that cannot look (no usage or notification access) reports
+            # its apps as unknown. That says nothing about the app, so it takes
+            # no part here: it neither records downtime on its own nor hides a
+            # stopped container another box reports for the same service.
+            if s.get("_is_android") and status == "unknown":
+                continue
             if slug_best.get(slug) != "running":
                 slug_best[slug] = status
         # Collect every event for this cycle and write them in a single transaction
@@ -358,11 +364,6 @@ async def _run_health_check() -> None:
         for slug, status in slug_best.items():
             if status == "running":
                 events.append((slug, "check_ok", ""))
-            elif status == "unknown":
-                # Nothing could look: a phone without usage or notification
-                # access reports its apps as unknown. Unknown is not down, so
-                # the score is left alone rather than dragged down by a guess.
-                continue
             else:
                 events.append((slug, "check_down", status))
 
