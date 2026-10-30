@@ -4478,7 +4478,12 @@ async def api_usage_servers(request: Request) -> dict[str, Any]:
         return {"servers": [], "window_days": 0, "since": None, "currency": "USD"}
     since = min(r["day"] for r in rows)
     window_days = (datetime.strptime(today, "%Y-%m-%d") - datetime.strptime(since, "%Y-%m-%d")).days + 1
-    earned = await database.get_earned_by_platform(days=window_days)
+    # Only platforms with at least one priced delta in the window: a platform
+    # with no exchange rate, or a single reading so far, reads 0.0 otherwise,
+    # and "$0.00 earned" is a claim we cannot make.
+    measured: set[str] = set()
+    earned = await database.get_earned_by_platform(days=window_days, measured=measured)
+    earned = {slug: value for slug, value in earned.items() if slug in measured}
     names = {w["id"]: (w.get("name") or f"worker {w['id']}", w.get("status")) for w in await database.list_workers()}
 
     def add(a: Any, b: Any) -> Any:
@@ -4501,8 +4506,10 @@ async def api_usage_servers(request: Request) -> dict[str, Any]:
                 "tx": None,
                 "rx_today": None,
                 "tx_today": None,
+                "gaps": 0,
             },
         )
+        cell["gaps"] += r.get("net_gaps") or 0
         cell["cpu_sum"] += r["cpu_sum"]
         cell["cpu_n"] += r["cpu_n"]
         cell["mem_sum"] += r["mem_sum"]
@@ -4513,14 +4520,25 @@ async def api_usage_servers(request: Request) -> dict[str, Any]:
             cell["rx_today"] = add(cell["rx_today"], r["rx_bytes"])
             cell["tx_today"] = add(cell["tx_today"], r["tx_bytes"])
 
-    # Fleet-wide totals per service, for the per-GB ratios.
-    fleet_bytes: dict[str, int | None] = {}
-    fleet_mem: dict[str, float | None] = {}
+    # Fleet-wide totals per service, for the per-GB ratios. The earnings are the
+    # whole account's, so a ratio is only honest when EVERY copy of the service
+    # was measured: dividing all of the money by the traffic of the copies that
+    # had counters would make a partly host-networked service look like the
+    # best earner per GB. One unmeasured copy, and the ratio is unknown.
+    fleet_bytes: dict[str, int] = {}
+    fleet_mem: dict[str, float] = {}
+    bytes_unknown: set[str] = set()
+    mem_unknown: set[str] = set()
     for (_, slug), cell in cells.items():
         moved = add(cell["rx"], cell["tx"])
-        fleet_bytes[slug] = add(fleet_bytes.get(slug), moved)
-        mem = cell["mem_sum"] / cell["mem_n"] if cell["mem_n"] else None
-        fleet_mem[slug] = add(fleet_mem.get(slug), mem)
+        if moved is None or cell["gaps"]:
+            bytes_unknown.add(slug)
+        else:
+            fleet_bytes[slug] = fleet_bytes.get(slug, 0) + moved
+        if cell["mem_n"]:
+            fleet_mem[slug] = fleet_mem.get(slug, 0.0) + cell["mem_sum"] / cell["mem_n"]
+        else:
+            mem_unknown.add(slug)
 
     servers: dict[int, dict[str, Any]] = {}
     for (worker_id, slug), cell in sorted(cells.items(), key=lambda kv: (names[kv[0][0]][0], kv[0][1])):
@@ -4544,7 +4562,7 @@ async def api_usage_servers(request: Request) -> dict[str, Any]:
         )
         svc = catalog.get_service(slug) or {}
         service_earned = earned.get(slug)
-        mem_gb = (fleet_mem.get(slug) or 0) / 1024
+        mem_gb = None if slug in mem_unknown else fleet_mem.get(slug, 0.0) / 1024
         entry = {
             "slug": slug,
             "name": svc.get("name") or slug,
@@ -4555,8 +4573,12 @@ async def api_usage_servers(request: Request) -> dict[str, Any]:
             "rx": cell["rx"],
             "tx": cell["tx"],
             "earned_usd": None if service_earned is None else round(service_earned, 4),
-            "usd_per_gb": usage.per_gb(service_earned, fleet_bytes.get(slug)),
-            "usd_per_gb_ram": (service_earned / mem_gb) if service_earned is not None and mem_gb >= 0.01 else None,
+            "usd_per_gb": None if slug in bytes_unknown else usage.per_gb(service_earned, fleet_bytes.get(slug)),
+            "usd_per_gb_ram": (
+                service_earned / mem_gb
+                if service_earned is not None and mem_gb is not None and mem_gb >= 0.01
+                else None
+            ),
         }
         server["services"].append(entry)
         total = server["total"]

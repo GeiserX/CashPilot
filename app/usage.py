@@ -61,6 +61,10 @@ class ServiceSample:
     tx_bytes: int | None = None
     # (container_id, rx, tx) to store as the next baseline.
     counters: list[tuple[str, int, int]] = field(default_factory=list)
+    # A running container of this service had no counters (host network, or a
+    # worker that does not send them), so the traffic above is not the whole
+    # service and no per-GB figure may be built on it.
+    traffic_gap: bool = False
 
 
 def _num(value: Any) -> float | None:
@@ -104,16 +108,19 @@ def samples_from_heartbeat(
         cid = str(c.get("container_id") or "")
         rx_raw, tx_raw = c.get("net_rx_bytes"), c.get("net_tx_bytes")
         if not cid or rx_raw is None or tx_raw is None:
+            sample.traffic_gap = True
             continue
         try:
             rx, tx = int(rx_raw), int(tx_raw)
         except (TypeError, ValueError):
+            sample.traffic_gap = True
             continue
         prev = baselines.get(cid)
         age = None if prev is None else now - prev[2]
         d_rx = counter_delta(None if prev is None else prev[0], rx, age)
         d_tx = counter_delta(None if prev is None else prev[1], tx, age)
         if d_rx is None or d_tx is None:
+            sample.traffic_gap = True
             continue
         sample.rx_bytes = _add(sample.rx_bytes, d_rx)
         sample.tx_bytes = _add(sample.tx_bytes, d_tx)

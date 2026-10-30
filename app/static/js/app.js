@@ -347,7 +347,7 @@ const CP = (() => {
         <tbody>
           <tr class="usage-server"><th colspan="8">${escapeHtml(server.name)}${server.status === 'online' ? '' : ' <span class="muted">offline</span>'}</th></tr>
           ${rows}
-          <tr class="usage-total">
+          <tr class="usage-total" title="Each service's average while it ran, added up">
             <td>Total</td>
             <td class="c-num">${usageCpu(t.cpu_percent)}</td>
             <td class="c-num">${usageMem(t.memory_mb)}</td>
