@@ -68,3 +68,35 @@ def test_describe_exception_names_the_type():
     assert describe_exception(httpx.ReadTimeout("")) == "ReadTimeout"
     assert describe_exception(ValueError("bad")) == "ValueError: bad"
     assert credential_test.classify(describe_exception(httpx.ReadTimeout(""))) == credential_test.UNREACHABLE
+
+
+def test_earnapp_null_error_is_a_failure():
+    from app.collectors.earnapp import EarnAppCollector
+
+    async def _null_error(self, request, *args, **kwargs):
+        return httpx.Response(200, json={"error": None}, request=request)
+
+    collector = EarnAppCollector(oauth_token="dummy-value")
+
+    async def run():
+        with patch.object(httpx.AsyncClient, "send", _null_error):
+            try:
+                return await collector.collect()
+            finally:
+                await collector.close()
+
+    result = asyncio.run(run())
+    assert result.error, "EarnApp {'error': null} was reported as a successful reading"
+
+
+def test_collect_bounded_names_an_empty_exception():
+    from app import main
+
+    class Raises:
+        platform = "x"
+
+        async def collect(self):
+            raise httpx.ReadTimeout("")
+
+    result = asyncio.run(main._collect_bounded(Raises()))
+    assert result.error == "ReadTimeout"
