@@ -125,3 +125,13 @@ class TestBothStatusPaths:
         old = _container(_image(digests=["proxybase/old-cli@sha256:1"]), cid="managed-old", slug="proxybase")
         [entry] = self._run(fn, [[old], [old]])
         assert main._image_outdated(entry["image"], PINNED) is True
+
+
+def test_tag_pinned_catalog_image_still_matches_an_untagged_external_container():
+    """Pinning bitping to a tag must not hide a container someone started from the bare name."""
+    services = [{"slug": "bitping", "docker": {"image": "bitping/bitpingd:26.10.9-1"}}]
+    with patch.object(orchestrator, "get_services", return_value=services):
+        mapping = orchestrator._build_image_slug_map()
+    for ref in ("bitping/bitpingd:latest", "bitping/bitpingd:26.8.17-1"):
+        # The same two lookups get_status makes: exact reference, then repository.
+        assert (mapping.get(ref) or mapping.get(orchestrator._image_repository(ref))) == "bitping", ref

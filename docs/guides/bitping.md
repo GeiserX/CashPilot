@@ -52,7 +52,7 @@ In the CashPilot web UI, find **Bitping** in the service catalog and click **Dep
 
 ## Docker Configuration
 
-- **Image:** `bitping/bitpingd`
+- **Image:** `bitping/bitpingd:26.10.9-1`
 - **Platforms:** linux/amd64, linux/arm64
 
 ### Environment Variables

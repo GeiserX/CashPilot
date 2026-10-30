@@ -209,3 +209,69 @@ def test_proxybase_markets_referral_and_image_contract():
 
     # Every service must tell the user how to get paid (contribution rule).
     assert data["cashout"]["method"], "ProxyBase Markets must declare a cashout method"
+
+
+#: Entries still on a floating image (no tag, or a *latest* tag) when the pin rule
+#: landed. The list may only shrink: pin an entry, then delete its line here. A new
+#: entry cannot join it. Desktop pins each of these by digest in its own overlay;
+#: the web deploy still pulls whatever the floating name points at today.
+FLOATING_IMAGE_BACKLOG = {
+    "anyone-protocol",  # its docker.tag key is read by no deploy code
+    "earnfm",
+    "honeygain",
+    "iproyal",
+    "mysterium",
+    "packetshare",
+    "packetstream",
+    "peer2profit",
+    "presearch",
+    "proxylite",
+    "proxyrack",
+    "repocket",
+    "sia-hostd",
+    "speedshare",
+    "storj",
+    "traffmonetizer",
+    "urnetwork",
+    "wizardgain",
+}
+
+
+def _is_floating(image: str) -> bool:
+    """True when an image reference names no fixed build: no tag, or a latest tag."""
+    if "@sha256:" in image:
+        return False
+    last = image.rsplit("/", 1)[-1]
+    if ":" not in last:
+        return True
+    return "latest" in last.split(":", 1)[1]
+
+
+def test_floating_image_detection():
+    assert _is_floating("bitping/bitpingd")
+    assert _is_floating("bitping/bitpingd:latest")
+    assert _is_floating("bringyour/community-provider:g4-latest")
+    assert _is_floating("localhost:5000/repo")
+    assert not _is_floating("bitping/bitpingd:26.10.9-1")
+    assert not _is_floating("ghcr.io/x/y@sha256:" + "0" * 64)
+
+
+def test_catalog_images_are_pinned():
+    """A bare image name runs :latest, so every deploy can pull a different build.
+
+    Every catalog image must carry a release tag or a digest, except the backlog
+    above, and a backlog entry that has been pinned must leave the backlog.
+    """
+    floating, pinned_backlog = [], []
+    for yml in ALL_YAMLS:
+        data = yaml.safe_load(yml.read_text())
+        image = (data.get("docker") or {}).get("image") or ""
+        if not image:
+            continue
+        slug = data["slug"]
+        if _is_floating(image) and slug not in FLOATING_IMAGE_BACKLOG:
+            floating.append(f"{slug}: {image}")
+        if not _is_floating(image) and slug in FLOATING_IMAGE_BACKLOG:
+            pinned_backlog.append(slug)
+    assert not floating, f"pin these images to a release tag or digest: {floating}"
+    assert not pinned_backlog, f"pinned now, remove from FLOATING_IMAGE_BACKLOG: {pinned_backlog}"

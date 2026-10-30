@@ -17,7 +17,10 @@ referral:
   signup_url: "https://app.bitping.com"
 
 docker:
-  image: bitping/bitpingd
+  # Pinned: the bare name ran :latest, which moves under every deploy. 26.10.9-1 is
+  # what the reference fleet runs (manifest list sha256:2fe266df...). Re-pin to a
+  # newer bitpingd release tag, never back to the bare name.
+  image: bitping/bitpingd:26.10.9-1
   platforms: [linux/amd64, linux/arm64]
   resources:
     mem_limit: "192m"

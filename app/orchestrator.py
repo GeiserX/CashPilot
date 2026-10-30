@@ -1502,13 +1502,11 @@ def _build_image_slug_map() -> dict[str, str]:
         docker_conf = svc.get("docker", {})
         image = docker_conf.get("image", "")
         if image:
-            # Map both "image" and "image:latest" to the slug
             mapping[image] = svc["slug"]
-            if "@" in image:
-                # A digest-pinned image: an external container on an older
-                # digest of the same repository is still this service.
-                mapping[image.split("@")[0]] = svc["slug"]
-            elif ":" not in image:
+            # A pinned image (tag or digest): an external container on another
+            # build of the same repository is still this service.
+            mapping[_image_repository(image)] = svc["slug"]
+            if "@" not in image and ":" not in image:
                 mapping[f"{image}:latest"] = svc["slug"]
     return mapping
 
