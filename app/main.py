@@ -2076,13 +2076,13 @@ async def api_services_deployed(request: Request) -> list[dict[str, Any]]:
                 "instance": inst.get("instance") or 1,
                 "custom_image": custom_images.get(inst.get("_worker_id")),
             }
-            # Only containers CashPilot's worker made (deployed-by "worker"): a
+            # Only containers CashPilot made (constants.CASHPILOT_DEPLOYED): a
             # container the user runs by hand is theirs to shape, even when it
             # carries CashPilot's labels or a catalog image.
             if (
                 drift_on
                 and isinstance(inst.get("shape"), dict)
-                and inst.get("deployed_by") == "worker"
+                and inst.get("deployed_by") in constants.CASHPILOT_DEPLOYED
                 and drift_ignored.get(f"{slug}|{inst.get('_worker_id')}") != drift.catalog_fingerprint(svc)
             ):
                 drift_found, has_record = await _instance_drift(

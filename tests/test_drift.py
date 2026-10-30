@@ -308,6 +308,8 @@ class TestOnlyWhatCashPilotDeployed:
 
     def test_the_worker_reports_settings_only_for_its_own_containers(self):
         assert "shape" in orchestrator._shape_entry(_container({"cashpilot.deployed-by": "worker"}))
+        # Made by CashPilot's deploy path before workers; the July 2026 Bitping containers were these.
+        assert "shape" in orchestrator._shape_entry(_container({"cashpilot.deployed-by": "direct"}))
         # An exported compose file carries the labels too, and the user runs it by hand.
         assert orchestrator._shape_entry(_container({"cashpilot.deployed-by": "compose"})) == {}
         assert orchestrator._shape_entry(_container({})) == {}
@@ -319,6 +321,7 @@ class TestOnlyWhatCashPilotDeployed:
             assert "drift" not in row["instance_details"][0], who
         # The control: the same container made by the worker is flagged.
         assert _deployed_row(BITPING, shape, recorded=None)["instance_details"][0]["drift"]
+        assert _deployed_row(BITPING, shape, recorded=None, deployed_by="direct")["instance_details"][0]["drift"]
 
 
 class TestTheSwitch:
@@ -413,3 +416,36 @@ class TestIgnore:
 
         asyncio.run(run())
         assert set(json.loads(store["drift_ignored"])) == {"bitping|1", "bitping|2"}
+
+
+class TestTheHeartbeatCarriesIt:
+    """End to end on the worker side: what get_status sends is what the dashboard reads."""
+
+    def _entries(self, deployed_by):
+        c = MagicMock()
+        c.id = "abc"
+        c.short_id = "abc"
+        c.name = "cashpilot-bitping"
+        c.status = "running"
+        c.labels = {"cashpilot.service": "bitping", "cashpilot.managed": "true", "cashpilot.deployed-by": deployed_by}
+        c.attrs = {**_attrs_from_spec(_bitping_spec(cap_add=None)), "Created": "2026-07-31T00:00:00Z"}
+        c.image.tags = ["bitping/bitpingd:latest"]
+        client = MagicMock()
+        client.containers.list.return_value = [c]
+        with (
+            patch.object(orchestrator, "_get_client", return_value=client),
+            patch.object(orchestrator, "_build_image_slug_map", return_value={}),
+            patch.object(orchestrator, "_collect_stats_bulk", return_value={}),
+        ):
+            return orchestrator.get_status_light() + orchestrator.get_status()
+
+    def test_a_direct_container_reaches_the_dashboard_flagged(self):
+        entries = self._entries("direct")
+        assert len(entries) == 2
+        for entry in entries:
+            assert entry["deployed_by"] == "direct" and "shape" in entry
+            row = _deployed_row(BITPING, entry["shape"], recorded=None, deployed_by=entry["deployed_by"])
+            assert any("NET_RAW" in d for d in row["instance_details"][0]["drift"])
+
+    def test_a_compose_container_sends_no_settings(self):
+        assert all("shape" not in entry for entry in self._entries("compose"))
