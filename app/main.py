@@ -3924,6 +3924,12 @@ async def api_credential_health(request: Request) -> list[dict[str, Any]]:
 
             if slug in rejected:
                 status = "likely_expired"
+                # The age-based reason (or "its age does not matter") would
+                # contradict the status; the refusal is the reason now.
+                why = (
+                    "The provider rejected the saved credentials on the last run, "
+                    "so they need replacing whatever their age."
+                )
 
             entry: dict[str, Any] = {
                 "service": slug,
@@ -4439,6 +4445,7 @@ async def api_test_credentials(request: Request, slug: str) -> dict[str, Any]:
     """
     from app import collectors
     from app.collectors import COLLECTOR_MAP
+    from app.collectors.base import classify_exception
 
     # Owner, not merely authenticated: this fires an authenticated login to a
     # third party using the OWNER's stored credentials and reads the balance
@@ -4485,12 +4492,14 @@ async def api_test_credentials(request: Request, slug: str) -> dict[str, Any]:
         from app.collectors.base import describe_exception
 
         # str(exc) is "" for a timeout, which classify() reads as success.
-        return credential_test.result(credential_test.classify(describe_exception(exc)), name)
+        return credential_test.result(credential_test.classify(describe_exception(exc), classify_exception(exc)), name)
     finally:
         with contextlib.suppress(Exception):
             await collector.close()
 
-    outcome = credential_test.classify(result.error)
+    # The collector's own mark first: "Session expired" or a 503 carry it
+    # where their text matches nothing the classifier knows.
+    outcome = credential_test.classify(result.error, result.error_kind)
     if outcome == credential_test.OK:
         return credential_test.result(outcome, name, balance=result.balance, currency=result.currency)
     logger.debug("Credential test for %s failed: %s", slug, result.error)

@@ -237,6 +237,25 @@ class TestCredentialSelfTest:
         assert out["outcome"] == "bad_credentials"
         assert "abc123secret" not in json.dumps(out), "the response leaked the provider's raw error"
 
+    def test_the_collectors_own_auth_mark_is_believed(self):
+        """Bytelixir's "Session expired" matched no text marker (#518 review)."""
+        result = self._result(error="Session expired — refresh bytelixir_session cookie in Settings")
+        result.error_kind = "auth"
+        out = self._call("honeygain", collect=result)
+        assert out["outcome"] == "bad_credentials"
+
+    def test_a_raised_503_is_the_provider_being_down(self):
+        import httpx
+
+        request = httpx.Request("GET", "https://x/api")
+        response = httpx.Response(503, request=request)
+        exc = httpx.HTTPStatusError(
+            "Server error '503 Service Unavailable' for url 'https://x/api'", request=request, response=response
+        )
+        out = self._call("honeygain", raises=exc)
+        assert out["outcome"] == "provider_down"
+        assert "changed its API" not in out["message"]
+
     def test_a_raised_exception_never_leaks_its_text(self):
         out = self._call("honeygain", raises=RuntimeError("connect failed to https://user:hunter2@api"))
         assert "hunter2" not in json.dumps(out)
@@ -324,12 +343,75 @@ class TestOutcomeClassification:
             ("KeyError: 'usd_cents'", "unexpected_shape"),
             ("something nobody anticipated", "unexpected_shape"),
             ("Account disabled by Pawns — contact Pawns support (the password is fine)", "account_disabled"),
+            # The provider refusing for now is not "the provider changed its API" (#517).
+            ("Pawns rate-limited the login — it will retry on the next run", "provider_rate_limited"),
+            ("Cloudflare rate limit — will retry next collection cycle", "provider_rate_limited"),
+            ("Client error '429 Too Many Requests' for url 'https://x/api'", "provider_rate_limited"),
         ],
     )
     def test_errors_map_to_stable_outcomes(self, error, expected):
         from app import credential_test
 
         assert credential_test.classify(error) == expected
+
+    # Every message family the collectors emit, with the mark they set (or
+    # None where the collector sets none). Before #518 the auth and 5xx rows
+    # all read as "the provider changed its API", and the shape rows as "no
+    # credentials saved yet".
+    @pytest.mark.parametrize(
+        ("error", "kind", "expected"),
+        [
+            ("Session expired — refresh bytelixir_session cookie in Settings", "auth", "bad_credentials"),
+            ("Token expired — get a new accessToken from app.grass.io Local Storage", "auth", "bad_credentials"),
+            ("Auth cookie expired — get a new 'auth' cookie from salad.com", "auth", "bad_credentials"),
+            (
+                "Token rejected, so it has expired or was revoked — copy a fresh authToken from browser Local Storage",
+                "auth",
+                "bad_credentials",
+            ),
+            ("Authentication failed — check auth JWT cookie", "auth", "bad_credentials"),
+            # Same families from collectors that set no mark: the text must carry them.
+            ("Authentication failed — check API key", None, "bad_credentials"),
+            ("Authentication failed — check OAuth token and session cookie", None, "bad_credentials"),
+            ("Auth token rejected — check Earn.fm email/password in Settings", None, "bad_credentials"),
+            ("Session expired — refresh bytelixir_session cookie in Settings", None, "bad_credentials"),
+            # 5xx, marked transient or not.
+            ("Server error '503 Service Unavailable' for url 'https://x/api'", "transient", "provider_down"),
+            ("Server error '503 Service Unavailable' for url 'https://x/api'", None, "provider_down"),
+            ("Server error '502 Bad Gateway' for url 'https://x/api'", None, "provider_down"),
+            ("Server error '500 Internal Server Error' for url 'https://x/api'", None, "provider_down"),
+            # A rate limit stays a rate limit even though Grass marks it transient.
+            ("Cloudflare rate limit — will retry next collection cycle", "transient", "provider_rate_limited"),
+            # Shape: the mark, or the text, never "not configured" for its "missing".
+            ("usd_cents field missing — API shape may have changed", "shape", "unexpected_shape"),
+            ("balance field missing — API shape may have changed", None, "unexpected_shape"),
+            ("Could not parse balance from dashboard — page structure may have changed", "shape", "unexpected_shape"),
+            # Not configured, in the collectors' own words.
+            ("No token configured — copy authToken from browser Local Storage", None, "not_configured"),
+            ("No credentials configured — enter Earn.fm email and password", None, "not_configured"),
+            ("Storagenode API not reachable at http://localhost:14002", None, "unreachable"),
+            # An expired TLS certificate is the connection failing, not the credentials.
+            (
+                "[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: certificate has expired (_ssl.c:1032)",
+                None,
+                "unreachable",
+            ),
+            # "certificate" in a URL does not hide a 401.
+            ("Client error '401 Unauthorized' for url 'https://certificate.x.com/api'", None, "bad_credentials"),
+        ],
+    )
+    def test_each_collector_message_family(self, error, kind, expected):
+        from app import credential_test
+
+        assert credential_test.classify(error, kind) == expected
+
+    def test_a_provider_rate_limit_says_so_not_api_change(self):
+        from app import credential_test
+
+        outcome = credential_test.classify("Pawns rate-limited the login — it will retry on the next run")
+        msg = credential_test.message(outcome, "IPRoyal Pawns")
+        assert "rate-limiting requests" in msg
+        assert "changed its API" not in msg
 
     def test_every_outcome_has_a_message_a_user_can_act_on(self):
         from app import credential_test
@@ -343,6 +425,8 @@ class TestOutcomeClassification:
             "rate_limited",
             "unsupported",
             "account_disabled",
+            "provider_rate_limited",
+            "provider_down",
         ):
             msg = credential_test.message(outcome, "Honeygain")
             assert len(msg) > 20 and msg.endswith((".", "!"))
