@@ -21,6 +21,7 @@ Two things it must never do, both learned the hard way in this codebase:
 from __future__ import annotations
 
 import logging
+import re
 import time
 from typing import Any
 
@@ -35,6 +36,8 @@ RATE_LIMITED = "rate_limited"
 # The PROVIDER refused to answer for now. RATE_LIMITED above is CashPilot's own
 # cooldown on this button; this one is the provider's.
 PROVIDER_RATE_LIMITED = "provider_rate_limited"
+# The provider answered with a server error (5xx): its problem, not the credentials'.
+PROVIDER_DOWN = "provider_down"
 UNSUPPORTED = "unsupported"
 ACCOUNT_DISABLED = "account_disabled"
 
@@ -45,35 +48,95 @@ COOLDOWN_SECONDS = 20.0
 _last_attempt: dict[str, float] = {}
 
 # Substrings that identify the failure without repeating anything sensitive.
-_AUTH_MARKERS = ("401", "403", "unauthorized", "forbidden", "invalid credentials", "login failed", "bad credentials")
-_NETWORK_MARKERS = ("timeout", "timed out", "connect", "dns", "network", "unreachable", "ssl", "certificate")
+# The text is only the fallback: a collector's own error_kind wins (see classify).
+_AUTH_MARKERS = (
+    "401",
+    "403",
+    "unauthorized",
+    "forbidden",
+    "invalid credentials",
+    "login failed",
+    "bad credentials",
+    # "Authentication failed", "Auth token rejected", "Token rejected",
+    # "Session expired", "Auth cookie expired" from the collectors themselves.
+    "authentication failed",
+    "rejected",
+    "expired",
+)
+_NETWORK_MARKERS = (
+    "timeout",
+    "timed out",
+    "connect",
+    "dns",
+    "network",
+    "unreachable",
+    "not reachable",
+    "ssl",
+    "certificate",
+)
+# httpx's raise_for_status text for a 5xx: "Server error '503 Service Unavailable'".
+_SERVER_ERROR_MARKERS = ("server error", "service unavailable", "bad gateway", "gateway time")
 # "rate-limited the login" (IPRoyal/Pawns), "Cloudflare rate limit" (Grass),
 # httpx's "429 Too Many Requests" from raise_for_status.
 _RATE_LIMIT_MARKERS = ("rate-limit", "rate limit", "too many requests", "throttl")
-_SHAPE_MARKERS = ("keyerror", "no access_token", "not in", "expecting value", "jsondecode", "nonetype", "unexpected")
+_SHAPE_MARKERS = (
+    "keyerror",
+    "no access_token",
+    "not in",
+    "expecting value",
+    "jsondecode",
+    "nonetype",
+    "unexpected",
+    # "usd_cents field missing — API shape may have changed": checked before the
+    # not-configured test, whose "missing" would otherwise claim it.
+    "shape",
+    "structure",
+    "field missing",
+)
+_NOT_CONFIGURED = re.compile(r"not configured|\bno\b.*\bconfigured\b|missing")
+
+# The collectors' own failure marks (app.collectors.base.KIND_*). Kept as
+# strings so this module imports nothing from the collectors.
+_KIND_AUTH = "auth"
+_KIND_TRANSIENT = "transient"
+_KIND_SHAPE = "shape"
 
 
-def classify(error: str | None) -> str:
-    """Map a collector's error string to a stable, non-sensitive outcome."""
+def classify(error: str | None, kind: str | None = None) -> str:
+    """Map a collector's error to a stable, non-sensitive outcome.
+
+    ``kind`` is the collector's own mark (EarningsResult.error_kind). It is
+    evidence where the text is a guess, so it decides before the text does,
+    except for the two messages more specific than any kind: a disabled account
+    (not a bad password) and a rate limit (transient, but "try later" is the
+    useful sentence).
+    """
     if not error:
         return OK
     text = error.lower()
-    # Before the auth markers: a disabled account is not a bad password, and
-    # its message may also mention the 401 that led to the re-login.
+    # A disabled account is not a bad password, and its message may also
+    # mention the 401 that led to the re-login.
     if "account disabled" in text:
         return ACCOUNT_DISABLED
-    # Before the auth markers too: a refused-for-now login says nothing about
-    # whether the credentials are right.
+    # A refused-for-now request says nothing about whether the credentials are right.
     if any(m in text for m in _RATE_LIMIT_MARKERS):
         return PROVIDER_RATE_LIMITED
+    if kind == _KIND_AUTH:
+        return BAD_CREDENTIALS
+    if kind == _KIND_SHAPE:
+        return UNEXPECTED_SHAPE
+    if any(m in text for m in _SERVER_ERROR_MARKERS):
+        return PROVIDER_DOWN
+    if kind == _KIND_TRANSIENT:
+        return UNREACHABLE
     if any(m in text for m in _AUTH_MARKERS):
         return BAD_CREDENTIALS
     if any(m in text for m in _NETWORK_MARKERS):
         return UNREACHABLE
-    if "not configured" in text or "missing" in text:
-        return NOT_CONFIGURED
     if any(m in text for m in _SHAPE_MARKERS):
         return UNEXPECTED_SHAPE
+    if _NOT_CONFIGURED.search(text):
+        return NOT_CONFIGURED
     return UNEXPECTED_SHAPE
 
 
@@ -107,6 +170,11 @@ def message(outcome: str, service_name: str, balance: float | None = None, curre
         return (
             f"{service_name} is rate-limiting requests right now, so it could not check these credentials. "
             "Try again later; CashPilot will also retry on its next collection run."
+        )
+    if outcome == PROVIDER_DOWN:
+        return (
+            f"{service_name} is having trouble right now (it answered with a server error), "
+            "so it could not check these credentials. Try again later."
         )
     if outcome == UNSUPPORTED:
         return f"CashPilot has no earnings collector for {service_name}, so there is nothing to test."

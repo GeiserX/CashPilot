@@ -4253,6 +4253,7 @@ async def api_test_credentials(request: Request, slug: str) -> dict[str, Any]:
     """
     from app import collectors
     from app.collectors import COLLECTOR_MAP
+    from app.collectors.base import classify_exception
 
     # Owner, not merely authenticated: this fires an authenticated login to a
     # third party using the OWNER's stored credentials and reads the balance
@@ -4296,12 +4297,14 @@ async def api_test_credentials(request: Request, slug: str) -> dict[str, Any]:
         result = await collector.collect()
     except Exception as exc:
         logger.debug("Credential test for %s raised: %s", slug, exc)
-        return credential_test.result(credential_test.classify(str(exc)), name)
+        return credential_test.result(credential_test.classify(str(exc), classify_exception(exc)), name)
     finally:
         with contextlib.suppress(Exception):
             await collector.close()
 
-    outcome = credential_test.classify(result.error)
+    # The collector's own mark first: "Session expired" or a 503 carry it
+    # where their text matches nothing the classifier knows.
+    outcome = credential_test.classify(result.error, result.error_kind)
     if outcome == credential_test.OK:
         return credential_test.result(outcome, name, balance=result.balance, currency=result.currency)
     logger.debug("Credential test for %s failed: %s", slug, result.error)
