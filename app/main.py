@@ -706,7 +706,7 @@ async def _collect_bounded(collector) -> Any:
             return collectors_base.EarningsResult(
                 platform=collector.platform or type(collector).__name__,
                 balance=0.0,
-                error=str(exc),
+                error=collectors_base.describe_exception(exc),
                 error_kind=collectors_base.classify_exception(exc),
             )
 
@@ -4297,7 +4297,10 @@ async def api_test_credentials(request: Request, slug: str) -> dict[str, Any]:
         result = await collector.collect()
     except Exception as exc:
         logger.debug("Credential test for %s raised: %s", slug, exc)
-        return credential_test.result(credential_test.classify(str(exc), classify_exception(exc)), name)
+        from app.collectors.base import describe_exception
+
+        # str(exc) is "" for a timeout, which classify() reads as success.
+        return credential_test.result(credential_test.classify(describe_exception(exc), classify_exception(exc)), name)
     finally:
         with contextlib.suppress(Exception):
             await collector.close()
