@@ -1843,6 +1843,15 @@ async def removed_slugs() -> set[str]:
         await db.close()
 
 
+def _worker_is_blind(raw: Any) -> bool:
+    """A Docker host that said it cannot read its socket. Explicitly: a row with
+    no system_info at all is not evidence that it is hiding anything."""
+    from app import placement
+
+    info = placement.system_info({"system_info": raw})
+    return info.get("docker_available") is False and placement.is_blind({"system_info": raw})
+
+
 async def _deployed_on_another_worker(db: Any, slug: str, worker_id: int) -> bool:
     cursor = await db.execute(
         "SELECT 1 FROM deployment_specs WHERE slug = ? AND worker_id != ? LIMIT 1",
@@ -1850,8 +1859,12 @@ async def _deployed_on_another_worker(db: Any, slug: str, worker_id: int) -> boo
     )
     if await cursor.fetchone():
         return True
-    cursor = await db.execute("SELECT containers FROM workers WHERE id != ?", (worker_id,))
+    cursor = await db.execute("SELECT containers, system_info FROM workers WHERE id != ?", (worker_id,))
     for row in await cursor.fetchall():
+        if _worker_is_blind(row["system_info"]):
+            # A Docker host that cannot read its socket lists nothing, so it
+            # may well still run the service: not a fleet-wide removal.
+            return True
         try:
             containers = json.loads(row["containers"] or "[]")
         except (TypeError, ValueError):

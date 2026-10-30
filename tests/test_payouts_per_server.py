@@ -984,6 +984,13 @@ class TestASettingsSaveDoesNotBringBackARemovedService:
         saved = self._save(client, before, {"honeygain_email": "me@example.com", "earnapp_oauth_token": "t"})
         assert "honeygain" not in saved and saved == ["earnapp"], "the service actually added still is"
 
+    def test_a_retyped_secret_does_even_when_it_is_the_same(self, client):
+        """The page never prefills a secret, so one in the request was typed."""
+        before = {"honeygain_email": "me@example.com", "honeygain_password": "pw"}
+        assert self._save(client, before, {"honeygain_email": "me@example.com", "honeygain_password": "pw"}) == [
+            "honeygain"
+        ]
+
     def test_control_a_changed_credential_does(self, client):
         before = {"honeygain_email": "me@example.com", "honeygain_password": "pw"}
         assert self._save(client, before, {"honeygain_password": "new"}) == ["honeygain"]
@@ -1010,3 +1017,44 @@ class TestARemovalOnOneBoxStaysOnThatBox:
         with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "t.db"):
             row, removed = asyncio.run(go())
         assert row is not None and "honeygain" not in removed
+
+    def test_a_blind_other_box_may_still_run_it(self, tmp_path):
+        """Its heartbeat lists nothing while it cannot read Docker; once it can, it is still tracked."""
+        from app import database
+
+        async def go():
+            await database.init_db()
+            await database.save_deployment("honeygain", "c1", status="running")
+            await database.upsert_worker(
+                "geiserback-id",
+                name="geiserback",
+                url="http://b",
+                containers="[]",
+                system_info=json.dumps({"docker_available": False}),
+            )
+            await database.remove_deployment("honeygain", worker_id=999)
+            return await database.get_deployment("honeygain"), await database.removed_slugs()
+
+        with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "t.db"):
+            row, removed = asyncio.run(go())
+        assert row is not None and "honeygain" not in removed
+
+    def test_control_a_box_that_can_see_docker_and_lacks_it_does_not_hold_it(self, tmp_path):
+        from app import database
+
+        async def go():
+            await database.init_db()
+            await database.save_deployment("honeygain", "c1", status="running")
+            await database.upsert_worker(
+                "geiserback-id",
+                name="geiserback",
+                url="http://b",
+                containers="[]",
+                system_info=json.dumps({"docker_available": True}),
+            )
+            await database.remove_deployment("honeygain", worker_id=999)
+            return await database.get_deployment("honeygain"), await database.removed_slugs()
+
+        with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "t.db"):
+            row, removed = asyncio.run(go())
+        assert row is None and "honeygain" in removed

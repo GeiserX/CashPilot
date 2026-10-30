@@ -1082,8 +1082,9 @@ async def _track_fully_configured_services() -> int:
             return 0
         existing = {d.get("slug") for d in await database.get_deployments()}
         # Removed from the whole fleet by the user: saved credentials are not a
-        # reason to bring it back. Deploying it or saving its credentials again
-        # lifts this (database.save_deployment).
+        # reason to bring it back. Deploying it, or saving a changed value or a
+        # retyped secret for it in Settings, lifts this (api_set_config,
+        # database.save_deployment).
         removed = await database.removed_slugs()
         tracked = 0
         for slug in sorted(fully_configured_slugs(config)):
@@ -5617,8 +5618,9 @@ async def api_set_config(
     before = await database.get_config() or {}
     await database.set_config_bulk(sanitized)
     # Settings posts every prefilled field on the page, so a removed service's
-    # unchanged email would bring it back as "balance only". Only a value that
-    # actually changed counts as the user adding it again.
+    # unchanged email would bring it back as "balance only". A value that
+    # changed counts as the user adding it again, and so does any secret: the
+    # page never prefills those, so one in the request was typed.
 
     # Auto-create "external" deployment records for manual-only services
     # whose collector credentials were just saved.  Without a deployment
@@ -5645,7 +5647,8 @@ async def api_set_config(
         if not any(k.startswith(f"{slug}_") for k in sanitized):
             continue
         if slug in removed and not any(
-            k.startswith(f"{slug}_") and v and v != before.get(k) for k, v in sanitized.items()
+            k.startswith(f"{slug}_") and v and (v != before.get(k) or database._is_secret_key(k))
+            for k, v in sanitized.items()
         ):
             continue
         svc = catalog.get_service(slug)
