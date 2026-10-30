@@ -140,6 +140,7 @@ def missing(
     now: datetime,
     first_missing: dict[tuple[str, Any], datetime],
     grace: timedelta = MISSING_GRACE,
+    alerted: set[str] | frozenset[str] = frozenset(),
 ) -> dict[str, dict[str, Any]] | None:
     """Deployments CashPilot records that no worker runs, past the grace period.
 
@@ -161,8 +162,12 @@ def missing(
     caller then neither raises nor clears anything.
 
     ``first_missing`` remembers when each (slug, worker_id or None) was first
-    seen missing and is updated in place; a key that is no longer missing is
-    dropped, so a redeploy that brings the container back resets its clock.
+    seen missing and is updated in place. After the call its keys are exactly
+    what is still missing or cannot be judged right now (its box went offline
+    or blind): the caller keeps an alert while any key of that service remains,
+    and clears it only once none does. ``alerted`` are services that already
+    have a stored alert: they skip the grace period, so a restart, which empties
+    ``first_missing``, neither clears nor re-pushes them.
     """
     online = [w for w in workers if w.get("status") == "online"]
     if not online:
@@ -173,23 +178,40 @@ def missing(
     where = runs_on(workers)
     by_id = {w.get("id"): w for w in workers}
     candidates: dict[tuple[str, Any], datetime | None] = {}
+    held: set[tuple[str, Any]] = set()
+
+    # Offline Docker hosts whose last report is older than a deploy cannot have
+    # listed it yet: that deployment may be running there.
+    offline_since = [
+        _sqlite_time(w.get("last_heartbeat"))
+        for w in workers
+        if w.get("status") != "online" and not is_android(system_info(w))
+    ]
 
     for d in deployments:
         slug = d.get("slug")
         if not slug or (d.get("status") or "") == "external" or slug in where:
             continue
-        candidates[(slug, None)] = _sqlite_time(d.get("deployed_at"))
+        deployed_at = _sqlite_time(d.get("deployed_at"))
+        if deployed_at is not None and any(seen is not None and seen < deployed_at for seen in offline_since):
+            held.add((slug, None))
+            continue
+        candidates[(slug, None)] = deployed_at
 
     for s in specs:
         slug, wid = s.get("slug"), s.get("worker_id")
         w = by_id.get(wid)
-        if not slug or w is None or w.get("status") != "online" or not can_see_docker(w):
+        if not slug or w is None:
+            continue
+        if w.get("status") != "online" or not can_see_docker(w):
+            # Cannot look right now. A verdict already reached stands until it can.
+            held.add((slug, wid))
             continue
         if any(r["worker_id"] == wid for r in where.get(slug, [])):
             continue
         candidates[(slug, wid)] = _sqlite_time(s.get("deployed_at"))
 
-    for key in set(first_missing) - set(candidates):
+    for key in set(first_missing) - set(candidates) - held:
         first_missing.pop(key, None)
 
     out: dict[str, dict[str, Any]] = {}
@@ -198,7 +220,7 @@ def missing(
         # A fresh deploy gets the full grace period from the deploy itself, so
         # a slow first pull is not reported while it is still downloading.
         start = max(since, deployed_at) if deployed_at else since
-        if now - start < grace:
+        if slug not in alerted and now - start < grace:
             continue
         item = out.setdefault(
             slug,

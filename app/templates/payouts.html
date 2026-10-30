@@ -139,7 +139,9 @@
       if (entry.address_unchecked) {
         var why = entry.address_unchecked === 'app'
           ? 'Set in the provider\'s app, not checked'
-          : 'Set outside CashPilot, not checked';
+          : entry.address_unchecked === 'record'
+            ? 'No deploy record to read on some boxes'
+            : 'Set outside CashPilot, not checked';
         return html + (html ? '<br>' : '') + '<span class="payout-unchecked">' + (html ? 'Not checked on every box' : why) + '</span>';
       }
       return html || '<span class="payout-missing">Not set</span>';
@@ -202,6 +204,7 @@
   // Which boxes report the service, from their heartbeats. A recorded service
   // no box reports says so plainly: that row is the one to fix.
   function runsOnCell(entry) {
+    if (entry.runs_on_unknown) return '<span class="payout-unchecked">Could not read the boxes</span>';
     var boxes = entry.runs_on || [];
     if (boxes.length) {
       return boxes.map(function (b) {
@@ -215,6 +218,7 @@
   }
 
   function stateCell(entry) {
+    if (entry.runs_on_unknown) return entry.recorded ? '<span class="state state-idle">recorded</span>' : '<span class="state state-idle">not deployed</span>';
     if (entry.deployed) return '<span class="state state-ok">deployed</span>';
     if (entry.recorded && !entry.tracked_only) return '<span class="state state-fail">not running</span>';
     if (entry.tracked_only) return '<span class="state state-idle">balance only</span>';

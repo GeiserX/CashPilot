@@ -329,7 +329,7 @@ CASHPILOT_WORKER_NAME=server-name</code>
     for (const w of workers) {
       const isOnline = w.status === 'online';
       const sysInfo = w.system_info || {};
-      const isAndroid = (sysInfo.device_type === 'android' || String(sysInfo.os || '').toLowerCase() === 'android');
+      const isAndroid = (sysInfo.device_type === 'android' || String(sysInfo.os || '').trim().toLowerCase() === 'android');
       const items = isAndroid ? (w.apps || []) : (w.containers || []);
       const cid = esc(w.client_id || w.id);
       const flags = [
@@ -348,7 +348,7 @@ CASHPILOT_WORKER_NAME=server-name</code>
         // release, not to the UI: the two ship on separate tracks,
         // so "v0.3.0 != UI v1.24.1" was never skew, it was two
         // different products, and it flagged every phone forever.
-        const isAndroidOs = String(sysInfo.os || '').toLowerCase() === 'android';
+        const isAndroidOs = String(sysInfo.os || '').trim().toLowerCase() === 'android';
         const ref = w.reference_version || w.ui_version || '?';
         const refLabel = isAndroidOs ? `latest v${esc(ref)}` : `UI v${esc(ref)}`;
         const why = isAndroidOs

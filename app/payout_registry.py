@@ -106,12 +106,17 @@ def _address_view(
 
     by_address: dict[str, list[str]] = {}
     asked_empty: list[str] = []
+    not_asked: list[str] = []
     for server in servers:
         if not server.get("address_read"):
+            if not server.get("android"):
+                not_asked.append(server["name"])
             continue
-        if server.get("address"):
-            by_address.setdefault(server["address"], []).append(server["name"])
-        else:
+        # Several copies on one box can hold different wallets; keep each.
+        found = server.get("addresses") or ([server["address"]] if server.get("address") else [])
+        for address in found:
+            by_address.setdefault(address, []).append(server["name"])
+        if not found:
             asked_empty.append(server["name"])
 
     if not servers and source == "env":
@@ -142,13 +147,15 @@ def _address_view(
             "addresses": addresses,
             "address_missing": missing,
             "address_missing_on": sorted(asked_empty),
-            "address_unchecked": None,
+            # A box whose own deploy record could not be read, beside boxes that
+            # could: its wallet is unknown, which is not the same as theirs.
+            "address_unchecked": "record" if (addresses or asked_empty) and not_asked else None,
         }
 
     # Set outside CashPilot. What a worker read back is shown; anything it
     # could not read is "not checked", never "not set".
     unchecked = None
-    if not addresses or any(not s.get("address") for s in servers):
+    if not addresses or any(not (s.get("addresses") or s.get("address")) for s in servers):
         unchecked = UNCHECKED_REASONS.get(source or "", "outside")
     return {
         "address": addresses[0]["address"] if len(addresses) == 1 else None,
@@ -267,9 +274,11 @@ async def registry(read_addresses: Any = None) -> dict[str, Any]:
     try:
         workers = await database.list_workers()
     except Exception as exc:  # noqa: BLE001
+        # Unknown, not an empty fleet: an empty list would call every recorded
+        # service "runs nowhere". Rows fall back to the deployments table.
         logger.warning("Could not read the workers for the payout registry: %s", exc)
-        workers = []
-    where = placement.runs_on(workers)
+        workers = None
+    where = placement.runs_on(workers or [])
 
     services = catalog.get_services()
     readable = {
@@ -329,11 +338,14 @@ async def registry(read_addresses: Any = None) -> dict[str, Any]:
                         server["address_read"] = True
                         server["address"] = address_from_spec(own, env_name)
                 elif (server["worker_id"], slug) in read:
-                    found = [a for a in read[(server["worker_id"], slug)] if a]
+                    found = sorted({a for a in read[(server["worker_id"], slug)] if a})
                     server["address_read"] = True
+                    server["addresses"] = found
                     server["address"] = found[0] if found else None
-        row = entry(service, spec, deployed=bool(servers), servers=servers, recorded=slug in recorded_slugs)
+        deployed = bool(servers) if workers is not None else slug in recorded_slugs
+        row = entry(service, spec, deployed=deployed, servers=servers, recorded=slug in recorded_slugs)
         row["tracked_only"] = slug in tracked_only
+        row["runs_on_unknown"] = workers is None
         entries.append(row)
 
     entries.sort(key=lambda row: (not (row["deployed"] or row["recorded"]), (row["name"] or "").lower()))

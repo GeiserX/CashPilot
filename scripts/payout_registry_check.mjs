@@ -219,6 +219,11 @@ const read = payoutAddressCell({model: 'external', address: '0xaaa', addresses: 
 check('a wallet a box read back is shown', read.includes('0xaaa') && !read.includes('Not set'), read);
 const differ = payoutAddressCell({model: 'external', address: null, addresses: [{address: '0xaaa', servers: ['watchtower']}, {address: '0xbbb', servers: ['geiserback']}], address_missing: false});
 check('boxes with different wallets each show theirs with the box name', differ.includes('0xaaa') && differ.includes('0xbbb') && differ.includes('geiserback'), differ);
+const hostileAddr = payoutAddressCell({model: 'external', address: null, addresses: [{address: '"><img src=x>', servers: ['watchtower']}, {address: '0xbbb', servers: ['<b>box</b>']}], address_missing: false});
+check('a hostile address or box name in a multi-wallet row is escaped', !hostileAddr.includes('<img src=x>') && !hostileAddr.includes('"><') && !hostileAddr.includes('<b>box'), hostileAddr);
+const recordGap = payoutAddressCell({model: 'external', address: null, addresses: [], address_missing: false, address_unchecked: 'record'});
+check('a box with no deploy record to read says so', recordGap.includes('No deploy record') && !recordGap.includes('Not set'), recordGap);
+check('boxes that could not be read are not called "No box runs it"', runsOnCell({runs_on: [], recorded: true, runs_on_unknown: true}).includes('Could not read the boxes'), 'unknown');
 const partlyMissing = payoutAddressCell({model: 'external', address: '0xaaa', addresses: [{address: '0xaaa', servers: ['watchtower']}], address_missing: true, address_missing_on: ['geiserback']});
 check('a box whose record has no wallet is still "Not set", named', partlyMissing.includes('Not set on geiserback'), partlyMissing);
 

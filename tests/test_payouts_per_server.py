@@ -296,6 +296,7 @@ class TestForgettingIsTheWayOut:
             p[5],
             patch.object(main.database, "list_workers", AsyncMock(return_value=[_docker(1, "watchtower", [])])),
             patch.object(main.database, "forget_deployment", forget),
+            patch.object(main.database, "get_deployment", AsyncMock(return_value=None)),
         ):
             resp = client.delete("/api/deployments/bitping")
         assert resp.status_code == 200, resp.text
@@ -312,6 +313,7 @@ class TestForgettingIsTheWayOut:
                 AsyncMock(return_value=[_docker(1, "watchtower", [("bitping", "running")])]),
             ),
             patch.object(main.database, "forget_deployment", forget),
+            patch.object(main.database, "list_deployment_placements", AsyncMock(return_value=[])),
         ):
             resp = client.delete("/api/deployments/bitping")
         assert resp.status_code == 409 and "watchtower" in resp.text
@@ -336,6 +338,7 @@ class TestForgettingIsTheWayOut:
                 ),
             ),
             patch.object(main.database, "remove_deployment", remove),
+            patch.object(main.database, "get_deployment", AsyncMock(return_value=None)),
         ):
             resp = client.delete("/api/deployments/earnapp?worker_id=2")
         assert resp.status_code == 200, resp.text
@@ -514,7 +517,11 @@ class TestTheWorkerRead:
 
         for slug in ("mysterium", "anyone-protocol"):
             command = " ".join(_catalog_reader(slug)["command"])
-            assert not re.search(r"(^|\s)(rm|mv|cp|tee|chmod|chown|kill)\s|>|-X\s*(POST|PUT|DELETE)", command), slug
+            assert not re.search(
+                r"(^|\s)(rm|mv|cp|tee|chmod|chown|kill|dd|python\d?)\s"
+                r"|(^|\s)sed\s+(?:-[a-zA-Z]*i(?:\s|$)|--in-place(?:\s|$))|>|-X\s*(POST|PUT|DELETE)",
+                command,
+            ), slug
             assert catalog.get_service(slug)["payout"]["address_source"] == "manual"
 
 
@@ -630,3 +637,203 @@ class TestARemovedServiceStaysRemovedAcrossARestart:
 
         rows, _, _ = self._run(tmp_path, steps)
         assert "honeygain" not in rows
+
+
+# ---------------------------------------------------------------------------
+# Review fixes (CodeRabbit on #499)
+# ---------------------------------------------------------------------------
+
+
+class TestAnAlertSurvivesWhatCannotBeJudged:
+    def test_an_already_alerted_service_skips_the_grace_after_a_restart(self):
+        """A restart empties first_missing; the stored alert must neither clear nor wait 30 minutes."""
+        deps = [{"slug": "bitping", "status": "running", "deployed_at": _sql(NOW - timedelta(days=3))}]
+        first: dict = {}
+        found = placement.missing(
+            deps, [], [_docker(1, "watchtower", [])], now=NOW, first_missing=first, alerted={"bitping"}
+        )
+        assert found["bitping"]["everywhere"] is True
+
+    def test_control_without_a_stored_alert_the_grace_applies(self):
+        deps = [{"slug": "bitping", "status": "running", "deployed_at": _sql(NOW - timedelta(days=3))}]
+        first: dict = {}
+        assert placement.missing(deps, [], [_docker(1, "watchtower", [])], now=NOW, first_missing=first) == {}
+        assert ("bitping", None) in first, "still pending, so the caller keeps any alert"
+
+    def test_a_box_going_offline_keeps_its_verdict(self):
+        specs = [{"slug": "earnapp", "worker_id": 2, "deployed_at": _sql(NOW - timedelta(days=3))}]
+        deps = [{"slug": "earnapp", "status": "running", "deployed_at": _sql(NOW - timedelta(days=3))}]
+        workers = [
+            _docker(1, "watchtower", [("earnapp", "running")]),
+            _docker(2, "geiserct", [], status="offline"),
+        ]
+        first = {("earnapp", 2): NOW - timedelta(hours=2)}
+        assert placement.missing(deps, specs, workers, now=NOW, first_missing=first) == {}
+        assert ("earnapp", 2) in first
+
+    def test_an_offline_box_that_went_quiet_before_the_deploy_may_be_running_it(self):
+        deps = [{"slug": "bitping", "status": "running", "deployed_at": _sql(NOW - timedelta(hours=2))}]
+        quiet = _docker(2, "geiserct", [], status="offline")
+        quiet["last_heartbeat"] = _sql(NOW - timedelta(hours=5))
+        first = {("bitping", None): NOW - timedelta(hours=2)}
+        workers = [_docker(1, "watchtower", []), quiet]
+        assert placement.missing(deps, [], workers, now=NOW, first_missing=first) == {}
+        quiet["last_heartbeat"] = _sql(NOW - timedelta(minutes=30))
+        assert "bitping" in placement.missing(deps, [], workers, now=NOW, first_missing=first)
+
+
+@pytest.mark.usefixtures("_clean_main")
+class TestTheAlertAcrossARestart:
+    def test_a_restart_neither_clears_nor_re_pushes_a_standing_alert(self):
+        alerts = _Alerts()
+        alerts.rows["bitping"] = "runs nowhere"
+        deps = [{"slug": "bitping", "status": "running", "deployed_at": "2026-01-01 00:00:00"}]
+        stored = [{"kind": "missing", "subject": "bitping", "message": "runs nowhere"}]
+        with patch.object(main.database, "list_alerts", AsyncMock(return_value=stored)):
+            asyncio.run(main._warm_collector_alerts())
+        assert "bitping" in main._missing_bell, "restored into what the collection rebuild re-adds"
+        p = alerts.patches(deps, [])
+        with p[0], p[1], p[2], p[3], p[4], p[5]:
+            asyncio.run(main._missing_deployment_check([_docker(1, "watchtower", [])]))
+        assert alerts.rows == {"bitping": "runs nowhere"} or "bitping" in alerts.rows
+        assert alerts.pushed == []
+        assert main._missing_bell["bitping"]["everywhere"] is True, "Forget's fields are back"
+
+    def test_a_box_offline_does_not_clear_its_alert(self):
+        alerts = _Alerts()
+        alerts.rows["earnapp"] = "gone from geiserct"
+        main._deployment_first_missing[("earnapp", 2)] = datetime.now(UTC) - timedelta(hours=2)
+        specs = [{"slug": "earnapp", "worker_id": 2, "deployed_at": "2026-01-01 00:00:00"}]
+        workers = [_docker(1, "watchtower", [("earnapp", "running")]), _docker(2, "geiserct", [], status="offline")]
+        p = alerts.patches([{"slug": "earnapp", "status": "running"}], specs)
+        with p[0], p[1], p[2], p[3], p[4], p[5]:
+            asyncio.run(main._missing_deployment_check(workers))
+        assert "earnapp" in alerts.rows
+
+
+@pytest.mark.usefixtures("_clean_main")
+class TestForgetReviewFixes:
+    def test_refused_while_the_box_holding_the_record_cannot_read_docker(self, client):
+        forget = AsyncMock()
+        with (
+            _as("writer"),
+            patch.object(
+                main.database,
+                "list_workers",
+                AsyncMock(return_value=[_docker(1, "watchtower", []), _docker(2, "geiserct", [], docker=False)]),
+            ),
+            patch.object(
+                main.database,
+                "list_deployment_placements",
+                AsyncMock(return_value=[{"slug": "earnapp", "worker_id": 2, "deployed_at": ""}]),
+            ),
+            patch.object(main.database, "forget_deployment", forget),
+        ):
+            resp = client.delete("/api/deployments/earnapp")
+        assert resp.status_code == 409 and "geiserct" in resp.text
+        forget.assert_not_awaited()
+
+    def test_control_a_blind_box_with_no_record_does_not_block(self, client):
+        p = _Alerts().patches([], [])
+        with (
+            _as("writer"),
+            p[0],
+            p[1],
+            p[2],
+            p[3],
+            p[4],
+            p[5],
+            patch.object(
+                main.database,
+                "list_workers",
+                AsyncMock(return_value=[_docker(1, "watchtower", []), _docker(2, "geiserct", [], docker=False)]),
+            ),
+            patch.object(main.database, "forget_deployment", AsyncMock()),
+            patch.object(main.database, "get_deployment", AsyncMock(return_value=None)),
+        ):
+            assert client.delete("/api/deployments/bitping").status_code == 200
+
+    def test_the_last_box_forgotten_clears_the_alert_even_when_the_fleet_cannot_tell(self, client):
+        alerts = _Alerts()
+        alerts.rows["earnapp"] = "gone"
+        main._missing_bell["earnapp"] = {"kind": "missing", "platform": "earnapp", "error": "gone"}
+        p = alerts.patches([], [])
+        with (
+            _as("writer"),
+            p[0],
+            p[1],
+            p[2],
+            p[3],
+            p[4],
+            p[5],
+            patch.object(
+                main.database,
+                "list_workers",
+                AsyncMock(return_value=[_docker(1, "watchtower", []), _docker(3, "blind", [], docker=False)]),
+            ),
+            patch.object(main.database, "remove_deployment", AsyncMock()),
+            patch.object(main.database, "get_deployment", AsyncMock(return_value=None)),
+        ):
+            resp = client.delete("/api/deployments/earnapp?worker_id=1")
+        assert resp.status_code == 200, resp.text
+        assert alerts.rows == {} and "earnapp" not in main._missing_bell
+
+
+class TestFleetWideRemovalDropsEveryBoxRecord:
+    def test_it(self, tmp_path):
+        from app import database
+
+        async def go():
+            await database.init_db()
+            await database.save_deployment("storj", "c1", spec={"env": {}}, worker_id=1)
+            await database.remove_deployment("storj")
+            return [r for r in await database.list_deployment_placements() if r["slug"] == "storj"]
+
+        with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "t.db"):
+            assert asyncio.run(go()) == []
+
+
+class TestRegistryReviewFixes:
+    def test_an_unreadable_worker_list_is_unknown_not_runs_nowhere(self):
+        with (
+            patch.object(
+                payout_registry.database,
+                "get_deployments",
+                AsyncMock(return_value=[{"slug": "bitping", "status": "running"}]),
+            ),
+            patch.object(payout_registry.database, "list_workers", AsyncMock(side_effect=RuntimeError("db"))),
+            patch.object(payout_registry.database, "get_deployment_spec", AsyncMock(return_value=None)),
+        ):
+            result = asyncio.run(payout_registry.registry())
+        bitping = _row(result, "bitping")
+        assert bitping["deployed"] is True and bitping["runs_on_unknown"] is True
+        assert result["summary"]["recorded_not_running"] == 0
+
+    def test_every_wallet_on_one_box_is_kept(self):
+        workers = [_docker(1, "watchtower", [("mysterium", "running"), ("mysterium", "running")])]
+
+        async def read(worker_id):
+            return [
+                {"slug": "mysterium", "instance": 1, "address": WALLET_A},
+                {"slug": "mysterium", "instance": 2, "address": WALLET_B},
+            ]
+
+        mysterium = _row(_registry([], workers, read=read), "mysterium")
+        assert [a["address"] for a in mysterium["addresses"]] == [WALLET_A, WALLET_B]
+
+    def test_a_box_without_a_readable_record_beside_one_with_is_flagged(self):
+        workers = [_docker(1, "watchtower", [("storj", "running")]), _docker(2, "geiserback", [("storj", "running")])]
+        specs = {("storj", 1): {"env": {"WALLET": WALLET_A}}}
+        storj = _row(_registry([{"slug": "storj", "status": "running"}], workers, specs=specs), "storj")
+        assert storj["address"] == WALLET_A and storj["address_unchecked"] == "record"
+        assert storj["address_missing"] is False
+
+
+class TestAnyoneReadsOnlyALiveContactInfo:
+    def test_a_commented_old_wallet_is_ignored(self):
+        anonrc = f"# ContactInfo old @anon: {WALLET_B}\nContactInfo me@example.com @anon: {WALLET_A}\n"
+        assert payout_read.extract(anonrc, _catalog_reader("anyone-protocol")["pattern"]) == WALLET_A
+        assert (
+            payout_read.extract(f"#ContactInfo @anon: {WALLET_B}\n", _catalog_reader("anyone-protocol")["pattern"])
+            is None
+        )

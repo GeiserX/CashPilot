@@ -127,4 +127,5 @@ payout:
   # the worker; the rest of ContactInfo (often an email) does not.
   address_read:
     command: ["cat", "/etc/anon/anonrc"]
-    pattern: '@anon:\s*(0x[0-9a-fA-F]{40})'
+    # Only a live ContactInfo line: a commented-out old wallet is not where it pays.
+    pattern: '(?m)^[ \t]*ContactInfo[ \t][^\n]*@anon:[ \t]*(0x[0-9a-fA-F]{40})'

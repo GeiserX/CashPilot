@@ -1757,6 +1757,9 @@ async def remove_deployment(slug: str, worker_id: int | None = None) -> None:
     try:
         gone = True
         if worker_id is None:
+            # Gone everywhere: each box's record goes with it, or those records
+            # would go on claiming the service is deployed on those boxes.
+            await db.execute("DELETE FROM deployment_specs WHERE slug = ?", (slug,))
             await db.execute("DELETE FROM deployments WHERE slug = ?", (slug,))
         else:
             await db.execute("DELETE FROM deployment_specs WHERE slug = ? AND worker_id = ?", (slug, worker_id))
@@ -1786,20 +1789,8 @@ async def list_deployment_placements() -> list[dict[str, Any]]:
 
 
 async def forget_deployment(slug: str) -> None:
-    """Drop every record of ``slug`` being deployed: the fleet row and each worker's.
-
-    For a deployment no box runs any more. ``remove_deployment(slug)`` drops only
-    the fleet row, which leaves the per-worker records claiming the service is
-    still deployed on those boxes.
-    """
-    db = await _get_db()
-    try:
-        await db.execute("DELETE FROM deployment_specs WHERE slug = ?", (slug,))
-        await db.execute("DELETE FROM deployments WHERE slug = ?", (slug,))
-        await _record_removed(db, slug)
-        await db.commit()
-    finally:
-        await db.close()
+    """Drop every record of ``slug`` being deployed: the fleet row and each box's."""
+    await remove_deployment(slug)
 
 
 # A service the user removed from the whole fleet. The startup backfill

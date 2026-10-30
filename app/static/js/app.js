@@ -885,7 +885,7 @@ const CP = (() => {
         // owner their worker "may predate the feature" would send them to
         // upgrade something that was never going to report it -- verified
         // against the live fleet, where the phone reports neither.
-        android: info.device_type === 'android' || String(info.os || '').toLowerCase() === 'android',
+        android: info.device_type === 'android' || String(info.os || '').trim().toLowerCase() === 'android',
         disk: info.disk || null,
         gpu: info.gpu || null,
       };
@@ -1325,10 +1325,11 @@ const CP = (() => {
           const targets = a.everywhere ? [{ worker_id: null, name: '' }] : (a.boxes || []);
           actions = targets.map(t => `<button class="btn btn-ghost btn-sm" data-action="forgetDeployment" data-a1="${escapeHtml(a.platform)}"${t.worker_id != null ? ` data-a2="${escapeHtml(String(t.worker_id))}"` : ''}>${t.name ? `Forget on ${escapeHtml(t.name)}` : 'Forget'}</button>`).join(' ');
         }
-        items.push({ level: 'fail', tag: 'Runs nowhere', what: a.name || (svc && svc.name) || a.platform, why: escapeHtml(a.error), actions });
+        items.push({ level: 'fail', tag: a.everywhere === false ? 'Gone from a box' : 'Runs nowhere', what: a.name || (svc && svc.name) || a.platform, why: escapeHtml(a.error), actions });
       }
     } catch (err) {
       console.warn('Could not load the missing-deployment alerts:', err);
+      items.push({ level: 'warn', tag: 'Unknown', what: 'Deployments', why: 'CashPilot could not check whether every recorded deployment still runs. Reload the page to try again.' });
     }
 
     if (_isOwner) {
@@ -4233,7 +4234,7 @@ const CP = (() => {
         const icon = isPayout ? PAYOUT_ICON : (isNotice || isTransient) ? NOTICE_ICON : WARNING_ICON;
         const suffix = isPayout ? ' — payout?'
           : isContainer ? ' — not running'
-          : isMissing ? ' — runs nowhere'
+          : isMissing ? (a.everywhere === false ? ' — gone from a box' : ' — runs nowhere')
           : isQuiet ? ' — gone quiet'
           : isNotice ? ' — note'
           : isAuth ? ' — credential expired'
