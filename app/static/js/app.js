@@ -1776,7 +1776,7 @@ const CP = (() => {
           x: {
             grid: { display: false },
             border: { color: borderColor },
-            ticks: { color: textMuted, font: { size: 11, family: fontMono }, maxRotation: 0, autoSkipPadding: 12 },
+            ticks: { color: textMuted, font: { size: 12, family: fontMono }, maxRotation: 0, autoSkipPadding: 12 },
           },
           y: {
             beginAtZero: true,
@@ -1785,7 +1785,7 @@ const CP = (() => {
             ticks: {
               color: textMuted,
               maxTicksLimit: 4,
-              font: { size: 11, family: fontMono },
+              font: { size: 12, family: fontMono },
               callback: (v) => formatCurrency(v),
             },
           },

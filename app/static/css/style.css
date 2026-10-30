@@ -60,14 +60,14 @@
   --font-ui: 'IBM Plex Sans', system-ui, sans-serif;
   --font-mono: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
 
-  /* Type scale. Nothing is set under 12px; body text is 14px. */
-  --fs-1: 12px;   /* keys, counts, the smallest meta */
-  --fs-2: 13px;   /* labels, table heads, secondary lines */
-  --fs-3: 14px;   /* body, table cells, buttons */
-  --fs-4: 16px;   /* section and modal titles */
-  --fs-5: 20px;   /* page titles */
-  --fs-figure: 24px;  /* today and this month */
-  --fs-money: 34px;   /* the balance */
+  /* Type scale. Nothing is set under 13px; body text is 15px. */
+  --fs-1: 13px;   /* keys, counts, the smallest meta */
+  --fs-2: 14px;   /* labels, table heads, secondary lines */
+  --fs-3: 15px;   /* body, table cells, buttons */
+  --fs-4: 17px;   /* section and modal titles */
+  --fs-5: 22px;   /* page titles */
+  --fs-figure: 26px;  /* today and this month */
+  --fs-money: 36px;   /* the balance */
 
   --topbar-height: 48px;
   --page-max: 1600px;
