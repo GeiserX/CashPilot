@@ -4662,166 +4662,152 @@ def _is_phone(system_info: dict[str, Any] | None) -> bool:
     return info.get("device_type") == "android" or str(info.get("os") or "").strip().lower() == "android"
 
 
-@app.get("/api/usage/servers")
-async def api_usage_servers(request: Request) -> dict[str, Any]:
-    """What each earning service uses on each server, next to what it earns.
+def _usage_point(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    """One point (an hour, or 6 on 30 days) of one server or of one container.
 
-    CPU and memory are averages of every heartbeat in the window; traffic is
-    the sum of counter deltas (app/usage.py). Earnings are per ACCOUNT, not per
-    server, so "earned" and the per-GB figures are the service's whole-fleet
-    numbers, taken over the same days the usage covers so a week of traffic is
-    never divided into a month of money. None everywhere means "no reading".
+    CPU and memory are each container's average while it was read, weighted by
+    the share of the point it ran (its heartbeats over the most any container
+    had), then added up: a container that ran one hour of six adds a sixth of
+    its load, not all of it. A running container whose stats read failed leaves
+    the sum a floor (``cpu_partial`` / ``memory_partial``), never a silent drop.
+    Traffic is each container's bytes over the seconds its deltas cover, added
+    up as a rate. Unknown stays None: an hour with no rows is a gap, and a
+    container with no counters (host network) leaves the traffic a floor
+    (``traffic_partial``), never a total that silently misses it.
+    """
+    point: dict[str, Any] = {
+        "cpu_percent": None,
+        "memory_mb": None,
+        "rx_rate": None,
+        "tx_rate": None,
+        "rx_bytes": None,
+        "tx_bytes": None,
+        "traffic_partial": False,
+        "cpu_partial": False,
+        "memory_partial": False,
+    }
+
+    def add(key: str, value: Any) -> None:
+        if value is not None:
+            point[key] = value if point[key] is None else point[key] + value
+
+    full = max((r["beats"] for r in rows), default=0)
+    for r in rows:
+        share = r["beats"] / full if full else 1.0
+        if r["cpu_n"]:
+            add("cpu_percent", r["cpu_sum"] / r["cpu_n"] * share)
+        if r["mem_n"]:
+            add("memory_mb", r["mem_sum"] / r["mem_n"] * share)
+        if r["cpu_n"] < r["beats"]:
+            point["cpu_partial"] = True
+        if r["mem_n"] < r["beats"]:
+            point["memory_partial"] = True
+        rx_rate = usage.rate(r["rx_bytes"], r["net_seconds"])
+        tx_rate = usage.rate(r["tx_bytes"], r["net_seconds"])
+        if rx_rate is None or tx_rate is None or r["no_counters"] or r["traffic_lost"]:
+            point["traffic_partial"] = True
+        add("rx_rate", rx_rate)
+        add("tx_rate", tx_rate)
+        if rx_rate is not None and tx_rate is not None:
+            add("rx_bytes", r["rx_bytes"])
+            add("tx_bytes", r["tx_bytes"])
+    for key in ("cpu_percent", "rx_rate", "tx_rate"):
+        if point[key] is not None:
+            point[key] = round(point[key], 2)
+    if point["memory_mb"] is not None:
+        point["memory_mb"] = round(point["memory_mb"], 1)
+    return point
+
+
+@app.get("/api/usage")
+async def api_usage(
+    request: Request, days: int = 7, worker_id: int | None = None, container: str | None = None
+) -> dict[str, Any]:
+    """Hourly CPU, memory and traffic of one server, or of one of its containers.
+
+    ``servers`` feeds the two pickers: every server (phones left out, they have
+    no Docker stats) and the containers it reported in the window. ``hours``
+    is the start of every point in the window, oldest first: one per hour on
+    7 days, one per ``step`` (6 hours) on 30, where 720 hourly points would be
+    noise on a small chart. Each series has one value per point; None is "no
+    reading", drawn as a gap, never as 0.
     """
     _require_auth_api(request)
-    raw_workers = await database.list_workers()
-    names: dict[int, tuple[str, Any]] = {}
-    # Phones have no Docker stats, so they are not rows here. But a phone earns
-    # into the same account as the servers, online or not, so every service a
-    # phone reports makes that service's per-GB ratios unknown.
-    phone_ids: set[int] = set()
-    phone_slugs: set[str] = set()
-    for w in raw_workers:
-        if _is_phone(_safe_json(w.get("system_info", "{}"), {})):
-            phone_ids.add(w["id"])
-            for item in _safe_json(w.get("containers", "[]")) + _safe_json(w.get("apps", "[]")):
-                if isinstance(item, dict) and item.get("slug"):
-                    phone_slugs.add(item["slug"])
-        else:
-            names[w["id"]] = (w.get("name") or f"worker {w['id']}", w.get("status"))
-    all_rows = await database.get_usage_daily(days=30)
-    phone_slugs |= {r["slug"] for r in all_rows if r["worker_id"] in phone_ids}
-    # A deleted worker's rows linger until retention; left in, they would
-    # stretch the earnings window past the traffic still shown.
-    rows = [r for r in all_rows if r["worker_id"] in names]
-    today = datetime.now(UTC).strftime("%Y-%m-%d")
-    if not rows:
-        return {"servers": [], "window_days": 0, "since": None, "currency": "USD"}
-    since = min(r["day"] for r in rows)
-    window_days = (datetime.strptime(today, "%Y-%m-%d") - datetime.strptime(since, "%Y-%m-%d")).days + 1
-    # Only platforms with at least one priced delta in the window: a platform
-    # with no exchange rate, or a single reading so far, reads 0.0 otherwise,
-    # and "$0.00 earned" is a claim we cannot make.
-    measured: set[str] = set()
-    earned = await database.get_earned_by_platform(days=window_days, measured=measured)
-    earned = {slug: value for slug, value in earned.items() if slug in measured}
+    days = min(max(int(days), 1), 30)
+    step = 3600 if days <= 7 else 6 * 3600
+    now_point = int(time.time() // step) * step
+    hours = [now_point - i * step for i in range(days * 86400 // step - 1, -1, -1)]
+    workers = {
+        w["id"]: w for w in await database.list_workers() if not _is_phone(_safe_json(w.get("system_info", "{}"), {}))
+    }
+    rows = [r for r in await database.get_usage_hourly(hours[0]) if r["worker_id"] in workers]
 
-    def add(a: Any, b: Any) -> Any:
-        if b is None:
-            return a
-        return b if a is None else a + b
-
-    cells: dict[tuple[int, str], dict[str, Any]] = {}
+    by_worker: dict[int, dict[str, dict[str, Any]]] = {}
     for r in rows:
-        cell = cells.setdefault(
-            (r["worker_id"], r["slug"]),
-            {
-                "cpu_sum": 0.0,
-                "cpu_n": 0,
-                "mem_sum": 0.0,
-                "mem_n": 0,
-                "rx": None,
-                "tx": None,
-                "rx_today": None,
-                "tx_today": None,
-                "gaps": 0,
-                "mem_gaps": 0,
-            },
+        seen = by_worker.setdefault(r["worker_id"], {}).setdefault(
+            r["container"], {"name": r["container"], "slug": r["slug"], "no_counters": False}
         )
-        cell["gaps"] += r.get("net_gaps") or 0
-        cell["mem_gaps"] += r.get("mem_gaps") or 0
-        cell["cpu_sum"] += r["cpu_sum"]
-        cell["cpu_n"] += r["cpu_n"]
-        cell["mem_sum"] += r["mem_sum"]
-        cell["mem_n"] += r["mem_n"]
-        cell["rx"] = add(cell["rx"], r["rx_bytes"])
-        cell["tx"] = add(cell["tx"], r["tx_bytes"])
-        if r["day"] == today:
-            cell["rx_today"] = add(cell["rx_today"], r["rx_bytes"])
-            cell["tx_today"] = add(cell["tx_today"], r["tx_bytes"])
-
-    # Fleet-wide totals per service, for the per-GB ratios. The earnings are the
-    # whole account's, so a ratio is only honest when EVERY copy of the service
-    # was measured: dividing all of the money by the traffic of the copies that
-    # had counters would make a partly host-networked service look like the
-    # best earner per GB. One unmeasured copy, and the ratio is unknown.
-    fleet_bytes: dict[str, int] = {}
-    fleet_mem: dict[str, float] = {}
-    bytes_unknown: set[str] = set(phone_slugs)
-    mem_unknown: set[str] = set(phone_slugs)
-    # A copy running right now with no usage row at all (an Android phone, a
-    # worker that has not reported yet) earns into the same account too.
-    measured_cells = set(cells)
-    for c in await _get_all_worker_containers(raw_workers):
-        slug = egress.container_slug(c)
-        if slug and c.get("status") == "running" and (c.get("_worker_id"), slug) not in measured_cells:
-            bytes_unknown.add(slug)
-            mem_unknown.add(slug)
-    for (_, slug), cell in cells.items():
-        moved = add(cell["rx"], cell["tx"])
-        if moved is None or cell["gaps"]:
-            bytes_unknown.add(slug)
-        else:
-            fleet_bytes[slug] = fleet_bytes.get(slug, 0) + moved
-        if cell["mem_n"] and not cell["mem_gaps"]:
-            fleet_mem[slug] = fleet_mem.get(slug, 0.0) + cell["mem_sum"] / cell["mem_n"]
-        else:
-            mem_unknown.add(slug)
-
-    servers: dict[int, dict[str, Any]] = {}
-    for (worker_id, slug), cell in sorted(cells.items(), key=lambda kv: (names[kv[0][0]][0], kv[0][1])):
-        name, status = names[worker_id]
-        server = servers.setdefault(
-            worker_id,
+        seen["slug"] = r["slug"]
+        seen["no_counters"] = seen["no_counters"] or bool(r["no_counters"])
+    servers = []
+    for wid, w in sorted(workers.items(), key=lambda kv: (kv[1].get("name") or "").lower()):
+        containers = sorted(by_worker.get(wid, {}).values(), key=lambda c: c["name"])
+        for c in containers:
+            c["service"] = (catalog.get_service(c["slug"]) or {}).get("name") or c["slug"]
+        servers.append(
             {
-                "worker_id": worker_id,
-                "name": name,
-                "status": status,
-                "services": [],
-                "total": {
-                    "cpu_percent": None,
-                    "memory_mb": None,
-                    "rx_today": None,
-                    "tx_today": None,
-                    "rx": None,
-                    "tx": None,
-                    # Some service on this server had no traffic reading, so the
-                    # traffic sums cover only the others: a floor, not a total.
-                    "traffic_partial": False,
-                },
-            },
+                "worker_id": wid,
+                "name": w.get("name") or f"worker {wid}",
+                "status": w.get("status"),
+                "containers": containers,
+            }
         )
-        svc = catalog.get_service(slug) or {}
-        service_earned = earned.get(slug)
-        mem_gb = None if slug in mem_unknown else fleet_mem.get(slug, 0.0) / 1024
-        entry = {
-            "slug": slug,
-            "name": svc.get("name") or slug,
-            "cpu_percent": round(cell["cpu_sum"] / cell["cpu_n"], 2) if cell["cpu_n"] else None,
-            "memory_mb": round(cell["mem_sum"] / cell["mem_n"], 1) if cell["mem_n"] else None,
-            "rx_today": cell["rx_today"],
-            "tx_today": cell["tx_today"],
-            "rx": cell["rx"],
-            "tx": cell["tx"],
-            "earned_usd": None if service_earned is None else round(service_earned, 4),
-            "usd_per_gb": None if slug in bytes_unknown else usage.per_gb(service_earned, fleet_bytes.get(slug)),
-            "usd_per_gb_ram": (
-                service_earned / mem_gb
-                if service_earned is not None and mem_gb is not None and mem_gb >= 0.01
-                else None
-            ),
-        }
-        server["services"].append(entry)
-        total = server["total"]
-        for key in ("cpu_percent", "memory_mb", "rx_today", "tx_today", "rx", "tx"):
-            total[key] = add(total[key], entry[key])
-        if entry["rx"] is None or entry["tx"] is None or cell["gaps"]:
-            total["traffic_partial"] = True
+    if worker_id not in workers:
+        with_data = [s for s in servers if s["containers"]]
+        worker_id = (with_data or servers or [{"worker_id": None}])[0]["worker_id"]
+    if container is not None and container not in by_worker.get(worker_id, {}):
+        container = None
 
+    # One merged row per container and point: sums and counts add, so a 6-hour
+    # point is the average over the hours that had readings.
+    merged: dict[tuple[int, str], dict[str, Any]] = {}
+    for r in rows:
+        if r["worker_id"] != worker_id or (container is not None and r["container"] != container):
+            continue
+        point = r["hour"] // step * step
+        m = merged.get((point, r["container"]))
+        if m is None:
+            merged[(point, r["container"])] = dict(r)
+            continue
+        for key in ("beats", "cpu_sum", "cpu_n", "mem_sum", "mem_n", "net_seconds", "no_counters", "traffic_lost"):
+            m[key] += r[key]
+        for key in ("rx_bytes", "tx_bytes"):
+            if r[key] is not None:
+                m[key] = r[key] if m[key] is None else m[key] + r[key]
+    per_hour: dict[int, list[dict[str, Any]]] = {}
+    for (point, _), m in merged.items():
+        per_hour.setdefault(point, []).append(m)
+    points = [_usage_point(per_hour[h]) if h in per_hour else None for h in hours]
+    keys = (
+        "cpu_percent",
+        "memory_mb",
+        "rx_rate",
+        "tx_rate",
+        "rx_bytes",
+        "tx_bytes",
+        "traffic_partial",
+        "cpu_partial",
+        "memory_partial",
+    )
+    series = {k: [None if p is None else p[k] for p in points] for k in keys}
     return {
-        "servers": list(servers.values()),
-        "window_days": window_days,
-        "since": since,
-        "currency": "USD",
+        "days": days,
+        "step": step,
+        "hours": hours,
+        "servers": servers,
+        "worker_id": worker_id,
+        "container": container,
+        "series": series,
     }
 
 
@@ -5938,8 +5924,9 @@ async def api_worker_heartbeat(request: Request, body: WorkerHeartbeat) -> dict[
         system_info=json.dumps(body.system_info),
     )
     metrics.record_heartbeat(body.name)
-    # Per-day CPU, memory and traffic for the dashboard's usage panel. Never
-    # allowed to reject a heartbeat: losing one sample costs a minute of data.
+    # Hourly CPU, memory and traffic per container for the dashboard's usage
+    # graphs. Never allowed to reject a heartbeat: losing one sample costs a
+    # minute of data.
     if not _is_phone(body.system_info) and body.containers:
         try:
             await database.record_usage(worker_id, body.containers)
