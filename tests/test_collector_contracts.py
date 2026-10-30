@@ -324,12 +324,24 @@ class TestOutcomeClassification:
             ("KeyError: 'usd_cents'", "unexpected_shape"),
             ("something nobody anticipated", "unexpected_shape"),
             ("Account disabled by Pawns — contact Pawns support (the password is fine)", "account_disabled"),
+            # The provider refusing for now is not "the provider changed its API" (#517).
+            ("Pawns rate-limited the login — it will retry on the next run", "provider_rate_limited"),
+            ("Cloudflare rate limit — will retry next collection cycle", "provider_rate_limited"),
+            ("Client error '429 Too Many Requests' for url 'https://x/api'", "provider_rate_limited"),
         ],
     )
     def test_errors_map_to_stable_outcomes(self, error, expected):
         from app import credential_test
 
         assert credential_test.classify(error) == expected
+
+    def test_a_provider_rate_limit_says_so_not_api_change(self):
+        from app import credential_test
+
+        outcome = credential_test.classify("Pawns rate-limited the login — it will retry on the next run")
+        msg = credential_test.message(outcome, "IPRoyal Pawns")
+        assert "rate-limiting" in msg
+        assert "changed its API" not in msg
 
     def test_every_outcome_has_a_message_a_user_can_act_on(self):
         from app import credential_test
@@ -343,6 +355,7 @@ class TestOutcomeClassification:
             "rate_limited",
             "unsupported",
             "account_disabled",
+            "provider_rate_limited",
         ):
             msg = credential_test.message(outcome, "Honeygain")
             assert len(msg) > 20 and msg.endswith((".", "!"))

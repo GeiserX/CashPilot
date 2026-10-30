@@ -32,6 +32,9 @@ NOT_CONFIGURED = "not_configured"
 UNREACHABLE = "unreachable"
 UNEXPECTED_SHAPE = "unexpected_shape"
 RATE_LIMITED = "rate_limited"
+# The PROVIDER refused to answer for now. RATE_LIMITED above is CashPilot's own
+# cooldown on this button; this one is the provider's.
+PROVIDER_RATE_LIMITED = "provider_rate_limited"
 UNSUPPORTED = "unsupported"
 ACCOUNT_DISABLED = "account_disabled"
 
@@ -44,6 +47,9 @@ _last_attempt: dict[str, float] = {}
 # Substrings that identify the failure without repeating anything sensitive.
 _AUTH_MARKERS = ("401", "403", "unauthorized", "forbidden", "invalid credentials", "login failed", "bad credentials")
 _NETWORK_MARKERS = ("timeout", "timed out", "connect", "dns", "network", "unreachable", "ssl", "certificate")
+# "rate-limited the login" (IPRoyal/Pawns), "Cloudflare rate limit" (Grass),
+# httpx's "429 Too Many Requests" from raise_for_status.
+_RATE_LIMIT_MARKERS = ("rate-limit", "rate limit", "too many requests", "throttl")
 _SHAPE_MARKERS = ("keyerror", "no access_token", "not in", "expecting value", "jsondecode", "nonetype", "unexpected")
 
 
@@ -56,6 +62,10 @@ def classify(error: str | None) -> str:
     # its message may also mention the 401 that led to the re-login.
     if "account disabled" in text:
         return ACCOUNT_DISABLED
+    # Before the auth markers too: a refused-for-now login says nothing about
+    # whether the credentials are right.
+    if any(m in text for m in _RATE_LIMIT_MARKERS):
+        return PROVIDER_RATE_LIMITED
     if any(m in text for m in _AUTH_MARKERS):
         return BAD_CREDENTIALS
     if any(m in text for m in _NETWORK_MARKERS):
@@ -92,6 +102,11 @@ def message(outcome: str, service_name: str, balance: float | None = None, curre
     if outcome == RATE_LIMITED:
         return (
             "Give it a few seconds before testing again — repeatedly retrying a bad login can get an account flagged."
+        )
+    if outcome == PROVIDER_RATE_LIMITED:
+        return (
+            f"{service_name} is rate-limiting logins right now, so it could not check these credentials. "
+            "Try again later; CashPilot will also retry on its next collection run."
         )
     if outcome == UNSUPPORTED:
         return f"CashPilot has no earnings collector for {service_name}, so there is nothing to test."

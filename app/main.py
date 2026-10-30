@@ -3732,6 +3732,12 @@ async def api_credential_health(request: Request) -> list[dict[str, Any]]:
 
             if slug in rejected:
                 status = "likely_expired"
+                # The age-based reason (or "its age does not matter") would
+                # contradict the status; the refusal is the reason now.
+                why = (
+                    "The provider refused the last login with the saved credentials, "
+                    "so they need replacing whatever their age."
+                )
 
             entry: dict[str, Any] = {
                 "service": slug,

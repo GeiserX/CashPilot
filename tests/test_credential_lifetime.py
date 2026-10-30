@@ -196,6 +196,25 @@ class TestCredentialHealthEndpoint:
         assert "remember_web" in session["why"]
         assert next(e for e in report if e["field"] == "remember_web")["status"] == "fresh"
 
+    def test_a_rejected_covered_cookie_explains_the_rejection(self, tmp_path):
+        """Rejected by the provider: "its age does not matter" under "likely
+        expired" contradicts itself; the refusal is the reason."""
+        from app import main
+
+        old = self._stamp(24 * 89)
+        stamps = {
+            "bytelixir_session_cookie": old,
+            "bytelixir_remember_web": old,
+            "bytelixir_xsrf_token": old,
+        }
+        alert = {"kind": "collector", "platform": "bytelixir", "category": "auth"}
+        with patch.object(main, "_collector_alerts", [alert]):
+            report = self._report(None, tmp_path, stamps)
+        session = next(e for e in report if e["field"] == "session_cookie")
+        assert session["status"] == "likely_expired"
+        assert "age does not matter" not in session["why"]
+        assert "refused" in session["why"]
+
     def test_unconfigured_credentials_are_not_reported(self, tmp_path):
         assert self._report(None, tmp_path, {}) == []
 
