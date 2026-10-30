@@ -1349,7 +1349,7 @@ section { margin-bottom: 28px; }
 .attn-warn .attn-tag, .problem-warn .attn-tag { color: var(--warning); }
 .attn-what { font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .attn-where { font-family: var(--font-mono); font-weight: 400; font-size: var(--fs-2); color: var(--text-secondary); margin-left: 6px; }
-.attn-why { color: var(--text-secondary); min-width: 0; }
+.attn-why { color: var(--text-secondary); min-width: 0; overflow-wrap: anywhere; }
 .attn-why code { font-size: var(--fs-2); color: var(--text-secondary); }
 .attn-actions { display: flex; gap: 6px; justify-content: flex-end; white-space: nowrap; }
 .attn-foot { font-size: var(--fs-2); color: var(--text-muted); padding: 6px 0 0 12px; }
@@ -1902,8 +1902,9 @@ body.gate { display: flex; flex-direction: column; }
   .topbar { flex-wrap: wrap; height: auto; padding: 0 12px; gap: 0 12px; }
   .topbar-brand { height: 40px; }
   .topnav { order: 3; flex-basis: 100%; overflow-x: auto; height: 34px; margin: 0 -12px; padding: 0 6px; border-top: 1px solid var(--border-color); }
-  .topnav .sidebar-link { padding: 0 8px; }
-  /* "Add" alone on a phone so all six tabs fit in 390 without a hidden scroll. */
+  /* 14px, as before the type step, and tighter padding, so all six tabs fit in 390 without a hidden scroll. */
+  .topnav .sidebar-link { padding: 0 5px; font-size: var(--fs-1); }
+  /* "Add" alone on a phone for the same reason. */
   .topnav .nav-more { display: none; }
   .topbar-currency-select { display: none; }
   .page-content { padding: 14px 12px 24px; }
