@@ -67,9 +67,9 @@ _AUTH_MARKERS = (
 )
 # Checked BEFORE the auth words: httpx's "[SSL: CERTIFICATE_VERIFY_FAILED] ...
 # certificate has expired" is the connection failing, not the credentials. Only
-# these two move up; the rest of the network words can appear in a provider URL
-# ("connect.") inside a plain 401 message.
-_TLS_MARKERS = ("ssl", "certificate")
+# the TLS error's own text moves up: a bare "ssl" or "certificate", like the
+# rest of the network words, can appear in a provider URL inside a plain 401.
+_TLS_MARKERS = ("[ssl:", "certificate verify failed", "ssl handshake")
 _NETWORK_MARKERS = (
     "timeout",
     "timed out",
@@ -178,7 +178,7 @@ def message(outcome: str, service_name: str, balance: float | None = None, curre
     if outcome == PROVIDER_RATE_LIMITED:
         return (
             f"{service_name} is rate-limiting requests right now, so it could not check these credentials. "
-            "Try again later; CashPilot will also retry on its next collection run."
+            "Try again later."
         )
     if outcome == PROVIDER_DOWN:
         return (

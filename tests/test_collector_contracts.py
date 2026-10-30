@@ -396,6 +396,8 @@ class TestOutcomeClassification:
                 None,
                 "unreachable",
             ),
+            # "certificate" in a URL does not hide a 401.
+            ("Client error '401 Unauthorized' for url 'https://certificate.x.com/api'", None, "bad_credentials"),
         ],
     )
     def test_each_collector_message_family(self, error, kind, expected):
