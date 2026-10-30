@@ -1330,9 +1330,9 @@ def _collect_stats_bulk(containers: list[Any]) -> dict[str, tuple[float, float, 
                 results[container.id] = future.result()
             except Exception as exc:
                 # One unreadable container must not cost us the whole fleet's
-                # stats; _collect_stats already degrades to zeros itself.
+                # stats. None, like _collect_stats: a failed read is not 0% CPU.
                 logger.warning("Stats unavailable for %s: %s", getattr(container, "short_id", "?"), exc)
-                results[container.id] = (0.0, 0.0, None, None)
+                results[container.id] = (None, None, None, None)
     return results
 
 
@@ -1413,7 +1413,7 @@ def get_status() -> list[dict[str, Any]]:
         try:
             seen_ids.add(c.id)
             slug = c.labels.get(LABEL_SERVICE, "unknown")
-            cpu_pct, mem_mb, net_rx, net_tx = labeled_stats.get(c.id, (0.0, 0.0, None, None))
+            cpu_pct, mem_mb, net_rx, net_tx = labeled_stats.get(c.id, (None, None, None, None))
             entry = {
                 "slug": slug,
                 "name": c.name,
@@ -1471,7 +1471,7 @@ def get_status() -> list[dict[str, Any]]:
         matched_stats = _collect_stats_bulk([c for c, _, _ in matched])
         for c, slug, image_name in matched:
             try:
-                cpu_pct, mem_mb, net_rx, net_tx = matched_stats.get(c.id, (0.0, 0.0, None, None))
+                cpu_pct, mem_mb, net_rx, net_tx = matched_stats.get(c.id, (None, None, None, None))
                 entry = {
                     "slug": slug,
                     "name": c.name,
