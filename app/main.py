@@ -358,6 +358,11 @@ async def _run_health_check() -> None:
         for slug, status in slug_best.items():
             if status == "running":
                 events.append((slug, "check_ok", ""))
+            elif status == "unknown":
+                # Nothing could look: a phone without usage or notification
+                # access reports its apps as unknown. Unknown is not down, so
+                # the score is left alone rather than dragged down by a guess.
+                continue
             else:
                 events.append((slug, "check_down", status))
 

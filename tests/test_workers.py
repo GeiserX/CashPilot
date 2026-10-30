@@ -480,6 +480,36 @@ class TestHealthCheckVanishedService:
         assert _batched_events(mock_record) == [("honeygain", "check_ok", "")]
 
 
+class TestHealthCheckPhoneApps:
+    """A phone reports its apps three ways: running, stopped, or unknown when it
+    lacks the access to look. Unknown is not down, so it writes no event."""
+
+    def _events(self):
+        phone = _worker_row(
+            id=2,
+            client_id="phone-1",
+            name="OPPO",
+            system_info='{"os": "Android", "device_type": "android"}',
+            apps='[{"slug":"grass","running":false},{"slug":"wipter","running":null},{"slug":"nodle","running":true}]',
+        )
+        mock_record = AsyncMock()
+        with (
+            patch("app.main.database.list_workers", new_callable=AsyncMock, return_value=[phone]),
+            patch("app.main.database.get_deployments", new_callable=AsyncMock, return_value=[]),
+            patch("app.main.database.record_health_events", mock_record),
+        ):
+            _run(_run_health_check())
+        return _batched_events(mock_record)
+
+    def test_unknown_app_records_no_downtime(self):
+        assert all(e[0] != "wipter" for e in self._events())
+
+    def test_stopped_and_running_apps_are_still_recorded(self):
+        events = self._events()
+        assert ("grass", "check_down", "stopped") in events
+        assert ("nodle", "check_ok", "") in events
+
+
 # ---------------------------------------------------------------------------
 # Login rate limiting — the attempts dict must not grow forever
 # ---------------------------------------------------------------------------

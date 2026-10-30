@@ -32,6 +32,8 @@ const run = new Function(
    const _attentionCount = {problems: 0, payouts: 0};
    function updateAttentionSummary() {}
    ${grab('function instanceState')}
+   ${grab('function copyState')}
+   ${grab('function copyWords')}
    ${grab('async function renderAttention')}
    return {renderAttention, count: () => _attentionCount.problems};`,
 )(document, escapeHtml, async () => [], () => ({text: ''}));
