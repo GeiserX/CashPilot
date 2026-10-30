@@ -95,6 +95,11 @@ jobs:
       - name: Attention list health hints
         run: node scripts/attention_hint_check.mjs
 
+      # A phone's apps are Android apps, never containers, and an app the phone
+      # cannot see is unknown, never red "Down".
+      - name: Phone apps on the dashboard
+        run: node scripts/phone_copy_check.mjs
+
       # The only check here that needs a real browser, because it measures a
       # property of the RENDERED page. A button's label colour is decided by the
       # cascade, so `.modal-body a` (0,1,1) silently outranked `.btn-success`

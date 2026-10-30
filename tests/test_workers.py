@@ -480,6 +480,66 @@ class TestHealthCheckVanishedService:
         assert _batched_events(mock_record) == [("honeygain", "check_ok", "")]
 
 
+class TestHealthCheckPhoneApps:
+    """A phone reports its apps three ways: running, stopped, or unknown when it
+    lacks the access to look. Unknown is not down, so it writes no event."""
+
+    def _events(self):
+        phone = _worker_row(
+            id=2,
+            client_id="phone-1",
+            name="OPPO",
+            system_info='{"os": "Android", "device_type": "android"}',
+            apps='[{"slug":"grass","running":false},{"slug":"wipter","running":null},{"slug":"nodle","running":true}]',
+        )
+        mock_record = AsyncMock()
+        with (
+            patch("app.main.database.list_workers", new_callable=AsyncMock, return_value=[phone]),
+            patch("app.main.database.get_deployments", new_callable=AsyncMock, return_value=[]),
+            patch("app.main.database.record_health_events", mock_record),
+        ):
+            _run(_run_health_check())
+        return _batched_events(mock_record)
+
+    def test_unknown_app_records_no_downtime(self):
+        assert all(e[0] != "wipter" for e in self._events())
+
+    def test_stopped_and_running_apps_are_still_recorded(self):
+        events = self._events()
+        assert ("grass", "check_down", "stopped") in events
+        assert ("nodle", "check_ok", "") in events
+
+    @staticmethod
+    def _run_with(workers):
+        mock_record = AsyncMock()
+        with (
+            patch("app.main.database.list_workers", new_callable=AsyncMock, return_value=workers),
+            patch("app.main.database.get_deployments", new_callable=AsyncMock, return_value=[]),
+            patch("app.main.database.record_health_events", mock_record),
+        ):
+            _run(_run_health_check())
+        return _batched_events(mock_record)
+
+    @pytest.mark.parametrize("phone_first", [False, True])
+    def test_unknown_phone_app_never_hides_a_stopped_container(self, phone_first):
+        """A server's exited copy is downtime whichever order the workers come in."""
+        server = _worker_row(id=1, containers='[{"slug":"wipter","status":"exited"}]')
+        phone = _worker_row(
+            id=2,
+            client_id="phone-1",
+            name="OPPO",
+            system_info='{"os": "Android", "device_type": "android"}',
+            apps='[{"slug":"wipter","running":null}]',
+        )
+        workers = [phone, server] if phone_first else [server, phone]
+        assert self._run_with(workers) == [("wipter", "check_down", "exited")]
+
+    def test_a_container_with_no_status_still_counts_as_down(self):
+        """Only a phone's unknown is skipped; a Docker copy missing its status is not."""
+        server = _worker_row(id=1, containers='[{"slug":"honeygain"}]')
+        assert self._run_with([server]) == [("honeygain", "check_down", "unknown")]
+
+
 # ---------------------------------------------------------------------------
 # Login rate limiting — the attempts dict must not grow forever
 # ---------------------------------------------------------------------------

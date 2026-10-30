@@ -1167,6 +1167,23 @@ const CP = (() => {
     return 'warn';
   }
 
+  // A phone copy is an Android app, never a container. The phone says
+  // "unknown" when it lacks the access to look (Detection.kt in
+  // CashPilot-android), and that is a blind spot on the phone, not an app
+  // that died, so it gets its own neutral state instead of red or amber.
+  function copyState(inst) {
+    if (inst && inst.is_android && String(inst.status || 'unknown').toLowerCase() === 'unknown') return 'unknown';
+    return instanceState(inst && inst.status);
+  }
+
+  function copyWords(inst) {
+    if (!inst || !inst.is_android) return inst && inst.status || 'unknown';
+    const st = copyState(inst);
+    if (st === 'ok') return 'app running on the phone';
+    if (st === 'unknown') return 'the phone cannot tell whether this app is running';
+    return 'app not running on the phone';
+  }
+
   function renderPlacement(services, workers) {
     const holder = document.getElementById('placement-grid');
     if (!holder) return;
@@ -1179,7 +1196,7 @@ const CP = (() => {
       holder.innerHTML = '<p class="block-empty">Nothing placed yet. Deploy a service to a worker and it shows up here.</p>';
       return;
     }
-    const rank = { fail: 0, warn: 1, ok: 2 };
+    const rank = { fail: 0, warn: 1, unknown: 2, ok: 3 };
     const rows = services.map((svc) => {
       const details = svc.instance_details || [];
       const external = svc.container_status === 'external';
@@ -1188,14 +1205,14 @@ const CP = (() => {
         const key = inst.worker_id != null ? String(inst.worker_id) : String(inst.node);
         (byBox[key] = byBox[key] || []).push(inst);
       }
-      const states = details.map(d => instanceState(d.status));
+      const states = details.map(copyState);
       const worst = states.reduce((w, st) => (rank[st] < rank[w] ? st : w), 'ok');
       const up = states.filter(st => st === 'ok').length;
       return { svc, byBox, external, worst: external ? 'ext' : worst, up, total: details.length };
     });
     rows.sort((a, b) => {
-      const ra = a.external ? 3 : rank[a.worst];
-      const rb = b.external ? 3 : rank[b.worst];
+      const ra = a.external ? 4 : rank[a.worst];
+      const rb = b.external ? 4 : rank[b.worst];
       return ra - rb || String(a.svc.name).localeCompare(String(b.svc.name));
     });
 
@@ -1215,8 +1232,8 @@ const CP = (() => {
       const cells = boxes.map((w) => {
         const insts = r.byBox[String(w.id)] || r.byBox[String(w.name)] || [];
         if (!insts.length) return '<td><span class="cell cell-none" aria-label="not placed"></span></td>';
-        const st = insts.map(i => instanceState(i.status)).reduce((x, y) => (rank[y] < rank[x] ? y : x), 'ok');
-        const words = insts.map(i => i.status || 'unknown').join(', ');
+        const st = insts.map(copyState).reduce((x, y) => (rank[y] < rank[x] ? y : x), 'ok');
+        const words = insts.map(copyWords).join(', ');
         const n = insts.length > 1 ? `<span class="cell-n">${insts.length}</span>` : '';
         return `<td><span class="cell cell-${st}" title="${escapeHtml(r.svc.name)} on ${escapeHtml(w.name)}: ${escapeHtml(words)}" aria-label="${escapeHtml(words)}">${n}</span></td>`;
       }).join('');
@@ -1245,14 +1262,23 @@ const CP = (() => {
 
     for (const w of (workers || [])) {
       if (w.status !== 'online') {
-        items.push({ level: 'fail', tag: 'Offline', what: w.name, why: `has not reported since ${fmtTimestamp(w.last_heartbeat).text}. Its containers may still be running, but CashPilot cannot see them.`, actions: '<a class="btn btn-ghost btn-sm" href="/fleet">Open fleet</a>' });
+        const info = w.system_info || {};
+        const phone = info.device_type === 'android' || String(info.os || '').trim().toLowerCase() === 'android';
+        items.push({ level: 'fail', tag: 'Offline', what: w.name, why: `has not reported since ${fmtTimestamp(w.last_heartbeat).text}. Its ${phone ? 'apps' : 'containers'} may still be running, but CashPilot cannot see them.`, actions: '<a class="btn btn-ghost btn-sm" href="/fleet">Open fleet</a>' });
       }
     }
     for (const svc of services) {
       for (const inst of (svc.instance_details || [])) {
-        const st = instanceState(inst.status);
+        const st = copyState(inst);
         if (st === 'ok') continue;
         const where = inst.node === 'local' ? 'local' : (boxName[String(inst.worker_id)] || inst.node);
+        if (inst.is_android) {
+          // An app on a phone: CashPilot cannot start it, only the phone can.
+          items.push(st === 'unknown'
+            ? { level: 'unknown', tag: 'Unknown', what: svc.name, where, why: 'the phone cannot tell whether this app is running. Give the CashPilot app notification access and usage access on the phone so it can look.' }
+            : { level: 'fail', tag: 'Not running', what: svc.name, where, why: 'app is not running on the phone. Open it on the phone to start it again.' });
+          continue;
+        }
         // The copy number rides along, or Start and Logs act on copy one.
         const wid = inst.worker_id != null
           ? ` data-a2="${escapeHtml(String(inst.worker_id))}"${inst.instance > 1 ? ` data-a3="${escapeHtml(String(inst.instance))}"` : ''}`
@@ -1336,7 +1362,7 @@ const CP = (() => {
     }
 
     if (seq !== undefined && seq !== _attentionSeq) return;
-    const order = { fail: 0, warn: 1 };
+    const order = { fail: 0, warn: 1, unknown: 2 };
     items.sort((a, b) => order[a.level] - order[b.level]);
     list.innerHTML = items.map(i => `
       <div class="attn-row attn-${i.level}">
@@ -1345,7 +1371,9 @@ const CP = (() => {
         <span class="attn-why">${i.why}</span>
         <span class="attn-actions">${i.actions || ''}</span>
       </div>`).join('');
-    _attentionCount.problems = items.length;
+    // A phone that cannot see an app is shown, in grey, but it is not a
+    // problem to count: nothing is known to be wrong.
+    _attentionCount.problems = items.filter(i => i.level !== 'unknown').length;
     updateAttentionSummary(services, workers);
   }
 
