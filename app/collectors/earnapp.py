@@ -107,7 +107,8 @@ class EarnAppCollector(BaseCollector):
                 return EarningsResult(
                     platform=self.platform,
                     balance=0.0,
-                    error=data["error"],
+                    # {"error": null} is still an error, not a $0 success.
+                    error=str(data["error"] or "EarnApp returned an error with no message"),
                 )
 
             raw = data.get("balance")
@@ -126,5 +127,5 @@ class EarnAppCollector(BaseCollector):
             return EarningsResult(
                 platform=self.platform,
                 balance=0.0,
-                error=str(exc),
+                error=base.describe_exception(exc),
             )

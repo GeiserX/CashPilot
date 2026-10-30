@@ -132,7 +132,7 @@ class StorjCollector(BaseCollector):
             return EarningsResult(
                 platform=self.platform,
                 balance=0.0,
-                error=str(exc),
+                error=base.describe_exception(exc),
             )
 
     async def _reachability_warning(self, client: httpx.AsyncClient) -> str | None:

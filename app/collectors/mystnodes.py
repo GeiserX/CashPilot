@@ -115,7 +115,7 @@ class MystNodesCollector(BaseCollector):
             return EarningsResult(
                 platform=self.platform,
                 balance=0.0,
-                error=str(exc),
+                error=base.describe_exception(exc),
             )
 
     async def get_per_node_earnings(self) -> list[dict[str, Any]]:
