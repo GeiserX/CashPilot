@@ -71,16 +71,16 @@
         <span>CashPilot</span>
       </a>
       <nav class="topnav" aria-label="Main">
-        <a href="/" class="sidebar-link {% if active_page == 'dashboard' %}active{% endif %}" data-key="d">Dashboard<kbd>d</kbd></a>
-        <a href="/fleet" class="sidebar-link {% if active_page == 'fleet' %}active{% endif %}" data-key="f">Fleet<kbd>f</kbd></a>
-        <a href="/catalog" class="sidebar-link {% if active_page == 'catalog' %}active{% endif %}" data-key="c">Catalog<kbd>c</kbd></a>
+        <a href="/" class="sidebar-link {% if active_page == 'dashboard' %}active{% endif %}" data-key="d">Dashboard</a>
+        <a href="/fleet" class="sidebar-link {% if active_page == 'fleet' %}active{% endif %}" data-key="f">Fleet</a>
+        <a href="/catalog" class="sidebar-link {% if active_page == 'catalog' %}active{% endif %}" data-key="c">Catalog</a>
         {% if user and user.r == 'owner' %}
         <!-- Owner-only, matching /payouts and /api/payout-registry. This view maps
              one person to all of their wallets at once. -->
-        <a href="/payouts" class="sidebar-link {% if active_page == 'payouts' %}active{% endif %}" data-key="p">Payouts<kbd>p</kbd></a>
-        <a href="/settings" class="sidebar-link {% if active_page == 'settings' %}active{% endif %}" data-key="s">Settings<kbd>s</kbd></a>
+        <a href="/payouts" class="sidebar-link {% if active_page == 'payouts' %}active{% endif %}" data-key="p">Payouts</a>
+        <a href="/settings" class="sidebar-link {% if active_page == 'settings' %}active{% endif %}" data-key="s">Settings</a>
         {% endif %}
-        <a href="/setup" class="sidebar-link {% if active_page == 'setup' %}active{% endif %}" data-key="a" aria-label="Add services"><span>Add<span class="nav-more"> services</span></span><kbd>a</kbd></a>
+        <a href="/setup" class="sidebar-link {% if active_page == 'setup' %}active{% endif %}" data-key="a" aria-label="Add services"><span>Add<span class="nav-more"> services</span></span></a>
       </nav>
       <div class="topbar-right">
         <div class="topbar-earnings" title="Total balance across every service">
@@ -152,7 +152,7 @@
       <a href="https://github.com/GeiserX/CashPilot" target="_blank" rel="noopener">Source</a>
       <a href="https://github.com/GeiserX/CashPilot/issues" target="_blank" rel="noopener">Report a problem</a>
       <a href="https://github.com/sponsors/GeiserX" target="_blank" rel="noopener">Sponsor</a>
-      <span class="page-foot-keys">Press <kbd>g</kbd> then a letter to jump, <kbd>/</kbd> to search</span>
+      <span class="page-foot-keys">Press <kbd>g</kbd> then a page's first letter to jump, <kbd>/</kbd> to search</span>
     </footer>
   </div>
 
