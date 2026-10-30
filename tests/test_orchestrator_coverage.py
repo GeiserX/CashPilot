@@ -234,6 +234,40 @@ class TestGetStatus:
         assert row["status"] == "running"
         assert row["memory_mb"] == 1.0
 
+    def test_stats_timeout_is_unknown_not_zero(self):
+        """A stats call that times out is no reading, not 0% CPU and 0 MB.
+
+        A requests timeout is none of the errors _collect_stats catches, so it
+        reached the bulk fallback, which stored zeros. The usage panel averages
+        every heartbeat for 30 days, so each timeout dragged the averages down.
+        """
+        import requests
+
+        container = _mock_container(name="cashpilot-honeygain", status="running", slug="honeygain")
+        container.stats.side_effect = requests.exceptions.ReadTimeout("docker is busy")
+        client = MagicMock()
+        client.containers.list.return_value = [container]
+        with (
+            patch.object(orchestrator, "_get_client", return_value=client),
+            patch.object(orchestrator, "_build_image_slug_map", return_value={}),
+        ):
+            row = orchestrator.get_status()[0]
+        assert row["cpu_percent"] is None
+        assert row["memory_mb"] is None
+
+    def test_container_missing_from_bulk_stats_is_unknown_not_zero(self):
+        container = _mock_container(name="cashpilot-honeygain", status="running", slug="honeygain")
+        client = MagicMock()
+        client.containers.list.return_value = [container]
+        with (
+            patch.object(orchestrator, "_get_client", return_value=client),
+            patch.object(orchestrator, "_build_image_slug_map", return_value={}),
+            patch.object(orchestrator, "_collect_stats_bulk", return_value={}),
+        ):
+            row = orchestrator.get_status()[0]
+        assert row["cpu_percent"] is None
+        assert row["memory_mb"] is None
+
     def test_exited_container_missing_stats_handled_gracefully(self):
         container = _mock_container(name="cashpilot-earnapp", status="exited", slug="earnapp")
         container.stats.side_effect = APIError("exited, no stats")

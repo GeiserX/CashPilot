@@ -13,6 +13,7 @@ import json
 import logging
 import math
 import os
+import time
 from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -21,6 +22,7 @@ from typing import Any
 import aiosqlite
 from cryptography.fernet import Fernet, InvalidToken
 
+from app import usage
 from app.exchange_rates import UNPRICED_BY_DESIGN
 
 _logger = logging.getLogger(__name__)
@@ -530,6 +532,39 @@ CREATE INDEX IF NOT EXISTS idx_health_events_created
 
 CREATE INDEX IF NOT EXISTS idx_alerts_created
     ON alerts (created_at);
+
+-- What each service used on each worker, per UTC day (app/usage.py). Sums plus
+-- sample counts, so an average is sum/n; NULL traffic means no reading carried
+-- network counters (a host-network container), never zero traffic.
+CREATE TABLE IF NOT EXISTS usage_daily (
+    worker_id  INTEGER NOT NULL,
+    slug       TEXT    NOT NULL,
+    day        TEXT    NOT NULL,
+    cpu_sum    REAL    NOT NULL DEFAULT 0,
+    cpu_n      INTEGER NOT NULL DEFAULT 0,
+    mem_sum    REAL    NOT NULL DEFAULT 0,
+    mem_n      INTEGER NOT NULL DEFAULT 0,
+    rx_bytes   INTEGER,
+    tx_bytes   INTEGER,
+    -- Heartbeats where a running container of the service had no counters.
+    net_gaps   INTEGER NOT NULL DEFAULT 0,
+    -- Heartbeats where a running container's memory could not be read.
+    mem_gaps   INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (worker_id, slug, day)
+);
+
+-- The last cumulative network counters seen per container, so the next
+-- heartbeat can be differenced. Persisted so a UI restart does not lose a
+-- minute of every service's traffic; app/usage.py refuses baselines older
+-- than an hour.
+CREATE TABLE IF NOT EXISTS usage_counters (
+    worker_id    INTEGER NOT NULL,
+    container_id TEXT    NOT NULL,
+    rx_bytes     INTEGER NOT NULL,
+    tx_bytes     INTEGER NOT NULL,
+    seen_at      REAL    NOT NULL,
+    PRIMARY KEY (worker_id, container_id)
+);
 """
 
 
@@ -2431,7 +2466,7 @@ def quiet_verdict(
     return {"days_flat": days, "last_increase": ordered[-1], "since": ordered[-1], "usual_gap_days": usual_gap}
 
 
-async def get_earned_by_platform(days: int = 30) -> dict[str, float]:
+async def get_earned_by_platform(days: int = 30, measured: set[str] | None = None) -> dict[str, float]:
     """USD earned per platform over the trailing window.
 
     Deliberately NOT the latest balance. A balance is a running total; charging
@@ -2496,6 +2531,10 @@ async def get_earned_by_platform(days: int = 30) -> dict[str, float]:
                 # Summed into the PLATFORM, so each source contributes its own
                 # earnings and the combination happens after differencing.
                 earned[platform] += max(0.0, balance - before[1]) * float(rate)
+                if measured is not None:
+                    # At least one priced delta: the 0.0 a platform starts at is
+                    # a measurement now, not just the absence of one.
+                    measured.add(platform)
             previous[series] = (currency, balance)
 
         _report_unpriced(f"per-platform:{days}", unpriced, f"the {days}-day per-platform totals")
@@ -2745,6 +2784,94 @@ async def get_health_scores(days: int = 7) -> list[dict[str, Any]]:
         await db.close()
 
 
+# --- Resource usage per server (app/usage.py) ---
+
+# The panel reads 30 days; a few more so the oldest day is never half-trimmed.
+USAGE_RETENTION_DAYS = 35
+
+
+async def record_usage(worker_id: int, containers: list[dict[str, Any]], now: float | None = None) -> None:
+    """Fold one heartbeat's container readings into today's usage rows."""
+    now = time.time() if now is None else now
+    day = datetime.fromtimestamp(now, tz=UTC).strftime("%Y-%m-%d")
+    # Own connection and BEGIN IMMEDIATE: reading the baselines, adding the
+    # deltas and storing the new baselines must be one step. On the shared
+    # connection a failure halfway left the day rows in an open transaction that
+    # another task's commit would save without the new baselines, and the next
+    # heartbeat then counted the same traffic again.
+    DB_DIR.mkdir(parents=True, exist_ok=True)
+    async with aiosqlite.connect(str(DB_PATH), timeout=30) as db:
+        db.row_factory = aiosqlite.Row
+        await db.execute("BEGIN IMMEDIATE")
+        try:
+            cursor = await db.execute(
+                "SELECT container_id, rx_bytes, tx_bytes, seen_at FROM usage_counters WHERE worker_id = ?",
+                (worker_id,),
+            )
+            baselines = {
+                r["container_id"]: (r["rx_bytes"], r["tx_bytes"], r["seen_at"]) for r in await cursor.fetchall()
+            }
+            samples = usage.samples_from_heartbeat(containers, baselines, now)
+            for slug, s in samples.items():
+                await db.execute(
+                    """
+                    INSERT INTO usage_daily (worker_id, slug, day, cpu_sum, cpu_n, mem_sum, mem_n, rx_bytes, tx_bytes, net_gaps, mem_gaps)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(worker_id, slug, day) DO UPDATE SET
+                        cpu_sum = cpu_sum + excluded.cpu_sum,
+                        cpu_n = cpu_n + excluded.cpu_n,
+                        mem_sum = mem_sum + excluded.mem_sum,
+                        mem_n = mem_n + excluded.mem_n,
+                        rx_bytes = CASE WHEN excluded.rx_bytes IS NULL THEN rx_bytes
+                                        ELSE COALESCE(rx_bytes, 0) + excluded.rx_bytes END,
+                        tx_bytes = CASE WHEN excluded.tx_bytes IS NULL THEN tx_bytes
+                                        ELSE COALESCE(tx_bytes, 0) + excluded.tx_bytes END,
+                        net_gaps = net_gaps + excluded.net_gaps,
+                        mem_gaps = mem_gaps + excluded.mem_gaps
+                    """,
+                    (
+                        worker_id,
+                        slug,
+                        day,
+                        s.cpu_percent or 0.0,
+                        0 if s.cpu_percent is None else 1,
+                        s.memory_mb or 0.0,
+                        0 if s.memory_mb is None else 1,
+                        s.rx_bytes,
+                        s.tx_bytes,
+                        1 if s.traffic_gap else 0,
+                        1 if s.memory_gap else 0,
+                    ),
+                )
+                for cid, rx, tx in s.counters:
+                    await db.execute(
+                        """
+                        INSERT INTO usage_counters (worker_id, container_id, rx_bytes, tx_bytes, seen_at)
+                        VALUES (?, ?, ?, ?, ?)
+                        ON CONFLICT(worker_id, container_id) DO UPDATE SET
+                            rx_bytes = excluded.rx_bytes, tx_bytes = excluded.tx_bytes, seen_at = excluded.seen_at
+                        """,
+                        (worker_id, cid, rx, tx, now),
+                    )
+            await db.commit()
+        except BaseException:
+            await db.rollback()
+            raise
+
+
+async def get_usage_daily(days: int = 30) -> list[dict[str, Any]]:
+    """Usage rows for the trailing ``days`` UTC days, today included."""
+    db = await _get_db()
+    try:
+        cursor = await db.execute(
+            "SELECT * FROM usage_daily WHERE day > date('now', ?) ORDER BY worker_id, slug, day",
+            (f"-{max(1, int(days))} days",),
+        )
+        return [dict(r) for r in await cursor.fetchall()]
+    finally:
+        await db.close()
+
+
 # --- Data Retention ---
 
 RETENTION_DAYS = 400
@@ -2787,8 +2914,14 @@ async def purge_old_data() -> int:
             "DELETE FROM alerts WHERE created_at < datetime('now', ?)",
             (cutoff,),
         )
+        c5 = await db.execute(
+            "DELETE FROM usage_daily WHERE day < date('now', ?)",
+            (f"-{USAGE_RETENTION_DAYS} days",),
+        )
+        # A baseline is useless after an hour (app/usage.py); a day is plenty.
+        c6 = await db.execute("DELETE FROM usage_counters WHERE seen_at < ?", (time.time() - 86400,))
         await db.commit()
-        return (c1.rowcount or 0) + (c2.rowcount or 0) + (c3.rowcount or 0) + (c4.rowcount or 0)
+        return sum((c.rowcount or 0) for c in (c1, c2, c3, c4, c5, c6))
     finally:
         await db.close()
 

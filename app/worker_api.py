@@ -1474,10 +1474,34 @@ async def api_remove_instance(request: Request, slug: str, instance: int) -> dic
 
 
 @app.get("/api/containers/{slug}/logs")
-async def api_container_logs(request: Request, slug: str, lines: int = 50, instance: int = 1) -> dict[str, str]:
+async def api_container_logs(
+    request: Request, slug: str, lines: int = 50, instance: int = 1, match: str = "", since_hours: float = 0
+) -> dict[str, Any]:
+    """The log tail, or with ``match`` and ``since_hours`` the matching lines of that window.
+
+    ``filtered`` tells the caller its filter was applied: a worker from before
+    these parameters ignores them and returns the plain tail, which must not be
+    read as the window.
+    """
     _verify_api_key(request)
     _validate_instance(instance)
     try:
+        if match and since_hours > 0:
+            if len(match) > 200:
+                raise HTTPException(status_code=400, detail="match is too long")
+            try:
+                compiled = re.compile(match)
+            except re.error:
+                raise HTTPException(status_code=400, detail="match is not a valid regular expression")
+            logs = await asyncio.to_thread(
+                orchestrator.grep_service_logs,
+                slug,
+                compiled,
+                since_hours=min(since_hours, 24),
+                lines=min(lines, 1000),
+                instance=instance,
+            )
+            return {"logs": logs, "filtered": True}
         logs = await asyncio.to_thread(orchestrator.get_service_logs, slug, lines=min(lines, 1000), instance=instance)
         return {"logs": logs}
     except ValueError as exc:

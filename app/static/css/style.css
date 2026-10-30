@@ -1378,6 +1378,13 @@ section { margin-bottom: 28px; }
 /* ----- Dashboard split ----- */
 .dash-split { display: grid; grid-template-columns: minmax(380px, 5fr) minmax(0, 7fr); gap: 32px; align-items: start; }
 .dash-split > section { margin-bottom: 28px; min-width: 0; }
+.dash-col { min-width: 0; }
+.dash-col > section { margin-bottom: 28px; min-width: 0; }
+/* Resource use per server: one tbody per server, a name row, its services, a total. */
+.usage-table .usage-server th { color: var(--text-primary); font-weight: 600; font-size: var(--fs-3); padding-top: 14px; }
+.usage-table .usage-total td { color: var(--text-secondary); font-weight: 600; border-bottom-color: var(--border-light); }
+.usage-foot { color: var(--text-muted); font-size: var(--fs-2); margin: 8px 0 0; }
+.usage-table .usage-dir { color: var(--text-muted); font-family: var(--font-ui); margin-right: 2px; }
 .placement-table { border-collapse: collapse; width: 100%; }
 .placement-table th, .placement-table td { padding: 0 6px; height: 27px; border-bottom: 1px solid var(--border-color); text-align: center; }
 .placement-table thead th { height: 26px; font-weight: 500; color: var(--text-muted); font-size: var(--fs-2); }

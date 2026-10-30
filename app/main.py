@@ -18,6 +18,7 @@ import re
 import secrets
 import socket
 import time
+import urllib.parse
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -61,6 +62,7 @@ from app import (
     producer_state,
     setup_token,
     update_check,
+    usage,
     version,
 )
 from app.worker_proxy import _pin_url_to_ip, _validate_worker_url
@@ -1489,6 +1491,121 @@ async def _check_stale_workers() -> None:
             logger.warning("Stale worker check error for worker '%s': %s", w.get("name", w.get("id")), exc)
 
 
+#: Windowed health signals that currently hold, per running copy:
+#: (slug, worker_id, instance) -> the rendered ``means`` of each one. Rebuilt by
+#: every sweep, so a problem that went away clears on the next one. In memory on
+#: purpose: a restart forgets it for at most one sweep.
+_windowed_hints: dict[tuple[str, int, int], list[str]] = {}
+# The startup sweep and the scheduled one must not overlap: the older would
+# finish last and put back stale hints.
+_windowed_lock = asyncio.Lock()
+
+
+_DOCKER_POOLS = ipaddress.ip_network("172.16.0.0/12")
+
+
+def _private_ipv4(url: str) -> str | None:
+    """The host of a worker URL when it looks like the box's LAN address, else None.
+
+    A worker on Docker's bridge network auto-detects its CONTAINER address
+    (172.17.x and the rest of Docker's 172.16.0.0/12 pools), which no router
+    can forward to, so that range is never named.
+    """
+    host = urllib.parse.urlparse(url or "").hostname or ""
+    try:
+        addr = ipaddress.ip_address(host)
+    except ValueError:
+        return None
+    if addr.version != 4 or not addr.is_private or addr.is_loopback or addr in _DOCKER_POOLS:
+        return None
+    return host
+
+
+async def _render_signal_means(signal: dict[str, Any], slug: str, worker: dict[str, Any] | None) -> str:
+    """The signal's ``means`` with ${VAR} filled from what this copy was deployed with.
+
+    ${HOST_ADDRESS} is the box's LAN address when the worker reports one, so the
+    hint can name the exact router rule to create.
+    """
+    service = catalog.get_service(slug) or {}
+    env = {var["key"]: str(var.get("default", "")) for var in (service.get("docker") or {}).get("env", [])}
+    wid = (worker or {}).get("id")
+    recorded = await database.get_deployment_spec(slug, worker_id=wid) if wid is not None else None
+    recorded_env = {k: str(v) for k, v in ((recorded or {}).get("env") or {}).items() if str(v)}
+    env.update(recorded_env)
+    env["HOST_ADDRESS"] = _private_ipv4((worker or {}).get("url", "")) or "this machine's LAN address"
+    text = " ".join(str(signal.get("means") or "").split())
+    # A copy deployed before a setting existed does not run with its default yet
+    # (Mysterium without UDP_PORTS picks from 10000:60000), so naming the default
+    # alone would send the operator to forward a range the node does not use.
+    used = set(re.findall(r"\$\{(\w+)\}", text)) - {"HOST_ADDRESS"}
+    if recorded is not None and any(key not in recorded_env for key in used):
+        text = (
+            "This copy was deployed before CashPilot set these values, so it does not use them yet: "
+            "redeploy it from the dashboard first. " + text
+        )
+    return re.sub(r"\$\{(\w+)\}", lambda m: env.get(m.group(1), m.group(0)), text)
+
+
+async def _check_windowed_signals() -> None:
+    """Judge every windowed health signal of every running copy (producer_state.is_windowed).
+
+    A copy whose read fails keeps its last verdict rather than losing it to a
+    blip; a copy no longer running, or no longer declaring the signal, drops it.
+    """
+    async with _windowed_lock:
+        await _sweep_windowed_signals()
+
+
+async def _sweep_windowed_signals() -> None:
+    global _windowed_hints
+    try:
+        containers = await _get_all_worker_containers()
+    except Exception as exc:
+        logger.warning("Windowed signal check skipped: %s", exc)
+        return
+    hints: dict[tuple[str, int, int], list[str]] = {}
+    workers: dict[int, dict[str, Any] | None] = {}
+    for c in containers:
+        slug = egress.container_slug(c)
+        wid = c.get("_worker_id")
+        if not slug or wid is None or str(c.get("status", "")).lower() != "running":
+            continue
+        signals = [s for s in producer_state.signals_for(catalog.get_service(slug)) if producer_state.is_windowed(s)]
+        if not signals:
+            continue
+        instance = int(c.get("instance") or 1)
+        key = (slug, wid, instance)
+        found: list[str] = []
+        try:
+            if wid not in workers:
+                workers[wid] = await database.get_worker(wid)
+            for signal in signals:
+                params: dict[str, Any] = {
+                    "lines": 1000,
+                    "match": producer_state.window_filter(signal),
+                    "since_hours": float(signal["window_hours"]),
+                }
+                if instance > 1:
+                    params["instance"] = instance
+                # Hours of a chatty node's logs: seconds on a fast box, more on a Pi.
+                resp = await _proxy_to_worker(wid, "GET", f"/api/containers/{slug}/logs", params=params, timeout=120)
+                # A worker older than the filter returns the plain tail, which is
+                # not the window: no verdict from it.
+                if not resp.get("filtered"):
+                    continue
+                if producer_state.windowed_hit(resp.get("logs", ""), signal):
+                    found.append(await _render_signal_means(signal, slug, workers[wid]))
+        except Exception as exc:
+            logger.warning("Windowed signal check failed for %s on worker %s: %s", slug, wid, exc)
+            if key in _windowed_hints:
+                hints[key] = _windowed_hints[key]
+            continue
+        if found:
+            hints[key] = found
+    _windowed_hints = hints
+
+
 async def _raise_worker_offline_alert(w: dict[str, Any]) -> None:
     """Record + push + bell an offline worker, keyed by client_id.
 
@@ -1647,6 +1764,15 @@ async def lifespan(app: FastAPI):
         misfire_grace_time=300,
     )
     scheduler.add_job(
+        _check_windowed_signals,
+        "interval",
+        minutes=30,
+        id="windowed_signals",
+        max_instances=1,
+        coalesce=True,
+        misfire_grace_time=300,
+    )
+    scheduler.add_job(
         _run_data_retention,
         "interval",
         hours=24,
@@ -1719,6 +1845,7 @@ async def lifespan(app: FastAPI):
     # own last run, so this rewrites the file at most once a week.
     _spawn(_run_vacuum())
     _spawn(_run_collection())
+    _spawn(_check_windowed_signals())
     logger.info("CashPilot UI started (container ops via workers)")
 
     yield
@@ -2159,6 +2286,8 @@ async def api_services_deployed(request: Request) -> list[dict[str, Any]]:
                 # Which copy on that worker; the UI labels copies 2+ as "#N".
                 "instance": inst.get("instance") or 1,
                 "custom_image": custom_images.get(inst.get("_worker_id")),
+                # What a windowed health signal says is wrong with this copy.
+                "hints": _windowed_hints.get((slug, inst.get("_worker_id"), int(inst.get("instance") or 1)), []),
             }
             # Only containers CashPilot made (constants.CASHPILOT_DEPLOYED): a
             # container the user runs by hand is theirs to shape, even when it
@@ -2683,9 +2812,12 @@ async def api_deploy(
     invalid = [
         var.get("label", var["key"])
         for var in docker_conf.get("env", [])
-        if var.get("pattern")
-        and str(merged_env.get(var["key"], ""))
-        and not re.fullmatch(var["pattern"], str(merged_env.get(var["key"], "")))
+        if (
+            var.get("pattern")
+            and str(merged_env.get(var["key"], ""))
+            and not re.fullmatch(var["pattern"], str(merged_env.get(var["key"], "")))
+        )
+        or (var.get("port_range") and not _is_port_range(str(merged_env.get(var["key"], ""))))
     ]
     if invalid:
         raise HTTPException(status_code=400, detail=f"Invalid value for: {', '.join(invalid)}")
@@ -2753,6 +2885,20 @@ async def api_deploy(
     if divergence:
         response["kept_from_previous_deployment"] = divergence
     return response
+
+
+def _is_port_range(value: str) -> bool:
+    """A blank value, or "start:end" with 1 <= start <= end <= 65535.
+
+    A pattern can check the shape but not the order, and Mysterium refuses to
+    start on a reversed or out-of-range --udp.ports, so the node stops earning.
+    """
+    if not value:
+        return True
+    start, sep, end = value.partition(":")
+    if not (sep and start.isascii() and start.isdigit() and end.isascii() and end.isdigit()):
+        return False
+    return 1 <= int(start) <= int(end) <= 65535
 
 
 def _merge_recorded_spec(
@@ -4141,8 +4287,20 @@ async def api_producer_state(request: Request, slug: str, worker_id: int | None 
         if signals and running:
             wid = worker_id if worker_id is not None else (matches[0].get("_worker_id") if matches else None)
             if wid is not None:
+                # The sweep's verdicts first, so a failed tail read below cannot drop them.
+                up = {
+                    int(c.get("instance") or 1)
+                    for c in matches
+                    if c.get("_worker_id") == wid and str(c.get("status", "")).lower() == "running"
+                }
+                log_hits = [
+                    {"pattern": "", "means": means, "state": producer_state.FAILING}
+                    for (s_slug, s_wid, s_instance), hints in _windowed_hints.items()
+                    if s_slug == slug and s_wid == wid and s_instance in up
+                    for means in hints
+                ]
                 logs = (await _proxy_worker_logs(wid, slug, lines=200)).get("logs", "")
-                log_hits = producer_state.match_log_signals(logs, signals)
+                log_hits += producer_state.match_log_signals(logs, signals)
     except Exception as exc:
         # Never let a log or worker problem turn "is it earning?" into a 500;
         # the earnings signal alone is still worth reporting.
@@ -4575,6 +4733,180 @@ async def api_fleet_economics(request: Request) -> dict[str, Any]:
             "cost would be two different currencies subtracted from each other."
         )
     return summary
+
+
+def _is_phone(system_info: dict[str, Any] | None) -> bool:
+    """An Android worker, by either field a client sets.
+
+    The current Android client reports ``os: "Android"`` and no device_type, so
+    checking device_type alone let phones into the usage table as rows of
+    nothing but dashes: a phone has no Docker stats to give.
+    """
+    info = system_info or {}
+    return info.get("device_type") == "android" or str(info.get("os") or "").strip().lower() == "android"
+
+
+@app.get("/api/usage/servers")
+async def api_usage_servers(request: Request) -> dict[str, Any]:
+    """What each earning service uses on each server, next to what it earns.
+
+    CPU and memory are averages of every heartbeat in the window; traffic is
+    the sum of counter deltas (app/usage.py). Earnings are per ACCOUNT, not per
+    server, so "earned" and the per-GB figures are the service's whole-fleet
+    numbers, taken over the same days the usage covers so a week of traffic is
+    never divided into a month of money. None everywhere means "no reading".
+    """
+    _require_auth_api(request)
+    raw_workers = await database.list_workers()
+    names: dict[int, tuple[str, Any]] = {}
+    # Phones have no Docker stats, so they are not rows here. But a phone earns
+    # into the same account as the servers, online or not, so every service a
+    # phone reports makes that service's per-GB ratios unknown.
+    phone_ids: set[int] = set()
+    phone_slugs: set[str] = set()
+    for w in raw_workers:
+        if _is_phone(_safe_json(w.get("system_info", "{}"), {})):
+            phone_ids.add(w["id"])
+            for item in _safe_json(w.get("containers", "[]")) + _safe_json(w.get("apps", "[]")):
+                if isinstance(item, dict) and item.get("slug"):
+                    phone_slugs.add(item["slug"])
+        else:
+            names[w["id"]] = (w.get("name") or f"worker {w['id']}", w.get("status"))
+    all_rows = await database.get_usage_daily(days=30)
+    phone_slugs |= {r["slug"] for r in all_rows if r["worker_id"] in phone_ids}
+    # A deleted worker's rows linger until retention; left in, they would
+    # stretch the earnings window past the traffic still shown.
+    rows = [r for r in all_rows if r["worker_id"] in names]
+    today = datetime.now(UTC).strftime("%Y-%m-%d")
+    if not rows:
+        return {"servers": [], "window_days": 0, "since": None, "currency": "USD"}
+    since = min(r["day"] for r in rows)
+    window_days = (datetime.strptime(today, "%Y-%m-%d") - datetime.strptime(since, "%Y-%m-%d")).days + 1
+    # Only platforms with at least one priced delta in the window: a platform
+    # with no exchange rate, or a single reading so far, reads 0.0 otherwise,
+    # and "$0.00 earned" is a claim we cannot make.
+    measured: set[str] = set()
+    earned = await database.get_earned_by_platform(days=window_days, measured=measured)
+    earned = {slug: value for slug, value in earned.items() if slug in measured}
+
+    def add(a: Any, b: Any) -> Any:
+        if b is None:
+            return a
+        return b if a is None else a + b
+
+    cells: dict[tuple[int, str], dict[str, Any]] = {}
+    for r in rows:
+        cell = cells.setdefault(
+            (r["worker_id"], r["slug"]),
+            {
+                "cpu_sum": 0.0,
+                "cpu_n": 0,
+                "mem_sum": 0.0,
+                "mem_n": 0,
+                "rx": None,
+                "tx": None,
+                "rx_today": None,
+                "tx_today": None,
+                "gaps": 0,
+                "mem_gaps": 0,
+            },
+        )
+        cell["gaps"] += r.get("net_gaps") or 0
+        cell["mem_gaps"] += r.get("mem_gaps") or 0
+        cell["cpu_sum"] += r["cpu_sum"]
+        cell["cpu_n"] += r["cpu_n"]
+        cell["mem_sum"] += r["mem_sum"]
+        cell["mem_n"] += r["mem_n"]
+        cell["rx"] = add(cell["rx"], r["rx_bytes"])
+        cell["tx"] = add(cell["tx"], r["tx_bytes"])
+        if r["day"] == today:
+            cell["rx_today"] = add(cell["rx_today"], r["rx_bytes"])
+            cell["tx_today"] = add(cell["tx_today"], r["tx_bytes"])
+
+    # Fleet-wide totals per service, for the per-GB ratios. The earnings are the
+    # whole account's, so a ratio is only honest when EVERY copy of the service
+    # was measured: dividing all of the money by the traffic of the copies that
+    # had counters would make a partly host-networked service look like the
+    # best earner per GB. One unmeasured copy, and the ratio is unknown.
+    fleet_bytes: dict[str, int] = {}
+    fleet_mem: dict[str, float] = {}
+    bytes_unknown: set[str] = set(phone_slugs)
+    mem_unknown: set[str] = set(phone_slugs)
+    # A copy running right now with no usage row at all (an Android phone, a
+    # worker that has not reported yet) earns into the same account too.
+    measured_cells = set(cells)
+    for c in await _get_all_worker_containers(raw_workers):
+        slug = egress.container_slug(c)
+        if slug and c.get("status") == "running" and (c.get("_worker_id"), slug) not in measured_cells:
+            bytes_unknown.add(slug)
+            mem_unknown.add(slug)
+    for (_, slug), cell in cells.items():
+        moved = add(cell["rx"], cell["tx"])
+        if moved is None or cell["gaps"]:
+            bytes_unknown.add(slug)
+        else:
+            fleet_bytes[slug] = fleet_bytes.get(slug, 0) + moved
+        if cell["mem_n"] and not cell["mem_gaps"]:
+            fleet_mem[slug] = fleet_mem.get(slug, 0.0) + cell["mem_sum"] / cell["mem_n"]
+        else:
+            mem_unknown.add(slug)
+
+    servers: dict[int, dict[str, Any]] = {}
+    for (worker_id, slug), cell in sorted(cells.items(), key=lambda kv: (names[kv[0][0]][0], kv[0][1])):
+        name, status = names[worker_id]
+        server = servers.setdefault(
+            worker_id,
+            {
+                "worker_id": worker_id,
+                "name": name,
+                "status": status,
+                "services": [],
+                "total": {
+                    "cpu_percent": None,
+                    "memory_mb": None,
+                    "rx_today": None,
+                    "tx_today": None,
+                    "rx": None,
+                    "tx": None,
+                    # Some service on this server had no traffic reading, so the
+                    # traffic sums cover only the others: a floor, not a total.
+                    "traffic_partial": False,
+                },
+            },
+        )
+        svc = catalog.get_service(slug) or {}
+        service_earned = earned.get(slug)
+        mem_gb = None if slug in mem_unknown else fleet_mem.get(slug, 0.0) / 1024
+        entry = {
+            "slug": slug,
+            "name": svc.get("name") or slug,
+            "cpu_percent": round(cell["cpu_sum"] / cell["cpu_n"], 2) if cell["cpu_n"] else None,
+            "memory_mb": round(cell["mem_sum"] / cell["mem_n"], 1) if cell["mem_n"] else None,
+            "rx_today": cell["rx_today"],
+            "tx_today": cell["tx_today"],
+            "rx": cell["rx"],
+            "tx": cell["tx"],
+            "earned_usd": None if service_earned is None else round(service_earned, 4),
+            "usd_per_gb": None if slug in bytes_unknown else usage.per_gb(service_earned, fleet_bytes.get(slug)),
+            "usd_per_gb_ram": (
+                service_earned / mem_gb
+                if service_earned is not None and mem_gb is not None and mem_gb >= 0.01
+                else None
+            ),
+        }
+        server["services"].append(entry)
+        total = server["total"]
+        for key in ("cpu_percent", "memory_mb", "rx_today", "tx_today", "rx", "tx"):
+            total[key] = add(total[key], entry[key])
+        if entry["rx"] is None or entry["tx"] is None or cell["gaps"]:
+            total["traffic_partial"] = True
+
+    return {
+        "servers": list(servers.values()),
+        "window_days": window_days,
+        "since": since,
+        "currency": "USD",
+    }
 
 
 @app.get("/api/services/{slug}/deploy-risk")
@@ -5707,6 +6039,13 @@ async def api_worker_heartbeat(request: Request, body: WorkerHeartbeat) -> dict[
         system_info=json.dumps(body.system_info),
     )
     metrics.record_heartbeat(body.name)
+    # Per-day CPU, memory and traffic for the dashboard's usage panel. Never
+    # allowed to reject a heartbeat: losing one sample costs a minute of data.
+    if not _is_phone(body.system_info) and body.containers:
+        try:
+            await database.record_usage(worker_id, body.containers)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Could not record resource usage for worker %s: %s", worker_id, exc)
     if previous is not None and previous[0] == "offline":
         # Deliberately NO alert clearing here. This used to drop the stored
         # alert on the first heartbeat after offline — which re-armed the push
