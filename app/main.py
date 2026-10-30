@@ -3735,7 +3735,7 @@ async def api_credential_health(request: Request) -> list[dict[str, Any]]:
                 # The age-based reason (or "its age does not matter") would
                 # contradict the status; the refusal is the reason now.
                 why = (
-                    "The provider refused the last login with the saved credentials, "
+                    "The provider rejected the saved credentials on the last run, "
                     "so they need replacing whatever their age."
                 )
 

@@ -213,7 +213,7 @@ class TestCredentialHealthEndpoint:
         session = next(e for e in report if e["field"] == "session_cookie")
         assert session["status"] == "likely_expired"
         assert "age does not matter" not in session["why"]
-        assert "refused" in session["why"]
+        assert "rejected the saved credentials" in session["why"]
 
     def test_unconfigured_credentials_are_not_reported(self, tmp_path):
         assert self._report(None, tmp_path, {}) == []

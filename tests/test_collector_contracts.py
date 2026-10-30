@@ -340,7 +340,7 @@ class TestOutcomeClassification:
 
         outcome = credential_test.classify("Pawns rate-limited the login — it will retry on the next run")
         msg = credential_test.message(outcome, "IPRoyal Pawns")
-        assert "rate-limiting" in msg
+        assert "rate-limiting requests" in msg
         assert "changed its API" not in msg
 
     def test_every_outcome_has_a_message_a_user_can_act_on(self):

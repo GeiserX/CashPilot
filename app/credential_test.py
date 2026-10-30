@@ -105,7 +105,7 @@ def message(outcome: str, service_name: str, balance: float | None = None, curre
         )
     if outcome == PROVIDER_RATE_LIMITED:
         return (
-            f"{service_name} is rate-limiting logins right now, so it could not check these credentials. "
+            f"{service_name} is rate-limiting requests right now, so it could not check these credentials. "
             "Try again later; CashPilot will also retry on its next collection run."
         )
     if outcome == UNSUPPORTED:
