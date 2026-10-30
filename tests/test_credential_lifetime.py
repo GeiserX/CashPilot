@@ -174,6 +174,22 @@ class TestCredentialHealthEndpoint:
         entry = next(e for e in report if e["field"] == "session_cookie")
         assert "durable_alternative_missing" not in entry
 
+    def test_an_old_session_cookie_backed_by_remember_me_is_not_expired(self, tmp_path):
+        """The remember-me cookie re-creates the session each run, so the
+        session cookie's own age is no reason to tell the user to renew it."""
+        old = self._stamp(24 * 89)
+        report = self._report(
+            None,
+            tmp_path,
+            {
+                "bytelixir_session_cookie": old,
+                "bytelixir_remember_web": old,
+                "bytelixir_xsrf_token": old,
+            },
+        )
+        assert next(e for e in report if e["field"] == "session_cookie")["status"] == "no_known_expiry"
+        assert next(e for e in report if e["field"] == "remember_web")["status"] == "fresh"
+
     def test_unconfigured_credentials_are_not_reported(self, tmp_path):
         assert self._report(None, tmp_path, {}) == []
 

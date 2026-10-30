@@ -3706,6 +3706,13 @@ async def api_credential_health(request: Request) -> list[dict[str, Any]]:
                 if span_hours:
                     hours_total = round(span_hours)
 
+            # A short-lived credential backed by its durable alternative is
+            # re-established on every run (Bytelixir's 2 h session cookie by the
+            # year-long remember-me cookie), so its own age says nothing.
+            covered = bool(durable_alternative(slug)) and not missing_durable and not meta.get("durable")
+            if covered and expires_at is None:
+                status = "no_known_expiry"
+
             if slug in rejected:
                 status = "likely_expired"
 

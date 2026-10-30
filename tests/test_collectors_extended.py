@@ -198,6 +198,20 @@ class TestIPRoyalCollector:
             result = asyncio.run(c.collect())
         assert result.error is not None
 
+    def test_disabled_account_is_not_reported_as_a_bad_password(self):
+        from app.collectors.iproyal import IPRoyalCollector
+
+        login_resp = _mock_response(422, {"error": {"code": "user_disabled", "message": "User is disabled."}})
+        login_resp.raise_for_status = MagicMock()
+
+        client = _make_async_client()
+        client.post.return_value = login_resp
+
+        with patch("app.collectors.iproyal.httpx.AsyncClient", return_value=client):
+            result = asyncio.run(IPRoyalCollector(email="e", password="p").collect())
+        assert "disabled" in result.error
+        assert "check email/password" not in result.error
+
     def test_collect_network_error(self):
         from app.collectors.iproyal import IPRoyalCollector
 

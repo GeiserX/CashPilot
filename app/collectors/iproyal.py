@@ -37,6 +37,7 @@ class IPRoyalCollector(BaseCollector):
         self.password = password
         self._device_id = _generate_identifier()
         self._token: str | None = None
+        self._login_error = "Login failed — check email/password"
 
     async def _login(self, client: httpx.AsyncClient) -> str | None:
         """Login and return a JWT access token, or None on failure."""
@@ -51,7 +52,19 @@ class IPRoyalCollector(BaseCollector):
         )
 
         if resp.status_code == 422:
-            logger.error("IPRoyal: bad credentials")
+            try:
+                code = (resp.json().get("error") or {}).get("code")
+            except Exception:  # noqa: BLE001 - a body we cannot read is still a 422
+                code = None
+            if code == "user_disabled":
+                # Pawns deactivated the account (a compliance review emails a
+                # "deactivation notice"). The password is fine; only their
+                # support can bring it back, so say that instead of "bad password".
+                logger.error("IPRoyal: account disabled by Pawns")
+                self._login_error = "Account disabled by Pawns — contact Pawns support (the password is fine)"
+            else:
+                logger.error("IPRoyal: bad credentials")
+                self._login_error = "Login failed — check email/password"
             return None
         if resp.status_code == 429:
             logger.warning("IPRoyal: rate limited on login")
@@ -79,7 +92,7 @@ class IPRoyalCollector(BaseCollector):
                 return EarningsResult(
                     platform=self.platform,
                     balance=0.0,
-                    error="Login failed — check email/password",
+                    error=self._login_error,
                 )
 
             resp = await self._retry(lambda: self._fetch_balance(client))
