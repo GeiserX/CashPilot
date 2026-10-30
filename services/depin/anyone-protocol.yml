@@ -23,8 +23,7 @@ docker:
   # CashPilot's own image (images/anyone-protocol/): the project's signed .deb at a
   # pinned version, run as anond with no added capabilities. The vendor image
   # needs CHOWN, DAC_OVERRIDE, FOWNER, SETUID and SETGID, so it crash-loops here.
-  image: drumsergio/cashpilot-anyone
-  tag: "0.4.10.2-r2"
+  image: drumsergio/cashpilot-anyone:0.4.10.2-r2
   platforms: [linux/amd64, linux/arm64]
   resources:
     mem_limit: "1536m"
