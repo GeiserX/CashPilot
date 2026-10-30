@@ -1296,6 +1296,8 @@ kbd {
 /* position: relative keeps absolutely placed .sr-only labels inside the scroll box;
    without it they sit at the table's far edge and widen the whole page. */
 .table-scroll { overflow-x: auto; position: relative; }
+/* When a table does scroll (phones), a thin bar in the theme colours, not a grey slab. */
+.table-scroll { scrollbar-width: thin; scrollbar-color: var(--border-light) transparent; }
 
 section { margin-bottom: 28px; }
 
@@ -1389,10 +1391,14 @@ section { margin-bottom: 28px; }
 .placement-table th, .placement-table td { padding: 0 6px; height: 27px; border-bottom: 1px solid var(--border-color); text-align: center; }
 .placement-table thead th { height: 26px; font-weight: 500; color: var(--text-muted); font-size: var(--fs-2); }
 .placement-table .pg-box { font-family: var(--font-mono); font-size: var(--fs-1); color: var(--text-secondary); }
+/* Box names run bottom to top, so a column is as wide as its cell, not its name:
+   five boxes fit the left column, and a phone, without a scrollbar. */
+.placement-table thead th { vertical-align: bottom; padding-bottom: 5px; }
+.placement-table thead .pg-box { height: auto; padding: 6px 3px 5px; }
 .placement-table .pg-box-off { color: var(--error); }
 /* Worker names come from the device ("motorola motorola one fusion+ (1414f972)")
-   and can be any length; the full name stays in the header's title. */
-.placement-table .pg-box-name { display: inline-block; max-width: 11ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: bottom; }
+   and can be any length; renderPlacement cuts them to 14 characters. */
+.placement-table .pg-box-name { display: inline-block; writing-mode: vertical-rl; transform: rotate(180deg); white-space: nowrap; vertical-align: bottom; }
 .placement-table .pg-svc { text-align: left; font-weight: 500; padding-left: 0; white-space: nowrap; }
 .placement-table thead .pg-svc { font-weight: 500; }
 .placement-table .pg-count { font-family: var(--font-mono); font-size: var(--fs-2); text-align: right; color: var(--text-muted); padding-right: 0; width: 1%; }
