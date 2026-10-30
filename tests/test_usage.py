@@ -200,14 +200,18 @@ def earned_stub(values, priced=None):
     return stub
 
 
-def usage_rows(*rows, running=()):
+def usage_rows(*rows, running=(), extra_workers=()):
     """api_usage_servers over hand-written usage_daily rows (no DB).
 
     ``running`` lists ``(worker_id, slug)`` copies the workers report right now.
     """
     from app import main
 
-    workers = [{"id": 1, "name": "watchtower", "status": "online"}, {"id": 2, "name": "geiserback", "status": "online"}]
+    workers = [
+        {"id": 1, "name": "watchtower", "status": "online"},
+        {"id": 2, "name": "geiserback", "status": "online"},
+        *extra_workers,
+    ]
     today = datetime.now(UTC).strftime("%Y-%m-%d")
     base = {
         "day": today,
@@ -293,6 +297,29 @@ class TestRatiosNeedEveryCopyMeasured:
         totals = {s["name"]: s["total"] for s in data["servers"]}
         assert totals["watchtower"]["traffic_partial"] is True
         assert totals["geiserback"]["traffic_partial"] is False
+
+    def test_rows_from_a_phone_are_left_out(self):
+        # Rows 1.54.0 recorded for phones, before they were skipped, must not show.
+        phone = {"id": 3, "name": "OPPO", "status": "online", "system_info": '{"os": "Android"}'}
+        data = usage_rows(
+            {"worker_id": 1, "slug": "honeygain"},
+            {"worker_id": 3, "slug": "traffmonetizer", "cpu_n": 0, "mem_n": 0, "rx_bytes": None, "tx_bytes": None},
+            extra_workers=[phone],
+        )({"honeygain": 1.0})
+        assert [s["name"] for s in data["servers"]] == ["watchtower"]
+
+    def test_a_phone_running_the_service_makes_ratios_unknown_even_offline(self):
+        phone = {
+            "id": 3,
+            "name": "OPPO",
+            "status": "offline",
+            "system_info": '{"os": "Android"}',
+            "containers": '[{"slug": "honeygain", "status": "running"}]',
+        }
+        data = usage_rows({"worker_id": 1, "slug": "honeygain"}, extra_workers=[phone])({"honeygain": 1.0})
+        svc = service(data, "watchtower", "honeygain")
+        assert svc["usd_per_gb"] is None and svc["usd_per_gb_ram"] is None
+        assert svc["earned_usd"] == 1.0
 
     def test_a_deleted_workers_rows_do_not_stretch_the_window(self):
         old = (datetime.now(UTC) - timedelta(days=20)).strftime("%Y-%m-%d")
@@ -405,6 +432,23 @@ class TestHeartbeatRecordsUsage:
         assert self._beat(record)["status"] == "ok"
         record.assert_awaited_once()
         assert record.await_args.args[0] == 7
+
+    def test_a_phone_records_nothing(self):
+        # The Android client sends os="Android" and no device_type.
+        from app import main
+
+        record = AsyncMock()
+        body = main.WorkerHeartbeat(name="p", client_id="cid", containers=[container()], system_info={"os": "Android"})
+        with (
+            patch.object(main, "_authenticate_worker_heartbeat", AsyncMock(return_value="ok")),
+            patch.object(main.database, "get_worker_status_and_name", AsyncMock(return_value=None)),
+            patch.object(main.database, "upsert_worker", AsyncMock(return_value=7)),
+            patch.object(main.database, "confirm_worker_key", AsyncMock()),
+            patch.object(main.database, "record_usage", record),
+            patch.object(main, "_earnings_for_worker", AsyncMock(return_value=None)),
+        ):
+            asyncio.run(main.api_worker_heartbeat(MagicMock(), body))
+        record.assert_not_awaited()
 
     def test_a_usage_failure_never_rejects_the_heartbeat(self):
         assert self._beat(AsyncMock(side_effect=RuntimeError("disk full")))["status"] == "ok"
