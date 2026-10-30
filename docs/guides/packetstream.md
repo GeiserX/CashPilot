@@ -22,7 +22,7 @@ PacketStream is a peer-to-peer bandwidth marketplace where you can sell your unu
 
 ## Cashing out
 
-PayPal only, minimum $5, 3% fee shown before you confirm. The first withdrawal saves your PayPal email; changing it later needs an email confirmation and a 7-day wait. Requests are reviewed and sent within 7 days.
+PayPal only, minimum $5, 3% fee shown before you confirm. The first withdrawal saves your PayPal email; changing it later needs an email confirmation and a 7-day wait, so check the address before you confirm. Requests are reviewed and sent within 7 days; you can cancel one while it waits, and a new one can only be made once it is paid.
 
 ## Requirements
 
