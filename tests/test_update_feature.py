@@ -488,7 +488,8 @@ class TestUiUpdateRoutes:
         ):
             resp = _ui_client().post("/api/update?worker_id=1")
         assert resp.status_code == 500
-        assert resp.json()["detail"] == "Worker request failed"
+        assert "secret-laden" not in resp.json()["detail"]
+        assert resp.json()["detail"].startswith("Worker request failed")
 
 
 class TestVersionPrefixStrictness:

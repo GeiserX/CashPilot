@@ -3325,6 +3325,47 @@ def _safe_worker_detail(resp: Any) -> dict[str, Any] | None:
     }
 
 
+# A plain-string worker refusal is shown only for the statuses where the worker
+# writes the text itself: its spec checks (400/403: blocked capabilities, a
+# volume outside the allowed roots, a bad memory limit), the missing copy (404),
+# the operator settings it cannot use (409: network, runtime, an init-system
+# image) and the daemon it cannot reach (503). A 500 is an unhandled failure
+# whose text nobody vetted, and a 422 is FastAPI echoing the request body
+# (env values included), so both stay generic.
+_FORWARDABLE_WORKER_TEXT_STATUSES = {400, 401, 403, 404, 409, 503}
+_WORKER_TEXT_MAX = 400
+_VOLUME_BLOCKED_RE = re.compile(r"Volume mount '[^']*' is blocked")
+
+
+def _worker_refusal_text(resp: Any, sent: dict[str, Any] | None) -> str | None:
+    """The worker's own one-line refusal reason, cleaned for display, or None."""
+    if resp.status_code not in _FORWARDABLE_WORKER_TEXT_STATUSES:
+        return None
+    try:
+        detail = (resp.json() or {}).get("detail")
+    except (ValueError, AttributeError):
+        return None
+    if not isinstance(detail, str):
+        return None
+    text = detail
+    # The worker never echoes env values in these messages, but the deploy spec
+    # carries live credentials, so a value that slipped in is masked anyway.
+    env = sent.get("env") if isinstance(sent, dict) else None
+    if isinstance(env, dict):
+        for value in sorted((str(v) for v in env.values() if v is not None), key=len, reverse=True):
+            if len(value) >= 4:
+                text = text.replace(value, "***")
+    text = " ".join(text.split())  # one line: newlines and tabs collapse
+    text = "".join(ch for ch in text if ch.isprintable())
+    if not text:
+        return None
+    if len(text) > _WORKER_TEXT_MAX:
+        text = text[: _WORKER_TEXT_MAX - 1].rstrip() + "\u2026"
+    if _VOLUME_BLOCKED_RE.search(text):
+        text += " To allow it, add the path to CASHPILOT_ALLOWED_VOLUME_ROOTS on that worker and restart it."
+    return text
+
+
 async def _proxy_to_worker(
     worker_id: int,
     method: str,
@@ -3359,14 +3400,20 @@ async def _proxy_to_worker(
                 # caller (see _safe_worker_detail) is pointless if it goes straight
                 # into the log instead. A deploy failure can echo env values, which
                 # for several providers are live credentials.
-                safe = _safe_worker_detail(resp)
+                safe: dict[str, Any] | str | None = _safe_worker_detail(resp) or _worker_refusal_text(resp, json)
                 logger.warning("worker proxy error (%s): %s", resp.status_code, safe or "unstructured error body")
                 logger.debug("worker proxy error body (%s): %s", resp.status_code, resp.text)
                 raise HTTPException(
                     status_code=resp.status_code,
-                    detail=safe or "Worker request failed",
+                    detail=safe or f"Worker request failed (HTTP {resp.status_code}); the worker's log has the reason",
                 )
             return resp.json()
+    except httpx.TimeoutException as exc:
+        logger.warning("worker proxy timeout after %ss: %s", timeout, exc)
+        raise HTTPException(
+            status_code=504,
+            detail=f"The worker did not answer within {timeout:g} s. It may still be working on it; check the worker.",
+        )
     except httpx.HTTPError as exc:
         logger.warning("worker proxy error: %s", exc)
         raise HTTPException(status_code=503, detail="Worker communication failed")
