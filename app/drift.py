@@ -123,6 +123,8 @@ def container_drift(
     want_devices = {_device_target(d) for d in docker_conf.get("devices") or []} - {""}
     if missing := want_devices - set(shape.get("devices") or []):
         found.append(f"missing device {_names(missing)}, which the catalog now passes in")
+    if extra := set(shape.get("devices") or []) - want_devices:
+        found.append(f"still has device {_names(extra)}, which the catalog no longer passes in")
 
     if shape.get("privileged") and not docker_conf.get("privileged"):
         found.append("runs privileged, which CashPilot no longer allows")

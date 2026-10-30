@@ -1182,7 +1182,7 @@ const CP = (() => {
         const what = inst.drift.map(d => escapeHtml(d)).join('; ');
         const fix = inst.drift_has_record
           ? 'Redeploy it here: CashPilot keeps the settings it was deployed with.'
-          : 'CashPilot has no record of how it was deployed, so redeploy it from the form with its fields filled in.';
+          : 'CashPilot has no record of how it was deployed, so it cannot rebuild it without losing its settings. Recreate it with the setting above, or remove it and deploy it again from the service page.';
         let actions = '';
         if (_isOwner && !inst.unmanaged) {
           actions = inst.drift_has_record && inst.worker_id != null
@@ -3073,7 +3073,13 @@ const CP = (() => {
   async function redeployOnWorker(slug, workerId) {
     if (!window.confirm(`Redeploy ${slug} on this box? It keeps the settings it was deployed with.`)) return;
     try {
-      await api(`/api/deploy/${slug}?worker_id=${workerId}`, { method: 'POST', body: { env: {} } });
+      const res = await api(`/api/deploy/${slug}?worker_id=${workerId}`, { method: 'POST', body: { env: {} } });
+      // The same notes the deploy form shows: what the redeploy kept, and a
+      // device the provider still needs linked, or it earns for nobody.
+      const kept = res && res.kept_from_previous_deployment;
+      if (Array.isArray(kept) && kept.length) toast(`${slug}: redeploy notes: ${kept.join('; ')}`, 'warning');
+      const link = res && res.device_link;
+      if (link && link.id && !link.registered) toast(`${slug}: link device ${link.id} to your account. ${link.steps || ''}`, 'warning');
       toast(`${slug} redeployed`, 'success');
       loadServicesTable();
     } catch (err) {

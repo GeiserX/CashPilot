@@ -192,6 +192,22 @@ class TestOtherFields:
         bridge = _shape(self._spec())
         assert drift.container_drift(svc, bridge, None) == ["uses its own network, but should share the host's"]
 
+    def test_a_device_the_catalog_dropped_is_drift(self):
+        svc = {"docker": {**self.SVC["docker"], "devices": []}}
+        assert drift.container_drift(svc, _shape(self._spec()), self._spec()) == [
+            "still has device /dev/net/tun, which the catalog no longer passes in"
+        ]
+
+    def test_an_unreadable_record_still_judges_the_catalog(self):
+        """A failed record read must not hide what the catalog alone shows."""
+        with patch("app.main.database.get_deployment_spec", AsyncMock(side_effect=RuntimeError("db"))):
+            found, has_record = asyncio.run(
+                main._instance_drift(
+                    BITPING, "bitping", {"_worker_id": 1, "shape": _shape(_bitping_spec(cap_add=None))}, None, {}
+                )
+            )
+        assert any("NET_RAW" in f for f in found) and has_record is False
+
     def test_a_capability_the_catalog_dropped_is_drift(self):
         found = drift.container_drift(self.SVC, _shape(self._spec(cap_add=["NET_ADMIN"])), self._spec())
         assert found == ["still has NET_ADMIN, which the catalog no longer grants"]

@@ -1906,7 +1906,11 @@ async def _instance_drift(
     try:
         if wid is not None and (slug, wid) not in specs:
             specs[(slug, wid)] = await database.get_deployment_spec(slug, worker_id=wid)
-        recorded = specs.get((slug, wid)) if wid is not None else None
+    except Exception as exc:
+        logger.warning("Could not read the deployment record of %s on worker %s: %s", slug, wid, exc)
+        specs[(slug, wid)] = None
+    recorded = specs.get((slug, wid)) if wid is not None else None
+    try:
         found = drift.container_drift(
             svc, inst.get("shape"), recorded, custom_image=custom_image, worker_arch=inst.get("_arch")
         )
