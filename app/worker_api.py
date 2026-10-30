@@ -34,7 +34,7 @@ from urllib.parse import urlsplit
 
 import httpx
 import requests
-from docker.errors import DockerException
+from docker.errors import APIError, DockerException
 from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
@@ -1059,43 +1059,43 @@ def _parse_allowed_volume_roots(raw: str) -> frozenset[str]:
                 entry,
             )
             continue
-        # Check the resolved path AND the lexical one: resolving can move a path out
-        # of a blocked prefix (on macOS /etc -> /private/etc), and a system path must
-        # be refused under either spelling rather than relying on one platform's
-        # symlink layout.
-        real = os.path.realpath(entry)
-        lexical = os.path.normpath(entry)
-        if any(
-            candidate == sys_root or candidate.startswith(sys_root + "/")
-            for candidate in (real, lexical)
-            for sys_root in _NEVER_ALLOWLISTABLE
-        ):
-            logger.warning(
-                "Refusing CASHPILOT_ALLOWED_VOLUME_ROOTS entry %r: %s is a system path and can never be opted in",
-                entry,
-                real,
-            )
+        refusal = _allowlist_refusal(entry)
+        if refusal:
+            logger.warning("Refusing CASHPILOT_ALLOWED_VOLUME_ROOTS entry %r: %s", entry, refusal)
             continue
-        if real == "/" or real in _BLOCKED_VOLUME_ROOTS:
-            logger.warning(
-                "Refusing CASHPILOT_ALLOWED_VOLUME_ROOTS entry %r: that is a whole root, not a service directory",
-                entry,
-            )
-            continue
-        depth_ok = True  # not under any blocked root -> the deny list never applied anyway
-        for blocked in _BLOCKED_VOLUME_ROOTS:
-            if blocked != "/" and real.startswith(blocked + "/"):
-                depth_ok = real[len(blocked) + 1 :].count("/") >= _MIN_DEPTH_BELOW_ROOT - 1
-                break
-        if not depth_ok:
-            logger.warning(
-                "Refusing CASHPILOT_ALLOWED_VOLUME_ROOTS entry %r: name a specific service "
-                "directory (e.g. /mnt/user/storj), not a whole root like /mnt or /mnt/user",
-                entry,
-            )
-            continue
-        allowed.add(real)
+        allowed.add(os.path.realpath(entry))
     return frozenset(allowed)
+
+
+def _allowlist_refusal(entry: str) -> str | None:
+    """Why an absolute path can never be opted in through CASHPILOT_ALLOWED_VOLUME_ROOTS, or None.
+
+    The two gates of _parse_allowed_volume_roots, also used to decide whether a
+    blocked volume's refusal may tell the operator to allowlist it: advice that
+    the parser would refuse only sends them round in a circle.
+    """
+    # Check the resolved path AND the lexical one: resolving can move a path out
+    # of a blocked prefix (on macOS /etc -> /private/etc), and a system path must
+    # be refused under either spelling rather than relying on one platform's
+    # symlink layout.
+    real = os.path.realpath(entry)
+    lexical = os.path.normpath(entry)
+    if any(
+        candidate == sys_root or candidate.startswith(sys_root + "/")
+        for candidate in (real, lexical)
+        for sys_root in _NEVER_ALLOWLISTABLE
+    ):
+        return f"{real} is a system path and can never be opted in"
+    if real == "/" or real in _BLOCKED_VOLUME_ROOTS:
+        return "that is a whole root, not a service directory"
+    for blocked in _BLOCKED_VOLUME_ROOTS:
+        if blocked != "/" and real.startswith(blocked + "/"):
+            if real[len(blocked) + 1 :].count("/") < _MIN_DEPTH_BELOW_ROOT - 1:
+                return (
+                    "name a specific service directory (e.g. /mnt/user/storj), not a whole root like /mnt or /mnt/user"
+                )
+            break
+    return None
 
 
 _ALLOWED_VOLUME_ROOTS = _parse_allowed_volume_roots(os.getenv("CASHPILOT_ALLOWED_VOLUME_ROOTS", ""))
@@ -1268,7 +1268,12 @@ def _validate_deploy_spec(spec: DeploySpec, slug: str | None = None) -> None:
             continue  # explicitly opted in by the operator (see _parse_allowed_volume_roots)
         for blocked in _BLOCKED_VOLUME_ROOTS:
             if real == blocked or real.startswith(blocked + "/"):
-                raise HTTPException(status_code=403, detail=f"Volume mount '{source}' is blocked")
+                detail = f"Volume mount '{source}' is blocked"
+                if not _allowlist_refusal(source):
+                    detail += (
+                        ". To allow it, add the path to CASHPILOT_ALLOWED_VOLUME_ROOTS on this worker and restart it"
+                    )
+                raise HTTPException(status_code=403, detail=detail)
     _validate_resources(spec.resources)
 
 
@@ -1375,6 +1380,14 @@ async def api_deploy_container(request: Request, slug: str, spec: DeploySpec) ->
         # Same shape as the network setting, also raised before the old container
         # was touched; 503 when the daemon could not be asked at all.
         raise HTTPException(status_code=exc.status_code, detail=str(exc)) from None
+    except APIError as exc:
+        # Docker itself refused to create or start the container: a host port
+        # another container holds, a device the host lacks. Its explanation is
+        # what the operator needs, so it goes back as a 409 the UI shows, on one
+        # line and capped, instead of the bare 500 below.
+        logger.warning("Deploy of %s refused by Docker: %s", slug, exc)
+        reason = " ".join(str(exc.explanation or exc).split())[:300]
+        raise HTTPException(status_code=409, detail=f"Docker refused the container: {reason}") from None
     except Exception:
         logger.exception("Deploy failed for %s", slug)
         raise HTTPException(status_code=500, detail="Container deployment failed")

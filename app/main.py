@@ -3334,7 +3334,13 @@ def _safe_worker_detail(resp: Any) -> dict[str, Any] | None:
 # (env values included), so both stay generic.
 _FORWARDABLE_WORKER_TEXT_STATUSES = {400, 401, 403, 404, 409, 503}
 _WORKER_TEXT_MAX = 400
-_VOLUME_BLOCKED_RE = re.compile(r"Volume mount '[^']*' is blocked")
+# Env values shorter than this are not masked: a PUID of 1000 or a mode of
+# "host" would otherwise garble the worker's own numbers and words, and no
+# provider credential is that short.
+_MASK_MIN_LEN = 8
+# FastAPI's own answer for a route the worker does not have, which says less
+# than the status does.
+_FASTAPI_NOT_FOUND = "Not Found"
 
 
 def _worker_refusal_text(resp: Any, sent: dict[str, Any] | None) -> str | None:
@@ -3345,7 +3351,7 @@ def _worker_refusal_text(resp: Any, sent: dict[str, Any] | None) -> str | None:
         detail = (resp.json() or {}).get("detail")
     except (ValueError, AttributeError):
         return None
-    if not isinstance(detail, str):
+    if not isinstance(detail, str) or detail == _FASTAPI_NOT_FOUND:
         return None
     text = detail
     # The worker never echoes env values in these messages, but the deploy spec
@@ -3353,7 +3359,7 @@ def _worker_refusal_text(resp: Any, sent: dict[str, Any] | None) -> str | None:
     env = sent.get("env") if isinstance(sent, dict) else None
     if isinstance(env, dict):
         for value in sorted((str(v) for v in env.values() if v is not None), key=len, reverse=True):
-            if len(value) >= 4:
+            if len(value) >= _MASK_MIN_LEN:
                 text = text.replace(value, "***")
     text = " ".join(text.split())  # one line: newlines and tabs collapse
     text = "".join(ch for ch in text if ch.isprintable())
@@ -3361,9 +3367,14 @@ def _worker_refusal_text(resp: Any, sent: dict[str, Any] | None) -> str | None:
         return None
     if len(text) > _WORKER_TEXT_MAX:
         text = text[: _WORKER_TEXT_MAX - 1].rstrip() + "\u2026"
-    if _VOLUME_BLOCKED_RE.search(text):
-        text += " To allow it, add the path to CASHPILOT_ALLOWED_VOLUME_ROOTS on that worker and restart it."
     return text
+
+
+def _worker_failure_text(status: int) -> str:
+    """What the dashboard says when the worker's answer has no reason it can show."""
+    if status == 404:
+        return "The worker does not know this request (HTTP 404); it may be older than the UI, so update it"
+    return f"Worker request failed (HTTP {status}); the worker's log has the reason"
 
 
 async def _proxy_to_worker(
@@ -3405,9 +3416,14 @@ async def _proxy_to_worker(
                 logger.debug("worker proxy error body (%s): %s", resp.status_code, resp.text)
                 raise HTTPException(
                     status_code=resp.status_code,
-                    detail=safe or f"Worker request failed (HTTP {resp.status_code}); the worker's log has the reason",
+                    detail=safe or _worker_failure_text(resp.status_code),
                 )
             return resp.json()
+    except (httpx.ConnectTimeout, httpx.PoolTimeout) as exc:
+        # Both are TimeoutException subclasses, but the request never reached
+        # the worker, so "it may still be working on it" would be wrong.
+        logger.warning("worker proxy error: %s", exc)
+        raise HTTPException(status_code=503, detail="Worker communication failed")
     except httpx.TimeoutException as exc:
         logger.warning("worker proxy timeout after %ss: %s", timeout, exc)
         raise HTTPException(
