@@ -7,10 +7,12 @@ inspection for cashpilot-managed containers via the Docker SDK.
 
 from __future__ import annotations
 
+import collections
 import contextlib
 import ipaddress
 import logging
 import os
+import re
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any
@@ -1679,3 +1681,38 @@ def get_service_logs(slug: str, lines: int = 50, instance: int = 1) -> str:
     """Return the last N lines of logs for a service container."""
     container = _find_container(slug, instance)
     return container.logs(tail=lines, timestamps=True).decode("utf-8", errors="replace")
+
+
+_MAX_PENDING_LOG_BYTES = 1 << 20
+
+
+def grep_service_logs(
+    slug: str, match: re.Pattern[str], since_hours: float, lines: int = 1000, instance: int = 1
+) -> str:
+    """The last ``lines`` log lines from the past ``since_hours`` that match ``match``.
+
+    The tail cannot answer "has this happened in the last hours": Mysterium
+    writes about 11,000 lines an hour, so 200 lines cover a minute. The window
+    is read as a stream and filtered here, so megabytes of logs never leave the
+    worker and never sit in memory at once.
+    """
+    container = _find_container(slug, instance)
+    since = int(time.time() - since_hours * 3600)
+    kept: collections.deque[str] = collections.deque(maxlen=lines)
+    pending = b""
+    # follow=False: docker-py follows a streamed log unless told not to, and
+    # this read would then never return.
+    for chunk in container.logs(stream=True, follow=False, since=since, timestamps=True):
+        pending += chunk
+        *complete, pending = pending.split(b"\n")
+        # A record with no newline must not grow without bound; its tail is enough.
+        pending = pending[-_MAX_PENDING_LOG_BYTES:]
+        for raw in complete:
+            line = raw.decode("utf-8", errors="replace")
+            if match.search(line):
+                kept.append(line)
+    if pending:
+        line = pending.decode("utf-8", errors="replace")
+        if match.search(line):
+            kept.append(line)
+    return "\n".join(kept)

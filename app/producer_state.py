@@ -65,7 +65,7 @@ def match_log_signals(logs: str, signals: list[dict[str, Any]] | None) -> list[d
     haystack = logs[-_MAX_LOG_CHARS:]
     hits: list[dict[str, str]] = []
     for signal in signals:
-        if not isinstance(signal, dict):
+        if not isinstance(signal, dict) or is_windowed(signal):
             continue
         compiled = _compile(str(signal.get("pattern") or ""))
         if compiled is None or not compiled.search(haystack):
@@ -185,3 +185,51 @@ def signals_for(service: dict[str, Any] | None) -> list[dict[str, Any]]:
         return []
     raw = (service.get("docker") or {}).get("health_signals") or service.get("health_signals") or []
     return [s for s in raw if isinstance(s, dict)]
+
+
+def is_windowed(signal: dict[str, Any]) -> bool:
+    """A signal judged over hours of logs, not over the log tail.
+
+    It declares ``window_hours``, and usually ``unless``: a pattern whose
+    presence in the same window means the problem is not there. The tail is a
+    minute of a chatty service's logs, which can neither show that something
+    kept happening nor that its fix never did, so these signals are read by
+    ``main._check_windowed_signals`` through the worker's filtered log read.
+    """
+    try:
+        return float(signal.get("window_hours") or 0) > 0
+    except (TypeError, ValueError):
+        return False
+
+
+def window_filter(signal: dict[str, Any]) -> str:
+    """The one regex the worker filters the window with: the pattern, or its ``unless``."""
+    parts = [str(signal.get("pattern") or "")]
+    if signal.get("unless"):
+        parts.append(str(signal["unless"]))
+    # Case-insensitive like every other signal match here.
+    return "(?i)" + "|".join(f"(?:{p})" for p in parts)
+
+
+def windowed_hit(lines: str, signal: dict[str, Any]) -> bool:
+    """True when the window shows the pattern and never the ``unless`` pattern.
+
+    It also needs ``min_matches`` matching lines (default 1). No line at all is
+    no hit: a node nobody has used yet has nothing to judge.
+    """
+    pattern = _compile(str(signal.get("pattern") or ""))
+    if pattern is None or not lines:
+        return False
+    # ``min_matches``: one failed attempt in an hour-old node is not yet a pattern.
+    try:
+        needed = max(1, int(signal.get("min_matches") or 1))
+    except (TypeError, ValueError):
+        needed = 1
+    if sum(1 for line in lines.splitlines() if pattern.search(line)) < needed:
+        return False
+    unless = signal.get("unless")
+    if unless:
+        compiled = _compile(str(unless))
+        if compiled is None or compiled.search(lines):
+            return False
+    return True
