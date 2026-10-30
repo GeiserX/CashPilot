@@ -146,9 +146,8 @@ class TestRecordUsage:
                 out["honeygain"].counters.insert(0, ("x", 0, None))
                 return out
 
-            with patch.object(usage, "samples_from_heartbeat", boom):
-                with contextlib.suppress(Exception):
-                    await database.record_usage(1, [container(rx=2 * GB, tx=0)], now=now + 60)
+            with patch.object(usage, "samples_from_heartbeat", boom), contextlib.suppress(Exception):
+                await database.record_usage(1, [container(rx=2 * GB, tx=0)], now=now + 60)
             # A clean heartbeat afterwards must still measure from the first baseline once.
             await database.record_usage(1, [container(rx=2 * GB, tx=0)], now=now + 120)
             db = await database._get_db()
