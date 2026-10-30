@@ -1188,6 +1188,9 @@ const CP = (() => {
           actions = inst.drift_has_record && inst.worker_id != null
             ? `<button class="btn btn-primary btn-sm" data-action="redeployOnWorker" data-a1="${escapeHtml(svc.slug)}" data-a2="${escapeHtml(String(inst.worker_id))}">Redeploy</button>`
             : `<button class="btn btn-ghost btn-sm" data-action="openServiceDetail" data-a1="${escapeHtml(svc.slug)}">Open</button>`;
+          if (inst.worker_id != null) {
+            actions += `<button class="btn btn-ghost btn-sm" data-action="ignoreDrift" data-a1="${escapeHtml(svc.slug)}" data-a2="${escapeHtml(String(inst.worker_id))}">Ignore</button>`;
+          }
         }
         items.push({ level: 'fail', tag: 'Needs fixing', what: svc.name, where, why: `container does not match the catalog: ${what}. ${fix}`, actions });
       }
@@ -3070,6 +3073,19 @@ const CP = (() => {
 
   // One click from the "Needs fixing" row: no env and no image, so the server
   // rebuilds from this worker's recorded settings and the current catalog.
+  // For a container changed on purpose. The server ties the mute to the
+  // catalog as it is now, so a later catalog fix to this service shows again.
+  async function ignoreDrift(slug, workerId) {
+    if (!window.confirm(`Ignore this for ${slug} on this box? It shows again if the catalog changes how this service runs; an edit to its notes or description does not bring it back.`)) return;
+    try {
+      await api(`/api/services/${slug}/drift/ignore?worker_id=${workerId}`, { method: 'POST' });
+      toast(`${slug}: ignored until the catalog changes it`, 'success');
+      loadServicesTable();
+    } catch (err) {
+      toast(`Could not ignore: ${err.message}`, 'error');
+    }
+  }
+
   async function redeployOnWorker(slug, workerId) {
     if (!window.confirm(`Redeploy ${slug} on this box? It keeps the settings it was deployed with.`)) return;
     try {
@@ -4336,6 +4352,7 @@ const CP = (() => {
     deployServiceToWorkers,
     redeployWithImage,
     redeployOnWorker,
+    ignoreDrift,
     workerAction,
     loadWorkerLogs,
     openCredentialModal,
