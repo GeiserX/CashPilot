@@ -256,10 +256,16 @@ class TestTheDashboard:
         assert "tag: 'Needs fixing'" in js
 
 
-def _deployed_row(svc, shape, recorded):
+def _deployed_row(svc, shape, recorded, deployed_by="worker", config=None):
     from fastapi.testclient import TestClient
 
-    container = {"slug": svc["slug"], "name": f"cashpilot-{svc['slug']}", "status": "running", "image": "x"}
+    container = {
+        "slug": svc["slug"],
+        "name": f"cashpilot-{svc['slug']}",
+        "status": "running",
+        "image": "x",
+        "deployed_by": deployed_by,
+    }
     if shape is not None:
         container["shape"] = shape
     worker = {
@@ -284,9 +290,101 @@ def _deployed_row(svc, shape, recorded):
         patch("app.main.database.get_health_scores", new_callable=AsyncMock, return_value=[]),
         patch("app.main.database.get_deployments", new_callable=AsyncMock, return_value=[]),
         patch("app.main.database.get_deployment_spec", new_callable=AsyncMock, return_value=recorded),
+        patch("app.main.database.get_config", new_callable=AsyncMock, return_value=config or {}),
         patch("app.main.catalog.get_service", return_value=svc),
         TestClient(main.app, raise_server_exceptions=False) as client,
     ):
         resp = client.get("/api/services/deployed")
     assert resp.status_code == 200, resp.text
     return resp.json()[0]
+
+
+def _container(labels, attrs=None):
+    return SimpleNamespace(labels=labels, attrs=attrs or _attrs_from_spec(_bitping_spec(cap_add=None)))
+
+
+class TestOnlyWhatCashPilotDeployed:
+    """A container the user runs by hand is theirs: never judged, even with CashPilot's labels."""
+
+    def test_the_worker_reports_settings_only_for_its_own_containers(self):
+        assert "shape" in orchestrator._shape_entry(_container({"cashpilot.deployed-by": "worker"}))
+        # An exported compose file carries the labels too, and the user runs it by hand.
+        assert orchestrator._shape_entry(_container({"cashpilot.deployed-by": "compose"})) == {}
+        assert orchestrator._shape_entry(_container({})) == {}
+
+    def test_a_hand_made_container_is_not_flagged_on_the_dashboard(self):
+        shape = _shape(_bitping_spec(cap_add=None))
+        for who in ("external", "compose", "unknown"):
+            row = _deployed_row(BITPING, shape, recorded=None, deployed_by=who)
+            assert "drift" not in row["instance_details"][0], who
+        # The control: the same container made by the worker is flagged.
+        assert _deployed_row(BITPING, shape, recorded=None)["instance_details"][0]["drift"]
+
+
+class TestTheSwitch:
+    def test_off_on_the_worker_reports_nothing(self, monkeypatch):
+        own = _container({"cashpilot.deployed-by": "worker"})
+        monkeypatch.setenv("CASHPILOT_DRIFT_WARNINGS", "false")
+        assert orchestrator._shape_entry(own) == {}
+        monkeypatch.setenv("CASHPILOT_DRIFT_WARNINGS", "true")
+        assert "shape" in orchestrator._shape_entry(own)
+
+    def test_off_on_the_ui_flags_nothing(self, monkeypatch):
+        shape = _shape(_bitping_spec(cap_add=None))
+        monkeypatch.setenv("CASHPILOT_DRIFT_WARNINGS", "off")
+        assert "drift" not in _deployed_row(BITPING, shape, recorded=None)["instance_details"][0]
+        monkeypatch.delenv("CASHPILOT_DRIFT_WARNINGS")
+        assert _deployed_row(BITPING, shape, recorded=None)["instance_details"][0]["drift"]
+
+    def test_it_is_documented_and_in_the_compose_example(self):
+        assert "CASHPILOT_DRIFT_WARNINGS" in (ROOT / "docs" / "configuration.md").read_text()
+        assert (ROOT / "docker-compose.yml").read_text().count("CASHPILOT_DRIFT_WARNINGS=") == 2
+
+
+class TestIgnore:
+    def _ignore(self, svc, stored=None):
+        saved = AsyncMock()
+
+        async def run():
+            with (
+                patch.object(main.catalog, "get_service", return_value=svc),
+                patch.object(main.database, "get_config", AsyncMock(return_value=stored or {})),
+                patch.object(main.database, "set_config", saved),
+            ):
+                await main.api_drift_ignore(MagicMock(), svc["slug"], worker_id=1, _auth={})
+
+        asyncio.run(run())
+        key, value = saved.call_args.args
+        return {key: value}
+
+    def test_ignore_mutes_that_box_until_the_catalog_changes(self):
+        shape = _shape(_bitping_spec(cap_add=None))
+        config = self._ignore(BITPING)
+        assert "drift" not in _deployed_row(BITPING, shape, recorded=None, config=config)["instance_details"][0]
+
+        # A later catalog fix to this service shows again.
+        changed = {**BITPING, "docker": {**BITPING["docker"], "devices": ["/dev/net/tun"]}}
+        row = _deployed_row(changed, shape, recorded=None, config=config)
+        assert row["instance_details"][0]["drift"]
+
+    def test_a_text_edit_in_the_catalog_keeps_it_muted(self):
+        reworded = {**BITPING, "docker": {**BITPING["docker"], "notes": "reworded"}}
+        assert drift.catalog_fingerprint(reworded) == drift.catalog_fingerprint(BITPING)
+
+    def test_ignore_is_per_box(self):
+        shape = _shape(_bitping_spec(cap_add=None))
+        other_box = {"drift_ignored": json.dumps({"bitping|2": drift.catalog_fingerprint(BITPING)})}
+        assert _deployed_row(BITPING, shape, recorded=None, config=other_box)["instance_details"][0]["drift"]
+
+    def test_earlier_mutes_are_kept(self):
+        stored = {"drift_ignored": json.dumps({"earnapp|3": "abc"})}
+        config = self._ignore(BITPING, stored)
+        assert json.loads(config["drift_ignored"]) == {
+            "earnapp|3": "abc",
+            "bitping|1": drift.catalog_fingerprint(BITPING),
+        }
+
+    def test_the_row_has_an_ignore_handler(self):
+        js = (ROOT / "app" / "static" / "js" / "app.js").read_text()
+        assert 'data-action="ignoreDrift"' in js
+        assert "\n    ignoreDrift,\n" in js

@@ -45,6 +45,7 @@ from app.constants import (  # noqa: E402
     LABEL_MANAGED,
     LABEL_SERVICE,
     LABEL_VERSION,
+    drift_warnings_enabled,
 )
 
 # Cached Docker availability (checked once at startup, refreshed on demand)
@@ -198,6 +199,21 @@ def _shape(container: Any) -> dict[str, Any]:
         "env_keys": sorted({str(item).split("=", 1)[0] for item in config.get("Env") or []}),
         "entrypoint": [str(part) for part in entrypoint] if isinstance(entrypoint, list) else None,
     }
+
+
+def _shape_entry(container: Any) -> dict[str, Any]:
+    """``{"shape": ...}`` for a container CashPilot's worker made, else nothing.
+
+    The cashpilot labels alone do not make a container CashPilot's: a compose
+    file exported from CashPilot carries them too, and the user runs and edits
+    that by hand. Only deploy_raw writes deployed-by "worker". A hand-made
+    container is never judged against the catalog, and neither is anything
+    when CASHPILOT_DRIFT_WARNINGS is off.
+    """
+    labels = getattr(container, "labels", None) or {}
+    if labels.get(LABEL_DEPLOYED_BY) != "worker" or not drift_warnings_enabled():
+        return {}
+    return {"shape": _shape(container)}
 
 
 def service_instances(slug: str) -> list[Any]:
@@ -1409,7 +1425,7 @@ def get_status() -> list[dict[str, Any]]:
                 "deployed_by": c.labels.get(LABEL_DEPLOYED_BY, "unknown"),
                 "category": c.labels.get(LABEL_CATEGORY, ""),
                 "instance": _instance_of(c),
-                "shape": _shape(c),
+                **_shape_entry(c),
                 **_stop_facts(c),
             }
             # Present only when the service declares a dial-back address var;
@@ -1592,7 +1608,7 @@ def get_status_light() -> list[dict[str, Any]]:
                 "deployed_by": c.labels.get(LABEL_DEPLOYED_BY, "unknown"),
                 "category": c.labels.get(LABEL_CATEGORY, ""),
                 "instance": _instance_of(c),
-                "shape": _shape(c),
+                **_shape_entry(c),
                 **_stop_facts(c),
             }
             # Same contract as get_status: key present only when declared+set.

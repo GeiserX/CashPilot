@@ -38,6 +38,7 @@ from app import (
     auth,
     catalog,
     compose_generator,
+    constants,
     credential_test,
     database,
     disclosure,
@@ -1889,6 +1890,35 @@ def _apply_service_meta(entry: dict[str, Any], svc: dict[str, Any] | None) -> No
     entry["website"] = svc.get("website", "")
 
 
+#: Config key holding the muted drift warnings: {"<slug>|<worker id>": catalog fingerprint}.
+_DRIFT_IGNORED_KEY = "drift_ignored"
+
+
+def _drift_ignored(config: dict[str, Any]) -> dict[str, str]:
+    raw = _safe_json(config.get(_DRIFT_IGNORED_KEY) or "{}", {})
+    return {str(k): str(v) for k, v in raw.items()} if isinstance(raw, dict) else {}
+
+
+@app.post("/api/services/{slug}/drift/ignore")
+async def api_drift_ignore(
+    request: Request, slug: str, worker_id: int, _auth: dict[str, Any] = Depends(_require_owner)
+) -> dict[str, str]:
+    """Mute the drift warning of ``slug`` on one worker until the catalog changes it.
+
+    For a container the owner changed on purpose. The mute is tied to the
+    catalog's fingerprint of the judged fields, so a later catalog fix to this
+    service shows again instead of hiding behind an old decision.
+    """
+    svc = catalog.get_service(slug)
+    if not svc:
+        raise HTTPException(status_code=404, detail=f"Service '{slug}' not found")
+    cfg = await database.get_config()
+    ignored = _drift_ignored(cfg if isinstance(cfg, dict) else {})
+    ignored[f"{slug}|{worker_id}"] = drift.catalog_fingerprint(svc)
+    await database.set_config(_DRIFT_IGNORED_KEY, json.dumps(ignored, sort_keys=True))
+    return {"status": "ignored"}
+
+
 async def _instance_drift(
     svc: dict[str, Any] | None,
     slug: str,
@@ -2013,6 +2043,8 @@ async def api_services_deployed(request: Request) -> list[dict[str, Any]]:
     result = []
     # Deployment records read for the drift check, one per (slug, worker).
     specs: dict[tuple[str, int], dict[str, Any] | None] = {}
+    drift_on = constants.drift_warnings_enabled()
+    drift_ignored = _drift_ignored(config) if drift_on else {}
     for slug, agg in slug_agg.items():
         svc = catalog.get_service(slug)
         health = health_map.get(slug, {})
@@ -2041,7 +2073,15 @@ async def api_services_deployed(request: Request) -> list[dict[str, Any]]:
                 "instance": inst.get("instance") or 1,
                 "custom_image": custom_images.get(inst.get("_worker_id")),
             }
-            if isinstance(inst.get("shape"), dict) and inst.get("deployed_by") != "external":
+            # Only containers CashPilot's worker made (deployed-by "worker"): a
+            # container the user runs by hand is theirs to shape, even when it
+            # carries CashPilot's labels or a catalog image.
+            if (
+                drift_on
+                and isinstance(inst.get("shape"), dict)
+                and inst.get("deployed_by") == "worker"
+                and drift_ignored.get(f"{slug}|{inst.get('_worker_id')}") != drift.catalog_fingerprint(svc)
+            ):
                 drift_found, has_record = await _instance_drift(
                     svc, slug, inst, custom_images.get(inst.get("_worker_id")), specs
                 )

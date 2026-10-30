@@ -1,5 +1,7 @@
 """Shared constants for CashPilot labels and container naming."""
 
+import os
+
 LABEL_SERVICE = "cashpilot.service"
 LABEL_MANAGED = "cashpilot.managed"
 LABEL_VERSION = "cashpilot.version"
@@ -19,3 +21,9 @@ CONTAINER_PREFIX = "cashpilot-"
 # users at something that cannot earn. One definition, shared by the deploy
 # routes and the compose exporter, so the rule cannot half-change.
 UNDEPLOYABLE_STATUSES = frozenset({"broken", "dead", "dropped"})
+
+
+def drift_warnings_enabled() -> bool:
+    """CASHPILOT_DRIFT_WARNINGS: off stops the worker reporting container settings
+    and the UI judging them (app/drift.py). On unless set to 0, off, false or no."""
+    return os.getenv("CASHPILOT_DRIFT_WARNINGS", "").strip().lower() not in {"0", "off", "false", "no"}

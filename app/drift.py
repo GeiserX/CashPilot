@@ -17,6 +17,8 @@ are pinned in the catalog, so a different tag there is.
 
 from __future__ import annotations
 
+import hashlib
+import json
 import re
 import shlex
 from typing import Any
@@ -25,6 +27,37 @@ from app import arch, catalog
 
 #: Repositories CashPilot builds itself (images/<slug>/). The catalog pins their tag.
 OWN_IMAGE_PREFIX = "drumsergio/cashpilot-"
+
+
+#: The catalog fields a container is judged on. A fingerprint of these is what an
+#: "Ignore" is tied to, so a later catalog fix to any of them shows again, while
+#: an edit to a service's notes or description does not.
+_JUDGED_FIELDS = (
+    "image",
+    "image_by_arch",
+    "cap_add",
+    "devices",
+    "privileged",
+    "entrypoint",
+    "network_mode",
+    "ports",
+    "volumes",
+    "env",
+    "command",
+)
+
+
+def catalog_fingerprint(svc: dict[str, Any] | None) -> str:
+    """A short hash of what the catalog says about the judged fields of ``svc``."""
+    docker_conf = (svc or {}).get("docker") or {}
+    judged = {field: docker_conf.get(field) for field in _JUDGED_FIELDS}
+    judged["env"] = [
+        {k: var.get(k) for k in ("key", "required", "default")}
+        for var in judged.get("env") or []
+        if isinstance(var, dict)
+    ]
+    blob = json.dumps(judged, sort_keys=True, default=str)
+    return hashlib.sha256(blob.encode()).hexdigest()[:16]
 
 
 def _caps(values: Any) -> set[str]:
