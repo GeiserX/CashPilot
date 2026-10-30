@@ -4630,9 +4630,13 @@ def _is_phone(system_info: dict[str, Any] | None) -> bool:
 
 
 def _usage_point(rows: list[dict[str, Any]]) -> dict[str, Any]:
-    """One hour of one server (all its containers) or of one container.
+    """One point (an hour, or 6 on 30 days) of one server or of one container.
 
-    CPU and memory are each container's average over the hour, added up.
+    CPU and memory are each container's average while it was read, weighted by
+    the share of the point it ran (its heartbeats over the most any container
+    had), then added up: a container that ran one hour of six adds a sixth of
+    its load, not all of it. A running container whose stats read failed leaves
+    the sum a floor (``cpu_partial`` / ``memory_partial``), never a silent drop.
     Traffic is each container's bytes over the seconds its deltas cover, added
     up as a rate. Unknown stays None: an hour with no rows is a gap, and a
     container with no counters (host network) leaves the traffic a floor
@@ -4646,17 +4650,25 @@ def _usage_point(rows: list[dict[str, Any]]) -> dict[str, Any]:
         "rx_bytes": None,
         "tx_bytes": None,
         "traffic_partial": False,
+        "cpu_partial": False,
+        "memory_partial": False,
     }
 
     def add(key: str, value: Any) -> None:
         if value is not None:
             point[key] = value if point[key] is None else point[key] + value
 
+    full = max((r["beats"] for r in rows), default=0)
     for r in rows:
+        share = r["beats"] / full if full else 1.0
         if r["cpu_n"]:
-            add("cpu_percent", r["cpu_sum"] / r["cpu_n"])
+            add("cpu_percent", r["cpu_sum"] / r["cpu_n"] * share)
         if r["mem_n"]:
-            add("memory_mb", r["mem_sum"] / r["mem_n"])
+            add("memory_mb", r["mem_sum"] / r["mem_n"] * share)
+        if r["cpu_n"] < r["beats"]:
+            point["cpu_partial"] = True
+        if r["mem_n"] < r["beats"]:
+            point["memory_partial"] = True
         rx_rate = usage.rate(r["rx_bytes"], r["net_seconds"])
         tx_rate = usage.rate(r["tx_bytes"], r["net_seconds"])
         if rx_rate is None or tx_rate is None or r["no_counters"] or r["traffic_lost"]:
@@ -4734,7 +4746,7 @@ async def api_usage(
         if m is None:
             merged[(point, r["container"])] = dict(r)
             continue
-        for key in ("cpu_sum", "cpu_n", "mem_sum", "mem_n", "net_seconds", "no_counters", "traffic_lost"):
+        for key in ("beats", "cpu_sum", "cpu_n", "mem_sum", "mem_n", "net_seconds", "no_counters", "traffic_lost"):
             m[key] += r[key]
         for key in ("rx_bytes", "tx_bytes"):
             if r[key] is not None:
@@ -4743,7 +4755,17 @@ async def api_usage(
     for (point, _), m in merged.items():
         per_hour.setdefault(point, []).append(m)
     points = [_usage_point(per_hour[h]) if h in per_hour else None for h in hours]
-    keys = ("cpu_percent", "memory_mb", "rx_rate", "tx_rate", "rx_bytes", "tx_bytes", "traffic_partial")
+    keys = (
+        "cpu_percent",
+        "memory_mb",
+        "rx_rate",
+        "tx_rate",
+        "rx_bytes",
+        "tx_bytes",
+        "traffic_partial",
+        "cpu_partial",
+        "memory_partial",
+    )
     series = {k: [None if p is None else p[k] for p in points] for k in keys}
     return {
         "days": days,

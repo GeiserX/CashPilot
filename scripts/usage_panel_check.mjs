@@ -27,7 +27,7 @@ if (!constLine) {
   console.error('FAIL: USAGE_DASH is not defined in app/static/js/app.js');
   process.exit(1);
 }
-const names = ['fmtBytes', 'usageRate', 'usageCpu', 'usageMem', 'usageLast', 'usagePeak', 'usageModel'];
+const names = ['fmtBytes', 'usageRate', 'usageCpu', 'usageMem', 'usageLastIndex', 'usageLast', 'usagePeak', 'usageModel'];
 const body = constLine[0] + names.map(grab).join('\n') +
   '\nreturn {usageRate, usageCpu, usageMem, usageLast, usagePeak, usageModel};';
 const fn = new Function(body)();
@@ -49,12 +49,14 @@ const m = fn.usageModel({
     rx_bytes: [null, 7200 * MB, null, null],
     tx_bytes: [null, 3600 * MB, null, null],
     traffic_partial: [false, true, false, true],
+    cpu_partial: [false, false, false, true],
   },
 });
 check('one value per hour', m.cpu.length === 4 && m.rx.length === 4, m);
 check('an hour with no reading stays null (a gap)', m.cpu[0] === null && m.cpu[2] === null && m.rx[3] === null, m.cpu);
 check('a measured zero stays zero', m.cpu[3] === 0, m.cpu);
 check('partial flags carry through', m.partial[1] === true && m.partial[0] === false, m.partial);
+check('a failed stats read carries through as a floor', m.cpuPartial[3] === true && m.memPartial[3] === false, m.cpuPartial);
 check('a short series is padded with gaps, not zeros', fn.usageModel({hours: [0, 1], series: {cpu_percent: [5]}}).cpu[1] === null, '');
 check('latest skips trailing gaps', fn.usageLast([1, 2, null]) === 2, '');
 check('peak ignores gaps', fn.usagePeak([null, 3, 1]) === 3, '');

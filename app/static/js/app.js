@@ -304,11 +304,16 @@ const CP = (() => {
     return mb >= 1024 ? `${(mb / 1024).toFixed(2)} GB` : `${Math.round(mb)} MB`;
   }
 
-  function usageLast(values) {
+  function usageLastIndex(values) {
     for (let i = values.length - 1; i >= 0; i -= 1) {
-      if (values[i] !== null && values[i] !== undefined) return values[i];
+      if (values[i] !== null && values[i] !== undefined) return i;
     }
-    return null;
+    return -1;
+  }
+
+  function usageLast(values) {
+    const i = usageLastIndex(values);
+    return i < 0 ? null : values[i];
   }
 
   function usagePeak(values) {
@@ -335,6 +340,8 @@ const CP = (() => {
       rxBytes: pick('rx_bytes'),
       txBytes: pick('tx_bytes'),
       partial: hours.map((_, i) => !!(s.traffic_partial || [])[i]),
+      cpuPartial: hours.map((_, i) => !!(s.cpu_partial || [])[i]),
+      memPartial: hours.map((_, i) => !!(s.memory_partial || [])[i]),
     };
   }
 
@@ -516,10 +523,12 @@ const CP = (() => {
 
     const m = usageModel(data);
     if (!usageCharts.cpu) {
+      // A container whose stats read failed is missing from the sum: a floor.
+      const geq = (flags, i) => (usageCharts.net._cpModel[flags][i] ? '\u2265 ' : '');
       usageCharts.cpu = usageChart('usage-cpu', [{ label: 'CPU', color: '--series-1' }], (v) => `${v}%`,
-        (ctx) => `CPU ${usageCpu(ctx.parsed.y)}`);
+        (ctx) => `CPU ${geq('cpuPartial', ctx.dataIndex)}${usageCpu(ctx.parsed.y)}`);
       usageCharts.mem = usageChart('usage-mem', [{ label: 'Memory', color: '--series-1' }], (v) => usageMem(v),
-        (ctx) => `Memory ${usageMem(ctx.parsed.y)}`);
+        (ctx) => `Memory ${geq('memPartial', ctx.dataIndex)}${usageMem(ctx.parsed.y)}`);
       usageCharts.net = usageChart('usage-net', [{ label: 'Down', color: '--series-1' }, { label: 'Up', color: '--series-2' }],
         (v) => usageRate(v), (ctx) => {
           const cur = usageCharts.net._cpModel;
@@ -531,6 +540,7 @@ const CP = (() => {
         });
     }
     if (usageCharts.net) usageCharts.net._cpModel = m;
+    usageLastData = data;
     const labels = m.hours.map(String);
     usageSetChart('cpu', labels, [m.cpu]);
     usageSetChart('mem', labels, [m.mem]);
@@ -544,18 +554,37 @@ const CP = (() => {
     };
     describe('usage-cpu', 'CPU', m.cpu, usageCpu);
     describe('usage-mem', 'Memory', m.mem, usageMem);
-    describe('usage-net', 'Network down', m.rx, usageRate);
+    const net = document.getElementById('usage-net');
+    if (net) {
+      net.setAttribute('aria-label', `Network for ${who}, ${span}, hourly: down now ${usageRate(usageLast(m.rx))}, peak ${usageRate(usagePeak(m.rx))}; up now ${usageRate(usageLast(m.tx))}, peak ${usageRate(usagePeak(m.tx))}`);
+    }
     const now = (id, text) => { const el = document.getElementById(id); if (el) el.textContent = text; };
-    now('usage-cpu-now', usageCpu(usageLast(m.cpu)));
-    now('usage-mem-now', usageMem(usageLast(m.mem)));
-    const floor = m.partial[m.partial.length - 1] ? '≥ ' : '';
-    now('usage-rx-now', `${floor}${usageRate(usageLast(m.rx))}`);
-    now('usage-tx-now', `${floor}${usageRate(usageLast(m.tx))}`);
+    // The value and its "at least" mark come from the same point.
+    const latest = (values, flags, fmt) => {
+      const i = usageLastIndex(values);
+      return i < 0 ? fmt(null) : `${flags[i] ? '\u2265 ' : ''}${fmt(values[i])}`;
+    };
+    now('usage-cpu-now', latest(m.cpu, m.cpuPartial, usageCpu));
+    now('usage-mem-now', latest(m.mem, m.memPartial, usageMem));
+    now('usage-rx-now', latest(m.rx, m.partial, usageRate));
+    now('usage-tx-now', latest(m.tx, m.partial, usageRate));
   }
 
   // Each load gets a number; a response that arrives after a newer request
   // started is dropped, so a slow old answer cannot overwrite a newer one.
   let usageLoadSeq = 0;
+  let usageLastData = null;
+
+  // The charts read their colours from the theme once, when built, so a theme
+  // switch rebuilds them from the last payload.
+  new MutationObserver(() => {
+    if (!usageCharts.cpu) return;
+    for (const key of Object.keys(usageCharts)) {
+      if (usageCharts[key]) usageCharts[key].destroy();
+      delete usageCharts[key];
+    }
+    if (usageLastData) renderUsage(usageLastData);
+  }).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
 
   function setUsageDays(days) {
     usageState.days = String(days);

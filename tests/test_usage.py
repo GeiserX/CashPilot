@@ -215,11 +215,14 @@ class TestRecordUsage:
             db = await database._get_db()
             await db.execute("CREATE TABLE IF NOT EXISTS usage_daily (worker_id INTEGER)")
             await db.commit()
-            await database.init_db()
+            with patch.object(database._logger, "info") as info:
+                await database.init_db()
             row = await (await db.execute("SELECT COUNT(*) FROM sqlite_master WHERE name = 'usage_daily'")).fetchone()
-            return row[0]
+            return row[0], " ".join(str(c.args) for c in info.call_args_list)
 
-        assert run_db(tmp_path, go) == 0
+        count, logged = run_db(tmp_path, go)
+        assert count == 0
+        assert "usage_daily dropped" in logged
 
 
 class TestEarnedByPlatform:
@@ -317,6 +320,47 @@ class TestUsageEndpoint:
         assert s["cpu_percent"][-2] == 5.0 and s["memory_mb"][-2] == 100.0
         assert s["rx_rate"][-2] == round(120 * MB / 60, 2) and s["tx_rate"][-2] == 0.0
         assert s["traffic_partial"][-2] is False
+
+    def test_a_failed_stats_read_marks_the_total_as_a_floor(self, tmp_path):
+        """Since #511 a stats timeout is None: the sum misses that container and must say so."""
+        h = last_hour()
+
+        async def record():
+            await database.record_usage(
+                1,
+                [container(cid="a", mem=512, name="hg"), container(slug="earnapp", cid="b", mem=300, name="ea")],
+                now=h + 10,
+            )
+            await database.record_usage(
+                1,
+                [
+                    container(cid="a", mem=512, name="hg"),
+                    container(slug="earnapp", cid="b", cpu=None, mem=None, name="ea"),
+                ],
+                now=h + 3610,
+            )
+
+        data = call_usage(tmp_path, record, days=7, worker_id=1)
+        s = data["series"]
+        assert s["memory_mb"][-2] == 812.0 and s["memory_partial"][-2] is False
+        assert s["memory_mb"][-1] == 512.0 and s["memory_partial"][-1] is True
+        assert s["cpu_partial"][-1] is True and s["cpu_partial"][-2] is False
+
+    def test_a_container_that_ran_part_of_a_point_counts_for_that_part(self, tmp_path):
+        """30 days: A at 10% for six hours plus B at 50% for one is about 18%, not 60%."""
+        step = 6 * 3600
+        point = int(time.time() // step) * step - step
+
+        async def record():
+            for k in range(6):
+                beat = [container(cid="a", cpu=10.0, name="hg")]
+                if k == 0:
+                    beat.append(container(slug="earnapp", cid="b", cpu=50.0, name="ea"))
+                await database.record_usage(1, beat, now=point + k * 3600 + 10)
+
+        s = call_usage(tmp_path, record, days=30, worker_id=1)["series"]
+        assert abs(s["cpu_percent"][-2] - (10.0 + 50.0 / 6)) < 0.01
+        assert s["cpu_partial"][-2] is False
 
     def test_host_network_container_has_an_empty_network_line(self, tmp_path):
         data = call_usage(tmp_path, two_servers, days=7, worker_id=1, container="myst")

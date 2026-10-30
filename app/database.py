@@ -549,6 +549,9 @@ CREATE TABLE IF NOT EXISTS usage_hourly (
     container    TEXT    NOT NULL,
     hour         INTEGER NOT NULL,
     slug         TEXT    NOT NULL,
+    -- Heartbeats that saw the container running. cpu_n or mem_n below it means
+    -- a stats read failed that hour, so a total without it is a floor.
+    beats        INTEGER NOT NULL DEFAULT 0,
     cpu_sum      REAL    NOT NULL DEFAULT 0,
     cpu_n        INTEGER NOT NULL DEFAULT 0,
     mem_sum      REAL    NOT NULL DEFAULT 0,
@@ -805,7 +808,7 @@ async def _encrypt_legacy_plaintext_credentials(db: Any) -> int:
 #: missing a column -- an interrupted upgrade, a restored backup, a hand-edited
 #: file -- could never be repaired, because the gate would say there was nothing
 #: to do. The guards are idempotent and cheap; the version is for the operator.
-SCHEMA_VERSION = 11
+SCHEMA_VERSION = 12
 
 
 async def init_db() -> None:
@@ -817,6 +820,10 @@ async def init_db() -> None:
     applied: list[str] = []
     try:
         await _dedupe_earnings_before_indexing(db)
+        # _SCHEMA drops the per-day usage table the hourly one replaced.
+        cursor = await db.execute("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'usage_daily'")
+        if await cursor.fetchone():
+            applied.append("usage_daily dropped (replaced by usage_hourly)")
         await db.executescript(_SCHEMA)
         # Migrate workers table: add client_id (UNIQUE) and apps columns
         cursor = await db.execute("PRAGMA table_info(workers)")
@@ -2760,11 +2767,12 @@ async def record_usage(worker_id: int, containers: list[dict[str, Any]], now: fl
             for name, s in samples.items():
                 await db.execute(
                     """
-                    INSERT INTO usage_hourly (worker_id, container, hour, slug, cpu_sum, cpu_n, mem_sum, mem_n,
-                                              rx_bytes, tx_bytes, net_seconds, no_counters, traffic_lost)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    INSERT INTO usage_hourly (worker_id, container, hour, slug, beats, cpu_sum, cpu_n, mem_sum,
+                                              mem_n, rx_bytes, tx_bytes, net_seconds, no_counters, traffic_lost)
+                    VALUES (?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ON CONFLICT(worker_id, container, hour) DO UPDATE SET
                         slug = excluded.slug,
+                        beats = beats + 1,
                         cpu_sum = cpu_sum + excluded.cpu_sum,
                         cpu_n = cpu_n + excluded.cpu_n,
                         mem_sum = mem_sum + excluded.mem_sum,
