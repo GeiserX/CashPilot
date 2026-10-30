@@ -1199,9 +1199,12 @@ const CP = (() => {
       return ra - rb || String(a.svc.name).localeCompare(String(b.svc.name));
     });
 
+    // Cut long device names here, not with text-overflow: WebKit drops the
+    // ellipsis on vertical text. The full name stays in the header title.
+    const shortBox = (n) => { const t = String(n); return t.length > 14 ? `${t.slice(0, 13).trimEnd()}\u2026` : t; };
     const head = boxes.map((w) => {
       const online = w.status === 'online';
-      return `<th class="pg-box${online ? '' : ' pg-box-off'}" scope="col" title="${escapeHtml(w.name)}: ${online ? 'online' : 'not reporting'}"><span class="pg-box-name">${escapeHtml(w.name)}</span></th>`;
+      return `<th class="pg-box${online ? '' : ' pg-box-off'}" scope="col" title="${escapeHtml(w.name)}: ${online ? 'online' : 'not reporting'}"><span class="pg-box-name">${escapeHtml(shortBox(w.name))}</span></th>`;
     }).join('');
 
     const body = rows.map((r) => {
