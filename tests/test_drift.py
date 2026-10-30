@@ -308,6 +308,8 @@ class TestOnlyWhatCashPilotDeployed:
 
     def test_the_worker_reports_settings_only_for_its_own_containers(self):
         assert "shape" in orchestrator._shape_entry(_container({"cashpilot.deployed-by": "worker"}))
+        # Made by CashPilot's deploy path before workers; the July 2026 Bitping containers were these.
+        assert "shape" in orchestrator._shape_entry(_container({"cashpilot.deployed-by": "direct"}))
         # An exported compose file carries the labels too, and the user runs it by hand.
         assert orchestrator._shape_entry(_container({"cashpilot.deployed-by": "compose"})) == {}
         assert orchestrator._shape_entry(_container({})) == {}
@@ -319,6 +321,7 @@ class TestOnlyWhatCashPilotDeployed:
             assert "drift" not in row["instance_details"][0], who
         # The control: the same container made by the worker is flagged.
         assert _deployed_row(BITPING, shape, recorded=None)["instance_details"][0]["drift"]
+        assert _deployed_row(BITPING, shape, recorded=None, deployed_by="direct")["instance_details"][0]["drift"]
 
 
 class TestTheSwitch:

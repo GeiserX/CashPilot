@@ -38,6 +38,7 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 from app.constants import (  # noqa: E402
+    CASHPILOT_DEPLOYED,
     CONTAINER_PREFIX,
     LABEL_CATEGORY,
     LABEL_DEPLOYED_BY,
@@ -206,12 +207,13 @@ def _shape_entry(container: Any) -> dict[str, Any]:
 
     The cashpilot labels alone do not make a container CashPilot's: a compose
     file exported from CashPilot carries them too, and the user runs and edits
-    that by hand. Only deploy_raw writes deployed-by "worker". A hand-made
+    that by hand. Only CashPilot's own deploys write the values in
+    CASHPILOT_DEPLOYED. A hand-made
     container is never judged against the catalog, and neither is anything
     when CASHPILOT_DRIFT_WARNINGS is off.
     """
     labels = getattr(container, "labels", None) or {}
-    if labels.get(LABEL_DEPLOYED_BY) != "worker" or not drift_warnings_enabled():
+    if labels.get(LABEL_DEPLOYED_BY) not in CASHPILOT_DEPLOYED or not drift_warnings_enabled():
         return {}
     return {"shape": _shape(container)}
 
