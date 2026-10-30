@@ -548,6 +548,8 @@ CREATE TABLE IF NOT EXISTS usage_daily (
     tx_bytes   INTEGER,
     -- Heartbeats where a running container of the service had no counters.
     net_gaps   INTEGER NOT NULL DEFAULT 0,
+    -- Heartbeats where a running container's memory could not be read.
+    mem_gaps   INTEGER NOT NULL DEFAULT 0,
     PRIMARY KEY (worker_id, slug, day)
 );
 
@@ -2745,8 +2747,8 @@ async def record_usage(worker_id: int, containers: list[dict[str, Any]], now: fl
             for slug, s in samples.items():
                 await db.execute(
                     """
-                    INSERT INTO usage_daily (worker_id, slug, day, cpu_sum, cpu_n, mem_sum, mem_n, rx_bytes, tx_bytes, net_gaps)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    INSERT INTO usage_daily (worker_id, slug, day, cpu_sum, cpu_n, mem_sum, mem_n, rx_bytes, tx_bytes, net_gaps, mem_gaps)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ON CONFLICT(worker_id, slug, day) DO UPDATE SET
                         cpu_sum = cpu_sum + excluded.cpu_sum,
                         cpu_n = cpu_n + excluded.cpu_n,
@@ -2756,7 +2758,8 @@ async def record_usage(worker_id: int, containers: list[dict[str, Any]], now: fl
                                         ELSE COALESCE(rx_bytes, 0) + excluded.rx_bytes END,
                         tx_bytes = CASE WHEN excluded.tx_bytes IS NULL THEN tx_bytes
                                         ELSE COALESCE(tx_bytes, 0) + excluded.tx_bytes END,
-                        net_gaps = net_gaps + excluded.net_gaps
+                        net_gaps = net_gaps + excluded.net_gaps,
+                        mem_gaps = mem_gaps + excluded.mem_gaps
                     """,
                     (
                         worker_id,
@@ -2769,6 +2772,7 @@ async def record_usage(worker_id: int, containers: list[dict[str, Any]], now: fl
                         s.rx_bytes,
                         s.tx_bytes,
                         1 if s.traffic_gap else 0,
+                        1 if s.memory_gap else 0,
                     ),
                 )
                 for cid, rx, tx in s.counters:

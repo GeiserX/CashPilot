@@ -11,8 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-import time
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from app import database, usage
@@ -81,6 +80,20 @@ class TestSamplesFromHeartbeat:
         s = usage.samples_from_heartbeat([bridge, host], {"a": (50, 5, 940.0)}, now=1000.0)["honeygain"]
         assert s.traffic_gap is True
         assert (s.rx_bytes, s.tx_bytes) == (50, 5)
+
+    def test_stale_baseline_marks_a_gap(self):
+        s = usage.samples_from_heartbeat(
+            [container(cid="a", rx=500, tx=50)], {"a": (100, 10, 0.0)}, now=usage.MAX_BASELINE_AGE_SECONDS + 1
+        )["honeygain"]
+        assert s.traffic_gap is True and s.rx_bytes == 0
+
+    def test_unreadable_memory_marks_a_gap(self):
+        out = usage.samples_from_heartbeat([container(cid="a"), container(cid="b", mem=None)], {}, now=1000.0)
+        assert out["honeygain"].memory_gap is True
+
+    def test_infinite_readings_are_rejected(self):
+        s = usage.samples_from_heartbeat([container(cpu="Infinity", mem=float("nan"))], {}, now=1000.0)["honeygain"]
+        assert s.cpu_percent is None and s.memory_mb is None
 
     def test_failed_stats_are_unknown_not_zero(self):
         s = usage.samples_from_heartbeat([container(cpu=None, mem=None)], {}, now=1000.0)["honeygain"]
@@ -187,8 +200,11 @@ def earned_stub(values, priced=None):
     return stub
 
 
-def usage_rows(*rows):
-    """api_usage_servers over hand-written usage_daily rows (no DB)."""
+def usage_rows(*rows, running=()):
+    """api_usage_servers over hand-written usage_daily rows (no DB).
+
+    ``running`` lists ``(worker_id, slug)`` copies the workers report right now.
+    """
     from app import main
 
     workers = [{"id": 1, "name": "watchtower", "status": "online"}, {"id": 2, "name": "geiserback", "status": "online"}]
@@ -202,6 +218,7 @@ def usage_rows(*rows):
         "rx_bytes": GB,
         "tx_bytes": 0,
         "net_gaps": 0,
+        "mem_gaps": 0,
     }
     full = [{**base, **r} for r in rows]
 
@@ -212,6 +229,11 @@ def usage_rows(*rows):
                 patch.object(main.database, "get_usage_daily", AsyncMock(return_value=full)),
                 patch.object(main.database, "list_workers", AsyncMock(return_value=workers)),
                 patch.object(main.database, "get_earned_by_platform", earned_stub(values, priced)),
+                patch.object(
+                    main,
+                    "_get_all_worker_containers",
+                    AsyncMock(return_value=[{"slug": s, "status": "running", "_worker_id": w} for w, s in running]),
+                ),
             ):
                 return await main.api_usage_servers(MagicMock())
 
@@ -249,6 +271,35 @@ class TestRatiosNeedEveryCopyMeasured:
             {"worker_id": 2, "slug": "honeygain", "mem_n": 0, "mem_sum": 0.0},
         )({"honeygain": 1.0})
         assert service(data, "watchtower", "honeygain")["usd_per_gb_ram"] is None
+
+    def test_a_running_copy_with_no_usage_row_makes_ratios_unknown(self):
+        # geiserback runs honeygain right now but never reported usage for it.
+        data = usage_rows({"worker_id": 1, "slug": "honeygain"}, running=[(1, "honeygain"), (2, "honeygain")])(
+            {"honeygain": 1.0}
+        )
+        svc = service(data, "watchtower", "honeygain")
+        assert svc["usd_per_gb"] is None and svc["usd_per_gb_ram"] is None
+
+    def test_partly_read_memory_makes_per_gb_ram_unknown(self):
+        data = usage_rows({"worker_id": 1, "slug": "honeygain", "mem_gaps": 2})({"honeygain": 1.0})
+        assert service(data, "watchtower", "honeygain")["usd_per_gb_ram"] is None
+
+    def test_a_server_total_without_every_service_is_marked_partial(self):
+        data = usage_rows(
+            {"worker_id": 1, "slug": "honeygain"},
+            {"worker_id": 1, "slug": "mysterium", "rx_bytes": None, "tx_bytes": None},
+            {"worker_id": 2, "slug": "honeygain"},
+        )({"honeygain": 1.0})
+        totals = {s["name"]: s["total"] for s in data["servers"]}
+        assert totals["watchtower"]["traffic_partial"] is True
+        assert totals["geiserback"]["traffic_partial"] is False
+
+    def test_a_deleted_workers_rows_do_not_stretch_the_window(self):
+        old = (datetime.now(UTC) - timedelta(days=20)).strftime("%Y-%m-%d")
+        data = usage_rows({"worker_id": 1, "slug": "honeygain"}, {"worker_id": 99, "slug": "honeygain", "day": old})(
+            {"honeygain": 1.0}
+        )
+        assert data["window_days"] == 1
 
 
 class TestUnmeasuredEarningsAreUnknown:
@@ -289,7 +340,8 @@ class TestUsageEndpoint:
         ]
 
         async def go():
-            now = time.time()
+            # Noon UTC, so the two samples a minute apart never straddle midnight.
+            now = datetime.now(UTC).replace(hour=12, minute=0, second=0, microsecond=0).timestamp()
             for wid in (1, 2):
                 await database.record_usage(
                     wid,

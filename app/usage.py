@@ -24,6 +24,7 @@ the difference between two readings, with three rules:
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -65,6 +66,8 @@ class ServiceSample:
     # worker that does not send them), so the traffic above is not the whole
     # service and no per-GB figure may be built on it.
     traffic_gap: bool = False
+    # Same for memory: a running copy whose memory could not be read.
+    memory_gap: bool = False
 
 
 def _num(value: Any) -> float | None:
@@ -74,7 +77,8 @@ def _num(value: Any) -> float | None:
         out = float(value)
     except (TypeError, ValueError):
         return None
-    return out if out >= 0 else None
+    # inf/nan would poison the stored sums and break the JSON response.
+    return out if math.isfinite(out) and out >= 0 else None
 
 
 def _add(total: float | int | None, value: float | int | None) -> float | int | None:
@@ -103,7 +107,10 @@ def samples_from_heartbeat(
             continue
         sample = out.setdefault(slug, ServiceSample())
         sample.cpu_percent = _add(sample.cpu_percent, _num(c.get("cpu_percent")))
-        sample.memory_mb = _add(sample.memory_mb, _num(c.get("memory_mb")))
+        memory = _num(c.get("memory_mb"))
+        sample.memory_mb = _add(sample.memory_mb, memory)
+        if memory is None:
+            sample.memory_gap = True
 
         cid = str(c.get("container_id") or "")
         rx_raw, tx_raw = c.get("net_rx_bytes"), c.get("net_tx_bytes")
@@ -117,6 +124,9 @@ def samples_from_heartbeat(
             continue
         prev = baselines.get(cid)
         age = None if prev is None else now - prev[2]
+        if age is not None and age > MAX_BASELINE_AGE_SECONDS:
+            # The traffic since that baseline is lost, so this day is incomplete.
+            sample.traffic_gap = True
         d_rx = counter_delta(None if prev is None else prev[0], rx, age)
         d_tx = counter_delta(None if prev is None else prev[1], tx, age)
         if d_rx is None or d_tx is None:

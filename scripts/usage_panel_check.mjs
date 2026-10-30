@@ -50,7 +50,7 @@ const html = render({
       {slug: 'mysterium', name: 'Mysterium', cpu_percent: 8, memory_mb: 2048, rx_today: null, tx_today: null,
         rx: null, tx: null, earned_usd: null, usd_per_gb: null, usd_per_gb_ram: null},
     ],
-    total: {cpu_percent: 9.25, memory_mb: 2096, rx_today: 2 * GB, tx_today: GB, rx: 5 * GB, tx: 3 * GB},
+    total: {cpu_percent: 9.25, memory_mb: 2096, rx_today: 2 * GB, tx_today: GB, rx: 5 * GB, tx: 3 * GB, traffic_partial: true},
   }],
 });
 
@@ -64,9 +64,11 @@ check('per-GB money gets three decimals', hg.includes('$0.150'), hg);
 check('memory over 1 GB renders in GB', myst.includes('2.00 GB'), myst);
 check('no traffic counters renders a dash', (myst.match(/\u2014/g) || []).length >= 5, myst);
 check('no traffic counters never renders 0 B', !/\b0 B\b/.test(myst), myst);
-check('host-network row explains the dash', myst.includes('Host network'), myst);
+check('a row with no counters explains the dash', myst.includes('No traffic counters'), myst);
 check('earned keeps two decimals', hg.includes('$1.20'), hg);
 check('a total row is present', html.includes('usage-total'), html);
+const total = rows.find(r => r.includes('usage-total')) || '';
+check('a partial traffic total is marked as a minimum', total.includes('\u2265') && total.includes('minimum'), total);
 
 const empty = render({servers: [], window_days: 0});
 check('no readings yet says so', empty.includes('No readings yet'), empty);

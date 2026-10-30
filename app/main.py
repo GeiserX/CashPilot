@@ -4472,7 +4472,11 @@ async def api_usage_servers(request: Request) -> dict[str, Any]:
     never divided into a month of money. None everywhere means "no reading".
     """
     _require_auth_api(request)
-    rows = await database.get_usage_daily(days=30)
+    raw_workers = await database.list_workers()
+    names = {w["id"]: (w.get("name") or f"worker {w['id']}", w.get("status")) for w in raw_workers}
+    # A deleted worker's rows linger until retention; left in, they would
+    # stretch the earnings window past the traffic still shown.
+    rows = [r for r in await database.get_usage_daily(days=30) if r["worker_id"] in names]
     today = datetime.now(UTC).strftime("%Y-%m-%d")
     if not rows:
         return {"servers": [], "window_days": 0, "since": None, "currency": "USD"}
@@ -4484,7 +4488,6 @@ async def api_usage_servers(request: Request) -> dict[str, Any]:
     measured: set[str] = set()
     earned = await database.get_earned_by_platform(days=window_days, measured=measured)
     earned = {slug: value for slug, value in earned.items() if slug in measured}
-    names = {w["id"]: (w.get("name") or f"worker {w['id']}", w.get("status")) for w in await database.list_workers()}
 
     def add(a: Any, b: Any) -> Any:
         if b is None:
@@ -4493,8 +4496,6 @@ async def api_usage_servers(request: Request) -> dict[str, Any]:
 
     cells: dict[tuple[int, str], dict[str, Any]] = {}
     for r in rows:
-        if r["worker_id"] not in names:
-            continue  # a deleted worker's leftovers age out with retention
         cell = cells.setdefault(
             (r["worker_id"], r["slug"]),
             {
@@ -4507,9 +4508,11 @@ async def api_usage_servers(request: Request) -> dict[str, Any]:
                 "rx_today": None,
                 "tx_today": None,
                 "gaps": 0,
+                "mem_gaps": 0,
             },
         )
         cell["gaps"] += r.get("net_gaps") or 0
+        cell["mem_gaps"] += r.get("mem_gaps") or 0
         cell["cpu_sum"] += r["cpu_sum"]
         cell["cpu_n"] += r["cpu_n"]
         cell["mem_sum"] += r["mem_sum"]
@@ -4529,13 +4532,21 @@ async def api_usage_servers(request: Request) -> dict[str, Any]:
     fleet_mem: dict[str, float] = {}
     bytes_unknown: set[str] = set()
     mem_unknown: set[str] = set()
+    # A copy running right now with no usage row at all (an Android phone, a
+    # worker that has not reported yet) earns into the same account too.
+    measured_cells = set(cells)
+    for c in await _get_all_worker_containers(raw_workers):
+        slug = egress.container_slug(c)
+        if slug and c.get("status") == "running" and (c.get("_worker_id"), slug) not in measured_cells:
+            bytes_unknown.add(slug)
+            mem_unknown.add(slug)
     for (_, slug), cell in cells.items():
         moved = add(cell["rx"], cell["tx"])
         if moved is None or cell["gaps"]:
             bytes_unknown.add(slug)
         else:
             fleet_bytes[slug] = fleet_bytes.get(slug, 0) + moved
-        if cell["mem_n"]:
+        if cell["mem_n"] and not cell["mem_gaps"]:
             fleet_mem[slug] = fleet_mem.get(slug, 0.0) + cell["mem_sum"] / cell["mem_n"]
         else:
             mem_unknown.add(slug)
@@ -4557,6 +4568,9 @@ async def api_usage_servers(request: Request) -> dict[str, Any]:
                     "tx_today": None,
                     "rx": None,
                     "tx": None,
+                    # Some service on this server had no traffic reading, so the
+                    # traffic sums cover only the others: a floor, not a total.
+                    "traffic_partial": False,
                 },
             },
         )
@@ -4584,6 +4598,8 @@ async def api_usage_servers(request: Request) -> dict[str, Any]:
         total = server["total"]
         for key in ("cpu_percent", "memory_mb", "rx_today", "tx_today", "rx", "tx"):
             total[key] = add(total[key], entry[key])
+        if entry["rx"] is None or entry["tx"] is None or cell["gaps"]:
+            total["traffic_partial"] = True
 
     return {
         "servers": list(servers.values()),

@@ -336,13 +336,16 @@ const CP = (() => {
           <td>${escapeHtml(svc.name)}</td>
           <td class="c-num">${usageCpu(svc.cpu_percent)}</td>
           <td class="c-num">${usageMem(svc.memory_mb)}</td>
-          <td class="c-num"${svc.rx === null && svc.tx === null ? ' title="Host network: Docker reports no traffic for this container"' : ''}>${usagePair(svc.rx_today, svc.tx_today)}</td>
+          <td class="c-num"${svc.rx === null && svc.tx === null ? ' title="No traffic counters reported, for example a container on the host network"' : ''}>${usagePair(svc.rx_today, svc.tx_today)}</td>
           <td class="c-num">${usagePair(svc.rx, svc.tx)}</td>
           <td class="c-num">${usageMoney(svc.earned_usd)}</td>
           <td class="c-num">${usageMoney(svc.usd_per_gb, true)}</td>
           <td class="c-num">${usageMoney(svc.usd_per_gb_ram, true)}</td>
         </tr>`).join('');
       const t = server.total || {};
+      // At least this much: some service on the server had no traffic reading.
+      const partial = t.traffic_partial ? ' title="Some services here report no traffic, so this is a minimum"' : '';
+      const floor = t.traffic_partial ? '<span class="usage-dir">\u2265</span>' : '';
       return `
         <tbody>
           <tr class="usage-server"><th colspan="8">${escapeHtml(server.name)}${server.status === 'online' ? '' : ' <span class="muted">offline</span>'}</th></tr>
@@ -351,8 +354,8 @@ const CP = (() => {
             <td>Total</td>
             <td class="c-num">${usageCpu(t.cpu_percent)}</td>
             <td class="c-num">${usageMem(t.memory_mb)}</td>
-            <td class="c-num">${usagePair(t.rx_today, t.tx_today)}</td>
-            <td class="c-num">${usagePair(t.rx, t.tx)}</td>
+            <td class="c-num"${partial}>${floor}${usagePair(t.rx_today, t.tx_today)}</td>
+            <td class="c-num"${partial}>${floor}${usagePair(t.rx, t.tx)}</td>
             <td class="c-num" colspan="3"></td>
           </tr>
         </tbody>`;
@@ -361,15 +364,25 @@ const CP = (() => {
       <p class="usage-foot">Providers pay per account, not per server, so Earned and the per-GB figures cover each service on all servers. A dash means no reading: a container on the host network has no traffic counters.</p>`;
   }
 
+  // Each load gets a number; a response that arrives after a newer request
+  // started is dropped, so a slow old answer cannot overwrite a newer one.
+  let usageLoadSeq = 0;
+
   async function loadUsagePanel() {
     const container = document.getElementById('usage-table-container');
     if (!container) return;
+    const seq = ++usageLoadSeq;
     try {
       const data = await api('/api/usage/servers');
+      if (seq !== usageLoadSeq) return;
       container.innerHTML = renderUsagePanel(data);
       const meta = document.getElementById('usage-meta');
       if (meta) meta.textContent = data.since && data.window_days < 30 ? `Measured since ${data.since}` : '';
     } catch (err) {
+      if (seq !== usageLoadSeq) return;
+      console.warn('Could not load resource use, keeping the previous table:', err);
+      const meta = document.getElementById('usage-meta');
+      if (meta) meta.textContent = 'Last refresh failed';
       // Keep a table already on screen; replace only the spinner.
       if (!container.querySelector('.usage-table')) {
         container.innerHTML = `<div class="block-empty block-error"><span>Couldn't load resource use${err && err.message ? `: ${escapeHtml(err.message)}` : ''}.</span></div>`;
@@ -4353,6 +4366,7 @@ const CP = (() => {
       if (document.body.dataset.page === 'dashboard') {
         loadDashboardStats();
         loadServicesTable();
+        loadUsagePanel();
       }
       // Also sync settings page dropdown if present
       const settingsSelect = document.getElementById('settings-currency');
