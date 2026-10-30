@@ -4742,8 +4742,7 @@ def _is_phone(system_info: dict[str, Any] | None) -> bool:
     checking device_type alone let phones into the usage table as rows of
     nothing but dashes: a phone has no Docker stats to give.
     """
-    info = system_info or {}
-    return info.get("device_type") == "android" or str(info.get("os") or "").strip().lower() == "android"
+    return placement.is_android(system_info or {})
 
 
 @app.get("/api/usage/servers")
