@@ -308,6 +308,19 @@ class TestRatiosNeedEveryCopyMeasured:
         )({"honeygain": 1.0})
         assert [s["name"] for s in data["servers"]] == ["watchtower"]
 
+    def test_a_phone_running_the_service_makes_ratios_unknown_even_offline(self):
+        phone = {
+            "id": 3,
+            "name": "OPPO",
+            "status": "offline",
+            "system_info": '{"os": "Android"}',
+            "containers": '[{"slug": "honeygain", "status": "running"}]',
+        }
+        data = usage_rows({"worker_id": 1, "slug": "honeygain"}, extra_workers=[phone])({"honeygain": 1.0})
+        svc = service(data, "watchtower", "honeygain")
+        assert svc["usd_per_gb"] is None and svc["usd_per_gb_ram"] is None
+        assert svc["earned_usd"] == 1.0
+
     def test_a_deleted_workers_rows_do_not_stretch_the_window(self):
         old = (datetime.now(UTC) - timedelta(days=20)).strftime("%Y-%m-%d")
         data = usage_rows({"worker_id": 1, "slug": "honeygain"}, {"worker_id": 99, "slug": "honeygain", "day": old})(

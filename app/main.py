@@ -4641,14 +4641,25 @@ async def api_usage_servers(request: Request) -> dict[str, Any]:
     """
     _require_auth_api(request)
     raw_workers = await database.list_workers()
-    names = {
-        w["id"]: (w.get("name") or f"worker {w['id']}", w.get("status"))
-        for w in raw_workers
-        if not _is_phone(_safe_json(w.get("system_info", "{}"), {}))
-    }
+    names: dict[int, tuple[str, Any]] = {}
+    # Phones have no Docker stats, so they are not rows here. But a phone earns
+    # into the same account as the servers, online or not, so every service a
+    # phone reports makes that service's per-GB ratios unknown.
+    phone_ids: set[int] = set()
+    phone_slugs: set[str] = set()
+    for w in raw_workers:
+        if _is_phone(_safe_json(w.get("system_info", "{}"), {})):
+            phone_ids.add(w["id"])
+            for item in _safe_json(w.get("containers", "[]")) + _safe_json(w.get("apps", "[]")):
+                if isinstance(item, dict) and item.get("slug"):
+                    phone_slugs.add(item["slug"])
+        else:
+            names[w["id"]] = (w.get("name") or f"worker {w['id']}", w.get("status"))
+    all_rows = await database.get_usage_daily(days=30)
+    phone_slugs |= {r["slug"] for r in all_rows if r["worker_id"] in phone_ids}
     # A deleted worker's rows linger until retention; left in, they would
     # stretch the earnings window past the traffic still shown.
-    rows = [r for r in await database.get_usage_daily(days=30) if r["worker_id"] in names]
+    rows = [r for r in all_rows if r["worker_id"] in names]
     today = datetime.now(UTC).strftime("%Y-%m-%d")
     if not rows:
         return {"servers": [], "window_days": 0, "since": None, "currency": "USD"}
@@ -4702,8 +4713,8 @@ async def api_usage_servers(request: Request) -> dict[str, Any]:
     # best earner per GB. One unmeasured copy, and the ratio is unknown.
     fleet_bytes: dict[str, int] = {}
     fleet_mem: dict[str, float] = {}
-    bytes_unknown: set[str] = set()
-    mem_unknown: set[str] = set()
+    bytes_unknown: set[str] = set(phone_slugs)
+    mem_unknown: set[str] = set(phone_slugs)
     # A copy running right now with no usage row at all (an Android phone, a
     # worker that has not reported yet) earns into the same account too.
     measured_cells = set(cells)
