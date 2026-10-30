@@ -13,8 +13,9 @@ Login: user ``demo``, password ``demo-password-1`` (owner).
 
 The data dir is wiped first. Expect 8 deployed services on 3 workers (box-a,
 box-b, box-c), 60 days of balance history in USD, MYST and GRASS points, two
-confirmed payouts, one pending payout prompt, a failing collector and a stopped
-container.
+confirmed payouts, one pending payout prompt, a failing collector, a stopped
+container, and 30 days of hourly resource samples for the usage graphs (with a
+five-hour gap on box-b). The samples need the usage_hourly table (v1.55.0+).
 
 ``--serve`` runs uvicorn in-process with the network jobs stubbed: earnings
 collection, exchange-rate refresh and the release checks become no-ops, rates
@@ -252,6 +253,39 @@ async def seed(data_dir: Path) -> None:
         )
         await database.confirm_worker_key(w["client_id"])
         worker_ids[name] = wid
+
+    # Hourly resource samples for the usage graphs: 30 days per running
+    # container, a daily rhythm, and a five-hour gap on box-b three days ago (the
+    # worker was offline) that must draw as a gap, not a drop to zero. A host
+    # network container (Mysterium) has no traffic counters, so NULL traffic.
+    import math
+
+    rng = random.Random(11)
+    udb = await database._get_db()
+    now_hour = int(time.time() // 3600) * 3600
+    gap = range(now_hour - 3 * 86400 - 5 * 3600, now_hour - 3 * 86400)
+    for name, w in WORKERS.items():
+        for slug, status, cpu, mem in w["containers"]:
+            if status != "running":
+                continue
+            host_net = slug == "mysterium"
+            for h in range(now_hour - 30 * 86400 + 3600, now_hour + 1, 3600):
+                if name == "box-b" and h in gap:
+                    continue
+                day = 0.6 + 0.4 * math.sin((h % 86400) / 86400 * 2 * math.pi - 1.2)
+                n = 60 if h < now_hour else max(1, int(time.time() - now_hour) // 60)
+                c = cpu * day * rng.uniform(0.7, 1.3)
+                m = mem * rng.uniform(0.93, 1.07)
+                secs = 60.0 * (n - 1) if n > 1 else 0.0
+                rx = None if host_net or not secs else int(secs * day * rng.uniform(0.6, 1.4) * (cpu + 1) * 90_000)
+                tx = None if rx is None else int(rx * rng.uniform(0.08, 0.2))
+                await udb.execute(
+                    "INSERT INTO usage_hourly (worker_id, container, hour, slug, beats, cpu_sum, cpu_n, mem_sum, mem_n, "
+                    "rx_bytes, tx_bytes, net_seconds, no_counters, traffic_lost) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,0)",
+                    (worker_ids[name], f"cashpilot-{slug}", h, slug, n, c * n, n, m * n, n, rx, tx,
+                     0.0 if rx is None else secs, n if host_net else 0),
+                )
+    await udb.commit()
 
     # Deployments: one fleet-wide row per service plus a per-worker spec.
     for name, w in WORKERS.items():
