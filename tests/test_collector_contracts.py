@@ -390,6 +390,12 @@ class TestOutcomeClassification:
             ("No token configured — copy authToken from browser Local Storage", None, "not_configured"),
             ("No credentials configured — enter Earn.fm email and password", None, "not_configured"),
             ("Storagenode API not reachable at http://localhost:14002", None, "unreachable"),
+            # An expired TLS certificate is the connection failing, not the credentials.
+            (
+                "[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: certificate has expired (_ssl.c:1032)",
+                None,
+                "unreachable",
+            ),
         ],
     )
     def test_each_collector_message_family(self, error, kind, expected):

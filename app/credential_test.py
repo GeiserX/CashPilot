@@ -61,8 +61,15 @@ _AUTH_MARKERS = (
     # "Session expired", "Auth cookie expired" from the collectors themselves.
     "authentication failed",
     "rejected",
-    "expired",
+    "session expired",
+    "token expired",
+    "cookie expired",
 )
+# Checked BEFORE the auth words: httpx's "[SSL: CERTIFICATE_VERIFY_FAILED] ...
+# certificate has expired" is the connection failing, not the credentials. Only
+# these two move up; the rest of the network words can appear in a provider URL
+# ("connect.") inside a plain 401 message.
+_TLS_MARKERS = ("ssl", "certificate")
 _NETWORK_MARKERS = (
     "timeout",
     "timed out",
@@ -128,6 +135,8 @@ def classify(error: str | None, kind: str | None = None) -> str:
     if any(m in text for m in _SERVER_ERROR_MARKERS):
         return PROVIDER_DOWN
     if kind == _KIND_TRANSIENT:
+        return UNREACHABLE
+    if any(m in text for m in _TLS_MARKERS):
         return UNREACHABLE
     if any(m in text for m in _AUTH_MARKERS):
         return BAD_CREDENTIALS
