@@ -44,6 +44,19 @@ def is_android(info: dict[str, Any]) -> bool:
     return info.get("device_type") == "android" or str(info.get("os") or "").strip().lower() == "android"
 
 
+def is_desktop(info: dict[str, Any]) -> bool:
+    """A paired CashPilot Desktop. It reports what it runs in ``containers`` and
+    sends no ``docker_available``, so a missing flag says nothing about it."""
+    return info.get("device_type") == "desktop"
+
+
+def is_blind(worker: dict[str, Any]) -> bool:
+    """A Docker host that cannot read its socket: whatever it does not list may
+    still be running there. Phones and Desktops are never blind in this sense."""
+    info = system_info(worker)
+    return not is_android(info) and not is_desktop(info) and not info.get("docker_available", False)
+
+
 def can_see_docker(worker: dict[str, Any]) -> bool:
     """Whether a missing container on this worker is evidence of anything."""
     info = system_info(worker)
@@ -174,7 +187,7 @@ def missing(
     online = [w for w in workers if w.get("status") == "online"]
     if not online:
         return None
-    if any(not is_android(system_info(w)) and not can_see_docker(w) for w in online):
+    if any(is_blind(w) for w in online):
         return None
 
     where = runs_on(workers)

@@ -906,3 +906,155 @@ class TestARetainedAlertNamesOnlyWhatIsStillMissing:
             asyncio.run(main._warm_collector_alerts())
         assert "everywhere" not in main._missing_bell["bitping"]
         assert main._missing_scope("bitping") == {"bitping"}
+
+
+# ---------------------------------------------------------------------------
+# Independent review of #499
+# ---------------------------------------------------------------------------
+
+
+def _desktop(wid, name, containers, *, status="online"):
+    # What CashPilot-Desktop sends: os and device_type, no docker_available.
+    return {
+        "id": wid,
+        "name": name,
+        "status": status,
+        "system_info": json.dumps({"os": "darwin", "device_type": "desktop"}),
+        "containers": json.dumps([{"slug": s, "status": st} for s, st in containers]),
+        "apps": "[]",
+    }
+
+
+class TestAPairedDesktopIsNotABlindHost:
+    def test_it_does_not_switch_off_the_runs_nowhere_alert(self):
+        workers = [_docker(1, "watchtower", []), _desktop(2, "MacBook", [("honeygain", "running")])]
+        found = placement.missing(
+            [{"slug": "bitping", "status": "running", "deployed_at": _sql(NOW - timedelta(days=3))}],
+            [],
+            workers,
+            now=NOW,
+            first_missing={("bitping", None): NOW - timedelta(hours=1)},
+        )
+        assert found is not None and "bitping" in found
+
+    def test_control_a_docker_host_that_cannot_read_its_socket_still_does(self):
+        workers = [_docker(1, "watchtower", []), _docker(2, "geiserct", [], docker=False)]
+        deps = [{"slug": "bitping", "status": "running", "deployed_at": _sql(NOW - timedelta(days=3))}]
+        assert placement.missing(deps, [], workers, now=NOW, first_missing={}) is None
+
+    def test_it_does_not_switch_off_the_container_down_check(self):
+        workers = [_docker(1, "watchtower", []), _desktop(2, "MacBook", [])]
+        record = AsyncMock()
+        with (
+            patch.object(main.database, "list_workers", AsyncMock(return_value=workers)),
+            patch.object(
+                main.database, "get_deployments", AsyncMock(return_value=[{"slug": "bitping", "status": "running"}])
+            ),
+            patch.object(main.database, "record_health_events", record),
+            patch.object(main, "_get_all_worker_containers", AsyncMock(return_value=[])),
+            patch.object(main, "_container_down_check", AsyncMock()),
+            patch.object(main, "_missing_deployment_check", AsyncMock()),
+        ):
+            asyncio.run(main._run_health_check())
+        events = record.await_args.args[0]
+        assert ("bitping", "check_down", "missing from heartbeat") in events
+
+
+@pytest.mark.usefixtures("_clean_main")
+class TestASettingsSaveDoesNotBringBackARemovedService:
+    def _save(self, client, before, data):
+        save = AsyncMock()
+        with (
+            _as("owner"),
+            patch.object(
+                main.database,
+                "get_config",
+                AsyncMock(side_effect=[before, {**before, **data, "_removed_deployment:honeygain": "1"}]),
+            ),
+            patch.object(main.database, "set_config_bulk", AsyncMock()),
+            patch.object(main.database, "get_deployment", AsyncMock(return_value=None)),
+            patch.object(main.database, "save_deployment", save),
+        ):
+            resp = client.post("/api/config", json={"data": data})
+        assert resp.status_code == 200, resp.text
+        return [c.kwargs.get("slug") for c in save.await_args_list]
+
+    def test_the_prefilled_unchanged_credentials_of_another_save_do_not(self, client):
+        before = {"honeygain_email": "me@example.com", "honeygain_password": "pw"}
+        saved = self._save(client, before, {"honeygain_email": "me@example.com", "earnapp_oauth_token": "t"})
+        assert "honeygain" not in saved and saved == ["earnapp"], "the service actually added still is"
+
+    def test_a_retyped_secret_does_even_when_it_is_the_same(self, client):
+        """The page never prefills a secret, so one in the request was typed."""
+        before = {"honeygain_email": "me@example.com", "honeygain_password": "pw"}
+        assert self._save(client, before, {"honeygain_email": "me@example.com", "honeygain_password": "pw"}) == [
+            "honeygain"
+        ]
+
+    def test_control_a_changed_credential_does(self, client):
+        before = {"honeygain_email": "me@example.com", "honeygain_password": "pw"}
+        assert self._save(client, before, {"honeygain_password": "new"}) == ["honeygain"]
+
+
+class TestARemovalOnOneBoxStaysOnThatBox:
+    def test_another_box_running_it_without_a_deploy_record_keeps_it_tracked(self, tmp_path):
+        """Deploys from before per-box records: no spec row on the other box."""
+        from app import database
+
+        async def go():
+            await database.init_db()
+            await database.save_deployment("honeygain", "c1", status="running")
+            await database.upsert_worker(
+                "geiserback-id",
+                name="geiserback",
+                url="http://b",
+                containers=json.dumps([{"slug": "honeygain", "status": "running"}]),
+                system_info=json.dumps({"docker_available": True}),
+            )
+            await database.remove_deployment("honeygain", worker_id=999)
+            return await database.get_deployment("honeygain"), await database.removed_slugs()
+
+        with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "t.db"):
+            row, removed = asyncio.run(go())
+        assert row is not None and "honeygain" not in removed
+
+    def test_a_blind_other_box_may_still_run_it(self, tmp_path):
+        """Its heartbeat lists nothing while it cannot read Docker; once it can, it is still tracked."""
+        from app import database
+
+        async def go():
+            await database.init_db()
+            await database.save_deployment("honeygain", "c1", status="running")
+            await database.upsert_worker(
+                "geiserback-id",
+                name="geiserback",
+                url="http://b",
+                containers="[]",
+                system_info=json.dumps({"docker_available": False}),
+            )
+            await database.remove_deployment("honeygain", worker_id=999)
+            return await database.get_deployment("honeygain"), await database.removed_slugs()
+
+        with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "t.db"):
+            row, removed = asyncio.run(go())
+        assert row is not None and "honeygain" not in removed
+
+    def test_control_a_box_that_can_see_docker_and_lacks_it_does_not_hold_it(self, tmp_path):
+        from app import database
+
+        async def go():
+            await database.init_db()
+            await database.save_deployment("honeygain", "c1", status="running")
+            await database.upsert_worker(
+                "geiserback-id",
+                name="geiserback",
+                url="http://b",
+                containers="[]",
+                system_info=json.dumps({"docker_available": True}),
+            )
+            await database.remove_deployment("honeygain", worker_id=999)
+            return await database.get_deployment("honeygain"), await database.removed_slugs()
+
+        with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "t.db"):
+            row, removed = asyncio.run(go())
+        assert row is None and "honeygain" in removed
