@@ -214,10 +214,18 @@ def window_filter(signal: dict[str, Any]) -> str:
 def windowed_hit(lines: str, signal: dict[str, Any]) -> bool:
     """True when the window shows the pattern and never the ``unless`` pattern.
 
-    No line at all is no hit: a node nobody has used yet has nothing to judge.
+    It also needs ``min_matches`` matching lines (default 1). No line at all is
+    no hit: a node nobody has used yet has nothing to judge.
     """
     pattern = _compile(str(signal.get("pattern") or ""))
-    if pattern is None or not lines or not pattern.search(lines):
+    if pattern is None or not lines:
+        return False
+    # ``min_matches``: one failed attempt in an hour-old node is not yet a pattern.
+    try:
+        needed = max(1, int(signal.get("min_matches") or 1))
+    except (TypeError, ValueError):
+        needed = 1
+    if sum(1 for line in lines.splitlines() if pattern.search(line)) < needed:
         return False
     unless = signal.get("unless")
     if unless:

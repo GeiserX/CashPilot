@@ -96,6 +96,7 @@
 #         state:   failing              failing (default) | idle
 #         unless:  ""                   (optional) regex whose presence in the same window
 #                                         cancels the signal: the problem is not there
+#         min_matches:  1                 (optional) with window_hours: lines the pattern must match
 #         window_hours: 0                 (optional) judge the last N hours of logs (up to 24)
 #                                         instead of the log tail; checked every 30 minutes,
 #                                         shown as "Needs fixing" on the dashboard. ${VAR} in

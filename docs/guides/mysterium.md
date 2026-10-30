@@ -98,11 +98,12 @@ Only `Method:manual Success:false` lines, each followed by
 `Method:holepunching`, mean they do not. The node's `/nat/type` keeps
 reporting `prcone` even when forwarding works, so don't go by it.
 
-CashPilot checks this too. When a node's sessions have gone 6 hours without one
-direct connection, the dashboard lists it under **Needs fixing** with the range
-and address to forward. The item clears by itself, at the next check (every 30
-minutes), once a session connects directly. A node with no sessions yet is not
-flagged.
+CashPilot checks this too, every 30 minutes. When a node has had at least five
+failed direct connections and not one successful one in the last 6 hours, the
+dashboard lists it under **Needs fixing** with the range and address to forward.
+The item clears by itself once a session connects directly. A node with no
+sessions yet is not flagged. The dashboard reloads its list every hour, or when
+you open it.
 
 ### WebUI address
 

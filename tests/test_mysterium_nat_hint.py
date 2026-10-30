@@ -29,6 +29,10 @@ FAILED = "2026-10-29T10:00:00Z DBG event={Identity:0xabc Method:manual Success:f
 PUNCHED = "2026-10-29T10:00:01Z DBG event={Identity:0xabc Method:holepunching Success:true}"
 DIRECT = "2026-10-29T12:00:00Z DBG event={Identity:0xabc Method:manual Success:true}"
 
+# Five failed direct attempts, the catalog's min_matches.
+FAILING = "\n".join([FAILED, PUNCHED] * 5)
+RECORDED = {"env": {"UDP_PORTS": "56000:56100"}}
+
 WORKER = {"id": 7, "name": "nas", "status": "online", "url": "http://192.168.10.100:8081"}
 RUNNING = {"slug": "mysterium", "status": "running", "instance": 1, "_worker_id": 7}
 
@@ -38,7 +42,7 @@ def _signal():
     return next(s for s in signals if producer_state.is_windowed(s))
 
 
-def _sweep(logs, *, filtered=True, recorded=None, containers=(RUNNING,), worker=WORKER, error=None):
+def _sweep(logs, *, filtered=True, recorded=RECORDED, containers=(RUNNING,), worker=WORKER, error=None):
     calls = []
 
     async def _proxy(wid, method, path, params=None, **kw):
@@ -68,10 +72,11 @@ def _clean_hints():
 
 
 def test_only_failed_direct_connections_raise_the_hint_with_the_rule_to_create():
-    hints, calls = _sweep("\n".join([FAILED, PUNCHED, FAILED, PUNCHED]))
+    hints, calls = _sweep(FAILING)
     assert len(hints) == 1
     assert "forward the UDP port range 56000:56100" in hints[0]
     assert "to 192.168.10.100" in hints[0]
+    assert "redeploy" not in hints[0].lower()
     _, path, params = calls[0]
     assert path == "/api/containers/mysterium/logs"
     assert params["since_hours"] == 6
@@ -80,19 +85,38 @@ def test_only_failed_direct_connections_raise_the_hint_with_the_rule_to_create()
 
 
 def test_the_hint_names_the_range_this_box_was_deployed_with():
-    hints, _ = _sweep(FAILED, recorded={"env": {"UDP_PORTS": "41000:41050"}})
+    hints, _ = _sweep(FAILING, recorded={"env": {"UDP_PORTS": "41000:41050"}})
     assert "forward the UDP port range 41000:41050" in hints[0]
 
 
-def test_without_a_lan_address_the_hint_says_this_machine():
-    hints, _ = _sweep(FAILED, worker={**WORKER, "url": "http://nas.example.ts.net:8081"})
+@pytest.mark.parametrize(
+    "url",
+    [
+        "http://nas.example.ts.net:8081",  # a name, not an address
+        "http://172.18.0.5:8081",  # the worker's own container address on a Docker bridge
+    ],
+)
+def test_without_a_lan_address_the_hint_says_this_machine(url):
+    hints, _ = _sweep(FAILING, worker={**WORKER, "url": url})
     assert "to this machine's LAN address" in hints[0]
 
 
+def test_a_copy_deployed_before_the_setting_is_told_to_redeploy_first():
+    """It runs without --udp.ports, so forwarding the default alone changes nothing."""
+    hints, _ = _sweep(FAILING, recorded={"env": {"UI_ADDRESS": "127.0.0.1"}})
+    assert hints[0].startswith("This copy was deployed before CashPilot set these values")
+    assert "redeploy it from the dashboard first" in hints[0]
+
+
+def test_a_few_failed_attempts_are_not_yet_a_pattern():
+    hints, _ = _sweep("\n".join([FAILED, PUNCHED] * 4))
+    assert hints == []
+
+
 def test_it_clears_once_a_session_connects_directly():
-    hints, _ = _sweep(FAILED)
+    hints, _ = _sweep(FAILING)
     assert hints
-    hints, _ = _sweep("\n".join([FAILED, DIRECT, FAILED]))
+    hints, _ = _sweep("\n".join([FAILING, DIRECT, FAILED]))
     assert hints == []
 
 
@@ -102,15 +126,15 @@ def test_a_node_with_no_sessions_stays_quiet():
 
 
 def test_an_old_worker_that_returns_the_plain_tail_gives_no_verdict():
-    hints, _ = _sweep(FAILED, filtered=False)
+    hints, _ = _sweep(FAILING, filtered=False)
     assert hints == []
 
 
 def test_a_failed_read_keeps_the_last_verdict_and_a_stopped_node_drops_it():
-    _sweep(FAILED)
+    _sweep(FAILING)
     hints, _ = _sweep("", error=RuntimeError("worker unreachable"))
     assert hints, "a blip must not clear a real problem"
-    hints, calls = _sweep(FAILED, containers=({**RUNNING, "status": "exited"},))
+    hints, calls = _sweep(FAILING, containers=({**RUNNING, "status": "exited"},))
     assert hints == [] and calls == []
 
 
@@ -167,6 +191,8 @@ def test_the_worker_filters_a_streamed_window_across_chunk_boundaries():
         out = orchestrator.grep_service_logs("mysterium", match, since_hours=6)
     assert out.split("\n") == [FAILED, DIRECT]
     assert container.kwargs["stream"] is True and container.kwargs["since"] > 0
+    # docker-py follows a streamed log unless told otherwise; the read would never end.
+    assert container.kwargs["follow"] is False
 
 
 def test_the_worker_endpoint_marks_a_filtered_answer_and_refuses_a_bad_regex():
@@ -196,8 +222,27 @@ def test_the_worker_endpoint_marks_a_filtered_answer_and_refuses_a_bad_regex():
 
 def test_windowed_hit_needs_the_pattern_and_never_the_unless():
     signal = {"pattern": "bad", "unless": "good", "window_hours": 1}
+    assert not producer_state.windowed_hit("bad\nbad", {**signal, "min_matches": 3})
+    assert producer_state.windowed_hit("bad\nbad\nbad", {**signal, "min_matches": 3})
     assert producer_state.windowed_hit("x bad y", signal)
     assert not producer_state.windowed_hit("bad\ngood", signal)
     assert not producer_state.windowed_hit("", signal)
     assert not producer_state.windowed_hit("bad", {**signal, "unless": "("}), "a broken unless never fires"
     assert not producer_state.is_windowed({"window_hours": "x"})
+
+
+def test_overlapping_sweeps_run_one_at_a_time():
+    """The startup sweep and the scheduled one: the older must not finish last."""
+    order = []
+
+    async def _slow():
+        order.append("start")
+        await asyncio.sleep(0.01)
+        order.append("end")
+
+    async def _both():
+        await asyncio.gather(main._check_windowed_signals(), main._check_windowed_signals())
+
+    with patch("app.main._sweep_windowed_signals", side_effect=_slow):
+        asyncio.run(_both())
+    assert order == ["start", "end", "start", "end"]

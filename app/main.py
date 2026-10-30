@@ -1411,16 +1411,29 @@ async def _check_stale_workers() -> None:
 #: every sweep, so a problem that went away clears on the next one. In memory on
 #: purpose: a restart forgets it for at most one sweep.
 _windowed_hints: dict[tuple[str, int, int], list[str]] = {}
+# The startup sweep and the scheduled one must not overlap: the older would
+# finish last and put back stale hints.
+_windowed_lock = asyncio.Lock()
+
+
+_DOCKER_POOLS = ipaddress.ip_network("172.16.0.0/12")
 
 
 def _private_ipv4(url: str) -> str | None:
-    """The host of a worker URL when it is a private IPv4 address, else None."""
+    """The host of a worker URL when it looks like the box's LAN address, else None.
+
+    A worker on Docker's bridge network auto-detects its CONTAINER address
+    (172.17.x and the rest of Docker's 172.16.0.0/12 pools), which no router
+    can forward to, so that range is never named.
+    """
     host = urllib.parse.urlparse(url or "").hostname or ""
     try:
         addr = ipaddress.ip_address(host)
     except ValueError:
         return None
-    return host if addr.version == 4 and addr.is_private and not addr.is_loopback else None
+    if addr.version != 4 or not addr.is_private or addr.is_loopback or addr in _DOCKER_POOLS:
+        return None
+    return host
 
 
 async def _render_signal_means(signal: dict[str, Any], slug: str, worker: dict[str, Any] | None) -> str:
@@ -1433,9 +1446,19 @@ async def _render_signal_means(signal: dict[str, Any], slug: str, worker: dict[s
     env = {var["key"]: str(var.get("default", "")) for var in (service.get("docker") or {}).get("env", [])}
     wid = (worker or {}).get("id")
     recorded = await database.get_deployment_spec(slug, worker_id=wid) if wid is not None else None
-    env.update({k: str(v) for k, v in ((recorded or {}).get("env") or {}).items() if str(v)})
+    recorded_env = {k: str(v) for k, v in ((recorded or {}).get("env") or {}).items() if str(v)}
+    env.update(recorded_env)
     env["HOST_ADDRESS"] = _private_ipv4((worker or {}).get("url", "")) or "this machine's LAN address"
     text = " ".join(str(signal.get("means") or "").split())
+    # A copy deployed before a setting existed does not run with its default yet
+    # (Mysterium without UDP_PORTS picks from 10000:60000), so naming the default
+    # alone would send the operator to forward a range the node does not use.
+    used = set(re.findall(r"\$\{(\w+)\}", text)) - {"HOST_ADDRESS"}
+    if recorded is not None and any(key not in recorded_env for key in used):
+        text = (
+            "This copy was deployed before CashPilot set these values, so it does not use them yet: "
+            "redeploy it from the dashboard first. " + text
+        )
     return re.sub(r"\$\{(\w+)\}", lambda m: env.get(m.group(1), m.group(0)), text)
 
 
@@ -1445,6 +1468,11 @@ async def _check_windowed_signals() -> None:
     A copy whose read fails keeps its last verdict rather than losing it to a
     blip; a copy no longer running, or no longer declaring the signal, drops it.
     """
+    async with _windowed_lock:
+        await _sweep_windowed_signals()
+
+
+async def _sweep_windowed_signals() -> None:
     global _windowed_hints
     try:
         containers = await _get_all_worker_containers()
@@ -4141,14 +4169,20 @@ async def api_producer_state(request: Request, slug: str, worker_id: int | None 
         if signals and running:
             wid = worker_id if worker_id is not None else (matches[0].get("_worker_id") if matches else None)
             if wid is not None:
-                logs = (await _proxy_worker_logs(wid, slug, lines=200)).get("logs", "")
-                log_hits = producer_state.match_log_signals(logs, signals)
-                log_hits += [
+                # The sweep's verdicts first, so a failed tail read below cannot drop them.
+                up = {
+                    int(c.get("instance") or 1)
+                    for c in matches
+                    if c.get("_worker_id") == wid and str(c.get("status", "")).lower() == "running"
+                }
+                log_hits = [
                     {"pattern": "", "means": means, "state": producer_state.FAILING}
-                    for (s_slug, s_wid, _), hints in _windowed_hints.items()
-                    if s_slug == slug and s_wid == wid
+                    for (s_slug, s_wid, s_instance), hints in _windowed_hints.items()
+                    if s_slug == slug and s_wid == wid and s_instance in up
                     for means in hints
                 ]
+                logs = (await _proxy_worker_logs(wid, slug, lines=200)).get("logs", "")
+                log_hits += producer_state.match_log_signals(logs, signals)
     except Exception as exc:
         # Never let a log or worker problem turn "is it earning?" into a 500;
         # the earnings signal alone is still worth reporting.

@@ -115,6 +115,10 @@ docker:
     - pattern: "Method:manual Success:false"
       unless: "Method:manual Success:true"
       window_hours: 6
+      # Five failed direct attempts and not one success: a node an hour old with
+      # one unlucky session is not flagged. The three unreachable nodes logged 28
+      # to 74 in 6 h; reachable ones logged none.
+      min_matches: 5
       means: >-
         No VPN session in the last 6 hours reached this node directly. Every one
         fell back to hole punching, and many buyers fail to connect that way, so

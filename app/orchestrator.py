@@ -1683,6 +1683,9 @@ def get_service_logs(slug: str, lines: int = 50, instance: int = 1) -> str:
     return container.logs(tail=lines, timestamps=True).decode("utf-8", errors="replace")
 
 
+_MAX_PENDING_LOG_BYTES = 1 << 20
+
+
 def grep_service_logs(
     slug: str, match: re.Pattern[str], since_hours: float, lines: int = 1000, instance: int = 1
 ) -> str:
@@ -1697,9 +1700,13 @@ def grep_service_logs(
     since = int(time.time() - since_hours * 3600)
     kept: collections.deque[str] = collections.deque(maxlen=lines)
     pending = b""
-    for chunk in container.logs(stream=True, since=since, timestamps=True):
+    # follow=False: docker-py follows a streamed log unless told not to, and
+    # this read would then never return.
+    for chunk in container.logs(stream=True, follow=False, since=since, timestamps=True):
         pending += chunk
         *complete, pending = pending.split(b"\n")
+        # A record with no newline must not grow without bound; its tail is enough.
+        pending = pending[-_MAX_PENDING_LOG_BYTES:]
         for raw in complete:
             line = raw.decode("utf-8", errors="replace")
             if match.search(line):
