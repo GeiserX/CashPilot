@@ -85,6 +85,7 @@
     <div id="placement-grid"><div class="loading-line"><div class="spinner"></div> Reading the fleet</div></div>
   </section>
 
+  <div class="dash-col">
   <!-- Earnings Chart -->
   <section class="earnings" aria-labelledby="earnings-title">
     <div class="block-head">
@@ -98,6 +99,20 @@
       <canvas id="earnings-chart"></canvas>
     </div>
   </section>
+
+  <!-- What each service costs its server, next to what it earns. GPU is not a
+       column: Docker's stats carry no GPU figure, and no catalogued service
+       that runs as a container on the reference fleet uses one. -->
+  <section class="usage" aria-labelledby="usage-title">
+    <div class="block-head">
+      <h2 class="block-title" id="usage-title">Resource use per server</h2>
+      <span class="block-meta" id="usage-meta"></span>
+    </div>
+    <div id="usage-table-container" class="table-scroll">
+      <div class="loading-line"><div class="spinner"></div> Reading usage</div>
+    </div>
+  </section>
+  </div>
 </div>
 
 <!-- Deployed Services Table -->

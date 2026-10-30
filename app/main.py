@@ -58,6 +58,7 @@ from app import (
     producer_state,
     setup_token,
     update_check,
+    usage,
     version,
 )
 from app.worker_proxy import _pin_url_to_ip, _validate_worker_url
@@ -4372,6 +4373,116 @@ async def api_fleet_economics(request: Request) -> dict[str, Any]:
     return summary
 
 
+@app.get("/api/usage/servers")
+async def api_usage_servers(request: Request) -> dict[str, Any]:
+    """What each earning service uses on each server, next to what it earns.
+
+    CPU and memory are averages of every heartbeat in the window; traffic is
+    the sum of counter deltas (app/usage.py). Earnings are per ACCOUNT, not per
+    server, so "earned" and the per-GB figures are the service's whole-fleet
+    numbers, taken over the same days the usage covers so a week of traffic is
+    never divided into a month of money. None everywhere means "no reading".
+    """
+    _require_auth_api(request)
+    rows = await database.get_usage_daily(days=30)
+    today = datetime.now(UTC).strftime("%Y-%m-%d")
+    if not rows:
+        return {"servers": [], "window_days": 0, "since": None, "currency": "USD"}
+    since = min(r["day"] for r in rows)
+    window_days = (datetime.strptime(today, "%Y-%m-%d") - datetime.strptime(since, "%Y-%m-%d")).days + 1
+    earned = await database.get_earned_by_platform(days=window_days)
+    names = {w["id"]: (w.get("name") or f"worker {w['id']}", w.get("status")) for w in await database.list_workers()}
+
+    def add(a: Any, b: Any) -> Any:
+        if b is None:
+            return a
+        return b if a is None else a + b
+
+    cells: dict[tuple[int, str], dict[str, Any]] = {}
+    for r in rows:
+        if r["worker_id"] not in names:
+            continue  # a deleted worker's leftovers age out with retention
+        cell = cells.setdefault(
+            (r["worker_id"], r["slug"]),
+            {
+                "cpu_sum": 0.0,
+                "cpu_n": 0,
+                "mem_sum": 0.0,
+                "mem_n": 0,
+                "rx": None,
+                "tx": None,
+                "rx_today": None,
+                "tx_today": None,
+            },
+        )
+        cell["cpu_sum"] += r["cpu_sum"]
+        cell["cpu_n"] += r["cpu_n"]
+        cell["mem_sum"] += r["mem_sum"]
+        cell["mem_n"] += r["mem_n"]
+        cell["rx"] = add(cell["rx"], r["rx_bytes"])
+        cell["tx"] = add(cell["tx"], r["tx_bytes"])
+        if r["day"] == today:
+            cell["rx_today"] = add(cell["rx_today"], r["rx_bytes"])
+            cell["tx_today"] = add(cell["tx_today"], r["tx_bytes"])
+
+    # Fleet-wide totals per service, for the per-GB ratios.
+    fleet_bytes: dict[str, int | None] = {}
+    fleet_mem: dict[str, float | None] = {}
+    for (_, slug), cell in cells.items():
+        moved = add(cell["rx"], cell["tx"])
+        fleet_bytes[slug] = add(fleet_bytes.get(slug), moved)
+        mem = cell["mem_sum"] / cell["mem_n"] if cell["mem_n"] else None
+        fleet_mem[slug] = add(fleet_mem.get(slug), mem)
+
+    servers: dict[int, dict[str, Any]] = {}
+    for (worker_id, slug), cell in sorted(cells.items(), key=lambda kv: (names[kv[0][0]][0], kv[0][1])):
+        name, status = names[worker_id]
+        server = servers.setdefault(
+            worker_id,
+            {
+                "worker_id": worker_id,
+                "name": name,
+                "status": status,
+                "services": [],
+                "total": {
+                    "cpu_percent": None,
+                    "memory_mb": None,
+                    "rx_today": None,
+                    "tx_today": None,
+                    "rx": None,
+                    "tx": None,
+                },
+            },
+        )
+        svc = catalog.get_service(slug) or {}
+        service_earned = earned.get(slug)
+        mem_gb = (fleet_mem.get(slug) or 0) / 1024
+        entry = {
+            "slug": slug,
+            "name": svc.get("name") or slug,
+            "cpu_percent": round(cell["cpu_sum"] / cell["cpu_n"], 2) if cell["cpu_n"] else None,
+            "memory_mb": round(cell["mem_sum"] / cell["mem_n"], 1) if cell["mem_n"] else None,
+            "rx_today": cell["rx_today"],
+            "tx_today": cell["tx_today"],
+            "rx": cell["rx"],
+            "tx": cell["tx"],
+            "earned_usd": None if service_earned is None else round(service_earned, 4),
+            "usd_per_gb": usage.per_gb(service_earned, fleet_bytes.get(slug)),
+            "usd_per_gb_ram": (service_earned / mem_gb) if service_earned is not None and mem_gb >= 0.01 else None,
+        }
+        server["services"].append(entry)
+        total = server["total"]
+        for key in ("cpu_percent", "memory_mb", "rx_today", "tx_today", "rx", "tx"):
+            total[key] = add(total[key], entry[key])
+
+    return {
+        "servers": list(servers.values()),
+        "window_days": window_days,
+        "since": since,
+        "currency": "USD",
+    }
+
+
 @app.get("/api/services/{slug}/deploy-risk")
 async def api_deploy_risk(request: Request, slug: str) -> dict[str, Any]:
     """What the user should know BEFORE deploying this, in plain words.
@@ -5485,6 +5596,13 @@ async def api_worker_heartbeat(request: Request, body: WorkerHeartbeat) -> dict[
         system_info=json.dumps(body.system_info),
     )
     metrics.record_heartbeat(body.name)
+    # Per-day CPU, memory and traffic for the dashboard's usage panel. Never
+    # allowed to reject a heartbeat: losing one sample costs a minute of data.
+    if body.system_info.get("device_type") != "android" and body.containers:
+        try:
+            await database.record_usage(worker_id, body.containers)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Could not record resource usage for worker %s: %s", worker_id, exc)
     if previous is not None and previous[0] == "offline":
         # Deliberately NO alert clearing here. This used to drop the stored
         # alert on the first heartbeat after offline — which re-armed the push

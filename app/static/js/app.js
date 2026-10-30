@@ -269,6 +269,7 @@ const CP = (() => {
       loadServicesTable(),
       loadEarningsChart('7'),
       loadPayoutQueue(),
+      loadUsagePanel(),
     ]);
 
     // Auto-refresh every hour
@@ -277,7 +278,103 @@ const CP = (() => {
       loadDashboardStats();
       loadServicesTable();
       loadPayoutQueue();
+      loadUsagePanel();
     }, 3600000);
+  }
+
+  // Resource use per server (/api/usage/servers): what each service costs its
+  // box next to what it earns. Every missing figure is a dash, never 0: a
+  // host-network container has no traffic counters, and "0 B" would call the
+  // busiest earner idle.
+  const USAGE_DASH = '\u2014';
+
+  function usageBytes(n) {
+    return n === null || n === undefined ? USAGE_DASH : (fmtBytes(n) || USAGE_DASH);
+  }
+
+  function usagePair(rx, tx) {
+    if ((rx === null || rx === undefined) && (tx === null || tx === undefined)) return USAGE_DASH;
+    return `<span class="usage-dir">\u2193</span>${usageBytes(rx)} <span class="usage-dir">\u2191</span>${usageBytes(tx)}`;
+  }
+
+  function usageCpu(v) {
+    return v === null || v === undefined ? USAGE_DASH : `${Number(v).toFixed(1)}%`;
+  }
+
+  function usageMem(mb) {
+    if (mb === null || mb === undefined) return USAGE_DASH;
+    return mb >= 1024 ? `${(mb / 1024).toFixed(2)} GB` : `${Math.round(mb)} MB`;
+  }
+
+  // Per-GB figures are often cents or less, so they can ask for a third decimal.
+  function usageMoney(v, precise) {
+    if (v === null || v === undefined) return USAGE_DASH;
+    return formatCurrency(v, 'USD', precise && Math.abs(v) < 1 ? 3 : 2);
+  }
+
+  function renderUsagePanel(data) {
+    const servers = (data && data.servers) || [];
+    if (!servers.length) {
+      return '<div class="block-empty">No readings yet. Usage builds up from each worker heartbeat.</div>';
+    }
+    const days = data.window_days || 0;
+    const windowLabel = days >= 30 ? '30 days' : `${days} day${days === 1 ? '' : 's'}`;
+    const head = `
+      <thead><tr>
+        <th>Service</th>
+        <th class="c-num" title="Average CPU, 100% is one core">CPU</th>
+        <th class="c-num" title="Average memory">Memory</th>
+        <th class="c-num" title="Down and up since midnight UTC">Today</th>
+        <th class="c-num">${windowLabel}</th>
+        <th class="c-num" title="What the service earned on all servers in the same days">Earned</th>
+        <th class="c-num" title="Earned per GB moved, all servers">Per GB</th>
+        <th class="c-num" title="Earned per GB of average memory, all servers">Per GB RAM</th>
+      </tr></thead>`;
+    const bodies = servers.map(server => {
+      const rows = server.services.map(svc => `
+        <tr>
+          <td>${escapeHtml(svc.name)}</td>
+          <td class="c-num">${usageCpu(svc.cpu_percent)}</td>
+          <td class="c-num">${usageMem(svc.memory_mb)}</td>
+          <td class="c-num"${svc.rx === null && svc.tx === null ? ' title="Host network: Docker reports no traffic for this container"' : ''}>${usagePair(svc.rx_today, svc.tx_today)}</td>
+          <td class="c-num">${usagePair(svc.rx, svc.tx)}</td>
+          <td class="c-num">${usageMoney(svc.earned_usd)}</td>
+          <td class="c-num">${usageMoney(svc.usd_per_gb, true)}</td>
+          <td class="c-num">${usageMoney(svc.usd_per_gb_ram, true)}</td>
+        </tr>`).join('');
+      const t = server.total || {};
+      return `
+        <tbody>
+          <tr class="usage-server"><th colspan="8">${escapeHtml(server.name)}${server.status === 'online' ? '' : ' <span class="muted">offline</span>'}</th></tr>
+          ${rows}
+          <tr class="usage-total">
+            <td>Total</td>
+            <td class="c-num">${usageCpu(t.cpu_percent)}</td>
+            <td class="c-num">${usageMem(t.memory_mb)}</td>
+            <td class="c-num">${usagePair(t.rx_today, t.tx_today)}</td>
+            <td class="c-num">${usagePair(t.rx, t.tx)}</td>
+            <td class="c-num" colspan="3"></td>
+          </tr>
+        </tbody>`;
+    }).join('');
+    return `<table class="breakdown-table usage-table">${head}${bodies}</table>
+      <p class="usage-foot">Providers pay per account, not per server, so Earned and the per-GB figures cover each service on all servers. A dash means no reading: a container on the host network has no traffic counters.</p>`;
+  }
+
+  async function loadUsagePanel() {
+    const container = document.getElementById('usage-table-container');
+    if (!container) return;
+    try {
+      const data = await api('/api/usage/servers');
+      container.innerHTML = renderUsagePanel(data);
+      const meta = document.getElementById('usage-meta');
+      if (meta) meta.textContent = data.since && data.window_days < 30 ? `Measured since ${data.since}` : '';
+    } catch (err) {
+      // Keep a table already on screen; replace only the spinner.
+      if (!container.querySelector('.usage-table')) {
+        container.innerHTML = `<div class="block-empty block-error"><span>Couldn't load resource use${err && err.message ? `: ${escapeHtml(err.message)}` : ''}.</span></div>`;
+      }
+    }
   }
 
   // Payouts awaiting an answer.
@@ -3762,8 +3859,9 @@ const CP = (() => {
     return 'USD';
   }
 
-  function formatCurrency(val, nativeCurrency) {
+  function formatCurrency(val, nativeCurrency, digits) {
     nativeCurrency = nativeCurrency || 'USD';
+    const fractionDigits = digits ?? 2;
     const amount = parseFloat(val || 0);
 
     // Convert to USD first
@@ -3801,11 +3899,11 @@ const CP = (() => {
       return new Intl.NumberFormat(undefined, {
         style: 'currency',
         currency,
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2,
+        minimumFractionDigits: fractionDigits,
+        maximumFractionDigits: fractionDigits,
       }).format(displayAmount);
     } catch {
-      return displayAmount.toFixed(2) + ' ' + currency;
+      return displayAmount.toFixed(fractionDigits) + ' ' + currency;
     }
   }
 
@@ -4271,6 +4369,8 @@ const CP = (() => {
     closeModal,
     closeAllModals,
     loadEarningsChart,
+    loadUsagePanel,
+    renderUsagePanel,
     restartService,
     stopService,
     startService,
