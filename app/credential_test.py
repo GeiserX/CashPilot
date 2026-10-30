@@ -107,6 +107,7 @@ _NOT_CONFIGURED = re.compile(r"not configured|\bno\b.*\bconfigured\b|missing")
 _KIND_AUTH = "auth"
 _KIND_TRANSIENT = "transient"
 _KIND_SHAPE = "shape"
+_KIND_UNREAD = "unread"
 
 
 def classify(error: str | None, kind: str | None = None) -> str:
@@ -130,6 +131,9 @@ def classify(error: str | None, kind: str | None = None) -> str:
         return PROVIDER_RATE_LIMITED
     if kind == _KIND_AUTH:
         return BAD_CREDENTIALS
+    # The provider accepted the login; only the figure could not be read.
+    if kind == _KIND_UNREAD:
+        return OK
     if kind == _KIND_SHAPE:
         return UNEXPECTED_SHAPE
     if any(m in text for m in _SERVER_ERROR_MARKERS):

@@ -356,6 +356,12 @@ CREATE TABLE IF NOT EXISTS node_earnings (
     lifetime   REAL NOT NULL,
     baseline   REAL NOT NULL,
     currency   TEXT NOT NULL,
+    -- The node's own settlement history, summed in any one unit: what reached
+    -- the wallet and what the provider kept as fees. Only their ratio is used,
+    -- to net the settled amount (lifetime and balance are gross). NULL until a
+    -- history has been read.
+    settled_net  REAL,
+    settled_fees REAL,
     first_seen TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now')),
     PRIMARY KEY (platform, node)
@@ -3269,12 +3275,18 @@ async def get_confirmed_payout_totals() -> dict[str, float]:
         await db.close()
 
 
-async def count_unpriced_confirmed_payouts() -> int:
-    """Confirmed non-USD payouts with no recorded rate, which the USD totals leave out."""
+async def count_unpriced_confirmed_payouts(exclude: set[str] | None = None) -> int:
+    """Confirmed non-USD payouts with no recorded rate, which the USD totals leave out.
+
+    ``exclude`` names platforms whose confirmed payouts the caller does not count.
+    """
     db = await _get_db()
     try:
+        skip = sorted(exclude or ())
         cursor = await db.execute(
             "SELECT COUNT(*) FROM payouts WHERE confirmed = 1 AND currency != 'USD' AND fx_rate_usd IS NULL"
+            + (f" AND platform NOT IN ({', '.join('?' for _ in skip)})" if skip else ""),
+            skip,
         )
         row = await cursor.fetchone()
         return int(row[0] or 0)
@@ -3299,12 +3311,16 @@ async def record_node_figures(platform: str, nodes: Sequence[Mapping[str, Any]],
         for node in nodes:
             await db.execute(
                 """
-                INSERT INTO node_earnings (platform, node, balance, lifetime, baseline, currency)
-                VALUES (?, ?, ?, ?, ?, ?)
+                INSERT INTO node_earnings
+                    (platform, node, balance, lifetime, baseline, currency, settled_net, settled_fees)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(platform, node) DO UPDATE SET
                     balance = excluded.balance,
                     lifetime = MAX(node_earnings.lifetime, excluded.lifetime),
                     currency = excluded.currency,
+                    -- A history this read could not get keeps the last one.
+                    settled_net = COALESCE(excluded.settled_net, node_earnings.settled_net),
+                    settled_fees = COALESCE(excluded.settled_fees, node_earnings.settled_fees),
                     updated_at = datetime('now')
                 """,
                 (
@@ -3314,6 +3330,8 @@ async def record_node_figures(platform: str, nodes: Sequence[Mapping[str, Any]],
                     float(node["lifetime"]),
                     float(node["lifetime"]),
                     currency,
+                    _optional_float(node.get("settled_net")),
+                    _optional_float(node.get("settled_fees")),
                 ),
             )
         await db.commit()
@@ -3328,26 +3346,41 @@ async def record_node_figures(platform: str, nodes: Sequence[Mapping[str, Any]],
         await db.close()
 
 
-async def get_node_totals() -> dict[str, dict[str, Any]]:
-    """platform -> lifetime, settled amount and currency, for providers read node by node.
+def _optional_float(value: Any) -> float | None:
+    return None if value is None else float(value)
 
-    ``settled`` is what the nodes have already paid out on their own: lifetime
-    minus what is still waiting. It is a payout, not a drop in earnings.
+
+async def get_node_totals() -> dict[str, dict[str, Any]]:
+    """platform -> lifetime, settled amounts and currency, for providers read node by node.
+
+    ``settled_gross`` is what the nodes have already settled on their own:
+    lifetime minus what is still waiting. It is a payout, not a drop in
+    earnings, but it is gross: the provider keeps a fee on every settlement
+    (Mysterium's Hermes fee, about a fifth). ``settled`` is the part that
+    reached the wallet, netted with the fee share of the nodes' settlement
+    histories, weighted by how much each settled. None when no history was
+    ever read: the fee is then unknown, and the gross figure is not wallet money.
     """
     db = await _get_db()
     try:
         cursor = await db.execute(
-            "SELECT platform, currency, SUM(lifetime) AS lifetime, SUM(lifetime - balance) AS settled "
+            "SELECT platform, currency, SUM(lifetime) AS lifetime, SUM(lifetime - balance) AS settled, "
+            "  SUM(CASE WHEN settled_net IS NOT NULL AND settled_fees IS NOT NULL THEN settled_net END) AS net, "
+            "  SUM(CASE WHEN settled_net IS NOT NULL AND settled_fees IS NOT NULL THEN settled_fees END) AS fees "
             "FROM node_earnings GROUP BY platform, currency"
         )
-        return {
-            row["platform"]: {
+        totals: dict[str, dict[str, Any]] = {}
+        for row in await cursor.fetchall():
+            gross = max(0.0, float(row["settled"] or 0.0))
+            history = float(row["net"] or 0.0) + float(row["fees"] or 0.0)
+            fee_share = float(row["fees"] or 0.0) / history if history > 0 else None
+            totals[row["platform"]] = {
                 "currency": row["currency"],
                 "lifetime": round(float(row["lifetime"] or 0.0), 6),
-                "settled": round(max(0.0, float(row["settled"] or 0.0)), 6),
+                "settled_gross": round(gross, 6),
+                "settled": None if fee_share is None else round(gross * (1.0 - fee_share), 6),
             }
-            for row in await cursor.fetchall()
-        }
+        return totals
     finally:
         await db.close()
 

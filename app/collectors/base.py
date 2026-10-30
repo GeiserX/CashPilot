@@ -77,6 +77,10 @@ KIND_TRANSIENT = "transient"
 #: The provider changed its page/API shape. A code problem — the user can do
 #: nothing except report it; their credential is (probably) fine.
 KIND_SHAPE = "shape"
+#: The login worked, but nothing could read the figure (a Mysterium node that
+#: no CashPilot worker runs, issue #488). Not a credential problem, and not
+#: an API change either.
+KIND_UNREAD = "unread"
 
 
 def classify_exception(exc: BaseException) -> str | None:

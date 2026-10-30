@@ -3687,15 +3687,26 @@ async def api_earnings_summary(request: Request) -> dict[str, Any]:
     paid_out: float | None = None
     unpriced_payouts = 0
     try:
-        paid_out = sum((await database.get_confirmed_payout_totals()).values())
-        unpriced_payouts = await database.count_unpriced_confirmed_payouts()
+        node_totals = await _node_totals()
+        # A provider read node by node has its settlements in the node totals
+        # below, which include any payout confirmed before (from the old
+        # balance-drop question), so those are left out rather than counted twice.
+        paid_out = sum(
+            total
+            for platform, total in (await database.get_confirmed_payout_totals()).items()
+            if platform not in node_totals
+        )
+        unpriced_payouts = await database.count_unpriced_confirmed_payouts(exclude=set(node_totals))
         # What nodes settled on their own (Mysterium, issue #488) is a payout
-        # too: it left the balance and reached the wallet. Priced at today's
-        # rate, the only one there is for a total that no single day owns.
-        for node_total in (await _node_totals()).values():
-            if node_total["settled"] <= 0:
+        # too: it left the balance and reached the wallet, less the provider's
+        # fee. Priced at today's rate, the only one there is for a total that
+        # no single day owns. With the fee unknown it is left out and counted
+        # like an unpriced payout, so the card says the total is low.
+        for node_total in node_totals.values():
+            if node_total["settled_gross"] <= 0:
                 continue
-            settled_usd = exchange_rates.to_usd(node_total["settled"], node_total["currency"])
+            settled = node_total["settled"]
+            settled_usd = None if settled is None else exchange_rates.to_usd(settled, node_total["currency"])
             if settled_usd is None:
                 unpriced_payouts += 1
             else:
@@ -4522,7 +4533,10 @@ async def api_test_credentials(request: Request, slug: str) -> dict[str, Any]:
     # where their text matches nothing the classifier knows.
     outcome = credential_test.classify(result.error, result.error_kind)
     if outcome == credential_test.OK:
-        return credential_test.result(outcome, name, balance=result.balance, currency=result.currency)
+        # An OK with an error (the login worked, no figure could be read) has
+        # no balance to report: its 0.0 is a placeholder, not a reading.
+        balance = None if result.error else result.balance
+        return credential_test.result(outcome, name, balance=balance, currency=result.currency)
     logger.debug("Credential test for %s failed: %s", slug, result.error)
     return credential_test.result(outcome, name)
 
@@ -5146,7 +5160,16 @@ async def _read_node_figures(slug: str) -> list[dict[str, Any]]:
                 continue
             if not (math.isfinite(balance) and math.isfinite(lifetime) and 0 <= balance <= lifetime):
                 continue
-            readings.append({"node": str(row.get("node") or ""), "balance": balance, "lifetime": lifetime})
+            reading: dict[str, Any] = {"node": str(row.get("node") or ""), "balance": balance, "lifetime": lifetime}
+            # The settlement sums are optional: a node whose history could not
+            # be read still counts, it only adds nothing to the fee share.
+            try:
+                net, fees = float(row["settled_net"]), float(row["settled_fees"])
+            except (KeyError, TypeError, ValueError):
+                net = fees = -1.0
+            if math.isfinite(net) and math.isfinite(fees) and net >= 0 and fees >= 0:
+                reading.update(settled_net=net, settled_fees=fees)
+            readings.append(reading)
     return [r for r in readings if r["node"]]
 
 

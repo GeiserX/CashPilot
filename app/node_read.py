@@ -14,6 +14,12 @@ The catalog declares how, in ``collector.node_read``:
       node: '"id":"(0x[0-9a-fA-F]{40})"'    # group 1 names the node
       balance: '...'                        # group 1 is the unsettled amount
       lifetime: '...'                       # group 1 is everything it ever earned
+      settled_net: '...'                    # optional, every match summed: paid to the wallet
+      settled_fees: '...'                   # optional, every match summed: fees kept back
+
+The two optional sums, in any one unit, give the share of each settlement the
+provider keeps as a fee (Mysterium's Hermes fee, about a fifth): lifetime and
+balance are gross, and only the rest reaches the wallet.
 
 Read-only by construction, like ``app/payout_read.py``: the command comes from
 the catalog in this image, never from a request, and only the three groups
@@ -36,6 +42,8 @@ logger = logging.getLogger(__name__)
 READ_TIMEOUT = 10
 
 _FIELDS = ("node", "balance", "lifetime")
+#: Optional; every match is summed, and both must be declared to be used.
+_SUMS = ("settled_net", "settled_fees")
 
 _pool = concurrent.futures.ThreadPoolExecutor(max_workers=4, thread_name_prefix="node-read")
 
@@ -66,6 +74,17 @@ def readers(services: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
                 break
         if len(compiled) != len(_FIELDS):
             continue
+        sums: dict[str, re.Pattern[str]] = {}
+        for field in _SUMS:
+            pattern = spec.get(field)
+            try:
+                compiled_sum = re.compile(pattern) if isinstance(pattern, str) else None
+            except re.error:
+                compiled_sum = None
+            if compiled_sum is not None and compiled_sum.groups == 1:
+                sums[field] = compiled_sum
+        if len(sums) == len(_SUMS):
+            compiled.update(sums)
         out[svc["slug"]] = {"command": command, **compiled}
     return out
 
@@ -94,7 +113,15 @@ def extract(output: bytes | str | None, reader: dict[str, Any]) -> dict[str, Any
     balance, lifetime = _amount(found["balance"]), _amount(found["lifetime"])
     if balance is None or lifetime is None or lifetime < balance:
         return None
-    return {"node": found["node"], "balance": balance, "lifetime": lifetime}
+    figures: dict[str, Any] = {"node": found["node"], "balance": balance, "lifetime": lifetime}
+    if all(field in reader for field in _SUMS):
+        totals = {field: [_amount(m) for m in reader[field].findall(text)] for field in _SUMS}
+        # No match at all is "not known" (the history could not be read), not
+        # "no fee": a node that never settled has nothing to net anyway.
+        if all(totals[field] and None not in totals[field] for field in _SUMS):
+            for field in _SUMS:
+                figures[field] = sum(totals[field])
+    return figures
 
 
 def _read_one(container: Any, reader: dict[str, Any]) -> dict[str, Any] | None:

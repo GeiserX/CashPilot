@@ -294,6 +294,10 @@
 #       node:     regex, group 1 names the node
 #       balance:  regex, group 1 is the amount waiting to settle
 #       lifetime: regex, group 1 is everything the node ever earned
+#       settled_net, settled_fees: (optional, both or neither) regexes with one
+#                 group, every match summed: what the node's settlements paid
+#                 to the wallet and what the provider kept as fees, in any one
+#                 unit. Their ratio nets the settled amount counted as cashed out.
 #     The collector gets one reading per node; the balance is their unsettled
 #     total and earned figures follow the lifetime, so a settlement is never
 #     asked about as a payout.

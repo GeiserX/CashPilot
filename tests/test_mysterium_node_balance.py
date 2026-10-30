@@ -218,7 +218,11 @@ def test_the_first_node_reading_after_the_cloud_sum_is_no_payout_and_no_earnings
 
 
 def test_settlements_count_as_cashed_out_and_lifetime_is_the_nodes(db):
-    nodes = [{"node": "a", "balance": 1.32, "lifetime": 166.7}, {"node": "b", "balance": 2.54, "lifetime": 245.8}]
+    # Their settlement histories keep a fifth back as fees.
+    nodes = [
+        {"node": "a", "balance": 1.32, "lifetime": 166.7, "settled_net": 8.0, "settled_fees": 2.0},
+        {"node": "b", "balance": 2.54, "lifetime": 245.8, "settled_net": 4.0, "settled_fees": 1.0},
+    ]
     _collect_once(EarningsResult(platform="mysterium", balance=3.86, currency="MYST", nodes=nodes))
 
     with (
@@ -227,9 +231,177 @@ def test_settlements_count_as_cashed_out_and_lifetime_is_the_nodes(db):
         patch.object(main.exchange_rates, "to_usd", lambda amount, currency: amount * 0.1),
     ):
         summary = asyncio.run(main.api_earnings_summary(MagicMock()))
-    assert summary["paid_out"] == pytest.approx(round((412.5 - 3.86) * 0.1, 2))
+    assert summary["paid_out"] == pytest.approx(round((412.5 - 3.86) * 0.8 * 0.1, 2))
 
     with patch("app.main._require_auth_api", lambda request: None):
         progress = asyncio.run(main.api_payout_progress(MagicMock(), "mysterium"))
     assert progress["current_balance"] == pytest.approx(3.86)
     assert progress["lifetime_earned"] == pytest.approx(412.5)
+
+
+# --- Review of #526: fees, unread nodes, guards -------------------------------
+
+# Two items of a real GET /transactor/settle/history answer (watchtower, 2026-10-27).
+HISTORY = (
+    '{"items":[{"tx_hash":"0xd8de","provider_id":"0x55fd4a497237be0591b6c2423cde0e325398b6a8",'
+    '"beneficiary":"0x9b3fEa36391651C2621283F6c0269790e15562C4","amount":3943301172065558488,'
+    '"settled_at":"2026-10-27T19:55:55Z","fees":1060451925050989623,"is_withdrawal":false,"error":""},'
+    '{"tx_hash":"0x1df8","amount":3941398055988733688,"settled_at":"2026-10-22T01:50:02Z",'
+    '"fees":1060134234074383422,"is_withdrawal":false,"error":""}],"withdrawal_total":"0","page":1}'
+)
+
+
+def test_the_reader_sums_the_settlement_history_after_the_identity():
+    figures = node_read.extract(IDENTITY + "\n" + HISTORY, _reader())
+    assert figures["settled_net"] == pytest.approx(3943301172065558488 + 3941398055988733688)
+    assert figures["settled_fees"] == pytest.approx(1060451925050989623 + 1060134234074383422)
+    # No history (the read failed) is "fee unknown", not "no fee".
+    assert "settled_net" not in node_read.extract(IDENTITY, _reader())
+
+
+def _node(node, balance, lifetime, net=None, fees=None):
+    row = {"node": node, "balance": balance, "lifetime": lifetime}
+    if net is not None:
+        row.update(settled_net=net, settled_fees=fees)
+    return row
+
+
+def test_cashed_out_is_net_of_the_settlement_fee(db):
+    # 100 settled gross on each node; their histories keep 20% and 25% back,
+    # weighted by how much each settled (300 and 100 in their history).
+    nodes = [_node("a", 1.0, 101.0, net=240.0, fees=60.0), _node("b", 2.0, 102.0, net=75.0, fees=25.0)]
+    asyncio.run(database.record_node_figures("mysterium", nodes, "MYST"))
+    totals = asyncio.run(database.get_node_totals())["mysterium"]
+    assert totals["settled_gross"] == pytest.approx(200.0)
+    assert totals["settled"] == pytest.approx(200.0 * (1 - 85.0 / 400.0))
+    # A later read whose history failed keeps the last one.
+    asyncio.run(database.record_node_figures("mysterium", [_node("a", 1.0, 101.0)], "MYST"))
+    assert asyncio.run(database.get_node_totals())["mysterium"]["settled"] == pytest.approx(157.5)
+
+
+def _summary():
+    with (
+        patch("app.main._require_reader", lambda request: None),
+        patch.object(main, "_get_all_worker_containers", AsyncMock(return_value=[])),
+        patch.object(main.exchange_rates, "to_usd", lambda amount, currency: amount * 0.1),
+    ):
+        return asyncio.run(main.api_earnings_summary(MagicMock()))
+
+
+def test_the_summary_counts_only_what_reached_the_wallet(db):
+    nodes = [_node("a", 1.0, 101.0, net=80.0, fees=20.0)]
+    _collect_once(EarningsResult(platform="mysterium", balance=1.0, currency="MYST", nodes=nodes))
+    summary = _summary()
+    assert summary["paid_out"] == pytest.approx(round(100.0 * 0.8 * 0.1, 2))
+    assert summary["unpriced_payouts"] == 0
+
+
+def test_with_no_fee_known_the_gross_settled_is_left_out_and_flagged(db):
+    _collect_once(EarningsResult(platform="mysterium", balance=1.0, currency="MYST", nodes=[_node("a", 1.0, 101.0)]))
+    summary = _summary()
+    assert summary["paid_out"] == 0.0
+    assert summary["unpriced_payouts"] == 1
+
+
+def test_a_payout_confirmed_before_the_node_read_is_not_counted_twice(db):
+    asyncio.run(database.record_probable_payout("mysterium", 50.0, "MYST", 0.1))
+    pending = asyncio.run(database.get_payouts("mysterium"))
+    asyncio.run(database.confirm_payout(pending[0]["id"]))
+    nodes = [_node("a", 1.0, 101.0, net=80.0, fees=20.0)]
+    _collect_once(EarningsResult(platform="mysterium", balance=1.0, currency="MYST", nodes=nodes))
+    # The node's settled total already includes that payout.
+    assert _summary()["paid_out"] == pytest.approx(8.0)
+
+
+def test_a_same_balance_reading_still_moves_the_running_total(db):
+    # A settlement that lands exactly on what was earned since the last read.
+    asyncio.run(database.upsert_earnings("mysterium", 2.0, "MYST", _day(0), 0.1, earned=1.0))
+    asyncio.run(database.upsert_earnings("mysterium", 2.0, "MYST", _day(0), 0.1, earned=3.0))
+    assert asyncio.run(database.get_balance_history("mysterium", days=1))[-1]["earned"] == pytest.approx(3.0)
+
+
+def test_a_node_last_read_long_ago_still_counts(db):
+    two = [_node("a", 1.0, 100.0), _node("b", 2.0, 200.0)]
+    asyncio.run(database.record_node_figures("mysterium", two, "MYST"))
+
+    async def age_b():
+        conn = await database._get_db()
+        try:
+            await conn.execute("UPDATE node_earnings SET updated_at = datetime('now', '-90 days') WHERE node = 'b'")
+            await conn.commit()
+        finally:
+            await conn.close()
+
+    asyncio.run(age_b())
+    totals = asyncio.run(database.record_node_figures("mysterium", [_node("a", 1.0, 100.0)], "MYST"))
+    assert totals["balance"] == 3.0 and totals["lifetime"] == 300.0
+
+
+def _collector(cloud_nodes):
+    from app.collectors.mystnodes import MystNodesCollector
+
+    login = MagicMock(status_code=200)
+    login.json.return_value = {"accessToken": "at", "refreshToken": "rt"}
+    listing = MagicMock(status_code=200)
+    listing.json.return_value = {"nodes": cloud_nodes}
+    client = MagicMock()
+    client.post = AsyncMock(return_value=login)
+    client.get = AsyncMock(return_value=listing)
+    client.is_closed = False
+    client.aclose = AsyncMock()
+    return client, MystNodesCollector(email="a@b.c", password="p")
+
+
+CLOUD = [
+    {"identity": "0xAA", "nodeStatus": {"online": True}},
+    {"identity": "0xbb", "nodeStatus": {"online": True}},
+    {"identity": "0xcc", "nodeStatus": {"online": False}},
+]
+
+
+def test_an_online_node_no_worker_read_is_named_in_a_warning():
+    client, c = _collector(CLOUD)
+    with patch("app.collectors.mystnodes.httpx.AsyncClient", return_value=client):
+        c.node_readings = [_node("0xaa", 1.0, 10.0)]
+        result = asyncio.run(c.collect())
+    assert result.error is None and result.balance == 1.0
+    # 0xbb is online and unread; 0xcc is offline, so it earns nothing to miss.
+    assert "0xbb" in result.warning and "0xcc" not in result.warning and "0xaa" not in result.warning
+
+
+def test_every_node_unread_names_them_and_is_not_a_credential_or_api_problem():
+    from app import credential_test
+
+    client, c = _collector(CLOUD)
+    with patch("app.collectors.mystnodes.httpx.AsyncClient", return_value=client):
+        c.node_readings = []
+        result = asyncio.run(c.collect())
+    assert result.error and "0xaa" in result.error and "0xbb" in result.error
+    assert credential_test.classify(result.error, result.error_kind) == credential_test.OK
+
+
+def test_the_ui_keeps_the_settlement_sums_and_drops_bad_ones():
+    where = {"mysterium": [{"worker_id": 1, "online": True, "android": False, "status": "running"}]}
+    answer = {
+        "nodes": [
+            {"slug": "mysterium", "node": "0xa", "balance": 1.0, "lifetime": 10.0, "settled_net": 8, "settled_fees": 2},
+            {
+                "slug": "mysterium",
+                "node": "0xb",
+                "balance": 1.0,
+                "lifetime": 10.0,
+                "settled_net": -1,
+                "settled_fees": 2,
+            },
+        ]
+    }
+    with (
+        patch.object(main.database, "list_workers", AsyncMock(return_value=[])),
+        patch.object(main.placement, "runs_on", return_value=where),
+        patch.object(main, "_proxy_to_worker", AsyncMock(return_value=answer)),
+    ):
+        rows = asyncio.run(main._read_node_figures("mysterium"))
+    assert rows == [
+        {"node": "0xa", "balance": 1.0, "lifetime": 10.0, "settled_net": 8.0, "settled_fees": 2.0},
+        {"node": "0xb", "balance": 1.0, "lifetime": 10.0},
+    ]
