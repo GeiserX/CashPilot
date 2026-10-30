@@ -187,7 +187,13 @@ class TestCredentialHealthEndpoint:
                 "bytelixir_xsrf_token": old,
             },
         )
-        assert next(e for e in report if e["field"] == "session_cookie")["status"] == "no_known_expiry"
+        session = next(e for e in report if e["field"] == "session_cookie")
+        assert session["status"] == "no_known_expiry"
+        # No "expected about 2 hours" or "stops working the same afternoon"
+        # under a calm status.
+        assert session["expected_lifetime_hours"] is None
+        assert "afternoon" not in session["why"]
+        assert "remember_web" in session["why"]
         assert next(e for e in report if e["field"] == "remember_web")["status"] == "fresh"
 
     def test_unconfigured_credentials_are_not_reported(self, tmp_path):

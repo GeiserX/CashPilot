@@ -323,6 +323,7 @@ class TestOutcomeClassification:
             ("Honeygain not configured", "not_configured"),
             ("KeyError: 'usd_cents'", "unexpected_shape"),
             ("something nobody anticipated", "unexpected_shape"),
+            ("Account disabled by Pawns — contact Pawns support (the password is fine)", "account_disabled"),
         ],
     )
     def test_errors_map_to_stable_outcomes(self, error, expected):
@@ -341,6 +342,7 @@ class TestOutcomeClassification:
             "unexpected_shape",
             "rate_limited",
             "unsupported",
+            "account_disabled",
         ):
             msg = credential_test.message(outcome, "Honeygain")
             assert len(msg) > 20 and msg.endswith((".", "!"))
