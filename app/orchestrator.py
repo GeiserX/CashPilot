@@ -167,6 +167,39 @@ def _stop_facts(container: Any) -> dict[str, Any]:
     return facts
 
 
+def _shape(container: Any) -> dict[str, Any]:
+    """What a container was created with, on the settings that decide whether it works.
+
+    The UI compares this with what a redeploy would build from the current
+    catalog (app/drift.py), so a container made before a catalog fix is not left
+    broken in silence. Bitping ran three months without NET_RAW, added to the
+    catalog after its containers were made, with every probe failing.
+
+    Names only, never values: env keys without their values, mount targets
+    without their sources. The command is not here at all, since it carries
+    credentials; the UI judges it from the deployment record instead.
+    """
+    attrs = container.attrs if isinstance(getattr(container, "attrs", None), dict) else {}
+    config = attrs.get("Config") if isinstance(attrs.get("Config"), dict) else {}
+    host = attrs.get("HostConfig") if isinstance(attrs.get("HostConfig"), dict) else {}
+    devices = host.get("Devices") if isinstance(host.get("Devices"), list) else []
+    mounts = attrs.get("Mounts") if isinstance(attrs.get("Mounts"), list) else []
+    entrypoint = config.get("Entrypoint")
+    return {
+        "image": str(config.get("Image") or ""),
+        "cap_add": sorted({str(cap).upper().removeprefix("CAP_") for cap in host.get("CapAdd") or []}),
+        "privileged": bool(host.get("Privileged")),
+        "network_mode": str(host.get("NetworkMode") or ""),
+        "devices": sorted(
+            {str(d.get("PathInContainer") or "").rstrip("/") for d in devices if isinstance(d, dict)} - {""}
+        ),
+        "ports": sorted(str(key) for key in (host.get("PortBindings") or {})),
+        "mounts": sorted({str(m.get("Destination") or "").rstrip("/") for m in mounts if isinstance(m, dict)} - {""}),
+        "env_keys": sorted({str(item).split("=", 1)[0] for item in config.get("Env") or []}),
+        "entrypoint": [str(part) for part in entrypoint] if isinstance(entrypoint, list) else None,
+    }
+
+
 def service_instances(slug: str) -> list[Any]:
     """Every managed container of ``slug`` on this worker, first copy first."""
     client = _get_client()
@@ -1376,6 +1409,7 @@ def get_status() -> list[dict[str, Any]]:
                 "deployed_by": c.labels.get(LABEL_DEPLOYED_BY, "unknown"),
                 "category": c.labels.get(LABEL_CATEGORY, ""),
                 "instance": _instance_of(c),
+                "shape": _shape(c),
                 **_stop_facts(c),
             }
             # Present only when the service declares a dial-back address var;
@@ -1558,6 +1592,7 @@ def get_status_light() -> list[dict[str, Any]]:
                 "deployed_by": c.labels.get(LABEL_DEPLOYED_BY, "unknown"),
                 "category": c.labels.get(LABEL_CATEGORY, ""),
                 "instance": _instance_of(c),
+                "shape": _shape(c),
                 **_stop_facts(c),
             }
             # Same contract as get_status: key present only when declared+set.

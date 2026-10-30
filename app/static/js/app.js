@@ -1170,6 +1170,27 @@ const CP = (() => {
       if (svc.image_outdated === true) {
         items.push({ level: 'warn', tag: 'Outdated', what: svc.name, why: 'runs an image that no longer matches the catalog. Re-deploy it to update.', actions: `<button class="btn btn-ghost btn-sm" data-action="openServiceDetail" data-a1="${escapeHtml(svc.slug)}">Open</button>` });
       }
+      // A container made before a catalog fix (app/drift.py). One row per box:
+      // a redeploy there rebuilds every copy on it.
+      const driftByBox = new Map();
+      for (const inst of (svc.instance_details || [])) {
+        if (!(inst.drift || []).length || driftByBox.has(String(inst.worker_id))) continue;
+        driftByBox.set(String(inst.worker_id), inst);
+      }
+      for (const inst of driftByBox.values()) {
+        const where = inst.node === 'local' ? 'local' : (boxName[String(inst.worker_id)] || inst.node);
+        const what = inst.drift.map(d => escapeHtml(d)).join('; ');
+        const fix = inst.drift_has_record
+          ? 'Redeploy it here: CashPilot keeps the settings it was deployed with.'
+          : 'CashPilot has no record of how it was deployed, so it cannot rebuild it without losing its settings. Recreate it with the setting above, or remove it and deploy it again from the service page.';
+        let actions = '';
+        if (_isOwner && !inst.unmanaged) {
+          actions = inst.drift_has_record && inst.worker_id != null
+            ? `<button class="btn btn-primary btn-sm" data-action="redeployOnWorker" data-a1="${escapeHtml(svc.slug)}" data-a2="${escapeHtml(String(inst.worker_id))}">Redeploy</button>`
+            : `<button class="btn btn-ghost btn-sm" data-action="openServiceDetail" data-a1="${escapeHtml(svc.slug)}">Open</button>`;
+        }
+        items.push({ level: 'fail', tag: 'Needs fixing', what: svc.name, where, why: `container does not match the catalog: ${what}. ${fix}`, actions });
+      }
     }
 
     if (_isOwner) {
@@ -3047,6 +3068,25 @@ const CP = (() => {
     return value === (input.dataset.initial || '') ? undefined : value;
   }
 
+  // One click from the "Needs fixing" row: no env and no image, so the server
+  // rebuilds from this worker's recorded settings and the current catalog.
+  async function redeployOnWorker(slug, workerId) {
+    if (!window.confirm(`Redeploy ${slug} on this box? It keeps the settings it was deployed with.`)) return;
+    try {
+      const res = await api(`/api/deploy/${slug}?worker_id=${workerId}`, { method: 'POST', body: { env: {} } });
+      // The same notes the deploy form shows: what the redeploy kept, and a
+      // device the provider still needs linked, or it earns for nobody.
+      const kept = res && res.kept_from_previous_deployment;
+      if (Array.isArray(kept) && kept.length) toast(`${slug}: redeploy notes: ${kept.join('; ')}`, 'warning');
+      const link = res && res.device_link;
+      if (link && link.id && !link.registered) toast(`${slug}: link device ${link.id} to your account. ${link.steps || ''}`, 'warning');
+      toast(`${slug} redeployed`, 'success');
+      loadServicesTable();
+    } catch (err) {
+      toast(`Redeploy failed: ${err.message}`, 'error');
+    }
+  }
+
   async function redeployWithImage(slug) {
     const input = document.getElementById(`image-input-${slug}`);
     const statusEl = document.getElementById(`image-status-${slug}`);
@@ -4295,6 +4335,7 @@ const CP = (() => {
     toggleInstances,
     deployServiceToWorkers,
     redeployWithImage,
+    redeployOnWorker,
     workerAction,
     loadWorkerLogs,
     openCredentialModal,
