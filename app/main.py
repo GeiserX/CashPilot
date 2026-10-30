@@ -2511,9 +2511,12 @@ async def api_deploy(
     invalid = [
         var.get("label", var["key"])
         for var in docker_conf.get("env", [])
-        if var.get("pattern")
-        and str(merged_env.get(var["key"], ""))
-        and not re.fullmatch(var["pattern"], str(merged_env.get(var["key"], "")))
+        if (
+            var.get("pattern")
+            and str(merged_env.get(var["key"], ""))
+            and not re.fullmatch(var["pattern"], str(merged_env.get(var["key"], "")))
+        )
+        or (var.get("port_range") and not _is_port_range(str(merged_env.get(var["key"], ""))))
     ]
     if invalid:
         raise HTTPException(status_code=400, detail=f"Invalid value for: {', '.join(invalid)}")
@@ -2581,6 +2584,20 @@ async def api_deploy(
     if divergence:
         response["kept_from_previous_deployment"] = divergence
     return response
+
+
+def _is_port_range(value: str) -> bool:
+    """A blank value, or "start:end" with 1 <= start <= end <= 65535.
+
+    A pattern can check the shape but not the order, and Mysterium refuses to
+    start on a reversed or out-of-range --udp.ports, so the node stops earning.
+    """
+    if not value:
+        return True
+    start, sep, end = value.partition(":")
+    if not (sep and start.isascii() and start.isdigit() and end.isascii() and end.isdigit()):
+        return False
+    return 1 <= int(start) <= int(end) <= 65535
 
 
 def _merge_recorded_spec(

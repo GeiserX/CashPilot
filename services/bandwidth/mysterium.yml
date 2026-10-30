@@ -38,6 +38,19 @@ docker:
       # matches other scripts' digits): 256.0.0.1 is not an address, and the WebUI
       # listener would fail to bind while the node kept running.
       pattern: '(?:localhost|(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])(?:\.(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])){3})(?:,(?:localhost|(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])(?:\.(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])){3}))*'
+    - key: UDP_PORTS
+      label: "UDP port range"
+      required: false
+      secret: false
+      description: >-
+        The UDP ports the node uses for VPN sessions, as start:end. Forward this
+        same range on your router.
+      default: "56000:56100"
+      # Without it the node picks from 10000:60000, so a forwarded 56000-56100
+      # is never used and every session falls back to hole punching.
+      # ASCII digits only, as above; port_range checks start <= end <= 65535.
+      pattern: '[0-9]{4,5}:[0-9]{4,5}'
+      port_range: true
   ports:
     - "4449:4449"
   volumes:
@@ -58,7 +71,7 @@ docker:
   # --firewall.protected.networks: the node blackholes these for its customers.
   # Its default leaves out 100.64.0.0/10 (CGNAT and Tailscale) and
   # 169.254.0.0/16 (cloud metadata), so a VPN customer could reach the tailnet.
-  command: "--ui.address=${UI_ADDRESS} --tequilapi.address=127.0.0.1 --firewall.protected.networks=10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,127.0.0.0/8,100.64.0.0/10,169.254.0.0/16 service --agreed-terms-and-conditions"
+  command: "--ui.address=${UI_ADDRESS} --tequilapi.address=127.0.0.1 --firewall.protected.networks=10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,127.0.0.0/8,100.64.0.0/10,169.254.0.0/16 --udp.ports=${UDP_PORTS} service --agreed-terms-and-conditions"
   # The node's own firewall for its customers, read by the worker's isolation
   # check: the ranges in this flag of `command` go to the nat chain MYST, which
   # sends each one to the blackhole address.
@@ -112,7 +125,7 @@ earnings:
   monthly_high: 10
   currency: USD
   per: "device"
-  notes: "Earnings in MYST tokens. Residential IPs earn significantly more. Node WebUI at port 4449 for management. VPS accepted. Port forwarding UDP 56000-56100 strongly recommended -- without it, nodes get Strict NAT status and many VPN sessions fail, severely reducing income. Important: after first run, set your beneficiary (settlement) wallet via the node WebUI or CLI to match your mystnodes.com account -- this links on-chain earnings to your cloud dashboard."
+  notes: "Earnings in MYST tokens. Residential IPs earn significantly more. Node WebUI at port 4449 for management. VPS accepted. Port forwarding UDP 56000-56100 (the UDP_PORTS default) strongly recommended -- without it, nodes get Strict NAT status and many VPN sessions fail, severely reducing income. Important: after first run, set your beneficiary (settlement) wallet via the node WebUI or CLI to match your mystnodes.com account -- this links on-chain earnings to your cloud dashboard."
 
 cashout:
   method: auto

@@ -23,6 +23,8 @@ MystNodes (Mysterium Network) is a decentralized VPN and proxy network built on 
 > **One node per public IP.** Mysterium strictly enforces one active node per public IP address. Additional nodes on the same IP show as offline and earn nothing. Do not run on a phone if a Docker node is already running on the same network. Use separate public IPs (e.g. dual WAN, different locations) for additional nodes.
 
 > **Port forwarding recommended.** Forward **UDP 56000-56100** to maximize earnings. Without this, nodes get "Strict NAT" status — many VPN/proxy sessions fail to connect, severely reducing income. Alternatives: enable UPnP on your router (Mysterium uses it automatically), or as last resort, use DMZ. The Docker image runs with `--net host` and the `NET_ADMIN`, `SETUID` and `SETGID` capabilities.
+>
+> The range you forward must be the node's `UDP_PORTS` (default `56000:56100`): the node takes its session ports from that range only, so a forward of any other range does nothing. Each session takes about two ports, so 101 ports carry about 50 sessions at once, far more than a home node gets. To confirm the forward works, run `docker logs cashpilot-mysterium 2>&1 | grep -o 'Method:[a-z]* Success:[a-z]*' | sort | uniq -c` and look for `Method:manual Success:true`. The node's `/nat/type` keeps saying `prcone` even when forwarding works, so don't go by it.
 
 ## Cashing out
 
@@ -64,6 +66,7 @@ In the CashPilot web UI, find **MystNodes** in the service catalog and click **D
 | Variable | Default | What it does |
 |---|---|---|
 | `UI_ADDRESS` | `127.0.0.1` | Where the node's WebUI (port 4449) listens. Comma separated, no spaces. |
+| `UDP_PORTS` | `56000:56100` | The UDP ports the node uses for sessions, as `start:end`. Forward the same range. To go back to the default after changing it, remove the service from that machine (its data volume stays) and deploy again. |
 
 ### WebUI address
 
@@ -183,6 +186,7 @@ docker run -d --name cashpilot-mysterium \
   mysteriumnetwork/myst:1.39.7-alpine \
   --ui.address=127.0.0.1 --tequilapi.address=127.0.0.1 \
   --firewall.protected.networks=10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,127.0.0.0/8,100.64.0.0/10,169.254.0.0/16 \
+  --udp.ports=56000:56100 \
   service --agreed-terms-and-conditions
 ```
 
