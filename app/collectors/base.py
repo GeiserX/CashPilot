@@ -41,6 +41,12 @@ class EarningsResult:
     # account, so they earn for nobody. None when the collector did not or
     # could not check; the collection loop turns a non-empty list into a notice.
     unlinked_devices: list[str] | None = None
+    # Each node's own figures, for a provider read node by node (issue #488):
+    # dicts with ``node``, ``balance`` (waiting to settle) and ``lifetime``. The
+    # collection loop stores them and replaces ``balance`` with the total over
+    # every node it knows. A balance that comes with these drops by itself when
+    # a node settles, so it is never asked about as a payout.
+    nodes: list[dict[str, Any]] | None = None
 
     def __post_init__(self) -> None:
         # An empty error is falsy, so the collection loop would store the 0.0
@@ -71,6 +77,10 @@ KIND_TRANSIENT = "transient"
 #: The provider changed its page/API shape. A code problem — the user can do
 #: nothing except report it; their credential is (probably) fine.
 KIND_SHAPE = "shape"
+#: The login worked, but nothing could read the figure (a Mysterium node that
+#: no CashPilot worker runs, issue #488). Not a credential problem, and not
+#: an API change either.
+KIND_UNREAD = "unread"
 
 
 def classify_exception(exc: BaseException) -> str | None:

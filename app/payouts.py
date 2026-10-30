@@ -202,7 +202,13 @@ def daily_rate(history: list[dict[str, Any]] | None) -> float | None:
 
     gained = 0.0
     for older, newer in zip(points, points[1:], strict=False):
-        step = float(newer["balance"]) - float(older["balance"])
+        # The running total when both carry one (issue #488): a node's
+        # settlement drops the balance, and skipping that step would drop a
+        # whole day of earnings from the rate with it.
+        if older.get("earned") is not None and newer.get("earned") is not None:
+            step = float(newer["earned"]) - float(older["earned"])
+        else:
+            step = float(newer["balance"]) - float(older["balance"])
         if step > 0:
             gained += step
 

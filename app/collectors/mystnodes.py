@@ -1,7 +1,11 @@
 """MystNodes (Mysterium Network) earnings collector.
 
-Uses the MystNodes cloud API at my.mystnodes.com to fetch total earnings
-and per-node earnings breakdown.
+The balance and lifetime come from each node's own TequilAPI, which the worker
+next to the node reads (``collector.node_read`` in the catalog, issue #488).
+The cloud API at my.mystnodes.com cannot give either: its ``earningsTotal`` is
+a trailing 30-day sum, which rose and fell as days left the window, and its
+per-node ``lifetimeEarnings`` comes back as 0. The cloud login is still made,
+so a wrong email or password fails here, and it serves the per-node breakdown.
 """
 
 from __future__ import annotations
@@ -34,6 +38,9 @@ class MystNodesCollector(BaseCollector):
         self.password = password
         self._access_token: str | None = None
         self._refresh_token: str | None = None
+        #: What the workers read from each node, set by the caller before
+        #: collect(): dicts with ``node``, ``balance`` and ``lifetime``.
+        self.node_readings: list[dict[str, Any]] | None = None
 
     async def _authenticate(self, client: httpx.AsyncClient) -> str:
         """Obtain access token via cloud login."""
@@ -86,7 +93,7 @@ class MystNodesCollector(BaseCollector):
         return resp
 
     async def collect(self) -> EarningsResult:
-        """Fetch total MystNodes earnings via cloud API."""
+        """The nodes' unsettled MYST as the balance, with each node's figures."""
         if not self.email or not self.password:
             return EarningsResult(
                 platform=self.platform,
@@ -95,28 +102,82 @@ class MystNodesCollector(BaseCollector):
             )
         try:
             client = self._get_client(timeout=30)
-            resp = await self._retry(lambda: self._get_with_retry(client, f"{CLOUD_BASE}/node/total-earnings"))
-            resp.raise_for_status()
-            data = resp.json()
-
-            # earningsTotal is in MYST tokens (Polygon)
-            raw = data.get("earningsTotal")
-            if raw is None:
-                raise ValueError("earningsTotal field missing — API shape may have changed")
-            total_myst = float(raw)
-
-            return EarningsResult(
-                platform=self.platform,
-                balance=round(total_myst, 4),
-                currency="MYST",
-            )
+            await self._retry(lambda: self._authenticate(client))
         except Exception as exc:
             base.log_failure(logger, "MystNodes", exc)
             return EarningsResult(
                 platform=self.platform,
                 balance=0.0,
                 error=base.describe_exception(exc),
+                error_kind=base.classify_exception(exc),
             )
+        account_nodes = await self._online_node_ids(client)
+        # By node id: one node reported twice must not count twice.
+        nodes = list({n["node"]: n for n in self.node_readings or [] if n.get("node") and not n.get("error")}.values())
+        # Online nodes on the account that no worker read: CashPilot cannot see
+        # what they hold, so the user is told the balance leaves them out.
+        read_ids = {str(n["node"]).lower() for n in nodes}
+        unread = sorted(i for i in account_nodes or [] if i not in read_ids)
+        if not nodes:
+            # No fallback to the cloud figure: a 30-day sum stored as a balance
+            # is the bug this replaced, and it looks like a real reading.
+            return EarningsResult(
+                platform=self.platform,
+                balance=0.0,
+                error=(
+                    "No CashPilot worker could read a Mysterium node's own balance"
+                    + (f" ({', '.join(unread)})" if unread else "")
+                    + ". CashPilot reads it inside the node, so the node has to run on a CashPilot worker "
+                    "that is online and up to date. MystNodes' cloud total covers the last 30 days only, "
+                    "so it is not used."
+                ),
+                # The login worked: the credentials are not what is wrong.
+                error_kind=base.KIND_UNREAD,
+            )
+        warning = None
+        if unread:
+            which = "1 online node" if len(unread) == 1 else f"{len(unread)} online nodes"
+            warning = (
+                f"{which} on your MystNodes account ran on no CashPilot worker this time, so the Mysterium "
+                f"balance leaves out what they hold, or uses what they last reported: {', '.join(unread)}. "
+                "CashPilot can only read a node that runs on one of its workers."
+            )
+        return EarningsResult(
+            platform=self.platform,
+            balance=round(sum(float(n["balance"]) for n in nodes), 6),
+            currency="MYST",
+            warning=warning,
+            nodes=[
+                {
+                    "node": n["node"],
+                    "balance": float(n["balance"]),
+                    "lifetime": float(n["lifetime"]),
+                    **{k: float(n[k]) for k in ("settled_net", "settled_fees") if n.get(k) is not None},
+                }
+                for n in nodes
+            ],
+        )
+
+    async def _online_node_ids(self, client: httpx.AsyncClient) -> list[str] | None:
+        """Lowercase ids of the account's online nodes, or None if the list could not be read.
+
+        Only used to say which nodes no worker read, so a failure here never
+        fails the collection.
+        """
+        try:
+            resp = await self._get_with_retry(client, f"{CLOUD_BASE}/node", params={"page": 1, "itemsPerPage": 100})
+            resp.raise_for_status()
+            listed = resp.json().get("nodes")
+            if not isinstance(listed, list):
+                return None
+            return [
+                str(n["identity"]).lower()
+                for n in listed
+                if isinstance(n, dict) and n.get("identity") and (n.get("nodeStatus") or {}).get("online")
+            ]
+        except Exception as exc:  # noqa: BLE001 - the node list only words a warning
+            logger.info("Could not list the MystNodes account's nodes: %s", exc)
+            return None
 
     async def get_per_node_earnings(self) -> list[dict[str, Any]]:
         """Fetch per-node earnings from the MystNodes cloud API.

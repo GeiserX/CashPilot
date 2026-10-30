@@ -1170,6 +1170,11 @@ async def _run_collection() -> None:
 
             collectors = make_collectors(deployments, config)
             await _close_stale()
+            for c in collectors:
+                try:
+                    await _attach_node_readings(c)
+                except Exception as exc:  # noqa: BLE001 - the collector reports the empty read
+                    logger.warning("Could not read node figures for %s: %s", getattr(c, "platform", "?"), exc)
             # Platforms whose collector was asked to check deployed device ids.
             device_checked: set[str] = set()
             for c in collectors:
@@ -1288,11 +1293,22 @@ async def _run_collection() -> None:
                         # the stored row so the NEXT warning pushes again rather
                         # than being deduped into silence forever.
                         await database.clear_alerts("notice", result.platform)
-                    # Compare against the last reading BEFORE writing the new one:
-                    # a payout is only visible as the step between two snapshots.
-                    payout_alert = await _detect_payout(result)
-                    if payout_alert:
-                        alerts.append(payout_alert)
+                    earned = None
+                    if getattr(result, "nodes", None) is not None:
+                        # Read node by node (issue #488): the balance is every
+                        # known node's unsettled amount, and it falls by itself
+                        # each time a node settles, so it is never asked about
+                        # as a payout. The running total carries the earnings.
+                        totals = await database.record_node_figures(result.platform, result.nodes, result.currency)
+                        result.balance = totals["balance"]
+                        earned = totals["earned"]
+                    else:
+                        # Compare against the last reading BEFORE writing the new
+                        # one: a payout is only visible as the step between two
+                        # snapshots.
+                        payout_alert = await _detect_payout(result)
+                        if payout_alert:
+                            alerts.append(payout_alert)
                     await database.upsert_earnings(
                         platform=result.platform,
                         balance=result.balance,
@@ -1302,6 +1318,7 @@ async def _run_collection() -> None:
                         # live, so this is the only chance to record what this reading
                         # was actually worth.
                         fx_rate_usd=exchange_rates.to_usd(1.0, result.currency),
+                        earned=earned,
                     )
                     logger.info("Collected %s: %.4f %s", result.platform, result.balance, result.currency)
                     platforms_ok += 1
@@ -3733,8 +3750,30 @@ async def api_earnings_summary(request: Request) -> dict[str, Any]:
     paid_out: float | None = None
     unpriced_payouts = 0
     try:
-        paid_out = sum((await database.get_confirmed_payout_totals()).values())
-        unpriced_payouts = await database.count_unpriced_confirmed_payouts()
+        node_totals = await _node_totals()
+        # A provider read node by node has its settlements in the node totals
+        # below, which include any payout confirmed before (from the old
+        # balance-drop question), so those are left out rather than counted twice.
+        paid_out = sum(
+            total
+            for platform, total in (await database.get_confirmed_payout_totals()).items()
+            if platform not in node_totals
+        )
+        unpriced_payouts = await database.count_unpriced_confirmed_payouts(exclude=set(node_totals))
+        # What nodes settled on their own (Mysterium, issue #488) is a payout
+        # too: it left the balance and reached the wallet, less the provider's
+        # fee. Priced at today's rate, the only one there is for a total that
+        # no single day owns. With the fee unknown it is left out and counted
+        # like an unpriced payout, so the card says the total is low.
+        for node_total in node_totals.values():
+            if node_total["settled_gross"] <= 0:
+                continue
+            settled = node_total["settled"]
+            settled_usd = None if settled is None else exchange_rates.to_usd(settled, node_total["currency"])
+            if settled_usd is None:
+                unpriced_payouts += 1
+            else:
+                paid_out += settled_usd
     except Exception as exc:  # noqa: BLE001 - the balance cards must still render
         logger.warning("Could not total confirmed payouts, reporting them as unknown: %s", exc)
     balance_shown = summary["total_adjusted"] if summary["total_bonus"] > 0 else summary["total"]
@@ -4541,6 +4580,7 @@ async def api_test_credentials(request: Request, slug: str) -> dict[str, Any]:
         return credential_test.result(credential_test.RATE_LIMITED, name, retry_after=round(remaining))
     credential_test.note_attempt(slug)
     try:
+        await _attach_node_readings(collector)
         result = await collector.collect()
     except Exception as exc:
         logger.debug("Credential test for %s raised: %s", slug, exc)
@@ -4556,7 +4596,10 @@ async def api_test_credentials(request: Request, slug: str) -> dict[str, Any]:
     # where their text matches nothing the classifier knows.
     outcome = credential_test.classify(result.error, result.error_kind)
     if outcome == credential_test.OK:
-        return credential_test.result(outcome, name, balance=result.balance, currency=result.currency)
+        # An OK with an error (the login worked, no figure could be read) has
+        # no balance to report: its 0.0 is a placeholder, not a reading.
+        balance = None if result.error else result.balance
+        return credential_test.result(outcome, name, balance=balance, currency=result.currency)
     logger.debug("Credential test for %s failed: %s", slug, result.error)
     return credential_test.result(outcome, name)
 
@@ -4735,9 +4778,14 @@ async def api_payout_progress(request: Request, slug: str) -> dict[str, Any]:
     # leaves the declared minimum alone.
     balance_currency = (history[-1].get("currency") if history else None) or None
     confirmed = await database.get_payouts(platform=slug, confirmed_only=True)
+    # A provider read node by node reports its own lifetime, settlements
+    # included (issue #488); balance plus confirmed payouts would miss every
+    # settlement, since none is ever asked about.
+    node_total = (await _node_totals()).get(slug)
 
     known = balance is not None
     current = float(balance or 0.0)
+    lifetime = payouts.lifetime_earned(current, confirmed) if (known or confirmed) else None
     # The card renders every figure here in ONE unit and asks the user to compare
     # them against the provider's minimum. The balance is in whatever the
     # collector reports and the minimum in whatever the provider cashes out in;
@@ -4771,7 +4819,7 @@ async def api_payout_progress(request: Request, slug: str) -> dict[str, Any]:
         # card stated a definite 0.00 lifetime for a service nothing had ever
         # looked at. Confirmed payouts are still a real lower bound, so they
         # keep a figure.
-        "lifetime_earned": payouts.lifetime_earned(current, confirmed) if (known or confirmed) else None,
+        "lifetime_earned": node_total["lifetime"] if node_total else lifetime,
         "confirmed_payout_count": len(confirmed),
         "balance_known": known,
         # Projection stays. payouts.project already returns an explicit
@@ -5138,6 +5186,78 @@ async def _read_payout_addresses(worker_id: int) -> list[dict[str, Any]]:
     result = await _proxy_to_worker(worker_id, "GET", "/api/payout-addresses", timeout=15)
     rows = result.get("addresses") if isinstance(result, dict) else None
     return rows if isinstance(rows, list) else []
+
+
+async def _read_node_figures(slug: str) -> list[dict[str, Any]]:
+    """What each node of ``slug`` says about its own earnings (issue #488).
+
+    Asks every online worker that runs the service (its /api/node-earnings).
+    A worker that does not answer, or one from before the endpoint (404), adds
+    nothing: its node keeps the figures it last reported.
+    """
+    try:
+        where = placement.runs_on(await database.list_workers())
+    except Exception as exc:  # noqa: BLE001 - no fleet means no readings, not a crash
+        logger.warning("Could not read the workers for the %s node read: %s", slug, exc)
+        return []
+    targets = sorted(
+        {r["worker_id"] for r in where.get(slug, []) if r["online"] and not r["android"] and r["status"] == "running"},
+        key=str,
+    )
+
+    async def _one(worker_id: Any) -> list[dict[str, Any]]:
+        try:
+            result = await _proxy_to_worker(worker_id, "GET", "/api/node-earnings", timeout=20)
+        except Exception as exc:  # noqa: BLE001 - one worker never fails the read
+            logger.info("Could not read %s node figures from worker %s: %s", slug, worker_id, exc)
+            return []
+        rows = result.get("nodes") if isinstance(result, dict) else None
+        return [r for r in rows or [] if isinstance(r, dict) and r.get("slug") == slug and not r.get("error")]
+
+    readings: list[dict[str, Any]] = []
+    for rows in await asyncio.gather(*(_one(wid) for wid in targets)):
+        for row in rows:
+            try:
+                balance, lifetime = float(row["balance"]), float(row["lifetime"])
+            except (KeyError, TypeError, ValueError):
+                continue
+            if not (math.isfinite(balance) and math.isfinite(lifetime) and 0 <= balance <= lifetime):
+                continue
+            reading: dict[str, Any] = {"node": str(row.get("node") or ""), "balance": balance, "lifetime": lifetime}
+            # The settlement sums are optional: a node whose history could not
+            # be read still counts, it only adds nothing to the fee share.
+            try:
+                net, fees = float(row["settled_net"]), float(row["settled_fees"])
+            except (KeyError, TypeError, ValueError):
+                net = fees = -1.0
+            if math.isfinite(net) and math.isfinite(fees) and net >= 0 and fees >= 0:
+                reading.update(settled_net=net, settled_fees=fees)
+            readings.append(reading)
+    return [r for r in readings if r["node"]]
+
+
+async def _node_totals() -> dict[str, dict[str, Any]]:
+    """Per-node totals (issue #488), or none when they cannot be read.
+
+    Only Mysterium has any, so a failed read must not cost every other
+    service its figures: without them the totals fall back to balance plus
+    confirmed payouts, as before.
+    """
+    try:
+        return await database.get_node_totals()
+    except Exception as exc:  # noqa: BLE001 - the cards must still render
+        logger.warning("Could not read the per-node totals: %s", exc)
+        return {}
+
+
+async def _attach_node_readings(collector: Any) -> None:
+    """Hand a collector its nodes' own figures, when its catalog entry reads them."""
+    slug = getattr(collector, "platform", "")
+    if not hasattr(collector, "node_readings"):
+        return
+    if not isinstance(((catalog.get_service(slug) or {}).get("collector") or {}).get("node_read"), dict):
+        return
+    collector.node_readings = await _read_node_figures(slug)
 
 
 @app.get("/api/payout-balances")

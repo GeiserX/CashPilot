@@ -40,6 +40,7 @@ DOCUMENTED_COLLECTOR_KEYS = {
     "credential_lifetime",
     "durable_alternative",
     "quiet_days",
+    "node_read",
 }
 
 

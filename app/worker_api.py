@@ -39,7 +39,7 @@ from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 
-from app import egress, fleet_key, isolation_check, orchestrator, payout_read, state_backup, version
+from app import egress, fleet_key, isolation_check, node_read, orchestrator, payout_read, state_backup, version
 from app.constants import MAX_INSTANCES
 
 try:
@@ -1699,6 +1699,23 @@ async def api_payout_addresses(request: Request) -> dict[str, Any]:
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc))
     return {"addresses": rows}
+
+
+@app.get("/api/node-earnings")
+async def api_node_earnings(request: Request) -> dict[str, Any]:
+    """Earnings figures a node on this worker reports about itself (issue #488).
+
+    Only for services whose catalog entry declares ``collector.node_read``
+    (Mysterium's TequilAPI identity). Read-only: see app/node_read.py.
+    """
+    _verify_api_key(request)
+    if not _catalog_get_services:
+        return {"nodes": []}
+    try:
+        rows = await asyncio.to_thread(node_read.read_all, _catalog_get_services())
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
+    return {"nodes": rows}
 
 
 @app.get("/api/update/info")

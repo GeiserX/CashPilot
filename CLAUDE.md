@@ -245,7 +245,7 @@ Triggers on version tags (`v*`). Lints with ruff, builds multi-arch (amd64 + arm
 Working collectors (15 total, in `app/collectors/__init__.py` `COLLECTOR_MAP`):
 - **Honeygain** — JWT auth, `/v1/users/tokens` + `/v1/users/balances`
 - **EarnApp** — XSRF rotation + cookie auth, `/money`. Auto-redeem: Amazon ($50), Wise ($10), PayPal ($10)
-- **MystNodes** — Cloud API (`my.mystnodes.com/api/v2`), email/password auth. Per-node earnings via `GET /api/v2/node`
+- **MystNodes** — Balance (unsettled) and lifetime from each node's TequilAPI identity, read by the worker (`collector.node_read`, `/api/node-earnings`); the cloud `earningsTotal` is a 30-day sum and is not used. Cloud login (`my.mystnodes.com/api/v2`) checks the credentials; per-node 30-day breakdown via `GET /api/v2/node`
 - **Traffmonetizer** — JWT token, `data.traffmonetizer.com/api/app_user/get_balance`
 - **IPRoyal** — Email/password auth
 - **Repocket** — Firebase auth (Google Identity Toolkit)
