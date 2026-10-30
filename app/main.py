@@ -1892,6 +1892,8 @@ def _apply_service_meta(entry: dict[str, Any], svc: dict[str, Any] | None) -> No
 
 #: Config key holding the muted drift warnings: {"<slug>|<worker id>": catalog fingerprint}.
 _DRIFT_IGNORED_KEY = "drift_ignored"
+# The map is read, extended and written back whole; two Ignores at once must not drop one.
+_drift_ignore_lock = asyncio.Lock()
 
 
 def _drift_ignored(config: dict[str, Any]) -> dict[str, str]:
@@ -1912,10 +1914,11 @@ async def api_drift_ignore(
     svc = catalog.get_service(slug)
     if not svc:
         raise HTTPException(status_code=404, detail=f"Service '{slug}' not found")
-    cfg = await database.get_config()
-    ignored = _drift_ignored(cfg if isinstance(cfg, dict) else {})
-    ignored[f"{slug}|{worker_id}"] = drift.catalog_fingerprint(svc)
-    await database.set_config(_DRIFT_IGNORED_KEY, json.dumps(ignored, sort_keys=True))
+    async with _drift_ignore_lock:
+        cfg = await database.get_config()
+        ignored = _drift_ignored(cfg if isinstance(cfg, dict) else {})
+        ignored[f"{slug}|{worker_id}"] = drift.catalog_fingerprint(svc)
+        await database.set_config(_DRIFT_IGNORED_KEY, json.dumps(ignored, sort_keys=True))
     return {"status": "ignored"}
 
 

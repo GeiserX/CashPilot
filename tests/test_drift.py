@@ -388,3 +388,28 @@ class TestIgnore:
         js = (ROOT / "app" / "static" / "js" / "app.js").read_text()
         assert 'data-action="ignoreDrift"' in js
         assert "\n    ignoreDrift,\n" in js
+
+    def test_two_ignores_at_once_keep_both(self):
+        store: dict = {}
+
+        async def get_config():
+            await asyncio.sleep(0)
+            return dict(store)
+
+        async def set_config(key, value):
+            await asyncio.sleep(0)
+            store[key] = value
+
+        async def run():
+            with (
+                patch.object(main.catalog, "get_service", return_value=BITPING),
+                patch.object(main.database, "get_config", get_config),
+                patch.object(main.database, "set_config", set_config),
+            ):
+                await asyncio.gather(
+                    main.api_drift_ignore(MagicMock(), "bitping", worker_id=1, _auth={}),
+                    main.api_drift_ignore(MagicMock(), "bitping", worker_id=2, _auth={}),
+                )
+
+        asyncio.run(run())
+        assert set(json.loads(store["drift_ignored"])) == {"bitping|1", "bitping|2"}

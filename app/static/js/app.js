@@ -3076,7 +3076,7 @@ const CP = (() => {
   // For a container changed on purpose. The server ties the mute to the
   // catalog as it is now, so a later catalog fix to this service shows again.
   async function ignoreDrift(slug, workerId) {
-    if (!window.confirm(`Ignore this for ${slug} on this box? It shows again if the catalog changes this service.`)) return;
+    if (!window.confirm(`Ignore this for ${slug} on this box? It shows again if the catalog changes how this service runs; an edit to its notes or description does not bring it back.`)) return;
     try {
       await api(`/api/services/${slug}/drift/ignore?worker_id=${workerId}`, { method: 'POST' });
       toast(`${slug}: ignored until the catalog changes it`, 'success');
