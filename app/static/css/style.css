@@ -57,17 +57,17 @@
   --shadow-glow-rose: none;
   --shadow-glow-cyan: none;
 
-  --font-ui: 'IBM Plex Sans Condensed', 'Roboto Condensed', 'Arial Narrow', system-ui, sans-serif;
+  --font-ui: 'IBM Plex Sans', system-ui, sans-serif;
   --font-mono: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
 
-  /* Type scale. Nothing is set under 12px; body text is 14px. */
-  --fs-1: 12px;   /* keys, counts, the smallest meta */
-  --fs-2: 13px;   /* labels, table heads, secondary lines */
-  --fs-3: 14px;   /* body, table cells, buttons */
-  --fs-4: 16px;   /* section and modal titles */
-  --fs-5: 20px;   /* page titles */
-  --fs-figure: 24px;  /* today and this month */
-  --fs-money: 34px;   /* the balance */
+  /* Type scale. Nothing is set under 14px; body text is 16px. */
+  --fs-1: 14px;   /* keys, counts, the smallest meta */
+  --fs-2: 15px;   /* labels, table heads, secondary lines */
+  --fs-3: 16px;   /* body, table cells, buttons */
+  --fs-4: 18px;   /* section and modal titles */
+  --fs-5: 23px;   /* page titles */
+  --fs-figure: 27px;  /* today and this month */
+  --fs-money: 39px;   /* the balance */
 
   --topbar-height: 48px;
   --page-max: 1600px;
@@ -133,7 +133,7 @@ body {
   min-height: 100vh;
   font-family: var(--font-ui);
   font-size: var(--fs-3);
-  line-height: 1.45;
+  line-height: 1.4;
   background: var(--bg-primary);
   color: var(--text-primary);
   font-variant-numeric: tabular-nums;
@@ -1349,7 +1349,7 @@ section { margin-bottom: 28px; }
 .attn-warn .attn-tag, .problem-warn .attn-tag { color: var(--warning); }
 .attn-what { font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .attn-where { font-family: var(--font-mono); font-weight: 400; font-size: var(--fs-2); color: var(--text-secondary); margin-left: 6px; }
-.attn-why { color: var(--text-secondary); min-width: 0; }
+.attn-why { color: var(--text-secondary); min-width: 0; overflow-wrap: anywhere; }
 .attn-why code { font-size: var(--fs-2); color: var(--text-secondary); }
 .attn-actions { display: flex; gap: 6px; justify-content: flex-end; white-space: nowrap; }
 .attn-foot { font-size: var(--fs-2); color: var(--text-muted); padding: 6px 0 0 12px; }
@@ -1909,8 +1909,9 @@ body.gate { display: flex; flex-direction: column; }
   .topbar { flex-wrap: wrap; height: auto; padding: 0 12px; gap: 0 12px; }
   .topbar-brand { height: 40px; }
   .topnav { order: 3; flex-basis: 100%; overflow-x: auto; height: 34px; margin: 0 -12px; padding: 0 6px; border-top: 1px solid var(--border-color); }
-  .topnav .sidebar-link { padding: 0 8px; }
-  /* "Add" alone on a phone so all six tabs fit in 390 without a hidden scroll. */
+  /* 14px, as before the type step, and tighter padding, so all six tabs fit in 390 without a hidden scroll. */
+  .topnav .sidebar-link { padding: 0 5px; font-size: var(--fs-1); }
+  /* "Add" alone on a phone for the same reason. */
   .topnav .nav-more { display: none; }
   .topbar-currency-select { display: none; }
   .page-content { padding: 14px 12px 24px; }
@@ -1990,6 +1991,7 @@ body.gate { display: flex; flex-direction: column; }
   .wizard-step-label { display: none; }
   .catalog-table .cat-plat, .catalog-table .cat-needs, .catalog-table .cat-kind,
   .catalog-table thead th:nth-child(2), .catalog-table thead th:nth-child(3), .catalog-table thead th:nth-child(5) { display: none; }
+  .catalog-table .cat-est { white-space: normal; }
 }
 
 .attn-clear[hidden] { display: none; }

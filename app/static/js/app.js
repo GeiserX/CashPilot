@@ -1868,6 +1868,7 @@ const CP = (() => {
 
     const cs = getComputedStyle(document.documentElement);
     const textMuted = cs.getPropertyValue('--text-muted').trim();
+    const fontMono = cs.getPropertyValue('--font-mono').trim();
     const textPrimary = cs.getPropertyValue('--text-primary').trim();
     const textSecondary = cs.getPropertyValue('--text-secondary').trim();
     const bgSecondary = cs.getPropertyValue('--bg-secondary').trim();
@@ -1915,7 +1916,7 @@ const CP = (() => {
           x: {
             grid: { display: false },
             border: { color: borderColor },
-            ticks: { color: textMuted, font: { size: 11, family: 'IBM Plex Mono' }, maxRotation: 0, autoSkipPadding: 12 },
+            ticks: { color: textMuted, font: { size: 12, family: fontMono }, maxRotation: 0, autoSkipPadding: 12 },
           },
           y: {
             beginAtZero: true,
@@ -1924,7 +1925,7 @@ const CP = (() => {
             ticks: {
               color: textMuted,
               maxTicksLimit: 4,
-              font: { size: 11, family: 'IBM Plex Mono' },
+              font: { size: 12, family: fontMono },
               callback: (v) => formatCurrency(v),
             },
           },
