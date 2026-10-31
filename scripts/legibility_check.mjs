@@ -68,7 +68,7 @@ const buttons = variants
   )
   .join("");
 
-const fixtureFor = (theme) => `<!DOCTYPE html><html${theme === "light" ? ' data-theme="light"' : ""}><head><meta charset="utf-8">
+const fixtureFor = (theme) => `<!DOCTYPE html><html${theme === "dark" ? "" : ` data-theme="${theme}"`}><head><meta charset="utf-8">
 <link rel="stylesheet" href="file://${CSS}"></head>
 <body>
   <div class="card" style="padding:16px;margin:8px">
@@ -101,7 +101,7 @@ const fixtureFor = (theme) => `<!DOCTYPE html><html${theme === "light" ? ' data-
 // and, worse, what made a passing run meaningless. A fresh document per theme
 // has no such state to go stale.
 const fixturePaths = {};
-for (const theme of ["dark", "light"]) {
+for (const theme of ["dark", "light", "classic"]) {
   const fp = path.join(process.env.TMPDIR || "/tmp", `cashpilot-legibility-${theme}.html`);
   fs.writeFileSync(fp, fixtureFor(theme));
   fixturePaths[theme] = fp;
@@ -239,9 +239,9 @@ let failures = 0;
 let checks = 0;
 const fail = (msg) => { failures++; console.error("FAIL  " + msg); };
 
-// Both themes. A palette that works in the dark one can be unreadable in the
-// other, and the light theme redefines every colour token.
-for (const theme of ["dark", "light"]) {
+// Every theme. A palette that works in the dark one can be unreadable in the
+// others, and light and classic redefine the colour tokens.
+for (const theme of ["dark", "light", "classic"]) {
   await send("Page.navigate", { url: "file://" + fixturePaths[theme] });
   await new Promise((r) => setTimeout(r, 400)); // let the stylesheet load
   const res = await send("Runtime.evaluate", { expression: AUDIT(theme), returnByValue: true });
@@ -279,7 +279,7 @@ for (const theme of ["dark", "light"]) {
     if (data.link.contrast < MIN_CONTRAST)
       fail(`[${theme}] prose link contrast ${data.link.contrast}:1 (need ${MIN_CONTRAST}:1)`);
   }
-  console.log(`${theme.padEnd(5)}: ${data.buttons.length} controls measured, link ok=${!!data.link && data.link.underlined}`);
+  console.log(`${theme.padEnd(7)}: ${data.buttons.length} controls measured, link ok=${!!data.link && data.link.underlined}`);
 }
 
 ws.close();

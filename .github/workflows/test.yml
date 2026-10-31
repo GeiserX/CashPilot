@@ -99,6 +99,11 @@ jobs:
       - name: Attention list health hints
         run: node scripts/attention_hint_check.mjs
 
+      # Classic night: the pre-paint key, the sun/moon rule, the server's
+      # theme winning on a new browser.
+      - name: Theme behaviour
+        run: node scripts/theme_check.mjs
+
       # A phone's apps are Android apps, never containers, and an app the phone
       # cannot see is unknown, never red "Down".
       - name: Phone apps on the dashboard
@@ -134,6 +139,10 @@ jobs:
       # 2560 px. Exits 2, never 0, when Chrome or the UI cannot be reached.
       - name: Fleet page fits its window (real browser)
         run: ./scripts/fleet_overflow_check.sh
+
+      # Classic night changes borders and fills, never sizes; this proves it.
+      - name: Pages fit their window in Classic night (real browser)
+        run: THEME=classic ./scripts/fleet_overflow_check.sh
 
       - name: Run tests
         run: uv run pytest tests/ -v --tb=short

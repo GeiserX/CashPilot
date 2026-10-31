@@ -10,6 +10,7 @@
   <a href="#set-collection">Earnings collection</a>
   <a href="#credential-health-card" id="credential-health-link" hidden>Credential health</a>
   <a href="#set-env">Environment</a>
+  <a href="#set-appearance">Appearance</a>
   <a href="#set-about">About and updates</a>
 </nav>
 <div class="settings-body">
@@ -56,6 +57,22 @@
   <div id="env-vars-container">
     <p class="loading-line">Loading...</p>
   </div>
+</div>
+
+<!-- Appearance: saved per user on the server, mirrored into localStorage
+     'cp-theme' so the pre-paint script in base.html picks it up. -->
+<div class="card settings-section" id="set-appearance">
+  <h3 class="settings-section-title">Appearance</h3>
+  <p class="settings-section-desc">
+    Saved to your account, so it follows you to other browsers. Classic is the
+    older blue-black look with rose buttons.
+  </p>
+  <fieldset class="theme-options">
+    <legend class="sr-only">Theme</legend>
+    <label><input type="radio" name="cp-theme" value="dark"> Dark</label>
+    <label><input type="radio" name="cp-theme" value="light"> Light</label>
+    <label><input type="radio" name="cp-theme" value="classic"> Classic</label>
+  </fieldset>
 </div>
 
 <!-- About & Updates (issue #342) -->

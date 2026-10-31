@@ -4761,25 +4761,58 @@ const CP = (() => {
   // -----------------------------------------------------------
   // Theme toggle
   // -----------------------------------------------------------
+  // Three themes: dark (the default), light and classic. The choice is saved
+  // per user on the server and mirrored into localStorage 'cp-theme', which the
+  // pre-paint script in base.html reads, so a page never paints the wrong theme
+  // first. On a new browser the server's value wins on the first page load.
+  const THEMES = ['dark', 'light', 'classic'];
+
+  function currentTheme() {
+    const t = document.documentElement.getAttribute('data-theme');
+    return THEMES.includes(t) ? t : 'dark';
+  }
+
+  function applyTheme(theme) {
+    if (!THEMES.includes(theme)) return;
+    document.documentElement.setAttribute('data-theme', theme);
+    localStorage.setItem('cp-theme', theme);
+    document.querySelectorAll('input[name="cp-theme"]').forEach(r => { r.checked = r.value === theme; });
+    const label = document.querySelector('#theme-toggle .theme-label');
+    if (label) label.textContent = theme === 'light' ? 'Dark mode' : 'Light mode';
+  }
+
+  function chooseTheme(theme) {
+    applyTheme(theme);
+    api('/api/preferences', { method: 'POST', body: { theme } })
+      .catch(err => toast(`Theme not saved: ${err.message}`, 'error'));
+  }
+
+  // The top-bar toggle switches Light <-> Dark only. Classic is chosen in
+  // Settings > Appearance, and the toggle is hidden while it is on (style.css),
+  // so one click can never drop a Classic user into Light.
+  function toggleTheme(current) {
+    if (current === 'classic') return 'classic';
+    return current === 'light' ? 'dark' : 'light';
+  }
+
   function initThemeToggle() {
+    applyTheme(currentTheme());
     const btn = document.getElementById('theme-toggle');
-    if (!btn) return;
-    function updateLabel() {
-      const label = btn.querySelector('.theme-label');
-      if (label) {
-        const current = document.documentElement.getAttribute('data-theme') || 'dark';
-        label.textContent = current === 'dark' ? 'Light mode' : 'Dark mode';
-      }
+    if (btn) {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        chooseTheme(toggleTheme(currentTheme()));
+      });
     }
-    btn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      const current = document.documentElement.getAttribute('data-theme') || 'dark';
-      const next = current === 'dark' ? 'light' : 'dark';
-      document.documentElement.setAttribute('data-theme', next);
-      localStorage.setItem('cp-theme', next);
-      updateLabel();
+    document.querySelectorAll('input[name="cp-theme"]').forEach(r => {
+      r.addEventListener('change', () => { if (r.checked) chooseTheme(r.value); });
     });
-    updateLabel();
+    // Only signed-in pages carry the avatar menu; elsewhere there is no user.
+    if (document.getElementById('avatar-toggle')) {
+      api('/api/preferences')
+        .then(p => { if (p && THEMES.includes(p.theme) && p.theme !== currentTheme()) applyTheme(p.theme); })
+        .catch(() => {});
+    }
   }
 
   function initAvatarDropdown() {

@@ -5862,8 +5862,17 @@ async def api_get_preferences(request: Request) -> dict[str, Any]:
     user = _require_auth_api(request)
     prefs = await database.get_user_preferences(user["uid"])
     if not prefs:
-        return {"setup_mode": "fresh", "selected_categories": "[]", "timezone": "UTC", "setup_completed": False}
+        return {
+            "setup_mode": "fresh",
+            "selected_categories": "[]",
+            "timezone": "UTC",
+            "setup_completed": False,
+            "theme": None,
+        }
     return prefs
+
+
+THEMES = ("dark", "light", "classic")
 
 
 class PreferencesUpdate(BaseModel):
@@ -5871,6 +5880,7 @@ class PreferencesUpdate(BaseModel):
     selected_categories: str | None = None
     timezone: str | None = None
     setup_completed: bool | None = None
+    theme: str | None = None
 
 
 @app.post("/api/preferences")
@@ -5879,6 +5889,8 @@ async def api_set_preferences(
 ) -> dict[str, str]:
     if body.setup_mode is not None and body.setup_mode not in ("fresh", "monitoring", "mixed"):
         raise HTTPException(status_code=400, detail="setup_mode must be fresh, monitoring, or mixed")
+    if body.theme is not None and body.theme not in THEMES:
+        raise HTTPException(status_code=400, detail="theme must be dark, light, or classic")
 
     # Merge with existing preferences so partial updates don't overwrite
     existing = await database.get_user_preferences(user["uid"]) or {}
@@ -5892,6 +5904,7 @@ async def api_set_preferences(
         setup_completed=body.setup_completed
         if body.setup_completed is not None
         else existing.get("setup_completed", False),
+        theme=body.theme if body.theme is not None else existing.get("theme"),
     )
     # Saving the preference is a viewer-safe act; triggering a fleet-wide
     # collection is not. /api/collect gates the identical call behind

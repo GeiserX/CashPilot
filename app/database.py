@@ -481,6 +481,9 @@ CREATE TABLE IF NOT EXISTS user_preferences (
     selected_categories TEXT    NOT NULL DEFAULT '[]',
     timezone            TEXT    NOT NULL DEFAULT 'UTC',
     setup_completed     INTEGER NOT NULL DEFAULT 0,
+    -- 'dark', 'light' or 'classic'. NULL = never chosen, so the browser's own
+    -- choice stands. Nullable with no default so fresh and upgraded match.
+    theme               TEXT,
     created_at          TEXT    NOT NULL DEFAULT (datetime('now')),
     updated_at          TEXT    NOT NULL DEFAULT (datetime('now')),
     FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
@@ -1047,6 +1050,13 @@ async def init_db() -> None:
                 "UPDATE workers SET key_issued_at = datetime('now') "
                 "WHERE api_key_enc IS NOT NULL AND api_key_enc != '' AND key_confirmed = 0"
             )
+
+        # The appearance choice, per user. NULL means "never chosen".
+        cursor = await db.execute("PRAGMA table_info(user_preferences)")
+        pref_cols = {row["name"] for row in await cursor.fetchall()}
+        if "theme" not in pref_cols:
+            applied.append("user_preferences.theme")
+            await db.execute("ALTER TABLE user_preferences ADD COLUMN theme TEXT")
 
         # Migrate earnings table: add fx_rate_usd so a non-USD balance's value at the
         # time it was recorded stays reconstructable (rates are only cached live).
@@ -2242,22 +2252,24 @@ async def save_user_preferences(
     selected_categories: str = "[]",
     timezone: str = "UTC",
     setup_completed: bool = False,
+    theme: str | None = None,
 ) -> None:
     db = await _get_db()
     try:
         await db.execute(
             """
             INSERT INTO user_preferences
-                (user_id, setup_mode, selected_categories, timezone, setup_completed, updated_at)
-            VALUES (?, ?, ?, ?, ?, datetime('now'))
+                (user_id, setup_mode, selected_categories, timezone, setup_completed, theme, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
             ON CONFLICT(user_id) DO UPDATE SET
                 setup_mode = excluded.setup_mode,
                 selected_categories = excluded.selected_categories,
                 timezone = excluded.timezone,
                 setup_completed = excluded.setup_completed,
+                theme = excluded.theme,
                 updated_at = datetime('now')
             """,
-            (user_id, setup_mode, selected_categories, timezone, int(setup_completed)),
+            (user_id, setup_mode, selected_categories, timezone, int(setup_completed), theme),
         )
         await db.commit()
     finally:
