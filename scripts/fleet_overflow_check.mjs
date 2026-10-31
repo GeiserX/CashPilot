@@ -29,6 +29,7 @@
 //
 //   ./scripts/fleet_overflow_check.sh            (boots Chrome and the demo UI)
 //   SHOTS=/tmp/shots ./scripts/fleet_overflow_check.sh   (also saves screenshots)
+//   THEME=classic ./scripts/fleet_overflow_check.sh      (in another theme)
 //
 // Exits 1 on overflow, 2 when the browser or the UI cannot be reached:
 // "could not run" must never read as "passed".
@@ -40,6 +41,7 @@ const BASE = process.env.UI_URL || "http://127.0.0.1:8110";
 const USER = process.env.UI_USER || "demo";
 const PASS = process.env.UI_PASS || "demo-password-1";
 const SHOTS = process.env.SHOTS || "";
+const THEME = process.env.THEME || "dark";
 // 1100 and 1101 sit either side of the fleet table's stacked layout.
 const FLEET_WIDTHS = [320, 375, 768, 1024, 1100, 1101, 1440, 2560];
 // The whole dashboard at every width, services table included: it used to be
@@ -236,6 +238,13 @@ async function main() {
     document.querySelector('form').submit();
   })()`);
   await waitFor("location.pathname !== '/login' && document.readyState === 'complete'");
+  // Save the theme to the demo account: signed-in pages paint the saved theme.
+  const saved = await evaluate(`fetch('/api/preferences', {method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({theme: ${JSON.stringify(THEME)}})}).then(r => r.status)`);
+  if (saved !== 200) {
+    console.error(`FAIL  could not save theme ${THEME} to the demo account (HTTP ${saved})`);
+    process.exit(2);
+  }
 
   await send("Fetch.enable", {
     patterns: [
@@ -314,6 +323,11 @@ async function main() {
           .catch(() => { console.error("FAIL  the two account-disabled fixtures did not reach the dashboard"); process.exit(2); });
       }
     }
+    const theme = await evaluate("document.documentElement.getAttribute('data-theme')");
+    if (theme !== THEME) {
+      console.error(`FAIL  ${page} painted theme ${theme}, not ${THEME}, so this run measures the wrong theme`);
+      process.exit(2);
+    }
     for (const w of widths) {
       await send("Emulation.setDeviceMetricsOverride", { width: w, height: 900, deviceScaleFactor: 1, mobile: false });
       await sleep(300);
@@ -342,7 +356,7 @@ async function main() {
       }
     }
   }
-  console.log(`${checked} page widths checked, ${rows} boxes on /fleet (${FIXTURE_WORKERS.length} long-name fixtures, one isolation report), ${failures} overflowing`);
+  console.log(`theme ${THEME}: ${checked} page widths checked, ${rows} boxes on /fleet (${FIXTURE_WORKERS.length} long-name fixtures, one isolation report), ${failures} overflowing`);
   await fetch(`${CDP}/json/close/${target.id}`).catch(() => {});
   process.exit(failures ? 1 : 0);
 }

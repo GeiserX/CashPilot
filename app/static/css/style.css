@@ -181,10 +181,20 @@ img { max-width: 100%; }
   color: var(--text-secondary);
 }
 
-/* Theme toggle icon visibility */
-#theme-toggle .icon-moon { display: none; }
-:root[data-theme="light"] #theme-toggle .icon-sun { display: none; }
-:root[data-theme="light"] #theme-toggle .icon-moon { display: block; }
+/* Theme picker in the avatar menu: Dark / Light / Classic */
+.avatar-theme { display: flex; flex-direction: column; gap: 6px; padding: 8px 12px; }
+.avatar-theme-title { font-size: var(--fs-2); color: var(--text-muted); }
+.avatar-theme-options {
+  display: grid; grid-template-columns: repeat(3, 1fr);
+  border: 1px solid var(--border-light); border-radius: 2px; overflow: hidden;
+}
+.avatar-theme-options button {
+  font: inherit; font-size: var(--fs-2); padding: 4px 0; cursor: pointer;
+  background: none; border: 0; color: var(--text-secondary);
+}
+.avatar-theme-options button + button { border-left: 1px solid var(--border-light); }
+.avatar-theme-options button:hover { background: var(--bg-hover); color: var(--text-primary); }
+.avatar-theme-options button[aria-pressed="true"] { background: var(--bg-tertiary); color: var(--text-primary); font-weight: 600; }
 
 /* Avatar button + dropdown */
 .topbar-avatar-wrap {
@@ -2155,3 +2165,51 @@ body.gate { display: flex; flex-direction: column; }
   .topnav { flex-wrap: wrap; height: auto; overflow-x: visible; }
   .topnav .sidebar-link { height: 32px; padding: 0 2px; }
 }
+
+/* ----- Classic night -----
+   Opt-in theme (avatar menu > Theme), data-theme="classic": the pre-#492
+   blue-black, violet hairlines, rose actions and cyan focus. Layout, type and
+   the status colours stay as in the dark theme. Contrast is listed in the PR
+   that added it; every text pair is >= 4.5:1 and every UI pair >= 3:1. */
+:root[data-theme="classic"] {
+  --bg-primary: #0b0b14; --bg-secondary: #11111d; --bg-card: #11111d; --bg-tertiary: #171726;
+  --bg-hover: #1d1d2f; --bg-input: #08080f; --bg-log: #07070d;
+  --border-color: #25233a; --border: #25233a; --border-light: #322f4b; --border-strong: #4b4670;
+  --text-primary: #e8e6f0; --text-secondary: #bdb6cf; --text-muted: #a59cb5;
+  /* Pink, not the old #fb7185: that rose sat only dE00 9.8 from the error coral. */
+  --accent: #f472b6; --accent-hover: #f9a8d4; --accent-bg: #f472b6;
+  --accent-soft: rgba(244, 114, 182, 0.10);
+  --accent-secondary: #22d3ee; --accent-secondary-soft: rgba(34, 211, 238, 0.10);
+  --chart-bar: #706b98;
+  --gradient-card: linear-gradient(135deg, rgba(139, 92, 246, 0.07), rgba(6, 182, 212, 0.035));
+  --gradient-sidebar: linear-gradient(180deg, #121222, #0e0e1a);
+  --shadow-glow-rose: 0 0 14px rgba(244, 114, 182, 0.24);
+}
+:root[data-theme="classic"] .topbar {
+  background: var(--gradient-sidebar);
+  border-image: linear-gradient(90deg, #f472b6, #8b5cf6 50%, #22d3ee) 1;
+}
+:root[data-theme="classic"] .topnav .sidebar-link.active { border-bottom-color: var(--accent); }
+:root[data-theme="classic"] .btn-primary {
+  background: var(--accent); border-color: var(--accent); color: var(--bg-primary);
+  box-shadow: var(--shadow-glow-rose);
+}
+:root[data-theme="classic"] .btn-primary:hover:not(:disabled) { background: var(--accent-hover); border-color: var(--accent-hover); }
+/* .btn-success stays white in Classic, so its hover goes whiter, as in dark,
+   not to the rose hover. The claim $ icons (.btn-icon) keep their own green. */
+:root[data-theme="classic"] .btn-success:not(.btn-icon):hover:not(:disabled) { background: #ffffff; border-color: #ffffff; }
+/* Disabled: the dark theme's neutral fill, not a dim pink. */
+:root[data-theme="classic"] .btn-primary:disabled {
+  background: var(--text-primary); border-color: var(--text-primary); box-shadow: none;
+}
+:root[data-theme="classic"] :is(.stats-grid, .modal, .category-card, .service-card) {
+  background-image: var(--gradient-card);
+}
+:root[data-theme="classic"] :is(.category-card, .service-card).selected { border-color: var(--accent); }
+/* White check on a dark box with a rose ring: 19.6:1, where white on rose was 2.6:1. */
+:root[data-theme="classic"] .service-card.selected::after { background-color: var(--bg-primary); box-shadow: inset 0 0 0 1px var(--accent); }
+:root[data-theme="classic"] :is(.wizard-step, .gate-step).active .wizard-step-number {
+  border-color: var(--accent); background: var(--accent);
+}
+:root[data-theme="classic"] :focus-visible,
+:root[data-theme="classic"] .form-input:focus-visible { outline-color: var(--accent-secondary); }

@@ -18,6 +18,23 @@ from app import database, deps
 router = APIRouter()
 
 
+async def _page(request: Request, template: str, user: dict) -> HTMLResponse:
+    """Render a signed-in page with the user's saved theme on <html>.
+
+    The server decides the theme of a signed-in page, so it paints right from the
+    first frame on any browser, and a theme left in localStorage by whoever used
+    this browser before never applies. Never chosen means the default, dark.
+    """
+    theme = "dark"
+    try:
+        prefs = await database.get_user_preferences(user["uid"])
+        if prefs and prefs.get("theme") in database.THEMES:
+            theme = prefs["theme"]
+    except Exception:  # noqa: BLE001 - a theme read must never break a page
+        pass
+    return deps.templates.TemplateResponse(request, template, {"user": user, "saved_theme": theme})
+
+
 @router.get("/", response_class=HTMLResponse)
 async def page_dashboard(request: Request):
     user = auth_module.get_current_user(request)
@@ -25,7 +42,7 @@ async def page_dashboard(request: Request):
         if not await database.has_any_users():
             return RedirectResponse("/onboarding", status_code=303)
         return RedirectResponse("/login", status_code=303)
-    return deps.templates.TemplateResponse(request, "dashboard.html", {"user": user})
+    return await _page(request, "dashboard.html", user)
 
 
 @router.get("/setup", response_class=HTMLResponse)
@@ -33,7 +50,7 @@ async def page_setup(request: Request):
     user = auth_module.get_current_user(request)
     if not user:
         return deps._login_redirect()
-    return deps.templates.TemplateResponse(request, "setup.html", {"user": user})
+    return await _page(request, "setup.html", user)
 
 
 @router.get("/catalog", response_class=HTMLResponse)
@@ -41,7 +58,7 @@ async def page_catalog(request: Request):
     user = auth_module.get_current_user(request)
     if not user:
         return deps._login_redirect()
-    return deps.templates.TemplateResponse(request, "catalog.html", {"user": user})
+    return await _page(request, "catalog.html", user)
 
 
 @router.get("/settings", response_class=HTMLResponse)
@@ -51,7 +68,7 @@ async def page_settings(request: Request):
         return deps._login_redirect()
     if not auth_module.require_role(user, "owner"):
         raise HTTPException(status_code=403, detail="Owner access required")
-    return deps.templates.TemplateResponse(request, "settings.html", {"user": user})
+    return await _page(request, "settings.html", user)
 
 
 @router.get("/payouts", response_class=HTMLResponse)
@@ -68,7 +85,7 @@ async def page_payouts(request: Request):
         return deps._login_redirect()
     if not auth_module.require_role(user, "owner"):
         raise HTTPException(status_code=403, detail="Owner access required")
-    return deps.templates.TemplateResponse(request, "payouts.html", {"user": user})
+    return await _page(request, "payouts.html", user)
 
 
 @router.get("/fleet", response_class=HTMLResponse)
@@ -76,4 +93,4 @@ async def page_fleet(request: Request):
     user = auth_module.get_current_user(request)
     if not user:
         return deps._login_redirect()
-    return deps.templates.TemplateResponse(request, "fleet.html", {"user": user})
+    return await _page(request, "fleet.html", user)

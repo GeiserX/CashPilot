@@ -4759,27 +4759,40 @@ const CP = (() => {
   // Init on DOMContentLoaded
   // -----------------------------------------------------------
   // -----------------------------------------------------------
-  // Theme toggle
+  // Theme
   // -----------------------------------------------------------
-  function initThemeToggle() {
-    const btn = document.getElementById('theme-toggle');
-    if (!btn) return;
-    function updateLabel() {
-      const label = btn.querySelector('.theme-label');
-      if (label) {
-        const current = document.documentElement.getAttribute('data-theme') || 'dark';
-        label.textContent = current === 'dark' ? 'Light mode' : 'Dark mode';
-      }
-    }
-    btn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      const current = document.documentElement.getAttribute('data-theme') || 'dark';
-      const next = current === 'dark' ? 'light' : 'dark';
-      document.documentElement.setAttribute('data-theme', next);
-      localStorage.setItem('cp-theme', next);
-      updateLabel();
+  // Three themes: dark (the default), light and classic, picked in the avatar
+  // menu by any signed-in role. The choice is saved to the account. The server
+  // writes it into <html data-theme> on every signed-in page, so that page
+  // paints it from the first frame on any browser; the pre-paint script in
+  // base.html mirrors it into localStorage 'cp-theme' for the sign-in pages.
+  const THEMES = ['dark', 'light', 'classic'];
+
+  function currentTheme() {
+    const t = document.documentElement.getAttribute('data-theme');
+    return THEMES.includes(t) ? t : 'dark';
+  }
+
+  function applyTheme(theme) {
+    if (!THEMES.includes(theme)) return;
+    document.documentElement.setAttribute('data-theme', theme);
+    localStorage.setItem('cp-theme', theme);
+    document.querySelectorAll('[data-theme-choice]').forEach(b => {
+      b.setAttribute('aria-pressed', String(b.dataset.themeChoice === theme));
     });
-    updateLabel();
+  }
+
+  function chooseTheme(theme) {
+    applyTheme(theme);
+    api('/api/preferences', { method: 'POST', body: { theme } })
+      .catch(err => toast(`Theme not saved: ${err.message}`, 'error'));
+  }
+
+  function initThemePicker() {
+    applyTheme(currentTheme());
+    document.querySelectorAll('[data-theme-choice]').forEach(b => {
+      b.addEventListener('click', () => chooseTheme(b.dataset.themeChoice));
+    });
   }
 
   function initAvatarDropdown() {
@@ -4856,7 +4869,7 @@ const CP = (() => {
 
   document.addEventListener('DOMContentLoaded', () => {
     initSidebar();
-    initThemeToggle();
+    initThemePicker();
     initNotifications();
     initAvatarDropdown();
 
