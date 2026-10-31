@@ -211,7 +211,7 @@ check(
 // ---------------------------------------------------------------------------
 function withBox(box) {
   return criticalStateRow({slug: 'mysterium', name: 'Mysterium', critical_state: [{target: '/v', holds: 'h'}],
-    backup: {confirmed: box.state === 'confirmed', boxes: [Object.assign({worker_id: 1, name: 'watchtower', online: true, tracks_changes: true}, box)]}});
+    backup: {confirmed: box.state === 'confirmed', boxes: [Object.assign({worker_id: 1, name: 'box-a', online: true, tracks_changes: true}, box)]}});
 }
 const none = withBox({state: 'none'});
 check('an unconfirmed box offers "I have a backup"', none.includes('No backup confirmed') && none.includes('data-backup-action="confirm"'), none);
@@ -231,12 +231,13 @@ check('an old confirmation asks again', expired.includes('more than six months a
 const recheck = withBox({state: 'recheck', confirmed_at: '2026-10-01'});
 check('a confirmation from before the fingerprint asks once more', recheck.includes('Confirm it once more'), recheck);
 const offline = withBox({state: 'none', online: false});
-check('an offline box is marked', offline.includes('watchtower (offline)'), offline);
+check('an offline box is marked', offline.includes('box-a (offline)'), offline);
 const hostileBox = withBox({state: 'none', name: '<img src=x>', worker_id: '"><b>'});
 check('a hostile box name or id is escaped', !hostileBox.includes('<img src=x>') && !hostileBox.includes('"><b>'), hostileBox);
 check('CONTROL: no backup block when the service has none', !criticalStateRow({slug: 'x', name: 'X', critical_state: []}).includes('payout-backup-box'), 'none');
 const form = exportForm('mysterium', 1);
 check('the export form takes a passphrase or a public key, as a password field', form.includes('value="passphrase"') && form.includes('value="recipient"') && form.includes('type="password"'), form);
+check('the export form asks for the passphrase twice', form.includes('name="secret_repeat"') && form.includes('Repeat the passphrase'), form);
 check('the export form warns that a lost secret means a lost backup', form.includes('cannot be opened by anyone'), form);
 
 // ---------------------------------------------------------------------------

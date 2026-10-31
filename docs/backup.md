@@ -40,7 +40,12 @@ network and never sits in the dashboard's memory.
   your own, or have CashPilot generate a pair and keep the private key yourself.
 - **A passphrase**, which is used to derive a key and then discarded with the
   request. Minimum 12 characters, because the realistic attack on a stolen
-  bundle is offline guessing, and length is the only defence.
+  bundle is offline guessing, and length is the only defence. You type it
+  twice, because a typo makes a file nobody can open.
+
+Use a recipient key when the UI and the worker run on different machines. A
+passphrase travels from the UI to the worker inside the request, over the
+worker link; a public key is no secret, so nothing sensitive crosses that link.
 
 **The container is paused while its state is read.** A keystore or SQLite file
 copied mid-write produces a backup that opens perfectly and restores a broken
@@ -60,7 +65,7 @@ Instead the Payouts page warns about every box without a confirmed backup.
 The Payouts page lists every running service with state like this under
 **Back these up**, one line per box. Each line has two buttons:
 
-- **Download backup** asks for a passphrase or a recipient public key, has the
+- **Download backup** asks for a passphrase (twice) or a recipient public key, has the
   box read and encrypt the state, and downloads a `.cpbackup` file. The
   container is paused for the second or two the read takes.
 - **I have a backup** is for state you already copy with your own tools.
@@ -108,10 +113,13 @@ python3 state_backup.py decrypt <file>.cpbackup --out restored
 ```
 
 It checks the file's integrity, refuses an altered one, and writes one tar
-archive per folder, printing where each goes:
+archive per folder, printing where each goes. It never overwrites a file: give
+it an empty `--out` folder. It also refuses an archive with an entry that could
+land outside its folder (an absolute path, `..`, a link pointing out, a device),
+because step 2 extracts as root:
 
 ```
-mysterium from watchtower, checksum verified.
+mysterium from box-a, checksum verified.
   restored/mysterium-node.tar  ->  restores /var/lib/mysterium-node
 ```
 
@@ -157,9 +165,10 @@ It answers three ways:
 
 ## What is not covered
 
-- **State over 256 MB is refused.** Storj and Sia hostd mark their whole
-  storage folder as irreplaceable, which is far too big for one download. Back
-  those up with your own tools and use **I have a backup**.
+- **State over 64 MB is refused.** Identities, keystores and wallets are
+  kilobytes. Storj and Sia hostd mark their whole storage folder as
+  irreplaceable, which is far too big for one download. Back those up at the
+  disk level with your own tools and use **I have a backup**.
 - Services with no `critical_volumes` entry are refused rather than backed up.
   If a service's state is re-downloadable, a backup teaches a false habit; if it
   is genuinely irreplaceable and missing from the catalog, that is a catalog bug

@@ -5263,6 +5263,12 @@ async def api_backup_export(slug: str, request: Request) -> dict[str, Any]:
         raise HTTPException(status_code=400, detail="The passphrase and the public key must be text.")
     if bool(passphrase) == bool(recipient):
         raise HTTPException(status_code=400, detail="Give either a passphrase or a recipient public key, not both.")
+    if passphrase:
+        # A typo would give a file nobody can open, and the export below marks
+        # the box as backed up. Compared, never echoed.
+        repeat = body.get("passphrase_repeat")
+        if not isinstance(repeat, str) or not secrets.compare_digest(repeat.encode(), passphrase.encode()):
+            raise HTTPException(status_code=400, detail="The two passphrases differ. Type it again.")
     box = await _backup_box(slug, body.get("worker_id"))
     worker_id = box["worker_id"]
 

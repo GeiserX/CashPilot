@@ -38,6 +38,7 @@ PASSPHRASE = "correct horse battery staple"
 # A value that must never come back. Built at runtime: a literal next to
 # "passphrase" reads to a secret scanner as a leaked password.
 SENTINEL = "-".join(["never", "echo", "this", "value"])
+EXPORT = {"worker_id": 1, "passphrase": PASSPHRASE, "passphrase_repeat": PASSPHRASE}
 
 
 def _sql(dt: datetime) -> str:
@@ -66,7 +67,7 @@ def _c(slug, state_id=None):
 # One box's backup state
 # ---------------------------------------------------------------------------
 
-BOX = [{"worker_id": 1, "name": "watchtower", "online": True, "android": False}]
+BOX = [{"worker_id": 1, "name": "box-a", "online": True, "android": False}]
 
 
 def _status(confirmed=None, live="aaa", *, servers=BOX):
@@ -111,7 +112,7 @@ class TestBackupStatus:
         assert out["confirmed"] is False
 
     def test_a_new_box_running_the_service_needs_its_own_backup(self):
-        servers = BOX + [{"worker_id": 2, "name": "geiserback", "online": True, "android": False}]
+        servers = BOX + [{"worker_id": 2, "name": "box-b", "online": True, "android": False}]
         out = _status({"state_id": "aaa", "confirmed_at": _sql(NOW - timedelta(days=1))}, servers=servers)
         assert [b["state"] for b in out["boxes"]] == ["confirmed", "none"]
         assert out["confirmed"] is False
@@ -151,7 +152,7 @@ def _row(result, slug):
 
 
 class TestTheCounter:
-    WORKERS = [_worker(1, "watchtower", [_c("mysterium", "m1"), _c("proxybase-xyz", "p1"), _c("honeygain")])]
+    WORKERS = [_worker(1, "box-a", [_c("mysterium", "m1"), _c("proxybase-xyz", "p1"), _c("honeygain")])]
 
     def test_unconfirmed_services_are_counted(self):
         result = _registry(self.WORKERS, {})
@@ -235,6 +236,10 @@ class TestStateId:
 
 
 class TestTheSizeCap:
+    def test_the_cap_fits_an_identity_not_a_data_folder(self):
+        # The bundle is held several times over on the worker and the UI.
+        assert orchestrator.MAX_BACKUP_BYTES == 64 * 1024 * 1024
+
     def test_a_storage_folder_is_refused_and_the_node_unpaused(self):
         container = MagicMock(status="running")
         big = [b"x" * (1024 * 1024)] * 3
@@ -243,7 +248,7 @@ class TestTheSizeCap:
             patch.object(orchestrator, "_critical_volume_targets", return_value={"/app/config": "x"}),
             patch.object(orchestrator, "_find_container", return_value=container),
             patch.object(orchestrator, "MAX_BACKUP_BYTES", 2 * 1024 * 1024),
-            pytest.raises(ValueError, match="too big to export"),
+            pytest.raises(ValueError, match="too big to export here.*at the disk level"),
         ):
             orchestrator.read_critical_state("storj")
         container.unpause.assert_called_once()
@@ -298,7 +303,7 @@ def _as(role):
 
 
 def _fleet(features=("instances", "isolation_check", "state_backup")):
-    workers = [_worker(1, "watchtower", [_c("mysterium", "m1")], features=features)]
+    workers = [_worker(1, "box-a", [_c("mysterium", "m1")], features=features)]
     return (
         patch.object(main.database, "list_workers", AsyncMock(return_value=workers)),
         patch.object(main.database, "get_worker", AsyncMock(return_value=workers[0])),
@@ -347,9 +352,7 @@ class TestTheRoutes:
         w, g = _fleet(features=("instances", "isolation_check"))
         proxy = AsyncMock()
         with _as("owner"), w, g, patch.object(main, "_proxy_to_worker", proxy):
-            resp = client.post(
-                "/api/payout-registry/mysterium/backup-export", json={"worker_id": 1, "passphrase": PASSPHRASE}
-            )
+            resp = client.post("/api/payout-registry/mysterium/backup-export", json=EXPORT)
         assert resp.status_code == 409
         assert "Update the worker" in resp.json()["detail"]
         proxy.assert_not_awaited()
@@ -358,9 +361,7 @@ class TestTheRoutes:
         w, g = _fleet()
         proxy = AsyncMock(side_effect=HTTPException(status_code=404, detail="x"))
         with _as("owner"), w, g, patch.object(main, "_proxy_to_worker", proxy):
-            resp = client.post(
-                "/api/payout-registry/mysterium/backup-export", json={"worker_id": 1, "passphrase": PASSPHRASE}
-            )
+            resp = client.post("/api/payout-registry/mysterium/backup-export", json=EXPORT)
         assert resp.status_code == 409
         assert "Update the worker" in resp.json()["detail"]
 
@@ -381,12 +382,10 @@ class TestTheRoutes:
             patch.object(main, "_proxy_to_worker", AsyncMock(return_value=answer)) as proxy,
             patch.object(main.database, "confirm_state_backup", confirm),
         ):
-            resp = client.post(
-                "/api/payout-registry/mysterium/backup-export", json={"worker_id": 1, "passphrase": PASSPHRASE}
-            )
+            resp = client.post("/api/payout-registry/mysterium/backup-export", json=EXPORT)
         assert resp.status_code == 200, resp.text
         data = resp.json()
-        assert data["filename"].startswith("cashpilot-mysterium-watchtower-") and data["filename"].endswith(".cpbackup")
+        assert data["filename"].startswith("cashpilot-mysterium-box-a-") and data["filename"].endswith(".cpbackup")
         assert sb.open_bundle(base64.b64decode(data["bundle_b64"]), passphrase=PASSPHRASE) == b"identity"
         # The worker's own fingerprint of what it read wins over the heartbeat's.
         confirm.assert_awaited_once_with("mysterium", 1, "m2", "export")
@@ -405,19 +404,52 @@ class TestTheRoutes:
             patch.object(main, "_proxy_to_worker", AsyncMock(side_effect=HTTPException(status_code=500, detail="x"))),
             patch.object(main.database, "confirm_state_backup", confirm),
         ):
-            resp = client.post(
-                "/api/payout-registry/mysterium/backup-export", json={"worker_id": 1, "passphrase": PASSPHRASE}
-            )
+            resp = client.post("/api/payout-registry/mysterium/backup-export", json=EXPORT)
         assert resp.status_code == 500
         confirm.assert_not_awaited()
+
+    def test_a_mistyped_repeat_exports_and_confirms_nothing(self, client):
+        """A typo would give a file nobody can open, marked as a confirmed backup."""
+        w, g = _fleet()
+        proxy, confirm = AsyncMock(), AsyncMock()
+        body = dict(EXPORT, passphrase_repeat=PASSPHRASE + "x")
+        with (
+            _as("owner"),
+            w,
+            g,
+            patch.object(main, "_proxy_to_worker", proxy),
+            patch.object(main.database, "confirm_state_backup", confirm),
+        ):
+            resp = client.post("/api/payout-registry/mysterium/backup-export", json=body)
+        assert resp.status_code == 400
+        assert "differ" in resp.json()["detail"]
+        assert PASSPHRASE not in resp.text
+        proxy.assert_not_awaited()
+        confirm.assert_not_awaited()
+
+    def test_the_repeat_is_not_sent_to_the_worker(self, client):
+        answer = {"bundle_b64": base64.b64encode(b"x").decode(), "state_id": "m2"}
+        w, g = _fleet()
+        with (
+            _as("owner"),
+            w,
+            g,
+            patch.object(main, "_proxy_to_worker", AsyncMock(return_value=answer)) as proxy,
+            patch.object(main.database, "confirm_state_backup", AsyncMock()),
+        ):
+            resp = client.post("/api/payout-registry/mysterium/backup-export", json=EXPORT)
+        assert resp.status_code == 200, resp.text
+        assert proxy.await_args.kwargs["json"] == {"passphrase": PASSPHRASE}
 
     @pytest.mark.parametrize(
         "body",
         [
             {"worker_id": 1},
             {"worker_id": 1, "passphrase": PASSPHRASE, "recipient_public_key": "ab" * 32},
-            {"worker_id": "1", "passphrase": PASSPHRASE},
+            {"worker_id": "1", "passphrase": PASSPHRASE, "passphrase_repeat": PASSPHRASE},
             {"worker_id": 1, "passphrase": [SENTINEL]},
+            {"worker_id": 1, "passphrase": PASSPHRASE},
+            {"worker_id": 1, "passphrase": PASSPHRASE, "passphrase_repeat": SENTINEL},
         ],
     )
     def test_bad_input_never_echoes_the_secret(self, client, body, caplog):
@@ -547,3 +579,83 @@ class TestEndToEnd:
         assert sorted(parts) == ["a", "b"]
         with tarfile.open(fileobj=io.BytesIO(parts["b"])) as tar:
             assert tar.extractfile("b/g").read() == b"2"  # type: ignore[union-attr]
+
+
+# ---------------------------------------------------------------------------
+# The restore refuses entries that could land outside their folder
+# ---------------------------------------------------------------------------
+
+
+def _tar(*members: tarfile.TarInfo) -> bytes:
+    buf = io.BytesIO()
+    with tarfile.open(fileobj=buf, mode="w") as tar:
+        for m in members:
+            tar.addfile(m, io.BytesIO(b"x" * m.size) if m.isfile() else None)
+    return buf.getvalue()
+
+
+def _entry(name: str, kind: bytes = tarfile.REGTYPE, link: str = "") -> tarfile.TarInfo:
+    info = tarfile.TarInfo(name)
+    info.type, info.linkname = kind, link
+    info.size = 1 if kind == tarfile.REGTYPE else 0
+    return info
+
+
+UNSAFE = {
+    "dot-dot": _tar(_entry("node"), _entry("node/../../etc/cron.d/x")),
+    "absolute": _tar(_entry("/etc/passwd")),
+    "through a symlink": _tar(_entry("node/link", tarfile.SYMTYPE, "/etc"), _entry("node/link/cron")),
+    "relative symlink out": _tar(_entry("node/up", tarfile.SYMTYPE, "../../etc")),
+    "path through a relative symlink": _tar(_entry("node/l", tarfile.SYMTYPE, "."), _entry("node/l/f")),
+    "hardlink out": _tar(_entry("node/h", tarfile.LNKTYPE, "other/secret")),
+    "char device": _tar(_entry("node/null", tarfile.CHRTYPE)),
+    "block device": _tar(_entry("node/sda", tarfile.BLKTYPE)),
+    "fifo": _tar(_entry("node/pipe", tarfile.FIFOTYPE)),
+}
+
+
+class TestUnsafeEntriesAreRefused:
+    """Anyone with the public key can build a bundle that opens cleanly, and the
+    documented restore extracts it as root, so the archive itself is the check."""
+
+    @pytest.mark.parametrize("case", sorted(UNSAFE))
+    def test_refused(self, case):
+        with pytest.raises(sb.BackupError, match="unsafe entry"):
+            sb.split_archives(UNSAFE[case])
+
+    @pytest.mark.parametrize("case", sorted(UNSAFE))
+    def test_the_cli_writes_nothing(self, case, tmp_path):
+        bundle = sb.seal(UNSAFE[case], passphrase=PASSPHRASE, metadata={"slug": "x", "worker": "w"})
+        result = _decrypt(bundle, PASSPHRASE, tmp_path)
+        assert result.returncode == 1
+        assert "unsafe entry" in result.stderr
+        assert not (tmp_path / "out").exists()
+
+    def test_links_inside_the_folder_still_restore(self):
+        payload = _tar(
+            _entry("node"),
+            _entry("node/data"),
+            _entry("node/current", tarfile.SYMTYPE, "data"),
+            _entry("node/copy", tarfile.LNKTYPE, "node/data"),
+        )
+        parts = sb.split_archives(payload)
+        with tarfile.open(fileobj=io.BytesIO(parts["node"])) as tar:
+            assert tar.getmember("node/current").linkname == "data"
+
+    def test_setuid_bits_are_dropped(self):
+        f = _entry("node/run")
+        f.mode = 0o4755
+        with tarfile.open(fileobj=io.BytesIO(sb.split_archives(_tar(f))["node"])) as tar:
+            assert tar.getmember("node/run").mode == 0o755
+
+
+class TestTheCliNeverOverwrites:
+    def test_an_existing_tar_is_kept(self, tmp_path):
+        out = tmp_path / "out"
+        out.mkdir()
+        (out / "mysterium-node.tar").write_bytes(b"mine")
+        result = _decrypt(_fake_volume_bundle(passphrase=PASSPHRASE), PASSPHRASE, tmp_path)
+        assert result.returncode == 1
+        assert "already exists" in result.stderr
+        assert (out / "mysterium-node.tar").read_bytes() == b"mine"
+        assert not (out / ".proxybase.tar").exists()

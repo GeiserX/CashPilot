@@ -866,8 +866,10 @@ def _critical_volume_targets(slug: str) -> dict[str, str] | None:
 
 #: The largest state ``read_critical_state`` will hold in memory. Node identities,
 #: keystores and wallets are kilobytes to a few megabytes; anything near this is a
-#: storage directory, which is not something to carry in one HTTP response.
-MAX_BACKUP_BYTES = 256 * 1024 * 1024
+#: storage directory, which is not something to carry in one HTTP response. The
+#: bundle is held several times over on its way out (chunks, payload, ciphertext,
+#: base64, JSON), so the peak is a multiple of this.
+MAX_BACKUP_BYTES = 64 * 1024 * 1024
 
 
 def state_id(container: Any, targets: dict[str, str] | list[str] | None, client: Any = None) -> str | None:
@@ -974,7 +976,9 @@ def read_critical_state(slug: str) -> tuple[bytes, list[str]]:
                     # take the worker and the node down for nothing.
                     raise ValueError(
                         f"{slug}'s state is larger than {MAX_BACKUP_BYTES // (1024 * 1024)} MB, too big to "
-                        f"export through CashPilot. Back up {target} with your own tools."
+                        f"export here. That is a data folder, not an identity: Storj and Sia keep their "
+                        f"whole storage folder there. Back up {target} at the disk level with your own "
+                        "tools, then use I have a backup."
                     )
                 chunks.append(chunk)
             read.append(target)

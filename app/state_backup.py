@@ -290,6 +290,39 @@ def looks_like_bundle(data: bytes) -> bool:
     return True
 
 
+def _unsafe_member(member: Any, links: set[str]) -> str | None:
+    """Why ``member`` could write outside its own folder on restore, or None.
+
+    The restore extracts these archives as root into a volume, and in recipient
+    mode anyone holding the public key can build a bundle that opens cleanly. So
+    every entry is checked on its own, by the rules of tarfile's
+    ``data_filter`` and stricter in two places: names are refused rather than rewritten, and a link
+    target may not use ``..`` at all, because a chain of links can climb out
+    even when each target looks inside on paper.
+    """
+    name = member.name
+    if name.startswith(("/", "\\")):
+        return f"{name!r} is an absolute path"
+    parts = [p for p in name.split("/") if p not in ("", ".")]
+    if not parts or ".." in parts:
+        return f"{name!r} leaves its folder"
+    for depth in range(1, len(parts)):
+        if "/".join(parts[:depth]) in links:
+            return f"{name!r} is written through a link"
+    if member.issym() or member.islnk():
+        target = member.linkname
+        tparts = target.split("/")
+        if not target or target.startswith(("/", "\\")) or ".." in tparts:
+            return f"{name!r} links to {target!r}, outside its folder"
+        if member.islnk() and (
+            tparts[0] != parts[0] or any("/".join(tparts[:d]) in links for d in range(1, len(tparts)))
+        ):
+            return f"{name!r} links to {target!r}, outside its folder"
+    elif not (member.isfile() or member.isdir()):
+        return f"{name!r} is a device or pipe, not a file or folder"
+    return None
+
+
 def split_archives(payload: bytes) -> dict[str, bytes]:
     """The decrypted payload as one tar archive per backed-up mount.
 
@@ -298,17 +331,28 @@ def split_archives(payload: bytes) -> dict[str, bytes]:
     component (``/var/lib/mysterium-node`` -> ``mysterium-node/...``), so they
     are regrouped by that name. Owners, modes and times are kept, which is what
     ``docker cp`` needs to put the files back as the service expects them.
+
+    An entry that could land outside its folder (absolute name, ``..``, a link
+    pointing out, a path through a link, a device or pipe) fails the whole
+    restore: see ``_unsafe_member``. Setuid and setgid bits are dropped.
     """
     import io
     import tarfile
 
     groups: dict[str, list[tuple[tarfile.TarInfo, bytes | None]]] = {}
+    links: set[str] = set()
     with tarfile.open(fileobj=io.BytesIO(payload), mode="r:", ignore_zeros=True) as src:
         for member in src:
-            name = member.name[2:] if member.name.startswith("./") else member.name
-            top = name.lstrip("/").split("/", 1)[0]
-            if not top or top in (".", ".."):
-                raise BackupError("The backup holds a path outside its own folders.")
+            if member.name.startswith("./"):
+                member.name = member.name[2:]
+            why = _unsafe_member(member, links)
+            if why:
+                raise BackupError(f"The backup holds an unsafe entry and was not restored: {why}.")
+            member.name = "/".join(p for p in member.name.split("/") if p not in ("", "."))
+            if member.issym() or member.islnk():
+                links.add(member.name)
+            member.mode &= 0o1777
+            top = member.name.split("/", 1)[0]
             data = src.extractfile(member).read() if member.isfile() else None  # type: ignore[union-attr]
             groups.setdefault(top, []).append((member, data))
 
@@ -375,11 +419,19 @@ def _cli(argv: list[str] | None = None) -> int:
     os.makedirs(args.out, exist_ok=True)
     targets = {str(t).rstrip("/").rsplit("/", 1)[-1]: str(t) for t in meta.get("targets") or []}
     print(f"{meta.get('slug', '?')} from {meta.get('worker', '?')}, checksum verified.")
+    paths = {name: os.path.join(args.out, f"{name}.tar") for name in archives}
+    taken = sorted(p for p in paths.values() if os.path.lexists(p))
+    if taken:
+        print(f"error: {', '.join(taken)} already exists. Use an empty --out folder.", file=sys.stderr)
+        return 1
     for name, data in sorted(archives.items()):
-        path = os.path.join(args.out, f"{name}.tar")
-        with open(path, "wb") as fh:
-            fh.write(data)
-        print(f"  {path}  ->  restores {targets.get(name, '/' + name)}")
+        try:
+            with open(paths[name], "xb") as fh:
+                fh.write(data)
+        except FileExistsError:
+            print(f"error: {paths[name]} already exists. Use an empty --out folder.", file=sys.stderr)
+            return 1
+        print(f"  {paths[name]}  ->  restores {targets.get(name, '/' + name)}")
     return 0
 
 

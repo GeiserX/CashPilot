@@ -253,6 +253,8 @@
       + '<label><input type="radio" name="mode" value="recipient"> X25519 public key (hex)</label>'
       + '<input type="password" class="form-input" name="secret" autocomplete="new-password" required'
       + ' aria-label="Passphrase or public key">'
+      + '<input type="password" class="form-input" name="secret_repeat" autocomplete="new-password" required'
+      + ' placeholder="Repeat the passphrase" aria-label="Repeat the passphrase">'
       + '<button type="submit" class="btn btn-ghost btn-sm">Encrypt and download</button>'
       + '<p class="payout-holds">Encrypted on the box, before it leaves. Lose the passphrase or the private key '
       + 'and this file cannot be opened by anyone, CashPilot included.</p>'
@@ -446,9 +448,22 @@
     if (!form) return;
     ev.preventDefault();
     var input = form.querySelector('input[name=secret]');
+    var repeat = form.querySelector('input[name=secret_repeat]');
+    var recipient = form.querySelector('input[name=mode]:checked').value === 'recipient';
+    // A typo here makes a file nobody can open, marked as a confirmed backup.
+    if (!recipient && input.value !== repeat.value) {
+      CP.toast('The two passphrases differ', 'error');
+      repeat.value = '';
+      return;
+    }
     var body = {worker_id: Number(form.dataset.worker)};
-    body[form.querySelector('input[name=mode]:checked').value === 'recipient' ? 'recipient_public_key' : 'passphrase'] = input.value;
-    input.value = '';
+    if (recipient) {
+      body.recipient_public_key = input.value;
+    } else {
+      body.passphrase = input.value;
+      body.passphrase_repeat = repeat.value;
+    }
+    input.value = ''; repeat.value = '';
     var button = form.querySelector('button[type=submit]');
     button.disabled = true; button.textContent = 'Reading and encrypting\u2026';
     try {
@@ -488,6 +503,14 @@
     var critical = document.getElementById('payout-critical-card');
     critical.addEventListener('click', onBackupClick);
     critical.addEventListener('submit', onBackupSubmit);
+    // A public key is pasted, not typed, so it has no repeat field.
+    critical.addEventListener('change', function (ev) {
+      var form = ev.target.closest('.payout-backup-form');
+      if (!form || ev.target.name !== 'mode') return;
+      var repeat = form.querySelector('input[name=secret_repeat]');
+      var passphrase = ev.target.value === 'passphrase';
+      repeat.hidden = !passphrase; repeat.required = passphrase; repeat.value = '';
+    });
     loadPayouts();
   });
 })();
