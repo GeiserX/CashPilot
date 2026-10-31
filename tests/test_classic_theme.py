@@ -1,4 +1,8 @@
-"""Classic night: a third theme, picked in the avatar menu by any signed-in role.
+"""Classic night: the default theme, next to dark and light in the avatar menu.
+
+Anyone who never chose a theme (user_preferences.theme NULL, a new install, a
+browser with nothing saved on the sign-in pages) gets Classic. An explicit dark
+or light stays.
 
 The choice is saved per user on the server and rendered into <html data-theme>
 on every signed-in page, then mirrored into localStorage 'cp-theme' for the
@@ -120,31 +124,49 @@ def test_every_role_gets_the_three_way_picker(real_db, role):
     user = {"uid": real_db, "u": "classic_user", "r": role}
     with patch("app.main.auth.get_current_user", return_value=user), TestClient(app) as c:
         html = c.get("/").text
-    assert re.findall(r'data-theme-choice="(\w+)"', html) == ["dark", "light", "classic"]
+    assert re.findall(r'data-theme-choice="(\w+)"', html) == ["classic", "dark", "light"]
+    assert re.search(r'data-theme-choice="classic"[^>]*>Classic \(default\)<', html)
 
 
 def test_signed_in_page_paints_the_saved_theme(real_db):
     user = {"uid": real_db, "u": "classic_user", "r": "viewer"}
     with patch("app.main.auth.get_current_user", return_value=user), TestClient(app) as c:
-        assert _html_theme(c.get("/").text) == "dark"  # never chosen: the default
-        c.post("/api/preferences", json={"theme": "classic"})
+        assert c.get("/api/preferences").json()["theme"] is None
         for page in ("/", "/fleet", "/catalog", "/setup"):
-            assert _html_theme(c.get(page).text) == "classic", page
+            assert _html_theme(c.get(page).text) == "classic", page  # never chosen: the default
+
+
+@pytest.mark.parametrize("choice", ["dark", "light", "classic"])
+def test_an_explicit_choice_stays(real_db, choice):
+    """A user who picked dark or light keeps it; only NULL gets the default."""
+    user = {"uid": real_db, "u": "classic_user", "r": "owner"}  # owner: every page renders
+    with patch("app.main.auth.get_current_user", return_value=user), TestClient(app) as c:
+        assert c.post("/api/preferences", json={"theme": choice}).status_code == 200
+        for page in ("/", "/fleet", "/catalog", "/payouts", "/settings", "/setup"):
+            assert _html_theme(c.get(page).text) == choice, page
+
+
+def test_an_unknown_stored_theme_falls_back_to_classic(real_db):
+    """A value outside THEMES (hand-edited row) paints the default, not nothing."""
+    asyncio.run(database.save_user_preferences(real_db, theme="sepia"))
+    user = {"uid": real_db, "u": "classic_user", "r": "viewer"}
+    with patch("app.main.auth.get_current_user", return_value=user), TestClient(app) as c:
+        assert _html_theme(c.get("/").text) == "classic"
 
 
 def test_next_user_on_the_same_browser_gets_their_own_theme(real_db):
-    """An owner picks Classic; a viewer who never chose signs in on that browser.
+    """An owner picks Light; a viewer who never chose signs in on that browser.
 
-    The browser still holds 'cp-theme' = classic. The viewer's pages must say
-    dark on <html>, which the pre-paint script prefers over the stored key
+    The browser still holds 'cp-theme' = light. The viewer's pages must say
+    classic on <html>, which the pre-paint script prefers over the stored key
     (scripts/theme_check.mjs proves that half), so the viewer is never left in
     someone else's theme.
     """
     owner_id = asyncio.run(database.create_user("the_owner", "pw", "owner"))
-    asyncio.run(database.save_user_preferences(owner_id, theme="classic"))
+    asyncio.run(database.save_user_preferences(owner_id, theme="light"))
     viewer = {"uid": real_db, "u": "classic_user", "r": "viewer"}
     with patch("app.main.auth.get_current_user", return_value=viewer), TestClient(app) as c:
-        assert _html_theme(c.get("/").text) == "dark"
+        assert _html_theme(c.get("/").text) == "classic"
 
 
 def test_partial_update_writes_only_the_fields_sent(real_db):
