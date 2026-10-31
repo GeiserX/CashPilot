@@ -149,7 +149,9 @@ def test_no_template_or_script_keeps_its_own_theme_list():
     pattern = re.compile(r"""\[\s*['"](?:dark|light|classic)['"]\s*,\s*['"](?:dark|light|classic)['"]""")
     pattern_py = re.compile(r"""\(\s*['"](?:dark|light|classic)['"]\s*,\s*['"](?:dark|light|classic)['"]""")
     paths = [*ROOT.glob("app/**/*.py"), *ROOT.glob("app/templates/*.html"), ROOT / "app/static/js/app.js"]
-    paths += [ROOT / f"scripts/{n}.mjs" for n in ("theme_check", "legibility_check", "fleet_overflow_check", "ui_screenshots")]
+    paths += [
+        ROOT / f"scripts/{n}.mjs" for n in ("theme_check", "legibility_check", "fleet_overflow_check", "ui_screenshots")
+    ]
     hits = [
         str(p.relative_to(ROOT)) for p in paths if pattern.search(p.read_text()) or pattern_py.search(p.read_text())
     ]
