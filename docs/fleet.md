@@ -191,14 +191,17 @@ The fleet key is **never sent to the browser on page load**. The fleet dashboard
 
 ## Fleet Dashboard
 
-The UI's fleet dashboard shows:
+The **Fleet** page lists every box:
 
-- All connected workers with online/offline status and "last seen" timestamps
-- Per-worker container list with health, CPU, memory, and uptime
-- Remote action buttons (deploy, stop, restart, remove) targeting any worker
-- Aggregated earnings across all workers
+- each worker with its system, worker version and last report, shown in red once it stops reporting;
+- its wall power draw in watts, which the **Running costs** block below weighs against what the machine earned last month once you enter your electricity price;
+- the containers it reported or, for a phone running the [Android app](https://github.com/GeiserX/CashPilot-android), its earning apps. A box that stopped reporting keeps its last known list, greyed out;
+- **Check isolation** on Docker workers that support it ([what it tests](isolation-check.md)) and **Remove**;
+- **Add a box** at the bottom, with the environment variables for the next worker.
 
-Services running on multiple workers show expandable rows with per-instance details. The main row displays averaged CPU/memory (prefixed with `~`), and sub-rows show individual worker values.
+![The Boxes table on the Fleet page: three Linux boxes reporting, one offline box with its last known containers greyed out, and an Android phone listing its earning apps](images/screenshots/fleet-phone.png)
+
+Starting, stopping, restarting and viewing logs happen on the **Dashboard**. There, a service running on several workers shows an expandable row with one sub-row per instance; the main row shows the average CPU and memory (prefixed with `~`), and each sub-row its own figures and buttons.
 
 ## Cross-Subnet Workers
 

@@ -3,7 +3,7 @@
 !!! info "Looking for the UI's own data?"
 
     This page is about the identities your SERVICES generate. CashPilot's own
-    database and its credential-encryption key are a separate job — see
+    database and its credential-encryption key are a separate job; see
     [Backup and Restore](backup-restore.md). Losing `.fernet_key` makes every
     stored credential permanently undecryptable, so that page matters more.
 
@@ -14,8 +14,8 @@ reputation with it. Redeploying gives you a *new* node, starting from zero.
 
 Most people never back these up, because nothing tells them the files exist.
 
-CashPilot knows which mounts matter — the catalog marks them `critical_volumes`,
-the same list the delete guard refuses on — so it can export exactly those.
+CashPilot knows which mounts matter: the catalog marks them `critical_volumes`,
+the same list the delete guard refuses on, so it can export exactly those.
 
 ## The one thing to understand first
 
@@ -35,7 +35,7 @@ network and never sits in the dashboard's memory.
 
 **You choose the target**, and CashPilot cannot decrypt either kind:
 
-- **A recipient public key** (preferred). An X25519 public key — CashPilot never
+- **A recipient public key** (preferred). An X25519 public key. CashPilot never
   sees the private half, so it *cannot* open the bundle even in principle. Use
   your own, or have CashPilot generate a pair and keep the private key yourself.
 - **A passphrase**, which is used to derive a key and then discarded with the
@@ -49,11 +49,11 @@ worker link; a public key is no secret, so nothing sensitive crosses that link.
 
 **The container is paused while its state is read.** A keystore or SQLite file
 copied mid-write produces a backup that opens perfectly and restores a broken
-node — a failure that only shows up when you finally need it. Pause rather than
+node, a failure that only shows up when you finally need it. Pause rather than
 stop, so a node does not lose uptime score for a backup.
 
 **The bundle is returned in the response and nowhere else.** There is no upload,
-no cloud sync, no webhook — not disabled, *absent*. Once such a path exists in
+no cloud sync, no webhook: not disabled, *absent*. Once such a path exists in
 the code, anyone who compromises the UI can switch it on.
 
 **There is no scheduled backup**, for the same reason: a timer needs a stored
