@@ -1,4 +1,5 @@
-// Measure, in a real browser, whether the Fleet page fits its window.
+// Measure, in a real browser, whether the Fleet page (and the other pages a
+// phone opens most) fits its window.
 //
 // Box names come from the device and can be any length ("motorola motorola one
 // fusion+ (1414f972)"), a worker URL is a full tailnet hostname, and a box can
@@ -12,8 +13,12 @@
 // /api/fleet/economics answers get extra boxes with the worst names we know
 // of appended, so the check covers long data the demo seed does not have.
 //
-// It fails when, at any of the widths below, the document scrolls sideways or
-// any element on the page shows its own horizontal scrollbar.
+// It fails when, at any of the widths below, the document scrolls sideways,
+// any element shows its own horizontal scrollbar, anything sticks out past the
+// right edge of the window, an element that hides its overflow
+// (overflow-x: hidden or clip) has content wider than itself, or a table cell's
+// text runs out of the cell. The last three catch a page that "fits" only
+// because a wrapper cuts the overflow off or a cell writes over its neighbour.
 //
 //   ./scripts/fleet_overflow_check.sh            (boots Chrome and the demo UI)
 //   SHOTS=/tmp/shots ./scripts/fleet_overflow_check.sh   (also saves screenshots)
@@ -28,7 +33,17 @@ const BASE = process.env.UI_URL || "http://127.0.0.1:8110";
 const USER = process.env.UI_USER || "demo";
 const PASS = process.env.UI_PASS || "demo-password-1";
 const SHOTS = process.env.SHOTS || "";
-const WIDTHS = [320, 375, 768, 1024, 1440, 2560];
+// 1100 and 1101 sit either side of the fleet table's stacked layout.
+const FLEET_WIDTHS = [320, 375, 768, 1024, 1100, 1101, 1440, 2560];
+// The rest of the app at phone widths. /api/workers and /api/fleet/economics
+// carry the fixture boxes on these pages too.
+const PAGES = [
+  ["/fleet", FLEET_WIDTHS],
+  ["/", [320, 375]],
+  ["/catalog", [320, 375]],
+  ["/setup", [320, 375]],
+  ["/payouts", [320, 375]],
+];
 
 // --- Long data the demo seed does not have ---------------------------------
 const LONG_SLUGS = [
@@ -58,7 +73,40 @@ const FIXTURE_WORKERS = [
     last_heartbeat: "2026-10-29 08:00:00", url: "http://192.0.2.10:8081", enrollment: "pending", system_info: sys({ version: undefined }),
     containers: LONG_SLUGS.slice(0, 6).map((slug) => ({ slug, status: "running" })),
   },
+  {
+    // A name of ordinary words, long enough that it only fits a 2560 px window
+    // if it wraps at its spaces.
+    id: 9004, client_id: "c4d2e0f1", name: "living room media server behind the tv cabinet next to the router, the one with the loud fan that someone unplugs every sunday to vacuum (rev 2)", status: "online",
+    last_heartbeat: now, url: "http://192.0.2.11:8081", enrollment: "complete", system_info: sys(),
+    containers: LONG_SLUGS.slice(0, 4).map((slug) => ({ slug, status: "running" })),
+  },
 ];
+// An isolation report for the second box, so the stacked layout's report row
+// (tr.worker-detail) is on the page. Long addresses, a long earner name and a
+// long probe container name, every line the report can show.
+const ISOLATION_WORKER = 9002;
+const ISOLATION_REPORT = {
+  status: "exposed", reason: "the earner container cashpilot-a-container-slug-that-someone-named-without-any-restraint-at-all has no shell",
+  tested_from: { earner: "cashpilot-a-container-slug-that-someone-named-without-any-restraint-at-all", network: ["cashpilot_default_network_with_a_long_name", "bridge"] },
+  groups: [
+    { group: "lan", label: "Your LAN", targets: [
+      { address: "192.0.2.1", label: "Router", reachable: true, expected: false },
+      { address: "192.0.2.10", label: "This host", reachable: true, expected: false },
+      { address: "2001:db8:85a3:1234:5678:8a2e:370:7334", label: "IPv6 LAN", reachable: false },
+    ] },
+    { group: "overlay", label: "Overlay network", targets: [
+      { address: "100.100.100.100", label: "Tailscale DNS", reachable: true, expected: true, note: "expected" },
+      { address: "averyveryverylongservernamewithoutanyseparatorswhatsoever.example.ts.net", label: "Peer", reachable: false },
+    ] },
+    { group: "metadata", label: "Cloud metadata", targets: [{ address: "169.254.169.254", label: "Metadata", reachable: false }] },
+  ],
+  internet: { address: "1.1.1.1", reachable: true },
+  findings: [{ exposure: true, detail: "An earner reached 192.0.2.1 and 192.0.2.10 on your LAN through the default bridge cashpilot_default_network_with_a_long_name.", docs: "https://example.com/docs/isolation-check/#2-fix-it-by-platform" }],
+  node_firewall: { service: "Mysterium", container: "cashpilot-mysterium-node-with-a-long-container-name", readable: true, blackholed: ["192.0.2.0/24", "198.51.100.0/24", "203.0.113.0/24"] },
+  addresses_left_out: ["172.17.0.1", "172.18.0.1"],
+  leftover_probes: ["cashpilot-isolation-probe-a9f3c0d1e2b4a9f3c0d1e2b4", "cashpilot-isolation-probe-b7e1b7e1b7e1b7e1b7e1"],
+  not_answering_from_host: ["198.51.100.7"],
+};
 const FIXTURE_MACHINES = FIXTURE_WORKERS.map((w) => ({
   machine: w.name, verdict: "losing_money", monthly_gross: 17.76, monthly_cost: 120.5, monthly_net: -102.74,
   summary: `${w.name} earned 17.76 last month and its electricity cost more than that.`,
@@ -111,6 +159,15 @@ async function main() {
   listeners.push(async (msg) => {
     if (msg.method !== "Fetch.requestPaused") return;
     const { requestId, request, responseStatusCode } = msg.params;
+    if (request.url.includes("/isolation-check")) {
+      injected++;
+      await send("Fetch.fulfillRequest", {
+        requestId, responseCode: 200,
+        responseHeaders: [{ name: "Content-Type", value: "application/json" }],
+        body: Buffer.from(JSON.stringify(ISOLATION_REPORT)).toString("base64"),
+      }).catch((e) => console.error(`could not answer the isolation check: ${e.message}`));
+      return;
+    }
     try {
       const { body, base64Encoded } = await send("Fetch.getResponseBody", { requestId });
       const data = JSON.parse(base64Encoded ? Buffer.from(body, "base64").toString("utf8") : body);
@@ -150,62 +207,86 @@ async function main() {
     patterns: [
       { urlPattern: "*/api/workers", requestStage: "Response" },
       { urlPattern: "*/api/fleet/economics", requestStage: "Response" },
+      { urlPattern: `*/api/workers/${ISOLATION_WORKER}/isolation-check`, requestStage: "Request" },
     ],
   });
   await send("Page.navigate", { url: `${BASE}/fleet` });
   await waitFor(`!!document.querySelector('.fleet-table') && document.body.textContent.includes('motorola motorola one fusion+')`);
   await waitFor(`!!document.querySelector('.economics-row')`);
+  // Open the isolation report of the second box.
+  await evaluate(`document.querySelector('.btn-isolation-check[data-worker-id="${ISOLATION_WORKER}"]').click()`);
+  await waitFor(`!!document.querySelector('.fleet-table tr.worker-detail .iso-report')`);
   await sleep(500);
-  if (injected < 2) {
-    console.error(`FAIL  the fixture reached ${injected} of 2 endpoints, so the long names were not on the page`);
+  if (injected < 3) {
+    console.error(`FAIL  the fixture reached ${injected} of 3 endpoints, so the long names were not on the page`);
     process.exit(2);
   }
   const rows = await evaluate("document.querySelectorAll('.fleet-table .worker-row').length");
 
   const MEASURE = `(() => {
     const de = document.documentElement;
-    const scrollers = [];
+    const desc = (el) => el.tagName.toLowerCase() + (el.id ? '#' + el.id : '') + '.' + String(el.className).trim().replace(/\\s+/g, '.');
+    const visible = (el) => el.getClientRects().length && !el.closest('.sr-only');
+    const scrollers = [], hidden = [], spill = [];
     for (const el of document.querySelectorAll('body *')) {
+      if (!visible(el) || el.scrollWidth <= el.clientWidth + 1) continue;
       const ox = getComputedStyle(el).overflowX;
-      if ((ox === 'auto' || ox === 'scroll') && el.scrollWidth > el.clientWidth + 1 && el.getClientRects().length) {
-        scrollers.push(el.tagName.toLowerCase() + (el.id ? '#' + el.id : '') + '.' + String(el.className).trim().replace(/\\s+/g, '.') + ' ' + el.scrollWidth + '>' + el.clientWidth);
-      }
+      if (ox === 'auto' || ox === 'scroll') scrollers.push(desc(el) + ' ' + el.scrollWidth + '>' + el.clientWidth);
+      // A form field scrolls its own value; that is not the page overflowing.
+      else if ((ox === 'hidden' || ox === 'clip') && !el.matches('input, textarea, select')) hidden.push(desc(el) + ' ' + el.scrollWidth + '>' + el.clientWidth);
+      // A table cell whose text runs out of it, over the next cell, even if
+      // the window edge is still far away.
+      else if (el.matches('td, th')) spill.push(desc(el) + ' ' + el.scrollWidth + '>' + el.clientWidth + ' "' + (el.textContent || '').trim().slice(0, 40) + '"');
     }
     // The innermost elements that run past the window, to say what overflows.
     const vw = de.clientWidth, wide = [];
     for (const el of document.querySelectorAll('body *')) {
+      if (!visible(el)) continue;
       const b = el.getBoundingClientRect();
       if (b.width && b.right > vw + 1) wide.push(el);
     }
     const past = wide.filter((e) => !wide.some((o) => o !== e && e.contains(o))).slice(0, 8)
-      .map((e) => e.tagName.toLowerCase() + '.' + String(e.className).trim().replace(/\\s+/g, '.') + ' right=' + Math.round(e.getBoundingClientRect().right) + ' "' + (e.textContent || '').trim().slice(0, 40) + '"');
-    return { scrollWidth: de.scrollWidth, clientWidth: de.clientWidth, scrollers, past };
+      .map((e) => desc(e) + ' right=' + Math.round(e.getBoundingClientRect().right) + ' "' + (e.textContent || '').trim().slice(0, 40) + '"');
+    return { scrollWidth: de.scrollWidth, clientWidth: de.clientWidth, scrollers, hidden, spill, past };
   })()`;
 
-  let failures = 0;
-  for (const w of WIDTHS) {
-    await send("Emulation.setDeviceMetricsOverride", { width: w, height: 900, deviceScaleFactor: 1, mobile: false });
-    await sleep(300);
-    const r = await evaluate(MEASURE);
-    const ok = r.scrollWidth <= r.clientWidth && r.scrollers.length === 0;
-    if (!ok) failures++;
-    console.log(`${ok ? "ok  " : "FAIL"}  ${String(w).padStart(4)} px  scrollWidth ${r.scrollWidth}  clientWidth ${r.clientWidth}  scrollbars inside ${r.scrollers.length}`);
-    if (!ok) {
-      for (const s of r.scrollers) console.log(`        scrolls sideways: ${s}`);
-      for (const p of r.past) console.log(`        past the edge:    ${p}`);
+  let failures = 0, checked = 0;
+  for (const [page, widths] of PAGES) {
+    if (page !== "/fleet") {
+      await send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
+      await send("Page.navigate", { url: `${BASE}${page}` });
+      await waitFor(`location.pathname === ${JSON.stringify(page)} && document.readyState === 'complete'`);
+      // Most pages fill themselves from the API after load.
+      await sleep(2500);
     }
-    if (SHOTS) {
-      await evaluate("window.scrollTo(0, 0)");
-      fs.mkdirSync(SHOTS, { recursive: true });
-      const { contentSize } = await send("Page.getLayoutMetrics");
-      const shot = await send("Page.captureScreenshot", {
-        format: "png", captureBeyondViewport: true,
-        clip: { x: 0, y: 0, width: w, height: Math.ceil(contentSize.height), scale: 1 },
-      });
-      fs.writeFileSync(`${SHOTS}/fleet-${w}.png`, Buffer.from(shot.data, "base64"));
+    for (const w of widths) {
+      await send("Emulation.setDeviceMetricsOverride", { width: w, height: 900, deviceScaleFactor: 1, mobile: false });
+      await sleep(300);
+      const r = await evaluate(MEASURE);
+      const ok = r.scrollWidth <= r.clientWidth && !r.scrollers.length && !r.hidden.length && !r.spill.length && !r.past.length;
+      checked++;
+      if (!ok) failures++;
+      console.log(`${ok ? "ok  " : "FAIL"}  ${page.padEnd(8)} ${String(w).padStart(4)} px  scrollWidth ${r.scrollWidth}  clientWidth ${r.clientWidth}  scrollbars inside ${r.scrollers.length}  hidden overflow ${r.hidden.length}  spilling cells ${r.spill.length}  past the edge ${r.past.length}`);
+      if (!ok) {
+        for (const s of r.scrollers) console.log(`        scrolls sideways: ${s}`);
+        for (const h of r.hidden) console.log(`        cut off:          ${h}`);
+        for (const c of r.spill) console.log(`        spills its cell:  ${c}`);
+        for (const p of r.past) console.log(`        past the edge:    ${p}`);
+      }
+      if (SHOTS) {
+        await evaluate("window.scrollTo(0, 0)");
+        fs.mkdirSync(SHOTS, { recursive: true });
+        const { contentSize } = await send("Page.getLayoutMetrics");
+        const shot = await send("Page.captureScreenshot", {
+          format: "png", captureBeyondViewport: true,
+          clip: { x: 0, y: 0, width: w, height: Math.ceil(contentSize.height), scale: 1 },
+        });
+        const name = page === "/" ? "dashboard" : page.slice(1);
+        fs.writeFileSync(`${SHOTS}/${name}-${w}.png`, Buffer.from(shot.data, "base64"));
+      }
     }
   }
-  console.log(`${WIDTHS.length} widths checked, ${rows} boxes on the page (${FIXTURE_WORKERS.length} long-name fixtures), ${failures} overflowing`);
+  console.log(`${checked} page widths checked, ${rows} boxes on /fleet (${FIXTURE_WORKERS.length} long-name fixtures, one isolation report), ${failures} overflowing`);
   await fetch(`${CDP}/json/close/${target.id}`).catch(() => {});
   process.exit(failures ? 1 : 0);
 }

@@ -1275,9 +1275,9 @@ kbd {
 
 /* ----- Page ----- */
 .page-content { flex: 1; width: 100%; max-width: var(--page-max); margin: 0 auto; padding: 18px 24px 32px; }
-.page-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; min-height: 28px; }
+.page-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 12px; margin-bottom: 14px; min-height: 28px; }
 .page-title { font-size: var(--fs-5); font-weight: 600; line-height: 1.2; }
-.page-actions { display: flex; gap: 6px; }
+.page-actions { display: flex; flex-wrap: wrap; gap: 6px; }
 .page-lede { color: var(--text-secondary); max-width: 78ch; margin: 0 0 16px; }
 .page-foot {
   display: flex; gap: 16px; flex-wrap: wrap; align-items: center;
@@ -1356,7 +1356,7 @@ section { margin-bottom: 28px; }
 .attn-fail .attn-tag, .problem-fail .attn-tag { color: var(--error); }
 .attn-warn .attn-tag, .problem-warn .attn-tag { color: var(--warning); }
 .attn-unknown .attn-tag { color: var(--text-muted); }
-.attn-what { font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.attn-what { font-weight: 600; min-width: 0; overflow-wrap: anywhere; }
 .attn-where { font-family: var(--font-mono); font-weight: 400; font-size: var(--fs-2); color: var(--text-secondary); margin-left: 6px; }
 .attn-why { color: var(--text-secondary); min-width: 0; overflow-wrap: anywhere; }
 .attn-why code { font-size: var(--fs-2); color: var(--text-secondary); }
@@ -1419,7 +1419,8 @@ section { margin-bottom: 28px; }
 /* Worker names come from the device ("motorola motorola one fusion+ (1414f972)")
    and can be any length; renderPlacement cuts them to 14 characters. */
 .placement-table .pg-box-name { display: inline-block; writing-mode: vertical-rl; transform: rotate(180deg); white-space: nowrap; vertical-align: bottom; }
-.placement-table .pg-svc { text-align: left; font-weight: 500; padding-left: 0; white-space: nowrap; }
+/* Service names wrap, so the box columns and the count keep their place on a phone. */
+.placement-table .pg-svc { text-align: left; font-weight: 500; padding-left: 0; overflow-wrap: anywhere; }
 .placement-table thead .pg-svc { font-weight: 500; }
 .placement-table .pg-count { font-family: var(--font-mono); font-size: var(--fs-2); text-align: right; color: var(--text-muted); padding-right: 0; width: 1%; }
 .placement-table .pg-count-fail { color: var(--error); }
@@ -1554,7 +1555,7 @@ input[type="checkbox"] { accent-color: var(--text-primary); }
 
 /* ----- Filter bar and search ----- */
 
-.filter-tabs { display: inline-flex; gap: 0; border: 1px solid var(--border-light); border-radius: 2px; background: none; padding: 0; }
+.filter-tabs { display: inline-flex; flex-wrap: wrap; max-width: 100%; gap: 0; border: 1px solid var(--border-light); border-radius: 2px; background: none; padding: 0; }
 
 .filter-tab + .filter-tab { border-left: 1px solid var(--border-light); }
 .filter-tab:hover { background: var(--bg-hover); color: var(--text-primary); }
@@ -1644,7 +1645,7 @@ input[type="checkbox"] { accent-color: var(--text-primary); }
 .fleet-table td { vertical-align: top; padding-top: 8px; padding-bottom: 8px; overflow-wrap: anywhere; }
 .fleet-table .w-name .cell { width: 10px; height: 10px; margin-right: 7px; vertical-align: 0; }
 .fleet-table .w-name .cell-sub { padding-left: 17px; }
-.fleet-table .w-name .flag { display: inline-block; white-space: nowrap; }
+.fleet-table .w-name .flag { display: inline-block; max-width: calc(100% - 8px); }
 .fleet-table .w-sys,
 .fleet-table .w-ver {
   font-size: var(--fs-2);
@@ -1923,6 +1924,8 @@ body.gate { display: flex; flex-direction: column; }
 .iso-target { display: inline-flex; align-items: baseline; gap: 5px; min-width: 0; color: var(--text-secondary); }
 .iso-target::before { content: ""; width: 7px; height: 7px; align-self: center; background: currentColor; }
 .iso-target .mono { color: var(--text-primary); }
+/* A long address breaks inside itself; "reachable" or "blocked" stays whole. */
+.iso-state { flex-shrink: 0; }
 .iso-ok::before { color: var(--success); }
 .iso-warn { color: var(--warning); }
 .iso-fail { color: var(--error); }
@@ -2033,6 +2036,13 @@ body.gate { display: flex; flex-direction: column; }
   .catalog-table .cat-plat, .catalog-table .cat-needs, .catalog-table .cat-kind,
   .catalog-table thead th:nth-child(2), .catalog-table thead th:nth-child(3), .catalog-table thead th:nth-child(5) { display: none; }
   .catalog-table .cat-est { white-space: normal; }
+  /* Headers wrap too ("Est. per / month"), and a service name or description
+     breaks inside a word only if it still does not fit, so the Action column
+     stays inside the window at 320 px. */
+  .catalog-table thead th { white-space: normal; }
+  .catalog-table .cat-svc { overflow-wrap: anywhere; }
+  /* Narrower box columns in the placement grid, so eight boxes still fit 320 px. */
+  .placement-table td { padding-left: 3px; padding-right: 3px; }
 }
 
 .attn-clear[hidden] { display: none; }
@@ -2054,7 +2064,9 @@ body.gate { display: flex; flex-direction: column; }
   .fleet-table, .fleet-table tbody { display: block; }
   .fleet-table thead { display: none; }
   .fleet-table tr.worker-row {
-    display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 12px; row-gap: 4px;
+    /* The version takes at most 40% and wraps at its spaces, so it never
+       squeezes the name at 320 px. */
+    display: grid; grid-template-columns: minmax(0, 1fr) fit-content(40%); column-gap: 12px; row-gap: 4px;
     grid-template-areas: "name ver" "sys sys" "seen seen" "power power" "ctr ctr" "act act";
     padding: 10px 0; border-bottom: 1px solid var(--border-color);
   }
@@ -2072,9 +2084,10 @@ body.gate { display: flex; flex-direction: column; }
   }
   .fleet-table tr.worker-detail, .fleet-table tr.worker-detail > td { display: block; }
 }
-/* Six tabs need about 360 px. Narrower than that they wrap to a second row
-   rather than scroll sideways under the brand. */
+/* Below 400 px the tabs lose most of their padding so they stay on one row at
+   320 px. If they still do not fit (a longer label, a bigger font) they wrap
+   to a second row rather than scroll sideways under the brand. */
 @media (max-width: 400px) {
   .topnav { flex-wrap: wrap; height: auto; overflow-x: visible; }
-  .topnav .sidebar-link { height: 32px; }
+  .topnav .sidebar-link { height: 32px; padding: 0 2px; }
 }

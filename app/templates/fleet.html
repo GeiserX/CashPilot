@@ -365,7 +365,7 @@ CASHPILOT_WORKER_NAME=server-name</code>
             <strong class="w-name-text">${brk(w.name)}</strong>${flags}
             <div class="cell-sub"><code class="worker-id" title="This worker's client_id, the id CashPilot keys it on. Two rows with the same name always have different ids; this is how to tell which is which.">${brk(w.client_id || ('#' + w.id))}</code></div>
           </td>
-          <td class="w-sys">
+          <td class="w-sys" data-label="System">
             <span>${brk(sysInfo.os || '-')}${sysInfo.os_version ? ' ' + brk(sysInfo.os_version) : ''}</span>
             <div class="cell-sub cell-mono"><span class="w-arch">${brk(sysInfo.arch || '-')}</span> <span>${brk(w.url || '-')}</span></div>
           </td>
@@ -383,7 +383,7 @@ CASHPILOT_WORKER_NAME=server-name</code>
             </label>
             <button class="btn btn-link power-save-worker" data-client-id="${cid}">save</button>
           </td>
-          <td class="w-ctr">${items.length ? (isAndroid ? renderApps(items, isOnline, w.last_heartbeat) : renderContainers(w, isOnline)) : '<span class="muted">none</span>'}</td>
+          <td class="w-ctr" data-label="${isAndroid ? 'Apps' : 'Containers'}">${items.length ? (isAndroid ? renderApps(items, isOnline, w.last_heartbeat) : renderContainers(w, isOnline)) : '<span class="muted">none</span>'}</td>
           <td class="w-act">
             ${_isOwner && isOnline && !isAndroid && (sysInfo.features || []).includes('isolation_check')
               ? `<button class="btn btn-ghost btn-sm btn-isolation-check" data-worker-id="${w.id}" title="Start two short-lived probe containers on this host and show what an earner can reach: your LAN, this host, an overlay network such as Tailscale, cloud metadata. Changes no firewall rule.">${_isolation[w.id] === 'running' ? 'Checking…' : 'Check isolation'}</button>`
@@ -439,12 +439,12 @@ CASHPILOT_WORKER_NAME=server-name</code>
         const bad = t.reachable && !t.expected;
         const tone = t.reachable ? (bad ? 'iso-fail' : 'iso-warn') : 'iso-ok';
         const tip = `${t.label}${t.note ? '. ' + t.note : ''}`;
-        html += `<span class="iso-target ${tone}" title="${esc(tip)}"><span class="mono">${esc(t.address)}</span> ${t.reachable ? 'reachable' : 'blocked'}</span>`;
+        html += `<span class="iso-target ${tone}" title="${esc(tip)}"><span class="mono">${esc(t.address)}</span> <span class="iso-state">${t.reachable ? 'reachable' : 'blocked'}</span></span>`;
       }
       html += '</span></div>';
     }
     if (r.internet) {
-      html += `<div class="iso-group"><span class="iso-label">Internet</span><span class="iso-target ${r.internet.reachable ? 'iso-ok' : 'iso-fail'}"><span class="mono">${esc(r.internet.address)}</span> ${r.internet.reachable ? 'works' : 'failed'}</span></div>`;
+      html += `<div class="iso-group"><span class="iso-label">Internet</span><span class="iso-target ${r.internet.reachable ? 'iso-ok' : 'iso-fail'}"><span class="mono">${esc(r.internet.address)}</span> <span class="iso-state">${r.internet.reachable ? 'works' : 'failed'}</span></span></div>`;
     }
     for (const f of r.findings || []) {
       html += `<div class="iso-line ${f.exposure ? 'text-fail' : 'text-warn'}">${esc(f.detail)} <a href="${esc(f.docs)}" target="_blank" rel="noopener noreferrer">How to fix it</a></div>`;
@@ -547,7 +547,8 @@ CASHPILOT_WORKER_NAME=server-name</code>
   // URLs ("motorola-one_fusion+ (1414f972)", "http://box.ts.net:8081"), so a
   // long one wraps at a natural point before the CSS has to cut inside a word.
   function brk(str) {
-    return esc(str).replace(/[-_.\/:@]/g, '$&<wbr>').replace(/\(/g, '<wbr>(');
+    // "://" is one unit, so a URL never breaks between its two slashes.
+    return esc(str).replace(/:\/\/|[-_.\/:@]/g, '$&<wbr>').replace(/\(/g, '<wbr>(');
   }
 
   function esc(str) {
