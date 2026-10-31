@@ -173,8 +173,11 @@ def _stop_facts(container: Any) -> dict[str, Any]:
     return facts
 
 
-# How much of a stopped container's log the fatal-pattern check reads. The
-# provider's refusal is the last thing the client prints before it exits.
+# The fatal-pattern check reads the last 20 log records of the run and judges
+# their last 4 KB. Docker has no byte limit on a log read, so a record can be
+# up to 16 KB and the read up to 320 KB; the time window (since/until
+# StartedAt) keeps it to one run. The provider's refusal is the last thing the
+# client prints before it exits, so it is inside the 4 KB.
 _FATAL_LOG_LINES = 20
 _FATAL_LOG_CHARS = 4096
 

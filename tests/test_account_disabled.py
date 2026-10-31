@@ -291,6 +291,7 @@ class _Alerts:
         """What a UI restart forgets: everything in memory. The tables stay."""
         main._account_disabled.clear()
         main._collector_says_disabled.clear()
+        main._disabled_by_logs.clear()
         main._collected_ok_last_run = set()
 
 
@@ -298,6 +299,7 @@ class _Alerts:
 def _clean_state(monkeypatch):
     monkeypatch.setattr(main, "_account_disabled", {})
     monkeypatch.setattr(main, "_collector_says_disabled", set())
+    monkeypatch.setattr(main, "_disabled_by_logs", set())
     monkeypatch.setattr(main, "_collected_ok_last_run", set())
     monkeypatch.setattr(
         main,
@@ -610,7 +612,7 @@ class TestAttentionList:
 # --------------------------------------------------------------------------
 
 
-def _collect(error: str | None, alerts: _Alerts, fleet: list[dict]) -> list[tuple]:
+def _collect(error: str | None, alerts: _Alerts, fleet: list[dict], deployed=("iproyal",)) -> list[tuple]:
     """Run _run_collection once with one Pawns result; return every record_alert call."""
     result = (
         EarningsResult(platform="iproyal", balance=0.0, error=error)
@@ -629,7 +631,7 @@ def _collect(error: str | None, alerts: _Alerts, fleet: list[dict]) -> list[tupl
 
     async def run():
         with (
-            patch.object(main.database, "get_deployments", AsyncMock(return_value=[{"slug": "iproyal"}])),
+            patch.object(main.database, "get_deployments", AsyncMock(return_value=[{"slug": s} for s in deployed])),
             patch.object(main.database, "get_config", alerts.get_config),
             patch.object(main.database, "set_config", alerts.set_config),
             patch.object(main.database, "upsert_earnings", AsyncMock()),
@@ -642,7 +644,8 @@ def _collect(error: str | None, alerts: _Alerts, fleet: list[dict]) -> list[tupl
             patch.object(main, "_offline_worker_alerts", AsyncMock(return_value=[])),
             patch.object(main, "_get_all_worker_containers", AsyncMock(return_value=fleet)),
             patch.object(main, "_collect_bounded", AsyncMock(return_value=result)),
-            patch("app.collectors.make_collectors", lambda deployments, config: [object()]),
+            # A removed service has no deployment, so no collector runs for it.
+            patch("app.collectors.make_collectors", lambda deployments, config: [object()] if deployments else []),
             patch("app.collectors._close_stale", AsyncMock()),
             patch.object(main, "_spawn", spawn),
         ):
@@ -673,6 +676,18 @@ class TestCollectorSaysDisabled:
         _collect(None, alerts, _UP)
         assert "iproyal" not in main._collector_says_disabled
         assert "iproyal" not in main._account_disabled
+
+    def test_a_removed_service_leaves_the_bell(self):
+        """Nothing reads a removed service's balance, so the deployments end its disabled state."""
+        alerts = _Alerts()
+        _collect("IPRoyal Pawns: account disabled", alerts, _UP)
+        assert any(a["kind"] == "account_disabled" for a in main._collector_alerts)
+        # The user removed Pawns; the next rebuild sees no deployment and no container.
+        _collect(None, alerts, [], deployed=())
+        assert "iproyal" not in main._collector_says_disabled
+        assert "iproyal" not in main._account_disabled
+        assert not any(a["kind"] == "account_disabled" for a in main._collector_alerts)
+        assert ("account_disabled", "iproyal") in alerts.cleared
 
     def test_no_collector_failed_push_beside_the_disabled_alert(self):
         """The credentials are fine; a "collector failed" push would point at them."""
