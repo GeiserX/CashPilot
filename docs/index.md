@@ -54,6 +54,8 @@ The dashboard is what you look at every day: the balances, a 7-day or 30-day ear
 
 ![The CashPilot dashboard: the balance first, a short list of what needs attention with a button for each, which service runs on which box, earnings per day, and the deployed services table with status, balance, CPU, memory and payout progress for eight services](images/screenshots/dashboard.png)
 
+![Resource use per server for box-a over 7 days: hourly CPU, memory, and network down and up as three line charts](images/screenshots/resource-use.png)
+
 <div class="cp-phone-gallery" markdown>
 <figure markdown>
 ![The dashboard on a phone: the balance, then the problems to act on, each with its button](images/screenshots/dashboard-mobile.png)
@@ -64,27 +66,35 @@ The dashboard is what you look at every day: the balances, a 7-day or 30-day ear
 <figcaption>The catalog</figcaption>
 </figure>
 <figure markdown>
-![Step 2 of the setup wizard on a phone, picking bandwidth services](images/screenshots/setup-wizard-mobile.png)
+![Step 2 of the setup wizard on a phone, picking services](images/screenshots/setup-wizard-mobile.png)
 <figcaption>The setup wizard</figcaption>
 </figure>
 </div>
 
 <div class="cp-shot-gallery" markdown>
 <figure markdown>
-![The first-run welcome page that appears after docker compose up, asking for the setup token from the log](images/screenshots/onboarding.png)
-<figcaption>First run: the welcome page asks for the setup token from the log</figcaption>
+![The first-run welcome page that appears after docker compose up, step 1 of 3, saying the owner account needs the setup token from the server logs](images/screenshots/onboarding.png)
+<figcaption>First run: the welcome page creates the owner account with the setup token from the log</figcaption>
 </figure>
 <figure markdown>
-![The service catalog: one row per service with its monthly estimate and a Manage, Deploy or Visit button, filterable by category](images/screenshots/catalog.png)
+![The service catalog: services already running in the fleet first, each row with what it runs on, its monthly estimate, what it needs, and Manage, Add, Details or Visit](images/screenshots/catalog.png)
 <figcaption>The catalog, filterable by category</figcaption>
 </figure>
 <figure markdown>
-![Step 2 of the setup wizard with the bandwidth category chosen and two services ticked](images/screenshots/setup-wizard.png)
+![Step 2 of the setup wizard: a card per service, the ones already running marked with how many nodes run them, and app-only services greyed out](images/screenshots/setup-wizard.png)
 <figcaption>The wizard: pick categories, pick services, enter credentials, deploy</figcaption>
 </figure>
 <figure markdown>
-![The fleet page: four boxes with their system, last report, power draw and containers, one of them offline, the running cost of each machine, and the block to add another box](images/screenshots/fleet.png)
+![The fleet page: four Linux boxes and an Android phone with their system, last report, power draw and containers or apps, one box offline, the running cost of each machine, and the block to add another box](images/screenshots/fleet.png)
 <figcaption>The fleet: every worker, its host, and how to add the next one</figcaption>
+</figure>
+<figure markdown>
+![The Payouts page: the service and box counts, the services whose state lives only on disk, and each deployed service with the boxes it runs on and where it pays out](images/screenshots/payouts.png)
+<figcaption>Payouts: where each service pays, and what would be lost with a volume</figcaption>
+</figure>
+<figure markdown>
+![The Settings page: the earnings collection credentials for each provider, one of them open, and the start of the credential health list](images/screenshots/settings.png)
+<figcaption>Settings: the credentials the collectors use, and their health</figcaption>
 </figure>
 </div>
 

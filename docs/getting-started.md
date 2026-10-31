@@ -40,7 +40,7 @@ Navigate to [http://localhost:8080](http://localhost:8080) in your browser. Sinc
     one-time setup token to create the owner account: <token>
     ```
 
-    Copy that token into the **Setup token** field on the welcome page to create the first (owner) account. It is only ever shown in the logs, never in a URL, and is discarded permanently once the owner account exists.
+    Copy that token into the **Setup token** field on the **Owner account** step of the welcome page, together with a username and password, to create the first (owner) account. It is only ever shown in the logs, never in a URL, and is discarded permanently once the owner account exists.
 
 ### 3. Browse the service catalog
 
