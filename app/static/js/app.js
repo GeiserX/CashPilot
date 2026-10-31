@@ -69,6 +69,15 @@ const CP = (() => {
     }, 4000);
   }
 
+  // Escaped text with a break hint after each separator in names, ids, URLs
+  // and image references ("motorola-one_fusion+ (1414f972)",
+  // "ghcr.io/org/image@sha256:..."), so a long one wraps at a natural point
+  // before the CSS has to break inside a word.
+  function brk(str) {
+    // "://" is one unit, so a URL never breaks between its two slashes.
+    return escapeHtml(str).replace(/:\/\/|[-_.\/:@]/g, '$&<wbr>').replace(/\(/g, '<wbr>(');
+  }
+
   function escapeHtml(str) {
     // Escape quotes too (the textContent/innerHTML trick doesn't), so values
     // interpolated into attributes like placeholder="..." can't break out.
@@ -1840,7 +1849,7 @@ const CP = (() => {
 
     // Subtitle: image for Docker, empty for external
     const subtitle = svc.image
-      ? escapeHtml(svc.image)
+      ? brk(svc.image)
       : (isExternal ? 'App / Browser' : '');
 
     // Health badge — external services always show a muted dash
@@ -2039,17 +2048,17 @@ const CP = (() => {
     // Main row
     let html = `
     <tr class="breakdown-row${isMulti ? ' expandable' : ''}" data-slug="${escapeHtml(svc.slug)}"${isMulti ? ` data-action="toggleInstances" data-a1="${escapeHtml(svc.slug)}" data-a2="event"` : ''}>
-      <td class="c-name">${nameHtml}<div class="cell-sub cell-mono c-name-image"${subtitle ? ` title="${subtitle}"` : ''}>${subtitle}</div></td>
+      <td class="c-name">${nameHtml}<div class="cell-sub cell-mono c-name-image">${subtitle}</div></td>
       <td class="c-status">${partialDown
         ? `<span class="badge badge-stopped" title="${downCount} of ${details.length} instances are not running"><span class="status-dot stopped"></span> ${details.length - downCount} of ${details.length} up</span>`
         : `<span class="badge badge-${statusClass}"><span class="status-dot ${statusClass}"></span> ${statusLabel}</span>${instanceLabel}`}${unmanagedLabel}${outdatedBadge}</td>
-      <td class="c-health c-num">${healthBadge}</td>
+      <td class="c-health c-num" data-label="Health">${healthBadge}</td>
       <td class="c-bal c-num">${balanceHtml}</td>
       <td class="c-chg c-num"><span class="delta">${deltaStr}</span></td>
-      <td class="c-cpu c-num">${cpuStr}</td>
-      <td class="c-mem c-num">${memStr}</td>
-      <td class="c-disk c-num">${diskCell(svc)}</td>
-      <td class="c-gpu">${gpuCell(svc)}</td>
+      <td class="c-cpu c-num" data-label="CPU">${cpuStr}</td>
+      <td class="c-mem c-num" data-label="Memory">${memStr}</td>
+      <td class="c-disk c-num" data-label="Host disk">${diskCell(svc)}</td>
+      <td class="c-gpu" data-label="GPU">${gpuCell(svc)}</td>
       <td class="c-pay">${progressBar}</td>
       <td class="c-act">${actionBtns}</td>
     </tr>`;
@@ -2097,10 +2106,10 @@ const CP = (() => {
           <td class="c-health c-empty"></td>
           <td class="c-bal c-empty"></td>
           <td class="c-chg c-empty"></td>
-          <td class="c-cpu c-num">${cpuCell}</td>
-          <td class="c-mem c-num">${memCell}</td>
-          <td class="c-disk c-num">${diskCellForHosts(hostForWorker(inst.worker_id))}</td>
-          <td class="c-gpu">${gpuCellForHosts(hostForWorker(inst.worker_id))}</td>
+          <td class="c-cpu c-num" data-label="${inst.is_android ? 'Upload 24h' : 'CPU'}">${cpuCell}</td>
+          <td class="c-mem c-num" data-label="${inst.is_android ? 'Download 24h' : 'Memory'}">${memCell}</td>
+          <td class="c-disk c-num" data-label="Host disk">${diskCellForHosts(hostForWorker(inst.worker_id))}</td>
+          <td class="c-gpu" data-label="GPU">${gpuCellForHosts(hostForWorker(inst.worker_id))}</td>
           <td class="c-pay c-empty"></td>
           <td class="c-act">
             <div class="action-btns">
@@ -4961,5 +4970,6 @@ const CP = (() => {
     formatCurrency,
     // Shared, so the next timestamp added does not repeat CashPilot-2dh.
     fmtTimestamp,
+    brk,
   };
 })();

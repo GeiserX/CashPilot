@@ -42,20 +42,18 @@ const PASS = process.env.UI_PASS || "demo-password-1";
 const SHOTS = process.env.SHOTS || "";
 // 1100 and 1101 sit either side of the fleet table's stacked layout.
 const FLEET_WIDTHS = [320, 375, 768, 1024, 1100, 1101, 1440, 2560];
-// At desktop widths the dashboard is measured inside the "Needs attention"
-// section only: the services table there is wider than a 1024 px window by
-// design and scrolls in its own wrapper.
-const DASHBOARD_PHONE_WIDTHS = [320, 340, 360, 375];
-const DASHBOARD_DESKTOP_WIDTHS = [768, 1024, 1440, 2560];
-// The rest of the app at phone widths. /api/workers and /api/fleet/economics
-// carry the fixture boxes on these pages too.
+// The whole dashboard at every width, services table included: it used to be
+// wider than a 1024 px window (1220 px in a 968 px wrapper) and scrolled in
+// its own box, and its image names were cut with an ellipsis.
+// 768/769 and 1100/1101 sit either side of the phone and the stacked-services
+// layouts; /catalog scrolled at 769 px.
+const ALL_WIDTHS = [320, 340, 360, 375, 768, 769, 1024, 1100, 1101, 1440, 2560];
 const PAGES = [
   ["/fleet", FLEET_WIDTHS],
-  ["/", DASHBOARD_PHONE_WIDTHS],
-  ["/", DASHBOARD_DESKTOP_WIDTHS, "#attention"],
-  ["/catalog", [320, 375]],
-  ["/setup", [320, 375]],
-  ["/payouts", [320, 375]],
+  ["/", ALL_WIDTHS],
+  ["/catalog", ALL_WIDTHS],
+  ["/setup", ALL_WIDTHS],
+  ["/payouts", ALL_WIDTHS],
 ];
 
 // --- Long data the demo seed does not have ---------------------------------
@@ -129,6 +127,8 @@ const FIXTURE_MACHINES = FIXTURE_WORKERS.map((w) => ({
 // flag (it has a box to stop, so both buttons show), and a copy of it gets the
 // longest provider name we could think of.
 const LONG_PROVIDER = "Exceptionally Long Provider Name Bandwidth Sharing Network International";
+// A digest-pinned image reference, the longest kind the Service cell shows.
+const LONG_IMAGE = "ghcr.io/an-exceptionally-long-organisation-name/proxybase-markets-earner-image@sha256:3f1d0c9a7b6e5d4c3b2a19f8e7d6c5b4a39281706f5e4d3c2b1a09f8e7d6c5b4";
 function withDisabledAccounts(services) {
   const base = services.find((s) => s.slug === "iproyal") || services[0];
   if (!base) return services;
@@ -138,7 +138,7 @@ function withDisabledAccounts(services) {
     support_url: "https://example.com/support/contact-us", ...extra,
   });
   const out = services.map((s) => (s === base ? disabled({}) : s));
-  out.push(disabled({ slug: "long-provider-fixture", name: LONG_PROVIDER, balance: 1234.56 }));
+  out.push(disabled({ slug: "long-provider-fixture", name: LONG_PROVIDER, balance: 1234.56, image: LONG_IMAGE }));
   return out;
 }
 
