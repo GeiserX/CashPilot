@@ -58,14 +58,14 @@ def _html_theme(html):
     return m and m.group(1)
 
 
-def test_the_five_built_in_themes_with_classic_night_the_default():
-    assert [(t["id"], t["label"]) for t in SPEC["themes"]] == [
-        ("classic", "Classic night"),
-        ("dark", "Dark"),
-        ("light", "Light"),
-        ("sunrise", "Sunrise"),
-        ("warm", "Warm"),
-    ]
+def test_the_list_is_well_formed_and_classic_night_is_the_default():
+    """The list itself is free to grow; these hold whatever it contains."""
+    assert IDS, "app/themes.json lists no theme"
+    assert len(set(IDS)) == len(IDS), "a theme id is listed twice"
+    for t in SPEC["themes"]:
+        assert re.fullmatch(r"[a-z][a-z0-9-]*", t["id"]), t["id"]
+        assert t["label"].strip(), t["id"]
+    assert SPEC["default"] in IDS
     assert SPEC["default"] == "classic"
 
 
@@ -102,6 +102,24 @@ def test_an_old_or_unknown_stored_value_paints_the_default(real_db):
     p, c = _client(real_db)
     with p, c:
         assert _html_theme(c.get("/").text) == SPEC["default"]
+
+
+@pytest.mark.parametrize("page", ["/login", "/onboarding"])
+def test_signed_out_pages_render_the_default_with_js_off(tmp_path, page):
+    """No account to read, so the server renders the default, marked as a
+    fallback the pre-paint may replace with the browser's stored choice."""
+    with (
+        patch.object(database, "DB_DIR", tmp_path),
+        patch.object(database, "DB_PATH", tmp_path / "cashpilot.db"),
+    ):
+        asyncio.run(database.init_db())
+        if page == "/login":
+            asyncio.run(database.create_user("someone", "pw", "owner"))
+        with TestClient(app, raise_server_exceptions=False) as c:
+            r = c.get(page, follow_redirects=False)
+    assert r.status_code == 200, r.status_code
+    assert _html_theme(r.text) == SPEC["default"]
+    assert re.search(r"<html[^>]*\sdata-theme-fallback[\s>]", r.text)
 
 
 def test_never_chosen_paints_the_default(real_db):
@@ -147,8 +165,9 @@ def test_no_css_block_or_swatch_for_a_theme_that_is_not_in_the_list():
 
 def test_no_template_or_script_keeps_its_own_theme_list():
     """The ids live in app/themes.json only; a second copy is how lists drift."""
-    pattern = re.compile(r"""\[\s*['"](?:dark|light|classic)['"]\s*,\s*['"](?:dark|light|classic)['"]""")
-    pattern_py = re.compile(r"""\(\s*['"](?:dark|light|classic)['"]\s*,\s*['"](?:dark|light|classic)['"]""")
+    one = "['\"](?:" + "|".join(map(re.escape, IDS)) + ")['\"]"
+    pattern = re.compile(rf"\[\s*{one}\s*,\s*{one}")
+    pattern_py = re.compile(rf"\(\s*{one}\s*,\s*{one}")
     paths = [*ROOT.glob("app/**/*.py"), *ROOT.glob("app/templates/*.html"), ROOT / "app/static/js/app.js"]
     paths += [
         ROOT / f"scripts/{n}.mjs" for n in ("theme_check", "legibility_check", "fleet_overflow_check", "ui_screenshots")
