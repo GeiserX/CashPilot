@@ -3,11 +3,21 @@
 A review of the gaps between "CashPilot runs" and "an operator can look after it
 for a year". Written after upgrading a live five-server fleet from 1.10.1, and
 every claim below was checked against the repository as it stands rather than
-against that deployment — which matters, because **two of the seven concerns
+against that deployment, which matters, because **two of the seven concerns
 turned out to be true of the deployment and not of the shipped project.**
 
 Each item states what the operator hits, the evidence, the smallest change that
 would help, and what it costs.
+
+**Status (October 2026).** Every item in the table at the end has since shipped:
+the startup schema line (`app/database.py`), the restore page
+([Backup and restore](../backup-restore.md)), the separate-volumes comments in both
+compose files, the update banner (`app/update_check.py`), the healthcheck comments
+in both compose files with the alert rule in the
+[Prometheus guide](../guides/prometheus-metrics.md), the measured memory limits
+in [Configuration](../configuration.md), and the same-tag rule in
+[Getting started](../getting-started.md). The findings below describe the
+project as it was when this review was written.
 
 ---
 
@@ -16,7 +26,7 @@ would help, and what it costs.
 **What they hit.** A fleet sat **33 releases** behind and nothing anywhere said
 so. Not the dashboard, not a log line, not the fleet page.
 
-**Evidence.** The UI already computes drift *between itself and its workers* —
+**Evidence.** The UI already computes drift *between itself and its workers*:
 `app/main.py` sets `w["version_skew"] = version.skewed(...)` per worker. It has
 no idea what the latest published release is: nothing under `app/` mentions
 `api.github.com`, `releases/latest`, or any equivalent.
@@ -37,7 +47,7 @@ useful feature and an unwelcome one:
 **Cost.** Small: one scheduled job, one cached value, one banner. The judgement
 is in the failure modes, not the fetch.
 
-**Highest value of anything here** — it is the only item that turns an invisible
+**Highest value of anything here**: it is the only item that turns an invisible
 problem into a visible one.
 
 ---
@@ -48,8 +58,8 @@ problem into a visible one.
 the target tag, taking a database backup, and reasoning unaided about whether
 the schema would migrate.
 
-**Evidence.** Migrations are applied on startup and are careful — `app/database.py`
-guards column changes behind `PRAGMA table_info` — but **nothing reports what
+**Evidence.** Migrations are applied on startup and are careful (`app/database.py`
+guards column changes behind `PRAGMA table_info`), but **nothing reports what
 happened.** There is no schema-version log line and no startup summary. An
 operator watching `docker logs` cannot tell a clean start from one that just
 rewrote the earnings table.
@@ -87,7 +97,7 @@ pair and must be pinned to the same tag. No code.
 building the alerting yourself.
 
 **Evidence, and this one is sharper than the original concern.** Both images
-declare `HEALTHCHECK` (`Dockerfile:56`, `Dockerfile.worker:71`) — so Docker knows
+declare `HEALTHCHECK` (`Dockerfile`, `Dockerfile.worker`), so Docker knows
 the health state. But **neither shipped compose file mentions `healthcheck` at
 all** (zero matches in both), and `restart: unless-stopped` restarts on *exit*,
 not on *unhealthy*. A container that is up and failing its own healthcheck stays
@@ -106,16 +116,16 @@ So the image-level work is done and nothing consumes it.
 
 ---
 
-## 5. Memory limits — the concern was about the deployment, not the repo
+## 5. Memory limits: the concern was about the deployment, not the repo
 
 **Corrected.** The seed recorded `mem_limit: 256m` on the UI. **The shipped
-compose files set no memory limit at all** — both carry only a commented-out
+compose files set no memory limit at all**: both carry only a commented-out
 `deploy: resources:` block. That limit was local to the live fleet.
 
 The useful residue is still real: nobody has measured what the UI actually needs
 under a collection cycle with a 56 MB database, APScheduler in-process, and
 collectors running. An operator who sets a limit is guessing, and an OOM here
-presents as *"collection randomly stops"* — the hardest class of failure for a
+presents as *"collection randomly stops"*, the hardest class of failure for a
 user to notice, let alone report.
 
 **Smallest change.** Measure RSS across a full collection cycle, then document a
@@ -148,7 +158,7 @@ explicit statement of what is unrecoverable without the key.
 
 ---
 
-## 7. Worker data directory — also about the deployment, not the repo
+## 7. Worker data directory: also about the deployment, not the repo
 
 **Corrected.** The seed recorded the UI and worker sharing one `/data`, so the
 component holding the Docker socket could read `.fernet_key` and the credential

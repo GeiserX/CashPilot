@@ -36,19 +36,10 @@ Golem Network is a decentralized compute marketplace where you share CPU and GPU
 
 Sign up at [Golem Network](https://golem.network).
 
-### 2. Get your credentials
+### 2. Run it outside CashPilot
 
-After signing up, locate the credentials needed for Docker deployment. These are typically your email/password or an API token found in the dashboard.
-
-### 3. Deploy with CashPilot
-
-In the CashPilot web UI, find **Golem Network** in the service catalog and click **Deploy**. Enter the required credentials and CashPilot will handle the rest.
+CashPilot cannot deploy Golem Network. The catalog has no Docker image for it, so its row in **Catalog** shows **Visit** instead of **Add**. Run Golem's Yagna provider agent on a Linux machine. CashPilot does not read Golem Network earnings either, so check them in the provider's dashboard.
 
 ## Docker Configuration
 
-- **Image:** ``
-- **Platforms:** linux/amd64
-
-### Environment Variables
-
-No environment variables required.
+None. The catalog has no Docker image for Golem Network.

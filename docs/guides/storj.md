@@ -37,7 +37,7 @@ Storj is a decentralized cloud storage network where you earn by renting out you
 
 ### 1. No account needed
 
-Storj storage nodes are **permissionless** — no signup, no account, no auth token. You just run the software. The old authorization token requirement was removed in mid-2025.
+Storj storage nodes are **permissionless**: no signup, no account, no auth token. You just run the software. The old authorization token requirement was removed in mid-2025.
 
 Documentation has moved to [storj.dev/node](https://storj.dev/node/get-started/setup).
 
@@ -59,8 +59,8 @@ The process outputs progress like `Generated 50000 keys; best difficulty so far:
 ### 3. Port forwarding
 
 Forward these ports through your router to the server running the node:
-- **TCP+UDP 28967** — Storage node traffic (required, UDP for QUIC)
-- **TCP 14002** — Dashboard/monitoring (optional, local access only)
+- **TCP+UDP 28967**: Storage node traffic (required, UDP for QUIC)
+- **TCP 14002**: Dashboard/monitoring (optional, local access only)
 
 ### 4. Get an Ethereum wallet address
 
@@ -68,15 +68,15 @@ You need an Ethereum wallet address whose private key you control to receive USD
 
 ### 5. Deploy with CashPilot
 
-In the CashPilot web UI, find **Storj** in the service catalog and click **Deploy**. You'll be asked for:
-- **Wallet address** — your Ethereum wallet for USDC payouts
-- **Email** — for operator notifications
-- **External address** — a DDNS hostname with port (e.g. `mynode.ddns.net:28967`). A literal public IP works until your ISP silently re-provisions it — from that day satellites dial a dead address and count the node offline while everything looks healthy locally
-- **Storage allocation** — how much disk space to offer (e.g. `2TB`)
-- **Identity path** — host directory where your identity files are stored
-- **Storage path** — host directory on a spinning disk (HDD) for storing data
+In CashPilot, click **Add** on the **Storj** row in **Catalog** (or use **+ Add service**). You'll be asked for:
+- **Wallet address**: your Ethereum wallet for USDC payouts
+- **Email**: for operator notifications
+- **External address**: a DDNS hostname with port (e.g. `mynode.ddns.net:28967`). A literal public IP works until your ISP silently re-provisions it. From that day satellites dial a dead address and count the node offline while everything looks healthy locally
+- **Storage allocation**: how much disk space to offer (e.g. `2TB`)
+- **Identity directory**: host directory where your identity files are stored
+- **Storage directory**: host directory on a spinning disk (HDD) for storing data
 
-CashPilot will handle the container creation with proper volume mounts.
+Pick the boxes under **Deploy to** and click **Deploy Storj**. CashPilot creates the container with the identity and storage directories mounted.
 
 ## Docker Configuration
 
@@ -89,17 +89,17 @@ CashPilot will handle the container creation with proper volume mounts.
 |----------|-------|:--------:|:------:|-------------|
 | `WALLET` | Wallet address | Yes | No | Ethereum wallet address for USDC payouts, self-custodial |
 | `EMAIL` | Email | Yes | No | Email address for operator notifications |
-| `ADDRESS` | External address | Yes | No | DDNS hostname with port (e.g. mynode.ddns.net:28967) — prefer over a literal IP |
+| `ADDRESS` | External address | Yes | No | DDNS hostname with port (e.g. mynode.ddns.net:28967); prefer over a literal IP |
 | `STORAGE` | Storage allocation | Yes | No | Maximum disk space to allocate (e.g. 2TB) (default: `1TB`) |
 | `IDENTITY_DIR` | Identity directory | Yes | No | Host path where identity files are stored (ca.cert, identity.cert, etc.) |
 | `STORAGE_DIR` | Storage directory | Yes | No | Host path on a spinning disk (HDD) for Storj data storage |
 
 ### Important Notes
 
-- **Use a DDNS hostname for `ADDRESS`, never a literal IP.** Satellites dial your node back at exactly the address it advertises. Residential ISPs re-provision public IPs without notice, and when that happens a node advertising the old literal IP is counted offline around the clock — container healthy, dashboard green, earnings from new data at zero — until someone notices the provider's offline emails. A dynamic-DNS hostname (DuckDNS, Cloudflare DDNS, your router's DDNS client) self-heals through an IP change. If satellites cannot reach the node, CashPilot's producer state for Storj reports it with the exact reason; you can also check yourself with `curl -s http://<server>:14002/api/sno/` (`lastPinged` stale or `quicStatus: "Misconfigured"` means unreachable).
+- **Use a DDNS hostname for `ADDRESS`, never a literal IP.** Satellites dial your node back at exactly the address it advertises. Residential ISPs re-provision public IPs without notice, and when that happens a node advertising the old literal IP is counted offline around the clock (container healthy, dashboard green, earnings from new data at zero) until someone notices the provider's offline emails. A dynamic-DNS hostname (DuckDNS, Cloudflare DDNS, your router's DDNS client) self-heals through an IP change. If satellites cannot reach the node, CashPilot's producer state for Storj reports it with the exact reason; you can also check yourself with `curl -s http://<server>:14002/api/sno/` (`lastPinged` stale or `quicStatus: "Misconfigured"` means unreachable).
 - **No signup required**: Storj nodes are permissionless since mid-2025. No auth token, no account creation.
 - **Held-back earnings**: a new node's satellites withhold 75% of its earnings in months 1 to 3, 50% in months 4 to 6 and 25% in months 7 to 9. Half of the held amount comes back in month 16; the rest only when the node exits gracefully. Earnings from before Storj Labs' 26 July 2026 Chapter 11 filing are frozen until the bankruptcy court rules on them.
 - **One node per public IP**: Storj recommends one node per public IP for optimal satellite allocation. Nodes on the same /24 subnet share data allocation.
 - **Uptime matters**: Nodes with poor uptime get less data. Aim for 99.5%+ uptime.
-- **Disk selection**: Always use spinning disks (HDD). Storj data is cold storage — IOPS don't matter, capacity does. SSDs offer no advantage and cost more per TB.
+- **Disk selection**: Always use spinning disks (HDD). Storj data is cold storage: IOPS don't matter, capacity does. SSDs offer no advantage and cost more per TB.
 - **QUIC**: UDP port 28967 enables the QUIC protocol for faster transfers. Forward both TCP and UDP.

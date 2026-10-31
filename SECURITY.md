@@ -6,12 +6,12 @@ CashPilot takes security seriously. This document describes how to report vulner
 
 | Version | Supported |
 |---------|:---------:|
-| Latest release (`latest` Docker tag) | Yes |
-| Previous releases | No |
+| Latest release | Yes |
+| Older releases | No |
 
 Only the most recent release line receives security patches. There are no LTS branches.
 
-The example compose files pin the **major.minor** tag (e.g. `drumsergio/cashpilot:1.4`), so a `docker compose pull` picks up patch fixes automatically but never moves you to a new minor or major without an explicit edit. `:latest` is published but deliberately not used in the quickstart: it makes what you are running unknowable and can carry a breaking change into a routine pull.
+The example compose files pin the **major.minor** tag (e.g. `drumsergio/cashpilot:1.56`), so a `docker compose pull` picks up patch fixes automatically but never moves you to a new minor or major without an explicit edit. `:latest` is published but deliberately not used in the quickstart: it makes what you are running unknowable and can carry a breaking change into a routine pull.
 
 ## Reporting a Vulnerability
 
@@ -46,10 +46,10 @@ If you do not receive acknowledgment within 72 hours, please follow up.
 
 1. **Report** received via Security Advisory or email
 2. **Acknowledge** within 72 hours
-3. **Triage** — assess severity using CVSS, identify affected components
-4. **Fix** — develop and test a patch
-5. **Release** — publish patched Docker images
-6. **Disclose** — publish advisory with credit to reporter (if desired)
+3. **Triage**: assess severity using CVSS, identify affected components
+4. **Fix**: develop and test a patch
+5. **Release**: publish patched Docker images
+6. **Disclose**: publish advisory with credit to reporter (if desired)
 
 An embargo period applies between fix and disclosure. The reporter will be notified before any public disclosure.
 
@@ -78,12 +78,13 @@ An embargo period applies between fix and disclosure. The reporter will be notif
 
 ### Docker Socket Access
 
-CashPilot requires access to the Docker socket (`/var/run/docker.sock`) for container management. This is a privileged operation. Mitigations:
+The CashPilot worker (`drumsergio/cashpilot-worker`) requires access to the Docker socket (`/var/run/docker.sock`) for container management. This is a privileged operation. The UI never mounts the socket; it commands workers over their authenticated API. Mitigations:
 
-- The application runs as a non-root user (`cashpilot`, UID 1000) inside the container
+- The worker runs as a non-root user (`cashpilot`, UID 1000) inside the container
 - The entrypoint grants only the minimum group membership needed for socket access
 - `--security-opt no-new-privileges:true` prevents privilege escalation inside the container
-- Container management is gated behind authenticated API endpoints (writer/owner role required)
+- Container management is gated behind authenticated API endpoints (writer or owner role; deploying needs owner)
+- The shipped compose files do not publish the worker's port (`docker-compose.yml`) or publish it on loopback only (`docker-compose.fleet.yml`)
 
 **User responsibility**: Do not expose the Docker socket to untrusted networks. CashPilot is designed for trusted, private networks.
 
@@ -91,12 +92,12 @@ CashPilot requires access to the Docker socket (`/var/run/docker.sock`) for cont
 
 - **UI users**: Session-based authentication with bcrypt-hashed passwords. Sessions are signed tokens stored in HTTP-only cookies.
 - **Worker-to-UI**: Per-worker fleet keys (since v1.0.0). `CASHPILOT_API_KEY` is only a shared enrollment/bootstrap credential -- on a worker's first heartbeat the UI issues it a unique key (stored encrypted, returned once), and every subsequent request in *either* direction (worker heartbeat, UI command) authenticates with that worker's own key. The shared key is rejected once a worker is enrolled, so a leaked worker key only affects that one worker.
-- **Role-based access**: Three roles (viewer, writer, owner) with escalating permissions, plus an implicit `fleet` role for authenticated worker requests. Container management requires writer or owner role.
+- **Role-based access**: Three roles (viewer, writer, owner) with escalating permissions, plus an implicit `fleet` role for authenticated worker requests. `CASHPILOT_ADMIN_API_KEY` grants owner access, and `CASHPILOT_READONLY_API_KEY` a read-only role limited to reporting GETs. Container management requires writer or owner role.
 
 ### Data Storage
 
 - SQLite database stored in a Docker volume (`/data/cashpilot.db`)
-- Service credentials are encrypted at rest using Fernet symmetric encryption. The key is generated on first run and stored at `/data/.fernet_key`; it can be supplied via `CASHPILOT_ENCRYPTION_KEY` to restore a backup. This is **not** `CASHPILOT_SECRET_KEY`, which signs login sessions and lives at `/data/.secret_key` — two separate keys with separate jobs
+- Service credentials are encrypted at rest using Fernet symmetric encryption. The key is generated on first run and stored at `/data/.fernet_key`; it can be supplied via `CASHPILOT_ENCRYPTION_KEY` to restore a backup. This is **not** `CASHPILOT_SECRET_KEY`, which signs login sessions and lives at `/data/.secret_key`. These are two separate keys with separate jobs
 - If the encryption key cannot be persisted, CashPilot refuses to start rather than continuing with a key that dies with the process (override with `CASHPILOT_ALLOW_EPHEMERAL_KEY`)
 - Database is not network-accessible (local file only)
 - 400-day data retention with automatic purging
@@ -132,9 +133,9 @@ Worker URLs arrive in the fleet-key-authenticated heartbeat and are later fetche
 
 Three constraints are deliberate design decisions, not gaps waiting to be filled. They are recorded here because this is the file someone reads just before proposing to cross one of them.
 
-**We will never hold your keys on a server we control.** Software that runs on your own machine — where key material never leaves it and the maintainers cannot read it — is a fundamentally different thing from a service that holds other people's secrets. The second is a regulated activity carrying licensing, capital and anti-money-laundering obligations. Staying on the self-hosted side of that line is a constraint we design around, not an oversight.
+**We will never hold your keys on a server we control.** Software that runs on your own machine, where key material never leaves it and the maintainers cannot read it, is a fundamentally different thing from a service that holds other people's secrets. The second is a regulated activity carrying licensing, capital and anti-money-laundering obligations. Staying on the self-hosted side of that line is a constraint we design around, not an oversight.
 
-**We will never offer key recovery.** If you lose your encryption key or your passphrase, the data encrypted under it is gone. There is no reset link and no support route, because a recovery path we could operate would mean we could decrypt your data — which is the thing we just said we will not do. Saying this plainly is more honest than implying a safety net that does not exist. Back up `/data/.fernet_key`.
+**We will never offer key recovery.** If you lose your encryption key or your passphrase, the data encrypted under it is gone. There is no reset link and no support route, because a recovery path we could operate would mean we could decrypt your data, which is the thing we just said we will not do. Saying this plainly is more honest than implying a safety net that does not exist. Back up `/data/.fernet_key`.
 
 **We will never ship tooling that eases multi-account evasion.** Several providers forbid more than one account per household. Making evasion easy would put users at risk of forfeited balances for the sake of a feature we cannot make safe.
 
@@ -142,7 +143,7 @@ Three constraints are deliberate design decisions, not gaps waiting to be filled
 
 A pull request that adds any of the following will be declined with a link to this section:
 
-- a server-held key, passphrase, or seed — including "remember it for convenience"
+- a server-held key, passphrase, or seed, including "remember it for convenience"
 - a cloud sync or hosted-backup path for credentials or wallet material
 - an automatic off-machine backup timer
 - anything whose purpose is to make one household look like several accounts
@@ -154,12 +155,12 @@ The reasoning in full is in [Direction and Roadmap](https://geiserx.github.io/Ca
 ## Hardening Recommendations
 
 1. **Use a reverse proxy with TLS** if accessible beyond localhost
-2. **Set strong, unique values** for `CASHPILOT_SECRET_KEY` and `CASHPILOT_API_KEY`, and **back up `/data/.fernet_key`** — without it, stored credentials cannot be decrypted
+2. **Set strong, unique values** for `CASHPILOT_SECRET_KEY` and `CASHPILOT_API_KEY`, and **back up `/data/.fernet_key`**: without it, stored credentials cannot be decrypted
 3. **Do not use `--privileged`** for the CashPilot container itself
 4. **Keep Docker Engine updated** on all hosts
 5. **Use `--network host` only when necessary** (e.g., cross-subnet worker communication)
-6. **Restrict Docker socket access** — do not mount it in containers that don't need it
-7. **Review deployed service configurations** — CashPilot deploys third-party containers; review their security posture independently
+6. **Restrict Docker socket access**: do not mount it in containers that don't need it
+7. **Review deployed service configurations**: CashPilot deploys third-party containers; review their security posture independently
 8. **Back up your SQLite database** regularly (`/data/cashpilot.db`)
 9. **Enable strict worker-URL mode** (`CASHPILOT_WORKER_URL_POLICY=strict`) for internet-exposed deployments, with `CASHPILOT_WORKER_ALLOWED_HOSTS` set to your worker subnets
 

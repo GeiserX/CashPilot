@@ -5,8 +5,8 @@ read this box.
 
 !!! danger "`.fernet_key` is not recoverable"
 
-    Every credential you have entered — provider passwords, API keys, session
-    cookies — is encrypted in the database with the key in
+    Every credential you have entered (provider passwords, API keys, session
+    cookies) is encrypted in the database with the key in
     `/data/.fernet_key`. **The database alone is not enough.** Restore
     `cashpilot.db` without that key and every stored credential is permanently
     undecryptable. There is no recovery, no reset, no support path: the
@@ -15,7 +15,7 @@ read this box.
     Back up **both**, always, together.
 
 This page covers the CashPilot UI's own data. Backing up the *node identities*
-your services generate — the Mysterium keystore and friends — is a separate job
+your services generate (the Mysterium keystore and friends) is a separate job
 and lives in [Backing Up Node Identities](backup.md).
 
 ---
@@ -31,7 +31,7 @@ The UI's `/data` volume (`cashpilot_data` in the shipped compose files):
 | `.secret_key` | Signs login sessions | everyone is logged out once; nothing else |
 
 `.secret_key` **may not exist**, and that is normal. It is only written when
-`CASHPILOT_SECRET_KEY` is unset — set the variable and the file is never
+`CASHPILOT_SECRET_KEY` is unset; set the variable and the file is never
 created. Verified on a live install: `/data` held `.fernet_key` and nothing
 else.
 
@@ -43,10 +43,10 @@ unreadable credentials.
 
 There are two other volumes, and neither is precious:
 
-- `cashpilot_fleet` (`/fleet/.fleet_key`) — the shared enrollment key. Shared by
+- `cashpilot_fleet` (`/fleet/.fleet_key`): the shared enrollment key. Shared by
   the UI and its co-located worker. If you lose it, set `CASHPILOT_API_KEY`
   explicitly or let it regenerate and re-enroll the workers.
-- `cashpilot_worker_data` (`/data/.worker_key`) — that worker's own issued key.
+- `cashpilot_worker_data` (`/data/.worker_key`): that worker's own issued key.
   Lose it and the worker re-enrolls on its next heartbeat. Nothing is destroyed.
 
     The worker's `/data` is a **separate volume from the UI's, deliberately**.
@@ -127,12 +127,12 @@ docker logs -f cashpilot-ui
 
 Two lines tell you the restore worked.
 
-The schema line reports the version and any migration that ran — expect a
+The schema line reports the version and any migration that ran. Expect a
 migration if the backup came from an older release, and none if it did not:
 
 ```
-Schema at version 10; no migration needed this boot.
-Schema now at version 10 (was 0). Migrations applied this boot: earnings.source
+Schema at version 12; no migration needed this boot.
+Schema now at version 12 (was 0). Migrations applied this boot: earnings.source
 ```
 
 And there should be **no** decryption error. If the key did not come across you
@@ -151,7 +151,7 @@ recovered any other way.**
 ### Restoring the key by environment variable instead
 
 If you kept the key as a secret rather than a file, `CASHPILOT_ENCRYPTION_KEY`
-is adopted **only when no key file exists** — which covers both a fresh install
+is adopted **only when no key file exists**, which covers both a fresh install
 and a restore onto an empty volume:
 
 ```yaml
@@ -171,7 +171,7 @@ Three refusals you may run into. All three are the software declining to destroy
 something.
 
 **It will not overwrite an unreadable `.fernet_key`.** If the file exists but is
-corrupt or the wrong length, startup fails rather than generating a replacement —
+corrupt or the wrong length, startup fails rather than generating a replacement,
 because generating one would destroy the only artifact that could still decrypt
 your credentials. Restore the file, or move it aside and re-enter the
 credentials, which is a real choice you are allowed to make.
@@ -179,7 +179,9 @@ credentials, which is a real choice you are allowed to make.
 **It will not start if the key cannot be persisted.** A read-only or
 unwritable `/data` means every credential entered during that run becomes
 undecryptable the moment the container restarts. Failing at startup is kinder
-than failing silently, hours later.
+than failing silently, hours later. If you really want a throwaway instance, set
+`CASHPILOT_ALLOW_EPHEMERAL_KEY=true` and it starts with a key that dies with the
+process.
 
 **A failed decrypt is logged as an ERROR, not a warning.** This is unattended
 software. The downstream symptom is a provider authentication failure that
@@ -194,5 +196,5 @@ The images pin `major.minor` in the shipped compose files, so `docker compose
 pull` picks up patch fixes and never crosses a minor boundary without an edit.
 
 Before a minor or major upgrade: **take the backup above.** Migrations are
-forward-only — there is no down migration — so the way back is a restore. The
+forward-only (there is no down migration), so the way back is a restore. The
 schema line at startup tells you whether anything actually changed.

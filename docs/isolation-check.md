@@ -281,18 +281,22 @@ host forwards it. Two layers apply.
 **The node's own list.** Mysterium blocks some destinations for its customers
 itself. Its default list is `10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16,
 127.0.0.0/8`, which leaves out link-local addresses and the 100.64.0.0/10 range
-that Tailscale uses. Add them in the node's config file, which lives in its data
-volume (`/var/lib/mysterium-node/config-mainnet.toml` inside the container), and
-restart the node:
+that Tailscale uses. Since 1.46.0 CashPilot's catalog starts the node with the
+full list, `--firewall.protected.networks=10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,127.0.0.0/8,100.64.0.0/10,169.254.0.0/16`.
+A node deployed before that keeps the default list until you redeploy it from
+the dashboard; the identity lives in its data volume and is kept. For a node
+you run outside CashPilot, add the ranges in its config file
+(`/var/lib/mysterium-node/config-mainnet.toml` inside the container) and
+restart it:
 
 ```toml
 [firewall.protected]
   networks = "10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,127.0.0.0/8,100.64.0.0/10,169.254.0.0/16"
 ```
 
-This survives a redeploy from CashPilot, because the file sits in the volume
-that keeps the node's identity. When the next customer connects, the node's NAT
-rules should list the new ranges:
+The dashboard's **Check isolation** reads this list back from the node and says
+when a range is missing. When the next customer connects, the node's NAT rules
+should list the new ranges:
 
 ```sh
 sudo iptables -t nat -S MYST | grep 240.0.0.1      # Unraid: iptables-nft -t nat -S MYST

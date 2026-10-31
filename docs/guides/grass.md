@@ -38,19 +38,14 @@ Sign up at [Grass](https://app.grass.io/register?referralCode=kn8FNEPnUr2tMqE).
 
 <small>Referral link: the CashPilot maintainer may earn a commission from it.</small>
 
-### 2. Get your credentials
+### 2. Run it outside CashPilot
 
-After signing up, locate the credentials needed for Docker deployment. These are typically your email/password or an API token found in the dashboard.
+CashPilot cannot deploy Grass. The catalog has no Docker image for it, so its row in **Catalog** shows **Visit** instead of **Add**. Install the Grass browser extension or app (Windows, macOS, Android or iOS) and log in.
 
-### 3. Deploy with CashPilot
+### 3. Track earnings in CashPilot
 
-In the CashPilot web UI, find **Grass** in the service catalog and click **Deploy**. Enter the required credentials and CashPilot will handle the rest.
+CashPilot can read your Grass points. Open **Settings**, find Grass under **Earnings collection**, paste the access token from your browser's Local Storage on app.grass.io (the hint under the field says where to find it) and click **Save credentials**.
 
 ## Docker Configuration
 
-- **Image:** ``
-- **Platforms:** browser-extension, windows, macos, android, ios
-
-### Environment Variables
-
-No environment variables required.
+None. The catalog has no Docker image for Grass.

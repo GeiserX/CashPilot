@@ -29,6 +29,8 @@ Minimum $20 (20,000 credits). Two options: PayPal through Tipalti, about 15% fee
 | Requirement | Value |
 |-------------|-------|
 | Residential IP | Yes |
+| Devices per IP | 1 |
+| Devices per account | 10 |
 | Minimum bandwidth | None |
 | GPU required | No |
 | Minimum storage | None |
@@ -44,11 +46,11 @@ Sign up at [Honeygain](https://dashboard.honeygain.com/ref/SERGIB4014).
 
 ### 2. Get your credentials
 
-After signing up, locate the credentials needed for Docker deployment. These are typically your email/password or an API token found in the dashboard.
+The container logs in with the email and password you use at dashboard.honeygain.com. CashPilot's earnings collector uses the same two, under **Settings → Earnings collection**.
 
 ### 3. Deploy with CashPilot
 
-In the CashPilot web UI, find **Honeygain** in the service catalog and click **Deploy**. Enter the required credentials and CashPilot will handle the rest.
+In the CashPilot web UI, open **Catalog** and click **Add** on the **Honeygain** row, or click **+ Add service** in the top bar and pick it there. Enter your email and password, then click **Deploy Honeygain**.
 
 ## Docker Configuration
 

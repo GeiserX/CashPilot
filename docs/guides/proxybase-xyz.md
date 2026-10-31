@@ -14,7 +14,7 @@ ProxyBase Markets is a SOCKS5 proxy marketplace built for AI agents. Sellers run
 
 | Metric | Value |
 |--------|-------|
-| Monthly range | $0 — $15 (estimate) |
+| Monthly range | $0 - $15 (estimate) |
 | Per | device |
 | Minimum payout | $1 |
 | Payout frequency | On request |
@@ -26,7 +26,7 @@ ProxyBase Markets is a SOCKS5 proxy marketplace built for AI agents. Sellers run
 
 | Requirement | Value |
 |-------------|-------|
-| Residential IP | No — datacenter/VPS is fine |
+| Residential IP | No (datacenter/VPS is fine) |
 | VPS/Datacenter IP | Yes |
 | Minimum bandwidth | None |
 | GPU required | No |
@@ -37,7 +37,7 @@ ProxyBase Markets is a SOCKS5 proxy marketplace built for AI agents. Sellers run
 
 ### 1. Deploy with CashPilot
 
-In the CashPilot web UI, find **ProxyBase Markets** in the service catalog and click **Deploy**. No account signup or credentials are needed — the container auto-generates a secp256k1 wallet (BIP-39), authenticates via ECDSA challenge-response against the ProxyBase backend, creates a default seller config for direct-only mode, and starts relaying traffic.
+In the CashPilot web UI, open **Catalog** and click **Add** on the **ProxyBase Markets** row, or click **+ Add service** in the top bar and pick it there. Then click **Deploy ProxyBase Markets**. No account signup or credentials are needed: the container auto-generates a secp256k1 wallet (BIP-39), authenticates via ECDSA challenge-response against the ProxyBase backend, creates a default seller config for direct-only mode, and starts relaying traffic.
 
 ### 2. Check the wallet address
 
@@ -81,7 +81,7 @@ This saves the upstream config to the volume. Subsequent starts without `--upstr
 |-------|---------|
 | `proxybase-data:/home/proxybase/.proxybase` | Persists wallet keyfile, session token, and seller config across restarts |
 
-> The wallet, session token, and seller config are all stored in this volume. If you delete the volume, a new wallet will be generated on next start.
+> The wallet, session token, and seller config are all stored in this volume. The volume holds the only copy of the wallet key: there is no server-side copy, so deleting it destroys the funds in that wallet. A new, empty wallet is generated on the next start.
 
 ## Payouts
 
@@ -120,7 +120,7 @@ docker run --rm -v proxybase-data:/home/proxybase/.proxybase \
 The seller auto-reconnects with exponential backoff (1s → 60s max). If it cycles indefinitely, check that:
 
 1. Your server can reach `api.proxybase.xyz` on port 443 (outbound WebSocket).
-2. The session token hasn't expired — the entrypoint re-authenticates on container restart if the token is missing, but long-running containers may hit token expiry. Restart the container to refresh.
+2. The session token hasn't expired. The entrypoint re-authenticates on container restart if the token is missing, but long-running containers may hit token expiry. Restart the container to refresh.
 
 ### How do I back up my wallet?
 

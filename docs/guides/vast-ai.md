@@ -38,21 +38,12 @@ Sign up at [Vast.ai](https://cloud.vast.ai/?ref_id=452772).
 
 <small>Referral link: the CashPilot maintainer may earn a commission from it.</small>
 
-### 2. Get your credentials
+### 2. Run it outside CashPilot
 
-After signing up, locate the credentials needed for Docker deployment. These are typically your email/password or an API token found in the dashboard.
-
-### 3. Deploy with CashPilot
-
-In the CashPilot web UI, find **Vast.ai** in the service catalog and click **Deploy**. Enter the required credentials and CashPilot will handle the rest.
+CashPilot cannot deploy Vast.ai. The catalog has no Docker image for it, so its row in **Catalog** shows **Visit** instead of **Add**. Run Vast.ai's host software on a Linux machine with a GPU. CashPilot does not read Vast.ai earnings either, so check them in the provider's dashboard.
 
 ## Docker Configuration
 
-- **Image:** ``
-- **Platforms:** linux/amd64
+None. The catalog has no Docker image for Vast.ai.
 
-### Environment Variables
-
-| Variable | Label | Required | Secret | Description |
-|----------|-------|:--------:|:------:|-------------|
-| `VAST_API_KEY` | API Key | Yes | Yes | Vast.ai host API key from dashboard |
+The catalog defines a `VAST_API_KEY` field (your Vast.ai host API key), but nothing in CashPilot reads it yet.

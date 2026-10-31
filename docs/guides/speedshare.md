@@ -4,7 +4,7 @@
 >
 > **Website:** [https://speedshare.app](https://speedshare.app)
 
-> **Deprecated:** SpeedShare authentication is completely broken — login no longer works. The project was confirmed dead in their Discord (March 2026). Deployment is blocked. This guide is kept for reference only.
+> **Deprecated:** SpeedShare authentication is completely broken: login no longer works. The project was confirmed dead in their Discord (March 2026). Deployment is blocked. This guide is kept for reference only.
 
 ## Description
 
@@ -38,13 +38,9 @@ SpeedShare lets you earn by sharing your unused internet bandwidth. Residential 
 
 Sign up at [SpeedShare](https://speedshare.app).
 
-### 2. Get your credentials
+### 2. Deploy with CashPilot
 
-After signing up, locate the credentials needed for Docker deployment. These are typically your email/password or an API token found in the dashboard.
-
-### 3. Deploy with CashPilot
-
-In the CashPilot web UI, find **SpeedShare** in the service catalog and click **Deploy**. Enter the required credentials and CashPilot will handle the rest.
+You can't. CashPilot hides dead services from the catalog and the setup wizard, and refuses a deploy request for one.
 
 ## Docker Configuration
 

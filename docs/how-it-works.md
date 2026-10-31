@@ -17,7 +17,7 @@ There is **no standalone mode**. Every server that runs Docker containers needs 
 2. **Workers must be privileged.** A worker without Docker socket is useless. If you don't need Docker management, just run the UI alone to track earnings.
 3. **Single source of truth.** The UI instance is the only one that collects earnings, stores historical data, and serves the dashboard. Workers never collect earnings.
 4. **Earnings are never duplicated.** Since only the UI collects, there is no risk of the same account being counted twice.
-5. **Workers are stateless satellites.** A worker knows which containers to keep running and the UI URL to report to. It persists only its own fleet key to a local file (no database, no earnings data).
+5. **Workers are stateless satellites.** A worker knows which containers to keep running and the UI URL to report to. It persists only its own id and fleet key to local files (`.worker_id`, `.worker_key`; no database, no earnings data).
 6. **YAML is truth.** Every service lives in `services/{category}/{slug}.yml`. The UI, deployment, docs, and compose export all derive from these files.
 
 ## Directory Structure
@@ -39,9 +39,9 @@ cashpilot/
       base.py               # BaseCollector ABC + EarningsResult dataclass
       honeygain.py          # Example: JWT auth + balance endpoint
       __init__.py           # COLLECTOR_MAP registry + make_collectors() factory
-    templates/              # Jinja2: dashboard, setup wizard, catalog, settings
+    templates/              # Jinja2: dashboard, fleet, catalog, setup wizard, payouts, settings
     static/
-      css/style.css         # Dark theme (#0f1117 bg, #1a1d26 cards, #3b82f6 accent)
+      css/style.css         # Dark theme by default, plus a light theme
       js/app.js             # Vanilla JS, CP namespace, Chart.js, wizard state machine
   services/                 # YAML service definitions (SINGLE SOURCE OF TRUTH)
     _schema.yml             # Schema documentation
@@ -68,7 +68,7 @@ sequenceDiagram
     participant APIs as Service APIs
 
     User->>UI: Configure & deploy service
-    UI->>Worker: POST /deploy (container spec)
+    UI->>Worker: POST /api/containers/{slug}/deploy (container spec)
     Worker->>Docker: Create container
     Docker-->>Worker: Container running
 
@@ -96,14 +96,14 @@ Every 60 seconds, each worker sends:
 - System info (OS, architecture, hostname, Docker availability)
 - Its self-reported URL (explicit `CASHPILOT_WORKER_URL` or an auto-detected fallback)
 
-The UI stores this in its SQLite database and displays it on the fleet dashboard.
+The UI stores this in its SQLite database and displays it on the **Fleet** page.
 
 ### Commands (UI to Worker)
 
 The UI can instruct any worker to:
 
 - **Deploy** a service container (full spec: image, env vars, volumes, ports)
-- **Stop**, **restart**, or **remove** a running container
+- **Stop**, **start**, **restart**, or **remove** a container
 - **Fetch logs** from a container
 
 Commands are sent via REST API calls from the UI to the worker.
@@ -122,7 +122,7 @@ The worker **never handles or stores credentials**:
 
 The UI runs scheduled collectors for each configured service:
 
-- **15 automated collectors** fetch balances via service APIs (JWT auth, cookie auth, API keys)
+- **Automated collectors** fetch balances via service APIs (JWT auth, cookie auth, API keys) for the providers that have one
 - Results stored in SQLite with native currency (USD, MYST, GRASS, STORJ, etc.)
 - Exchange rates fetched from CoinGecko (crypto) and Frankfurter (fiat), cached 15 minutes
 - Dashboard converts and displays in the user's preferred currency

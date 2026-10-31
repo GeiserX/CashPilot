@@ -29,6 +29,7 @@ Minimum $5. Select your country first; the methods depend on it. From Spain (Oct
 | Requirement | Value |
 |-------------|-------|
 | Residential IP | Yes |
+| Devices per IP | 1 |
 | Minimum bandwidth | None |
 | GPU required | No |
 | Minimum storage | None |
@@ -44,11 +45,11 @@ Sign up at [IPRoyal Pawns](https://pawns.app?r=19266874).
 
 ### 2. Get your credentials
 
-After signing up, locate the credentials needed for Docker deployment. These are typically your email/password or an API token found in the dashboard.
+The container logs in with the email and password you use at pawns.app. CashPilot's earnings collector uses the same two, under **Settings → Earnings collection**.
 
 ### 3. Deploy with CashPilot
 
-In the CashPilot web UI, find **IPRoyal Pawns** in the service catalog and click **Deploy**. Enter the required credentials and CashPilot will handle the rest.
+In the CashPilot web UI, open **Catalog** and click **Add** on the **IPRoyal Pawns** row, or click **+ Add service** in the top bar and pick it there. Enter your email and password, then click **Deploy IPRoyal Pawns**.
 
 ## Docker Configuration
 

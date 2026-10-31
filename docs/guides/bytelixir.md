@@ -6,7 +6,7 @@
 
 ## Description
 
-Bytelixir lets you earn passive income by sharing unused internet bandwidth. Supports Windows and Android only — the official FAQ states no Linux or Docker client is planned, iOS is unsupported, and macOS is not offered. Earnings depend heavily on location. Web dashboard at dash.bytelixir.com for tracking. No Docker image available.
+Bytelixir lets you earn passive income by sharing unused internet bandwidth. Supports Windows and Android only: the official FAQ states no Linux or Docker client is planned, iOS is unsupported, and macOS is not offered. Earnings depend heavily on location. Web dashboard at dash.bytelixir.com for tracking. No Docker image available.
 
 ## Earning Estimates
 
@@ -45,13 +45,14 @@ Sign up at [Bytelixir](https://bytelixir.com/r/OYEIRE0VSZBZ).
 ### 2. Install the app
 
 Download the Windows or Android app from the **Download** section of your dashboard at
-[dash.bytelixir.com](https://dash.bytelixir.com) — those are the only supported platforms,
+[dash.bytelixir.com](https://dash.bytelixir.com); those are the only supported platforms,
 and the official FAQ states no Linux or Docker client is planned.
 
 ### 3. Track earnings in CashPilot
 
 There is no container to deploy; CashPilot tracks Bytelixir's earnings through your
-dashboard session. In the catalog entry, paste the session cookie values exactly as the
-credential fields describe (log in at dash.bytelixir.com, then F12 → Application →
-Cookies). Sessions with "Remember Me" last days to weeks; refresh the cookie when the
-collector reports it expired.
+dashboard session. Log in at dash.bytelixir.com with **Remember Me** ticked, press F12 →
+Application → Cookies, and paste three values under **Settings → Earnings collection**:
+`bytelixir_session`, `remember_web_…` and `XSRF-TOKEN`. The session cookie alone expires
+about two hours after you copy it; the `remember_web` cookie lasts about a year and is what
+keeps collection working. Refresh them when the collector reports they expired.

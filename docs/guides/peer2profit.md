@@ -1,7 +1,7 @@
 # Peer2Profit
 
 > [!CAUTION]
-> **Deprecated:** Peer2Profit is completely dead — the domain is unreachable and all services are offline. Deployment is blocked. This guide is kept for reference only.
+> **Deprecated:** Peer2Profit is completely dead: the domain is unreachable and all services are offline. Deployment is blocked. This guide is kept for reference only.
 
 > **Category:** Bandwidth Sharing | **Status:** Dead
 >
@@ -39,13 +39,9 @@ Peer2Profit monetizes unused internet bandwidth by routing legitimate traffic th
 
 Sign up at [Peer2Profit](https://peer2profit.com).
 
-### 2. Get your credentials
+### 2. Deploy with CashPilot
 
-After signing up, locate the credentials needed for Docker deployment. These are typically your email/password or an API token found in the dashboard.
-
-### 3. Deploy with CashPilot
-
-In the CashPilot web UI, find **Peer2Profit** in the service catalog and click **Deploy**. Enter the required credentials and CashPilot will handle the rest.
+You can't. CashPilot hides dead services from the catalog and the setup wizard, and refuses a deploy request for one.
 
 ## Docker Configuration
 

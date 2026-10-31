@@ -20,7 +20,7 @@ Traffmonetizer lets you monetize your internet traffic by sharing bandwidth with
 
 > VPS and datacenter IPs earn less than residential. US/EU locations earn more. The more **unique public IPs** your devices have, the more you earn.
 
-> **Same IP = shared traffic.** Multiple devices on the same public IP are allowed (no ban risk), but traffic is split between them — you don't earn more total. Running on both a phone and server on the same WiFi is pointless. The phone only adds value on cellular data (different IP). Also available on iOS.
+> **Same IP = shared traffic.** Multiple devices on the same public IP are allowed (no ban risk), but traffic is split between them, so you don't earn more total. Running on both a phone and server on the same WiFi is pointless. The phone only adds value on cellular data (different IP). Also available on iOS.
 
 ## Cashing out
 
@@ -31,6 +31,7 @@ Minimum $10. PayPal is no longer offered. Save one payout method in the profile 
 | Requirement | Value |
 |-------------|-------|
 | Residential IP | No |
+| Devices per IP | Unlimited |
 | Minimum bandwidth | None |
 | GPU required | No |
 | Minimum storage | None |
@@ -46,11 +47,11 @@ Sign up at [Traffmonetizer](https://traffmonetizer.com/?aff=2111758).
 
 ### 2. Get your credentials
 
-After signing up, locate the credentials needed for Docker deployment. These are typically your email/password or an API token found in the dashboard.
+Log in at [app.traffmonetizer.com](https://app.traffmonetizer.com), press F12, open **Application → Local Storage → https://app.traffmonetizer.com** and copy the `token` value. CashPilot's earnings collector uses the same token, under **Settings → Earnings collection**.
 
 ### 3. Deploy with CashPilot
 
-In the CashPilot web UI, find **Traffmonetizer** in the service catalog and click **Deploy**. Enter the required credentials and CashPilot will handle the rest.
+In the CashPilot web UI, open **Catalog** and click **Add** on the **Traffmonetizer** row, or click **+ Add service** in the top bar and pick it there. Paste your token, then click **Deploy Traffmonetizer**.
 
 ## Docker Configuration
 
@@ -61,5 +62,5 @@ In the CashPilot web UI, find **Traffmonetizer** in the service catalog and clic
 
 | Variable | Label | Required | Secret | Description |
 |----------|-------|:--------:|:------:|-------------|
-| `TRAFFMONETIZER_TOKEN` | Token | Yes | Yes | Your Traffmonetizer account token (found in Dashboard > Docker run command) |
+| `TRAFFMONETIZER_TOKEN` | Token | Yes | Yes | The `token` value in your browser's Local Storage at app.traffmonetizer.com |
 | `TRAFFMONETIZER_DEVICE_NAME` | Device name | No | No | Name displayed in dashboard for device management (default: `cashpilot-{hostname}`) |

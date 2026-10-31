@@ -48,11 +48,11 @@ Sign up at [MystNodes](https://mystnodes.co/?referral_code=do7v7YOoBBpbOstKQovX2
 
 ### 2. Get your credentials
 
-After signing up, locate the credentials needed for Docker deployment. These are typically your email/password or an API token found in the dashboard.
+The node itself needs no credentials, and both of its settings have defaults. CashPilot logs in to MystNodes with your account email and password, under **Settings → Earnings collection**; the balance and lifetime figures come from the node itself, which the worker reads.
 
 ### 3. Deploy with CashPilot
 
-In the CashPilot web UI, find **MystNodes** in the service catalog and click **Deploy**. Enter the required credentials and CashPilot will handle the rest.
+In the CashPilot web UI, open **Catalog** and click **Add** on the **MystNodes** row, or click **+ Add service** in the top bar and pick it there. Both fields have working defaults, so you can click **Deploy MystNodes** as is.
 
 ## Docker Configuration
 
@@ -109,7 +109,7 @@ you open it.
 
 The node runs with host networking, so the WebUI listens on the host itself.
 By default that is `127.0.0.1` only: nothing outside the machine can reach it,
-and CashPilot does not need it (earnings come from the mystnodes.com cloud API).
+and CashPilot does not need it. The worker reads the node's balance and lifetime from the node's own Tequila API, inside the container.
 
 To put a reverse proxy in front, add the one address the proxy connects to and
 keep `127.0.0.1` first, for example `127.0.0.1,172.18.0.1`:
@@ -134,7 +134,7 @@ machine.
 
 ## Troubleshooting
 
-### "Running but not earning" — monitoring failed, quality 0
+### "Running but not earning": monitoring failed, quality 0
 
 **Symptom.** The container is up and its logs look healthy. MystNodes emails you
 *"we're temporarily unable to track its status"*. The dashboard shows no quality
@@ -199,6 +199,7 @@ docker logs cashpilot-mysterium 2>&1 | grep -c 'PERM_SUDOERS'   # anything above
 
 **Fix.** If CashPilot deployed the container, **redeploy Mysterium from the
 dashboard** on CashPilot v1.36.6 or newer, with the worker on the same version.
+The dashboard lists the node under **Needs fixing** with a **Redeploy** button.
 The catalog declares the device and the capabilities, the redeploy applies both,
 and the `mysterium-data` volume is reused, so the node keeps its identity.
 
@@ -242,12 +243,12 @@ docker logs cashpilot-mysterium 2>&1 | grep -i wireguard | tail -3   # expect "W
 **Your identity is safe.** It lives in the mounted data directory
 (`/var/lib/mysterium-node/keystore/`), not in the container, so recreating the
 container keeps the same node identity and its accumulated reputation. Confirm
-with `curl -s http://127.0.0.1:4050/identities` — the address must be unchanged.
+with `curl -s http://127.0.0.1:4050/identities`; the address must be unchanged.
 
 **On the host**, `/dev/net/tun` must exist (`ls -l /dev/net/tun`). If it does
 not, load the module with `modprobe tun`.
 
-MystNodes' own monitoring takes a while to re-score a node after the fix — allow
+MystNodes' own monitoring takes a while to re-score a node after the fix. Allow
 several hours before judging it by the dashboard rather than by the node's own
 `monitoring-agent-statuses`.
 

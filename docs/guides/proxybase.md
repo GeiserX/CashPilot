@@ -6,7 +6,7 @@
 
 ## Description
 
-ProxyBase is a bandwidth-sharing platform that pays users in cryptocurrency for sharing their unused internet connection. You authenticate the peer client with an **Access Token** from your dashboard. Residential IPs earn the most, but datacenter IPs are also supported — they currently receive less traffic than residential. Official multi-arch Docker image (amd64/arm64/armv7).
+ProxyBase is a bandwidth-sharing platform that pays users in cryptocurrency for sharing their unused internet connection. You authenticate the peer client with an **Access Token** from your dashboard. Residential IPs earn the most, but datacenter IPs are also supported, though they currently receive less traffic than residential. Official multi-arch Docker image (amd64/arm64/armv7).
 
 ## Earning Estimates
 
@@ -45,13 +45,13 @@ Sign up at [ProxyBase](https://peer.proxybase.org?referral=nXzS3c6iTO). If the r
 
 ### 2. Get your Access Token
 
-After signing up and verifying your email, open your [dashboard](https://peer.proxybase.org/dashboard) and copy your **Access Token** — it is shown in the Docker command on the setup page and looks like a short alphanumeric string.
+After signing up and verifying your email, open your [dashboard](https://peer.proxybase.org/dashboard) and copy your **Access Token**. It is shown in the Docker command on the setup page and looks like a short alphanumeric string.
 
 ### 3. Deploy with CashPilot
 
-In the CashPilot web UI, find **ProxyBase** in the service catalog and click **Deploy**. Enter your Access Token and a device name (no spaces), and CashPilot will handle the rest.
+In the CashPilot web UI, open **Catalog** and click **Add** on the **ProxyBase** row, or click **+ Add service** in the top bar and pick it there. Enter your Access Token and a device name (no spaces), then click **Deploy ProxyBase**.
 
-> **Upgrading from an older CashPilot?** ProxyBase moved to a new client image and replaced its credentials: the old `USER_ID`/`DEVICE_NAME` values are retired and cannot be reused. Generate a fresh **Access Token** in your [dashboard](https://peer.proxybase.org/dashboard), then re-deploy ProxyBase from the catalog with it (plus a Device Name) — existing containers built on the old image have stopped earning.
+> **Upgrading from an older CashPilot?** ProxyBase moved to a new client image and replaced its credentials: the old `USER_ID`/`DEVICE_NAME` values are retired and cannot be reused. Generate a fresh **Access Token** in your [dashboard](https://peer.proxybase.org/dashboard), then re-deploy ProxyBase from the catalog with it (plus a Device Name); existing containers built on the old image have stopped earning.
 
 ## Docker Configuration
 
@@ -69,12 +69,12 @@ In the CashPilot web UI, find **ProxyBase** in the service catalog and click **D
 
 ### ProxyBase shows "running" but earnings stopped (or dropped to $0)
 
-If ProxyBase was deployed before the migration to the new client, the container is still running ProxyBase's **retired** image — it looks healthy in the dashboard but no longer earns, because the old backend was shut down. The dashboard cannot tell the retired client from the current one.
+If ProxyBase was deployed before the migration to the new client, the container is still running ProxyBase's **retired** image: it looks healthy in the dashboard but no longer earns, because the old backend was shut down. The dashboard cannot tell the retired client from the current one.
 
 Fix: **Remove** the ProxyBase service, then **Deploy** it again from the catalog and paste a fresh **Access Token** from [your dashboard](https://peer.proxybase.org/dashboard). The redeploy pulls the current `ghcr.io/proxybaseorg/peer-cli` image.
 
 ### Container loops on `Missing ID and NAME`
 
-The peer client accepts its credentials **only as command-line arguments**. Its error text also offers "environment variables ID and NAME", but no published image actually reads them — a container started with only the environment variables loops on `Missing ID and NAME` forever while showing as "running".
+The peer client accepts its credentials **only as command-line arguments**. Its error text also offers "environment variables ID and NAME", but no published image actually reads them. A container started with only the environment variables loops on `Missing ID and NAME` forever while showing as "running".
 
-CashPilot releases from 2026-07-17 through 1.35.x deployed exactly that shape, so **every fresh ProxyBase deploy in that window hit this** (issue #343). Current CashPilot passes the token and device name as arguments. Fix: upgrade CashPilot, then **Deploy** ProxyBase again from the catalog. If you used an exported compose file from an affected release, re-export it — old exports carried literal `${ID}` placeholders in the command.
+CashPilot releases from 2026-07-17 through 1.35.x deployed exactly that shape, so **every fresh ProxyBase deploy in that window hit this** (issue #343). Current CashPilot passes the token and device name as arguments. Fix: upgrade CashPilot, then **Deploy** ProxyBase again from the catalog. If you used an exported compose file from an affected release, re-export it, because old exports carried literal `${ID}` placeholders in the command.

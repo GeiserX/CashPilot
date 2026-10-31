@@ -36,18 +36,10 @@ Network3 was a DePIN project focused on decentralized AI training and bandwidth 
 
 Sign up at [Network3](https://network3.io).
 
-### 2. Get your credentials
+### 2. Not available in CashPilot
 
-After signing up, locate the credentials needed for Docker deployment. These are typically your email/password or an API token found in the dashboard.
-
-### 3. Deploy with CashPilot
-
-In the CashPilot web UI, find **Network3** in the service catalog and click **Deploy**. Enter the required credentials and CashPilot will handle the rest.
+CashPilot hides Network3 from the catalog and refuses to deploy it, because its catalog status is **Broken**. The catalog has no Docker image for it either.
 
 ## Docker Configuration
 
-- **Image:** ``
-
-### Environment Variables
-
-No environment variables required.
+None. The catalog has no Docker image for Network3.

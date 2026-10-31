@@ -36,18 +36,10 @@ Helium is an established decentralized wireless network. Originally LoRaWAN hots
 
 Sign up at [Helium](https://helium.com).
 
-### 2. Get your credentials
+### 2. Run it outside CashPilot
 
-After signing up, locate the credentials needed for Docker deployment. These are typically your email/password or an API token found in the dashboard.
-
-### 3. Deploy with CashPilot
-
-In the CashPilot web UI, find **Helium** in the service catalog and click **Deploy**. Enter the required credentials and CashPilot will handle the rest.
+CashPilot cannot deploy Helium. The catalog has no Docker image for it, so its row in **Catalog** shows **Visit** instead of **Add**. A Helium hotspot is dedicated hardware you buy and set up yourself, so there is nothing to run on your servers. CashPilot does not read Helium earnings either, so check them in the provider's dashboard.
 
 ## Docker Configuration
 
-- **Image:** ``
-
-### Environment Variables
-
-No environment variables required.
+None. The catalog has no Docker image for Helium.

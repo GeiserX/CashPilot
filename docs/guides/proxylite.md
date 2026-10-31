@@ -44,7 +44,7 @@ After signing up at [proxylite.ru](https://proxylite.ru), your User ID is visibl
 
 ### 3. Deploy with CashPilot
 
-In the CashPilot web UI, find **ProxyLite** in the service catalog and click **Deploy**. Enter the required credentials and CashPilot will handle the rest.
+In the CashPilot web UI, open **Catalog** and click **Add** on the **ProxyLite** row, or click **+ Add service** in the top bar and pick it there. Paste your User ID, then click **Deploy ProxyLite**.
 
 ## Docker Configuration
 

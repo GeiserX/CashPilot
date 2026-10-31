@@ -6,7 +6,7 @@
 
 ## Description
 
-Anyone Protocol (formerly ATOR) is a decentralized onion-routing privacy network. Node operators run relay nodes and earn ANYONE tokens for bandwidth contributed. Think "incentivized Tor." Official Docker images available for amd64 and arm64 including Raspberry Pi. Configuration is file-based via an anonrc file mounted into the container (Nickname, ContactInfo, ORPort, etc.).
+Anyone Protocol (formerly ATOR) is a decentralized onion-routing privacy network. Node operators run relay nodes and earn ANYONE tokens for bandwidth contributed. Think "incentivized Tor." CashPilot runs it from its own image, built from the project's signed Debian package, for amd64 and arm64. Configuration is file-based via an anonrc file mounted into the container (Nickname, ContactInfo, ORPort, etc.).
 
 !!! warning "A relay earns nothing without a stake"
 
@@ -67,7 +67,7 @@ The `Log` line keeps every notice except those from guard selection, where only 
 
 ### 3. Port forwarding (required)
 
-**Port TCP 9001 must be forwarded** to the server running the relay. The relay performs a self-test by connecting to its own ORPort from the outside. If the port is not reachable, the relay **will not publish its descriptor** to the network directory — it stays invisible, handles zero traffic, and earns nothing. You'll see repeated warnings in `notices.log`:
+**Port TCP 9001 must be forwarded** to the server running the relay. The relay performs a self-test by connecting to its own ORPort from the outside. If the port is not reachable, the relay **will not publish its descriptor** to the network directory: it stays invisible, handles zero traffic, and earns nothing. You'll see repeated warnings in `notices.log`:
 
 > "Your server has not managed to confirm reachability for its ORPort(s). Relays do not publish descriptors until their ORPort and DirPort are reachable."
 
@@ -83,7 +83,11 @@ docker run --rm -i -v anon-config:/etc/anon alpine \
   sh -c 'cat > /etc/anon/anonrc && chown -R 100:101 /etc/anon' < anonrc
 ```
 
-If you change the volumes in the deploy form to host directories instead, write the file into the directory mounted at `/etc/anon`. Then, in the CashPilot web UI, find **Anyone Protocol** in the service catalog and click **Deploy**. If you change `anonrc` later, `docker kill -s HUP <container>` reloads it without a restart.
+If you change the volumes in the deploy form to host directories instead, write the file into the directory mounted at `/etc/anon`. Then, in CashPilot, click **Add** on the **Anyone Protocol** row in **Catalog** (or use **+ Add service**), pick the boxes under **Deploy to** and click **Deploy Anyone Protocol**. If you change `anonrc` later, `docker kill -s HUP <container>` reloads it without a restart.
+
+### 5. Track earnings in CashPilot
+
+CashPilot reads each relay's reward by its fingerprint. Get it with `docker exec cashpilot-anyone-protocol cat /var/lib/anon/fingerprint` on the box running the relay, then open **Settings**, find Anyone Protocol under **Earnings collection**, paste the fingerprint (comma-separated for several relays) and click **Save credentials**.
 
 ## Docker Configuration
 

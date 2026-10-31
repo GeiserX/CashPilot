@@ -68,13 +68,13 @@ Do not forward 9980. CashPilot binds the dashboard to `127.0.0.1` on the host, a
 
 ### 4. Deploy with CashPilot
 
-In the CashPilot web UI, find **Sia (hostd)** in the service catalog and click **Deploy**. It asks for:
+In CashPilot, click **Add** on the **Sia (hostd)** row in **Catalog** (or use **+ Add service**). It asks for:
 
 - **Wallet seed phrase**: the phrase from step 2.
 - **Dashboard password**: any long passphrase. It protects the web UI and the local API.
 - **Storage directory**: a host path on your largest disk where renter data will live, for example `/srv/sia`.
 
-CashPilot keeps the consensus and host databases on a named volume and mounts the storage directory at `/storage` in the container.
+Pick the boxes under **Deploy to** and click **Deploy Sia (hostd)**. CashPilot keeps the consensus and host databases on a named volume and mounts the storage directory at `/storage` in the container.
 
 ### 5. Fund the wallet, configure the host and wait
 
