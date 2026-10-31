@@ -2237,7 +2237,7 @@ body.gate { display: flex; flex-direction: column; }
    primary buttons (row buttons stay neutral), an orange focus ring and the
    balance. Text and status colours stay as in dark. Contrast is in the PR that
    added it; every text pair is >= 4.5:1 and every UI pair >= 3:1. */
-.theme-swatch[data-swatch="sunrise"] { background: linear-gradient(135deg, #15171a 50%, #FF9800 50%, #EC407A); }
+.theme-swatch[data-swatch="sunrise"] { background: linear-gradient(135deg, #15171a 50%, #FF9800 50%, #EC407A 60%, #AB47BC 78%); }
 :root[data-theme="sunrise"] {
   --sun: linear-gradient(90deg, #FFD54F, #FF9800 40%, #E91E63 72%, #AB47BC);
   --sun-warm: linear-gradient(90deg, #FF9800, #EC407A);       /* dark text >= 4.77:1 */
