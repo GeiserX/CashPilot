@@ -49,13 +49,13 @@ const FIXTURE_WORKERS = [
   },
   {
     id: 9002, client_id: "a9f3c0d1e2b4a9f3c0d1e2b4a9f3c0d1e2b4a9f3c0d1e2b4", name: "averyveryverylongservernamewithoutanyseparatorswhatsoever", status: "online",
-    last_heartbeat: now, url: "http://averyveryverylongservernamewithoutanyseparatorswhatsoever.mango-alpha.ts.net:8081",
+    last_heartbeat: now, url: "http://averyveryverylongservernamewithoutanyseparatorswhatsoever.example.ts.net:8081",
     enrollment: "incomplete", version_skew: true, ui_version: "1.57.0", system_info: sys(),
     containers: LONG_SLUGS.map((slug, i) => ({ slug, name: `cashpilot-${slug}`, status: i === 3 ? "exited" : "running", exit_code: i === 3 ? 137 : null })),
   },
   {
     id: 9003, client_id: "b7e1", name: "averyveryverylongservernamewithoutanyseparatorswhatsoever", status: "offline",
-    last_heartbeat: "2026-10-29 08:00:00", url: "http://192.168.10.110:8081", enrollment: "pending", system_info: sys({ version: undefined }),
+    last_heartbeat: "2026-10-29 08:00:00", url: "http://192.0.2.10:8081", enrollment: "pending", system_info: sys({ version: undefined }),
     containers: LONG_SLUGS.slice(0, 6).map((slug) => ({ slug, status: "running" })),
   },
 ];
