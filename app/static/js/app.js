@@ -4780,7 +4780,8 @@ const CP = (() => {
   function applyTheme(theme) {
     if (!themeConfig().ids.includes(theme)) return;
     document.documentElement.setAttribute('data-theme', theme);
-    localStorage.setItem('cp-theme', theme);
+    // Blocked storage throws; the account still keeps the choice.
+    try { localStorage.setItem('cp-theme', theme); } catch (e) { /* storage blocked */ }
     document.querySelectorAll('[data-theme-choice]').forEach(b => {
       b.setAttribute('aria-pressed', String(b.dataset.themeChoice === theme));
     });
