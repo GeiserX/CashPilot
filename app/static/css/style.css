@@ -1359,7 +1359,10 @@ section { margin-bottom: 28px; }
 .attention .block-title .count { color: var(--text-primary); }
 .attn-list:empty { display: none; }
 .attn-row {
-  display: grid; grid-template-columns: 92px minmax(150px, 220px) minmax(0, 1fr) auto; gap: 4px 14px; align-items: center;
+  /* The tag column grows to its text ("Account disabled" is wider than 92 px),
+     and the actions column stops at 320 px so its buttons wrap instead of
+     squeezing the explanation. */
+  display: grid; grid-template-columns: minmax(92px, max-content) minmax(150px, 220px) minmax(0, 1fr) fit-content(320px); gap: 4px 14px; align-items: center;
   padding: 6px 0 6px 10px; border-bottom: 1px solid var(--border-color); border-left: 2px solid var(--border-strong);
 }
 .attn-fail { border-left-color: var(--error); }
@@ -1374,7 +1377,10 @@ section { margin-bottom: 28px; }
 .attn-where { font-family: var(--font-mono); font-weight: 400; font-size: var(--fs-2); color: var(--text-secondary); margin-left: 6px; }
 .attn-why { color: var(--text-secondary); min-width: 0; overflow-wrap: anywhere; }
 .attn-why code { font-size: var(--fs-2); color: var(--text-secondary); }
-.attn-actions { display: flex; gap: 6px; justify-content: flex-end; white-space: nowrap; }
+/* Buttons wrap to a new line, and a long label ("Contact <provider>") wraps
+   inside its button: at 320 px a one-line label pushed the page sideways. */
+.attn-actions { display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; min-width: 0; }
+.attn-actions .btn { white-space: normal; height: auto; min-height: 24px; max-width: 100%; padding-top: 3px; padding-bottom: 3px; text-align: center; overflow-wrap: break-word; }
 .attn-foot { font-size: var(--fs-2); color: var(--text-muted); padding: 6px 0 0 12px; }
 .attn-clear { display: flex; align-items: center; gap: 8px; padding: 8px 0; color: var(--text-secondary); }
 .attn-clear::before { content: ''; width: 10px; height: 10px; background: var(--success); }
