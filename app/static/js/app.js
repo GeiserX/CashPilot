@@ -167,7 +167,7 @@ const CP = (() => {
       if (document.querySelector('.modal-overlay.open')) return;
       if (armed && Date.now() - armed < 1200) {
         armed = 0;
-        const link = document.querySelector(`.topnav a[data-key="${CSS.escape(e.key)}"]`);
+        const link = document.querySelector(`.topbar a[data-key="${CSS.escape(e.key)}"]`);
         if (link) { e.preventDefault(); window.location.href = link.getAttribute('href'); }
         return;
       }
@@ -855,12 +855,17 @@ const CP = (() => {
   // "Nobody has documented this" is rendered as loudly as a known risk,
   // because unknown is not safe — that distinction is the whole design of
   // app/lan_isolation.py and dropping it here would undo it.
+  //
+  // Fills every risk card on the page: the detail modal has one, and the setup
+  // wizard has one per selected service.
   async function loadDeployRisk() {
-    const card = document.getElementById('deploy-risk-card');
-    const body = document.getElementById('deploy-risk-body');
-    if (!card || !body) return;
+    await Promise.all(Array.from(document.querySelectorAll('.deploy-risk-card[data-slug]'), fillDeployRisk));
+  }
+
+  async function fillDeployRisk(card) {
+    const body = card.querySelector('.deploy-risk-body');
     const slug = card.dataset.slug;
-    if (!slug) return;
+    if (!body || !slug) return;
 
     let risk;
     try {
@@ -1737,6 +1742,12 @@ const CP = (() => {
   // and the detail view can both be in the DOM at once, and their deploy
   // handlers select by class. One shared class would make each pick up the
   // other's checkboxes.
+  // One rule for "this box runs it", shared by the wizard's node list and the
+  // catalog's Add link, so the two cannot disagree.
+  function runsOn(worker, slug) {
+    return (worker.containers || []).some((c) => c.slug === slug);
+  }
+
   function workerCheckboxList(svc, onlineWorkers, checkboxClass) {
     let rows = '';
     let allDeployed = true;
@@ -1745,7 +1756,7 @@ const CP = (() => {
     const maxInstances = svc.max_instances;
     for (const w of onlineWorkers) {
       const copies = (w.containers || []).filter((c) => c.slug === svc.slug).length;
-      const deployed = copies > 0;
+      const deployed = runsOn(w, svc.slug);
       if (!deployed) allDeployed = false;
       let instancesBox = '';
       if (maxInstances) {
@@ -2761,11 +2772,19 @@ const CP = (() => {
   };
 
   async function initWizard() {
-    wizardState = { step: 1, categories: [], selectedServices: [], deployed: [], deployAttempted: false };
+    wizardState = {
+      step: 1, categories: [], selectedServices: [], deployed: [], deployAttempted: false,
+      // false when the saved categories could not be read: then finishing
+      // does not save an empty list over them.
+      prefsLoaded: false,
+      // The category a catalog Add put in, not the user. Left out when saving.
+      addedCategory: null,
+    };
 
     // Pre-populate from saved preferences
     try {
       const prefs = await api('/api/preferences');
+      wizardState.prefsLoaded = true;
       if (prefs.selected_categories) {
         const saved = JSON.parse(prefs.selected_categories);
         if (Array.isArray(saved) && saved.length > 0) {
@@ -2784,6 +2803,32 @@ const CP = (() => {
       // Preferences not available — no pre-population
     }
 
+    // /setup?service=<slug>, from a catalog row: start on the setup step with
+    // that service picked. Back still walks through categories and services.
+    const wanted = new URLSearchParams(window.location.search).get('service');
+    if (wanted) {
+      let services = null;
+      try { services = await api('/api/services/available'); } catch (err) { /* handled below */ }
+      const pre = services && wizardPreselect(wanted, services, wizardState.categories);
+      if (!services) {
+        toast('Could not load the catalog, so the wizard starts at the first step', 'error');
+      } else if (pre) {
+        Object.assign(wizardState, pre);
+        document.querySelectorAll('.category-card').forEach(card => {
+          const cb = card.querySelector('input[type="checkbox"]');
+          if (cb && pre.categories.includes(cb.value)) {
+            card.classList.add('selected');
+            cb.checked = true;
+          }
+        });
+        updateWizardUI();
+        loadWizardServices();
+        loadWizardSetupForms();
+      } else {
+        toast(`No service called "${wanted}" in the catalog`, 'warning');
+      }
+    }
+
     updateWizardUI();
 
     // Category card toggles
@@ -2794,8 +2839,38 @@ const CP = (() => {
         if (cb) cb.checked = card.classList.contains('selected');
         wizardState.categories = Array.from(document.querySelectorAll('.category-card.selected input'))
           .map(input => input.value);
+        if (cb && cb.value === wizardState.addedCategory) wizardState.addedCategory = null;
       });
     });
+  }
+
+  // What the wizard starts with when it opens on one service: the service
+  // selected, step 3, and its category selected too (step 2 lists services by
+  // category). addedCategory names it when the user had not saved it, so
+  // finishing leaves it out. null when the slug is not in the catalog.
+  function wizardPreselect(slug, services, savedCategories) {
+    const svc = (services || []).find(s => s.slug === slug);
+    if (!svc) return null;
+    const categories = [...(savedCategories || [])];
+    let addedCategory = null;
+    if (svc.category && !categories.includes(svc.category)) {
+      categories.push(svc.category);
+      addedCategory = svc.category;
+    }
+    return { step: 3, categories, selectedServices: [svc.slug], addedCategory };
+  }
+
+  // What finishing the wizard saves. The category a catalog Add put in is not
+  // the user's pick, so it is left out. And when the saved list could not be
+  // read, an empty list is not saved over it: that would wipe it unseen.
+  function wizardPreferencesBody(state) {
+    const body = {
+      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
+      setup_completed: 1,
+    };
+    const categories = state.categories.filter(c => c !== state.addedCategory);
+    if (state.prefsLoaded || categories.length) body.selected_categories = JSON.stringify(categories);
+    return body;
   }
 
   function wizardNext() {
@@ -2815,14 +2890,7 @@ const CP = (() => {
       if (wizardState.step === 4) {
         renderWizardOutcome();
         // Persist category/service selections
-        api('/api/preferences', {
-          method: 'POST',
-          body: {
-            selected_categories: JSON.stringify(wizardState.categories),
-            timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
-            setup_completed: 1,
-          },
-        }).catch(() => {});
+        api('/api/preferences', { method: 'POST', body: wizardPreferencesBody(wizardState) }).catch(() => {});
       }
     }
   }
@@ -3027,6 +3095,7 @@ const CP = (() => {
       _wizardWorkers = workers;
       const selected = services.filter(s => wizardState.selectedServices.includes(s.slug));
       container.innerHTML = selected.map(svc => renderServiceSetupForm(svc, workers)).join('');
+      loadDeployRisk();
     } catch (err) {
       container.innerHTML = '<p class="empty-state-text">Could not load service details.</p>';
     }
@@ -3128,6 +3197,12 @@ const CP = (() => {
         </p>
         ${isDeployed && dashboardUrl ? '' : referralNote(svc)}
         <p class="setup-line muted">Already have an account? Enter your credentials below.</p>
+      </div>
+
+      <!-- IP attribution and LAN isolation, before the Deploy button. Filled
+           by loadDeployRisk once the forms are in the DOM. -->
+      <div class="deploy-risk-card setup-risk" data-slug="${escapeHtml(svc.slug)}" style="display:none;">
+        <div class="deploy-risk-body"></div>
       </div>
 
       ${envFields}
@@ -3367,13 +3442,17 @@ const CP = (() => {
   // Catalog
   // -----------------------------------------------------------
   let catalogServices = [];
+  // The online boxes, so a row does not offer Add for a service that already
+  // runs on all of them. null when unknown: then Add stays.
+  let catalogOnlineWorkers = null;
 
   async function loadCatalog() {
-    try {
-      catalogServices = await api('/api/services/available');
-    } catch (err) {
-      catalogServices = [];
-    }
+    const [services, workers] = await Promise.all([
+      api('/api/services/available').catch(() => []),
+      _isOwner ? api('/api/workers').catch(() => null) : Promise.resolve(null),
+    ]);
+    catalogServices = services;
+    catalogOnlineWorkers = Array.isArray(workers) ? workers.filter(w => w.status === 'online') : null;
     filterCatalog();
   }
 
@@ -3427,10 +3506,24 @@ const CP = (() => {
 
     const hasDocker = svc.docker && svc.docker.image;
     let actionBtn;
+    // Add opens the setup wizard on this one service, and only the owner can
+    // deploy, so only the owner gets it. Details opens the modal (description,
+    // payouts, deploy risk, custom image, instances), as Deploy used to.
+    const addLink = (title) => _isOwner
+      ? `<a href="/setup?service=${encodeURIComponent(svc.slug)}" class="btn btn-ghost btn-sm" title="${escapeHtml(title)}">Add</a>`
+      : '';
+    const detailsBtn = `<button class="btn btn-link btn-sm" data-action="openServiceDetail" data-a1="${svc.slug}">Details</button>`;
     if (isDeployed) {
-      actionBtn = `<button class="btn btn-secondary btn-sm" data-action="openServiceDetail" data-a1="${svc.slug}">Manage</button>`;
+      // The wizard can only add boxes that do not run it yet. On every online
+      // box already, Add would lead to "Deployed on all nodes", so drop it.
+      const everywhere = catalogOnlineWorkers && catalogOnlineWorkers.length > 0
+        && catalogOnlineWorkers.every(w => runsOn(w, svc.slug));
+      actionBtn = [
+        `<button class="btn btn-secondary btn-sm" data-action="openServiceDetail" data-a1="${svc.slug}">Manage</button>`,
+        hasDocker && !everywhere ? addLink(`Run ${svc.name} on another box`) : '',
+      ].filter(Boolean).join(' ');
     } else if (hasDocker) {
-      actionBtn = `<button class="btn btn-ghost btn-sm" data-action="openServiceDetail" data-a1="${svc.slug}">Deploy</button>`;
+      actionBtn = [addLink(`Add ${svc.name}`), detailsBtn].filter(Boolean).join(' ');
     } else {
       const url = (svc.referral && svc.referral.signup_url) || svc.website || '#';
       actionBtn = `<a href="${escapeHtml(url)}" target="_blank" rel="noopener" class="btn btn-ghost btn-sm">Visit</a>`;
@@ -3632,8 +3725,8 @@ const CP = (() => {
          Filled by loadDeployRisk once the modal exists. This belongs at the
          deploy step rather than in a FAQ nobody opens, which is what the
          backend's own comments say and what it never got. -->
-    <div id="deploy-risk-card" class="sd-block" data-slug="${escapeHtml(svc.slug || '')}" style="display:none;">
-      <div id="deploy-risk-body"></div>
+    <div id="deploy-risk-card" class="sd-block deploy-risk-card" data-slug="${escapeHtml(svc.slug || '')}" style="display:none;">
+      <div id="deploy-risk-body" class="deploy-risk-body"></div>
     </div>
     <div class="detail-grid sd-facts">
       <div class="detail-item">
