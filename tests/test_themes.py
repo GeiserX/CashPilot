@@ -72,6 +72,7 @@ def test_the_five_built_in_themes_with_classic_night_the_default():
 def test_server_and_validation_read_the_one_list():
     assert list(themes.THEMES) == IDS
     assert database.THEMES is themes.THEMES
+    assert database.DEFAULT_THEME == themes.DEFAULT_THEME
     assert SPEC["default"] == themes.DEFAULT_THEME
 
 

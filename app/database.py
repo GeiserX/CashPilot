@@ -2236,8 +2236,10 @@ async def update_user_password(user_id: int, hashed_password: str) -> None:
 # --- User Preferences ---
 
 
-# The appearance choices user_preferences.theme accepts (app/themes.json).
+# The appearance choices user_preferences.theme accepts, and what a user who
+# never chose gets. Both come from app/themes.json, the one list.
 THEMES = themes.THEMES
+DEFAULT_THEME = themes.DEFAULT_THEME
 
 
 async def get_user_preferences(user_id: int) -> dict[str, Any] | None:

@@ -70,7 +70,7 @@ The Payouts page lists every running service with state like this under
   container is paused for the second or two the read takes.
 - **I have a backup** is for state you already copy with your own tools.
 
-![The Back these up card on the Payouts page: one line per box, with a confirmed backup shown quietly with its date, a box whose volume changed asked to back up again, and the I have a backup and Download backup buttons](images/screenshots/payouts-backups.png)
+![The Back these up card on the Payouts page: the MystNodes keystore volume, and one line per box saying whether its backup is confirmed, with the I have a backup and Download backup buttons](images/screenshots/payouts-backups.png)
 
 Either one marks that box as backed up, with the date. Once every box is
 marked, the warning folds into one quiet line.
