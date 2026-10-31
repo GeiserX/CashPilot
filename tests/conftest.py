@@ -46,6 +46,24 @@ def _no_custom_images(request):
 
 
 @pytest.fixture(autouse=True)
+def _no_state_backups(request):
+    """No backup is confirmed, unless a test asks for the real table.
+
+    The payout registry reads the confirmed backups. Its tests mock the
+    database call by call, and a real read here would open a connection on a
+    loop ``asyncio.run`` then closes, which hangs the suite at teardown on
+    Linux. Tests marked ``real_state_backups`` get the real function.
+    """
+    if request.node.get_closest_marker("real_state_backups"):
+        yield
+        return
+    from unittest.mock import AsyncMock, patch
+
+    with patch("app.database.get_state_backups", new_callable=AsyncMock, return_value={}):
+        yield
+
+
+@pytest.fixture(autouse=True)
 def _seed_fiat_rates():
     """Give every test the exchange rates a RUNNING CashPilot always has.
 

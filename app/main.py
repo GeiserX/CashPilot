@@ -5344,6 +5344,133 @@ async def api_payout_registry(request: Request) -> dict[str, Any]:
     return await payout_registry.registry(read_addresses=_read_payout_addresses)
 
 
+async def _backup_box(slug: str, worker_id: Any) -> dict[str, Any]:
+    """The box running ``slug`` that a backup confirmation or export is about.
+
+    Refuses a service whose catalog declares nothing irreplaceable, and a box
+    that does not report the service: a confirmation for either would be a
+    confirmation of nothing.
+    """
+    svc = catalog.get_service(slug)
+    if not svc or not payout_registry.critical_state(svc):
+        raise HTTPException(status_code=404, detail="This service keeps no irreplaceable state to back up.")
+    if isinstance(worker_id, bool) or not isinstance(worker_id, int):
+        raise HTTPException(status_code=400, detail="worker_id must be a number.")
+    workers = await database.list_workers()
+    for row in placement.runs_on(workers).get(slug, []):
+        if row["worker_id"] == worker_id and not row["android"]:
+            return {"worker_id": worker_id, "name": row["name"], "workers": workers}
+    raise HTTPException(status_code=404, detail="That box does not run this service.")
+
+
+async def _json_object(request: Request) -> dict[str, Any]:
+    """The request body as a JSON object.
+
+    Read by hand rather than through a pydantic model: a 422 from a model echoes
+    the offending input, and the input here can be a passphrase.
+    """
+    try:
+        body = await request.json()
+    except ValueError:
+        body = None
+    if not isinstance(body, dict):
+        raise HTTPException(status_code=400, detail="Expected a JSON object.")
+    return body
+
+
+@app.post("/api/payout-registry/{slug}/backup-confirm")
+async def api_backup_confirm(slug: str, request: Request) -> dict[str, Any]:
+    """The owner says this box's copy of ``slug`` is backed up.
+
+    Recorded with the state fingerprint the box reports now, so a new volume
+    later voids it. OWNER-ONLY, like the page.
+    """
+    _require_owner(request)
+    body = await _json_object(request)
+    box = await _backup_box(slug, body.get("worker_id"))
+    current = payout_registry.state_ids(box["workers"]).get((box["worker_id"], slug))
+    await database.confirm_state_backup(slug, box["worker_id"], current, "manual")
+    return {"ok": True}
+
+
+@app.delete("/api/payout-registry/{slug}/backup-confirm")
+async def api_backup_unconfirm(slug: str, request: Request) -> dict[str, Any]:
+    """Take a confirmation back: the box shows as not backed up again.
+
+    ``worker_id`` is read after the owner check, so an anonymous caller gets
+    401 rather than a validation error.
+    """
+    _require_owner(request)
+    try:
+        worker_id = int(request.query_params.get("worker_id", ""))
+    except ValueError:
+        raise HTTPException(status_code=400, detail="worker_id must be a number.") from None
+    await database.clear_state_backup(slug, worker_id)
+    return {"ok": True}
+
+
+@app.post("/api/payout-registry/{slug}/backup-export")
+async def api_backup_export(slug: str, request: Request) -> dict[str, Any]:
+    """Download an encrypted backup of ``slug``'s irreplaceable state on one box.
+
+    The worker reads only the catalog's ``critical_volumes`` and encrypts there,
+    to the recipient public key or passphrase the owner gives here; this
+    installation keeps neither, so it cannot open what it exports. The bundle
+    comes back in this response and goes nowhere else. A successful export
+    counts as a confirmed backup of that box.
+
+    Never logs or echoes the passphrase: the body is read by hand, and the only
+    errors returned are the worker's own, which never contain it.
+    """
+    _require_owner(request)
+    body = await _json_object(request)
+    passphrase = body.get("passphrase")
+    recipient = body.get("recipient_public_key")
+    if not isinstance(passphrase, str | None) or not isinstance(recipient, str | None):
+        raise HTTPException(status_code=400, detail="The passphrase and the public key must be text.")
+    if bool(passphrase) == bool(recipient):
+        raise HTTPException(status_code=400, detail="Give either a passphrase or a recipient public key, not both.")
+    if passphrase:
+        # A typo would give a file nobody can open, and the export below marks
+        # the box as backed up. Compared, never echoed.
+        repeat = body.get("passphrase_repeat")
+        if not isinstance(repeat, str) or not secrets.compare_digest(repeat.encode(), passphrase.encode()):
+            raise HTTPException(status_code=400, detail="The two passphrases differ. Type it again.")
+    box = await _backup_box(slug, body.get("worker_id"))
+    worker_id = box["worker_id"]
+
+    update = "This worker is too old to export backups. Update the worker first."
+    if "state_backup" not in await _worker_features(worker_id):
+        raise HTTPException(status_code=409, detail=update)
+    try:
+        result = await _proxy_to_worker(
+            worker_id,
+            "POST",
+            f"/api/containers/{slug}/backup",
+            json={"passphrase": passphrase} if passphrase else {"recipient_public_key": recipient},
+            timeout=180,
+        )
+    except HTTPException as exc:
+        if exc.status_code == 404:
+            raise HTTPException(status_code=409, detail=update) from exc
+        raise
+    bundle = result.get("bundle_b64") if isinstance(result, dict) else None
+    if not isinstance(bundle, str) or not bundle:
+        raise HTTPException(status_code=502, detail="The worker answered without a backup.")
+
+    fingerprint = result.get("state_id")
+    if not isinstance(fingerprint, str) or not fingerprint:
+        fingerprint = payout_registry.state_ids(box["workers"]).get((worker_id, slug))
+    await database.confirm_state_backup(slug, worker_id, fingerprint, "export")
+    box_name = re.sub(r"[^A-Za-z0-9._-]+", "-", str(box["name"])).strip("-") or str(worker_id)
+    return {
+        "filename": f"cashpilot-{slug}-{box_name}-{datetime.now(UTC):%Y%m%d}.cpbackup",
+        "bytes": result.get("bytes"),
+        "targets": result.get("targets") or [],
+        "bundle_b64": bundle,
+    }
+
+
 async def _read_payout_addresses(worker_id: int) -> list[dict[str, Any]]:
     """Addresses set inside one worker's containers (its /api/payout-addresses).
 

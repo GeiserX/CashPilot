@@ -648,7 +648,7 @@ async def _send_heartbeat() -> None:
             # What this worker can do that an older one cannot. The UI sends a
             # second copy of a service only to a worker listing "instances": an
             # older worker would read the deploy as the first copy and replace it.
-            "features": ["instances", "isolation_check"] if docker_ok else ["instances"],
+            "features": ["instances", "isolation_check", "state_backup"] if docker_ok else ["instances"],
             # Providers count devices per public IP, so the UI needs the address
             # the provider sees — not this container's LAN or tailnet address.
             "egress_ip": await _detect_egress_ip(),
@@ -1584,11 +1584,21 @@ async def api_backup(slug: str, body: BackupRequest, request: Request) -> dict[s
         # deliberately contain neither the passphrase nor any state.
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
+    try:
+        # Which state this bundle holds, so the UI can tell when it no longer
+        # matches what runs. Unknown is fine: the UI falls back to a time limit.
+        # The heartbeat's "state_backup" feature tells the UI this field exists.
+        fingerprint = await asyncio.to_thread(orchestrator.critical_state_id, slug)
+    except Exception as exc:  # noqa: BLE001 - the bundle is still good
+        logger.info("Could not fingerprint %s's state after a backup: %s", slug, exc)
+        fingerprint = None
+
     return {
         "slug": slug,
         "targets": targets,
         "bytes": len(bundle),
         "bundle_b64": base64.b64encode(bundle).decode("ascii"),
+        "state_id": fingerprint,
     }
 
 

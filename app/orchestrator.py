@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import collections
 import contextlib
+import hashlib
 import ipaddress
 import logging
 import os
@@ -959,6 +960,77 @@ def _critical_volume_targets(slug: str) -> dict[str, str] | None:
         return None
 
 
+#: The largest state ``read_critical_state`` will hold in memory. Node identities,
+#: keystores and wallets are kilobytes to a few megabytes; anything near this is a
+#: storage directory, which is not something to carry in one HTTP response. The
+#: bundle is held several times over on its way out (chunks, payload, ciphertext,
+#: base64, JSON), so the peak is a multiple of this.
+MAX_BACKUP_BYTES = 64 * 1024 * 1024
+
+
+def state_id(container: Any, targets: dict[str, str] | list[str] | None, client: Any = None) -> str | None:
+    """A short fingerprint of WHERE a service's irreplaceable state lives.
+
+    Built from each critical mount's type and source, plus a named volume's
+    creation time. It changes when the state can have changed under the user:
+    the volume was removed and made again (same name, new creation time), the
+    service now points at another volume or host path, or the state sits in the
+    container's own layer and the container was replaced. It does NOT change
+    when a container is recreated over the same volume, which every image
+    update does, so a confirmed backup survives updates.
+
+    Never reads the files: the fingerprint is metadata only, cheap enough for
+    every heartbeat and free of key material. A change made inside the same
+    volume (a new identity generated in place) is not seen; the UI's time limit
+    covers that. None when the service declares nothing critical.
+    """
+    if not targets:
+        return None
+    mounts = {
+        str(m.get("Destination") or "").rstrip("/"): m
+        for m in ((getattr(container, "attrs", None) or {}).get("Mounts") or [])
+        if isinstance(m, dict)
+    }
+    parts: list[str] = []
+    for target in sorted(str(t).rstrip("/") for t in targets):
+        mount = mounts.get(target)
+        if mount is None:
+            # Not mounted: the state lives in the container itself and dies
+            # with it, so the container IS its identity.
+            parts.append(f"{target}|container|{getattr(container, 'id', '')}")
+            continue
+        kind = str(mount.get("Type") or "")
+        if kind == "volume":
+            name = str(mount.get("Name") or "")
+            created = ""
+            try:
+                created = str(((client or _get_client()).volumes.get(name).attrs or {}).get("CreatedAt") or "")
+            except Exception as exc:  # noqa: BLE001 - unknown, not a change
+                logger.debug("Could not read volume %s for the state fingerprint: %s", name, exc)
+                return None
+            parts.append(f"{target}|volume|{name}|{created}")
+        else:
+            parts.append(f"{target}|{kind}|{mount.get('Source') or ''}")
+    return hashlib.sha256("\n".join(parts).encode("utf-8")).hexdigest()[:16]
+
+
+def _state_id_entry(container: Any, slug: str, client: Any) -> dict[str, str]:
+    """``{"state_id": ...}`` for a service with critical volumes, else nothing."""
+    if critical_volume_targets is None:
+        return {}
+    try:
+        targets = critical_volume_targets(slug)
+    except Exception:  # noqa: BLE001 - pragma: no cover - defensive
+        return {}
+    found = state_id(container, targets, client) if targets else None
+    return {"state_id": found} if found else {}
+
+
+def critical_state_id(slug: str) -> str | None:
+    """The state fingerprint of ``slug``'s running copy on this worker."""
+    return state_id(_find_container(slug), _critical_volume_targets(slug))
+
+
 def read_critical_state(slug: str) -> tuple[bytes, list[str]]:
     """Read a service's irreplaceable state as a deterministic tar archive.
 
@@ -984,6 +1056,7 @@ def read_critical_state(slug: str) -> tuple[bytes, list[str]]:
     was_running = container.status == "running"
     chunks: list[bytes] = []
     read: list[str] = []
+    size = 0
 
     if was_running:
         container.pause()
@@ -991,7 +1064,19 @@ def read_critical_state(slug: str) -> tuple[bytes, list[str]]:
     try:
         for target in sorted(targets):
             stream, _stat = container.get_archive(target)
-            chunks.append(b"".join(stream))
+            for chunk in stream:
+                size += len(chunk)
+                if size > MAX_BACKUP_BYTES:
+                    # Storj and Sia mark their whole storage directory critical.
+                    # Reading terabytes into memory, with the node paused, would
+                    # take the worker and the node down for nothing.
+                    raise ValueError(
+                        f"{slug}'s state is larger than {MAX_BACKUP_BYTES // (1024 * 1024)} MB, too big to "
+                        f"export here. That is a data folder, not an identity: Storj and Sia keep their "
+                        f"whole storage folder there. Back up {target} at the disk level with your own "
+                        "tools, then use I have a backup."
+                    )
+                chunks.append(chunk)
             read.append(target)
     except BaseException as exc:
         read_failure = exc
@@ -1527,6 +1612,7 @@ def get_status() -> list[dict[str, Any]]:
                 "instance": _instance_of(c),
                 **_shape_entry(c),
                 **_stop_facts(c),
+                **_state_id_entry(c, slug, client),
                 **_fatal_entry(c, slug),
             }
             # Present only when the service declares a dial-back address var;
@@ -1582,6 +1668,7 @@ def get_status() -> list[dict[str, Any]]:
                     "container_id": c.short_id,
                     "deployed_by": "external",
                     "category": "",
+                    **_state_id_entry(c, slug, client),
                     **_fatal_entry(c, slug),
                 }
                 # External nodes are the COMMON storj adoption path (the node

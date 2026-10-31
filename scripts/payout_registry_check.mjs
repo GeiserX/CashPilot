@@ -40,11 +40,11 @@ function extract(name) {
 // Evaluate the real esc/payoutAddressCell/payoutRow together, since they call
 // one another. A stub for esc() here would let escaping break while this stayed
 // green — exactly the failure these harnesses exist to catch.
-const src = [extract('esc'), extract('payoutAddressCell'), extract('balanceCell'), extract('criticalStateRow'), extract('runsOnCell'), extract('stateCell'), extract('payoutRow')].join('\n');
+const src = [extract('esc'), extract('payoutAddressCell'), extract('balanceCell'), extract('criticalStateRow'), extract('backupBoxRow'), extract('exportForm'), extract('runsOnCell'), extract('stateCell'), extract('payoutRow')].join('\n');
 // payoutRow reads the module-level _balances map, so give it an empty one --
 // the balance cell is exercised directly below.
-const {payoutAddressCell, payoutRow, balanceCell, criticalStateRow, runsOnCell, stateCell} = new Function(
-  `const _balances = {}; ${src}; return {payoutAddressCell, payoutRow, balanceCell, criticalStateRow, runsOnCell, stateCell};`
+const {payoutAddressCell, payoutRow, balanceCell, criticalStateRow, exportForm, runsOnCell, stateCell} = new Function(
+  `const _balances = {}; ${src}; return {payoutAddressCell, payoutRow, balanceCell, criticalStateRow, exportForm, runsOnCell, stateCell};`
 )();
 
 let failures = 0;
@@ -204,6 +204,41 @@ check(
   !criticalStateRow({slug: 'x', name: 'X', critical_state: [{target: '/t', holds: '<img src=x>'}]}).includes('<img src=x>'),
   'escaping failed'
 );
+
+// ---------------------------------------------------------------------------
+// Backups (2026-10-31). The card is advice: each box says whether its backup is
+// confirmed, in words, and offers the way to confirm it and the way back.
+// ---------------------------------------------------------------------------
+function withBox(box) {
+  return criticalStateRow({slug: 'mysterium', name: 'Mysterium', critical_state: [{target: '/v', holds: 'h'}],
+    backup: {confirmed: box.state === 'confirmed', boxes: [Object.assign({worker_id: 1, name: 'box-a', online: true, tracks_changes: true}, box)]}});
+}
+const none = withBox({state: 'none'});
+check('an unconfirmed box offers "I have a backup"', none.includes('No backup confirmed') && none.includes('data-backup-action="confirm"'), none);
+check('... and the download', none.includes('data-backup-action="export"') && none.includes('data-worker="1"'), none);
+const done = withBox({state: 'confirmed', confirmed_at: '2026-10-31 09:00:00', method: 'manual'});
+check('a confirmed box shows the date', done.includes('Backup confirmed 2026-10-31'), done);
+check('... quietly, and can be undone', done.includes('payout-na') && !done.includes('payout-missing') && done.includes('data-backup-action="undo"'), done);
+check('... and no longer asks to confirm', !done.includes('data-backup-action="confirm"'), done);
+const viaExport = withBox({state: 'confirmed', confirmed_at: '2026-10-31 09:00:00', method: 'export'});
+check('a downloaded backup says so', viaExport.includes('downloaded here'), viaExport);
+const blind = withBox({state: 'confirmed', confirmed_at: '2026-10-31', tracks_changes: false});
+check('a worker that cannot see changes says so', blind.includes('too old to notice a new volume'), blind);
+const changed = withBox({state: 'changed', confirmed_at: '2026-05-01 09:00:00'});
+check('a new volume asks again, naming the old date', changed.includes('volume changed since the backup of 2026-05-01') && changed.includes('data-backup-action="confirm"'), changed);
+const expired = withBox({state: 'expired', confirmed_at: '2026-01-01'});
+check('an old confirmation asks again', expired.includes('more than six months ago'), expired);
+const recheck = withBox({state: 'recheck', confirmed_at: '2026-10-01'});
+check('a confirmation from before the fingerprint asks once more', recheck.includes('Confirm it once more'), recheck);
+const offline = withBox({state: 'none', online: false});
+check('an offline box is marked', offline.includes('box-a (offline)'), offline);
+const hostileBox = withBox({state: 'none', name: '<img src=x>', worker_id: '"><b>'});
+check('a hostile box name or id is escaped', !hostileBox.includes('<img src=x>') && !hostileBox.includes('"><b>'), hostileBox);
+check('CONTROL: no backup block when the service has none', !criticalStateRow({slug: 'x', name: 'X', critical_state: []}).includes('payout-backup-box'), 'none');
+const form = exportForm('mysterium', 1);
+check('the export form takes a passphrase or a public key, as a password field', form.includes('value="passphrase"') && form.includes('value="recipient"') && form.includes('type="password"'), form);
+check('the export form asks for the passphrase twice', form.includes('name="secret_repeat"') && form.includes('Repeat the passphrase'), form);
+check('the export form warns that a lost secret means a lost backup', form.includes('cannot be opened by anyone'), form);
 
 // ---------------------------------------------------------------------------
 // Set outside CashPilot, and where each service runs (2026-10-30). Mysterium

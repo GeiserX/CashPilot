@@ -288,3 +288,152 @@ def looks_like_bundle(data: bytes) -> bool:
     except BackupError:
         return False
     return True
+
+
+def _unsafe_member(member: Any, links: set[str]) -> str | None:
+    """Why ``member`` could write outside its own folder on restore, or None.
+
+    The restore extracts these archives as root into a volume, and in recipient
+    mode anyone holding the public key can build a bundle that opens cleanly. So
+    every entry is checked on its own, by the rules of tarfile's
+    ``data_filter`` and stricter in two places: names are refused rather than rewritten, and a link
+    target may not use ``..`` at all, because a chain of links can climb out
+    even when each target looks inside on paper.
+    """
+    name = member.name
+    if name.startswith(("/", "\\")):
+        return f"{name!r} is an absolute path"
+    parts = [p for p in name.split("/") if p not in ("", ".")]
+    if not parts or ".." in parts:
+        return f"{name!r} leaves its folder"
+    for depth in range(1, len(parts)):
+        if "/".join(parts[:depth]) in links:
+            return f"{name!r} is written through a link"
+    if member.issym() or member.islnk():
+        target = member.linkname
+        tparts = target.split("/")
+        if not target or target.startswith(("/", "\\")) or ".." in tparts:
+            return f"{name!r} links to {target!r}, outside its folder"
+        if member.islnk() and (
+            tparts[0] != parts[0] or any("/".join(tparts[:d]) in links for d in range(1, len(tparts)))
+        ):
+            return f"{name!r} links to {target!r}, outside its folder"
+    elif not (member.isfile() or member.isdir()):
+        return f"{name!r} is a device or pipe, not a file or folder"
+    return None
+
+
+def split_archives(payload: bytes) -> dict[str, bytes]:
+    """The decrypted payload as one tar archive per backed-up mount.
+
+    The worker stores each critical mount as Docker's own archive of it, one
+    after another. Each archive's members sit under the mount's last path
+    component (``/var/lib/mysterium-node`` -> ``mysterium-node/...``), so they
+    are regrouped by that name. Owners, modes and times are kept, which is what
+    ``docker cp`` needs to put the files back as the service expects them.
+
+    An entry that could land outside its folder (absolute name, ``..``, a link
+    pointing out, a path through a link, a device or pipe) fails the whole
+    restore: see ``_unsafe_member``. Setuid and setgid bits are dropped.
+    """
+    import io
+    import tarfile
+
+    groups: dict[str, list[tuple[tarfile.TarInfo, bytes | None]]] = {}
+    links: set[str] = set()
+    with tarfile.open(fileobj=io.BytesIO(payload), mode="r:", ignore_zeros=True) as src:
+        for member in src:
+            if member.name.startswith("./"):
+                member.name = member.name[2:]
+            why = _unsafe_member(member, links)
+            if why:
+                raise BackupError(f"The backup holds an unsafe entry and was not restored: {why}.")
+            member.name = "/".join(p for p in member.name.split("/") if p not in ("", "."))
+            if member.issym() or member.islnk():
+                links.add(member.name)
+            member.mode &= 0o1777
+            top = member.name.split("/", 1)[0]
+            data = src.extractfile(member).read() if member.isfile() else None  # type: ignore[union-attr]
+            groups.setdefault(top, []).append((member, data))
+
+    out: dict[str, bytes] = {}
+    for top, members in groups.items():
+        buf = io.BytesIO()
+        with tarfile.open(fileobj=buf, mode="w", format=tarfile.PAX_FORMAT) as dst:
+            for member, data in members:
+                dst.addfile(member, io.BytesIO(data) if data is not None else None)
+        out[top] = buf.getvalue()
+    return out
+
+
+def _cli(argv: list[str] | None = None) -> int:
+    """``python -m app.state_backup`` -- open a bundle on your own machine.
+
+    Secrets are read from the terminal (or stdin when piped), never from the
+    command line, where they would land in shell history and the process list.
+    Needs only Python and the ``cryptography`` package, so it runs without
+    CashPilot: copy this one file, or run it from the CashPilot image with
+    ``--network none``.
+    """
+    import argparse
+    import getpass
+    import os
+    import sys
+
+    parser = argparse.ArgumentParser(prog="python -m app.state_backup", description=_cli.__doc__)
+    sub = parser.add_subparsers(dest="command", required=True)
+    sub.add_parser("keygen", help="make an X25519 key pair; keep the private key, give CashPilot the public one")
+    dec = sub.add_parser("decrypt", help="open a .cpbackup file into one tar per backed-up folder")
+    dec.add_argument("bundle", help="the .cpbackup file")
+    dec.add_argument("--out", required=True, help="folder to write the tar files into (created if missing)")
+    args = parser.parse_args(argv)
+
+    if args.command == "keygen":
+        private, public = generate_recipient_keypair()
+        print(f"private key (keep this, offline; it opens your backups): {private}")
+        print(f"public key (paste this into CashPilot): {public}")
+        return 0
+
+    with open(args.bundle, "rb") as fh:
+        bundle = fh.read()
+    try:
+        header = read_header(bundle)
+    except BackupError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+    prompt = "Passphrase: " if header.get("mode") == MODE_PASSPHRASE else "Private key (hex): "
+    secret = getpass.getpass(prompt) if sys.stdin.isatty() else sys.stdin.readline().rstrip("\n")
+    try:
+        if header.get("mode") == MODE_PASSPHRASE:
+            payload = open_bundle(bundle, passphrase=secret)
+        else:
+            payload = open_bundle(bundle, recipient_private_key=secret.strip())
+        archives = split_archives(payload)
+    except BackupError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+    finally:
+        del secret
+
+    meta = header.get("metadata") or {}
+    os.makedirs(args.out, exist_ok=True)
+    targets = {str(t).rstrip("/").rsplit("/", 1)[-1]: str(t) for t in meta.get("targets") or []}
+    print(f"{meta.get('slug', '?')} from {meta.get('worker', '?')}, checksum verified.")
+    paths = {name: os.path.join(args.out, f"{name}.tar") for name in archives}
+    taken = sorted(p for p in paths.values() if os.path.lexists(p))
+    if taken:
+        print(f"error: {', '.join(taken)} already exists. Use an empty --out folder.", file=sys.stderr)
+        return 1
+    for name, data in sorted(archives.items()):
+        try:
+            with open(paths[name], "xb") as fh:
+                fh.write(data)
+        except FileExistsError:
+            print(f"error: {paths[name]} already exists. Use an empty --out folder.", file=sys.stderr)
+            return 1
+        print(f"  {paths[name]}  ->  restores {targets.get(name, '/' + name)}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(_cli())

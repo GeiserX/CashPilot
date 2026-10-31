@@ -602,6 +602,20 @@ CREATE INDEX IF NOT EXISTS idx_usage_hourly_hour
 -- heartbeat can be differenced. Persisted so a UI restart does not lose a
 -- minute of every service's traffic; app/usage.py refuses baselines older
 -- than an hour.
+-- The user's word that a service's irreplaceable state is backed up, per box
+-- (the payouts page). `state_id` is the worker's fingerprint of where that
+-- state lived when it was confirmed (orchestrator.state_id); NULL when the
+-- worker did not report one. `method` is 'manual' (the button) or 'export'
+-- (a backup downloaded from CashPilot).
+CREATE TABLE IF NOT EXISTS state_backups (
+    slug         TEXT    NOT NULL,
+    worker_id    INTEGER NOT NULL,
+    state_id     TEXT,
+    method       TEXT    NOT NULL DEFAULT 'manual',
+    confirmed_at TEXT    NOT NULL DEFAULT (datetime('now')),
+    PRIMARY KEY (slug, worker_id)
+);
+
 CREATE TABLE IF NOT EXISTS usage_counters (
     worker_id    INTEGER NOT NULL,
     container_id TEXT    NOT NULL,
@@ -837,7 +851,7 @@ async def _encrypt_legacy_plaintext_credentials(db: Any) -> int:
 #: missing a column -- an interrupted upgrade, a restored backup, a hand-edited
 #: file -- could never be repaired, because the gate would say there was nothing
 #: to do. The guards are idempotent and cheap; the version is for the operator.
-SCHEMA_VERSION = 12
+SCHEMA_VERSION = 13
 
 
 async def init_db() -> None:
@@ -3415,5 +3429,41 @@ async def get_balance_history(platform: str, days: int = 30) -> list[dict[str, A
             (platform, f"-{int(days)} days"),
         )
         return [dict(r) for r in await cursor.fetchall()]
+    finally:
+        await db.close()
+
+
+async def get_state_backups() -> dict[tuple[str, int], dict[str, Any]]:
+    """(slug, worker_id) -> the confirmed backup of that service on that box."""
+    db = await _get_db()
+    try:
+        cursor = await db.execute("SELECT slug, worker_id, state_id, method, confirmed_at FROM state_backups")
+        return {(r["slug"], int(r["worker_id"])): dict(r) for r in await cursor.fetchall()}
+    finally:
+        await db.close()
+
+
+async def confirm_state_backup(slug: str, worker_id: int, state_id: str | None, method: str) -> None:
+    """Record that ``slug``'s state on ``worker_id`` is backed up, as of now."""
+    db = await _get_db()
+    try:
+        await db.execute(
+            "INSERT INTO state_backups (slug, worker_id, state_id, method, confirmed_at) "
+            "VALUES (?, ?, ?, ?, datetime('now')) "
+            "ON CONFLICT (slug, worker_id) DO UPDATE SET state_id = excluded.state_id, "
+            "method = excluded.method, confirmed_at = excluded.confirmed_at",
+            (slug, int(worker_id), state_id, method),
+        )
+        await db.commit()
+    finally:
+        await db.close()
+
+
+async def clear_state_backup(slug: str, worker_id: int) -> None:
+    """Withdraw a confirmation, so the service shows as not backed up again."""
+    db = await _get_db()
+    try:
+        await db.execute("DELETE FROM state_backups WHERE slug = ? AND worker_id = ?", (slug, int(worker_id)))
+        await db.commit()
     finally:
         await db.close()
