@@ -552,6 +552,10 @@ def _container_down_message(slug: str, copies: list[dict[str, Any]]) -> str:
 _account_disabled: dict[str, str] = {}
 # Platforms whose collector said, on its last run, that the account is disabled.
 _collector_says_disabled: set[str] = set()
+# Platforms the containers' logs said were disabled on the last check that had
+# heartbeat data. Kept apart so a check without data keeps only what the logs
+# said, not a collector-only entry the collection loop has since dropped.
+_disabled_by_logs: set[str] = set()
 # Platforms whose collector read a balance on its last run. A balance read means
 # the account works again, whatever an old container log still says.
 _collected_ok_last_run: set[str] = set()
@@ -609,7 +613,7 @@ async def _account_disabled_check(statuses: list[dict[str, Any]]) -> None:
     that ended before it, also across restarts. Never stops or removes
     anything. Never raises.
     """
-    global _collector_alerts
+    global _collector_alerts, _disabled_by_logs
     try:
         if statuses:
             from_logs: set[str] = set()
@@ -627,7 +631,8 @@ async def _account_disabled_check(statuses: list[dict[str, Any]]) -> None:
         else:
             # No heartbeat data at all says nothing about the containers: keep
             # what they said last.
-            from_logs = set(_account_disabled)
+            from_logs = set(_disabled_by_logs)
+        _disabled_by_logs = set(from_logs)
         from_logs -= _collected_ok_last_run
         disabled = from_logs | _collector_says_disabled
         for slug in list(_account_disabled):
@@ -1179,6 +1184,9 @@ async def _warm_collector_alerts() -> None:
     for e in restored:
         if e["kind"] == "account_disabled":
             _account_disabled.setdefault(e["platform"], e["error"])
+            # Which source raised it is not stored; until a heartbeat says,
+            # treat it as the logs' so a check without data keeps it.
+            _disabled_by_logs.add(e["platform"])
     _collector_alerts = _with_account_disabled(restored)
     # The collection rebuild re-adds _missing_bell, not the restored list, so a
     # restored missing alert goes there too, with no scope: until the next
@@ -1510,8 +1518,11 @@ async def _run_collection() -> None:
             _collected_ok_last_run = collected_ok
             await _record_balance_reads(collected_ok)
             # Sticky until a balance is read: a disabled account's later logins
-            # often come back as a rate limit, which says nothing new.
-            _collector_says_disabled = (_collector_says_disabled | disabled_now) - collected_ok
+            # often come back as a rate limit, which says nothing new. A service
+            # the user removed has no collector to read that balance, so it
+            # leaves here instead, or its bell entry stayed until a restart.
+            deployed = {d.get("slug") for d in deployments}
+            _collector_says_disabled = ((_collector_says_disabled | disabled_now) - collected_ok) & deployed
             await _account_disabled_check(fleet)
             # Offline workers re-derived every rebuild, or the hourly wholesale
             # replacement of this list would silently un-report a dead machine.
