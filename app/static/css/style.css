@@ -192,7 +192,7 @@ img { max-width: 100%; }
 .avatar-theme-options button {
   display: flex; align-items: center; gap: 8px; min-width: 0;
   font: inherit; font-size: var(--fs-2); padding: 4px 8px; cursor: pointer; text-align: left;
-  background: none; border: 0; color: var(--text-secondary); white-space: nowrap;
+  background: none; border: 0; color: var(--text-secondary);
 }
 .avatar-theme-options button + button { border-top: 1px solid var(--border-light); }
 .avatar-theme-options button:hover { background: var(--bg-hover); color: var(--text-primary); }
@@ -233,9 +233,12 @@ img { max-width: 100%; }
   display: none;
   position: absolute;
   right: 0;
-  /* Wide enough for "Classic night (default)" and its swatch on one line;
-     still inside a 320px window (scripts/fleet_overflow_check.mjs). */
-  width: 232px;
+  /* As wide as its longest row ("Classic night (default)" and its swatch),
+     whatever font loaded, and never wider than the window: past that a label
+     wraps instead of being cut (scripts/fleet_overflow_check.mjs). */
+  width: max-content;
+  min-width: 200px;
+  max-width: calc(100vw - 24px);
   z-index: 200;
   overflow: hidden;
   background: var(--bg-secondary);
