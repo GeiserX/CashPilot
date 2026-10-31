@@ -262,7 +262,20 @@ const fail = (msg) => { failures++; console.error("FAIL  " + msg); };
 // others, and each one redefines colour tokens.
 for (const theme of THEMES) {
   await send("Page.navigate", { url: "file://" + fixturePaths[theme] });
-  await new Promise((r) => setTimeout(r, 400)); // let the stylesheet load
+  // Wait until the stylesheet is applied, not a fixed time. A fixed 400 ms
+  // passed for months, then failed when Classic became the first theme in the
+  // list: the first fixture on a cold browser measured before style.css
+  // applied, so every modal anchor read as an underlined link.
+  let styled = false;
+  for (let i = 0; i < 100 && !styled; i++) {
+    const r = await send("Runtime.evaluate", {
+      expression: `document.readyState === "complete" && [...document.styleSheets].some((s) => s.href && s.href.endsWith("style.css") && s.cssRules.length > 0) && getComputedStyle(document.documentElement).getPropertyValue("--bg-primary").trim() !== ""`,
+      returnByValue: true,
+    });
+    styled = r.result.value === true;
+    if (!styled) await new Promise((r) => setTimeout(r, 100));
+  }
+  if (!styled) { fail(`[${theme}] style.css never applied to the fixture, so nothing here was measured`); continue; }
   const res = await send("Runtime.evaluate", { expression: AUDIT(theme), returnByValue: true });
   const data = JSON.parse(res.result.value);
   checks += 1;
