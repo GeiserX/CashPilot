@@ -482,13 +482,20 @@ class TestTheDeployStepWarnsBeforeItActs:
     def test_the_modal_asks_for_it(self):
         assert "loadDeployRisk()" in js_function("openServiceDetail")
 
+    def test_the_setup_wizard_shows_it_before_its_deploy_button(self):
+        """A catalog Add goes straight to the wizard, never through the modal."""
+        form = js_function("renderServiceSetupForm")
+        assert 'class="deploy-risk-card' in form
+        assert form.index("deploy-risk-card") < form.index('data-action="deployService"')
+        assert "loadDeployRisk()" in js_function("loadWizardSetupForms")
+
     def test_undocumented_is_not_rendered_as_safe(self):
         """`documented: false` means nobody checked, not that there is no risk.
 
         Collapsing that distinction would undo the whole design of
         app/lan_isolation.py, which goes out of its way to preserve it.
         """
-        assert "attribution.documented ?" in js_function("loadDeployRisk")
+        assert "attribution.documented ?" in js_function("fillDeployRisk")
 
     def test_every_deploy_path_goes_through_the_preflight_gate(self):
         """_deployToWorkers is the single chokepoint for both deploy buttons."""

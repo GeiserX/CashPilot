@@ -1270,6 +1270,11 @@ kbd {
 .topnav .sidebar-link:hover { color: var(--text-primary); background: var(--bg-hover); }
 .topnav .sidebar-link.active { color: var(--text-primary); border-bottom-color: var(--text-primary); font-weight: 600; }
 .topbar-right { display: flex; align-items: center; gap: 6px; margin-left: auto; }
+.topbar-add { flex-shrink: 0; gap: 2px; text-decoration: none; white-space: nowrap; }
+/* On /setup itself: a ring, since the button is already filled. The focus
+   outline sits outside the ring (3px), or the ring would hide it. */
+.topbar-add.active { box-shadow: 0 0 0 2px var(--bg-primary), 0 0 0 3px var(--text-primary); }
+.topbar-add:focus-visible { outline-offset: 4px; }
 
 .topbar-icon-btn:hover { background: var(--bg-hover); color: var(--text-primary); }
 
@@ -1555,7 +1560,7 @@ input[type="checkbox"] { accent-color: var(--text-primary); }
 
 /* ----- Filter bar and search ----- */
 
-.filter-tabs { display: inline-flex; flex-wrap: wrap; max-width: 100%; gap: 0; border: 1px solid var(--border-light); border-radius: 2px; background: none; padding: 0; }
+.filter-tabs { display: inline-flex; gap: 0; border: 1px solid var(--border-light); border-radius: 2px; background: none; padding: 0; }
 
 .filter-tab + .filter-tab { border-left: 1px solid var(--border-light); }
 .filter-tab:hover { background: var(--bg-hover); color: var(--text-primary); }
@@ -1891,6 +1896,7 @@ body.gate { display: flex; flex-direction: column; }
 .wizard-panel .setup-card { margin-bottom: 28px; padding-bottom: 20px; border-bottom: 1px solid var(--border-color); }
 .wizard-panel .setup-card:last-child { border-bottom: none; }
 .setup-body { margin-bottom: 14px; }
+.setup-risk { margin-bottom: 14px; }
 .setup-line { color: var(--text-secondary); margin: 0 0 10px; }
 .setup-links { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .setup-fields { margin-top: 14px; }
@@ -1950,10 +1956,11 @@ body.gate { display: flex; flex-direction: column; }
   .topbar { flex-wrap: wrap; height: auto; padding: 0 12px; gap: 0 12px; }
   .topbar-brand { height: 40px; }
   .topnav { order: 3; flex-basis: 100%; overflow-x: auto; height: 34px; margin: 0 -12px; padding: 0 6px; border-top: 1px solid var(--border-color); }
-  /* 14px, as before the type step, and tighter padding, so all six tabs fit in 390 without a hidden scroll. */
+  /* 14px, as before the type step, and tighter padding for a phone. Below 400 px
+     the padding tightens again (the max-width: 400px block at the end). */
   .topnav .sidebar-link { padding: 0 5px; font-size: var(--fs-1); }
-  /* "Add" alone on a phone for the same reason. */
-  .topnav .nav-more { display: none; }
+  /* "+" alone on a phone; the aria-label still says "Add service". */
+  .topbar-add .topbar-add-label { display: none; }
   .topbar-currency-select { display: none; }
   .page-content { padding: 14px 12px 24px; }
   .page-foot { padding: 12px; }
@@ -2036,11 +2043,14 @@ body.gate { display: flex; flex-direction: column; }
   .catalog-table .cat-plat, .catalog-table .cat-needs, .catalog-table .cat-kind,
   .catalog-table thead th:nth-child(2), .catalog-table thead th:nth-child(3), .catalog-table thead th:nth-child(5) { display: none; }
   .catalog-table .cat-est { white-space: normal; }
-  /* Headers wrap too ("Est. per / month"), and a service name or description
-     breaks inside a word only if it still does not fit, so the Action column
-     stays inside the window at 320 px. */
-  .catalog-table thead th { white-space: normal; }
+  /* 320 px: the five filters wrap and long service words break, instead of
+     pushing the page sideways. */
+  .filter-tabs { flex-wrap: wrap; }
   .catalog-table .cat-svc { overflow-wrap: anywhere; }
+  /* Add and Details stack rather than widen the table. */
+  .catalog-table .cat-act { white-space: normal; }
+  /* Headers wrap too ("Est. per / month"). */
+  .catalog-table thead th { white-space: normal; }
   /* Narrower box columns in the placement grid, so eight boxes still fit 320 px. */
   .placement-table td { padding-left: 3px; padding-right: 3px; }
 }
