@@ -13,6 +13,7 @@ import json
 import logging
 import math
 import os
+import sqlite3
 import time
 from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime, timedelta
@@ -20,6 +21,16 @@ from pathlib import Path
 from typing import Any
 
 import aiosqlite
+
+try:
+    # aiosqlite internals the shared-connection guard relies on (_rollback_if_busy,
+    # _BorrowedConnection); tests/test_shared_db_busy.py checks the rest.
+    from aiosqlite.context import contextmanager as _awaitable_or_context
+except ImportError as exc:  # pragma: no cover - only after an aiosqlite upgrade
+    raise ImportError(
+        f"aiosqlite {getattr(aiosqlite, '__version__', '?')} has no aiosqlite.context.contextmanager, which "
+        "app/database.py's shared-connection guard uses (written against 0.22.1)"
+    ) from exc
 from cryptography.fernet import Fernet, InvalidToken
 
 from app import usage
@@ -644,6 +655,72 @@ CREATE TABLE IF NOT EXISTS usage_counters (
 
 _shared_conns: dict[int, aiosqlite.Connection] = {}
 
+#: SQLite's primary result code for "another connection holds the lock". Its
+#: extended codes (SQLITE_BUSY_SNAPSHOT is 517) share the low byte.
+_SQLITE_BUSY = 5
+_SQLITE_BUSY_SNAPSHOT = 517
+
+#: Shared connections (by id) whose last write failed with SQLITE_BUSY_SNAPSHOT
+#: and were rolled back. A second such failure with no successful write in
+#: between means the rollback did not free the snapshot.
+_stale_after_rollback: set[int] = set()
+
+
+def _rollback_if_busy(raw: sqlite3.Connection, run: Any, *args: Any) -> Any:
+    """Run one statement on the shared connection; on SQLITE_BUSY, end the transaction it opened.
+
+    Runs on the connection's own thread, so nothing else can slip in between
+    the failure and the rollback.
+
+    Why: the sqlite3 module opens a transaction (BEGIN) before every INSERT,
+    UPDATE or DELETE. When that write waits out the busy timeout behind another
+    connection, the statement fails but the BEGIN stays. The next read on the
+    shared connection, from any task, then pins a snapshot inside that
+    transaction, and once another connection commits (``record_usage`` does on
+    every heartbeat) every later write here fails at once with
+    SQLITE_BUSY_SNAPSHOT. No helper rolls back after a failed write, so it
+    never ends: on 2026-10-31 this stopped every write for nine minutes,
+    until a restart.
+
+    Rolling back is safe: a connection that gets SQLITE_BUSY does not hold the
+    write lock, so its transaction has no writes in it, from this task or any
+    other. Only the stale snapshot is dropped.
+
+    What a rollback cannot free: a cursor still part-way through a SELECT on
+    this connection keeps its own snapshot until it is read to the end or
+    freed. The helpers' cursors are locals, freed when the helper returns, so
+    this only lasts while one is alive (or kept alive by a stored traceback).
+    ``in_transaction`` reads False in that state, so it is told apart by the
+    next write failing the same way, and the log says so.
+    """
+    try:
+        result = run(*args)
+    except sqlite3.OperationalError as exc:
+        code = getattr(exc, "sqlite_errorcode", 0)
+        if (code & 0xFF) != _SQLITE_BUSY:
+            raise
+        rolled_back = raw.in_transaction
+        if rolled_back:
+            raw.rollback()
+        key = id(raw)
+        name = getattr(exc, "sqlite_errorname", "SQLITE_BUSY")
+        if code == _SQLITE_BUSY_SNAPSHOT and key in _stale_after_rollback:
+            _logger.warning(
+                "A write still finds the database locked (%s) after a rollback: something on the "
+                "shared connection, most likely an unfinished cursor, still holds an old snapshot",
+                name,
+            )
+        elif rolled_back:
+            _logger.warning("A write found the database locked (%s); rolled back the transaction it left open", name)
+        if code == _SQLITE_BUSY_SNAPSHOT and rolled_back:
+            _stale_after_rollback.add(key)
+        raise
+    if raw.in_transaction:
+        # A write got in (legacy mode only opens a transaction for one), so the
+        # snapshot is current again.
+        _stale_after_rollback.discard(id(raw))
+    return result
+
 
 class _BorrowedConnection:
     """A borrowed view onto a shared aiosqlite connection.
@@ -665,6 +742,26 @@ class _BorrowedConnection:
 
     def __setattr__(self, name: str, value: Any) -> None:
         setattr(object.__getattribute__(self, "_conn"), name, value)
+
+    # Decorated like aiosqlite's own, so ``async with db.execute(...)`` keeps working.
+    @_awaitable_or_context
+    async def execute(self, sql: str, parameters: Any = None) -> aiosqlite.Cursor:
+        """``Connection.execute``, but a write refused as locked leaves no transaction open.
+
+        See ``_rollback_if_busy``. Returns the same cursor aiosqlite would.
+        """
+        conn = object.__getattribute__(self, "_conn")
+        raw = conn._conn
+        cursor = await conn._execute(_rollback_if_busy, raw, raw.execute, sql, [] if parameters is None else parameters)
+        return aiosqlite.Cursor(conn, cursor)
+
+    @_awaitable_or_context
+    async def executemany(self, sql: str, parameters: Any) -> aiosqlite.Cursor:
+        """``Connection.executemany`` with the same guard as ``execute``."""
+        conn = object.__getattribute__(self, "_conn")
+        raw = conn._conn
+        cursor = await conn._execute(_rollback_if_busy, raw, raw.executemany, sql, parameters)
+        return aiosqlite.Cursor(conn, cursor)
 
     async def close(self) -> None:
         """No-op: the shared connection outlives any individual borrow."""
@@ -867,7 +964,16 @@ async def init_db() -> None:
         cursor = await db.execute("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'usage_daily'")
         if await cursor.fetchone():
             applied.append("usage_daily dropped (replaced by usage_hourly)")
+        cursor = await db.execute("SELECT name FROM sqlite_master WHERE type = 'table'")
+        tables_before = {row["name"] for row in await cursor.fetchall()}
         await db.executescript(_SCHEMA)
+        # _SCHEMA creates any missing table silently (CREATE TABLE IF NOT
+        # EXISTS). On an existing database that is a migration (12 -> 13 added
+        # state_backups), so the log line names it. A fresh file is not.
+        cursor = await db.execute("SELECT name FROM sqlite_master WHERE type = 'table'")
+        created = sorted({row["name"] for row in await cursor.fetchall()} - tables_before - {"sqlite_sequence"})
+        if created and tables_before:
+            applied.append(("table " if len(created) == 1 else "tables ") + ", ".join(created) + " created")
         # Migrate workers table: add client_id (UNIQUE) and apps columns
         cursor = await db.execute("PRAGMA table_info(workers)")
         cols = {row["name"] for row in await cursor.fetchall()}
