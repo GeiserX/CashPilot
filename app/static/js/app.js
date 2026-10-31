@@ -1506,6 +1506,13 @@ const CP = (() => {
       }
     }
     for (const svc of services) {
+      if (svc.account_disabled) {
+        // One cause for every box and for the missing balance: the provider
+        // turned the account off. A card per crash-looping box with a Start
+        // button, and a "Fix credentials" one, pointed at fixes that cannot work.
+        items.push(accountDisabledItem(svc));
+        continue;
+      }
       for (const inst of (svc.instance_details || [])) {
         const st = copyState(inst);
         if (st === 'ok') continue;
@@ -1610,6 +1617,8 @@ const CP = (() => {
       for (const row of (Array.isArray(health) ? health : [])) {
         if (row.status !== 'expiring_soon' && row.status !== 'likely_expired') continue;
         if (items.some(i => i.tag === 'No reading' && String(i.what).toLowerCase() === String(row.service).toLowerCase())) continue;
+        // The credential is fine; the provider disabled the account.
+        if (services.some(s => s.account_disabled && s.slug === row.service)) continue;
         items.push({
           level: 'warn', tag: row.status === 'likely_expired' ? 'Expired' : 'Expiring',
           what: row.name || row.service,
@@ -1633,6 +1642,29 @@ const CP = (() => {
     // problem to count: nothing is known to be wrong.
     _attentionCount.problems = items.filter(i => i.level !== 'unknown').length;
     updateAttentionSummary(services, workers);
+  }
+
+  // The copies "Stop on all servers" would act on: CashPilot's own containers
+  // that are not already stopped.
+  function stoppableCopies(svc) {
+    return (svc.instance_details || []).filter(inst => inst.has_docker && !inst.unmanaged && !inst.is_android
+      && inst.worker_id != null && !['exited', 'stopped', 'dead'].includes(String(inst.status || '').toLowerCase()));
+  }
+
+  function accountDisabledItem(svc) {
+    const name = escapeHtml(svc.name);
+    let actions = '';
+    if (_canWrite && !svc.unmanaged && stoppableCopies(svc).length) {
+      actions += `<button class="btn btn-ghost btn-sm" data-action="stopEverywhere" data-a1="${escapeHtml(svc.slug)}">Stop on all servers</button>`;
+    }
+    if (/^https:\/\//.test(String(svc.support_url || ''))) {
+      actions += ` <a class="btn btn-ghost btn-sm" href="${escapeHtml(svc.support_url)}" target="_blank" rel="noopener noreferrer">Contact ${name}</a>`;
+    }
+    return {
+      level: 'fail', tag: 'Account disabled', what: `by ${svc.name}`,
+      why: `${name} turned this account off, so it earns nothing and no balance can be read. Restarting will not help: contact ${name} to get it back. CashPilot leaves its containers as they are.`,
+      actions,
+    };
   }
 
   const _attentionCount = { problems: 0, payouts: 0, payoutsUnknown: false, services: null, workers: null };
@@ -1849,7 +1881,9 @@ const CP = (() => {
     // (e.g. wrong credentials). "needs setup" = the service is deployed and
     // earning, but its (separate) earnings-tracking credentials aren't set yet.
     let disconnectedLabel = '';
-    if (svc.collector_disconnected) {
+    if (svc.account_disabled) {
+      disconnectedLabel = `<div title="${escapeHtml(svc.name)} disabled this account. The credentials are fine; only ${escapeHtml(svc.name)} can turn it back on." class="cell-sub cell-sub-warn">account disabled</div>`;
+    } else if (svc.collector_disconnected) {
       disconnectedLabel = `<div title="CashPilot couldn't read this balance — check the earnings-tracking credentials" class="cell-sub cell-sub-warn">no reading${_isOwner ? ` <button class="btn btn-link" data-action="openCredentialModal" data-stop="1" data-a1="${escapeHtml(svc.slug)}">fix</button>` : ''}</div>`;
     } else if (svc.collector_notice) {
       disconnectedLabel = `<div title="${escapeHtml(svc.collector_notice)}" class="cell-sub">see note</div>`;
@@ -2624,6 +2658,32 @@ const CP = (() => {
     } catch (err) {
       toast(err.message, 'error');
     }
+  }
+
+  // Only ever on the user's click: CashPilot never stops a disabled account's
+  // containers by itself (the user may be appealing and want them left alone).
+  async function stopEverywhere(slug) {
+    let svc;
+    try {
+      svc = (await api('/api/services/deployed')).find(s => s.slug === slug);
+    } catch (err) {
+      toast(err.message, 'error');
+      return;
+    }
+    const copies = svc ? stoppableCopies(svc) : [];
+    if (!copies.length) { toast(`${slug} is not running anywhere`, 'success'); return; }
+    if (!confirm(`Stop ${svc.name} on ${copies.length} container${copies.length > 1 ? 's' : ''}? Nothing is removed; you can start them again later.`)) return;
+    const failed = [];
+    for (const inst of copies) {
+      try {
+        await api(`/api/services/${encodeURIComponent(slug)}/stop?worker_id=${encodeURIComponent(inst.worker_id)}${_instanceQuery(inst.instance)}`, { method: 'POST' });
+      } catch (err) {
+        failed.push(`${inst.node}: ${err.message}`);
+      }
+    }
+    if (failed.length) toast(`Could not stop ${slug} on ${failed.join('; ')}`, 'error');
+    else toast(`${slug} stopped on ${copies.length} container${copies.length > 1 ? 's' : ''}`, 'success');
+    loadServicesTable();
   }
 
   async function startService(slug, workerId, instance) {
@@ -4578,6 +4638,8 @@ const CP = (() => {
         const isContainer = a.kind === 'container';
         // Recorded as deployed and no box runs it: redeploy or forget, never a credential.
         const isMissing = a.kind === 'missing';
+        // The provider turned the account off: no credential or restart fixes it.
+        const isDisabled = a.kind === 'account_disabled';
         // The failure TAXONOMY (CashPilot-5bdm). Only 'auth' means "your
         // credential needs replacing"; a transient provider outage self-heals
         // and a shape change is our bug, so pointing the user at their
@@ -4592,6 +4654,7 @@ const CP = (() => {
         const icon = isPayout ? PAYOUT_ICON : (isNotice || isTransient) ? NOTICE_ICON : WARNING_ICON;
         const suffix = isPayout ? ' — payout?'
           : isContainer ? ' — not running'
+          : isDisabled ? ' — account disabled'
           : isMissing ? (a.everywhere === false ? ' — gone from a box' : a.everywhere ? ' — runs nowhere' : ' — missing')
           : isQuiet ? ' — gone quiet'
           : isNotice ? ' — note'
@@ -4601,7 +4664,7 @@ const CP = (() => {
           : isShape ? ' — page changed (our bug)'
           : '';
         const muted = isNotice || isTransient;
-        const showFix = !isPayout && !isNotice && !isTransient && !isShape && _isOwner && !isContainer && !isMissing;
+        const showFix = !isPayout && !isNotice && !isTransient && !isShape && _isOwner && !isContainer && !isMissing && !isDisabled;
         return `
         <div class="notify-item" data-platform="${escapeHtml(a.platform)}" data-kind="${escapeHtml(a.kind || 'collector')}"${category ? ` data-category="${escapeHtml(category)}"` : ''}>
           <div class="notify-item-icon${muted ? ' muted' : ''}">
@@ -4844,6 +4907,7 @@ const CP = (() => {
     setUsageDays,
     restartService,
     stopService,
+    stopEverywhere,
     startService,
     removeService,
     forgetDeployment,

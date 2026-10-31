@@ -65,8 +65,16 @@ class TestTheIdIsVisible:
         assert "'#' + w.id" in self._id_element()
 
     def test_the_id_is_escaped(self):
-        """It reaches the DOM through innerHTML like everything else here."""
-        assert "esc(" in self._id_element()
+        """It reaches the DOM through innerHTML like everything else here.
+
+        brk() adds line-break hints for long ids, so it must escape first.
+        """
+        element = self._id_element()
+        assert "esc(" in element or "brk(" in element
+        if "brk(" in element:
+            source = without_comments(fleet_html())
+            body = source[source.index("function brk(") :][:200]
+            assert "return esc(str)" in body, "brk() must escape before adding <wbr>"
 
     def test_it_says_what_the_id_is_for(self):
         """A bare hex string with no explanation is not usable information."""

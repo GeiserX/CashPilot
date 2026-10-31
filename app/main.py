@@ -257,6 +257,13 @@ async def _get_all_worker_containers(workers: list[dict[str, Any]] | None = None
                             "finished_at": c.get("finished_at"),
                             "exit_code": c.get("exit_code"),
                             "restart_policy": c.get("restart_policy"),
+                            # What the provider said when it refused to run the
+                            # client (an account_disabled health signal), read by the
+                            # worker from a stopped or crash-looping container.
+                            "fatal": c.get("fatal"),
+                            # When that refused run ended, to tell a refusal
+                            # older than the last balance read (stale) apart.
+                            "fatal_at": c.get("fatal_at"),
                             # What the container was created with, for the drift
                             # check (app/drift.py). None from a worker too old to send it.
                             "shape": c.get("shape"),
@@ -402,6 +409,7 @@ async def _run_health_check() -> None:
 
         await database.record_health_events(events)
         await _container_down_check(statuses)
+        await _account_disabled_check(statuses)
         await _missing_deployment_check(workers)
     except Exception as exc:
         logger.warning("Health check skipped: %s", exc)
@@ -476,6 +484,10 @@ async def _container_down_check(statuses: list[dict[str, Any]]) -> None:
                 continue
             if s.get("status") not in ("exited", "dead"):
                 continue
+            # The provider refused it (account disabled): starting it again
+            # cannot help, and the account-disabled alert says so instead.
+            if s.get("fatal"):
+                continue
             key = (s.get("_worker_id"), str(s.get("name") or s.get("slug")))
             seen_keys.add(key)
             since = _docker_time(s.get("finished_at")) or _container_first_seen_down.setdefault(key, now)
@@ -533,6 +545,126 @@ def _container_down_message(slug: str, copies: list[dict[str, Any]]) -> str:
             " redeploying it from CashPilot sets unless-stopped."
         )
     return message + " Start it from the dashboard, or remove it if you stopped it on purpose."
+
+
+# Services whose provider has disabled the account: slug -> the message shown.
+# One alert per service, whatever number of boxes crash-loop on it.
+_account_disabled: dict[str, str] = {}
+# Platforms whose collector said, on its last run, that the account is disabled.
+_collector_says_disabled: set[str] = set()
+# Platforms whose collector read a balance on its last run. A balance read means
+# the account works again, whatever an old container log still says.
+_collected_ok_last_run: set[str] = set()
+# When the collector last read a balance for a service that declares an
+# account_disabled signal, kept in the config table so it survives a restart.
+# A refusal from a run that ended before it is history: a stopped copy keeps
+# the old refusal in its log after the account is restored, and without this a
+# later 429 or UI restart raised the alert and pushed again.
+_BALANCE_READ_KEY = "_balance_read_at:"
+# The alert stays one alert for as long as the account stays disabled: it is
+# cleared, and so armed again, only when the account comes back.
+_ACCOUNT_DISABLED_COOLDOWN_HOURS = 24 * 365
+
+
+def _account_disabled_message(slug: str) -> str:
+    name = (catalog.get_service(slug) or {}).get("name") or slug
+    return (
+        f"{name} has disabled this account. Restarting will not help: only {name} can turn it back on, "
+        f"so contact their support. CashPilot leaves its containers as they are."
+    )
+
+
+def _declares_account_disabled(slug: str) -> bool:
+    signals = ((catalog.get_service(slug) or {}).get("docker") or {}).get("health_signals")
+    return isinstance(signals, list) and any(
+        isinstance(s, dict) and s.get("state") == catalog.ACCOUNT_DISABLED for s in signals
+    )
+
+
+async def _record_balance_reads(collected_ok: set[str]) -> None:
+    """Remember when a balance was read, for the services whose refusal the worker can report."""
+    now = datetime.now(UTC).isoformat()
+    for slug in sorted(collected_ok):
+        if _declares_account_disabled(slug):
+            try:
+                await database.set_config(_BALANCE_READ_KEY + slug, now)
+            except Exception as exc:  # noqa: BLE001 - losing the stamp only keeps an alert up
+                logger.warning("Could not record the %s balance read: %s", slug, exc)
+
+
+async def _balance_read_at(slug: str) -> datetime | None:
+    try:
+        raw = await database.get_config(_BALANCE_READ_KEY + slug)
+        return datetime.fromisoformat(raw) if isinstance(raw, str) and raw else None
+    except Exception:  # noqa: BLE001 - unknown means no read to compare against
+        return None
+
+
+async def _account_disabled_check(statuses: list[dict[str, Any]]) -> None:
+    """Raise one alert per service whose provider disabled the account; clear it when the account is back.
+
+    Two sources say so: a worker that matched an account_disabled health signal
+    in a crash-looping or stopped container, and a collector whose login was
+    refused as a disabled account. A balance read beats any refusal from a run
+    that ended before it, also across restarts. Never stops or removes
+    anything. Never raises.
+    """
+    global _collector_alerts
+    try:
+        if statuses:
+            from_logs: set[str] = set()
+            read_at: dict[str, datetime | None] = {}
+            for s in statuses:
+                if s.get("fatal") != catalog.ACCOUNT_DISABLED:
+                    continue
+                slug = s["slug"]
+                if slug not in read_at:
+                    read_at[slug] = await _balance_read_at(slug)
+                refused_at = _docker_time(s.get("fatal_at"))
+                if read_at[slug] and refused_at and refused_at <= read_at[slug]:
+                    continue
+                from_logs.add(slug)
+        else:
+            # No heartbeat data at all says nothing about the containers: keep
+            # what they said last.
+            from_logs = set(_account_disabled)
+        from_logs -= _collected_ok_last_run
+        disabled = from_logs | _collector_says_disabled
+        for slug in list(_account_disabled):
+            if slug not in disabled:
+                _account_disabled.pop(slug)
+                await database.clear_alerts("account_disabled", slug)
+                logger.info("%s: the provider no longer refuses the account; cleared its alert", slug)
+        for slug in sorted(disabled):
+            message = _account_disabled_message(slug)
+            _account_disabled[slug] = message
+            if alert_id := await database.record_alert(
+                "account_disabled", slug, message, cooldown_hours=_ACCOUNT_DISABLED_COOLDOWN_HOURS
+            ):
+                name = (catalog.get_service(slug) or {}).get("name") or slug
+                _spawn(
+                    _push_alert("account_disabled", slug, f"CashPilot: {name} disabled your account", message, alert_id)
+                )
+        _collector_alerts = _with_account_disabled(_collector_alerts)
+    except Exception as exc:  # noqa: BLE001 - a diagnostic must not break the health check
+        logger.warning("Account-disabled check failed: %s", exc)
+
+
+def _with_account_disabled(alerts: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """The bell list with one account-disabled entry per such service in place of its symptoms.
+
+    A disabled account also fails the collector (often as a rate limit, from the
+    crash loop's logins) and stops the container; those entries point at the
+    wrong fixes, so they give way to the one that names the cause.
+    """
+    kept = [
+        a
+        for a in alerts
+        if a.get("kind") != "account_disabled"
+        and not (a.get("platform") in _account_disabled and a.get("kind", "collector") in ("collector", "container"))
+    ]
+    kept.extend({"kind": "account_disabled", "platform": slug, "error": msg} for slug, msg in _account_disabled.items())
+    return kept
 
 
 # When each recorded deployment was first seen missing from every heartbeat
@@ -1014,7 +1146,16 @@ async def _warm_collector_alerts() -> None:
         # them from the bell while their 24h push-dedupe survived — so a
         # recovery inside the gap skipped clear_alerts and the stale row
         # swallowed the next genuine warning.
-        if alert["kind"] not in ("collector", "payout", "flatline", "worker", "notice", "container", "missing"):
+        if alert["kind"] not in (
+            "collector",
+            "payout",
+            "flatline",
+            "worker",
+            "notice",
+            "container",
+            "missing",
+            "account_disabled",
+        ):
             continue
         key = f"{alert['kind']}:{alert['subject']}"
         if key in seen:
@@ -1035,7 +1176,10 @@ async def _warm_collector_alerts() -> None:
             for e in worker_entries:
                 e["client_id"] = e["platform"]
                 e["platform"] = names.get(e["platform"], e["platform"])
-    _collector_alerts = restored
+    for e in restored:
+        if e["kind"] == "account_disabled":
+            _account_disabled.setdefault(e["platform"], e["error"])
+    _collector_alerts = _with_account_disabled(restored)
     # The collection rebuild re-adds _missing_bell, not the restored list, so a
     # restored missing alert goes there too, with no scope: until the next
     # health check names its boxes, the bell offers no Forget for it.
@@ -1152,7 +1296,7 @@ def _unlinked_devices_warning(result: Any) -> str:
 
 async def _run_collection() -> None:
     """Collect earnings from all deployed services that have collectors."""
-    global _collector_alerts
+    global _collector_alerts, _collected_ok_last_run, _collector_says_disabled
     if _collection_lock.locked():
         logger.info("Collection already in progress, skipping")
         return
@@ -1201,6 +1345,7 @@ async def _run_collection() -> None:
             previously_noticing = {a["platform"] for a in _collector_alerts if a.get("kind") == "notice"}
             platforms_ok = 0
             collected_ok: set[str] = set()
+            disabled_now: set[str] = set()
             unlinked_ok: set[str] = set()
             for result in results:
                 if isinstance(result, Exception):
@@ -1223,6 +1368,9 @@ async def _run_collection() -> None:
                     # by any authenticated role, so it must never hold a secret.
                     safe_error = notify.redact(result.error)
                     error_kind = getattr(result, "error_kind", None)
+                    says_disabled = credential_test.classify(safe_error) == credential_test.ACCOUNT_DISABLED
+                    if says_disabled:
+                        disabled_now.add(result.platform)
                     entry = {"kind": "collector", "platform": result.platform, "error": safe_error}
                     if error_kind:
                         entry["category"] = error_kind
@@ -1230,7 +1378,12 @@ async def _run_collection() -> None:
                     metrics.record_collection_error(result.platform)
                     # Push out-of-band only the FIRST time this failure appears — a
                     # collector broken for a week must not notify every single hour.
-                    if alert_id := await database.record_alert(
+                    # A disabled account has its own alert (_account_disabled_check);
+                    # a "collector failed" push beside it would point at the
+                    # credentials, which are fine.
+                    if says_disabled or result.platform in _account_disabled:
+                        pass
+                    elif alert_id := await database.record_alert(
                         "collector", result.platform, safe_error, category=error_kind
                     ):
                         # The push is the only channel an unattended install
@@ -1354,6 +1507,12 @@ async def _run_collection() -> None:
                 logger.warning("Could not read the fleet for the flatline check: %s", exc)
                 fleet = []
             alerts.extend(await _flatline_check(collected_ok, deployments, fleet, unlinked=unlinked_ok))
+            _collected_ok_last_run = collected_ok
+            await _record_balance_reads(collected_ok)
+            # Sticky until a balance is read: a disabled account's later logins
+            # often come back as a rate limit, which says nothing new.
+            _collector_says_disabled = (_collector_says_disabled | disabled_now) - collected_ok
+            await _account_disabled_check(fleet)
             # Offline workers re-derived every rebuild, or the hourly wholesale
             # replacement of this list would silently un-report a dead machine.
             alerts.extend(await _offline_worker_alerts())
@@ -1361,7 +1520,7 @@ async def _run_collection() -> None:
             # this the hourly rebuild would drop a down container from the bell.
             alerts.extend(_container_down_bell.values())
             alerts.extend(_missing_bell.values())
-            _collector_alerts = alerts
+            _collector_alerts = _with_account_disabled(alerts)
             if collectors and platforms_ok == 0:
                 # A run in which EVERY collector failed used to be recorded as
                 # a SUCCESS: _collect_bounded converts exceptions into
@@ -2169,6 +2328,7 @@ def _apply_service_meta(entry: dict[str, Any], svc: dict[str, Any] | None) -> No
     if referral:
         entry["referral_url"] = referral.get("signup_url", "")
     entry["website"] = svc.get("website", "")
+    entry["support_url"] = svc.get("support_url", "")
 
 
 #: Config key holding the muted drift warnings: {"<slug>|<worker id>": catalog fingerprint}.
@@ -2358,6 +2518,7 @@ async def api_services_deployed(request: Request) -> list[dict[str, Any]]:
                 "custom_image": custom_images.get(inst.get("_worker_id")),
                 # What a windowed health signal says is wrong with this copy.
                 "hints": _windowed_hints.get((slug, inst.get("_worker_id"), int(inst.get("instance") or 1)), []),
+                "fatal": inst.get("fatal"),
             }
             # Only containers CashPilot made (constants.CASHPILOT_DEPLOYED): a
             # container the user runs by hand is theirs to shape, even when it
@@ -2424,8 +2585,11 @@ async def api_services_deployed(request: Request) -> list[dict[str, Any]]:
             "unstable": health.get("crashes", 0) >= 3,
             "instances": len(agg["instances"]),
             "instance_details": instance_details,
-            "collector_disconnected": slug in alert_slugs,
+            "collector_disconnected": slug in alert_slugs and slug not in _account_disabled,
             "collector_needs_setup": slug not in alert_slugs and _collector_needs_setup(slug, config),
+            # The provider turned the account off: one cause for every box and
+            # for the missing balance, shown as itself (_account_disabled_check).
+            "account_disabled": slug in _account_disabled,
             "collector_notice": notice_map.get(slug, ""),
             # True when the running container's image no longer matches the catalog
             # (provider migrated / re-pinned) — the dashboard prompts a re-deploy so a
@@ -2485,8 +2649,11 @@ async def api_services_deployed(request: Request) -> list[dict[str, Any]]:
             "unstable": False,
             "instances": 0,
             "instance_details": [],
-            "collector_disconnected": slug in alert_slugs,
+            "collector_disconnected": slug in alert_slugs and slug not in _account_disabled,
             "collector_needs_setup": slug not in alert_slugs and _collector_needs_setup(slug, config),
+            # The provider turned the account off: one cause for every box and
+            # for the missing balance, shown as itself (_account_disabled_check).
+            "account_disabled": slug in _account_disabled,
             "collector_notice": notice_map.get(slug, ""),
         }
         _apply_service_meta(entry, svc)
