@@ -1,13 +1,13 @@
 // Full-page screenshots of every CashPilot page and state, for UI review.
 //
-//   node scripts/ui_screenshots.mjs <baseUrl> <outDir> [dark|light|both]
+//   node scripts/ui_screenshots.mjs <baseUrl> <outDir> [<theme id>|all]
 //
 // <baseUrl> is a seeded instance (scripts/ui_demo_seed.py --serve PORT). The
 // seed also serves a first-run instance on PORT+1 (no account, /onboarding
 // renders) and an empty one on PORT+2 (an account with nothing deployed).
 //
-// Writes <state>.png for the dark theme and <state>-light.png for the light
-// one. Mobile states (390x844) end in -mobile. Exits non-zero if any page
+// Themes are the ids in app/themes.json. Writes <state>.png for the default
+// theme and <state>-<id>.png (e.g. -dark, -warm) for the others. Mobile states (390x844) end in -mobile. Exits non-zero if any page
 // answered with an error status or logged an uncaught error.
 //
 // Three answers only a live worker could give are faked with page.route, all
@@ -19,7 +19,7 @@
 // CP_SCALE=2 takes retina shots (the README ones); CP_SHOT_ONLY=<regex> limits
 // the run to matching state names.
 import { chromium } from 'playwright';
-import { mkdirSync } from 'node:fs';
+import { mkdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
@@ -204,11 +204,12 @@ export async function openState(browser, st, { urls, sessions, theme, problems, 
   const viewport = st.viewport || DESKTOP;
   const mobile = viewport === MOBILE;
   const ctx = await browser.newContext({
-    viewport, colorScheme: theme, deviceScaleFactor: Number(process.env.CP_SCALE || 1),
+    viewport, colorScheme: theme === 'light' ? 'light' : 'dark', deviceScaleFactor: Number(process.env.CP_SCALE || 1),
     isMobile: mobile, hasTouch: mobile,
     storageState: st.auth === false ? undefined : sessions[st.server],
   });
-  // The app reads its theme from localStorage before first paint.
+  // The sign-in pages read the theme from localStorage before first paint;
+  // signed-in pages paint the theme saved on the account (saveTheme).
   await ctx.addInitScript((t) => localStorage.setItem('cp-theme', t), theme);
   await fakeWorkerAnswers(ctx);
   if (setupContext) await setupContext(ctx);
@@ -229,13 +230,30 @@ export async function openState(browser, st, { urls, sessions, theme, problems, 
   return { ctx, page };
 }
 
+// Save the theme to a demo account: a signed-in page paints the account's
+// theme and ignores localStorage.
+async function saveTheme(browser, origin, session, theme) {
+  const ctx = await browser.newContext({ storageState: session });
+  const page = await ctx.newPage();
+  await page.goto(origin + '/login');
+  const status = await page.evaluate((t) => fetch('/api/preferences', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ theme: t }),
+  }).then((r) => r.status), theme);
+  await ctx.close();
+  if (status !== 200) throw new Error(`could not save theme ${theme} on ${origin} (HTTP ${status})`);
+}
+
+// The built-in themes, from the one list the app reads.
+const THEME_SPEC = JSON.parse(readFileSync(new URL('../app/themes.json', import.meta.url), 'utf8'));
+const THEME_IDS = THEME_SPEC.themes.map((t) => t.id);
+
 async function main() {
-  const [, , baseArg, outDir, themeArg = 'dark'] = process.argv;
-  if (!baseArg || !outDir || !['dark', 'light', 'both'].includes(themeArg)) {
-    console.error('usage: node ui_screenshots.mjs <baseUrl> <outDir> [dark|light|both]');
+  const [, , baseArg, outDir, themeArg = THEME_SPEC.default] = process.argv;
+  if (!baseArg || !outDir || ![...THEME_IDS, 'all'].includes(themeArg)) {
+    console.error(`usage: node ui_screenshots.mjs <baseUrl> <outDir> [${THEME_IDS.join('|')}|all]`);
     process.exit(2);
   }
-  const themes = themeArg === 'both' ? ['dark', 'light'] : [themeArg];
+  const themes = themeArg === 'all' ? THEME_IDS : [themeArg];
   const urls = origins(baseArg);
   const channel = process.env.PW_CHANNEL ?? 'chrome';
   const only = process.env.CP_SHOT_ONLY ? new RegExp(process.env.CP_SHOT_ONLY) : null;
@@ -246,9 +264,11 @@ async function main() {
   const sessions = { seed: await login(browser, urls.seed), empty: await login(browser, urls.empty) };
 
   for (const theme of themes) {
+    await saveTheme(browser, urls.seed, sessions.seed, theme);
+    await saveTheme(browser, urls.empty, sessions.empty, theme);
     for (const st of STATES) {
       if (only && !only.test(st.name)) continue;
-      const file = join(outDir, `${st.name}${theme === 'light' ? '-light' : ''}.png`);
+      const file = join(outDir, `${st.name}${theme === THEME_SPEC.default ? '' : `-${theme}`}.png`);
       try {
         const { ctx, page } = await openState(browser, st, { urls, sessions, theme, problems });
         if (st.element) await page.locator(st.element).screenshot({ path: file });

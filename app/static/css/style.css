@@ -2180,7 +2180,7 @@ body.gate { display: flex; flex-direction: column; }
 }
 
 /* ----- Classic night -----
-   Opt-in theme (avatar menu > Theme), data-theme="classic": the pre-#492
+   The default theme (app/themes.json), data-theme="classic": the pre-#492
    blue-black, violet hairlines, rose actions and cyan focus. Layout, type and
    the status colours stay as in the dark theme. Contrast is listed in the PR
    that added it; every text pair is >= 4.5:1 and every UI pair >= 3:1. */

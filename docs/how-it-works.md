@@ -41,7 +41,7 @@ cashpilot/
       __init__.py           # COLLECTOR_MAP registry + make_collectors() factory
     templates/              # Jinja2: dashboard, fleet, catalog, setup wizard, payouts, settings
     static/
-      css/style.css         # Dark theme by default, plus a light theme
+      css/style.css         # Classic night by default, plus dark, light, sunrise and warm
       js/app.js             # Vanilla JS, CP namespace, Chart.js, wizard state machine
   services/                 # YAML service definitions (SINGLE SOURCE OF TRUTH)
     _schema.yml             # Schema documentation
