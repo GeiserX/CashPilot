@@ -95,11 +95,13 @@
 #     no collector.
 #       - pattern: "login failed"       regex, matched case-insensitively against logs
 #         means:   "The service rejected the stored credentials."   shown to the user
-#         state:   failing              failing (default) | idle | account_disabled
+#         state:   failing              failing (default) | idle | account_disabled; any other
+#                                         value rejects the entry
 #                                         account_disabled: the PROVIDER refuses to run the
 #                                         client, so restarting cannot help. Unlike the others
-#                                         it is judged by the worker on a restarting, exited or
-#                                         dead container's last log lines, and the dashboard shows
+#                                         it is judged by the worker on the last finished run's
+#                                         log (a stopped copy, or one up for under two minutes),
+#                                         and the dashboard shows
 #                                         one "Account disabled" card for the service instead of
 #                                         a crash loop per box. Not with window_hours.
 #         unless:  ""                   (optional) regex whose presence in the same window

@@ -15,6 +15,7 @@ import os
 import re
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import UTC, datetime
 from typing import Any
 
 import docker
@@ -197,28 +198,73 @@ def match_fatal(logs: str, signals: Any) -> str | None:
     return None
 
 
-def _fatal_entry(container: Any, slug: str) -> dict[str, Any]:
-    """``{"fatal": "account_disabled"}`` when a stopped or crash-looping container's log says the provider refuses it.
+# A running copy younger than this has not yet shown the provider accepts it:
+# a refused pawns-cli lives 0.4 to 1.8 s, and a heartbeat that lands in that
+# window must not read as a recovery.
+_FATAL_PROVEN_AFTER_S = 120
 
-    Only for a restarting, exited or dead container of a service whose catalog
-    entry declares an account_disabled ``docker.health_signals`` entry, so a healthy fleet costs no
-    log read. Never raises: a log that cannot be read says nothing.
+
+def _docker_epoch(value: Any) -> float | None:
+    """Docker's StartedAt/FinishedAt (RFC 3339, UTC, nanoseconds) as a Unix time; None for its zero time."""
+    if not isinstance(value, str) or len(value) < 19 or value.startswith("0001-"):
+        return None
+    try:
+        whole = datetime.fromisoformat(value[:19]).replace(tzinfo=UTC).timestamp()
+    except ValueError:
+        return None
+    frac = value[19:].split("Z")[0].split("+")[0]
+    if frac.startswith(".") and frac[1:].isdigit():
+        whole += float("0." + frac[1:7])
+    return whole
+
+
+def _fatal_entry(container: Any, slug: str) -> dict[str, Any]:
+    """``{"fatal": "account_disabled", "fatal_at": <FinishedAt>}`` when the last finished run was refused.
+
+    Only for a service whose catalog entry declares an account_disabled
+    ``docker.health_signals`` entry, so a healthy fleet costs no log read.
+
+    - Restarting, exited or dead: the log of the last run only (since its
+      StartedAt), so an earlier run's refusal is not judged as this one.
+    - Running for under two minutes: the log before this start, that is the
+      previous run. A crash loop is "running" for about a second per minute,
+      and that second is not a recovery.
+    - Running longer: nothing to say, no log read.
+
+    ``fatal_at`` is when the refused run ended, so the UI can tell a refusal
+    that came before a balance read (stale) from one after it. Never raises:
+    a log that cannot be read says nothing.
     """
-    if getattr(container, "status", "") not in ("restarting", "exited", "dead") or not get_service:
+    status = getattr(container, "status", "")
+    if status not in ("running", "restarting", "exited", "dead") or not get_service:
         return {}
     signals = ((get_service(slug) or {}).get("docker") or {}).get("health_signals")
     if not isinstance(signals, list) or not any(
         isinstance(s, dict) and s.get("state") == "account_disabled" for s in signals
     ):
         return {}
+    attrs = container.attrs if isinstance(getattr(container, "attrs", None), dict) else {}
+    state = attrs.get("State") if isinstance(attrs.get("State"), dict) else {}
+    started = _docker_epoch(state.get("StartedAt"))
+    finished = state.get("FinishedAt")
+    if _docker_epoch(finished) is None:
+        # Never finished a run: nothing was refused yet.
+        return {}
+    window: dict[str, float] = {}
+    if status == "running":
+        if started is None or time.time() - started >= _FATAL_PROVEN_AFTER_S:
+            return {}
+        window["until"] = started
+    elif started is not None:
+        window["since"] = started
     try:
-        raw = container.logs(tail=_FATAL_LOG_LINES)
+        raw = container.logs(tail=_FATAL_LOG_LINES, **window)
     except Exception as exc:  # noqa: BLE001 - an unreadable log is no finding
         logger.debug("Could not read the log of %s for its fatal patterns: %s", getattr(container, "name", "?"), exc)
         return {}
     text = raw.decode("utf-8", errors="replace") if isinstance(raw, bytes) else str(raw or "")
     kind = match_fatal(text, signals)
-    return {"fatal": kind} if kind else {}
+    return {"fatal": kind, "fatal_at": finished} if kind else {}
 
 
 def _shape(container: Any) -> dict[str, Any]:

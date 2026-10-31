@@ -261,6 +261,9 @@ async def _get_all_worker_containers(workers: list[dict[str, Any]] | None = None
                             # client (an account_disabled health signal), read by the
                             # worker from a stopped or crash-looping container.
                             "fatal": c.get("fatal"),
+                            # When that refused run ended, to tell a refusal
+                            # older than the last balance read (stale) apart.
+                            "fatal_at": c.get("fatal_at"),
                             # What the container was created with, for the drift
                             # check (app/drift.py). None from a worker too old to send it.
                             "shape": c.get("shape"),
@@ -552,6 +555,12 @@ _collector_says_disabled: set[str] = set()
 # Platforms whose collector read a balance on its last run. A balance read means
 # the account works again, whatever an old container log still says.
 _collected_ok_last_run: set[str] = set()
+# When the collector last read a balance for a service that declares an
+# account_disabled signal, kept in the config table so it survives a restart.
+# A refusal from a run that ended before it is history: a stopped copy keeps
+# the old refusal in its log after the account is restored, and without this a
+# later 429 or UI restart raised the alert and pushed again.
+_BALANCE_READ_KEY = "_balance_read_at:"
 # The alert stays one alert for as long as the account stays disabled: it is
 # cleared, and so armed again, only when the account comes back.
 _ACCOUNT_DISABLED_COOLDOWN_HOURS = 24 * 365
@@ -565,18 +574,56 @@ def _account_disabled_message(slug: str) -> str:
     )
 
 
+def _declares_account_disabled(slug: str) -> bool:
+    signals = ((catalog.get_service(slug) or {}).get("docker") or {}).get("health_signals")
+    return isinstance(signals, list) and any(
+        isinstance(s, dict) and s.get("state") == catalog.ACCOUNT_DISABLED for s in signals
+    )
+
+
+async def _record_balance_reads(collected_ok: set[str]) -> None:
+    """Remember when a balance was read, for the services whose refusal the worker can report."""
+    now = datetime.now(UTC).isoformat()
+    for slug in sorted(collected_ok):
+        if _declares_account_disabled(slug):
+            try:
+                await database.set_config(_BALANCE_READ_KEY + slug, now)
+            except Exception as exc:  # noqa: BLE001 - losing the stamp only keeps an alert up
+                logger.warning("Could not record the %s balance read: %s", slug, exc)
+
+
+async def _balance_read_at(slug: str) -> datetime | None:
+    try:
+        raw = await database.get_config(_BALANCE_READ_KEY + slug)
+        return datetime.fromisoformat(raw) if isinstance(raw, str) and raw else None
+    except Exception:  # noqa: BLE001 - unknown means no read to compare against
+        return None
+
+
 async def _account_disabled_check(statuses: list[dict[str, Any]]) -> None:
     """Raise one alert per service whose provider disabled the account; clear it when the account is back.
 
     Two sources say so: a worker that matched an account_disabled health signal
     in a crash-looping or stopped container, and a collector whose login was
-    refused as a disabled account. A balance read on the last collection beats
-    an old container log. Never stops or removes anything. Never raises.
+    refused as a disabled account. A balance read beats any refusal from a run
+    that ended before it, also across restarts. Never stops or removes
+    anything. Never raises.
     """
     global _collector_alerts
     try:
         if statuses:
-            from_logs = {s["slug"] for s in statuses if s.get("fatal") == "account_disabled"}
+            from_logs: set[str] = set()
+            read_at: dict[str, datetime | None] = {}
+            for s in statuses:
+                if s.get("fatal") != catalog.ACCOUNT_DISABLED:
+                    continue
+                slug = s["slug"]
+                if slug not in read_at:
+                    read_at[slug] = await _balance_read_at(slug)
+                refused_at = _docker_time(s.get("fatal_at"))
+                if read_at[slug] and refused_at and refused_at <= read_at[slug]:
+                    continue
+                from_logs.add(slug)
         else:
             # No heartbeat data at all says nothing about the containers: keep
             # what they said last.
@@ -1461,6 +1508,7 @@ async def _run_collection() -> None:
                 fleet = []
             alerts.extend(await _flatline_check(collected_ok, deployments, fleet, unlinked=unlinked_ok))
             _collected_ok_last_run = collected_ok
+            await _record_balance_reads(collected_ok)
             # Sticky until a balance is read: a disabled account's later logins
             # often come back as a rate limit, which says nothing new.
             _collector_says_disabled = (_collector_says_disabled | disabled_now) - collected_ok

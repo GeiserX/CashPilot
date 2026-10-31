@@ -19,7 +19,9 @@ import asyncio
 import json
 import shutil
 import subprocess
+import time
 from contextlib import asynccontextmanager
+from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -28,6 +30,7 @@ import pytest
 import yaml
 
 from app import catalog, main, orchestrator
+from app.collectors.base import EarningsResult
 
 ROOT = Path(__file__).resolve().parent.parent
 PAWNS_LOG = b"user is disabled" * 40  # what `docker logs` returns: no newline anywhere
@@ -74,6 +77,23 @@ class TestCatalog:
         failing = [{"pattern": "user is disabled", "state": "failing"}]
         assert orchestrator.match_fatal("user is disabled", failing) is None
 
+    @pytest.mark.parametrize("state", ["Account_Disabled", "IDLE", " failing "])
+    def test_the_state_is_lowercased_once_at_load(self, state):
+        entry = {"pattern": "x", "state": state}
+        errors = catalog._validate({"docker": {"health_signals": [entry]}}, Path("x.yml"))
+        assert not any("health_signals" in e for e in errors), errors
+        assert entry["state"] == state.strip().lower()
+
+    def test_a_mixed_case_account_disabled_is_judged_by_the_worker(self):
+        entry = {"pattern": "user is disabled", "state": "Account_Disabled"}
+        catalog._validate({"docker": {"health_signals": [entry]}}, Path("x.yml"))
+        assert orchestrator.match_fatal("user is disabled", [entry]) == "account_disabled"
+
+    @pytest.mark.parametrize("state", ["broken", "disabled", 3, ""])
+    def test_an_unknown_state_is_rejected(self, state):
+        errors = catalog._validate({"docker": {"health_signals": [{"pattern": "x", "state": state}]}}, Path("x.yml"))
+        assert any("state must be one of" in e for e in errors), errors
+
     def test_support_url_must_be_https(self):
         assert any("support_url" in e for e in catalog._validate({"support_url": "http://x"}, Path("x.yml")))
 
@@ -116,8 +136,14 @@ class TestWorkerMatch:
         bad = [{"pattern": "(", "state": "account_disabled"}, *SIGNALS]
         assert orchestrator.match_fatal("user is disabled", bad) == "account_disabled"
 
-    def _container(self, status, logs=PAWNS_LOG):
-        return SimpleNamespace(status=status, name="cashpilot-iproyal", logs=MagicMock(return_value=logs))
+    def _container(self, status, logs=PAWNS_LOG, up_for=1.0, finished="2026-10-31T09:59:00.5Z"):
+        started = datetime.fromtimestamp(time.time() - up_for, UTC).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
+        return SimpleNamespace(
+            status=status,
+            name="cashpilot-iproyal",
+            logs=MagicMock(return_value=logs),
+            attrs={"State": {"StartedAt": started, "FinishedAt": finished}},
+        )
 
     def _with_catalog(self):
         svc = {"slug": "iproyal", "docker": {"health_signals": SIGNALS}}
@@ -126,10 +152,40 @@ class TestWorkerMatch:
     @pytest.mark.parametrize("status", ["restarting", "exited", "dead"])
     def test_a_stopped_or_looping_container_reports_the_kind(self, status):
         with self._with_catalog():
-            assert orchestrator._fatal_entry(self._container(status), "iproyal") == {"fatal": "account_disabled"}
+            assert orchestrator._fatal_entry(self._container(status), "iproyal") == {
+                "fatal": "account_disabled",
+                "fatal_at": "2026-10-31T09:59:00.5Z",
+            }
 
-    def test_a_running_container_costs_no_log_read(self):
-        c = self._container("running")
+    def test_only_the_last_run_is_read(self):
+        """docker logs spans every earlier run; since=StartedAt keeps the one that just ended."""
+        c = self._container("restarting", up_for=30)
+        with self._with_catalog():
+            orchestrator._fatal_entry(c, "iproyal")
+        kwargs = c.logs.call_args.kwargs
+        assert kwargs["tail"] == orchestrator._FATAL_LOG_LINES
+        started = orchestrator._docker_epoch(c.attrs["State"]["StartedAt"])
+        assert kwargs["since"] == pytest.approx(started) and "until" not in kwargs
+        assert abs(kwargs["since"] - (time.time() - 30)) < 1
+
+    def test_a_container_that_never_finished_a_run_says_nothing(self):
+        c = self._container("running", finished="0001-01-01T00:00:00Z")
+        with self._with_catalog():
+            assert orchestrator._fatal_entry(c, "iproyal") == {}
+        c.logs.assert_not_called()
+
+    def test_a_crash_loop_caught_while_running_is_still_refused(self):
+        """A refused pawns-cli is "running" for about a second a minute; that second is not a recovery."""
+        c = self._container("running", up_for=1.0)
+        with self._with_catalog():
+            assert orchestrator._fatal_entry(c, "iproyal")["fatal"] == "account_disabled"
+        # The run before this start, not this one, is what is judged.
+        kwargs = c.logs.call_args.kwargs
+        assert kwargs["until"] == pytest.approx(orchestrator._docker_epoch(c.attrs["State"]["StartedAt"]))
+        assert "since" not in kwargs
+
+    def test_a_container_up_for_minutes_costs_no_log_read(self):
+        c = self._container("running", up_for=orchestrator._FATAL_PROVEN_AFTER_S + 5)
         with self._with_catalog():
             assert orchestrator._fatal_entry(c, "iproyal") == {}
         c.logs.assert_not_called()
@@ -152,10 +208,20 @@ class TestWorkerMatch:
             "name": "watchtower",
             "status": "online",
             "system_info": json.dumps({"docker_available": True}),
-            "containers": json.dumps([{"slug": "iproyal", "status": "restarting", "fatal": "account_disabled"}]),
+            "containers": json.dumps(
+                [
+                    {
+                        "slug": "iproyal",
+                        "status": "restarting",
+                        "fatal": "account_disabled",
+                        "fatal_at": "2026-10-31T10:00:00Z",
+                    }
+                ]
+            ),
         }
         rows = asyncio.run(main._get_all_worker_containers([worker]))
         assert rows[0]["fatal"] == "account_disabled"
+        assert rows[0]["fatal_at"] == "2026-10-31T10:00:00Z"
 
 
 # --------------------------------------------------------------------------
@@ -163,10 +229,11 @@ class TestWorkerMatch:
 # --------------------------------------------------------------------------
 
 
-def _status(node, wid, status="restarting", fatal="account_disabled"):
+def _status(node, wid, status="restarting", fatal="account_disabled", fatal_at="2026-10-31T10:00:00.25Z"):
     entry = {"slug": "iproyal", "name": "cashpilot-iproyal", "status": status, "_node": node, "_worker_id": wid}
     if fatal:
         entry["fatal"] = fatal
+        entry["fatal_at"] = fatal_at
     return entry
 
 
@@ -174,12 +241,19 @@ THREE_BOXES = [_status("watchtower", 1), _status("geiserback", 2), _status("geis
 
 
 class _Alerts:
-    """The alerts table's dedupe, in memory."""
+    """The alerts table's dedupe and the config table, in memory. Both outlive a UI restart."""
 
     def __init__(self):
         self.rows: dict[tuple[str, str], str] = {}
         self.pushed: list[str] = []
         self.cleared: list[tuple[str, str]] = []
+        self.config: dict[str, str] = {}
+
+    async def get_config(self, key=None):
+        return self.config.get(key) if key else dict(self.config)
+
+    async def set_config(self, key, value):
+        self.config[key] = value
 
     async def record(self, kind, subject, message, **_):
         if (kind, subject) in self.rows:
@@ -199,9 +273,25 @@ class _Alerts:
         with (
             patch.object(main.database, "record_alert", self.record),
             patch.object(main.database, "clear_alerts", self.clear),
+            patch.object(main.database, "get_config", self.get_config),
+            patch.object(main.database, "set_config", self.set_config),
             patch.object(main, "_spawn", spawn),
         ):
             asyncio.run(main._account_disabled_check(statuses))
+
+    def balance_read(self, at):
+        """The collector read a balance at ``at``."""
+        with (
+            patch.object(main.database, "set_config", self.set_config),
+            patch.object(main, "datetime", SimpleNamespace(now=lambda tz=None: at)),
+        ):
+            asyncio.run(main._record_balance_reads({"iproyal", "honeygain"}))
+
+    def restart_ui(self):
+        """What a UI restart forgets: everything in memory. The tables stay."""
+        main._account_disabled.clear()
+        main._collector_says_disabled.clear()
+        main._collected_ok_last_run = set()
 
 
 @pytest.fixture(autouse=True)
@@ -291,6 +381,71 @@ class TestTheWayOut:
         alerts.run([])
         assert "iproyal" in main._account_disabled
         assert alerts.pushed == ["push"]
+
+    def test_a_crash_loop_seen_mid_run_is_not_a_recovery(self):
+        """Finding: a heartbeat in the second pawns-cli runs looked like recovery, cleared, and pushed again.
+
+        The statuses come from the worker's own _fatal_entry, so this pins the
+        two halves together: running looping running looping, one push, no clear.
+        """
+        svc = {"slug": "iproyal", "docker": {"health_signals": SIGNALS}}
+
+        def heartbeat(status, up_for):
+            started = datetime.fromtimestamp(time.time() - up_for, UTC).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
+            c = SimpleNamespace(
+                status=status,
+                name="cashpilot-iproyal",
+                logs=MagicMock(return_value=PAWNS_LOG),
+                attrs={"State": {"StartedAt": started, "FinishedAt": "2026-10-31T10:00:00Z"}},
+            )
+            with patch.object(orchestrator, "get_service", lambda slug: svc if slug == "iproyal" else None):
+                fatal = orchestrator._fatal_entry(c, "iproyal")
+            return [{"slug": "iproyal", "name": "cashpilot-iproyal", "status": status, **fatal}]
+
+        alerts = _Alerts()
+        for status, up_for in [("restarting", 30), ("running", 0.8), ("restarting", 5), ("running", 1.5)]:
+            alerts.run(heartbeat(status, up_for))
+        assert alerts.pushed == ["push"]
+        assert ("account_disabled", "iproyal") not in alerts.cleared
+        assert "iproyal" in main._account_disabled
+        # The real way out still works: up for minutes, no log read, cleared.
+        alerts.run(heartbeat("running", orchestrator._FATAL_PROVEN_AFTER_S + 60))
+        assert "iproyal" not in main._account_disabled
+
+    def test_a_restored_account_stays_cleared_across_a_restart_and_a_429(self):
+        """Finding: stopped copies keep the old refusal; a later 429 or restart raised it and pushed again."""
+        alerts = _Alerts()
+        stopped = [_status(n, w, status="exited", fatal_at="2026-10-31T10:00:00Z") for n, w in (("a", 1), ("b", 2))]
+        alerts.run(stopped)
+        assert alerts.pushed == ["push"]
+        # The account is restored; the next collection reads a balance.
+        alerts.balance_read(datetime(2026, 11, 2, 9, 0, tzinfo=UTC))
+        main._collected_ok_last_run = {"iproyal"}
+        alerts.run(stopped)
+        assert "iproyal" not in main._account_disabled
+        # An hour later Pawns answers 429: no balance this run.
+        main._collected_ok_last_run = set()
+        alerts.run(stopped)
+        # And the UI restarts.
+        alerts.restart_ui()
+        alerts.run(stopped)
+        assert "iproyal" not in main._account_disabled
+        assert alerts.pushed == ["push"]
+        assert ("account_disabled", "iproyal") not in alerts.rows
+
+    def test_a_refusal_after_the_last_balance_read_still_counts(self):
+        """Control: the stamp only hides refusals older than it."""
+        alerts = _Alerts()
+        alerts.balance_read(datetime(2026, 11, 2, 9, 0, tzinfo=UTC))
+        alerts.restart_ui()
+        alerts.run([_status("a", 1, status="exited", fatal_at="2026-11-03T00:00:00Z")])
+        assert "iproyal" in main._account_disabled
+        assert alerts.pushed == ["push"]
+
+    def test_only_services_that_declare_the_signal_get_a_stamp(self):
+        alerts = _Alerts()
+        alerts.balance_read(datetime(2026, 11, 2, 9, 0, tzinfo=UTC))
+        assert list(alerts.config) == [main._BALANCE_READ_KEY + "iproyal"]
 
     def test_it_alerts_again_after_a_recovery(self):
         alerts = _Alerts()
@@ -448,3 +603,88 @@ class TestAttentionList:
     def test_stop_everywhere_is_wired(self):
         src = (ROOT / "app/static/js/app.js").read_text()
         assert "    stopEverywhere,\n" in src
+
+
+# --------------------------------------------------------------------------
+# The collection loop: the collector's own "account disabled"
+# --------------------------------------------------------------------------
+
+
+def _collect(error: str | None, alerts: _Alerts, fleet: list[dict]) -> list[tuple]:
+    """Run _run_collection once with one Pawns result; return every record_alert call."""
+    result = (
+        EarningsResult(platform="iproyal", balance=0.0, error=error)
+        if error
+        else EarningsResult(platform="iproyal", balance=1.5)
+    )
+    calls: list[tuple] = []
+
+    async def record(kind, subject, message, **kw):
+        calls.append((kind, subject))
+        return await alerts.record(kind, subject, message, **kw)
+
+    def spawn(coro):
+        alerts.pushed.append(coro.cr_frame.f_locals.get("kind") if coro.cr_frame else "push")
+        coro.close()
+
+    async def run():
+        with (
+            patch.object(main.database, "get_deployments", AsyncMock(return_value=[{"slug": "iproyal"}])),
+            patch.object(main.database, "get_config", alerts.get_config),
+            patch.object(main.database, "set_config", alerts.set_config),
+            patch.object(main.database, "upsert_earnings", AsyncMock()),
+            patch.object(main.database, "record_alert", record),
+            patch.object(main.database, "clear_alerts", alerts.clear),
+            patch.object(main.database, "list_alerts", AsyncMock(return_value=[])),
+            patch.object(main, "_detect_payout", AsyncMock(return_value=None)),
+            patch.object(main, "_flatline_check", AsyncMock(return_value=[])),
+            patch.object(main, "_pending_payout_alerts", AsyncMock(return_value=[])),
+            patch.object(main, "_offline_worker_alerts", AsyncMock(return_value=[])),
+            patch.object(main, "_get_all_worker_containers", AsyncMock(return_value=fleet)),
+            patch.object(main, "_collect_bounded", AsyncMock(return_value=result)),
+            patch("app.collectors.make_collectors", lambda deployments, config: [object()]),
+            patch("app.collectors._close_stale", AsyncMock()),
+            patch.object(main, "_spawn", spawn),
+        ):
+            await main._run_collection()
+
+    asyncio.run(run())
+    return calls
+
+
+# A box whose container is up and says nothing: only the collector can speak.
+_UP = [_status("watchtower", 1, status="running", fatal=None)]
+
+
+class TestCollectorSaysDisabled:
+    def test_a_later_rate_limit_keeps_it_disabled(self):
+        """Pawns answers 429 after the first refusal; that says nothing new."""
+        alerts = _Alerts()
+        _collect("IPRoyal Pawns: account disabled", alerts, _UP)
+        assert "iproyal" in main._account_disabled
+        _collect("Pawns rate-limited the login (429 Too Many Requests)", alerts, _UP)
+        assert "iproyal" in main._collector_says_disabled
+        assert "iproyal" in main._account_disabled
+        assert ("account_disabled", "iproyal") not in alerts.cleared
+
+    def test_a_balance_read_ends_it(self):
+        alerts = _Alerts()
+        _collect("IPRoyal Pawns: account disabled", alerts, _UP)
+        _collect(None, alerts, _UP)
+        assert "iproyal" not in main._collector_says_disabled
+        assert "iproyal" not in main._account_disabled
+
+    def test_no_collector_failed_push_beside_the_disabled_alert(self):
+        """The credentials are fine; a "collector failed" push would point at them."""
+        alerts = _Alerts()
+        calls = _collect("IPRoyal Pawns: account disabled", alerts, _UP)
+        calls += _collect("Pawns rate-limited the login (429 Too Many Requests)", alerts, _UP)
+        assert ("collector", "iproyal") not in calls
+        assert alerts.pushed == ["account_disabled"]
+
+    def test_the_control_a_plain_failure_still_pushes(self):
+        """Proves the harness sees a collector push when one is made."""
+        alerts = _Alerts()
+        calls = _collect("Login failed: 401", alerts, _UP)
+        assert ("collector", "iproyal") in calls
+        assert alerts.pushed == ["collector"]

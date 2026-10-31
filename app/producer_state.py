@@ -78,7 +78,7 @@ def match_log_signals(logs: str, signals: list[dict[str, Any]] | None) -> list[d
             {
                 "pattern": str(signal.get("pattern")),
                 "means": str(signal.get("means") or "").strip() or "Matched a declared failure signal.",
-                "state": str(signal.get("state") or FAILING).lower(),
+                "state": str(signal.get("state") or FAILING),  # lowercased by the catalog loader
             }
         )
     return hits

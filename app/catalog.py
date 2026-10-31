@@ -40,6 +40,8 @@ IMAGE_ARCH_FAMILIES = arch.FAMILIES
 _VALID_STATUSES = {"active", "beta", "broken", "dead", "dropped"}
 #: The ``health_signals`` state for a provider that refuses to run the client.
 ACCOUNT_DISABLED = "account_disabled"
+#: Every ``health_signals`` state the readers know. Absent means failing.
+HEALTH_SIGNAL_STATES = frozenset({"failing", "idle", ACCOUNT_DISABLED})
 
 _PORT_RE = re.compile(r"(?:(?P<address>[^:]+):)?(?P<host>\d+):(?P<container>\d+)(?:/(?P<protocol>tcp|udp))?")
 
@@ -134,7 +136,20 @@ def _validate(data: dict[str, Any], path: Path) -> list[str]:
         signals = docker.get("health_signals")
         if isinstance(signals, list):
             for i, item in enumerate(signals):
-                if not isinstance(item, dict) or item.get("state") != ACCOUNT_DISABLED:
+                if not isinstance(item, dict):
+                    continue
+                state = item.get("state")
+                if state is not None:
+                    if not isinstance(state, str) or state.strip().lower() not in HEALTH_SIGNAL_STATES:
+                        errors.append(
+                            f"{path.name}: docker.health_signals[{i}].state must be one of "
+                            f"{', '.join(sorted(HEALTH_SIGNAL_STATES))}, got {state!r}"
+                        )
+                        continue
+                    # The one place the case is normalised: every reader
+                    # compares the lowercase name.
+                    item["state"] = state.strip().lower()
+                if item.get("state") != ACCOUNT_DISABLED:
                     continue
                 # The worker judges this one on a stopped container's tail.
                 pattern = item.get("pattern")
