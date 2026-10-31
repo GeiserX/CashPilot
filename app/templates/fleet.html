@@ -543,13 +543,7 @@ CASHPILOT_WORKER_NAME=server-name</code>
     return html + '</div>';
   }
 
-  // Escaped text with a break hint after each separator in names, ids and
-  // URLs ("motorola-one_fusion+ (1414f972)", "http://box.ts.net:8081"), so a
-  // long one wraps at a natural point before the CSS has to cut inside a word.
-  function brk(str) {
-    // "://" is one unit, so a URL never breaks between its two slashes.
-    return esc(str).replace(/:\/\/|[-_.\/:@]/g, '$&<wbr>').replace(/\(/g, '<wbr>(');
-  }
+  const brk = CP.brk;
 
   function esc(str) {
     // Escape quotes too (the textContent/innerHTML trick doesn't), so values
