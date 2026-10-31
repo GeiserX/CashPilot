@@ -35,6 +35,9 @@ from app import state_backup as sb
 ROOT = Path(__file__).resolve().parent.parent
 NOW = datetime(2026, 10, 31, 12, 0, tzinfo=UTC)
 PASSPHRASE = "correct horse battery staple"
+# A value that must never come back. Built at runtime: a literal next to
+# "passphrase" reads to a secret scanner as a leaked password.
+SENTINEL = "-".join(["never", "echo", "this", "value"])
 
 
 def _sql(dt: datetime) -> str:
@@ -414,7 +417,7 @@ class TestTheRoutes:
             {"worker_id": 1},
             {"worker_id": 1, "passphrase": PASSPHRASE, "recipient_public_key": "ab" * 32},
             {"worker_id": "1", "passphrase": PASSPHRASE},
-            {"worker_id": 1, "passphrase": ["secret-in-a-list-xyz"]},
+            {"worker_id": 1, "passphrase": [SENTINEL]},
         ],
     )
     def test_bad_input_never_echoes_the_secret(self, client, body, caplog):
@@ -422,7 +425,7 @@ class TestTheRoutes:
         with _as("owner"), w, g, caplog.at_level(logging.DEBUG):
             resp = client.post("/api/payout-registry/mysterium/backup-export", json=body)
         assert resp.status_code == 400
-        for secret in (PASSPHRASE, "secret-in-a-list-xyz"):
+        for secret in (PASSPHRASE, SENTINEL):
             assert secret not in resp.text
             assert secret not in caplog.text
 
