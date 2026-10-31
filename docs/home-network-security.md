@@ -51,7 +51,8 @@ A segment protects against everything on that machine, including services that
 use the host's network directly, such as Mysterium. The container firewall
 below cannot confine those.
 
-Storj and Anyone Protocol need an inbound port forwarded. Point those forwards
+Storj, Sia (hostd) and Anyone Protocol need an inbound port forwarded, and
+Mysterium earns more with its UDP port range forwarded. Point those forwards
 into the new segment and nothing else changes.
 
 ## 2. Firewall the containers off your LAN and the host

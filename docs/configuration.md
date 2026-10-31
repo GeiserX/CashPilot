@@ -1,19 +1,19 @@
 # Configuration reference
 
-Every `CASHPILOT_*` setting, what reads it, and — where a file can also supply
-the value — **which one wins**.
+Every `CASHPILOT_*` setting, what reads it, and, where a file can also supply
+the value, **which one wins**.
 
-That last column is the reason this page exists. Three settings look identical
+That last column is the reason this page exists. Two settings look identical
 from the outside (a secret, supplied by an environment variable or by a file
-under `/data`) and resolve in three *different* directions. Each behaviour is
+under `/data`) and resolve in *opposite* directions. Each behaviour is
 defensible on its own; together they are impossible to guess.
 
 !!! warning "The precedence is not uniform, and the differences are deliberate"
 
-    - **Credential-encryption key** — the **file wins**. Switching keys would make
+    - **Credential-encryption key**: the **file wins**. Switching keys would make
       every stored credential unreadable, so an existing `/data/.fernet_key` beats
       `CASHPILOT_ENCRYPTION_KEY`, and CashPilot logs loudly when they differ.
-    - **Session-signing key** — the **environment wins**. Sessions are cheap to
+    - **Session-signing key**: the **environment wins**. Sessions are cheap to
       invalidate, so `CASHPILOT_SECRET_KEY` takes precedence and the file is only
       a fallback.
 
@@ -25,52 +25,52 @@ defensible on its own; together they are impossible to guess.
 |---|---|---|---|
 | `CASHPILOT_SECRET_KEY` | generated | Signs session cookies. | **Env wins**, then `/data/.secret_key`, then a generated key that is persisted. A known-placeholder value is ignored. |
 | `CASHPILOT_ENCRYPTION_KEY` | generated | Fernet key for credentials at rest. | **File wins.** An existing `/data/.fernet_key` beats this; the env key is adopted only when no file exists. |
-| `CASHPILOT_ALLOW_EPHEMERAL_KEY` | `false` | Allow starting when the encryption key cannot be persisted. | — |
-| `CASHPILOT_API_KEY` | from `/fleet` | Shared **enrolment** key. Not an ongoing credential — see [Fleet](fleet.md). | Env, else `/fleet/.fleet_key`, else generated there. |
-| `CASHPILOT_ADMIN_API_KEY` | unset | Bearer token for API access without a session. Grants **owner**: it can deploy, stop and remove containers and read stored credentials. | — |
-| `CASHPILOT_READONLY_API_KEY` | unset | Bearer token for **reporting only**. Accepted on a small allowlist of GET endpoints (earnings summary and breakdown, fleet summary, health scores, deployed services) and refused everywhere else, including on endpoints added in the future. Use this for a dashboard tile, a Grafana panel or Home Assistant sensors rather than handing them a key that controls containers. | — |
-| `CASHPILOT_DATA_DIR` | `/data` | Where the database and keys live. | — |
-| `CASHPILOT_FLEET_DIR` | `/fleet` | Where the shared enrolment key lives. | — |
-| `CASHPILOT_BASE_URL` | unset | Absolute base URL, for links in notifications. | — |
-| `CASHPILOT_SECURE_COOKIE` | auto | Force the `Secure` cookie flag. | — |
-| `CASHPILOT_SESSION_EPOCH` | unset | Bumping this invalidates every existing session. | — |
-| `CASHPILOT_TRUSTED_PROXY` | unset | Trust `X-Forwarded-For` from these addresses. | — |
-| `CASHPILOT_COLLECT_INTERVAL` | `60` | Minutes between earnings collections. | — |
-| `CASHPILOT_HOSTNAME_PREFIX` | `cashpilot` | Prefix for managed container names. | — |
-| `CASHPILOT_VERSION` | `dev` | Set by the image build. Shown in the sidebar. | — |
-| `CASHPILOT_METRICS_ENABLED` | `false` | Serve `/metrics`. | — |
-| `CASHPILOT_METRICS_TOKEN` | unset | Require `Authorization: Bearer` on `/metrics`. | — |
-| `CASHPILOT_DRIFT_WARNINGS` | `on` | Set to `off` to stop judging containers against the catalog: no "Needs fixing" row for a container that misses a catalog change. Set it on the worker too, which then stops reporting container settings. A single warning can be muted from its row instead (Ignore). Containers you made by hand are never judged. | — |
-| `CASHPILOT_UPDATE_CHECK` | `on` | Set to `off` to disable the once-a-day check for a newer release. See below. |
-| `CASHPILOT_NTFY_URL` | unset | ntfy endpoint for alerts. | — |
-| `CASHPILOT_WEBHOOK_URL` | unset | Generic webhook for alerts. | — |
-| `CASHPILOT_TELEGRAM_BOT_TOKEN` | unset | Telegram alerts. | — |
-| `CASHPILOT_TELEGRAM_CHAT_ID` | unset | Telegram alerts. | — |
-| `CASHPILOT_WORKER_ALLOWED_HOSTS` | unset | Restrict which hosts the UI will proxy to. | — |
-| `CASHPILOT_WORKER_ALLOW_METADATA` | `false` | Allow proxying to cloud metadata IPs. Leave off. | — |
-| `CASHPILOT_WORKER_URL_POLICY` | strict | How worker URLs are validated. | — |
+| `CASHPILOT_ALLOW_EPHEMERAL_KEY` | `false` | Allow starting when the encryption key cannot be persisted. | - |
+| `CASHPILOT_API_KEY` | from `/fleet` | Shared **enrolment** key. Not an ongoing credential; see [Fleet](fleet.md). | Env, else `/fleet/.fleet_key`, else generated there. |
+| `CASHPILOT_ADMIN_API_KEY` | unset | Bearer token for API access without a session. Grants **owner**: it can deploy, stop and remove containers and read stored credentials. | - |
+| `CASHPILOT_READONLY_API_KEY` | unset | Bearer token for **reporting only**. Accepted on a small allowlist of GET endpoints (earnings summary and breakdown, fleet summary, health scores, deployed services) and refused everywhere else, including on endpoints added in the future. Use this for a dashboard tile, a Grafana panel or Home Assistant sensors rather than handing them a key that controls containers. | - |
+| `CASHPILOT_DATA_DIR` | `/data` | Where the database and keys live. | - |
+| `CASHPILOT_FLEET_DIR` | `/fleet` | Where the shared enrolment key lives. | - |
+| `CASHPILOT_BASE_URL` | unset | The URL you open CashPilot at. When it starts with `https`, session cookies get the `Secure` flag (unless `CASHPILOT_SECURE_COOKIE` says otherwise). | - |
+| `CASHPILOT_SECURE_COOKIE` | auto | `true` forces the `Secure` cookie flag on, `false` forces it off. Unset, it is on when `CASHPILOT_BASE_URL` is `https` or a trusted proxy reports HTTPS. | - |
+| `CASHPILOT_SESSION_EPOCH` | `0` | A Unix timestamp: sessions issued before it are rejected. Set it to the current time to sign everyone out. | - |
+| `CASHPILOT_TRUSTED_PROXY` | off | Set to `1` (or `true`) only when the UI sits behind exactly one reverse proxy you control. CashPilot then trusts `X-Forwarded-For` for the client address and `X-Forwarded-Proto` for the `Secure` cookie flag. | - |
+| `CASHPILOT_COLLECT_INTERVAL` | `60` | Minutes between earnings collections. | - |
+| `CASHPILOT_HOSTNAME_PREFIX` | `cashpilot` | Fills `{hostname}` in a service's device name when a deploy names no host. Container names are `cashpilot-<service>`, with `-2`, `-3` and so on for extra copies on the same box. | - |
+| `CASHPILOT_VERSION` | `dev` | Set by the image build. Shown in the sidebar. | - |
+| `CASHPILOT_METRICS_ENABLED` | `false` | Serve `/metrics`. | - |
+| `CASHPILOT_METRICS_TOKEN` | unset | Require `Authorization: Bearer` on `/metrics`. | - |
+| `CASHPILOT_DRIFT_WARNINGS` | `on` | Set to `off` to stop judging containers against the catalog: no "Needs fixing" row for a container that misses a catalog change. Set it on the worker too, which then stops reporting container settings. A single warning can be muted from its row instead (Ignore). Containers you made by hand are never judged. | - |
+| `CASHPILOT_UPDATE_CHECK` | `on` | Set to `off` to disable the once-a-day check for a newer release. See below. | - |
+| `CASHPILOT_NTFY_URL` | unset | ntfy endpoint for alerts. | - |
+| `CASHPILOT_WEBHOOK_URL` | unset | Generic webhook for alerts. | - |
+| `CASHPILOT_TELEGRAM_BOT_TOKEN` | unset | Telegram alerts. | - |
+| `CASHPILOT_TELEGRAM_CHAT_ID` | unset | Telegram alerts. | - |
+| `CASHPILOT_WORKER_ALLOWED_HOSTS` | unset | Worker hosts allowed under the `strict` policy: CIDRs, host names and `*.suffix` patterns, separated by commas. | - |
+| `CASHPILOT_WORKER_ALLOW_METADATA` | `false` | Allow proxying to cloud metadata IPs. Leave off. | - |
+| `CASHPILOT_WORKER_URL_POLICY` | `permissive` | How worker URLs are validated. `permissive` accepts any address except loopback, link-local and cloud metadata, so LAN, Tailscale and public addresses all pass. `strict` accepts only `CASHPILOT_WORKER_ALLOWED_HOSTS`. | - |
 
 ## Worker
 
 | Variable | Default | What it does | Precedence |
 |---|---|---|---|
-| `CASHPILOT_UI_URL` | — | **Required.** Where to send heartbeats. | — |
-| `CASHPILOT_API_KEY` | — | **Required for enrolment only.** After enrolling, the worker uses its own key from `/data/.worker_key`. | — |
-| `CASHPILOT_WORKER_NAME` | hostname | Display name. **Set it.** Inside a container the default is the container ID, which Docker regenerates on every recreate. | — |
-| `CASHPILOT_WORKER_URL` | detected | The URL this worker **advertises**. | — |
-| `CASHPILOT_PORT` | `8081` | The port this worker **advertises** — see the note below. | — |
-| `CASHPILOT_WORKER_NETWORK` | detected | `residential` or `hosting`. | — |
-| `CASHPILOT_DRIFT_WARNINGS` | on | `off` stops reporting each container's settings, so the UI judges none of this worker's containers against the catalog. | — |
-| `CASHPILOT_EGRESS_DETECT` | on | Hourly public-IP lookup. `off` disables it. | — |
-| `CASHPILOT_EGRESS_IP` | unset | State the public IP directly. A LAN or tailnet address is rejected. | — |
-| `CASHPILOT_EGRESS_IP_URL` | unset | Custom IP-echo endpoint. | — |
-| `CASHPILOT_ALLOWED_VOLUME_ROOTS` | unset | Host paths a deploy may bind-mount. | — |
-| `CASHPILOT_PIDS_LIMIT` | unset | `pids` limit applied to managed containers. | — |
-| `CASHPILOT_CONTAINER_NETWORK` | unset | A bridge network you created, which containers that would land on Docker's default bridge join instead, so host firewall rules can confine them. Host-networked services are unaffected. The worker never creates it; a deploy is refused while it is missing. See [Protecting your home network](home-network-security.md). | — |
-| `CASHPILOT_CONTAINER_DNS` | `1.1.1.1,9.9.9.9` | DNS servers, IP addresses separated by commas, for containers that join `CASHPILOT_CONTAINER_NETWORK`. Other containers and the host keep the Docker daemon's list. Set it empty to give the isolated containers the daemon's list too. Applies when a container is next deployed. See [name lookups](home-network-security.md#name-lookups-need-a-resolver-the-rules-allow). | — |
-| `CASHPILOT_CONTAINER_RUNTIME` | unset | A Docker runtime, such as a gVisor runtime you registered in `daemon.json`, for containers on bridge networking. Host-networked services keep Docker's default. A deploy is refused while the daemon does not provide it. See [gVisor](home-network-security.md#7-gvisor-optional). | — |
-| `CASHPILOT_CONTAINER_RUNTIME_OVERRIDES` | unset | Per-service exceptions, `slug=runtime` separated by commas, e.g. `bitping=runsc-hostnet-raw`. `slug=runc` runs that service under `runc`, the runtime Docker ships with, whatever the daemon's default is. | — |
-| `CASHPILOT_DATA_DIR` | `/data` | Where `.worker_id` and `.worker_key` live. | — |
+| `CASHPILOT_UI_URL` | - | **Required.** Where to send heartbeats. | - |
+| `CASHPILOT_API_KEY` | - | **Required for enrolment only.** After enrolling, the worker uses its own key from `/data/.worker_key`. | - |
+| `CASHPILOT_WORKER_NAME` | hostname | Display name. **Set it.** Inside a container the default is the container ID, which Docker regenerates on every recreate. | - |
+| `CASHPILOT_WORKER_URL` | detected | The URL this worker **advertises**. | - |
+| `CASHPILOT_PORT` | `8081` | The port this worker **advertises**; see the note below. | - |
+| `CASHPILOT_WORKER_NETWORK` | detected | `residential` or `hosting`. | - |
+| `CASHPILOT_DRIFT_WARNINGS` | on | `off` stops reporting each container's settings, so the UI judges none of this worker's containers against the catalog. | - |
+| `CASHPILOT_EGRESS_DETECT` | on | Hourly public-IP lookup. `off` disables it. | - |
+| `CASHPILOT_EGRESS_IP` | unset | State the public IP directly. A LAN or tailnet address is rejected. | - |
+| `CASHPILOT_EGRESS_IP_URL` | unset | Custom IP-echo endpoint. | - |
+| `CASHPILOT_ALLOWED_VOLUME_ROOTS` | unset | Host paths a deploy may bind-mount. | - |
+| `CASHPILOT_PIDS_LIMIT` | `512` | `pids` limit applied to managed containers. A value that is not a positive integer falls back to the default. | - |
+| `CASHPILOT_CONTAINER_NETWORK` | unset | A bridge network you created, which containers that would land on Docker's default bridge join instead, so host firewall rules can confine them. Host-networked services are unaffected. The worker never creates it; a deploy is refused while it is missing. See [Protecting your home network](home-network-security.md). | - |
+| `CASHPILOT_CONTAINER_DNS` | `1.1.1.1,9.9.9.9` | DNS servers, IP addresses separated by commas, for containers that join `CASHPILOT_CONTAINER_NETWORK`. Other containers and the host keep the Docker daemon's list. Set it empty to give the isolated containers the daemon's list too. Applies when a container is next deployed. See [name lookups](home-network-security.md#name-lookups-need-a-resolver-the-rules-allow). | - |
+| `CASHPILOT_CONTAINER_RUNTIME` | unset | A Docker runtime, such as a gVisor runtime you registered in `daemon.json`, for containers on bridge networking. Host-networked services keep Docker's default. A deploy is refused while the daemon does not provide it. See [gVisor](home-network-security.md#7-gvisor-optional). | - |
+| `CASHPILOT_CONTAINER_RUNTIME_OVERRIDES` | unset | Per-service exceptions, `slug=runtime` separated by commas, e.g. `bitping=runsc-hostnet-raw`. `slug=runc` runs that service under `runc`, the runtime Docker ships with, whatever the daemon's default is. | - |
+| `CASHPILOT_DATA_DIR` | `/data` | Where `.worker_id` and `.worker_key` live. | - |
 
 !!! danger "`CASHPILOT_PORT` does not change the port the worker listens on"
 
@@ -84,8 +84,8 @@ defensible on its own; together they are impossible to guess.
 
 ## GPU passthrough
 
-CashPilot reports a worker's GPU as one of three answers — **yes**, **no**, or
-**unknown** — and inside a container the honest answer is almost always
+CashPilot reports a worker's GPU as one of three answers, **yes**, **no** or
+**unknown**, and inside a container the honest answer is almost always
 *unknown*: the absence of a GPU there says nothing about the host.
 
 That matters because four services only earn with a real GPU (Salad, Nosana,
@@ -111,7 +111,7 @@ devices:
 
 `/dev/dri` does nothing for an NVIDIA card, and installing the
 [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html)
-is only the **prerequisite** — the toolkit on its own does *not* hand the GPU to
+is only the **prerequisite**. The toolkit on its own does *not* hand the GPU to
 a Compose service. You have to ask for it as well, with **either** of these:
 
 === "Shorthand"
@@ -146,7 +146,7 @@ Once the GPU is actually allocated, the worker finds `nvidia-smi` and reports
 the real model name rather than just a device count.
 
 Passing a device into the worker only lets the **worker** see it. A deployed GPU
-**service** needs the device too — declare it in that service's catalog entry.
+**service** needs the device too. Declare it in that service's catalog entry.
 
 ## Compose-level
 
@@ -155,7 +155,7 @@ These are read by the compose files, not by CashPilot itself.
 | Variable | Default | What it does |
 |---|---|---|
 | `CASHPILOT_BIND_ADDR` | `127.0.0.1` | Which host interface publishes the **UI** port. |
-| `CASHPILOT_WORKER_BIND_ADDR` | `127.0.0.1` | Which host interface publishes the **worker** port, in the fleet compose. The worker holds the Docker socket — root-equivalent on the host — so publish it only on an interface the UI needs, never `0.0.0.0`. |
+| `CASHPILOT_WORKER_BIND_ADDR` | `127.0.0.1` | Which host interface publishes the **worker** port, in the fleet compose. The worker holds the Docker socket, which is root-equivalent on the host, so publish it only on an interface the UI needs, never `0.0.0.0`. |
 
 The UI's web port inside the container is fixed at `8080` (set via the container's `CMD`); `CASHPILOT_BIND_ADDR` controls only which host interface it is published on.
 
@@ -163,7 +163,7 @@ The UI's web port inside the container is fixed at `8080` (set via the container
 
 **The shipped compose files set no memory limit, deliberately.** If you set one,
 size it from the numbers below rather than from what the container looks like
-when idle — because those two figures are very far apart.
+when idle, because those two figures are very far apart.
 
 ### Measured, not estimated
 
@@ -174,7 +174,7 @@ cycles:
 | Container | Steady state | **Peak** | Database |
 |---|---|---|---|
 | `cashpilot-ui` | ~72 MiB | **207 MiB** | 54.7 MB |
-| `cashpilot-worker` | ~65 MiB | **130 MiB** | — |
+| `cashpilot-worker` | ~65 MiB | **130 MiB** | - |
 
 *Provenance: `drumsergio/cashpilot:1.14.1`, 15 managed containers, 54.7 MB
 SQLite database, collectors running hourly in-process under APScheduler.
@@ -182,7 +182,7 @@ Figures are `memory.peak` and `docker stats` from the container's own cgroup.*
 
 ### Why the peak is what matters
 
-The UI idles around **72 MiB and peaks near 207 MiB** — close to three times
+The UI idles around **72 MiB and peaks near 207 MiB**, close to three times
 its resting size. Collection runs every service's collector in-process, and the
 transient cost of that dwarfs the steady state.
 
@@ -194,7 +194,7 @@ collection cycle.**
 
     The container is killed and restarted mid-collection. The dashboard keeps
     serving the last figures it stored, so nothing on screen says anything is
-    wrong — the symptom is "earnings stopped updating", days later, which is
+    wrong. The symptom is "earnings stopped updating", days later, which is
     the hardest kind of failure to notice and the hardest to report.
 
     That is the reason this page gives you a number instead of a limit.
@@ -202,7 +202,7 @@ collection cycle.**
 ### If you do set one
 
 Leave real headroom above the measured peak. **256 MiB leaves only 49 MiB above
-the 207 MiB observed here**, on one install with one database size — a larger
+the 207 MiB observed here**, on one install with one database size. A larger
 database, more services, or a slower provider that holds connections longer
 will all push it up.
 
@@ -234,7 +234,7 @@ device name the catalog derives from the host name gets `-2`, `-3` added.
   because its copies would share the directory and fight over the port.
 - The count is saved per worker and kept by every redeploy. Lowering it removes the highest copies
   first; removing the service from a worker removes all of them.
-- Each copy has its own Restart, Stop and Logs under Running Instances and on the dashboard.
+- Each copy has its own Restart, Stop and Logs under **Deployed on** in the service's details and on the dashboard.
 - A worker runs more than one copy only once it is on a release that supports it; older workers
   keep the box locked until they are updated.
 
@@ -272,7 +272,7 @@ Three things it deliberately does not do:
   deploys containers and holds credentials, and nothing about that should happen
   because a version number changed.
 - **It never says "up to date".** Offline, firewalled, disabled, or simply not
-  run yet all produce *unknown*, and unknown renders nothing at all — no error,
+  run yet all produce *unknown*, and unknown renders nothing at all: no error,
   no spinner, and no reassurance it has not earned.
 - **It sends nothing about you.** One unauthenticated `GET` to the public
   releases endpoint. No request body, no identifier, and your version is not
@@ -285,5 +285,5 @@ environment:
   - CASHPILOT_UPDATE_CHECK=off
 ```
 
-The banner is dismissible per version — dismiss `v1.20.1` and it stays gone until
+The banner is dismissible per version. Dismiss `v1.20.1` and it stays gone until
 there is a `v1.20.2`, so it cannot become wallpaper.

@@ -29,6 +29,7 @@ Minimum $15. Methods: USDT on BEP20 or Polygon ($1 fee) or TRC20 ($3 fee), PayPa
 | Requirement | Value |
 |-------------|-------|
 | Residential IP | Yes |
+| Devices per IP | 1 |
 | Minimum bandwidth | None |
 | GPU required | No |
 | Minimum storage | None |
@@ -48,7 +49,9 @@ After signing up, go to [app.earn.fm](https://app.earn.fm) > Account Settings an
 
 ### 3. Deploy with CashPilot
 
-In the CashPilot web UI, find **Earn.fm** in the service catalog and click **Deploy**. Enter your API token and CashPilot will handle the rest.
+In the CashPilot web UI, open **Catalog** and click **Add** on the **Earn.fm** row, or click **+ Add service** in the top bar and pick it there. Paste your API key and click **Deploy Earn.fm**.
+
+The API key only runs the client. To see your balance on the CashPilot dashboard, add your Earn.fm email and password under **Settings → Earnings collection**.
 
 ## Docker Configuration
 

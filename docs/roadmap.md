@@ -1,14 +1,14 @@
 # Direction and Roadmap
 
 This page describes what CashPilot is today, what we intend it to become, and the
-avenues we are weighing to get there — including the ones we have decided against
+avenues we are weighing to get there, including the ones we have decided against
 and why. It is written to be argued with. If a trade-off here looks wrong, open an
 issue; the reasoning is laid out precisely so it can be challenged.
 
 ## What CashPilot is today
 
 CashPilot is a **self-hosted dashboard for passive-income services**. You run it on
-your own hardware — a home server, a NAS, a VPS — and it does three things:
+your own hardware (a home server, a NAS, a VPS), and it does three things:
 
 1. **Deploys** Docker containers for services that pay you for idle resources:
    bandwidth sharing, DePIN nodes, storage, and compute.
@@ -19,9 +19,9 @@ your own hardware — a home server, a NAS, a VPS — and it does three things:
 
 Architecturally it is two components, always separate:
 
-- The **UI** — the single dashboard. Collects earnings, schedules work, manages
+- The **UI**: the single dashboard. Collects earnings, schedules work, manages
   users. It has **no Docker socket** and cannot touch containers directly.
-- One **Worker** per machine — holds the Docker socket, manages local containers,
+- One **Worker** per machine: holds the Docker socket, manages local containers,
   reports back over an authenticated heartbeat.
 
 The catalog of services is plain YAML under `services/`, and it is the single source
@@ -40,11 +40,12 @@ euros a month per service. Anyone promising otherwise is selling something.
 
 Three words, each load-bearing:
 
-**Safe.** Several of these services generate cryptographic material — a node
-identity, a relay key, a wallet — that lives in a container volume and cannot be
-recovered if it is destroyed. Today CashPilot deploys that software without knowing
-those secrets exist. Making that impossible to lose by accident is the single most
-valuable thing we can build.
+**Safe.** Several of these services generate cryptographic material (a node
+identity, a relay key, a wallet) that lives in a container volume and cannot be
+recovered if it is destroyed. Making that impossible to lose by accident is the
+single most valuable thing we can build. Since 1.5.0 the catalog marks those volumes
+(`critical_volumes`) and CashPilot refuses to delete them without an explicit
+override.
 
 **Honest.** The passive-income space is full of inflated earnings claims, dead
 services still listed as live, and referral links dressed up as recommendations. We
@@ -57,14 +58,15 @@ alert, not silently return zero.
 
 ## Where we fall short today
 
-Being specific about the gaps, because they set the roadmap.
+Being specific about the gaps, because they set the roadmap. The first three
+below are closed; each says in which release.
 
 ### Deployment is stateless
 
 Every redeploy rebuilds the container specification from the catalog YAML. Nothing
 records what was *actually* deployed. If the running container differs from what the
-catalog describes — a bind mount where the catalog declares a named volume, an
-environment variable that was substituted at deploy time — the redeploy silently
+catalog describes (a bind mount where the catalog declares a named volume, an
+environment variable that was substituted at deploy time), the redeploy silently
 produces a *different* container.
 
 For a stateless bandwidth service that is harmless. For a service holding a node
@@ -73,7 +75,11 @@ key that represented months of accrued reputation or a held payout balance is no
 longer attached to anything.
 
 This is the root cause of the most serious class of bug in the project, and it is
-not a key-management problem — it is a **memory** problem.
+not a key-management problem; it is a **memory** problem.
+
+**Closed in 1.5.0** (avenue A below): the deployed spec is recorded, encrypted, and
+a redeploy starts from it. Since 1.36.7 a redeploy that replaces a container also
+keeps the mounts it has now, so a node edited by hand keeps its identity.
 
 ### Nothing knows which state is irreplaceable
 
@@ -86,14 +92,16 @@ Of the services in the catalog, only a handful hold something unrecoverable:
 | Relay keys | New relay fingerprint; any locked stake is stranded |
 | A generated wallet | The volume *is* the money; there is no recovery |
 
-The catalog documents some of this in prose, which is read by humans and by nothing
-else. No code path treats those volumes differently from a cache directory.
+**Closed in 1.5.0.** Each service declares these volumes as `critical_volumes`
+in its catalog entry, with what they hold. Storj, Mysterium, Anyone Protocol,
+ProxyBase Markets and Sia (hostd) declare them today.
 
 ### Volume deletion is unguarded
 
-Removing a service can optionally delete its named volumes. That path force-deletes
-without asking whether the volume held anything irreplaceable. The browser UI does
-not currently offer it, which is fortunate rather than deliberate.
+**Closed in 1.5.0.** Removing a service can delete its named volumes, and that
+path now refuses any volume marked critical unless the request sets
+`allow_delete_critical`. It also refuses when it cannot tell whether a volume is
+critical.
 
 ### Collectors are fragile by nature
 
@@ -101,7 +109,8 @@ Some services expose a clean API. Others require scraping a dashboard, or a sess
 cookie copied out of a browser that expires in hours. When a provider redesigns a
 page, the collector silently reports "cannot parse" and earnings stop being recorded
 even though the service is still earning. This is inherent to the domain, but the
-*handling* of it can be much better than it is.
+*handling* of it can be much better than it is. Avenue E below covers what has
+shipped.
 
 ## Avenues
 
@@ -109,7 +118,7 @@ Each avenue below is a direction we could take, with the case for and against.
 
 ### A. Make deployment stateful
 
-Record the specification that was actually deployed, and redeploy from that record —
+Record the specification that was actually deployed, and redeploy from that record,
 with the catalog supplying only the image and defaults.
 
 The precedence is worth stating exactly, because "the catalog is the source of truth"
@@ -117,8 +126,8 @@ is true of a *new* deployment and not of an existing one:
 
 - **The catalog owns what a new deployment looks like**, and always owns the image, so
   upgrades still land.
-- **The record owns what an existing deployment looks like** — its mounts, ports,
-  hostname and env — because that is what is actually running.
+- **The record owns what an existing deployment looks like**: its mounts, ports,
+  hostname and env, because that is what is actually running.
 - **Anything the operator supplies on this deploy wins over both**, or a rotated
   credential could never be corrected.
 - **A missing or unreadable record falls back to the catalog**, which is exactly
@@ -138,11 +147,14 @@ it with a check against the live container rather than replacing that check.
 
 **Verdict: do this first.** It is the highest ratio of harm removed to code written.
 
+**Status: shipped in 1.5.0.** A redeploy that differs from its record logs the
+difference.
+
 ### B. Guard the destructive paths
 
 Mark volumes that hold irreplaceable state in the catalog. Before a redeploy
 destroys a container, compare its existing mounts to the incoming specification and
-**refuse** if a flagged mount would be dropped or replaced — showing the difference
+**refuse** if a flagged mount would be dropped or replaced, showing the difference
 and requiring an explicit override. Apply the same guard to volume deletion.
 
 **For.** Catches drift from any source, including containers created outside
@@ -156,6 +168,10 @@ long day is not a safety mechanism.
 
 **Verdict: do this, and make it a block with an explicit override.**
 
+**Status: the volume-deletion guard shipped in 1.5.0, as a block with the
+`allow_delete_critical` override.** On redeploy we chose to keep the live mounts
+(1.36.7) rather than refuse, so the container comes back on the same data.
+
 ### C. Encrypted backup and migration
 
 Let the user export the irreplaceable state of a service as an encrypted bundle,
@@ -166,7 +182,7 @@ currently a manual, error-prone process. Users overwhelmingly do not back these
 files up on their own, because nothing tells them the files exist.
 
 **Against.** Reading key material out of a container volume is a genuinely new
-capability for the Worker — the component that already holds the Docker socket. It
+capability for the Worker, the component that already holds the Docker socket. It
 must be designed so that a compromised installation cannot decrypt past exports.
 
 **Risk.** The highest of any avenue, in two directions. Technically, it creates a
@@ -177,10 +193,10 @@ invites the assumption that it can recover them.
 the plaintext in different trust boundaries, so this has to be settled before the
 constraints below mean anything:
 
-- **Passphrase mode** — the passphrase is supplied by the operator at export time and
+- **Passphrase mode**: the passphrase is supplied by the operator at export time and
   never stored. Encryption happens on the Worker holding the volume, so plaintext key
   material exists only in that process, for the duration of the export.
-- **Public-key mode** — the operator supplies only a public key. The Worker encrypts to
+- **Public-key mode**: the operator supplies only a public key. The Worker encrypts to
   it and never possesses anything that can decrypt the result, so a later compromise of
   the installation cannot read past exports. This is the stronger guarantee and the
   reason the mode exists.
@@ -192,7 +208,7 @@ read.
 **Design constraints, non-negotiable if we build it:**
 
 - Encryption happens on the Worker. The UI handles ciphertext only.
-- The user supplies the encryption target — a public key, or a passphrase. **The
+- The user supplies the encryption target: a public key, or a passphrase. **The
   installation must not be able to decrypt its own exports.**
 - No scheduled or automatic export. A timer needs a stored secret, which
   reintroduces exactly the risk we are avoiding. Alert the user instead.
@@ -200,6 +216,10 @@ read.
   upload, no remote sync, no webhook.
 
 **Verdict: worth building, after A and B, and only with the constraints above.**
+
+**Status: export and verify shipped in 1.10.0, on the Worker API, with both modes
+and the constraints above.** The bundle is ChaCha20-Poly1305; the passphrase mode
+derives its key with scrypt. Restore and migration between machines are not built.
 
 ### D. Keep the catalog honest automatically
 
@@ -215,10 +235,13 @@ scales where manual review does not.
 wolf is a report nobody reads.
 
 **Risk.** Low, if the distinction between *confirmed broken* and *could not verify*
-is preserved rigorously — a link that redirects somewhere unexpected is not proof of
+is preserved rigorously: a link that redirects somewhere unexpected is not proof of
 a dead service.
 
 **Verdict: continue, carefully.**
+
+**Status:** the weekly liveness check shipped in 1.4.0. Since 1.5.0 the dashboard
+flags services that are running but no longer earning (`/api/earnings/flatlines`).
 
 ### E. Make collectors resilient and honest about credentials
 
@@ -231,7 +254,7 @@ Improvements worth making:
 - Ask for the **durable** credential where one exists, not only the short-lived one.
 - Show credential age and expected lifetime in the interface.
 - Distinguish "your credential expired" from "the provider changed their page" in
-  alerts — they need different actions from the user.
+  alerts, since they need different actions from the user.
 - Prefer stable anchors when scraping, and keep older patterns as fallbacks so a
   redesign degrades rather than breaks.
 
@@ -241,10 +264,14 @@ Improvements worth making:
 
 **Verdict: ongoing work, always worth doing.**
 
+**Status:** credential age and expected lifetime are shown since 1.5.0
+(`/api/credentials/health`), and since 1.42.0 a pasted token that carries its own
+expiry (a JWT) is judged by that date.
+
 ### F. Broaden what can earn
 
 Most catalog services sell **bandwidth**. Adding more of them to one connection has
-diminishing returns — they compete for the same upstream, and several providers'
+diminishing returns: they compete for the same upstream, and several providers'
 terms forbid running competitors alongside each other.
 
 The genuine growth is in **different resources**: disk (storage nodes), and compute
@@ -263,6 +290,10 @@ be a serious breach of the "honest" principle.
 **Verdict: expand deliberately, and publish a power-cost calculation alongside any
 compute service rather than an earnings range alone.**
 
+**Status:** net profit after power cost is reported since 1.7.0
+(`/api/earnings/net`), and since 1.10.0 the fleet page says whether each machine
+earns more than its electricity costs (`/api/fleet/economics`).
+
 ### G. What we will not build
 
 **A hosted version that holds users' keys.** This is the clearest line in the
@@ -277,12 +308,12 @@ To be precise rather than sweeping: the obligations that attach to holding other
 people's keys depend on jurisdiction and on the activity. US FinCEN guidance
 distinguishes a *user* from an *administrator* or *exchanger*, and in the EU, MiCA
 regulates custody and administration of crypto-assets on behalf of clients as its own
-service. The point is not that every hosted-key design is unlawful everywhere — it is
+service. The point is not that every hosted-key design is unlawful everywhere; it is
 that it moves the project into a regulated category we have no intention of entering,
 and that the design constraint is therefore deliberate rather than an oversight.
 
-**Any key recovery service.** If a user loses the secret that protects an export —
-the passphrase, or the private key matching the public key it was encrypted to — the
+**Any key recovery service.** If a user loses the secret that protects an export
+(the passphrase, or the private key matching the public key it was encrypted to), the
 data is gone. Both recovery secrets are the user's alone. Saying so plainly is more
 honest than implying a safety net that does not exist.
 

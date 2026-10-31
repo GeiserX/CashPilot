@@ -1,5 +1,8 @@
 # PacketShare
 
+> [!CAUTION]
+> **Dead:** the catalog marks PacketShare as dead. Deployment is blocked. This guide is kept for reference only.
+
 > **Category:** Bandwidth Sharing | **Status:** Dead
 >
 > **Website:** [https://www.packetshare.io](https://www.packetshare.io)
@@ -36,13 +39,9 @@ PacketShare lets you earn passive income by sharing your unused internet bandwid
 
 Sign up at [PacketShare](https://www.packetshare.io/register.html).
 
-### 2. Get your credentials
+### 2. Deploy with CashPilot
 
-After signing up, locate the credentials needed for Docker deployment. These are typically your email/password or an API token found in the dashboard.
-
-### 3. Deploy with CashPilot
-
-In the CashPilot web UI, find **PacketShare** in the service catalog and click **Deploy**. Enter the required credentials and CashPilot will handle the rest.
+You can't. CashPilot hides dead services from the catalog and the setup wizard, and refuses a deploy request for one.
 
 ## Docker Configuration
 

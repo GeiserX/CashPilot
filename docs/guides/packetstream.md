@@ -44,11 +44,11 @@ Sign up at [PacketStream](https://packetstream.io/?psr=7xgZ).
 
 ### 2. Get your credentials
 
-After signing up, locate the credentials needed for Docker deployment. These are typically your email/password or an API token found in the dashboard.
+Log in at [packetstream.io/dashboard](https://packetstream.io/dashboard), click **Setup** in the sidebar, and copy your CID from the Docker command shown there.
 
 ### 3. Deploy with CashPilot
 
-In the CashPilot web UI, find **PacketStream** in the service catalog and click **Deploy**. Enter the required credentials and CashPilot will handle the rest.
+In the CashPilot web UI, open **Catalog** and click **Add** on the **PacketStream** row, or click **+ Add service** in the top bar and pick it there. Paste your CID into **Client ID**, then click **Deploy PacketStream**.
 
 ## Docker Configuration
 

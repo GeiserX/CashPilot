@@ -24,7 +24,7 @@ This starts two containers:
 
 ### 2. Open the dashboard
 
-Navigate to [http://localhost:8080](http://localhost:8080) in your browser. Since no account exists yet, you'll be redirected to onboarding and then to the registration form.
+Navigate to [http://localhost:8080](http://localhost:8080) in your browser. Since no account exists yet, you land on the welcome page, which creates the owner account.
 
 !!! warning "First-run setup token required"
     On first start, CashPilot generates a one-time setup token and prints it to the **cashpilot-ui** container logs:
@@ -40,21 +40,21 @@ Navigate to [http://localhost:8080](http://localhost:8080) in your browser. Sinc
     one-time setup token to create the owner account: <token>
     ```
 
-    Copy that token into the **Setup Token** field on the registration form to create the first (owner) account. It's only ever shown in the logs — never in a URL — and is discarded permanently once the owner account exists.
+    Copy that token into the **Setup token** field on the welcome page to create the first (owner) account. It is only ever shown in the logs, never in a URL, and is discarded permanently once the owner account exists.
 
 ### 3. Browse the service catalog
 
-Filter services by category (bandwidth, DePIN, storage, compute), view earning estimates, and check requirements before deploying.
+The **Catalog** page lists every service with its platforms, a monthly estimate and what it needs (residential IP, GPU). Filter by category (Bandwidth, DePIN, Storage, Compute) or search by name. **Add** opens the setup wizard on that service, **Details** shows its description, payouts and deploy risk, and services that do not run in Docker get a **Visit** link instead.
 
 Two kinds of service need a closer look first: services that pay only after you lock up a token stake, such as Anyone Protocol, Sia and Flux, and relays that publish your IP, which may lower what residential bandwidth apps pay you. See [Check two things before you deploy](guides/index.md).
 
-### 4. Sign up for services
+### 4. Add services with the wizard
 
-Each service card has a signup link. Create accounts on the services you want to run.
+Once the owner account exists, **Add services** opens the setup wizard; later, the **+ Add service** button in the top bar opens it again. Pick categories, then services. For each service the wizard shows a **Sign Up** link, asks only for the credentials that service needs (email and password, API token, and so on) and lets you choose the workers to run it on. Click **Deploy** and CashPilot pulls the image, creates the container and starts watching it.
 
-### 5. Enter credentials and deploy
+### 5. Watch it on the dashboard
 
-The setup wizard collects only the credentials each service needs (email/password, API token, etc.). Click **Deploy** and CashPilot handles the rest -- pulling images, creating containers, and starting health monitoring.
+The dashboard shows each deployed service with its status and balance, and the **Fleet** page shows every worker.
 
 ## How It Works
 
@@ -85,9 +85,9 @@ graph LR
 | `TZ` | `UTC` | Timezone for scheduling and display |
 | `CASHPILOT_SECRET_KEY` | *(auto-generated)* | Signing key for login sessions. Persisted at `/data/.secret_key`. **Does not encrypt credentials** |
 | `CASHPILOT_ENCRYPTION_KEY` | *(auto-generated)* | Fernet key encrypting stored credentials at rest. Persisted at `/data/.fernet_key`. Adopted only when that file is absent, so set it only to restore a backup |
-| `CASHPILOT_API_KEY` | -- | Shared secret between UI and workers for API authentication |
+| `CASHPILOT_API_KEY` | *(from `/fleet`)* | Shared enrolment key for workers. Each worker gets its own key when it enrols; see [Fleet](fleet.md) |
 | `CASHPILOT_COLLECT_INTERVAL` | `60` | Minutes between earnings collection cycles |
-| `CASHPILOT_BIND_ADDR` | `127.0.0.1` | Host interface the UI port is published on. **Loopback by default** — the dashboard can command the Docker-socket worker, so it is not exposed to your network out of the box. Set a specific IP (e.g. a Tailscale/VPN address) or `0.0.0.0` to expose it, or (preferred) run an authenticating reverse proxy in front |
+| `CASHPILOT_BIND_ADDR` | `127.0.0.1` | Host interface the UI port is published on. **Loopback by default**: the dashboard can command the Docker-socket worker, so it is not exposed to your network out of the box. Set a specific IP (e.g. a Tailscale/VPN address) or `0.0.0.0` to expose it, or (preferred) run an authenticating reverse proxy in front |
 
 The UI's web port inside the container is fixed at `8080` (set via the container's `CMD`); `CASHPILOT_BIND_ADDR` controls only which host interface it is published on.
 
@@ -97,11 +97,11 @@ The UI's web port inside the container is fixed at `8080` (set via the container
 |----------|---------|-------------|
 | `TZ` | `UTC` | Timezone |
 | `CASHPILOT_UI_URL` | -- | URL of the UI container, e.g. `http://cashpilot-ui:8080` |
-| `CASHPILOT_API_KEY` | -- | Must match the UI's API key |
+| `CASHPILOT_API_KEY` | -- | Must match the UI's enrolment key. Needed only to enrol; the worker then uses its own key |
 | `CASHPILOT_WORKER_NAME` | *(hostname)* | Display name for this worker in the fleet dashboard |
-| `CASHPILOT_WORKER_URL` | *(auto-detected)* | URL the UI uses to reach this worker, e.g. `http://192.168.10.50:8081`. Set explicitly for cross-host fleets — auto-detection can report an unreachable container-internal IP |
+| `CASHPILOT_WORKER_URL` | *(auto-detected)* | URL the UI uses to reach this worker, e.g. `http://192.168.1.50:8081`. Set explicitly for cross-host fleets: auto-detection can report an unreachable container-internal IP |
 | `CASHPILOT_WORKER_BIND_ADDR` | `127.0.0.1` | **Fleet and remote-worker compose only** (`docker-compose.fleet.yml`): host interface the worker's Docker-socket API port is published on, loopback by default. The default `docker-compose.yml` does not publish port 8081 at all. The worker API can deploy/stop any container (= root on the host), so for a remote worker bind a private/VPN interface (e.g. a Tailscale IP), **never** a public IP |
-| `CASHPILOT_PORT` | `8081` | Port the worker **advertises** to the UI. It does *not* change the listen port, which is fixed by the image's `CMD` — see the [configuration reference](configuration.md) |
+| `CASHPILOT_PORT` | `8081` | Port the worker **advertises** to the UI. It does *not* change the listen port, which is fixed by the image's `CMD`; see the [configuration reference](configuration.md) |
 
 ### Docker Compose Example
 
@@ -114,21 +114,21 @@ The UI's web port inside the container is fixed at `8080` (set via the container
     The block above is included verbatim from `docker-compose.yml` in the
     repository, so it cannot drift from what actually ships. Earlier, a
     hand-copied version of it published the worker's Docker-socket API on every
-    interface and pinned `:latest` — both of which the
+    interface and pinned `:latest`, both of which the
     [security defaults](security-defaults.md) page tells you not to do.
 
 !!! warning "Docker Socket Access"
     The worker container requires access to `/var/run/docker.sock` to manage service containers. This grants the worker significant privileges on the host. Run CashPilot on a dedicated machine or VLAN for best security.
 
 !!! tip "Secret Key Persistence"
-    Credentials are encrypted with `CASHPILOT_ENCRYPTION_KEY`, **not** `CASHPILOT_SECRET_KEY` — the latter only signs login sessions. The encryption key is auto-generated on first run and stored at `/data/.fernet_key`. **Back that file up.** If the volume is recreated without it, a fresh key is generated and every stored credential becomes permanently unreadable. Setting `CASHPILOT_ENCRYPTION_KEY` is for restoring that backup; the key file always wins, so setting it on a healthy instance changes nothing.
+    Credentials are encrypted with `CASHPILOT_ENCRYPTION_KEY`, **not** `CASHPILOT_SECRET_KEY`, which only signs login sessions. The encryption key is auto-generated on first run and stored at `/data/.fernet_key`. **Back that file up.** If the volume is recreated without it, a fresh key is generated and every stored credential becomes permanently unreadable. Setting `CASHPILOT_ENCRYPTION_KEY` is for restoring that backup; the key file always wins, so setting it on a healthy instance changes nothing.
 
 !!! tip "Passwords and secrets in the UI"
     Change your own password any time from the avatar menu -> **Change password** (available to all roles); this signs out your other sessions. In **Settings**, stored secrets are write-only: enter a value to change it, or leave the field blank to keep the existing one. Saved credentials are never sent back to the browser.
 
 ## Updating CashPilot
 
-The compose file pins the `1.39` series, so `pull` fetches the newest patch of that series:
+The compose file pins the `1.57` series, so `pull` fetches the newest patch of that series:
 
 ```bash
 docker compose pull
@@ -150,16 +150,16 @@ latest image first.
 
 ### Pinning a specific version
 
-To stay on one exact release, replace `1.39` with the patch tag, for example
-`drumsergio/cashpilot:1.39.4` and `drumsergio/cashpilot-worker:1.39.4` (always
+To stay on one exact release, replace `1.57` with the patch tag, for example
+`drumsergio/cashpilot:1.57.0` and `drumsergio/cashpilot-worker:1.57.0` (always
 the same tag on both), and remove `pull_policy: always`. To move to a newer
 series, edit both tags. Browse tags on
 [Docker Hub](https://hub.docker.com/r/drumsergio/cashpilot/tags).
 
 ### Automating updates (optional)
 
-If you want hands-off updates, point a scheduler at the same two commands —
-for example a daily cron entry:
+If you want hands-off updates, point a scheduler at the same two commands,
+for example with a daily cron entry:
 
 ```cron
 0 4 * * *  cd /path/to/cashpilot && docker compose pull && docker compose up -d
@@ -167,7 +167,7 @@ for example a daily cron entry:
 
 Or run an auto-updater such as [Watchtower](https://containrrr.dev/watchtower/)
 or [Diun](https://crazymax.dev/diun/) against the CashPilot containers. These
-are entirely optional — CashPilot does not bundle an updater.
+are optional. CashPilot does not bundle an updater.
 
 ## Supported Services
 

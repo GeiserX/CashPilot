@@ -38,19 +38,10 @@ Sign up at [Teneo Protocol](https://dashboard.teneo.pro/?code=CAqef).
 
 <small>Referral link: the CashPilot maintainer may earn a commission from it.</small>
 
-### 2. Get your credentials
+### 2. Run it outside CashPilot
 
-After signing up, locate the credentials needed for Docker deployment. These are typically your email/password or an API token found in the dashboard.
-
-### 3. Deploy with CashPilot
-
-In the CashPilot web UI, find **Teneo Protocol** in the service catalog and click **Deploy**. Enter the required credentials and CashPilot will handle the rest.
+CashPilot cannot deploy Teneo Protocol. The catalog has no Docker image for it, so its row in **Catalog** shows **Visit** instead of **Add**. Install the Teneo Protocol browser extension and log in. CashPilot does not read Teneo Protocol earnings either, so check them in the provider's dashboard.
 
 ## Docker Configuration
 
-- **Image:** ``
-- **Platforms:** browser-extension
-
-### Environment Variables
-
-No environment variables required.
+None. The catalog has no Docker image for Teneo Protocol.

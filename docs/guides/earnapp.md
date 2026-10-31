@@ -4,7 +4,7 @@
 >
 > **Website:** [https://earnapp.com](https://earnapp.com)
 
-!!! danger "EarnApp prohibits the way CashPilot runs it — read this first"
+!!! danger "EarnApp prohibits the way CashPilot runs it: read this first"
 
     EarnApp's help centre states: **"Installing EarnApp on Virtual Machines
     (VMs), Docker containers, or hosting services is strictly prohibited."** It
@@ -20,7 +20,7 @@
 
     EarnApp does support ordinary desktops, laptops, phones and Raspberry Pi via
     its own installer. If you want to earn with it, that is the route that does
-    not put your account and balance at risk — and CashPilot cannot manage it.
+    not put your account and balance at risk, and CashPilot cannot manage it.
 
 ## Description
 
@@ -47,6 +47,7 @@ Turn on auto-redeem once and EarnApp pays by itself whenever the balance reaches
 | Requirement | Value |
 |-------------|-------|
 | Residential IP | Yes |
+| Devices per account | 15 |
 | Minimum bandwidth | None |
 | GPU required | No |
 | Minimum storage | None |
@@ -72,7 +73,7 @@ Use a new UUID on every machine. Two containers with the same UUID count as one 
 
 ### 3. Deploy with CashPilot
 
-In the CashPilot web UI, find **EarnApp** in the service catalog, click **Deploy** and paste the UUID into **Node UUID**.
+In the CashPilot web UI, open **Catalog** and click **Add** on the **EarnApp** row, or click **+ Add service** in the top bar and pick it there. Paste the UUID into **Node UUID** and click **Deploy EarnApp**.
 
 ### 4. Link the device to your account
 

@@ -38,18 +38,10 @@ Sign up at [Dawn Internet](https://dawninternet.com/?code=2QLQV97F).
 
 <small>Referral link: the CashPilot maintainer may earn a commission from it.</small>
 
-### 2. Get your credentials
+### 2. Run it outside CashPilot
 
-After signing up, locate the credentials needed for Docker deployment. These are typically your email/password or an API token found in the dashboard.
-
-### 3. Deploy with CashPilot
-
-In the CashPilot web UI, find **Dawn Internet** in the service catalog and click **Deploy**. Enter the required credentials and CashPilot will handle the rest.
+CashPilot cannot deploy Dawn Internet. The catalog has no Docker image for it, so its row in **Catalog** shows **Visit** instead of **Add**. Install the Dawn Internet browser extension and log in. CashPilot does not read Dawn Internet earnings either, so check them in the provider's dashboard.
 
 ## Docker Configuration
 
-- **Image:** ``
-
-### Environment Variables
-
-No environment variables required.
+None. The catalog has no Docker image for Dawn Internet.

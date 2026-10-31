@@ -2,7 +2,7 @@
 
 > **Category:** Bandwidth Sharing | **Status:** Active
 >
-> **Website:** [https://spide.io](https://spide.io)
+> **Website:** [https://spide.network](https://spide.network)
 
 ## Description
 
@@ -25,6 +25,7 @@ Spide is a bandwidth-sharing service that lets you monetize unused internet band
 | Requirement | Value |
 |-------------|-------|
 | Residential IP | Yes |
+| Devices per IP | 1 |
 | Minimum bandwidth | None |
 | GPU required | No |
 | Minimum storage | None |
@@ -38,20 +39,10 @@ Sign up at [Spide](https://spide.network/register.html?f3bc51).
 
 <small>Referral link: the CashPilot maintainer may earn a commission from it.</small>
 
-### 2. Get your credentials
+### 2. Install the app
 
-After signing up, locate the credentials needed for Docker deployment. These are typically your email/password or an API token found in the dashboard.
+Install the Spide client on Windows or Linux.
 
-### 3. Deploy with CashPilot
+### 3. CashPilot
 
-In the CashPilot web UI, find **Spide** in the service catalog and click **Deploy**. Enter the required credentials and CashPilot will handle the rest.
-
-## Docker Configuration
-
-- **Image:** ``
-
-### Environment Variables
-
-| Variable | Label | Required | Secret | Description |
-|----------|-------|:--------:|:------:|-------------|
-| `SPIDE_MACHINE_ID` | Machine ID | No | No | Machine ID for existing device already registered (auto-generated if empty) |
+There is no Docker image, so CashPilot cannot deploy Spide, and its catalog row has only a **Visit** link. CashPilot has no earnings collector for it either; check your balance on the Spide dashboard.

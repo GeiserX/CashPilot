@@ -37,7 +37,7 @@ Workers must be reachable from the UI for commands. The UI must be reachable fro
 ### Importing earnings a client collected on its own
 
 `POST /api/workers/earnings-import` lets a client that has been reading a
-provider account by itself — CashPilot Desktop, typically, before it was paired —
+provider account by itself (CashPilot Desktop, typically, before it was paired)
 hand that history to the UI, so the fleet view shows the complete picture rather
 than starting from the day of pairing.
 
@@ -62,7 +62,7 @@ It answers:
 | `200` | `{"status": "ok", "imported": N, "skipped": [...], "source": "<client_id>"}` |
 | `400` | `client_id` was missing or blank |
 | `401` | the key is wrong or revoked |
-| `403` | this worker is not fully enrolled yet — send a heartbeat first, then retry |
+| `403` | this worker is not fully enrolled yet; send a heartbeat first, then retry |
 | `422` | the body was rejected: a date that is not a real `YYYY-MM-DD` day, a non-finite `balance` or `fx_rate_usd`, or more than 2000 readings |
 
 Three things about it are deliberate:
@@ -85,12 +85,12 @@ repeated import is safe.
 `date` must be `YYYY-MM-DD` and a real calendar day. It is not free text: both
 delta readers order by it, so a differently shaped date sorts into the wrong
 place in its own series and the readings either side then difference against the
-wrong neighbour — silently, and only in the earned figure. A request may carry at
+wrong neighbour, silently and only in the earned figure. A request may carry at
 most **2000 readings**; send larger histories in chunks.
 
 `balance` and `fx_rate_usd` must be finite. JSON has no `NaN` or `Infinity`, but
 Python's parser accepts them, and one `NaN` balance poisons every earned figure
-taken from that series — every comparison against it is false, so the clamp
+taken from that series: every comparison against it is false, so the clamp
 misbehaves silently and the account total becomes `NaN`. They are rejected with
 `422`.
 
@@ -114,7 +114,7 @@ On each additional server, deploy only a worker pointing back to the UI:
 ```yaml
 services:
   cashpilot-worker:
-    image: drumsergio/cashpilot-worker:1.19
+    image: drumsergio/cashpilot-worker:1.57
     pull_policy: always
     container_name: cashpilot-worker
     # The worker's API is Docker-socket-backed (= root on the host). Bind it to a
@@ -126,14 +126,17 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
       - cashpilot_worker_data:/data
     environment:
-      - TZ=Europe/Madrid
+      - TZ=${TZ:-UTC}
       - CASHPILOT_UI_URL=http://main-server:8080
       - CASHPILOT_API_KEY=your-shared-api-key
       - CASHPILOT_WORKER_NAME=server-b
       - CASHPILOT_WORKER_URL=http://server-b:8081
+    init: true
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
+    tmpfs:
+      - /tmp:size=64M
 
 volumes:
   cashpilot_worker_data:
@@ -147,19 +150,19 @@ volumes:
 
 ## Why the UI and worker have separate data directories
 
-The shipped compose files give each its own `/data` volume — `cashpilot_data`
-for the UI, `cashpilot_worker_data` for the worker — and that is a security
+The shipped compose files give each its own `/data` volume (`cashpilot_data`
+for the UI, `cashpilot_worker_data` for the worker), and that is a security
 boundary, not tidiness.
 
 The worker mounts the Docker socket. **That is root on the host**: anything that
 can talk to it can start a privileged container and read any file on the
-machine. The UI's `/data` holds `cashpilot.db` and `.fernet_key` — the credential
+machine. The UI's `/data` holds `cashpilot.db` and `.fernet_key`: the credential
 store and the only key that can decrypt it.
 
 Keeping them apart means a compromised or misbehaving worker cannot simply read
 every provider password you have entered. It does not make the worker safe to
-expose — a worker with the Docker socket is as privileged as the host, which is
-why its API binds to loopback by default — but it does stop one component's
+expose (a worker with the Docker socket is as privileged as the host, which is
+why its API binds to loopback by default), but it does stop one component's
 blast radius from automatically including the other's secrets.
 
 **`/fleet` is shared, deliberately.** It holds only the enrolment key, which both
@@ -169,7 +172,7 @@ sides need by definition.
 
     Merging the two into one volume is the obvious simplification when tidying a
     compose file, it looks harmless, and it silently removes the boundary.
-    `tests/test_beads_batch_69.py` fails if anyone does — including if the UI
+    `tests/test_beads_batch_69.py` fails if anyone does, including if the UI
     ever gains the Docker socket, which is the premise the whole argument rests
     on.
 
@@ -179,12 +182,12 @@ CashPilot uses **per-worker fleet keys** (since v1.0.0). The shared `CASHPILOT_A
 
 - Set `CASHPILOT_API_KEY` on the UI and all workers (or let the UI + co-located worker auto-generate one via the `/fleet` volume).
 - **Enrollment:** a worker's first heartbeat authenticates with the shared key. The UI issues that worker its own unique key (stored encrypted on the UI, and returned once). The worker persists it under its private `/data`.
-- **After enrollment:** the worker authenticates every heartbeat with its own key, and the UI calls that worker with the same key. The shared key **no longer works** for an enrolled worker — so a leaked worker key only affects that one worker, and no worker can impersonate another.
+- **After enrollment:** the worker authenticates every heartbeat with its own key, and the UI calls that worker with the same key. The shared key **no longer works** for an enrolled worker, so a leaked worker key only affects that one worker, and no worker can impersonate another.
 
 The fleet key is **never sent to the browser on page load**. The fleet dashboard reveals it only on an explicit, owner-only action (the **Reveal API Key** button), and copy-to-clipboard fetches it the same way.
 
 !!! warning "Security"
-    Keys grant container-management access — treat them as sensitive credentials, and never expose worker APIs (port 8081) to the public internet. See the [v1.0.0 upgrade guide](upgrade-v1.md) if you are moving an existing fleet.
+    Keys grant container-management access: treat them as sensitive credentials, and never expose worker APIs (port 8081) to the public internet. See the [v1.0.0 upgrade guide](upgrade-v1.md) if you are moving an existing fleet.
 
 ## Fleet Dashboard
 
@@ -226,7 +229,7 @@ If a worker goes offline (no heartbeat for 180 seconds):
 | `CASHPILOT_ADMIN_API_KEY` | -- | Optional separate key granting full owner access (for integrations) |
 | `CASHPILOT_READONLY_API_KEY` | -- | Optional read-only key for dashboards. Reporting GETs only; refused everywhere else |
 | `CASHPILOT_WORKER_URL_POLICY` | `permissive` | Worker URL validation policy: `permissive` (LAN + Tailscale work out of the box) or `strict` (allowlist only) |
-| `CASHPILOT_WORKER_ALLOWED_HOSTS` | -- | Comma-separated CIDRs and `*.suffix` hostnames allowed in `strict` mode, e.g. `192.168.10.0/24,100.64.0.0/10,*.ts.net` |
+| `CASHPILOT_WORKER_ALLOWED_HOSTS` | -- | Comma-separated CIDRs and `*.suffix` hostnames allowed in `strict` mode, e.g. `192.168.1.0/24,100.64.0.0/10,*.ts.net` |
 | `CASHPILOT_WORKER_ALLOW_METADATA` | `false` | Escape hatch to permit cloud-metadata IPs as worker targets (leave `false`) |
 | `CASHPILOT_NTFY_URL` | -- | ntfy topic URL for out-of-band alerts, e.g. `https://ntfy.sh/my-topic` |
 | `CASHPILOT_WEBHOOK_URL` | -- | Generic endpoint receiving alert JSON (`title`, `message`, `kind`, `subject`) |
@@ -237,23 +240,25 @@ If a worker goes offline (no heartbeat for 180 seconds):
 
 Passive income is unattended, so an alert that only appears in an open browser tab is an alert nobody sees. Collector failures are **persisted** (they survive a restart and repopulate the notification bell) and, if any target above is configured, pushed out-of-band.
 
-Notifications fire **only the first time** a particular failure appears — a collector that has been broken for a week does not notify every hour. When the service recovers, its stored alert is cleared, so a later failure counts as new and notifies again. With no target configured the feature is entirely inert.
+Notifications fire **only the first time** a particular failure appears: a collector that has been broken for a week does not notify every hour. When the service recovers, its stored alert is cleared, so a later failure counts as new and notifies again. With no target configured the feature is entirely inert.
 
 ### Worker
 
 | Variable | Required | Default | Description |
 |----------|:--------:|---------|-------------|
-| `CASHPILOT_UI_URL` | Yes | -- | URL of the CashPilot UI (e.g. `http://192.168.10.100:8080`) |
+| `CASHPILOT_UI_URL` | Yes | -- | URL of the CashPilot UI (e.g. `http://192.168.1.10:8080`) |
 | `CASHPILOT_API_KEY` | Yes | -- | Must match the UI's API key |
 | `CASHPILOT_WORKER_NAME` | No | *(hostname)* | Display name for this worker. Recommended on Docker workers: without it the name is the container hostname, so it changes on every recreate and the dashboard label churns -- see [Worker identity](#worker-identity) |
 | `CASHPILOT_WORKER_URL` | No | *(auto-detected)* | URL the UI uses to reach this worker. Set explicitly for remote/cross-host workers -- auto-detection can report an unreachable address |
-| `CASHPILOT_PORT` | No | `8081` | Port the worker **advertises** to the UI. It does *not* change the listen port, which is fixed by the image's `CMD` — see the [configuration reference](configuration.md) |
+| `CASHPILOT_PORT` | No | `8081` | Port the worker **advertises** to the UI. It does *not* change the listen port, which is fixed by the image's `CMD`; see the [configuration reference](configuration.md) |
 | `CASHPILOT_ALLOWED_VOLUME_ROOTS` | No | *(none)* | Colon-separated host directories this worker may bind-mount despite sitting under a blocked system root -- see [Volume mounts](#volume-mounts) |
 | `CASHPILOT_PIDS_LIMIT` | No | `512` | Max processes a deployed service container may create. Raise only if a service legitimately needs more. An unparseable or non-positive value falls back to the default |
 | `CASHPILOT_WORKER_NETWORK` | No | *(detected)* | `residential` or `hosting`. Overrides the hardware-based guess -- see [Egress IP and per-IP limits](#egress-ip-and-per-ip-limits) |
 | `CASHPILOT_EGRESS_DETECT` | No | on | Set to `off` to stop this worker looking up its own public IP. The fleet then reports its exit as undetermined |
 | `CASHPILOT_EGRESS_IP` | No | -- | State this worker's public IP directly instead of looking it up. Must be a public address; a LAN or tailnet address is rejected |
 | `CASHPILOT_EGRESS_IP_URL` | No | -- | Use your own IP-echo endpoint (must return a bare IP) instead of the public ones |
+
+The worker also reads `CASHPILOT_DRIFT_WARNINGS`, `CASHPILOT_CONTAINER_NETWORK`, `CASHPILOT_CONTAINER_DNS`, `CASHPILOT_CONTAINER_RUNTIME` and `CASHPILOT_CONTAINER_RUNTIME_OVERRIDES`. They are described in the [configuration reference](configuration.md).
 
 ### Egress IP and per-IP limits
 
@@ -294,7 +299,7 @@ and raises no conflict warnings for it.
 
 Known limitation: grouping matches on the exact address, so on a **native-IPv6**
 connection each machine has its own global address and no conflict is detected.
-The check is therefore best-effort — it can miss a conflict, but it will not
+The check is therefore best-effort: it can miss a conflict, but it will not
 invent one.
 
 ### Volume mounts
@@ -310,17 +315,17 @@ environment:
 
 Multiple paths are colon-separated. An entry must clear two gates:
 
-- **Never a system path.** Anything resolving under `/etc`, `/root`, `/proc`, `/sys`, `/dev`, `/boot`, `/usr`, `/bin`, `/sbin`, `/lib`, `/run` or `/var` is refused **at any depth** — so `/run/docker.sock`, `/var/lib/docker/...` and `/etc/shadow` cannot be opted in.
+- **Never a system path.** Anything resolving under `/etc`, `/root`, `/proc`, `/sys`, `/dev`, `/boot`, `/usr`, `/bin`, `/sbin`, `/lib`, `/run` or `/var` is refused **at any depth**, so `/run/docker.sock`, `/var/lib/docker/...` and `/etc/shadow` cannot be opted in.
 - **Specific enough to be a service directory.** It must sit at least two components below the root it belongs to, so `/mnt/user/storj` is accepted while `/mnt` and `/mnt/user` (the entire Unraid array) are not.
 
 Relative paths are refused, and refusals are logged with the reason.
 
-!!! warning "Residual risk — allowlist only directories you trust"
+!!! warning "Residual risk: allowlist only directories you trust"
     The worker resolves paths in its **own** mount namespace and cannot see the host filesystem, so a symlink created *inside* an allowlisted directory by the service that owns it resolves differently here than in the Docker daemon. Only allowlist a directory whose contents you are willing to treat as trusted, and prefer a dedicated path (`/mnt/user/storj`) over a shared one.
 
 ### Deployed-container hardening
 
-Service containers are third-party and closed-source, so the worker deploys them with the minimum kernel surface: **all capabilities dropped**, then only the ones that service's own catalog entry declares added back. They also get `no-new-privileges`, a PID limit, and are **never** privileged — `privileged` is refused by spec validation and is not an accepted argument in the deploy path at all.
+Service containers are third-party and closed-source, so the worker deploys them with the minimum kernel surface: **all capabilities dropped**, then only the ones that service's own catalog entry declares added back. They also get `no-new-privileges`, a PID limit, and are **never** privileged: `privileged` is refused by spec validation and is not an accepted argument in the deploy path at all.
 
 If you add a service that genuinely needs a capability, declare it in that service's YAML (`docker.cap_add`). The check is **per service**: a slug may only request the capabilities its own catalog entry declares, so adding one to one service grants nothing to the others. Today that is Mysterium's `NET_ADMIN`, `SETUID` and `SETGID` (its node configures the VPN interface through `sudo`) and Bitping's `NET_RAW`.
 
@@ -355,7 +360,7 @@ worker enrolled before `/data/.worker_id` existed a durable identity to migrate 
 The UI validates every worker URL before contacting it (the URL is fetched with the fleet bearer token attached, so an unchecked URL is an SSRF risk). Cloud-metadata addresses and loopback/link-local ranges are **always blocked**, and resolved hostnames are re-checked against the same rules to guard against DNS rebinding.
 
 - **`permissive`** (default): LAN (RFC1918) and Tailscale (CGNAT `100.64.0.0/10`) workers keep working with no configuration. Only the always-blocked ranges are rejected.
-- **`strict`**: workers must match `CASHPILOT_WORKER_ALLOWED_HOSTS`. Entries are either CIDRs (`192.168.10.0/24`) or hostname suffixes (`*.ts.net`).
+- **`strict`**: workers must match `CASHPILOT_WORKER_ALLOWED_HOSTS`. Entries are either CIDRs (`192.168.1.0/24`) or hostname suffixes (`*.ts.net`).
 
 !!! important "Tailscale in strict mode"
     If you use Tailscale and enable `strict` mode, include `100.64.0.0/10` in `CASHPILOT_WORKER_ALLOWED_HOSTS` (and/or `*.ts.net` for MagicDNS names). Without it, Tailscale workers are rejected.

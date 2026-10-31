@@ -6,7 +6,7 @@
 
 ## Description
 
-URnetwork is a decentralized VPN and bandwidth-sharing network. You earn by providing bandwidth as a community provider. The provider container authenticates itself with your account email and password (the binary's `auth-provide` subcommand), stores the session JWT in the `urnetwork-data` volume, and starts providing — no manual token extraction involved.
+URnetwork is a decentralized VPN and bandwidth-sharing network. You earn by providing bandwidth as a community provider. The provider container authenticates itself with your account email and password (the binary's `auth-provide` subcommand), stores the session JWT in the `urnetwork-data` volume, and starts providing, with no manual token extraction involved.
 
 ## Earning Estimates
 
@@ -40,11 +40,11 @@ Sign up at [URnetwork](https://ur.io/?referral_code=1Q3G19).
 
 ### 2. Get your credentials
 
-The provider logs in with your normal URnetwork account: the email and password you use at [ur.io](https://ur.io). If you created the account with Google or Apple sign-in, set a password on it first — the headless provider has no browser to run an SSO flow in.
+The provider logs in with your normal URnetwork account: the email and password you use at [ur.io](https://ur.io). If you created the account with Google or Apple sign-in, set a password on it first: the headless provider has no browser to run an SSO flow in.
 
 ### 3. Deploy with CashPilot
 
-In the CashPilot web UI, find **URnetwork** in the service catalog and click **Deploy**. Enter your email and password; the provider authenticates on first start (`Jwt written to /root/.urnetwork/jwt` in its log), keeps the session in the `urnetwork-data` volume, and starts providing.
+In the CashPilot web UI, open **Catalog** and click **Add** on the **URnetwork** row, or click **+ Add service** in the top bar and pick it there. Enter your email and password and click **Deploy URnetwork**. The provider authenticates on first start (`Jwt written to /root/.urnetwork/jwt` in its log), keeps the session in the `urnetwork-data` volume, and starts providing.
 
 ### 4. Get paid
 
@@ -56,7 +56,7 @@ Since 2026-10-06 URnetwork pays providers in SN25α, the token of Bittensor subn
 
 Claims expire, so don't leave them. Earnings from before 2026-10-06 go out as one final USDC payout.
 
-> **Deployed URnetwork before and it never earned anything?** CashPilot releases before this fix asked for a `UR_AUTH_TOKEN` variable that the provider binary has never read — the container simply ran unauthenticated (issue #344). Upgrade CashPilot, then **Deploy** URnetwork again from the catalog with your email and password.
+> **Deployed URnetwork before and it never earned anything?** CashPilot releases before this fix asked for a `UR_AUTH_TOKEN` variable that the provider binary has never read, so the container simply ran unauthenticated (issue #344). Upgrade CashPilot, then **Deploy** URnetwork again from the catalog with your email and password.
 
 ## Docker Configuration
 

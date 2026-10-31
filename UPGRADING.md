@@ -4,7 +4,7 @@
 listed here. If a version is not mentioned, `docker compose pull && docker compose up -d`
 is all it needs.
 
-[CHANGELOG.md](CHANGELOG.md) carries the detailed notes recorded so far — it is
+[CHANGELOG.md](CHANGELOG.md) carries the detailed notes recorded so far, but it is
 **not** a complete release history, so do not treat it as the authoritative list
 of what an upgrade requires. This file is: what breaks, who it affects, and what
 to type.
@@ -13,12 +13,33 @@ to type.
 pin both images to the same tag for exactly this reason.
 
 **Back up `/data` first.** `cashpilot.db` holds your earnings history and
-`.fernet_key` decrypts every stored credential — without that key they cannot be
-recovered. See [Backing up node identities](docs/backup.md) for the rest.
+`.fernet_key` decrypts every stored credential; without that key they cannot be
+recovered. [Backing up and restoring CashPilot](docs/backup-restore.md) has the
+commands, and [Backing up node identities](docs/backup.md) covers the rest.
 
 ---
 
-## v1.36.6 — a Mysterium node deployed by CashPilot has to be redeployed once
+## v1.46.0: redeploy Mysterium once to close the tailnet to its customers
+
+**Affects you if** you run Mysterium through CashPilot and deployed it before
+v1.46.0. Otherwise **no action is required**.
+
+**What changed.** The node blocks a list of private ranges for its VPN
+customers. Its default list leaves out `100.64.0.0/10` (Tailscale and
+carrier-grade NAT) and `169.254.0.0/16` (cloud metadata). Since v1.46.0 the
+catalog starts the node with both added, through `--firewall.protected.networks`.
+
+**What breaks if you do nothing.** Nothing stops working. A node deployed
+earlier keeps the default list, so a customer's traffic can still reach those
+ranges, and **Check isolation** on the Fleet page flags it.
+
+**What to do.** Upgrade the UI and the worker that runs Mysterium, then redeploy
+Mysterium from the dashboard. The identity stays in its data volume. Details:
+[Mysterium, which uses host networking](docs/isolation-check.md#mysterium-which-uses-host-networking).
+
+---
+
+## v1.36.6: a Mysterium node deployed by CashPilot has to be redeployed once
 
 **Affects you if** you run Mysterium (MystNodes) through CashPilot. Check on the
 host that runs it:
@@ -55,9 +76,11 @@ and not earning.
    `volume mysterium-data...` is what CashPilot creates: open Mysterium in the
    dashboard and **redeploy** it, and the node keeps its identity and
    reputation. A `bind` mount means the container was created or changed outside
-   CashPilot. A redeploy would move it onto the `mysterium-data` volume, which
-   is a different identity. Recreate that container by hand instead, with the
-   same mount, following the [Mysterium guide](docs/guides/mysterium.md).
+   CashPilot. On v1.36.7 or newer a redeploy keeps the mounts the container has
+   now, so redeploy it from the dashboard too. On v1.36.6 exactly, a redeploy
+   would move it onto the `mysterium-data` volume, which is a different
+   identity: upgrade first, or recreate that container by hand with the same
+   mount, following the [Mysterium guide](docs/guides/mysterium.md).
 3. Confirm: `docker exec cashpilot-mysterium sudo -n true && echo SUDO_OK`, and
    the `grep -c` above stays at `0` for the new container.
 
@@ -66,7 +89,7 @@ MystNodes takes several hours to re-score a node. The full walkthrough is in the
 
 ---
 
-## v1.11.30 — the shared fleet key stops working for a worker that never enrolled
+## v1.11.30: the shared fleet key stops working for a worker that never enrolled
 
 **Affects you if** a worker appears in your fleet but has never confirmed its own
 key. On the Workers page these now show an **"enrollment incomplete"** badge. If
@@ -80,14 +103,14 @@ its per-worker key.
 
 **What changed.** `CASHPILOT_API_KEY` is the shared *enrollment* key. Once a
 worker has been issued its own key, the shared one is meant to stop working for
-it — that is the entire point of per-worker keys. Until now, a worker that never
+it. That is the entire point of per-worker keys. Until now, a worker that never
 confirmed kept the shared key valid for its identity **forever**, and the UI
 re-sent that key to whoever held it every 60 seconds. The window is now bounded
 at **24 hours from the moment the key was issued**.
 
 **What breaks if you do nothing.** Such a worker starts receiving `401` on its
 heartbeat and disappears from the dashboard. Containers it manages keep running
-and keep earning — you simply stop seeing and controlling them.
+and keep earning; you simply stop seeing and controlling them.
 
 **What to do.** Give the worker somewhere to keep its key, then let it enrol
 again:
@@ -106,7 +129,7 @@ again:
    chown 1000:1000 /path/to/worker/data/.worker_id
    ```
 
-4. Remove the worker on the fleet page, then **restart the container** — the
+4. Remove the worker on the fleet page, then **restart the container**. The
    identity is read at startup, so `docker compose up -d` on an already-running
    container does not re-read it:
 
@@ -116,7 +139,7 @@ again:
    ```
 
    It writes `/data/.worker_key` once enrolled. Confirm that file exists.
-5. For the **Android app**, update it to **v0.2.0 or newer** — earlier builds
+5. For the **Android app**, update it to **v0.2.0 or newer**; earlier builds
    cannot persist the key at all.
 
 Existing, already-enrolled workers are untouched: they authenticate with their
@@ -124,31 +147,31 @@ own key, which does not expire.
 
 ---
 
-## v1.11.4 — the example compose files pin a release series
+## v1.11.4: the example compose files pin a release series
 
 **Affects you if** you copied `docker-compose.yml` from the repo and are relying
 on it tracking the newest build. Your existing deployment is **unaffected until
-you edit your compose file** — nothing changes underneath you.
+you edit your compose file**: nothing changes underneath you.
 
 **What changed.** The examples pin `1.11` instead of `latest`, so following the
 quickstart gives you a known version rather than whatever was pushed most
 recently.
 
-**What to do.** Nothing. If you want a different version, pin an explicit one —
-`drumsergio/cashpilot:1.12.0` — rather than a floating tag. `:latest` is not
+**What to do.** Nothing. If you want a different version, pin an explicit one
+(`drumsergio/cashpilot:1.12.0`) rather than a floating tag. `:latest` is not
 supported: it makes the version you are running unknowable, which is what
 produced a months-old bug report against a bug that had already been fixed.
 
 ---
 
-## v1.5.0 — CashPilot refuses to start if it cannot persist its encryption key
+## v1.5.0: CashPilot refuses to start if it cannot persist its encryption key
 
 **Affects you if** your `/data` is not writable. **No action is required** if it
 is a normal bind mount or volume.
 
 **What changed.** Credentials are encrypted with a key at `/data/.fernet_key`. If
 that could not be written, CashPilot used to carry on with a key that died with
-the process — so everything encrypted during that run became unreadable on the
+the process, so everything encrypted during that run became unreadable on the
 next restart. It now refuses to start instead.
 
 **What breaks if you do nothing.** The container exits at startup with an error
@@ -159,18 +182,18 @@ genuinely what you want, set `CASHPILOT_ALLOW_EPHEMERAL_KEY=true` and accept tha
 stored credentials will not survive a restart.
 
 **Back up `/data/.fernet_key`.** Without it, stored credentials cannot be
-decrypted — not by you, and not by us.
+decrypted, not by you, and not by us.
 
 ---
 
-## v1.0.4 — the dashboard binds to loopback by default
+## v1.0.4: the dashboard binds to loopback by default
 
 **Affects you if** you reach the dashboard from another machine on your LAN and
 you use the shipped compose file. **No action is required** if you browse from
 the host itself, or if you front it with a reverse proxy on the same machine.
 
-**What changed.** The compose files bind the dashboard — and, in the fleet
-compose, the Docker-socket worker — to `127.0.0.1` instead of `0.0.0.0`. The
+**What changed.** The compose files bind the dashboard (and, in the fleet
+compose, the Docker-socket worker) to `127.0.0.1` instead of `0.0.0.0`. The
 worker has the Docker socket, which is root-equivalent on the host, so publishing
 it to the whole network by default was the wrong default.
 
@@ -188,9 +211,9 @@ CASHPILOT_BIND_ADDR=192.168.1.10 docker compose up -d
 reach it, and it does so over the Docker network.
 
 **On a fleet**, a remote worker must be reachable by the UI, and it uses a
-*different* variable — `CASHPILOT_WORKER_BIND_ADDR` in `docker-compose.fleet.yml`.
+*different* variable: `CASHPILOT_WORKER_BIND_ADDR` in `docker-compose.fleet.yml`.
 Left on loopback, a remote worker is unreachable and its containers become
-unmanageable. Bind it to the interface the UI reaches it on — a tailnet address
+unmanageable. Bind it to the interface the UI reaches it on: a tailnet address
 rather than `0.0.0.0`, since that port carries the Docker socket API:
 
 ```bash
@@ -199,13 +222,13 @@ CASHPILOT_WORKER_BIND_ADDR=100.x.y.z docker compose up -d
 
 ---
 
-## v1.0.0 — per-worker fleet keys
+## v1.0.0: per-worker fleet keys
 
 A full cutover with its own page: **[Upgrade to v1.0.0](docs/upgrade-v1.md)**.
 
 In short: every worker is issued its own key on first heartbeat and uses it
 thereafter; `CASHPILOT_API_KEY` becomes an enrollment credential only. Keep it
-set — enrollment still needs it. Upgrade the UI first, then every worker.
+set, because enrollment still needs it. Upgrade the UI first, then every worker.
 
 ---
 
@@ -218,5 +241,5 @@ docker compose pull && docker compose up -d
 ```
 
 **On a fleet, run that on every host.** It only updates the Compose project it
-runs in, so remote workers stay on their old version until you upgrade them too —
+runs in, so remote workers stay on their old version until you upgrade them too,
 and the UI and workers are meant to be on the same release.

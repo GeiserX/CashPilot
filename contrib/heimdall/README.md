@@ -1,7 +1,7 @@
 # Heimdall app submission
 
 Everything needed to list CashPilot on [Heimdall](https://apps.heimdall.site/)
-as an **enhanced** app — a tile showing live earnings and running-service count,
+as an **enhanced** app: a tile showing live earnings and running-service count,
 not just a link.
 
 These files are kept here rather than in a fork so they stay versioned with the
@@ -10,7 +10,7 @@ API they call. Nothing here is used at runtime.
 ## Why enhanced rather than foundation
 
 Heimdall apps build their own HTTP request attributes, so they can send an
-`Authorization` header — 25 apps in their repo already do. CashPilot already
+`Authorization` header; 25 apps in their repo already do. CashPilot already
 accepts Bearer auth (`app/auth.py`, checked before the session cookie), so an
 enhanced tile needs **no server change at all**.
 
@@ -24,7 +24,7 @@ The tile must not turn our uncertainty into the user's loss:
 - `has_readings` is false on a fresh install **and** on one whose collection has
   silently stopped. `$0.00` there asserts a measurement nobody took, so the tile
   shows an em dash.
-- `active_services` is deliberately **null** when the count could not be taken —
+- `active_services` is deliberately **null** when the count could not be taken:
   the worker query failed while containers are in fact running. `0` there reads
   as "nothing is running", the opposite of the truth. Also an em dash.
 
@@ -43,11 +43,11 @@ are deleted. Steps 1–2 are a web form and cannot be scripted.
    |---|---|
    | Name | `CashPilot` |
    | Website | `https://github.com/GeiserX/CashPilot` |
-   | Licence | `GNU General Public License v3.0 only` |
-   | Description | Self-hosted passive income orchestrator. Deploy, manage and monitor bandwidth-sharing, DePIN, storage and GPU compute containers from one dashboard, with earnings tracked across 49 services. |
+   | Licence | `GNU General Public License v3.0 or later` |
+   | Description | Self-hosted passive income orchestrator. Deploy, manage and monitor bandwidth-sharing, DePIN, storage and GPU compute containers from one dashboard, with every service's earnings tracked in one place. |
    | Enhanced | yes |
    | Tile background | `dark` |
-   | Icon | `docs/images/logo.svg` from this repository — the official mark, transparent, disc filling the frame edge to edge |
+   | Icon | `docs/images/logo.svg` from this repository: the official mark, transparent, disc filling the frame edge to edge |
 
 2. Once the request exists, use the **Enhanced** download button on their site to
    get the scaffold.
@@ -62,7 +62,7 @@ are deleted. Steps 1–2 are a web form and cannot be scripted.
 
    That matches the `appid` in `app.json` exactly, and the same relation holds
    for Grafana, Vaultwarden and Home Assistant. Knowing it means the whole
-   package can be assembled and **tested locally before submitting anything** —
+   package can be assembled and **tested locally before submitting anything**;
    see below.
 
 3. Fork `linuxserver/Heimdall-Apps`, make a branch named for the app, extract the
@@ -91,10 +91,10 @@ config bind mount, so a hand-installed app survives a container update:
    `icons/`. The blades must sit **beside** the PHP class: Heimdall registers
    the view namespace as `addNamespace('SupportedApps', app_path('SupportedApps'))`.
    (Enhanced apps such as Jellyfin and UniFi ship blades; non-enhanced ones such
-   as Grafana ship none — so a file listing from the wrong app misleads.)
+   as Grafana ship none, so a file listing from the wrong app misleads.)
 2. Own the files **numerically**, e.g. `chown -R 1000:1000`. On an unRAID host
    `chown abc:users` fails: that user exists only inside the container.
-3. Point an item at it — `class` = `App\SupportedApps\CashPilot\CashPilot`,
+3. Point an item at it: `class` = `App\SupportedApps\CashPilot\CashPilot`,
    `appid` as above, and the settings as **JSON** in `items.description`:
    `{"enabled":"1","url":"...","access_token":"..."}`. `Item::enabled()` reads
    `config->enabled`, so livestats render only when it is set.
@@ -121,8 +121,8 @@ rather than asserted:
 | server says | Earnings | Running |
 |---|---|---|
 | `has_readings:true, total_adjusted:66.61, active_services:43` | `$66.61` | `43` |
-| `has_readings:false, total_adjusted:0` | **—** | `43` |
-| `active_services:null` | `$66.61` | **—** |
+| `has_readings:false, total_adjusted:0` | *(em dash)* | `43` |
+| `active_services:null` | `$66.61` | *(em dash)* |
 | `has_readings:true, total_adjusted:0, active_services:0` | `$0.00` | `0` |
 
 The last row is the one that matters. It carries the same `0` as the second and
@@ -136,19 +136,19 @@ Use **`CASHPILOT_READONLY_API_KEY`**. It is scoped to reporting endpoints and
 cannot deploy, stop or remove anything, which is exactly what a tile needs.
 
 The admin and fleet keys also work, but the admin key grants full container
-control and the fleet key is the *enrolment* credential — anything holding it
+control and the fleet key is the *enrolment* credential: anything holding it
 can enrol a worker. Handing either to a dashboard is far more than showing two
 numbers requires.
 
 ### A correction worth keeping
 
-An earlier version of this file sent `docs/icon.svg` — a square with its own
-dark background plate — and justified it by claiming `logo.svg` carried a white
+An earlier version of this file sent `docs/icon.svg` (a square with its own
+dark background plate) and justified it by claiming `logo.svg` carried a white
 background. **That was wrong.** The white rect in `logo.svg` sits inside a
 `<mask>`, so it is never painted; the file renders fully transparent (top-left
 pixel `srgba(0,0,0,0)`).
 
 It matters because their guidance explicitly asks for transparent backgrounds,
-and Heimdall paints its own colour behind the icon — a plate fights it. The
+and Heimdall paints its own colour behind the icon, and a plate fights it. The
 lesson is the cheap one: that claim came from reading the markup, and one
 render would have settled it.

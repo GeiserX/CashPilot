@@ -6,10 +6,10 @@ much more ordinary things.
 **Someone else's traffic leaves under your IP address.** The FBI/IC3 has issued
 a public notice about residential proxy networks, and researchers have shown
 that node operators cannot see what traffic exits through them. Whatever a buyer
-does looks like you — to your ISP, to sites that block the address, and to law
+does looks like you: to your ISP, to sites that block the address, and to law
 enforcement. That is not a bug in these services; it is what they sell.
 
-**A hostile image's realistic prize is your LAN.** Not the bandwidth — your Home
+**A hostile image's realistic prize is your LAN.** Not the bandwidth, but your Home
 Assistant, your NAS shares, your media server, your password manager. Those sit
 on the same network you just handed a closed-source container.
 
@@ -26,7 +26,7 @@ allowed through: `GET /api/fleet/isolation-guide`.
 
 It **does not** create bridges or firewall rules on your host. That is a change
 with real blast radius, and getting the exceptions wrong costs money rather than
-convenience — a storage node that cannot accept inbound connections stops
+convenience: a storage node that cannot accept inbound connections stops
 earning and puts its held balance at risk. So the recipe is yours to apply.
 
 ## The three answers
@@ -35,7 +35,7 @@ earning and puts its held balance at risk. So the recipe is yours to apply.
 |---|---|
 | **isolatable** | Outbound only. Confine it as-is. |
 | **needs exceptions** | It can be confined, but specific things must stay reachable. |
-| **not isolatable** | It runs on the host network — a container bridge does not apply. Use a VLAN or a separate machine. |
+| **not isolatable** | It runs on the host network, so a container bridge does not apply. Use a VLAN or a separate machine. |
 
 Today `mysterium` is the third case (it declares `network_mode: "host"`), and
 `storj` is the second: it needs its inbound port **and** its local dashboard
@@ -62,8 +62,8 @@ networks:
     rule that matters is on the **host firewall**, applied to that bridge,
     denying:
 
-    - `10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16` — your LAN
-    - `169.254.0.0/16` — cloud metadata. On a VPS, a container that reaches this
+    - `10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`: your LAN
+    - `169.254.0.0/16`: cloud metadata. On a VPS, a container that reaches this
       can often mint credentials for the whole account.
 
     ...while still allowing every exception the guide lists for the services you
@@ -82,7 +82,7 @@ that looks right can still be skipped, and the test shows it in one command.
 
 On the **Fleet** page, the owner sees **Check isolation** on each worker. The
 same check is `POST /api/workers/{id}/isolation-check`. The worker has to run
-this release or later, and reach its Docker socket: a worker without one does
+1.46.0 or later, and reach its Docker socket: a worker without one does
 not offer the button.
 
 The worker starts two short-lived containers from its own image, so it pulls
@@ -121,7 +121,7 @@ no firewall rule.
   got through, the result says so and names it.
 - **Not isolated.** The result lists each problem with a link to its fix,
   grouped as your LAN, this host, overlay network and cloud metadata. It also
-  flags two things the probes cannot see:
+  flags three things the probes cannot see:
     - earners on a bridge other than `CASHPILOT_CONTAINER_NETWORK`, which your
       rules do not cover, including stopped ones, which are exposed again as
       soon as they start;
@@ -179,8 +179,8 @@ already run VLANs, that is the better answer.
 service, driven by its own catalog disclosure. Three outcomes, and the third
 matters most:
 
-- documented as reselling your IP — you get the full warning;
-- documented as **not** reselling (a storage node) — no warning, because a false
+- documented as reselling your IP: you get the full warning;
+- documented as **not** reselling (a storage node): no warning, because a false
   one teaches you to click past the real ones;
-- **not documented at all** — it says exactly that. Most of the catalog is
+- **not documented at all**: it says exactly that. Most of the catalog is
   undocumented, and "nobody checked" must never read as "no risk".

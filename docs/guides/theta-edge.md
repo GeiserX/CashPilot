@@ -36,18 +36,10 @@ Theta Network is an established decentralized video delivery and AI compute netw
 
 Sign up at [Theta Edge Node](https://thetatoken.org).
 
-### 2. Get your credentials
+### 2. Run it outside CashPilot
 
-After signing up, locate the credentials needed for Docker deployment. These are typically your email/password or an API token found in the dashboard.
-
-### 3. Deploy with CashPilot
-
-In the CashPilot web UI, find **Theta Edge Node** in the service catalog and click **Deploy**. Enter the required credentials and CashPilot will handle the rest.
+CashPilot cannot deploy Theta Edge Node. The catalog has no Docker image for it, so its row in **Catalog** shows **Visit** instead of **Add**. Install the Theta Edge Node desktop app on Windows, macOS or Linux. CashPilot does not read Theta Edge Node earnings either, so check them in the provider's dashboard.
 
 ## Docker Configuration
 
-- **Image:** ``
-
-### Environment Variables
-
-No environment variables required.
+None. The catalog has no Docker image for Theta Edge Node.

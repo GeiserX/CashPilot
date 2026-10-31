@@ -29,6 +29,7 @@ Repocket sets the minimum per account: $4 before the first payout and $2 after i
 | Requirement | Value |
 |-------------|-------|
 | Residential IP | Yes |
+| Devices per account | 5 |
 | Minimum bandwidth | None |
 | GPU required | No |
 | Minimum storage | None |
@@ -44,11 +45,11 @@ Sign up at [Repocket](https://link.repocket.com/b1zM).
 
 ### 2. Get your API key
 
-Log in at [app.repocket.com](https://app.repocket.com/bandwidth-earnings) and copy the **API key** shown on the bandwidth-earnings page. This API key — not your account password — is what the Docker container uses to authenticate.
+Log in at [app.repocket.com](https://app.repocket.com/bandwidth-earnings) and copy the **API key** shown on the bandwidth-earnings page. This API key, not your account password, is what the Docker container uses to authenticate.
 
 ### 3. Deploy with CashPilot
 
-In the CashPilot web UI, find **Repocket** in the service catalog and click **Deploy**. Enter your account email and the API key. The key is a UUID (eight hex characters, then three groups of four, then twelve, separated by hyphens), and CashPilot refuses anything else before it contacts the worker, so a password pasted in by mistake never reaches the container. The earnings collector under **Settings**, **Collectors** is a separate login with your account email and password; it does not configure the container.
+In the CashPilot web UI, open **Catalog** and click **Add** on the **Repocket** row, or click **+ Add service** in the top bar and pick it there. Enter your account email and the API key, then click **Deploy Repocket**. The key is a version 4 UUID: eight hex characters, then three groups of four, then twelve, separated by hyphens. CashPilot refuses anything else before it contacts the worker, so a password pasted in by mistake never reaches the container. The earnings collector under **Settings → Earnings collection** is a separate login with your account email and password; it does not configure the container.
 
 ### Recover a container that keeps restarting
 
@@ -68,4 +69,4 @@ A Repocket container started with a password, or any other wrong value, in `RP_A
 | Variable | Label | Required | Secret | Description |
 |----------|-------|:--------:|:------:|-------------|
 | `RP_EMAIL` | Email | Yes | No | Your Repocket account email |
-| `RP_API_KEY` | API Key | Yes | Yes | Your Repocket API key from the dashboard's bandwidth-earnings page (not your account password) |
+| `RP_API_KEY` | API Key (UUIDv4, not your password) | Yes | Yes | Your Repocket API key from the dashboard's bandwidth-earnings page (not your account password) |

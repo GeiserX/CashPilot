@@ -10,7 +10,7 @@ Earnings vary widely based on location, ISP, number of devices, and which servic
 
 **Can I run on a VPS or cloud server?**
 
-Some services require a residential IP and will not pay (or will ban) VPS/datacenter IPs. These are marked as "Residential Only" in the service catalog. Services that work on VPS are a good way to scale up without additional home hardware.
+Some services require a residential IP and will not pay (or will ban) VPS/datacenter IPs. The catalog lists "residential IP" under what they need. Services that work on VPS are a good way to scale up without additional home hardware.
 
 **How are credentials stored?**
 
@@ -34,7 +34,7 @@ CASHPILOT_ENCRYPTION_KEY=<the value you saved> docker compose up -d
 
 The file always takes precedence over the environment variable, so setting `CASHPILOT_ENCRYPTION_KEY` on an instance that already has a key changes nothing and is safe. It is adopted only when no key file exists, which is exactly the restore case.
 
-If the key cannot be written to disk at all — an unwritable or unmounted `/data` — CashPilot refuses to start rather than encrypting your credentials under a key that disappears on the next restart. Set `CASHPILOT_ALLOW_EPHEMERAL_KEY=true` if that is genuinely what you want.
+If CashPilot cannot write the key to disk at all, because `/data` is unwritable or unmounted, it refuses to start rather than encrypting your credentials under a key that disappears on the next restart. Set `CASHPILOT_ALLOW_EPHEMERAL_KEY=true` if that is genuinely what you want.
 
 **What about security?**
 

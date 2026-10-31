@@ -38,7 +38,7 @@ Sign up at [Salad](https://salad.io) and install the desktop application on your
 
 ### 2. Get your auth cookie
 
-Salad runs as a native Windows app — there is no Docker image. To let CashPilot track your earnings:
+Salad runs as a native Windows app; there is no Docker image. To let CashPilot track your earnings:
 
 1. Open [salad.com](https://salad.com) in your browser and log in.
 2. Press **F12** to open DevTools.
@@ -47,14 +47,10 @@ Salad runs as a native Windows app — there is no Docker image. To let CashPilo
 
 ### 3. Configure CashPilot
 
-Add the cookie to your CashPilot configuration:
+Open **Settings**, find Salad under **Earnings collection**, paste the cookie and click **Save credentials**.
 
-```
-salad_auth_cookie=<your auth cookie value>
-```
-
-CashPilot will poll `app-api.salad.com/api/v1/profile/balance` to fetch your current and lifetime balance.
+CashPilot polls `app-api.salad.com/api/v1/profile/balance` to fetch your current balance.
 
 ## Docker Configuration
 
-Salad is a native Windows desktop application — no Docker image is available. CashPilot monitors earnings via the Salad API only.
+Salad is a native Windows desktop application, and no Docker image is available. CashPilot monitors earnings via the Salad API only.

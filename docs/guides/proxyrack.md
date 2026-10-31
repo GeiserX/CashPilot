@@ -14,7 +14,7 @@ ProxyRack's Peer program lets you earn by sharing your bandwidth as part of thei
 |--------|-------|
 | Monthly range | $0 - $4 (estimate) |
 | Per | device |
-| Minimum payout | $5 |
+| Minimum payout | $20 |
 | Payout frequency | On request |
 | Payment methods | Paypal, Crypto |
 
@@ -25,6 +25,7 @@ ProxyRack's Peer program lets you earn by sharing your bandwidth as part of thei
 | Requirement | Value |
 |-------------|-------|
 | Residential IP | No |
+| Devices per account | 500 |
 | Minimum bandwidth | None |
 | GPU required | No |
 | Minimum storage | None |
@@ -40,11 +41,21 @@ Sign up at [ProxyRack](https://peer.proxyrack.com/ref/mpwiok3xlaxeycnn5znqlg7ipj
 
 ### 2. Get your credentials
 
-After signing up, locate the credentials needed for Docker deployment. These are typically your email/password or an API token found in the dashboard.
+Each device needs its own 64-character hex UUID. Make one with:
+
+```sh
+cat /dev/urandom | tr -dc 'a-f0-9' | fold -w 64 | head -n 1
+```
+
+The API key is optional: it is shown on the main page of [peer.proxyrack.com](https://peer.proxyrack.com), and with it the container registers itself on your account.
 
 ### 3. Deploy with CashPilot
 
-In the CashPilot web UI, find **ProxyRack** in the service catalog and click **Deploy**. Enter the required credentials and CashPilot will handle the rest.
+In the CashPilot web UI, open **Catalog** and click **Add** on the **ProxyRack** row, or click **+ Add service** in the top bar and pick it there. Paste a new UUID into **Device UUID**, add your API key if you have one, then click **Deploy ProxyRack**.
+
+### 4. Link the device to your account
+
+Until the device is on your account it earns for nobody. Sign in to [peer.proxyrack.com](https://peer.proxyrack.com), open **Devices**, choose **Add device** and paste the UUID. If you entered an API key, the container registers itself. Check that the device is listed there anyway.
 
 ## Docker Configuration
 

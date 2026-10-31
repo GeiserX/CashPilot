@@ -18,7 +18,7 @@ Formerly BlockMesh, now rebranded as Perceptron Network. A decentralized bandwid
 | Payout frequency | Token airdrop (TBA) |
 | Payment methods | Crypto |
 
-> Earns points pre-token launch. Solana wallet required. Rebranded to Perceptron Network — proceed with caution.
+> Earns points pre-token launch. Solana wallet required. Rebranded to Perceptron Network. Proceed with caution.
 
 ## Requirements
 
@@ -36,18 +36,10 @@ Formerly BlockMesh, now rebranded as Perceptron Network. A decentralized bandwid
 
 Sign up at [BlockMesh (Perceptron Network)](https://blockmesh.xyz).
 
-### 2. Get your credentials
+### 2. Not available in CashPilot
 
-After signing up, locate the credentials needed for Docker deployment. These are typically your email/password or an API token found in the dashboard.
-
-### 3. Deploy with CashPilot
-
-In the CashPilot web UI, find **BlockMesh (Perceptron Network)** in the service catalog and click **Deploy**. Enter the required credentials and CashPilot will handle the rest.
+CashPilot hides BlockMesh (Perceptron Network) from the catalog and refuses to deploy it, because its catalog status is **Dropped**. The catalog has no Docker image for it either.
 
 ## Docker Configuration
 
-- **Image:** ``
-
-### Environment Variables
-
-No environment variables required.
+None. The catalog has no Docker image for BlockMesh (Perceptron Network).
