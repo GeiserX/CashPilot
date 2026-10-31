@@ -128,7 +128,7 @@ The UI's web port inside the container is fixed at `8080` (set via the container
 
 ## Updating CashPilot
 
-The compose file pins the `1.56` series, so `pull` fetches the newest patch of that series:
+The compose file pins the `1.57` series, so `pull` fetches the newest patch of that series:
 
 ```bash
 docker compose pull
@@ -150,8 +150,8 @@ latest image first.
 
 ### Pinning a specific version
 
-To stay on one exact release, replace `1.56` with the patch tag, for example
-`drumsergio/cashpilot:1.56.5` and `drumsergio/cashpilot-worker:1.56.5` (always
+To stay on one exact release, replace `1.57` with the patch tag, for example
+`drumsergio/cashpilot:1.57.0` and `drumsergio/cashpilot-worker:1.57.0` (always
 the same tag on both), and remove `pull_policy: always`. To move to a newer
 series, edit both tags. Browse tags on
 [Docker Hub](https://hub.docker.com/r/drumsergio/cashpilot/tags).
