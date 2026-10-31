@@ -4761,7 +4761,7 @@ const CP = (() => {
   // -----------------------------------------------------------
   // Theme
   // -----------------------------------------------------------
-  // Three themes: dark (the default), light and classic, picked in the avatar
+  // Three themes: classic (the default), dark and light, picked in the avatar
   // menu by any signed-in role. The choice is saved to the account. The server
   // writes it into <html data-theme> on every signed-in page, so that page
   // paints it from the first frame on any browser; the pre-paint script in
@@ -4770,7 +4770,7 @@ const CP = (() => {
 
   function currentTheme() {
     const t = document.documentElement.getAttribute('data-theme');
-    return THEMES.includes(t) ? t : 'dark';
+    return THEMES.includes(t) ? t : 'classic';
   }
 
   function applyTheme(theme) {

@@ -181,18 +181,19 @@ img { max-width: 100%; }
   color: var(--text-secondary);
 }
 
-/* Theme picker in the avatar menu: Dark / Light / Classic */
+/* Theme picker in the avatar menu: Classic (default) / Dark / Light, one per row
+   so the longer default label fits the 200px menu. */
 .avatar-theme { display: flex; flex-direction: column; gap: 6px; padding: 8px 12px; }
 .avatar-theme-title { font-size: var(--fs-2); color: var(--text-muted); }
 .avatar-theme-options {
-  display: grid; grid-template-columns: repeat(3, 1fr);
+  display: grid; grid-template-columns: 1fr;
   border: 1px solid var(--border-light); border-radius: 2px; overflow: hidden;
 }
 .avatar-theme-options button {
   font: inherit; font-size: var(--fs-2); padding: 4px 0; cursor: pointer;
   background: none; border: 0; color: var(--text-secondary);
 }
-.avatar-theme-options button + button { border-left: 1px solid var(--border-light); }
+.avatar-theme-options button + button { border-top: 1px solid var(--border-light); }
 .avatar-theme-options button:hover { background: var(--bg-hover); color: var(--text-primary); }
 .avatar-theme-options button[aria-pressed="true"] { background: var(--bg-tertiary); color: var(--text-primary); font-weight: 600; }
 
@@ -2167,7 +2168,7 @@ body.gate { display: flex; flex-direction: column; }
 }
 
 /* ----- Classic night -----
-   Opt-in theme (avatar menu > Theme), data-theme="classic": the pre-#492
+   The default theme (avatar menu > Theme), data-theme="classic": the pre-#492
    blue-black, violet hairlines, rose actions and cyan focus. Layout, type and
    the status colours stay as in the dark theme. Contrast is listed in the PR
    that added it; every text pair is >= 4.5:1 and every UI pair >= 3:1. */

@@ -1,9 +1,10 @@
 // Run the real theme code against a stub DOM.
 //
-// Classic night is a third theme. What has to hold, and only running the code
-// shows it:
+// Classic night is the default theme, next to dark and light. What has to
+// hold, and only running the code shows it:
 //   1. every page's pre-paint script reads the localStorage key the theme code
-//      writes, so a saved Classic paints Classic first;
+//      writes, so a saved theme paints first, and with nothing saved anywhere
+//      the first paint is Classic;
 //   2. on a signed-in page the theme the server wrote into <html data-theme>
 //      wins over whatever the browser kept, and is mirrored into that key;
 //   3. the avatar menu's Dark / Light / Classic buttons switch the page, mark
@@ -79,6 +80,21 @@ for (const tpl of ['base.html', 'auth.html', 'onboarding.html']) {
   const env = makeEnv('classic');
   run(env);
   check(`${tpl}: a saved Classic paints Classic`, env.attrs['data-theme'] === 'classic', env.attrs['data-theme']);
+  for (const saved of ['dark', 'light']) {
+    const e = makeEnv(saved);
+    run(e);
+    check(`${tpl}: a saved ${saved} stays ${saved}`, e.attrs['data-theme'] === saved, e.attrs['data-theme']);
+  }
+  const empty = makeEnv(null);
+  run(empty);
+  check(`${tpl}: nothing saved paints the default, Classic`, empty.attrs['data-theme'] === 'classic', empty.attrs['data-theme']);
+}
+{
+  // A page that reaches the picker with no theme on <html> marks the default.
+  const env = makeEnv(null);
+  load(env).initThemePicker();
+  const pressed = env.buttons.filter(b => b.attrs['aria-pressed'] === 'true').map(b => b.dataset.themeChoice);
+  check('no theme on <html>: the picker marks Classic', pressed.join() === 'classic' && env.attrs['data-theme'] === 'classic', pressed);
 }
 {
   const env = makeEnv(null);
@@ -88,9 +104,9 @@ for (const tpl of ['base.html', 'auth.html', 'onboarding.html']) {
 
 // --- 2. the server's theme wins on a signed-in page -------------------------
 {
-  // Another user left Classic in this browser; this user's account says dark.
+  // Another user left Light in this browser; this user's account says dark.
   const run = prePaint('base.html');
-  const env = makeEnv('classic');
+  const env = makeEnv('light');
   env.attrs['data-theme'] = 'dark'; // what the server rendered
   run(env);
   check('the server theme beats the browser leftover', env.attrs['data-theme'] === 'dark', env.attrs['data-theme']);

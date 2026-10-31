@@ -10,4 +10,4 @@ Contributions are welcome. To add a new service:
 For bug reports and feature requests, open an issue on GitHub.
 
 For UI work, `uv run python scripts/ui_demo_seed.py /tmp/cp-demo --serve 8100` serves the app with invented demo data (login `demo` / `demo-password-1`), and never touches a real data dir.
-`node scripts/ui_screenshots.mjs http://127.0.0.1:8100 /tmp/shots both` then takes full-page shots of every page and state in both themes (`CP_SCALE=2` for retina, `CP_SHOT_ONLY=<regex>` to pick states).
+`node scripts/ui_screenshots.mjs http://127.0.0.1:8100 /tmp/shots all` then takes full-page shots of every page and state in all three themes: Classic night (the default, no suffix), then `-dark` and `-light`. `CP_SCALE=2` takes retina shots, `CP_SHOT_ONLY=<regex>` picks states.
