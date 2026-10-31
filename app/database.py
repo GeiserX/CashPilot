@@ -21,7 +21,16 @@ from pathlib import Path
 from typing import Any
 
 import aiosqlite
-from aiosqlite.context import contextmanager as _awaitable_or_context
+
+try:
+    # aiosqlite internals the shared-connection guard relies on (_rollback_if_busy,
+    # _BorrowedConnection); tests/test_shared_db_busy.py checks the rest.
+    from aiosqlite.context import contextmanager as _awaitable_or_context
+except ImportError as exc:  # pragma: no cover - only after an aiosqlite upgrade
+    raise ImportError(
+        f"aiosqlite {getattr(aiosqlite, '__version__', '?')} has no aiosqlite.context.contextmanager, which "
+        "app/database.py's shared-connection guard uses (written against 0.22.1)"
+    ) from exc
 from cryptography.fernet import Fernet, InvalidToken
 
 from app import usage
@@ -649,6 +658,12 @@ _shared_conns: dict[int, aiosqlite.Connection] = {}
 #: SQLite's primary result code for "another connection holds the lock". Its
 #: extended codes (SQLITE_BUSY_SNAPSHOT is 517) share the low byte.
 _SQLITE_BUSY = 5
+_SQLITE_BUSY_SNAPSHOT = 517
+
+#: Shared connections (by id) whose last write failed with SQLITE_BUSY_SNAPSHOT
+#: and were rolled back. A second such failure with no successful write in
+#: between means the rollback did not free the snapshot.
+_stale_after_rollback: set[int] = set()
 
 
 def _rollback_if_busy(raw: sqlite3.Connection, run: Any, *args: Any) -> Any:
@@ -670,17 +685,41 @@ def _rollback_if_busy(raw: sqlite3.Connection, run: Any, *args: Any) -> Any:
     Rolling back is safe: a connection that gets SQLITE_BUSY does not hold the
     write lock, so its transaction has no writes in it, from this task or any
     other. Only the stale snapshot is dropped.
+
+    What a rollback cannot free: a cursor still part-way through a SELECT on
+    this connection keeps its own snapshot until it is read to the end or
+    freed. The helpers' cursors are locals, freed when the helper returns, so
+    this only lasts while one is alive (or kept alive by a stored traceback).
+    ``in_transaction`` reads False in that state, so it is told apart by the
+    next write failing the same way, and the log says so.
     """
     try:
-        return run(*args)
+        result = run(*args)
     except sqlite3.OperationalError as exc:
-        if (getattr(exc, "sqlite_errorcode", 0) & 0xFF) == _SQLITE_BUSY and raw.in_transaction:
+        code = getattr(exc, "sqlite_errorcode", 0)
+        if (code & 0xFF) != _SQLITE_BUSY:
+            raise
+        rolled_back = raw.in_transaction
+        if rolled_back:
             raw.rollback()
+        key = id(raw)
+        name = getattr(exc, "sqlite_errorname", "SQLITE_BUSY")
+        if code == _SQLITE_BUSY_SNAPSHOT and key in _stale_after_rollback:
             _logger.warning(
-                "A write found the database locked (%s); rolled back the empty transaction it left open",
-                getattr(exc, "sqlite_errorname", "SQLITE_BUSY"),
+                "A write still finds the database locked (%s) after a rollback: something on the "
+                "shared connection, most likely an unfinished cursor, still holds an old snapshot",
+                name,
             )
+        elif rolled_back:
+            _logger.warning("A write found the database locked (%s); rolled back the transaction it left open", name)
+        if code == _SQLITE_BUSY_SNAPSHOT and rolled_back:
+            _stale_after_rollback.add(key)
         raise
+    if raw.in_transaction:
+        # A write got in (legacy mode only opens a transaction for one), so the
+        # snapshot is current again.
+        _stale_after_rollback.discard(id(raw))
+    return result
 
 
 class _BorrowedConnection:
