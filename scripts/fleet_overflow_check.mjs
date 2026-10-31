@@ -238,8 +238,13 @@ async function main() {
     document.querySelector('form').submit();
   })()`);
   await waitFor("location.pathname !== '/login' && document.readyState === 'complete'");
-  // The pre-paint script reads this key on every page from here on.
-  await evaluate(`localStorage.setItem('cp-theme', ${JSON.stringify(THEME)})`);
+  // Save the theme to the demo account: signed-in pages paint the saved theme.
+  const saved = await evaluate(`fetch('/api/preferences', {method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({theme: ${JSON.stringify(THEME)}})}).then(r => r.status)`);
+  if (saved !== 200) {
+    console.error(`FAIL  could not save theme ${THEME} to the demo account (HTTP ${saved})`);
+    process.exit(2);
+  }
 
   await send("Fetch.enable", {
     patterns: [
