@@ -449,6 +449,24 @@ class TestTheWayOut:
         alerts.balance_read(datetime(2026, 11, 2, 9, 0, tzinfo=UTC))
         assert list(alerts.config) == [main._BALANCE_READ_KEY + "iproyal"]
 
+    def test_a_restored_alert_survives_a_check_without_heartbeat_data(self):
+        """After a UI restart the stored alert comes back, and a check with no data keeps it."""
+        row = {
+            "id": 1,
+            "kind": "account_disabled",
+            "subject": "iproyal",
+            "message": "IPRoyal Pawns has disabled this account.",
+            "category": None,
+            "created_at": "2026-10-31 10:00:00",
+        }
+        with patch.object(main.database, "list_alerts", AsyncMock(return_value=[row])):
+            asyncio.run(main._warm_collector_alerts())
+        assert "iproyal" in main._account_disabled
+        alerts = _Alerts()
+        alerts.run([])
+        assert "iproyal" in main._account_disabled
+        assert ("account_disabled", "iproyal") not in alerts.cleared
+
     def test_it_alerts_again_after_a_recovery(self):
         alerts = _Alerts()
         alerts.run(THREE_BOXES)
