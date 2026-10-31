@@ -16,9 +16,16 @@
 // It fails when, at any of the widths below, the document scrolls sideways,
 // any element shows its own horizontal scrollbar, anything sticks out past the
 // right edge of the window, an element that hides its overflow
-// (overflow-x: hidden or clip) has content wider than itself, or a table cell's
-// text runs out of the cell. The last three catch a page that "fits" only
-// because a wrapper cuts the overflow off or a cell writes over its neighbour.
+// (overflow-x: hidden or clip) has content wider than itself, a table cell's
+// text runs out of the cell, or any element's own text runs out of its box.
+// The last four catch a page that "fits" only because a wrapper cuts the
+// overflow off or one box writes over its neighbour.
+//
+// The dashboard (/) also gets two services whose provider disabled the
+// account, one with a long provider name, so its "Account disabled" card is
+// measured at every width. v1.58.0 shipped that card with a tag wider than its
+// column (it wrote over the provider name at 1440 px) and a "Contact ..."
+// button that pushed the page to 352 px at 320 px.
 //
 //   ./scripts/fleet_overflow_check.sh            (boots Chrome and the demo UI)
 //   SHOTS=/tmp/shots ./scripts/fleet_overflow_check.sh   (also saves screenshots)
@@ -35,11 +42,17 @@ const PASS = process.env.UI_PASS || "demo-password-1";
 const SHOTS = process.env.SHOTS || "";
 // 1100 and 1101 sit either side of the fleet table's stacked layout.
 const FLEET_WIDTHS = [320, 375, 768, 1024, 1100, 1101, 1440, 2560];
+// At desktop widths the dashboard is measured inside the "Needs attention"
+// section only: the services table there is wider than a 1024 px window by
+// design and scrolls in its own wrapper.
+const DASHBOARD_PHONE_WIDTHS = [320, 340, 360, 375];
+const DASHBOARD_DESKTOP_WIDTHS = [768, 1024, 1440, 2560];
 // The rest of the app at phone widths. /api/workers and /api/fleet/economics
 // carry the fixture boxes on these pages too.
 const PAGES = [
   ["/fleet", FLEET_WIDTHS],
-  ["/", [320, 375]],
+  ["/", DASHBOARD_PHONE_WIDTHS],
+  ["/", DASHBOARD_DESKTOP_WIDTHS, "#attention"],
   ["/catalog", [320, 375]],
   ["/setup", [320, 375]],
   ["/payouts", [320, 375]],
@@ -112,6 +125,26 @@ const FIXTURE_MACHINES = FIXTURE_WORKERS.map((w) => ({
   summary: `${w.name} earned 17.76 last month and its electricity cost more than that.`,
 }));
 
+// Services whose provider disabled the account. The demo's iproyal gets the
+// flag (it has a box to stop, so both buttons show), and a copy of it gets the
+// longest provider name we could think of.
+const LONG_PROVIDER = "Exceptionally Long Provider Name Bandwidth Sharing Network International";
+function withDisabledAccounts(services) {
+  const base = services.find((s) => s.slug === "iproyal") || services[0];
+  if (!base) return services;
+  const disabled = (extra) => ({
+    ...base, account_disabled: true, collector_disconnected: false, collector_needs_setup: false,
+    balance: 7.62, balance_known: true, currency: "USD",
+    support_url: "https://example.com/support/contact-us", ...extra,
+  });
+  const out = services.map((s) => (s === base ? disabled({}) : s));
+  out.push(disabled({ slug: "long-provider-fixture", name: LONG_PROVIDER, balance: 1234.56 }));
+  return out;
+}
+
+// The [path, widths, scope] entries above: scope limits the element checks to
+// one part of the page; the document itself must still never scroll sideways.
+
 // --- Minimal CDP client -----------------------------------------------------
 let ws, seq = 0;
 const pending = new Map();
@@ -172,6 +205,7 @@ async function main() {
       const { body, base64Encoded } = await send("Fetch.getResponseBody", { requestId });
       const data = JSON.parse(base64Encoded ? Buffer.from(body, "base64").toString("utf8") : body);
       if (request.url.includes("/api/workers")) data.push(...FIXTURE_WORKERS);
+      else if (request.url.includes("/api/services/deployed")) data.splice(0, data.length, ...withDisabledAccounts(data));
       else if (data && Array.isArray(data.machines)) data.machines.push(...FIXTURE_MACHINES);
       injected++;
       await send("Fetch.fulfillRequest", {
@@ -207,6 +241,7 @@ async function main() {
     patterns: [
       { urlPattern: "*/api/workers", requestStage: "Response" },
       { urlPattern: "*/api/fleet/economics", requestStage: "Response" },
+      { urlPattern: "*/api/services/deployed", requestStage: "Response" },
       { urlPattern: `*/api/workers/${ISOLATION_WORKER}/isolation-check`, requestStage: "Request" },
     ],
   });
@@ -223,12 +258,28 @@ async function main() {
   }
   const rows = await evaluate("document.querySelectorAll('.fleet-table .worker-row').length");
 
-  const MEASURE = `(() => {
+  const MEASURE = (scope) => `(() => {
+    const root = document.querySelector(${JSON.stringify(scope || "body")});
     const de = document.documentElement;
     const desc = (el) => el.tagName.toLowerCase() + (el.id ? '#' + el.id : '') + '.' + String(el.className).trim().replace(/\\s+/g, '.');
     const visible = (el) => el.getClientRects().length && !el.closest('.sr-only');
-    const scrollers = [], hidden = [], spill = [];
-    for (const el of document.querySelectorAll('body *')) {
+    const scrollers = [], hidden = [], spill = [], text = [];
+    // Text that runs out of its own box, over whatever sits next to it: the
+    // right edge of each of the element's own text lines against the box's
+    // right edge. Inline boxes grow with their text, so only blocks, grid and
+    // flex items count.
+    for (const el of root.querySelectorAll('*')) {
+      if (!visible(el) || getComputedStyle(el).display.startsWith('inline') || el.matches('input, textarea, select')) continue;
+      const box = el.getBoundingClientRect();
+      if (!box.width) continue;
+      for (const n of el.childNodes) {
+        if (n.nodeType !== 3 || !n.textContent.trim()) continue;
+        const r = document.createRange(); r.selectNodeContents(n);
+        const right = Math.max(...[...r.getClientRects()].map((q) => q.right));
+        if (right > box.right + 1) { text.push(desc(el) + ' box right=' + Math.round(box.right) + ' text right=' + Math.round(right) + ' "' + n.textContent.trim().slice(0, 40) + '"'); break; }
+      }
+    }
+    for (const el of root.querySelectorAll('*')) {
       if (!visible(el) || el.scrollWidth <= el.clientWidth + 1) continue;
       const ox = getComputedStyle(el).overflowX;
       if (ox === 'auto' || ox === 'scroll') scrollers.push(desc(el) + ' ' + el.scrollWidth + '>' + el.clientWidth);
@@ -240,37 +291,42 @@ async function main() {
     }
     // The innermost elements that run past the window, to say what overflows.
     const vw = de.clientWidth, wide = [];
-    for (const el of document.querySelectorAll('body *')) {
+    for (const el of root.querySelectorAll('*')) {
       if (!visible(el)) continue;
       const b = el.getBoundingClientRect();
       if (b.width && b.right > vw + 1) wide.push(el);
     }
     const past = wide.filter((e) => !wide.some((o) => o !== e && e.contains(o))).slice(0, 8)
       .map((e) => desc(e) + ' right=' + Math.round(e.getBoundingClientRect().right) + ' "' + (e.textContent || '').trim().slice(0, 40) + '"');
-    return { scrollWidth: de.scrollWidth, clientWidth: de.clientWidth, scrollers, hidden, spill, past };
+    return { scrollWidth: de.scrollWidth, clientWidth: de.clientWidth, scrollers, hidden, spill, text, past };
   })()`;
 
   let failures = 0, checked = 0;
-  for (const [page, widths] of PAGES) {
+  for (const [page, widths, scope] of PAGES) {
     if (page !== "/fleet") {
       await send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
       await send("Page.navigate", { url: `${BASE}${page}` });
       await waitFor(`location.pathname === ${JSON.stringify(page)} && document.readyState === 'complete'`);
       // Most pages fill themselves from the API after load.
       await sleep(2500);
+      if (page === "/") {
+        await waitFor(`document.querySelectorAll('.attn-row').length && [...document.querySelectorAll('.attn-tag')].filter((t) => t.textContent === 'Account disabled').length === 2`)
+          .catch(() => { console.error("FAIL  the two account-disabled fixtures did not reach the dashboard"); process.exit(2); });
+      }
     }
     for (const w of widths) {
       await send("Emulation.setDeviceMetricsOverride", { width: w, height: 900, deviceScaleFactor: 1, mobile: false });
       await sleep(300);
-      const r = await evaluate(MEASURE);
-      const ok = r.scrollWidth <= r.clientWidth && !r.scrollers.length && !r.hidden.length && !r.spill.length && !r.past.length;
+      const r = await evaluate(MEASURE(scope));
+      const ok = r.scrollWidth <= r.clientWidth && !r.scrollers.length && !r.hidden.length && !r.spill.length && !r.text.length && !r.past.length;
       checked++;
       if (!ok) failures++;
-      console.log(`${ok ? "ok  " : "FAIL"}  ${page.padEnd(8)} ${String(w).padStart(4)} px  scrollWidth ${r.scrollWidth}  clientWidth ${r.clientWidth}  scrollbars inside ${r.scrollers.length}  hidden overflow ${r.hidden.length}  spilling cells ${r.spill.length}  past the edge ${r.past.length}`);
+      console.log(`${ok ? "ok  " : "FAIL"}  ${(page + (scope ? " " + scope : "")).padEnd(19)} ${String(w).padStart(4)} px  scrollWidth ${r.scrollWidth}  clientWidth ${r.clientWidth}  scrollbars inside ${r.scrollers.length}  hidden overflow ${r.hidden.length}  spilling cells ${r.spill.length}  text out of its box ${r.text.length}  past the edge ${r.past.length}`);
       if (!ok) {
         for (const s of r.scrollers) console.log(`        scrolls sideways: ${s}`);
         for (const h of r.hidden) console.log(`        cut off:          ${h}`);
         for (const c of r.spill) console.log(`        spills its cell:  ${c}`);
+        for (const t of r.text) console.log(`        text out of box:  ${t}`);
         for (const p of r.past) console.log(`        past the edge:    ${p}`);
       }
       if (SHOTS) {

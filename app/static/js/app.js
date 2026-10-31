@@ -1660,9 +1660,16 @@ const CP = (() => {
     if (/^https:\/\//.test(String(svc.support_url || ''))) {
       actions += ` <a class="btn btn-ghost btn-sm" href="${escapeHtml(svc.support_url)}" target="_blank" rel="noopener noreferrer">Contact ${name}</a>`;
     }
+    // The Services table keeps showing the last balance read, so say that
+    // figure here too: "no balance can be read" next to "$7.62" read as a
+    // contradiction.
+    const known = svc.balance_known !== false && svc.balance != null;
+    const balance = known
+      ? `its balance cannot update: ${escapeHtml(formatCurrency(svc.balance, svc.currency || 'USD'))} is the last reading`
+      : 'CashPilot cannot read its balance';
     return {
       level: 'fail', tag: 'Account disabled', what: `by ${svc.name}`,
-      why: `${name} turned this account off, so it earns nothing and no balance can be read. Restarting will not help: contact ${name} to get it back. CashPilot leaves its containers as they are.`,
+      why: `${name} turned this account off, so it earns nothing and ${balance}. Restarting will not help: contact ${name} to get it back. CashPilot leaves its containers as they are.`,
       actions,
     };
   }
@@ -1882,7 +1889,7 @@ const CP = (() => {
     // earning, but its (separate) earnings-tracking credentials aren't set yet.
     let disconnectedLabel = '';
     if (svc.account_disabled) {
-      disconnectedLabel = `<div title="${escapeHtml(svc.name)} disabled this account. The credentials are fine; only ${escapeHtml(svc.name)} can turn it back on." class="cell-sub cell-sub-warn">account disabled</div>`;
+      disconnectedLabel = `<div title="${escapeHtml(svc.name)} disabled this account, so the balance shown is the last one read and cannot update. The credentials are fine; only ${escapeHtml(svc.name)} can turn it back on." class="cell-sub cell-sub-warn">account disabled</div>`;
     } else if (svc.collector_disconnected) {
       disconnectedLabel = `<div title="CashPilot couldn't read this balance — check the earnings-tracking credentials" class="cell-sub cell-sub-warn">no reading${_isOwner ? ` <button class="btn btn-link" data-action="openCredentialModal" data-stop="1" data-a1="${escapeHtml(svc.slug)}">fix</button>` : ''}</div>`;
     } else if (svc.collector_notice) {
