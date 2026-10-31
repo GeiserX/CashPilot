@@ -5872,7 +5872,7 @@ async def api_get_preferences(request: Request) -> dict[str, Any]:
     return prefs
 
 
-THEMES = ("dark", "light", "classic")
+THEMES = database.THEMES
 
 
 class PreferencesUpdate(BaseModel):
@@ -5892,19 +5892,15 @@ async def api_set_preferences(
     if body.theme is not None and body.theme not in THEMES:
         raise HTTPException(status_code=400, detail="theme must be dark, light, or classic")
 
-    # Merge with existing preferences so partial updates don't overwrite
-    existing = await database.get_user_preferences(user["uid"]) or {}
+    # Only the fields that were sent are written (one upsert, no read first),
+    # so a theme click racing the wizard's POST cannot undo either.
     await database.save_user_preferences(
-        user_id=user["uid"],
-        setup_mode=body.setup_mode if body.setup_mode is not None else existing.get("setup_mode", "fresh"),
-        selected_categories=body.selected_categories
-        if body.selected_categories is not None
-        else existing.get("selected_categories", "[]"),
-        timezone=body.timezone if body.timezone is not None else existing.get("timezone", "UTC"),
-        setup_completed=body.setup_completed
-        if body.setup_completed is not None
-        else existing.get("setup_completed", False),
-        theme=body.theme if body.theme is not None else existing.get("theme"),
+        user["uid"],
+        setup_mode=body.setup_mode,
+        selected_categories=body.selected_categories,
+        timezone=body.timezone,
+        setup_completed=body.setup_completed,
+        theme=body.theme,
     )
     # Saving the preference is a viewer-safe act; triggering a fleet-wide
     # collection is not. /api/collect gates the identical call behind

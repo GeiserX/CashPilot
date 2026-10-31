@@ -951,7 +951,7 @@ async def _encrypt_legacy_plaintext_credentials(db: Any) -> int:
 #: missing a column -- an interrupted upgrade, a restored backup, a hand-edited
 #: file -- could never be repaired, because the gate would say there was nothing
 #: to do. The guards are idempotent and cheap; the version is for the operator.
-SCHEMA_VERSION = 13
+SCHEMA_VERSION = 14
 
 
 async def init_db() -> None:
@@ -2236,6 +2236,10 @@ async def update_user_password(user_id: int, hashed_password: str) -> None:
 # --- User Preferences ---
 
 
+# The appearance choices user_preferences.theme accepts.
+THEMES = ("dark", "light", "classic")
+
+
 async def get_user_preferences(user_id: int) -> dict[str, Any] | None:
     db = await _get_db()
     try:
@@ -2248,28 +2252,35 @@ async def get_user_preferences(user_id: int) -> dict[str, Any] | None:
 
 async def save_user_preferences(
     user_id: int,
-    setup_mode: str = "fresh",
-    selected_categories: str = "[]",
-    timezone: str = "UTC",
-    setup_completed: bool = False,
+    setup_mode: str | None = None,
+    selected_categories: str | None = None,
+    timezone: str | None = None,
+    setup_completed: bool | None = None,
     theme: str | None = None,
 ) -> None:
+    """Upsert the fields that were passed; a None field keeps its stored value.
+
+    One statement, no read first: a theme click and the wizard's step-4 POST can
+    land together, and a read-modify-write would let one undo the other.
+    """
+    done = None if setup_completed is None else int(setup_completed)
     db = await _get_db()
     try:
         await db.execute(
             """
             INSERT INTO user_preferences
                 (user_id, setup_mode, selected_categories, timezone, setup_completed, theme, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
+            VALUES (?1, COALESCE(?2, 'fresh'), COALESCE(?3, '[]'), COALESCE(?4, 'UTC'), COALESCE(?5, 0), ?6,
+                    datetime('now'))
             ON CONFLICT(user_id) DO UPDATE SET
-                setup_mode = excluded.setup_mode,
-                selected_categories = excluded.selected_categories,
-                timezone = excluded.timezone,
-                setup_completed = excluded.setup_completed,
-                theme = excluded.theme,
+                setup_mode = COALESCE(?2, setup_mode),
+                selected_categories = COALESCE(?3, selected_categories),
+                timezone = COALESCE(?4, timezone),
+                setup_completed = COALESCE(?5, setup_completed),
+                theme = COALESCE(?6, theme),
                 updated_at = datetime('now')
             """,
-            (user_id, setup_mode, selected_categories, timezone, int(setup_completed), theme),
+            (user_id, setup_mode, selected_categories, timezone, done, theme),
         )
         await db.commit()
     finally:

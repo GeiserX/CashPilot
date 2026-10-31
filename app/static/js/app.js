@@ -4759,12 +4759,13 @@ const CP = (() => {
   // Init on DOMContentLoaded
   // -----------------------------------------------------------
   // -----------------------------------------------------------
-  // Theme toggle
+  // Theme
   // -----------------------------------------------------------
-  // Three themes: dark (the default), light and classic. The choice is saved
-  // per user on the server and mirrored into localStorage 'cp-theme', which the
-  // pre-paint script in base.html reads, so a page never paints the wrong theme
-  // first. On a new browser the server's value wins on the first page load.
+  // Three themes: dark (the default), light and classic, picked in the avatar
+  // menu by any signed-in role. The choice is saved to the account. The server
+  // writes it into <html data-theme> on every signed-in page, so that page
+  // paints it from the first frame on any browser; the pre-paint script in
+  // base.html mirrors it into localStorage 'cp-theme' for the sign-in pages.
   const THEMES = ['dark', 'light', 'classic'];
 
   function currentTheme() {
@@ -4776,9 +4777,9 @@ const CP = (() => {
     if (!THEMES.includes(theme)) return;
     document.documentElement.setAttribute('data-theme', theme);
     localStorage.setItem('cp-theme', theme);
-    document.querySelectorAll('input[name="cp-theme"]').forEach(r => { r.checked = r.value === theme; });
-    const label = document.querySelector('#theme-toggle .theme-label');
-    if (label) label.textContent = theme === 'light' ? 'Dark mode' : 'Light mode';
+    document.querySelectorAll('[data-theme-choice]').forEach(b => {
+      b.setAttribute('aria-pressed', String(b.dataset.themeChoice === theme));
+    });
   }
 
   function chooseTheme(theme) {
@@ -4787,32 +4788,11 @@ const CP = (() => {
       .catch(err => toast(`Theme not saved: ${err.message}`, 'error'));
   }
 
-  // The top-bar toggle switches Light <-> Dark only. Classic is chosen in
-  // Settings > Appearance, and the toggle is hidden while it is on (style.css),
-  // so one click can never drop a Classic user into Light.
-  function toggleTheme(current) {
-    if (current === 'classic') return 'classic';
-    return current === 'light' ? 'dark' : 'light';
-  }
-
-  function initThemeToggle() {
+  function initThemePicker() {
     applyTheme(currentTheme());
-    const btn = document.getElementById('theme-toggle');
-    if (btn) {
-      btn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        chooseTheme(toggleTheme(currentTheme()));
-      });
-    }
-    document.querySelectorAll('input[name="cp-theme"]').forEach(r => {
-      r.addEventListener('change', () => { if (r.checked) chooseTheme(r.value); });
+    document.querySelectorAll('[data-theme-choice]').forEach(b => {
+      b.addEventListener('click', () => chooseTheme(b.dataset.themeChoice));
     });
-    // Only signed-in pages carry the avatar menu; elsewhere there is no user.
-    if (document.getElementById('avatar-toggle')) {
-      api('/api/preferences')
-        .then(p => { if (p && THEMES.includes(p.theme) && p.theme !== currentTheme()) applyTheme(p.theme); })
-        .catch(() => {});
-    }
   }
 
   function initAvatarDropdown() {
@@ -4889,7 +4869,7 @@ const CP = (() => {
 
   document.addEventListener('DOMContentLoaded', () => {
     initSidebar();
-    initThemeToggle();
+    initThemePicker();
     initNotifications();
     initAvatarDropdown();
 

@@ -181,10 +181,20 @@ img { max-width: 100%; }
   color: var(--text-secondary);
 }
 
-/* Theme toggle icon visibility */
-#theme-toggle .icon-moon { display: none; }
-:root[data-theme="light"] #theme-toggle .icon-sun { display: none; }
-:root[data-theme="light"] #theme-toggle .icon-moon { display: block; }
+/* Theme picker in the avatar menu: Dark / Light / Classic */
+.avatar-theme { display: flex; flex-direction: column; gap: 6px; padding: 8px 12px; }
+.avatar-theme-title { font-size: var(--fs-2); color: var(--text-muted); }
+.avatar-theme-options {
+  display: grid; grid-template-columns: repeat(3, 1fr);
+  border: 1px solid var(--border-light); border-radius: 2px; overflow: hidden;
+}
+.avatar-theme-options button {
+  font: inherit; font-size: var(--fs-2); padding: 4px 0; cursor: pointer;
+  background: none; border: 0; color: var(--text-secondary);
+}
+.avatar-theme-options button + button { border-left: 1px solid var(--border-light); }
+.avatar-theme-options button:hover { background: var(--bg-hover); color: var(--text-primary); }
+.avatar-theme-options button[aria-pressed="true"] { background: var(--bg-tertiary); color: var(--text-primary); font-weight: 600; }
 
 /* Avatar button + dropdown */
 .topbar-avatar-wrap {
@@ -2157,7 +2167,7 @@ body.gate { display: flex; flex-direction: column; }
 }
 
 /* ----- Classic night -----
-   Opt-in theme (Settings > Appearance), data-theme="classic": the pre-#492
+   Opt-in theme (avatar menu > Theme), data-theme="classic": the pre-#492
    blue-black, violet hairlines, rose actions and cyan focus. Layout, type and
    the status colours stay as in the dark theme. Contrast is listed in the PR
    that added it; every text pair is >= 4.5:1 and every UI pair >= 3:1. */
@@ -2185,6 +2195,9 @@ body.gate { display: flex; flex-direction: column; }
   box-shadow: var(--shadow-glow-rose);
 }
 :root[data-theme="classic"] .btn-primary:hover:not(:disabled) { background: var(--accent-hover); border-color: var(--accent-hover); }
+/* .btn-success stays white in Classic, so its hover goes whiter, as in dark,
+   not to the rose hover. The claim $ icons (.btn-icon) keep their own green. */
+:root[data-theme="classic"] .btn-success:not(.btn-icon):hover:not(:disabled) { background: #ffffff; border-color: #ffffff; }
 /* Disabled: the dark theme's neutral fill, not a dim pink. */
 :root[data-theme="classic"] .btn-primary:disabled {
   background: var(--text-primary); border-color: var(--text-primary); box-shadow: none;
@@ -2200,11 +2213,3 @@ body.gate { display: flex; flex-direction: column; }
 }
 :root[data-theme="classic"] :focus-visible,
 :root[data-theme="classic"] .form-input:focus-visible { outline-color: var(--accent-secondary); }
-/* The sun/moon item switches Light and Dark only; Classic is left in Settings. */
-:root[data-theme="classic"] #theme-toggle,
-:root[data-theme="classic"] #theme-toggle + .avatar-dropdown-divider { display: none; }
-
-/* Settings > Appearance */
-.theme-options { display: flex; flex-wrap: wrap; gap: 8px 20px; border: 0; padding: 0; margin: 0; }
-.theme-options label { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
-.theme-options input[type="radio"] { accent-color: var(--accent); }
