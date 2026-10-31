@@ -51,11 +51,12 @@ docker:
   command: "-email ${IPROYALPAWNS_EMAIL} -password ${IPROYALPAWNS_PASSWORD} -device-name ${IPROYALPAWNS_DEVICE_NAME} -device-id ${IPROYALPAWNS_DEVICE_ID} -accept-tos"
   network_mode: ""
   privileged: false
-  fatal_log_patterns:
+  health_signals:
     # Seen live (Oct 2026) on three boxes after Pawns deactivated the account:
     # pawns-cli prints this, with no newline, and exits 1 on every start.
     - pattern: "user is disabled"
-      kind: account_disabled
+      means: "IPRoyal Pawns has disabled this account."
+      state: account_disabled
 
 requirements:
   residential_ip: true

@@ -38,6 +38,7 @@ PRODUCING = "producing"
 IDLE = "idle"
 FAILING = "failing"
 UNKNOWN = "unknown"
+ACCOUNT_DISABLED = "account_disabled"
 
 _RANK = {PRODUCING: 0, UNKNOWN: 1, IDLE: 2, FAILING: 3}
 
@@ -65,7 +66,10 @@ def match_log_signals(logs: str, signals: list[dict[str, Any]] | None) -> list[d
     haystack = logs[-_MAX_LOG_CHARS:]
     hits: list[dict[str, str]] = []
     for signal in signals:
-        if not isinstance(signal, dict) or is_windowed(signal):
+        # account_disabled is judged by the worker on a stopped container
+        # (orchestrator._fatal_entry); an old refusal still in a running
+        # container's log says nothing about now.
+        if not isinstance(signal, dict) or is_windowed(signal) or signal.get("state") == ACCOUNT_DISABLED:
             continue
         compiled = _compile(str(signal.get("pattern") or ""))
         if compiled is None or not compiled.search(haystack):

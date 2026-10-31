@@ -7,9 +7,10 @@ cards with Start buttons and a "No reading, Fix credentials" card, all for one
 cause none of those buttons can fix. The collector's own login by then came
 back 429, so its message no longer named the cause either.
 
-The catalog now declares the provider's fatal log text, the worker reports the
-match, and the UI turns it into one account-disabled state per service that
-clears by itself when the container stays up or a balance is read.
+The catalog declares the provider's refusal as an account_disabled health
+signal, the worker reports the match, and the UI turns it into one
+account-disabled state per service that clears by itself when the container
+stays up or a balance is read.
 """
 
 from __future__ import annotations
@@ -30,7 +31,9 @@ from app import catalog, main, orchestrator
 
 ROOT = Path(__file__).resolve().parent.parent
 PAWNS_LOG = b"user is disabled" * 40  # what `docker logs` returns: no newline anywhere
-PATTERNS = [{"pattern": "user is disabled", "kind": "account_disabled"}]
+SIGNALS = [
+    {"pattern": "user is disabled", "means": "IPRoyal Pawns has disabled this account.", "state": "account_disabled"}
+]
 
 
 # --------------------------------------------------------------------------
@@ -42,26 +45,34 @@ class TestCatalog:
     def test_pawns_declares_its_disabled_text_and_support_page(self):
         svc = catalog.get_service("iproyal")
         assert svc is not None, "iproyal.yml failed validation and was dropped"
-        assert svc["docker"]["fatal_log_patterns"] == PATTERNS
+        assert svc["docker"]["health_signals"] == SIGNALS
         assert svc["support_url"].startswith("https://")
 
     @pytest.mark.parametrize(
-        "fatal",
+        "signal",
         [
-            "user is disabled",
-            [{"pattern": "user is disabled", "kind": "banned"}],
-            [{"pattern": "(", "kind": "account_disabled"}],
-            [{"pattern": "", "kind": "account_disabled"}],
+            {"pattern": "(", "state": "account_disabled"},
+            {"pattern": "", "state": "account_disabled"},
+            {"pattern": "user is disabled", "state": "account_disabled", "window_hours": 2},
         ],
     )
-    def test_a_malformed_entry_is_rejected(self, fatal):
-        data = {"docker": {"fatal_log_patterns": fatal}}
-        errors = catalog._validate(data, Path("x.yml"))
-        assert any("fatal_log_patterns" in e for e in errors), errors
+    def test_a_malformed_entry_is_rejected(self, signal):
+        errors = catalog._validate({"docker": {"health_signals": [signal]}}, Path("x.yml"))
+        assert any("health_signals" in e for e in errors), errors
 
     def test_a_good_entry_passes(self):
-        errors = catalog._validate({"docker": {"fatal_log_patterns": PATTERNS}}, Path("x.yml"))
-        assert not any("fatal_log_patterns" in e for e in errors)
+        errors = catalog._validate({"docker": {"health_signals": SIGNALS}}, Path("x.yml"))
+        assert not any("health_signals" in e for e in errors)
+
+    def test_the_running_container_check_ignores_it(self):
+        """An old refusal still in a running container's log says nothing about now."""
+        from app import producer_state
+
+        assert producer_state.match_log_signals("user is disabled", SIGNALS) == []
+
+    def test_other_states_are_not_judged_by_the_worker(self):
+        failing = [{"pattern": "user is disabled", "state": "failing"}]
+        assert orchestrator.match_fatal("user is disabled", failing) is None
 
     def test_support_url_must_be_https(self):
         assert any("support_url" in e for e in catalog._validate({"support_url": "http://x"}, Path("x.yml")))
@@ -88,28 +99,28 @@ class TestCatalog:
 
 class TestWorkerMatch:
     def test_repeated_text_with_no_newline_matches(self):
-        assert orchestrator.match_fatal(PAWNS_LOG.decode(), PATTERNS) == "account_disabled"
+        assert orchestrator.match_fatal(PAWNS_LOG.decode(), SIGNALS) == "account_disabled"
 
     def test_case_is_ignored(self):
-        assert orchestrator.match_fatal("ERROR: User Is Disabled", PATTERNS) == "account_disabled"
+        assert orchestrator.match_fatal("ERROR: User Is Disabled", SIGNALS) == "account_disabled"
 
     def test_other_text_does_not_match(self):
-        assert orchestrator.match_fatal("connection refused\n" * 20, PATTERNS) is None
+        assert orchestrator.match_fatal("connection refused\n" * 20, SIGNALS) is None
 
     def test_only_the_tail_counts(self):
         """An old refusal far back in the log is not what the client says now."""
         logs = "user is disabled" + "x" * (orchestrator._FATAL_LOG_CHARS + 10)
-        assert orchestrator.match_fatal(logs, PATTERNS) is None
+        assert orchestrator.match_fatal(logs, SIGNALS) is None
 
     def test_a_bad_entry_is_skipped(self):
-        bad = [{"pattern": "(", "kind": "account_disabled"}, *PATTERNS]
+        bad = [{"pattern": "(", "state": "account_disabled"}, *SIGNALS]
         assert orchestrator.match_fatal("user is disabled", bad) == "account_disabled"
 
     def _container(self, status, logs=PAWNS_LOG):
         return SimpleNamespace(status=status, name="cashpilot-iproyal", logs=MagicMock(return_value=logs))
 
     def _with_catalog(self):
-        svc = {"slug": "iproyal", "docker": {"fatal_log_patterns": PATTERNS}}
+        svc = {"slug": "iproyal", "docker": {"health_signals": SIGNALS}}
         return patch.object(orchestrator, "get_service", lambda slug: svc if slug == "iproyal" else None)
 
     @pytest.mark.parametrize("status", ["restarting", "exited", "dead"])

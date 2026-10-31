@@ -258,7 +258,7 @@ async def _get_all_worker_containers(workers: list[dict[str, Any]] | None = None
                             "exit_code": c.get("exit_code"),
                             "restart_policy": c.get("restart_policy"),
                             # What the provider said when it refused to run the
-                            # client (catalog fatal_log_patterns), read by the
+                            # client (an account_disabled health signal), read by the
                             # worker from a stopped or crash-looping container.
                             "fatal": c.get("fatal"),
                             # What the container was created with, for the drift
@@ -568,7 +568,7 @@ def _account_disabled_message(slug: str) -> str:
 async def _account_disabled_check(statuses: list[dict[str, Any]]) -> None:
     """Raise one alert per service whose provider disabled the account; clear it when the account is back.
 
-    Two sources say so: a worker that matched the catalog's fatal_log_patterns
+    Two sources say so: a worker that matched an account_disabled health signal
     in a crash-looping or stopped container, and a collector whose login was
     refused as a disabled account. A balance read on the last collection beats
     an old container log. Never stops or removes anything. Never raises.

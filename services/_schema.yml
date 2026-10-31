@@ -16,7 +16,7 @@
 #   best, so a reorder is a number change, never a new page.
 # website: Main URL
 # support_url: (optional) https:// page where a user reaches the provider's support. Offered
-#   when the provider has disabled the account (see docker.fatal_log_patterns).
+#   when the provider has disabled the account (a health_signals entry with state account_disabled).
 # description: One paragraph description
 # short_description: One line (for tables)
 
@@ -95,7 +95,13 @@
 #     no collector.
 #       - pattern: "login failed"       regex, matched case-insensitively against logs
 #         means:   "The service rejected the stored credentials."   shown to the user
-#         state:   failing              failing (default) | idle
+#         state:   failing              failing (default) | idle | account_disabled
+#                                         account_disabled: the PROVIDER refuses to run the
+#                                         client, so restarting cannot help. Unlike the others
+#                                         it is judged by the worker on a restarting, exited or
+#                                         dead container's last log lines, and the dashboard shows
+#                                         one "Account disabled" card for the service instead of
+#                                         a crash loop per box. Not with window_hours.
 #         unless:  ""                   (optional) regex whose presence in the same window
 #                                         cancels the signal: the problem is not there
 #         min_matches:  1                 (optional) with window_hours: lines the pattern must match
@@ -107,13 +113,6 @@
 #     Only add a pattern you have actually seen in that service's logs. A guessed regex
 #     that never matches is dead weight; one that matches the wrong line tells the user
 #     something false.
-#   fatal_log_patterns: [] (optional) log lines with which the PROVIDER refuses to run the
-#     client, so restarting the container cannot help. The worker matches them against the
-#     last log lines of a restarting, exited or dead container and reports the kind; the
-#     dashboard then shows that one cause instead of a crash loop per box.
-#       - pattern: "user is disabled"   regex, matched case-insensitively
-#         kind:    account_disabled     the only kind: the provider turned the account off
-#     Same rule as health_signals: only text you have seen the image print.
 #   advertised_address_env: ADDRESS  (optional) the env var holding the address
 #     the NETWORK dials this service back at ("host:port" or "host"). The
 #     worker copies that ONE variable's value into heartbeat container entries
