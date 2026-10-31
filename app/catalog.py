@@ -38,6 +38,10 @@ _CATEGORIES = {"bandwidth", "depin", "storage", "compute"}
 #: set could never be chosen, so it is a mistake and the entry is rejected.
 IMAGE_ARCH_FAMILIES = arch.FAMILIES
 _VALID_STATUSES = {"active", "beta", "broken", "dead", "dropped"}
+#: The ``health_signals`` state for a provider that refuses to run the client.
+ACCOUNT_DISABLED = "account_disabled"
+#: Every ``health_signals`` state the readers know. Absent means failing.
+HEALTH_SIGNAL_STATES = frozenset({"failing", "idle", ACCOUNT_DISABLED})
 
 _PORT_RE = re.compile(r"(?:(?P<address>[^:]+):)?(?P<host>\d+):(?P<container>\d+)(?:/(?P<protocol>tcp|udp))?")
 
@@ -129,6 +133,38 @@ def _validate(data: dict[str, Any], path: Path) -> list[str]:
                         re.compile(pattern)
                     except (re.error, TypeError):
                         errors.append(f"{path.name}: docker.env[{i}].pattern must be a valid regular expression")
+        signals = docker.get("health_signals")
+        if isinstance(signals, list):
+            for i, item in enumerate(signals):
+                if not isinstance(item, dict):
+                    continue
+                state = item.get("state")
+                if state is not None:
+                    if not isinstance(state, str) or state.strip().lower() not in HEALTH_SIGNAL_STATES:
+                        errors.append(
+                            f"{path.name}: docker.health_signals[{i}].state must be one of "
+                            f"{', '.join(sorted(HEALTH_SIGNAL_STATES))}, got {state!r}"
+                        )
+                        continue
+                    # The one place the case is normalised: every reader
+                    # compares the lowercase name.
+                    item["state"] = state.strip().lower()
+                if item.get("state") != ACCOUNT_DISABLED:
+                    continue
+                # The worker judges this one on a stopped container's tail.
+                pattern = item.get("pattern")
+                try:
+                    if not isinstance(pattern, str) or not pattern.strip():
+                        raise TypeError
+                    re.compile(pattern)
+                except (re.error, TypeError):
+                    errors.append(
+                        f"{path.name}: docker.health_signals[{i}].pattern must be a non-empty regular expression"
+                    )
+                if item.get("window_hours"):
+                    errors.append(
+                        f"{path.name}: docker.health_signals[{i}]: state account_disabled cannot have window_hours"
+                    )
         ports = docker.get("ports")
         if isinstance(ports, list):
             # A bad mapping used to load fine and then 500 the deploy, on
@@ -172,6 +208,10 @@ def _validate(data: dict[str, Any], path: Path) -> list[str]:
             errors.append(f"{path.name}: device_link.url must be an https:// link")
         elif not set(re.findall(r"\$\{(\w+)\}", url)) <= public:
             errors.append(f"{path.name}: device_link.url may only fill in non-secret docker.env keys")
+
+    support = data.get("support_url")
+    if support is not None and (not isinstance(support, str) or not support.startswith("https://")):
+        errors.append(f"{path.name}: support_url must be an https:// link")
 
     priority = data.get("priority")
     if priority is not None and (isinstance(priority, bool) or not isinstance(priority, int) or priority < 1):

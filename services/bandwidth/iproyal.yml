@@ -4,6 +4,7 @@ category: bandwidth
 status: active
 priority: 9
 website: https://pawns.app
+support_url: https://pawns.app/contact-us/
 description: >
   IPRoyal Pawns lets you earn by sharing your unused bandwidth. IPRoyal is a
   well-established proxy provider, and Pawns is their residential bandwidth-sharing
@@ -50,6 +51,12 @@ docker:
   command: "-email ${IPROYALPAWNS_EMAIL} -password ${IPROYALPAWNS_PASSWORD} -device-name ${IPROYALPAWNS_DEVICE_NAME} -device-id ${IPROYALPAWNS_DEVICE_ID} -accept-tos"
   network_mode: ""
   privileged: false
+  health_signals:
+    # Seen live (Oct 2026) on three boxes after Pawns deactivated the account:
+    # pawns-cli prints this, with no newline, and exits 1 on every start.
+    - pattern: "user is disabled"
+      means: "IPRoyal Pawns has disabled this account."
+      state: account_disabled
 
 requirements:
   residential_ip: true

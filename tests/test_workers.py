@@ -374,10 +374,15 @@ class TestStaleWorkerPurge:
         """After surviving a long outage (not deleted), the worker's own
         per-worker key must still authenticate normally."""
         worker_key = "worker-own-key-abc"
-        with patch(
-            "app.main.database.get_worker_key_state",
-            new_callable=AsyncMock,
-            return_value=(worker_key, True),
+        # FLEET_API_KEY is read when app.main is first imported, which may be
+        # by another test module before this one sets CASHPILOT_API_KEY.
+        with (
+            patch.object(main, "FLEET_API_KEY", FLEET_KEY),
+            patch(
+                "app.main.database.get_worker_key_state",
+                new_callable=AsyncMock,
+                return_value=(worker_key, True),
+            ),
         ):
             state = _run(_authenticate_worker_heartbeat(_request(worker_key), "srv-1"))
         assert state == "ok"
