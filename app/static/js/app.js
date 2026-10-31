@@ -69,6 +69,15 @@ const CP = (() => {
     }, 4000);
   }
 
+  // Escaped text with a break hint after each separator in names, ids, URLs
+  // and image references ("motorola-one_fusion+ (1414f972)",
+  // "ghcr.io/org/image@sha256:..."), so a long one wraps at a natural point
+  // before the CSS has to break inside a word.
+  function brk(str) {
+    // "://" is one unit, so a URL never breaks between its two slashes.
+    return escapeHtml(str).replace(/:\/\/|[-_.\/:@]/g, '$&<wbr>').replace(/\(/g, '<wbr>(');
+  }
+
   function escapeHtml(str) {
     // Escape quotes too (the textContent/innerHTML trick doesn't), so values
     // interpolated into attributes like placeholder="..." can't break out.
@@ -1660,9 +1669,16 @@ const CP = (() => {
     if (/^https:\/\//.test(String(svc.support_url || ''))) {
       actions += ` <a class="btn btn-ghost btn-sm" href="${escapeHtml(svc.support_url)}" target="_blank" rel="noopener noreferrer">Contact ${name}</a>`;
     }
+    // The Services table keeps showing the last balance read, so say that
+    // figure here too: "no balance can be read" next to "$7.62" read as a
+    // contradiction.
+    const known = svc.balance_known !== false && svc.balance != null;
+    const balance = known
+      ? `its balance cannot update: ${escapeHtml(formatCurrency(svc.balance, svc.currency || 'USD'))} is the last reading`
+      : 'CashPilot cannot read its balance';
     return {
       level: 'fail', tag: 'Account disabled', what: `by ${svc.name}`,
-      why: `${name} turned this account off, so it earns nothing and no balance can be read. Restarting will not help: contact ${name} to get it back. CashPilot leaves its containers as they are.`,
+      why: `${name} turned this account off, so it earns nothing and ${balance}. Restarting will not help: contact ${name} to get it back. CashPilot leaves its containers as they are.`,
       actions,
     };
   }
@@ -1833,7 +1849,7 @@ const CP = (() => {
 
     // Subtitle: image for Docker, empty for external
     const subtitle = svc.image
-      ? escapeHtml(svc.image)
+      ? brk(svc.image)
       : (isExternal ? 'App / Browser' : '');
 
     // Health badge — external services always show a muted dash
@@ -1882,7 +1898,7 @@ const CP = (() => {
     // earning, but its (separate) earnings-tracking credentials aren't set yet.
     let disconnectedLabel = '';
     if (svc.account_disabled) {
-      disconnectedLabel = `<div title="${escapeHtml(svc.name)} disabled this account. The credentials are fine; only ${escapeHtml(svc.name)} can turn it back on." class="cell-sub cell-sub-warn">account disabled</div>`;
+      disconnectedLabel = `<div title="${escapeHtml(svc.name)} disabled this account, so the balance shown is the last one read and cannot update. The credentials are fine; only ${escapeHtml(svc.name)} can turn it back on." class="cell-sub cell-sub-warn">account disabled</div>`;
     } else if (svc.collector_disconnected) {
       disconnectedLabel = `<div title="CashPilot couldn't read this balance — check the earnings-tracking credentials" class="cell-sub cell-sub-warn">no reading${_isOwner ? ` <button class="btn btn-link" data-action="openCredentialModal" data-stop="1" data-a1="${escapeHtml(svc.slug)}">fix</button>` : ''}</div>`;
     } else if (svc.collector_notice) {
@@ -2032,17 +2048,17 @@ const CP = (() => {
     // Main row
     let html = `
     <tr class="breakdown-row${isMulti ? ' expandable' : ''}" data-slug="${escapeHtml(svc.slug)}"${isMulti ? ` data-action="toggleInstances" data-a1="${escapeHtml(svc.slug)}" data-a2="event"` : ''}>
-      <td class="c-name">${nameHtml}<div class="cell-sub cell-mono c-name-image"${subtitle ? ` title="${subtitle}"` : ''}>${subtitle}</div></td>
+      <td class="c-name">${nameHtml}<div class="cell-sub cell-mono c-name-image">${subtitle}</div></td>
       <td class="c-status">${partialDown
         ? `<span class="badge badge-stopped" title="${downCount} of ${details.length} instances are not running"><span class="status-dot stopped"></span> ${details.length - downCount} of ${details.length} up</span>`
         : `<span class="badge badge-${statusClass}"><span class="status-dot ${statusClass}"></span> ${statusLabel}</span>${instanceLabel}`}${unmanagedLabel}${outdatedBadge}</td>
-      <td class="c-health c-num">${healthBadge}</td>
+      <td class="c-health c-num" data-label="Health">${healthBadge}</td>
       <td class="c-bal c-num">${balanceHtml}</td>
       <td class="c-chg c-num"><span class="delta">${deltaStr}</span></td>
-      <td class="c-cpu c-num">${cpuStr}</td>
-      <td class="c-mem c-num">${memStr}</td>
-      <td class="c-disk c-num">${diskCell(svc)}</td>
-      <td class="c-gpu">${gpuCell(svc)}</td>
+      <td class="c-cpu c-num" data-label="CPU">${cpuStr}</td>
+      <td class="c-mem c-num" data-label="Memory">${memStr}</td>
+      <td class="c-disk c-num" data-label="Host disk">${diskCell(svc)}</td>
+      <td class="c-gpu" data-label="GPU">${gpuCell(svc)}</td>
       <td class="c-pay">${progressBar}</td>
       <td class="c-act">${actionBtns}</td>
     </tr>`;
@@ -2090,10 +2106,10 @@ const CP = (() => {
           <td class="c-health c-empty"></td>
           <td class="c-bal c-empty"></td>
           <td class="c-chg c-empty"></td>
-          <td class="c-cpu c-num">${cpuCell}</td>
-          <td class="c-mem c-num">${memCell}</td>
-          <td class="c-disk c-num">${diskCellForHosts(hostForWorker(inst.worker_id))}</td>
-          <td class="c-gpu">${gpuCellForHosts(hostForWorker(inst.worker_id))}</td>
+          <td class="c-cpu c-num" data-label="${inst.is_android ? 'Upload 24h' : 'CPU'}">${cpuCell}</td>
+          <td class="c-mem c-num" data-label="${inst.is_android ? 'Download 24h' : 'Memory'}">${memCell}</td>
+          <td class="c-disk c-num" data-label="Host disk">${diskCellForHosts(hostForWorker(inst.worker_id))}</td>
+          <td class="c-gpu" data-label="GPU">${gpuCellForHosts(hostForWorker(inst.worker_id))}</td>
           <td class="c-pay c-empty"></td>
           <td class="c-act">
             <div class="action-btns">
@@ -4954,5 +4970,6 @@ const CP = (() => {
     formatCurrency,
     // Shared, so the next timestamp added does not repeat CashPilot-2dh.
     fmtTimestamp,
+    brk,
   };
 })();

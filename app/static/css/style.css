@@ -1359,7 +1359,10 @@ section { margin-bottom: 28px; }
 .attention .block-title .count { color: var(--text-primary); }
 .attn-list:empty { display: none; }
 .attn-row {
-  display: grid; grid-template-columns: 92px minmax(150px, 220px) minmax(0, 1fr) auto; gap: 4px 14px; align-items: center;
+  /* The tag column grows to its text ("Account disabled" is wider than 92 px),
+     and the actions column stops at 320 px so its buttons wrap instead of
+     squeezing the explanation. */
+  display: grid; grid-template-columns: minmax(92px, max-content) minmax(150px, 220px) minmax(0, 1fr) fit-content(320px); gap: 4px 14px; align-items: center;
   padding: 6px 0 6px 10px; border-bottom: 1px solid var(--border-color); border-left: 2px solid var(--border-strong);
 }
 .attn-fail { border-left-color: var(--error); }
@@ -1374,7 +1377,10 @@ section { margin-bottom: 28px; }
 .attn-where { font-family: var(--font-mono); font-weight: 400; font-size: var(--fs-2); color: var(--text-secondary); margin-left: 6px; }
 .attn-why { color: var(--text-secondary); min-width: 0; overflow-wrap: anywhere; }
 .attn-why code { font-size: var(--fs-2); color: var(--text-secondary); }
-.attn-actions { display: flex; gap: 6px; justify-content: flex-end; white-space: nowrap; }
+/* Buttons wrap to a new line, and a long label ("Contact <provider>") wraps
+   inside its button: at 320 px a one-line label pushed the page sideways. */
+.attn-actions { display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; min-width: 0; }
+.attn-actions .btn { white-space: normal; height: auto; min-height: 24px; max-width: 100%; padding-top: 3px; padding-bottom: 3px; text-align: center; overflow-wrap: break-word; }
 .attn-foot { font-size: var(--fs-2); color: var(--text-muted); padding: 6px 0 0 12px; }
 .attn-clear { display: flex; align-items: center; gap: 8px; padding: 8px 0; color: var(--text-secondary); }
 .attn-clear::before { content: ''; width: 10px; height: 10px; background: var(--success); }
@@ -1477,7 +1483,7 @@ section { margin-bottom: 28px; }
 .breakdown-table .c-bal { font-size: var(--fs-3); font-weight: 600; }
 .breakdown-table .c-num .cell-sub { font-family: var(--font-ui); font-weight: 400; white-space: normal; }
 .breakdown-table .c-pay { width: 88px; }
-.breakdown-table .c-act { text-align: right; white-space: nowrap; width: 1%; padding-right: 0; }
+.breakdown-table .c-act { text-align: right; white-space: nowrap; padding-right: 0; }
 .delta { color: var(--text-secondary); }
 .breakdown-row:hover,
 .fleet-table tbody tr:hover { background: var(--bg-hover); }
@@ -1487,9 +1493,15 @@ section { margin-bottom: 28px; }
 a.svc-name:hover { text-decoration: underline; }
 .cell-sub { font-size: var(--fs-1); color: var(--text-muted); font-weight: 400; line-height: 1.3; }
 .cell-sub.cell-mono { font-size: var(--fs-1); }
-/* An image reference can be a 100-character digest pin (ProxyBase), which would
-   widen the whole services table and push the action buttons out of view. */
-.c-name-image { max-width: 30ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* An image reference can be a 100-character digest pin (ProxyBase). It wraps
+   at the break hints brk() puts after its separators, and only a run with
+   none (the digest itself) breaks inside, so it never widens the table. */
+.c-name-image { max-width: 30ch; overflow-wrap: anywhere; }
+/* When the window is too narrow for one line per cell, the headers and the
+   action buttons wrap instead of widening the services table. */
+#services-table-container .breakdown-table th { white-space: normal; }
+#services-table-container .breakdown-table .c-act { white-space: normal; }
+#services-table-container .action-btns { flex-wrap: wrap; }
 .cell-sub-warn { color: var(--warning); }
 .btn-link {
   text-decoration: underline;
@@ -1955,11 +1967,62 @@ body.gate { display: flex; flex-direction: column; }
 /* ----- Responsive ----- */
 @media (max-width: 1100px) {
   .dash-split { grid-template-columns: minmax(0, 1fr); gap: 0; }
+  /* Just above 768 px all six catalog columns still show; headers and the
+     estimate wrap so the table fits instead of scrolling (728 px in 713). */
+  .catalog-table thead th, .catalog-table .cat-est { white-space: normal; }
   .settings-layout { grid-template-columns: minmax(0, 1fr); gap: 0; }
   .settings-index { position: static; flex-direction: row; flex-wrap: wrap; gap: 0 12px; margin-bottom: 16px; }
   .settings-index a { border-left: none; padding-left: 0; }
   .category-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .page-foot-keys { display: none; }
+}
+/* Services stack into one block per service up to 1100 px, as the fleet
+   does: eleven columns need about 950 px even with every cell wrapped. Name
+   and balance on top, status and change under them, then the host resources
+   with their labels, then payout progress and the actions. Phones drop the
+   resources row (768 px block above). */
+@media (max-width: 1100px) {
+  #services-table-container { overflow-x: visible; }
+  #services-table-container .breakdown-table, #services-table-container .breakdown-table tbody { display: block; }
+  #services-table-container .breakdown-table thead { display: none; }
+  #services-table-container .breakdown-table tr {
+    display: grid; grid-template-columns: repeat(5, auto) minmax(0, 1fr) auto; column-gap: 16px; row-gap: 4px;
+    grid-template-areas:
+      "name name name name name name bal"
+      "status status status status status status chg"
+      "health cpu mem disk gpu . ."
+      "pay pay pay pay pay pay act";
+    padding: 10px 0; border-bottom: 1px solid var(--border-color);
+  }
+  #services-table-container .breakdown-table td { display: block; padding: 0; border: none; min-width: 0; }
+  #services-table-container .breakdown-table .c-name { grid-area: name; }
+  #services-table-container .breakdown-table .c-bal { grid-area: bal; }
+  #services-table-container .breakdown-table .c-status { grid-area: status; }
+  #services-table-container .breakdown-table .c-chg { grid-area: chg; }
+  #services-table-container .breakdown-table .c-health { grid-area: health; }
+  #services-table-container .breakdown-table .c-cpu { grid-area: cpu; }
+  #services-table-container .breakdown-table .c-mem { grid-area: mem; }
+  #services-table-container .breakdown-table .c-disk { grid-area: disk; }
+  #services-table-container .breakdown-table .c-gpu { grid-area: gpu; }
+  #services-table-container .breakdown-table .c-pay { grid-area: pay; width: auto; align-self: center; }
+  #services-table-container .breakdown-table .c-act { grid-area: act; width: auto; }
+  #services-table-container .breakdown-table .c-empty { display: none; }
+  #services-table-container .breakdown-table .c-health, #services-table-container .breakdown-table .c-cpu, #services-table-container .breakdown-table .c-mem,
+  #services-table-container .breakdown-table .c-disk, #services-table-container .breakdown-table .c-gpu { text-align: left; }
+  #services-table-container .breakdown-table td[data-label]::before {
+    content: attr(data-label); display: block;
+    font-family: var(--font-ui); font-size: var(--fs-1); font-weight: 400; color: var(--text-muted);
+  }
+  #services-table-container .breakdown-table .payout-progress { margin: 0 0 2px; }
+  #services-table-container .breakdown-table .payout-label { text-align: left; }
+  #services-table-container .breakdown-table .instance-row {
+    grid-template-areas:
+      "name name name name name name act"
+      "status status status status status status act"
+      "health cpu mem disk gpu . act";
+    padding: 6px 0 6px 14px; border-bottom: 1px dashed var(--border-color);
+  }
+  #services-table-container .breakdown-table .instance-row .c-name { padding-left: 0; }
 }
 @media (max-width: 768px) {
   .topbar { flex-wrap: wrap; height: auto; padding: 0 12px; gap: 0 12px; }
@@ -1990,31 +2053,13 @@ body.gate { display: flex; flex-direction: column; }
   .attn-row { grid-template-columns: auto minmax(0, 1fr); padding-right: 0; }
   .attn-why { grid-column: 1 / -1; }
   .attn-actions { grid-column: 1 / -1; justify-content: flex-start; }
-  /* Services stack into one block per service: name and balance on top,
-     status and change under them, payout progress and the actions last.
-     Host resources stay on the desktop table and the Fleet page. */
-  #services-table-container .breakdown-table, #services-table-container .breakdown-table tbody { display: block; }
-  #services-table-container .breakdown-table thead { display: none; }
-  #services-table-container .breakdown-table tr {
-    display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 12px; row-gap: 2px;
-    grid-template-areas: "name bal" "status chg" "pay act";
-    padding: 10px 0; border-bottom: 1px solid var(--border-color);
-  }
-  #services-table-container .breakdown-table td { display: block; padding: 0; border: none; }
-  #services-table-container .breakdown-table .c-name { grid-area: name; min-width: 0; }
-  #services-table-container .breakdown-table .c-bal { grid-area: bal; }
-  #services-table-container .breakdown-table .c-status { grid-area: status; }
-  #services-table-container .breakdown-table .c-chg { grid-area: chg; }
-  #services-table-container .breakdown-table .c-pay { grid-area: pay; width: auto; align-self: center; }
-  #services-table-container .breakdown-table .c-act { grid-area: act; width: auto; }
+  /* Phones drop the host-resources row of the stacked services and the image
+     line; they stay on wider screens and on the Fleet page. */
+  #services-table-container .breakdown-table tr { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "name bal" "status chg" "pay act"; }
+  #services-table-container .breakdown-table .instance-row { grid-template-areas: "name act" "status act"; }
   #services-table-container .breakdown-table .c-health, #services-table-container .breakdown-table .c-cpu, #services-table-container .breakdown-table .c-mem,
-  #services-table-container .breakdown-table .c-disk, #services-table-container .breakdown-table .c-gpu, #services-table-container .breakdown-table .c-empty { display: none; }
+  #services-table-container .breakdown-table .c-disk, #services-table-container .breakdown-table .c-gpu { display: none; }
   #services-table-container .breakdown-table .cell-sub.cell-mono { display: none; }
-  #services-table-container .breakdown-table .payout-progress { margin: 0 0 2px; }
-  #services-table-container .breakdown-table .payout-label { text-align: left; }
-  #services-table-container .breakdown-table .instance-row { grid-template-areas: "name act" "status act"; padding: 6px 0 6px 14px; border-bottom: 1px dashed var(--border-color); }
-  #services-table-container .breakdown-table .instance-row .c-name { padding-left: 0; }
-  #services-table-container .breakdown-table .instance-row .c-cpu, #services-table-container .breakdown-table .instance-row .c-mem { display: none; }
   /* Payout rows stack the same way: name and on-chain balance, then status
      and model, then the address on its own line where it can wrap. */
   .payout-table, .payout-table tbody { display: block; }
@@ -2035,7 +2080,7 @@ body.gate { display: flex; flex-direction: column; }
   .payout-table .p-chain:has(.payout-na) { display: none; }
   .payout-table .payout-address { white-space: normal; word-break: break-all; max-width: none; }
   /* Only the wrappers whose tables stack into blocks drop their scroll box. */
-  #services-table-container, #catalog-grid, .table-scroll:has(> .payout-table) { overflow-x: visible; }
+  #catalog-grid, .table-scroll:has(> .payout-table) { overflow-x: visible; }
   /* Running costs: the figures go under the machine, not beside it. */
   .economics-row { grid-template-columns: minmax(0, 1fr); gap: 4px; }
   .economics-figures { flex-wrap: wrap; }

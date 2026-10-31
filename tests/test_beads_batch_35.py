@@ -72,9 +72,10 @@ class TestTheIdIsVisible:
         element = self._id_element()
         assert "esc(" in element or "brk(" in element
         if "brk(" in element:
-            source = without_comments(fleet_html())
+            # brk() is shared from app.js (CP.brk) since the dashboard uses it too.
+            source = without_comments((ROOT / "app" / "static" / "js" / "app.js").read_text(encoding="utf-8"))
             body = source[source.index("function brk(") :][:200]
-            assert "return esc(str)" in body, "brk() must escape before adding <wbr>"
+            assert "return escapeHtml(str)" in body, "brk() must escape before adding <wbr>"
 
     def test_it_says_what_the_id_is_for(self):
         """A bare hex string with no explanation is not usable information."""
