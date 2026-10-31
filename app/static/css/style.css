@@ -1271,8 +1271,10 @@ kbd {
 .topnav .sidebar-link.active { color: var(--text-primary); border-bottom-color: var(--text-primary); font-weight: 600; }
 .topbar-right { display: flex; align-items: center; gap: 6px; margin-left: auto; }
 .topbar-add { flex-shrink: 0; gap: 2px; text-decoration: none; white-space: nowrap; }
-/* On /setup itself: a ring, since the button is already filled. */
+/* On /setup itself: a ring, since the button is already filled. The focus
+   outline sits outside the ring (3px), or the ring would hide it. */
 .topbar-add.active { box-shadow: 0 0 0 2px var(--bg-primary), 0 0 0 3px var(--text-primary); }
+.topbar-add:focus-visible { outline-offset: 4px; }
 
 .topbar-icon-btn:hover { background: var(--bg-hover); color: var(--text-primary); }
 
@@ -1881,6 +1883,7 @@ body.gate { display: flex; flex-direction: column; }
 .wizard-panel .setup-card { margin-bottom: 28px; padding-bottom: 20px; border-bottom: 1px solid var(--border-color); }
 .wizard-panel .setup-card:last-child { border-bottom: none; }
 .setup-body { margin-bottom: 14px; }
+.setup-risk { margin-bottom: 14px; }
 .setup-line { color: var(--text-secondary); margin: 0 0 10px; }
 .setup-links { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .setup-fields { margin-top: 14px; }
@@ -1938,7 +1941,7 @@ body.gate { display: flex; flex-direction: column; }
   .topbar { flex-wrap: wrap; height: auto; padding: 0 12px; gap: 0 12px; }
   .topbar-brand { height: 40px; }
   .topnav { order: 3; flex-basis: 100%; overflow-x: auto; height: 34px; margin: 0 -12px; padding: 0 6px; border-top: 1px solid var(--border-color); }
-  /* 14px, as before the type step, and tighter padding, so all six tabs fit in 390 without a hidden scroll. */
+  /* 14px, as before the type step, and tighter padding, so all five tabs fit in 390 without a hidden scroll. */
   .topnav .sidebar-link { padding: 0 5px; font-size: var(--fs-1); }
   /* "+" alone on a phone; the aria-label still says "Add service". */
   .topbar-add .topbar-add-label { display: none; }
@@ -2026,6 +2029,8 @@ body.gate { display: flex; flex-direction: column; }
      pushing the page sideways. */
   .filter-tabs { flex-wrap: wrap; }
   .catalog-table .cat-svc { overflow-wrap: anywhere; }
+  /* Add and Details stack rather than widen the table. */
+  .catalog-table .cat-act { white-space: normal; }
 }
 
 .attn-clear[hidden] { display: none; }
