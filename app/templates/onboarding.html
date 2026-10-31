@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="{{ theme_default }}" data-theme-fallback>
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -12,7 +12,7 @@
   <noscript><link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet"></noscript>
   <link rel="stylesheet" href="/static/css/style.css">
   <script nonce="{{ csp_nonce(request) }}">
-    (function(){var t=localStorage.getItem('cp-theme')||'classic';document.documentElement.setAttribute('data-theme',t)})();
+    {% include "_theme_prepaint.html" %}
     document.querySelectorAll('link[data-async-style]').forEach((link) => {
       link.addEventListener('load', () => { link.rel = 'stylesheet'; }, { once: true });
       if (link.sheet) link.rel = 'stylesheet';

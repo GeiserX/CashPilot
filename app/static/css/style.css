@@ -181,21 +181,31 @@ img { max-width: 100%; }
   color: var(--text-secondary);
 }
 
-/* Theme picker in the avatar menu: Classic (default) / Dark / Light, one per row
-   so the longer default label fits the 200px menu. */
+/* Theme picker in the avatar menu: one row per theme in app/themes.json, each
+   with a swatch. Rows, not columns, so a longer label never widens the menu. */
 .avatar-theme { display: flex; flex-direction: column; gap: 6px; padding: 8px 12px; }
 .avatar-theme-title { font-size: var(--fs-2); color: var(--text-muted); }
 .avatar-theme-options {
-  display: grid; grid-template-columns: 1fr;
+  display: flex; flex-direction: column;
   border: 1px solid var(--border-light); border-radius: 2px; overflow: hidden;
 }
 .avatar-theme-options button {
-  font: inherit; font-size: var(--fs-2); padding: 4px 0; cursor: pointer;
+  display: flex; align-items: center; gap: 8px; min-width: 0;
+  font: inherit; font-size: var(--fs-2); padding: 4px 8px; cursor: pointer; text-align: left;
   background: none; border: 0; color: var(--text-secondary);
 }
 .avatar-theme-options button + button { border-top: 1px solid var(--border-light); }
 .avatar-theme-options button:hover { background: var(--bg-hover); color: var(--text-primary); }
 .avatar-theme-options button[aria-pressed="true"] { background: var(--bg-tertiary); color: var(--text-primary); font-weight: 600; }
+.avatar-theme-default { color: var(--text-muted); font-weight: 400; }
+/* Each theme's own background and accent, so a swatch looks the same whatever
+   theme is on. One rule per theme, next to its CSS block. */
+.theme-swatch {
+  flex: none; width: 14px; height: 14px; border-radius: 2px;
+  box-shadow: inset 0 0 0 1px var(--border-strong);
+}
+.theme-swatch[data-swatch="dark"] { background: linear-gradient(135deg, #15171a 50%, #e2e5e9 50%); }
+.theme-swatch[data-swatch="light"] { background: linear-gradient(135deg, #f6f7f8 50%, #16191c 50%); }
 
 /* Avatar button + dropdown */
 .topbar-avatar-wrap {
@@ -223,7 +233,12 @@ img { max-width: 100%; }
   display: none;
   position: absolute;
   right: 0;
-  width: 200px;
+  /* As wide as its longest row ("Classic night (default)" and its swatch),
+     whatever font loaded, and never wider than the window: past that a label
+     wraps instead of being cut (scripts/fleet_overflow_check.mjs). */
+  width: max-content;
+  min-width: 200px;
+  max-width: calc(100vw - 24px);
   z-index: 200;
   overflow: hidden;
   background: var(--bg-secondary);
@@ -2168,10 +2183,11 @@ body.gate { display: flex; flex-direction: column; }
 }
 
 /* ----- Classic night -----
-   The default theme (avatar menu > Theme), data-theme="classic": the pre-#492
+   The default theme (app/themes.json), data-theme="classic": the pre-#492
    blue-black, violet hairlines, rose actions and cyan focus. Layout, type and
    the status colours stay as in the dark theme. Contrast is listed in the PR
    that added it; every text pair is >= 4.5:1 and every UI pair >= 3:1. */
+.theme-swatch[data-swatch="classic"] { background: linear-gradient(135deg, #0b0b14 50%, #f472b6 50% 75%, #22d3ee 75%); }
 :root[data-theme="classic"] {
   --bg-primary: #0b0b14; --bg-secondary: #11111d; --bg-card: #11111d; --bg-tertiary: #171726;
   --bg-hover: #1d1d2f; --bg-input: #08080f; --bg-log: #07070d;
@@ -2214,3 +2230,87 @@ body.gate { display: flex; flex-direction: column; }
 }
 :root[data-theme="classic"] :focus-visible,
 :root[data-theme="classic"] .form-input:focus-visible { outline-color: var(--accent-secondary); }
+
+/* ----- Sunrise -----
+   data-theme="sunrise": the dark theme, plus the logo's sunrise gradient at the
+   edges only: a 2px line under the top bar, the active tab, the full-size
+   primary buttons (row buttons stay neutral), an orange focus ring and the
+   balance. Text and status colours stay as in dark. Contrast is in the PR that
+   added it; every text pair is >= 4.5:1 and every UI pair >= 3:1. */
+.theme-swatch[data-swatch="sunrise"] { background: linear-gradient(135deg, #15171a 50%, #FF9800 50%, #EC407A 60%, #AB47BC 78%); }
+:root[data-theme="sunrise"] {
+  --sun: linear-gradient(90deg, #FFD54F, #FF9800 40%, #E91E63 72%, #AB47BC);
+  --sun-warm: linear-gradient(90deg, #FF9800, #EC407A);       /* dark text >= 4.77:1 */
+  --sun-warm-hover: linear-gradient(90deg, #FFA726, #F06292); /* dark text >= 5.87:1 */
+  --sun-ring: #FF9800;
+}
+:root[data-theme="sunrise"] .topbar {
+  border-bottom: 2px solid transparent;
+  border-image: var(--sun) 1;
+}
+:root[data-theme="sunrise"] .topnav .sidebar-link.active {
+  border-bottom-width: 3px; margin-bottom: -2px;
+  border-image: var(--sun-warm) 1;
+}
+:root[data-theme="sunrise"] .topbar-add,
+:root[data-theme="sunrise"] .btn-primary:not(.btn-sm) {
+  background: var(--sun-warm); color: #15171a; border-color: transparent;
+}
+:root[data-theme="sunrise"] .topbar-add:hover,
+:root[data-theme="sunrise"] .btn-primary:not(.btn-sm):hover:not(:disabled) {
+  background: var(--sun-warm-hover); color: #15171a; border-color: transparent;
+}
+/* Disabled: the dark theme's neutral fill. A gradient at opacity 0.4 drops the
+   label to 1.70:1. */
+:root[data-theme="sunrise"] .btn-primary:not(.btn-sm):disabled { background: var(--text-primary); }
+:root[data-theme="sunrise"] .topbar-add.active {
+  box-shadow: 0 0 0 2px var(--bg-secondary), 0 0 0 3px var(--sun-ring);
+}
+:root[data-theme="sunrise"] :focus-visible,
+:root[data-theme="sunrise"] .form-input:focus-visible { outline-color: var(--sun-ring); }
+/* Pale gold to pink, no amber stop: amber read as a warning next to "No reading". */
+:root[data-theme="sunrise"] .money-strip .stat-card-balance .stat-value {
+  background: linear-gradient(90deg, #FFE082, #F48FB1);
+  -webkit-background-clip: text; background-clip: text;
+  color: transparent; width: fit-content;
+}
+
+/* ----- Warm -----
+   data-theme="warm": the dark theme with one sun orange from the logo on
+   everything you click, the chart series in logo colours, and the warning
+   amber moved toward yellow (#e0a53c -> #e6bb45) so it is not taken for the
+   accent. Contrast is in the PR that added it. The rules sit under :where() so
+   they keep the specificity they were checked with: scoped plainly, they would
+   outrank .action-btns .btn-icon.btn-success (the green claim icons) and
+   .btn-primary:hover on links. */
+.theme-swatch[data-swatch="warm"] { background: linear-gradient(135deg, #15171a 50%, #fb923c 50%); }
+:root[data-theme="warm"] {
+  --accent: #fb923c;            /* 7.9:1 on the page, 6.6:1 on hover rows */
+  --accent-hover: #fdba74;
+  --accent-bg: #fb923c;
+  --accent-soft: rgba(251, 146, 60, 0.10);
+  --warning: #e6bb45;
+  --warning-soft: rgba(230, 187, 69, 0.12);
+  --chart-bar: #d9823f;         /* earnings bars: the accent, a step down */
+  --series-1: #c27ad6;          /* logo violet, lifted for the dark ground */
+  --series-2: #fb923c;          /* logo orange */
+}
+:where(:root[data-theme="warm"]) a { text-decoration-color: color-mix(in srgb, var(--accent) 55%, transparent); }
+:where(:root[data-theme="warm"]) a:hover { color: var(--accent-hover); }
+:where(:root[data-theme="warm"]) :focus-visible,
+:where(:root[data-theme="warm"]) .form-input:focus-visible { outline-color: var(--accent); }
+:where(:root[data-theme="warm"]) :is(.form-input, .topbar-currency-select):focus { border-color: var(--accent); }
+:where(:root[data-theme="warm"]) :is(input[type="checkbox"], input[type="radio"]) { accent-color: var(--accent); }
+:where(:root[data-theme="warm"]) :is(.btn-primary, .btn-success) { background: var(--accent); border-color: var(--accent); color: var(--bg-primary); }
+:where(:root[data-theme="warm"]) .topbar-add.active { box-shadow: 0 0 0 2px var(--bg-primary), 0 0 0 3px var(--accent); }
+:where(:root[data-theme="warm"]) .topnav .sidebar-link.active { border-bottom-color: var(--accent); }
+:where(:root[data-theme="warm"]) :is(.tab-btn, .filter-tab).active { box-shadow: inset 0 -2px 0 var(--accent); }
+:where(:root[data-theme="warm"]) :is(.service-card, .category-card).selected { border-color: var(--accent); }
+/* Dark tick on the orange box, scoped to Warm, a dark theme: unscoped, light
+   would draw a near-black tick on a near-black box. */
+:root[data-theme="warm"] .service-card.selected::after {
+  background-color: var(--accent);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%2315171a' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='20 6 9 17 4 12'/%3E%3C/svg%3E");
+}
+:where(:root[data-theme="warm"]) :is(.wizard-step, .gate-step).active .wizard-step-number { background: var(--accent); border-color: var(--accent); }
+:where(:root[data-theme="warm"]) :is(.payout-progress-bar:not(.eligible), .payout-progress-fill) { background: var(--accent); }

@@ -1,13 +1,13 @@
 // Full-page screenshots of every CashPilot page and state, for UI review.
 //
-//   node scripts/ui_screenshots.mjs <baseUrl> <outDir> [classic|dark|light|all]
+//   node scripts/ui_screenshots.mjs <baseUrl> <outDir> [<theme id>|all]
 //
 // <baseUrl> is a seeded instance (scripts/ui_demo_seed.py --serve PORT). The
 // seed also serves a first-run instance on PORT+1 (no account, /onboarding
 // renders) and an empty one on PORT+2 (an account with nothing deployed).
 //
-// Writes <state>.png for the default theme, classic, and <state>-dark.png /
-// <state>-light.png for the others. Mobile states (390x844) end in -mobile. Exits non-zero if any page
+// Themes are the ids in app/themes.json. Writes <state>.png for the default
+// theme and <state>-<id>.png (e.g. -dark, -warm) for the others. Mobile states (390x844) end in -mobile. Exits non-zero if any page
 // answered with an error status or logged an uncaught error.
 //
 // Three answers only a live worker could give are faked with page.route, all
@@ -19,7 +19,7 @@
 // CP_SCALE=2 takes retina shots (the README ones); CP_SHOT_ONLY=<regex> limits
 // the run to matching state names.
 import { chromium } from 'playwright';
-import { mkdirSync } from 'node:fs';
+import { mkdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
@@ -243,13 +243,17 @@ async function saveTheme(browser, origin, session, theme) {
   if (status !== 200) throw new Error(`could not save theme ${theme} on ${origin} (HTTP ${status})`);
 }
 
+// The built-in themes, from the one list the app reads.
+const THEME_SPEC = JSON.parse(readFileSync(new URL('../app/themes.json', import.meta.url), 'utf8'));
+const THEME_IDS = THEME_SPEC.themes.map((t) => t.id);
+
 async function main() {
-  const [, , baseArg, outDir, themeArg = 'classic'] = process.argv;
-  if (!baseArg || !outDir || !['classic', 'dark', 'light', 'all'].includes(themeArg)) {
-    console.error('usage: node ui_screenshots.mjs <baseUrl> <outDir> [classic|dark|light|all]');
+  const [, , baseArg, outDir, themeArg = THEME_SPEC.default] = process.argv;
+  if (!baseArg || !outDir || ![...THEME_IDS, 'all'].includes(themeArg)) {
+    console.error(`usage: node ui_screenshots.mjs <baseUrl> <outDir> [${THEME_IDS.join('|')}|all]`);
     process.exit(2);
   }
-  const themes = themeArg === 'all' ? ['classic', 'dark', 'light'] : [themeArg];
+  const themes = themeArg === 'all' ? THEME_IDS : [themeArg];
   const urls = origins(baseArg);
   const channel = process.env.PW_CHANNEL ?? 'chrome';
   const only = process.env.CP_SHOT_ONLY ? new RegExp(process.env.CP_SHOT_ONLY) : null;
@@ -264,7 +268,7 @@ async function main() {
     await saveTheme(browser, urls.empty, sessions.empty, theme);
     for (const st of STATES) {
       if (only && !only.test(st.name)) continue;
-      const file = join(outDir, `${st.name}${theme === 'classic' ? '' : `-${theme}`}.png`);
+      const file = join(outDir, `${st.name}${theme === THEME_SPEC.default ? '' : `-${theme}`}.png`);
       try {
         const { ctx, page } = await openState(browser, st, { urls, sessions, theme, problems });
         if (st.element) await page.locator(st.element).screenshot({ path: file });

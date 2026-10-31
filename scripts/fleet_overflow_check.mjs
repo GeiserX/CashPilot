@@ -29,7 +29,7 @@
 //
 //   ./scripts/fleet_overflow_check.sh            (boots Chrome and the demo UI)
 //   SHOTS=/tmp/shots ./scripts/fleet_overflow_check.sh   (also saves screenshots)
-//   THEME=classic ./scripts/fleet_overflow_check.sh      (in another theme)
+//   THEME=warm ./scripts/fleet_overflow_check.sh         (in another theme, an id from app/themes.json)
 //
 // Exits 1 on overflow, 2 when the browser or the UI cannot be reached:
 // "could not run" must never read as "passed".
@@ -356,6 +356,37 @@ async function main() {
       }
     }
   }
+  // The avatar menu's theme picker, open on a phone: one row per theme in
+  // app/themes.json, all inside the window and nothing wider than its row.
+  const THEME_IDS = JSON.parse(fs.readFileSync(new URL("../app/themes.json", import.meta.url), "utf8")).themes.map((t) => t.id);
+  await send("Page.navigate", { url: `${BASE}/` });
+  await waitFor(`document.readyState === 'complete' && !!document.querySelector('.avatar-dropdown')`);
+  for (const w of [320, 375]) {
+    await send("Emulation.setDeviceMetricsOverride", { width: w, height: 900, deviceScaleFactor: 1, mobile: false });
+    await sleep(300);
+    await evaluate("document.querySelector('.avatar-dropdown').classList.add('open')");
+    await sleep(200);
+    const r = await evaluate(MEASURE(".avatar-dropdown"));
+    const menu = await evaluate(`(() => {
+      const b = document.querySelector('.avatar-dropdown').getBoundingClientRect();
+      const ids = [...document.querySelectorAll('.avatar-dropdown [data-theme-choice]')].map((e) => e.dataset.themeChoice);
+      const pressed = [...document.querySelectorAll('.avatar-dropdown [data-theme-choice][aria-pressed="true"]')].map((e) => e.dataset.themeChoice);
+      return { left: b.left, right: b.right, vw: document.documentElement.clientWidth, ids, pressed };
+    })()`);
+    const ok = r.scrollWidth <= r.clientWidth && !r.hidden.length && !r.text.length && !r.past.length
+      && menu.left >= 0 && menu.right <= menu.vw + 1
+      && menu.ids.join() === THEME_IDS.join() && menu.pressed.join() === THEME;
+    checked++;
+    if (!ok) failures++;
+    console.log(`${ok ? "ok  " : "FAIL"}  theme picker open    ${String(w).padStart(4)} px  menu ${Math.round(menu.left)}..${Math.round(menu.right)} of ${menu.vw}  rows ${menu.ids.join(",")}  pressed ${menu.pressed.join(",")}  cut off ${r.hidden.length}  text out of its box ${r.text.length}  past the edge ${r.past.length}`);
+    if (!ok) for (const x of [...r.hidden, ...r.text, ...r.past]) console.log(`        ${x}`);
+    if (SHOTS) {
+      const shot = await send("Page.captureScreenshot", { format: "png", clip: { x: 0, y: 0, width: w, height: 520, scale: 1 } });
+      fs.writeFileSync(`${SHOTS}/picker-${w}.png`, Buffer.from(shot.data, "base64"));
+    }
+    await evaluate("document.querySelector('.avatar-dropdown').classList.remove('open')");
+  }
+
   console.log(`theme ${THEME}: ${checked} page widths checked, ${rows} boxes on /fleet (${FIXTURE_WORKERS.length} long-name fixtures, one isolation report), ${failures} overflowing`);
   await fetch(`${CDP}/json/close/${target.id}`).catch(() => {});
   process.exit(failures ? 1 : 0);

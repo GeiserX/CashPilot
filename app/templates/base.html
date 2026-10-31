@@ -1,9 +1,8 @@
 <!DOCTYPE html>
 {# A signed-in page gets the theme saved on the account (app.routers.pages._page,
-   only dark, light or classic). The pre-paint script below then mirrors it into
-   localStorage for the sign-in pages; with no attribute it falls back to that key,
-   then to the default, classic. #}
-<html lang="en"{% if saved_theme in ('dark', 'light', 'classic') %} data-theme="{{ saved_theme }}"{% endif %}>
+   an id from app/themes.json). The pre-paint script below then mirrors it into
+   localStorage for the sign-in pages; with no attribute it falls back to that key. #}
+<html lang="en"{% if saved_theme in theme_config.ids %} data-theme="{{ saved_theme }}"{% endif %}>
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -16,7 +15,7 @@
   <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" data-async-style>
   <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap"></noscript>
   <script nonce="{{ csp_nonce(request) }}">
-    (function(){var d=document.documentElement,s=d.getAttribute('data-theme');if(s){localStorage.setItem('cp-theme',s)}else{d.setAttribute('data-theme',localStorage.getItem('cp-theme')||'classic')}})();
+    {% include "_theme_prepaint.html" %}
   </script>
   {% block head %}{% endblock %}
   <script nonce="{{ csp_nonce(request) }}">
@@ -124,9 +123,9 @@
             <div class="avatar-theme" role="group" aria-label="Theme">
               <span class="avatar-theme-title">Theme</span>
               <div class="avatar-theme-options">
-                <button type="button" data-theme-choice="classic" aria-pressed="false">Classic (default)</button>
-                <button type="button" data-theme-choice="dark" aria-pressed="false">Dark</button>
-                <button type="button" data-theme-choice="light" aria-pressed="false">Light</button>
+                {%- for t in themes %}
+                <button type="button" data-theme-choice="{{ t.id }}" aria-pressed="false"><span class="theme-swatch" data-swatch="{{ t.id }}" aria-hidden="true"></span>{{ t.label }}{% if t.id == theme_default %} <span class="avatar-theme-default">(default)</span>{% endif %}</button>
+                {%- endfor %}
               </div>
             </div>
             <div class="avatar-dropdown-divider"></div>

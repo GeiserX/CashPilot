@@ -1,0 +1,10 @@
+{#- Pre-paint: runs before the stylesheet paints anything. A signed-in page
+    already carries the account's theme on <html> (app.routers.pages._page),
+    which wins and is mirrored into localStorage 'cp-theme' for the sign-in
+    pages. The sign-in and onboarding pages carry the default plus
+    data-theme-fallback, so the page has a theme with JS off; there a valid
+    stored choice replaces it. An unknown or old value falls back to the
+    default. The list is set first and storage is wrapped, so a browser that
+    blocks storage still gets the list and the picker. The ids and the default
+    come from app/themes.json. -#}
+(function(){var T={{ theme_config|tojson }},d=document.documentElement,ok=function(t){return T.ids.indexOf(t)>=0},s=d.getAttribute('data-theme'),k=null;window.CP_THEMES=T;if(ok(s)&&d.getAttribute('data-theme-fallback')===null){try{localStorage.setItem('cp-theme',s)}catch(e){}return}try{k=localStorage.getItem('cp-theme')}catch(e){}d.setAttribute('data-theme',ok(k)?k:T.default)})();

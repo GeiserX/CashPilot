@@ -18,7 +18,7 @@ from fastapi import HTTPException, Request
 from fastapi.responses import RedirectResponse
 from fastapi.templating import Jinja2Templates
 
-from app import auth, setup_token, version
+from app import auth, setup_token, themes, version
 
 __all__ = [
     "templates",
@@ -57,6 +57,11 @@ templates.env.globals["csp_nonce"] = _csp_nonce
 # reintroduce a hardcoded literal by copy-paste (CashPilot: the sidebar shipped
 # "v0.2.49" for ~150 releases).
 templates.env.globals["app_version"] = version.display
+# The built-in themes (app/themes.json): the picker lists them, and the pre-paint
+# script gets the ids and the default so an unknown stored value falls back.
+templates.env.globals["themes"] = themes.THEME_LIST
+templates.env.globals["theme_default"] = themes.DEFAULT_THEME
+templates.env.globals["theme_config"] = themes.CONFIG
 
 
 def _login_redirect() -> RedirectResponse:

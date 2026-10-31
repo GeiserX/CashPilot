@@ -25,7 +25,7 @@ os.environ.setdefault("CASHPILOT_API_KEY", "test-fleet-key")
 import pytest
 from fastapi.testclient import TestClient
 
-from app import database
+from app import database, themes
 from app.main import app
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -120,12 +120,12 @@ def _html_theme(html):
 
 
 @pytest.mark.parametrize("role", ["owner", "writer", "viewer"])
-def test_every_role_gets_the_three_way_picker(real_db, role):
+def test_every_role_gets_the_picker(real_db, role):
     user = {"uid": real_db, "u": "classic_user", "r": role}
     with patch("app.main.auth.get_current_user", return_value=user), TestClient(app) as c:
         html = c.get("/").text
-    assert re.findall(r'data-theme-choice="(\w+)"', html) == ["classic", "dark", "light"]
-    assert re.search(r'data-theme-choice="classic"[^>]*>Classic \(default\)<', html)
+    assert re.findall(r'data-theme-choice="(\w+)"', html) == list(themes.THEMES)
+    assert re.search(r'data-theme-choice="classic"[^>]*>.*?Classic night <span[^>]*>\(default\)</span></button>', html)
 
 
 def test_signed_in_page_paints_the_saved_theme(real_db):
