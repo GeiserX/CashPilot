@@ -15,6 +15,8 @@
 #   their usual order (category, then name). Used to lead with the services that pay the project
 #   best, so a reorder is a number change, never a new page.
 # website: Main URL
+# support_url: (optional) https:// page where a user reaches the provider's support. Offered
+#   when the provider has disabled the account (a health_signals entry with state account_disabled).
 # description: One paragraph description
 # short_description: One line (for tables)
 
@@ -93,7 +95,15 @@
 #     no collector.
 #       - pattern: "login failed"       regex, matched case-insensitively against logs
 #         means:   "The service rejected the stored credentials."   shown to the user
-#         state:   failing              failing (default) | idle
+#         state:   failing              failing (default) | idle | account_disabled; any other
+#                                         value rejects the entry
+#                                         account_disabled: the PROVIDER refuses to run the
+#                                         client, so restarting cannot help. Unlike the others
+#                                         it is judged by the worker on the last finished run's
+#                                         log (a stopped copy, or one up for under two minutes),
+#                                         and the dashboard shows
+#                                         one "Account disabled" card for the service instead of
+#                                         a crash loop per box. Not with window_hours.
 #         unless:  ""                   (optional) regex whose presence in the same window
 #                                         cancels the signal: the problem is not there
 #         min_matches:  1                 (optional) with window_hours: lines the pattern must match
