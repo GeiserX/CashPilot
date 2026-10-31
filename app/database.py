@@ -33,7 +33,7 @@ except ImportError as exc:  # pragma: no cover - only after an aiosqlite upgrade
     ) from exc
 from cryptography.fernet import Fernet, InvalidToken
 
-from app import usage
+from app import themes, usage
 from app.exchange_rates import UNPRICED_BY_DESIGN
 
 _logger = logging.getLogger(__name__)
@@ -481,8 +481,8 @@ CREATE TABLE IF NOT EXISTS user_preferences (
     selected_categories TEXT    NOT NULL DEFAULT '[]',
     timezone            TEXT    NOT NULL DEFAULT 'UTC',
     setup_completed     INTEGER NOT NULL DEFAULT 0,
-    -- 'dark', 'light' or 'classic'. NULL = never chosen, so the browser's own
-    -- choice stands. Nullable with no default so fresh and upgraded match.
+    -- An id from app/themes.json. NULL = never chosen, so the default applies.
+    -- Nullable with no default so fresh and upgraded match.
     theme               TEXT,
     created_at          TEXT    NOT NULL DEFAULT (datetime('now')),
     updated_at          TEXT    NOT NULL DEFAULT (datetime('now')),
@@ -2236,8 +2236,8 @@ async def update_user_password(user_id: int, hashed_password: str) -> None:
 # --- User Preferences ---
 
 
-# The appearance choices user_preferences.theme accepts.
-THEMES = ("dark", "light", "classic")
+# The appearance choices user_preferences.theme accepts (app/themes.json).
+THEMES = themes.THEMES
 
 
 async def get_user_preferences(user_id: int) -> dict[str, Any] | None:

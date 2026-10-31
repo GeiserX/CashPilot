@@ -39,6 +39,8 @@ const PORT = process.env.CHROME_DEBUG_PORT || 9222;
 const MIN_CONTRAST = 4.5;
 
 const css = fs.readFileSync(CSS, "utf8");
+// Every built-in theme, from the one list the app reads.
+const THEMES = JSON.parse(fs.readFileSync(path.join(ROOT, "app", "themes.json"), "utf8")).themes.map((t) => t.id);
 
 // Colour variants only. btn-sm / btn-lg are sizes and change no colour, so
 // asserting on them would just duplicate the base .btn result.
@@ -101,7 +103,7 @@ const fixtureFor = (theme) => `<!DOCTYPE html><html${theme === "dark" ? "" : ` d
 // and, worse, what made a passing run meaningless. A fresh document per theme
 // has no such state to go stale.
 const fixturePaths = {};
-for (const theme of ["dark", "light", "classic"]) {
+for (const theme of THEMES) {
   const fp = path.join(process.env.TMPDIR || "/tmp", `cashpilot-legibility-${theme}.html`);
   fs.writeFileSync(fp, fixtureFor(theme));
   fixturePaths[theme] = fp;
@@ -121,7 +123,17 @@ const AUDIT = (theme) => `((theme) => {
   // The background a control is REALLY painted on: its own, or the nearest
   // ancestor that actually paints one. A transparent button (btn-danger,
   // btn-ghost) is legible only relative to whatever shows through it.
-  const effectiveBg = (el) => {
+  //
+  // A gradient (Sunrise's buttons) has no single colour: its background-color
+  // is transparent, and reading only that measured the label against the card
+  // behind it. So a gradient yields one candidate per colour stop, and the
+  // label is judged against the worst one.
+  const blend = (c, b) => ({
+    r: c.r * c.a + b.r * (1 - c.a),
+    g: c.g * c.a + b.g * (1 - c.a),
+    b: c.b * c.a + b.b * (1 - c.a),
+  });
+  const effectiveBgs = (el) => {
     // Collect every painted layer up the tree, then composite them.
     //
     // The first version returned the first layer with alpha > 0 and treated it
@@ -133,22 +145,25 @@ const AUDIT = (theme) => `((theme) => {
     const layers = [];
     let n = el;
     while (n) {
-      const c = parse(getComputedStyle(n).backgroundColor);
+      const cs = getComputedStyle(n);
+      const stops = cs.backgroundImage.includes("gradient")
+        ? [...cs.backgroundImage.matchAll(/rgba?\\([^)]+\\)/g)].map((m) => parse(m[0])).filter((c) => c && c.a > 0)
+        : [];
+      // A gradient paints over its own element's background-color.
+      if (stops.length) layers.push({ stops });
+      const c = parse(cs.backgroundColor);
+      if (stops.length && stops.every((s) => s.a >= 1)) break;
       if (c && c.a > 0) {
-        layers.push(c);
+        layers.push({ stops: [c] });
         if (c.a >= 1) break; // opaque: nothing below it shows through
       }
       n = n.parentElement;
     }
-    let base = { r: 255, g: 255, b: 255 };
-    for (const c of layers.reverse()) {
-      base = {
-        r: c.r * c.a + base.r * (1 - c.a),
-        g: c.g * c.a + base.g * (1 - c.a),
-        b: c.b * c.a + base.b * (1 - c.a),
-      };
+    let bases = [{ r: 255, g: 255, b: 255 }];
+    for (const layer of layers.reverse()) {
+      bases = layer.stops.flatMap((c) => bases.map((b) => blend(c, b)));
     }
-    return base;
+    return bases;
   };
   const lum = ({ r, g, b }) => {
     const f = (v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); };
@@ -169,26 +184,30 @@ const AUDIT = (theme) => `((theme) => {
     return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
   };
 
+  const worst = (fg, bgs) => bgs
+    .map((bg) => ({ bg, contrast: ratio(fg, bg) }))
+    .reduce((a, b) => (b.contrast < a.contrast ? b : a));
+
   const out = { theme: document.documentElement.getAttribute("data-theme") || "dark", buttons: [], link: null };
   for (const el of document.querySelectorAll("[data-probe]")) {
     const cs = getComputedStyle(el);
-    const fg = parse(cs.color), bg = effectiveBg(el);
+    const { bg, contrast } = worst(parse(cs.color), effectiveBgs(el));
     out.buttons.push({
       probe: el.getAttribute("data-probe"),
       color: cs.color,
-      bg: "rgb(" + bg.r + "," + bg.g + "," + bg.b + ")",
-      contrast: Math.round(ratio(fg, bg) * 100) / 100,
+      bg: "rgb(" + Math.round(bg.r) + "," + Math.round(bg.g) + "," + Math.round(bg.b) + ")",
+      contrast: Math.round(contrast * 100) / 100,
       underlined: cs.textDecorationLine.includes("underline"),
     });
   }
   for (const el of document.querySelectorAll("[data-probe-fg]")) {
     const cs = getComputedStyle(el);
-    const fg = parse(cs.color), bg = effectiveBg(el);
+    const { bg, contrast } = worst(parse(cs.color), effectiveBgs(el));
     out.buttons.push({
       probe: el.getAttribute("data-probe-fg"),
       color: cs.color,
       bg: "rgb(" + Math.round(bg.r) + "," + Math.round(bg.g) + "," + Math.round(bg.b) + ")",
-      contrast: Math.round(ratio(fg, bg) * 100) / 100,
+      contrast: Math.round(contrast * 100) / 100,
       underlined: false, // an underline is only a defect on a FILLED control
     });
   }
@@ -199,7 +218,7 @@ const AUDIT = (theme) => `((theme) => {
     out.link = {
       underlined: lcs.textDecorationLine.includes("underline"),
       distinctFromProse: lcs.color !== pcs.color,
-      contrast: Math.round(ratio(parse(lcs.color), effectiveBg(link)) * 100) / 100,
+      contrast: Math.round(worst(parse(lcs.color), effectiveBgs(link)).contrast * 100) / 100,
     };
   }
   // Prove the switch actually took effect. A partially-applied theme produced
@@ -240,8 +259,8 @@ let checks = 0;
 const fail = (msg) => { failures++; console.error("FAIL  " + msg); };
 
 // Every theme. A palette that works in the dark one can be unreadable in the
-// others, and light and classic redefine the colour tokens.
-for (const theme of ["dark", "light", "classic"]) {
+// others, and each one redefines colour tokens.
+for (const theme of THEMES) {
   await send("Page.navigate", { url: "file://" + fixturePaths[theme] });
   await new Promise((r) => setTimeout(r, 400)); // let the stylesheet load
   const res = await send("Runtime.evaluate", { expression: AUDIT(theme), returnByValue: true });

@@ -5890,7 +5890,7 @@ async def api_set_preferences(
     if body.setup_mode is not None and body.setup_mode not in ("fresh", "monitoring", "mixed"):
         raise HTTPException(status_code=400, detail="setup_mode must be fresh, monitoring, or mixed")
     if body.theme is not None and body.theme not in THEMES:
-        raise HTTPException(status_code=400, detail="theme must be dark, light, or classic")
+        raise HTTPException(status_code=400, detail=f"theme must be one of: {', '.join(THEMES)}")
 
     # Only the fields that were sent are written (one upsert, no read first),
     # so a theme click racing the wizard's POST cannot undo either.

@@ -21,7 +21,7 @@ os.environ.setdefault("CASHPILOT_API_KEY", "test-fleet-key")
 import pytest
 from fastapi.testclient import TestClient
 
-from app import database
+from app import database, themes
 from app.main import app
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -116,35 +116,35 @@ def _html_theme(html):
 
 
 @pytest.mark.parametrize("role", ["owner", "writer", "viewer"])
-def test_every_role_gets_the_three_way_picker(real_db, role):
+def test_every_role_gets_the_picker(real_db, role):
     user = {"uid": real_db, "u": "classic_user", "r": role}
     with patch("app.main.auth.get_current_user", return_value=user), TestClient(app) as c:
         html = c.get("/").text
-    assert re.findall(r'data-theme-choice="(\w+)"', html) == ["dark", "light", "classic"]
+    assert re.findall(r'data-theme-choice="(\w+)"', html) == list(themes.THEMES)
 
 
 def test_signed_in_page_paints_the_saved_theme(real_db):
     user = {"uid": real_db, "u": "classic_user", "r": "viewer"}
     with patch("app.main.auth.get_current_user", return_value=user), TestClient(app) as c:
-        assert _html_theme(c.get("/").text) == "dark"  # never chosen: the default
+        assert _html_theme(c.get("/").text) == themes.DEFAULT_THEME  # never chosen
         c.post("/api/preferences", json={"theme": "classic"})
         for page in ("/", "/fleet", "/catalog", "/setup"):
             assert _html_theme(c.get(page).text) == "classic", page
 
 
 def test_next_user_on_the_same_browser_gets_their_own_theme(real_db):
-    """An owner picks Classic; a viewer who never chose signs in on that browser.
+    """An owner picks Light; a viewer who never chose signs in on that browser.
 
-    The browser still holds 'cp-theme' = classic. The viewer's pages must say
-    dark on <html>, which the pre-paint script prefers over the stored key
+    The browser still holds 'cp-theme' = light. The viewer's pages must say
+    the default on <html>, which the pre-paint script prefers over the stored key
     (scripts/theme_check.mjs proves that half), so the viewer is never left in
     someone else's theme.
     """
     owner_id = asyncio.run(database.create_user("the_owner", "pw", "owner"))
-    asyncio.run(database.save_user_preferences(owner_id, theme="classic"))
+    asyncio.run(database.save_user_preferences(owner_id, theme="light"))
     viewer = {"uid": real_db, "u": "classic_user", "r": "viewer"}
     with patch("app.main.auth.get_current_user", return_value=viewer), TestClient(app) as c:
-        assert _html_theme(c.get("/").text) == "dark"
+        assert _html_theme(c.get("/").text) == themes.DEFAULT_THEME
 
 
 def test_partial_update_writes_only_the_fields_sent(real_db):

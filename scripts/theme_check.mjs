@@ -1,13 +1,14 @@
 // Run the real theme code against a stub DOM.
 //
-// Classic night is a third theme. What has to hold, and only running the code
-// shows it:
+// The themes are the list in app/themes.json. What has to hold, and only
+// running the code shows it:
 //   1. every page's pre-paint script reads the localStorage key the theme code
-//      writes, so a saved Classic paints Classic first;
+//      writes, so a saved theme paints first; an unknown or old value, or none,
+//      paints the default;
 //   2. on a signed-in page the theme the server wrote into <html data-theme>
 //      wins over whatever the browser kept, and is mirrored into that key;
-//   3. the avatar menu's Dark / Light / Classic buttons switch the page, mark
-//      the chosen one, and save it to the account;
+//   3. the avatar menu's buttons, one per theme, switch the page, mark the
+//      chosen one, and save it to the account;
 //   4. nothing reads the theme back after the page loads, so a late reply can
 //      never undo a click made while it was in flight.
 //
@@ -15,6 +16,12 @@
 //
 // Exits non-zero on any mismatch.
 import {readFileSync} from 'node:fs';
+
+const SPEC = JSON.parse(readFileSync('app/themes.json', 'utf8'));
+const IDS = SPEC.themes.map(t => t.id);
+const DEFAULT = SPEC.default;
+// What the server renders into the pre-paint script (app.themes.CONFIG).
+const CONFIG = {default: DEFAULT, ids: IDS};
 
 const src = readFileSync('app/static/js/app.js', 'utf8');
 const grab = name => {
@@ -38,7 +45,7 @@ function makeEnv(stored) {
   const store = new Map(stored == null ? [] : [['cp-theme', stored]]);
   const localStorage = {getItem: k => (store.has(k) ? store.get(k) : null), setItem: (k, v) => store.set(k, String(v))};
   const attrs = {};
-  const buttons = ['dark', 'light', 'classic'].map(choice => {
+  const buttons = IDS.map(choice => {
     const b = {dataset: {themeChoice: choice}, attrs: {}, listeners: {}};
     b.setAttribute = (k, v) => { b.attrs[k] = v; };
     b.addEventListener = (ev, fn) => { b.listeners[ev] = fn; };
@@ -57,28 +64,63 @@ function makeEnv(stored) {
     else { gets.push(path); return Promise.resolve({theme: 'dark'}); } // the value from before the click
     return Promise.resolve({status: 'saved'});
   };
-  return {store, attrs, buttons, posts, gets, localStorage, document, api};
+  const window = {};
+  return {store, attrs, buttons, posts, gets, localStorage, document, api, window};
 }
 
-const fns = ['currentTheme', 'applyTheme', 'chooseTheme', 'initThemePicker'].map(grab).join('\n');
-const load = env => new Function('document', 'localStorage', 'api', 'toast',
-  `const THEMES = ['dark', 'light', 'classic'];\n${fns}; return {initThemePicker, applyTheme};`,
-)(env.document, env.localStorage, env.api, () => {});
+const fns = ['themeConfig', 'currentTheme', 'applyTheme', 'chooseTheme', 'initThemePicker'].map(grab).join('\n');
+// window.CP_THEMES is what the pre-paint script leaves behind on every page.
+const load = env => {
+  env.window.CP_THEMES = CONFIG;
+  return new Function('document', 'localStorage', 'api', 'toast', 'window',
+    `${fns}; return {initThemePicker, applyTheme};`,
+  )(env.document, env.localStorage, env.api, () => {}, env.window);
+};
 
+// The one pre-paint script, with the server's config filled in where Jinja
+// would put it. Every page template must include it inside a nonce'd script.
+const PARTIAL = readFileSync('app/templates/_theme_prepaint.html', 'utf8').replace(/\{#[\s\S]*?#\}/g, '');
+const slot = /\{\{\s*theme_config\s*\|\s*tojson\s*\}\}/;
+check('the pre-paint script takes the theme list from the server', slot.test(PARTIAL), PARTIAL);
+const PREPAINT = PARTIAL.replace(slot, JSON.stringify(CONFIG)).trim();
 const prePaint = tpl => {
   const html = readFileSync(`app/templates/${tpl}`, 'utf8');
-  const m = html.match(/\(function\(\)\{var [^<]*?localStorage[^<]*?\}\)\(\);/);
-  check(`${tpl}: has a pre-paint script`, !!m, 'not found');
-  return m && (env => new Function('document', 'localStorage', m[0])(env.document, env.localStorage));
+  const ok = /<script nonce="\{\{ csp_nonce\(request\) \}\}">\s*\{% include "_theme_prepaint.html" %\}/.test(html);
+  check(`${tpl}: includes the pre-paint script first thing in a nonce'd script`, ok, 'not found');
+  return ok && (env => new Function('document', 'localStorage', 'window', PREPAINT)(env.document, env.localStorage, env.window));
 };
 
 // --- 1. the pre-paint script, from every template that has one --------------
 for (const tpl of ['base.html', 'auth.html', 'onboarding.html']) {
   const run = prePaint(tpl);
   if (!run) continue;
-  const env = makeEnv('classic');
+  for (const saved of IDS) {
+    const env = makeEnv(saved);
+    run(env);
+    check(`${tpl}: a saved ${saved} paints ${saved}`, env.attrs['data-theme'] === saved, env.attrs['data-theme']);
+  }
+  for (const saved of [null, 'sepia', 'Dark', '']) {
+    const env = makeEnv(saved);
+    run(env);
+    check(`${tpl}: ${JSON.stringify(saved)} saved paints the default, ${DEFAULT}`, env.attrs['data-theme'] === DEFAULT, env.attrs['data-theme']);
+  }
+  const env = makeEnv(null);
   run(env);
-  check(`${tpl}: a saved Classic paints Classic`, env.attrs['data-theme'] === 'classic', env.attrs['data-theme']);
+  check(`${tpl}: leaves the theme list for app.js`, JSON.stringify(env.window.CP_THEMES) === JSON.stringify(CONFIG), env.window.CP_THEMES);
+}
+{
+  // A page that reaches the picker with no theme on <html> marks the default.
+  const env = makeEnv(null);
+  load(env).initThemePicker();
+  const pressed = env.buttons.filter(b => b.attrs['aria-pressed'] === 'true').map(b => b.dataset.themeChoice);
+  check(`no theme on <html>: the picker marks the default, ${DEFAULT}`, pressed.join() === DEFAULT && env.attrs['data-theme'] === DEFAULT, pressed);
+}
+{
+  // An unknown value never reaches the page through the picker either.
+  const env = makeEnv('dark');
+  env.attrs['data-theme'] = 'dark';
+  load(env).applyTheme('sepia');
+  check('applyTheme ignores a value that is not a theme', env.attrs['data-theme'] === 'dark' && env.store.get('cp-theme') === 'dark', env.attrs['data-theme']);
 }
 {
   const env = makeEnv(null);
@@ -98,14 +140,17 @@ for (const tpl of ['base.html', 'auth.html', 'onboarding.html']) {
 }
 {
   const run = prePaint('base.html');
-  const env = makeEnv(null);
-  env.attrs['data-theme'] = 'classic';
-  run(env);
-  check('a server Classic paints Classic on an empty browser', env.attrs['data-theme'] === 'classic' && env.store.get('cp-theme') === 'classic', [...env.store]);
+  for (const t of IDS) {
+    const env = makeEnv(null);
+    env.attrs['data-theme'] = t;
+    run(env);
+    check(`a server ${t} paints ${t} on an empty browser`, env.attrs['data-theme'] === t && env.store.get('cp-theme') === t, [...env.store]);
+  }
 }
 
 // --- 3. the avatar menu picker ----------------------------------------------
-for (const [from, to] of [['dark', 'classic'], ['classic', 'light'], ['light', 'dark'], ['classic', 'dark']]) {
+// Every theme to every other one.
+for (const [from, to] of IDS.flatMap(a => IDS.filter(b => b !== a).map(b => [a, b]))) {
   const env = makeEnv(from);
   env.attrs['data-theme'] = from;
   load(env).initThemePicker();

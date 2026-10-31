@@ -4761,20 +4761,24 @@ const CP = (() => {
   // -----------------------------------------------------------
   // Theme
   // -----------------------------------------------------------
-  // Three themes: dark (the default), light and classic, picked in the avatar
-  // menu by any signed-in role. The choice is saved to the account. The server
-  // writes it into <html data-theme> on every signed-in page, so that page
-  // paints it from the first frame on any browser; the pre-paint script in
-  // base.html mirrors it into localStorage 'cp-theme' for the sign-in pages.
-  const THEMES = ['dark', 'light', 'classic'];
+  // The built-in themes (app/themes.json), picked in the avatar menu by any
+  // signed-in role. The choice is saved to the account. The server writes it
+  // into <html data-theme> on every signed-in page, so that page paints it from
+  // the first frame on any browser; the pre-paint script
+  // (templates/_theme_prepaint.html) mirrors it into localStorage 'cp-theme'
+  // for the sign-in pages and leaves the list in window.CP_THEMES.
+  function themeConfig() {
+    return window.CP_THEMES || {ids: [], default: null};
+  }
 
   function currentTheme() {
     const t = document.documentElement.getAttribute('data-theme');
-    return THEMES.includes(t) ? t : 'dark';
+    const cfg = themeConfig();
+    return cfg.ids.includes(t) ? t : cfg.default;
   }
 
   function applyTheme(theme) {
-    if (!THEMES.includes(theme)) return;
+    if (!themeConfig().ids.includes(theme)) return;
     document.documentElement.setAttribute('data-theme', theme);
     localStorage.setItem('cp-theme', theme);
     document.querySelectorAll('[data-theme-choice]').forEach(b => {

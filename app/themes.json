@@ -1,0 +1,10 @@
+{
+  "default": "classic",
+  "themes": [
+    {"id": "classic", "label": "Classic night"},
+    {"id": "dark", "label": "Dark"},
+    {"id": "light", "label": "Light"},
+    {"id": "sunrise", "label": "Sunrise"},
+    {"id": "warm", "label": "Warm"}
+  ]
+}

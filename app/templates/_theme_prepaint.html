@@ -1,0 +1,6 @@
+{#- Pre-paint: runs before the stylesheet paints anything. A signed-in page
+    already carries the account's theme on <html> (app.routers.pages._page),
+    which wins and is mirrored into localStorage 'cp-theme' for the sign-in
+    pages; otherwise that key applies, and an unknown or old value falls back to
+    the default. The ids and the default come from app/themes.json. -#}
+(function(){var T={{ theme_config|tojson }},d=document.documentElement,ok=function(t){return T.ids.indexOf(t)>=0},s=d.getAttribute('data-theme');if(ok(s)){localStorage.setItem('cp-theme',s)}else{var k=localStorage.getItem('cp-theme');d.setAttribute('data-theme',ok(k)?k:T.default)}window.CP_THEMES=T})();

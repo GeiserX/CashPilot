@@ -99,8 +99,8 @@ jobs:
       - name: Attention list health hints
         run: node scripts/attention_hint_check.mjs
 
-      # Classic night: the pre-paint key, the sun/moon rule, the server's
-      # theme winning on a new browser.
+      # Themes: the pre-paint key and fallback, the picker, the server's theme
+      # winning on a new browser, for every theme in app/themes.json.
       - name: Theme behaviour
         run: node scripts/theme_check.mjs
 
@@ -137,12 +137,14 @@ jobs:
       # Real browser, real Fleet page (the demo UI) with long box names, URLs
       # and slugs added. Fails if /fleet scrolls sideways anywhere from 320 to
       # 2560 px. Exits 2, never 0, when Chrome or the UI cannot be reached.
-      - name: Fleet page fits its window (real browser)
-        run: ./scripts/fleet_overflow_check.sh
-
-      # Classic night changes borders and fills, never sizes; this proves it.
-      - name: Pages fit their window in Classic night (real browser)
-        run: THEME=classic ./scripts/fleet_overflow_check.sh
+      # Once per theme in app/themes.json: a theme changes borders and fills,
+      # never sizes, and this proves it for each one.
+      - name: Pages fit their window in every theme (real browser)
+        run: |
+          set -e
+          for t in $(jq -r '.themes[].id' app/themes.json); do
+            THEME="$t" ./scripts/fleet_overflow_check.sh
+          done
 
       - name: Run tests
         run: uv run pytest tests/ -v --tb=short

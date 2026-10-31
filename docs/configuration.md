@@ -287,3 +287,32 @@ environment:
 
 The banner is dismissible per version. Dismiss `v1.20.1` and it stays gone until
 there is a `v1.20.2`, so it cannot become wallpaper.
+
+## Themes
+
+Every signed-in user picks a theme in the avatar menu (top right). It applies straight away and is saved to that account, so it follows you to any browser. A user who never picked one gets Classic night.
+
+![The avatar menu open on a phone, with the theme list: Classic night (default), Dark, Light, Sunrise and Warm, each with a colour swatch](images/screenshots/theme-picker.png)
+
+| Theme | What it looks like |
+|---|---|
+| Classic night (default) | Blue-black, violet hairlines, rose buttons and a cyan focus ring. |
+| Dark | Graphite and white, no accent colour: colour only ever means a status. |
+| Light | The dark theme's rules on paper white. |
+| Sunrise | Dark, with the logo's sunrise gradient at the edges: a line under the top bar, the active tab, the main buttons, the focus ring and the balance. |
+| Warm | Dark, with one sun orange on everything you click and the charts in the logo's colours. The warning amber leans yellow so it is not mistaken for the orange. |
+
+Status colours (green up, amber warning, red down) mean the same thing in every theme, and every text and control meets WCAG AA contrast.
+
+=== "Classic night"
+    ![The dashboard in Classic night](images/screenshots/theme-classic.png)
+=== "Dark"
+    ![The dashboard in Dark](images/screenshots/theme-dark.png)
+=== "Light"
+    ![The dashboard in Light](images/screenshots/theme-light.png)
+=== "Sunrise"
+    ![The dashboard in Sunrise](images/screenshots/theme-sunrise.png)
+=== "Warm"
+    ![The dashboard in Warm](images/screenshots/theme-warm.png)
+
+To add a theme, add one entry to `app/themes.json` and one block plus one swatch rule in `app/static/css/style.css`. The server, the settings check, the menu and the CI checks all read that list.

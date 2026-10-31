@@ -13,7 +13,7 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
 from app import auth as auth_module
-from app import database, deps
+from app import database, deps, themes
 
 router = APIRouter()
 
@@ -23,15 +23,16 @@ async def _page(request: Request, template: str, user: dict) -> HTMLResponse:
 
     The server decides the theme of a signed-in page, so it paints right from the
     first frame on any browser, and a theme left in localStorage by whoever used
-    this browser before never applies. Never chosen means the default, dark.
+    this browser before never applies. Never chosen, or a value that is no
+    longer a theme, means the default (app/themes.json).
     """
-    theme = "dark"
+    saved = None
     try:
         prefs = await database.get_user_preferences(user["uid"])
-        if prefs and prefs.get("theme") in database.THEMES:
-            theme = prefs["theme"]
+        saved = prefs and prefs.get("theme")
     except Exception:  # noqa: BLE001 - a theme read must never break a page
         pass
+    theme = themes.resolve(saved)
     return deps.templates.TemplateResponse(request, template, {"user": user, "saved_theme": theme})
 
 
