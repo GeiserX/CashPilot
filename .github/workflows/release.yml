@@ -31,7 +31,7 @@ jobs:
           # exactly as designed. It blocked v1.11.4 after six merges.
           fetch-depth: 0
           fetch-tags: true
-      - uses: actions/setup-python@v7.0.0
+      - uses: actions/setup-python@v7.1.0
         with:
           # The interpreter the images ship (Dockerfile:2, Dockerfile.worker:2),
           # and the one test.yml uses. This job is what the release is actually
