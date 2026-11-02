@@ -177,6 +177,17 @@ class TestTheReleaseMovesThePin:
             f"the pin-bump merge does not use --auto, so it fires before `test` finishes and is rejected: {merges}"
         )
 
+    def test_the_held_checks_are_approved_before_the_merge_is_queued(self):
+        """The PR is opened with GITHUB_TOKEN, so GitHub holds its runs at
+        action_required and `test` never reports until they are approved; the
+        pin PR sat BLOCKED after every minor release until this existed."""
+        run = bump_step()["run"]
+        assert "status=action_required" in run
+        approve = run.index('/actions/runs/$id/approve"')
+        assert approve < run.index("gh pr merge"), "the merge is queued before the runs are approved"
+        # The release has shipped by now: a refused approval warns, never fails.
+        assert "could not approve run" in run
+
     def test_the_squash_message_is_spelled_out_so_github_adds_no_trailer(self):
         """Left to GitHub, the default squash message appends
         "Co-authored-by: github-actions[bot]" to every pin commit on main (#347,
