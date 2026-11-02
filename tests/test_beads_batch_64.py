@@ -187,9 +187,9 @@ class TestTheDocsBuildRunsBeforeMergeNotAfter:
         publish the branch's site.
         """
         condition = str(self._doc()["jobs"]["deploy"].get("if", "")).strip()
-        assert condition == (
-            "github.event_name != 'pull_request' && github.ref == 'refs/heads/main'"
-        ), f"deploy `if:` is {condition!r}"
+        assert condition == ("github.event_name != 'pull_request' && github.ref == 'refs/heads/main'"), (
+            f"deploy `if:` is {condition!r}"
+        )
 
     def test_only_the_deploy_job_can_publish(self):
         """Least privilege: the PR build needs to read the checkout and nothing
