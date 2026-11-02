@@ -182,10 +182,14 @@ class TestTheDocsBuildRunsBeforeMergeNotAfter:
         The EXACT condition, not a substring. `"pull_request" in condition` is
         satisfied by `github.event_name == 'pull_request'` too — an inversion
         that would deploy on every pull request and on nothing else. The deploy
-        runs on push to main and on a manual dispatch, both from main.
+        runs on push to main and on a manual dispatch from main; changelog.yml
+        also dispatches this workflow on its PR branch, and that run must not
+        publish the branch's site.
         """
         condition = str(self._doc()["jobs"]["deploy"].get("if", "")).strip()
-        assert condition == "github.event_name != 'pull_request'", f"deploy `if:` is {condition!r}"
+        assert condition == (
+            "github.event_name != 'pull_request' && github.ref == 'refs/heads/main'"
+        ), f"deploy `if:` is {condition!r}"
 
     def test_only_the_deploy_job_can_publish(self):
         """Least privilege: the PR build needs to read the checkout and nothing
