@@ -25,10 +25,11 @@ name: Changelog
 # start no workflows, so the tag trigger below never fired for an automatic
 # release and CHANGELOG.md sat at 1.13.0 for months. workflow_dispatch is the
 # one event GITHUB_TOKEN may start, so release.yml dispatches this workflow
-# after it publishes. The PR this opens is made with the same token, so its
-# required checks (`test`, `build (strict)`) would never start either; the last
-# step dispatches them on the changelog branch and turns on auto-merge, so the
-# PR merges itself once they pass.
+# after it publishes. The PR this opens is made with the same token, so GitHub
+# holds its workflow runs at "action_required" until someone approves them, and
+# the required checks (`test`, `build (strict)`) never report. The last step
+# approves those runs and turns on auto-merge, so the PR merges itself once they
+# pass.
 
 on:
   push:
@@ -45,7 +46,7 @@ jobs:
     permissions:
       contents: write
       pull-requests: write
-      # To dispatch test.yml and docs.yml on the changelog branch.
+      # To approve the PR's own workflow runs (see the last step).
       actions: write
     steps:
       # Full history AND tags: git-cliff walks the tag graph, and a shallow
@@ -107,18 +108,27 @@ jobs:
             **Fixes**, **Features** or **Other**, and a subject that lands in the
             wrong section is worth correcting there.
 
-      # The PR above is opened with GITHUB_TOKEN, so its required checks never
-      # start on their own. Dispatch them on the changelog branch (their check
-      # runs land on its head commit, which is what the ruleset reads) and let
-      # auto-merge land the PR once they pass. Nothing to do when the changelog
-      # was already current and no PR exists.
-      - name: Start the required checks and queue the merge
+      # The PR above is opened with GITHUB_TOKEN, so GitHub holds the runs its
+      # push started at "action_required" and the required checks never report.
+      # Approve those runs (they only build and test CHANGELOG.md on a branch
+      # this job just wrote) and let auto-merge land the PR once they pass.
+      # Nothing to do when the changelog was already current and no PR exists.
+      - name: Approve the PR's checks and queue the merge
         if: steps.cpr.outputs.pull-request-number != ''
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR: ${{ steps.cpr.outputs.pull-request-number }}
+          SHA: ${{ steps.cpr.outputs.pull-request-head-sha }}
         run: |
           set -euo pipefail
-          gh workflow run test.yml --ref chore/changelog
-          gh workflow run docs.yml --ref chore/changelog
+          # The runs appear a few seconds after the push; wait for them.
+          for _ in $(seq 1 12); do
+            ids=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs?head_sha=$SHA&status=action_required" --jq '.workflow_runs[].id')
+            [ -n "$ids" ] && break
+            sleep 10
+          done
+          for id in $ids; do
+            gh api -X POST "repos/$GITHUB_REPOSITORY/actions/runs/$id/approve"
+          done
+          echo "approved: ${ids:-none}"
           gh pr merge "$PR" --auto --squash

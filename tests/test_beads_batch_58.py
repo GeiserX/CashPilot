@@ -183,7 +183,7 @@ class TestRegenerationCannotLoopOrLoseTheFile:
     def test_the_job_asks_for_no_more_permission_than_it_needs(self):
         doc = yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))
         assert doc["permissions"] == {"contents": "read"}, "the workflow-level default should stay read-only"
-        # actions: write is for dispatching the required checks on the PR branch.
+        # actions: write is for approving the PR's own held workflow runs.
         assert set(doc["jobs"]["regenerate"]["permissions"]) == {"contents", "pull-requests", "actions"}
 
     def test_a_release_starts_the_regeneration(self):
@@ -193,14 +193,12 @@ class TestRegenerationCannotLoopOrLoseTheFile:
         assert "gh workflow run changelog.yml --ref main" in release
 
     def test_the_changelog_pr_gets_its_required_checks(self):
-        """A PR opened with GITHUB_TOKEN starts no checks on its own; without
-        the dispatch it would sit blocked forever."""
+        """A PR opened with GITHUB_TOKEN gets its runs held at action_required;
+        without approving them it sits blocked forever (#549 did)."""
         text = WORKFLOW.read_text(encoding="utf-8")
-        assert "gh workflow run test.yml --ref chore/changelog" in text
-        assert "gh workflow run docs.yml --ref chore/changelog" in text
+        assert "status=action_required" in text
+        assert '/actions/runs/$id/approve"' in text
         assert 'gh pr merge "$PR" --auto --squash' in text
-        tests = yaml.safe_load((WORKFLOW.parent / "test.yml").read_text(encoding="utf-8"))
-        assert "workflow_dispatch" in tests[True]
 
 
 class TestTheConfigIsHonestAboutItsLimits:
