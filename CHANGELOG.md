@@ -12,10 +12,1267 @@ Releases before `1.0.0` were recorded by hand and are kept verbatim in
 
 ## Unreleased
 
+### CI
+
+- Let the changelog PR merge itself by approving its held checks (#550)
+- Keep CHANGELOG.md current by regenerating it after every release (#548)
+
+## [1.61.1] - 2026-11-01
+
+### CI
+
+- Bump the github-actions group with 2 updates (#546)
+- Bump actions/setup-python to 7.1.0 (#545)
+
+### Fixes
+
+- Close the opentelemetry-api advisory by moving to 1.45.2 (#547)
+
+### Maintenance
+
+- Pin the examples to 1.61 (#544)
+
+## [1.61.0] - 2026-10-31
+
+### Features
+
+- Let every user pick from five built-in themes, adding Sunrise and Warm
+
+### Maintenance
+
+- Pin the examples to 1.60 (#542)
+
+## [1.60.0] - 2026-10-31
+
+### Features
+
+- Make Classic night the default theme, with Dark and Light one click away (#541)
+
+### Maintenance
+
+- Pin the examples to 1.59 (#540)
+
+## [1.59.0] - 2026-10-31
+
+### Features
+
+- Add an opt-in Classic night theme with the old rose and cyan look (#539)
+
+## [1.58.4] - 2026-10-31
+
+### Fixes
+
+- Stop one locked write from blocking every write until a restart (#537)
+
+## [1.58.3] - 2026-10-31
+
+### Fixes
+
+- Stop the services table scrolling sideways below 1220 px (#538)
+
+## [1.58.2] - 2026-10-31
+
+### Fixes
+
+- Stop the Account disabled card overlapping and overflowing on phones (#536)
+
+## [1.58.1] - 2026-10-31
+
 ### Documentation
 
-- Generate CHANGELOG.md from the ~200 releases that already happened
+- Show the app as it looks today, including the pages that had no picture (#533)
+- Stop telling people to click buttons and set variables that no longer work (#532)
+
+### Fixes
+
+- Clear a removed service's disabled-account alert without a restart (#535)
+
+### Maintenance
+
+- Pin the examples to 1.58 (#534)
+
+## [1.58.0] - 2026-10-31
+
+### Features
+
+- Turn the backup warning into a confirmable reminder with an encrypted download
+- Show a provider-disabled account as one clear card instead of a crash loop (#527)
+
+### Fixes
+
+- Keep every page inside the window at any width, wrapping before cutting
+
+### Maintenance
+
+- Pin the examples to 1.57 (#531)
+
+## [1.57.0] - 2026-10-31
+
+### Features
+
+- Make Add service the primary action and add it to every catalog row
+
+## [1.56.5] - 2026-10-30
+
+### Fixes
+
+- Read the balance and lifetime from each node, not the cloud's 30-day sum (#526)
+
+## [1.56.4] - 2026-10-30
+
+### Fixes
+
+- Show why a worker refused a deploy instead of "Worker request failed" (#525)
+
+## [1.56.3] - 2026-10-30
+
+### Fixes
+
+- Deploy ProxyBase Markets on the current client, not one 38 releases old (#524)
+
+## [1.56.2] - 2026-10-30
+
+### Fixes
+
+- Keep the runs-nowhere and container-down checks on when a Desktop is paired (#523)
+
+### Maintenance
+
+- Pin the examples to 1.56 (#522)
+- Pin the examples to 1.56 (#521)
+
+## [1.56.1] - 2026-10-30
+
+### Fixes
+
+- Tell the user why a credential test failed instead of blaming an API change (#518)
+
+## [1.56.0] - 2026-10-30
+
+### Features
+
+- Stop calling services deployed when no box runs them, and read wallets set inside containers (#499)
+
+## [1.55.1] - 2026-10-30
+
+### Fixes
+
+- Stop counting a timed-out collection as a $0 success (#520)
+
+### Maintenance
+
+- Pin the examples to 1.55 so new installs get the current release (#519)
+
+## [1.55.0] - 2026-10-30
+
+### Features
+
+- Graph each server's resource use over time, down to one container (#515)
+
+## [1.54.4] - 2026-10-30
+
+### Fixes
+
+- Make the disabled-account message reach the user and stay accurate (#516)
+- Show a phone's apps as apps on the phone, not stopped containers (#513)
+- Fit the placement grid in its column so no scrollbar cuts off the Up count (#514)
+
+## [1.54.3] - 2026-10-30
+
+### Fixes
+
+- Stop warnings that send you to renew a working Bytelixir cookie or a correct IPRoyal password (#512)
+
+## [1.54.2] - 2026-10-30
+
+### Fixes
+
+- Make the dashboard text bigger and easier to read (#500)
+
+### Testing
+
+- A stats timeout is no reading, not 0% CPU and 0 MB (#511)
+
+## [1.54.1] - 2026-10-30
+
+### Fixes
+
+- Keep phones out of the resource-use panel (#510)
+
+### Maintenance
+
+- Pin the examples to 1.54 (#509)
+
+## [1.54.0] - 2026-10-30
+
+### Features
+
+- Show what each service costs its server next to what it earns (#497)
+
+## [1.53.4] - 2026-10-30
+
+### Documentation
+
+- Warn about first cash-out steps before users reach them (#502)
+
+## [1.53.3] - 2026-10-30
+
+### Documentation
+
+- Warn that some services pay only after a stake, and relays publish your IP (#496)
+
+## [1.53.2] - 2026-10-30
+
+### Fixes
+
+- Use the forwarded UDP range, and say when the internet cannot reach it (#498)
+
+## [1.53.1] - 2026-10-30
+
+### Fixes
+
+- Keep warning about containers CashPilot made before workers existed (#507)
+
+### Maintenance
+
+- Pin the examples to 1.53 (#506)
+
+## [1.53.0] - 2026-10-30
+
+### Features
+
+- Never warn about containers you made by hand, and let you mute or switch off drift warnings (#505)
+
+### Maintenance
+
+- Pin the examples to 1.52 (#504)
+
+## [1.52.0] - 2026-10-30
+
+### Features
+
+- Say when a container misses a catalog fix, so a redeploy is one click away (#503)
+
+## [1.51.2] - 2026-10-30
+
+### Fixes
+
+- Stop the top bar flashing shortcut letters on hover (#495)
+
+## [1.51.1] - 2026-10-29
+
+### Fixes
+
+- Keep the dashboard inside the screen on a real fleet with long device and image names (#494)
+
+### Maintenance
+
+- Pin the examples to 1.51 (#493)
+
+## [1.51.0] - 2026-10-29
+
+### Features
+
+- Keep what you earned across cash-outs, and let you record one by hand (#487)
+- Put what needs fixing and what you earned first, in a console layout (#492)
+
+## [1.50.6] - 2026-10-29
+
+### Fixes
+
+- Withdraw the payout question when a balance dip recovers by itself (#486)
+
+## [1.50.5] - 2026-10-29
+
+### Fixes
+
+- Stop calling a balance unreadable while its payout question is open (#491)
+
+## [1.50.4] - 2026-10-29
+
+### Fixes
+
+- Drop the repeated Traffmonetizer cashout note that stops Desktop loading the catalog (#490)
+
+## [1.50.3] - 2026-10-29
+
+### Fixes
+
+- Correct cash-out minimums, methods and fees from real withdrawals (#489)
+
+## [1.50.2] - 2026-10-29
+
+### Documentation
+
+- Point LynxPrompt links at lynxprompt.geiser.cloud
+
+### Fixes
+
+- Let the weekly VACUUM actually run, on a connection of its own (#485)
+
+## [1.50.1] - 2026-10-29
+
+### Documentation
+
+- Write down why lifespan tests must stub startup DB tasks (#483)
+
+### Fixes
+
+- Run one ProxyRack copy per worker, since copies would share its device UUID (#481)
+
+### Maintenance
+
+- Pin the examples to 1.50 (#484)
+
+## [1.50.0] - 2026-10-29
+
+### Features
+
+- Tell the user to link EarnApp and ProxyRack devices, which otherwise earn for nobody (#469)
+- Hold back the quiet heads-up while a device is not on the account (#476)
+
+### Fixes
+
+- Reclaim space freed by retention on installs that restart weekly (#482)
+- Purge old data on every start, so an install that updates daily still purges (#477)
+
+### Maintenance
+
+- Pin the examples to 1.49 (#479)
+
+## [1.49.1] - 2026-10-29
+
+### Fixes
+
+- Call a credential expired only when the provider rejected it (#478)
+
+## [1.49.0] - 2026-10-29
+
+### Features
+
+- Judge a quiet balance by the service's own rhythm, so one slow day never reads as broken (#474)
+- Tell the user when a container has been down for 30 minutes (#472)
+
+### Fixes
+
+- Deploy EarnApp 1.665.73-r2, so a node with a dead agent is back online after 5 s (#475)
+- Restart EarnApp after 5 s when a run lasted a minute, so a dead agent stops costing 75% uptime (#473)
+
+## [1.48.4] - 2026-10-29
+
+### Fixes
+
+- Stop telling users the token lives 7 days (#471)
+- Stop warning thousands of times a day about Grass points and phone workers (#470)
+- Read Anyone relay rewards from the native contract, the AO endpoint is gone (#468)
+
+## [1.48.3] - 2026-10-28
+
+### Documentation
+
+- Say to link each device, or its earnings never reach the account (#466)
+
+### Fixes
+
+- Stop the Service guides page reloading itself forever (#467)
+
+## [1.48.2] - 2026-10-28
+
+### Fixes
+
+- Keep a new Anyone relay's queues inside its 1536 MB limit with image r2 (#464)
+- Keep a relay's cell queues inside its container memory limit (#463)
+
+## [1.48.1] - 2026-10-28
+
+### Fixes
+
+- Refuse a malformed EarnApp UUID at deploy instead of letting the node exit on every restart (#462)
+
+### Maintenance
+
+- Pin the examples to 1.48 (#461)
+
+## [1.48.0] - 2026-10-28
+
+### Features
+
+- Keep EarnApp nodes online when Bright Data retires the 2022 client (#455)
+
+### Fixes
+
+- Deploy EarnApp from our image, so nodes stop running the frozen 2022 client (#460)
+
+## [1.47.1] - 2026-10-28
+
+### Fixes
+
+- Deploy Anyone relays from our image, so a fresh deploy runs instead of crash-looping (#459)
+
+### Maintenance
+
+- Pin the examples to 1.47 (#458)
+
+## [1.47.0] - 2026-10-28
+
+### Features
+
+- Run Anyone relays with no capabilities, so a fresh deploy stops crash-looping (#457)
+
+### Maintenance
+
+- Pin the examples to 1.46 (#456)
+
+## [1.46.0] - 2026-10-28
+
+### Features
+
+- Show users whether their earner firewall actually works (#454)
+
+## [1.45.3] - 2026-10-27
+
+### Documentation
+
+- Say why the Tailscale DNS line reads REACHABLE on a fenced host, and how to check it (#452)
+- Show earners can still reach a Tailscale network, and how to test and fix it per platform (#450)
+
+### Fixes
+
+- Refuse an image that boots systemd instead of looping it forever (#453)
+
+## [1.45.2] - 2026-10-26
+
+### Fixes
+
+- Point payouts at the SN25α claim page instead of the retired USDC flow (#449)
+
+### Maintenance
+
+- Ship Python 3.15 in both images, and run the gates on it (#447)
+
+## [1.45.1] - 2026-10-26
+
+### Dependencies
+
+- Bump the minor-and-patch group with 2 updates (#448)
+
+### Maintenance
+
+- Pin the examples to 1.45 (#446)
+
+## [1.45.0] - 2026-10-24
+
+### Features
+
+- Run a service more than once per worker where the provider pays per device (#444)
+
+### Maintenance
+
+- Pin the examples to 1.44 (#445)
+
+## [1.44.0] - 2026-10-24
+
+### Features
+
+- Run a service from an image you choose, so floating catalog images can be pinned (#443)
+
+## [1.43.5] - 2026-10-23
+
+### Fixes
+
+- Say a signup link is a referral link where people click it, not only in the README (#442)
+
+## [1.43.4] - 2026-10-20
+
+### Fixes
+
+- Stop trusting the compromised eMudhra intermediates in both images (#440)
+
+## [1.43.3] - 2026-10-19
+
+### Dependencies
+
+- Bump the minor-and-patch group with 2 updates (#439)
+
+## [1.43.2] - 2026-10-15
+
+### Fixes
+
+- Send Deeper Network readers through the affiliate shop link, the one step Deeper pays for (#438)
+
+## [1.43.1] - 2026-10-15
+
+### Fixes
+
+- Stop reporting Salad as a referral programme with no code, the programme is gone (#436)
+
+### Maintenance
+
+- Pin the examples to 1.43 (#437)
+
+## [1.43.0] - 2026-10-15
+
+### Features
+
+- Lead every list with the services that pay the project best (#435)
+
+### Maintenance
+
+- Pin the examples to 1.42 (#434)
+
+## [1.42.0] - 2026-10-15
+
+### Features
+
+- Warn from the expiry a token carries, so a 7-day JWT cannot die unnoticed for two months (#433)
+
+## [1.41.5] - 2026-10-15
+
+### Fixes
+
+- Send Repocket sign-ups through the referral link, which the catalog never had (#432)
+
+## [1.41.4] - 2026-10-15
+
+### CI
+
+- Give both images a short description so Docker Hub search shows one (#430)
+
+### Dependencies
+
+- Bump the minor-and-patch group with 4 updates (#431)
+
+### Documentation
+
+- Make the CashPilot-Desktop follow-up part of every PR here, so a fix never lands on the web app alone (#429)
+
+## [1.41.3] - 2026-10-12
+
+### Fixes
+
+- Refuse a Repocket password typed as the API key, before the container restart-loops (#428)
+
+## [1.41.2] - 2026-10-11
+
+### Documentation
+
+- Warn that Storj Labs is in Chapter 11 and show its cut payout rates (#427)
+
+## [1.41.1] - 2026-10-09
+
+### Documentation
+
+- Generate every service count from the catalog, so the docs stop contradicting it (#426)
+
+### Fixes
+
+- Reject a malformed port when the catalog loads, instead of a 500 at deploy (#425)
+
+### Maintenance
+
+- Pin the examples to 1.41 (#424)
+
+## [1.41.0] - 2026-10-09
+
+### Features
+
+- List Sia hostd storage nodes (#422)
+
+## [1.40.2] - 2026-10-09
+
+### Fixes
+
+- Let a catalog port bind to loopback, so a wallet dashboard stays off the internet (#423)
+
+## [1.40.1] - 2026-10-08
+
+### Fixes
+
+- Stop 4 s DNS stalls on the isolated bridge by giving its containers their own resolvers (#421)
+
+### Maintenance
+
+- Pin the examples to 1.40 (#420)
+
+## [1.40.0] - 2026-10-07
+
+### Features
+
+- List Noderr Micronodes with its testnet status stated, so nobody installs it expecting income (#419)
+
+## [1.39.7] - 2026-10-06
+
+### Dependencies
+
+- Bump the minor-and-patch group with 5 updates (#418)
+
+### Maintenance
+
+- Drop the dead .tbd/ ignore rule; that tracker is gone (#416)
+- Name the tracker's remote by an alias, so this repo no longer says where it is (#415)
+- Keep Co-Authored-By trailers out of commits made with the beads hooks (#414)
+- Tell agents this repo tracks work in beads (#413)
+- Drop a MacBook-only lefthook path from the committed hook (#412)
+- Keep wallet-bearing beads off this public repo for good (#411)
+
+## [1.39.6] - 2026-10-01
+
+### CI
+
+- Bump the github-actions group with 5 updates (#408)
+
+### Dependencies
+
+- Close three urllib3 advisories by moving to 2.8.0 (#410)
+
+### Documentation
+
+- Keep the table of contents on the home page, only the side nav is hidden (#407)
+
+## [1.39.5] - 2026-09-30
+
+### CI
+
+- Let the stale job save its progress (#399)
+
+### Documentation
+
+- Hide the table of contents so the banner and screenshots get the full width (#405)
+- Show the real app to a first-time visitor on the site and the README (#404)
+- Publish the docs as a site at https://geiserx.github.io/CashPilot/ (#403)
+- Make the README and docs match the code (#402)
+- Fix broken README links on Docker Hub and a wrong mkdocs --strict comment (#401)
+- Keep the README short and move the details into docs (#400)
+
+### Fixes
+
+- Show the new logo's jet on the welcome page, not the old plane (#406)
+
+## [1.39.4] - 2026-09-29
+
+### CI
+
+- Let the stale workflow actually close issues (#395)
+
+### Documentation
+
+- New banner and social preview (#398)
+- Read the banner from docs/images/banner.svg and drop the old copy (#396)
+- Add the banner at docs/images/banner.svg where the portfolio looks (#397)
+
+## [1.39.3] - 2026-09-28
+
+### Dependencies
+
+- Bump the minor-and-patch group with 2 updates (#394)
+
+### Documentation
+
+- Stop the sample relay config logging a harmless guard notice every minute (#393)
+
+## [1.39.2] - 2026-09-27
+
+### Documentation
+
+- Stop the sample relay config filling notices.log with warnings (#391)
+
+### Fixes
+
+- Close the rollup issue when the weekly report is clean, and retire earn.cc and WizardGain (#392)
+
+## [1.39.1] - 2026-09-27
+
+### Fixes
+
+- Stop flagging a digest-pinned service as outdated (#390)
+
+### Maintenance
+
+- Pin the examples to 1.39 (#389)
+
+## [1.39.0] - 2026-09-27
+
+### Documentation
+
+- Make the Pages buttons visible and stop the home page claiming things CashPilot does not do (#387)
+- Fix the isolation guide's DNS advice and add what the gVisor rollout found (#386)
+
+### Features
+
+- Keep services under gVisor across dashboard redeploys (#388)
+
+### Maintenance
+
+- Pin the examples to 1.38 (#385)
+
+## [1.38.0] - 2026-09-26
+
+### Features
+
+- Let earners run on a firewalled bridge, and document how to protect a home network (#384)
+
+## [1.37.10] - 2026-09-26
+
+### Fixes
+
+- Keep an export valid when a host path was not supplied (#383)
+
+## [1.37.9] - 2026-09-26
+
+### Fixes
+
+- Refuse a WebUI address with an octet over 255 (#382)
+
+## [1.37.8] - 2026-09-25
+
+### Fixes
+
+- Give the node its full stop grace instead of a 10 second kill (#381)
+
+## [1.37.7] - 2026-09-25
+
+### Fixes
+
+- Let a reverse proxy reach the node WebUI again, loopback stays the default (#380)
+
+## [1.37.6] - 2026-09-25
+
+### Fixes
+
+- Stop a redeploy rebuilding one machine's node with another machine's address (#379)
+
+## [1.37.5] - 2026-09-25
+
+### Fixes
+
+- Let a redeploy carry catalog command fixes and retyped passwords to running services (#378)
+
+## [1.37.4] - 2026-09-25
+
+### Fixes
+
+- Stop publishing the node's WebUI and API on every interface of the host (#376)
+
+## [1.37.3] - 2026-09-25
+
+### Fixes
+
+- Stop telling operators they are paid in STORJ now that payouts are USDC (#375)
+
+## [1.37.2] - 2026-09-21
+
+### Dependencies
+
+- Take uvicorn's keep-alive and Connection: close fixes (uvicorn 0.53.0, ruff 0.16.8, tzdata 2026.4) (#374)
+
+## [1.37.1] - 2026-09-21
+
+### CI
+
+- Stop GitHub adding a co-author trailer to every pin commit (#372)
+
+### Fixes
+
+- Stop re-flagging dead services whose sites merely stay up (#373)
+
+### Maintenance
+
+- Pin the examples to 1.37 (#371)
+
+## [1.37.0] - 2026-09-20
+
+### Features
+
+- Tell an ARM worker before deploying that a provider has no build for it (#370)
+
+## [1.36.11] - 2026-09-20
+
+### Fixes
+
+- Stop promising ARM builds that do not exist, and start checking (#369)
+
+## [1.36.10] - 2026-09-20
+
+### Fixes
+
+- Run the real ARM build of Traffmonetizer on ARM workers (#368)
+
+## [1.36.9] - 2026-09-20
+
+### Fixes
+
+- Stop browsers running the previous release's app.js after an upgrade (#367)
+
+## [1.36.8] - 2026-09-20
+
+### Documentation
+
+- The image is amd64 only; the ARM tags exist but are mislabelled (#364)
+
+### Fixes
+
+- Make Logs, Restart and Stop work again on every service (#366)
+
+## [1.36.7] - 2026-09-19
+
+### Documentation
+
+- Tell Mysterium users to redeploy once, and to check the mount first (#362)
+
+### Fixes
+
+- Stop a redeploy moving a node onto a different identity (#363)
+
+## [1.36.6] - 2026-09-19
+
+### CI
+
+- Bump the github-actions group across 1 directory with 2 updates (#356)
+
+### Dependencies
+
+- Bump ruff from 0.16.6 to 0.16.7 in the minor-and-patch group (#359)
+- Bump ruff from 0.16.5 to 0.16.6 in the minor-and-patch group (#358)
+
+### Fixes
+
+- Let the node run sudo so sessions stop dying at setup (#361)
+- Stop the crypto-earnings tests expiring 30 days after they were written (#357)
+
+## [1.36.5] - 2026-08-31
+
+### Dependencies
+
+- Bump the minor-and-patch group with 2 updates (#355)
+
+### Fixes
+
+- Stop cutting a release when only the dev tools moved (#354)
+
+## [1.36.4] - 2026-08-24
+
+### CI
+
+- Bump the github-actions group with 5 updates (#353)
+
+### Dependencies
+
+- Bump the minor-and-patch group with 3 updates (#352)
+
+## [1.36.3] - 2026-08-24
+
+### Dependencies
+
+- Bump the minor-and-patch group with 6 updates (#350)
+
+### Fixes
+
+- Make dependency updates reach the image (#351)
+
+## [1.36.2] - 2026-08-19
+
+### Fixes
+
+- Cap offline pushes per worker — episode damping lost to a rhythmic phone (#349)
+
+## [1.36.1] - 2026-08-19
+
+### Fixes
+
+- One offline push per episode, not one per phone nap (#348)
+
+### Maintenance
+
+- Pin the examples to 1.36 [skip ci] (#347)
+
+## [1.36.0] - 2026-08-19
+
+### Features
+
+- Update CashPilot from the dashboard (#346)
+
+## [1.35.2] - 2026-08-19
+
+### Fixes
+
+- Bitping, proxybase and urnetwork could never authenticate (#345)
+
+## [1.35.1] - 2026-08-14
+
+### Fixes
+
+- Tell the truth about Presearch, PassiveApp and Bytelixir (#340)
+
+### Maintenance
+
+- Pin the examples to 1.35 [skip ci] (#336)
+
+## [1.35.0] - 2026-08-13
+
+### Features
+
+- The UI can now report that it cannot do its job (#334)
+
+## [1.34.2] - 2026-08-13
+
+### Fixes
+
+- A worker that cannot see Docker now says so (#333)
+
+## [1.34.1] - 2026-08-13
+
+### Fixes
+
+- Make the alert pipeline able to report its own failures (#332)
+
+### Maintenance
+
+- Pin the examples to 1.34 [skip ci] (#335)
+
+## [1.34.0] - 2026-08-13
+
+### Features
+
+- A worker going offline now notifies, not just logs (#331)
+
+## [1.33.3] - 2026-08-13
+
+### Fixes
+
+- Report unhealthy when the worker cannot reach the UI (#330)
+
+## [1.33.2] - 2026-08-10
+
+### Fixes
+
+- Surface kept_from_previous_deployment in the deploy result (CashPilot-23yb) (#328)
+
+## [1.33.1] - 2026-08-10
+
+### Fixes
+
+- Export docker.resources instead of silently dropping it (CashPilot-65q4) (#327)
+
+### Maintenance
+
+- Pin the examples to 1.33 [skip ci] (#329)
+
+## [1.33.0] - 2026-08-10
+
+### Features
+
+- Give collector notices the same dedupe and push that errors get (CashPilot-vb78) (#326)
+
+### Maintenance
+
+- Pin the examples to 1.32 [skip ci] (#325)
+
+## [1.32.0] - 2026-08-10
+
+### Dependencies
+
+- Bump the minor-and-patch group with 20 updates (#323)
+
+### Features
+
+- Add cpu_shares resource control to protect earners under host contention (#317)
+
+### Maintenance
+
+- Pin the examples to 1.31 [skip ci] (#324)
+
+## [1.31.0] - 2026-08-10
+
+### Features
+
+- Storj warns when satellites cannot reach the node (CashPilot-1gmy) (#321)
+
+### Maintenance
+
+- Pin the examples to 1.30 [skip ci] (#322)
+
+## [1.30.0] - 2026-08-10
+
+### Features
+
+- Flag a dial-back service whose advertised address the machine no longer has (#320)
+
+### Maintenance
+
+- Pin the examples to 1.29 [skip ci] (#319)
+
+## [1.29.0] - 2026-08-10
+
+### Features
+
+- Storj health signal for satellite dial-back failure + DDNS guidance (#318)
+
+### Fixes
+
+- The nightly live check never ran — a fabricated action pin killed it at setup (#315)
+
+### Maintenance
+
+- Pin the examples to 1.28 [skip ci] (#314)
+
+## [1.28.0] - 2026-08-08
+
+### Features
+
+- A 401 and a timeout are different problems — failure taxonomy end to end (CashPilot-5bdm) (#313)
+
+### Maintenance
+
+- Pin the examples to 1.27 [skip ci] (#312)
+
+## [1.27.0] - 2026-08-07
+
+### Documentation
+
+- Earnings benchmarks — venue, privacy line, generator contract (CashPilot-pbyv) (#309)
+- Fleet upgrades + add-a-server onboarding — announce-only default, sidecar self-upgrade, no stored SSH (CashPilot-t5ja) (#307)
+
+### Features
+
+- Salad and deeper-network verifiably run referral programs — two new action items (#311)
+
+### Maintenance
+
+- Pin the examples to 1.26 [skip ci] (#310)
+
+## [1.26.0] - 2026-08-07
+
+### Features
+
+- Probe dead services for resurrection — blindness to dead→alive cost 5 months of Bytebenefit signups (CashPilot-lv8v) (#305)
+
+### Fixes
+
+- A name hit without the managed label is not ours — the worker could be told to force-remove itself (CashPilot-o4uw) (#306)
+
+### Maintenance
+
+- Pin the examples to 1.25 [skip ci] (#308)
+
+## [1.25.0] - 2026-08-07
+
+### Features
+
+- Referral registry + self-audit — a bare link can no longer hide (#304)
+
+## [1.24.3] - 2026-08-07
+
+### Fixes
+
+- Bytebenefit lives at bytebenefit.io — revive with referral link (#303)
+
+## [1.24.2] - 2026-08-07
+
+### Fixes
+
+- Judge an Android client against Android releases, not against the server (#302)
+
+## [1.24.1] - 2026-08-07
+
+### Fixes
+
+- The update banner was always visible, empty, and linked nowhere (#301)
+
+### Maintenance
+
+- Pin the examples to 1.24 [skip ci] (#300)
+
+## [1.24.0] - 2026-08-07
+
+### Features
+
+- Measure in a browser whether the UI can actually be read (#299)
+
+## [1.23.2] - 2026-08-07
+
+### Fixes
+
+- Modal buttons were painted in the link colour and underlined (#298)
+
+## [1.23.1] - 2026-08-07
+
+### Fixes
+
+- Answer 401 before parsing an unauthenticated request body (#297)
+
+### Maintenance
+
+- Pin the examples to 1.23 [skip ci] (#296)
+
+## [1.23.0] - 2026-08-07
+
+### Features
+
+- Reconcile payouts against receipts, and make the wrong version unbuildable (#295)
+
+## [1.22.1] - 2026-08-07
+
+### Documentation
+
+- The install recipe, from having actually installed it (#293)
+
+### Fixes
+
+- Say which ProxyBase holds the wallet (#294)
+
+### Maintenance
+
+- Pin the examples to 1.22 [skip ci] (#292)
+
+## [1.22.0] - 2026-08-07
+
+### Documentation
+
+- The submitted icon was wrong, and so was my reason (#290)
+
+### Features
+
+- A read-only API token, so a dashboard need not hold the keys (#291)
+
+### Maintenance
+
+- Pin the examples to 1.21 [skip ci] (#289)
+
+## [1.21.0] - 2026-08-07
+
+### Documentation
+
+- Say why the CA templates use :latest on purpose (#286)
+- Publish the measured memory floor, not a guessed limit (#283)
+- Correct a fabricated bead reference (#281)
+- Act on the healthcheck the images already declare (#279)
+
+### Features
+
+- A Heimdall enhanced-app tile, ready to submit (#287)
+- Name the volumes that hold money, in the catalog's own words (#277)
+
+### Fixes
+
+- One official mark, with the sun touching all four edges (#288)
+- Stop telling people to publish the worker API on every interface (#280)
+- Proxybase pays to an account, not a minted wallet (#276)
+
+### Maintenance
+
+- Pin the examples to 1.20 [skip ci] (#285)
+
+### Testing
+
+- No tracked file may state a credential literally (#284)
+- Pin the device ceiling's refusal, and stop asserting on source text (#282)
+- Refuse to run against a tree contaminated by another branch (#278)
+
+## [1.20.0] - 2026-08-06
+
+### Documentation
+
+- Stop publishing the internal growth playbook as a page (#271)
+
+### Features
+
+- Show what is actually at each payout address (dv6 tier 2) (#275)
+- Read on-chain balances, honestly (dv6 tier 2, first slice) (#273)
+- The payout screen — where your money actually goes (#274)
+- Join the payout catalog to what was actually deployed (#269)
+
+### Fixes
+
+- Highlight the sidebar link for the page you are on (#272)
+
+### Maintenance
+
+- Pin the examples to 1.19 [skip ci] (#268)
+
+## [1.19.0] - 2026-08-06
+
+### Documentation
+
+- Say why the UI and worker have separate data volumes, and enforce it (#265)
+
+### Features
+
+- Declare where every service actually pays out (#267)
+
+### Maintenance
+
+- Pin the examples to 1.18 [skip ci] (#266)
+
+## [1.18.0] - 2026-08-06
+
+### Documentation
+
+- A restore page, because losing .fernet_key is unrecoverable (#262)
+
+### Features
+
+- Tell the operator when a newer release exists (#263)
+
+### Maintenance
+
+- Pin the examples to 1.17 (#264)
+
+## [1.17.0] - 2026-08-06
+
+### Features
+
+- Say what the schema is and what just migrated (#261)
+
+### Fixes
+
+- Bump the compose pins through a PR, because main is protected (#260)
+
+## [1.16.0] - 2026-08-06
+
+### CI
+
+- Bump the example compose pins, so the check guards the release (#258)
+
+### Documentation
+
+- A self-hosting operability review, checked against the repo (#259)
+- Group the top-level nav and build the site before merging, not after (#257)
+
+### Features
+
+- Accept a paired client's own earnings history (#256)
+
+## [1.15.0] - 2026-08-06
+
+### Documentation
+
+- Generate the guide nav and index from the catalog (#253)
+
+### Features
+
+- Earnings readings record which machine took them (#255)
+
+### Fixes
+
+- Three releases shipped one worker image, reporting the wrong version (#254)
+
+## [1.14.1] - 2026-08-05
+
+### Fixes
+
+- The fleet page turned "the phone could not tell" into "stopped" (#252)
+
+## [1.14.0] - 2026-08-05
+
+### Documentation
+
+- CLAUDE.md denied a capability that has shipped since v1.5.1 (#249)
+- Generate CHANGELOG.md from the ~200 releases that already happened (#251)
 - Explain GPU passthrough, and pin that it stays optional (#248)
+
+### Features
+
+- Show host disk and GPU in the services table (#250)
 
 ## [1.13.0] - 2026-08-05
 
@@ -297,10 +1554,6 @@ Releases before `1.0.0` were recorded by hand and are kept verbatim in
 - Make payouts visible — a queue to answer them, and progress toward the next one (#181)
 
 ## [1.10.1] - 2026-08-03
-
-### Documentation
-
-- Record the v1.10.0 terminal state [skip ci]
 
 ### Fixes
 
@@ -808,7 +2061,17 @@ Releases before `1.0.0` were recorded by hand and are kept verbatim in
 ### Fixes
 
 - Container crash when started with --user flag (Unraid) (#49)
+
+## [0.3.2] - 2026-05-13
+
+### Fixes
+
 - Reject deploy of dead services and gate release on CI (#47)
+
+## [0.3.1] - 2026-05-13
+
+### Fixes
+
 - Ecosystem audit — auth hardening, compose fixes, fleet docs, XSS, validation (#46)
 
 ## [0.2.90] - 2026-05-12
