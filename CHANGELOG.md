@@ -10,12 +10,21 @@ Every release, grouped by what changed. Generated from commit history.
 Releases before `1.0.0` were recorded by hand and are kept verbatim in
 [docs/changelog-0.x-handwritten.md](docs/changelog-0.x-handwritten.md).
 
-## Unreleased
+## [1.61.2] - 2026-11-02
 
 ### CI
 
+- Let the compose-pin PR merge itself after a minor release (#552)
 - Let the changelog PR merge itself by approving its held checks (#550)
 - Keep CHANGELOG.md current by regenerating it after every release (#548)
+
+### Dependencies
+
+- Bump the minor-and-patch group with 6 updates (#553)
+
+### Documentation
+
+- Regenerate CHANGELOG.md (#551)
 
 ## [1.61.1] - 2026-11-01
 
