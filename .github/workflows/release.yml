@@ -270,6 +270,9 @@ jobs:
       # For the compose-pin bump, which must go through a PR because main is
       # protected. Nothing else in this job needs it.
       pull-requests: write
+      # To dispatch changelog.yml: the tag pushed below is made with
+      # GITHUB_TOKEN, so its tag trigger never fires.
+      actions: write
     steps:
       - uses: actions/checkout@v7.0.1
         with:
@@ -433,3 +436,8 @@ jobs:
           prerelease: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Regenerate the changelog
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh workflow run changelog.yml --ref main

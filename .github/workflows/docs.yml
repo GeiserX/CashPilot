@@ -71,8 +71,10 @@ jobs:
           path: site
 
   deploy:
-    # Runs on push to main only, after the build job has passed.
-    if: github.event_name != 'pull_request'
+    # Runs on main only, after the build job has passed. changelog.yml
+    # dispatches this workflow on its PR branch for the `build (strict)` check,
+    # and that run must never publish the branch's site.
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
     needs: build
     runs-on: ubuntu-latest
     permissions:
