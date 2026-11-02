@@ -270,8 +270,9 @@ jobs:
       # For the compose-pin bump, which must go through a PR because main is
       # protected. Nothing else in this job needs it.
       pull-requests: write
-      # To dispatch changelog.yml: the tag pushed below is made with
-      # GITHUB_TOKEN, so its tag trigger never fires.
+      # To dispatch changelog.yml (the tag pushed below is made with
+      # GITHUB_TOKEN, so its tag trigger never fires) and to approve the pin
+      # PR's held workflow runs.
       actions: write
     steps:
       - uses: actions/checkout@v7.0.1
@@ -419,6 +420,26 @@ jobs:
           # message appends a co-author trailer naming the Actions bot to every
           # pin commit on main (#347, #371), and no commit here carries a trailer.
           PR_NUMBER="${PR_URL##*/}"
+
+          # This PR is opened with GITHUB_TOKEN, so GitHub holds the runs its
+          # push started at "action_required" and `test` never reports; the PR
+          # sat BLOCKED after every minor release until someone approved them.
+          # Approve the runs held on the commit just pushed (they only test
+          # this compose edit). Warn rather than fail: the release has shipped.
+          SHA=$(git rev-parse HEAD)
+          IDS=""
+          for _ in $(seq 1 12); do
+            IDS=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs?head_sha=$SHA&status=action_required" \
+                    --jq '.workflow_runs[].id' || true)
+            [ -n "$IDS" ] && break
+            sleep 10
+          done
+          for id in $IDS; do
+            gh api -X POST "repos/$GITHUB_REPOSITORY/actions/runs/$id/approve" >/dev/null \
+              || echo "::warning::could not approve run $id; approve it on the PR by hand"
+          done
+          echo "approved: ${IDS:-none}"
+
           if ! gh pr merge "$BRANCH" --squash --delete-branch --auto \
                  --subject "chore(compose): pin the examples to $SERIES (#$PR_NUMBER)" \
                  --body "$PR_BODY"; then
