@@ -2937,7 +2937,7 @@ async def api_delete_custom_service(
     # Before any await, so no deploy can start between this check and the delete.
     if _custom_deploying.get(slug):
         raise HTTPException(status_code=409, detail=f"{slug} is being deployed right now. Try again when it is done.")
-    _custom_deleting.add(slug)
+    _custom_deleting[slug] += 1
     try:
         if not custom_services.is_custom_slug(slug) or await database.get_custom_service(slug) is None:
             raise HTTPException(status_code=404, detail=f"Custom service '{slug}' not found")
@@ -2949,7 +2949,9 @@ async def api_delete_custom_service(
             )
         await database.delete_custom_service(slug)
     finally:
-        _custom_deleting.discard(slug)
+        _custom_deleting[slug] -= 1
+        if not _custom_deleting[slug]:
+            del _custom_deleting[slug]
     logger.info("Custom service %s deleted", slug)
     return {"status": "deleted"}
 
@@ -3081,10 +3083,10 @@ async def api_deploy(
             del _custom_deploying[slug]
 
 
-#: Custom slugs with a deploy in flight (how many), and slugs being deleted.
+#: Custom slugs with deploys in flight, and with deletes in flight (how many of each).
 #: See api_deploy and api_delete_custom_service.
 _custom_deploying: collections.Counter[str] = collections.Counter()
-_custom_deleting: set[str] = set()
+_custom_deleting: collections.Counter[str] = collections.Counter()
 
 
 async def _deploy(slug: str, body: DeployRequest, worker_id: int | None) -> dict[str, Any]:

@@ -833,18 +833,28 @@ class TestAReplacedCustomContainerTakesItsAnonymousVolumes:
         """The control: a catalog service's volumes are never touched on a replace."""
         self._redeploy("honeygain").remove.assert_called_once_with(force=True)
 
-    @pytest.mark.parametrize(("slug", "expected"), [("custom-foo", {"v": True}), ("demo", {})])
-    def test_scaling_down_does_the_same(self, slug, expected):
+    def _copy_two(self, slug):
         copy = MagicMock()
         copy.name = f"cashpilot-{slug}-2"
         copy.labels = {constants.LABEL_SERVICE: slug, constants.LABEL_INSTANCE: "2"}
         client = MagicMock()
         client.containers.get.return_value = copy
         client.containers.list.return_value = [copy]
+        return copy, client
+
+    @pytest.mark.parametrize(("slug", "expected"), [("custom-foo", {"v": True}), ("demo", {})])
+    def test_scaling_down_does_the_same(self, slug, expected):
+        copy, client = self._copy_two(slug)
         with patch.object(orchestrator, "_get_client", return_value=client):
             orchestrator.remove_instance(slug, 2)
-            orchestrator.remove_extra_instances(slug)
-        assert copy.remove.call_args_list == [((), {"force": True, **expected})] * 2
+        copy.remove.assert_called_once_with(force=True, **expected)
+
+    def test_removing_the_whole_service_leaves_the_data_choice_to_the_operator(self):
+        """Extra copies go the way the first one does: their volumes stay unless asked."""
+        copy, client = self._copy_two("custom-foo")
+        with patch.object(orchestrator, "_get_client", return_value=client):
+            orchestrator.remove_extra_instances("custom-foo")
+        copy.remove.assert_called_once_with(force=True)
 
 
 class TestADeleteNeverRacesADeploy:
@@ -895,6 +905,34 @@ class TestADeleteNeverRacesADeploy:
         assert refused.status_code == 409
         assert "being deployed" in refused.detail
         assert done == {"status": "deleted"}
+        assert not main._custom_deploying and not main._custom_deleting
+
+    def test_a_failed_delete_does_not_free_the_slug_while_another_runs(self, db):
+        checking, release = asyncio.Event(), asyncio.Event()
+
+        async def deployed_on(slug):
+            checking.set()
+            await release.wait()
+            return []
+
+        async def go():
+            slug = (await _create())["slug"]
+            p = self._patches(AsyncMock(return_value={"container_id": "abc"}))
+            with p[0], p[1], p[2], p[3], p[4], p[5], p[6], patch.object(main, "_custom_deployed_on", deployed_on):
+                running = asyncio.create_task(main.api_delete_custom_service(MagicMock(), slug, {}))
+                await checking.wait()
+                with (
+                    patch.object(main.database, "get_custom_service", AsyncMock(return_value=None)),
+                    pytest.raises(HTTPException),
+                ):
+                    await main.api_delete_custom_service(MagicMock(), slug, {})
+                with pytest.raises(HTTPException) as err:
+                    await main.api_deploy(MagicMock(), slug, self._deploy_body())
+                release.set()
+                await running
+            return err.value.status_code
+
+        assert _run(go) == 409
         assert not main._custom_deploying and not main._custom_deleting
 
     def test_a_deploy_during_a_delete_is_refused(self, db):

@@ -1171,7 +1171,9 @@ def remove_extra_instances(slug: str) -> list[str]:
     removed: list[str] = []
     for extra in service_instances(slug):
         if _instance_of(extra) > 1:
-            _remove_container(extra, slug)
+            # Not _remove_container: this is whole-service removal, where the
+            # operator decides about data, and the first copy keeps its volumes.
+            extra.remove(force=True)
             logger.info("Removed container %s", extra.name)
             removed.append(extra.name)
     return removed
