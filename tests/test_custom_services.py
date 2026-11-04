@@ -807,3 +807,116 @@ class TestADataPathWithSeveralCopies:
     def test_with_one_copy_it_is_saved(self, db):
         """The control."""
         assert self._update_with(1)["deployed"] is True
+
+
+class TestAReplacedCustomContainerTakesItsAnonymousVolumes:
+    """An image's VOLUME with no data path gets a fresh anonymous volume with each container."""
+
+    def _client(self, old):
+        client = MagicMock()
+        client.containers.get.return_value = old
+        client.networks.get.return_value.attrs = {"Driver": "bridge"}
+        client.images.get.return_value.attrs = {"Config": {"Entrypoint": ["/node"], "Cmd": None}}
+        return client
+
+    def _redeploy(self, slug):
+        old = MagicMock()
+        old.labels = {constants.LABEL_SERVICE: slug}
+        with patch.object(orchestrator, "_get_client", return_value=self._client(old)):
+            orchestrator.deploy_raw(slug=slug, image="x/y:1")
+        return old
+
+    def test_a_custom_redeploy_removes_the_old_anonymous_volumes(self):
+        self._redeploy("custom-foo").remove.assert_called_once_with(force=True, v=True)
+
+    def test_a_catalog_redeploy_is_unchanged(self):
+        """The control: a catalog service's volumes are never touched on a replace."""
+        self._redeploy("honeygain").remove.assert_called_once_with(force=True)
+
+    @pytest.mark.parametrize(("slug", "expected"), [("custom-foo", {"v": True}), ("demo", {})])
+    def test_scaling_down_does_the_same(self, slug, expected):
+        copy = MagicMock()
+        copy.name = f"cashpilot-{slug}-2"
+        copy.labels = {constants.LABEL_SERVICE: slug, constants.LABEL_INSTANCE: "2"}
+        client = MagicMock()
+        client.containers.get.return_value = copy
+        client.containers.list.return_value = [copy]
+        with patch.object(orchestrator, "_get_client", return_value=client):
+            orchestrator.remove_instance(slug, 2)
+            orchestrator.remove_extra_instances(slug)
+        assert copy.remove.call_args_list == [((), {"force": True, **expected})] * 2
+
+
+class TestADeleteNeverRacesADeploy:
+    """A definition deleted while its deploy is in flight leaves a container nothing describes."""
+
+    def _deploy_body(self):
+        body = MagicMock()
+        body.env = {}
+        body.hostname = None
+        body.image = None
+        body.instances = None
+        return body
+
+    def _patches(self, proxy):
+        return (
+            patch.object(main, "_resolve_worker_id", AsyncMock(return_value=1)),
+            patch.object(main, "_proxy_worker_deploy", proxy),
+            patch.object(main.database, "get_deployment_spec", AsyncMock(return_value=None)),
+            patch.object(main.database, "save_deployment", AsyncMock()),
+            patch.object(main.database, "record_health_event", AsyncMock()),
+            patch.object(main, "_spawn", lambda coro: coro.close()),
+            patch.object(main.metrics, "record_container_lifecycle", lambda *a: None),
+            patch.object(main, "_custom_deployed_on", AsyncMock(return_value=[])),
+        )
+
+    def test_a_delete_during_a_deploy_is_refused_and_allowed_after(self, db):
+        pulling, release = asyncio.Event(), asyncio.Event()
+
+        async def proxy(worker_id, slug, spec):
+            pulling.set()
+            await release.wait()
+            return {"container_id": "abc"}
+
+        async def go():
+            slug = (await _create())["slug"]
+            p = self._patches(proxy)
+            with p[0], p[1], p[2], p[3], p[4], p[5], p[6], p[7]:
+                deploy = asyncio.create_task(main.api_deploy(MagicMock(), slug, self._deploy_body()))
+                await pulling.wait()
+                with pytest.raises(HTTPException) as err:
+                    await main.api_delete_custom_service(MagicMock(), slug, {})
+                release.set()
+                await deploy
+                done = await main.api_delete_custom_service(MagicMock(), slug, {})
+            return err.value, done
+
+        refused, done = _run(go)
+        assert refused.status_code == 409
+        assert "being deployed" in refused.detail
+        assert done == {"status": "deleted"}
+        assert not main._custom_deploying and not main._custom_deleting
+
+    def test_a_deploy_during_a_delete_is_refused(self, db):
+        checking, release = asyncio.Event(), asyncio.Event()
+
+        async def deployed_on(slug):
+            checking.set()
+            await release.wait()
+            return []
+
+        async def go():
+            slug = (await _create())["slug"]
+            p = self._patches(AsyncMock(return_value={"container_id": "abc"}))
+            with p[0], p[1], p[2], p[3], p[4], p[5], p[6], patch.object(main, "_custom_deployed_on", deployed_on):
+                delete = asyncio.create_task(main.api_delete_custom_service(MagicMock(), slug, {}))
+                await checking.wait()
+                with pytest.raises(HTTPException) as err:
+                    await main.api_deploy(MagicMock(), slug, self._deploy_body())
+                release.set()
+                return err.value, await delete
+
+        refused, done = _run(go)
+        assert refused.status_code == 409
+        assert done == {"status": "deleted"}
+        assert not main._custom_deploying and not main._custom_deleting
