@@ -117,6 +117,13 @@ class TestValidation:
         edited, _ = custom_services.validate(_payload(env=[{"key": "TOKEN", "value": "", "secret": True}]), previous)
         assert edited["env"] == [{"key": "TOKEN", "value": SECRET, "secret": True}]
 
+    def test_clearing_the_secret_tick_on_a_blank_box_keeps_the_stored_value(self):
+        """The box was blank because the value is never sent back, not because
+        the user emptied it; unticking Secret to look at it must not wipe it."""
+        previous, _ = custom_services.validate(_payload(env=[{"key": "TOKEN", "value": SECRET, "secret": True}]))
+        edited, _ = custom_services.validate(_payload(env=[{"key": "TOKEN", "value": "", "secret": False}]), previous)
+        assert edited["env"] == [{"key": "TOKEN", "value": SECRET, "secret": False}]
+
     def test_a_blank_plain_value_is_a_blank_value(self):
         previous, _ = custom_services.validate(_payload(env=[{"key": "MODE", "value": "fast"}]))
         edited, _ = custom_services.validate(_payload(env=[{"key": "MODE", "value": ""}]), previous)
@@ -127,9 +134,25 @@ class TestSlugs:
     def test_a_slug_is_prefixed_and_lowercased(self):
         assert custom_services.make_slug("My Cool Node!", set()) == "custom-my-cool-node"
 
-    def test_a_taken_slug_gets_a_number(self):
-        taken = {"custom-node", "custom-node-2"}
-        assert custom_services.make_slug("node", taken) == "custom-node-3"
+    def test_a_taken_slug_gets_a_version(self):
+        taken = {"custom-node", "custom-node-v2"}
+        assert custom_services.make_slug("node", taken) == "custom-node-v3"
+
+    def test_a_trailing_number_loses_its_dash(self):
+        assert custom_services.make_slug("Node 2", set()) == "custom-node2"
+
+    def test_no_slug_shares_a_container_name_with_another_slugs_copy(self):
+        """Copy N runs as cashpilot-<slug>-N. A slug ending in -<digits> would be
+        another service's copy, and a deploy of one replaced the other."""
+        taken: set[str] = set()
+        for name in ("Foo", "Foo", "Foo 2", "Foo-3", "Foo", "foo 10", "Bar 1"):
+            taken.add(custom_services.make_slug(name, taken))
+        names = {
+            orchestrator._container_name(slug, n): (slug, n)
+            for slug in taken
+            for n in range(1, constants.MAX_INSTANCES + 1)
+        }
+        assert len(names) == len(taken) * constants.MAX_INSTANCES
 
     def test_a_name_with_no_letters_still_gets_a_slug(self):
         assert custom_services.make_slug("!!!", set()) == "custom-service"
@@ -246,6 +269,11 @@ def _reader():
     return patch.object(main, "_require_reader", lambda r: None)
 
 
+def _as(role):
+    """Sign the request in as ``role``, through the real guards."""
+    return patch("app.auth.get_current_user", lambda r: {"u": role, "r": role})
+
+
 class TestTheRoutes:
     def test_create_returns_the_slug_and_the_warnings(self, db):
         result = _run(lambda: _create(image="busybox"))
@@ -255,7 +283,7 @@ class TestTheRoutes:
         async def go():
             return [(await _create())["slug"], (await _create())["slug"]]
 
-        assert _run(go) == ["custom-my-node", "custom-my-node-2"]
+        assert _run(go) == ["custom-my-node", "custom-my-node-v2"]
 
     def test_a_bad_definition_is_a_400(self, db):
         async def go():
@@ -268,7 +296,7 @@ class TestTheRoutes:
     def test_the_list_masks_secrets(self, db):
         async def go():
             await _create(env=[{"key": "TOKEN", "value": SECRET, "secret": True}, {"key": "MODE", "value": "fast"}])
-            with _reader():
+            with _as("owner"):
                 return await main.api_list_custom_services(MagicMock())
 
         listed = _run(go)
@@ -594,3 +622,188 @@ class TestTheWorkerBackstop:
 
     def test_the_worker_keeps_no_mount_for_a_custom_slug(self):
         assert worker_api._catalog_volume_targets("custom-x") == set()
+
+
+# ---------------------------------------------------------------------------
+# Review fixes: names that collide, who reads a definition, outdated images
+# ---------------------------------------------------------------------------
+
+
+class TestNamesNeverCollide:
+    def test_foo_twice_and_foo_2_get_three_distinct_container_families(self, db):
+        async def go():
+            return [(await _create(name=n))["slug"] for n in ("Foo", "Foo", "Foo 2")]
+
+        slugs = _run(go)
+        assert slugs == ["custom-foo", "custom-foo-v2", "custom-foo2"]
+        copy_two = orchestrator._container_name("custom-foo", 2)
+        assert copy_two not in {orchestrator._container_name(s) for s in slugs}
+
+    def test_a_deleted_slug_is_never_given_out_again(self, db):
+        """Its data volume may still sit on a box; a new image must not mount it."""
+
+        async def go():
+            first = (await _create(name="Node", data_path="/data"))["slug"]
+            with patch.object(main, "_custom_deployed_on", AsyncMock(return_value=[])):
+                await main.api_delete_custom_service(MagicMock(), first, {})
+            second = (await _create(name="Node", image="other/image:2", data_path="/data"))["slug"]
+            return first, second
+
+        first, second = _run(go)
+        assert first == "custom-node"
+        assert second != first
+        assert custom_services.volume_name(second) != custom_services.volume_name(first)
+
+    def _replace(self, old_labels, slug, instance):
+        client = MagicMock()
+        old = MagicMock()
+        old.labels = old_labels
+        client.containers.get.return_value = old
+        client.networks.get.return_value.attrs = {"Driver": "bridge"}
+        client.images.get.return_value.attrs = {"Config": {"Entrypoint": ["/node"], "Cmd": None}}
+        with patch.object(orchestrator, "_get_client", return_value=client):
+            orchestrator.deploy_raw(slug=slug, image="x/y:1", instance=instance)
+        return old, client
+
+    def test_the_worker_refuses_to_replace_another_services_container(self):
+        with pytest.raises(orchestrator.ContainerRuntimeError) as err:
+            self._replace({constants.LABEL_SERVICE: "custom-foo-2"}, "custom-foo", 2)
+        assert "custom-foo-2" in str(err.value)
+
+    def test_the_worker_refuses_to_replace_another_copy_of_the_same_service(self):
+        labels = {constants.LABEL_SERVICE: "foo", constants.LABEL_INSTANCE: "3"}
+        with pytest.raises(orchestrator.ContainerRuntimeError):
+            self._replace(labels, "foo", 2)
+
+    @pytest.mark.parametrize(
+        ("labels", "instance"),
+        [
+            ({constants.LABEL_SERVICE: "custom-foo"}, 1),
+            ({constants.LABEL_SERVICE: "custom-foo", constants.LABEL_INSTANCE: "2"}, 2),
+            ({}, 1),
+        ],
+    )
+    def test_the_same_copy_is_still_replaced(self, labels, instance):
+        """The control: a redeploy of the container itself goes through."""
+        old, client = self._replace(labels, "custom-foo", instance)
+        old.remove.assert_called_once()
+        client.containers.run.assert_called_once()
+
+
+class TestOnlyTheOwnerReadsValues:
+    TOKEN_CMD = "run --token cmd-token-7a1"
+
+    async def _seed(self):
+        return (
+            await _create(
+                command=self.TOKEN_CMD,
+                env=[{"key": "TOKEN", "value": SECRET, "secret": True}, {"key": "EMAIL", "value": "me@example.org"}],
+            )
+        )["slug"]
+
+    @pytest.mark.parametrize("role", ["viewer", "writer"])
+    def test_a_non_owner_sees_names_only_in_the_list(self, db, role):
+        async def go():
+            await self._seed()
+            with _as(role):
+                return await main.api_list_custom_services(MagicMock())
+
+        dumped = json.dumps(_run(go))
+        assert "me@example.org" not in dumped
+        assert "cmd-token-7a1" not in dumped
+        assert '"TOKEN"' in dumped and '"EMAIL"' in dumped
+
+    def test_the_read_only_token_gets_nothing(self, db):
+        async def go():
+            await self._seed()
+            with _as("reader"), pytest.raises(HTTPException) as err:
+                await main.api_list_custom_services(MagicMock())
+            return err.value.status_code
+
+        assert _run(go) == 403
+
+    @pytest.mark.parametrize("role", ["viewer", "writer"])
+    def test_a_non_owner_sees_names_only_in_the_detail_view(self, db, role):
+        async def go():
+            slug = await self._seed()
+            with (
+                _as(role),
+                patch.object(main.database, "get_deployments", AsyncMock(return_value=[])),
+                patch.object(main, "_get_all_worker_containers", AsyncMock(return_value=[])),
+            ):
+                return await main.api_get_service(MagicMock(), slug)
+
+        svc = _run(go)
+        dumped = json.dumps(svc)
+        assert "me@example.org" not in dumped
+        assert "cmd-token-7a1" not in dumped
+        assert svc["definition"]["command_set"] is True
+
+    def test_the_owner_still_sees_them(self, db):
+        """The control: the values are there to be hidden."""
+
+        async def go():
+            await self._seed()
+            with _as("owner"):
+                return await main.api_list_custom_services(MagicMock())
+
+        dumped = json.dumps(_run(go))
+        assert "me@example.org" in dumped
+        assert "cmd-token-7a1" in dumped
+        assert SECRET not in dumped
+
+
+class TestOutdatedIsExact:
+    @pytest.mark.parametrize(
+        ("deployed", "wanted"),
+        [
+            ("busybox:1.36", "library/busybox:1.36"),
+            ("busybox:1.36", "docker.io/library/busybox:1.36"),
+            ("x/y@sha256:" + "a" * 64, "x/y@sha256:" + "a" * 64),
+            ("busybox:latest", "busybox"),
+        ],
+    )
+    def test_the_same_image_is_not_outdated(self, deployed, wanted):
+        assert main._custom_image_outdated(deployed, wanted) is False
+
+    @pytest.mark.parametrize(
+        ("deployed", "wanted"),
+        [
+            ("x/y@sha256:" + "a" * 64, "x/y:2"),
+            ("x/y:1", "x/y@sha256:" + "b" * 64),
+            ("x/y@sha256:" + "a" * 64, "x/y@sha256:" + "b" * 64),
+            ("x/y:1", "x/y:2"),
+            ("x/y:1", "x/z:1"),
+        ],
+    )
+    def test_any_edit_is_outdated(self, deployed, wanted):
+        assert main._custom_image_outdated(deployed, wanted) is True
+
+    def test_the_tag_the_container_was_created_from_wins(self):
+        image = MagicMock()
+        image.tags = ["busybox:latest", "busybox:1.36"]
+        assert orchestrator._image_ref(image, "busybox:1.36") == "busybox:1.36"
+        assert orchestrator._image_ref(image, "") == "busybox:latest"
+
+
+class TestADataPathWithSeveralCopies:
+    def _update_with(self, instances):
+        async def go():
+            slug = (await _create())["slug"]
+            await database.save_deployment(
+                slug=slug, container_id="c1", spec={"image": "x", "instances": instances}, worker_id=3
+            )
+            with patch.object(main, "_custom_deployed_on", AsyncMock(return_value=["box"])):
+                return await main.api_update_custom_service(MagicMock(), slug, _body(data_path="/data"), {})
+
+        return _run(go)
+
+    def test_adding_a_data_path_while_a_box_runs_copies_is_refused(self, db):
+        with pytest.raises(HTTPException) as err:
+            self._update_with(3)
+        assert err.value.status_code == 409
+        assert "one copy" in err.value.detail
+
+    def test_with_one_copy_it_is_saved(self, db):
+        """The control."""
+        assert self._update_with(1)["deployed"] is True

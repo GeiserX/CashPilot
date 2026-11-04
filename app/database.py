@@ -451,6 +451,14 @@ CREATE TABLE IF NOT EXISTS custom_services (
     updated_at           TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+-- Slugs of deleted custom services. A slug names the container and the data
+-- volume, and a box may still hold that volume, so a new service must never
+-- get a slug a deleted one had and mount its data.
+CREATE TABLE IF NOT EXISTS custom_service_tombstones (
+    slug       TEXT PRIMARY KEY,
+    deleted_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 CREATE TABLE IF NOT EXISTS users (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
     username   TEXT    NOT NULL UNIQUE,
@@ -2072,10 +2080,10 @@ async def list_custom_services() -> list[dict[str, Any]]:
 
 
 async def custom_service_slugs() -> set[str]:
-    """Every stored slug, readable or not, so a new slug never reuses one."""
+    """Every slug ever used, readable, unreadable or deleted, so a new slug never reuses one."""
     db = await _get_db()
     try:
-        cursor = await db.execute("SELECT slug FROM custom_services")
+        cursor = await db.execute("SELECT slug FROM custom_services UNION SELECT slug FROM custom_service_tombstones")
         return {row["slug"] for row in await cursor.fetchall()}
     finally:
         await db.close()
@@ -2085,6 +2093,8 @@ async def delete_custom_service(slug: str) -> bool:
     db = await _get_db()
     try:
         cursor = await db.execute("DELETE FROM custom_services WHERE slug = ?", (slug,))
+        if (cursor.rowcount or 0) > 0:
+            await db.execute("INSERT OR IGNORE INTO custom_service_tombstones (slug) VALUES (?)", (slug,))
         await db.commit()
         return (cursor.rowcount or 0) > 0
     finally:

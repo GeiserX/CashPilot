@@ -2319,29 +2319,39 @@ def _image_outdated(deployed: str, catalog_image: str) -> bool:
 
 def _docker_hub_short(ref: str) -> str:
     """docker.io/library/busybox:1 as Docker reports it back: busybox:1."""
-    for prefix in ("docker.io/library/", "index.docker.io/library/", "docker.io/", "index.docker.io/"):
+    for prefix in (
+        "docker.io/library/",
+        "index.docker.io/library/",
+        "registry-1.docker.io/library/",
+        "docker.io/",
+        "index.docker.io/",
+        "registry-1.docker.io/",
+        "library/",
+    ):
         if ref.startswith(prefix):
             return ref[len(prefix) :]
     return ref
 
 
 def _custom_image_outdated(deployed: str, wanted: str) -> bool:
-    """_image_outdated, plus a changed tag: on a custom service a new tag is an edit.
+    """Whether a box runs another image than the custom service's definition.
 
-    The catalog check ignores a tag change of the same repository on purpose. A
-    custom service's tag is the user's own choice, so editing busybox:1.36 to
-    busybox:1.37 must show the redeploy prompt. No tag reads as "latest", which
-    is what Docker pulls and reports.
+    Stricter than _image_outdated, which ignores a tag change of the same
+    repository on purpose: a custom service's reference is the user's own
+    choice, so any edit (a tag, a digest, a switch between the two) shows the
+    redeploy prompt. Docker Hub spellings are compared in their short form, and
+    no tag reads as "latest", which is what Docker pulls and reports. A bare
+    image ID tells nothing, so it is never flagged.
     """
     deployed, wanted = _docker_hub_short(deployed), _docker_hub_short(wanted)
-    if _image_outdated(deployed, wanted):
-        return True
     if not deployed or not wanted or deployed.startswith("sha256:"):
         return False
-    _, d_tag, d_digest = _split_image(deployed)
-    _, w_tag, w_digest = _split_image(wanted)
-    if d_digest or w_digest:
-        return False
+    d_repo, d_tag, d_digest = _split_image(deployed)
+    w_repo, w_tag, w_digest = _split_image(wanted)
+    if d_repo != w_repo or bool(d_digest) != bool(w_digest):
+        return True
+    if w_digest:
+        return d_digest != w_digest
     return (d_tag or "latest") != (w_tag or "latest")
 
 
@@ -2756,10 +2766,13 @@ async def api_services_available(request: Request) -> list[dict[str, Any]]:
 
 @app.get("/api/services/{slug}")
 async def api_get_service(request: Request, slug: str) -> dict[str, Any]:
-    _require_auth_api(request)
+    user = _require_auth_api(request)
     svc = catalog.get_service(slug) or await _custom_service(slug, reveal=False)
     if not svc:
         raise HTTPException(status_code=404, detail=f"Service '{slug}' not found")
+    if svc.get("custom") and not auth.require_role(user, "owner"):
+        # Plain-text variables and the command are the owner's, as /api/config is.
+        svc = custom_services.redacted(svc)
 
     # Enrich with deployment status (same logic as /api/services/available)
     deployments = await database.get_deployments()
@@ -2831,12 +2844,19 @@ async def _custom_deployed_on(slug: str) -> list[str]:
 
 @app.get("/api/custom-services")
 async def api_list_custom_services(request: Request) -> list[dict[str, Any]]:
-    """Every custom service, secrets masked."""
-    _require_reader(request)
-    return [
-        custom_services.as_service(row["slug"], row["definition"], reveal=False)
-        for row in await database.list_custom_services()
-    ]
+    """Every custom service, secrets masked.
+
+    Non-secret values and the command are the owner's alone, as /api/config is:
+    a viewer or a writer gets the variable names only, and the read-only token
+    (_require_auth_api refuses it) gets nothing.
+    """
+    user = _require_auth_api(request)
+    owner = auth.require_role(user, "owner")
+    out = []
+    for row in await database.list_custom_services():
+        svc = custom_services.as_service(row["slug"], row["definition"], reveal=False)
+        out.append(svc if owner else custom_services.redacted(svc))
+    return out
 
 
 @app.post("/api/custom-services")
@@ -2864,6 +2884,22 @@ async def api_update_custom_service(
         definition, warnings = custom_services.validate(body.model_dump(), previous)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from None
+    if definition["data_path"]:
+        # A data path allows one copy per box (scaling_limit), and a redeploy
+        # reuses each box's recorded copy count, so saving it while a box runs
+        # several would leave every redeploy refused.
+        for row in await database.list_deployment_placements():
+            if row["slug"] != slug:
+                continue
+            recorded = await database.get_deployment_spec(slug, worker_id=row["worker_id"])
+            if int((recorded or {}).get("instances") or 1) > 1:
+                raise HTTPException(
+                    status_code=409,
+                    detail=(
+                        f"{definition['name']} runs several copies on a box, and a service with a data path "
+                        "runs one per box. Scale it to one copy on every box first, then add the data path."
+                    ),
+                )
     await database.save_custom_service(slug, definition)
     logger.info("Custom service %s updated (image %s)", slug, definition["image"])
     # A running container keeps the old definition until it is redeployed.
@@ -2954,7 +2990,7 @@ def scaling_limit(svc: dict[str, Any]) -> tuple[int, str]:
     if egress.devices_per_ip_limit(svc) == 1:
         return 1, f"{name} allows one device per IP address, so a second copy on one machine earns nothing."
     if docker_conf.get("volumes"):
-        return 1, f"{name} keeps data in a host directory, which two copies would share."
+        return 1, f"{name} keeps data in a volume or host directory, which two copies would share."
     if docker_conf.get("ports"):
         return 1, f"{name} publishes a port on the host, which two copies cannot share."
     link = svc.get("device_link")

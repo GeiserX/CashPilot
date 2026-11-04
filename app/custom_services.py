@@ -75,12 +75,23 @@ def make_slug(name: str, taken: set[str] | frozenset[str]) -> str:
 
     Fixed at creation: the container name, the data volume and every record
     key on it, so renaming the service later never moves anything.
+
+    A slug never ends in ``-<digits>``. Copy N of a service runs as
+    ``cashpilot-<slug>-N`` (orchestrator._container_name), so a slug like
+    ``custom-foo-2`` would share its container name with copy 2 of
+    ``custom-foo``, and a deploy of one would replace the other. "Foo 2" becomes
+    ``custom-foo2``, and a second "Foo" becomes ``custom-foo-v2``.
+
+    ``taken`` must hold every slug ever used, deleted ones included
+    (database.custom_service_slugs): a reused slug would mount the data volume
+    a deleted service left behind.
     """
     base = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")[:40].strip("-") or "service"
+    base = re.sub(r"-(\d+)$", r"\1", base)
     slug = f"{SLUG_PREFIX}{base}"
     n = 2
     while slug in taken:
-        slug = f"{SLUG_PREFIX}{base}-{n}"
+        slug = f"{SLUG_PREFIX}{base}-v{n}"
         n += 1
     return slug
 
@@ -110,7 +121,9 @@ def _validate_env(raw: Any, previous: dict[str, Any] | None) -> list[dict[str, A
         raise ValueError("Environment variables must be a list")
     if len(raw) > MAX_ENV:
         raise ValueError(f"At most {MAX_ENV} environment variables")
-    stored = {e["key"]: e["value"] for e in (previous or {}).get("env") or [] if isinstance(e, dict)}
+    stored = {
+        e["key"]: e["value"] for e in (previous or {}).get("env") or [] if isinstance(e, dict) and e.get("secret")
+    }
     out: list[dict[str, Any]] = []
     seen: set[str] = set()
     for item in raw:
@@ -127,9 +140,11 @@ def _validate_env(raw: Any, previous: dict[str, Any] | None) -> list[dict[str, A
         secret = bool(item.get("secret"))
         value = item.get("value")
         value = "" if value is None else str(value)
-        if secret and value == "" and key in stored:
+        if value == "" and key in stored:
             # A stored secret is never sent back to the browser, so a blank box
-            # on an edit means "unchanged", not "erase it".
+            # on an edit means "unchanged", not "erase it". That holds when the
+            # Secret tick is cleared too: the box was blank because the value
+            # was hidden, not because the user emptied it.
             value = stored[key]
         if len(value) > MAX_ENV_VALUE or "\x00" in value:
             raise ValueError(f"The value of {key} is too long or holds a NUL character")
@@ -215,6 +230,22 @@ def masked(definition: dict[str, Any]) -> dict[str, Any]:
             for e in definition.get("env") or []
         ],
     }
+
+
+def redacted(svc: dict[str, Any]) -> dict[str, Any]:
+    """A masked service (``as_service(reveal=False)``) for a caller who is not
+    the owner: the variable names, but no value and no command.
+
+    Non-secret values are plain text in ``masked``, and a command often carries
+    a token, so a viewer, a writer or the read-only token sees only which
+    variables exist, as /api/config is owner-only for the catalog's.
+    """
+    shown = dict(svc.get("definition") or {})
+    shown["command_set"] = bool(shown.get("command"))
+    shown["command"] = ""
+    shown["env"] = [{**e, "value": ""} for e in shown.get("env") or []]
+    docker = {k: v for k, v in (svc.get("docker") or {}).items() if k != "command"}
+    return {**svc, "definition": shown, "docker": docker}
 
 
 def as_service(slug: str, definition: dict[str, Any], *, reveal: bool) -> dict[str, Any]:

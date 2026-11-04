@@ -15,11 +15,11 @@ Only an owner account sees it. Then fill in:
 
 | Field | What it takes |
 |---|---|
-| **Name** | What the dashboard calls it, up to 60 characters. Its internal name, `custom-<name>`, never changes after you create it, so renaming moves nothing. |
+| **Name** | What the dashboard calls it, up to 60 characters. Its internal name, `custom-<name>`, never changes after you create it, so renaming moves nothing. A second service with the same name becomes `custom-<name>-v2`, and a name ending in a number loses the dash before it (`Node 2` is `custom-node2`), because `-2` on a container name means a second copy. A deleted service's internal name is never given out again. |
 | **Image** | `publisher/image:tag`, a full registry path such as `ghcr.io/publisher/image:1.4.2`, or a digest such as `publisher/image@sha256:...`. CashPilot accepts an image with no tag or the `latest` tag but warns you, because every redeploy then pulls whatever the publisher pushed last. |
 | **Environment variables** | Up to 50 name and value pairs. CashPilot stores every value encrypted. Tick **Secret** for a token or password: its value is never sent back to the browser, and leaving it blank when you edit keeps the stored one. |
 | **Command** | Optional. One line, passed to the image as its command. `${NAME}` is replaced by the value of variable `NAME`. |
-| **Data path** | Optional. A path inside the container, such as `/data`. CashPilot keeps it in a Docker volume of its own, `cashpilot-<name>-data`, so it survives redeploys. Blank means nothing is kept. |
+| **Data path** | Optional. A path inside the container, such as `/data`. CashPilot keeps it in a Docker volume of its own, `cashpilot-custom-<name>-data`, so it survives redeploys. The container itself is `cashpilot-custom-<name>`. Blank means nothing is kept. |
 | **Memory limit** | From `32m` to `16g`. Defaults to `512m`. |
 
 Then open the service and deploy it to one or more boxes, as with a catalog service. A service
@@ -65,4 +65,6 @@ belongs in the catalog, where those grants are reviewed: open an issue or a pull
    tell whether data of a service it does not know is irreplaceable, so it only deletes it when
    explicitly told to.
 2. When no box runs it any more, choose **Delete**. CashPilot refuses while any box still runs or
-   holds a record of it.
+   holds a record of it. A data volume you kept in step 1 stays on that box; a new custom service
+   never gets the same internal name, so it never mounts it. Delete it by hand when you no longer
+   need it: `docker volume rm cashpilot-custom-<name>-data`.

@@ -658,6 +658,17 @@ def deploy_raw(
     # Remove any existing container with the same name
     try:
         old = client.containers.get(name)
+        # The name alone is not proof the container is this copy of this
+        # service: copy 2 of "foo" and copy 1 of a service slugged "foo-2" are
+        # both cashpilot-foo-2. Replacing another service's container would
+        # stop it and start this one under its name, so that is refused.
+        old_labels = old.labels if isinstance(getattr(old, "labels", None), dict) else {}
+        old_slug = old_labels.get(LABEL_SERVICE)
+        if (old_slug and old_slug != slug) or (old_slug == slug and _instance_of(old) != instance):
+            raise ContainerRuntimeError(
+                f"{name} already belongs to {old_slug} (copy {_instance_of(old)}), not to copy {instance} of "
+                f"{slug}. It was left running; remove it or deploy under another name."
+            )
         volumes, kept = _keep_live_mounts(old, volumes, moved_mounts, keep_targets)
         for entry in kept:
             logger.warning(
@@ -1720,8 +1731,15 @@ def _image_ref(image: Any, created_from: str = "") -> str:
     ``created_from`` is the reference the container was created with. When that
     is a digest reference it wins: it is exactly what the catalog pinned, while
     RepoDigests is sorted alphabetically and an image can carry several.
+    The same holds for a tag: when the image carries the one it was created
+    from, that tag wins over whichever Docker lists first.
     """
     if "@sha256:" in created_from:
+        return created_from
+    tags = image.tags if isinstance(image.tags, list) else []
+    if created_from and created_from in tags:
+        # One image can carry several tags (busybox:latest and busybox:1.36 on
+        # one ID); the one the container was created from is the true answer.
         return created_from
     if image.tags:
         return image.tags[0]
