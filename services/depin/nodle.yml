@@ -59,3 +59,47 @@ collector:
 payout:
   model: unknown
   notes: "Not yet determined. Flagged rather than shown blank -- see CashPilot-luj."
+
+# Provider rating: the verdicts behind the grade (method: services/_ratings.yml,
+# published at docs/ratings.md). The grade itself is computed, never written here.
+rating:
+  reviewed_on: "2026-11-04"
+  verdicts:
+    payout_record: fair
+    payout_terms: unknown
+    account_safety: unknown
+    terms_fit: good
+    traffic_transparency: unknown
+    privacy: unknown
+    identity_checks: unknown
+    support: unknown
+    earnings_realism: poor
+    longevity: unknown
+  notes:
+    payout_terms: Not documented on pages we read.
+    account_safety: No reports found.
+    traffic_transparency: Not documented on pages we read.
+    privacy: The app uses Bluetooth in the background; we did not review its privacy policy.
+    identity_checks: Not documented.
+    support: Reviewers report unanswered messages; we could not confirm a pattern.
+    longevity: Not checked on a primary source.
+  cons:
+  - text: App Store reviewers report being unable to bridge or send NODL after the move to zkSync, and
+      needing ETH to move tokens out.
+    criterion: payout_record
+    kind: user_reports
+    source: https://apps.apple.com/us/app/nodle-cash-wallet-earn-crypto/id1480763553
+    checked_on: "2026-11-04"
+  - text: One reviewer reports about $3 earned over three to four years; others report daily earnings
+      falling sharply.
+    criterion: earnings_realism
+    kind: user_reports
+    source: https://www.appbrain.com/app/nodle-cash-simple-earning-app/io.nodle.cash
+    checked_on: "2026-11-04"
+  pros:
+  - text: 'CashPilot does not run Nodle: you use the provider''s own phone app, so there is no container
+      for its terms to forbid.'
+    criterion: terms_fit
+    kind: our_experience
+    source: https://github.com/GeiserX/CashPilot/blob/main/services/depin/nodle.yml
+    checked_on: "2026-11-04"

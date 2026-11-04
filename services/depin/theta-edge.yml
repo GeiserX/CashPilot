@@ -58,3 +58,43 @@ collector:
 payout:
   model: unknown
   notes: "Not yet determined. Flagged rather than shown blank -- see CashPilot-luj."
+
+# Provider rating: the verdicts behind the grade (method: services/_ratings.yml,
+# published at docs/ratings.md). The grade itself is computed, never written here.
+rating:
+  reviewed_on: "2026-11-04"
+  verdicts:
+    payout_record: unknown
+    payout_terms: unknown
+    account_safety: unknown
+    terms_fit: good
+    traffic_transparency: unknown
+    privacy: unknown
+    identity_checks: unknown
+    support: unknown
+    earnings_realism: poor
+    longevity: unknown
+  notes:
+    payout_record: We found no pattern of reports either way.
+    payout_terms: Elite edge nodes need at least 10,000 TFUEL staked; we did not find the full payout
+      terms.
+    account_safety: No reports found.
+    traffic_transparency: Not documented on pages we read.
+    privacy: Not reviewed.
+    identity_checks: Not documented.
+    support: No pattern found.
+    longevity: Not checked on a primary source.
+  cons:
+  - text: A Theta forum estimate puts a standard edge node at 3 to 30 TFUEL a month, which was $0.30 to
+      $3 at a TFUEL price of $0.10.
+    criterion: earnings_realism
+    kind: user_reports
+    source: https://www.thetaforums.com/forum/theta-network-forum-aa/425-how-much-can-you-earn-running-a-theta-edge-node
+    checked_on: "2026-11-04"
+  pros:
+  - text: 'CashPilot does not run Theta Edge: you use the provider''s own desktop app, so there is no
+      container for its terms to forbid.'
+    criterion: terms_fit
+    kind: our_experience
+    source: https://github.com/GeiserX/CashPilot/blob/main/services/depin/theta-edge.yml
+    checked_on: "2026-11-04"

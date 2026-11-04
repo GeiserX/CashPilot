@@ -74,3 +74,78 @@ collector:
 payout:
   model: internal
   notes: "Balance held by PacketStream; withdrawn on request."
+
+# Provider rating: the verdicts behind the grade (method: services/_ratings.yml,
+# published at docs/ratings.md). The grade itself is computed, never written here.
+rating:
+  reviewed_on: "2026-11-04"
+  verdicts:
+    payout_record: fair
+    payout_terms: fair
+    account_safety: fair
+    terms_fit: good
+    traffic_transparency: fair
+    privacy: unknown
+    identity_checks: good
+    support: fair
+    earnings_realism: fair
+    longevity: good
+  notes:
+    privacy: The client is closed source; we did not review the privacy policy in depth.
+  cons:
+  - text: Trustpilot reviewers in 2025 and 2026 report payouts arriving late or not at all, and one long-time
+      user says payouts slowed and then stopped; others in 2026 report being paid.
+    criterion: payout_record
+    kind: user_reports
+    source: https://www.trustpilot.com/review/packetstream.io
+    checked_on: "2026-11-04"
+  - text: PayPal only, with a 3% cashout fee; users in countries PayPal does not serve have no other method.
+    criterion: payout_terms
+    kind: terms
+    source: https://packetstream.io/terms-of-service/
+    checked_on: "2026-11-04"
+  - text: The terms let PacketStream withhold, reverse or invalidate earnings it ties to fraud, manipulation
+      or prohibited activity.
+    criterion: account_safety
+    kind: terms
+    source: https://packetstream.io/terms-of-service/
+    checked_on: "2026-11-04"
+  - text: The terms say proxy customers and PacketStream itself route traffic through your connection;
+      they describe no vetting of ordinary buyers.
+    criterion: traffic_transparency
+    kind: terms
+    source: https://packetstream.io/terms-of-service/
+    checked_on: "2026-11-04"
+  - text: Trustpilot notes PacketStream has not replied to negative reviews; reviewers report unanswered
+      emails.
+    criterion: support
+    kind: user_reports
+    source: https://www.trustpilot.com/review/packetstream.io
+    checked_on: "2026-11-04"
+  - text: Reviewers report taking close to a year to reach the $5 minimum.
+    criterion: earnings_realism
+    kind: user_reports
+    source: https://www.trustpilot.com/review/packetstream.io
+    checked_on: "2026-11-04"
+  pros:
+  - text: PacketStream publishes its own Docker image, packetstream/psclient, and its terms only require
+      a device and connection you own or may use.
+    criterion: terms_fit
+    kind: terms
+    source: https://packetstream.io/terms-of-service/
+    checked_on: "2026-11-04"
+  - text: The terms describe no identity check; a payout needs a PayPal address.
+    criterion: identity_checks
+    kind: terms
+    source: https://packetstream.io/terms-of-service/
+    checked_on: "2026-11-04"
+  - text: The terms name PacketStream Inc. under California law.
+    criterion: longevity
+    kind: terms
+    source: https://packetstream.io/terms-of-service/
+    checked_on: "2026-11-04"
+  - text: PacketStream has run since 2018.
+    criterion: longevity
+    kind: press
+    source: https://proxyway.com/reviews/packetstream-proxies
+    checked_on: "2026-11-04"

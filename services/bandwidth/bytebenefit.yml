@@ -62,3 +62,60 @@ collector:
 payout:
   model: unknown
   notes: "Not yet determined. Flagged rather than shown blank -- see CashPilot-luj."
+
+# Provider rating: the verdicts behind the grade (method: services/_ratings.yml,
+# published at docs/ratings.md). The grade itself is computed, never written here.
+rating:
+  reviewed_on: "2026-11-04"
+  verdicts:
+    payout_record: poor
+    payout_terms: good
+    account_safety: unknown
+    terms_fit: good
+    traffic_transparency: fair
+    privacy: unknown
+    identity_checks: unknown
+    support: fair
+    earnings_realism: unknown
+    longevity: fair
+  notes:
+    account_safety: No reports either way.
+    privacy: The client is closed source; we did not review the privacy policy.
+    identity_checks: Not documented on pages we read.
+    earnings_realism: Not measured.
+  cons:
+  - text: Two of the four Trustpilot reviews say they were never paid, one because the PayPal and Stripe
+      payout page returned a 404.
+    criterion: payout_record
+    kind: user_reports
+    source: https://www.trustpilot.com/review/bytebenefit.io
+    checked_on: "2026-11-04"
+  - text: One of those reviewers says Infatica's support sent them back to a separate ByteBenefit team
+      that did not help.
+    criterion: support
+    kind: user_reports
+    source: https://www.trustpilot.com/review/bytebenefit.io
+    checked_on: "2026-11-04"
+  - text: The app's Google Play listing says your traffic serves web-intelligence requests by Infatica's
+      clients, without saying who they are or how they are checked.
+    criterion: traffic_transparency
+    kind: terms
+    source: https://play.google.com/store/apps/details?id=io.bytebenefit.app
+    checked_on: "2026-11-04"
+  - text: The Android app left Google Play in April 2026 after 17 months.
+    criterion: longevity
+    kind: press
+    source: https://www.appbrain.com/app/bytebenefit/io.bytebenefit.app
+    checked_on: "2026-11-04"
+  pros:
+  - text: A $5 minimum, paid by PayPal.
+    criterion: payout_terms
+    kind: our_experience
+    source: https://github.com/GeiserX/CashPilot/blob/main/services/bandwidth/bytebenefit.yml
+    checked_on: "2026-11-04"
+  - text: 'CashPilot does not run ByteBenefit: you use the provider''s own app, so there is no container
+      for its terms to forbid.'
+    criterion: terms_fit
+    kind: our_experience
+    source: https://github.com/GeiserX/CashPilot/blob/main/services/bandwidth/bytebenefit.yml
+    checked_on: "2026-11-04"

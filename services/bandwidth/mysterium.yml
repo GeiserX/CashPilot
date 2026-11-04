@@ -242,3 +242,64 @@ payout:
         id=$(wget -qO- -T 5 http://127.0.0.1:4050/identities | grep -o '0x[0-9a-fA-F]\{40\}' | head -1)
         && wget -qO- -T 5 "http://127.0.0.1:4050/identities/$id/beneficiary"
     pattern: '"beneficiary":"(0x[0-9a-fA-F]{40})"'
+
+# Provider rating: the verdicts behind the grade (method: services/_ratings.yml,
+# published at docs/ratings.md). The grade itself is computed, never written here.
+rating:
+  reviewed_on: "2026-11-04"
+  verdicts:
+    payout_record: unknown
+    payout_terms: fair
+    account_safety: good
+    terms_fit: good
+    traffic_transparency: poor
+    privacy: good
+    identity_checks: good
+    support: unknown
+    earnings_realism: unknown
+    longevity: good
+  notes:
+    payout_record: Settlements are on-chain and automatic; we have not published our own settlement history
+      yet.
+    support: Trustpilot has 16 reviews and none in the last year; not enough to judge.
+    earnings_realism: Not measured against a provider figure.
+  cons:
+  - text: About 21% of every settlement goes in fees, the 20% Hermes fee plus a transaction fee, and earnings
+      are paid in the MYST token.
+    criterion: payout_terms
+    kind: our_experience
+    source: https://github.com/GeiserX/CashPilot/blob/main/services/bandwidth/mysterium.yml
+    checked_on: "2026-11-04"
+  - text: Your node is an exit for Mysterium's VPN, proxy and data-scraping customers, and you cannot
+      choose which of them it carries.
+    criterion: traffic_transparency
+    kind: our_experience
+    source: https://github.com/GeiserX/CashPilot/blob/main/services/bandwidth/mysterium.yml
+    checked_on: "2026-11-04"
+  pros:
+  - text: The node software is open source under the GPL-3.0.
+    criterion: privacy
+    kind: terms
+    source: https://github.com/mysteriumnetwork/node
+    checked_on: "2026-11-04"
+  - text: Earnings settle on-chain to a wallet you own, and there is no limit on nodes per account or
+      per IP.
+    criterion: account_safety
+    kind: our_experience
+    source: https://github.com/GeiserX/CashPilot/blob/main/services/bandwidth/mysterium.yml
+    checked_on: "2026-11-04"
+  - text: Mysterium publishes its own Docker image, mysteriumnetwork/myst.
+    criterion: terms_fit
+    kind: terms
+    source: https://hub.docker.com/r/mysteriumnetwork/myst
+    checked_on: "2026-11-04"
+  - text: Settlement goes to a wallet you own; no phone number or ID is needed.
+    criterion: identity_checks
+    kind: our_experience
+    source: https://github.com/GeiserX/CashPilot/blob/main/services/bandwidth/mysterium.yml
+    checked_on: "2026-11-04"
+  - text: The node project has run since 2017.
+    criterion: longevity
+    kind: terms
+    source: https://github.com/mysteriumnetwork/node
+    checked_on: "2026-11-04"

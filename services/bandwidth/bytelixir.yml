@@ -82,3 +82,54 @@ collector:
 payout:
   model: internal
   notes: "Balance held by Bytelixir; the wallet address is typed into each payout request, never stored on the container."
+
+# Provider rating: the verdicts behind the grade (method: services/_ratings.yml,
+# published at docs/ratings.md). The grade itself is computed, never written here.
+rating:
+  reviewed_on: "2026-11-04"
+  verdicts:
+    payout_record: good
+    payout_terms: fair
+    account_safety: unknown
+    terms_fit: good
+    traffic_transparency: unknown
+    privacy: unknown
+    identity_checks: good
+    support: good
+    earnings_realism: unknown
+    longevity: unknown
+  notes:
+    account_safety: No reports of banned accounts found.
+    traffic_transparency: We could not load Bytelixir's terms.
+    privacy: The client is closed source; we could not load the privacy terms.
+    earnings_realism: Not measured.
+    longevity: We could not find the legal entity behind Bytelixir on a page that loaded.
+  cons:
+  - text: Crypto only, and the minimum depends on the coin, from $5 for USDT to $250 for Bitcoin.
+    criterion: payout_terms
+    kind: our_experience
+    source: https://github.com/GeiserX/CashPilot/blob/main/services/bandwidth/bytelixir.yml
+    checked_on: "2026-11-04"
+  pros:
+  - text: Trustpilot rates it 4.6 from 283 reviews, most of them praising crypto payouts; a few report
+      payouts not arriving.
+    criterion: payout_record
+    kind: user_reports
+    source: https://www.trustpilot.com/review/bytelixir.com
+    checked_on: "2026-11-04"
+  - text: Bytelixir replies to all negative reviews on Trustpilot, typically within a day.
+    criterion: support
+    kind: provider_reply
+    source: https://www.trustpilot.com/review/bytelixir.com
+    checked_on: "2026-11-04"
+  - text: A payout needs only a crypto address typed into the request.
+    criterion: identity_checks
+    kind: our_experience
+    source: https://github.com/GeiserX/CashPilot/blob/main/services/bandwidth/bytelixir.yml
+    checked_on: "2026-11-04"
+  - text: 'CashPilot does not run Bytelixir: you use the provider''s own app, so there is no container
+      for its terms to forbid.'
+    criterion: terms_fit
+    kind: our_experience
+    source: https://github.com/GeiserX/CashPilot/blob/main/services/bandwidth/bytelixir.yml
+    checked_on: "2026-11-04"

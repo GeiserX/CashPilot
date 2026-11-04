@@ -60,3 +60,45 @@ collector:
 payout:
   model: unknown
   notes: "Not yet determined. Flagged rather than shown blank -- see CashPilot-luj."
+
+# Provider rating: the verdicts behind the grade (method: services/_ratings.yml,
+# published at docs/ratings.md). The grade itself is computed, never written here.
+rating:
+  reviewed_on: "2026-11-04"
+  verdicts:
+    payout_record: unknown
+    payout_terms: good
+    account_safety: unknown
+    terms_fit: good
+    traffic_transparency: unknown
+    privacy: unknown
+    identity_checks: unknown
+    support: unknown
+    earnings_realism: unknown
+    longevity: good
+  notes:
+    payout_record: eBesucher says it has paid out over one million euros; we found no recent independent
+      reports either way.
+    account_safety: No reports found.
+    traffic_transparency: The surfbar shows advertisers' pages; we did not find how advertisers are checked.
+    privacy: Not reviewed.
+    identity_checks: Not documented on pages we read.
+    support: No reports found.
+    earnings_realism: Not measured.
+  pros:
+  - text: Payouts from 2 euros by PayPal or SEPA, at least weekly, with no fee.
+    criterion: payout_terms
+    kind: terms
+    source: https://www.ebesucher.com/earn-money/get-paid-to-surf
+    checked_on: "2026-11-04"
+  - text: eBesucher has run since 2002.
+    criterion: longevity
+    kind: terms
+    source: https://www.ebesucher.com/earn-money/beermoney
+    checked_on: "2026-11-04"
+  - text: 'CashPilot does not run eBesucher: it is a browser extension, so there is no container for its
+      terms to forbid.'
+    criterion: terms_fit
+    kind: our_experience
+    source: https://github.com/GeiserX/CashPilot/blob/main/services/bandwidth/ebesucher.yml
+    checked_on: "2026-11-04"

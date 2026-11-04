@@ -58,3 +58,52 @@ collector:
 payout:
   model: unknown
   notes: "Not yet determined. Flagged rather than shown blank -- see CashPilot-luj."
+
+# Provider rating: the verdicts behind the grade (method: services/_ratings.yml,
+# published at docs/ratings.md). The grade itself is computed, never written here.
+rating:
+  reviewed_on: "2026-11-04"
+  verdicts:
+    payout_record: unknown
+    payout_terms: fair
+    account_safety: unknown
+    terms_fit: good
+    traffic_transparency: unknown
+    privacy: unknown
+    identity_checks: unknown
+    support: unknown
+    earnings_realism: poor
+    longevity: fair
+  notes:
+    payout_record: We found no documented pattern of late or withheld supplier payouts.
+    account_safety: io.net removed virtual GPU workers from rewards in 2024; we found no pattern affecting
+      real hardware.
+    traffic_transparency: Not documented on pages we read.
+    privacy: Not reviewed.
+    identity_checks: Not documented.
+    support: No pattern found.
+  cons:
+  - text: Supplier rewards were paid from token emissions regardless of paid jobs, and GPU owners report
+      sitting idle most of the time.
+    criterion: earnings_realism
+    kind: press
+    source: https://ownyourmind.ai/projects/io-net/
+    checked_on: "2026-11-04"
+  - text: Rewards are in the IO token and the payout model changed in 2026 to a dollar-pegged engine.
+    criterion: payout_terms
+    kind: press
+    source: https://ownyourmind.ai/projects/io-net/
+    checked_on: "2026-11-04"
+  - text: In April 2024 about 1.8 million fake GPUs tried to join through a leaked authentication token,
+      and the CEO later stepped down before the token launch.
+    criterion: longevity
+    kind: press
+    source: https://www.theblock.co/news/defi/2024-04-28-solana-based-depin-io-net-ceo-claims-network-was-attacked-in-detailed-postmortem-291315
+    checked_on: "2026-11-04"
+  pros:
+  - text: 'CashPilot does not run io.net: you use the provider''s own worker software, so there is no
+      container for its terms to forbid.'
+    criterion: terms_fit
+    kind: our_experience
+    source: https://github.com/GeiserX/CashPilot/blob/main/services/compute/ionet.yml
+    checked_on: "2026-11-04"

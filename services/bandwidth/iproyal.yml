@@ -108,3 +108,70 @@ collector:
 payout:
   model: internal
   notes: "Balance held by IPRoyal Pawns; withdrawn on request."
+
+# Provider rating: the verdicts behind the grade (method: services/_ratings.yml,
+# published at docs/ratings.md). The grade itself is computed, never written here.
+rating:
+  reviewed_on: "2026-11-04"
+  verdicts:
+    payout_record: unknown
+    payout_terms: fair
+    account_safety: fair
+    terms_fit: fair
+    traffic_transparency: fair
+    privacy: unknown
+    identity_checks: fair
+    support: unknown
+    earnings_realism: unknown
+    longevity: fair
+  notes:
+    payout_record: Trustpilot withholds the rating of pawns.app for a breach of its guidelines and says
+      it removed fake reviews, so its payout reviews cannot be taken at face value. We have not yet published
+      a completed payout of our own.
+    privacy: The client is closed source; we did not review the privacy policy in depth.
+    support: No repeated support complaint found and no ticket of our own.
+    earnings_realism: We have not measured Pawns earnings per IP against a provider figure.
+    account_safety: One Trustpilot reviewer says an account was blocked during a withdrawal after a phone
+      number was mistyped; we could not confirm a wider pattern on the page.
+  cons:
+  - text: The terms say an account can be blocked without prior notice for abuse of withdrawal conditions
+      or multiple accounts, and its earnings may then not be paid out.
+    criterion: account_safety
+    kind: terms
+    source: https://pawns.app/terms-of-use/
+    checked_on: "2026-11-04"
+  - text: The terms say Pawns does not allow any servers, VPNs or proxy services for traffic sharing,
+      and only one device per IP.
+    criterion: terms_fit
+    kind: terms
+    source: https://pawns.app/terms-of-use/
+    checked_on: "2026-11-04"
+  - text: PayPal costs 4% (at least $0.25) through Tremendous, and every payout is reviewed for up to
+      72 hours.
+    criterion: payout_terms
+    kind: our_experience
+    source: https://github.com/GeiserX/CashPilot/blob/main/services/bandwidth/iproyal.yml
+    checked_on: "2026-11-04"
+  - text: The first payout needs an SMS check of your phone number, and every payout a code sent by email.
+    criterion: identity_checks
+    kind: our_experience
+    source: https://github.com/GeiserX/CashPilot/blob/main/services/bandwidth/iproyal.yml
+    checked_on: "2026-11-04"
+  - text: The terms name no legal entity, only Pawns.app; the app is run by IPRoyal, a proxy company that
+      started in late 2020.
+    criterion: longevity
+    kind: press
+    source: https://proxyway.com/reviews/iproyal-proxies
+    checked_on: "2026-11-04"
+  - text: The terms say Pawns and its business clients route traffic through your device, and that you
+      cannot identify which client uses it.
+    criterion: traffic_transparency
+    kind: terms
+    source: https://pawns.app/terms-of-use/
+    checked_on: "2026-11-04"
+  pros:
+  - text: A $5 minimum, with gift cards at no fee.
+    criterion: payout_terms
+    kind: our_experience
+    source: https://github.com/GeiserX/CashPilot/blob/main/services/bandwidth/iproyal.yml
+    checked_on: "2026-11-04"

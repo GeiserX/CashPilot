@@ -64,3 +64,51 @@ payout:
   model: internal
   chain: none
   notes: "PayPal and gift cards ONLY -- no crypto whatsoever. Has no on-chain surface for tier 2 to reconcile."
+
+# Provider rating: the verdicts behind the grade (method: services/_ratings.yml,
+# published at docs/ratings.md). The grade itself is computed, never written here.
+rating:
+  reviewed_on: "2026-11-04"
+  verdicts:
+    payout_record: fair
+    payout_terms: fair
+    account_safety: unknown
+    terms_fit: good
+    traffic_transparency: unknown
+    privacy: unknown
+    identity_checks: unknown
+    support: unknown
+    earnings_realism: poor
+    longevity: unknown
+  notes:
+    account_safety: No pattern found.
+    traffic_transparency: Salad rents your GPU to its cloud customers; we did not find how they are checked.
+    privacy: Not reviewed.
+    identity_checks: Not documented on pages we read.
+    support: No pattern found.
+    longevity: Not checked on a primary source.
+  cons:
+  - text: Trustpilot's summary notes earnings that often fail to cover the electricity of high-end hardware
+      and unpredictable job availability; an August 2026 review calls the advertised earnings misleading.
+    criterion: earnings_realism
+    kind: user_reports
+    source: https://www.trustpilot.com/review/salad.com
+    checked_on: "2026-11-04"
+  - text: Some reviewers report withdrawal delays and a June 2026 reviewer a cancelled reward; others
+      report fast payouts.
+    criterion: payout_record
+    kind: user_reports
+    source: https://www.trustpilot.com/review/salad.com
+    checked_on: "2026-11-04"
+  - text: PayPal and gift cards only, through Salad's own storefront; some reviewers report steep fees.
+    criterion: payout_terms
+    kind: user_reports
+    source: https://www.trustpilot.com/review/salad.com
+    checked_on: "2026-11-04"
+  pros:
+  - text: 'CashPilot does not run Salad: you use the provider''s own desktop app, so there is no container
+      for its terms to forbid.'
+    criterion: terms_fit
+    kind: our_experience
+    source: https://github.com/GeiserX/CashPilot/blob/main/services/compute/salad.yml
+    checked_on: "2026-11-04"

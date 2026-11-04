@@ -62,3 +62,53 @@ collector:
 payout:
   model: unknown
   notes: "Not yet determined. Flagged rather than shown blank -- see CashPilot-luj."
+
+# Provider rating: the verdicts behind the grade (method: services/_ratings.yml,
+# published at docs/ratings.md). The grade itself is computed, never written here.
+rating:
+  reviewed_on: "2026-11-04"
+  verdicts:
+    payout_record: unknown
+    payout_terms: unknown
+    account_safety: unknown
+    terms_fit: good
+    traffic_transparency: unknown
+    privacy: good
+    identity_checks: good
+    support: unknown
+    earnings_realism: poor
+    longevity: good
+  notes:
+    payout_record: Payments are on-chain per task; we have no provider of our own to report.
+    payout_terms: Payments are in GLM on Polygon; we did not find fees worth grading.
+    account_safety: There is no account to ban.
+    traffic_transparency: Requestors run tasks on your machine; we did not find how they are checked.
+    support: No pattern found.
+  cons:
+  - text: A 2026 review finds Golem with no protocol revenue and low demand, so providers earn little
+      and are paid in GLM.
+    criterion: earnings_realism
+    kind: press
+    source: https://ownyourmind.ai/projects/golem/
+    checked_on: "2026-11-04"
+  pros:
+  - text: The provider agent, yagna, is open source under the GPL-3.0.
+    criterion: privacy
+    kind: terms
+    source: https://github.com/golemfactory/yagna
+    checked_on: "2026-11-04"
+  - text: Golem documents running the provider in its own Docker image.
+    criterion: terms_fit
+    kind: terms
+    source: https://docs.golem.network/docs/providers/provider-installation
+    checked_on: "2026-11-04"
+  - text: 'No account: you set a payout wallet in the provider setup.'
+    criterion: identity_checks
+    kind: our_experience
+    source: https://github.com/GeiserX/CashPilot/blob/main/services/compute/golem.yml
+    checked_on: "2026-11-04"
+  - text: The network has run for about ten years.
+    criterion: longevity
+    kind: press
+    source: https://ownyourmind.ai/tokenomics/akash-vs-golem/
+    checked_on: "2026-11-04"

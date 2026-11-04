@@ -58,3 +58,51 @@ collector:
 payout:
   model: unknown
   notes: "Not yet determined. Flagged rather than shown blank -- see CashPilot-luj."
+
+# Provider rating: the verdicts behind the grade (method: services/_ratings.yml,
+# published at docs/ratings.md). The grade itself is computed, never written here.
+rating:
+  reviewed_on: "2026-11-04"
+  verdicts:
+    payout_record: unknown
+    payout_terms: unknown
+    account_safety: unknown
+    terms_fit: good
+    traffic_transparency: unknown
+    privacy: good
+    identity_checks: unknown
+    support: unknown
+    earnings_realism: poor
+    longevity: fair
+  notes:
+    payout_record: Rewards are paid on-chain; we found no pattern of missing rewards.
+    payout_terms: Rewards are in HNT; we did not find fees or minimums worth grading.
+    account_safety: No reports found.
+    traffic_transparency: Not documented on pages we read.
+    identity_checks: Not documented.
+    support: No pattern found.
+  cons:
+  - text: HIP 149 retired Proof-of-Coverage rewards on 6 July 2026; IoT hotspots now earn only for data
+      they carry, and more than 114,000 of them carried none.
+    criterion: earnings_realism
+    kind: terms
+    source: https://heliumgeek.com/faq/what-is-hip149.html
+    checked_on: "2026-11-04"
+  - text: Helium's reward model has changed by vote several times, its CEO stepped down, and HNT fell
+      about 96%.
+    criterion: longevity
+    kind: press
+    source: https://crypto.news/helium-ceo-amir-haleem-steps-down-as-hnt-token-extends-96-crash/
+    checked_on: "2026-11-04"
+  pros:
+  - text: The hotspot gateway software is open source under the Apache-2.0 licence.
+    criterion: privacy
+    kind: terms
+    source: https://github.com/helium/gateway-rs
+    checked_on: "2026-11-04"
+  - text: 'CashPilot does not run Helium: you use the provider''s own hotspot hardware, so there is no
+      container for its terms to forbid.'
+    criterion: terms_fit
+    kind: our_experience
+    source: https://github.com/GeiserX/CashPilot/blob/main/services/depin/helium.yml
+    checked_on: "2026-11-04"

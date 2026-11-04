@@ -58,3 +58,46 @@ collector:
 payout:
   model: unknown
   notes: "Not yet determined. Flagged rather than shown blank -- see CashPilot-luj."
+
+# Provider rating: the verdicts behind the grade (method: services/_ratings.yml,
+# published at docs/ratings.md). The grade itself is computed, never written here.
+rating:
+  reviewed_on: "2026-11-04"
+  verdicts:
+    payout_record: unknown
+    payout_terms: fair
+    account_safety: unknown
+    terms_fit: good
+    traffic_transparency: unknown
+    privacy: unknown
+    identity_checks: unknown
+    support: unknown
+    earnings_realism: poor
+    longevity: unknown
+  notes:
+    payout_record: We found no recent pattern of reports either way.
+    account_safety: No reports found.
+    traffic_transparency: Not documented on pages we read.
+    privacy: Not reviewed.
+    identity_checks: Not documented.
+    support: One Google Play review reports an unanswered ticket; one is not a pattern.
+    longevity: We did not confirm the company behind UpRock.
+  cons:
+  - text: Trustpilot reviewers reported a 255 UPT minimum and a 55 UPT fee to withdraw to a wallet; these
+      reports are old and the current terms may differ.
+    criterion: payout_terms
+    kind: user_reports
+    source: https://www.trustpilot.com/review/uprock.com
+    checked_on: "2026-11-04"
+  - text: Rewards are UPT tokens; reviewers and a third-party review say their value is very low.
+    criterion: earnings_realism
+    kind: press
+    source: https://paidfromsurveys.com/uprock-ai-earnings-review
+    checked_on: "2026-11-04"
+  pros:
+  - text: 'CashPilot does not run UpRock: you use the provider''s own app or extension, so there is no
+      container for its terms to forbid.'
+    criterion: terms_fit
+    kind: our_experience
+    source: https://github.com/GeiserX/CashPilot/blob/main/services/depin/uprock.yml
+    checked_on: "2026-11-04"

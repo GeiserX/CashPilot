@@ -62,3 +62,45 @@ payout:
   model: minted
   chain: solana
   notes: "Mints a Solana wallet by default. The user has typically never seen the address. See tier 3."
+
+# Provider rating: the verdicts behind the grade (method: services/_ratings.yml,
+# published at docs/ratings.md). The grade itself is computed, never written here.
+rating:
+  reviewed_on: "2026-11-04"
+  verdicts:
+    payout_record: unknown
+    payout_terms: fair
+    account_safety: unknown
+    terms_fit: good
+    traffic_transparency: unknown
+    privacy: unknown
+    identity_checks: unknown
+    support: unknown
+    earnings_realism: fair
+    longevity: unknown
+  notes:
+    payout_record: We found no host reports either way.
+    account_safety: No reports found.
+    traffic_transparency: Not documented on pages we read.
+    privacy: Not reviewed.
+    identity_checks: Payouts go to a Solana wallet; we did not find other requirements.
+    support: No pattern found.
+    longevity: Not checked on a primary source.
+  cons:
+  - text: Each host must lock a NOS stake sized to its GPU's hourly price.
+    criterion: payout_terms
+    kind: terms
+    source: https://github.com/nosana-ci/network-proposals/blob/main/nnp/NNP-0001-tokenomics.md
+    checked_on: "2026-11-04"
+  - text: Hosts are paid in NOS, so dollar earnings move with the token and with demand for their card.
+    criterion: earnings_realism
+    kind: press
+    source: https://solanacompass.com/projects/nosana
+    checked_on: "2026-11-04"
+  pros:
+  - text: 'CashPilot does not run Nosana: you use the provider''s own host software, so there is no container
+      for its terms to forbid.'
+    criterion: terms_fit
+    kind: our_experience
+    source: https://github.com/GeiserX/CashPilot/blob/main/services/compute/nosana.yml
+    checked_on: "2026-11-04"

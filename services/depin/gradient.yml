@@ -61,3 +61,50 @@ collector:
 payout:
   model: unknown
   notes: "Not yet determined. Flagged rather than shown blank -- see CashPilot-luj."
+
+# Provider rating: the verdicts behind the grade (method: services/_ratings.yml,
+# published at docs/ratings.md). The grade itself is computed, never written here.
+rating:
+  reviewed_on: "2026-11-04"
+  verdicts:
+    payout_record: unknown
+    payout_terms: poor
+    account_safety: unknown
+    terms_fit: good
+    traffic_transparency: unknown
+    privacy: unknown
+    identity_checks: unknown
+    support: unknown
+    earnings_realism: poor
+    longevity: fair
+  notes:
+    payout_record: No token has launched, so nothing has been paid out to judge.
+    account_safety: No reports found.
+    traffic_transparency: Not documented on pages we read.
+    privacy: Not reviewed.
+    identity_checks: Not documented.
+    support: Chrome Web Store reviews report login and connection problems; we found no pattern about
+      tickets.
+  cons:
+  - text: The Sentry Node points program ended on 28 August 2025, and Sentry nodes no longer earn rewards.
+    criterion: earnings_realism
+    kind: press
+    source: https://boxmining.com/gradient-network-token-airdrop-guide/
+    checked_on: "2026-11-04"
+  - text: Gradient has announced no token, launch date or conversion rate for the points already earned.
+    criterion: payout_terms
+    kind: press
+    source: https://airdroplet.com/airdrop/gradient-network
+    checked_on: "2026-11-04"
+  - text: Gradient's funding round was in June 2025; the project is young.
+    criterion: longevity
+    kind: press
+    source: https://boxmining.com/gradient-network-token-airdrop-guide/
+    checked_on: "2026-11-04"
+  pros:
+  - text: 'CashPilot does not run Gradient: you use the provider''s own app or extension, so there is
+      no container for its terms to forbid.'
+    criterion: terms_fit
+    kind: our_experience
+    source: https://github.com/GeiserX/CashPilot/blob/main/services/depin/gradient.yml
+    checked_on: "2026-11-04"

@@ -58,3 +58,50 @@ collector:
 payout:
   model: unknown
   notes: "Not yet determined. Flagged rather than shown blank -- see CashPilot-luj."
+
+# Provider rating: the verdicts behind the grade (method: services/_ratings.yml,
+# published at docs/ratings.md). The grade itself is computed, never written here.
+rating:
+  reviewed_on: "2026-11-04"
+  verdicts:
+    payout_record: unknown
+    payout_terms: fair
+    account_safety: unknown
+    terms_fit: good
+    traffic_transparency: unknown
+    privacy: good
+    identity_checks: unknown
+    support: unknown
+    earnings_realism: fair
+    longevity: unknown
+  notes:
+    payout_record: Rewards are paid per block on-chain; we have no node of our own to report.
+    account_safety: Nodes that fail Flux benchmarks stop earning; we found no pattern of disputes.
+    traffic_transparency: Not documented on pages we read.
+    identity_checks: Not documented.
+    support: No pattern found.
+    longevity: Not checked on a primary source.
+  cons:
+  - text: The smallest node tier needs 1,000 FLUX locked as collateral.
+    criterion: payout_terms
+    kind: terms
+    source: https://runonflux.com/fluxnodes/
+    checked_on: "2026-11-04"
+  - text: The block reward drops 10% every year, and a 2026 guide found small-tier rewards weak in dollar
+      terms.
+    criterion: earnings_realism
+    kind: press
+    source: https://www.depinrun.com/guides/fluxnode-operator-guide
+    checked_on: "2026-11-04"
+  pros:
+  - text: The Flux daemon is open source under the MIT licence.
+    criterion: privacy
+    kind: terms
+    source: https://github.com/RunOnFlux/fluxd
+    checked_on: "2026-11-04"
+  - text: 'CashPilot does not run Flux: you use the provider''s own node software, so there is no container
+      for its terms to forbid.'
+    criterion: terms_fit
+    kind: our_experience
+    source: https://github.com/GeiserX/CashPilot/blob/main/services/compute/flux.yml
+    checked_on: "2026-11-04"

@@ -93,3 +93,69 @@ collector:
 payout:
   model: internal
   notes: "Balance held by EarnApp; redeemed to Amazon/Wise/PayPal."
+
+# Provider rating: the verdicts behind the grade (method: services/_ratings.yml,
+# published at docs/ratings.md). The grade itself is computed, never written here.
+rating:
+  reviewed_on: "2026-11-04"
+  verdicts:
+    payout_record: good
+    payout_terms: good
+    account_safety: poor
+    terms_fit: poor
+    traffic_transparency: unknown
+    privacy: unknown
+    identity_checks: unknown
+    support: unknown
+    earnings_realism: unknown
+    longevity: good
+  notes:
+    identity_checks: We found no EarnApp page that lists what a payout asks for, and our own notes do
+      not record it.
+    traffic_transparency: EarnApp is run by Bright Data; we did not find an EarnApp page that says how
+      the buyers of the traffic are vetted.
+    privacy: The client is closed source; we did not review the privacy policy in depth.
+    support: One Trustpilot review says a ticket was closed without a reply; one is not a pattern, and
+      we have no ticket of our own.
+    earnings_realism: We have not measured EarnApp's earnings per IP against any figure the provider publishes.
+  cons:
+  - text: EarnApp's help centre says installing it in Docker containers, virtual machines, hosting services
+      or home servers is strictly prohibited, which is how CashPilot runs it.
+    criterion: terms_fit
+    kind: terms
+    source: https://help.earnapp.com/hc/en-us/articles/10199416541969--Can-I-install-EarnApp-on-Hosting-Services-Virtual-Machines-or-Dockers
+    checked_on: "2026-11-04"
+  - text: The same help article says an account found running that way is terminated without notice and
+      its pending payments are cancelled.
+    criterion: account_safety
+    kind: terms
+    source: https://help.earnapp.com/hc/en-us/articles/10199416541969--Can-I-install-EarnApp-on-Hosting-Services-Virtual-Machines-or-Dockers
+    checked_on: "2026-11-04"
+  - text: Trustpilot withholds EarnApp's rating for a breach of its guidelines and says it removed fake
+      reviews; visible reviews include accounts blocked with large balances.
+    criterion: account_safety
+    kind: user_reports
+    source: https://www.trustpilot.com/review/earnapp.com
+    checked_on: "2026-11-04"
+  - text: A user running EarnApp in Docker reports their account was banned.
+    criterion: account_safety
+    kind: user_reports
+    source: https://github.com/engageub/InternetIncome/discussions/375
+    checked_on: "2026-11-04"
+  pros:
+  - text: 'Our PayPal payout arrived in October 2026: a $37.54 balance came in as $36.81, about 2% less.'
+    criterion: payout_record
+    kind: our_experience
+    source: https://github.com/GeiserX/CashPilot/blob/main/services/bandwidth/earnapp.yml
+    checked_on: "2026-11-04"
+  - text: A $10 minimum for PayPal and Wise, with auto-redeem that pays out by itself.
+    criterion: payout_terms
+    kind: our_experience
+    source: https://github.com/GeiserX/CashPilot/blob/main/services/bandwidth/earnapp.yml
+    checked_on: "2026-11-04"
+  - text: EarnApp belongs to Bright Data, and its PayPal payments arrive from Bright Data Ltd., a named
+      company.
+    criterion: longevity
+    kind: our_experience
+    source: https://github.com/GeiserX/CashPilot/blob/main/services/bandwidth/earnapp.yml
+    checked_on: "2026-11-04"

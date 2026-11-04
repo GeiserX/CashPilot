@@ -61,3 +61,47 @@ collector:
 payout:
   model: unknown
   notes: "Not yet determined. Flagged rather than shown blank -- see CashPilot-luj."
+
+# Provider rating: the verdicts behind the grade (method: services/_ratings.yml,
+# published at docs/ratings.md). The grade itself is computed, never written here.
+rating:
+  reviewed_on: "2026-11-04"
+  verdicts:
+    payout_record: unknown
+    payout_terms: poor
+    account_safety: unknown
+    terms_fit: good
+    traffic_transparency: unknown
+    privacy: unknown
+    identity_checks: unknown
+    support: unknown
+    earnings_realism: poor
+    longevity: unknown
+  notes:
+    payout_record: No transferable token has been paid out yet.
+    account_safety: No reports found.
+    traffic_transparency: Not documented on pages we read.
+    privacy: Not reviewed.
+    identity_checks: Not documented.
+    support: No pattern found.
+    longevity: We did not confirm the company behind Teneo.
+  cons:
+  - text: Teneo says points will be consolidated into $AGENTIC, a non-transferable reward token, not the
+      $TENEO token.
+    criterion: payout_terms
+    kind: terms
+    source: https://teneo-protocol.ai/blog/the-first-step-towards-future-teneo-rewards
+    checked_on: "2026-11-04"
+  - text: No $TENEO launch date, allocation or claim process had been confirmed by November 2026, after
+      an earlier target of the second quarter of 2026 passed.
+    criterion: earnings_realism
+    kind: press
+    source: https://blog.mexc.com/crypto-knowledge/teneo-airdrop-guide/
+    checked_on: "2026-11-04"
+  pros:
+  - text: 'CashPilot does not run Teneo: you use the provider''s own browser extension, so there is no
+      container for its terms to forbid.'
+    criterion: terms_fit
+    kind: our_experience
+    source: https://github.com/GeiserX/CashPilot/blob/main/services/depin/teneo.yml
+    checked_on: "2026-11-04"
