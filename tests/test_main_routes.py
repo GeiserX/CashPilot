@@ -2256,6 +2256,9 @@ class TestLifespanScheduler:
                         # other; it carries the same hardening kwargs, which the
                         # loop below asserts for every job uniformly.
                         "update_check_android",
+                        # Activity: raw-address purge, spike check, network
+                        # table refresh. Not spawned at startup.
+                        "activity_hourly",
                     }
                     # Every job carries the hardening kwargs (audit fix).
                     for job in jobs.values():

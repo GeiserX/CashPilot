@@ -35,6 +35,7 @@ from pydantic import BaseModel, Field, field_validator
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from app import (
+    activity_ui,
     arch,
     auth,
     catalog,
@@ -47,6 +48,7 @@ from app import (
     egress,
     exchange_rates,
     fleet_key,
+    ipgeo,
     lan_isolation,
     login_rate_limit,
     machine_economics,
@@ -77,6 +79,9 @@ scheduler = AsyncIOScheduler()
 
 # In-memory store for the latest collector alerts (errors from last run)
 _collector_alerts: list[dict[str, str]] = []
+# Activity alerts of the last day, rebuilt from the alerts table, so the bell
+# keeps them across the hourly wholesale rebuild of _collector_alerts.
+_activity_bell: list[dict[str, str]] = []
 # Whether a collection has ever COMPLETED here. An empty alert list means
 # "nothing is wrong" only once something has looked; before that it means
 # "nothing has been checked", and the bell used to render both as "All
@@ -1531,6 +1536,7 @@ async def _run_collection() -> None:
             # this the hourly rebuild would drop a down container from the bell.
             alerts.extend(_container_down_bell.values())
             alerts.extend(_missing_bell.values())
+            alerts.extend(_activity_bell)
             _collector_alerts = _with_account_disabled(alerts)
             if collectors and platforms_ok == 0:
                 # A run in which EVERY collector failed used to be recorded as
@@ -1938,6 +1944,7 @@ async def lifespan(app: FastAPI):
     # silently clear the notification bell while the underlying collector is still
     # broken (previously these lived only in memory).
     await _warm_collector_alerts()
+    await _refresh_activity_bell()
     # Credentials saved before saving them began creating a tracking row are
     # otherwise inert forever, while Settings shows them as "Configured".
     await _track_fully_configured_services()
@@ -2017,6 +2024,18 @@ async def lifespan(app: FastAPI):
         "interval",
         hours=24,
         id="data_retention",
+        max_instances=1,
+        coalesce=True,
+        misfire_grace_time=300,
+    )
+    # Activity (docs/activity.md): the raw-address purge, the spike check and
+    # the network table refresh. Hourly, so no address outlives a day by more
+    # than an hour even when no heartbeat arrives to purge on ingest.
+    scheduler.add_job(
+        _run_activity_hourly,
+        "interval",
+        hours=1,
+        id="activity_hourly",
         max_instances=1,
         coalesce=True,
         misfire_grace_time=300,
@@ -6386,6 +6405,9 @@ class WorkerHeartbeat(BaseModel):
     containers: list[dict[str, Any]] = []
     apps: list[dict[str, Any]] = []
     system_info: dict[str, Any] = {}
+    # One Activity window (app/activity.py), sent only by a worker the owner
+    # switched on. Declared, or pydantic would drop it silently.
+    activity: dict[str, Any] | None = None
 
 
 def _android_app_status(running: object) -> str:
@@ -6643,6 +6665,17 @@ async def api_worker_heartbeat(request: Request, body: WorkerHeartbeat) -> dict[
             await database.record_usage(worker_id, body.containers)
         except Exception as exc:  # noqa: BLE001
             logger.warning("Could not record resource usage for worker %s: %s", worker_id, exc)
+    # Activity: the switch is read on every heartbeat, because the reply is
+    # how the worker learns it. Never allowed to reject a heartbeat, and the
+    # log line never carries the exception text, which could quote an address.
+    activity_on: bool | None = None
+    if not _is_phone(body.system_info):
+        try:
+            activity_on = activity_ui.enabled(await database.get_config() or {}, {"client_id": cid, "id": worker_id})
+            if activity_on and body.activity is not None:
+                await _ingest_activity(worker_id, cid, body.name, body.activity)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Could not record activity for worker %s (%s)", worker_id, type(exc).__name__)
     if previous is not None and previous[0] == "offline":
         # Deliberately NO alert clearing here. This used to drop the stored
         # alert on the first heartbeat after offline — which re-armed the push
@@ -6682,7 +6715,138 @@ async def api_worker_heartbeat(request: Request, body: WorkerHeartbeat) -> dict[
     earnings = await _earnings_for_worker(body)
     if earnings is not None:
         resp["earnings"] = earnings
+    if activity_on is not None:
+        resp["activity"] = {"enabled": activity_on}
     return resp
+
+
+async def _ingest_activity(worker_id: int, cid: str, name: str, payload: dict[str, Any]) -> None:
+    """Store one Activity window and raise its alerts. Raises on a database failure."""
+    if len(json.dumps(payload, separators=(",", ":"))) > activity_ui.MAX_PAYLOAD_BYTES:
+        logger.warning("Activity window from worker %s ignored: over the size limit", worker_id)
+        return
+    window = activity_ui.sanitise(payload, time.time())
+    if window is None:
+        logger.warning("Activity window from worker %s ignored: not a version this UI reads", worker_id)
+        return
+    activity_ui.LAST_STATUS[worker_id] = {
+        "worker_status": window["worker_status"],
+        "leftover_probes": window["leftover_probes"],
+        "window_end": window["window_end"],
+    }
+    public = [d["ip"] for s in window["samples"] for d in s["out"] + s["in"] if d["class"] == "public"]
+    geo = await asyncio.to_thread(ipgeo.lookup, public) if public else {}
+    await database.record_activity(worker_id, window, geo)
+    raised = False
+    for f in activity_ui.alert_findings(window):
+        subject = f"{cid}:{f['container']}" + (f":{f['detail']}" if f["detail"] else "")
+        cooldown = activity_ui.MAIL_COOLDOWN_HOURS if f["kind"] == "activity_mail" else activity_ui.LAN_COOLDOWN_HOURS
+        message = f"On {name}: {f['message']}"
+        if alert_id := await database.record_alert(f["kind"], subject, message, cooldown_hours=cooldown):
+            raised = True
+            what = "sent mail" if f["kind"] == "activity_mail" else "reached into your network"
+            _spawn(_push_alert(f["kind"], subject, f"CashPilot: {f['container']} {what}", message, alert_id))
+    if raised:
+        await _refresh_activity_bell()
+
+
+async def _refresh_activity_bell() -> None:
+    """Put the last day's Activity alerts in the bell, one per subject."""
+    global _activity_bell, _collector_alerts
+    try:
+        stored = await database.list_alerts(limit=500)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Could not read activity alerts: %s", type(exc).__name__)
+        return
+    cutoff = (datetime.now(UTC) - timedelta(days=1)).strftime("%Y-%m-%d %H:%M:%S")
+    seen: set[str] = set()
+    bell = []
+    for a in stored:
+        if not str(a.get("kind", "")).startswith("activity_") or str(a.get("created_at", "")) < cutoff:
+            continue
+        if a["subject"] in seen:
+            continue
+        seen.add(a["subject"])
+        parts = a["subject"].split(":")
+        bell.append(
+            {"kind": a["kind"], "platform": parts[1] if len(parts) > 1 else a["subject"], "error": a["message"]}
+        )
+    _activity_bell = bell
+    _collector_alerts = [a for a in _collector_alerts if not str(a.get("kind", "")).startswith("activity_")] + bell
+
+
+async def _activity_spikes(workers: list[dict[str, Any]], now: float | None = None) -> None:
+    """Bell-only alerts for an hour far above a container's usual one.
+
+    Bytes come from usage_hourly (no second byte counter), connections from
+    the Activity windows. Each needs SPIKE_MIN_HOURS of history; unknown hours
+    are skipped, never read as zero.
+    """
+    now = time.time() if now is None else now
+    last_hour = int(now // 3600) * 3600 - 3600
+    since = last_hour - 7 * 86400
+    opens = await database.get_activity_opens_hourly(since)
+    for w in workers:
+        cid = str(w.get("client_id") or w["id"])
+        per: dict[tuple[str, str], dict[int, float | None]] = {}
+        for r in await database.get_usage_hourly(since, w["id"]):
+            per.setdefault((r["container"], "received"), {})[r["hour"]] = r["rx_bytes"]
+            per.setdefault((r["container"], "sent"), {})[r["hour"]] = r["tx_bytes"]
+        for r in opens:
+            if r["worker_id"] == w["id"]:
+                per.setdefault((r["container"], "opens"), {})[r["hour"]] = r["opens"]
+        for (container, what), hours in per.items():
+            latest = hours.get(last_hour)
+            history = [v for h, v in hours.items() if h < last_hour]
+            floor = activity_ui.SPIKE_OPENS_FLOOR if what == "opens" else activity_ui.SPIKE_BYTES_FLOOR
+            if not activity_ui.spike(history, latest, floor):
+                continue
+            if what == "opens":
+                detail = f"opened {int(latest or 0)} connections in the last hour"
+            else:
+                detail = f"{what} {activity_ui.human_bytes(latest or 0)} in the last hour"
+            message = (
+                f"On {w.get('name') or cid}: {container} {detail}, more than {activity_ui.SPIKE_RATIO} times "
+                "its usual hour this week."
+            )
+            await database.record_alert(
+                "activity_spike",
+                f"{cid}:{container}:{'opens' if what == 'opens' else 'bytes'}",
+                message,
+                cooldown_hours=activity_ui.SPIKE_COOLDOWN_HOURS,
+            )
+
+
+async def _run_activity_hourly() -> None:
+    """Purge raw addresses, check for spikes, refresh the network table when due."""
+    try:
+        purged = await database.purge_activity_raw()
+        if purged:
+            logger.info("Activity: purged %d raw destination rows past a day", purged)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Activity purge failed: %s", type(exc).__name__)
+    try:
+        config = await database.get_config() or {}
+        opted = [
+            w
+            for w in await database.list_workers()
+            if not _is_phone(_safe_json(w.get("system_info", "{}"), {})) and activity_ui.enabled(config, w)
+        ]
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Activity check could not read the workers: %s", type(exc).__name__)
+        return
+    if opted:
+        try:
+            await _activity_spikes(opted)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Activity spike check failed: %s", type(exc).__name__)
+        if ipgeo.needs_refresh():
+            try:
+                rows = await asyncio.to_thread(ipgeo.download)
+                logger.info("Activity: network table refreshed (%d ranges)", rows)
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("Activity: network table download failed (%s)", type(exc).__name__)
+    await _refresh_activity_bell()
 
 
 @app.get("/api/workers")
@@ -6931,10 +7095,12 @@ async def api_fleet_api_key_reveal(request: Request) -> dict[str, str]:
 # correctly. Kept here to preserve the public ``app.main`` test surface while
 # splitting the low-regression route groups into app.routers.
 # ---------------------------------------------------------------------------
+from app.routers import activity as activity_router  # noqa: E402
 from app.routers import auth as auth_router  # noqa: E402
 from app.routers import pages as pages_router  # noqa: E402
 from app.routers import users as users_router  # noqa: E402
 
+app.include_router(activity_router.router)
 app.include_router(auth_router.router)
 app.include_router(pages_router.router)
 app.include_router(users_router.router)
