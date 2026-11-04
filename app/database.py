@@ -3203,10 +3203,11 @@ async def _activity_connect() -> aiosqlite.Connection:
     linger in a free page until the next VACUUM.
     """
     DB_DIR.mkdir(parents=True, exist_ok=True)
+    # timeout= is SQLite's busy timeout: BEGIN IMMEDIATE waits up to 30 s for
+    # the write lock. A busy_timeout PRAGMA here would silently replace it.
     db = await aiosqlite.connect(str(DB_PATH), timeout=30)
     db.row_factory = aiosqlite.Row
     await db.execute("PRAGMA secure_delete=ON")
-    await db.execute("PRAGMA busy_timeout=5000")
     return db
 
 

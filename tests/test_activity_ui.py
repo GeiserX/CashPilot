@@ -892,6 +892,17 @@ class TestReviewFixes:
         for blob in run_db(tmp_path, go):
             assert b"198.51.100.77" not in blob
 
+    def test_the_activity_connection_waits_30_s_for_the_write_lock(self, tmp_path):
+        async def go():
+            db = await database._activity_connect()
+            try:
+                cursor = await db.execute("PRAGMA busy_timeout")
+                return (await cursor.fetchone())[0]
+            finally:
+                await db.close()
+
+        assert run_db(tmp_path, go) == 30000
+
     def test_a_busy_checkpoint_is_logged(self, tmp_path, caplog):
         class Cur:
             async def fetchone(self):
