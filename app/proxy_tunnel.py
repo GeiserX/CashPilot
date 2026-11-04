@@ -118,15 +118,6 @@ def redact(text: str, secrets: list[str] | tuple[str, ...] = ()) -> str:
     return out
 
 
-def proxy_url(kind: str, host: str, port: int, username: str = "", password: str = "") -> str:
-    """The URL tun2proxy takes, user and password percent-encoded."""
-    scheme = "socks5" if kind == "socks5" else "http"
-    auth = ""
-    if username or password:
-        auth = f"{quote(username, safe='')}:{quote(password, safe='')}@"
-    return f"{scheme}://{auth}{host}:{int(port)}"
-
-
 def resolve_proxy_ip(host: str) -> str:
     """The proxy's IPv4 address, resolved here so the sidecar does no DNS before the tunnel is up."""
     try:
@@ -161,14 +152,50 @@ def secret_files(proxy: dict[str, Any], own_ip: str | None, label: str) -> dict[
     port = int(proxy.get("port") or 0)
     if not host or not 1 <= port <= 65535:
         raise ProxyTunnelError("A proxy needs a host and a port between 1 and 65535", status_code=400)
+    files["proxy_host"] = host
     files["proxy_ip"] = resolve_proxy_ip(host)
     files["proxy_port"] = str(port)
     # tun2proxy dials the address resolved above, so the sidecar never needs DNS
-    # outside the tunnel.
-    files["proxy_url"] = proxy_url(
-        kind, files["proxy_ip"], port, str(proxy.get("username") or ""), str(proxy.get("password") or "")
-    )
+    # outside the tunnel. The URL is put together in cp-tunnel from these parts,
+    # so a start can swap in a fresh address without the credentials.
+    files["proxy_scheme"] = "socks5" if kind == "socks5" else "http"
+    files["proxy_auth"] = proxy_auth(str(proxy.get("username") or ""), str(proxy.get("password") or ""))
     return files
+
+
+def proxy_auth(username: str, password: str) -> str:
+    """The ``user:password@`` part of the proxy URL, percent-encoded, or empty."""
+    if not (username or password):
+        return ""
+    return f"{quote(username, safe='')}:{quote(password, safe='')}@"
+
+
+def _read_secret_file(container: Any, name: str) -> str | None:
+    """One file of a sidecar's secret volume; works on a stopped container."""
+    try:
+        stream, _ = container.get_archive(f"{SECRET_DIR}/{name}")
+        with tarfile.open(fileobj=io.BytesIO(b"".join(stream))) as tar:
+            member = tar.next()
+            handle = tar.extractfile(member) if member is not None else None
+            return handle.read().decode().strip() if handle is not None else None
+    except Exception:  # noqa: BLE001 - absent or unreadable: nothing to refresh
+        return None
+
+
+def refresh_proxy_ip(container: Any) -> None:
+    """Resolve the proxy host again before a start, so a provider that moved its
+    gateway to a new address does not leave the copy dialing the old one."""
+    host = _read_secret_file(container, "proxy_host")
+    if not host:
+        return
+    try:
+        fresh = resolve_proxy_ip(host)
+    except ProxyTunnelError as exc:
+        logger.warning("Could not resolve the proxy again before a start; keeping the old address: %s", exc)
+        return
+    if fresh != _read_secret_file(container, "proxy_ip"):
+        container.put_archive(SECRET_DIR, _secret_tar({"proxy_ip": fresh}))
+        logger.info("The proxy of %s moved to a new address; the tunnel will use it", container.name)
 
 
 def _secret_tar(files: dict[str, str]) -> bytes:
@@ -228,6 +255,9 @@ def sidecar_kwargs(name: str, slug: str, proxy_id: int | None, network: str | No
             "net.ipv4.conf.all.route_localnet": "1",
         },
         "restart_policy": {"Name": "unless-stopped"},
+        # tun2proxy runs at warn, so this log holds errors, never the sites the
+        # earner reaches; the bound keeps even a noisy failure off the box disk.
+        "log_config": {"type": "json-file", "config": {"max-size": "1m", "max-file": "2"}},
         "detach": True,
     }
 
@@ -365,6 +395,9 @@ def start(slug: str, proxy_id: int) -> dict[str, Any]:
     earner, sidecar = _pair(slug, proxy_id)
     if not _is_ours(earner, slug, proxy_id) or not _is_ours(sidecar, slug, proxy_id):
         raise ValueError(f"No proxied copy of {slug} through proxy {proxy_id} on this worker")
+    sidecar.reload()
+    if sidecar.status != "running":
+        refresh_proxy_ip(sidecar)
     sidecar.start()
     exit_info = _wait_ready(sidecar)
     earner.reload()
@@ -422,17 +455,29 @@ def _read_exit(sidecar: Any) -> dict[str, Any] | None:
     return result if isinstance(result, dict) else None
 
 
-def needs_earner_restart(earner: Any, sidecar: Any) -> bool:
-    """True when the tunnel started after the earner joined it.
+def earner_action(earner: Any, sidecar: Any, ready: bool) -> str | None:
+    """What the heartbeat does to an earner: "restart", "start" or nothing.
 
-    A container in ``network_mode=container:`` stays in the namespace it joined.
-    When the tunnel restarts it gets a new one, and the earner is left in the
-    old one, which has no way out. It does not leak; it just stops earning
-    until it is restarted into the new namespace.
+    Nothing happens until the tunnel is running and has written /run/ready,
+    which it does only after its firewall is loaded and an exit through the
+    tunnel was seen. So an earner never enters a namespace that could still
+    leak, including after a reboot or a daemon restart (Docker does not start
+    a proxied earner on its own; see orchestrator.deploy_raw).
+
+    A running earner whose tunnel started after it sits in the old namespace,
+    which has no way out: it does not leak, it just stops earning until it is
+    restarted into the new one. An earner that is not running while its
+    tunnel is up was stopped by a reboot or by its own crash, never by the
+    owner or the cap, which stop the tunnel too; it is started.
     """
-    if getattr(sidecar, "status", "") != "running" or getattr(earner, "status", "") not in ("running", "exited"):
-        return False
-    return _started_at(sidecar) > _started_at(earner)
+    if not ready or getattr(sidecar, "status", "") != "running":
+        return None
+    status = getattr(earner, "status", "")
+    if status == "running":
+        return "restart" if _started_at(sidecar) > _started_at(earner) else None
+    if status in ("exited", "created"):
+        return "start"
+    return None
 
 
 def status(collect_stats: bool = True) -> list[dict[str, Any]]:
@@ -462,15 +507,19 @@ def status(collect_stats: bool = True) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
     for (slug, proxy_id), pair in sorted(pairs.items()):
         earner, sidecar = pair.get("earner"), pair.get("tunnel")
-        if earner is not None and sidecar is not None and needs_earner_restart(earner, sidecar):
-            try:
-                earner.restart(timeout=orchestrator._get_stop_timeout(slug))
-                earner.reload()
-                logger.info("Restarted %s into its tunnel's new network namespace", earner.name)
-            except Exception as exc:  # noqa: BLE001
-                logger.warning("Could not restart %s after its tunnel restarted: %s", earner.name, exc)
-        _, _, rx, tx = stats.get(sidecar.id, (None, None, None, None)) if sidecar is not None else (None,) * 4
         exit_info = _read_exit(sidecar) if sidecar is not None else None
+        action = earner_action(earner, sidecar, exit_info is not None) if earner is not None else None
+        if action is not None:
+            try:
+                if action == "restart":
+                    earner.restart(timeout=orchestrator._get_stop_timeout(slug))
+                else:
+                    earner.start()
+                earner.reload()
+                logger.info("Started %s inside its tunnel, which is ready", earner.name)
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("Could not start %s inside its tunnel: %s", earner.name, exc)
+        _, _, rx, tx = stats.get(sidecar.id, (None, None, None, None)) if sidecar is not None else (None,) * 4
         try:
             pid = int(proxy_id)
         except ValueError:

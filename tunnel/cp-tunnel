@@ -53,8 +53,13 @@ tailscale)
     TUN=tailscale0
     # tailscaled marks its own sockets with 0x80000 (net/netns/netns_linux.go).
     # Only those may use the real interface; the earner cannot set a mark
-    # because it has no CAP_NET_ADMIN.
+    # because it has no CAP_NET_ADMIN (the worker refuses it for proxied copies).
     EGRESS_RULE="oifname \"$DEV\" meta mark and 0xff0000 == 0x80000 accept"
+    # tailscaled routes every peer it may reach through tailscale0. Only the
+    # exit node's way to the internet is the earner's: the tailnet itself and
+    # private ranges behind the exit node stay closed whatever the ACL allows.
+    TUN_DENY="oifname \"$TUN\" ip daddr { 100.64.0.0/10, 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16 } drop
+        oifname \"$TUN\" ip6 daddr { fd7a:115c:a1e0::/48, fc00::/7, fe80::/10 } drop"
     ;;
 *)
     die "unknown tunnel kind"
@@ -82,6 +87,7 @@ table inet cashpilot {
         type filter hook output priority 0; policy drop;
         ip daddr 127.0.0.11 drop
         oifname "lo" accept
+        ${TUN_DENY:-}
         oifname "$TUN" accept
         $EGRESS_RULE
     }
@@ -89,7 +95,6 @@ table inet cashpilot {
         type filter hook input priority 0; policy drop;
         ct state established,related accept
         iifname "lo" accept
-        iifname "$TUN" accept
     }
 }
 EOF
@@ -135,7 +140,7 @@ if [ "$KIND" = tailscale ]; then
         --hostname="$(read_key hostname)"
     LOGIN=$(read_key login_server)
     [ -n "$LOGIN" ] && set -- "$@" --login-server="$LOGIN"
-    tailscale "$@" || die "tailscale up failed"
+    tailscale "$@" || die "tailscale up failed: the auth key was refused. It must be reusable (every start of this tunnel joins as a new ephemeral node) and not expired; put a new one in the proxy's settings"
 else
     ip route replace "$PROXY_IP/32" via "$GW" dev "$DEV"
     ip route del default
@@ -145,10 +150,13 @@ else
     ip addr add 10.255.255.1/32 dev tun0
     ip link set tun0 up
     ip route add default dev tun0
-    # The URL is percent-encoded by the worker. tun2proxy only takes it on the
-    # command line; that is visible inside this container's own PID namespace,
-    # which the earner does not share.
-    tun2proxy-bin --tun tun0 --proxy "$(read_key proxy_url)" --dns virtual --exit-on-fatal-error &
+    # The user and password are percent-encoded by the worker. tun2proxy only
+    # takes the URL on the command line; that is visible inside this
+    # container's own PID namespace, which the earner does not share.
+    # At warn, so the log never names the sites the earner's sessions reach.
+    case "$(read_key proxy_scheme)" in socks5 | http) ;; *) die "proxy_scheme is not socks5 or http" ;; esac
+    tun2proxy-bin --tun tun0 --proxy "$(read_key proxy_scheme)://$(read_key proxy_auth)$PROXY_IP:$PROXY_PORT" \
+        --dns virtual --exit-on-fatal-error --verbosity warn &
     TPID=$!
 fi
 

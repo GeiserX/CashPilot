@@ -2230,6 +2230,16 @@ async def set_proxied_copy_capped(proxy_id: int, worker_id: int, slug: str, capp
         await db.close()
 
 
+async def delete_proxied_copies_of(worker_id: int, slug: str) -> None:
+    """Every proxied copy of ``slug`` on one worker, after the service itself was removed there."""
+    db = await _get_db()
+    try:
+        await db.execute("DELETE FROM proxied_copies WHERE worker_id = ? AND slug = ?", (worker_id, slug))
+        await db.commit()
+    finally:
+        await db.close()
+
+
 async def delete_proxied_copy(proxy_id: int, worker_id: int, slug: str) -> bool:
     db = await _get_db()
     try:
@@ -2757,6 +2767,9 @@ async def delete_worker(worker_id: int) -> None:
     db = await _get_db()
     try:
         await db.execute("DELETE FROM workers WHERE id = ?", (worker_id,))
+        # Its proxied copies go with it; a row left behind could never be removed
+        # through a worker that no longer exists, and would block deleting its proxy.
+        await db.execute("DELETE FROM proxied_copies WHERE worker_id = ?", (worker_id,))
         await db.commit()
     finally:
         await db.close()

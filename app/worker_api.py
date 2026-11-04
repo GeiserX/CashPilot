@@ -52,7 +52,7 @@ from app import (
     state_backup,
     version,
 )
-from app.constants import MAX_INSTANCES
+from app.constants import MAX_INSTANCES, PROXIED_FORBIDDEN_CAPS
 
 try:
     from app.catalog import get_services as _catalog_get_services
@@ -1537,6 +1537,16 @@ def _validate_proxied(slug: str, spec: ProxiedDeploySpec) -> None:
         )
     if spec.earner.instance != 1:
         raise HTTPException(status_code=400, detail="A proxied copy has no instance number")
+    # The earner shares the tunnel's network namespace, so anything that could
+    # rewrite or bypass the tunnel's firewall is refused whatever the catalog says.
+    caps = {str(c).upper().removeprefix("CAP_") for c in spec.earner.cap_add or []}
+    if risky := sorted(caps & PROXIED_FORBIDDEN_CAPS):
+        raise HTTPException(
+            status_code=400,
+            detail=f"A proxied copy cannot hold {', '.join(risky)}: it could change or bypass its tunnel's firewall",
+        )
+    if spec.earner.devices:
+        raise HTTPException(status_code=400, detail="A proxied copy gets no host devices")
     _validate_deploy_spec(spec.earner, slug)
     _validate_proxy(spec.proxy)
 

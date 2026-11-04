@@ -128,6 +128,22 @@ class TestDeployRawJoined:
         assert kwargs["name"] == "cashpilot-honeygain-p3"
         assert kwargs["cap_drop"] == ["ALL"]
         assert kwargs["privileged"] is False
+        # Docker never starts it on its own (after a reboot it would join the
+        # tunnel before the tunnel's firewall is loaded); the worker does.
+        assert kwargs["restart_policy"] == {"Name": "no"}
+
+    def test_a_normal_container_keeps_its_restart_policy(self):
+        client = MagicMock()
+        client.containers.get.side_effect = NotFound("none")
+        client.images.get.return_value.attrs = {"Config": {"Entrypoint": ["/app/run"], "Cmd": []}}
+        client.containers.run.return_value = MagicMock(id="c", short_id="c")
+        with (
+            patch.object(orchestrator, "_get_client", return_value=client),
+            patch.object(orchestrator, "container_network", return_value="cp-isolated"),
+            patch.object(orchestrator, "container_dns", return_value=None),
+        ):
+            orchestrator.deploy_raw(slug="honeygain", image="honeygain/honeygain:1")
+        assert client.containers.run.call_args.kwargs["restart_policy"] == {"Name": "unless-stopped"}
 
 
 # ---------------------------------------------------------------------------
@@ -153,6 +169,7 @@ class TestSidecar:
         assert kw["volumes"] == [proxy_tunnel.SECRET_DIR]
         assert not any("docker.sock" in str(v) for v in kw["volumes"])
         assert "environment" not in kw and "command" not in kw
+        assert kw["log_config"] == {"type": "json-file", "config": {"max-size": "1m", "max-file": "2"}}
 
     def test_secret_goes_only_into_the_archive(self):
         client = MagicMock()
@@ -172,8 +189,9 @@ class TestSidecar:
         assert path == proxy_tunnel.SECRET_DIR
         with tarfile.open(fileobj=io.BytesIO(blob)) as tar:
             members = {m.name: m for m in tar.getmembers()}
-            url = tar.extractfile(members["proxy_url"]).read().decode()
-        assert url == "socks5://u1:s3cr3t-p%40ss@203.0.113.9:1080"
+            files = {n: tar.extractfile(m).read().decode() for n, m in members.items()}
+        assert files["proxy_scheme"] == "socks5" and files["proxy_auth"] == "u1:s3cr3t-p%40ss@"
+        assert (files["proxy_ip"], files["proxy_port"], files["proxy_host"]) == ("203.0.113.9", "1080", "203.0.113.9")
         assert all(m.mode == 0o400 and m.uid == 0 and m.gid == 0 for m in members.values())
         # Started only after the settings were in place.
         order = [c[0] for c in created.method_calls if c[0] in ("put_archive", "start")]
@@ -193,6 +211,35 @@ class TestSidecar:
             proxy_tunnel.start_sidecar(client, "cashpilot-tunnel-x-p1", "x", 1, _socks(), None)
         assert PASSWORD not in str(err.value)
         created.remove.assert_called_once_with(force=True, v=True)
+
+    def test_no_auth_means_an_empty_auth_part(self):
+        files = proxy_tunnel.secret_files({"kind": "http", "host": "203.0.113.9", "port": 8080}, None, "x")
+        assert files["proxy_auth"] == "" and files["proxy_scheme"] == "http"
+
+    def test_a_start_resolves_the_proxy_host_again(self):
+        stored = {"proxy_host": "gw.example.net", "proxy_ip": "203.0.113.9"}
+
+        def get_archive(path):
+            name = path.rsplit("/", 1)[1]
+            buf = io.BytesIO()
+            with tarfile.open(fileobj=buf, mode="w") as tar:
+                data = stored[name].encode()
+                info = tarfile.TarInfo(name)
+                info.size = len(data)
+                tar.addfile(info, io.BytesIO(data))
+            return iter([buf.getvalue()]), {}
+
+        sidecar = _container("cashpilot-tunnel-x-p1", "x", proxy=1, role="tunnel", status="exited")
+        sidecar.get_archive.side_effect = get_archive
+        with patch.object(proxy_tunnel, "resolve_proxy_ip", return_value="198.51.100.7"):
+            proxy_tunnel.refresh_proxy_ip(sidecar)
+        path, blob = sidecar.put_archive.call_args.args
+        with tarfile.open(fileobj=io.BytesIO(blob)) as tar:
+            assert tar.extractfile("proxy_ip").read() == b"198.51.100.7"
+        sidecar.put_archive.reset_mock()
+        with patch.object(proxy_tunnel, "resolve_proxy_ip", return_value="203.0.113.9"):
+            proxy_tunnel.refresh_proxy_ip(sidecar)
+        sidecar.put_archive.assert_not_called()
 
     def test_tailscale_files(self):
         files = proxy_tunnel.secret_files(
@@ -285,12 +332,31 @@ class TestOrder:
         tunnel = _container("cashpilot-tunnel-x-p1", "x", proxy=1, role="tunnel")
         earner.attrs["State"]["StartedAt"] = "2026-11-04T10:00:00.1Z"
         tunnel.attrs["State"]["StartedAt"] = "2026-11-04T11:00:00.1Z"
-        assert proxy_tunnel.needs_earner_restart(earner, tunnel)
+        assert proxy_tunnel.earner_action(earner, tunnel, ready=True) == "restart"
+        # Not before the tunnel's firewall is in and an exit was seen.
+        assert proxy_tunnel.earner_action(earner, tunnel, ready=False) is None
         tunnel.attrs["State"]["StartedAt"] = "2026-11-04T09:00:00.1Z"
-        assert not proxy_tunnel.needs_earner_restart(earner, tunnel)
+        assert proxy_tunnel.earner_action(earner, tunnel, ready=True) is None
         tunnel.status = "exited"
         tunnel.attrs["State"]["StartedAt"] = "2026-11-04T11:00:00.1Z"
-        assert not proxy_tunnel.needs_earner_restart(earner, tunnel)
+        assert proxy_tunnel.earner_action(earner, tunnel, ready=True) is None
+
+    def test_an_earner_left_stopped_by_a_reboot_starts_only_once_its_tunnel_is_ready(self):
+        earner = _container("cashpilot-x-p1", "x", proxy=1, status="exited")
+        tunnel = _container("cashpilot-tunnel-x-p1", "x", proxy=1, role="tunnel")
+        client = MagicMock()
+        client.containers.list.return_value = [earner, tunnel]
+        tunnel.exec_run.return_value = (1, b"")  # /run/ready not written yet
+        with (
+            patch.object(orchestrator, "_get_client", return_value=client),
+            patch.object(orchestrator, "_collect_stats_bulk", return_value={}),
+        ):
+            proxy_tunnel.status()
+            earner.start.assert_not_called()
+            tunnel.exec_run.return_value = (0, b'{"ip":"93.184.215.14","country":"DE"}')
+            proxy_tunnel.status()
+        earner.start.assert_called_once()
+        earner.restart.assert_not_called()
 
     def test_status_reports_the_tunnels_traffic_and_exit(self):
         earner = _container("cashpilot-x-p1", "x", proxy=1)
@@ -342,6 +408,27 @@ class TestWorkerApi:
         ):
             resp = _api().post("/api/proxied/honeygain/3/deploy", json=body, headers=AUTH)
         assert resp.status_code == 400
+        deploy.assert_not_called()
+
+    @pytest.mark.parametrize(
+        "extra",
+        [
+            {"cap_add": ["NET_ADMIN"]},
+            {"cap_add": ["NET_RAW"]},
+            {"cap_add": ["CAP_SYS_ADMIN"]},
+            {"cap_add": ["all"]},
+            {"devices": ["/dev/net/tun"]},
+        ],
+    )
+    def test_proxied_copy_refuses_caps_and_devices_that_reach_the_tunnel(self, extra):
+        body = {"earner": {"image": "mysteriumnetwork/myst:1", **extra}, "proxy": _socks()}
+        with (
+            patch.object(worker_api, "_verify_api_key"),
+            patch.object(worker_api, "_validate_deploy_spec"),
+            patch.object(proxy_tunnel, "deploy") as deploy,
+        ):
+            resp = _api().post("/api/proxied/mysterium/3/deploy", json=body, headers=AUTH)
+        assert resp.status_code == 400, resp.text
         deploy.assert_not_called()
 
     def test_validation_error_never_echoes_the_password(self):

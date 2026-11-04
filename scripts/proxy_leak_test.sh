@@ -70,8 +70,9 @@ host_dns_mentions() {
         timeout "$secs" tcpdump -n -i any -l -A "udp port 53 or tcp port 53" 2>/dev/null | grep -c "${name%%.*}" || true
 }
 
-start_pair() { # kind url port
-    local kind=$1 url=$2 port=$3 d
+start_pair() { # kind auth port  (auth is "user:pass@", percent-encoded, or "-" for none)
+    local kind=$1 auth=$2 port=$3 d
+    [ "$auth" = - ] && auth=""
     docker rm -fv "$P-earner" "$P-tun" >/dev/null 2>&1 || true
     docker create --name "$P-tun" --network "$NET" --init --cap-drop ALL --cap-add NET_ADMIN \
         --device /dev/net/tun --security-opt no-new-privileges:true --read-only --tmpfs /run:size=1m \
@@ -82,7 +83,8 @@ start_pair() { # kind url port
     printf %s "$kind" >"$d/kind"
     printf %s "$GOST_IP" >"$d/proxy_ip"
     printf %s "$port" >"$d/proxy_port"
-    printf %s "$url" >"$d/proxy_url"
+    printf %s "$kind" >"$d/proxy_scheme"
+    printf %s "$auth" >"$d/proxy_auth"
     chmod 0400 "$d"/*
     # Owned by root, as the worker writes them: the sidecar's root has no
     # CAP_DAC_OVERRIDE and cannot read a 0400 file it does not own.
@@ -129,10 +131,10 @@ open_namespace() { # the positive control: undo the sidecar's protection
 start_gost
 GOST_IP=$(docker inspect "$P-gost" -f "{{(index .NetworkSettings.Networks \"$NET\").IPAddress}}")
 
-for variant in "socks5 socks5://u1:p%40ss@$GOST_IP:1080 1080" \
-               "http http://u1:p%40ss@$GOST_IP:8080 8080" \
-               "socks5 socks5://$GOST_IP:1081 1081" \
-               "http http://$GOST_IP:8081 8081"; do
+for variant in "socks5 u1:p%40ss@ 1080" \
+               "http u1:p%40ss@ 8080" \
+               "socks5 - 1081" \
+               "http - 8081"; do
     set -- $variant
     kind=$1 url=$2 port=$3
     label="$kind:$port"
@@ -146,6 +148,10 @@ for variant in "socks5 socks5://u1:p%40ss@$GOST_IP:1080 1080" \
         fail "$label a: earner could not reach the internet through the proxy"
         docker logs "$P-tun" 2>&1 | tail -5
     fi
+
+    # a2. the tunnel log names no destination the earner reached
+    n=$(docker logs "$P-tun" 2>&1 | grep -c -e Beginning -e ipify || true)
+    [ "$n" = 0 ] && pass "$label a2: the tunnel log names no session or destination" || fail "$label a2: the tunnel log has $n session lines"
 
     # b. proxy dead
     docker stop -t 1 "$P-gost" >/dev/null
@@ -181,7 +187,7 @@ done
 # opened, so the proxy resolving a name is the intended path. Here the proxy
 # runs on this same box, so a connection would put its lookup on the capture.
 start_gost
-start_pair http "http://$GOST_IP:8081" 8081
+start_pair http - 8081
 canary="leak-$(head -c 6 /dev/urandom | od -An -tx1 | tr -d ' \n').example.com"
 ( host_dns_mentions 16 "$canary" >/tmp/cpmp-host-dns.$$ ) &
 cap=$!
@@ -208,7 +214,7 @@ rm -f /tmp/cpmp-host-dns.$$
 [ "$n" != 0 ] && pass "control: the host capture sees the control canary in $n DNS packets from an opened namespace" || fail "control: the host capture missed the control canary from an opened namespace"
 
 # No secret in what Docker records for the sidecar.
-start_pair socks5 "socks5://u1:p%40ss@$GOST_IP:1080" 1080
+start_pair socks5 u1:p%40ss@ 1080
 if docker inspect "$P-tun" | grep -q 'p%40ss\|p@ss'; then fail "docker inspect of the sidecar shows the proxy password"; else pass "docker inspect of the sidecar has no proxy password"; fi
 
 echo

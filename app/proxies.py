@@ -16,7 +16,8 @@ import re
 from datetime import UTC, date, datetime
 from typing import Any
 
-from app import egress, usage
+from app import egress
+from app.constants import PROXIED_FORBIDDEN_CAPS
 
 KINDS = ("socks5", "http", "tailscale")
 SECRET_FIELDS = ("username", "password", "auth_key")
@@ -136,6 +137,7 @@ def public_view(proxy: dict[str, Any], copies: list[dict[str, Any]] | None = Non
         "last_exit_ip": state.get("last_exit_ip"),
         "last_country": state.get("last_country"),
         "last_checked_at": state.get("last_checked_at"),
+        "last_test": state.get("last_test"),
         "copies": [
             {"worker_id": c["worker_id"], "slug": c["slug"], "stopped_by_cap": bool(c.get("stopped_by_cap"))}
             for c in copies or []
@@ -167,6 +169,10 @@ def secret_values(definition: dict[str, Any]) -> list[str]:
 # ---------------------------------------------------------------------------
 
 
+def _caps(values: Any) -> list[str]:
+    return [str(c).upper().removeprefix("CAP_") for c in (values or []) if isinstance(c, str)]
+
+
 def refusal(svc: dict[str, Any]) -> str | None:
     """Why ``svc`` cannot run through a proxy, or None.
 
@@ -184,6 +190,11 @@ def refusal(svc: dict[str, Any]) -> str | None:
         return f"{name} keeps data in a volume or host directory, which a proxied copy would share."
     if docker_conf.get("devices"):
         return f"{name} needs a device on the host, which a proxied copy does not get."
+    if risky := sorted(set(_caps(docker_conf.get("cap_add"))) & PROXIED_FORBIDDEN_CAPS):
+        return (
+            f"{name} asks for {', '.join(risky)}, which would let it change or bypass the tunnel's firewall, "
+            "so it cannot run behind a proxy."
+        )
     prohibited = (svc.get("requirements") or {}).get("proxy_prohibited")
     if prohibited:
         source = prohibited.get("source") if isinstance(prohibited, dict) else None
@@ -249,15 +260,38 @@ def cap_view(definition: dict[str, Any], state: dict[str, Any]) -> dict[str, Any
     }
 
 
+#: How long a tunnel's counter baseline is kept after its last reading. Long
+#: enough that a UI outage of weeks still finds the baseline, so the traffic of
+#: a tunnel that kept running is counted once, not again from zero.
+BASELINE_KEEP_SECONDS = 31 * 86400
+
+
+def _cap_delta(previous: int | None, prev_started: str, current: int, started_at: str) -> int:
+    """Bytes a tunnel moved since the last counted reading, for the cap.
+
+    Unlike usage.counter_delta, the age of the baseline does not matter: the
+    tunnel's counters run for the container's whole life, so the difference on
+    the same container and the same start is exact after any gap. A first
+    sighting counts everything, since the counter began at zero when the
+    tunnel started. A counter that went back, or a new start time, is a
+    restart: the new counter counts from zero.
+    """
+    if previous is None:
+        return current
+    if started_at and prev_started and started_at != prev_started:
+        return current
+    if current < previous:
+        return current
+    return current - previous
+
+
 def account(
     state: dict[str, Any], definition: dict[str, Any], worker_id: int, entries: list[dict[str, Any]], now: float
 ) -> tuple[dict[str, Any], bool]:
     """Fold one heartbeat's tunnel counters into a proxy's state.
 
     Returns the new state and whether this reading crossed the cap threshold.
-    Counters are differenced like app/usage.py does for containers: a counter
-    that went backwards is a restart, a baseline older than an hour counts
-    nothing for the gap, and a missing counter is unknown, not zero.
+    A missing counter is unknown, not zero; see _cap_delta for the rest.
     """
     state = dict(state)
     counters = dict(state.get("counters") or {})
@@ -265,37 +299,72 @@ def account(
     for entry in entries:
         tid = str(entry.get("tunnel_container_id") or "")
         rx, tx = entry.get("net_rx_bytes"), entry.get("net_tx_bytes")
-        if not tid or not isinstance(rx, int) or not isinstance(tx, int):
+        if not tid or not isinstance(rx, int) or not isinstance(tx, int) or rx < 0 or tx < 0:
             continue
+        started = str(entry.get("tunnel_started_at") or "")
         key = f"{worker_id}:{tid}"
         prev = counters.get(key)
-        seconds = (now - float(prev[2])) if prev else None
-        d_rx = usage.counter_delta(prev[0] if prev else None, rx, seconds) or 0
-        d_tx = usage.counter_delta(prev[1] if prev else None, tx, seconds) or 0
-        used += d_rx + d_tx
-        counters[key] = [rx, tx, now]
+        prev_started = str(prev[3]) if prev and len(prev) > 3 and prev[3] else ""
+        used += _cap_delta(int(prev[0]) if prev else None, prev_started, rx, started)
+        used += _cap_delta(int(prev[1]) if prev else None, prev_started, tx, started)
+        counters[key] = [rx, tx, now, started]
         exit_ip = egress.public_ip(entry.get("exit_ip"))
         if exit_ip:
             state["last_exit_ip"] = exit_ip
             state["last_country"] = str(entry.get("exit_country") or "") or None
             state["last_checked_at"] = datetime.fromtimestamp(now, UTC).isoformat(timespec="seconds")
-    # Baselines of tunnels gone for a day are dropped, so the state cannot grow forever.
-    state["counters"] = {k: v for k, v in counters.items() if now - float(v[2]) < 86400}
+    # Baselines of tunnels gone for a month are dropped, so the state cannot grow forever.
+    state["counters"] = {k: v for k, v in counters.items() if now - float(v[2]) < BASELINE_KEEP_SECONDS}
     state["used_bytes"] = used
     limit = threshold_bytes(definition)
     crossed = limit is not None and not state.get("capped_at") and used >= limit
     if crossed:
-        cap = cap_bytes(definition) or 0
-        pct = int(definition.get("cap_threshold_pct") or DEFAULT_THRESHOLD_PCT)
-        when = datetime.fromtimestamp(now, UTC)
-        state["capped_at"] = when.isoformat(timespec="seconds")
-        reset = definition.get("reset_day")
-        state["cap_reason"] = (
-            f"{definition.get('name') or 'This proxy'} reached {pct}% of its {cap / GB:g} GB cap on "
-            f"{when.date().isoformat()}"
-            + (f"; it resets on day {reset} of the month" if reset else "; reset it by hand to start the copies again")
-        )
+        state["capped_at"] = datetime.fromtimestamp(now, UTC).isoformat(timespec="seconds")
+        state["cap_reason"] = cap_reason(definition, datetime.fromtimestamp(now, UTC).date())
     return state, crossed
+
+
+def cap_reason(definition: dict[str, Any], when: date) -> str:
+    cap = cap_bytes(definition) or 0
+    pct = int(definition.get("cap_threshold_pct") or DEFAULT_THRESHOLD_PCT)
+    reset = definition.get("reset_day")
+    return (
+        f"{definition.get('name') or 'This proxy'} reached {pct}% of its {cap / GB:g} GB cap on {when.isoformat()}"
+        + (f"; it resets on day {reset} of the month" if reset else "; reset it by hand to start the copies again")
+    )
+
+
+def cap_change(
+    old: dict[str, Any], new: dict[str, Any], state: dict[str, Any], today: date
+) -> tuple[dict[str, Any], bool]:
+    """Bring the cap state in line with an edited definition.
+
+    Returns the new state and whether the copies the cap stopped should start
+    again. A cap turned on starts a fresh period, so traffic from before it
+    existed never counts against it. A cap turned off, or moved above what
+    this period has used, lifts the stop.
+    """
+    if cap_bytes(new) is not None and cap_bytes(old) is None:
+        return reset_state(state, today), bool(state.get("capped_at"))
+    if not state.get("capped_at"):
+        return dict(state), False
+    limit = threshold_bytes(new)
+    if limit is None or int(state.get("used_bytes") or 0) < limit:
+        out = dict(state)
+        out.pop("capped_at", None)
+        out.pop("cap_reason", None)
+        return out, True
+    if (new.get("cap_gb"), new.get("cap_threshold_pct"), new.get("reset_day"), new.get("name")) != (
+        old.get("cap_gb"),
+        old.get("cap_threshold_pct"),
+        old.get("reset_day"),
+        old.get("name"),
+    ):
+        # Still over: keep the stop, but say it with the new numbers.
+        out = dict(state)
+        out["cap_reason"] = cap_reason(new, today)
+        return out, False
+    return dict(state), False
 
 
 def reset_state(state: dict[str, Any], today: date) -> dict[str, Any]:
@@ -379,10 +448,14 @@ def proxy_exits(workers: list[dict[str, Any]], rotating_ids: set[int] | None = N
     return out
 
 
-def same_exit_copies(workers: list[dict[str, Any]], slug: str, exit_ip: str | None) -> list[str]:
+def same_exit_copies(
+    workers: list[dict[str, Any]], slug: str, exit_ip: str | None, itself: tuple[Any, Any] | None = None
+) -> list[str]:
     """Where ``slug`` already leaves from ``exit_ip``: proxied copies and boxes alike.
 
-    Empty when the exit is unknown: undetected is not shared.
+    Empty when the exit is unknown: undetected is not shared. ``itself`` is the
+    (worker_id, proxy_id) of the copy being checked, whose own entry from the
+    last heartbeat is not another copy.
     """
     ip = egress.public_ip(exit_ip)
     if ip is None:
@@ -393,6 +466,8 @@ def same_exit_copies(workers: list[dict[str, Any]], slug: str, exit_ip: str | No
         if egress.egress_of(worker) == ip and slug in egress.running_slugs(worker):
             found.append(f"{name} (its own connection)")
         for entry in proxied_entries(worker):
+            if itself is not None and (worker.get("id"), entry.get("proxy_id")) == itself:
+                continue
             if (
                 egress.container_slug(entry) == slug
                 and str(entry.get("status")) == "running"

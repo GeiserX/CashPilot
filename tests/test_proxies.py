@@ -95,6 +95,11 @@ class TestEarner:
         svc = {"name": "X", "docker": {"image": "x"}, "requirements": {"proxy_prohibited": {"source": "https://x/tos"}}}
         assert "https://x/tos" in proxies.refusal(svc)
 
+    @pytest.mark.parametrize("cap", ["NET_ADMIN", "NET_RAW", "SYS_ADMIN", "cap_net_admin"])
+    def test_an_earner_that_could_touch_the_tunnel_firewall_is_refused(self, cap):
+        why = proxies.refusal({"name": "X", "docker": {"image": "x", "cap_add": [cap]}})
+        assert why and "firewall" in why
+
     def test_a_plain_earner_is_allowed(self):
         assert proxies.refusal({"name": "X", "docker": {"image": "x", "env": []}}) is None
 
@@ -124,34 +129,59 @@ class TestEarner:
 # ---------------------------------------------------------------------------
 
 
-def _entry(rx, tx, tid="t1", ip="93.184.215.14"):
-    return {"proxy_id": 1, "tunnel_container_id": tid, "net_rx_bytes": rx, "net_tx_bytes": tx, "exit_ip": ip}
+def _entry(rx, tx, tid="t1", ip="93.184.215.14", started="2026-11-01T00:00:00Z", **extra):
+    return {
+        "proxy_id": 1,
+        "slug": "a",
+        "tunnel_container_id": tid,
+        "tunnel_started_at": started,
+        "net_rx_bytes": rx,
+        "net_tx_bytes": tx,
+        "exit_ip": ip,
+        **extra,
+    }
 
 
 CAPPED = {"name": "P", "cap_gb": 1, "cap_threshold_pct": 90, "reset_day": 1}
 
 
 class TestCap:
-    def test_first_reading_is_a_baseline_then_deltas_count(self):
+    def test_a_first_reading_counts_from_the_tunnels_start_then_deltas_count(self):
+        # The tunnel's counter began at zero when it started, so nothing it moved
+        # before the first heartbeat is lost.
         s, crossed = proxies.account({}, CAPPED, 7, [_entry(1000, 500)], 100.0)
-        assert s["used_bytes"] == 0 and not crossed
+        assert s["used_bytes"] == 1500 and not crossed
         s, crossed = proxies.account(s, CAPPED, 7, [_entry(4000, 1500)], 160.0)
-        assert s["used_bytes"] == 4000 and not crossed
+        assert s["used_bytes"] == 5500 and not crossed
 
     def test_a_counter_that_went_backwards_is_a_restart(self):
         s, _ = proxies.account({}, CAPPED, 7, [_entry(1000, 0)], 100.0)
         s, _ = proxies.account(s, CAPPED, 7, [_entry(300, 0)], 160.0)
-        assert s["used_bytes"] == 300
+        assert s["used_bytes"] == 1300
 
-    def test_a_stale_baseline_counts_nothing_for_the_gap(self):
+    def test_a_new_start_time_is_a_restart_even_when_the_counter_is_higher(self):
         s, _ = proxies.account({}, CAPPED, 7, [_entry(1000, 0)], 100.0)
-        s, _ = proxies.account(s, CAPPED, 7, [_entry(9_000_000, 0)], 100.0 + 7200)
-        assert s["used_bytes"] == 0
+        s, _ = proxies.account(s, CAPPED, 7, [_entry(5000, 0, started="2026-11-02T00:00:00Z")], 160.0)
+        assert s["used_bytes"] == 6000
+
+    def test_a_long_gap_still_counts_every_byte(self):
+        # The UI was down for three hours while the copy kept running: the
+        # counter on the same tunnel is exact, so the whole gap counts.
+        s, _ = proxies.account({}, CAPPED, 7, [_entry(1000, 0)], 100.0)
+        s, _ = proxies.account(s, CAPPED, 7, [_entry(9_000_000, 0)], 100.0 + 3 * 3600)
+        assert s["used_bytes"] == 9_000_000
+
+    def test_a_baseline_survives_a_week_long_outage(self):
+        s, _ = proxies.account({}, CAPPED, 7, [_entry(1000, 0)], 100.0)
+        s, _ = proxies.account(s, CAPPED, 7, [_entry(4000, 0)], 100.0 + 7 * 86400)
+        assert s["used_bytes"] == 4000
 
     def test_two_workers_never_share_a_baseline(self):
         s, _ = proxies.account({}, CAPPED, 7, [_entry(1000, 0)], 100.0)
         s, _ = proxies.account(s, CAPPED, 8, [_entry(5000, 0)], 110.0)
-        assert s["used_bytes"] == 0
+        assert s["used_bytes"] == 6000
+        s, _ = proxies.account(s, CAPPED, 8, [_entry(5500, 0)], 170.0)
+        assert s["used_bytes"] == 6500
 
     def test_crossing_the_threshold_says_why_once(self):
         s, _ = proxies.account({}, CAPPED, 7, [_entry(0, 0)], 100.0)
@@ -160,6 +190,26 @@ class TestCap:
         assert "90% of its 1 GB cap" in s["cap_reason"] and "day 1" in s["cap_reason"]
         s, again = proxies.account(s, CAPPED, 7, [_entry(950_000_000, 0)], 220.0)
         assert not again
+
+    def test_turning_a_cap_on_starts_a_fresh_period(self):
+        state = {"used_bytes": 40 * proxies.GB, "counters": {"7:t1": [1, 1, 1, ""]}}
+        new, release = proxies.cap_change({"cap_gb": None}, {**CAPPED, "cap_gb": 20}, state, date(2026, 11, 4))
+        assert new["used_bytes"] == 0 and new["period_start"] == "2026-11-04" and not release
+        assert new["counters"] == state["counters"]
+        _, crossed = proxies.account(new, {**CAPPED, "cap_gb": 20}, 7, [], 100.0)
+        assert not crossed
+
+    def test_removing_or_raising_the_cap_lifts_the_stop(self):
+        capped = {"used_bytes": 900_000_000, "capped_at": "2026-11-04T01:00:00+00:00", "cap_reason": "old"}
+        new, release = proxies.cap_change(CAPPED, {**CAPPED, "cap_gb": None}, capped, date(2026, 11, 4))
+        assert release and "capped_at" not in new and "cap_reason" not in new
+        new, release = proxies.cap_change(CAPPED, {**CAPPED, "cap_gb": 2}, capped, date(2026, 11, 4))
+        assert release and "capped_at" not in new and new["used_bytes"] == 900_000_000
+
+    def test_a_cap_still_exceeded_keeps_the_stop_with_the_new_numbers(self):
+        capped = {"used_bytes": 900_000_000, "capped_at": "x", "cap_reason": "old"}
+        new, release = proxies.cap_change(CAPPED, {**CAPPED, "cap_threshold_pct": 80}, capped, date(2026, 11, 4))
+        assert not release and new["capped_at"] == "x" and "80% of its 1 GB" in new["cap_reason"]
 
     def test_no_cap_never_crosses(self):
         d = {**CAPPED, "cap_gb": None}
@@ -195,6 +245,7 @@ class TestCap:
         ]
         call = AsyncMock(return_value={})
         with (
+            patch.object(main.database, "get_proxy", new_callable=AsyncMock, return_value=proxy),
             patch.object(main.database, "update_proxy_state", new_callable=AsyncMock) as upd,
             patch.object(main.database, "clear_alerts", new_callable=AsyncMock),
             patch.object(main.database, "list_proxied_copies", new_callable=AsyncMock, return_value=copies),
@@ -209,18 +260,123 @@ class TestCap:
 
     def test_crossing_stops_every_copy_and_raises_an_alert(self):
         proxy = {"id": 1, "definition": {**CAPPED, "password": PASSWORD}, "state": {"cap_reason": "P reached 90%"}}
-        copies = [{"proxy_id": 1, "worker_id": 7, "slug": "a"}, {"proxy_id": 1, "worker_id": 8, "slug": "b"}]
         call = AsyncMock(return_value={})
         with (
-            patch.object(main.database, "list_proxied_copies", new_callable=AsyncMock, return_value=copies),
             patch.object(main.database, "set_proxied_copy_capped", new_callable=AsyncMock) as mark,
-            patch.object(main.database, "record_alert", new_callable=AsyncMock) as alert,
+            patch.object(main.database, "record_alert", new_callable=AsyncMock, return_value=None) as alert,
             patch.object(main, "_proxy_worker_call", call),
         ):
-            asyncio.run(main._stop_capped_proxy(proxy))
+            asyncio.run(main._stop_capped_proxy(proxy, {(7, "a"), (8, "b")}))
         assert [c.args[2] for c in call.call_args_list] == ["/api/proxied/a/1/stop", "/api/proxied/b/1/stop"]
         assert all(c.args[3] is True for c in mark.call_args_list) and mark.call_count == 2
         assert alert.call_args.args[:2] == ("proxy_cap", "1")
+        assert alert.call_args.args[2] == "Stopped: P reached 90%."
+        main._drop_proxy_cap_bell(1)
+
+
+class _CapRig:
+    """_account_proxy_traffic against an in-memory proxy, with the spawned stops awaited."""
+
+    def __init__(self, copies, worker_call):
+        self.proxy = {"id": 1, "definition": dict(CAPPED), "state": {}}
+        self.copies = copies
+        self.call = worker_call
+        self.alerts: list[tuple] = []
+        self.pushed: list[tuple] = []
+
+    async def heartbeat(self, worker_id, entries):
+        spawned: list = []
+
+        async def get_proxy(_pid):
+            return {**self.proxy, "state": dict(self.proxy["state"])}
+
+        async def update_state(_pid, state):
+            self.proxy["state"] = state
+
+        async def record_alert(kind, subject, message, **_kw):
+            self.alerts.append((kind, subject, message))
+            return len(self.alerts) if len(self.alerts) == 1 else None
+
+        async def push(*args):
+            self.pushed.append(args)
+
+        with (
+            patch.object(main.database, "get_proxy", side_effect=get_proxy),
+            patch.object(main.database, "update_proxy_state", side_effect=update_state),
+            patch.object(main.database, "list_proxied_copies", new_callable=AsyncMock, return_value=self.copies),
+            patch.object(main.database, "set_proxied_copy_capped", new_callable=AsyncMock),
+            patch.object(main.database, "record_alert", side_effect=record_alert),
+            patch.object(main.database, "list_workers", new_callable=AsyncMock, return_value=[]),
+            patch.object(main, "_proxy_worker_call", self.call),
+            patch.object(main, "_push_alert", side_effect=push),
+            patch.object(main, "_spawn", side_effect=spawned.append),
+        ):
+            await main._account_proxy_traffic(worker_id, entries)
+            while spawned:
+                await spawned.pop(0)
+
+
+class TestCapEnforcement:
+    def teardown_method(self):
+        main._drop_proxy_cap_bell(1)
+        main._proxy_cap_stopping.clear()
+
+    def test_a_failed_stop_is_tried_again_on_the_next_heartbeat(self):
+        fails = [HTTPException(status_code=503, detail="Worker offline")]
+
+        async def worker_call(worker_id, method, path, definition, **kw):
+            if fails:
+                raise fails.pop()
+            return {}
+
+        call = AsyncMock(side_effect=worker_call)
+        rig = _CapRig([{"proxy_id": 1, "worker_id": 8, "slug": "a"}], call)
+
+        async def go():
+            await rig.heartbeat(7, [_entry(0, 0)])
+            # Worker 7's reading crosses the cap; worker 8's copy cannot be stopped.
+            await rig.heartbeat(7, [_entry(950_000_000, 0, status="exited", tunnel_status="exited")])
+            assert "Could not stop yet" in rig.alerts[-1][2] and "a on worker 8" in rig.alerts[-1][2]
+            assert any(a.get("kind") == "proxy_cap" for a in main._collector_alerts)
+            # Worker 8 comes back and its heartbeat still reports the copy running.
+            await rig.heartbeat(8, [_entry(10, 0, tid="t8", status="running", tunnel_status="running")])
+
+        asyncio.run(go())
+        stops = [(c.args[0], c.args[2]) for c in call.call_args_list]
+        assert stops == [(8, "/api/proxied/a/1/stop"), (8, "/api/proxied/a/1/stop")]
+        assert rig.alerts[-1][2].startswith("Stopped: ")
+        assert len(rig.pushed) == 1 and rig.pushed[0][0] == "proxy_cap"
+
+    def test_a_running_copy_with_no_record_is_stopped_too(self):
+        call = AsyncMock(return_value={})
+        rig = _CapRig([], call)
+        rig.proxy["state"] = {"used_bytes": 950_000_000, "capped_at": "x", "cap_reason": "P reached 90%"}
+
+        async def go():
+            await rig.heartbeat(9, [_entry(5, 0, tid="t9", slug="b", status="running", tunnel_status="running")])
+
+        asyncio.run(go())
+        assert [(c.args[0], c.args[2]) for c in call.call_args_list] == [(9, "/api/proxied/b/1/stop")]
+
+    def test_a_stopped_copy_is_left_alone(self):
+        call = AsyncMock(return_value={})
+        rig = _CapRig([], call)
+        rig.proxy["state"] = {"used_bytes": 950_000_000, "capped_at": "x", "cap_reason": "r"}
+        asyncio.run(rig.heartbeat(9, [_entry(5, 0, tid="t9", status="exited", tunnel_status="exited")]))
+        assert call.call_count == 0
+
+    def test_the_bell_keeps_a_cap_that_still_holds_after_a_restart(self):
+        capped = {"id": 3, "definition": {"name": "Oxy"}, "state": {"capped_at": "x", "cap_reason": "Oxy reached 90%"}}
+        free = {"id": 4, "definition": {"name": "Free"}, "state": {}}
+        with (
+            patch.object(main.database, "list_alerts", new_callable=AsyncMock, return_value=[]),
+            patch.object(main.database, "list_proxies", new_callable=AsyncMock, return_value=[capped, free]),
+        ):
+            asyncio.run(main._warm_collector_alerts())
+        caps = [a for a in main._collector_alerts if a.get("kind") == "proxy_cap"]
+        assert caps == [{"kind": "proxy_cap", "platform": "Oxy", "proxy_id": 3, "error": "Stopped: Oxy reached 90%."}]
+        main._drop_proxy_cap_bell(3)
+        assert not [a for a in main._collector_alerts if a.get("kind") == "proxy_cap"]
 
 
 # ---------------------------------------------------------------------------
@@ -272,6 +428,11 @@ class TestEgress:
         assert found == ["w1 (its own connection)", "w2 (through proxy 2)"]
         assert proxies.same_exit_copies(workers, "a", None) == []
         assert proxies.same_exit_copies(workers, "a", "192.168.1.5") == []
+
+    def test_a_redeployed_copy_does_not_match_itself(self):
+        workers = [_worker(2, "203.0.113.201", proxied=[_copy("a", 2, "93.184.215.14")])]
+        assert proxies.same_exit_copies(workers, "a", "93.184.215.14", itself=(2, 2)) == []
+        assert proxies.same_exit_copies(workers, "a", "93.184.215.14", itself=(3, 2)) == ["w2 (through proxy 2)"]
 
 
 # ---------------------------------------------------------------------------
@@ -416,6 +577,91 @@ class TestStorageAndRoutes:
                 "created_at": copies[0]["created_at"],
             }
         ]
+
+    def test_dropping_the_cap_lifts_the_stop_and_starts_the_copies(self, db):
+        call = AsyncMock(return_value={})
+
+        async def go():
+            created = await main.api_create_proxy(_Req(_socks(cap_gb=1)), {})
+            pid = created["id"]
+            await database.save_proxied_copy(pid, 7, "honeygain")
+            await database.set_proxied_copy_capped(pid, 7, "honeygain", True)
+            await database.update_proxy_state(
+                pid, {"used_bytes": 950_000_000, "capped_at": "2026-11-04T01:00:00+00:00", "cap_reason": "P hit"}
+            )
+            with patch.object(main, "_proxy_to_worker", call):
+                view = await main.api_update_proxy(_Req({"cap_gb": ""}), pid, {})
+            return pid, view, await database.list_proxied_copies(pid)
+
+        pid, view, copies = _run(go)
+        assert view["cap"]["capped_at"] is None and view["cap"]["enabled"] is False
+        assert call.call_args.args[:3] == (7, "POST", f"/api/proxied/honeygain/{pid}/start")
+        assert copies[0]["stopped_by_cap"] == 0
+
+    def test_turning_the_cap_on_does_not_count_old_traffic(self, db):
+        async def go():
+            created = await main.api_create_proxy(_Req(_socks()), {})
+            await database.update_proxy_state(created["id"], {"used_bytes": 40 * proxies.GB})
+            return await main.api_update_proxy(_Req({"cap_gb": 20}), created["id"], {})
+
+        view = _run(go)
+        assert view["cap"]["used_bytes"] == 0 and view["cap"]["period_start"]
+
+    def test_a_failed_test_is_kept_on_the_proxy(self, db):
+        failing = AsyncMock(side_effect=HTTPException(status_code=409, detail=f"bad auth socks5://u:{PASSWORD}@h"))
+
+        async def go():
+            created = await main.api_create_proxy(_Req(_socks(password=PASSWORD)), {})
+            with (
+                patch.object(main, "_resolve_worker_id", new_callable=AsyncMock, return_value=7),
+                patch.object(main, "_worker_features", new_callable=AsyncMock, return_value={"proxy_tunnel"}),
+                patch.object(main.database, "get_worker", new_callable=AsyncMock, return_value={"name": "box-a"}),
+                patch.object(main, "_proxy_to_worker", failing),
+                pytest.raises(HTTPException),
+            ):
+                await main.api_test_proxy(created["id"], 7, {})
+            with patch.object(main.database, "list_workers", new_callable=AsyncMock, return_value=[]):
+                return (await main.api_list_proxies(MagicMock(), {}))["proxies"][0]
+
+        view = _run(go)
+        assert view["last_test"]["ok"] is False and view["last_test"]["worker"] == "box-a"
+        assert "bad auth" in view["last_test"]["error"] and PASSWORD not in json.dumps(view)
+
+    def test_a_copy_on_a_deleted_worker_can_be_removed(self, db):
+        async def go():
+            created = await main.api_create_proxy(_Req(_socks()), {})
+            await database.save_proxied_copy(created["id"], 99, "honeygain")
+            await main.api_remove_proxied_copy(created["id"], 99, "honeygain", {})
+            await main.api_delete_proxy(created["id"], {})
+            return await database.list_proxies()
+
+        assert _run(go) == []
+
+    def test_deleting_a_worker_deletes_its_proxied_copies(self, db):
+        async def go():
+            created = await main.api_create_proxy(_Req(_socks()), {})
+            await database.save_proxied_copy(created["id"], 5, "honeygain")
+            await database.save_proxied_copy(created["id"], 6, "honeygain")
+            await database.delete_worker(5)
+            return [c["worker_id"] for c in await database.list_proxied_copies()]
+
+        assert _run(go) == [6]
+
+    def test_removing_a_service_drops_the_records_of_its_proxied_copies(self, db):
+        async def go():
+            created = await main.api_create_proxy(_Req(_socks()), {})
+            await database.save_proxied_copy(created["id"], 7, "honeygain")
+            await database.save_proxied_copy(created["id"], 7, "earnapp")
+            await database.save_proxied_copy(created["id"], 8, "honeygain")
+            with (
+                patch.object(main, "_require_writer"),
+                patch.object(main, "_resolve_worker_id", new_callable=AsyncMock, return_value=7),
+                patch.object(main, "_proxy_worker_command", new_callable=AsyncMock, return_value={"status": "ok"}),
+            ):
+                await main._svc_remove(MagicMock(), "honeygain", 7, False)
+            return sorted((c["worker_id"], c["slug"]) for c in await database.list_proxied_copies())
+
+        assert _run(go) == [(7, "earnapp"), (8, "honeygain")]
 
     def test_a_worker_error_never_shows_the_proxy_password(self):
         definition = {"password": PASSWORD}

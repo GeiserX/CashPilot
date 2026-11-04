@@ -1194,6 +1194,9 @@ async def _warm_collector_alerts() -> None:
             # Which source raised it is not stored; until a heartbeat says,
             # treat it as the logs' so a check without data keeps it.
             _disabled_by_logs.add(e["platform"])
+    # A capped proxy is restored from the proxies table, which says whether the
+    # cap still holds; the alerts table only says it once did.
+    restored.extend(await _proxy_cap_alerts())
     _collector_alerts = _with_account_disabled(restored)
     # The collection rebuild re-adds _missing_bell, not the restored list, so a
     # restored missing alert goes there too, with no scope: until the next
@@ -1539,6 +1542,7 @@ async def _run_collection() -> None:
             alerts.extend(_container_down_bell.values())
             alerts.extend(_missing_bell.values())
             alerts.extend(_activity_bell)
+            alerts.extend(await _proxy_cap_alerts())
             _collector_alerts = _with_account_disabled(alerts)
             if collectors and platforms_ok == 0:
                 # A run in which EVERY collector failed used to be recorded as
@@ -3563,6 +3567,13 @@ async def _svc_remove(
             params["allow_delete_critical"] = "true"
     result = await _proxy_worker_command(worker_id, "remove", slug, params=params)
     await database.remove_deployment(slug, worker_id=worker_id)
+    # The worker removed the service's proxied copies with it (worker_api
+    # remove_all), so their records go too. The removal itself already
+    # happened; a failure here must not report it as failed.
+    try:
+        await database.delete_proxied_copies_of(worker_id, slug)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Removed %s, but could not drop its proxied copy records: %s", slug, exc)
     await database.record_health_event(slug, "remove")
     metrics.record_container_lifecycle("remove", slug)
     return result
@@ -4013,6 +4024,14 @@ async def api_update_proxy(
     except ValueError:
         raise HTTPException(status_code=400, detail="Send the proxy as a JSON object") from None
     await database.update_proxy_definition(proxy_id, definition)
+    # A cap turned on starts a fresh period; one turned off or raised above
+    # this period's use lifts the stop and starts the copies it stopped.
+    current = await _proxy_or_404(proxy_id)
+    state, release = proxies.cap_change(proxy["definition"], definition, current["state"], datetime.now(UTC).date())
+    if state != current["state"]:
+        await database.update_proxy_state(proxy_id, state)
+    if release:
+        await _release_capped_copies({**current, "state": state})
     return proxies.public_view(await _proxy_or_404(proxy_id), await database.list_proxied_copies(proxy_id))
 
 
@@ -4034,20 +4053,55 @@ async def api_test_proxy(
     worker_id = await _resolve_worker_id(worker_id)
     await _require_proxy_feature(worker_id)
     definition = proxy["definition"]
-    result = await _proxy_worker_call(
-        worker_id,
-        "POST",
-        "/api/proxy-test",
-        definition,
-        json={"proxy": proxies.worker_proxy_spec(definition)},
-        timeout=90,
+    worker = await database.get_worker(worker_id) or {}
+    box = str(worker.get("name") or f"worker {worker_id}")
+    try:
+        result = await _proxy_worker_call(
+            worker_id,
+            "POST",
+            "/api/proxy-test",
+            definition,
+            json={"proxy": proxies.worker_proxy_spec(definition)},
+            timeout=90,
+        )
+    except HTTPException as exc:
+        # Kept on the proxy, so the reason outlives the toast that showed it.
+        await _patch_proxy_state(
+            proxy_id,
+            {
+                "last_test": {
+                    "ok": False,
+                    "at": datetime.now(UTC).isoformat(timespec="seconds"),
+                    "worker": box,
+                    "error": str(exc.detail)[:400],
+                }
+            },
+        )
+        raise
+    now_iso = datetime.now(UTC).isoformat(timespec="seconds")
+    exit_ip = egress.public_ip(result.get("exit_ip"))
+    country = str(result.get("country") or "") or None
+    await _patch_proxy_state(
+        proxy_id,
+        {
+            "last_exit_ip": exit_ip,
+            "last_country": country,
+            "last_checked_at": now_iso,
+            "last_test": {"ok": True, "at": now_iso, "worker": box, "error": ""},
+        },
     )
-    state = dict(proxy["state"])
-    state["last_exit_ip"] = egress.public_ip(result.get("exit_ip"))
-    state["last_country"] = str(result.get("country") or "") or None
-    state["last_checked_at"] = datetime.now(UTC).isoformat(timespec="seconds")
-    await database.update_proxy_state(proxy_id, state)
-    return {"exit_ip": state["last_exit_ip"], "country": state["last_country"], "ms": result.get("ms")}
+    return {"exit_ip": exit_ip, "country": country, "ms": result.get("ms"), "worker": box}
+
+
+async def _patch_proxy_state(proxy_id: int, changes: dict[str, Any]) -> None:
+    """Set some keys of a proxy's state on a fresh read.
+
+    A test runs for up to 90 s; writing back the state read before it would
+    undo whatever the heartbeats counted meanwhile, a cap hit included.
+    """
+    proxy = await database.get_proxy(proxy_id)
+    if proxy:
+        await database.update_proxy_state(proxy_id, {**proxy["state"], **changes})
 
 
 @app.post("/api/proxies/{proxy_id}/copies")
@@ -4102,7 +4156,7 @@ async def api_add_proxied_copy(
         _parse_worker_json(w)
     response: dict[str, Any] = {"status": "deployed", "exit_ip": exit_ip, "country": exit_info.get("country") or None}
     # Preflight after the fact: the exit IP is only known once the tunnel is up.
-    others = [o for o in proxies.same_exit_copies(workers, slug, exit_ip)]
+    others = proxies.same_exit_copies(workers, slug, exit_ip, itself=(worker_id, proxy_id))
     if others:
         limit = egress.devices_per_ip_limit(svc)
         response["warning"] = f"{svc.get('name') or slug} already leaves from {exit_ip} on {', '.join(others)}. " + (
@@ -4135,6 +4189,15 @@ async def api_remove_proxied_copy(
     proxy_id: int, worker_id: int, slug: str, _auth: dict[str, Any] = Depends(_require_owner)
 ) -> dict[str, Any]:
     proxy = await _proxy_or_404(proxy_id)
+    if not await database.get_worker(worker_id):
+        # The box was deleted or enrolled again under a new id: there is no
+        # worker to ask, and keeping the row would also block deleting the proxy.
+        await database.delete_proxied_copy(proxy_id, worker_id, slug)
+        return {
+            "status": "removed",
+            "containers": [],
+            "note": "That worker no longer exists; only the record was removed.",
+        }
     result = await _proxy_worker_call(worker_id, "DELETE", f"/api/proxied/{slug}/{proxy_id}", proxy["definition"])
     await database.delete_proxied_copy(proxy_id, worker_id, slug)
     return result
@@ -4149,8 +4212,16 @@ async def api_reset_proxy_usage(proxy_id: int, _auth: dict[str, Any] = Depends(_
 
 
 async def _reset_proxy(proxy: dict[str, Any]) -> list[str]:
-    await database.update_proxy_state(proxy["id"], proxies.reset_state(proxy["state"], datetime.now(UTC).date()))
+    fresh = await database.get_proxy(proxy["id"]) or proxy
+    state = proxies.reset_state(fresh["state"], datetime.now(UTC).date())
+    await database.update_proxy_state(proxy["id"], state)
+    return await _release_capped_copies({**fresh, "state": state})
+
+
+async def _release_capped_copies(proxy: dict[str, Any]) -> list[str]:
+    """The cap no longer holds: clear its alert and start the copies it stopped."""
     await database.clear_alerts(kind="proxy_cap", subject=str(proxy["id"]))
+    _drop_proxy_cap_bell(proxy["id"])
     started: list[str] = []
     for copy in await database.list_proxied_copies(proxy["id"]):
         if not copy.get("stopped_by_cap"):
@@ -4180,11 +4251,28 @@ async def _run_proxy_cap_resets() -> None:
             await _reset_proxy(proxy)
 
 
+# Copies a capped proxy could not stop yet, per proxy: (worker_id, slug) -> why.
+# Every heartbeat that still reports one running tries again.
+_proxy_cap_unstopped: dict[int, dict[tuple[int, str], str]] = {}
+# Stops already on their way, so a slow worker is not sent a second one.
+_proxy_cap_stopping: set[tuple[int, int, str]] = set()
+
+
+def _running(entry: dict[str, Any]) -> bool:
+    return str(entry.get("status")) in ("running", "restarting") or str(entry.get("tunnel_status")) in (
+        "running",
+        "restarting",
+    )
+
+
 async def _account_proxy_traffic(worker_id: int, entries: list[Any]) -> None:
-    """Add one heartbeat's tunnel traffic to each proxy, and stop its copies at the cap.
+    """Add one heartbeat's tunnel traffic to each proxy, and hold its copies at the cap.
 
     Heartbeats arrive every 60 s, so the copies can run up to a minute past the
-    threshold; the 90% default leaves room for that (docs/proxies.md).
+    threshold; the 90% default leaves room for that (docs/proxies.md). While a
+    proxy stays capped, every heartbeat that still reports one of its copies
+    running stops it again, so a box that was unreachable at the crossing, or
+    a copy the UI has no record of, cannot keep spending the allowance.
     """
     by_proxy: dict[int, list[dict[str, Any]]] = {}
     for entry in entries:
@@ -4197,21 +4285,98 @@ async def _account_proxy_traffic(worker_id: int, entries: list[Any]) -> None:
             continue
         state, crossed = proxies.account(proxy["state"], proxy["definition"], worker_id, items, now)
         await database.update_proxy_state(proxy_id, state)
+        if not state.get("capped_at"):
+            continue
+        targets = {(worker_id, egress.container_slug(e)) for e in items if _running(e)}
         if crossed:
-            _spawn(_stop_capped_proxy({**proxy, "state": state}))
+            targets |= {(c["worker_id"], c["slug"]) for c in await database.list_proxied_copies(proxy_id)}
+        targets = {t for t in targets if t[1] and (proxy_id, *t) not in _proxy_cap_stopping}
+        if targets or crossed:
+            _proxy_cap_stopping.update((proxy_id, *t) for t in targets)
+            _spawn(_stop_capped_proxy({**proxy, "state": state}, targets))
 
 
-async def _stop_capped_proxy(proxy: dict[str, Any]) -> None:
-    reason = proxy["state"].get("cap_reason") or "This proxy reached its traffic cap"
-    for copy in await database.list_proxied_copies(proxy["id"]):
-        try:
-            await _proxy_worker_call(
-                copy["worker_id"], "POST", f"/api/proxied/{copy['slug']}/{proxy['id']}/stop", proxy["definition"]
+async def _stop_capped_proxy(proxy: dict[str, Any], targets: set[tuple[int, str]]) -> None:
+    pid = proxy["id"]
+    unstopped = _proxy_cap_unstopped.setdefault(pid, {})
+    try:
+        for worker_id, slug in sorted(targets):
+            try:
+                await _proxy_worker_call(
+                    worker_id, "POST", f"/api/proxied/{slug}/{pid}/stop", proxy["definition"], timeout=60
+                )
+                await database.set_proxied_copy_capped(pid, worker_id, slug, True)
+                unstopped.pop((worker_id, slug), None)
+            except HTTPException as exc:
+                if exc.status_code == 404 and any(
+                    t in str(exc.detail) for t in ("No proxied copy", "Worker not found")
+                ):
+                    # Already gone from that box, or the box itself is gone: nothing left to stop.
+                    unstopped.pop((worker_id, slug), None)
+                    continue
+                unstopped[(worker_id, slug)] = str(exc.detail)[:200]
+                logger.warning("Could not stop %s at proxy %s's cap: %s", slug, pid, exc.detail)
+    finally:
+        _proxy_cap_stopping.difference_update((pid, *t) for t in targets)
+    message = await _proxy_cap_message(proxy)
+    if alert_id := await database.record_alert("proxy_cap", str(pid), message):
+        name = (proxy.get("definition") or {}).get("name") or f"proxy {pid}"
+        _spawn(_push_alert("proxy_cap", str(pid), f"CashPilot: {name} reached its traffic cap", message, alert_id))
+    _set_proxy_cap_bell(pid, (proxy.get("definition") or {}).get("name") or f"proxy {pid}", message)
+
+
+async def _proxy_cap_message(proxy: dict[str, Any]) -> str:
+    reason = (proxy.get("state") or {}).get("cap_reason") or "This proxy reached its traffic cap"
+    unstopped = _proxy_cap_unstopped.get(proxy["id"]) or {}
+    if not unstopped:
+        return f"Stopped: {reason}."
+    names: dict[int, str] = {}
+    with contextlib.suppress(Exception):
+        names = {w["id"]: w["name"] for w in await database.list_workers()}
+    still = ", ".join(f"{slug} on {names.get(wid, f'worker {wid}')}" for wid, slug in sorted(unstopped))
+    return f"{reason}. Could not stop yet, retrying on every heartbeat: {still}."
+
+
+def _set_proxy_cap_bell(proxy_id: int, name: str, message: str) -> None:
+    global _collector_alerts
+    _collector_alerts = [
+        *(a for a in _collector_alerts if not (a.get("kind") == "proxy_cap" and a.get("proxy_id") == proxy_id)),
+        {"kind": "proxy_cap", "platform": name, "proxy_id": proxy_id, "error": message},
+    ]
+
+
+def _drop_proxy_cap_bell(proxy_id: int) -> None:
+    global _collector_alerts
+    _proxy_cap_unstopped.pop(proxy_id, None)
+    _collector_alerts = [
+        a for a in _collector_alerts if not (a.get("kind") == "proxy_cap" and a.get("proxy_id") == proxy_id)
+    ]
+
+
+async def _proxy_cap_alerts() -> list[dict[str, Any]]:
+    """Bell entries for every proxy that is capped right now, from the proxies table.
+
+    Derived like _offline_worker_alerts, so neither the hourly rebuild of the
+    bell nor a restart can drop a cap that still holds.
+    """
+    try:
+        items = await database.list_proxies()
+    except Exception as exc:  # noqa: BLE001 - the bell must not take down collection
+        logger.warning("Could not derive proxy cap alerts: %s", exc)
+        return []
+    out: list[dict[str, Any]] = []
+    for proxy in items:
+        if (proxy.get("state") or {}).get("capped_at"):
+            name = (proxy.get("definition") or {}).get("name") or f"proxy {proxy['id']}"
+            out.append(
+                {
+                    "kind": "proxy_cap",
+                    "platform": name,
+                    "proxy_id": proxy["id"],
+                    "error": await _proxy_cap_message(proxy),
+                }
             )
-            await database.set_proxied_copy_capped(proxy["id"], copy["worker_id"], copy["slug"], True)
-        except HTTPException as exc:
-            logger.warning("Could not stop %s at proxy %s's cap: %s", copy["slug"], proxy["id"], exc.detail)
-    await database.record_alert("proxy_cap", str(proxy["id"]), f"Stopped: {reason}.")
+    return out
 
 
 # ---------------------------------------------------------------------------

@@ -792,7 +792,11 @@ def deploy_raw(
         labels=all_labels,
         hostname=None if joined else (hostname or name),
         detach=True,
-        restart_policy={"Name": "unless-stopped"},
+        # A container inside another's namespace is never started by Docker on
+        # its own: after a reboot or a daemon restart it would join the tunnel's
+        # namespace before the tunnel's firewall is loaded. The worker starts it
+        # once the tunnel says it is ready (proxy_tunnel.status).
+        restart_policy={"Name": "no"} if joined else {"Name": "unless-stopped"},
         # None means Docker's default runtime. See container_runtime for when
         # the operator's CASHPILOT_CONTAINER_RUNTIME applies instead.
         runtime=runtime or None,

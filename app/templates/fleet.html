@@ -97,9 +97,11 @@
         </select></div>
       <div class="proxy-net"><label class="form-label" for="proxy-host">Host</label><input class="form-input" id="proxy-host"></div>
       <div class="proxy-net"><label class="form-label" for="proxy-port">Port</label><input class="form-input form-input-code" id="proxy-port" type="number" min="1" max="65535"></div>
-      <div class="proxy-net"><label class="form-label" for="proxy-username">User</label><input class="form-input" id="proxy-username" placeholder="unchanged if empty"></div>
-      <div class="proxy-net"><label class="form-label" for="proxy-password">Password</label><input class="form-input" id="proxy-password" type="password" placeholder="unchanged if empty"></div>
-      <div class="proxy-ts" style="display:none;"><label class="form-label" for="proxy-authkey">Auth key</label><input class="form-input" id="proxy-authkey" type="password" placeholder="unchanged if empty"></div>
+      <div class="proxy-net"><label class="form-label" for="proxy-username">User</label><input class="form-input" id="proxy-username" placeholder="unchanged if empty">
+        <label class="muted proxy-clear"><input type="checkbox" id="proxy-clear-username"> Remove the stored user</label></div>
+      <div class="proxy-net"><label class="form-label" for="proxy-password">Password</label><input class="form-input" id="proxy-password" type="password" placeholder="unchanged if empty">
+        <label class="muted proxy-clear"><input type="checkbox" id="proxy-clear-password"> Remove the stored password</label></div>
+      <div class="proxy-ts" style="display:none;"><label class="form-label" for="proxy-authkey">Auth key (reusable, ephemeral, tagged)</label><input class="form-input" id="proxy-authkey" type="password" placeholder="unchanged if empty"></div>
       <div class="proxy-ts" style="display:none;"><label class="form-label" for="proxy-exitnode">Exit node</label><input class="form-input" id="proxy-exitnode" placeholder="name or 100.x address"></div>
       <div class="proxy-ts" style="display:none;"><label class="form-label" for="proxy-login">Login server</label><input class="form-input" id="proxy-login" placeholder="empty for Tailscale's own"></div>
       <div><label class="form-label" for="proxy-cap">Traffic cap (GB)</label><input class="form-input form-input-code" id="proxy-cap" type="number" min="0" step="0.1" placeholder="none"></div>
@@ -798,11 +800,11 @@ CASHPILOT_WORKER_NAME=server-name</code>
 
   function capLine(p) {
     const c = p.cap;
+    // A stop that still holds is shown even with the cap now off, so it never hides.
+    if (c.capped_at) return `Stopped: ${c.cap_reason}`;
     if (!c.enabled) return 'No cap';
     const reset = c.reset_day ? `resets on day ${c.reset_day}` : 'resets by hand';
-    let line = `${gb(c.used_bytes)} of ${gb(c.cap_bytes)} GB, stops at ${c.threshold_pct}%, ${reset}`;
-    if (c.capped_at) line = `Stopped: ${c.cap_reason}`;
-    return line;
+    return `${gb(c.used_bytes)} of ${gb(c.cap_bytes)} GB, stops at ${c.threshold_pct}%, ${reset}`;
   }
 
   function copyStatus(workerId, slug, proxyId) {
@@ -823,7 +825,9 @@ CASHPILOT_WORKER_NAME=server-name</code>
     box.innerHTML = '<table class="fleet-table"><thead><tr><th>Proxy</th><th>Exit</th><th>Traffic</th><th>Copies</th><th></th></tr></thead><tbody>' +
       _proxies.map((p) => {
         const target = p.kind === 'tailscale' ? `Tailscale exit ${esc(p.exit_node)}` : `${esc(p.kind)} ${esc(p.host)}:${esc(p.port)}`;
-        const exit = p.last_exit_ip ? `${esc(p.last_exit_ip)}${p.last_country ? ' · ' + esc(p.last_country) : ''}${p.rotating ? ' (rotating)' : ''}` : '<span class="muted">not tested</span>';
+        let exit = p.last_exit_ip ? `${esc(p.last_exit_ip)}${p.last_country ? ' · ' + esc(p.last_country) : ''}${p.rotating ? ' (rotating)' : ''}` : '<span class="muted">not tested</span>';
+        const t = p.last_test;
+        if (t && !t.ok) exit += `<br><span class="muted">Last test failed on ${esc(t.worker)} (${esc((t.at || '').replace('T', ' ').slice(0, 16))}): ${esc(t.error)}</span>`;
         const copies = p.copies.map((c) => {
           const st = copyStatus(c.worker_id, c.slug, p.id);
           const capped = c.stopped_by_cap ? ' <span class="muted">(stopped by the cap)</span>' : '';
@@ -832,7 +836,7 @@ CASHPILOT_WORKER_NAME=server-name</code>
             <button class="btn btn-danger btn-sm" data-copy="${p.id}:${c.worker_id}:${esc(c.slug)}" data-cmd="remove">Remove</button></div>`;
         }).join('') || '<span class="muted">none</span>';
         return `<tr><td><strong>${esc(p.name)}</strong><br><span class="muted">${target}</span></td><td>${exit}</td>
-          <td>${esc(capLine(p))}${p.cap.enabled ? ` <button class="btn btn-ghost btn-sm" data-proxy="${p.id}" data-act="reset">Reset</button>` : ''}</td>
+          <td>${esc(capLine(p))}${p.cap.enabled || p.cap.capped_at ? ` <button class="btn btn-ghost btn-sm" data-proxy="${p.id}" data-act="reset">Reset</button>` : ''}</td>
           <td>${copies}</td>
           <td><button class="btn btn-ghost btn-sm" data-proxy="${p.id}" data-act="test">Test</button>
               <button class="btn btn-ghost btn-sm" data-proxy="${p.id}" data-act="edit">Edit</button>
@@ -894,6 +898,8 @@ CASHPILOT_WORKER_NAME=server-name</code>
     f('proxy-host', p ? p.host : '');
     f('proxy-port', p && p.port ? p.port : '');
     ['proxy-username', 'proxy-password', 'proxy-authkey'].forEach((id) => f(id, ''));
+    ['proxy-clear-username', 'proxy-clear-password'].forEach((id) => { document.getElementById(id).checked = false; });
+    document.querySelectorAll('#proxy-form .proxy-clear').forEach((el) => { el.style.display = p ? '' : 'none'; });
     f('proxy-exitnode', p ? p.exit_node : '');
     f('proxy-login', p ? p.login_server : '');
     f('proxy-cap', p && p.cap.cap_bytes ? p.cap.cap_bytes / 1e9 : '');
@@ -918,6 +924,8 @@ CASHPILOT_WORKER_NAME=server-name</code>
       exit_node: v('proxy-exitnode'), login_server: v('proxy-login'),
       cap_gb: v('proxy-cap'), cap_threshold_pct: v('proxy-pct'), reset_day: v('proxy-reset'),
       rotating: document.getElementById('proxy-rotating').checked,
+      clear_username: document.getElementById('proxy-clear-username').checked,
+      clear_password: document.getElementById('proxy-clear-password').checked,
     };
     try {
       await CP.api(id ? `/api/proxies/${id}` : '/api/proxies', {method: id ? 'PATCH' : 'POST', body});
@@ -965,13 +973,17 @@ CASHPILOT_WORKER_NAME=server-name</code>
           await CP.api(`/api/proxies/${id}/reset-usage`, {method: 'POST'});
         } else if (btn.dataset.act === 'test') {
           const wid = document.getElementById('copy-worker').value;
-          CP.toast('Testing through a throwaway tunnel', 'info');
+          CP.toast(`Testing on ${wid ? workerName(Number(wid)) : 'the default box'} through a throwaway tunnel`, 'info');
           const out = await CP.api(`/api/proxies/${id}/test${wid ? `?worker_id=${wid}` : ''}`, {method: 'POST'});
           CP.toast(`Exit ${out.exit_ip}${out.country ? ' · ' + out.country : ''} in ${out.ms} ms`, 'success');
         }
       }
       load();
-    } catch (err) { CP.toast(err.message, 'error'); }
+    } catch (err) {
+      CP.toast(err.message, 'error');
+      // A failed test is stored on the proxy; show it in its row.
+      load();
+    }
   });
 
   load();

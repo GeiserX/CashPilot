@@ -15,6 +15,9 @@
 #      the netmap: the case where userspace mode dials from the box itself),
 #      the same;
 #   d. with no exit node set at all, the firewall alone holds;
+#   t. the earner cannot reach another tailnet node (the exit node's own
+#      100.x address), even though this test tailnet allows everything;
+#   r. a restarted tunnel joins again with the same reusable key;
 #   control: the same checks against a namespace opened on purpose must see
 #      the leak.
 #
@@ -116,6 +119,9 @@ start_exit() {
     EXIT_ID=$(hs nodes list -o json | tr -d '\n ' | sed -n 's/.*"id":\([0-9]*\),[^}]*"name":"cpmp-exit".*/\1/p')
     [ -n "$EXIT_ID" ] || EXIT_ID=$(hs nodes list | awk '/cpmp-exit/ {print $1; exit}')
     hs nodes approve-routes --identifier "$EXIT_ID" --routes 0.0.0.0/0,::/0 >/dev/null
+    # A service on the exit node's tailnet address, standing in for a home
+    # service another tailnet node would offer.
+    docker exec -d "$P-exit" sh -c 'while true; do printf "HTTP/1.0 200 OK\r\n\r\nhi" | nc -l -p 8000; done'
 }
 start_exit
 echo "exit node $EXIT_IP (headscale id $EXIT_ID)"
@@ -164,6 +170,35 @@ if reaches; then pass "a: earner reaches 1.1.1.1"; else fail "a: earner cannot r
 n=$(clear_packets)
 [ "$n" = 0 ] && pass "a: none of it left eth0 in the clear (it went through the exit node)" || fail "a: $n packets left eth0 in the clear"
 
+# t. the tailnet itself is closed to the earner (the test tailnet's policy allows all)
+if earner curl -s -o /dev/null -m 5 "http://$EXIT_IP:8000"; then
+    fail "t: earner reached a tailnet node at $EXIT_IP:8000"
+else
+    pass "t: earner cannot reach a tailnet node at $EXIT_IP:8000"
+fi
+# control for t: with the firewall lifted for a moment, the same request gets through.
+docker exec "$P-tun" nft delete table inet cashpilot
+if earner curl -s -o /dev/null -m 5 "http://$EXIT_IP:8000"; then
+    pass "control t: an opened namespace reaches the tailnet node, so t can fail"
+else
+    fail "control t: even an opened namespace cannot reach $EXIT_IP:8000, so t proves nothing"
+fi
+docker exec "$P-tun" nft -f /run/cp-tunnel.nft
+
+# r. a restart joins again with the same reusable key and is ready again
+docker restart -t 2 "$P-tun" >/dev/null
+for _ in $(seq 1 60); do
+    docker exec "$P-tun" test -f /run/ready 2>/dev/null && break
+    sleep 1
+done
+if docker exec "$P-tun" test -f /run/ready 2>/dev/null; then
+    pass "r: the restarted tunnel joined again with the same reusable key"
+else
+    fail "r: the restarted tunnel did not come back"
+    docker logs "$P-tun" 2>&1 | tail -5
+fi
+docker restart -t 1 "$P-earner" >/dev/null
+
 # b. exit node stopped
 docker stop -t 1 "$P-exit" >/dev/null
 sleep 3
@@ -174,6 +209,8 @@ n=$(clear_packets)
 # c. exit node deleted from the control server: its route leaves the netmap
 docker start "$P-exit" >/dev/null
 sleep 5
+docker exec -d "$P-exit" sh -c 'while true; do printf "HTTP/1.0 200 OK\r\n\r\nhi" | nc -l -p 8000; done'
+
 hs nodes delete --identifier "$EXIT_ID" --force >/dev/null 2>&1 || true
 docker stop -t 1 "$P-exit" >/dev/null
 sleep 8
