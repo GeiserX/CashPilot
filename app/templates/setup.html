@@ -35,6 +35,12 @@
     <p class="wizard-lede">
       Pick one or more. The next step lists the services that fit.
     </p>
+    {% if user.r == "owner" %}
+    <p class="wizard-lede">
+      Coming from money4band, CashFactory or InternetIncome?
+      <a href="/import">Bring your settings over</a> instead of typing them again.
+    </p>
+    {% endif %}
 
     <div class="category-grid">
       <div class="category-card">

@@ -7304,6 +7304,7 @@ async def api_fleet_api_key_reveal(request: Request) -> dict[str, str]:
 # ---------------------------------------------------------------------------
 from app.routers import activity as activity_router  # noqa: E402
 from app.routers import auth as auth_router  # noqa: E402
+from app.routers import importers as importers_router  # noqa: E402
 from app.routers import pages as pages_router  # noqa: E402
 from app.routers import users as users_router  # noqa: E402
 
@@ -7311,3 +7312,24 @@ app.include_router(activity_router.router)
 app.include_router(auth_router.router)
 app.include_router(pages_router.router)
 app.include_router(users_router.router)
+app.include_router(importers_router.router)
+
+
+# The two import routes that need api_set_config and api_deploy. Their logic
+# lives in app/routers/importers.py; they are declared here because no module
+# may import main.
+@app.post("/api/import/apply")
+async def api_import_apply(request: Request, user: dict[str, Any] = Depends(_require_owner)) -> dict[str, Any]:
+    async def set_collector_config(data: dict[str, str]) -> None:
+        await api_set_config(request, ConfigUpdate(data=data), _auth=user)
+
+    return await importers_router.apply(request, set_collector_config)
+
+
+@app.post("/api/import/drafts/{slug}/deploy")
+async def api_import_draft_deploy(
+    request: Request, slug: str, worker_id: int | None = None, user: dict[str, Any] = Depends(_require_owner)
+) -> dict[str, Any]:
+    """Deploy an imported service through the normal deploy route, which does every check."""
+    env = await importers_router.draft_env(slug)
+    return await api_deploy(request, slug, DeployRequest(env=env), worker_id=worker_id, _auth=user)

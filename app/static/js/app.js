@@ -5252,6 +5252,9 @@ const CP = (() => {
     confirmPayout,
     rejectPayout,
     runSelfUpdate,
+    // Exposed for import.js, so a deploy from an import asks the same
+    // preflight question as every other deploy.
+    confirmPreflight: _confirmPreflight,
     // Exposed for fleet.html, which rendered running costs with a bare
     // Number(v).toFixed(2) — no unit at all, on figures that mixed USD earnings
     // with a tariff in the user's own currency. The API is canonical USD now,
