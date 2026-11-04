@@ -2241,6 +2241,30 @@ body.gate { display: flex; flex-direction: column; }
 :root[data-theme="classic"] :focus-visible,
 :root[data-theme="classic"] .form-input:focus-visible { outline-color: var(--accent-secondary); }
 
+/* Provider grades (app/ratings.py). Colours come from the theme variables so
+   every theme keeps them readable; there is no A, so B is the best colour. */
+.grade-badge {
+  display: inline-block;
+  min-width: 1.6em;
+  padding: 1px 6px;
+  border: 1px solid currentColor;
+  border-radius: var(--radius-sm);
+  font-family: var(--font-mono);
+  font-weight: 600;
+  text-align: center;
+  cursor: help;
+}
+.grade-badge.grade-b { color: var(--success); background: var(--success-soft); }
+.grade-badge.grade-c { color: var(--warning); background: var(--warning-soft); }
+.grade-badge.grade-d { color: var(--error); background: var(--error-soft); }
+.grade-badge.grade-f { color: var(--text-primary); background: var(--error-soft); border-color: var(--error); }
+.sd-rating-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.sd-rating-score { color: var(--text-secondary); }
+.sd-rating-caps, .sd-rating-list { margin: 6px 0 0; padding-left: 18px; }
+.sd-rating-list li { margin-bottom: 4px; }
+.sd-rating-src { color: var(--text-muted); font-size: 0.9em; margin-left: 4px; }
+.sd-rating-pros { margin-top: 6px; }
+
 /* ----- Sunrise -----
    data-theme="sunrise": the dark theme, plus the logo's sunrise gradient at the
    edges only: a 2px line under the top bar, the active tab, the full-size

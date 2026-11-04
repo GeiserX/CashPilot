@@ -1,0 +1,129 @@
+# How CashPilot grades providers. This file is the published method: the docs
+# page (docs/ratings.md), the app and CashPilot-Desktop all grade from it.
+#
+# A grade is never typed by a person. Each service YAML records one verdict per
+# criterion below, in its `rating:` block (see _schema.yml), and every verdict
+# rests on a cited con or pro. app/ratings.py turns the verdicts into the
+# letter. The rating block has no field for a typed grade or an override, and
+# the loader rejects an entry that has one.
+#
+# CashPilot-Desktop re-implements the grading in Go with these values as
+# constants, and a test there compares them with this file. Change a value
+# here and the Desktop port has to change with it.
+
+criteria:
+  - key: payout_record
+    title: Payout record
+    question: Do payouts arrive, and on time?
+    good: Payouts arrive, shown by our own payout or by many matching user reports, and reports of late or missing ones are rare.
+    fair: Payouts arrive, but there is a repeated pattern of delays or of payouts held for review.
+    poor: Repeated, specific reports of payouts that never arrived, or the provider stopped paying.
+
+  - key: payout_terms
+    title: Payout terms
+    question: How high is the minimum, which methods are there, what are the fees, and does a balance expire?
+    good: A low minimum, a common method such as PayPal or bank transfer, small fees and no expiry.
+    fair: One of these is a real obstacle, such as a high minimum, crypto only, a large fee or an expiring balance.
+    poor: Several of them at once, or terms that let the provider keep a balance you earned.
+
+  - key: account_safety
+    title: Account safety
+    question: Do accounts get banned, and is the balance confiscated, especially at cash-out?
+    good: Bans are rare and follow a stated rule; a banned account keeps or is paid its balance.
+    fair: The terms let the provider keep the balance of a banned account, but there is no repeated pattern of it.
+    poor: A repeated pattern of accounts banned at or near cash-out with the balance kept.
+
+  - key: terms_fit
+    title: Fit with how CashPilot runs it
+    question: Do the terms allow running it the way CashPilot does, in a container on a home server?
+    good: Containers or servers are allowed, or the official client is a container image.
+    fair: The terms are silent on containers, or allow them with conditions such as one device per IP.
+    poor: The terms forbid containers, virtual machines or servers.
+
+  - key: traffic_transparency
+    title: Traffic transparency
+    question: Does the provider say who buys the traffic or the work, and how buyers are vetted?
+    good: It names the kind of buyers, states what they may not do, and describes how it checks them.
+    fair: It names the use in general terms, without saying how buyers are checked.
+    poor: It does not say who uses your connection or machine.
+
+  - key: privacy
+    title: Privacy
+    question: What leaves your machine, and can anyone check what the client does?
+    good: The client is open source, or the provider publishes exactly what it collects and it is little.
+    fair: A privacy policy covers it, but the client is closed and the data collected is broad.
+    poor: The data collected is excessive, or the provider has had a data incident it handled badly.
+
+  - key: identity_checks
+    title: Identity checks
+    question: What do you hand over to get paid, such as a phone number, an ID document or tax details?
+    good: An email address and a payout address are enough.
+    fair: A phone number, a payment processor's own checks, or a tax form for larger amounts.
+    poor: A government ID or selfie is required before any payout.
+
+  - key: support
+    title: Support
+    question: Are support tickets answered?
+    good: Tickets are answered, including ours, and reports of being ignored are rare.
+    fair: Answers come, but slowly, or only through a community channel.
+    poor: A repeated pattern of tickets left unanswered, often while a payout is held.
+
+  - key: earnings_realism
+    title: Earnings realism
+    question: How do advertised earnings compare with what one home IP actually makes?
+    good: The provider's claims match what we and other users measure.
+    fair: Claims are optimistic, or earnings depend heavily on location and are small for most.
+    poor: Advertised earnings are far above what users report, or rewards are in a token with no settled value.
+
+  - key: longevity
+    title: Longevity
+    question: Is there a named company, how long has it run, and has it shut down or rebranded before?
+    good: A named legal entity, several years of operation and no history of shutdowns or rebrands.
+    fair: A named entity but under three years running, or a past rebrand or relaunch.
+    poor: No named entity, or a history of shutdowns, or a token or program that was wound down.
+
+# What a verdict is worth. Unknown counts the same as poor, so a provider with
+# little evidence about it is graded as cautiously as one with bad evidence.
+points:
+  good: 2
+  fair: 1
+  poor: 0
+  unknown: 0
+
+# Grade bands on the percentage of the maximum score. There is no A band.
+bands:
+  - grade: B
+    min_percent: 75
+  - grade: C
+    min_percent: 55
+  - grade: D
+    min_percent: 35
+  - grade: F
+    min_percent: 0
+
+# Ceilings, applied in this order. The grade is the lowest of the band and
+# every ceiling whose condition holds.
+caps:
+  - key: container_prohibited
+    max_grade: D
+    reason: The provider forbids running its software in a container, which is how CashPilot runs it.
+  - key: poor_payout_or_safety
+    max_grade: C
+    reason: A poor payout record or poor account safety caps the grade at C.
+  - key: thin_evidence
+    max_grade: C
+    min_unknown: 4
+    reason: Four or more criteria could not be checked, so the grade is capped at C for thin evidence.
+
+cap_reason: >-
+  No provider gets an A. An A would mean we vouch for a provider, and we cannot:
+  we can check what it publishes and what its users report, not what it will do
+  with your account or your connection tomorrow.
+
+# What a cited con or pro may rest on.
+kinds:
+  terms: The provider's own terms, help centre or documentation.
+  provider_reply: The provider's own reply to a user, for example on a review site.
+  our_experience: What happened when we ran it or cashed out, written up in this repo.
+  user_reports: A pattern in user reports, from an aggregate page or a thread with several matching reports, or backed by a second source.
+  press: A news article, a court record or a public filing.

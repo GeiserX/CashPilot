@@ -238,6 +238,7 @@ nav:
     - Prometheus metrics: guides/prometheus-metrics.md
     - Upgrade to v1.0.0: upgrade-v1.md
   - Reference:
+    - Provider ratings: ratings.md
     - Discontinued services: discontinued-services.md
     - Related projects: related.md
     - Research:

@@ -169,6 +169,34 @@
 #   provider does not say" is a legitimate and useful entry. Do NOT guess: an absent
 #   block is reported as undocumented, which is safer than a confident wrong answer.
 
+# rating: (every active and beta service) the evidence behind the provider's
+#   grade. The method, the criteria and what each verdict means are published in
+#   services/_ratings.yml and on docs/ratings.md. app/ratings.py computes the
+#   letter; it is never written here. The loader rejects any key other than the
+#   five below, so there is no way to type a grade, an override, a sponsor or a
+#   featured flag.
+#     reviewed_on: "2026-11-04"
+#     verdicts:                   one per criterion in _ratings.yml, none missing
+#       payout_record: good       good | fair | poor | unknown
+#       payout_terms: fair
+#       ...
+#     notes:                      required for every unknown: what was searched
+#       support: "No ticket experience of our own and no repeated reports either way."
+#     cons:                       worst first; the app shows the first three
+#       - text: "Earnings not cashed out within 24 months can be written off."
+#         criterion: payout_terms
+#         kind: terms             terms | provider_reply | our_experience | user_reports | press
+#         source: "https://www.honeygain.com/terms-of-use/"   https:// only
+#         checked_on: "2026-11-04"
+#     pros:                       same shape as cons
+#   A fair or poor verdict needs at least one con citing that criterion, a good
+#   one at least one pro. requirements.container_prohibited: true requires
+#   terms_fit: poor. A user_reports item must show a pattern: the source is an
+#   aggregate page or a thread with several matching reports, or a second
+#   source backs it. Never a single complaint. A fact from our own payouts goes
+#   into the provider's guide first, so the source is a public page with no
+#   account details. Thin evidence is an unknown verdict, never a padded one.
+
 # device_link: (optional) for a device id the user must add to their account by hand,
 #   or the node earns for nobody (EarnApp, ProxyRack). Shown right after a
 #   successful deploy as a "Link this device to your account" step.

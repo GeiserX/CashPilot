@@ -18,7 +18,7 @@ from urllib.parse import quote
 
 import yaml
 
-from app import arch
+from app import arch, ratings
 
 logger = logging.getLogger(__name__)
 
@@ -106,6 +106,11 @@ def _validate(data: dict[str, Any], path: Path) -> list[str]:
         # `disclosure: TODO` loaded fine and then 500'd the endpoint at request
         # time, so the fault was invisible until someone opened that one service.
         errors.append(f"{path.name}: disclosure must be a mapping, not {type(disclosure).__name__}")
+
+    if "rating" in data:
+        # The grade is computed from these verdicts (app/ratings.py); a block
+        # with a typed grade, an override or a sponsor field is rejected here.
+        errors.extend(f"{path.name}: {err}" for err in ratings.validate(data["rating"], data))
 
     docker = data.get("docker")
     if isinstance(docker, dict):
