@@ -95,6 +95,14 @@ class FakeClient:
         self.containers = SimpleNamespace(get=self._get, list=self._list, run=self._run)
         self.networks = SimpleNamespace(get=lambda nid: SimpleNamespace(attrs={"Driver": "bridge"}))
         self.closed = False
+        self.runtimes = {
+            "runc": {"path": "runc"},
+            "runsc": {"path": "/usr/local/bin/runsc"},
+            "runsc-hostnet": {"path": "/usr/local/bin/runsc", "runtimeArgs": ["--network=host"]},
+        }
+
+    def info(self):
+        return {"Runtimes": self.runtimes}
 
     def _get(self, key):
         if key in self.by_key:
@@ -237,6 +245,35 @@ class TestRound:
         }
         host = next(s for s in window["samples"] if s["container"] == "cashpilot-mysterium")
         assert host["est_max"] is None and host["out"] == []
+
+    def test_gvisor_hostnet_is_probed_and_gvisor_netstack_is_sandboxed(self):
+        """A gVisor runtime with --network=host keeps its sockets in the kernel's namespace."""
+        client = FakeClient(
+            [earner("cashpilot-a", "a" * 64, runtime="runsc-hostnet"), earner("cashpilot-b", "b" * 64, runtime="runsc")]
+        )
+        window = _round(client, ["cashpilot-a", "cashpilot-b"])
+        assert [r["network_mode"] for r in client.runs] == [f"container:{'a' * 64}"]
+        assert {s["container"]: s["status"] for s in window["samples"]} == {
+            "cashpilot-a": "ok",
+            "cashpilot-b": "sandboxed",
+        }
+
+    def test_joinable_runtimes(self):
+        client = FakeClient([])
+        client.runtimes["my-crun"] = {"path": "/usr/bin/crun"}
+        client.runtimes["kata"] = {"path": "/usr/bin/kata-runtime"}
+        got = activity.joinable_runtimes(client)
+        assert {"runc", "runsc-hostnet", "my-crun", "io.containerd.runc.v2"} <= got
+        assert "runsc" not in got and "kata" not in got
+
+    def test_joinable_runtimes_without_info_is_the_plain_list(self):
+        client = FakeClient([])
+
+        def boom():
+            raise RuntimeError("no info")
+
+        client.info = boom
+        assert activity.joinable_runtimes(client) == set(activity.PLAIN_RUNTIMES)
 
     def test_bridge_earner_is_probed_and_classified(self):
         client = FakeClient([earner("cashpilot-honeygain", "b" * 64)])

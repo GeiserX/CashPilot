@@ -59,9 +59,14 @@ for the dashboard's usage graphs; Activity stores no second byte counter.
 - **Host network** (Mysterium, for example): the earner shares the machine's
   network, so its sockets cannot be told apart from the host's. It shows
   "host network" and no numbers.
-- **Sandboxed runtimes** (gVisor and other runtimes set with
-  `CASHPILOT_CONTAINER_RUNTIME`): a helper cannot join their network, and they
-  emulate `/proc/net`. They show "sandboxed".
+- **Sandboxed runtimes**: gVisor with its own network stack (a `runsc`
+  runtime without `--network=host`) keeps the earner's sockets inside the
+  sandbox, and other runtimes CashPilot does not know may too. A helper would
+  read an empty table there, so they show "sandboxed" instead. gVisor with
+  `--network=host` (the `runsc-hostnet` runtimes in
+  [Protecting your home network](home-network-security.md#7-gvisor-optional))
+  keeps its sockets in the container's namespace and is sampled like any
+  other earner; the worker reads which is which from `docker info`.
 - **A shared namespace** (`network_mode: container:<other>`, for example behind
   gluetun): one helper reads the namespace once and the row names every
   container in it. The numbers belong to the group.

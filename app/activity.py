@@ -55,6 +55,8 @@ MAX_BYTES = 128 * 1024
 SELF_NAMES = ("cashpilot-ui", "cashpilot-worker")
 #: Runtimes whose namespace a probe can join and whose /proc/net is the kernel's.
 PLAIN_RUNTIMES = ("", "runc", "io.containerd.runc.v2", "crun")
+#: Runtime binaries that share the kernel's network stack.
+PLAIN_BINARIES = ("runc", "crun")
 
 _lock = threading.Lock()
 #: owner container id -> (netns id, snmp at the end of the last probe, monotonic time).
@@ -286,12 +288,38 @@ def _earner_names() -> list[str]:
     return names
 
 
-def plan(client: Any, self_id: str | None) -> tuple[dict[str, dict[str, Any]], list[dict[str, Any]]]:
+def joinable_runtimes(client: Any) -> set[str]:
+    """The runtimes whose containers keep their sockets in the kernel's network namespace.
+
+    runc and crun do, under any registered name. gVisor (runsc) does only with
+    ``--network=host``, where its sockets live in the container's namespace
+    (verified on a gVisor host: the kernel's tables show the earner's
+    connections). gVisor's own netstack and anything unknown keep them out of
+    reach, and a probe would read an empty table: those are "sandboxed".
+    """
+    found = set(PLAIN_RUNTIMES)
+    try:
+        runtimes = (client.info() or {}).get("Runtimes") or {}
+    except Exception:  # noqa: BLE001 - fall back to the names every Docker ships
+        return found
+    for name, spec in runtimes.items():
+        spec = spec or {}
+        binary = Path(str(spec.get("path") or name)).name
+        args = [str(a) for a in spec.get("runtimeArgs") or []]
+        if binary in PLAIN_BINARIES or (binary == "runsc" and "--network=host" in args):
+            found.add(name)
+    return found
+
+
+def plan(
+    client: Any, self_id: str | None, joinable: set[str] | None = None
+) -> tuple[dict[str, dict[str, Any]], list[dict[str, Any]]]:
     """Group earners by the namespace they live in.
 
     Returns ({owner id: {"owner": container, "members": [names], "mode": str}},
     [samples for earners that cannot be probed]).
     """
+    joinable = set(PLAIN_RUNTIMES) if joinable is None else joinable
     groups: dict[str, dict[str, Any]] = {}
     fixed: list[dict[str, Any]] = []
     for name in _earner_names():
@@ -311,7 +339,7 @@ def plan(client: Any, self_id: str | None) -> tuple[dict[str, dict[str, Any]], l
         if mode == "none":
             fixed.append(_sample_base(name, [name], mode, "no_network"))
             continue
-        if runtime not in PLAIN_RUNTIMES:
+        if runtime not in joinable:
             fixed.append(_sample_base(name, [name], mode, "sandboxed"))
             continue
         owner = c
@@ -324,7 +352,7 @@ def plan(client: Any, self_id: str | None) -> tuple[dict[str, dict[str, Any]], l
             if _host(owner).get("NetworkMode") == "host":
                 fixed.append(_sample_base(name, [name], mode, "host_network"))
                 continue
-            if str(_host(owner).get("Runtime") or "") not in PLAIN_RUNTIMES:
+            if str(_host(owner).get("Runtime") or "") not in joinable:
                 fixed.append(_sample_base(name, [name], mode, "sandboxed"))
                 continue
         group = groups.setdefault(owner.id, {"owner": owner, "members": [], "mode": mode})
@@ -412,7 +440,7 @@ def _round(client: Any, now: float) -> dict[str, Any]:
     if not image:
         window["worker_status"] = "no_image"
         return window
-    groups, fixed = plan(client, getattr(me, "id", None))
+    groups, fixed = plan(client, getattr(me, "id", None), joinable_runtimes(client))
     window["samples"].extend(fixed)
 
     deadline = time.monotonic() + ROUND_BUDGET
