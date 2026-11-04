@@ -437,6 +437,9 @@ CASHPILOT_WORKER_NAME=server-name</code>
             ${_isOwner && isOnline && !isAndroid && (sysInfo.features || []).includes('isolation_check')
               ? `<button class="btn btn-ghost btn-sm btn-isolation-check" data-worker-id="${w.id}" title="Start two short-lived probe containers on this host and show what an earner can reach: your LAN, this host, an overlay network such as Tailscale, cloud metadata. Changes no firewall rule.">${_isolation[w.id] === 'running' ? 'Checking…' : 'Check isolation'}</button>`
               : ''}
+            ${_isOwner && !isAndroid && (sysInfo.features || []).includes('activity')
+              ? `<a class="btn btn-ghost btn-sm" href="/activity" title="What each earner on this box does on the network: connections, ports, networks, LAN attempts. Off until you switch it on there.">Activity</a>`
+              : ''}
             ${_isOwner ? `<button class="btn btn-danger btn-sm btn-remove-worker" data-worker-id="${w.id}" data-worker-name="${esc(w.name)}" data-worker-client="${esc(w.client_id || '')}" title="Remove worker">Remove</button>` : ''}
           </td>
         </tr>

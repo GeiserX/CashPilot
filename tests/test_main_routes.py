@@ -2234,6 +2234,7 @@ class TestLifespanScheduler:
                 patch("app.main.exchange_rates.refresh", new_callable=AsyncMock),
                 patch("app.main._run_collection", new_callable=AsyncMock),
                 patch("app.main._run_data_retention", new_callable=AsyncMock),
+                patch("app.main._run_activity_purge", new_callable=AsyncMock),
                 patch("app.main._run_vacuum", new_callable=AsyncMock),
                 patch("app.main._check_windowed_signals", new_callable=AsyncMock),
                 patch("app.main.close_all_collectors", new_callable=AsyncMock, create=True),
@@ -2258,6 +2259,9 @@ class TestLifespanScheduler:
                         "update_check_android",
                         # Proxy traffic caps that reset on a chosen day.
                         "proxy_cap_resets",
+                        # Activity: raw-address purge, spike check, network
+                        # table refresh. Not spawned at startup.
+                        "activity_hourly",
                     }
                     # Every job carries the hardening kwargs (audit fix).
                     for job in jobs.values():
@@ -2288,6 +2292,7 @@ class TestLifespanScheduler:
                 patch("app.main.exchange_rates.refresh", new_callable=AsyncMock),
                 patch("app.main._run_collection", new_callable=AsyncMock),
                 patch("app.main._run_data_retention", new_callable=AsyncMock),
+                patch("app.main._run_activity_purge", new_callable=AsyncMock),
                 patch("app.main._run_vacuum", new_callable=AsyncMock),
                 patch("app.main._check_windowed_signals", new_callable=AsyncMock),
                 patch("app.main.close_all_collectors", new_callable=AsyncMock, create=True),
@@ -2323,6 +2328,7 @@ class TestLifespanScheduler:
                 patch("app.main.exchange_rates.refresh", new_callable=AsyncMock),
                 patch("app.main._run_collection", new_callable=AsyncMock),
                 patch("app.main._run_data_retention", new_callable=AsyncMock),
+                patch("app.main._run_activity_purge", new_callable=AsyncMock),
                 patch("app.main._run_vacuum", new_callable=AsyncMock),
                 patch("app.main._check_windowed_signals", new_callable=AsyncMock),
                 patch("app.main.close_all_collectors", new_callable=AsyncMock, create=True),

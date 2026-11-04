@@ -25,7 +25,6 @@ without anyone remembering.
 
 from __future__ import annotations
 
-import ast
 import os
 import re
 import subprocess
@@ -94,12 +93,14 @@ class TestTheWorkerBuildMatchesItsDockerfile:
         This is what makes a stale or missing module a crash on the user's
         machine rather than a build failure here.
         """
-        source = (ROOT / "app" / "worker_api.py").read_text(encoding="utf-8")
-        # Parsed, not matched line by line: an import list long enough to wrap
-        # in parentheses read as a module named "(".
+        import ast
+
+        # Parsed, not matched line by line: a parenthesised import spanning
+        # several lines read as a module named "(".
+        tree = ast.parse((ROOT / "app" / "worker_api.py").read_text(encoding="utf-8"))
         imported = {
             alias.name
-            for node in ast.walk(ast.parse(source))
+            for node in ast.walk(tree)
             if isinstance(node, ast.ImportFrom) and node.module == "app"
             for alias in node.names
         }
