@@ -226,6 +226,7 @@ nav:
     - Configuration reference: configuration.md
     - Multi-node fleet management: fleet.md
     - Running on ARM: arm.md
+    - Custom services: custom-services.md
   - Security:
     - Security defaults: security-defaults.md
     - Protecting your home network: home-network-security.md

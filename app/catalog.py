@@ -86,6 +86,13 @@ def _validate(data: dict[str, Any], path: Path) -> list[str]:
     if missing:
         errors.append(f"{path.name}: missing required fields: {missing}")
 
+    slug = data.get("slug")
+    if isinstance(slug, str) and slug.startswith("custom-"):
+        # Reserved for services users add themselves (app/custom_services.py):
+        # a catalog entry with such a slug would take over a user's service and
+        # hand it whatever capabilities the entry declares.
+        errors.append(f"{path.name}: slug {slug!r} uses the reserved 'custom-' prefix")
+
     category = data.get("category")
     if category is not None and category not in _CATEGORIES:
         errors.append(f"{path.name}: invalid category {category!r} (expected one of {sorted(_CATEGORIES)})")

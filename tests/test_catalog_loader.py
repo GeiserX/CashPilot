@@ -193,6 +193,13 @@ class TestValidate:
         assert catalog._validate({**self._base(), "docker": {"image": "i", "env": "notalist"}}, p)
         assert catalog._validate({**self._base(), "requirements": {"gpu": "yes"}}, p)  # non-bool
 
+    def test_validate_rejects_the_reserved_custom_prefix(self, tmp_path):
+        """custom- slugs belong to services users add; the catalog must never shadow one."""
+        errors = catalog._validate({**self._base(), "slug": "custom-node"}, tmp_path / "t.yml")
+        assert any("reserved" in e for e in errors)
+        # The control: the same entry under an ordinary slug, and a slug that only contains the word.
+        assert catalog._validate({**self._base(), "slug": "node-custom"}, tmp_path / "t.yml") == []
+
     def test_validate_allows_empty_image_for_non_deployable(self, tmp_path):
         # Extension/app-only services list an empty image and must still load.
         assert catalog._validate({**self._base(), "docker": {"image": ""}}, tmp_path / "t.yml") == []

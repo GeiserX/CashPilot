@@ -440,6 +440,25 @@ CREATE TABLE IF NOT EXISTS deployment_specs (
     PRIMARY KEY (slug, worker_id)
 );
 
+-- Services the user added from an image reference (app/custom_services.py).
+-- The whole definition is one Fernet-encrypted JSON blob, like a deployment
+-- spec: its env holds credentials, and encrypting all of it means no value
+-- depends on the user ticking "secret" to be safe at rest.
+CREATE TABLE IF NOT EXISTS custom_services (
+    slug                 TEXT PRIMARY KEY,
+    definition_encrypted TEXT NOT NULL,
+    created_at           TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at           TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- Slugs of deleted custom services. A slug names the container and the data
+-- volume, and a box may still hold that volume, so a new service must never
+-- get a slug a deleted one had and mount its data.
+CREATE TABLE IF NOT EXISTS custom_service_tombstones (
+    slug       TEXT PRIMARY KEY,
+    deleted_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 CREATE TABLE IF NOT EXISTS users (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
     username   TEXT    NOT NULL UNIQUE,
@@ -2064,6 +2083,88 @@ async def list_deployment_placements() -> list[dict[str, Any]]:
 async def forget_deployment(slug: str) -> None:
     """Drop every record of ``slug`` being deployed: the fleet row and each box's."""
     await remove_deployment(slug)
+
+
+# --- Custom services ---
+
+
+async def save_custom_service(slug: str, definition: dict[str, Any]) -> None:
+    """Create or replace a custom service definition, encrypted whole."""
+    blob = encrypt_value(json.dumps(definition, sort_keys=True))
+    db = await _get_db()
+    try:
+        await db.execute(
+            """
+            INSERT INTO custom_services (slug, definition_encrypted) VALUES (?, ?)
+            ON CONFLICT(slug) DO UPDATE SET
+                definition_encrypted = excluded.definition_encrypted,
+                updated_at = datetime('now')
+            """,
+            (slug, blob),
+        )
+        await db.commit()
+    finally:
+        await db.close()
+
+
+def _decode_custom(blob: str, slug: str) -> dict[str, Any] | None:
+    raw = decrypt_value(blob or "")
+    try:
+        definition = json.loads(raw) if raw else None
+    except ValueError:
+        definition = None
+    if not isinstance(definition, dict):
+        _logger.warning("Custom service %s could not be decrypted or read; it is skipped", slug)
+        return None
+    return definition
+
+
+async def get_custom_service(slug: str) -> dict[str, Any] | None:
+    db = await _get_db()
+    try:
+        cursor = await db.execute("SELECT definition_encrypted FROM custom_services WHERE slug = ?", (slug,))
+        row = await cursor.fetchone()
+    finally:
+        await db.close()
+    return _decode_custom(row["definition_encrypted"], slug) if row else None
+
+
+async def list_custom_services() -> list[dict[str, Any]]:
+    """Every readable custom service as ``{"slug", "definition"}``, by slug."""
+    db = await _get_db()
+    try:
+        cursor = await db.execute("SELECT slug, definition_encrypted FROM custom_services ORDER BY slug")
+        rows = await cursor.fetchall()
+    finally:
+        await db.close()
+    out: list[dict[str, Any]] = []
+    for row in rows:
+        definition = _decode_custom(row["definition_encrypted"], row["slug"])
+        if definition is not None:
+            out.append({"slug": row["slug"], "definition": definition})
+    return out
+
+
+async def custom_service_slugs() -> set[str]:
+    """Every slug ever used, readable, unreadable or deleted, so a new slug never reuses one."""
+    db = await _get_db()
+    try:
+        cursor = await db.execute("SELECT slug FROM custom_services UNION SELECT slug FROM custom_service_tombstones")
+        return {row["slug"] for row in await cursor.fetchall()}
+    finally:
+        await db.close()
+
+
+async def delete_custom_service(slug: str) -> bool:
+    db = await _get_db()
+    try:
+        cursor = await db.execute("DELETE FROM custom_services WHERE slug = ?", (slug,))
+        if (cursor.rowcount or 0) > 0:
+            await db.execute("INSERT OR IGNORE INTO custom_service_tombstones (slug) VALUES (?)", (slug,))
+        await db.commit()
+        return (cursor.rowcount or 0) > 0
+    finally:
+        await db.close()
 
 
 # A service the user removed from the whole fleet. The startup backfill

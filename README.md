@@ -17,6 +17,7 @@ CashPilot is a self-hosted platform that runs passive income services on your ow
 ## Features
 
 - Starts a Docker service with one click from the catalog; no compose file to write, no YAML to edit.
+- Runs your own image too: add a service the catalog lacks by image name and tag, with the same container restrictions as the catalog ([custom services](https://geiserx.github.io/CashPilot/custom-services/)).
 - Keeps every balance as history: <!-- n:collectors -->15<!-- /n --> providers are read by built-in collectors every hour, so "running but not earning" shows as a flat line.
 - Treats a balance drop as a probable payout and asks you to confirm it; nothing is counted as income by guess.
 - Runs a fleet: one worker per server, one dashboard for all of them, every figure per server and per service.

@@ -11,6 +11,9 @@ LABEL_DEPLOYED_BY = "cashpilot.deployed-by"
 # Absent on the first, which keeps the name it always had (cashpilot-<slug>);
 # copy N is cashpilot-<slug>-N and carries "N" here.
 LABEL_INSTANCE = "cashpilot.instance"
+# "true" on a container deployed from a service the user added from an image
+# reference (app/custom_services.py) rather than from the reviewed catalog.
+LABEL_CUSTOM = "cashpilot.custom"
 # The most copies of one service a worker will run. A ceiling against a typo,
 # not a recommendation: on one connection most providers pay for one.
 MAX_INSTANCES = 10

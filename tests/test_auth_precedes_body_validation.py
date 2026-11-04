@@ -31,6 +31,8 @@ from app.main import app
 #: body and an UNCONDITIONAL guard.
 CONVERTED = [
     ("post", "/api/deploy/honeygain"),
+    ("post", "/api/custom-services"),
+    ("put", "/api/custom-services/custom-x"),
     ("post", "/api/compose"),
     ("post", "/api/preferences"),
     ("post", "/api/config"),

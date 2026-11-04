@@ -264,6 +264,9 @@ an architecture the provider does not publish.
 - The dashboard marks such an instance **custom image** and judges "update available" against
   the image you chose, not the catalog's.
 
+To run an image the catalog does not list at all, add it as a
+[custom service](custom-services.md) instead.
+
 ## Update check
 
 CashPilot asks GitHub once a day whether a newer release exists, and shows a

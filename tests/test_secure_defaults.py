@@ -125,6 +125,26 @@ class TestCredentialEncryptionBoundary:
         assert _is_secret_key(f"someservice_{field}")
 
 
+class TestCustomServicesGetTheCatalogHardening:
+    """Tier 1: a service the user adds from an image gets nothing a catalog entry can grant."""
+
+    def test_the_stated_posture_names_custom_services(self):
+        doc = (PROJECT_ROOT / "docs" / "security-defaults.md").read_text()
+        tier1 = doc[doc.index("## Tier 1") : doc.index("## Tier 2")]
+        assert "Custom services get the catalog hardening" in tier1
+
+    def test_the_deploy_shape_carries_no_grant(self):
+        from app import custom_services
+
+        definition, _ = custom_services.validate(
+            {"name": "x", "image": "x/y:1", "data_path": "/data", "command": "run", "env": []}
+        )
+        docker = custom_services.as_service("custom-x", definition, reveal=True)["docker"]
+        granted = {"ports", "cap_add", "devices", "network_mode", "privileged", "entrypoint"} & set(docker)
+        assert not granted, f"a custom service must never carry {sorted(granted)}"
+        assert all(not str(v).startswith("/") for v in docker["volumes"]), "only a named volume, never a host path"
+
+
 class TestSecureByDefault:
     """Tier 2: configurable, but the default must be the safe value."""
 
