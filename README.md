@@ -34,7 +34,7 @@ docker compose up -d
 docker compose logs cashpilot-ui | grep -i "setup token"
 ```
 
-You need Docker on a Linux, macOS or Windows host, amd64 or arm64. Open [http://localhost:8080](http://localhost:8080): the welcome page asks for the token from that log line, creates the owner account and opens the setup wizard. Port 8080 taken? Put `CASHPILOT_UI_PORT=8088` in a `.env` file next to `docker-compose.yml` instead of editing the file. The dashboard listens on loopback only and the worker's port 8081 is never published, because both can command the Docker socket; [Getting started](https://geiserx.github.io/CashPilot/getting-started/) covers remote access, updating and pinning a version.
+You need Docker on a Linux, macOS or Windows host, amd64 or arm64. Open [http://localhost:8080](http://localhost:8080): the welcome page asks for the token from that log line, creates the owner account and opens the setup wizard. Port 8080 taken? Put `CASHPILOT_UI_PORT=8088` in a `.env` file next to `docker-compose.yml` instead of editing the file (this needs the current compose file; the one from v1.61 and older hard-codes 8080). The dashboard listens on loopback only and the worker's port 8081 is never published, because both can command the Docker socket; [Getting started](https://geiserx.github.io/CashPilot/getting-started/) covers remote access, updating and pinning a version.
 
 ## Supported Services
 

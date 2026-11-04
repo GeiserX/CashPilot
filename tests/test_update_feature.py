@@ -128,8 +128,23 @@ def _preflight(cfg=None, code=0, stderr_bytes=b"", wait_exc=None):
     else:
         c.wait.return_value = {"StatusCode": code}
     out = json.dumps(cfg if cfg is not None else _config(**{"cashpilot-worker": None})).encode()
-    c.logs.side_effect = lambda stdout=True, stderr=True: stderr_bytes if stderr else out
+    # Compose writes the resolved file inside the check container (-o); stdout
+    # stays empty. The worker copies the file out with get_archive.
+    c.logs.side_effect = lambda stdout=True, stderr=True: stderr_bytes if stderr else b""
+    c.get_archive.side_effect = lambda path: ([_tar_of(path, out)], {"name": path})
     return c
+
+
+def _tar_of(path, data):
+    import io
+    import tarfile
+
+    buf = io.BytesIO()
+    with tarfile.open(fileobj=buf, mode="w") as tar:
+        info = tarfile.TarInfo(name=path.rsplit("/", 1)[-1])
+        info.size = len(data)
+        tar.addfile(info, io.BytesIO(data))
+    return buf.getvalue()
 
 
 def _wire_runs(client, preflight=None, updater=None):
@@ -261,12 +276,103 @@ class TestSpawnSelfUpdate:
 
         first = client.containers.run.call_args_list[0]
         assert first.args[0] == orchestrator.UPDATER_IMAGE
-        assert first.kwargs["command"] == ["docker", "compose", "config", "--format", "json", "cashpilot-worker"]
+        assert first.kwargs["command"] == [
+            "docker",
+            "compose",
+            "config",
+            "--format",
+            "json",
+            "-o",
+            orchestrator._PREFLIGHT_OUT,
+            "cashpilot-worker",
+        ]
         assert first.kwargs["volumes"] == {"/srv/cashpilot": {"bind": "/srv/cashpilot", "mode": "ro"}}
         assert "name" not in first.kwargs
         # Same environment as the updater, so it resolves what the updater will.
         assert first.kwargs["environment"] == _updater_call(client).kwargs["environment"]
         preflight.remove.assert_called_once_with(force=True)
+
+    def test_the_resolved_config_never_goes_to_stdout(self):
+        """The resolved file holds every secret from .env (session, encryption
+        and API keys). On stdout it would reach the daemon's log driver (Loki,
+        syslog, journald...), so it is written to a file and copied out."""
+        me = _fake_container(labels=_COMPOSE_LABELS)
+        client = _fake_docker(me=me)
+        preflight, _ = _wire_runs(client)
+        with patch.object(orchestrator, "_get_client", return_value=client):
+            orchestrator.spawn_self_update()
+
+        cmd = client.containers.run.call_args_list[0].kwargs["command"]
+        assert "-o" in cmd and cmd[cmd.index("-o") + 1] == orchestrator._PREFLIGHT_OUT
+        preflight.get_archive.assert_called_once_with(orchestrator._PREFLIGHT_OUT)
+        for call in preflight.logs.call_args_list:
+            assert call.kwargs.get("stdout") is False, "stdout of the check must never be read"
+
+    def test_leftover_check_containers_are_removed_before_a_new_check(self):
+        me = _fake_container(labels=_COMPOSE_LABELS)
+        client = _fake_docker(me=me)
+        old = MagicMock()
+        order: list[str] = []
+        old.remove.side_effect = lambda **kw: order.append("remove-old")
+        client.containers.list.return_value = [old]
+        preflight, updater = _wire_runs(client)
+        run = client.containers.run.side_effect
+
+        def tracking_run(image, *args, **kwargs):
+            order.append("run")
+            return run(image, *args, **kwargs)
+
+        client.containers.run.side_effect = tracking_run
+        with patch.object(orchestrator, "_get_client", return_value=client):
+            orchestrator.spawn_self_update()
+        client.containers.list.assert_called_once_with(all=True, filters={"label": "cashpilot.updater=check"})
+        old.remove.assert_called_once_with(force=True)
+        assert order[0] == "remove-old"
+
+    def test_an_env_file_install_passes_its_files_to_check_and_updater(self):
+        labels = {
+            **_COMPOSE_LABELS,
+            "com.docker.compose.project.environment_file": "/srv/cashpilot/prod.env,/mnt/appdata/cashpilot.env",
+        }
+        client = _fake_docker(me=_fake_container(labels=labels))
+        _wire_runs(client)
+        with patch.object(orchestrator, "_get_client", return_value=client):
+            orchestrator.spawn_self_update()
+
+        check = client.containers.run.call_args_list[0].kwargs
+        upd = _updater_call(client).kwargs
+        for kw in (check, upd):
+            assert kw["environment"]["COMPOSE_ENV_FILES"] == "/srv/cashpilot/prod.env,/mnt/appdata/cashpilot.env"
+            # Outside the project dir: mounted read-only at its own path.
+            assert kw["volumes"]["/mnt/appdata/cashpilot.env"] == {"bind": "/mnt/appdata/cashpilot.env", "mode": "ro"}
+            # Inside it: already visible through the project mount.
+            assert "/srv/cashpilot/prod.env" not in kw["volumes"]
+        assert check["volumes"]["/srv/cashpilot"]["mode"] == "ro"
+        assert upd["volumes"]["/srv/cashpilot"]["mode"] == "rw"
+
+    def test_an_env_file_install_with_drift_names_its_file(self):
+        labels = {**_COMPOSE_LABELS, "com.docker.compose.project.environment_file": "/mnt/appdata/cashpilot.env"}
+        me = _fake_container(labels=labels)
+        ui = _fake_container(labels=_UI_LABELS, port_bindings=_ui_bindings(port="8088"))
+        client = _fake_docker(me=me, ui=ui)
+        _wire_runs(client, preflight=_preflight(_config(**{"cashpilot-worker": None, "cashpilot-ui": _ui_port_cfg()})))
+        with (
+            patch.object(orchestrator, "_get_client", return_value=client),
+            pytest.raises(orchestrator.SelfUpdateUnavailable) as ei,
+        ):
+            orchestrator.spawn_self_update()
+        assert "/mnt/appdata/cashpilot.env" in str(ei.value)
+        assert not _updater_started(client)
+
+    def test_a_relative_env_file_label_is_refused_before_running_anything(self):
+        labels = {**_COMPOSE_LABELS, "com.docker.compose.project.environment_file": "C:\\cp\\.env"}
+        client = _fake_docker(me=_fake_container(labels=labels))
+        with (
+            patch.object(orchestrator, "_get_client", return_value=client),
+            pytest.raises(orchestrator.SelfUpdateUnavailable),
+        ):
+            orchestrator.spawn_self_update()
+        client.containers.run.assert_not_called()
 
     def test_refuses_without_compose_labels(self):
         me = _fake_container(labels={})

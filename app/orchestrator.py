@@ -1411,6 +1411,8 @@ def _compose_project(container: Any) -> dict[str, str]:
         "working_dir": labels.get("com.docker.compose.project.working_dir") or "",
         "config_files": labels.get("com.docker.compose.project.config_files") or "",
         "project": labels.get("com.docker.compose.project") or "",
+        # Set only when the install was started with --env-file; comma-separated.
+        "env_files": labels.get("com.docker.compose.project.environment_file") or "",
     }
 
 
@@ -1441,23 +1443,64 @@ def self_update_info() -> dict[str, Any]:
     return info
 
 
+#: Where the preflight writes the resolved config inside its own container.
+_PREFLIGHT_OUT = "/tmp/cashpilot-compose-config.json"
+#: Label on preflight containers, so a leftover one can be found and removed.
+_PREFLIGHT_LABEL = "cashpilot.updater=check"
+
+
+def _remove_leftover_checks(client: docker.DockerClient) -> None:
+    """Remove preflight containers an interrupted check left behind.
+
+    Their filesystem holds a resolved compose file, secrets included.
+    """
+    with contextlib.suppress(Exception):
+        for old in client.containers.list(all=True, filters={"label": _PREFLIGHT_LABEL}):
+            with contextlib.suppress(Exception):
+                old.remove(force=True)
+
+
+def _read_file_from_container(container: Any, path: str) -> bytes:
+    """One regular file out of a (possibly exited) container."""
+    import io as _io
+    import tarfile as _tarfile
+
+    stream, _stat = container.get_archive(path)
+    buf = _io.BytesIO(b"".join(stream))
+    with _tarfile.open(fileobj=buf) as tar:
+        for member in tar:
+            if member.isfile():
+                fh = tar.extractfile(member)
+                if fh is not None:
+                    return fh.read()
+    raise ValueError(f"{path} is not a file in the archive")
+
+
 def _resolve_compose_config(
-    client: docker.DockerClient, working_dir: str, environment: dict[str, str], services: list[str]
+    client: docker.DockerClient,
+    working_dir: str,
+    environment: dict[str, str],
+    services: list[str],
+    volumes: dict[str, dict[str, str]],
 ) -> dict[str, Any]:
     """Resolve the compose file exactly as the updater will, without a socket.
 
-    Same image, same project mount (read-only here), same environment. Raises
-    SelfUpdateUnavailable when Compose rejects the file, RuntimeError when the
-    check itself cannot run.
+    Same image, same project and env-file mounts (read-only here), same
+    environment. The resolved file carries every interpolated secret from .env
+    (session, encryption and API keys), so it is written to a file inside the
+    check container and copied out, never printed: stdout would hand it to the
+    daemon's log driver. Raises SelfUpdateUnavailable when Compose rejects the
+    file, RuntimeError when the check itself cannot run.
     """
     import json as _json
 
+    _remove_leftover_checks(client)
     try:
         check = client.containers.run(
             UPDATER_IMAGE,
-            command=["docker", "compose", "config", "--format", "json", *services],
+            command=["docker", "compose", "config", "--format", "json", "-o", _PREFLIGHT_OUT, *services],
             working_dir=working_dir,
-            volumes={working_dir: {"bind": working_dir, "mode": "ro"}},
+            volumes={path: {**spec, "mode": "ro"} for path, spec in volumes.items()},
             environment=environment,
             labels={"cashpilot.updater": "check"},
             detach=True,
@@ -1468,7 +1511,6 @@ def _resolve_compose_config(
     try:
         try:
             status = check.wait(timeout=_PREFLIGHT_TIMEOUT)
-            out = check.logs(stdout=True, stderr=False)
             err = check.logs(stdout=False, stderr=True)
         except Exception as exc:  # timeout (requests) or daemon error
             logger.warning("Self-update preflight did not finish: %s", exc)
@@ -1480,8 +1522,9 @@ def _resolve_compose_config(
                 "Not updating: docker compose rejected the configuration: " + (err_text[-600:] or f"exit {code}")
             )
         try:
-            cfg = _json.loads((out or b"").decode("utf-8", "replace"))
-        except ValueError as exc:
+            out = _read_file_from_container(check, _PREFLIGHT_OUT)
+            cfg = _json.loads(out.decode("utf-8", "replace"))
+        except Exception as exc:
             raise RuntimeError("The update check returned unreadable output.") from exc
         if not isinstance(cfg, dict):
             raise RuntimeError("The update check returned unreadable output.")
@@ -1560,6 +1603,26 @@ def spawn_self_update() -> dict[str, Any]:
         # and `up` fails on the container_name it already uses.
         environment["COMPOSE_PROJECT_NAME"] = project["project"]
 
+    # The project dir is mounted at its own path. An install started with
+    # --env-file read its values from those files instead of .env; without them
+    # the update would resolve every variable to its default. Pass the same
+    # files (Compose's COMPOSE_ENV_FILES, comma-separated like the label) and
+    # mount any that live outside the project dir, read-only, at their paths.
+    project_mount = {working_dir: {"bind": working_dir}}
+    env_mounts: dict[str, dict[str, str]] = {}
+    env_files = [f for f in project["env_files"].split(",") if f]
+    if env_files:
+        if not all(f.startswith("/") for f in env_files):
+            raise SelfUpdateUnavailable(
+                f"This install reads its settings from {', '.join(env_files)}, a path the update "
+                f"helper cannot mount. Update from your compose folder instead: {_MANUAL_UPDATE}"
+            )
+        environment["COMPOSE_ENV_FILES"] = ",".join(env_files)
+        root = working_dir.rstrip("/") + "/"
+        for f in env_files:
+            if not f.startswith(root):
+                env_mounts[f] = {"bind": f, "mode": "ro"}
+
     # Only one update at a time; checked before the preflight so a second
     # click does not even resolve the config.
     try:
@@ -1575,13 +1638,18 @@ def spawn_self_update() -> dict[str, Any]:
         logger.warning("Self-update lock check failed: %s", exc)
         raise RuntimeError("Docker refused to start the update helper.") from exc
 
-    cfg = _resolve_compose_config(client, working_dir, environment, services)
+    cfg = _resolve_compose_config(client, working_dir, environment, services, {**project_mount, **env_mounts})
     drift = _port_drift(live, cfg)
     if drift:
+        source = (
+            "the env file" + ("s " if len(env_files) > 1 else " ") + ", ".join(env_files) + " you started it with"
+            if env_files
+            else "the .env file next to your compose file"
+        )
         raise SelfUpdateUnavailable(
             "Not updating: " + "; ".join(drift) + ". This happens when a port or address was set on the command line "
             "(for example CASHPILOT_UI_PORT=8088 docker compose up -d). The update "
-            "cannot see your shell, only the .env file next to your compose file. "
+            f"cannot see your shell, only {source}. "
             "Put the values there, or update by hand: " + _MANUAL_UPDATE
         )
 
@@ -1594,6 +1662,7 @@ def spawn_self_update() -> dict[str, Any]:
             volumes={
                 "/var/run/docker.sock": {"bind": "/var/run/docker.sock", "mode": "rw"},
                 working_dir: {"bind": working_dir, "mode": "rw"},
+                **env_mounts,
             },
             environment=environment,
             labels={"cashpilot.updater": "true"},

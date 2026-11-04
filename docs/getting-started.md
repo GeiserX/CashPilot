@@ -31,12 +31,18 @@ Navigate to [http://localhost:8080](http://localhost:8080) in your browser. Sinc
     instead of editing the compose file:
 
     ```bash
-    echo CASHPILOT_UI_PORT=8088 >> .env
+    printf '\nCASHPILOT_UI_PORT=8088\n' >> .env
     docker compose up -d
     ```
 
     Then open http://localhost:8088. Keep the value in `.env`, because the
-    in-app update reads that file and not your shell.
+    in-app update reads that file and not your shell. (`printf` starts with a
+    newline so the line never joins the last one of an existing `.env`.)
+
+    The variable needs a `docker-compose.yml` whose `ports:` line reads
+    `${CASHPILOT_UI_PORT:-8080}:8080`. The file from v1.61 and older hard-codes
+    `8080:8080` and ignores it. Download the current file, or
+    keep your own edited port mapping: the in-app update accepts that too.
 
 !!! warning "First-run setup token required"
     On first start, CashPilot generates a one-time setup token and prints it to the **cashpilot-ui** container logs:
@@ -155,8 +161,8 @@ latest image first.
 
 **From the dashboard.** **Settings**, **About and updates** runs the same two
 commands for you from a short-lived helper container. The helper reads your
-compose files and the `.env` next to them, never the shell you started
-CashPilot from. Say you started it with `CASHPILOT_UI_PORT=8088 docker compose up -d`.
+compose files and the `.env` next to them (or the files you passed with
+`--env-file`), never the shell you started CashPilot from. Say you started it with `CASHPILOT_UI_PORT=8088 docker compose up -d`.
 The update would put the dashboard back on 8080, so it stops and tells you why
 instead. Put that value in `.env` and the button works.
 
