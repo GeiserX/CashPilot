@@ -1,0 +1,158 @@
+#!/bin/sh
+# Entrypoint of the CashPilot tunnel sidecar (Dockerfile.tunnel, docs/proxies.md).
+#
+# The earner runs in this container's network namespace. This script makes the
+# proxy the only way out of that namespace, in this order:
+#
+#   1. nftables first: the output policy is drop, and the only packets allowed
+#      onto the real interface are the tunnel's own (to the proxy, or marked by
+#      tailscaled). From here on nothing leaks, whatever happens below.
+#   2. DNS to Docker's resolver (127.0.0.11) is redirected into the tunnel, and
+#      every other packet to 127.0.0.11 is dropped, so no lookup leaves from the
+#      box's own address.
+#   3. The routes and the tunnel process. If that process dies, the drop policy
+#      stays and the earner has nowhere to send a packet.
+#   4. A probe through the tunnel. /run/ready is written only when the exit IP
+#      it sees is not the box's own.
+#
+# Settings come from one file per key in /run/cashpilot-secret, which the
+# worker writes before the container starts. Nothing secret is in the
+# environment or the command line Docker records.
+set -eu
+
+S=/run/cashpilot-secret
+DNS_TARGET=1.1.1.1
+
+read_key() {
+    [ -f "$S/$1" ] && cat "$S/$1" || true
+}
+
+die() {
+    echo "cp-tunnel: $*" >&2
+    exit 1
+}
+
+KIND=$(read_key kind)
+OWN_IP=$(read_key own_ip)
+rm -f /run/ready
+
+DEV=$(ip -4 route show default | awk '{print $5; exit}')
+GW=$(ip -4 route show default | awk '{print $3; exit}')
+[ -n "$DEV" ] && [ -n "$GW" ] || die "no default route on the container network; nothing to tunnel over"
+
+case "$KIND" in
+socks5 | http)
+    PROXY_IP=$(read_key proxy_ip)
+    PROXY_PORT=$(read_key proxy_port)
+    case "$PROXY_IP" in *[!0-9.]* | "") die "proxy_ip is not an IPv4 address" ;; esac
+    case "$PROXY_PORT" in *[!0-9]* | "") die "proxy_port is not a number" ;; esac
+    TUN=tun0
+    EGRESS_RULE="oifname \"$DEV\" ip daddr $PROXY_IP tcp dport $PROXY_PORT accept"
+    ;;
+tailscale)
+    TUN=tailscale0
+    # tailscaled marks its own sockets with 0x80000 (net/netns/netns_linux.go).
+    # Only those may use the real interface; the earner cannot set a mark
+    # because it has no CAP_NET_ADMIN.
+    EGRESS_RULE="oifname \"$DEV\" meta mark and 0xff0000 == 0x80000 accept"
+    ;;
+*)
+    die "unknown tunnel kind"
+    ;;
+esac
+
+# 1 and 2: close everything, then open the tunnel's own way out.
+cat >/run/cp-tunnel.nft <<EOF
+table inet cashpilot
+delete table inet cashpilot
+table inet cashpilot {
+    chain dns {
+        type nat hook output priority -150; policy accept;
+        ip daddr 127.0.0.11 udp dport 53 dnat ip to $DNS_TARGET
+        ip daddr 127.0.0.11 tcp dport 53 dnat ip to $DNS_TARGET
+    }
+    # A lookup sent to 127.0.0.11 keeps its loopback source after the DNAT
+    # above. The container is created with route_localnet=1 so the kernel
+    # routes it at all, and this gives it the tunnel's own address.
+    chain dns_src {
+        type nat hook postrouting priority 100; policy accept;
+        oifname "$TUN" ip saddr 127.0.0.0/8 masquerade
+    }
+    chain out {
+        type filter hook output priority 0; policy drop;
+        ip daddr 127.0.0.11 drop
+        oifname "lo" accept
+        oifname "$TUN" accept
+        $EGRESS_RULE
+    }
+    chain in {
+        type filter hook input priority 0; policy drop;
+        ct state established,related accept
+        iifname "lo" accept
+        iifname "$TUN" accept
+    }
+}
+EOF
+nft -f /run/cp-tunnel.nft || die "could not load the firewall rules; refusing to start"
+
+probe_until_ready() {
+    i=0
+    while [ "$i" -lt 40 ]; do
+        i=$((i + 1))
+        if out=$(cp-probe 2>/dev/null); then
+            exit_ip=$(printf '%s' "$out" | sed -n 's/.*"ip":"\([^"]*\)".*/\1/p')
+            if [ -n "$exit_ip" ] && [ "$exit_ip" != "$OWN_IP" ]; then
+                printf '%s\n' "$out" >/run/ready.tmp && mv /run/ready.tmp /run/ready
+                return 0
+            fi
+            echo "cp-tunnel: the probe left from this box's own address; not ready" >&2
+        fi
+        sleep 1
+    done
+    return 1
+}
+
+# 3: routes and the tunnel process.
+if [ "$KIND" = tailscale ]; then
+    mkdir -p /run/ts
+    tailscaled --tun=tailscale0 --state=mem: --statedir=/run/ts --socket=/run/ts/ts.sock &
+    TPID=$!
+    i=0
+    until tailscale --socket=/run/ts/ts.sock status >/dev/null 2>&1 || [ "$i" -ge 20 ]; do
+        i=$((i + 1))
+        sleep 0.5
+        # status fails while logged out too; the socket answering is enough.
+        [ -S /run/ts/ts.sock ] && break
+    done
+    set -- --socket=/run/ts/ts.sock up \
+        --auth-key="file:$S/auth_key" \
+        --exit-node="$(read_key exit_node)" \
+        --exit-node-allow-lan-access=false \
+        --accept-dns=false \
+        --accept-routes=false \
+        --netfilter-mode=off \
+        --hostname="$(read_key hostname)"
+    LOGIN=$(read_key login_server)
+    [ -n "$LOGIN" ] && set -- "$@" --login-server="$LOGIN"
+    tailscale "$@" || die "tailscale up failed"
+else
+    ip route replace "$PROXY_IP/32" via "$GW" dev "$DEV"
+    ip route del default
+    ip tuntap add mode tun dev tun0
+    # An address only so DNS lookups have a source to be rewritten to (the
+    # dns_src chain); tun2proxy never sees it leave the tunnel.
+    ip addr add 10.255.255.1/32 dev tun0
+    ip link set tun0 up
+    ip route add default dev tun0
+    # The URL is percent-encoded by the worker. tun2proxy only takes it on the
+    # command line; that is visible inside this container's own PID namespace,
+    # which the earner does not share.
+    tun2proxy-bin --tun tun0 --proxy "$(read_key proxy_url)" --dns virtual --exit-on-fatal-error &
+    TPID=$!
+fi
+
+# 4: ready only when traffic really leaves through the tunnel.
+(probe_until_ready || echo "cp-tunnel: no working exit through the tunnel after 40 s" >&2) &
+
+wait "$TPID"
+die "the tunnel process exited; the earner stays cut off until this container restarts"

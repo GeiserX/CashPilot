@@ -299,7 +299,8 @@ class TestTheWorker:
 
     def test_the_heartbeat_advertises_the_feature(self):
         src = (ROOT / "app" / "worker_api.py").read_text(encoding="utf-8")
-        assert '"features": ["instances", "isolation_check", "state_backup"]' in src
+        assert 'features = ["instances", "isolation_check", "state_backup", "proxy_tunnel"]' in src
+        assert '"features": features' in src
 
 
 class TestTheForm:

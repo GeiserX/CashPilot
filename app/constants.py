@@ -14,6 +14,14 @@ LABEL_INSTANCE = "cashpilot.instance"
 # "true" on a container deployed from a service the user added from an image
 # reference (app/custom_services.py) rather than from the reviewed catalog.
 LABEL_CUSTOM = "cashpilot.custom"
+# The proxy (UI proxy id) a proxied copy and its tunnel sidecar belong to
+# (app/proxy_tunnel.py). A container with this label is never "copy N" of its
+# service: it lives on another exit IP and is managed on its own.
+LABEL_PROXY = "cashpilot.proxy"
+# What a managed container is when it is not an earner. "tunnel" is the
+# sidecar whose network namespace a proxied copy runs in.
+LABEL_ROLE = "cashpilot.role"
+ROLE_TUNNEL = "tunnel"
 # The most copies of one service a worker will run. A ceiling against a typo,
 # not a recommendation: on one connection most providers pay for one.
 MAX_INSTANCES = 10
