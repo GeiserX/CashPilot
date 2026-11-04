@@ -85,7 +85,7 @@ Upgrading an existing install? Read [UPGRADING.md](https://github.com/GeiserX/Ca
 
 ## Support CashPilot
 
-CashPilot is free, GPL-licensed, and built and maintained by a single developer. The simplest way to support it costs you nothing: when you sign up for a provider, use the links in this README or the Sign Up buttons in CashPilot. They are referral links, so the provider pays the maintainer a small commission. In the programmes we know of, that commission does not come out of your earnings. Several providers also give you a sign-up bonus through them, and CashPilot shows that bonus next to the button.
+CashPilot is free, GPL-licensed, and built and maintained by a single developer. The simplest way to support it costs you nothing: when you sign up for a provider, use the links in this README or the Sign Up buttons in CashPilot. They are referral links, so the provider gives the maintainer a small reward, usually a cash commission and with some providers points. In the programmes we know of, that reward does not come out of your earnings. Several providers also give you a sign-up bonus through them, and CashPilot shows that bonus next to the button.
 
 If you already have accounts everywhere, a star on GitHub helps other people find the project, and [GitHub Sponsors](https://github.com/sponsors/geiserx), [Patreon](https://www.patreon.com/geiser) and [Buy Me a Coffee](https://www.buymeacoffee.com/geiser) are there too.
 
