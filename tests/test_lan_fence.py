@@ -21,6 +21,10 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
+# Before worker_api is imported: it reads the fleet key once, at import, and a
+# later module (test_isolation_check) relies on it being set.
+os.environ.setdefault("CASHPILOT_API_KEY", "test-fleet-key")
+
 import pytest
 from docker.errors import NotFound
 from fastapi.testclient import TestClient
