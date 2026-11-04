@@ -11,11 +11,18 @@ read-only, no new privileges, removed on every path.
 The worker keeps one window of counter state per namespace so the next round
 can report how many connections were opened in between. Everything else goes
 to the UI in the heartbeat and is forgotten here.
+
+An earner on the host network (Mysterium) shares the machine's socket table.
+Its probe joins the host network and the host cgroup namespace instead and
+keeps only the sockets of the earner's own cgroup (procnet ``PROBE_MODE=cgroup``),
+with the same floor otherwise. The host's counters are the machine's, so that
+row carries destinations and no counter changes.
 """
 
 from __future__ import annotations
 
 import contextlib
+import hashlib
 import json
 import logging
 import threading
@@ -36,6 +43,12 @@ ACTIVITY_SCRIPT = Path(procnet.__file__).read_text(encoding="utf-8")
 PROBE_LABEL = isolation_check.PROBE_LABEL
 PROBE_KIND = "activity"
 PROBE_PREFIX = "cashpilot-activity-probe-"
+#: Which worker a probe belongs to, so two workers on one Docker host never
+#: remove each other's probe. worker_api sets WORKER_ID to its client_id.
+WORKER_LABEL = "cashpilot.probe.worker"
+WORKER_ID = ""
+#: Container states a probe of an older worker (no WORKER_LABEL) may be swept in.
+STOPPED_STATES = ("created", "exited", "dead")
 #: Seconds one probe may run: 5 snapshots 2 s apart is about 8 s.
 PROBE_TIMEOUT = 30
 PROBE_SNAPSHOTS = 5
@@ -86,8 +99,23 @@ def _remove(container: Any) -> bool:
     return True
 
 
+def _ours(c: Any) -> bool:
+    """A probe this worker may remove: its own, or a stopped one an older worker left unlabelled."""
+    labels = (_attrs(c).get("Config") or {}).get("Labels") or getattr(c, "labels", None) or {}
+    if WORKER_LABEL in labels:
+        return labels[WORKER_LABEL] == WORKER_ID
+    state = _attrs(c).get("State")
+    status = state.get("Status") if isinstance(state, dict) else state
+    return str(status or "") in STOPPED_STATES
+
+
 def sweep(client: Any) -> list[str]:
-    """Remove every activity probe still on this host. Returns the ones Docker kept."""
+    """Remove this worker's activity probes still on the host. Returns the ones Docker kept.
+
+    Another worker's probe is never touched, even when it shares the Docker
+    host: it may be mid-round. A probe with no worker label (from a release
+    before the label) is removed only once it has stopped.
+    """
     left = []
     try:
         found = client.containers.list(all=True, filters={"label": f"{PROBE_LABEL}={PROBE_KIND}"})
@@ -95,13 +123,18 @@ def sweep(client: Any) -> list[str]:
         logger.warning("Could not list activity probes: %s", type(exc).__name__)
         return left
     for c in found:
-        if not _remove(c):
+        if _ours(c) and not _remove(c):
             left.append(str(getattr(c, "name", "") or ""))
     return left
 
 
+def _worker_tag() -> str:
+    """8 hex digits of the worker id: unique per worker, valid in a container name."""
+    return hashlib.sha256(WORKER_ID.encode()).hexdigest()[:8]
+
+
 def probe_name(owner_id: str) -> str:
-    return PROBE_PREFIX + owner_id[:12]
+    return f"{PROBE_PREFIX}{_worker_tag()}-{owner_id[:12]}"
 
 
 def probe_kwargs(image: str, owner_id: str) -> dict[str, Any]:
@@ -123,9 +156,24 @@ def probe_kwargs(image: str, owner_id: str) -> dict[str, Any]:
         # volume is created at all, so none can leak.
         "tmpfs": {"/data": "size=64k"},
         "healthcheck": {"test": ["NONE"]},
-        "labels": {PROBE_LABEL: PROBE_KIND},
+        "labels": {PROBE_LABEL: PROBE_KIND, WORKER_LABEL: WORKER_ID},
         "detach": True,
     }
+
+
+def probe_kwargs_host(image: str, container_id: str) -> dict[str, Any]:
+    """The probe of a host-network earner: the same floor, on the host network.
+
+    It joins the host network (whose socket table holds the earner's sockets)
+    and the host cgroup namespace (so the read-only /sys/fs/cgroup shows the
+    earner's cgroup), and keeps only the sockets of that cgroup. It gets no
+    capability, mount or user the other probes do not.
+    """
+    kwargs = probe_kwargs(image, container_id)
+    kwargs["network_mode"] = "host"
+    kwargs["cgroupns"] = "host"
+    kwargs["environment"] = {**kwargs["environment"], "PROBE_MODE": "cgroup", "PROBE_CONTAINER": container_id}
+    return kwargs
 
 
 class ProbeFailed(RuntimeError):
@@ -136,18 +184,21 @@ class ProbeFailed(RuntimeError):
         self.reason = reason
 
 
-def run_probe(client: Any, image: str, owner_id: str, leftovers: list[str]) -> dict[str, Any]:
-    """Run one probe in ``owner_id``'s namespace and return what it printed.
+def run_probe(client: Any, image: str, owner_id: str, leftovers: list[str], kind: str = "netns") -> dict[str, Any]:
+    """Run one probe for ``owner_id`` and return what it printed.
 
-    Removed on every path; a probe Docker would not remove goes in ``leftovers``.
+    ``kind`` "netns" joins the owner's network namespace; "cgroup" is a
+    host-network earner, matched by its cgroup. Removed on every path; a probe
+    Docker would not remove goes in ``leftovers``.
     """
     name = probe_name(owner_id)
     with contextlib.suppress(Exception):
         _remove(client.containers.get(name))
     container = None
+    kwargs = probe_kwargs_host(image, owner_id) if kind == "cgroup" else probe_kwargs(image, owner_id)
     try:
         try:
-            container = client.containers.run(**probe_kwargs(image, owner_id))
+            container = client.containers.run(**kwargs)
         except Exception as exc:  # noqa: BLE001
             raise ProbeFailed("run_error") from exc
         try:
@@ -231,6 +282,13 @@ def network_context(
                 subnets.append((f"{net[ip_key]}/{net[len_key]}", driver))
     dns = list(_host(owner).get("Dns") or []) + _configured_dns()
     return {"gateways": sorted(gateways), "dns": dns, "subnets": subnets, "peers": sorted(peers)}
+
+
+def host_context(owner: Any) -> dict[str, Any]:
+    """The network context of a host-network earner: no bridge, so no gateway,
+    subnet or neighbour. The router answering DNS on 53 is infra by the DNS
+    rule, and any other local address is the owner's network."""
+    return {"gateways": [], "dns": list(_host(owner).get("Dns") or []), "subnets": [], "peers": []}
 
 
 def _counters(snmp: Any) -> tuple[int, ...] | None:
@@ -347,7 +405,9 @@ def plan(
     """Group earners by the namespace they live in.
 
     Returns ({owner id: {"owner": container, "members": [names], "mode": str,
-    "owner_earner": bool}}, [samples for earners that cannot be probed]).
+    "owner_earner": bool, "kind": "netns" or "cgroup"}}, [samples for earners
+    that cannot be probed]). A host-network earner, or one joined to a
+    host-network container, is a "cgroup" group of its own, keyed by its own id.
     """
     joinable = set(PLAIN_RUNTIMES) if joinable is None else joinable
     groups: dict[str, dict[str, Any]] = {}
@@ -364,14 +424,14 @@ def plan(
         host = _host(c)
         mode = str(host.get("NetworkMode") or "bridge")
         runtime = str(host.get("Runtime") or "")
-        if mode == "host":
-            fixed.append(_sample_base(name, [name], mode, "host_network"))
-            continue
         if mode == "none":
             fixed.append(_sample_base(name, [name], mode, "no_network"))
             continue
         if runtime not in joinable:
             fixed.append(_sample_base(name, [name], mode, "sandboxed"))
+            continue
+        if mode == "host":
+            groups[c.id] = {"owner": c, "members": [name], "mode": mode, "owner_earner": True, "kind": "cgroup"}
             continue
         owner = c
         if mode.startswith("container:"):
@@ -390,14 +450,21 @@ def plan(
                 fixed.append(_sample_base(name, [name], mode, "probe_failed", "owner_missing"))
                 continue
             if _host(owner).get("NetworkMode") == "host":
-                fixed.append(_sample_base(name, [name], mode, "host_network"))
+                # Still the host's sockets: matched by this member's own cgroup.
+                groups[c.id] = {"owner": c, "members": [name], "mode": mode, "owner_earner": True, "kind": "cgroup"}
                 continue
             if str(_host(owner).get("Runtime") or "") not in joinable:
                 fixed.append(_sample_base(name, [name], mode, "sandboxed"))
                 continue
         group = groups.setdefault(
             owner.id,
-            {"owner": owner, "members": [], "mode": mode, "owner_earner": getattr(owner, "name", None) in earners},
+            {
+                "owner": owner,
+                "members": [],
+                "mode": mode,
+                "owner_earner": getattr(owner, "name", None) in earners,
+                "kind": "netns",
+            },
         )
         group["members"].append(name)
         if owner.id == c.id:
@@ -438,9 +505,24 @@ def window_end(now: float | None = None) -> int:
     return int(now // WINDOW_SECONDS) * WINDOW_SECONDS
 
 
+#: Why a host-network earner's sockets could not be told apart (procnet ``reason``).
+CGROUP_REASONS = ("cgroup_v1", "cgroup_missing", "sock_diag_refused", "kernel_no_cgroup_id")
+
+
 def _sample(name: str, group: dict[str, Any], data: dict[str, Any], ctx: dict[str, Any], now: float) -> dict[str, Any]:
+    if group.get("kind") == "cgroup":
+        _prev.pop(group["owner"].id, None)
+        reason = str(data.get("reason") or "")
+        if data.get("attribution") != "cgroup" or reason:
+            # The probe ran but could not tell this earner's sockets from the host's.
+            why = reason if reason in CGROUP_REASONS else "cgroup_missing"
+            return _sample_base(name, sorted(group["members"]), group["mode"], "host_network", why)
     s = _sample_base(name, sorted(group["members"]), group["mode"], "ok")
-    s.update(deltas(group["owner"].id, data, now))
+    if group.get("kind") == "cgroup":
+        # The host's counters are the machine's, not this earner's: no deltas.
+        s["reason"] = "host_cgroup"
+    else:
+        s.update(deltas(group["owner"].id, data, now))
     summary = data["summary"]
     for key in ("est_max", "syn_sent_max", "udp_bound", "remotes_total"):
         s[key] = summary.get(key)
@@ -503,11 +585,14 @@ def _round(client: Any, now: float) -> dict[str, Any]:
         if time.monotonic() > deadline:
             return _sample_base(name, sorted(group["members"]), group["mode"], "skipped_budget")
         try:
-            data = run_probe(client, image, owner_id, leftovers)
+            data = run_probe(client, image, owner_id, leftovers, group.get("kind", "netns"))
         except ProbeFailed as exc:
             _prev.pop(owner_id, None)
             return _sample_base(name, sorted(group["members"]), group["mode"], "probe_failed", exc.reason)
-        ctx = network_context(client, group["owner"], networks, earners)
+        if group.get("kind") == "cgroup":
+            ctx = host_context(group["owner"])
+        else:
+            ctx = network_context(client, group["owner"], networks, earners)
         return _sample(name, group, data, ctx, time.monotonic())
 
     with ThreadPoolExecutor(max_workers=MAX_PARALLEL) as pool:

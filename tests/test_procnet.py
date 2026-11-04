@@ -311,3 +311,228 @@ class TestFixes:
         assert got["udp"] == {"InDatagrams": 90, "OutDatagrams": 90}
         assert procnet.parse_snmp(SNMP, None)["udp"] == {"InDatagrams": 50, "OutDatagrams": 60}
         assert procnet.parse_snmp(SNMP, "garbage\n")["udp"] == {"InDatagrams": 50, "OutDatagrams": 60}
+
+
+# ---------------------------------------------------------------------------
+# Host-network earners: sock_diag sockets matched by cgroup
+# ---------------------------------------------------------------------------
+
+
+def _diag_msg(family, state, sport, dport, src, dst, cgroup=None, pad_attr=False):
+    """One SOCK_DIAG_BY_FAMILY message as the kernel lays it out."""
+    raw_src = socket.inet_pton(family, src).ljust(16, b"\0")
+    raw_dst = socket.inet_pton(family, dst).ljust(16, b"\0")
+    body = procnet._DIAG_MSG.pack(
+        family, state, 0, 0, socket.htons(sport), socket.htons(dport), raw_src, raw_dst, 0, 0, 0, 0, 0, 0
+    )
+    if pad_attr:
+        # An unrelated 5-byte attribute (padded to 8) before the cgroup id.
+        body += struct.pack("=HH", 5, 99) + b"x" + b"\0" * 3
+    if cgroup is not None:
+        body += struct.pack("=HHQ", 12, procnet.INET_DIAG_CGROUP_ID, cgroup)
+    return struct.pack("=IHHII", 16 + len(body), procnet.SOCK_DIAG_BY_FAMILY, 2, 1, 0) + body
+
+
+def _done():
+    return struct.pack("=IHHII", 20, procnet.NLMSG_DONE, 2, 1, 0) + b"\0" * 4
+
+
+def _error(errno):
+    return struct.pack("=IHHII", 36, procnet.NLMSG_ERROR, 0, 1, 0) + struct.pack("=i", -errno) + b"\0" * 16
+
+
+class TestParseDiag:
+    def test_reads_addresses_ports_state_and_cgroup(self):
+        data = _diag_msg(socket.AF_INET, 1, 40000, 443, "10.0.0.5", "1.1.1.1", cgroup=4242, pad_attr=True)
+        data += _diag_msg(socket.AF_INET6, 10, 4449, 0, "::", "::")
+        socks, done, err = procnet.parse_diag(data, "tcp")
+        assert (done, err) == (False, 0)
+        assert socks == [
+            {
+                "proto": "tcp",
+                "lip": "10.0.0.5",
+                "lport": 40000,
+                "rip": "1.1.1.1",
+                "rport": 443,
+                "cgroup": 4242,
+                "state": "est",
+            },
+            {"proto": "tcp", "lip": "::", "lport": 4449, "rip": "::", "rport": 0, "cgroup": None, "state": "listen"},
+        ]
+
+    def test_udp_state_is_connected_or_not(self):
+        data = _diag_msg(socket.AF_INET, 7, 5000, 53, "10.0.0.5", "9.9.9.9", cgroup=7)
+        data += _diag_msg(socket.AF_INET, 7, 5001, 0, "0.0.0.0", "0.0.0.0", cgroup=7)
+        socks, _, _ = procnet.parse_diag(data, "udp")
+        assert [s["state"] for s in socks] == ["est", "other"]
+
+    def test_done_and_error_end_the_dump(self):
+        socks, done, err = procnet.parse_diag(
+            _diag_msg(socket.AF_INET, 1, 1, 2, "10.0.0.1", "10.0.0.2", 3) + _done(), "tcp"
+        )
+        assert len(socks) == 1 and (done, err) == (True, 0)
+        assert procnet.parse_diag(_error(13), "tcp") == ([], True, 13)
+
+    def test_a_truncated_message_stops_with_an_error(self):
+        data = _diag_msg(socket.AF_INET, 1, 1, 2, "10.0.0.1", "10.0.0.2", 3)
+        assert procnet.parse_diag(data[:-4], "tcp") == ([], True, -1)
+
+
+class TestCgroupIds:
+    CID = "ab" * 32
+
+    def _tree(self, tmp_path, v2=True):
+        if v2:
+            (tmp_path / "cgroup.controllers").write_text("cpu memory\n")
+        return tmp_path
+
+    def test_finds_the_container_and_its_children(self, tmp_path):
+        root = self._tree(tmp_path)
+        mine = root / "system.slice" / f"docker-{self.CID}.scope"
+        (mine / "init").mkdir(parents=True)
+        (root / "system.slice" / f"docker-{'cd' * 32}.scope").mkdir()
+        ids, reason = procnet.cgroup_ids(self.CID, root=str(root))
+        assert reason == ""
+        assert ids == {mine.stat().st_ino, (mine / "init").stat().st_ino}
+
+    def test_cgroupfs_layout(self, tmp_path):
+        root = self._tree(tmp_path)
+        (root / "docker" / self.CID).mkdir(parents=True)
+        ids, reason = procnet.cgroup_ids(self.CID, root=str(root))
+        assert ids == {(root / "docker" / self.CID).stat().st_ino} and reason == ""
+
+    def test_v1_and_missing(self, tmp_path):
+        assert procnet.cgroup_ids(self.CID, root=str(tmp_path)) == (set(), "cgroup_v1")
+        root = self._tree(tmp_path)
+        (root / "docker" / ("cd" * 32)).mkdir(parents=True)
+        assert procnet.cgroup_ids(self.CID, root=str(root)) == (set(), "cgroup_missing")
+
+    @pytest.mark.parametrize("bad", ["", "ab" * 6, "zz" * 32, "ab" * 33])
+    def test_a_short_or_odd_id_never_matches(self, tmp_path, bad):
+        root = self._tree(tmp_path)
+        (root / "docker" / self.CID).mkdir(parents=True)
+        assert procnet.cgroup_ids(bad, root=str(root)) == (set(), "cgroup_missing")
+
+    def test_depth_and_directory_caps(self, tmp_path):
+        root = self._tree(tmp_path)
+        deep = root / "a" / "b" / "c" / self.CID
+        deep.mkdir(parents=True)
+        assert procnet.cgroup_ids(self.CID, root=str(root), max_depth=3)[1] == "cgroup_missing"
+        assert procnet.cgroup_ids(self.CID, root=str(root), max_depth=4)[1] == ""
+        for i in range(20):
+            (root / f"x{i:02d}").mkdir()
+        assert procnet.cgroup_ids(self.CID, root=str(root), max_dirs=5)[1] == "cgroup_missing"
+
+    def test_the_directory_cap_holds_inside_one_large_directory(self, tmp_path):
+        root = self._tree(tmp_path)
+        mine = root / self.CID
+        for i in range(50):
+            (mine / f"c{i:02d}").mkdir(parents=True)
+        ids, _ = procnet.cgroup_ids(self.CID, root=str(root), max_dirs=5)
+        assert 1 <= len(ids) <= 5
+
+
+def _sock(lport, cgroup, rip="1.1.1.1"):
+    return {
+        "proto": "tcp",
+        "lip": "10.0.0.5",
+        "lport": lport,
+        "rip": rip,
+        "rport": 443,
+        "state": "est",
+        "cgroup": cgroup,
+    }
+
+
+class TestCgroupSnapshot:
+    def test_keeps_only_this_containers_sockets(self):
+        dumps = (("tcp", 2, 6),)
+        mine, tagged, worked = procnet.cgroup_snapshot(
+            {10, 11}, dumps, lambda *a: [_sock(1, 10), _sock(2, 11), _sock(3, 99), _sock(4, None)]
+        )
+        assert [s["lport"] for s in mine] == [1, 2] and tagged and worked == 1
+        assert "cgroup" not in mine[0]
+
+    def test_a_missing_id_never_matches(self):
+        """None == None must not hand the host's TIME_WAIT sockets to the earner."""
+        mine, tagged, _ = procnet.cgroup_snapshot({None, 10}, (("tcp", 2, 6),), lambda *a: [_sock(1, None)])
+        assert mine == [] and tagged is False
+
+    def test_only_root_ids_count_as_untagged(self):
+        _, tagged, _ = procnet.cgroup_snapshot({10}, (("tcp", 2, 6),), lambda *a: [_sock(1, 1), _sock(2, 1)])
+        assert tagged is False
+
+    def test_a_refused_dump_is_skipped(self):
+        def dump(proto, *_):
+            if proto == "tcp6":
+                raise OSError(13, "refused")
+            return [_sock(1, 10)]
+
+        mine, _, worked = procnet.cgroup_snapshot({10}, (("tcp", 2, 6), ("tcp6", 10, 6)), dump)
+        assert len(mine) == 1 and worked == 1
+
+
+class TestCgroupReading:
+    CID = "ab" * 32
+
+    def _patch(self, monkeypatch, ids=({5}, ""), snap=None):
+        monkeypatch.setattr(procnet, "cgroup_ids", lambda cid: ids)
+        monkeypatch.setattr(procnet, "cgroup_snapshot", lambda ids: snap)
+        monkeypatch.setattr(procnet.time, "sleep", lambda s: None)
+
+    def test_ok(self, monkeypatch):
+        self._patch(monkeypatch, snap=([_sock(1, 5)], True, 4))
+        snaps, reason = procnet._cgroup_reading(self.CID, 3, 0)
+        assert reason == "" and len(snaps) == 3
+
+    @pytest.mark.parametrize(
+        "ids,snap,reason",
+        [
+            ((set(), "cgroup_v1"), None, "cgroup_v1"),
+            ((set(), "cgroup_missing"), None, "cgroup_missing"),
+            (({5}, ""), ([], False, 0), "sock_diag_refused"),
+            (({5}, ""), ([], False, 4), "kernel_no_cgroup_id"),
+        ],
+    )
+    def test_reasons(self, monkeypatch, ids, snap, reason):
+        self._patch(monkeypatch, ids=ids, snap=snap)
+        assert procnet._cgroup_reading(self.CID, 2, 0) == ([], reason)
+
+
+class TestMainModes:
+    def _run(self, capsys, monkeypatch, env):
+        for k, v in env.items():
+            monkeypatch.setenv(k, v)
+        monkeypatch.setenv("PROBE_SNAPSHOTS", "2")
+        monkeypatch.setenv("PROBE_GAP", "0")
+        procnet.main()
+        return json.loads(capsys.readouterr().out)
+
+    def test_cgroup_mode_reports_no_namespace_or_counters(self, capsys, monkeypatch):
+        monkeypatch.setattr(
+            procnet, "_cgroup_reading", lambda cid, n, g: ([[_sock(1, 5) | {"rip": "1.1.1.1"}]] * n, "")
+        )
+        out = self._run(capsys, monkeypatch, {"PROBE_MODE": "cgroup", "PROBE_CONTAINER": "ab" * 32})
+        assert out["attribution"] == "cgroup" and out["reason"] == ""
+        assert out["netns"] is None and out["snmp_start"] is None and out["snmp_end"] is None
+        assert out["summary"]["est_max"] == 1 and "classified" not in out
+
+    def test_cgroup_mode_failure_carries_its_reason(self, capsys, monkeypatch):
+        monkeypatch.setattr(procnet, "_cgroup_reading", lambda cid, n, g: ([], "cgroup_v1"))
+        out = self._run(capsys, monkeypatch, {"PROBE_MODE": "cgroup", "PROBE_CONTAINER": "ab" * 32})
+        assert out["reason"] == "cgroup_v1" and out["summary"]["out"] == []
+
+    def test_probe_ctx_classifies_rows_in_the_helper(self, capsys, monkeypatch):
+        socks = [_sock(1, 5, "192.168.1.1"), _sock(2, 5, "1.1.1.1")]
+        monkeypatch.setattr(procnet, "_cgroup_reading", lambda cid, n, g: ([socks] * n, ""))
+        ctx = {"gateways": [], "dns": [], "subnets": [], "peers": []}
+        out = self._run(
+            capsys, monkeypatch, {"PROBE_MODE": "cgroup", "PROBE_CONTAINER": "ab" * 32, "PROBE_CTX": json.dumps(ctx)}
+        )
+        assert out["classified"] is True
+        assert {r[1]: r[3] for r in out["summary"]["out"]} == {"192.168.1.1": "lan", "1.1.1.1": "public"}
+
+    @pytest.mark.parametrize("raw", ["", "not json", "[1, 2]"])
+    def test_an_unreadable_ctx_is_ignored(self, monkeypatch, raw):
+        monkeypatch.setenv("PROBE_CTX", raw)
+        assert procnet._ctx_from_env() is None
