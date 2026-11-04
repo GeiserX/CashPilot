@@ -170,6 +170,15 @@ class TestSummarise:
         assert row[3] == 3
         assert row[4] == {"est": 3, "closed": 3}
 
+    def test_a_listener_closed_mid_sample_keeps_its_connections_inbound(self):
+        listen = line(0, "0.0.0.0", 8080, "0.0.0.0", 0, "0A")
+        conn = line(1, "172.18.0.5", 8080, "192.168.1.10", 51000, "01")
+        first, _ = procnet.parse_sockets(HEADER + listen + conn, "tcp")
+        later, _ = procnet.parse_sockets(HEADER + conn, "tcp")
+        s = procnet.summarise([first, later])
+        assert s["out"] == []
+        assert s["in"] == [["192.168.1.10", 8080, 2]]
+
     def test_caps_with_exact_total(self):
         text = HEADER + "".join(
             line(i, "172.18.0.5", 30000 + i, f"198.51.{i // 250}.{i % 250 + 1}", 443, "01") for i in range(100)

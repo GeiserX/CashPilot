@@ -43,6 +43,12 @@ MIN_ROWS = 1000
 #: holds the main database. The real file is about 11 MB and 600k ranges.
 MAX_DOWNLOAD_BYTES = 64 * 1024 * 1024
 MAX_ROWS = 3_000_000
+#: The same for the decompressed stream: a small gzip can expand without
+#: bound. The real table is about 40 MB unpacked, its lines under 200 bytes,
+#: and every line parses.
+MAX_TABLE_BYTES = 512 * 1024 * 1024
+MAX_LINE_BYTES = 4096
+MAX_BAD_LINES = 1000
 
 _lock = threading.Lock()
 
@@ -71,18 +77,35 @@ def key(ip: str) -> str | None:
     return addr.packed.hex()
 
 
+def _bounded_lines(f: Any) -> Any:
+    """Lines of a binary stream, refusing an over-long line or too many bytes in all."""
+    total = 0
+    while line := f.readline(MAX_LINE_BYTES + 1):
+        if len(line) > MAX_LINE_BYTES:
+            raise ValueError("a line is longer than any in the real table")
+        total += len(line)
+        if total > MAX_TABLE_BYTES:
+            raise ValueError("the table unpacks to more than the real one")
+        yield line
+
+
 def _rows(lines: Any) -> Any:
+    bad = 0
     for raw in lines:
         line = raw.decode("utf-8", "replace") if isinstance(raw, bytes) else raw
         parts = line.rstrip("\n").split("\t")
-        if len(parts) < 5:
+        start = end = None
+        asn = -1
+        if len(parts) >= 5:
+            start, end = key(parts[0]), key(parts[1])
+            with contextlib.suppress(ValueError):
+                asn = int(parts[2])
+        if start is None or end is None or asn < 0:
+            bad += 1
+            if bad > MAX_BAD_LINES:
+                raise ValueError("too many lines that are not table rows")
             continue
-        start, end = key(parts[0]), key(parts[1])
-        try:
-            asn = int(parts[2])
-        except ValueError:
-            continue
-        if start is None or end is None or asn == 0:
+        if asn == 0:
             continue  # AS 0: not routed, nothing to name
         cc = parts[3].strip().upper()
         # The table writes "None" or "Unknown" where no country is registered.
@@ -165,7 +188,7 @@ def _download(url: str) -> int:
                         raise ValueError("the download is larger than the real table")
                     f.write(chunk)
         with gzip.open(gz, "rb") as f:
-            return build(f)
+            return build(_bounded_lines(f))
     finally:
         with contextlib.suppress(FileNotFoundError):
             gz.unlink()

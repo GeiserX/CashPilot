@@ -197,7 +197,7 @@ def alert_findings(window: dict[str, Any]) -> list[dict[str, Any]]:
                     "container": s["container"],
                     "detail": "",
                     "message": (
-                        f"{s['container']} opened {len(mail)} mail connection(s) to the internet "
+                        f"{s['container']} opened mail connections to {len(mail)} destination(s) on the internet "
                         f"(port {', '.join(str(p) for p in ports)}). Earners have no reason to send mail; "
                         "this is how an exit node gets your address listed as a spam source."
                     ),

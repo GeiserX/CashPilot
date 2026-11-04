@@ -144,10 +144,16 @@ async def api_activity_settings(request: Request, body: ActivitySetting) -> dict
     deps._require_owner(request)
     w = await _worker(body.worker_id)
     await database.set_config(activity_ui.flag_key(w), "true" if body.enabled else "false")
-    deleted = 0
+    deleted: int | None = 0
     if not body.enabled:
-        deleted = await database.delete_activity(w["id"], raw_only=True)
         activity_ui.LAST_STATUS.pop(w["id"], None)
+        # The switch is already off and stays off; a failed delete is reported,
+        # not raised, so the page does not show it as still on.
+        try:
+            deleted = await database.delete_activity(w["id"], raw_only=True)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Could not delete the raw Activity rows of worker %s: %s", w["id"], type(exc).__name__)
+            deleted = None
     logger.info("Activity %s for worker %s", "enabled" if body.enabled else "disabled", w["id"])
     return {"worker_id": w["id"], "enabled": body.enabled, "deleted_raw": deleted}
 

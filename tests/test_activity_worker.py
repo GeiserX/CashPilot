@@ -246,6 +246,19 @@ class TestRound:
         host = next(s for s in window["samples"] if s["container"] == "cashpilot-mysterium")
         assert host["est_max"] is None and host["out"] == []
 
+    def test_a_chain_ending_on_the_host_network_never_probes(self):
+        """An earner joining a container that joins a host-network one is on the host network."""
+        client = FakeClient(
+            [
+                earner("hostgw", "h" * 64, mode="host"),
+                earner("relay", "r" * 64, mode="container:hostgw"),
+                earner("cashpilot-a", "a" * 64, mode="container:relay"),
+            ]
+        )
+        window = _round(client, ["cashpilot-a"])
+        assert client.runs == []
+        assert {s["container"]: s["status"] for s in window["samples"]} == {"cashpilot-a": "host_network"}
+
     def test_gvisor_hostnet_is_probed_and_gvisor_netstack_is_sandboxed(self):
         """A gVisor runtime with --network=host keeps its sockets in the kernel's namespace."""
         client = FakeClient(
@@ -398,14 +411,19 @@ def wapi():
         worker_api._pending_activity,
         worker_api._activity_seq,
         worker_api._activity_setting_seen,
+        worker_api._activity_missing_replies,
+        worker_api._activity_switches,
     )
     worker_api._activity_setting_seen = False
+    worker_api._activity_missing_replies = 0
     yield worker_api
     (
         worker_api._activity_enabled,
         worker_api._pending_activity,
         worker_api._activity_seq,
         worker_api._activity_setting_seen,
+        worker_api._activity_missing_replies,
+        worker_api._activity_switches,
     ) = saved
 
 
@@ -704,3 +722,39 @@ class TestWorkerReplyFixes:
         wapi._apply_activity_reply(self._resp({"status": "ok"}), 1)
         assert wapi._activity_enabled is True and wapi._pending_activity == {"v": 1}
         assert "x" in activity._prev
+
+    def test_a_ui_that_stops_sending_the_key_switches_it_off(self, wapi):
+        """A UI rolled back to a version without Activity never sends the key again."""
+        wapi._activity_enabled = False
+        wapi._apply_activity_reply(self._resp({"activity": {"enabled": True}}), None)
+        for _ in range(wapi.ACTIVITY_MISSING_REPLIES_OFF - 1):
+            wapi._apply_activity_reply(self._resp({"status": "ok"}), None)
+        assert wapi._activity_enabled is True
+        wapi._apply_activity_reply(self._resp({"status": "ok"}), None)
+        assert wapi._activity_enabled is False
+
+    def test_one_reply_with_the_key_resets_the_missing_count(self, wapi):
+        wapi._activity_enabled = False
+        wapi._apply_activity_reply(self._resp({"activity": {"enabled": True}}), None)
+        for _ in range(wapi.ACTIVITY_MISSING_REPLIES_OFF - 1):
+            wapi._apply_activity_reply(self._resp({"status": "ok"}), None)
+        wapi._apply_activity_reply(self._resp({"activity": {"enabled": True}}), None)
+        for _ in range(wapi.ACTIVITY_MISSING_REPLIES_OFF - 1):
+            wapi._apply_activity_reply(self._resp({"status": "ok"}), None)
+        assert wapi._activity_enabled is True
+
+    def test_a_round_spanning_off_and_on_is_dropped(self, wapi):
+        wapi._activity_enabled = True
+
+        def round_off_then_on():
+            wapi._apply_activity_reply(self._resp({"activity": {"enabled": False}}), None)
+            wapi._apply_activity_reply(self._resp({"activity": {"enabled": True}}), None)
+            return {"v": 1, "samples": []}
+
+        wapi._pending_activity = None
+        with (
+            patch("app.worker_api.orchestrator.docker_available", return_value=True),
+            patch("app.worker_api.activity.run_round", side_effect=round_off_then_on),
+        ):
+            asyncio.run(wapi._activity_cycle())
+        assert wapi._activity_enabled is True and wapi._pending_activity is None

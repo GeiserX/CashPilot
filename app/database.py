@@ -3374,16 +3374,27 @@ async def _checkpoint(db: aiosqlite.Connection) -> bool:
 
 
 async def purge_activity_raw(now: float | None = None) -> int:
-    """Delete raw destinations older than a day, then fold the WAL back into the file."""
+    """Delete raw destinations older than a day, and every row of a removed box,
+    then fold the WAL back into the file.
+
+    delete_worker deletes a box's Activity rows after the box itself; when that
+    second step fails, this sweep is what still removes them.
+    """
     now = time.time() if now is None else now
     db = await _activity_connect()
     try:
         cursor = await db.execute(
             "DELETE FROM activity_dest_raw WHERE window_end < ?", (int(now) - ACTIVITY_RAW_SECONDS,)
         )
+        total = cursor.rowcount or 0
+        for table in ("activity_dest_raw", "activity_samples", "activity_hourly"):
+            cursor = await db.execute(
+                f"DELETE FROM {table} WHERE worker_id NOT IN (SELECT id FROM workers)"  # noqa: S608
+            )
+            total += cursor.rowcount or 0
         await db.commit()
         await _checkpoint(db)
-        return cursor.rowcount or 0
+        return total
     finally:
         await db.close()
 

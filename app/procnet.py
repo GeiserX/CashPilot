@@ -180,9 +180,11 @@ def summarise(snapshots, cap_out=40, cap_in=20):
     """
     out, inbound = {}, {}
     listen, est_max, syn_max, udp_bound = set(), 0, 0, 0
+    # A port is inbound when any snapshot shows a listener on it: a connection
+    # outlives a listener that closed mid-sample, and must not turn outbound.
+    listening = {s["lport"] for snap in snapshots for s in snap if s["proto"] == "tcp" and s["state"] == "listen"}
     for snap in snapshots:
         listeners = [s for s in snap if s["proto"] == "tcp" and s["state"] == "listen"]
-        listening = {s["lport"] for s in listeners}
         # Reported ports are the ones reachable from outside the namespace.
         listen |= {s["lport"] for s in listeners if not _loopback(s["lip"])}
         est = syn = bound = 0

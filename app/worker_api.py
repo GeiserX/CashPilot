@@ -91,6 +91,14 @@ _activity_seq = 0
 # reply without the key (the UI could not read its config) leaves things as
 # they are instead of switching sampling off.
 _activity_setting_seen = False
+# Replies in a row without the key since it was last seen. A UI that could not
+# read its switch misses it once; a UI rolled back to a version without
+# Activity never sends it again, so after a few the switch counts as off.
+_activity_missing_replies = 0
+ACTIVITY_MISSING_REPLIES_OFF = 3
+# Bumped on every switch change, so a round that spanned an off and an on is
+# dropped even though the switch is on again when it ends.
+_activity_switches = 0
 _ui_connected = False
 _last_heartbeat: str = "never"
 _last_error: str = ""
@@ -835,25 +843,31 @@ def _apply_activity_reply(resp: Any, delivered_seq: int | None) -> None:
     switch this time (unchanged). A round is dropped only when the UI says it
     stored it; a UI that sends no ``stored`` predates the field and stored it.
     """
-    global _activity_enabled, _pending_activity, _activity_setting_seen
+    global _activity_enabled, _pending_activity, _activity_setting_seen, _activity_missing_replies
+    global _activity_switches
     body: Any = None
     with contextlib.suppress(Exception):
         body = resp.json()
     setting = body.get("activity") if isinstance(body, dict) else None
-    if not isinstance(setting, dict) and _activity_setting_seen:
-        return
     if isinstance(setting, dict):
         _activity_setting_seen = True
+        _activity_missing_replies = 0
+    elif _activity_setting_seen:
+        _activity_missing_replies += 1
+        if _activity_missing_replies < ACTIVITY_MISSING_REPLIES_OFF:
+            return
     enabled = bool(setting.get("enabled")) if isinstance(setting, dict) else False
     if not enabled:
         if _activity_enabled:
             logger.info("Activity sampling switched off by the UI")
+            _activity_switches += 1
         _activity_enabled = False
         _pending_activity = None
         activity.reset()
         return
     if not _activity_enabled:
         logger.info("Activity sampling switched on by the UI")
+        _activity_switches += 1
         # Counter state from before the switch-off would turn the first new
         # reading into one window holding the whole gap.
         activity.reset()
@@ -875,10 +889,12 @@ async def _activity_cycle() -> None:
         return
     if not await asyncio.to_thread(orchestrator.docker_available):
         return
+    switches = _activity_switches
     result = await asyncio.to_thread(activity.run_round)
-    if not _activity_enabled:
-        # Switched off while the round ran: the round wrote counter state the
-        # switch-off had already cleared.
+    if not _activity_enabled or _activity_switches != switches:
+        # Switched off while the round ran (even if on again by now): the round
+        # wrote counter state the switch-off had already cleared, and part of
+        # it was sampled while the owner had it off.
         activity.reset()
         return
     if result is None:

@@ -235,7 +235,8 @@
             return '<tr><td>' + esc(when(r.window_end)) + '</td><td>' + (r.dir === 'in' ? 'in' : 'out') + '</td><td class="mono">' + esc(r.ip) + '</td>' +
               '<td>' + esc(r.proto) + '/' + esc(r.port) + '</td><td><span class="activity-chip' + (r.dir !== 'in' && ALARM[r['class']] ? ' activity-chip-warn' : '') + '">' + esc((r.dir === 'in' ? 'from ' : '') + (CLASS_LABEL[r['class']] || r['class'])) + '</span></td>' +
               '<td>' + esc(r.asn || '—') + '</td><td>' + esc(r.cc || '—') + '</td><td>' + esc(r.seen) + '/5</td></tr>';
-          }).join('') + '</tbody></table>' : '<p class="muted">none</p>') + '</details>';
+          }).join('') + '</tbody></table>' +
+          (raw.length > 500 ? '<p class="muted">Showing the newest 500 of ' + esc(raw.length) + ' rows.</p>' : '') : '<p class="muted">none</p>') + '</details>';
       drawCharts(key, box, d, usage);
     }).catch(function (e) {
       box.innerHTML = '<p class="muted">Could not load: ' + esc(e.message) + '</p>';
@@ -320,7 +321,10 @@
         box.checked = true;
         return;
       }
-      api('POST', '/api/activity/settings', { worker_id: Number(box.dataset.workerId), enabled: on }).then(load).catch(function (e) {
+      api('POST', '/api/activity/settings', { worker_id: Number(box.dataset.workerId), enabled: on }).then(function (r) {
+        if (!on && r.deleted_raw === null) window.alert('Activity is off, but its remote addresses could not be deleted just now. They expire within a day.');
+        load();
+      }).catch(function (e) {
         box.checked = !on;
         window.alert(e.message);
       });

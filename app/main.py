@@ -2103,6 +2103,9 @@ async def lifespan(app: FastAPI):
     # And VACUUM, which has the same trap on a weekly interval; it checks its
     # own last run, so this rewrites the file at most once a week.
     _spawn(_run_vacuum())
+    # The Activity purge too: its hourly timer restarts with the process, so a
+    # UI restarted more often than hourly would keep addresses past a day.
+    _spawn(_run_activity_purge())
     _spawn(_run_collection())
     _spawn(_check_windowed_signals())
     logger.info("CashPilot UI started (container ops via workers)")
@@ -6749,7 +6752,11 @@ async def _ingest_activity(worker_id: int, cid: str, name: str, payload: dict[st
     public = [d["ip"] for s in window["samples"] for d in s["out"] + s["in"] if d["class"] == "public"]
     geo = await asyncio.to_thread(ipgeo.lookup, public) if public else {}
     keys = (activity_ui.flag_key({"client_id": cid, "id": worker_id}), f"worker_{worker_id}_{activity_ui.FLAG_SUFFIX}")
-    await database.record_activity(worker_id, window, geo, flag_keys=keys)
+    if not await database.record_activity(worker_id, window, geo, flag_keys=keys):
+        # Nothing stored: the switch went off (or the box was removed) after the
+        # heartbeat read it, or this window was stored already. Either way its
+        # alerts are not raised again.
+        return
     raised = False
     for f in activity_ui.alert_findings(window):
         subject = f"{cid}:{f['container']}" + (f":{f['detail']}" if f["detail"] else "")
@@ -6830,14 +6837,19 @@ async def _activity_spikes(workers: list[dict[str, Any]], now: float | None = No
             )
 
 
-async def _run_activity_hourly() -> None:
-    """Purge raw addresses, check for spikes, refresh the network table when due."""
+async def _run_activity_purge() -> None:
+    """Purge raw addresses past a day and the rows of removed boxes. Never raises."""
     try:
         purged = await database.purge_activity_raw()
         if purged:
-            logger.info("Activity: purged %d raw destination rows past a day", purged)
+            logger.info("Activity: purged %d rows (raw addresses past a day, removed boxes)", purged)
     except Exception as exc:  # noqa: BLE001
         logger.warning("Activity purge failed: %s", type(exc).__name__)
+
+
+async def _run_activity_hourly() -> None:
+    """Purge raw addresses, check for spikes, refresh the network table when due."""
+    await _run_activity_purge()
     try:
         config = await database.get_config() or {}
         opted = [

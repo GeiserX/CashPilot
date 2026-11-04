@@ -375,8 +375,17 @@ def plan(
             continue
         owner = c
         if mode.startswith("container:"):
+            # Follow the chain: the owner may itself join another container,
+            # and only the last one in it holds the namespace.
             try:
                 owner = client.containers.get(mode.split(":", 1)[1])
+                for _ in range(8):
+                    owner_mode = str(_host(owner).get("NetworkMode") or "")
+                    if not owner_mode.startswith("container:"):
+                        break
+                    owner = client.containers.get(owner_mode.split(":", 1)[1])
+                else:
+                    raise LookupError("container chain too long")
             except Exception:  # noqa: BLE001
                 fixed.append(_sample_base(name, [name], mode, "probe_failed", "owner_missing"))
                 continue

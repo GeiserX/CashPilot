@@ -69,6 +69,13 @@ def run_db(tmp_path, factory):
     return asyncio.run(go())
 
 
+async def a_box(client_id="c1"):
+    """A worker row, so the purge's removed-box sweep keeps its Activity rows."""
+    return await database.upsert_worker(
+        client_id=client_id, name="box", url="", containers="[]", apps="[]", system_info="{}"
+    )
+
+
 async def rows(table):
     db = await database._get_db()
     cursor = await db.execute(f"SELECT * FROM {table}")  # noqa: S608
@@ -166,12 +173,13 @@ class TestStorage:
 
     def test_purge_keeps_23h59_and_drops_24h01(self, tmp_path):
         async def go():
+            wid = await a_box()
             db = await database._get_db()
             for age in (23 * 3600 + 59 * 60, 24 * 3600 + 60):
                 await db.execute(
                     "INSERT INTO activity_dest_raw (worker_id, container, window_end, dir, proto, ip, port, class) "
-                    "VALUES (1, 'c', ?, 'out', 'tcp', '198.51.100.9', 443, 'public')",
-                    (int(NOW) - age,),
+                    "VALUES (?, 'c', ?, 'out', 'tcp', '198.51.100.9', 443, 'public')",
+                    (wid, int(NOW) - age),
                 )
             await db.commit()
             purged = await database.purge_activity_raw(now=NOW)
@@ -186,12 +194,13 @@ class TestStorage:
 
         async def go():
             real_now = int(time.time())
+            wid = await a_box()
             db = await database._get_db()
             for age in (database.ACTIVITY_RAW_SECONDS + 600, 600):
                 await db.execute(
                     "INSERT INTO activity_dest_raw (worker_id, container, window_end, dir, proto, ip, port, class) "
-                    "VALUES (1, 'c', ?, 'out', 'tcp', '198.51.100.9', 443, 'public')",
-                    (real_now - age,),
+                    "VALUES (?, 'c', ?, 'out', 'tcp', '198.51.100.9', 443, 'public')",
+                    (wid, real_now - age),
                 )
             await db.commit()
             with (
@@ -251,6 +260,28 @@ class TestStorage:
             return len(await rows("activity_dest_raw")) + len(await rows("activity_samples"))
 
         assert run_db(tmp_path, go) == 0
+
+    def test_the_purge_sweeps_rows_a_failed_removal_left(self, tmp_path):
+        """delete_worker removes the box first; if its Activity delete fails, the purge still does it."""
+
+        async def go():
+            kept = await a_box("c1")
+            gone = await a_box("c2")
+            await database.record_activity(kept, activity_ui.sanitise(window(), NOW), now=NOW)
+            await database.record_activity(gone, activity_ui.sanitise(window(), NOW), now=NOW)
+            with patch.object(database, "delete_activity", AsyncMock(side_effect=RuntimeError("locked"))):
+                await database.delete_worker(gone)
+            before = {r["worker_id"] for r in await rows("activity_samples")}
+            await database.purge_activity_raw(now=NOW)
+            after = [
+                {r["worker_id"] for r in await rows(t)}
+                for t in ("activity_dest_raw", "activity_samples", "activity_hourly")
+            ]
+            return kept, gone, before, after
+
+        kept, gone, before, after = run_db(tmp_path, go)
+        assert before == {kept, gone}
+        assert after == [{kept}, {kept}, {kept}]
 
 
 # ---------------------------------------------------------------------------
@@ -431,17 +462,40 @@ class TestAlertRules:
         out = [["tcp", "198.51.100.9", 25, "public", 1, {"est": 1}]]
 
         async def go():
+            wid = await a_box("box")
+            await database.set_config("worker_box_activity", "true")
             with (
                 patch.object(main, "_push_alert", AsyncMock()),
                 patch.object(ipgeo, "db_path", lambda: tmp_path / "ipgeo.sqlite"),
             ):
                 for i in range(3):
                     end = int(time.time() // 300 * 300) - i * 300
-                    await main._ingest_activity(1, "box", "box", window(end=end, out=out))
+                    await main._ingest_activity(wid, "box", "box", window(end=end, out=out))
                 return await rows("alerts")
 
         alerts = run_db(tmp_path, go)
         assert [a["kind"] for a in alerts] == ["activity_mail"]
+        assert "mail connections to 1 destination(s)" in alerts[0]["message"]
+
+    def test_no_alert_when_the_switch_went_off_before_the_write(self, tmp_path):
+        """The heartbeat read the switch on; it was off by the time the window was written."""
+        from app import main
+
+        out = [["tcp", "198.51.100.9", 25, "public", 1, {"est": 1}]]
+
+        async def go(flag):
+            wid = await a_box("box")
+            await database.set_config("worker_box_activity", flag)
+            push = AsyncMock()
+            with (
+                patch.object(main, "_push_alert", push),
+                patch.object(ipgeo, "db_path", lambda: tmp_path / "ipgeo.sqlite"),
+            ):
+                await main._ingest_activity(wid, "box", "box", window(end=int(time.time() // 300 * 300), out=out))
+            return await rows("alerts")
+
+        assert run_db(tmp_path / "off", lambda: go("false")) == []
+        assert [a["kind"] for a in run_db(tmp_path / "on", lambda: go("true"))] == ["activity_mail"]
 
 
 class TestSpikes:
@@ -554,6 +608,25 @@ class TestGate:
         on, still, off, after, flag = run_db(tmp_path, go)
         assert on["enabled"] is True and still == 3
         assert off["deleted_raw"] == 3 and after == 0 and flag == "false"
+
+    def test_a_failed_raw_delete_keeps_the_switch_off_and_says_so(self, tmp_path, caplog):
+        from app.routers import activity as router
+
+        async def go():
+            wid = await a_box()
+            with (
+                patch.object(router.deps, "_require_owner", return_value={}),
+                patch.object(router.database, "delete_activity", AsyncMock(side_effect=RuntimeError("locked"))),
+                caplog.at_level(logging.WARNING),
+            ):
+                off = await router.api_activity_settings(
+                    MagicMock(), router.ActivitySetting(worker_id=wid, enabled=False)
+                )
+            return off, (await database.get_config()).get("worker_c1_activity")
+
+        off, flag = run_db(tmp_path, go)
+        assert off["enabled"] is False and off["deleted_raw"] is None and flag == "false"
+        assert "Could not delete the raw Activity rows" in caplog.text
 
     def test_unknown_worker_is_404(self, tmp_path):
         from app.routers import activity as router
@@ -922,6 +995,28 @@ class TestIpgeoCaps:
         with pytest.raises(ValueError):
             ipgeo._download("https://example.invalid/t.gz")
         assert not (tmp_path / "ipgeo.sqlite").exists()
+
+    def test_a_stream_that_unpacks_past_the_cap_is_refused(self, monkeypatch):
+        monkeypatch.setattr(ipgeo, "MAX_TABLE_BYTES", 100)
+        with gzip.open(io.BytesIO(gzip.compress(TSV.encode() * 10)), "rb") as f, pytest.raises(ValueError):
+            list(ipgeo._bounded_lines(f))
+
+    def test_an_over_long_line_is_refused(self, monkeypatch):
+        monkeypatch.setattr(ipgeo, "MAX_LINE_BYTES", 64)
+        data = gzip.compress(TSV.encode() + b"x" * 1000 + b"\n")
+        with gzip.open(io.BytesIO(data), "rb") as f, pytest.raises(ValueError):
+            list(ipgeo._bounded_lines(f))
+        with gzip.open(io.BytesIO(gzip.compress(TSV.encode())), "rb") as f:
+            assert len(list(ipgeo._bounded_lines(f))) == 4  # control: the real lines pass
+
+    def test_too_many_bad_lines_is_refused(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(ipgeo, "MAX_BAD_LINES", 2)
+        monkeypatch.setattr(ipgeo, "MIN_ROWS", 1)
+        with pytest.raises(ValueError):
+            ipgeo.build(io.StringIO(TSV + "junk\n" * 3), tmp_path / "ipgeo.sqlite")
+        assert not (tmp_path / "ipgeo.sqlite").exists()
+        # Control: as many bad lines as allowed still builds; AS 0 rows never count.
+        assert ipgeo.build(io.StringIO(TSV + "junk\n" * 2), tmp_path / "ipgeo.sqlite") == 3
 
     def test_too_many_rows_is_refused(self, tmp_path):
         with patch.object(ipgeo, "MIN_ROWS", 1), patch.object(ipgeo, "MAX_ROWS", 2), pytest.raises(ValueError):
