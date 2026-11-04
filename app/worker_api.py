@@ -40,6 +40,7 @@ from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 
 from app import (
+    activity,
     egress,
     fleet_key,
     isolation_check,
@@ -78,6 +79,27 @@ WORKER_URL = os.getenv("CASHPILOT_WORKER_URL", "")
 HEARTBEAT_INTERVAL = 60  # seconds
 
 _heartbeat_task: asyncio.Task | None = None
+_activity_task: asyncio.Task | None = None
+# Activity sampling (app/activity.py): off until the UI's heartbeat response
+# says the owner switched it on for this worker. An older UI never says so.
+_activity_enabled = False
+# The last finished round not yet delivered, and its sequence number. A newer
+# round replaces an older one; a delivered round is cleared only if no newer
+# one replaced it while the heartbeat was in flight.
+_pending_activity: dict[str, Any] | None = None
+_activity_seq = 0
+# Whether this UI has ever answered with the activity key. Once it has, a
+# reply without the key (the UI could not read its config) leaves things as
+# they are instead of switching sampling off.
+_activity_setting_seen = False
+# Replies in a row without the key since it was last seen. A UI that could not
+# read its switch misses it once; a UI rolled back to a version without
+# Activity never sends it again, so after a few the switch counts as off.
+_activity_missing_replies = 0
+ACTIVITY_MISSING_REPLIES_OFF = 3
+# Bumped on every switch change, so a round that spanned an off and an on is
+# dropped even though the switch is on again when it ends.
+_activity_switches = 0
 _ui_connected = False
 _last_heartbeat: str = "never"
 _last_error: str = ""
@@ -662,7 +684,7 @@ async def _send_heartbeat() -> None:
             # What this worker can do that an older one cannot. The UI sends a
             # second copy of a service only to a worker listing "instances": an
             # older worker would read the deploy as the first copy and replace it.
-            "features": ["instances", "isolation_check", "state_backup"] if docker_ok else ["instances"],
+            "features": ["instances", "isolation_check", "state_backup", "activity"] if docker_ok else ["instances"],
             # Providers count devices per public IP, so the UI needs the address
             # the provider sees — not this container's LAN or tailnet address.
             "egress_ip": egress_ip,
@@ -681,6 +703,10 @@ async def _send_heartbeat() -> None:
         # This worker fences its earners off the LAN by itself and takes
         # POST /api/isolation to switch an upgraded install over (app/lan_fence.py).
         payload["system_info"]["features"].append("isolation_default")
+    # Only what the owner asked for, and only a finished round.
+    sent_seq = _activity_seq
+    if _activity_enabled and _pending_activity is not None:
+        payload["activity"] = _pending_activity
 
     try:
         async with httpx.AsyncClient(timeout=15) as client:
@@ -703,6 +729,10 @@ async def _send_heartbeat() -> None:
             _consecutive_heartbeat_failures = 0
             _link_hint_logged = False
             logger.debug("Heartbeat sent to %s", _ui_host())
+            try:
+                _apply_activity_reply(resp, sent_seq if "activity" in payload else None)
+            except Exception:  # noqa: BLE001 - never counts against the heartbeat
+                logger.warning("Activity bookkeeping failed (heartbeat itself landed)")
             try:
                 # Enrollment: the UI returns our own per-worker key exactly once.
                 issued = None
@@ -848,6 +878,98 @@ async def _fence_loop() -> None:
         await _check_fence()
 
 
+def _apply_activity_reply(resp: Any, delivered_seq: int | None) -> None:
+    """Follow the UI's activity switch, and drop a round it has stored.
+
+    A reply without the key comes from a UI that predates Activity (off), or,
+    once this UI has sent the key before, from one that could not read its
+    switch this time (unchanged). A round is dropped only when the UI says it
+    stored it; a UI that sends no ``stored`` predates the field and stored it.
+    """
+    global _activity_enabled, _pending_activity, _activity_setting_seen, _activity_missing_replies
+    global _activity_switches
+    body: Any = None
+    with contextlib.suppress(Exception):
+        body = resp.json()
+    setting = body.get("activity") if isinstance(body, dict) else None
+    if isinstance(setting, dict):
+        _activity_setting_seen = True
+        _activity_missing_replies = 0
+    elif _activity_setting_seen:
+        _activity_missing_replies += 1
+        if _activity_missing_replies < ACTIVITY_MISSING_REPLIES_OFF:
+            return
+    enabled = bool(setting.get("enabled")) if isinstance(setting, dict) else False
+    if not enabled:
+        if _activity_enabled:
+            logger.info("Activity sampling switched off by the UI")
+            _activity_switches += 1
+        _activity_enabled = False
+        _pending_activity = None
+        activity.reset()
+        return
+    if not _activity_enabled:
+        logger.info("Activity sampling switched on by the UI")
+        _activity_switches += 1
+        # Counter state from before the switch-off would turn the first new
+        # reading into one window holding the whole gap.
+        activity.reset()
+    _activity_enabled = True
+    stored = setting.get("stored", True) is not False if isinstance(setting, dict) else False
+    if delivered_seq is not None and delivered_seq == _activity_seq and stored:
+        _pending_activity = None
+
+
+def _seconds_to_next_window(now: float | None = None) -> float:
+    now = time.time() if now is None else now
+    return activity.WINDOW_SECONDS - (now % activity.WINDOW_SECONDS) + 1
+
+
+async def _activity_cycle() -> None:
+    """One round, if the owner switched Activity on and Docker answers."""
+    global _pending_activity, _activity_seq
+    if not _activity_enabled:
+        return
+    if not await asyncio.to_thread(orchestrator.docker_available):
+        return
+    switches = _activity_switches
+    result = await asyncio.to_thread(activity.run_round)
+    if not _activity_enabled or _activity_switches != switches:
+        # Switched off while the round ran (even if on again by now): the round
+        # wrote counter state the switch-off had already cleared, and part of
+        # it was sampled while the owner had it off.
+        activity.reset()
+        return
+    if result is None:
+        return
+    _activity_seq += 1
+    _pending_activity = result
+
+
+async def _activity_loop() -> None:
+    """Sample on every 5-minute wall-clock boundary, out of band from the heartbeat.
+
+    Nothing here touches the heartbeat counters or /api/health: a failed round
+    is a missing window on the Activity page, never a worker going unhealthy.
+    """
+    with contextlib.suppress(Exception):
+        if await asyncio.to_thread(orchestrator.docker_available):
+            client = await asyncio.to_thread(activity._client)
+            try:
+                await asyncio.to_thread(activity.sweep, client)
+            finally:
+                with contextlib.suppress(Exception):
+                    client.close()
+    while True:
+        await asyncio.sleep(_seconds_to_next_window())
+        try:
+            await _activity_cycle()
+        except asyncio.CancelledError:
+            raise
+        except Exception:  # noqa: BLE001
+            logger.warning("Activity round failed")
+
+
 def _get_local_ip() -> str:
     """Best-effort local IP detection for worker URL."""
     try:
@@ -868,7 +990,7 @@ def _get_local_ip() -> str:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global _heartbeat_task, _fence_task
+    global _heartbeat_task, _fence_task, _activity_task
 
     logger.info("CashPilot Worker '%s' starting", WORKER_NAME)
     docker_mode = "direct" if await asyncio.to_thread(orchestrator.docker_available) else "monitor-only"
@@ -882,6 +1004,7 @@ async def lifespan(app: FastAPI):
 
     if UI_URL:
         _heartbeat_task = asyncio.create_task(_heartbeat_loop())
+        _activity_task = asyncio.create_task(_activity_loop())
         logger.info("Heartbeat enabled -> %s (every %ds)", _redact_userinfo(UI_URL), HEARTBEAT_INTERVAL)
         if not API_KEY:
             logger.warning("CASHPILOT_API_KEY not set — heartbeats sent without auth")
@@ -890,7 +1013,7 @@ async def lifespan(app: FastAPI):
 
     yield
 
-    for task in (_heartbeat_task, _fence_task):
+    for task in (_heartbeat_task, _fence_task, _activity_task):
         if task and not task.done():
             task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
