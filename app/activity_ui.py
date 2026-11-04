@@ -25,13 +25,26 @@ MAX_DESTINATIONS = 400
 RAW_HOURS = 24
 
 STATUSES = ("ok", "host_network", "no_network", "sandboxed", "probe_failed", "skipped_budget")
-CLASSES = ("infra", "metadata", "docker_host", "peer", "lan", "tailnet", "link_local", "multicast", "public")
-STATES = ("est", "syn_sent", "syn_recv", "other")
+CLASSES = (
+    "infra",
+    "metadata",
+    "docker_host",
+    "peer",
+    "docker_peer",
+    "lan",
+    "tailnet",
+    "link_local",
+    "multicast",
+    "public",
+)
+STATES = ("est", "syn_sent", "syn_recv", "closed", "other")
 COUNTERS = ("opens", "passive_opens", "attempt_fails", "resets", "udp_in", "udp_out")
 GAUGES = ("est_max", "syn_sent_max", "udp_bound", "remotes_total")
 
 #: Destinations of these classes are an earner reaching into the owner's own networks.
-LAN_ALERT_CLASSES = ("lan", "tailnet", "docker_host", "metadata", "link_local")
+#: docker_peer is a container on the earner's bridge that is not an earner: on
+#: Docker's default bridge, any service the user runs.
+LAN_ALERT_CLASSES = ("lan", "tailnet", "docker_host", "docker_peer", "metadata", "link_local")
 MAIL_PORTS = (25, 465, 587, 2525)
 MAIL_COOLDOWN_HOURS = 24
 LAN_COOLDOWN_HOURS = 6
@@ -46,6 +59,7 @@ CLASS_LABELS = {
     "lan": "your local network",
     "tailnet": "your tailnet",
     "docker_host": "the Docker host itself",
+    "docker_peer": "another container on its Docker network (not an earner)",
     "metadata": "a cloud metadata address",
     "link_local": "a link-local address",
 }
@@ -167,20 +181,14 @@ def sanitise(payload: Any, now: float) -> dict[str, Any] | None:
 def alert_findings(window: dict[str, Any]) -> list[dict[str, Any]]:
     """The mail and LAN alerts one sanitised window raises, without any address.
 
-    Mail: outbound TCP to a public address on a mail port, connected or
-    connecting. LAN: any outbound destination in LAN_ALERT_CLASSES; infra and
-    peer never count. Each finding is (kind, container, class or port, count).
+    Mail: outbound TCP to a public address on a mail port, in any state: the
+    row exists only because a connection was made or tried, and a finished
+    SMTP session is mostly seen in TIME_WAIT ("closed"). LAN: any outbound
+    destination in LAN_ALERT_CLASSES; infra and peer never count. Each finding is (kind, container, class or port, count).
     """
     found = []
     for s in window.get("samples") or []:
-        mail = [
-            d
-            for d in s["out"]
-            if d["proto"] == "tcp"
-            and d["class"] == "public"
-            and d["port"] in MAIL_PORTS
-            and (d["states"].get("est") or d["states"].get("syn_sent"))
-        ]
+        mail = [d for d in s["out"] if d["proto"] == "tcp" and d["class"] == "public" and d["port"] in MAIL_PORTS]
         if mail:
             ports = sorted({d["port"] for d in mail})
             found.append(
@@ -326,7 +334,9 @@ def container_rows(
                 "top_ports": top.get("port", []),
                 "top_asn": top.get("asn", []),
                 "top_cc": top.get("cc", []),
-                "classes": dict(top_all(dims_by.get(name, []), "class")),
+                # Outbound only: an inbound row from the LAN is the owner
+                # reaching the earner, not the earner reaching the LAN.
+                "classes": dict(top_all(dims_by.get(name, []), "oclass")),
                 "dirs": dict(top_all(dims_by.get(name, []), "dir")),
                 "alerts": sum(n for subject, n in alert_subjects.items() if subject.split(":")[:2] == [cid, name]),
             }

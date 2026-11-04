@@ -696,7 +696,7 @@ CREATE TABLE IF NOT EXISTS activity_hourly (
     worker_id  INTEGER NOT NULL,
     container  TEXT    NOT NULL,
     hour       INTEGER NOT NULL,
-    dim        TEXT    NOT NULL CHECK (dim IN ('port', 'asn', 'cc', 'class', 'dir')),
+    dim        TEXT    NOT NULL CHECK (dim IN ('port', 'asn', 'cc', 'class', 'oclass', 'dir')),
     value      TEXT    NOT NULL,
     sightings  INTEGER NOT NULL DEFAULT 0,
     PRIMARY KEY (worker_id, container, hour, dim, value)
@@ -3210,11 +3210,30 @@ async def _activity_connect() -> aiosqlite.Connection:
     return db
 
 
+async def _activity_still_wanted(db: aiosqlite.Connection, worker_id: int, flag_keys: tuple[str, ...]) -> bool:
+    """Inside the write lock: the worker still exists and its switch is still on.
+
+    The flag keys are read in order and the first non-empty value decides, as
+    activity_ui.enabled does.
+    """
+    cursor = await db.execute("SELECT 1 FROM workers WHERE id = ?", (worker_id,))
+    if not await cursor.fetchone():
+        return False
+    for key in flag_keys:
+        cursor = await db.execute("SELECT value FROM config WHERE key = ?", (key,))
+        row = await cursor.fetchone()
+        value = str(row[0] if row else "").strip()
+        if value:
+            return value.lower() in _TRUTHY
+    return False
+
+
 async def record_activity(
     worker_id: int,
     window: dict[str, Any],
     geo: Mapping[str, tuple[str, str]] | None = None,
     now: float | None = None,
+    flag_keys: tuple[str, ...] | None = None,
 ) -> int:
     """Store one sanitised Activity window (activity_ui.sanitise). Returns samples written.
 
@@ -3222,6 +3241,11 @@ async def record_activity(
     retried after a lost reply cannot count its destinations twice. The raw
     purge runs in the same transaction, so no ingest leaves an address older
     than a day behind.
+
+    With ``flag_keys``, the worker row and its switch are read again inside the
+    write lock and nothing is stored when either is gone. Switching off or
+    removing a box deletes its rows under the same lock, so a heartbeat in
+    flight cannot write addresses back after that delete.
     """
     now = time.time() if now is None else now
     geo = geo or {}
@@ -3232,6 +3256,9 @@ async def record_activity(
     try:
         await db.execute("BEGIN IMMEDIATE")
         try:
+            if flag_keys is not None and not await _activity_still_wanted(db, worker_id, flag_keys):
+                await db.rollback()
+                return 0
             for s in window.get("samples") or []:
                 cursor = await db.execute(
                     """
@@ -3290,6 +3317,8 @@ async def record_activity(
                         values = [("dir", direction), ("class", d["class"])]
                         if direction == "out":
                             values.append(("port", f"{proto}/{d['port']}"))
+                            # Outbound class alone: what the page's LAN mark reads.
+                            values.append(("oclass", d["class"]))
                         if asn:
                             values.append(("asn", asn))
                         if cc:
@@ -3325,6 +3354,25 @@ async def record_activity(
     return written
 
 
+async def _checkpoint(db: aiosqlite.Connection) -> bool:
+    """Fold the WAL back into the file and empty it. True when a reader kept it busy.
+
+    The WAL still holds the frames that inserted the deleted addresses until a
+    checkpoint resets it. A busy result is logged; the next hourly purge tries
+    again.
+    """
+    try:
+        cursor = await db.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+        row = await cursor.fetchone()
+    except Exception as exc:  # noqa: BLE001
+        _logger.warning("Activity WAL checkpoint failed: %s", type(exc).__name__)
+        return True
+    busy = bool(row and row[0])
+    if busy:
+        _logger.warning("Activity WAL checkpoint was busy; the next purge retries it")
+    return busy
+
+
 async def purge_activity_raw(now: float | None = None) -> int:
     """Delete raw destinations older than a day, then fold the WAL back into the file."""
     now = time.time() if now is None else now
@@ -3334,8 +3382,7 @@ async def purge_activity_raw(now: float | None = None) -> int:
             "DELETE FROM activity_dest_raw WHERE window_end < ?", (int(now) - ACTIVITY_RAW_SECONDS,)
         )
         await db.commit()
-        with contextlib.suppress(Exception):
-            await db.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+        await _checkpoint(db)
         return cursor.rowcount or 0
     finally:
         await db.close()
@@ -3347,12 +3394,14 @@ async def delete_activity(worker_id: int, raw_only: bool = False) -> int:
     db = await _activity_connect()
     try:
         total = 0
+        # The same write lock record_activity takes, so an ingest already past
+        # its switch check finishes first and its rows go with this delete.
+        await db.execute("BEGIN IMMEDIATE")
         for table in tables:
             cursor = await db.execute(f"DELETE FROM {table} WHERE worker_id = ?", (worker_id,))  # noqa: S608
             total += cursor.rowcount or 0
         await db.commit()
-        with contextlib.suppress(Exception):
-            await db.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+        await _checkpoint(db)
         return total
     finally:
         await db.close()

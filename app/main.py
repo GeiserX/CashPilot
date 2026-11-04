@@ -5698,9 +5698,14 @@ async def api_collector_alerts(request: Request) -> dict[str, Any]:
     run" can be told apart at all. The UI is the only consumer and ships with
     this.
     """
-    _require_auth_api(request)
+    user = _require_auth_api(request)
+    # Activity alerts name a box's LAN probing; the Activity page is owner
+    # only, so its alerts are too.
+    owner = auth.require_role(user, "owner")
     sanitized: list[dict[str, Any]] = []
     for alert in _collector_alerts:
+        if not owner and str(alert.get("kind", "")).startswith("activity_"):
+            continue
         error_msg = alert.get("error", "")
         clean = error_msg[:_MAX_ALERT_ERROR_LEN]
         if len(error_msg) > _MAX_ALERT_ERROR_LEN:
@@ -6668,12 +6673,17 @@ async def api_worker_heartbeat(request: Request, body: WorkerHeartbeat) -> dict[
     # Activity: the switch is read on every heartbeat, because the reply is
     # how the worker learns it. Never allowed to reject a heartbeat, and the
     # log line never carries the exception text, which could quote an address.
+    # ``stored`` tells the worker it may drop the window; it is False only when
+    # the write failed, so the worker sends the window again.
     activity_on: bool | None = None
+    activity_stored: bool | None = None
     if not _is_phone(body.system_info):
         try:
             activity_on = activity_ui.enabled(await database.get_config() or {}, {"client_id": cid, "id": worker_id})
             if activity_on and body.activity is not None:
+                activity_stored = False
                 await _ingest_activity(worker_id, cid, body.name, body.activity)
+                activity_stored = True
         except Exception as exc:  # noqa: BLE001
             logger.warning("Could not record activity for worker %s (%s)", worker_id, type(exc).__name__)
     if previous is not None and previous[0] == "offline":
@@ -6717,6 +6727,8 @@ async def api_worker_heartbeat(request: Request, body: WorkerHeartbeat) -> dict[
         resp["earnings"] = earnings
     if activity_on is not None:
         resp["activity"] = {"enabled": activity_on}
+        if activity_stored is not None:
+            resp["activity"]["stored"] = activity_stored
     return resp
 
 
@@ -6736,7 +6748,8 @@ async def _ingest_activity(worker_id: int, cid: str, name: str, payload: dict[st
     }
     public = [d["ip"] for s in window["samples"] for d in s["out"] + s["in"] if d["class"] == "public"]
     geo = await asyncio.to_thread(ipgeo.lookup, public) if public else {}
-    await database.record_activity(worker_id, window, geo)
+    keys = (activity_ui.flag_key({"client_id": cid, "id": worker_id}), f"worker_{worker_id}_{activity_ui.FLAG_SUFFIX}")
+    await database.record_activity(worker_id, window, geo, flag_keys=keys)
     raised = False
     for f in activity_ui.alert_findings(window):
         subject = f"{cid}:{f['container']}" + (f":{f['detail']}" if f["detail"] else "")

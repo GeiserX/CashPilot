@@ -18,8 +18,9 @@ three things from the kernel, nothing more:
 - the socket tables in `/proc/net/tcp`, `tcp6`, `udp` and `udp6`: which local
   port is connected to which remote address and port, and in what state. It
   takes 5 snapshots over 8 seconds.
-- the TCP and UDP counters in `/proc/net/snmp`: connections opened (by the
-  earner, and towards it), failed connection attempts, resets, datagrams.
+- the TCP and UDP counters in `/proc/net/snmp` and `/proc/net/snmp6`:
+  connections opened (by the earner, and towards it), failed connection
+  attempts, resets, datagrams (IPv4 and IPv6).
 - the namespace's identity, so a recreated container is never compared with
   the old one.
 
@@ -32,9 +33,9 @@ for the dashboard's usage graphs; Activity stores no second byte counter.
 ## What the numbers mean
 
 - **Opens** and **Failed** are complete counts for the 5 minutes, from the
-  kernel's counters. The first window after switching on, or after a container
-  is recreated, has no previous reading to compare with, so it shows a dash,
-  never 0.
+  kernel's counters. The first window after switching on, after a container
+  is recreated, or after a skipped round has no recent reading to compare
+  with, so it shows a dash, never 0.
 - **Peak open** is the most established TCP connections seen at once.
 - **Destinations** are *sampled*: a connection that opens and closes between
   two snapshots is counted in Opens but may be missing from the list. A `+`
@@ -43,12 +44,19 @@ for the dashboard's usage graphs; Activity stores no second byte counter.
 - A connection to a port the earner listens on is **inbound**; every other one
   is **outbound**.
 - **Kind of destination**: `internet`, `DNS / Docker` (Docker's resolver, or
-  port 53 to the bridge gateway, a configured resolver or Tailscale's
-  100.100.100.100), `same bridge` (another container on the earner's own
-  bridge network), `your LAN` (private ranges, and the subnet of a macvlan or
-  ipvlan network), `tailnet` (100.64.0.0/10), `Docker host` (the bridge
-  gateway on any port but 53), `cloud metadata` (169.254.169.254), `link-local`
-  and `multicast`.
+  port 53 or 853 to the bridge gateway, a configured resolver, Tailscale's
+  100.100.100.100 or any private address, which is where the resolver Docker
+  copies from the host usually sits), `another earner` (an earner on the same
+  bridge network), `another container` (any other container on that bridge: on
+  Docker's default bridge, every service you run), `your LAN` (private
+  ranges, and the subnet of a macvlan or ipvlan network), `tailnet`
+  (100.64.0.0/10), `Docker host` (the bridge gateway on any port but 53),
+  `cloud metadata` (169.254.169.254), `link-local` and `multicast`. Inbound
+  rows read "from …"; only outbound ones mark a container in red.
+- **Network of this container, used by …**: the earner shares the network of
+  a container that is not an earner (a VPN or Tailscale sidecar), which other
+  apps may share too. Only the counters are kept for it: no destinations, no
+  alerts, so nothing of those other apps is recorded.
 - **Network** is the autonomous system (ASN) the address belongs to, and
   **Country (registered)** is where that network is registered, which is not
   where the address is: a global provider registered in one country reads
@@ -96,7 +104,7 @@ is a missing window on this page, never a worker reported as unhealthy.
 
 | Data | Kept |
 |---|---|
-| Remote addresses (the "last 24 hours" list) | 24 hours. Purged on every window received and every hour; deleted rows are overwritten on disk. |
+| Remote addresses (the "last 24 hours" list) | 24 hours. Purged on every window received and every hour; deleted rows are overwritten in the database file. The write-ahead log (`cashpilot.db-wal`) is emptied by the hourly purge; when the dashboard holds it busy, a warning is logged and the next hour tries again. |
 | Counts per window, per container | 35 days |
 | Totals per hour by port, network, country, kind and direction (no addresses) | 35 days |
 
@@ -130,14 +138,14 @@ land, then copy the file into the UI's `/data`.
 
 ## Alerts
 
-Alerts go to the bell and, for the first two, to your notification channels
+Alerts go to the bell (shown to the owner only) and, for the first two, to your notification channels
 (ntfy, webhook, Telegram). They name the box, the container, the kind of
 destination or port, and counts. They never name an address or a network.
 
 | Alert | When | Repeats at most |
 |---|---|---|
-| Mail | Outbound TCP to an internet address on port 25, 465, 587 or 2525, connected or connecting. An earner has no reason to send mail, and this is how an exit node gets your address listed as a spam source. | once a day per container |
-| Your network | Any outbound connection to your LAN, your tailnet, the Docker host, cloud metadata or a link-local address. DNS to the resolvers above and the earner's own bridge never count. "Still pending" means no answer came, which usually means a firewall dropped it. | every 6 hours per container and kind |
+| Mail | Outbound TCP to an internet address on port 25, 465, 587 or 2525, in any state (connecting, connected, or just finished: a short send is mostly seen closing). An earner has no reason to send mail, and this is how an exit node gets your address listed as a spam source. | once a day per container |
+| Your network | Any outbound connection to your LAN, your tailnet, the Docker host, a container on its bridge that is not an earner, cloud metadata or a link-local address. DNS to the resolvers above and other earners on its bridge never count. "Still pending" means no answer came, which usually means a firewall dropped it. | every 6 hours per container and kind |
 | Unusual hour (bell only) | The last full hour received or sent more than 10 times the median hour of the past week and more than 1 GiB, or opened more than 10 times the median and more than 2,000 connections. Needs 72 hours of history; hours without a reading are skipped, never counted as 0. | every 12 hours |
 
 Failed connection attempts are shown, not alerted on: proxy earners fail

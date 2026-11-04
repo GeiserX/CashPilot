@@ -19,12 +19,30 @@ import socket
 import struct
 import time
 
-#: TCP states from include/net/tcp_states.h that this page tells apart.
-STATES = {"01": "est", "02": "syn_sent", "03": "syn_recv", "0A": "listen"}
+#: TCP states from include/net/tcp_states.h that this page tells apart. The
+#: closing states (FIN_WAIT1/2, TIME_WAIT, CLOSE_WAIT, LAST_ACK, CLOSING) are
+#: one "closed": the connection happened, which is what the mail alert needs,
+#: because a short SMTP session spends most of its life in TIME_WAIT.
+STATES = {
+    "01": "est",
+    "02": "syn_sent",
+    "03": "syn_recv",
+    "04": "closed",
+    "05": "closed",
+    "06": "closed",
+    "08": "closed",
+    "09": "closed",
+    "0A": "listen",
+    "0B": "closed",
+}
 #: The SNMP counters read, by protocol line. A connection opened is
 #: ActiveOpens (we dialled) or PassiveOpens (someone dialled us).
 SNMP_TCP = ("ActiveOpens", "PassiveOpens", "AttemptFails", "EstabResets", "CurrEstab")
 SNMP_UDP = ("InDatagrams", "OutDatagrams")
+#: /proc/net/snmp counts IPv4 UDP only; IPv6 UDP is in /proc/net/snmp6.
+SNMP6_UDP = {"Udp6InDatagrams": "InDatagrams", "Udp6OutDatagrams": "OutDatagrams"}
+#: DNS and DNS over TLS: to a local address this is the earner's resolver.
+DNS_PORTS = (53, 853)
 SOCKET_FILES = (
     ("tcp", "/proc/net/tcp"),
     ("tcp6", "/proc/net/tcp6"),
@@ -104,10 +122,24 @@ def parse_sockets(text, proto):
     return found, malformed
 
 
-def parse_snmp(text):
+def _parse_snmp6_udp(text):
+    """Udp6 in/out datagrams from /proc/net/snmp6 (one "name value" per line), or None."""
+    found = {}
+    for raw in (text or "").splitlines():
+        parts = raw.split()
+        if len(parts) == 2 and parts[0] in SNMP6_UDP:
+            try:
+                found[SNMP6_UDP[parts[0]]] = int(parts[1])
+            except ValueError:
+                return None
+    return found if len(found) == len(SNMP6_UDP) else None
+
+
+def parse_snmp(text, text6=None):
     """The TCP and UDP counters of /proc/net/snmp, or None when the file says nothing.
 
-    The file holds pairs of lines per protocol: names, then values.
+    The file holds pairs of lines per protocol: names, then values. UDP over
+    IPv6 is counted in /proc/net/snmp6 (``text6``) and added when present.
     """
     rows = {}
     lines = (text or "").splitlines()
@@ -124,6 +156,9 @@ def parse_snmp(text):
     out = {"tcp": {k: tcp[k] for k in SNMP_TCP}, "udp": None}
     if udp and all(k in udp for k in SNMP_UDP):
         out["udp"] = {k: udp[k] for k in SNMP_UDP}
+        udp6 = _parse_snmp6_udp(text6)
+        if udp6:
+            out["udp"] = {k: out["udp"][k] + udp6[k] for k in SNMP_UDP}
     return out
 
 
@@ -203,13 +238,17 @@ def classify(ip, port, ctx=None):
     """Where a remote address sits, from the earner's point of view.
 
     ``ctx`` carries the earner's network context: ``gateways`` (bridge
-    gateways), ``dns`` (resolvers it was given), and ``subnets``, a list of
-    (cidr, driver) for the networks it is attached to. The order is the rule:
+    gateways), ``dns`` (resolvers it was given), ``subnets``, a list of
+    (cidr, driver) for the networks it is attached to, and ``peers``, the
+    addresses on those networks that belong to earners (absent: unknown, every
+    address on a bridge subnet is a peer). The order is the rule:
 
     infra (Docker's DNS, DNS to the gateway or a configured resolver or
-    Tailscale's) before metadata before docker_host (the gateway on any other
-    port) before peer (own bridge subnet) before lan before tailnet before
-    link_local before multicast; everything else is public.
+    Tailscale's) before metadata before DNS to any local address (the
+    resolver Docker copied from the host, usually the router) before
+    docker_host (the gateway on any other port) before peer (an earner on its
+    own bridge) or docker_peer (any other container there) before lan before
+    tailnet before link_local before multicast; everything else is public.
     """
     ctx = ctx or {}
     try:
@@ -223,15 +262,23 @@ def classify(ip, port, ctx=None):
         return "infra"
     if text in METADATA:
         return "metadata"
+    if port in DNS_PORTS and (
+        _in_any(addr, _RFC1918) or _in_any(addr, _ULA) or _in_any(addr, _CGNAT) or _in_any(addr, _LINK_LOCAL)
+    ):
+        return "infra"
     if text in gateways:
         return "docker_host"
+    peers = ctx.get("peers")
+    peers = None if peers is None else set(peers)
     for cidr, driver in ctx.get("subnets") or ():
         try:
             net = ipaddress.ip_network(cidr, strict=False)
         except ValueError:
             continue
         if addr.version == net.version and addr in net:
-            return "lan" if driver in LAN_DRIVERS else "peer"
+            if driver in LAN_DRIVERS:
+                return "lan"
+            return "peer" if peers is None or text in peers else "docker_peer"
     if _in_any(addr, _RFC1918) or _in_any(addr, _ULA):
         return "lan"
     if _in_any(addr, _CGNAT):
@@ -267,7 +314,7 @@ def main():
         netns = os.readlink("/proc/self/ns/net")
     except OSError:
         netns = None
-    snmp_start = parse_snmp(_read("/proc/net/snmp"))
+    snmp_start = parse_snmp(_read("/proc/net/snmp"), _read("/proc/net/snmp6"))
     files = {}
     snapshots, malformed = [], 0
     for i in range(snapshots_n):
@@ -281,7 +328,7 @@ def main():
             snap.extend(sockets)
             malformed += bad
         snapshots.append(snap)
-    snmp_end = parse_snmp(_read("/proc/net/snmp"))
+    snmp_end = parse_snmp(_read("/proc/net/snmp"), _read("/proc/net/snmp6"))
     print(
         json.dumps(
             {

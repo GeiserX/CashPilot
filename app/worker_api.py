@@ -87,6 +87,10 @@ _activity_enabled = False
 # one replaced it while the heartbeat was in flight.
 _pending_activity: dict[str, Any] | None = None
 _activity_seq = 0
+# Whether this UI has ever answered with the activity key. Once it has, a
+# reply without the key (the UI could not read its config) leaves things as
+# they are instead of switching sampling off.
+_activity_setting_seen = False
 _ui_connected = False
 _last_heartbeat: str = "never"
 _last_error: str = ""
@@ -824,15 +828,22 @@ async def _heartbeat_loop() -> None:
 
 
 def _apply_activity_reply(resp: Any, delivered_seq: int | None) -> None:
-    """Follow the UI's activity switch, and drop a round it has received.
+    """Follow the UI's activity switch, and drop a round it has stored.
 
-    A reply without the key comes from a UI that predates Activity: off.
+    A reply without the key comes from a UI that predates Activity (off), or,
+    once this UI has sent the key before, from one that could not read its
+    switch this time (unchanged). A round is dropped only when the UI says it
+    stored it; a UI that sends no ``stored`` predates the field and stored it.
     """
-    global _activity_enabled, _pending_activity
+    global _activity_enabled, _pending_activity, _activity_setting_seen
     body: Any = None
     with contextlib.suppress(Exception):
         body = resp.json()
     setting = body.get("activity") if isinstance(body, dict) else None
+    if not isinstance(setting, dict) and _activity_setting_seen:
+        return
+    if isinstance(setting, dict):
+        _activity_setting_seen = True
     enabled = bool(setting.get("enabled")) if isinstance(setting, dict) else False
     if not enabled:
         if _activity_enabled:
@@ -843,8 +854,12 @@ def _apply_activity_reply(resp: Any, delivered_seq: int | None) -> None:
         return
     if not _activity_enabled:
         logger.info("Activity sampling switched on by the UI")
+        # Counter state from before the switch-off would turn the first new
+        # reading into one window holding the whole gap.
+        activity.reset()
     _activity_enabled = True
-    if delivered_seq is not None and delivered_seq == _activity_seq:
+    stored = setting.get("stored", True) is not False if isinstance(setting, dict) else False
+    if delivered_seq is not None and delivered_seq == _activity_seq and stored:
         _pending_activity = None
 
 
@@ -861,7 +876,12 @@ async def _activity_cycle() -> None:
     if not await asyncio.to_thread(orchestrator.docker_available):
         return
     result = await asyncio.to_thread(activity.run_round)
-    if result is None or not _activity_enabled:
+    if not _activity_enabled:
+        # Switched off while the round ran: the round wrote counter state the
+        # switch-off had already cleared.
+        activity.reset()
+        return
+    if result is None:
         return
     _activity_seq += 1
     _pending_activity = result

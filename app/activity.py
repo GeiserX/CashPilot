@@ -55,8 +55,11 @@ MAX_BYTES = 128 * 1024
 SELF_NAMES = ("cashpilot-ui", "cashpilot-worker")
 #: Runtimes whose namespace a probe can join and whose /proc/net is the kernel's.
 PLAIN_RUNTIMES = ("", "runc", "io.containerd.runc.v2", "crun")
-#: Runtime binaries that share the kernel's network stack.
-PLAIN_BINARIES = ("runc", "crun")
+#: Runtime binaries that share the kernel's network stack: runc, crun, and the
+#: runc-compatible ones (NVIDIA's wrapper around runc, youki).
+PLAIN_BINARIES = ("runc", "crun", "nvidia-container-runtime", "youki")
+#: A counter change over a longer gap than this is not one window's worth: no delta.
+MAX_DELTA_SECONDS = 2 * 300
 
 _lock = threading.Lock()
 #: owner container id -> (netns id, snmp at the end of the last probe, monotonic time).
@@ -181,28 +184,53 @@ def _configured_dns() -> list[str]:
     return [s.strip() for s in (orchestrator._CONTAINER_DNS or "").split(",") if s.strip()]
 
 
-def network_context(client: Any, owner: Any, drivers: dict[str, str]) -> dict[str, Any]:
-    """Gateways, resolvers and subnets of the namespace owner, for procnet.classify."""
-    gateways, subnets = set(), []
+def _network_info(client: Any, net_id: str, earners: set[str]) -> tuple[str, list[str]]:
+    """(driver, addresses of the earners on it) of one network, from one inspect."""
+    try:
+        attrs = _attrs(client.networks.get(net_id))
+    except Exception:  # noqa: BLE001 - an unknown driver reads as a bridge with no known earners
+        return "", []
+    ips = []
+    for member in (attrs.get("Containers") or {}).values():
+        member = member or {}
+        if str(member.get("Name") or "") not in earners:
+            continue
+        for key in ("IPv4Address", "IPv6Address"):
+            if member.get(key):
+                ips.append(str(member[key]).split("/", 1)[0])
+    return str(attrs.get("Driver") or ""), ips
+
+
+def network_context(
+    client: Any, owner: Any, networks: dict[str, tuple[str, list[str]]], earners: set[str] | None = None
+) -> dict[str, Any]:
+    """Gateways, resolvers, subnets and earner neighbours of the namespace owner, for procnet.classify.
+
+    ``peers`` holds the owner's own addresses and those of the earners beside
+    it. Any other container on the same bridge (on Docker's default bridge,
+    every container the user runs) is a docker_peer, which alerts.
+    """
+    earners = set(_earner_names()) if earners is None else earners
+    gateways, subnets, peers = set(), [], set()
     for net in ((_attrs(owner).get("NetworkSettings") or {}).get("Networks") or {}).values():
         net = net or {}
         net_id = str(net.get("NetworkID") or "")
-        if net_id and net_id not in drivers:
-            try:
-                drivers[net_id] = str((_attrs(client.networks.get(net_id)).get("Driver")) or "")
-            except Exception:  # noqa: BLE001 - an unknown driver reads as a bridge
-                drivers[net_id] = ""
-        driver = drivers.get(net_id, "")
+        if net_id and net_id not in networks:
+            networks[net_id] = _network_info(client, net_id, earners)
+        driver, earner_ips = networks.get(net_id, ("", []))
+        peers.update(earner_ips)
         for gw_key, ip_key, len_key in (
             ("Gateway", "IPAddress", "IPPrefixLen"),
             ("IPv6Gateway", "GlobalIPv6Address", "GlobalIPv6PrefixLen"),
         ):
             if net.get(gw_key):
                 gateways.add(str(net[gw_key]))
+            if net.get(ip_key):
+                peers.add(str(net[ip_key]))
             if net.get(ip_key) and net.get(len_key):
                 subnets.append((f"{net[ip_key]}/{net[len_key]}", driver))
     dns = list(_host(owner).get("Dns") or []) + _configured_dns()
-    return {"gateways": sorted(gateways), "dns": dns, "subnets": subnets}
+    return {"gateways": sorted(gateways), "dns": dns, "subnets": subnets, "peers": sorted(peers)}
 
 
 def _counters(snmp: Any) -> tuple[int, ...] | None:
@@ -230,15 +258,17 @@ def deltas(owner_id: str, data: dict[str, Any], now: float) -> dict[str, Any]:
     """Counter changes since this namespace's last reading, or nulls.
 
     A delta exists only when the namespace is the same one (a recreated
-    container gets a new one and its counters restart) and no counter went
-    backwards. The state is replaced either way.
+    container gets a new one and its counters restart), no counter went
+    backwards, and the last reading is at most MAX_DELTA_SECONDS old (after a
+    skipped round or a switch-off, the change would cover far more than the
+    window it is filed under). The state is replaced either way.
     """
     netns, end = data.get("netns"), data.get("snmp_end")
     prev = _prev.get(owner_id)
     out: dict[str, Any] = dict.fromkeys(DELTA_KEYS)
     out["delta_seconds"] = None
     cur = _counters(end)
-    if prev and cur and netns and prev[0] == netns:
+    if prev and cur and netns and prev[0] == netns and 0 <= now - prev[2] <= MAX_DELTA_SECONDS:
         old = _counters(prev[1])
         if old and all(c >= o for c, o in zip(cur[:4], old[:4], strict=True)):
             for key, c, o in zip(DELTA_KEYS[:4], cur[:4], old[:4], strict=True):
@@ -316,13 +346,14 @@ def plan(
 ) -> tuple[dict[str, dict[str, Any]], list[dict[str, Any]]]:
     """Group earners by the namespace they live in.
 
-    Returns ({owner id: {"owner": container, "members": [names], "mode": str}},
-    [samples for earners that cannot be probed]).
+    Returns ({owner id: {"owner": container, "members": [names], "mode": str,
+    "owner_earner": bool}}, [samples for earners that cannot be probed]).
     """
     joinable = set(PLAIN_RUNTIMES) if joinable is None else joinable
     groups: dict[str, dict[str, Any]] = {}
     fixed: list[dict[str, Any]] = []
-    for name in _earner_names():
+    earners = _earner_names()
+    for name in earners:
         try:
             c = client.containers.get(name)
         except Exception:  # noqa: BLE001 - gone since the status read
@@ -355,7 +386,10 @@ def plan(
             if str(_host(owner).get("Runtime") or "") not in joinable:
                 fixed.append(_sample_base(name, [name], mode, "sandboxed"))
                 continue
-        group = groups.setdefault(owner.id, {"owner": owner, "members": [], "mode": mode})
+        group = groups.setdefault(
+            owner.id,
+            {"owner": owner, "members": [], "mode": mode, "owner_earner": getattr(owner, "name", None) in earners},
+        )
         group["members"].append(name)
         if owner.id == c.id:
             group["mode"] = mode
@@ -403,6 +437,13 @@ def _sample(name: str, group: dict[str, Any], data: dict[str, Any], ctx: dict[st
         s[key] = summary.get(key)
     s["truncated"] = bool(summary.get("truncated"))
     s["listen_ports"] = list(summary.get("listen_ports") or [])[:20]
+    if not group.get("owner_earner", True):
+        # The namespace belongs to a non-earner (a VPN or Tailscale sidecar)
+        # that other apps may share: its destinations are not the earner's to
+        # report, so only the counters are kept, and no LAN alert can fire on
+        # the sidecar's own traffic.
+        s["reason"] = "shared_namespace"
+        return s
     s["out"] = [
         [proto, ip, port, procnet.classify(ip, port, ctx), seen, states]
         for proto, ip, port, seen, states in summary.get("out") or []
@@ -444,7 +485,8 @@ def _round(client: Any, now: float) -> dict[str, Any]:
     window["samples"].extend(fixed)
 
     deadline = time.monotonic() + ROUND_BUDGET
-    drivers: dict[str, str] = {}
+    networks: dict[str, tuple[str, list[str]]] = {}
+    earners = set(_earner_names())
 
     def one(owner_id: str) -> dict[str, Any]:
         group = groups[owner_id]
@@ -456,7 +498,7 @@ def _round(client: Any, now: float) -> dict[str, Any]:
         except ProbeFailed as exc:
             _prev.pop(owner_id, None)
             return _sample_base(name, sorted(group["members"]), group["mode"], "probe_failed", exc.reason)
-        ctx = network_context(client, group["owner"], drivers)
+        ctx = network_context(client, group["owner"], networks, earners)
         return _sample(name, group, data, ctx, time.monotonic())
 
     with ThreadPoolExecutor(max_workers=MAX_PARALLEL) as pool:

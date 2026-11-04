@@ -101,7 +101,7 @@ class TestParseSockets:
             for i, st in enumerate(("01", "02", "03", "0A", "06", "08"))
         )
         socks, _ = procnet.parse_sockets(text, "tcp")
-        assert [s["state"] for s in socks] == ["est", "syn_sent", "syn_recv", "listen", "other", "other"]
+        assert [s["state"] for s in socks] == ["est", "syn_sent", "syn_recv", "listen", "closed", "closed"]
 
     def test_malformed_lines_are_counted_and_skipped(self):
         text = (
@@ -168,7 +168,7 @@ class TestSummarise:
         s = procnet.summarise([socks, socks, socks])
         row = next(o for o in s["out"] if o[1] == "198.51.100.9")
         assert row[3] == 3
-        assert row[4] == {"est": 3, "other": 3}
+        assert row[4] == {"est": 3, "closed": 3}
 
     def test_caps_with_exact_total(self):
         text = HEADER + "".join(
@@ -260,3 +260,45 @@ class TestMain:
         assert procnet._env_int("PROBE_SNAPSHOTS", 5, 1, 10) == 10
         monkeypatch.setenv("PROBE_SNAPSHOTS", "x")
         assert procnet._env_int("PROBE_SNAPSHOTS", 5, 1, 10) == 5
+
+
+SNMP6 = (
+    "Udp6InDatagrams                 \t40\nUdp6NoPorts                     \t0\nUdp6OutDatagrams                \t30\n"
+)
+
+
+class TestFixes:
+    """Regressions from the review of the first cut."""
+
+    @pytest.mark.parametrize(
+        ("ip", "port"),
+        [("192.168.1.1", 53), ("10.0.0.1", 853), ("fd12::1", 53), ("100.64.0.2", 53), ("169.254.1.1", 53)],
+    )
+    def test_dns_to_a_local_resolver_is_infra(self, ip, port):
+        """Docker copies the host's resolv.conf (often the router) into a default-bridge earner."""
+        assert procnet.classify(ip, port, {}) == "infra"
+
+    def test_dns_rule_is_only_for_dns_ports(self):
+        assert procnet.classify("192.168.1.1", 22, {}) == "lan"
+        assert procnet.classify("169.254.169.254", 53, {}) == "metadata"
+        assert procnet.classify("8.8.8.8", 53, {}) == "public"
+
+    def test_bridge_neighbour_that_is_not_an_earner_is_docker_peer(self):
+        ctx = {"subnets": [("172.17.0.2/16", "bridge")], "peers": ["172.17.0.9"]}
+        assert procnet.classify("172.17.0.9", 8080, ctx) == "peer"
+        assert procnet.classify("172.17.0.5", 5432, ctx) == "docker_peer"
+        assert procnet.classify("172.17.0.7", 8123, ctx) == "docker_peer"
+
+    def test_closing_states_are_closed(self):
+        text = HEADER + "".join(
+            line(i, "172.18.0.5", 40000 + i, "198.51.100.1", 25, st)
+            for i, st in enumerate(("04", "05", "06", "08", "09", "0B", "07"))
+        )
+        socks, _ = procnet.parse_sockets(text, "tcp")
+        assert [s["state"] for s in socks] == ["closed"] * 6 + ["other"]
+
+    def test_udp6_counters_are_added(self):
+        got = procnet.parse_snmp(SNMP, SNMP6)
+        assert got["udp"] == {"InDatagrams": 90, "OutDatagrams": 90}
+        assert procnet.parse_snmp(SNMP, None)["udp"] == {"InDatagrams": 50, "OutDatagrams": 60}
+        assert procnet.parse_snmp(SNMP, "garbage\n")["udp"] == {"InDatagrams": 50, "OutDatagrams": 60}

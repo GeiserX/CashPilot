@@ -67,10 +67,12 @@
     skipped_budget: ['skipped', 'The round ran out of time before reaching this container.']
   };
   var CLASS_LABEL = {
-    public: 'internet', infra: 'DNS / Docker', peer: 'same bridge', lan: 'your LAN', tailnet: 'tailnet',
-    docker_host: 'Docker host', metadata: 'cloud metadata', link_local: 'link-local', multicast: 'multicast'
+    public: 'internet', infra: 'DNS / Docker', peer: 'another earner', docker_peer: 'another container',
+    lan: 'your LAN', tailnet: 'tailnet', docker_host: 'Docker host', metadata: 'cloud metadata',
+    link_local: 'link-local', multicast: 'multicast'
   };
-  var ALARM = { lan: 1, tailnet: 1, docker_host: 1, metadata: 1, link_local: 1 };
+  // Only outbound rows of these kinds are the earner reaching into your networks.
+  var ALARM = { lan: 1, tailnet: 1, docker_host: 1, docker_peer: 1, metadata: 1, link_local: 1 };
 
   function num(v) { return v == null ? '—' : String(v); }
   function when(ts) {
@@ -113,10 +115,14 @@
     }).join(' ');
   }
 
-  function chip(status, members) {
+  function chip(status, members, reason) {
     var s = STATUS[status] || [status, ''];
     var text = s[0];
     if (members && members.length > 1) text = 'shared with ' + members.join(', ');
+    if (status === 'ok' && reason === 'shared_namespace') {
+      return '<span class="activity-chip activity-chip-muted" title="This network belongs to a container that is not an earner (a VPN or Tailscale sidecar), which other apps may share. Only the counters are kept; no destinations and no alerts.">' +
+        esc('network of this container, used by ' + (members || []).join(', ')) + '</span>';
+    }
     var cls = status === 'ok' ? '' : (status === 'host_network' || status === 'sandboxed' ? ' activity-chip-muted' : ' activity-chip-warn');
     return '<span class="activity-chip' + cls + '" title="' + esc(s[1]) + '">' + esc(text) + '</span>';
   }
@@ -166,7 +172,7 @@
           var alarm = Object.keys(c.classes || {}).some(function (k) { return ALARM[k]; });
           var row = '<tr class="activity-row" data-action="activityExpand" data-a1="' + w.worker_id + '" data-a2="' + esc(c.container) + '">' +
             '<td><button class="btn btn-link" aria-expanded="' + (state.open[key] ? 'true' : 'false') + '">' + esc(c.container) + '</button></td>' +
-            '<td>' + chip(c.status, c.members) + '</td>' +
+            '<td>' + chip(c.status, c.members, c.reason) + '</td>' +
             '<td>' + num(c.opens_last) + '</td><td>' + sparkline(c.series) + '</td>' +
             '<td>' + num(c.est_max) + '</td><td>' + num(c.attempt_fails_last) + '</td>' +
             '<td>' + num(c.remotes_total) + (c.truncated ? '+' : '') + '</td>' +
@@ -193,16 +199,30 @@
     var parts = key.split('|'), wid = parts[0], name = parts.slice(1).join('|');
     var box = document.getElementById('activity-detail-' + key.replace(/[^A-Za-z0-9_-]/g, '_'));
     if (!box) return;
+    // The usage graph is per container. A namespace named after a sidecar has
+    // no usage of its own; its earners report the namespace's bytes, so chart
+    // the first of them.
+    var row = null;
+    ((state.data && state.data.workers) || []).forEach(function (w) {
+      if (String(w.worker_id) === wid) (w.containers || []).forEach(function (c) { if (c.container === name) row = c; });
+    });
+    var members = (row && row.members) || [];
+    var usageName = members.indexOf(name) >= 0 || !members.length ? name : members[0];
     var q = 'worker_id=' + encodeURIComponent(wid) + '&container=' + encodeURIComponent(name);
+    var uq = 'worker_id=' + encodeURIComponent(wid) + '&container=' + encodeURIComponent(usageName);
     Promise.all([
       api('GET', '/api/activity/container?' + q + '&days=' + state.days),
-      api('GET', '/api/usage?days=7&' + q).catch(function () { return null; })
+      api('GET', '/api/usage?days=7&' + uq).catch(function () { return null; })
     ]).then(function (res) {
       var d = res[0], usage = res[1];
+      // /api/usage falls back to the whole box when the container has no
+      // usage rows; that total must never be shown as this container's.
+      if (usage && usage.container !== usageName) usage = null;
       var raw = d.raw || [];
       box.innerHTML =
-        '<div class="activity-charts"><div><h3 class="activity-h3">Connections</h3><canvas id="ac-conn-' + esc(wid) + '" height="140"></canvas></div>' +
-        '<div><h3 class="activity-h3">Traffic, last 7 days</h3>' + (usage ? '<canvas id="ac-traffic-' + esc(wid) + '" height="140"></canvas>' : '<p class="muted">unavailable</p>') + '</div></div>' +
+        '<div class="activity-charts"><div><h3 class="activity-h3">Connections</h3><canvas class="ac-conn" height="140"></canvas></div>' +
+        '<div><h3 class="activity-h3">Traffic, last 7 days' + (usageName !== name ? ' (' + esc(usageName) + ')' : '') + '</h3>' +
+        (usage ? '<canvas class="ac-traffic" height="140"></canvas>' : '<p class="muted">No traffic reading for this container yet.</p>') + '</div></div>' +
         '<div class="activity-dims">' +
         dimTable('Ports', (d.dims || {}).port) +
         dimTable('Networks', (d.dims || {}).asn) +
@@ -213,21 +233,25 @@
         (raw.length ? '<table class="fleet-table"><thead><tr><th>Time</th><th>Direction</th><th>Address</th><th>Port</th><th>Kind</th><th>Network</th><th>Country</th><th>Seen</th></tr></thead><tbody>' +
           raw.slice(0, 500).map(function (r) {
             return '<tr><td>' + esc(when(r.window_end)) + '</td><td>' + (r.dir === 'in' ? 'in' : 'out') + '</td><td class="mono">' + esc(r.ip) + '</td>' +
-              '<td>' + esc(r.proto) + '/' + esc(r.port) + '</td><td><span class="activity-chip' + (ALARM[r['class']] ? ' activity-chip-warn' : '') + '">' + esc(CLASS_LABEL[r['class']] || r['class']) + '</span></td>' +
+              '<td>' + esc(r.proto) + '/' + esc(r.port) + '</td><td><span class="activity-chip' + (r.dir !== 'in' && ALARM[r['class']] ? ' activity-chip-warn' : '') + '">' + esc((r.dir === 'in' ? 'from ' : '') + (CLASS_LABEL[r['class']] || r['class'])) + '</span></td>' +
               '<td>' + esc(r.asn || '—') + '</td><td>' + esc(r.cc || '—') + '</td><td>' + esc(r.seen) + '/5</td></tr>';
           }).join('') + '</tbody></table>' : '<p class="muted">none</p>') + '</details>';
-      drawCharts(wid, d, usage);
+      drawCharts(key, box, d, usage);
     }).catch(function (e) {
       box.innerHTML = '<p class="muted">Could not load: ' + esc(e.message) + '</p>';
     });
   }
 
-  function drawCharts(wid, d, usage) {
+  function drawCharts(key, box, d, usage) {
     if (typeof Chart === 'undefined') return;
+    // Each expanded container has its own canvases, found inside its own box;
+    // the charts of a previous render of this container are destroyed first.
+    (state.charts[key] || []).forEach(function (c) { c.destroy(); });
+    state.charts[key] = [];
     var labels = (d.series || []).map(function (p) { return new Date(p[0] * 1000).toLocaleString(); });
-    var conn = document.getElementById('ac-conn-' + wid);
+    var conn = box.querySelector('canvas.ac-conn');
     if (conn) {
-      new Chart(conn, {
+      state.charts[key].push(new Chart(conn, {
         type: 'line',
         data: { labels: labels, datasets: [
           { label: 'Opened', data: d.series.map(function (p) { return p[1]; }), spanGaps: false, pointRadius: 0 },
@@ -235,19 +259,19 @@
           { label: 'Peak open', data: d.series.map(function (p) { return p[3]; }), spanGaps: false, pointRadius: 0 }
         ] },
         options: { animation: false, responsive: true, scales: { x: { display: false } } }
-      });
+      }));
     }
-    var traffic = document.getElementById('ac-traffic-' + wid);
+    var traffic = box.querySelector('canvas.ac-traffic');
     if (traffic && usage && usage.series) {
       var kb = function (v) { return v == null ? null : v / 1024; };
-      new Chart(traffic, {
+      state.charts[key].push(new Chart(traffic, {
         type: 'line',
         data: { labels: (usage.hours || []).map(function (h) { return new Date(h * 1000).toLocaleString(); }), datasets: [
           { label: 'In (KiB/s)', data: (usage.series.rx_rate || []).map(kb), spanGaps: false, pointRadius: 0 },
           { label: 'Out (KiB/s)', data: (usage.series.tx_rate || []).map(kb), spanGaps: false, pointRadius: 0 }
         ] },
         options: { animation: false, responsive: true, scales: { x: { display: false } } }
-      });
+      }));
     }
   }
 
@@ -263,7 +287,13 @@
 
   window.activityExpand = function (wid, name) {
     var key = wid + '|' + name;
-    if (state.open[key]) delete state.open[key]; else state.open[key] = true;
+    if (state.open[key]) {
+      delete state.open[key];
+      (state.charts[key] || []).forEach(function (c) { c.destroy(); });
+      delete state.charts[key];
+    } else {
+      state.open[key] = true;
+    }
     if (state.data) renderContainers(state.data);
   };
 

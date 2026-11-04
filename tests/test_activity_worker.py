@@ -393,9 +393,20 @@ class TestFit:
 def wapi():
     from app import worker_api
 
-    saved = (worker_api._activity_enabled, worker_api._pending_activity, worker_api._activity_seq)
+    saved = (
+        worker_api._activity_enabled,
+        worker_api._pending_activity,
+        worker_api._activity_seq,
+        worker_api._activity_setting_seen,
+    )
+    worker_api._activity_setting_seen = False
     yield worker_api
-    worker_api._activity_enabled, worker_api._pending_activity, worker_api._activity_seq = saved
+    (
+        worker_api._activity_enabled,
+        worker_api._pending_activity,
+        worker_api._activity_seq,
+        worker_api._activity_setting_seen,
+    ) = saved
 
 
 class TestWorkerWiring:
@@ -529,3 +540,124 @@ def test_procnet_has_no_app_imports():
     mods = [n.module for n in ast.walk(tree) if isinstance(n, ast.ImportFrom)]
     mods += [a.name for n in ast.walk(tree) if isinstance(n, ast.Import) for a in n.names]
     assert not [m for m in mods if m and m.startswith("app")]
+
+
+class TestReviewFixes:
+    """Regressions from the review of the first cut."""
+
+    def test_nvidia_and_youki_runtimes_are_joinable(self):
+        client = FakeClient([])
+        client.runtimes["nvidia"] = {"path": "nvidia-container-runtime"}
+        client.runtimes["youki"] = {"path": "/usr/bin/youki"}
+        got = activity.joinable_runtimes(client)
+        assert {"nvidia", "youki"} <= got
+
+    def test_default_bridge_earner_reaching_a_non_earner_container_is_docker_peer(self):
+        """On docker0 an earner shares the bridge with the user's own services."""
+        nets = {"bridge": {"NetworkID": "d0", "Gateway": "172.17.0.1", "IPAddress": "172.17.0.2", "IPPrefixLen": 16}}
+        hg = earner("cashpilot-honeygain", "h" * 64, nets=nets)
+        data = json.loads(json.dumps(GOOD))
+        data["summary"]["out"] = [
+            ["tcp", "172.17.0.5", 5432, 1, {"syn_sent": 1}],
+            ["tcp", "172.17.0.3", 8080, 1, {"est": 1}],
+        ]
+        client = FakeClient([hg], probe_factory=lambda kw: Probe(kw["name"], logs=json.dumps(data).encode()))
+        client.networks = SimpleNamespace(
+            get=lambda nid: SimpleNamespace(
+                attrs={
+                    "Driver": "bridge",
+                    "Containers": {
+                        "h" * 64: {"Name": "cashpilot-honeygain", "IPv4Address": "172.17.0.2/16"},
+                        "r" * 64: {"Name": "cashpilot-repocket", "IPv4Address": "172.17.0.3/16"},
+                        "p" * 64: {"Name": "postgres", "IPv4Address": "172.17.0.5/16"},
+                    },
+                }
+            )
+        )
+        window = _round(client, ["cashpilot-honeygain", "cashpilot-repocket"])
+        s = next(x for x in window["samples"] if x["container"] == "cashpilot-honeygain")
+        assert {o[1]: o[3] for o in s["out"]} == {"172.17.0.5": "docker_peer", "172.17.0.3": "peer"}
+
+    def test_a_long_gap_gives_no_delta(self):
+        def data(opens):
+            d = json.loads(json.dumps(GOOD))
+            d["snmp_end"]["tcp"]["ActiveOpens"] = opens
+            return d
+
+        activity.deltas("o", data(100), 0.0)
+        got = activity.deltas("o", data(5000), 2 * 86400.0)
+        assert got["opens"] is None and got["delta_seconds"] is None
+        # ...and that reading is the next baseline.
+        assert activity.deltas("o", data(5010), 2 * 86400.0 + 300)["opens"] == 10
+
+    def test_namespace_of_a_non_earner_keeps_counters_but_no_destinations(self):
+        gw = earner("gluetun", "g" * 64)
+        a = earner("cashpilot-a", "a" * 64, mode="container:gluetun")
+        client = FakeClient([gw, a])
+        window = _round(client, ["cashpilot-a"])
+        s = window["samples"][0]
+        assert s["container"] == "gluetun" and s["status"] == "ok"
+        assert s["reason"] == "shared_namespace"
+        assert s["out"] == [] and s["in"] == [] and s["est_max"] == 3
+
+    def test_namespace_owned_by_an_earner_keeps_destinations(self):
+        """Control for the test above: the same sharing, owner an earner."""
+        gw = earner("cashpilot-gw", "g" * 64)
+        a = earner("cashpilot-a", "a" * 64, mode="container:cashpilot-gw")
+        client = FakeClient([gw, a])
+        window = _round(client, ["cashpilot-gw", "cashpilot-a"])
+        s = window["samples"][0]
+        assert s["reason"] == "" and len(s["out"]) == 2
+
+
+class TestWorkerReplyFixes:
+    def _resp(self, body):
+        resp = MagicMock()
+        resp.json.return_value = body
+        return resp
+
+    def test_off_to_on_resets_counter_state(self, wapi):
+        wapi._activity_enabled = False
+        activity._prev["x"] = ("net:[1]", {}, 0.0)
+        wapi._apply_activity_reply(self._resp({"activity": {"enabled": True}}), None)
+        assert wapi._activity_enabled is True and activity._prev == {}
+
+    def test_on_to_on_keeps_counter_state(self, wapi):
+        wapi._activity_enabled = True
+        activity._prev["x"] = ("net:[1]", {}, 0.0)
+        wapi._apply_activity_reply(self._resp({"activity": {"enabled": True}}), None)
+        assert "x" in activity._prev
+
+    def test_a_round_discarded_after_switch_off_resets(self, wapi):
+        wapi._activity_enabled = True
+
+        def round_then_off():
+            activity._prev["x"] = ("net:[1]", {}, 0.0)
+            wapi._activity_enabled = False
+            return {"v": 1, "samples": []}
+
+        wapi._pending_activity = None
+        with (
+            patch("app.worker_api.orchestrator.docker_available", return_value=True),
+            patch("app.worker_api.activity.run_round", side_effect=round_then_off),
+        ):
+            asyncio.run(wapi._activity_cycle())
+        assert wapi._pending_activity is None and activity._prev == {}
+
+    def test_window_kept_when_the_ui_did_not_store_it(self, wapi):
+        wapi._activity_enabled = True
+        wapi._pending_activity = {"v": 1}
+        wapi._activity_seq = 3
+        wapi._apply_activity_reply(self._resp({"activity": {"enabled": True, "stored": False}}), 3)
+        assert wapi._pending_activity == {"v": 1}
+        wapi._apply_activity_reply(self._resp({"activity": {"enabled": True, "stored": True}}), 3)
+        assert wapi._pending_activity is None
+
+    def test_missing_key_after_a_setting_is_unchanged(self, wapi):
+        wapi._activity_enabled = False
+        wapi._apply_activity_reply(self._resp({"activity": {"enabled": True}}), None)
+        wapi._pending_activity = {"v": 1}
+        activity._prev["x"] = ("net:[1]", {}, 0.0)
+        wapi._apply_activity_reply(self._resp({"status": "ok"}), 1)
+        assert wapi._activity_enabled is True and wapi._pending_activity == {"v": 1}
+        assert "x" in activity._prev

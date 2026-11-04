@@ -39,6 +39,10 @@ MAX_AGE_SECONDS = 7 * 86400
 DOWNLOAD_TIMEOUT = 120
 #: A real table has hundreds of thousands of ranges; far fewer means a bad file.
 MIN_ROWS = 1000
+#: Caps, so a bad upstream (or a gzip bomb) cannot fill /data, the volume that
+#: holds the main database. The real file is about 11 MB and 600k ranges.
+MAX_DOWNLOAD_BYTES = 64 * 1024 * 1024
+MAX_ROWS = 3_000_000
 
 _lock = threading.Lock()
 
@@ -105,6 +109,8 @@ def build(lines: Any, target: Path | None = None) -> int:
         n = 0
         batch = []
         for row in _rows(lines):
+            if n + len(batch) >= MAX_ROWS:
+                raise ValueError("the table has more ranges than the real one")
             batch.append(row)
             if len(batch) >= 5000:
                 conn.executemany("INSERT OR REPLACE INTO ranges VALUES (?, ?, ?, ?, ?)", batch)
@@ -147,8 +153,16 @@ def _download(url: str) -> int:
     try:
         with httpx.stream("GET", url, timeout=DOWNLOAD_TIMEOUT, follow_redirects=True) as resp:
             resp.raise_for_status()
+            # Redirects are followed, but never from https down to plain http.
+            final = str(getattr(resp.url, "scheme", "")).lower()
+            if url.lower().startswith("https://") and final != "https":
+                raise ValueError("the download was redirected off https")
+            size = 0
             with gz.open("wb") as f:
                 for chunk in resp.iter_bytes():
+                    size += len(chunk)
+                    if size > MAX_DOWNLOAD_BYTES:
+                        raise ValueError("the download is larger than the real table")
                     f.write(chunk)
         with gzip.open(gz, "rb") as f:
             return build(f)

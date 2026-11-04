@@ -13,6 +13,7 @@ import json
 import logging
 import re
 import time
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -272,7 +273,7 @@ class TestHeartbeat:
 
         on, off, samples, workers = self._run(tmp_path, go)
         ids = {w["client_id"]: w["id"] for w in workers}
-        assert on["activity"] == {"enabled": True} and off["activity"] == {"enabled": False}
+        assert on["activity"] == {"enabled": True, "stored": True} and off["activity"] == {"enabled": False}
         assert {s["worker_id"] for s in samples} == {ids["on"]}
 
     def test_a_phone_gets_no_activity_key(self, tmp_path):
@@ -296,7 +297,8 @@ class TestHeartbeat:
             return resp, await rows("activity_samples")
 
         resp, samples = self._run(tmp_path, go)
-        assert resp["status"] == "ok" and resp["activity"] == {"enabled": True}
+        # Refused for good, so "stored": the worker must not send it again.
+        assert resp["status"] == "ok" and resp["activity"] == {"enabled": True, "stored": True}
         assert samples == []
 
     def test_an_ingest_exception_still_gets_200_and_logs_no_address(self, tmp_path, caplog):
@@ -374,9 +376,10 @@ class TestAlertRules:
             (f["kind"], f["detail"]) for f in activity_ui.alert_findings(activity_ui.sanitise(window(out=out), NOW))
         ]
 
-    def test_mail_needs_public_tcp_on_a_mail_port_connected_or_connecting(self):
+    def test_mail_needs_public_tcp_on_a_mail_port(self):
         assert self._kinds([["tcp", "198.51.100.9", 587, "public", 1, {"syn_sent": 1}]]) == [("activity_mail", "")]
-        assert self._kinds([["tcp", "198.51.100.9", 587, "public", 1, {"other": 1}]]) == []
+        assert self._kinds([["tcp", "198.51.100.9", 587, "public", 1, {"other": 1}]]) == [("activity_mail", "")]
+        assert self._kinds([["tcp", "192.168.1.9", 587, "lan", 1, {"est": 1}]]) == [("activity_lan", "lan")]
         assert self._kinds([["udp", "198.51.100.9", 25, "public", 1, {"est": 1}]]) == []
         assert self._kinds([["tcp", "198.51.100.9", 443, "public", 1, {"est": 1}]]) == []
 
@@ -691,3 +694,212 @@ class TestIpgeo:
         monkeypatch.setenv("CASHPILOT_ACTIVITY_ASN_URL", "")
         assert ipgeo.source_url() == ""
         assert ipgeo.needs_refresh() is False
+
+
+# ---------------------------------------------------------------------------
+# regressions from the review of the first cut
+# ---------------------------------------------------------------------------
+
+
+class TestReviewFixes:
+    def _kinds(self, out):
+        return [
+            (f["kind"], f["detail"]) for f in activity_ui.alert_findings(activity_ui.sanitise(window(out=out), NOW))
+        ]
+
+    def test_mail_alerts_on_a_finished_session(self):
+        """A short SMTP send spends most of its life in TIME_WAIT, read as closed."""
+        assert self._kinds([["tcp", "198.51.100.9", 25, "public", 1, {"closed": 1}]]) == [("activity_mail", "")]
+
+    def test_a_non_earner_on_the_same_bridge_raises_lan(self):
+        assert self._kinds([["tcp", "172.17.0.5", 5432, "docker_peer", 1, {"est": 1}]]) == [
+            ("activity_lan", "docker_peer")
+        ]
+
+    def test_inbound_lan_does_not_mark_the_container(self, tmp_path):
+        """The owner opening an earner's web UI from his laptop is not the earner reaching the LAN."""
+
+        async def go():
+            real_now = time.time()
+            end = int(real_now // 300 * 300)
+            w = window(end=end, inbound=[["192.168.10.20", 8080, "lan", 1]])
+            await database.record_activity(1, activity_ui.sanitise(w, real_now), now=real_now)
+            since = int(real_now) - 86400
+            return activity_ui.container_rows(
+                await database.get_activity_latest(since),
+                [],
+                await database.get_activity_dims(since - since % 3600),
+                {},
+                "c1",
+            )
+
+        c = run_db(tmp_path, go)[0]
+        assert "lan" not in c["classes"] and c["classes"] == {"public": 7}
+
+    def test_outbound_lan_marks_the_container(self, tmp_path):
+        """Control for the test above."""
+
+        async def go():
+            real_now = time.time()
+            end = int(real_now // 300 * 300)
+            w = window(end=end, out=[["tcp", "192.168.10.20", 22, "lan", 1, {"syn_sent": 1}]])
+            await database.record_activity(1, activity_ui.sanitise(w, real_now), now=real_now)
+            since = int(real_now) - 86400
+            return activity_ui.container_rows(
+                await database.get_activity_latest(since),
+                [],
+                await database.get_activity_dims(since - since % 3600),
+                {},
+                "c1",
+            )
+
+        assert "lan" in run_db(tmp_path, go)[0]["classes"]
+
+    def test_a_window_arriving_after_switch_off_is_not_stored(self, tmp_path):
+        async def go():
+            wid = await database.upsert_worker(
+                client_id="c1", name="box", url="", containers="[]", apps="[]", system_info="{}"
+            )
+            await database.set_config("worker_c1_activity", "false")
+            keys = ("worker_c1_activity", f"worker_{wid}_activity")
+            n = await database.record_activity(wid, activity_ui.sanitise(window(), NOW), now=NOW, flag_keys=keys)
+            await database.set_config("worker_c1_activity", "true")
+            m = await database.record_activity(wid, activity_ui.sanitise(window(), NOW), now=NOW, flag_keys=keys)
+            return n, m
+
+        assert run_db(tmp_path, go) == (0, 1)
+
+    def test_a_window_for_a_removed_worker_is_not_stored(self, tmp_path):
+        async def go():
+            await database.set_config("worker_c9_activity", "true")
+            return await database.record_activity(
+                99, activity_ui.sanitise(window(), NOW), now=NOW, flag_keys=("worker_c9_activity",)
+            ), len(await rows("activity_dest_raw"))
+
+        assert run_db(tmp_path, go) == (0, 0)
+
+    def test_the_wal_holds_no_address_after_the_purge(self, tmp_path):
+        async def go():
+            db = await database._get_db()
+            await db.execute(
+                "INSERT INTO activity_dest_raw (worker_id, container, window_end, dir, proto, ip, port, class) "
+                "VALUES (1, 'c', ?, 'out', 'tcp', '198.51.100.77', 443, 'public')",
+                (int(NOW) - 2 * 86400,),
+            )
+            await db.commit()
+            await db.close()
+            await database.purge_activity_raw(now=NOW)
+            files = [tmp_path / "activity.db", tmp_path / "activity.db-wal"]
+            return [f.read_bytes() for f in files if f.exists()]
+
+        for blob in run_db(tmp_path, go):
+            assert b"198.51.100.77" not in blob
+
+    def test_a_busy_checkpoint_is_logged(self, tmp_path, caplog):
+        class Cur:
+            async def fetchone(self):
+                return (1, 10, 3)
+
+        db = MagicMock()
+        db.execute = AsyncMock(return_value=Cur())
+        with caplog.at_level(logging.WARNING):
+            busy = asyncio.run(database._checkpoint(db))
+        assert busy is True and "checkpoint" in caplog.text.lower()
+
+
+class TestHeartbeatAck:
+    def _run(self, tmp_path, factory):
+        return TestHeartbeat()._run(tmp_path, factory)
+
+    def test_stored_only_after_a_write(self, tmp_path):
+        async def go(main):
+            await database.set_config("worker_on_activity", "true")
+            ok = await TestHeartbeat._hb(main, "on", window(end=int(time.time() // 300 * 300)))
+            with patch.object(main.database, "record_activity", AsyncMock(side_effect=RuntimeError("busy"))):
+                bad = await TestHeartbeat._hb(main, "on", window(end=int(time.time() // 300 * 300) - 300))
+            none = await TestHeartbeat._hb(main, "on", None)
+            return ok, bad, none
+
+        ok, bad, none = self._run(tmp_path, go)
+        assert ok["activity"] == {"enabled": True, "stored": True}
+        assert bad["activity"] == {"enabled": True, "stored": False}
+        assert none["activity"] == {"enabled": True}
+
+
+class TestBellIsOwnerOnly:
+    def test_viewer_sees_no_activity_alert(self):
+        from app import main
+
+        alerts = [
+            {"kind": "collector", "platform": "honeygain", "error": "login failed"},
+            {"kind": "activity_lan", "platform": "cashpilot-x", "error": "On box: tried to reach your LAN"},
+        ]
+
+        async def call(role):
+            req = MagicMock()
+            with (
+                patch.object(main, "_collector_alerts", alerts),
+                patch("app.auth.get_current_user", return_value={"uid": 1, "u": "x", "r": role}),
+            ):
+                return await main.api_collector_alerts(req)
+
+        viewer = asyncio.run(call("viewer"))
+        owner = asyncio.run(call("owner"))
+        assert [a["kind"] for a in viewer["alerts"]] == ["collector"]
+        assert [a["kind"] for a in owner["alerts"]] == ["collector", "activity_lan"]
+
+
+class TestIpgeoCaps:
+    def test_a_stream_past_the_byte_cap_is_refused(self, tmp_path, monkeypatch):
+        class Resp:
+            url = SimpleNamespace(scheme="https")
+
+            def raise_for_status(self):
+                return None
+
+            def iter_bytes(self):
+                for _ in range(10):
+                    yield b"x" * 1024
+
+        class Ctx:
+            def __enter__(self):
+                return Resp()
+
+            def __exit__(self, *a):
+                return False
+
+        monkeypatch.setattr(ipgeo, "db_path", lambda: tmp_path / "ipgeo.sqlite")
+        monkeypatch.setattr(ipgeo, "MAX_DOWNLOAD_BYTES", 4096)
+        monkeypatch.setattr(ipgeo.httpx, "stream", lambda *a, **k: Ctx())
+        with pytest.raises(ValueError):
+            ipgeo._download("https://example.invalid/t.gz")
+        assert not (tmp_path / "ipgeo.tsv.gz.tmp").exists()
+
+    def test_a_redirect_off_https_is_refused(self, tmp_path, monkeypatch):
+        class Resp:
+            url = SimpleNamespace(scheme="http")
+
+            def raise_for_status(self):
+                return None
+
+            def iter_bytes(self):
+                yield gzip.compress(TSV.encode())
+
+        class Ctx:
+            def __enter__(self):
+                return Resp()
+
+            def __exit__(self, *a):
+                return False
+
+        monkeypatch.setattr(ipgeo, "db_path", lambda: tmp_path / "ipgeo.sqlite")
+        monkeypatch.setattr(ipgeo.httpx, "stream", lambda *a, **k: Ctx())
+        monkeypatch.setattr(ipgeo, "MIN_ROWS", 1)
+        with pytest.raises(ValueError):
+            ipgeo._download("https://example.invalid/t.gz")
+        assert not (tmp_path / "ipgeo.sqlite").exists()
+
+    def test_too_many_rows_is_refused(self, tmp_path):
+        with patch.object(ipgeo, "MIN_ROWS", 1), patch.object(ipgeo, "MAX_ROWS", 2), pytest.raises(ValueError):
+            ipgeo.build(io.StringIO(TSV), tmp_path / "ipgeo.sqlite")
+        assert not (tmp_path / "ipgeo.sqlite").exists()
