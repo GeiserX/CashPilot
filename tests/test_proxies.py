@@ -57,9 +57,9 @@ class TestDefinition:
 
     def test_tailscale_needs_a_key_and_an_exit_node(self):
         with pytest.raises(proxies.ProxyInputError):
-            proxies.clean_definition({"name": "Fran", "kind": "tailscale", "exit_node": "macbook"})
+            proxies.clean_definition({"name": "Exit node A", "kind": "tailscale", "exit_node": "exit-node-a"})
         d = proxies.clean_definition(
-            {"name": "Fran", "kind": "tailscale", "auth_key": AUTH_KEY, "exit_node": "macbook-pro-de-francisco"}
+            {"name": "Exit node A", "kind": "tailscale", "auth_key": AUTH_KEY, "exit_node": "exit-node-a"}
         )
         assert d["auth_key"] == AUTH_KEY and d["host"] == "" and d["password"] == ""
 

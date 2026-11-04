@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Proves a proxied copy fails closed (docs/proxies.md, "How the guarantee is tested").
 #
-# Runs against a real Docker daemon, so never on a production box. It starts a
+# Runs against a real Docker daemon, so run it only on a disposable Docker host. It starts a
 # pinned gost as the proxy, then for each proxy type a tunnel sidecar plus a
 # curl container standing in for the earner, joined to the sidecar's network
 # namespace exactly as the worker joins them. For each one it checks:

@@ -4,7 +4,7 @@
 #
 # A pinned headscale is the control server, a tailscale container is the exit
 # node (approved through headscale's own CLI), and the tunnel sidecar plus a
-# curl container stand in for a proxied copy. Never run on a production box.
+# curl container stand in for a proxied copy. Run it only on a disposable Docker host.
 #
 #   a. the earner reaches the internet, and a capture on the namespace's real
 #      interface sees none of that traffic in the clear: it went through the

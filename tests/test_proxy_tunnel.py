@@ -243,10 +243,10 @@ class TestSidecar:
 
     def test_tailscale_files(self):
         files = proxy_tunnel.secret_files(
-            {"kind": "tailscale", "auth_key": AUTH_KEY, "exit_node": "macbook-pro-de-francisco"}, None, "w1-x"
+            {"kind": "tailscale", "auth_key": AUTH_KEY, "exit_node": "exit-node-a"}, None, "w1-x"
         )
         assert files["auth_key"] == AUTH_KEY
-        assert files["exit_node"] == "macbook-pro-de-francisco"
+        assert files["exit_node"] == "exit-node-a"
         assert files["hostname"] == "cashpilot-w1-x"
 
 
