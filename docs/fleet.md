@@ -127,7 +127,7 @@ services:
       - cashpilot_worker_data:/data
     environment:
       - TZ=${TZ:-UTC}
-      - CASHPILOT_UI_URL=http://main-server:8080
+      - CASHPILOT_UI_URL=http://main-server:8080  # the UI's published host port (CASHPILOT_UI_PORT)
       - CASHPILOT_API_KEY=your-shared-api-key
       - CASHPILOT_WORKER_NAME=server-b
       - CASHPILOT_WORKER_URL=http://server-b:8081
@@ -249,7 +249,7 @@ Notifications fire **only the first time** a particular failure appears: a colle
 
 | Variable | Required | Default | Description |
 |----------|:--------:|---------|-------------|
-| `CASHPILOT_UI_URL` | Yes | -- | URL of the CashPilot UI (e.g. `http://192.168.1.10:8080`) |
+| `CASHPILOT_UI_URL` | Yes | -- | URL of the CashPilot UI (e.g. `http://192.168.1.10:8080`). A remote worker uses the UI's published host port, so `:8088` if the UI host sets `CASHPILOT_UI_PORT=8088`. A worker beside the UI keeps `http://cashpilot-ui:8080`, the container port on the compose network |
 | `CASHPILOT_API_KEY` | Yes | -- | Must match the UI's API key |
 | `CASHPILOT_WORKER_NAME` | No | *(hostname)* | Display name for this worker. Recommended on Docker workers: without it the name is the container hostname, so it changes on every recreate and the dashboard label churns -- see [Worker identity](#worker-identity) |
 | `CASHPILOT_WORKER_URL` | No | *(auto-detected)* | URL the UI uses to reach this worker. Set explicitly for remote/cross-host workers -- auto-detection can report an unreachable address |

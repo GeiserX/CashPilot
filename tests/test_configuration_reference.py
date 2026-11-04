@@ -64,12 +64,13 @@ class TestTheReferenceCoversWhatTheCodeReads:
         The compose-level ones are exempt: they are read by the compose files,
         not by Python, and the reference says so in its own section.
         """
-        compose_only = {"CASHPILOT_BIND_ADDR", "CASHPILOT_WORKER_BIND_ADDR"}
+        compose_only = {"CASHPILOT_BIND_ADDR", "CASHPILOT_WORKER_BIND_ADDR", "CASHPILOT_UI_PORT"}
         ghosts = sorted(_documented() - _read_in_code() - compose_only)
         assert not ghosts, f"documented but read by nothing: {ghosts}"
 
     @pytest.mark.parametrize(
-        "name", sorted(compose for compose in ("CASHPILOT_BIND_ADDR", "CASHPILOT_WORKER_BIND_ADDR"))
+        "name",
+        sorted(compose for compose in ("CASHPILOT_BIND_ADDR", "CASHPILOT_WORKER_BIND_ADDR", "CASHPILOT_UI_PORT")),
     )
     def test_the_compose_only_variables_really_are_used_by_compose(self, name):
         """Their exemption above is only honest if compose actually uses them."""
