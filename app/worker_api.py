@@ -39,7 +39,17 @@ from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 
-from app import egress, fleet_key, isolation_check, node_read, orchestrator, payout_read, state_backup, version
+from app import (
+    activity,
+    egress,
+    fleet_key,
+    isolation_check,
+    node_read,
+    orchestrator,
+    payout_read,
+    state_backup,
+    version,
+)
 from app.constants import MAX_INSTANCES
 
 try:
@@ -68,6 +78,15 @@ WORKER_URL = os.getenv("CASHPILOT_WORKER_URL", "")
 HEARTBEAT_INTERVAL = 60  # seconds
 
 _heartbeat_task: asyncio.Task | None = None
+_activity_task: asyncio.Task | None = None
+# Activity sampling (app/activity.py): off until the UI's heartbeat response
+# says the owner switched it on for this worker. An older UI never says so.
+_activity_enabled = False
+# The last finished round not yet delivered, and its sequence number. A newer
+# round replaces an older one; a delivered round is cleared only if no newer
+# one replaced it while the heartbeat was in flight.
+_pending_activity: dict[str, Any] | None = None
+_activity_seq = 0
 _ui_connected = False
 _last_heartbeat: str = "never"
 _last_error: str = ""
@@ -648,7 +667,7 @@ async def _send_heartbeat() -> None:
             # What this worker can do that an older one cannot. The UI sends a
             # second copy of a service only to a worker listing "instances": an
             # older worker would read the deploy as the first copy and replace it.
-            "features": ["instances", "isolation_check", "state_backup"] if docker_ok else ["instances"],
+            "features": ["instances", "isolation_check", "state_backup", "activity"] if docker_ok else ["instances"],
             # Providers count devices per public IP, so the UI needs the address
             # the provider sees — not this container's LAN or tailnet address.
             "egress_ip": await _detect_egress_ip(),
@@ -660,6 +679,10 @@ async def _send_heartbeat() -> None:
             "gpu": await asyncio.to_thread(_gpu_info),
         },
     }
+    # Only what the owner asked for, and only a finished round.
+    sent_seq = _activity_seq
+    if _activity_enabled and _pending_activity is not None:
+        payload["activity"] = _pending_activity
 
     try:
         async with httpx.AsyncClient(timeout=15) as client:
@@ -682,6 +705,10 @@ async def _send_heartbeat() -> None:
             _consecutive_heartbeat_failures = 0
             _link_hint_logged = False
             logger.debug("Heartbeat sent to %s", _ui_host())
+            try:
+                _apply_activity_reply(resp, sent_seq if "activity" in payload else None)
+            except Exception:  # noqa: BLE001 - never counts against the heartbeat
+                logger.warning("Activity bookkeeping failed (heartbeat itself landed)")
             try:
                 # Enrollment: the UI returns our own per-worker key exactly once.
                 issued = None
@@ -796,6 +823,74 @@ async def _heartbeat_loop() -> None:
         await asyncio.sleep(HEARTBEAT_INTERVAL)
 
 
+def _apply_activity_reply(resp: Any, delivered_seq: int | None) -> None:
+    """Follow the UI's activity switch, and drop a round it has received.
+
+    A reply without the key comes from a UI that predates Activity: off.
+    """
+    global _activity_enabled, _pending_activity
+    body: Any = None
+    with contextlib.suppress(Exception):
+        body = resp.json()
+    setting = body.get("activity") if isinstance(body, dict) else None
+    enabled = bool(setting.get("enabled")) if isinstance(setting, dict) else False
+    if not enabled:
+        if _activity_enabled:
+            logger.info("Activity sampling switched off by the UI")
+        _activity_enabled = False
+        _pending_activity = None
+        activity.reset()
+        return
+    if not _activity_enabled:
+        logger.info("Activity sampling switched on by the UI")
+    _activity_enabled = True
+    if delivered_seq is not None and delivered_seq == _activity_seq:
+        _pending_activity = None
+
+
+def _seconds_to_next_window(now: float | None = None) -> float:
+    now = time.time() if now is None else now
+    return activity.WINDOW_SECONDS - (now % activity.WINDOW_SECONDS) + 1
+
+
+async def _activity_cycle() -> None:
+    """One round, if the owner switched Activity on and Docker answers."""
+    global _pending_activity, _activity_seq
+    if not _activity_enabled:
+        return
+    if not await asyncio.to_thread(orchestrator.docker_available):
+        return
+    result = await asyncio.to_thread(activity.run_round)
+    if result is None or not _activity_enabled:
+        return
+    _activity_seq += 1
+    _pending_activity = result
+
+
+async def _activity_loop() -> None:
+    """Sample on every 5-minute wall-clock boundary, out of band from the heartbeat.
+
+    Nothing here touches the heartbeat counters or /api/health: a failed round
+    is a missing window on the Activity page, never a worker going unhealthy.
+    """
+    with contextlib.suppress(Exception):
+        if await asyncio.to_thread(orchestrator.docker_available):
+            client = await asyncio.to_thread(activity._client)
+            try:
+                await asyncio.to_thread(activity.sweep, client)
+            finally:
+                with contextlib.suppress(Exception):
+                    client.close()
+    while True:
+        await asyncio.sleep(_seconds_to_next_window())
+        try:
+            await _activity_cycle()
+        except asyncio.CancelledError:
+            raise
+        except Exception:  # noqa: BLE001
+            logger.warning("Activity round failed")
+
+
 def _get_local_ip() -> str:
     """Best-effort local IP detection for worker URL."""
     try:
@@ -816,7 +911,7 @@ def _get_local_ip() -> str:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global _heartbeat_task
+    global _heartbeat_task, _activity_task
 
     logger.info("CashPilot Worker '%s' starting", WORKER_NAME)
     docker_mode = "direct" if await asyncio.to_thread(orchestrator.docker_available) else "monitor-only"
@@ -824,6 +919,7 @@ async def lifespan(app: FastAPI):
 
     if UI_URL:
         _heartbeat_task = asyncio.create_task(_heartbeat_loop())
+        _activity_task = asyncio.create_task(_activity_loop())
         logger.info("Heartbeat enabled -> %s (every %ds)", _redact_userinfo(UI_URL), HEARTBEAT_INTERVAL)
         if not API_KEY:
             logger.warning("CASHPILOT_API_KEY not set — heartbeats sent without auth")
@@ -832,10 +928,11 @@ async def lifespan(app: FastAPI):
 
     yield
 
-    if _heartbeat_task and not _heartbeat_task.done():
-        _heartbeat_task.cancel()
-        with contextlib.suppress(asyncio.CancelledError):
-            await _heartbeat_task
+    for task in (_heartbeat_task, _activity_task):
+        if task and not task.done():
+            task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await task
     logger.info("CashPilot Worker stopped")
 
 
