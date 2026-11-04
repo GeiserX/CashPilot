@@ -89,3 +89,13 @@ def test_runtipi_lists_the_version_it_installs():
     listed = json.loads((package / "config.json").read_text(encoding="utf-8"))["version"]
     installed = _cashpilot_tag(package / "docker-compose.yml")
     assert listed == installed, f"Runtipi shows version {listed} but installs {installed}"
+
+
+def test_runtipi_offers_no_public_exposure():
+    """The dashboard commands the worker that holds the Docker socket (root on
+    the host), and the package's own text says to keep it on the LAN or VPN.
+    With ``exposable`` true Runtipi shows an "Expose app" switch that puts it on
+    a public domain, so the listing would offer the setup its text forbids.
+    Users reach it on APP_PORT instead."""
+    config = json.loads((STORES / "runtipi" / "cashpilot" / "config.json").read_text(encoding="utf-8"))
+    assert config.get("exposable", False) is False, "Runtipi listing offers public exposure; set exposable to false"

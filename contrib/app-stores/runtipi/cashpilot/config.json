@@ -3,7 +3,7 @@
   "name": "CashPilot",
   "port": 8650,
   "available": true,
-  "exposable": true,
+  "exposable": false,
   "dynamic_config": true,
   "id": "cashpilot",
   "tipi_version": 1,
