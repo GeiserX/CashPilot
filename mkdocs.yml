@@ -161,6 +161,7 @@ nav:
   - Home: index.md
   - Get started:
     - Getting started: getting-started.md
+    - App stores: app-stores.md
     - How it works: how-it-works.md
     - FAQ: faq.md
     - How CashPilot compares: comparison.md

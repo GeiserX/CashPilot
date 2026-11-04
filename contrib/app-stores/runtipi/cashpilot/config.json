@@ -1,0 +1,22 @@
+{
+  "$schema": "../app-info-schema.json",
+  "name": "CashPilot",
+  "port": 8650,
+  "available": true,
+  "exposable": true,
+  "dynamic_config": true,
+  "id": "cashpilot",
+  "tipi_version": 1,
+  "version": "1.64.0",
+  "categories": ["finance", "automation"],
+  "description": "CashPilot runs passive income services (bandwidth sharing, DePIN, storage and GPU compute) on your own server and shows what they earn in one web dashboard. A worker container starts the services that run in Docker; the dashboard reads the providers' balances into one earnings history.",
+  "short_desc": "Run passive income services and see what they earn.",
+  "author": "GeiserX",
+  "source": "https://github.com/GeiserX/CashPilot",
+  "website": "https://geiserx.github.io/CashPilot/",
+  "form_fields": [],
+  "supported_architectures": ["arm64", "amd64"],
+  "created_at": 1793750400000,
+  "updated_at": 1793750400000,
+  "min_tipi_version": "4.8.0"
+}
