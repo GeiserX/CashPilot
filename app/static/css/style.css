@@ -1039,6 +1039,8 @@ img { max-width: 100%; }
 }
 
 .collectors-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 4px; align-items: start; }
+.collectors-col { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.collectors-col .collector-section { margin-bottom: 0; }
 .collectors-grid .collector-section {
   min-width: 0;
   overflow: hidden;
@@ -1050,6 +1052,7 @@ img { max-width: 100%; }
   .collectors-grid {
     grid-template-columns: 1fr;
   }
+  .collectors-col { display: contents; }
 }
 
 /* Payouts awaiting an answer (dashboard).
