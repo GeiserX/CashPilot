@@ -91,12 +91,67 @@ class TestVersionComparison:
 # ---------------------------------------------------------------------------
 
 
-def _fake_container(labels=None, image="drumsergio/cashpilot-worker:1.35", status="running"):
+def _fake_container(labels=None, image="drumsergio/cashpilot-worker:1.35", status="running", port_bindings=None):
     c = MagicMock()
-    c.attrs = {"Config": {"Labels": labels or {}, "Image": image}}
+    c.attrs = {
+        "Config": {"Labels": labels or {}, "Image": image},
+        "HostConfig": {"PortBindings": port_bindings},
+    }
     c.status = status
     c.id = "f" * 64
     return c
+
+
+def _ui_bindings(host_ip="127.0.0.1", port="8080"):
+    return {"8080/tcp": [{"HostIp": host_ip, "HostPort": port}]}
+
+
+def _ui_port_cfg(host_ip="127.0.0.1", published="8080"):
+    entry = {"mode": "ingress", "target": 8080, "published": published, "protocol": "tcp"}
+    if host_ip is not None:
+        entry["host_ip"] = host_ip
+    return [entry]
+
+
+def _config(**services):
+    """`docker compose config --format json` output: service -> ports list."""
+    return {"name": "cashpilot", "services": {name: ({"ports": p} if p else {}) for name, p in services.items()}}
+
+
+def _preflight(cfg=None, code=0, stderr_bytes=b"", wait_exc=None):
+    """The socketless `docker compose config` helper container."""
+    import json
+
+    c = MagicMock()
+    if wait_exc is not None:
+        c.wait.side_effect = wait_exc
+    else:
+        c.wait.return_value = {"StatusCode": code}
+    out = json.dumps(cfg if cfg is not None else _config(**{"cashpilot-worker": None})).encode()
+    c.logs.side_effect = lambda stdout=True, stderr=True: stderr_bytes if stderr else out
+    return c
+
+
+def _wire_runs(client, preflight=None, updater=None):
+    """containers.run: the preflight (no name) first, then the named updater."""
+    preflight = preflight if preflight is not None else _preflight()
+    updater = updater if updater is not None else _fake_container()
+
+    def run(image, *args, **kwargs):
+        return updater if kwargs.get("name") == orchestrator.UPDATER_NAME else preflight
+
+    client.containers.run.side_effect = run
+    return preflight, updater
+
+
+def _updater_call(client):
+    calls = [c for c in client.containers.run.call_args_list if c.kwargs.get("name") == orchestrator.UPDATER_NAME]
+    assert len(calls) == 1, f"expected one updater run, got {len(calls)}"
+    return calls[0]
+
+
+def _updater_started(client):
+    return any(c.kwargs.get("name") == orchestrator.UPDATER_NAME for c in client.containers.run.call_args_list)
 
 
 _COMPOSE_LABELS = {
@@ -164,14 +219,14 @@ class TestSpawnSelfUpdate:
     def test_spawns_the_pinned_helper_with_only_derived_values(self):
         me = _fake_container(labels=_COMPOSE_LABELS)
         client = _fake_docker(me=me)
-        client.containers.run.return_value = _fake_container()
+        _wire_runs(client)
         with patch.object(orchestrator, "_get_client", return_value=client):
             result = orchestrator.spawn_self_update()
 
         assert result["working_dir"] == "/srv/cashpilot"
         assert result["services"] == ["cashpilot-worker"]
-        kwargs = client.containers.run.call_args.kwargs
-        args = client.containers.run.call_args.args
+        call = _updater_call(client)
+        kwargs, args = call.kwargs, call.args
         # Image pinned — never :latest, never caller-supplied.
         assert args[0] == orchestrator.UPDATER_IMAGE
         assert ":" in orchestrator.UPDATER_IMAGE and not orchestrator.UPDATER_IMAGE.endswith(":latest")
@@ -187,12 +242,31 @@ class TestSpawnSelfUpdate:
         assert set(kwargs["volumes"]) == {"/var/run/docker.sock", "/srv/cashpilot"}
         assert kwargs["working_dir"] == "/srv/cashpilot"
         # Compose label separates files with commas; COMPOSE_FILE wants colons.
+        # The project name comes from the label, so an install started with
+        # `-p` is updated in place instead of in a second project.
         assert kwargs["environment"] == {
-            "COMPOSE_FILE": "/srv/cashpilot/docker-compose.yml:/srv/cashpilot/override.yml"
+            "COMPOSE_FILE": "/srv/cashpilot/docker-compose.yml:/srv/cashpilot/override.yml",
+            "COMPOSE_PROJECT_NAME": "cashpilot",
         }
         assert kwargs["name"] == orchestrator.UPDATER_NAME
         assert kwargs["detach"] is True
         assert kwargs["remove"] is True
+
+    def test_the_preflight_resolves_the_config_without_the_socket(self):
+        me = _fake_container(labels=_COMPOSE_LABELS)
+        client = _fake_docker(me=me)
+        preflight, _ = _wire_runs(client)
+        with patch.object(orchestrator, "_get_client", return_value=client):
+            orchestrator.spawn_self_update()
+
+        first = client.containers.run.call_args_list[0]
+        assert first.args[0] == orchestrator.UPDATER_IMAGE
+        assert first.kwargs["command"] == ["docker", "compose", "config", "--format", "json", "cashpilot-worker"]
+        assert first.kwargs["volumes"] == {"/srv/cashpilot": {"bind": "/srv/cashpilot", "mode": "ro"}}
+        assert "name" not in first.kwargs
+        # Same environment as the updater, so it resolves what the updater will.
+        assert first.kwargs["environment"] == _updater_call(client).kwargs["environment"]
+        preflight.remove.assert_called_once_with(force=True)
 
     def test_refuses_without_compose_labels(self):
         me = _fake_container(labels={})
@@ -214,6 +288,18 @@ class TestSpawnSelfUpdate:
             orchestrator.spawn_self_update()
         client.containers.run.assert_not_called()
 
+    def test_refuses_a_windows_project_path_before_running_anything(self):
+        labels = {**_COMPOSE_LABELS, "com.docker.compose.project.working_dir": "C:\\Users\\me\\cashpilot"}
+        client = _fake_docker(me=_fake_container(labels=labels))
+        with (
+            patch.object(orchestrator, "_get_client", return_value=client),
+            pytest.raises(orchestrator.SelfUpdateUnavailable) as ei,
+        ):
+            orchestrator.spawn_self_update()
+        assert "Windows" in str(ei.value)
+        assert "docker compose pull" in str(ei.value)
+        client.containers.run.assert_not_called()
+
     def test_refuses_while_an_update_is_running(self):
         me = _fake_container(labels=_COMPOSE_LABELS)
         updater = _fake_container(status="running")
@@ -224,17 +310,18 @@ class TestSpawnSelfUpdate:
         ):
             orchestrator.spawn_self_update()
         assert "already running" in str(ei.value)
+        # Not even the preflight runs.
         client.containers.run.assert_not_called()
 
     def test_clears_a_leftover_stopped_helper_then_spawns(self):
         me = _fake_container(labels=_COMPOSE_LABELS)
         leftover = _fake_container(status="exited")
         client = _fake_docker(me=me, updater=leftover)
-        client.containers.run.return_value = _fake_container()
+        _wire_runs(client)
         with patch.object(orchestrator, "_get_client", return_value=client):
             orchestrator.spawn_self_update()
         leftover.remove.assert_called_once_with(force=True)
-        client.containers.run.assert_called_once()
+        _updater_call(client)
 
     def test_refuses_when_the_service_name_cannot_be_derived(self):
         # Compose project labels but NO service label: the scoped update cannot
@@ -254,8 +341,15 @@ class TestSpawnSelfUpdate:
 
         me = _fake_container(labels=_COMPOSE_LABELS)
         client = _fake_docker(me=me)
+        preflight = _preflight()
         conflict = APIError("conflict", response=MagicMock(status_code=409))
-        client.containers.run.side_effect = conflict
+
+        def run(image, *args, **kwargs):
+            if kwargs.get("name") == orchestrator.UPDATER_NAME:
+                raise conflict
+            return preflight
+
+        client.containers.run.side_effect = run
         with (
             patch.object(orchestrator, "_get_client", return_value=client),
             pytest.raises(orchestrator.SelfUpdateUnavailable) as ei,
@@ -274,6 +368,128 @@ class TestSpawnSelfUpdate:
             pytest.raises(RuntimeError, match="refused to start"),
         ):
             orchestrator.spawn_self_update()
+
+
+_UI_LABELS = {
+    "com.docker.compose.project": "cashpilot",
+    "com.docker.compose.service": "cashpilot-ui",
+}
+
+
+class TestPublishedPortsSurviveTheUpdate:
+    """The helper never sees the operator's shell. A port or address given there
+    would be dropped on recreate, moving the dashboard back to 127.0.0.1:8080,
+    which may belong to another service. The update must refuse instead."""
+
+    def _run(self, live_ui, cfg_ui, preflight=None):
+        me = _fake_container(labels=_COMPOSE_LABELS)
+        ui = _fake_container(labels=_UI_LABELS, image="drumsergio/cashpilot:1.61", port_bindings=live_ui)
+        client = _fake_docker(me=me, ui=ui)
+        cfg = _config(**{"cashpilot-worker": None, "cashpilot-ui": cfg_ui})
+        _wire_runs(client, preflight=preflight or _preflight(cfg))
+        return client
+
+    def test_a_port_set_only_in_the_shell_is_refused_before_anything_is_recreated(self):
+        client = self._run(_ui_bindings(port="8088"), _ui_port_cfg(published="8080"))
+        with (
+            patch.object(orchestrator, "_get_client", return_value=client),
+            pytest.raises(orchestrator.SelfUpdateUnavailable) as ei,
+        ):
+            orchestrator.spawn_self_update()
+        msg = str(ei.value)
+        assert "127.0.0.1:8088" in msg and "127.0.0.1:8080" in msg
+        assert "cashpilot-ui" in msg
+        assert ".env" in msg
+        assert "docker compose pull && docker compose up -d" in msg
+        assert not _updater_started(client)
+
+    def test_an_address_set_only_in_the_shell_is_refused(self):
+        client = self._run(_ui_bindings(host_ip="0.0.0.0"), _ui_port_cfg(host_ip="127.0.0.1"))
+        with (
+            patch.object(orchestrator, "_get_client", return_value=client),
+            pytest.raises(orchestrator.SelfUpdateUnavailable),
+        ):
+            orchestrator.spawn_self_update()
+        assert not _updater_started(client)
+
+    def test_a_non_default_port_kept_in_env_updates(self):
+        client = self._run(_ui_bindings(port="8088"), _ui_port_cfg(published="8088"))
+        with patch.object(orchestrator, "_get_client", return_value=client):
+            result = orchestrator.spawn_self_update()
+        assert result["services"] == ["cashpilot-worker", "cashpilot-ui"]
+        _updater_call(client)
+
+    def test_an_empty_host_ip_equals_all_interfaces(self):
+        client = self._run(_ui_bindings(host_ip=""), _ui_port_cfg(host_ip="0.0.0.0"))
+        with patch.object(orchestrator, "_get_client", return_value=client):
+            orchestrator.spawn_self_update()
+        _updater_call(client)
+
+    def test_a_service_missing_from_the_resolved_file_is_refused(self):
+        me = _fake_container(labels=_COMPOSE_LABELS)
+        ui = _fake_container(labels=_UI_LABELS, port_bindings=_ui_bindings())
+        client = _fake_docker(me=me, ui=ui)
+        _wire_runs(client, preflight=_preflight(_config(**{"cashpilot-worker": None})))
+        with (
+            patch.object(orchestrator, "_get_client", return_value=client),
+            pytest.raises(orchestrator.SelfUpdateUnavailable) as ei,
+        ):
+            orchestrator.spawn_self_update()
+        assert "cashpilot-ui is missing" in str(ei.value)
+        assert not _updater_started(client)
+
+    def test_compose_rejecting_the_file_is_a_refusal_carrying_its_error(self):
+        client = self._run(
+            _ui_bindings(), _ui_port_cfg(), preflight=_preflight(code=15, stderr_bytes=b"yaml: line 3: bad")
+        )
+        with (
+            patch.object(orchestrator, "_get_client", return_value=client),
+            pytest.raises(orchestrator.SelfUpdateUnavailable) as ei,
+        ):
+            orchestrator.spawn_self_update()
+        assert "yaml: line 3: bad" in str(ei.value)
+        assert not _updater_started(client)
+
+    def test_a_hung_preflight_is_an_outage_and_is_cleaned_up(self):
+        import requests
+
+        pre = _preflight(wait_exc=requests.exceptions.ReadTimeout("slow"))
+        client = self._run(_ui_bindings(), _ui_port_cfg(), preflight=pre)
+        with (
+            patch.object(orchestrator, "_get_client", return_value=client),
+            pytest.raises(RuntimeError) as ei,
+        ):
+            orchestrator.spawn_self_update()
+        assert not isinstance(ei.value, orchestrator.SelfUpdateUnavailable)
+        pre.remove.assert_called_once_with(force=True)
+        assert not _updater_started(client)
+
+
+class TestPortNormalisation:
+    def test_container_bindings(self):
+        attrs = {"HostConfig": {"PortBindings": {"8080/tcp": [{"HostIp": "", "HostPort": "8088"}]}}}
+        assert orchestrator._published_from_container(attrs) == {("0.0.0.0", "8088", 8080, "tcp")}
+
+    def test_expose_only_container_has_no_bindings(self):
+        assert orchestrator._published_from_container({"HostConfig": {"PortBindings": None}}) == set()
+        assert orchestrator._published_from_container({}) == set()
+
+    def test_config_ports(self):
+        cfg = _config(
+            svc=[{"target": 8081, "published": "8081", "host_ip": "[::1]"}, {"target": 53, "protocol": "UDP"}]
+        )
+        assert orchestrator._published_from_config(cfg, "svc") == {
+            ("::1", "8081", 8081, "tcp"),
+            ("0.0.0.0", "", 53, "udp"),
+        }
+
+    def test_ephemeral_ports_match(self):
+        attrs = {"HostConfig": {"PortBindings": {"53/udp": [{"HostIp": "", "HostPort": ""}]}}}
+        cfg = _config(svc=[{"target": 53, "protocol": "udp"}])
+        assert orchestrator._port_drift([("svc", orchestrator._published_from_container(attrs))], cfg) == []
+
+    def test_unknown_service_is_none(self):
+        assert orchestrator._published_from_config(_config(), "svc") is None
 
 
 # ---------------------------------------------------------------------------

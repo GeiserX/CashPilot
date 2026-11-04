@@ -26,6 +26,18 @@ This starts two containers:
 
 Navigate to [http://localhost:8080](http://localhost:8080) in your browser. Since no account exists yet, you land on the welcome page, which creates the owner account.
 
+!!! tip "Port 8080 already in use?"
+    Choose another host port in a `.env` file next to `docker-compose.yml`,
+    instead of editing the compose file:
+
+    ```bash
+    echo CASHPILOT_UI_PORT=8088 >> .env
+    docker compose up -d
+    ```
+
+    Then open http://localhost:8088. Keep the value in `.env`, because the
+    in-app update reads that file and not your shell.
+
 !!! warning "First-run setup token required"
     On first start, CashPilot generates a one-time setup token and prints it to the **cashpilot-ui** container logs:
 
@@ -87,9 +99,10 @@ graph LR
 | `CASHPILOT_ENCRYPTION_KEY` | *(auto-generated)* | Fernet key encrypting stored credentials at rest. Persisted at `/data/.fernet_key`. Adopted only when that file is absent, so set it only to restore a backup |
 | `CASHPILOT_API_KEY` | *(from `/fleet`)* | Shared enrolment key for workers. Each worker gets its own key when it enrols; see [Fleet](fleet.md) |
 | `CASHPILOT_COLLECT_INTERVAL` | `60` | Minutes between earnings collection cycles |
+| `CASHPILOT_UI_PORT` | `8080` | Host port the UI is published on. Set it in `.env` when 8080 is taken |
 | `CASHPILOT_BIND_ADDR` | `127.0.0.1` | Host interface the UI port is published on. **Loopback by default**: the dashboard can command the Docker-socket worker, so it is not exposed to your network out of the box. Set a specific IP (e.g. a Tailscale/VPN address) or `0.0.0.0` to expose it, or (preferred) run an authenticating reverse proxy in front |
 
-The UI's web port inside the container is fixed at `8080` (set via the container's `CMD`); `CASHPILOT_BIND_ADDR` controls only which host interface it is published on.
+The UI's web port inside the container is fixed at `8080` (set via the container's `CMD`). `CASHPILOT_UI_PORT` and `CASHPILOT_BIND_ADDR` choose only the host port and interface it is published on.
 
 ### Worker Environment Variables
 
@@ -139,6 +152,13 @@ docker compose up -d
 only the containers whose image changed. The shipped compose files set
 `pull_policy: always`, so even a bare `docker compose up -d` will pull the
 latest image first.
+
+**From the dashboard.** **Settings**, **About and updates** runs the same two
+commands for you from a short-lived helper container. The helper reads your
+compose files and the `.env` next to them, never the shell you started
+CashPilot from. Say you started it with `CASHPILOT_UI_PORT=8088 docker compose up -d`.
+The update would put the dashboard back on 8080, so it stops and tells you why
+instead. Put that value in `.env` and the button works.
 
 !!! note "You do **not** need to rebuild"
     CashPilot ships prebuilt multi-arch images on Docker Hub
