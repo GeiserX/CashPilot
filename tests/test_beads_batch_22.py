@@ -54,7 +54,7 @@ class TestThePlaceholderIsResolvedEvenWhenItArrivesAsAUserValue:
 
         from app import main
 
-        source = inspect.getsource(main.api_deploy)
+        source = inspect.getsource(main._deploy)
         start = source.index("hn = body.hostname or HOSTNAME_PREFIX")
         end = source.index("\n", source.index("env = {k: v.replace", start))
         snippet = "\n".join(line[4:] if line.startswith("    ") else line for line in source[start:end].splitlines())
