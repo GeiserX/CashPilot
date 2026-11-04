@@ -40,7 +40,9 @@ _PLACEHOLDER_RE = re.compile(r"<[^<>]*>|your[A-Z]{3,}")
 # One line of InternetIncome's earnapp.txt: "<date> <time> https://earnapp.com/r/sdk-node-<id>".
 _EARNAPP_LINE_RE = re.compile(r"https://earnapp\.com/r/(\S+)")
 _HEX64_RE = re.compile(r"[0-9A-Fa-f]{64}")
-_PROXY_LINE_RE = re.compile(r"[a-z0-9]+://\S+")
+# The scheme of one proxies.txt line ("socks5://user:pass@host:port"). The rest
+# is checked by hand in _is_proxy_line: no backtracking on a pasted line.
+_PROXY_SCHEME_RE = re.compile(r"[a-z0-9]+")
 # What a shell would do something with in an unquoted word. InternetIncome
 # runs every value through `eval "echo $value"`, so an unquoted value holding
 # any of these is not the value its tool actually used.
@@ -205,6 +207,11 @@ def _parse_json(name: str, text: str) -> dict[str, Any]:
     return data
 
 
+def _is_proxy_line(line: str) -> bool:
+    scheme, sep, rest = line.partition("://")
+    return bool(sep and rest and _PROXY_SCHEME_RE.fullmatch(scheme) and not any(c.isspace() for c in rest))
+
+
 def _state_file(name: str, text: str) -> FileSettings | None:
     """InternetIncome's earnapp.txt or proxyrack.txt, or a proxies list; None otherwise.
 
@@ -219,7 +226,7 @@ def _state_file(name: str, text: str) -> FileSettings | None:
         return FileSettings(name, "devices", env={"earnapp.txt": Value(first)}, extra_lines=len(lines) - 1)
     if all(_HEX64_RE.fullmatch(ln) for ln in lines):
         return FileSettings(name, "devices", env={"proxyrack.txt": Value(lines[0])}, extra_lines=len(lines) - 1)
-    if all(_PROXY_LINE_RE.fullmatch(ln) for ln in lines):
+    if all(_is_proxy_line(ln) for ln in lines):
         return FileSettings(name, "proxies", extra_lines=len(lines))
     return None
 

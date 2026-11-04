@@ -186,6 +186,15 @@ class TestInternetIncome:
         assert rows["earnfm"]["env"] == {"EARNFM_TOKEN": "fake-token-earnfm"}
         assert rows["mysterium"]["state"] == "ready"
 
+    def test_a_proxies_list_is_recognised_and_carries_no_values(self):
+        text = "socks5://user:fake-pass@192.0.2.1:1080\nhttp://192.0.2.2:8080\n"
+        got = parse._state_file("proxies.txt", text)
+        assert got is not None and got.kind == "proxies" and got.env == {} and got.extra_lines == 2
+
+    @pytest.mark.parametrize("line", ["0" * 20000, "socks5://", "://192.0.2.1:1080", "HTTP://192.0.2.1", "http://a b"])
+    def test_a_line_that_is_not_a_proxy_url_is_not_a_proxies_list(self, line):
+        assert parse._state_file("proxies.txt", line + "\n") is None
+
     def test_single_quotes_keep_a_literal_dollar(self):
         rows = _rows(_preview(_files(*self.FILES)))
         assert rows["iproyal"]["env"]["IPROYALPAWNS_PASSWORD"] == "fake-pass-$dollar"
