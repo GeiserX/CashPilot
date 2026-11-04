@@ -35,13 +35,13 @@ docker compose up -d
 docker compose logs cashpilot-ui | grep -i "setup token"
 ```
 
-You need Docker on a Linux, macOS or Windows host, amd64 or arm64. Open [http://localhost:8080](http://localhost:8080): the welcome page asks for the token from that log line, creates the owner account and opens the setup wizard. The dashboard listens on loopback only and the worker's port 8081 is never published, because both can command the Docker socket; [Getting started](https://geiserx.github.io/CashPilot/getting-started/) covers remote access, updating and pinning a version.
+You need Docker on a Linux, macOS or Windows host, amd64 or arm64. Open [http://localhost:8080](http://localhost:8080): the welcome page asks for the token from that log line, creates the owner account and opens the setup wizard. Port 8080 taken? Put `CASHPILOT_UI_PORT=8088` in a `.env` file next to `docker-compose.yml` instead of editing the file (this needs the current compose file; the one from v1.61 and older hard-codes 8080). The dashboard listens on loopback only and the worker's port 8081 is never published, because both can command the Docker socket; [Getting started](https://geiserx.github.io/CashPilot/getting-started/) covers remote access, updating and pinning a version.
 
 ## Supported Services
 
 <!-- n:active -->40<!-- /n --> active services and <!-- n:beta -->1<!-- /n --> in beta, <!-- n:catalogued -->52<!-- /n --> catalogued. Each has a [guide](https://geiserx.github.io/CashPilot/guides/) with what it needs, whether it runs in Docker, the payout method and the minimum payout. Services that need a residential IP are marked there; the rest run on a VPS.
 
-<sub>**Disclosure.** Most signup links below, and the Sign Up buttons in CashPilot, are referral links: the CashPilot maintainer may earn a commission from them.</sub>
+<sub>**Disclosure.** Most signup links below, and the Sign Up buttons in CashPilot, are referral links: the CashPilot maintainer may earn a commission from them. Using them is the simplest way to [support CashPilot](#support-cashpilot).</sub>
 
 <!-- BEGIN GENERATED: docker-services -->
 **Run in Docker by CashPilot (17):** [Honeygain](https://dashboard.honeygain.com/ref/SERGIB4014), [ProxyLite](https://proxylite.ru/?r=KMUPRZIZ), [Earn.fm](https://earn.fm/ref/GEISYB91), [Traffmonetizer](https://traffmonetizer.io/?aff=2111758), [EarnApp](https://earnapp.com/i/TSMD9wSm) \*, [Repocket](https://link.repocket.com/b1zM), [IPRoyal Pawns](https://pawns.app?r=19266874), [Anyone Protocol](https://anyone.io), [Bitping](https://app.bitping.com), [MystNodes](https://mystnodes.co/?referral_code=do7v7YOoBBpbOstKQovX2pUvZYKia4ZhH3QIdNtE), [PacketStream](https://packetstream.io/?psr=7xgZ), [ProxyBase](https://peer.proxybase.org?referral=nXzS3c6iTO), [ProxyBase Markets](https://proxybase.xyz?referral=nXzS3c6iTO), [ProxyRack](https://peer.proxyrack.com/ref/mpwiok3xlaxeycnn5znqlg7ipjeutxyxr6xl7vmn), [Sia (hostd)](https://docs.sia.tech/provide-storage/setting-up-hostd/docker), [Storj](https://storj.dev/node/get-started/setup), [URnetwork](https://ur.io/?referral_code=1Q3G19)
@@ -83,6 +83,12 @@ Full documentation: [geiserx.github.io/CashPilot](https://geiserx.github.io/Cash
 - [Development](https://geiserx.github.io/CashPilot/development/): adding a service, running the tests; [related projects](https://geiserx.github.io/CashPilot/related/)
 
 Upgrading an existing install? Read [UPGRADING.md](https://github.com/GeiserX/CashPilot/blob/main/UPGRADING.md) first; it lists only the releases that need you to do something. Release notes are on [GitHub Releases](https://github.com/GeiserX/CashPilot/releases).
+
+## Support CashPilot
+
+CashPilot is free, GPL-licensed, and built and maintained by a single developer. The simplest way to support it costs you nothing: when you sign up for a provider, use the links in this README or the Sign Up buttons in CashPilot. They are referral links, so the provider gives the maintainer a small reward, usually a cash commission and with some providers points. In the programmes we know of, that reward does not come out of your earnings. Several providers also give you a sign-up bonus through them, and CashPilot shows that bonus next to the button.
+
+If you already have accounts everywhere, a star on GitHub helps other people find the project, and [GitHub Sponsors](https://github.com/sponsors/geiserx), [Patreon](https://www.patreon.com/geiser) and [Buy Me a Coffee](https://www.buymeacoffee.com/geiser) are there too.
 
 ## License
 

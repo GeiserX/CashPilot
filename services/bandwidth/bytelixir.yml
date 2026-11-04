@@ -15,6 +15,9 @@ short_description: Bandwidth sharing - Windows + Android only
 referral:
   signup_url: "https://bytelixir.com/r/OYEIRE0VSZBZ"
   code: "OYEIRE0VSZBZ"
+  bonus:
+    referrer: "50% of their profit for life"
+    referee: "$1 greeting bonus"
 
 docker:
   image: ""

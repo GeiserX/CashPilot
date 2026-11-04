@@ -66,7 +66,20 @@ class TestTheShippedComposeIsActuallySafe:
         return (ROOT / "docker-compose.yml").read_text(encoding="utf-8")
 
     def test_the_ui_binds_loopback_by_default(self):
-        assert "${CASHPILOT_BIND_ADDR:-127.0.0.1}:8080:8080" in self._compose()
+        assert "${CASHPILOT_BIND_ADDR:-127.0.0.1}:${CASHPILOT_UI_PORT:-8080}:8080" in self._compose()
+
+    @pytest.mark.parametrize("name", ["docker-compose.yml", "docker-compose.fleet.yml", "docker-compose.build.yml"])
+    def test_the_ui_host_port_is_a_variable_with_the_old_default(self, name):
+        """A taken 8080 is fixed in .env, not by editing the shipped file.
+
+        The container side stays 8080: the image's CMD, HEALTHCHECK and the
+        worker's CASHPILOT_UI_URL all use it.
+        """
+        text = (ROOT / name).read_text(encoding="utf-8")
+        assert '"${CASHPILOT_BIND_ADDR:-127.0.0.1}:${CASHPILOT_UI_PORT:-8080}:8080"' in text
+        assert not re.search(r":8080:8080", text.replace("${CASHPILOT_UI_PORT:-8080}:8080", "")), (
+            f"{name} still hard-codes the UI's host port"
+        )
 
     def test_the_worker_port_is_never_published(self):
         """`expose:` makes it reachable inside the Docker network only."""

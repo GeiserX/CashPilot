@@ -1250,6 +1250,14 @@ def start_service(slug: str, instance: int = 1) -> None:
 # pinned, and the command is fixed. An install that pins an exact tag (GitOps
 # fleets) gets a no-op pull by construction; an install not managed by Compose
 # is refused with instructions instead of guessing.
+#
+# The helper sees the compose files and the project's .env, never the shell the
+# operator deployed from. So before anything is pulled, a socketless `docker
+# compose config` run resolves the file the way the helper will, and the update
+# is refused if that would publish a CashPilot container on different host
+# ports than it has now (a CASHPILOT_UI_PORT or CASHPILOT_BIND_ADDR given on the
+# command line): recreating it there could move the dashboard off the address
+# the operator uses, or onto a port another service already holds.
 # ---------------------------------------------------------------------------
 
 #: Pinned helper image (ships the compose plugin — verified v2.33.0). Never :latest.
@@ -1290,6 +1298,95 @@ class SelfUpdateUnavailable(RuntimeError):
     """This install cannot be updated by the helper; the message says what to do."""
 
 
+#: Seconds the socketless `docker compose config` preflight may take.
+_PREFLIGHT_TIMEOUT = 60
+
+_MANUAL_UPDATE = "docker compose pull && docker compose up -d"
+
+# One published port: (host_ip, published, target, protocol). An empty host IP
+# and 0.0.0.0 both mean "all interfaces"; an empty published port means Docker
+# picks one.
+_Binding = tuple[str, str, int, str]
+
+
+def _norm_host_ip(ip: Any) -> str:
+    ip = str(ip or "").strip().strip("[]")
+    return ip or "0.0.0.0"
+
+
+def _norm_published(port: Any) -> str:
+    port = str(port or "").strip()
+    return "" if port == "0" else port
+
+
+def _published_from_config(cfg: dict[str, Any], service: str) -> set[_Binding] | None:
+    """The bindings `docker compose config --format json` gives a service, or
+    None when the service is not in the resolved file at all."""
+    svc = (cfg.get("services") or {}).get(service)
+    if not isinstance(svc, dict):
+        return None
+    out: set[_Binding] = set()
+    for p in svc.get("ports") or []:
+        if not isinstance(p, dict):
+            continue
+        out.add(
+            (
+                _norm_host_ip(p.get("host_ip")),
+                _norm_published(p.get("published")),
+                int(p.get("target") or 0),
+                str(p.get("protocol") or "tcp").lower(),
+            )
+        )
+    return out
+
+
+def _published_from_container(attrs: dict[str, Any]) -> set[_Binding]:
+    """The bindings a live container was created with.
+
+    Read from HostConfig.PortBindings (what was asked for), not
+    NetworkSettings.Ports, which reports a 0.0.0.0 binding twice (IPv4 and ::).
+    """
+    bindings = ((attrs.get("HostConfig") or {}).get("PortBindings")) or {}
+    out: set[_Binding] = set()
+    for key, hosts in bindings.items():
+        port, _, proto = str(key).partition("/")
+        for h in hosts or [{}]:
+            h = h or {}
+            out.add(
+                (
+                    _norm_host_ip(h.get("HostIp")),
+                    _norm_published(h.get("HostPort")),
+                    int(port),
+                    (proto or "tcp").lower(),
+                )
+            )
+    return out
+
+
+def _describe(bindings: set[_Binding]) -> str:
+    if not bindings:
+        return "no host port"
+    return ", ".join(
+        f"{ip if ':' not in ip else f'[{ip}]'}:{pub or '(random)'}->{target}/{proto}"
+        for ip, pub, target, proto in sorted(bindings)
+    )
+
+
+def _port_drift(pairs: list[tuple[str, set[_Binding]]], cfg: dict[str, Any]) -> list[str]:
+    """One line per service whose resolved ports differ from its live ones."""
+    lines: list[str] = []
+    for service, live in pairs:
+        wanted = _published_from_config(cfg, service)
+        if wanted is None:
+            lines.append(f"{service} is missing from your compose file as the update reads it")
+        elif wanted != live:
+            lines.append(
+                f"{service} is published on {_describe(live)}, but your compose file as the "
+                f"update reads it would publish {_describe(wanted)}"
+            )
+    return lines
+
+
 def _self_container(client: docker.DockerClient):
     """The worker's own container, or None outside Docker.
 
@@ -1314,6 +1411,8 @@ def _compose_project(container: Any) -> dict[str, str]:
         "working_dir": labels.get("com.docker.compose.project.working_dir") or "",
         "config_files": labels.get("com.docker.compose.project.config_files") or "",
         "project": labels.get("com.docker.compose.project") or "",
+        # Set only when the install was started with --env-file; comma-separated.
+        "env_files": labels.get("com.docker.compose.project.environment_file") or "",
     }
 
 
@@ -1344,6 +1443,97 @@ def self_update_info() -> dict[str, Any]:
     return info
 
 
+#: Where the preflight writes the resolved config inside its own container.
+_PREFLIGHT_OUT = "/tmp/cashpilot-compose-config.json"
+#: Label on preflight containers, so a leftover one can be found and removed.
+_PREFLIGHT_LABEL = "cashpilot.updater=check"
+
+
+def _remove_leftover_checks(client: docker.DockerClient) -> None:
+    """Remove preflight containers an interrupted check left behind.
+
+    Their filesystem holds a resolved compose file, secrets included.
+    """
+    with contextlib.suppress(Exception):
+        for old in client.containers.list(all=True, filters={"label": _PREFLIGHT_LABEL}):
+            with contextlib.suppress(Exception):
+                old.remove(force=True)
+
+
+def _read_file_from_container(container: Any, path: str) -> bytes:
+    """One regular file out of a (possibly exited) container."""
+    import io as _io
+    import tarfile as _tarfile
+
+    stream, _stat = container.get_archive(path)
+    buf = _io.BytesIO(b"".join(stream))
+    with _tarfile.open(fileobj=buf) as tar:
+        for member in tar:
+            if member.isfile():
+                fh = tar.extractfile(member)
+                if fh is not None:
+                    return fh.read()
+    raise ValueError(f"{path} is not a file in the archive")
+
+
+def _resolve_compose_config(
+    client: docker.DockerClient,
+    working_dir: str,
+    environment: dict[str, str],
+    services: list[str],
+    volumes: dict[str, dict[str, str]],
+) -> dict[str, Any]:
+    """Resolve the compose file exactly as the updater will, without a socket.
+
+    Same image, same project and env-file mounts (read-only here), same
+    environment. The resolved file carries every interpolated secret from .env
+    (session, encryption and API keys), so it is written to a file inside the
+    check container and copied out, never printed: stdout would hand it to the
+    daemon's log driver. Raises SelfUpdateUnavailable when Compose rejects the
+    file, RuntimeError when the check itself cannot run.
+    """
+    import json as _json
+
+    _remove_leftover_checks(client)
+    try:
+        check = client.containers.run(
+            UPDATER_IMAGE,
+            command=["docker", "compose", "config", "--format", "json", "-o", _PREFLIGHT_OUT, *services],
+            working_dir=working_dir,
+            volumes={path: {**spec, "mode": "ro"} for path, spec in volumes.items()},
+            environment=environment,
+            labels={"cashpilot.updater": "check"},
+            detach=True,
+        )
+    except APIError as exc:
+        logger.warning("Self-update preflight failed to start: %s", exc)
+        raise RuntimeError("Docker refused to start the update helper.") from exc
+    try:
+        try:
+            status = check.wait(timeout=_PREFLIGHT_TIMEOUT)
+            err = check.logs(stdout=False, stderr=True)
+        except Exception as exc:  # timeout (requests) or daemon error
+            logger.warning("Self-update preflight did not finish: %s", exc)
+            raise RuntimeError("The update check did not finish; try again.") from exc
+        code = status.get("StatusCode", 1) if isinstance(status, dict) else 1
+        err_text = (err or b"").decode("utf-8", "replace").strip()
+        if code != 0:
+            raise SelfUpdateUnavailable(
+                "Not updating: docker compose rejected the configuration: " + (err_text[-600:] or f"exit {code}")
+            )
+        try:
+            out = _read_file_from_container(check, _PREFLIGHT_OUT)
+            cfg = _json.loads(out.decode("utf-8", "replace"))
+        except Exception as exc:
+            raise RuntimeError("The update check returned unreadable output.") from exc
+        if not isinstance(cfg, dict):
+            raise RuntimeError("The update check returned unreadable output.")
+        return cfg
+    finally:
+        with contextlib.suppress(Exception):
+            check.remove(force=True)
+
+
 def spawn_self_update() -> dict[str, Any]:
     """Start the one-shot updater helper and return its identity.
 
@@ -1367,14 +1557,27 @@ def spawn_self_update() -> dict[str, Any]:
             "cashpilot-ui and cashpilot-worker containers."
         )
 
+    working_dir = project["working_dir"]
+    if not working_dir.startswith("/"):
+        # Docker Desktop on Windows labels the project with a C:\... path, which
+        # the daemon cannot use as a Linux bind target or working directory.
+        raise SelfUpdateUnavailable(
+            f"The compose project lives at {working_dir}, a Windows path the update "
+            "helper cannot mount (Docker Desktop on Windows). Update from that folder "
+            f"instead: {_MANUAL_UPDATE}"
+        )
+
     # The update is scoped to the CashPilot services BY NAME, both derived from
     # container labels — never `up -d` on the whole project, which would
     # recreate any unrelated services the operator keeps in the same file.
+    # Each service keeps its live container, for the port check below.
     me_labels = (me.attrs.get("Config", {}) or {}).get("Labels") or {}
     services: list[str] = []
+    live: list[tuple[str, set[_Binding]]] = []
     my_service = me_labels.get("com.docker.compose.service")
     if my_service:
         services.append(my_service)
+        live.append((my_service, _published_from_container(me.attrs)))
     with contextlib.suppress(NotFound, APIError):
         ui = client.containers.get("cashpilot-ui")
         ui_labels = (ui.attrs.get("Config", {}) or {}).get("Labels") or {}
@@ -1382,18 +1585,46 @@ def spawn_self_update() -> dict[str, Any]:
             ui_service = ui_labels.get("com.docker.compose.service")
             if ui_service and ui_service not in services:
                 services.append(ui_service)
+                live.append((ui_service, _published_from_container(ui.attrs)))
     if not services:
         raise SelfUpdateUnavailable(
             "The worker container carries a compose project but no service name "
             "label, so the update cannot be scoped safely. Update manually: "
-            "docker compose pull && docker compose up -d"
+            f"{_MANUAL_UPDATE}"
         )
 
     environment: dict[str, str] = {}
     if project["config_files"]:
         # Compose separates label paths with commas; COMPOSE_FILE uses colons.
         environment["COMPOSE_FILE"] = project["config_files"].replace(",", ":")
+    if project["project"]:
+        # Without it Compose names the project after the folder (or `name:` or
+        # .env), so an install started with `-p` lands in a second project
+        # and `up` fails on the container_name it already uses.
+        environment["COMPOSE_PROJECT_NAME"] = project["project"]
 
+    # The project dir is mounted at its own path. An install started with
+    # --env-file read its values from those files instead of .env; without them
+    # the update would resolve every variable to its default. Pass the same
+    # files (Compose's COMPOSE_ENV_FILES, comma-separated like the label) and
+    # mount any that live outside the project dir, read-only, at their paths.
+    project_mount = {working_dir: {"bind": working_dir}}
+    env_mounts: dict[str, dict[str, str]] = {}
+    env_files = [f for f in project["env_files"].split(",") if f]
+    if env_files:
+        if not all(f.startswith("/") for f in env_files):
+            raise SelfUpdateUnavailable(
+                f"This install reads its settings from {', '.join(env_files)}, a path the update "
+                f"helper cannot mount. Update from your compose folder instead: {_MANUAL_UPDATE}"
+            )
+        environment["COMPOSE_ENV_FILES"] = ",".join(env_files)
+        root = working_dir.rstrip("/") + "/"
+        for f in env_files:
+            if not f.startswith(root):
+                env_mounts[f] = {"bind": f, "mode": "ro"}
+
+    # Only one update at a time; checked before the preflight so a second
+    # click does not even resolve the config.
     try:
         try:
             existing = client.containers.get(UPDATER_NAME)
@@ -1403,15 +1634,35 @@ def spawn_self_update() -> dict[str, Any]:
             existing.remove(force=True)
         except NotFound:
             pass
+    except APIError as exc:
+        logger.warning("Self-update lock check failed: %s", exc)
+        raise RuntimeError("Docker refused to start the update helper.") from exc
 
+    cfg = _resolve_compose_config(client, working_dir, environment, services, {**project_mount, **env_mounts})
+    drift = _port_drift(live, cfg)
+    if drift:
+        source = (
+            "the env file" + ("s " if len(env_files) > 1 else " ") + ", ".join(env_files) + " you started it with"
+            if env_files
+            else "the .env file next to your compose file"
+        )
+        raise SelfUpdateUnavailable(
+            "Not updating: " + "; ".join(drift) + ". This happens when a port or address was set on the command line "
+            "(for example CASHPILOT_UI_PORT=8088 docker compose up -d). The update "
+            f"cannot see your shell, only {source}. "
+            "Put the values there, or update by hand: " + _MANUAL_UPDATE
+        )
+
+    try:
         updater = client.containers.run(
             UPDATER_IMAGE,
             name=UPDATER_NAME,
             command=["sh", "-c", _updater_script(services)],
-            working_dir=project["working_dir"],
+            working_dir=working_dir,
             volumes={
                 "/var/run/docker.sock": {"bind": "/var/run/docker.sock", "mode": "rw"},
-                project["working_dir"]: {"bind": project["working_dir"], "mode": "rw"},
+                working_dir: {"bind": working_dir, "mode": "rw"},
+                **env_mounts,
             },
             environment=environment,
             labels={"cashpilot.updater": "true"},
@@ -1431,9 +1682,9 @@ def spawn_self_update() -> dict[str, Any]:
         "Self-update started: helper %s updating %s in %s",
         updater.id[:12],
         ", ".join(services),
-        project["working_dir"],
+        working_dir,
     )
-    return {"updater_id": updater.id[:12], "working_dir": project["working_dir"], "services": services}
+    return {"updater_id": updater.id[:12], "working_dir": working_dir, "services": services}
 
 
 def _collect_stats(c) -> tuple[float, float, int | None, int | None]:

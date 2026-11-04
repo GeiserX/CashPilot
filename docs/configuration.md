@@ -156,9 +156,12 @@ These are read by the compose files, not by CashPilot itself.
 | Variable | Default | What it does |
 |---|---|---|
 | `CASHPILOT_BIND_ADDR` | `127.0.0.1` | Which host interface publishes the **UI** port. |
+| `CASHPILOT_UI_PORT` | `8080` | Which host port publishes the **UI**. Set it when 8080 is already taken on the host. |
 | `CASHPILOT_WORKER_BIND_ADDR` | `127.0.0.1` | Which host interface publishes the **worker** port, in the fleet compose. The worker holds the Docker socket, which is root-equivalent on the host, so publish it only on an interface the UI needs, never `0.0.0.0`. |
 
-The UI's web port inside the container is fixed at `8080` (set via the container's `CMD`); `CASHPILOT_BIND_ADDR` controls only which host interface it is published on.
+The UI's web port inside the container is fixed at `8080` (set via the container's `CMD`). `CASHPILOT_UI_PORT` and `CASHPILOT_BIND_ADDR` choose only the host side: which port and which interface it is published on.
+
+Put these in a `.env` file next to the compose file, not on the command line. The **Update** button in **Settings** reads `.env` but never sees your shell. If the published ports came from the command line, it refuses to update rather than move the dashboard back to `127.0.0.1:8080`.
 
 ## Memory
 

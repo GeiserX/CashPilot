@@ -201,11 +201,24 @@ it to the whole network by default was the wrong default.
 address you were using.
 
 **What to do.** Set `CASHPILOT_BIND_ADDR` to `0.0.0.0`, or better, to the one
-interface you actually want it on:
+interface you actually want it on. Put it in the `.env` file next to the compose
+file, not on the command line. The in-app update reads `.env` and never your
+shell. When the published address or port is not in that file, the update
+refuses to run rather than move your dashboard back to loopback.
 
 ```bash
-CASHPILOT_BIND_ADDR=192.168.1.10 docker compose up -d
+printf '\nCASHPILOT_BIND_ADDR=192.168.1.10\n' >> .env
+docker compose up -d
 ```
+
+The same goes for `CASHPILOT_UI_PORT`, the host port, if 8080 is taken. That
+variable needs the current compose file, whose `ports:` line reads
+`${CASHPILOT_UI_PORT:-8080}:8080`; the file from v1.61 and older hard-codes
+`8080:8080` and ignores it. Download the current compose file, or
+keep your own edited port mapping, which the update also accepts.
+
+The leading newline in `printf` keeps the new line from joining the last line
+of an `.env` that does not end in one.
 
 **On a single-host install**, leave the worker on loopback. Only the UI needs to
 reach it, and it does so over the Docker network.
@@ -217,7 +230,8 @@ unmanageable. Bind it to the interface the UI reaches it on: a tailnet address
 rather than `0.0.0.0`, since that port carries the Docker socket API:
 
 ```bash
-CASHPILOT_WORKER_BIND_ADDR=100.x.y.z docker compose up -d
+printf '\nCASHPILOT_WORKER_BIND_ADDR=100.x.y.z\n' >> .env
+docker compose up -d
 ```
 
 ---

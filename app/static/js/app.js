@@ -3131,10 +3131,14 @@ const CP = (() => {
   // clicking should know that before the click, not from a README section they
   // never open. Shown only where the catalog records a referral code: a bare
   // signup_url (no programme, or none found yet) is not a referral link.
+  // The new user's bonus goes first when the catalog records one: it is the
+  // reason to use this link at all, and it used to sit only on the detail page.
   function referralNote(svc) {
     const ref = svc.referral || {};
     if (!ref.code || !ref.signup_url) return '';
-    return '<p class="referral-note">Referral link: the CashPilot maintainer may earn a commission from it.</p>';
+    const referee = ref.bonus && ref.bonus.referee;
+    const bonus = referee ? `<strong>New-user bonus with this link:</strong> ${escapeHtml(referee)}. ` : '';
+    return `<p class="referral-note">${bonus}Referral link: the CashPilot maintainer may earn a commission from it, which helps keep CashPilot free and maintained.</p>`;
   }
 
   function collectorCredentialsNotice(slug) {

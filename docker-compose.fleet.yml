@@ -10,15 +10,18 @@
 # === Deploy on main server (e.g., server-a) ===
 services:
   cashpilot-ui:
-    image: drumsergio/cashpilot:1.61
+    image: drumsergio/cashpilot:1.62
     pull_policy: always
     container_name: cashpilot-ui
     # Loopback by default (the UI commands the Docker-socket worker). Set
     # CASHPILOT_BIND_ADDR to a specific interface (e.g. a Tailscale/VPN IP) to reach
     # it from another machine, or 0.0.0.0 to publish on all interfaces. Prefer an
     # authenticating reverse proxy over binding the raw port publicly.
+    # Host port 8080 already taken? Set CASHPILOT_UI_PORT=8088 (and CASHPILOT_BIND_ADDR)
+    # in a .env file next to this compose file, not on the command line. The in-app
+    # update reads .env and never sees your shell. The container port stays 8080.
     ports:
-      - "${CASHPILOT_BIND_ADDR:-127.0.0.1}:8080:8080"
+      - "${CASHPILOT_BIND_ADDR:-127.0.0.1}:${CASHPILOT_UI_PORT:-8080}:8080"
     volumes:
       - cashpilot_data:/data
       - cashpilot_fleet:/fleet
@@ -49,7 +52,7 @@ services:
       - /tmp:size=64M
 
   cashpilot-worker:
-    image: drumsergio/cashpilot-worker:1.61
+    image: drumsergio/cashpilot-worker:1.62
     pull_policy: always
     container_name: cashpilot-worker
     # The worker exposes a Docker-socket-backed API (deploy/stop/remove any
@@ -128,7 +131,7 @@ services:
 #
 #  services:
 #    cashpilot-worker:
-#      image: drumsergio/cashpilot-worker:1.61
+#      image: drumsergio/cashpilot-worker:1.62
 #      pull_policy: always
 #      container_name: cashpilot-worker
 #      # Docker-socket-backed API = full host control. Bind a PRIVATE/VPN interface
@@ -142,6 +145,8 @@ services:
 #        - cashpilot_worker_data:/data
 #      environment:
 #        - TZ=${TZ:-UTC}
+#        # The UI's PUBLISHED host port: http://server-a:8088 if you set CASHPILOT_UI_PORT=8088
+#        # on server-a. (The local worker above uses cashpilot-ui:8080 over the compose network.)
 #        - CASHPILOT_UI_URL=http://server-a:8080
 #        - CASHPILOT_API_KEY=${CASHPILOT_API_KEY}
 #        - CASHPILOT_WORKER_NAME=server-b
