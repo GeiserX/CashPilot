@@ -86,6 +86,7 @@
       if (row.existing && row.existing.draft) extras.push('an earlier import is saved; saving replaces it');
       if (row.collector === 'will_set') extras.push('earnings tracking will use this login too');
       if (row.collector === 'already_set') extras.push('earnings login already set; left as it is');
+      if (row.collector === 'partly_set') extras.push('part of the earnings login is already in Settings; left as it is, finish it there');
       return `<tr>
         <td>${tick}</td>
         <td><strong>${esc(row.name)}</strong><div class="muted">${esc(ROW_STATE[row.state] || row.state)}</div></td>

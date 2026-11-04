@@ -250,6 +250,7 @@ def read_files(files: Any, source: str = "auto") -> list[FileSettings]:
 
     shell = source == "internetincome"
     result = []
+    env_texts: list[tuple[FileSettings, str]] = []
     for name, text in checked:
         if text.lstrip().startswith("{"):
             result.append(FileSettings(name, "json", json=_parse_json(name, text)))
@@ -258,11 +259,15 @@ def read_files(files: Any, source: str = "auto") -> list[FileSettings]:
         if state is not None:
             result.append(state)
             continue
-        env = _parse_env(text, shell)
-        if shell is False and _guess_tool_env(env) == "internetincome":
-            # Detected as InternetIncome after the fact: read it the way its shell does.
-            env = _parse_env(text, True)
-        result.append(FileSettings(name, "env", env=env))
+        fs = FileSettings(name, "env", env=_parse_env(text, shell))
+        result.append(fs)
+        env_texts.append((fs, text))
+    if not shell and source == "auto" and "internetincome" in {_file_tool(f) for f in result}:
+        # Any file naming InternetIncome (its properties.conf, earnapp.txt or
+        # proxyrack.txt) means every env file went through its shell: read
+        # them all that way, not just the one carrying the marker.
+        for fs, text in env_texts:
+            fs.env = _parse_env(text, True)
     return result
 
 
@@ -420,7 +425,8 @@ def _apps_from_env(files: list[FileSettings], spec: dict[str, Any], skipped: lis
                 on = True
             claimed.add(key)
         claimed.update(own_keys)
-        has_value = any(env[k].retype or (env[k].text or "").strip() for k in own_keys if k in env)
+        # An untouched template placeholder is not a value: the user never set this app up.
+        has_value = any(env[k].retype or not is_placeholder(env[k].text or "") for k in own_keys if k in env)
         if on or has_value:
             found.append(_App(app_name, app_spec, values, present=True, enabled=True))
     for key, value in env.items():

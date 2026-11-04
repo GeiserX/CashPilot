@@ -260,9 +260,25 @@ class TestApply:
         assert env == {"RP_EMAIL": "rp@example.com", "RP_API_KEY": "11111111-2222-4333-8444-555555555555"}
 
     def test_a_typed_value_is_held_to_the_catalog_pattern(self, owner):
-        files = _files("cashfactory/template.env")
-        body = {"files": files, "slugs": ["earnapp"], "extra": {"earnapp": {"EARNAPP_UUID": "not-an-id"}}}
-        assert owner.post("/api/import/apply", json=body).status_code == 400
+        files = [{"name": "properties.conf", "content": "EARNAPP=true\n"}]
+        body = {"files": files, "source": "internetincome", "slugs": ["earnapp"]}
+        bad = owner.post("/api/import/apply", json={**body, "extra": {"earnapp": {"EARNAPP_UUID": "not-an-id"}}})
+        assert bad.status_code == 400
+        assert "format" in bad.json()["detail"]
+        good_id = "sdk-node-0123456789abcdef0123456789abcdef"
+        good = owner.post("/api/import/apply", json={**body, "extra": {"earnapp": {"EARNAPP_UUID": good_id}}})
+        assert good.status_code == 200, good.text
+
+    def test_the_rows_ticked_by_default_on_a_template_save(self, owner):
+        content = (FIX / "cashfactory/template.env").read_text(encoding="utf-8")
+        content = content.replace("HONEYGAIN_EMAIL=<email>", "HONEYGAIN_EMAIL=hg@example.com")
+        content = content.replace("HONEYGAIN_PASSWD=<password>", "HONEYGAIN_PASSWD=fake-pass-honeygain")
+        files = [{"name": ".env", "content": content}]
+        rows = owner.post("/api/import/preview", json={"files": files}).json()["rows"]
+        ticked = [r["slug"] for r in rows if r["selected"]]
+        assert ticked == ["honeygain"]
+        res = owner.post("/api/import/apply", json={"files": files, "slugs": ticked})
+        assert res.status_code == 200, res.text
 
     def test_the_collector_login_is_filled_only_for_the_linked_services(self, owner):
         owner.post("/api/import/apply", json={"files": M4B, "slugs": ["honeygain", "repocket", "bitping"]})
@@ -280,6 +296,22 @@ class TestApply:
         assert (config["honeygain_email"], config["honeygain_password"]) == ("keep@example.com", "keep-me")
         rows = owner.post("/api/import/preview", json={"files": M4B}).json()["rows"]
         assert next(r for r in rows if r["slug"] == "honeygain")["collector"] == "already_set"
+
+    def test_a_half_set_earnings_login_is_reported_and_left_alone(self, owner):
+        _run(lambda: database.set_config_bulk({"honeygain_email": "keep@example.com"}))
+        rows = owner.post("/api/import/preview", json={"files": M4B}).json()["rows"]
+        assert next(r for r in rows if r["slug"] == "honeygain")["collector"] == "partly_set"
+        res = owner.post("/api/import/apply", json={"files": M4B, "slugs": ["honeygain"]})
+        assert "honeygain" not in res.json()["collectors_set"]
+        config = _run(database.get_config)
+        assert config["honeygain_email"] == "keep@example.com" and not config.get("honeygain_password")
+
+    def test_an_earnings_only_entry_is_not_called_deployed(self, owner):
+        _run(lambda: database.save_deployment(slug="honeygain", container_id="", status="external"))
+        _run(lambda: database.save_deployment(slug="repocket", container_id="abc", status="running"))
+        rows = {r["slug"]: r for r in owner.post("/api/import/preview", json={"files": M4B}).json()["rows"]}
+        assert rows["honeygain"]["existing"]["deployed"] is False
+        assert rows["repocket"]["existing"]["deployed"] is True
 
     def test_refused_under_an_ephemeral_key(self, owner):
         with patch.object(database, "_fernet_key_is_ephemeral", True):

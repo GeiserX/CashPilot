@@ -61,7 +61,8 @@ writes (`<APP>_<FLAG>`, for example `REPOCKET_APIKEY`).
 | `bitping` | Bitping | email, password |
 | `mystnode` | Mysterium | turned on; see the Mysterium note below |
 
-An app you turned off in money4band shows up unticked.
+An app you turned off in money4band shows up unticked. An app whose values
+are still the template's placeholders (`yourHONEYGAINMail`) is left out.
 
 These apps are listed but not brought over:
 
@@ -98,6 +99,10 @@ identity. The old node's keystore and any unsettled earnings stay in
 money4band's `.data/mysterium-node` folder
 ([app-config.json](https://github.com/MRColorR/money4band/blob/3bfafb1d9a738aac11f2049d6f2c3515ff783bb8/config/app-config.json)). Settle them first, or follow the
 [Mysterium guide](../guides/mysterium.md) to carry the identity over.
+
+A 3.x `.env` cannot tell whether you ran Mysterium: its template always
+lists the dashboard port. From a 3.x file Mysterium is not imported, so add
+it from the catalog if you ran it.
 
 ## Safety
 

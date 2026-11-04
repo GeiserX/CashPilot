@@ -95,7 +95,9 @@ tools:
         other_env: [BITPING_MFA]
       mystnode:
         slug: mysterium
-        on_env: {MYSTNODE_DASHBOARD_PORT: "*", MYSTNODE_PORT: "*", MYSTNODE_PORT_1: "*"}
+        # Not MYSTNODE_DASHBOARD_PORT: the 3.x .env.template always holds it. The 4.x
+        # generator writes the ports only for an enabled app.
+        on_env: {MYSTNODE_PORT: "*", MYSTNODE_PORT_1: "*"}
         note: "CashPilot starts a new Mysterium node with a new identity. Settle the old node's earnings or copy its keystore first; the Mysterium guide shows how."
       proxybase:
         slug: proxybase
@@ -120,7 +122,9 @@ tools:
       speedshare: {slug: speedshare, other_env: [SPEEDSHARE_CODE, SPEEDSHARE_UUID, SPEEDSHARE_DEVICE_UUID]}
     ignore_env: [PROJECT_VERSION, COMPOSE_PROJECT_NAME, DS_PROJECT_SERVER_URL, OS_TYPE, "DETECTED_*",
                  "APP_CPU_*", "APP_MEM_*", "RAM_CAP_*", "NETWORK_*", "M4B_*", "*_PORT", "*_PORT_[0-9]*",
-                 "*_DUMMY", "*_DASHBOARD_PORT", NICKNAME, EMAIL]
+                 "*_DUMMY", "*_DASHBOARD_PORT", NICKNAME, EMAIL,
+                 # The generator writes every key of the proxies block, the sample URL included.
+                 STACK_PROXY_URL_EXAMPLE]
     ignore_json: [user, compose_config_common, resource_limits]
     not_carried:
       DEVICE_NAME: "CashPilot names each device after the worker it runs on."

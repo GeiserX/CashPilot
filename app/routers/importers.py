@@ -102,10 +102,15 @@ async def api_import_preview(request: Request, _auth: dict[str, Any] = Depends(_
             public["collector"] = "none"
         elif keys and all(config.get(k) for k in keys):
             public["collector"] = "already_set"
+        elif keys and any(config.get(k) for k in keys):
+            # Apply never writes over a login the owner started in Settings.
+            public["collector"] = "partly_set"
         else:
             public["collector"] = "will_set" if keys else "none"
+        deployment = await database.get_deployment(row["slug"])
         public["existing"] = {
-            "deployed": bool(await database.get_deployment(row["slug"])),
+            # An "external" row only means earnings are tracked; no container runs.
+            "deployed": bool(deployment) and deployment.get("status") != "external",
             "draft": row["slug"] in drafts,
         }
         rows.append(public)

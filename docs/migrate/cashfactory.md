@@ -51,7 +51,8 @@ you to retype it rather than guess.
 | `peer2profit` | `PEER2PROFIT_EMAIL` | Peer2Profit | nothing: no longer available |
 
 A value still showing the sample's placeholder (`<email>`, `sdk-node-<md5sum>`)
-counts as not set.
+counts as not set, and a service with nothing but placeholders is left out of
+the table.
 
 ## What never comes over
 

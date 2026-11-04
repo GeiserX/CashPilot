@@ -120,16 +120,30 @@ class TestMoney4bandEnv:
         assert row["state"] == "missing_fields"
 
     def test_an_untouched_template_imports_nothing(self):
-        rows = _rows(_preview(_files("money4band/template.env")))
-        assert rows
-        for row in rows.values():
-            assert row["env"] == {}
-            assert row["state"] == "missing_fields"
-            assert {f["state"] for f in row["fields"]} == {"placeholder"}
+        assert _preview(_files("money4band/template.env"))["rows"] == []
+
+    def test_only_the_service_filled_in_on_a_template_comes_in(self):
+        content = (FIX / "money4band/template.env").read_text(encoding="utf-8")
+        content = content.replace("yourHONEYGAINMail", "hg@example.com").replace("yourHONEYGAINPw", "fake-pass-x")
+        rows = _rows(_preview([{"name": ".env", "content": content}]))
+        assert list(rows) == ["honeygain"]
+        assert rows["honeygain"]["selected"] and rows["honeygain"]["state"] == "ready"
+
+    def test_a_partly_filled_service_still_comes_in_to_be_completed(self):
+        content = "COMPOSE_PROJECT_NAME=money4band\nHONEYGAIN_EMAIL=hg@example.com\nHONEYGAIN_PASSWD=yourHONEYGAINPw\n"
+        row = _rows(_preview([{"name": ".env", "content": content}]))["honeygain"]
+        assert row["state"] == "missing_fields"
+        assert _field(row, "HONEYGAIN_PASSWORD")["state"] == "placeholder"
+
+    def test_the_v3_template_dashboard_port_does_not_turn_mysterium_on(self):
+        # money4band 3.x's .env.template always holds MYSTNODE_DASHBOARD_PORT=4449.
+        assert "mysterium" not in _rows(_preview(_files("money4band/v3.env")))
 
     def test_ignored_settings_are_not_listed(self):
-        keys = {s["key"] for s in _preview(_files("money4band/generated.env"))["not_imported"]}
-        assert keys == {"DEVICE_NAME"}
+        preview = _preview(_files("money4band/generated.env"))
+        assert {s["key"] for s in preview["not_imported"]} == {"DEVICE_NAME"}
+        # The generator always writes STACK_PROXY_URL_EXAMPLE; it is not a proxy the user set.
+        assert not any("Proxy settings" in n for n in preview["notices"])
 
 
 class TestCashFactory:
@@ -147,10 +161,15 @@ class TestCashFactory:
         assert rows["iproyal"]["env"]["IPROYALPAWNS_PASSWORD"] == "fake-pass-iproyal"
 
     def test_the_template_placeholders_are_unset(self):
-        rows = _rows(_preview(_files("cashfactory/template.env")))
-        assert _field(rows["earnapp"], "EARNAPP_UUID")["state"] == "placeholder"
-        assert _field(rows["repocket"], "RP_API_KEY")["state"] == "placeholder"
-        assert all(r["env"] == {} for r in rows.values())
+        assert _preview(_files("cashfactory/template.env"))["rows"] == []
+
+    def test_one_service_filled_in_on_the_template_is_the_only_row(self):
+        content = (FIX / "cashfactory/template.env").read_text(encoding="utf-8")
+        content = content.replace("HONEYGAIN_EMAIL=<email>", "HONEYGAIN_EMAIL=hg@example.com")
+        content = content.replace("HONEYGAIN_PASSWD=<password>", "HONEYGAIN_PASSWD=fake-pass-x")
+        rows = _rows(_preview([{"name": ".env", "content": content}]))
+        assert [slug for slug, r in rows.items() if r["selected"]] == ["honeygain"]
+        assert rows["honeygain"]["state"] == "ready"
 
 
 class TestInternetIncome:
@@ -190,6 +209,18 @@ class TestInternetIncome:
         preview = _preview(_files("internetincome/template.conf"), "internetincome")
         assert preview["rows"] == []
         assert {s["key"] for s in preview["not_imported"]} == {"DEVICE_NAME"}
+
+    def test_an_unmarked_file_is_read_like_internetincome_when_another_file_says_so(self):
+        # Only earnapp.txt names the tool, but every value still went through InternetIncome's shell.
+        files = [
+            {"name": "properties.conf", "content": "HONEYGAIN_EMAIL=a@example.com\nHONEYGAIN_PASSWORD=p\\@ss~x\n"},
+            *_files("internetincome/earnapp.txt"),
+        ]
+        auto = _rows(_preview(files))["honeygain"]
+        assert _field(auto, "HONEYGAIN_PASSWORD")["state"] == "retype"
+        assert "HONEYGAIN_PASSWORD" not in auto["env"]
+        picked = _rows(_preview(files, "internetincome"))["honeygain"]
+        assert _field(picked, "HONEYGAIN_PASSWORD")["state"] == "retype"
 
     def test_earnapp_on_without_its_file_asks_for_the_device(self):
         files = [{"name": "properties.conf", "content": "EARNAPP=true\nREPOCKET_API=\n"}]
