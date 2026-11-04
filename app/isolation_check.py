@@ -35,14 +35,17 @@ import contextlib
 import ipaddress
 import json
 import logging
+import os
 import re
+import socket
 import threading
 from typing import Any
+from urllib.parse import urlsplit
 
 import docker
 from docker.errors import DockerException, NotFound
 
-from app import orchestrator
+from app import lan_fence, orchestrator
 from app.constants import LABEL_MANAGED, LABEL_SERVICE
 
 DOCS = "https://geiserx.github.io/CashPilot/"
@@ -52,6 +55,7 @@ NODE_FIREWALL_PAGE = DOCS + "isolation-check/#mysterium-which-uses-host-networki
 BRIDGE_PAGE = DOCS + "home-network-security/#put-the-containers-on-their-own-bridge"
 RULES_PAGE = DOCS + "home-network-security/#the-rules"
 DNS_PAGE = DOCS + "home-network-security/#name-lookups-need-a-resolver-the-rules-allow"
+ISOLATION_PAGE = DOCS + "isolation/#lan-isolation-by-default"
 
 GROUPS = {
     "lan": ("Your LAN", FIX_PAGE),
@@ -289,6 +293,8 @@ if __name__ == "__main__":
             first,
             published,
         )
+        # Targets the worker knows and the host cannot guess: the dashboard.
+        found["candidates"] += json.loads(os.environ.get("PROBE_EXTRA") or "[]")
         for t, ok in zip(found["candidates"], run(found["candidates"])):
             t["ok"] = ok
         print(json.dumps(found))
@@ -326,6 +332,7 @@ def run_probe(
     targets: list[dict[str, Any]] | None = None,
     first: list[str] | None = None,
     published: list[tuple[str, int]] | None = None,
+    extra: list[dict[str, Any]] | None = None,
     leftovers: list[str] | None = None,
 ) -> dict[str, Any]:
     """Run one probe container to completion and return what it printed.
@@ -346,6 +353,7 @@ def run_probe(
                 "PROBE_TARGETS": json.dumps(targets or []),
                 "PROBE_FIRST": json.dumps(first or []),
                 "PROBE_PUBLISHED": json.dumps(published or []),
+                "PROBE_EXTRA": json.dumps(extra or []),
             },
             network_mode=network_mode,
             network=network,
@@ -388,24 +396,32 @@ def _name(container: Any) -> str:
     return str(getattr(container, "name", "") or "")
 
 
-def placement_findings(earners: list[Any], network: str) -> list[dict[str, Any]]:
+def placement_findings(earners: list[Any], network: str, mode: str | None = None) -> list[dict[str, Any]]:
     """Bridge earners that no rule on the isolated bridge can cover."""
     bridge = [c for c in earners if _is_bridge(c)]
     if not bridge:
         return []
     if not network:
         names = ", ".join(sorted(_name(c) for c in bridge))
-        return [
-            {
-                "kind": "no_isolated_network",
-                "exposure": True,
-                "detail": (
-                    "CASHPILOT_CONTAINER_NETWORK is not set, so these earners sit on Docker's default bridge "
-                    f"next to your other containers and no rule can single them out: {names}."
-                ),
-                "docs": BRIDGE_PAGE,
-            }
-        ]
+        if mode == lan_fence.MODE_LEGACY:
+            why, docs = (
+                "Isolation is not switched on for this worker, so these earners sit on Docker's default bridge "
+                "and can reach your LAN and this host. Turn it on with the button on this worker's row",
+                ISOLATION_PAGE,
+            )
+        elif mode == lan_fence.MODE_OFF:
+            why, docs = (
+                "Isolation is turned off on this worker with CASHPILOT_ISOLATION=off, so these earners sit on "
+                "Docker's default bridge and can reach your LAN and this host",
+                ISOLATION_PAGE,
+            )
+        else:
+            why, docs = (
+                "CASHPILOT_CONTAINER_NETWORK is not set, so these earners sit on Docker's default bridge "
+                "next to your other containers and no rule can single them out",
+                BRIDGE_PAGE,
+            )
+        return [{"kind": "no_isolated_network", "exposure": True, "detail": f"{why}: {names}.", "docs": docs}]
     found = []
     outside = sorted(_name(c) for c in bridge if network not in _networks(c))
     if outside:
@@ -687,7 +703,7 @@ def _client() -> Any:
 
 
 def _run(client: Any) -> dict[str, Any]:
-    network = orchestrator._CONTAINER_NETWORK
+    mode, network = lan_fence.effective_network(client)
     managed = {"label": f"{LABEL_MANAGED}=true"}
     # Placement, DNS and IPv6 read static settings, so a stopped earner counts:
     # it is exposed again the moment it starts. Only a running one can host
@@ -701,7 +717,9 @@ def _run(client: Any) -> dict[str, Any]:
         "internet": None,
         "not_answering_from_host": [],
         "addresses_left_out": [],
-        "findings": placement_findings(every, network) + ipv6_findings(client, every, network),
+        "findings": placement_findings(every, network, mode) + ipv6_findings(client, every, network),
+        "mode": mode,
+        "fence": None,
         "node_firewall": None,
         "leftover_probes": [],
         "reason": "",
@@ -723,7 +741,7 @@ def _run(client: Any) -> dict[str, Any]:
             }
         )
 
-    report["reason"] = _probe(client, report, running, every, network)
+    report["reason"] = _probe(client, report, running, every, network, fenced=mode == lan_fence.MODE_ON)
     exposed = any(f.get("exposure") for f in report["findings"])
     if exposed:
         report["status"] = "exposed"
@@ -732,7 +750,127 @@ def _run(client: Any) -> dict[str, Any]:
     return report
 
 
-def _probe(client: Any, report: dict[str, Any], running: list[Any], every: list[Any], network: str) -> str:
+def dashboard_targets(ui_url: str | None = None) -> list[dict[str, Any]]:
+    """The CashPilot dashboard as a target: an earner reaching it is the clearest risk.
+
+    Resolved by the worker, which can resolve a compose service name that the
+    host network cannot. Loopback and IPv6 answers are skipped: from the host
+    they would mean the host itself, which the host targets already cover.
+    """
+    url = ui_url if ui_url is not None else os.getenv("CASHPILOT_UI_URL", "")
+    parts = urlsplit(url.strip())
+    if not parts.hostname:
+        return []
+    try:
+        port = parts.port or (443 if parts.scheme == "https" else 80)
+        infos = socket.getaddrinfo(parts.hostname, port, socket.AF_INET, socket.SOCK_STREAM)
+    except (OSError, ValueError):
+        return []
+    found = []
+    for addr in sorted({info[4][0] for info in infos}):
+        ip = ipaddress.ip_address(addr)
+        if ip.is_loopback or ip.is_unspecified:
+            continue
+        group = "overlay" if ip in ipaddress.ip_network("100.64.0.0/10") else "lan"
+        found.append({"group": group, "host": addr, "port": port, "label": "CashPilot dashboard", "via": "dashboard"})
+    return found
+
+
+#: Port 9 (discard) on an address nobody uses: only the fence's counter can
+#: say the connect was dropped there.
+SENTINEL_PORT = 9
+
+
+def fence_targets(gateway: str | None) -> list[dict[str, Any]]:
+    """One connect per blocked range, plus the bridge gateway for the host rule."""
+    found = [
+        {
+            "group": "fence",
+            "host": addr,
+            "port": 80 if addr == "169.254.169.254" else SENTINEL_PORT,
+            "label": name,
+            "range": cidr,
+        }
+        for name, cidr, addr in lan_fence.BLOCKED
+    ]
+    if gateway:
+        found.append(
+            {
+                "group": "fence",
+                "host": gateway,
+                "port": SENTINEL_PORT,
+                "label": lan_fence.HOST_RULE,
+                "range": "this host",
+            }
+        )
+    return found
+
+
+def judge_fence(
+    targets: list[dict[str, Any]], before: dict[str, Any] | None, after: dict[str, Any] | None
+) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    """Which ranges the earner's own packets were proven to hit a drop for.
+
+    A rule's counter that rose between the two reads counts the connect the
+    earner just made: the drop runs first in its hook and is final, so the
+    packet went nowhere else. A counter that did not rise is a finding: the
+    packet took another path (a DNAT before forward, or an earner off the
+    bridge) and the fence did not stop it.
+    """
+    b = (before or {}).get("counters") or {}
+    a = (after or {}).get("counters") or {}
+    ranges = []
+    for t in targets:
+        name = t["label"]
+        ranges.append(
+            {
+                "rule": name,
+                "range": t["range"],
+                "address": f"{t['host']}:{t['port']}",
+                "reachable": bool(t.get("reachable")),
+                "proven": name in a and name in b and a[name] > b[name] and not t.get("reachable"),
+            }
+        )
+    fence = {
+        "backend": (after or before or {}).get("backend"),
+        "matches_expected": bool((after or {}).get("matches")),
+        "ranges": ranges,
+    }
+    findings = []
+    missed = [r for r in ranges if not r["proven"]]
+    if not (after or {}).get("present"):
+        findings.append(
+            {
+                "kind": "fence_missing",
+                "exposure": True,
+                "detail": (
+                    "CashPilot's firewall table is not on this host. Earners on its network have no internet "
+                    "until the worker writes it again, which it tries every 5 minutes and before every deploy."
+                ),
+                "docs": ISOLATION_PAGE,
+            }
+        )
+    elif missed:
+        findings.append(
+            {
+                "kind": "fence_not_hit",
+                "exposure": True,
+                "detail": (
+                    "An earner's test connection was not stopped by CashPilot's own rule for "
+                    + ", ".join(
+                        f"{r['range']} ({r['address']}{', it connected' if r['reachable'] else ''})" for r in missed
+                    )
+                    + ". Something on this host routes that traffic around the fence."
+                ),
+                "docs": ISOLATION_PAGE,
+            }
+        )
+    return fence, findings
+
+
+def _probe(
+    client: Any, report: dict[str, Any], running: list[Any], every: list[Any], network: str, fenced: bool = False
+) -> str:
     """Fill the probe part of ``report``. Returns why it could not test, or ""."""
     image = _self_image(client)
     if not image:
@@ -748,6 +886,7 @@ def _probe(client: Any, report: dict[str, Any], running: list[Any], every: list[
             network_mode="host",
             first=_gateways(client, earner, network),
             published=published_ports(client),
+            extra=dashboard_targets(),
             leftovers=report["leftover_probes"],
         )
     except Exception as exc:  # noqa: BLE001 - the report says what went wrong
@@ -756,7 +895,7 @@ def _probe(client: Any, report: dict[str, Any], running: list[Any], every: list[
     kept = _keep(candidates)
     report["not_answering_from_host"] = [f"{t['host']}:{t['port']}" for t in candidates if not t.get("ok")]
     report["addresses_left_out"] = list(found.get("addresses_left_out") or [])
-    if not kept:
+    if not kept and not fenced:
         return (
             "Nothing answered from the host itself, so there is nothing to compare against. "
             "A blocked result here would prove nothing."
@@ -774,9 +913,21 @@ def _probe(client: Any, report: dict[str, Any], running: list[Any], every: list[
         kwargs = {"network": network}
         report["tested_from"] = {"earner": None, "network": [network]}
     else:
-        return "No earner is running on a bridge and CASHPILOT_CONTAINER_NETWORK is not set, so there is no earner side to test."
+        return "No earner is running on a bridge and no isolated network is in use, so there is no earner side to test."
 
-    targets = kept + [INTERNET]
+    # With CashPilot's own fence the proof does not need anything on the LAN to
+    # answer: each blocked range gets one connect to an unused address, and the
+    # rule's packet counter, read before and after, shows the drop caught it.
+    sentinels: list[dict[str, Any]] = []
+    before = None
+    if fenced:
+        sentinels = fence_targets(lan_fence.gateway(client))
+        try:
+            before = lan_fence.read_fence(client)
+        except Exception as exc:  # noqa: BLE001 - the report says what went wrong
+            return f"The fence's counters could not be read: {exc}"
+
+    targets = kept + [{k: t[k] for k in ("group", "host", "port", "label")} for t in sentinels] + [INTERNET]
     try:
         results = (
             run_probe(
@@ -794,6 +945,17 @@ def _probe(client: Any, report: dict[str, Any], running: list[Any], every: list[
     ]
     internet = outcome.pop()
     report["internet"] = {"address": internet["address"], "reachable": internet["reachable"]}
+    if sentinels:
+        hit = outcome[len(kept) :]
+        outcome = outcome[: len(kept)]
+        try:
+            after = lan_fence.read_fence(client)
+        except Exception as exc:  # noqa: BLE001
+            return f"The fence's counters could not be read after the probe: {exc}"
+        for t, r in zip(sentinels, hit, strict=True):
+            t["reachable"] = r["reachable"]
+        report["fence"], found_fence = judge_fence(sentinels, before, after)
+        report["findings"].extend(found_fence)
     _dns_notes(outcome)
 
     for group, (label, docs) in GROUPS.items():

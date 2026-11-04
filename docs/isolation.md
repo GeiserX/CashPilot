@@ -19,15 +19,93 @@ truth, before you deploy, rather than in an FAQ nobody opens.
 
 The second one you *can* reduce.
 
-## What CashPilot does and does not do
+## LAN isolation by default
+
+A worker fences its earners off your LAN, the host it runs on, your tailnet and
+cloud metadata by itself. A new install needs no setup for it.
+
+How it works:
+
+- The worker creates a Docker network, `cashpilot-isolated`, with bridge
+  interface `cp-isolated`. Docker's own masquerade (NAT) is off on it, and so is
+  traffic between containers on it. The network carries the label
+  `cashpilot.isolation=managed`.
+- The worker writes one firewall table, `table ip cashpilot`, into the host's
+  network namespace. It does that through a short-lived helper container started
+  from its own image, with host networking and the `NET_ADMIN` and `NET_RAW`
+  capabilities. The helper is removed when it finishes. The worker process
+  itself never gets those capabilities.
+- The table holds the NAT that gives the earners their internet, plus drops for
+  `10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`, `100.64.0.0/10` (carrier-grade
+  NAT and Tailscale), `169.254.0.0/16` (cloud metadata), any subnet directly
+  connected to a real interface of the host (a LAN numbered in public space, a
+  VPS's neighbours), and the host itself. Replies to published ports still go
+  out, so Storj, Sia and Anyone Protocol keep accepting inbound connections.
+- Every service the worker deploys onto a bridge joins that network, with DNS
+  servers `1.1.1.1` and `9.9.9.9` (`CASHPILOT_CONTAINER_DNS` changes them).
+  Services on host networking, such as Mysterium, are not covered: see
+  [Mysterium, which uses host networking](isolation-check.md#mysterium-which-uses-host-networking).
+
+**It fails closed.** The NAT and the drops live in the same table. When
+something removes the table (a reboot, `nft flush ruleset`, a firewalld reload),
+the earners lose their internet; they do not gain your LAN. The worker writes
+the table again when it starts, before every deploy, and every 5 minutes. After a
+restart of the Docker VM on a test host, the table was back 1.4 s after the
+worker container started. In that gap
+an earner can still reach the host itself, though not the LAN or the internet.
+
+**When the table cannot be written, deploys are refused.** The message says why
+and how to opt out. The running container is never touched first. The fleet page
+shows the error on the worker's row.
+
+The worker uses `nft` when the kernel has nf_tables, and `iptables-legacy`
+otherwise (older NAS kernels). Both write the same rules.
+
+### Modes
+
+| Mode | When | What happens |
+|---|---|---|
+| on | a new install, `CASHPILOT_ISOLATION=on`, or the `cashpilot-isolated` network CashPilot created exists | earners join the fenced network |
+| legacy | an upgraded install whose earners already sit on Docker's default bridge | nothing changes on upgrade; the fleet page offers **Turn on isolation** |
+| off | `CASHPILOT_ISOLATION=off` | Docker's default bridge, as before; earners left on the fenced network keep their internet until you redeploy them |
+| your own network | `CASHPILOT_CONTAINER_NETWORK` is set | that network, with your own rules, as before; CashPilot writes no table |
+
+The mode lives in Docker, not in the worker's `/data`, so a reinstall or a lost
+volume does not switch it off.
+
+### Turning it on for an upgraded install
+
+On the **Fleet** page, a worker in legacy mode shows "Earners on this worker can
+reach your LAN and this host" and a **Turn on isolation** button (owner only).
+It creates the network and the table, then redeploys each earner on Docker's
+default bridge once onto the new network, one at a time, from its recorded
+settings. Volumes, identities and settings stay the same. Storj gets its full
+clean stop first, so that one can take a few minutes. If one redeploy fails,
+the page stops there and names it; redeploy that one from its service page.
+The same switch is `POST /api/workers/{id}/isolation`.
+
+### Turning it off
+
+Set `CASHPILOT_ISOLATION=off` on the worker and recreate the worker, then
+redeploy the earners to move them back to Docker's default bridge. There is no
+off button on purpose: one click should not take the fence down.
+
+### Limits
+
+- Host-networked services (Mysterium) are not covered.
+- IPv6: the fenced network has IPv6 off, so earners have no IPv6 path at all.
+- A LAN on a public range behind another router (not directly connected to the
+  host) is not dropped. Use a VLAN or your own rules.
+- Tested on Linux Docker 29 with nf_tables (colima on macOS, the same VM model
+  as Docker Desktop), including the `iptables-legacy` fallback. Docker Desktop
+  itself, rootless Docker, Podman and Unraid are not tested yet. On Docker
+  Desktop, the Enhanced Container Isolation setting may block the helper; the
+  deploy is then refused with the opt-out in the message.
+
+## What CashPilot tells you per service
 
 It **tells you** which services can be confined and exactly what each needs
 allowed through: `GET /api/fleet/isolation-guide`.
-
-It **does not** create bridges or firewall rules on your host. That is a change
-with real blast radius, and getting the exceptions wrong costs money rather than
-convenience: a storage node that cannot accept inbound connections stops
-earning and puts its held balance at risk. So the recipe is yours to apply.
 
 ## The three answers
 
@@ -41,9 +119,10 @@ Today `mysterium` is the third case (it declares `network_mode: "host"`), and
 `storj` is the second: it needs its inbound port **and** its local dashboard
 reachable, because that dashboard is where CashPilot reads its earnings.
 
-## Doing it
+## Running your own rules
 
-Put the managed containers on their own bridge:
+Only if you set `CASHPILOT_CONTAINER_NETWORK` to manage the bridge and its
+firewall yourself. Put the managed containers on their own bridge:
 
 ```yaml
 networks:
@@ -86,7 +165,8 @@ same check is `POST /api/workers/{id}/isolation-check`. The worker has to run
 not offer the button.
 
 The worker starts two short-lived containers from its own image, so it pulls
-nothing. They have no capabilities, run as `nobody`, and the worker removes
+nothing. With CashPilot's own fence on, it also reads the fence's packet
+counters before and after. They have no capabilities, run as `nobody`, and the worker removes
 them and their volumes when the check ends, whether it passed, failed or timed
 out. If Docker refuses to remove one, the result names it and gives the
 `docker rm -fv` line to clear it; the check's answer still stands. It touches
@@ -109,10 +189,18 @@ no firewall rule.
    earner's own bridge gateway are always tried. On a host with many Docker
    networks, the other bridge gateways are tried up to a limit, and the result
    counts the ones it left out.
-2. **The earner side** joins a running earner's network, or
-   [`CASHPILOT_CONTAINER_NETWORK`](home-network-security.md#put-the-containers-on-their-own-bridge)
-   when no earner runs, and tries the same addresses. It also tries
-   `1.1.1.1:443`, to show the earner still reaches the internet.
+2. **The earner side** joins a running earner's network, or the isolated
+   network when no earner runs, and tries the same addresses. It also tries
+   `1.1.1.1:443`, to show the earner still reaches the internet. The CashPilot
+   dashboard's own address is one of the targets: an earner that reaches it is
+   the clearest risk there is.
+3. **The fence's own proof**, with CashPilot's fence on. The earner side sends
+   one connection to an unused address in each blocked range (for example
+   `10.255.255.254:9`) and one to the host. Each drop rule's packet counter is
+   read before and after. A counter that went up proves the fence dropped that
+   connection, even on a host where nothing on the LAN answers, which is the
+   case under Docker Desktop and colima. A counter that did not go up is
+   reported: something on the host routes that traffic around the fence.
 
 ### Reading the result
 

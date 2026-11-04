@@ -6967,6 +6967,20 @@ async def api_worker_isolation_check(request: Request, worker_id: int) -> dict[s
     return await _proxy_to_worker(worker_id, "POST", "/api/isolation-check", timeout=120)
 
 
+@app.post("/api/workers/{worker_id}/isolation")
+async def api_worker_isolation(request: Request, worker_id: int) -> dict[str, Any]:
+    """Turn LAN isolation on for an upgraded worker (app/lan_fence.py).
+
+    Owner only, POST for the same reasons as the isolation check: the worker
+    creates a network and writes a firewall table on its host. It answers with
+    the earners still on Docker's default bridge; the fleet page redeploys them.
+    There is no off switch here on purpose: CASHPILOT_ISOLATION=off on the
+    worker is the one way out, so a click cannot take the fence down.
+    """
+    _require_owner(request)
+    return await _proxy_to_worker(worker_id, "POST", "/api/isolation", json={"enable": True}, timeout=60)
+
+
 @app.delete("/api/workers/{worker_id}")
 async def api_delete_worker(request: Request, worker_id: int) -> dict[str, str]:
     """Remove a registered worker."""

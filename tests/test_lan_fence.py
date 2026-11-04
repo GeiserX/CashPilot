@@ -1,0 +1,855 @@
+"""Earners are fenced off the LAN by default (app/lan_fence.py).
+
+A new install puts bridge-networked earners on CashPilot's own network, whose
+masquerade lives in the same nftables table as the drops, so a missing table
+leaves the earners offline instead of exposed. An upgraded install keeps its
+earners where they are until the owner turns isolation on. These tests pin the
+ruleset, the mode each install lands in, the refusal when the fence cannot be
+applied, the switch, and the counter proof the isolation check relies on.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import json
+import os
+import shutil
+import stat
+import subprocess
+import sys
+from contextlib import asynccontextmanager
+from pathlib import Path
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
+from docker.errors import NotFound
+from fastapi.testclient import TestClient
+
+from app import isolation_check, lan_fence, orchestrator, worker_api
+from app.main import app as ui_app
+
+ROOT = Path(__file__).resolve().parent.parent
+FIXTURES = ROOT / "tests" / "fixtures" / "lan_fence"
+
+
+@pytest.fixture(autouse=True)
+def _fresh_state():
+    saved = json.loads(json.dumps(lan_fence._state))
+    yield
+    lan_fence._state.clear()
+    lan_fence._state.update(saved)
+
+
+# ---------------------------------------------------------------------------
+# The ruleset
+# ---------------------------------------------------------------------------
+
+
+class TestTheRuleset:
+    def test_nft_golden(self):
+        """The text Desktop's port must produce byte for byte (shared fixture)."""
+        got = lan_fence.render_nft("cp-isolated", "172.18.0.0/16", ["203.0.113.0/24"])
+        assert got == (FIXTURES / "ruleset.nft").read_text()
+
+    def test_reduced_keeps_only_the_masquerade(self):
+        got = lan_fence.render_nft("cp-isolated", "172.18.0.0/16", [], filtered=False)
+        assert got == (FIXTURES / "ruleset-reduced.nft").read_text()
+        assert "drop" not in got
+
+    def test_iptables_golden(self):
+        got = lan_fence.render_iptables("cp-isolated", "172.18.0.0/16", ["203.0.113.0/24"])
+        assert got == (FIXTURES / "ruleset.iptables.sh").read_text()
+
+    @pytest.mark.parametrize(
+        "cidr", ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "100.64.0.0/10", "169.254.0.0/16"]
+    )
+    def test_every_private_range_is_dropped(self, cidr):
+        nft = lan_fence.render_nft("cp-isolated", "172.18.0.0/16")
+        assert f'iifname "cp-isolated" ip daddr {cidr} counter drop' in nft
+        assert f"-d {cidr} " in lan_fence.render_iptables("cp-isolated", "172.18.0.0/16")
+
+    def test_the_masquerade_is_in_the_same_table_as_the_drops(self):
+        """Fail closed: whatever removes the drops removes the internet with them."""
+        nft = lan_fence.render_nft("cp-isolated", "172.18.0.0/16")
+        table = nft.split(f"table ip {lan_fence.TABLE} {{", 1)[1]
+        assert "masquerade" in table and "drop" in table
+
+    def test_the_host_is_dropped_on_input(self):
+        nft = lan_fence.render_nft("cp-isolated", "172.18.0.0/16")
+        chain = nft.split("chain input {", 1)[1]
+        assert 'iifname "cp-isolated" counter drop comment "host"' in chain
+
+    def test_the_drops_run_before_docker_and_tailscale(self):
+        nft = lan_fence.render_nft("cp-isolated", "172.18.0.0/16")
+        assert nft.count("priority -150;") == 2
+
+    def test_replies_on_published_ports_still_leave(self):
+        nft = lan_fence.render_nft("cp-isolated", "172.18.0.0/16")
+        for chain in ("forward", "input"):
+            body = nft.split(f"chain {chain} {{", 1)[1].split("}", 1)[0]
+            lines = [ln for ln in body.splitlines() if "iifname" in ln]
+            assert "ct state established,related" in lines[0], f"{chain}: the established accept must come first"
+
+    @pytest.mark.parametrize("filtered", [True, False])
+    def test_every_rule_has_its_own_name(self, filtered):
+        """read_fence compares the names it finds with these; a duplicate would hide a missing rule."""
+        extras = ["203.0.113.0/24"]
+        nft = lan_fence.render_nft("cp-isolated", "172.18.0.0/16", extras, filtered)
+        names = [ln.rsplit('comment "', 1)[1].rstrip('"') for ln in nft.splitlines() if 'comment "' in ln]
+        assert len(names) == len(set(names))
+        assert set(names) == lan_fence.rule_names(extras, filtered)
+        ipt = lan_fence.render_iptables("cp-isolated", "172.18.0.0/16", extras, filtered)
+        ipt_names = [ln.split("--comment ", 1)[1].split()[0] for ln in ipt.splitlines() if "--comment" in ln]
+        assert set(ipt_names) == lan_fence.rule_names(extras, filtered)
+
+    def test_a_subnet_that_is_not_one_is_refused(self):
+        with pytest.raises(ValueError):
+            lan_fence.render_nft("cp-isolated", '172.18.0.0/16"; flush ruleset; "')
+
+
+ROUTE = """Iface\tDestination\tGateway \tFlags\tRefCnt\tUse\tMetric\tMask\t\tMTU\tWindow\tIRTT
+eth0\t00000000\t0171A8C0\t0003\t0\t0\t0\t00000000\t0\t0\t0
+eth0\t0071A8C0\t00000000\t0001\t0\t0\t0\t00FFFFFF\t0\t0\t0
+ens3\t007100CB\t00000000\t0001\t0\t0\t0\t00FFFFFF\t0\t0\t0
+docker0\t000011AC\t00000000\t0001\t0\t0\t0\t0000FFFF\t0\t0\t0
+br-1234\t000012AC\t00000000\t0001\t0\t0\t0\t0000FFFF\t0\t0\t0
+cp-isolated\t000013AC\t00000000\t0001\t0\t0\t0\t0000FFFF\t0\t0\t0
+tailscale0\t00004064\t00000000\t0001\t0\t0\t0\t0000C0FF\t0\t0\t0
+ens3\t000000CC\t017100CB\t0003\t0\t0\t0\t000000FF\t0\t0\t0
+"""
+
+
+class TestConnectedSubnets:
+    def test_a_lan_in_public_space_is_added(self):
+        """192.168.113.0/24 is already dropped; 203.0.113.0/24 on a real interface is not."""
+        assert lan_fence.connected_subnets(ROUTE) == ["203.0.113.0/24"]
+
+    def test_nothing_on_a_plain_home_host(self):
+        assert lan_fence.connected_subnets(ROUTE.splitlines()[0] + "\n" + ROUTE.splitlines()[2]) == []
+
+
+NFT_LISTING = """table ip cashpilot {
+	chain postrouting {
+		type nat hook postrouting priority srcnat; policy accept;
+		ip saddr 172.18.0.0/16 oifname != "cp-isolated" counter packets 12 bytes 720 masquerade comment "masquerade"
+	}
+	chain forward {
+		type filter hook forward priority -150; policy accept;
+		iifname "cp-isolated" ip daddr 192.168.0.0/16 counter packets 3 bytes 180 drop comment "rfc1918-192"
+		iifname "cp-isolated" ip daddr 10.0.0.0/8 counter packets 0 bytes 0 drop comment "rfc1918-10"
+	}
+}
+"""
+
+IPT_LISTING = """Chain CP-FWD (1 references)
+    pkts      bytes target     prot opt in     out     source               destination
+       0        0 RETURN     0    --  *      *       0.0.0.0/0            0.0.0.0/0            ctstate RELATED,ESTABLISHED /* forward-established */
+       4      240 DROP       0    --  *      *       0.0.0.0/0            10.0.0.0/8           /* rfc1918-10 */
+"""
+
+
+class TestCounters:
+    def test_nft(self):
+        assert lan_fence.parse_nft_counters(NFT_LISTING) == {"masquerade": 12, "rfc1918-192": 3, "rfc1918-10": 0}
+
+    def test_iptables(self):
+        assert lan_fence.parse_iptables_counters(IPT_LISTING) == {"forward-established": 0, "rfc1918-10": 4}
+
+
+# ---------------------------------------------------------------------------
+# The helper, end to end against a fake nft
+# ---------------------------------------------------------------------------
+
+FAKE_NFT = """#!/bin/sh
+# A stand-in for nft: "-f -" stores the table as nft would list it, with
+# counters, and "list table" prints it back.
+store="$FAKE_NFT_DIR/table"
+case "$1 $2" in
+  "list tables") exit 0 ;;
+  "list table") [ -f "$store" ] && cat "$store" && exit 0; exit 1 ;;
+  "-f -") echo x >> "$FAKE_NFT_DIR/writes"; sed 's/counter /counter packets 0 bytes 0 /' > "$store"; exit 0 ;;
+esac
+exit 2
+"""
+
+
+class TestTheHelperScript:
+    def _run(self, tmp_path, action, filtered="1"):
+        bin_dir = tmp_path / "bin"
+        bin_dir.mkdir(exist_ok=True)
+        nft = bin_dir / "nft"
+        nft.write_text(FAKE_NFT)
+        nft.chmod(nft.stat().st_mode | stat.S_IEXEC)
+        env = dict(
+            os.environ,
+            PATH=f"{bin_dir}:{os.environ['PATH']}",
+            FAKE_NFT_DIR=str(tmp_path),
+            FENCE_IFACE="cp-isolated",
+            FENCE_SUBNET="172.18.0.0/16",
+            FENCE_FILTER=filtered,
+            FENCE_BACKEND="auto",
+        )
+        out = subprocess.run(
+            [sys.executable, "-c", lan_fence.HELPER_SCRIPT, action],
+            cwd=ROOT,
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        assert out.returncode == 0, out.stderr
+        return json.loads(out.stdout)
+
+    def _writes(self, tmp_path):
+        path = tmp_path / "writes"
+        return len(path.read_text().splitlines()) if path.exists() else 0
+
+    def test_apply_writes_the_table_once_and_then_leaves_it(self, tmp_path):
+        first = self._run(tmp_path, "apply")
+        assert first["ok"] and first["changed"] and first["matches"] and first["backend"] == "nft"
+        second = self._run(tmp_path, "apply")
+        assert second["ok"] and not second["changed"], "an intact table is not rewritten (its counters are kept)"
+        assert self._writes(tmp_path) == 1
+
+    def test_a_missing_rule_is_put_back(self, tmp_path):
+        self._run(tmp_path, "apply")
+        table = tmp_path / "table"
+        table.write_text("\n".join(ln for ln in table.read_text().splitlines() if "rfc1918-192" not in ln))
+        assert not self._run(tmp_path, "read")["matches"]
+        again = self._run(tmp_path, "apply")
+        assert again["changed"] and again["matches"]
+
+    def test_read_never_writes(self, tmp_path):
+        got = self._run(tmp_path, "read")
+        assert not got["present"] and not got["matches"]
+        assert self._writes(tmp_path) == 0
+
+    def test_reduce_drops_the_filters_and_keeps_the_masquerade(self, tmp_path):
+        self._run(tmp_path, "apply")
+        got = self._run(tmp_path, "apply", filtered="0")
+        assert got["changed"] and set(got["counters"]) == {"masquerade"}
+
+
+# ---------------------------------------------------------------------------
+# Modes
+# ---------------------------------------------------------------------------
+
+
+def _container(name, mode="bridge", nets=("bridge",), slug=None):
+    c = MagicMock()
+    c.name = name
+    c.labels = {"cashpilot.service": slug or name.removeprefix("cashpilot-")}
+    c.attrs = {
+        "HostConfig": {"NetworkMode": mode},
+        "NetworkSettings": {"Networks": {n: {} for n in nets}},
+    }
+    return c
+
+
+def _network(name=lan_fence.NETWORK_NAME, labeled=True, containers=None):
+    net = MagicMock()
+    net.name = name
+    net.id = "net-" + name
+    net.attrs = {
+        "Name": name,
+        "Driver": "bridge",
+        "Labels": {lan_fence.NETWORK_LABEL: lan_fence.NETWORK_LABEL_VALUE} if labeled else {},
+        "IPAM": {"Config": [{"Subnet": "172.18.0.0/16", "Gateway": "172.18.0.1"}]},
+        "Containers": containers or {},
+    }
+    return net
+
+
+def _docker(managed=None, earners=()):
+    """A client with our labeled network present or not, and these managed containers."""
+    client = MagicMock()
+    nets = {}
+    if managed is not None:
+        nets[managed.name] = managed
+
+    def _list(filters=None, **kw):
+        if filters and "label" in filters:
+            return [n for n in nets.values() if n.attrs["Labels"].get(lan_fence.NETWORK_LABEL)]
+        return list(nets.values())
+
+    def _get(name):
+        for n in nets.values():
+            if name in (n.name, n.id):
+                return n
+        raise NotFound("no such network")
+
+    client.networks.list.side_effect = _list
+    client.networks.get.side_effect = _get
+    client.networks.create.side_effect = lambda name, **kw: nets.setdefault(name, _network(name))
+    client.containers.list.return_value = list(earners)
+    client._nets = nets
+    return client
+
+
+def _mode(client, setting="auto", operator=""):
+    with patch.object(lan_fence, "_SETTING", setting), patch.object(orchestrator, "_CONTAINER_NETWORK", operator):
+        return lan_fence.resolve_mode(client)
+
+
+class TestModes:
+    def test_a_fresh_install_is_on(self):
+        assert _mode(_docker()) == lan_fence.MODE_ON
+
+    def test_an_install_with_only_host_network_earners_is_on(self):
+        assert _mode(_docker(earners=[_container("cashpilot-mysterium", "host", ("host",))])) == lan_fence.MODE_ON
+
+    def test_an_upgraded_install_with_bridge_earners_is_legacy(self):
+        assert _mode(_docker(earners=[_container("cashpilot-honeygain")])) == lan_fence.MODE_LEGACY
+
+    def test_our_network_keeps_it_on_even_with_earners_left_on_the_bridge(self):
+        """The state lives in Docker: a lost /data or a reinstall does not switch it off."""
+        client = _docker(_network(), earners=[_container("cashpilot-honeygain")])
+        assert _mode(client) == lan_fence.MODE_ON
+
+    def test_an_unlabeled_network_by_our_name_does_not_count(self):
+        client = _docker(_network(labeled=False), earners=[_container("cashpilot-honeygain")])
+        assert _mode(client) == lan_fence.MODE_LEGACY
+
+    def test_on_forces_it(self):
+        assert _mode(_docker(earners=[_container("cashpilot-honeygain")]), "on") == lan_fence.MODE_ON
+
+    def test_off_is_the_opt_out(self):
+        assert _mode(_docker(_network()), "off") == lan_fence.MODE_OFF
+
+    def test_the_operators_network_wins_over_everything(self):
+        assert _mode(_docker(_network()), "on", operator="mine") == lan_fence.MODE_OPERATOR
+
+    def test_an_unknown_setting_reads_as_auto(self):
+        with patch.object(lan_fence, "_SETTING", "yes please"):
+            assert lan_fence.setting() == "auto"
+
+
+class TestTheNetwork:
+    def test_it_is_created_with_the_masquerade_off(self):
+        client = _docker()
+        lan_fence.ensure_network(client)
+        kwargs = client.networks.create.call_args.kwargs
+        assert client.networks.create.call_args.args == (lan_fence.NETWORK_NAME,)
+        assert kwargs["options"]["com.docker.network.bridge.enable_ip_masquerade"] == "false"
+        assert kwargs["options"]["com.docker.network.bridge.enable_icc"] == "false"
+        assert kwargs["options"]["com.docker.network.bridge.name"] == lan_fence.BRIDGE_INTERFACE
+        assert kwargs["labels"] == {lan_fence.NETWORK_LABEL: lan_fence.NETWORK_LABEL_VALUE}
+        assert kwargs["enable_ipv6"] is False
+
+    def test_an_empty_unlabeled_one_is_replaced(self):
+        old = _network(labeled=False)
+        client = _docker(old)
+        lan_fence.ensure_network(client)
+        old.remove.assert_called_once()
+        client.networks.create.assert_called_once()
+
+    def test_an_unlabeled_one_in_use_is_left_alone(self):
+        old = _network(labeled=False, containers={"abc": {}})
+        client = _docker(old)
+        with pytest.raises(lan_fence.IsolationConflict, match="CASHPILOT_CONTAINER_NETWORK=cashpilot-isolated"):
+            lan_fence.ensure_network(client)
+        old.remove.assert_not_called()
+        client.networks.create.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# Deploys
+# ---------------------------------------------------------------------------
+
+
+def _deploy(client, setting, helper_result=None, helper_error=None, old=None):
+    if old is None:
+        client.containers.get.side_effect = NotFound("nope")
+    else:
+        client.containers.get.side_effect = None
+        client.containers.get.return_value = old
+    created = MagicMock(id="new", short_id="new")
+    client.containers.run.return_value = created
+    helper = MagicMock(return_value=helper_result or {"ok": True, "changed": True, "backend": "nft", "counters": {}})
+    if helper_error:
+        helper.side_effect = helper_error
+    with (
+        patch.object(lan_fence, "_SETTING", setting),
+        patch.object(orchestrator, "_CONTAINER_NETWORK", ""),
+        patch.object(orchestrator, "_get_client", return_value=client),
+        patch.object(lan_fence, "run_helper", helper),
+    ):
+        orchestrator.deploy_raw(slug="honeygain", image="honeygain/honeygain")
+    return client.containers.run.call_args.kwargs, helper
+
+
+class TestDeploys:
+    def test_a_fresh_install_deploys_behind_the_fence(self):
+        client = _docker()
+        kwargs, helper = _deploy(client, "auto")
+        assert kwargs["network"] == lan_fence.NETWORK_NAME
+        assert kwargs["network_mode"] is None
+        assert kwargs["dns"] == ["1.1.1.1", "9.9.9.9"], "a LAN resolver is behind the fence"
+        assert helper.call_args.args[1:] == ("apply", "172.18.0.0/16")
+        assert lan_fence.status()["fence"]["state"] == "applied"
+
+    def test_an_upgraded_install_keeps_the_default_bridge(self):
+        client = _docker(earners=[_container("cashpilot-earnapp")])
+        kwargs, helper = _deploy(client, "auto")
+        assert kwargs["network"] is None
+        helper.assert_not_called()
+        client.networks.create.assert_not_called()
+
+    def test_off_keeps_the_default_bridge(self):
+        client = _docker()
+        kwargs, helper = _deploy(client, "off")
+        assert kwargs["network"] is None
+        helper.assert_not_called()
+
+    @pytest.mark.parametrize(
+        ("result", "error"),
+        [({"ok": False, "backend": "legacy", "error": "can't initialize iptables table"}, None), (None, OSError("x"))],
+    )
+    def test_a_fence_that_cannot_be_applied_refuses_before_the_old_container_is_touched(self, result, error):
+        old = MagicMock()
+        old.labels = {"cashpilot.service": "honeygain"}
+        client = _docker()
+        with pytest.raises(orchestrator.ContainerNetworkError, match="CASHPILOT_ISOLATION=off"):
+            _deploy(client, "auto", helper_result=result, helper_error=error, old=old)
+        old.stop.assert_not_called()
+        old.remove.assert_not_called()
+        client.containers.run.assert_not_called()
+        client.images.pull.assert_not_called()
+        assert lan_fence.status()["fence"]["state"] == "failed"
+
+    def test_host_networking_is_never_moved(self):
+        client = _docker()
+        client.containers.get.side_effect = NotFound("nope")
+        client.containers.run.return_value = MagicMock(id="n", short_id="n")
+        with (
+            patch.object(lan_fence, "_SETTING", "on"),
+            patch.object(orchestrator, "_CONTAINER_NETWORK", ""),
+            patch.object(orchestrator, "_get_client", return_value=client),
+            patch.object(lan_fence, "run_helper") as helper,
+        ):
+            orchestrator.deploy_raw(slug="mysterium", image="mysteriumnetwork/myst", network_mode="host")
+        assert client.containers.run.call_args.kwargs["network_mode"] == "host"
+        helper.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# The periodic check
+# ---------------------------------------------------------------------------
+
+
+def _reconcile(client, setting):
+    with (
+        patch.object(lan_fence, "_SETTING", setting),
+        patch.object(orchestrator, "_CONTAINER_NETWORK", ""),
+        patch.object(orchestrator, "docker_available", return_value=True),
+        patch.object(orchestrator, "_get_client", return_value=client),
+        patch.object(lan_fence, "run_helper", return_value={"ok": True, "backend": "nft", "counters": {}}) as helper,
+    ):
+        return lan_fence.reconcile(), helper
+
+
+class TestReconcile:
+    def test_on_puts_the_full_table_back(self):
+        state, helper = _reconcile(_docker(_network()), "auto")
+        assert helper.call_args.kwargs["filtered"] is True
+        assert state["mode"] == "on" and state["fence"]["state"] == "applied"
+
+    def test_off_with_our_network_left_keeps_only_the_masquerade(self):
+        """The way back out: earners still on the network keep their internet."""
+        state, helper = _reconcile(_docker(_network()), "off")
+        assert helper.call_args.kwargs["filtered"] is False
+        assert state["fence"]["state"] == "reduced"
+
+    def test_off_without_our_network_touches_nothing(self):
+        _state, helper = _reconcile(_docker(), "off")
+        helper.assert_not_called()
+
+    def test_legacy_names_the_exposed_earners_and_touches_nothing(self):
+        state, helper = _reconcile(_docker(earners=[_container("cashpilot-earnapp")]), "auto")
+        helper.assert_not_called()
+        assert state["mode"] == "legacy" and state["earners_outside"] == ["earnapp"]
+
+    def test_on_names_earners_still_off_the_network(self):
+        earners = [_container("cashpilot-earnapp"), _container("cashpilot-honeygain", nets=(lan_fence.NETWORK_NAME,))]
+        state, _helper = _reconcile(_docker(_network(), earners=earners), "auto")
+        assert state["earners_outside"] == ["earnapp"]
+
+    def test_no_docker_no_helper(self):
+        with (
+            patch.object(orchestrator, "docker_available", return_value=False),
+            patch.object(lan_fence, "run_helper") as helper,
+        ):
+            state = lan_fence.reconcile()
+        helper.assert_not_called()
+        assert state["mode"] is None
+
+    def test_a_failure_is_reported_never_raised(self):
+        client = _docker()
+        client.networks.create.side_effect = RuntimeError("daemon said no")
+        state, _helper = _reconcile(client, "auto")
+        assert state["fence"]["state"] == "failed" and "daemon said no" in state["fence"]["error"]
+
+
+# ---------------------------------------------------------------------------
+# The switch: worker route, UI route, fleet page
+# ---------------------------------------------------------------------------
+
+
+@asynccontextmanager
+async def _noop_lifespan(a):
+    yield
+
+
+def _worker_client():
+    worker_api.app.router.lifespan_context = _noop_lifespan
+    return TestClient(worker_api.app, raise_server_exceptions=False)
+
+
+class TestTheWorkerRoute:
+    def _post(self, body, key=None, **patches):
+        headers = {"Authorization": f"Bearer {key or worker_api.API_KEY}"}
+        with (
+            patch.object(worker_api, "_worker_key", None),
+            patch.object(worker_api, "API_KEY", "shared-key"),
+            patch.object(lan_fence, "enable", **patches) as enable,
+        ):
+            headers["Authorization"] = f"Bearer {key or 'shared-key'}"
+            return _worker_client().post("/api/isolation", json=body, headers=headers), enable
+
+    def test_it_needs_the_fleet_key(self):
+        resp, enable = self._post({"enable": True}, key="nope", return_value={})
+        assert resp.status_code == 401
+        enable.assert_not_called()
+
+    def test_it_turns_isolation_on(self):
+        resp, enable = self._post({"enable": True}, return_value={"mode": "on", "earners_outside": ["earnapp"]})
+        assert resp.status_code == 200 and resp.json()["earners_outside"] == ["earnapp"]
+        enable.assert_called_once()
+
+    @pytest.mark.parametrize("body", [{"enable": False}, {}, ["enable"]])
+    def test_it_never_turns_it_off(self, body):
+        resp, enable = self._post(body, return_value={})
+        assert resp.status_code == 400 and "CASHPILOT_ISOLATION=off" in resp.json()["detail"]
+        enable.assert_not_called()
+
+    def test_a_conflict_says_how_to_fix_it(self):
+        resp, _ = self._post({"enable": True}, side_effect=lan_fence.IsolationConflict("set this or that"))
+        assert resp.status_code == 409 and resp.json()["detail"] == "set this or that"
+
+
+class TestEnable:
+    def test_off_setting_is_refused(self):
+        with (
+            patch.object(lan_fence, "_SETTING", "off"),
+            patch.object(orchestrator, "_CONTAINER_NETWORK", ""),
+            pytest.raises(lan_fence.IsolationConflict, match="CASHPILOT_ISOLATION=off"),
+        ):
+            lan_fence.enable()
+
+    def test_operator_network_is_refused(self):
+        with (
+            patch.object(orchestrator, "_CONTAINER_NETWORK", "mine"),
+            pytest.raises(lan_fence.IsolationConflict, match="CASHPILOT_CONTAINER_NETWORK=mine"),
+        ):
+            lan_fence.enable()
+
+    def test_it_returns_the_earners_to_move(self):
+        client = _docker(earners=[_container("cashpilot-earnapp"), _container("cashpilot-mysterium", "host")])
+        with (
+            patch.object(lan_fence, "_SETTING", "auto"),
+            patch.object(orchestrator, "_CONTAINER_NETWORK", ""),
+            patch.object(orchestrator, "_get_client", return_value=client),
+            patch.object(lan_fence, "run_helper", return_value={"ok": True, "backend": "nft"}),
+        ):
+            state = lan_fence.enable()
+        assert state["mode"] == "on" and state["earners_outside"] == ["earnapp"]
+        assert lan_fence.NETWORK_NAME in client._nets
+
+
+class TestTheUiRoute:
+    def test_owner_only(self):
+        ui_app.router.lifespan_context = _noop_lifespan
+        with (
+            patch("app.main.auth.get_current_user", return_value={"uid": 2, "u": "w", "r": "writer"}),
+            patch("app.main._proxy_to_worker", new_callable=AsyncMock) as proxy,
+        ):
+            resp = TestClient(ui_app, raise_server_exceptions=False).post("/api/workers/1/isolation")
+        assert resp.status_code in (401, 403)
+        proxy.assert_not_called()
+
+    def test_it_proxies_enable_only(self):
+        ui_app.router.lifespan_context = _noop_lifespan
+        with (
+            patch("app.main.auth.get_current_user", return_value={"uid": 1, "u": "admin", "r": "owner"}),
+            patch("app.main._proxy_to_worker", new_callable=AsyncMock, return_value={"mode": "on"}) as proxy,
+        ):
+            resp = TestClient(ui_app, raise_server_exceptions=False).post("/api/workers/1/isolation")
+        assert resp.status_code == 200
+        assert proxy.call_args.args == (1, "POST", "/api/isolation")
+        assert proxy.call_args.kwargs["json"] == {"enable": True}
+
+    def test_not_a_get(self):
+        ui_app.router.lifespan_context = _noop_lifespan
+        with patch("app.main.auth.get_current_user", return_value={"uid": 1, "u": "admin", "r": "owner"}):
+            resp = TestClient(ui_app, raise_server_exceptions=False).get("/api/workers/1/isolation")
+        assert resp.status_code == 405
+
+
+@pytest.mark.parametrize(("docker_ok", "offered"), [(True, True), (False, False)])
+def test_the_heartbeat_carries_the_isolation_state(docker_ok, offered):
+    sent = {}
+    client = MagicMock()
+    client.__aenter__ = AsyncMock(return_value=client)
+    client.__aexit__ = AsyncMock(return_value=False)
+
+    async def post(url, json=None, **kw):
+        sent.update(json or {})
+        raise RuntimeError("stop after the payload")
+
+    client.post = post
+    lan_fence._state.update(mode="legacy", earners_outside=["earnapp"])
+    with (
+        patch.object(worker_api, "_worker_key", "own"),
+        patch.object(worker_api, "UI_URL", "http://ui:8080"),
+        patch("app.worker_api.orchestrator.get_status", return_value=[]),
+        patch("app.worker_api.orchestrator.docker_available", return_value=docker_ok),
+        patch("app.worker_api.httpx.AsyncClient", return_value=client),
+        patch.object(lan_fence, "run_helper") as helper,
+    ):
+        asyncio.run(worker_api._send_heartbeat())
+    info = sent["system_info"]
+    assert ("isolation_default" in info["features"]) is offered
+    assert info["isolation"]["mode"] == "legacy" and info["isolation"]["earners_outside"] == ["earnapp"]
+    helper.assert_not_called()
+
+
+def test_the_worker_image_ships_the_fence():
+    dockerfile = (ROOT / "Dockerfile.worker").read_text()
+    assert "COPY --chown=cashpilot:root app/lan_fence.py ./app/" in dockerfile
+    apk = next(ln for ln in dockerfile.splitlines() if ln.startswith("RUN apk add") and "su-exec" in ln)
+    assert "nftables" in apk.split() and "iptables-legacy" in apk.split()
+
+
+FENCE_HARNESS = r"""
+import fs from 'node:fs';
+const html = fs.readFileSync('app/templates/fleet.html', 'utf8');
+function extract(name) {
+  const start = html.indexOf(`function ${name}(`);
+  if (start < 0) throw new Error(`fleet.html no longer defines ${name}()`);
+  let depth = 0;
+  for (let j = html.indexOf('{', start); j < html.length; j++) {
+    if (html[j] === '{') depth++;
+    else if (html[j] === '}' && --depth === 0) return html.slice(start, j + 1);
+  }
+  throw new Error(`unbalanced braces reading ${name}()`);
+}
+const esc = s => String(s).replace(/[&<>"']/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]));
+const _isOwner = true;
+const _fenceSwitch = {};
+const calls = [];
+const loadFleet = () => {};
+const confirm = () => true;
+const failOn = process.argv[process.argv.length - 1];
+const CP = {api: async (url, opts) => {
+  calls.push([url, opts && opts.method, opts && opts.body]);
+  if (url.endsWith('/isolation')) return {mode: 'on', earners_outside: ['earnapp', 'honeygain', 'storj']};
+  if (failOn && url.includes(failOn)) throw new Error('worker said no');
+  return {status: 'deployed'};
+}};
+const renderFence = eval('(' + extract('renderFence') + ')');
+const enableFence = eval('(async ' + extract('enableFence') + ')');
+const feat = ['isolation_default'];
+const out = {
+  legacy: renderFence({id: 3, name: 'box'}, {features: feat, isolation: {mode: 'legacy', fence: {state: 'n/a'}, earners_outside: ['earnapp']}}),
+  failed: renderFence({id: 3, name: 'box'}, {features: feat, isolation: {mode: 'on', fence: {state: 'failed', error: 'no nf_tables'}, earners_outside: []}}),
+  quiet: renderFence({id: 3, name: 'box'}, {features: feat, isolation: {mode: 'on', fence: {state: 'applied'}, earners_outside: []}}),
+  old: renderFence({id: 3, name: 'box'}, {features: [], isolation: {mode: 'legacy', fence: {}, earners_outside: ['earnapp']}}),
+};
+await enableFence(3, 'box');
+out.calls = calls;
+out.after = _fenceSwitch[3];
+console.log(JSON.stringify(out));
+"""
+
+
+class TestTheFleetPage:
+    def _render(self, fail_on=""):
+        node = shutil.which("node")
+        if node is None:
+            pytest.skip("node is not installed")
+        out = subprocess.run(
+            [node, "--input-type=module", "-e", FENCE_HARNESS, fail_on],
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        assert out.returncode == 0, out.stderr
+        return json.loads(out.stdout)
+
+    def test_a_legacy_worker_offers_the_switch(self):
+        out = self._render()
+        assert "can reach your LAN and this host: earnapp" in out["legacy"]
+        assert "btn-fence-on" in out["legacy"]
+
+    def test_a_worker_too_old_for_the_switch_gets_no_button(self):
+        assert "btn-fence-on" not in self._render()["old"]
+
+    def test_a_failed_fence_says_the_earners_are_offline(self):
+        out = self._render()["failed"]
+        assert "no nf_tables" in out and "no internet" in out and "CASHPILOT_ISOLATION=off" in out
+
+    def test_a_holding_fence_says_nothing(self):
+        assert self._render()["quiet"] == ""
+
+    def test_the_switch_moves_each_earner_in_turn(self):
+        out = self._render()
+        assert out["calls"][0][:2] == ["/api/workers/3/isolation", "POST"]
+        assert [c[0] for c in out["calls"][1:]] == [
+            "/api/deploy/earnapp?worker_id=3",
+            "/api/deploy/honeygain?worker_id=3",
+            "/api/deploy/storj?worker_id=3",
+        ]
+        assert all(c[2] == {} for c in out["calls"][1:]), "an empty body redeploys from the recorded spec"
+        assert "Moved earnapp, honeygain, storj" in out["after"]["done"]
+
+    def test_it_stops_at_the_first_failure_and_says_which(self):
+        out = self._render(fail_on="honeygain")
+        assert [c[0] for c in out["calls"][1:]] == [
+            "/api/deploy/earnapp?worker_id=3",
+            "/api/deploy/honeygain?worker_id=3",
+        ]
+        assert "honeygain could not be moved: worker said no" in out["after"]["error"]
+
+
+# ---------------------------------------------------------------------------
+# The isolation check's counter proof
+# ---------------------------------------------------------------------------
+
+
+class TestCounterProof:
+    def _targets(self):
+        return isolation_check.fence_targets("172.18.0.1")
+
+    def test_every_range_and_the_host_get_a_sentinel(self):
+        targets = self._targets()
+        assert {t["label"] for t in targets} == {n for n, _c, _s in lan_fence.BLOCKED} | {lan_fence.HOST_RULE}
+        assert next(t for t in targets if t["label"] == "host")["host"] == "172.18.0.1"
+
+    def test_a_counter_that_rose_is_proof(self):
+        targets = self._targets()
+        before = {"present": True, "matches": True, "backend": "nft", "counters": {t["label"]: 5 for t in targets}}
+        after = {"present": True, "matches": True, "backend": "nft", "counters": {t["label"]: 7 for t in targets}}
+        fence, findings = isolation_check.judge_fence(targets, before, after)
+        assert all(r["proven"] for r in fence["ranges"]) and findings == []
+        assert fence["backend"] == "nft" and fence["matches_expected"]
+
+    def test_a_flat_counter_is_a_finding(self):
+        targets = self._targets()
+        before = {"present": True, "counters": {t["label"]: 5 for t in targets}}
+        after = {"present": True, "counters": {t["label"]: 7 for t in targets} | {"cgnat": 5}}
+        fence, findings = isolation_check.judge_fence(targets, before, after)
+        assert [r["rule"] for r in fence["ranges"] if not r["proven"]] == ["cgnat"]
+        assert findings[0]["kind"] == "fence_not_hit" and findings[0]["exposure"]
+        assert "100.64.0.0/10" in findings[0]["detail"]
+
+    def test_a_sentinel_that_connected_is_never_proof(self):
+        targets = self._targets()
+        targets[0]["reachable"] = True
+        before = {"present": True, "counters": {t["label"]: 0 for t in targets}}
+        after = {"present": True, "counters": {t["label"]: 1 for t in targets}}
+        fence, findings = isolation_check.judge_fence(targets, before, after)
+        assert not fence["ranges"][0]["proven"] and findings[0]["kind"] == "fence_not_hit"
+
+    def test_a_missing_table_is_a_finding(self):
+        targets = self._targets()
+        _fence, findings = isolation_check.judge_fence(targets, {"present": False}, {"present": False})
+        assert findings[0]["kind"] == "fence_missing" and findings[0]["exposure"]
+
+
+class TestTheCheckInOnMode:
+    """_run end to end with fake probes: proven with nothing on the LAN answering."""
+
+    def _run(self, rise=True):
+        earner = _container("cashpilot-honeygain", nets=(lan_fence.NETWORK_NAME,))
+        earner.id = "e1"
+        earner.attrs["NetworkSettings"]["Networks"][lan_fence.NETWORK_NAME] = {"Gateway": "172.18.0.1"}
+        client = _docker(_network(), earners=[earner])
+        reads = iter(
+            [
+                {
+                    "present": True,
+                    "matches": True,
+                    "backend": "nft",
+                    "counters": dict.fromkeys(lan_fence.rule_names(), 0),
+                },
+                {
+                    "present": True,
+                    "matches": True,
+                    "backend": "nft",
+                    "counters": dict.fromkeys(lan_fence.rule_names(), 1 if rise else 0),
+                },
+            ]
+        )
+
+        def probe(client, image, name, mode, **kw):
+            if mode == "discover":
+                # Nothing on the host answers (Docker Desktop, colima).
+                return {"candidates": [{"group": "lan", "host": "192.168.65.1", "port": 80, "ok": False}]}
+            return {"results": [False] * (len(kw["targets"]) - 1) + [True]}
+
+        with (
+            patch.object(lan_fence, "_SETTING", "auto"),
+            patch.object(orchestrator, "_CONTAINER_NETWORK", ""),
+            patch.object(isolation_check, "_self_image", return_value="img"),
+            patch.object(isolation_check, "run_probe", side_effect=probe),
+            patch.object(isolation_check, "read_node_firewall", return_value=None),
+            patch.object(lan_fence, "read_fence", side_effect=lambda c: next(reads)),
+            patch.object(isolation_check, "dashboard_targets", return_value=[]),
+        ):
+            return isolation_check._run(client)
+
+    def test_proven_ranges_make_it_isolated_without_a_live_target(self):
+        report = self._run()
+        assert report["status"] == "isolated", report
+        assert report["mode"] == "on" and all(r["proven"] for r in report["fence"]["ranges"])
+
+    def test_unproven_ranges_make_it_exposed(self):
+        report = self._run(rise=False)
+        assert report["status"] == "exposed"
+        assert any(f["kind"] == "fence_not_hit" for f in report["findings"])
+
+
+class TestDashboardTarget:
+    def test_the_ui_address_becomes_a_target(self):
+        with patch("app.isolation_check.socket.getaddrinfo", return_value=[(2, 1, 6, "", ("192.168.1.20", 8080))]):
+            got = isolation_check.dashboard_targets("http://cashpilot-ui:8080")
+        assert got == [
+            {"group": "lan", "host": "192.168.1.20", "port": 8080, "label": "CashPilot dashboard", "via": "dashboard"}
+        ]
+
+    def test_a_tailnet_ui_is_an_overlay_target(self):
+        with patch("app.isolation_check.socket.getaddrinfo", return_value=[(2, 1, 6, "", ("100.70.1.2", 443))]):
+            got = isolation_check.dashboard_targets("https://ui.example.ts.net")
+        assert got[0]["group"] == "overlay" and got[0]["port"] == 443
+
+    @pytest.mark.parametrize("url", ["", "http://127.0.0.1:8080", "not a url"])
+    def test_nothing_useful_no_target(self, url):
+        with patch("app.isolation_check.socket.getaddrinfo", return_value=[(2, 1, 6, "", ("127.0.0.1", 8080))]):
+            assert isolation_check.dashboard_targets(url) == []
+
+    def test_the_dashboard_keeps_its_own_slot_beside_the_hosts_ssh(self):
+        kept = isolation_check._keep(
+            [
+                {"group": "host", "host": "192.168.1.20", "port": 22, "label": "ssh", "via": "host", "ok": True},
+                {
+                    "group": "lan",
+                    "host": "192.168.1.20",
+                    "port": 8080,
+                    "label": "CashPilot dashboard",
+                    "via": "dashboard",
+                    "ok": True,
+                },
+            ]
+        )
+        assert {t["port"] for t in kept} == {22, 8080}

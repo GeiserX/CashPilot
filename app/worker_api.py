@@ -39,7 +39,17 @@ from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 
-from app import egress, fleet_key, isolation_check, node_read, orchestrator, payout_read, state_backup, version
+from app import (
+    egress,
+    fleet_key,
+    isolation_check,
+    lan_fence,
+    node_read,
+    orchestrator,
+    payout_read,
+    state_backup,
+    version,
+)
 from app.constants import MAX_INSTANCES
 
 try:
@@ -658,8 +668,15 @@ async def _send_heartbeat() -> None:
             # helpers (CashPilot-cle).
             "disk": await asyncio.to_thread(_disk_usage),
             "gpu": await asyncio.to_thread(_gpu_info),
+            # Which isolation mode this worker is in and whether its fence holds.
+            # Cached by the fence check, so no helper container runs per heartbeat.
+            "isolation": lan_fence.status(),
         },
     }
+    if docker_ok:
+        # This worker fences its earners off the LAN by itself and takes
+        # POST /api/isolation to switch an upgraded install over (app/lan_fence.py).
+        payload["system_info"]["features"].append("isolation_default")
 
     try:
         async with httpx.AsyncClient(timeout=15) as client:
@@ -796,6 +813,37 @@ async def _heartbeat_loop() -> None:
         await asyncio.sleep(HEARTBEAT_INTERVAL)
 
 
+_fence_task: asyncio.Task | None = None
+#: Seconds the startup fence check may hold the worker before it carries on.
+FENCE_STARTUP_TIMEOUT = 30
+
+
+async def _check_fence(startup: bool = False) -> None:
+    """Put the fence back if it went, and refresh what the heartbeat reports. Never raises."""
+    started = time.monotonic()
+    try:
+        state = await asyncio.wait_for(asyncio.to_thread(lan_fence.reconcile), FENCE_STARTUP_TIMEOUT)
+    except Exception as exc:  # noqa: BLE001 - a fence problem must never stop the worker
+        logger.warning("LAN fence check did not finish: %s", exc)
+        return
+    if startup:
+        fence = state.get("fence") or {}
+        logger.info(
+            "Isolation: mode %s, fence %s%s (%.1f s after start)",
+            state.get("mode"),
+            fence.get("state"),
+            f": {fence['error']}" if fence.get("error") else "",
+            time.monotonic() - started,
+        )
+
+
+async def _fence_loop() -> None:
+    """Every RECHECK_SECONDS: a reboot, ``nft flush ruleset`` or a firewalld reload removes the table."""
+    while True:
+        await asyncio.sleep(lan_fence.RECHECK_SECONDS)
+        await _check_fence()
+
+
 def _get_local_ip() -> str:
     """Best-effort local IP detection for worker URL."""
     try:
@@ -816,11 +864,17 @@ def _get_local_ip() -> str:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global _heartbeat_task
+    global _heartbeat_task, _fence_task
 
     logger.info("CashPilot Worker '%s' starting", WORKER_NAME)
     docker_mode = "direct" if await asyncio.to_thread(orchestrator.docker_available) else "monitor-only"
     logger.info("Docker: %s", docker_mode)
+
+    # The fence goes in before anything else, so the gap after a reboot in
+    # which earners run without it is as short as this worker can make it.
+    # Without the fence they have no internet, never the LAN (app/lan_fence.py).
+    await _check_fence(startup=True)
+    _fence_task = asyncio.create_task(_fence_loop())
 
     if UI_URL:
         _heartbeat_task = asyncio.create_task(_heartbeat_loop())
@@ -832,10 +886,11 @@ async def lifespan(app: FastAPI):
 
     yield
 
-    if _heartbeat_task and not _heartbeat_task.done():
-        _heartbeat_task.cancel()
-        with contextlib.suppress(asyncio.CancelledError):
-            await _heartbeat_task
+    for task in (_heartbeat_task, _fence_task):
+        if task and not task.done():
+            task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await task
     logger.info("CashPilot Worker stopped")
 
 
@@ -1368,6 +1423,7 @@ async def api_deploy_container(request: Request, slug: str, spec: DeploySpec) ->
             keep_targets=_catalog_volume_targets(slug),
             instance=spec.instance,
         )
+        await asyncio.to_thread(lan_fence.refresh_outside)
         response: dict[str, Any] = {"status": "deployed", "container_id": container_id}
         if kept_mounts:
             response["kept_mounts"] = kept_mounts
@@ -1450,6 +1506,7 @@ async def api_remove_container(
         extras = await asyncio.to_thread(orchestrator.remove_extra_instances, slug)
         if extras:
             result["extra_instances"] = extras
+        await asyncio.to_thread(lan_fence.refresh_outside)
         return {"status": "removed", **result}
     except orchestrator.CriticalVolumeError as exc:
         # 409, not 400: the request is well-formed, the state is what refuses.
@@ -1691,6 +1748,37 @@ async def api_isolation_check(request: Request) -> dict[str, Any]:
                 "message": "The worker's Docker daemon did not answer, so it cannot run the check.",
             },
         )
+
+
+@app.post("/api/isolation")
+async def api_isolation(request: Request) -> dict[str, Any]:
+    """Turn LAN isolation on for an upgraded worker.
+
+    Creates CashPilot's network and writes its firewall table, then answers with
+    the earners still on Docker's default bridge: the UI redeploys each one onto
+    the new network. Turning it off is the CASHPILOT_ISOLATION=off setting, never
+    a request, so one click cannot undo the fence.
+    """
+    _verify_api_key(request)
+    # Read after the key check, so an unauthenticated caller learns nothing
+    # about the body this route takes.
+    try:
+        body = await request.json()
+    except ValueError:
+        body = None
+    if not isinstance(body, dict) or body.get("enable") is not True:
+        raise HTTPException(
+            status_code=400,
+            detail="Isolation is turned off with CASHPILOT_ISOLATION=off on the worker, not from the dashboard.",
+        )
+    try:
+        return await asyncio.to_thread(lan_fence.enable)
+    except lan_fence.IsolationConflict as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from None
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from None
+    except (DockerException, requests.exceptions.RequestException):
+        raise HTTPException(status_code=503, detail="The worker's Docker daemon did not answer.") from None
 
 
 @app.get("/api/payout-addresses")

@@ -456,13 +456,21 @@ def container_network(network_mode: str | None) -> str | None:
     """The network a new container joins, or None for Docker's default bridge.
 
     Only a container that would otherwise land on the default bridge moves: host
-    or none networking is the service's own choice. The worker never creates the
-    network (or any firewall rule); a network that is missing, or is not a
-    bridge, is refused here, BEFORE anything is removed, so a typo cannot take a
-    running service down.
+    or none networking is the service's own choice. With CASHPILOT_CONTAINER_NETWORK
+    set the worker never creates the network (or any firewall rule); a network
+    that is missing, or is not a bridge, is refused here, BEFORE anything is
+    removed, so a typo cannot take a running service down.
     """
-    if not _CONTAINER_NETWORK or (network_mode or "bridge") != "bridge":
+    if (network_mode or "bridge") != "bridge":
         return None
+    if not _CONTAINER_NETWORK:
+        # No network of the operator's: CashPilot's own fenced bridge, unless
+        # isolation is off or this is an upgraded install not switched yet
+        # (app/lan_fence.py). Raises ContainerNetworkError when the fence
+        # cannot be applied, which is also before anything is touched.
+        from app import lan_fence
+
+        return lan_fence.network_for_deploy()
     try:
         network = _get_client().networks.get(_CONTAINER_NETWORK)
     except NotFound:
@@ -488,7 +496,8 @@ def container_network(network_mode: str | None) -> str | None:
     return _CONTAINER_NETWORK
 
 
-#: Resolvers for containers on CASHPILOT_CONTAINER_NETWORK. Docker's embedded
+#: Resolvers for containers on an isolated bridge (CashPilot's own or
+#: CASHPILOT_CONTAINER_NETWORK). Docker's embedded
 #: resolver forwards their lookups from inside that network, so a daemon whose
 #: list starts with a LAN or tailnet resolver gets refused by the very rules
 #: that isolate the bridge, and every lookup waits about 4 s before Docker

@@ -19,6 +19,30 @@ commands, and [Backing up node identities](docs/backup.md) covers the rest.
 
 ---
 
+## LAN isolation by default (the release after v1.63)
+
+**Affects you if** a worker runs earners on Docker's default bridge, which is
+every worker deployed before this release unless you set
+`CASHPILOT_CONTAINER_NETWORK`.
+
+**What changed.** A new install fences its earners off your LAN, the host, your
+tailnet and cloud metadata by itself: a Docker network plus one firewall table
+the worker writes ([LAN isolation by default](docs/isolation.md#lan-isolation-by-default)).
+
+**What breaks if you do nothing.** Nothing. An upgraded worker keeps its earners
+where they are and writes no firewall rule. The Fleet page shows "Earners on
+this worker can reach your LAN and this host" on its row.
+
+**What to do.** Upgrade the UI and every worker, then press **Turn on
+isolation** on each worker's row. It redeploys each earner once onto the new
+network and keeps their volumes and identities. Then press **Check isolation**
+to see it hold. To stay on Docker's default bridge on purpose, set
+`CASHPILOT_ISOLATION=off` on the worker; **Check isolation** still reports the
+earners as exposed. If you already run your own rules with
+`CASHPILOT_CONTAINER_NETWORK`, nothing changes.
+
+---
+
 ## v1.46.0: redeploy Mysterium once to close the tailnet to its customers
 
 **Affects you if** you run Mysterium through CashPilot and deployed it before
