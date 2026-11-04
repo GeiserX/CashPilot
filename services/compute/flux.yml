@@ -67,7 +67,7 @@ rating:
     payout_record: unknown
     payout_terms: fair
     account_safety: unknown
-    terms_fit: good
+    terms_fit: fair
     traffic_transparency: unknown
     privacy: good
     identity_checks: unknown
@@ -93,15 +93,15 @@ rating:
     kind: press
     source: https://www.depinrun.com/guides/fluxnode-operator-guide
     checked_on: "2026-11-04"
+  - text: 'CashPilot does not run Flux: you use the provider''s own node software, so CashPilot cannot deploy
+      or update it for you. Its terms were not checked for containers.'
+    criterion: terms_fit
+    kind: our_experience
+    source: https://github.com/GeiserX/CashPilot/blob/main/services/compute/flux.yml
+    checked_on: "2026-11-04"
   pros:
   - text: The Flux daemon is open source under the MIT licence.
     criterion: privacy
     kind: terms
     source: https://github.com/RunOnFlux/fluxd
-    checked_on: "2026-11-04"
-  - text: 'CashPilot does not run Flux: you use the provider''s own node software, so there is no container
-      for its terms to forbid.'
-    criterion: terms_fit
-    kind: our_experience
-    source: https://github.com/GeiserX/CashPilot/blob/main/services/compute/flux.yml
     checked_on: "2026-11-04"

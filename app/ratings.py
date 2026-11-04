@@ -72,8 +72,15 @@ def validate(
     *,
     rules: dict[str, Any] | None = None,
     today: _dt.date | None = None,
+    check_future: bool = True,
 ) -> list[str]:
-    """Every problem with one service's rating block, in plain words. Empty = valid."""
+    """Every problem with one service's rating block, in plain words. Empty = valid.
+
+    ``check_future=False`` skips the "date is in the future" checks. The running
+    app passes it: a box whose clock is behind (a Raspberry Pi before NTP syncs,
+    a timezone behind the one the date was written in) would otherwise reject
+    every block reviewed today. CI and the tests keep the strict check.
+    """
     rules = rules or load_rules()
     today = today or _dt.date.today()
     if not isinstance(rating, dict):
@@ -89,7 +96,7 @@ def validate(
 
     if _iso_date(rating.get("reviewed_on")) is None:
         errors.append("rating.reviewed_on must be an ISO date (YYYY-MM-DD)")
-    elif _iso_date(rating.get("reviewed_on")) > today:
+    elif check_future and _iso_date(rating.get("reviewed_on")) > today:
         errors.append("rating.reviewed_on is in the future")
 
     keys = criteria_keys(rules)
@@ -144,7 +151,7 @@ def validate(
             checked = _iso_date(item.get("checked_on"))
             if checked is None:
                 errors.append(f"{where}.checked_on must be an ISO date (YYYY-MM-DD)")
-            elif checked > today:
+            elif check_future and checked > today:
                 errors.append(f"{where}.checked_on is in the future")
 
     for key, value in verdicts.items():

@@ -80,10 +80,10 @@ payout:
 rating:
   reviewed_on: "2026-11-04"
   verdicts:
-    payout_record: fair
+    payout_record: good
     payout_terms: poor
     account_safety: unknown
-    terms_fit: good
+    terms_fit: fair
     traffic_transparency: unknown
     privacy: unknown
     identity_checks: unknown
@@ -101,7 +101,7 @@ rating:
       it has run.
   cons:
   - text: Rewards come only through airdrop seasons. Long-running node operators reported season 2 estimates
-      of a few dollars, and some reported claims failing.
+      in the single to low double-digit dollar range.
     criterion: earnings_realism
     kind: press
     source: https://www.coingabbar.com/en/crypto-currency-news/grass-airdrop-season-2-claim-date-wallet-launch-price
@@ -113,19 +113,19 @@ rating:
     checked_on: "2026-11-04"
   - text: The first airdrop drew a backlash over small rewards per point, diluted across more than two
       million users.
-    criterion: payout_record
+    criterion: earnings_realism
     kind: press
     source: https://beincrypto.com/grass-airdrop-sparks-outrage/
+    checked_on: "2026-11-04"
+  - text: 'CashPilot does not run Grass: you use the provider''s own app or extension, so CashPilot cannot
+      deploy or update it for you. Its terms were not checked for containers.'
+    criterion: terms_fit
+    kind: our_experience
+    source: https://github.com/GeiserX/CashPilot/blob/main/services/depin/grass.yml
     checked_on: "2026-11-04"
   pros:
   - text: The first airdrop reached nearly 1.5 million claiming addresses.
     criterion: payout_record
     kind: press
     source: https://www.theblock.co/post/323805/grass-becomes-most-distributed-solana-airdrop-as-nearly-1-5-million-addresses-claim-tokens
-    checked_on: "2026-11-04"
-  - text: 'CashPilot does not run Grass: you use the provider''s own app or extension, so there is no
-      container for its terms to forbid.'
-    criterion: terms_fit
-    kind: our_experience
-    source: https://github.com/GeiserX/CashPilot/blob/main/services/depin/grass.yml
     checked_on: "2026-11-04"

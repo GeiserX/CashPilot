@@ -226,11 +226,70 @@ class TestValidator:
         )
         assert _errors(_rating(terms_fit="poor"), {"requirements": {"container_prohibited": True}}) == []
 
-    def test_the_loader_drops_an_entry_with_a_typed_grade(self, tmp_path):
-        data = yaml.safe_load((ROOT / "services" / "bandwidth" / "honeygain.yml").read_text(encoding="utf-8"))
-        assert catalog._validate(data, tmp_path / "honeygain.yml") == []
-        data["rating"]["grade"] = "B"
-        assert any("not allowed" in e for e in catalog._validate(data, tmp_path / "honeygain.yml"))
+    def test_a_typed_grade_never_shows_and_never_drops_the_service(self, tmp_path, monkeypatch):
+        # The rating is a display field: a bad block makes the provider "Not
+        # rated yet" at runtime, never removes a working service from the
+        # catalog. CI still fails on it (TestStrictCheck below).
+        svc = _load_one(tmp_path, monkeypatch, lambda d: d["rating"].__setitem__("grade", "B"))
+        assert svc is not None, "an invalid rating block dropped the whole service"
+        assert ratings.for_service(svc)["rated"] is False
+
+
+def _load_one(tmp_path, monkeypatch, edit):
+    """Load honeygain.yml, edited, through the real loader from a temp services dir."""
+    data = yaml.safe_load((ROOT / "services" / "bandwidth" / "honeygain.yml").read_text(encoding="utf-8"))
+    edit(data)
+    (tmp_path / "honeygain.yml").write_text(yaml.safe_dump(data), encoding="utf-8")
+    monkeypatch.setattr(catalog, "SERVICES_DIR", tmp_path)
+    return next((s for s in catalog._load_from_disk() if s["slug"] == "honeygain"), None)
+
+
+def _future(data):
+    data["rating"]["reviewed_on"] = "2099-01-01"
+    data["rating"]["cons"][0]["checked_on"] = "2099-01-01"
+
+
+class TestRuntimeClock:
+    def test_a_clock_behind_the_review_date_keeps_the_service_rated(self, tmp_path, monkeypatch):
+        svc = _load_one(tmp_path, monkeypatch, _future)
+        assert svc is not None, "a review date ahead of the box's clock dropped the service"
+        assert ratings.for_service(svc)["rated"] is True
+
+    def test_the_strict_validator_still_rejects_a_future_date(self):
+        block = _rating()
+        block["reviewed_on"] = "2099-01-01"
+        assert any("future" in e for e in _errors(block))
+        assert not any("future" in e for e in ratings.validate(block, rules=RULES, today=TODAY, check_future=False))
+
+
+class TestStrictCheck:
+    """generate_ratings_page.py --check is the CI gate the loader no longer is."""
+
+    def test_the_real_catalog_passes(self):
+        from scripts import generate_ratings_page as gen
+
+        assert gen.problems() == []
+
+    def test_an_invalid_block_fails(self):
+        from scripts import generate_ratings_page as gen
+
+        svc = {"slug": "x", "name": "X", "status": "active", "rating": {**_rating(), "grade": "B"}}
+        assert any("not allowed" in p for p in gen.problems([svc], today=TODAY))
+
+    def test_a_future_date_fails(self):
+        from scripts import generate_ratings_page as gen
+
+        block = _rating()
+        block["reviewed_on"] = "2099-01-01"
+        svc = {"slug": "x", "name": "X", "status": "active", "rating": block}
+        assert any("future" in p for p in gen.problems([svc], today=TODAY))
+
+    def test_an_unrated_live_service_fails(self):
+        from scripts import generate_ratings_page as gen
+
+        assert any(
+            "not rated" in p for p in gen.problems([{"slug": "x", "name": "X", "status": "active"}], today=TODAY)
+        )
 
 
 def _live():
@@ -257,6 +316,32 @@ class TestTheRealCatalog:
 
     def test_nobody_is_an_a(self):
         assert all(ratings.for_service(s)["grade"] != "A" for s in _live())
+
+    def test_terms_fit_good_rests_on_the_providers_own_word(self):
+        # "Good" means containers are allowed or the official client is an
+        # image. A provider CashPilot does not run at all is fair, never good.
+        for svc in _live():
+            rating = svc["rating"]
+            if rating["verdicts"]["terms_fit"] != "good":
+                continue
+            pros = [p for p in rating["pros"] if p["criterion"] == "terms_fit"]
+            assert not any(p["text"].startswith("CashPilot does not run") for p in pros), svc["slug"]
+
+
+class TestCatalogNarrowScreen:
+    """On a phone the catalog hides some columns; header and cells must hide together."""
+
+    def test_headers_are_hidden_by_class_not_position(self):
+        css = (ROOT / "app" / "static" / "css" / "style.css").read_text(encoding="utf-8")
+        js = (ROOT / "app" / "static" / "js" / "app.js").read_text(encoding="utf-8")
+        assert not re.search(r"catalog-table thead th:nth-child", css), (
+            "a positional header rule shifts when a column is added"
+        )
+        for col in ("kind", "plat", "needs"):
+            assert re.search(rf'<th scope="col" class="cat-col-{col}"', js), f"the {col} header has no class"
+            assert f".catalog-table .cat-col-{col}" in css, f"the {col} header is not hidden with its cells"
+        assert re.search(r'<th scope="col" class="cat-col-grade"', js)
+        assert ".cat-col-grade" not in css, "the Grade header must stay visible"
 
 
 @asynccontextmanager
@@ -329,6 +414,10 @@ class TestDocsPage:
         edited = re.sub(r"(\| )([BCDF])( \|)", r"\1A\3", page, count=1)
         assert edited != page
         assert gen.render_file(edited) != edited
+
+    def test_the_page_does_not_claim_desktop_shows_grades_yet(self):
+        page = (ROOT / "docs" / "ratings.md").read_text(encoding="utf-8")
+        assert "CashPilot-Desktop show the same grade" not in page
 
     def test_the_page_has_no_signup_links_or_payment_wording(self):
         page = (ROOT / "docs" / "ratings.md").read_text(encoding="utf-8").lower()

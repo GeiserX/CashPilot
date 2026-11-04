@@ -127,8 +127,13 @@ rating:
     earnings_realism: Not measured against a provider figure.
     longevity: We did not find the legal entity behind Bitping.
   cons:
-  - text: Payouts are in Solana (SOL) only since Bitping dropped its other chains, and a withdrawal to
-      a new wallet can fail until that wallet holds enough SOL.
+  - text: Withdrawals are paid in Solana (SOL), to an address you type into each request.
+    criterion: payout_terms
+    kind: our_experience
+    source: https://github.com/GeiserX/CashPilot/blob/main/services/bandwidth/bitping.yml
+    checked_on: "2026-11-04"
+  - text: Bitping's help says a withdrawal to a new, empty Solana wallet may fail until you fund that
+      wallet with a little SOL yourself.
     criterion: payout_terms
     kind: terms
     source: https://bitping.com/help/nodes/troubleshooting-solana-payouts

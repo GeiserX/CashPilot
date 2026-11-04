@@ -91,7 +91,7 @@ rating:
     payout_record: good
     payout_terms: fair
     account_safety: unknown
-    terms_fit: good
+    terms_fit: fair
     traffic_transparency: unknown
     privacy: unknown
     identity_checks: good
@@ -110,6 +110,12 @@ rating:
     kind: our_experience
     source: https://github.com/GeiserX/CashPilot/blob/main/services/bandwidth/bytelixir.yml
     checked_on: "2026-11-04"
+  - text: 'CashPilot does not run Bytelixir: you use the provider''s own app, so CashPilot cannot deploy
+      or update it for you. Its terms were not checked for containers.'
+    criterion: terms_fit
+    kind: our_experience
+    source: https://github.com/GeiserX/CashPilot/blob/main/services/bandwidth/bytelixir.yml
+    checked_on: "2026-11-04"
   pros:
   - text: Trustpilot rates it 4.6 from 283 reviews, most of them praising crypto payouts; a few report
       payouts not arriving.
@@ -124,12 +130,6 @@ rating:
     checked_on: "2026-11-04"
   - text: A payout needs only a crypto address typed into the request.
     criterion: identity_checks
-    kind: our_experience
-    source: https://github.com/GeiserX/CashPilot/blob/main/services/bandwidth/bytelixir.yml
-    checked_on: "2026-11-04"
-  - text: 'CashPilot does not run Bytelixir: you use the provider''s own app, so there is no container
-      for its terms to forbid.'
-    criterion: terms_fit
     kind: our_experience
     source: https://github.com/GeiserX/CashPilot/blob/main/services/bandwidth/bytelixir.yml
     checked_on: "2026-11-04"

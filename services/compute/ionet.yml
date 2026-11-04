@@ -67,7 +67,7 @@ rating:
     payout_record: unknown
     payout_terms: fair
     account_safety: unknown
-    terms_fit: good
+    terms_fit: fair
     traffic_transparency: unknown
     privacy: unknown
     identity_checks: unknown
@@ -100,9 +100,8 @@ rating:
     kind: press
     source: https://www.theblock.co/news/defi/2024-04-28-solana-based-depin-io-net-ceo-claims-network-was-attacked-in-detailed-postmortem-291315
     checked_on: "2026-11-04"
-  pros:
-  - text: 'CashPilot does not run io.net: you use the provider''s own worker software, so there is no
-      container for its terms to forbid.'
+  - text: 'CashPilot does not run io.net: you use the provider''s own worker software, so CashPilot cannot
+      deploy or update it for you. Its terms were not checked for containers.'
     criterion: terms_fit
     kind: our_experience
     source: https://github.com/GeiserX/CashPilot/blob/main/services/compute/ionet.yml

@@ -2,7 +2,7 @@
 
 Every provider CashPilot can run or track gets a letter grade. The grade comes from the same ten questions, asked of every provider the same way, and each answer rests on a source you can open: the provider's own terms or help pages, its replies to users, a repeated pattern in user reports, or what happened when we ran it and cashed out.
 
-Nobody types a grade. Each provider's entry in the catalog records a verdict per question (good, fair, poor or unknown) with the cons and pros behind it, and the code turns those verdicts into the letter. The entry has no field for a grade or an override, and the catalog refuses to load one that tries. The app and CashPilot-Desktop show the same grade, from the same data.
+Nobody types a grade. Each provider's entry in the catalog records a verdict per question (good, fair, poor or unknown) with the cons and pros behind it, and the code turns those verdicts into the letter. The entry has no field for a grade or an override, and a catalog entry that tries is shown as not rated and fails our checks. The app shows the grade; CashPilot-Desktop does not show grades yet.
 
 ## Why nothing gets an A
 
@@ -19,7 +19,7 @@ No provider gets an A. An A would mean we vouch for a provider, and we cannot: w
 
 ## Which complaints count
 
-Review sites collect plenty of single angry posts. One post is not evidence. A con from user reports needs a pattern: the cited page is an aggregate or a thread with several matching reports of the same specific problem, or a second source backs it. A provider's own reply that confirms the rule behind a ban counts as the provider's word. Every con and pro shows the date we checked it, because review pages change.
+Review sites collect plenty of single angry posts. One post is not evidence. A con from user reports needs a pattern: at least three reviewers or posters describing the same specific problem, or two backed by an independent second source. Fewer than that, and the verdict stays unknown with a note saying what we found. A provider's own reply that confirms the rule behind a ban counts as the provider's word. Every con and pro shows the date we checked it, because review pages change.
 
 ## Disputing a grade
 
@@ -34,7 +34,7 @@ If a con is wrong or out of date, open an issue at https://github.com/GeiserX/Ca
 | Payout record | Do payouts arrive, and on time? | Payouts arrive, shown by our own payout or by many matching user reports, and reports of late or missing ones are rare. | Payouts arrive, but there is a repeated pattern of delays or of payouts held for review. | Repeated, specific reports of payouts that never arrived, or the provider stopped paying. |
 | Payout terms | How high is the minimum, which methods are there, what are the fees, and does a balance expire? | A low minimum, a common method such as PayPal or bank transfer, small fees and no expiry. | One of these is a real obstacle, such as a high minimum, crypto only, a large fee or an expiring balance. | Several of them at once, or terms that let the provider keep a balance you earned. |
 | Account safety | Do accounts get banned, and is the balance confiscated, especially at cash-out? | Bans are rare and follow a stated rule; a banned account keeps or is paid its balance. | The terms let the provider keep the balance of a banned account, but there is no repeated pattern of it. | A repeated pattern of accounts banned at or near cash-out with the balance kept. |
-| Fit with how CashPilot runs it | Do the terms allow running it the way CashPilot does, in a container on a home server? | Containers or servers are allowed, or the official client is a container image. | The terms are silent on containers, or allow them with conditions such as one device per IP. | The terms forbid containers, virtual machines or servers. |
+| Fit with how CashPilot runs it | Do the terms allow running it the way CashPilot does, in a container on a home server? | Containers or servers are allowed, or the official client is a container image. | The terms are silent on containers, or allow them with conditions such as one device per IP, or CashPilot does not run the provider at all (it is an app, extension or device you set up yourself), so the question does not apply. | The terms forbid containers, virtual machines or servers. |
 | Traffic transparency | Does the provider say who buys the traffic or the work, and how buyers are vetted? | It names the kind of buyers, states what they may not do, and describes how it checks them. | It names the use in general terms, without saying how buyers are checked. | It does not say who uses your connection or machine. |
 | Privacy | What leaves your machine, and can anyone check what the client does? | The client is open source, or the provider publishes exactly what it collects and it is little. | A privacy policy covers it, but the client is closed and the data collected is broad. | The data collected is excessive, or the provider has had a data incident it handled badly. |
 | Identity checks | What do you hand over to get paid, such as a phone number, an ID document or tax details? | An email address and a payout address are enough. | A phone number, a payment processor's own checks, or a tax form for larger amounts. | A government ID or selfie is required before any payout. |
@@ -62,7 +62,7 @@ What a cited con or pro may rest on:
 - `terms`: The provider's own terms, help centre or documentation.
 - `provider_reply`: The provider's own reply to a user, for example on a review site.
 - `our_experience`: What happened when we ran it or cashed out, written up in this repo.
-- `user_reports`: A pattern in user reports, from an aggregate page or a thread with several matching reports, or backed by a second source.
+- `user_reports`: A pattern in user reports, never a single complaint. At least three reviewers or posters describing the same specific problem, or two backed by an independent second source. An aggregate summary written by the review site counts as one source.
 - `press`: A news article, a court record or a public filing.
 
 ## All providers
@@ -70,46 +70,46 @@ What a cited con or pro may rest on:
 | Provider | Grade | Score | Unchecked | Reviewed | Worst con |
 |---|:---:|:---:|:---:|---|---|
 | <a href="#sia-hostd">Sia (hostd)</a> | C | 13 of 20 | 2 | 2026-11-04 | Earnings are Siacoin in your own wallet: there is no payout to a bank, so you sell on an exchange yourself. |
+| <a href="#mysterium">MystNodes</a> | C | 12 of 20 | 3 | 2026-11-04 | About 21% of every settlement goes in fees, the 20% Hermes fee plus a transaction fee, and earnings are paid in the MYST token. |
 | <a href="#packetstream">PacketStream</a> | C | 12 of 20 | 1 | 2026-11-04 | Trustpilot reviewers in 2025 and 2026 report payouts arriving late or not at all, and one long-time user says payouts slowed and then stopped; others in 2026 report being paid. |
-| <a href="#mysterium">MystNodes</a> | C | 11 of 20 | 3 | 2026-11-04 | About 21% of every settlement goes in fees, the 20% Hermes fee plus a transaction fee, and earnings are paid in the MYST token. |
 | <a href="#proxybase">ProxyBase</a> | D | 10 of 20 | 4 | 2026-11-04 | ProxyBase itself wrote in August 2025 that it is new and not yet the place to maximise earnings. |
 | <a href="#storj">Storj</a> | D | 10 of 20 | 3 | 2026-11-04 | Storj Labs filed for Chapter 11 on 26 July 2026; node earnings from before the filing are frozen until the court rules. |
-| <a href="#bytelixir">Bytelixir</a> | D | 9 of 20 | 5 | 2026-11-04 | Crypto only, and the minimum depends on the coin, from $5 for USDT to $250 for Bitcoin. |
+| <a href="#bytelixir">Bytelixir</a> | D | 8 of 20 | 5 | 2026-11-04 | Crypto only, and the minimum depends on the coin, from $5 for USDT to $250 for Bitcoin. |
 | <a href="#golem">Golem Network</a> | D | 8 of 20 | 5 | 2026-11-04 | A 2026 review finds Golem with no protocol revenue and low demand, so providers earn little and are paid in GLM. |
 | <a href="#honeygain">Honeygain</a> | D | 8 of 20 | 3 | 2026-11-04 | The terms let Honeygain write off earnings that reached the $20 threshold and were not paid out within 24 months, and treat earnings as expired after six months without use. |
-| <a href="#bytebenefit">Bytebenefit</a> | D | 7 of 20 | 4 | 2026-11-04 | Two of the four Trustpilot reviews say they were never paid, one because the PayPal and Stripe payout page returned a 404. |
-| <a href="#noderr">Noderr Micronodes</a> | D | 7 of 20 | 4 | 2026-11-04 | Node rewards are unfunded testnet tokens with no market value, and none have been paid; the 5 to 10% APY on its site is a design target. |
+| <a href="#earnapp">EarnApp</a> | D | 7 of 20 | 5 | 2026-11-04 | EarnApp's help centre says installing it in Docker containers, virtual machines, hosting services or home servers is strictly prohibited, which is how CashPilot runs it. |
 | <a href="#urnetwork">URnetwork</a> | D | 7 of 20 | 4 | 2026-11-04 | Unclaimed epochs expire, and the old USDC payouts were cancelled for networks with no wallet linked within 30 days. |
 | <a href="#earnfm">Earn.fm</a> | F | 6 of 20 | 5 | 2026-11-04 | Trustpilot reviewers in 2025 report a PayPal payout that never arrived and another pending for over ten days. |
-| <a href="#earnapp">EarnApp</a> | F | 6 of 20 | 5 | 2026-11-04 | EarnApp's help centre says installing it in Docker containers, virtual machines, hosting services or home servers is strictly prohibited, which is how CashPilot runs it. |
-| <a href="#ebesucher">Ebesucher</a> | F | 6 of 20 | 7 | 2026-11-04 | None found |
-| <a href="#flux">Flux</a> | F | 6 of 20 | 6 | 2026-11-04 | The smallest node tier needs 1,000 FLUX locked as collateral. |
 | <a href="#iproyal">IPRoyal Pawns</a> | F | 6 of 20 | 4 | 2026-11-04 | The terms say an account can be blocked without prior notice for abuse of withdrawal conditions or multiple accounts, and its earnings may then not be paid out. |
+| <a href="#noderr">Noderr Micronodes</a> | F | 6 of 20 | 4 | 2026-11-04 | Node rewards are unfunded testnet tokens with no market value, and none have been paid; the 5 to 10% APY on its site is a design target. |
 | <a href="#proxybase-xyz">ProxyBase Markets</a> | F | 6 of 20 | 6 | 2026-11-04 | Payouts are USDC on Tempo Chain and need a Tempo wallet address. |
 | <a href="#repocket">Repocket</a> | F | 6 of 20 | 2 | 2026-11-04 | Several Trustpilot reviewers report cancelled payouts and balances reset to zero; one says support cited irregular bandwidth earnings. The page rates Repocket 2.7 and notes it has not replied to negative reviews. |
-| <a href="#sentinel-dvpn">Sentinel dVPN</a> | F | 6 of 20 | 6 | 2026-11-04 | Payments are in the P2P token, and 20% of every bandwidth payment goes to stakers rather than the node host. |
 | <a href="#anyone-protocol">Anyone Protocol</a> | F | 5 of 20 | 5 | 2026-11-04 | A relay earns nothing unless 100 ANYONE is locked for it for at least 180 days, and each reward claim is signed in your wallet. |
-| <a href="#bitping">Bitping</a> | F | 5 of 20 | 7 | 2026-11-04 | Payouts are in Solana (SOL) only since Bitping dropped its other chains, and a withdrawal to a new wallet can fail until that wallet holds enough SOL. |
-| <a href="#helium">Helium</a> | F | 5 of 20 | 6 | 2026-11-04 | HIP 149 retired Proof-of-Coverage rewards on 6 July 2026; IoT hotspots now earn only for data they carry, and more than 114,000 of them carried none. |
+| <a href="#bitping">Bitping</a> | F | 5 of 20 | 7 | 2026-11-04 | Withdrawals are paid in Solana (SOL), to an address you type into each request. |
+| <a href="#ebesucher">Ebesucher</a> | F | 5 of 20 | 7 | 2026-11-04 | CashPilot does not run eBesucher: it is a browser extension, so CashPilot cannot deploy or update it for you. Its terms were not checked for containers. |
+| <a href="#flux">Flux</a> | F | 5 of 20 | 6 | 2026-11-04 | The smallest node tier needs 1,000 FLUX locked as collateral. |
+| <a href="#salad">Salad</a> | F | 5 of 20 | 6 | 2026-11-04 | Trustpilot's own summary of its reviews says some reviewers find earnings low and often not enough to cover electricity and hardware wear; one October 2026 reviewer says an RTX 3090 barely covered its electricity. |
+| <a href="#sentinel-dvpn">Sentinel dVPN</a> | F | 5 of 20 | 6 | 2026-11-04 | Payments are in the P2P token, and 20% of every bandwidth payment goes to stakers rather than the node host. |
 | <a href="#traffmonetizer">Traffmonetizer</a> | F | 5 of 20 | 4 | 2026-11-04 | Trustpilot rates it 1.9; reviewers from 2023 to November 2026 report payouts pending for weeks, or marked completed with no matching transaction. |
 | <a href="#vast-ai">Vast.ai</a> | F | 5 of 20 | 7 | 2026-11-04 | A host earns only while rented, and Vast's own figures for a consumer GPU depend on rental type and reliability score. |
-| <a href="#ionet">io.net</a> | F | 4 of 20 | 6 | 2026-11-04 | Supplier rewards were paid from token emissions regardless of paid jobs, and GPU owners report sitting idle most of the time. |
-| <a href="#nodepay">Nodepay</a> | F | 4 of 20 | 6 | 2026-11-04 | In its first season review Nodepay removed more than 300,000 accounts it judged to be bots and cancelled 17 billion points. |
-| <a href="#nosana">Nosana</a> | F | 4 of 20 | 7 | 2026-11-04 | Each host must lock a NOS stake sized to its GPU's hourly price. |
-| <a href="#passiveapp">PassiveApp</a> | F | 4 of 20 | 8 | 2026-11-04 | None found |
+| <a href="#helium">Helium</a> | F | 4 of 20 | 6 | 2026-11-04 | HIP 149 retired Proof-of-Coverage rewards on 6 July 2026; IoT hotspots now earn only for data they carry, and more than 114,000 of them carried none. |
 | <a href="#proxylite">ProxyLite</a> | F | 4 of 20 | 7 | 2026-11-04 | The site's owner is hidden in its domain records, and we found no named company behind it. |
-| <a href="#salad">Salad</a> | F | 4 of 20 | 6 | 2026-11-04 | Trustpilot's summary notes earnings that often fail to cover the electricity of high-end hardware and unpredictable job availability; an August 2026 review calls the advertised earnings misleading. |
-| <a href="#gradient">Gradient Network</a> | F | 3 of 20 | 6 | 2026-11-04 | The Sentry Node points program ended on 28 August 2025, and Sentry nodes no longer earn rewards. |
-| <a href="#grass">Grass</a> | F | 3 of 20 | 6 | 2026-11-04 | Rewards come only through airdrop seasons. Long-running node operators reported season 2 estimates of a few dollars, and some reported claims failing. |
-| <a href="#nodle">Nodle</a> | F | 3 of 20 | 7 | 2026-11-04 | App Store reviewers report being unable to bridge or send NODL after the move to zkSync, and needing ETH to move tokens out. |
+| <a href="#bytebenefit">Bytebenefit</a> | F | 3 of 20 | 7 | 2026-11-04 | The app's Google Play listing says your traffic serves web-intelligence requests by Infatica's clients, without saying who they are or how they are checked. |
+| <a href="#grass">Grass</a> | F | 3 of 20 | 6 | 2026-11-04 | Rewards come only through airdrop seasons. Long-running node operators reported season 2 estimates in the single to low double-digit dollar range. |
+| <a href="#ionet">io.net</a> | F | 3 of 20 | 6 | 2026-11-04 | Supplier rewards were paid from token emissions regardless of paid jobs, and GPU owners report sitting idle most of the time. |
+| <a href="#nodepay">Nodepay</a> | F | 3 of 20 | 6 | 2026-11-04 | In its first season review Nodepay removed more than 300,000 accounts it judged to be bots and cancelled 17 billion points. |
+| <a href="#nosana">Nosana</a> | F | 3 of 20 | 7 | 2026-11-04 | Each host must lock a NOS stake sized to its GPU's hourly price. |
+| <a href="#passiveapp">PassiveApp</a> | F | 3 of 20 | 8 | 2026-11-04 | CashPilot does not run PassiveApp: you use the provider's own desktop app, so CashPilot cannot deploy or update it for you. Its terms were not checked for containers. |
 | <a href="#proxyrack">ProxyRack</a> | F | 3 of 20 | 8 | 2026-11-04 | ProxyRack's help centre says removing a device takes that device's earnings off your account, and they come back only if the same device is added again. |
-| <a href="#uprock">Uprock</a> | F | 3 of 20 | 7 | 2026-11-04 | Trustpilot reviewers reported a 255 UPT minimum and a 55 UPT fee to withdraw to a wallet; these reports are old and the current terms may differ. |
-| <a href="#dawn">Dawn Internet</a> | F | 2 of 20 | 7 | 2026-11-04 | The extension earns points; no token distribution to node operators had been confirmed by October 2026. |
-| <a href="#deeper-network">Deeper Network</a> | F | 2 of 20 | 8 | 2026-11-04 | Mining rewards are in DPR and depend on a credit score that grows slowly or by staking DPR. |
-| <a href="#spide">Spide</a> | F | 2 of 20 | 8 | 2026-11-04 | Spide's homepage calculator shows an example of about $45 a month, far above our catalog estimate of $0 to $3 for one device. |
-| <a href="#teneo">Teneo Protocol</a> | F | 2 of 20 | 7 | 2026-11-04 | Teneo says points will be consolidated into $AGENTIC, a non-transferable reward token, not the $TENEO token. |
-| <a href="#theta-edge">Theta Edge Node</a> | F | 2 of 20 | 8 | 2026-11-04 | A Theta forum estimate puts a standard edge node at 3 to 30 TFUEL a month, which was $0.30 to $3 at a TFUEL price of $0.10. |
-| <a href="#titan">Titan Network</a> | F | 2 of 20 | 8 | 2026-11-04 | Titan's own help says a running node does not guarantee earnings: with no task assigned it earns nothing, and rewards are in the TNT token. |
+| <a href="#gradient">Gradient Network</a> | F | 2 of 20 | 6 | 2026-11-04 | The Sentry Node points program ended on 28 August 2025, and Sentry nodes no longer earn rewards. |
+| <a href="#nodle">Nodle</a> | F | 2 of 20 | 7 | 2026-11-04 | App Store reviewers report being unable to bridge or send NODL after the move to zkSync, and needing ETH to move tokens out. |
+| <a href="#uprock">Uprock</a> | F | 2 of 20 | 7 | 2026-11-04 | Trustpilot reviewers reported a 255 UPT minimum and a 55 UPT fee to withdraw to a wallet; these reports are old and the current terms may differ. |
+| <a href="#dawn">Dawn Internet</a> | F | 1 of 20 | 7 | 2026-11-04 | The extension earns points; no token distribution to node operators had been confirmed by October 2026. |
+| <a href="#deeper-network">Deeper Network</a> | F | 1 of 20 | 8 | 2026-11-04 | Mining rewards are in DPR and depend on a credit score that grows slowly or by staking DPR. |
+| <a href="#spide">Spide</a> | F | 1 of 20 | 8 | 2026-11-04 | Spide's homepage calculator shows an example of about $45 a month, far above our catalog estimate of $0 to $3 for one device. |
+| <a href="#teneo">Teneo Protocol</a> | F | 1 of 20 | 7 | 2026-11-04 | Teneo says points will be consolidated into $AGENTIC, a non-transferable reward token, not the $TENEO token. |
+| <a href="#theta-edge">Theta Edge Node</a> | F | 1 of 20 | 8 | 2026-11-04 | A Theta forum estimate puts a standard edge node at 3 to 30 TFUEL a month, which was $0.30 to $3 at a TFUEL price of $0.10. |
+| <a href="#titan">Titan Network</a> | F | 1 of 20 | 8 | 2026-11-04 | Titan's own help says a running node does not guarantee earnings: with no task assigned it earns nothing, and rewards are in the TNT token. |
 
 ## Provider details
 
@@ -146,6 +146,38 @@ What a cited con or pro may rest on:
 - Renters store encrypted file fragments; nobody routes their own traffic through your IP. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/storage/sia-hostd.yml), checked 2026-11-04.
 - Permissionless: no signup or account. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/storage/sia-hostd.yml), checked 2026-11-04.
 
+<a id="mysterium"></a>
+
+### MystNodes
+
+**Grade C**, 12 of 20 points, 3 of 10 criteria unchecked, reviewed 2026-11-04. Setup guide: [MystNodes](guides/mysterium.md).
+
+| Criterion | Verdict | Note |
+|---|---|---|
+| Payout record | Unknown | Settlements are on-chain and automatic; we have not published our own settlement history yet. |
+| Payout terms | Fair |  |
+| Account safety | Good |  |
+| Fit with how CashPilot runs it | Good |  |
+| Traffic transparency | Fair |  |
+| Privacy | Good |  |
+| Identity checks | Good |  |
+| Support | Unknown | Trustpilot has 16 reviews and none in the last year; not enough to judge. |
+| Earnings realism | Unknown | Not measured against a provider figure. |
+| Longevity | Good |  |
+
+**Cons**
+
+- About 21% of every settlement goes in fees, the 20% Hermes fee plus a transaction fee, and earnings are paid in the MYST token. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/bandwidth/mysterium.yml), checked 2026-11-04.
+- Your node is an exit for Mysterium's VPN, proxy and data-scraping customers, and you cannot choose which of them it carries. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/bandwidth/mysterium.yml), checked 2026-11-04.
+
+**Pros**
+
+- The node software is open source under the GPL-3.0. [Source](https://github.com/mysteriumnetwork/node), checked 2026-11-04.
+- Earnings settle on-chain to a wallet you own, and there is no limit on nodes per account or per IP. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/bandwidth/mysterium.yml), checked 2026-11-04.
+- Mysterium publishes its own Docker image, mysteriumnetwork/myst. [Source](https://hub.docker.com/r/mysteriumnetwork/myst), checked 2026-11-04.
+- Settlement goes to a wallet you own; no phone number or ID is needed. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/bandwidth/mysterium.yml), checked 2026-11-04.
+- The node project has run since 2017. [Source](https://github.com/mysteriumnetwork/node), checked 2026-11-04.
+
 <a id="packetstream"></a>
 
 ### PacketStream
@@ -180,38 +212,6 @@ What a cited con or pro may rest on:
 - The terms describe no identity check; a payout needs a PayPal address. [Source](https://packetstream.io/terms-of-service/), checked 2026-11-04.
 - The terms name PacketStream Inc. under California law. [Source](https://packetstream.io/terms-of-service/), checked 2026-11-04.
 - PacketStream has run since 2018. [Source](https://proxyway.com/reviews/packetstream-proxies), checked 2026-11-04.
-
-<a id="mysterium"></a>
-
-### MystNodes
-
-**Grade C**, 11 of 20 points, 3 of 10 criteria unchecked, reviewed 2026-11-04. Setup guide: [MystNodes](guides/mysterium.md).
-
-| Criterion | Verdict | Note |
-|---|---|---|
-| Payout record | Unknown | Settlements are on-chain and automatic; we have not published our own settlement history yet. |
-| Payout terms | Fair |  |
-| Account safety | Good |  |
-| Fit with how CashPilot runs it | Good |  |
-| Traffic transparency | Poor |  |
-| Privacy | Good |  |
-| Identity checks | Good |  |
-| Support | Unknown | Trustpilot has 16 reviews and none in the last year; not enough to judge. |
-| Earnings realism | Unknown | Not measured against a provider figure. |
-| Longevity | Good |  |
-
-**Cons**
-
-- About 21% of every settlement goes in fees, the 20% Hermes fee plus a transaction fee, and earnings are paid in the MYST token. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/bandwidth/mysterium.yml), checked 2026-11-04.
-- Your node is an exit for Mysterium's VPN, proxy and data-scraping customers, and you cannot choose which of them it carries. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/bandwidth/mysterium.yml), checked 2026-11-04.
-
-**Pros**
-
-- The node software is open source under the GPL-3.0. [Source](https://github.com/mysteriumnetwork/node), checked 2026-11-04.
-- Earnings settle on-chain to a wallet you own, and there is no limit on nodes per account or per IP. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/bandwidth/mysterium.yml), checked 2026-11-04.
-- Mysterium publishes its own Docker image, mysteriumnetwork/myst. [Source](https://hub.docker.com/r/mysteriumnetwork/myst), checked 2026-11-04.
-- Settlement goes to a wallet you own; no phone number or ID is needed. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/bandwidth/mysterium.yml), checked 2026-11-04.
-- The node project has run since 2017. [Source](https://github.com/mysteriumnetwork/node), checked 2026-11-04.
 
 <a id="proxybase"></a>
 
@@ -281,14 +281,14 @@ What a cited con or pro may rest on:
 
 ### Bytelixir
 
-**Grade D**, 9 of 20 points, 5 of 10 criteria unchecked, reviewed 2026-11-04. Setup guide: [Bytelixir](guides/bytelixir.md).
+**Grade D**, 8 of 20 points, 5 of 10 criteria unchecked, reviewed 2026-11-04. Setup guide: [Bytelixir](guides/bytelixir.md).
 
 | Criterion | Verdict | Note |
 |---|---|---|
 | Payout record | Good |  |
 | Payout terms | Fair |  |
 | Account safety | Unknown | No reports of banned accounts found. |
-| Fit with how CashPilot runs it | Good |  |
+| Fit with how CashPilot runs it | Fair |  |
 | Traffic transparency | Unknown | We could not load Bytelixir's terms. |
 | Privacy | Unknown | The client is closed source; we could not load the privacy terms. |
 | Identity checks | Good |  |
@@ -299,13 +299,13 @@ What a cited con or pro may rest on:
 **Cons**
 
 - Crypto only, and the minimum depends on the coin, from $5 for USDT to $250 for Bitcoin. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/bandwidth/bytelixir.yml), checked 2026-11-04.
+- CashPilot does not run Bytelixir: you use the provider's own app, so CashPilot cannot deploy or update it for you. Its terms were not checked for containers. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/bandwidth/bytelixir.yml), checked 2026-11-04.
 
 **Pros**
 
 - Trustpilot rates it 4.6 from 283 reviews, most of them praising crypto payouts; a few report payouts not arriving. [Source](https://www.trustpilot.com/review/bytelixir.com), checked 2026-11-04.
 - Bytelixir replies to all negative reviews on Trustpilot, typically within a day. [Source](https://www.trustpilot.com/review/bytelixir.com), checked 2026-11-04.
 - A payout needs only a crypto address typed into the request. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/bandwidth/bytelixir.yml), checked 2026-11-04.
-- CashPilot does not run Bytelixir: you use the provider's own app, so there is no container for its terms to forbid. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/bandwidth/bytelixir.yml), checked 2026-11-04.
 
 <a id="golem"></a>
 
@@ -371,67 +371,35 @@ What a cited con or pro may rest on:
 - The terms name the operator, Honeygain UAB, registered in Vilnius, Lithuania. [Source](https://www.honeygain.com/terms-of-use/), checked 2026-11-04.
 - Honeygain's press page says it was founded in 2019. [Source](https://www.honeygain.com/press-area/), checked 2026-11-04.
 
-<a id="bytebenefit"></a>
+<a id="earnapp"></a>
 
-### Bytebenefit
+### EarnApp
 
-**Grade D**, 7 of 20 points, 4 of 10 criteria unchecked, reviewed 2026-11-04. Setup guide: [Bytebenefit](guides/bytebenefit.md).
+**Grade D**, 7 of 20 points, 5 of 10 criteria unchecked, reviewed 2026-11-04. Setup guide: [EarnApp](guides/earnapp.md).
 
 | Criterion | Verdict | Note |
 |---|---|---|
-| Payout record | Poor |  |
+| Payout record | Good |  |
 | Payout terms | Good |  |
-| Account safety | Unknown | No reports either way. |
-| Fit with how CashPilot runs it | Good |  |
-| Traffic transparency | Fair |  |
-| Privacy | Unknown | The client is closed source; we did not review the privacy policy. |
-| Identity checks | Unknown | Not documented on pages we read. |
-| Support | Fair |  |
-| Earnings realism | Unknown | Not measured. |
-| Longevity | Fair |  |
+| Account safety | Fair | We found no repeated pattern of accounts banned at cash-out with the balance kept. Trustpilot withholds EarnApp's rating for a breach of its guidelines and says it removed fake reviews, so we did not count its reviews either way. |
+| Fit with how CashPilot runs it | Poor |  |
+| Traffic transparency | Unknown | EarnApp is run by Bright Data; we did not find an EarnApp page that says how the buyers of the traffic are vetted. |
+| Privacy | Unknown | The client is closed source; we did not review the privacy policy in depth. |
+| Identity checks | Unknown | We found no EarnApp page that lists what a payout asks for, and our own notes do not record it. |
+| Support | Unknown | One Trustpilot review says a ticket was closed without a reply; one is not a pattern, and we have no ticket of our own. |
+| Earnings realism | Unknown | We have not measured EarnApp's earnings per IP against any figure the provider publishes. |
+| Longevity | Good |  |
 
 **Cons**
 
-- Two of the four Trustpilot reviews say they were never paid, one because the PayPal and Stripe payout page returned a 404. [Source](https://www.trustpilot.com/review/bytebenefit.io), checked 2026-11-04.
-- One of those reviewers says Infatica's support sent them back to a separate ByteBenefit team that did not help. [Source](https://www.trustpilot.com/review/bytebenefit.io), checked 2026-11-04.
-- The app's Google Play listing says your traffic serves web-intelligence requests by Infatica's clients, without saying who they are or how they are checked. [Source](https://play.google.com/store/apps/details?id=io.bytebenefit.app), checked 2026-11-04.
-- The Android app left Google Play in April 2026 after 17 months. [Source](https://www.appbrain.com/app/bytebenefit/io.bytebenefit.app), checked 2026-11-04.
+- EarnApp's help centre says installing it in Docker containers, virtual machines, hosting services or home servers is strictly prohibited, which is how CashPilot runs it. [Source](https://help.earnapp.com/hc/en-us/articles/10199416541969--Can-I-install-EarnApp-on-Hosting-Services-Virtual-Machines-or-Dockers), checked 2026-11-04.
+- The same help article says an account found running that way is terminated without notice and its pending payments are cancelled. [Source](https://help.earnapp.com/hc/en-us/articles/10199416541969--Can-I-install-EarnApp-on-Hosting-Services-Virtual-Machines-or-Dockers), checked 2026-11-04.
 
 **Pros**
 
-- A $5 minimum, paid by PayPal. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/bandwidth/bytebenefit.yml), checked 2026-11-04.
-- CashPilot does not run ByteBenefit: you use the provider's own app, so there is no container for its terms to forbid. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/bandwidth/bytebenefit.yml), checked 2026-11-04.
-
-<a id="noderr"></a>
-
-### Noderr Micronodes
-
-**Grade D**, 7 of 20 points, 4 of 10 criteria unchecked, reviewed 2026-11-04. Setup guide: [Noderr Micronodes](guides/noderr.md).
-
-| Criterion | Verdict | Note |
-|---|---|---|
-| Payout record | Unknown | Testnet beta: no rewards have been paid yet. |
-| Payout terms | Unknown | Rewards are testnet tokens during the beta; mainnet terms are not published. |
-| Account safety | Unknown | There is no account in the usual sense; the identity is a wallet. |
-| Fit with how CashPilot runs it | Good |  |
-| Traffic transparency | Fair |  |
-| Privacy | Fair |  |
-| Identity checks | Good |  |
-| Support | Unknown | No reports found. |
-| Earnings realism | Poor |  |
-| Longevity | Fair |  |
-
-**Cons**
-
-- Node rewards are unfunded testnet tokens with no market value, and none have been paid; the 5 to 10% APY on its site is a design target. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/depin/noderr.yml), checked 2026-11-04.
-- For the desktop and browser clients Noderr describes automation tasks and does not say whether they carry other people's traffic. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/depin/noderr.yml), checked 2026-11-04.
-- The provider says tasks are anonymised and sandboxed but publishes nothing more specific. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/depin/noderr.yml), checked 2026-11-04.
-- Still a testnet beta on Base Sepolia. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/depin/noderr.yml), checked 2026-11-04.
-
-**Pros**
-
-- No account: the app generates a wallet on first launch. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/depin/noderr.yml), checked 2026-11-04.
-- CashPilot does not run Noderr: you use the provider's own app or extension, so there is no container for its terms to forbid. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/depin/noderr.yml), checked 2026-11-04.
+- Our PayPal payout arrived in October 2026: a $37.54 balance came in as $36.81, about 2% less. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/bandwidth/earnapp.yml), checked 2026-11-04.
+- A $10 minimum for PayPal and Wise, with auto-redeem that pays out by itself. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/bandwidth/earnapp.yml), checked 2026-11-04.
+- EarnApp belongs to Bright Data, and its PayPal payments arrive from Bright Data Ltd., a named company. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/bandwidth/earnapp.yml), checked 2026-11-04.
 
 <a id="urnetwork"></a>
 
@@ -495,96 +463,6 @@ What a cited con or pro may rest on:
 - Earn.fm publishes its own Docker image, earnfm/earnfm-client. [Source](https://hub.docker.com/r/earnfm/earnfm-client), checked 2026-11-04.
 - Other reviewers report payouts approved within a day. [Source](https://www.trustpilot.com/review/earn.fm), checked 2026-11-04.
 
-<a id="earnapp"></a>
-
-### EarnApp
-
-**Grade F**, 6 of 20 points, 5 of 10 criteria unchecked, reviewed 2026-11-04. Setup guide: [EarnApp](guides/earnapp.md).
-
-| Criterion | Verdict | Note |
-|---|---|---|
-| Payout record | Good |  |
-| Payout terms | Good |  |
-| Account safety | Poor |  |
-| Fit with how CashPilot runs it | Poor |  |
-| Traffic transparency | Unknown | EarnApp is run by Bright Data; we did not find an EarnApp page that says how the buyers of the traffic are vetted. |
-| Privacy | Unknown | The client is closed source; we did not review the privacy policy in depth. |
-| Identity checks | Unknown | We found no EarnApp page that lists what a payout asks for, and our own notes do not record it. |
-| Support | Unknown | One Trustpilot review says a ticket was closed without a reply; one is not a pattern, and we have no ticket of our own. |
-| Earnings realism | Unknown | We have not measured EarnApp's earnings per IP against any figure the provider publishes. |
-| Longevity | Good |  |
-
-**Cons**
-
-- EarnApp's help centre says installing it in Docker containers, virtual machines, hosting services or home servers is strictly prohibited, which is how CashPilot runs it. [Source](https://help.earnapp.com/hc/en-us/articles/10199416541969--Can-I-install-EarnApp-on-Hosting-Services-Virtual-Machines-or-Dockers), checked 2026-11-04.
-- The same help article says an account found running that way is terminated without notice and its pending payments are cancelled. [Source](https://help.earnapp.com/hc/en-us/articles/10199416541969--Can-I-install-EarnApp-on-Hosting-Services-Virtual-Machines-or-Dockers), checked 2026-11-04.
-- Trustpilot withholds EarnApp's rating for a breach of its guidelines and says it removed fake reviews; visible reviews include accounts blocked with large balances. [Source](https://www.trustpilot.com/review/earnapp.com), checked 2026-11-04.
-- A user running EarnApp in Docker reports their account was banned. [Source](https://github.com/engageub/InternetIncome/discussions/375), checked 2026-11-04.
-
-**Pros**
-
-- Our PayPal payout arrived in October 2026: a $37.54 balance came in as $36.81, about 2% less. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/bandwidth/earnapp.yml), checked 2026-11-04.
-- A $10 minimum for PayPal and Wise, with auto-redeem that pays out by itself. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/bandwidth/earnapp.yml), checked 2026-11-04.
-- EarnApp belongs to Bright Data, and its PayPal payments arrive from Bright Data Ltd., a named company. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/bandwidth/earnapp.yml), checked 2026-11-04.
-
-<a id="ebesucher"></a>
-
-### Ebesucher
-
-**Grade F**, 6 of 20 points, 7 of 10 criteria unchecked, reviewed 2026-11-04. Setup guide: [Ebesucher](guides/ebesucher.md).
-
-| Criterion | Verdict | Note |
-|---|---|---|
-| Payout record | Unknown | eBesucher says it has paid out over one million euros; we found no recent independent reports either way. |
-| Payout terms | Good |  |
-| Account safety | Unknown | No reports found. |
-| Fit with how CashPilot runs it | Good |  |
-| Traffic transparency | Unknown | The surfbar shows advertisers' pages; we did not find how advertisers are checked. |
-| Privacy | Unknown | Not reviewed. |
-| Identity checks | Unknown | Not documented on pages we read. |
-| Support | Unknown | No reports found. |
-| Earnings realism | Unknown | Not measured. |
-| Longevity | Good |  |
-
-**Cons**
-
-- None found.
-
-**Pros**
-
-- Payouts from 2 euros by PayPal or SEPA, at least weekly, with no fee. [Source](https://www.ebesucher.com/earn-money/get-paid-to-surf), checked 2026-11-04.
-- eBesucher has run since 2002. [Source](https://www.ebesucher.com/earn-money/beermoney), checked 2026-11-04.
-- CashPilot does not run eBesucher: it is a browser extension, so there is no container for its terms to forbid. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/bandwidth/ebesucher.yml), checked 2026-11-04.
-
-<a id="flux"></a>
-
-### Flux
-
-**Grade F**, 6 of 20 points, 6 of 10 criteria unchecked, reviewed 2026-11-04. Setup guide: [Flux](guides/flux.md).
-
-| Criterion | Verdict | Note |
-|---|---|---|
-| Payout record | Unknown | Rewards are paid per block on-chain; we have no node of our own to report. |
-| Payout terms | Fair |  |
-| Account safety | Unknown | Nodes that fail Flux benchmarks stop earning; we found no pattern of disputes. |
-| Fit with how CashPilot runs it | Good |  |
-| Traffic transparency | Unknown | Not documented on pages we read. |
-| Privacy | Good |  |
-| Identity checks | Unknown | Not documented. |
-| Support | Unknown | No pattern found. |
-| Earnings realism | Fair |  |
-| Longevity | Unknown | Not checked on a primary source. |
-
-**Cons**
-
-- The smallest node tier needs 1,000 FLUX locked as collateral. [Source](https://runonflux.com/fluxnodes/), checked 2026-11-04.
-- The block reward drops 10% every year, and a 2026 guide found small-tier rewards weak in dollar terms. [Source](https://www.depinrun.com/guides/fluxnode-operator-guide), checked 2026-11-04.
-
-**Pros**
-
-- The Flux daemon is open source under the MIT licence. [Source](https://github.com/RunOnFlux/fluxd), checked 2026-11-04.
-- CashPilot does not run Flux: you use the provider's own node software, so there is no container for its terms to forbid. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/compute/flux.yml), checked 2026-11-04.
-
 <a id="iproyal"></a>
 
 ### IPRoyal Pawns
@@ -616,6 +494,37 @@ What a cited con or pro may rest on:
 **Pros**
 
 - A $5 minimum, with gift cards at no fee. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/bandwidth/iproyal.yml), checked 2026-11-04.
+
+<a id="noderr"></a>
+
+### Noderr Micronodes
+
+**Grade F**, 6 of 20 points, 4 of 10 criteria unchecked, reviewed 2026-11-04. Setup guide: [Noderr Micronodes](guides/noderr.md).
+
+| Criterion | Verdict | Note |
+|---|---|---|
+| Payout record | Unknown | Testnet beta: no rewards have been paid yet. |
+| Payout terms | Unknown | Rewards are testnet tokens during the beta; mainnet terms are not published. |
+| Account safety | Unknown | There is no account in the usual sense; the identity is a wallet. |
+| Fit with how CashPilot runs it | Fair |  |
+| Traffic transparency | Fair |  |
+| Privacy | Fair |  |
+| Identity checks | Good |  |
+| Support | Unknown | No reports found. |
+| Earnings realism | Poor |  |
+| Longevity | Fair |  |
+
+**Cons**
+
+- Node rewards are unfunded testnet tokens with no market value, and none have been paid; the 5 to 10% APY on its site is a design target. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/depin/noderr.yml), checked 2026-11-04.
+- For the desktop and browser clients Noderr describes automation tasks and does not say whether they carry other people's traffic. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/depin/noderr.yml), checked 2026-11-04.
+- The provider says tasks are anonymised and sandboxed but publishes nothing more specific. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/depin/noderr.yml), checked 2026-11-04.
+- Still a testnet beta on Base Sepolia. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/depin/noderr.yml), checked 2026-11-04.
+- CashPilot does not run Noderr: you use the provider's own app or extension, so CashPilot cannot deploy or update it for you. Its terms were not checked for containers. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/depin/noderr.yml), checked 2026-11-04.
+
+**Pros**
+
+- No account: the app generates a wallet on first launch. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/depin/noderr.yml), checked 2026-11-04.
 
 <a id="proxybase-xyz"></a>
 
@@ -681,35 +590,6 @@ What a cited con or pro may rest on:
 - Repocket publishes its own Docker image, repocket/repocket, and its terms allow containers you own. [Source](https://repocket.com/terms-and-conditions), checked 2026-11-04.
 - The minimum is low: $4 before the first payout and $2 after it. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/bandwidth/repocket.yml), checked 2026-11-04.
 
-<a id="sentinel-dvpn"></a>
-
-### Sentinel dVPN
-
-**Grade F**, 6 of 20 points, 6 of 10 criteria unchecked, reviewed 2026-11-04. Setup guide: [Sentinel dVPN](guides/sentinel-dvpn.md).
-
-| Criterion | Verdict | Note |
-|---|---|---|
-| Payout record | Unknown | Payments are on-chain per session or per hour; we have no node of our own to report. |
-| Payout terms | Fair |  |
-| Account safety | Unknown | There is no account to ban; nodes are permissionless. |
-| Fit with how CashPilot runs it | Good |  |
-| Traffic transparency | Unknown | VPN users route their traffic through your node; the protocol does not vet them. |
-| Privacy | Good |  |
-| Identity checks | Unknown | Not documented beyond a wallet. |
-| Support | Unknown | No pattern found. |
-| Earnings realism | Unknown | Hosts set their own prices; we found no published earnings figures to compare. |
-| Longevity | Fair |  |
-
-**Cons**
-
-- Payments are in the P2P token, and 20% of every bandwidth payment goes to stakers rather than the node host. [Source](https://docs.sentinel.co/dvpn-nodes/earnings), checked 2026-11-04.
-- The token was renamed from SENT to DVPN in 2021 and from DVPN to P2P in 2025. [Source](https://medium.com/sentinel/sentinel-is-changing-its-ticker-from-dvpn-to-p2p-with-its-ai-data-layer-launch-e5fde9443e6b), checked 2026-11-04.
-
-**Pros**
-
-- Sentinel publishes its node source code under its own open source licence. [Source](https://github.com/sentinel-official/sentinel-dvpnx), checked 2026-11-04.
-- CashPilot does not run Sentinel: you use the provider's own node software, so there is no container for its terms to forbid. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/depin/sentinel-dvpn.yml), checked 2026-11-04.
-
 <a id="anyone-protocol"></a>
 
 ### Anyone Protocol
@@ -762,41 +642,128 @@ What a cited con or pro may rest on:
 
 **Cons**
 
-- Payouts are in Solana (SOL) only since Bitping dropped its other chains, and a withdrawal to a new wallet can fail until that wallet holds enough SOL. [Source](https://bitping.com/help/nodes/troubleshooting-solana-payouts), checked 2026-11-04.
+- Withdrawals are paid in Solana (SOL), to an address you type into each request. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/bandwidth/bitping.yml), checked 2026-11-04.
+- Bitping's help says a withdrawal to a new, empty Solana wallet may fail until you fund that wallet with a little SOL yourself. [Source](https://bitping.com/help/nodes/troubleshooting-solana-payouts), checked 2026-11-04.
 
 **Pros**
 
 - Bitping's help says servers and Docker containers are supported. [Source](https://bitping.com/help/nodes/installing-the-node), checked 2026-11-04.
 - A withdrawal needs only a Solana address typed into the request. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/bandwidth/bitping.yml), checked 2026-11-04.
 
-<a id="helium"></a>
+<a id="ebesucher"></a>
 
-### Helium
+### Ebesucher
 
-**Grade F**, 5 of 20 points, 6 of 10 criteria unchecked, reviewed 2026-11-04. Setup guide: [Helium](guides/helium.md).
+**Grade F**, 5 of 20 points, 7 of 10 criteria unchecked, reviewed 2026-11-04. Setup guide: [Ebesucher](guides/ebesucher.md).
 
 | Criterion | Verdict | Note |
 |---|---|---|
-| Payout record | Unknown | Rewards are paid on-chain; we found no pattern of missing rewards. |
-| Payout terms | Unknown | Rewards are in HNT; we did not find fees or minimums worth grading. |
+| Payout record | Unknown | eBesucher says it has paid out over one million euros; we found no recent independent reports either way. |
+| Payout terms | Good |  |
 | Account safety | Unknown | No reports found. |
-| Fit with how CashPilot runs it | Good |  |
+| Fit with how CashPilot runs it | Fair |  |
+| Traffic transparency | Unknown | The surfbar shows advertisers' pages; we did not find how advertisers are checked. |
+| Privacy | Unknown | Not reviewed. |
+| Identity checks | Unknown | Not documented on pages we read. |
+| Support | Unknown | No reports found. |
+| Earnings realism | Unknown | Not measured. |
+| Longevity | Good |  |
+
+**Cons**
+
+- CashPilot does not run eBesucher: it is a browser extension, so CashPilot cannot deploy or update it for you. Its terms were not checked for containers. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/bandwidth/ebesucher.yml), checked 2026-11-04.
+
+**Pros**
+
+- Payouts from 2 euros by PayPal or SEPA, at least weekly, with no fee. [Source](https://www.ebesucher.com/earn-money/get-paid-to-surf), checked 2026-11-04.
+- eBesucher has run since 2002. [Source](https://www.ebesucher.com/earn-money/beermoney), checked 2026-11-04.
+
+<a id="flux"></a>
+
+### Flux
+
+**Grade F**, 5 of 20 points, 6 of 10 criteria unchecked, reviewed 2026-11-04. Setup guide: [Flux](guides/flux.md).
+
+| Criterion | Verdict | Note |
+|---|---|---|
+| Payout record | Unknown | Rewards are paid per block on-chain; we have no node of our own to report. |
+| Payout terms | Fair |  |
+| Account safety | Unknown | Nodes that fail Flux benchmarks stop earning; we found no pattern of disputes. |
+| Fit with how CashPilot runs it | Fair |  |
 | Traffic transparency | Unknown | Not documented on pages we read. |
 | Privacy | Good |  |
 | Identity checks | Unknown | Not documented. |
 | Support | Unknown | No pattern found. |
-| Earnings realism | Poor |  |
+| Earnings realism | Fair |  |
+| Longevity | Unknown | Not checked on a primary source. |
+
+**Cons**
+
+- The smallest node tier needs 1,000 FLUX locked as collateral. [Source](https://runonflux.com/fluxnodes/), checked 2026-11-04.
+- The block reward drops 10% every year, and a 2026 guide found small-tier rewards weak in dollar terms. [Source](https://www.depinrun.com/guides/fluxnode-operator-guide), checked 2026-11-04.
+- CashPilot does not run Flux: you use the provider's own node software, so CashPilot cannot deploy or update it for you. Its terms were not checked for containers. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/compute/flux.yml), checked 2026-11-04.
+
+**Pros**
+
+- The Flux daemon is open source under the MIT licence. [Source](https://github.com/RunOnFlux/fluxd), checked 2026-11-04.
+
+<a id="salad"></a>
+
+### Salad
+
+**Grade F**, 5 of 20 points, 6 of 10 criteria unchecked, reviewed 2026-11-04. Setup guide: [Salad](guides/salad.md).
+
+| Criterion | Verdict | Note |
+|---|---|---|
+| Payout record | Good |  |
+| Payout terms | Fair |  |
+| Account safety | Unknown | No pattern found. |
+| Fit with how CashPilot runs it | Fair |  |
+| Traffic transparency | Unknown | Salad rents your GPU to its cloud customers; we did not find how they are checked. |
+| Privacy | Unknown | Not reviewed. |
+| Identity checks | Unknown | Not documented on pages we read. |
+| Support | Unknown | No pattern found. |
+| Earnings realism | Fair |  |
+| Longevity | Unknown | Not checked on a primary source. |
+
+**Cons**
+
+- Trustpilot's own summary of its reviews says some reviewers find earnings low and often not enough to cover electricity and hardware wear; one October 2026 reviewer says an RTX 3090 barely covered its electricity. [Source](https://www.trustpilot.com/review/salad.com), checked 2026-11-04.
+- Rewards are redeemed in Salad's own storefront for PayPal or gift cards, with no crypto. Trustpilot's summary says some payment methods are hard to use in some regions, and reviewers describe a Visa card that cannot be added to Apple Pay in Europe and no payout option for India. [Source](https://www.trustpilot.com/review/salad.com), checked 2026-11-04.
+- CashPilot does not run Salad: you use the provider's own desktop app, so CashPilot cannot deploy or update it for you. Its terms were not checked for containers. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/compute/salad.yml), checked 2026-11-04.
+
+**Pros**
+
+- Several Trustpilot reviewers in October and November 2026 report PayPal cash-outs arriving quickly, some more than once; one reviewer in the same period says repeated cash-out attempts failed. [Source](https://www.trustpilot.com/review/salad.com), checked 2026-11-04.
+
+<a id="sentinel-dvpn"></a>
+
+### Sentinel dVPN
+
+**Grade F**, 5 of 20 points, 6 of 10 criteria unchecked, reviewed 2026-11-04. Setup guide: [Sentinel dVPN](guides/sentinel-dvpn.md).
+
+| Criterion | Verdict | Note |
+|---|---|---|
+| Payout record | Unknown | Payments are on-chain per session or per hour; we have no node of our own to report. |
+| Payout terms | Fair |  |
+| Account safety | Unknown | There is no account to ban; nodes are permissionless. |
+| Fit with how CashPilot runs it | Fair |  |
+| Traffic transparency | Unknown | VPN users route their traffic through your node; the protocol does not vet them. |
+| Privacy | Good |  |
+| Identity checks | Unknown | Not documented beyond a wallet. |
+| Support | Unknown | No pattern found. |
+| Earnings realism | Unknown | Hosts set their own prices; we found no published earnings figures to compare. |
 | Longevity | Fair |  |
 
 **Cons**
 
-- HIP 149 retired Proof-of-Coverage rewards on 6 July 2026; IoT hotspots now earn only for data they carry, and more than 114,000 of them carried none. [Source](https://heliumgeek.com/faq/what-is-hip149.html), checked 2026-11-04.
-- Helium's reward model has changed by vote several times, its CEO stepped down, and HNT fell about 96%. [Source](https://crypto.news/helium-ceo-amir-haleem-steps-down-as-hnt-token-extends-96-crash/), checked 2026-11-04.
+- Payments are in the P2P token, and 20% of every bandwidth payment goes to stakers rather than the node host. [Source](https://docs.sentinel.co/dvpn-nodes/earnings), checked 2026-11-04.
+- The token was renamed from SENT to DVPN in 2021 and from DVPN to P2P in 2025. [Source](https://medium.com/sentinel/sentinel-is-changing-its-ticker-from-dvpn-to-p2p-with-its-ai-data-layer-launch-e5fde9443e6b), checked 2026-11-04.
+- CashPilot does not run Sentinel: you use the provider's own node software, so CashPilot cannot deploy or update it for you. Its terms were not checked for containers. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/depin/sentinel-dvpn.yml), checked 2026-11-04.
 
 **Pros**
 
-- The hotspot gateway software is open source under the Apache-2.0 licence. [Source](https://github.com/helium/gateway-rs), checked 2026-11-04.
-- CashPilot does not run Helium: you use the provider's own hotspot hardware, so there is no container for its terms to forbid. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/depin/helium.yml), checked 2026-11-04.
+- Sentinel publishes its node source code under its own open source licence. [Source](https://github.com/sentinel-official/sentinel-dvpnx), checked 2026-11-04.
 
 <a id="traffmonetizer"></a>
 
@@ -858,20 +825,20 @@ What a cited con or pro may rest on:
 - Vast says the rate a host sets is the rate it receives, with no fee deducted. [Source](https://vast.ai/hosting), checked 2026-11-04.
 - Hosting is built around Docker on a Linux host, the way Vast documents it. [Source](https://vast.ai/hosting), checked 2026-11-04.
 
-<a id="ionet"></a>
+<a id="helium"></a>
 
-### io.net
+### Helium
 
-**Grade F**, 4 of 20 points, 6 of 10 criteria unchecked, reviewed 2026-11-04. Setup guide: [io.net](guides/ionet.md).
+**Grade F**, 4 of 20 points, 6 of 10 criteria unchecked, reviewed 2026-11-04. Setup guide: [Helium](guides/helium.md).
 
 | Criterion | Verdict | Note |
 |---|---|---|
-| Payout record | Unknown | We found no documented pattern of late or withheld supplier payouts. |
-| Payout terms | Fair |  |
-| Account safety | Unknown | io.net removed virtual GPU workers from rewards in 2024; we found no pattern affecting real hardware. |
-| Fit with how CashPilot runs it | Good |  |
+| Payout record | Unknown | Rewards are paid on-chain; we found no pattern of missing rewards. |
+| Payout terms | Unknown | Rewards are in HNT; we did not find fees or minimums worth grading. |
+| Account safety | Unknown | No reports found. |
+| Fit with how CashPilot runs it | Fair |  |
 | Traffic transparency | Unknown | Not documented on pages we read. |
-| Privacy | Unknown | Not reviewed. |
+| Privacy | Good |  |
 | Identity checks | Unknown | Not documented. |
 | Support | Unknown | No pattern found. |
 | Earnings realism | Poor |  |
@@ -879,98 +846,13 @@ What a cited con or pro may rest on:
 
 **Cons**
 
-- Supplier rewards were paid from token emissions regardless of paid jobs, and GPU owners report sitting idle most of the time. [Source](https://ownyourmind.ai/projects/io-net/), checked 2026-11-04.
-- Rewards are in the IO token and the payout model changed in 2026 to a dollar-pegged engine. [Source](https://ownyourmind.ai/projects/io-net/), checked 2026-11-04.
-- In April 2024 about 1.8 million fake GPUs tried to join through a leaked authentication token, and the CEO later stepped down before the token launch. [Source](https://www.theblock.co/news/defi/2024-04-28-solana-based-depin-io-net-ceo-claims-network-was-attacked-in-detailed-postmortem-291315), checked 2026-11-04.
+- HIP 149 retired Proof-of-Coverage rewards on 6 July 2026; IoT hotspots now earn only for data they carry, and more than 114,000 of them carried none. [Source](https://heliumgeek.com/faq/what-is-hip149.html), checked 2026-11-04.
+- Helium's reward model has changed by vote several times, its CEO stepped down, and HNT fell about 96%. [Source](https://crypto.news/helium-ceo-amir-haleem-steps-down-as-hnt-token-extends-96-crash/), checked 2026-11-04.
+- CashPilot does not run Helium: you use the provider's own hotspot hardware, so CashPilot cannot deploy or update it for you. Its terms were not checked for containers. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/depin/helium.yml), checked 2026-11-04.
 
 **Pros**
 
-- CashPilot does not run io.net: you use the provider's own worker software, so there is no container for its terms to forbid. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/compute/ionet.yml), checked 2026-11-04.
-
-<a id="nodepay"></a>
-
-### Nodepay
-
-**Grade F**, 4 of 20 points, 6 of 10 criteria unchecked, reviewed 2026-11-04. Setup guide: [Nodepay](guides/nodepay.md).
-
-| Criterion | Verdict | Note |
-|---|---|---|
-| Payout record | Unknown | The NC token launched in January 2025; we found no pattern of reports about claims either way. |
-| Payout terms | Unknown | Sources disagree on whether earning now requires staking NC; not confirmed on Nodepay's own pages. |
-| Account safety | Fair |  |
-| Fit with how CashPilot runs it | Good |  |
-| Traffic transparency | Unknown | Not documented on pages we read. |
-| Privacy | Unknown | Not reviewed. |
-| Identity checks | Fair |  |
-| Support | Unknown | No pattern found. |
-| Earnings realism | Poor |  |
-| Longevity | Unknown | We did not confirm the company behind Nodepay. |
-
-**Cons**
-
-- In its first season review Nodepay removed more than 300,000 accounts it judged to be bots and cancelled 17 billion points. [Source](https://coinmarketcap.com/academy/article/nodepay-airdrop-guide-everything-you-need-to-know), checked 2026-11-04.
-- Eligibility needed a Solana wallet plus verified email, Discord and X accounts. [Source](https://coinmarketcap.com/academy/article/nodepay-airdrop-guide-everything-you-need-to-know), checked 2026-11-04.
-- Rewards are points converted to the NC token, so their value rests on the token. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/depin/nodepay.yml), checked 2026-11-04.
-
-**Pros**
-
-- CashPilot does not run Nodepay: you use the provider's own browser extension, so there is no container for its terms to forbid. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/depin/nodepay.yml), checked 2026-11-04.
-
-<a id="nosana"></a>
-
-### Nosana
-
-**Grade F**, 4 of 20 points, 7 of 10 criteria unchecked, reviewed 2026-11-04. Setup guide: [Nosana](guides/nosana.md).
-
-| Criterion | Verdict | Note |
-|---|---|---|
-| Payout record | Unknown | We found no host reports either way. |
-| Payout terms | Fair |  |
-| Account safety | Unknown | No reports found. |
-| Fit with how CashPilot runs it | Good |  |
-| Traffic transparency | Unknown | Not documented on pages we read. |
-| Privacy | Unknown | Not reviewed. |
-| Identity checks | Unknown | Payouts go to a Solana wallet; we did not find other requirements. |
-| Support | Unknown | No pattern found. |
-| Earnings realism | Fair |  |
-| Longevity | Unknown | Not checked on a primary source. |
-
-**Cons**
-
-- Each host must lock a NOS stake sized to its GPU's hourly price. [Source](https://github.com/nosana-ci/network-proposals/blob/main/nnp/NNP-0001-tokenomics.md), checked 2026-11-04.
-- Hosts are paid in NOS, so dollar earnings move with the token and with demand for their card. [Source](https://solanacompass.com/projects/nosana), checked 2026-11-04.
-
-**Pros**
-
-- CashPilot does not run Nosana: you use the provider's own host software, so there is no container for its terms to forbid. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/compute/nosana.yml), checked 2026-11-04.
-
-<a id="passiveapp"></a>
-
-### PassiveApp
-
-**Grade F**, 4 of 20 points, 8 of 10 criteria unchecked, reviewed 2026-11-04. Setup guide: [PassiveApp](guides/passiveapp.md).
-
-| Criterion | Verdict | Note |
-|---|---|---|
-| Payout record | Unknown | We found no independent payout reports; the testimonials on its site are its own. |
-| Payout terms | Good |  |
-| Account safety | Unknown | No reports found. |
-| Fit with how CashPilot runs it | Good |  |
-| Traffic transparency | Unknown | Not documented on pages we read. |
-| Privacy | Unknown | Not reviewed. |
-| Identity checks | Unknown | Not documented. |
-| Support | Unknown | No reports found. |
-| Earnings realism | Unknown | Not measured. |
-| Longevity | Unknown | We found no named company. Mobile and Linux apps announced in early 2025 have not shipped. |
-
-**Cons**
-
-- None found.
-
-**Pros**
-
-- PassiveApp's site lists PayPal, crypto and gift cards from a $3 minimum. [Source](https://www.passiveapp.com/), checked 2026-11-04.
-- CashPilot does not run PassiveApp: you use the provider's own desktop app, so there is no container for its terms to forbid. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/depin/passiveapp.yml), checked 2026-11-04.
+- The hotspot gateway software is open source under the Apache-2.0 licence. [Source](https://github.com/helium/gateway-rs), checked 2026-11-04.
 
 <a id="proxylite"></a>
 
@@ -1000,63 +882,34 @@ What a cited con or pro may rest on:
 - A $5 minimum, by crypto or PayPal. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/bandwidth/proxylite.yml), checked 2026-11-04.
 - ProxyLite publishes a Docker image, proxylite/proxyservice, and accepts datacentre connections at a lower rate. [Source](https://hub.docker.com/r/proxylite/proxyservice), checked 2026-11-04.
 
-<a id="salad"></a>
+<a id="bytebenefit"></a>
 
-### Salad
+### Bytebenefit
 
-**Grade F**, 4 of 20 points, 6 of 10 criteria unchecked, reviewed 2026-11-04. Setup guide: [Salad](guides/salad.md).
+**Grade F**, 3 of 20 points, 7 of 10 criteria unchecked, reviewed 2026-11-04. Setup guide: [Bytebenefit](guides/bytebenefit.md).
 
 | Criterion | Verdict | Note |
 |---|---|---|
-| Payout record | Fair |  |
-| Payout terms | Fair |  |
-| Account safety | Unknown | No pattern found. |
-| Fit with how CashPilot runs it | Good |  |
-| Traffic transparency | Unknown | Salad rents your GPU to its cloud customers; we did not find how they are checked. |
-| Privacy | Unknown | Not reviewed. |
+| Payout record | Unknown | Trustpilot has four reviews. Two say the PayPal and Stripe payout pages return a 404 and the money never arrived, and one says it was paid. Two matching reports is under our threshold for a pattern, so we could not grade it either way. |
+| Payout terms | Unknown | The catalog records a $5 minimum paid by PayPal, but two reviewers say the PayPal and Stripe payout pages return a 404, so we cannot say the route works. |
+| Account safety | Unknown | No reports either way. |
+| Fit with how CashPilot runs it | Fair |  |
+| Traffic transparency | Fair |  |
+| Privacy | Unknown | The client is closed source; we did not review the privacy policy. |
 | Identity checks | Unknown | Not documented on pages we read. |
-| Support | Unknown | No pattern found. |
-| Earnings realism | Poor |  |
-| Longevity | Unknown | Not checked on a primary source. |
-
-**Cons**
-
-- Trustpilot's summary notes earnings that often fail to cover the electricity of high-end hardware and unpredictable job availability; an August 2026 review calls the advertised earnings misleading. [Source](https://www.trustpilot.com/review/salad.com), checked 2026-11-04.
-- Some reviewers report withdrawal delays and a June 2026 reviewer a cancelled reward; others report fast payouts. [Source](https://www.trustpilot.com/review/salad.com), checked 2026-11-04.
-- PayPal and gift cards only, through Salad's own storefront; some reviewers report steep fees. [Source](https://www.trustpilot.com/review/salad.com), checked 2026-11-04.
-
-**Pros**
-
-- CashPilot does not run Salad: you use the provider's own desktop app, so there is no container for its terms to forbid. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/compute/salad.yml), checked 2026-11-04.
-
-<a id="gradient"></a>
-
-### Gradient Network
-
-**Grade F**, 3 of 20 points, 6 of 10 criteria unchecked, reviewed 2026-11-04. Setup guide: [Gradient Network](guides/gradient.md).
-
-| Criterion | Verdict | Note |
-|---|---|---|
-| Payout record | Unknown | No token has launched, so nothing has been paid out to judge. |
-| Payout terms | Poor |  |
-| Account safety | Unknown | No reports found. |
-| Fit with how CashPilot runs it | Good |  |
-| Traffic transparency | Unknown | Not documented on pages we read. |
-| Privacy | Unknown | Not reviewed. |
-| Identity checks | Unknown | Not documented. |
-| Support | Unknown | Chrome Web Store reviews report login and connection problems; we found no pattern about tickets. |
-| Earnings realism | Poor |  |
+| Support | Unknown | One Trustpilot reviewer says ByteBenefit support did not reply and Infatica's support sent them back to it; one is not a pattern. |
+| Earnings realism | Unknown | Not measured. |
 | Longevity | Fair |  |
 
 **Cons**
 
-- The Sentry Node points program ended on 28 August 2025, and Sentry nodes no longer earn rewards. [Source](https://boxmining.com/gradient-network-token-airdrop-guide/), checked 2026-11-04.
-- Gradient has announced no token, launch date or conversion rate for the points already earned. [Source](https://airdroplet.com/airdrop/gradient-network), checked 2026-11-04.
-- Gradient's funding round was in June 2025; the project is young. [Source](https://boxmining.com/gradient-network-token-airdrop-guide/), checked 2026-11-04.
+- The app's Google Play listing says your traffic serves web-intelligence requests by Infatica's clients, without saying who they are or how they are checked. [Source](https://play.google.com/store/apps/details?id=io.bytebenefit.app), checked 2026-11-04.
+- The Android app left Google Play in April 2026 after 17 months. [Source](https://www.appbrain.com/app/bytebenefit/io.bytebenefit.app), checked 2026-11-04.
+- CashPilot does not run ByteBenefit: you use the provider's own app, so CashPilot cannot deploy or update it for you. Its terms were not checked for containers. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/bandwidth/bytebenefit.yml), checked 2026-11-04.
 
 **Pros**
 
-- CashPilot does not run Gradient: you use the provider's own app or extension, so there is no container for its terms to forbid. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/depin/gradient.yml), checked 2026-11-04.
+- None found.
 
 <a id="grass"></a>
 
@@ -1066,10 +919,10 @@ What a cited con or pro may rest on:
 
 | Criterion | Verdict | Note |
 |---|---|---|
-| Payout record | Fair |  |
+| Payout record | Good |  |
 | Payout terms | Poor |  |
 | Account safety | Unknown | We found no repeated reports of banned accounts. |
-| Fit with how CashPilot runs it | Good |  |
+| Fit with how CashPilot runs it | Fair |  |
 | Traffic transparency | Unknown | Grass sells web data scraped through your connection; we did not find how its buyers are checked. |
 | Privacy | Unknown | Not reviewed. |
 | Identity checks | Unknown | Claims go to a wallet; we did not find what else a claim asks for. |
@@ -1079,42 +932,130 @@ What a cited con or pro may rest on:
 
 **Cons**
 
-- Rewards come only through airdrop seasons. Long-running node operators reported season 2 estimates of a few dollars, and some reported claims failing. [Source](https://www.coingabbar.com/en/crypto-currency-news/grass-airdrop-season-2-claim-date-wallet-launch-price), checked 2026-11-04.
+- Rewards come only through airdrop seasons. Long-running node operators reported season 2 estimates in the single to low double-digit dollar range. [Source](https://www.coingabbar.com/en/crypto-currency-news/grass-airdrop-season-2-claim-date-wallet-launch-price), checked 2026-11-04.
 - Season 2 rewards not claimed by 22 January 2027 are lost for good. [Source](https://www.coingabbar.com/en/crypto-currency-news/grass-airdrop-season-2-claim-date-wallet-launch-price), checked 2026-11-04.
 - The first airdrop drew a backlash over small rewards per point, diluted across more than two million users. [Source](https://beincrypto.com/grass-airdrop-sparks-outrage/), checked 2026-11-04.
+- CashPilot does not run Grass: you use the provider's own app or extension, so CashPilot cannot deploy or update it for you. Its terms were not checked for containers. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/depin/grass.yml), checked 2026-11-04.
 
 **Pros**
 
 - The first airdrop reached nearly 1.5 million claiming addresses. [Source](https://www.theblock.co/post/323805/grass-becomes-most-distributed-solana-airdrop-as-nearly-1-5-million-addresses-claim-tokens), checked 2026-11-04.
-- CashPilot does not run Grass: you use the provider's own app or extension, so there is no container for its terms to forbid. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/depin/grass.yml), checked 2026-11-04.
 
-<a id="nodle"></a>
+<a id="ionet"></a>
 
-### Nodle
+### io.net
 
-**Grade F**, 3 of 20 points, 7 of 10 criteria unchecked, reviewed 2026-11-04. Setup guide: [Nodle](guides/nodle.md).
+**Grade F**, 3 of 20 points, 6 of 10 criteria unchecked, reviewed 2026-11-04. Setup guide: [io.net](guides/ionet.md).
 
 | Criterion | Verdict | Note |
 |---|---|---|
-| Payout record | Fair |  |
-| Payout terms | Unknown | Not documented on pages we read. |
-| Account safety | Unknown | No reports found. |
-| Fit with how CashPilot runs it | Good |  |
+| Payout record | Unknown | We found no documented pattern of late or withheld supplier payouts. |
+| Payout terms | Fair |  |
+| Account safety | Unknown | io.net removed virtual GPU workers from rewards in 2024; we found no pattern affecting real hardware. |
+| Fit with how CashPilot runs it | Fair |  |
 | Traffic transparency | Unknown | Not documented on pages we read. |
-| Privacy | Unknown | The app uses Bluetooth in the background; we did not review its privacy policy. |
+| Privacy | Unknown | Not reviewed. |
 | Identity checks | Unknown | Not documented. |
-| Support | Unknown | Reviewers report unanswered messages; we could not confirm a pattern. |
+| Support | Unknown | No pattern found. |
 | Earnings realism | Poor |  |
+| Longevity | Fair |  |
+
+**Cons**
+
+- Supplier rewards were paid from token emissions regardless of paid jobs, and GPU owners report sitting idle most of the time. [Source](https://ownyourmind.ai/projects/io-net/), checked 2026-11-04.
+- Rewards are in the IO token and the payout model changed in 2026 to a dollar-pegged engine. [Source](https://ownyourmind.ai/projects/io-net/), checked 2026-11-04.
+- In April 2024 about 1.8 million fake GPUs tried to join through a leaked authentication token, and the CEO later stepped down before the token launch. [Source](https://www.theblock.co/news/defi/2024-04-28-solana-based-depin-io-net-ceo-claims-network-was-attacked-in-detailed-postmortem-291315), checked 2026-11-04.
+- CashPilot does not run io.net: you use the provider's own worker software, so CashPilot cannot deploy or update it for you. Its terms were not checked for containers. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/compute/ionet.yml), checked 2026-11-04.
+
+**Pros**
+
+- None found.
+
+<a id="nodepay"></a>
+
+### Nodepay
+
+**Grade F**, 3 of 20 points, 6 of 10 criteria unchecked, reviewed 2026-11-04. Setup guide: [Nodepay](guides/nodepay.md).
+
+| Criterion | Verdict | Note |
+|---|---|---|
+| Payout record | Unknown | The NC token launched in January 2025; we found no pattern of reports about claims either way. |
+| Payout terms | Unknown | Sources disagree on whether earning now requires staking NC; not confirmed on Nodepay's own pages. |
+| Account safety | Fair |  |
+| Fit with how CashPilot runs it | Fair |  |
+| Traffic transparency | Unknown | Not documented on pages we read. |
+| Privacy | Unknown | Not reviewed. |
+| Identity checks | Fair |  |
+| Support | Unknown | No pattern found. |
+| Earnings realism | Poor |  |
+| Longevity | Unknown | We did not confirm the company behind Nodepay. |
+
+**Cons**
+
+- In its first season review Nodepay removed more than 300,000 accounts it judged to be bots and cancelled 17 billion points. [Source](https://coinmarketcap.com/academy/article/nodepay-airdrop-guide-everything-you-need-to-know), checked 2026-11-04.
+- Eligibility needed a Solana wallet plus verified email, Discord and X accounts. [Source](https://coinmarketcap.com/academy/article/nodepay-airdrop-guide-everything-you-need-to-know), checked 2026-11-04.
+- Rewards are points converted to the NC token, so their value rests on the token. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/depin/nodepay.yml), checked 2026-11-04.
+- CashPilot does not run Nodepay: you use the provider's own browser extension, so CashPilot cannot deploy or update it for you. Its terms were not checked for containers. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/depin/nodepay.yml), checked 2026-11-04.
+
+**Pros**
+
+- None found.
+
+<a id="nosana"></a>
+
+### Nosana
+
+**Grade F**, 3 of 20 points, 7 of 10 criteria unchecked, reviewed 2026-11-04. Setup guide: [Nosana](guides/nosana.md).
+
+| Criterion | Verdict | Note |
+|---|---|---|
+| Payout record | Unknown | We found no host reports either way. |
+| Payout terms | Fair |  |
+| Account safety | Unknown | No reports found. |
+| Fit with how CashPilot runs it | Fair |  |
+| Traffic transparency | Unknown | Not documented on pages we read. |
+| Privacy | Unknown | Not reviewed. |
+| Identity checks | Unknown | Payouts go to a Solana wallet; we did not find other requirements. |
+| Support | Unknown | No pattern found. |
+| Earnings realism | Fair |  |
 | Longevity | Unknown | Not checked on a primary source. |
 
 **Cons**
 
-- App Store reviewers report being unable to bridge or send NODL after the move to zkSync, and needing ETH to move tokens out. [Source](https://apps.apple.com/us/app/nodle-cash-wallet-earn-crypto/id1480763553), checked 2026-11-04.
-- One reviewer reports about $3 earned over three to four years; others report daily earnings falling sharply. [Source](https://www.appbrain.com/app/nodle-cash-simple-earning-app/io.nodle.cash), checked 2026-11-04.
+- Each host must lock a NOS stake sized to its GPU's hourly price. [Source](https://github.com/nosana-ci/network-proposals/blob/main/nnp/NNP-0001-tokenomics.md), checked 2026-11-04.
+- Hosts are paid in NOS, so dollar earnings move with the token and with demand for their card. [Source](https://solanacompass.com/projects/nosana), checked 2026-11-04.
+- CashPilot does not run Nosana: you use the provider's own host software, so CashPilot cannot deploy or update it for you. Its terms were not checked for containers. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/compute/nosana.yml), checked 2026-11-04.
 
 **Pros**
 
-- CashPilot does not run Nodle: you use the provider's own phone app, so there is no container for its terms to forbid. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/depin/nodle.yml), checked 2026-11-04.
+- None found.
+
+<a id="passiveapp"></a>
+
+### PassiveApp
+
+**Grade F**, 3 of 20 points, 8 of 10 criteria unchecked, reviewed 2026-11-04. Setup guide: [PassiveApp](guides/passiveapp.md).
+
+| Criterion | Verdict | Note |
+|---|---|---|
+| Payout record | Unknown | We found no independent payout reports; the testimonials on its site are its own. |
+| Payout terms | Good |  |
+| Account safety | Unknown | No reports found. |
+| Fit with how CashPilot runs it | Fair |  |
+| Traffic transparency | Unknown | Not documented on pages we read. |
+| Privacy | Unknown | Not reviewed. |
+| Identity checks | Unknown | Not documented. |
+| Support | Unknown | No reports found. |
+| Earnings realism | Unknown | Not measured. |
+| Longevity | Unknown | We found no named company. Mobile and Linux apps announced in early 2025 have not shipped. |
+
+**Cons**
+
+- CashPilot does not run PassiveApp: you use the provider's own desktop app, so CashPilot cannot deploy or update it for you. Its terms were not checked for containers. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/depin/passiveapp.yml), checked 2026-11-04.
+
+**Pros**
+
+- PassiveApp's site lists PayPal, crypto and gift cards from a $3 minimum. [Source](https://www.passiveapp.com/), checked 2026-11-04.
 
 <a id="proxyrack"></a>
 
@@ -1143,18 +1084,77 @@ What a cited con or pro may rest on:
 
 - ProxyRack publishes its own Docker image, proxyrack/pop, and accepts datacentre IPs at a lower rate. [Source](https://hub.docker.com/r/proxyrack/pop), checked 2026-11-04.
 
+<a id="gradient"></a>
+
+### Gradient Network
+
+**Grade F**, 2 of 20 points, 6 of 10 criteria unchecked, reviewed 2026-11-04. Setup guide: [Gradient Network](guides/gradient.md).
+
+| Criterion | Verdict | Note |
+|---|---|---|
+| Payout record | Unknown | No token has launched, so nothing has been paid out to judge. |
+| Payout terms | Poor |  |
+| Account safety | Unknown | No reports found. |
+| Fit with how CashPilot runs it | Fair |  |
+| Traffic transparency | Unknown | Not documented on pages we read. |
+| Privacy | Unknown | Not reviewed. |
+| Identity checks | Unknown | Not documented. |
+| Support | Unknown | Chrome Web Store reviews report login and connection problems; we found no pattern about tickets. |
+| Earnings realism | Poor |  |
+| Longevity | Fair |  |
+
+**Cons**
+
+- The Sentry Node points program ended on 28 August 2025, and Sentry nodes no longer earn rewards. [Source](https://boxmining.com/gradient-network-token-airdrop-guide/), checked 2026-11-04.
+- Gradient has announced no token, launch date or conversion rate for the points already earned. [Source](https://airdroplet.com/airdrop/gradient-network), checked 2026-11-04.
+- Gradient's funding round was in June 2025; the project is young. [Source](https://boxmining.com/gradient-network-token-airdrop-guide/), checked 2026-11-04.
+- CashPilot does not run Gradient: you use the provider's own app or extension, so CashPilot cannot deploy or update it for you. Its terms were not checked for containers. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/depin/gradient.yml), checked 2026-11-04.
+
+**Pros**
+
+- None found.
+
+<a id="nodle"></a>
+
+### Nodle
+
+**Grade F**, 2 of 20 points, 7 of 10 criteria unchecked, reviewed 2026-11-04. Setup guide: [Nodle](guides/nodle.md).
+
+| Criterion | Verdict | Note |
+|---|---|---|
+| Payout record | Fair |  |
+| Payout terms | Unknown | Not documented on pages we read. |
+| Account safety | Unknown | No reports found. |
+| Fit with how CashPilot runs it | Fair |  |
+| Traffic transparency | Unknown | Not documented on pages we read. |
+| Privacy | Unknown | The app uses Bluetooth in the background; we did not review its privacy policy. |
+| Identity checks | Unknown | Not documented. |
+| Support | Unknown | Reviewers report unanswered messages; we could not confirm a pattern. |
+| Earnings realism | Poor |  |
+| Longevity | Unknown | Not checked on a primary source. |
+
+**Cons**
+
+- App Store reviewers report being unable to bridge or send NODL after the move to zkSync, and needing ETH to move tokens out. [Source](https://apps.apple.com/us/app/nodle-cash-wallet-earn-crypto/id1480763553), checked 2026-11-04.
+- One reviewer reports about $3 earned over three to four years; others report daily earnings falling sharply. [Source](https://www.appbrain.com/app/nodle-cash-simple-earning-app/io.nodle.cash), checked 2026-11-04.
+- CashPilot does not run Nodle: you use the provider's own phone app, so CashPilot cannot deploy or update it for you. Its terms were not checked for containers. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/depin/nodle.yml), checked 2026-11-04.
+
+**Pros**
+
+- None found.
+
 <a id="uprock"></a>
 
 ### Uprock
 
-**Grade F**, 3 of 20 points, 7 of 10 criteria unchecked, reviewed 2026-11-04. Setup guide: [Uprock](guides/uprock.md).
+**Grade F**, 2 of 20 points, 7 of 10 criteria unchecked, reviewed 2026-11-04. Setup guide: [Uprock](guides/uprock.md).
 
 | Criterion | Verdict | Note |
 |---|---|---|
 | Payout record | Unknown | We found no recent pattern of reports either way. |
 | Payout terms | Fair |  |
 | Account safety | Unknown | No reports found. |
-| Fit with how CashPilot runs it | Good |  |
+| Fit with how CashPilot runs it | Fair |  |
 | Traffic transparency | Unknown | Not documented on pages we read. |
 | Privacy | Unknown | Not reviewed. |
 | Identity checks | Unknown | Not documented. |
@@ -1166,23 +1166,24 @@ What a cited con or pro may rest on:
 
 - Trustpilot reviewers reported a 255 UPT minimum and a 55 UPT fee to withdraw to a wallet; these reports are old and the current terms may differ. [Source](https://www.trustpilot.com/review/uprock.com), checked 2026-11-04.
 - Rewards are UPT tokens; reviewers and a third-party review say their value is very low. [Source](https://paidfromsurveys.com/uprock-ai-earnings-review), checked 2026-11-04.
+- CashPilot does not run UpRock: you use the provider's own app or extension, so CashPilot cannot deploy or update it for you. Its terms were not checked for containers. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/depin/uprock.yml), checked 2026-11-04.
 
 **Pros**
 
-- CashPilot does not run UpRock: you use the provider's own app or extension, so there is no container for its terms to forbid. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/depin/uprock.yml), checked 2026-11-04.
+- None found.
 
 <a id="dawn"></a>
 
 ### Dawn Internet
 
-**Grade F**, 2 of 20 points, 7 of 10 criteria unchecked, reviewed 2026-11-04. Setup guide: [Dawn Internet](guides/dawn.md).
+**Grade F**, 1 of 20 points, 7 of 10 criteria unchecked, reviewed 2026-11-04. Setup guide: [Dawn Internet](guides/dawn.md).
 
 | Criterion | Verdict | Note |
 |---|---|---|
 | Payout record | Unknown | No token has been paid out yet. |
 | Payout terms | Poor |  |
 | Account safety | Unknown | No reports found. |
-| Fit with how CashPilot runs it | Good |  |
+| Fit with how CashPilot runs it | Fair |  |
 | Traffic transparency | Unknown | Not documented on pages we read. |
 | Privacy | Unknown | Not reviewed. |
 | Identity checks | Unknown | Not documented. |
@@ -1194,23 +1195,24 @@ What a cited con or pro may rest on:
 
 - The extension earns points; no token distribution to node operators had been confirmed by October 2026. [Source](https://www.airdropmeta.com/projects/dawn-internet), checked 2026-11-04.
 - Points have no settled value until a token launches and its conversion is announced. [Source](https://airdropbuzz.com/airdrop/dawn-airdrop-guide), checked 2026-11-04.
+- CashPilot does not run Dawn: you use the provider's own browser extension, so CashPilot cannot deploy or update it for you. Its terms were not checked for containers. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/depin/dawn.yml), checked 2026-11-04.
 
 **Pros**
 
-- CashPilot does not run Dawn: you use the provider's own browser extension, so there is no container for its terms to forbid. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/depin/dawn.yml), checked 2026-11-04.
+- None found.
 
 <a id="deeper-network"></a>
 
 ### Deeper Network
 
-**Grade F**, 2 of 20 points, 8 of 10 criteria unchecked, reviewed 2026-11-04. Setup guide: [Deeper Network](guides/deeper-network.md).
+**Grade F**, 1 of 20 points, 8 of 10 criteria unchecked, reviewed 2026-11-04. Setup guide: [Deeper Network](guides/deeper-network.md).
 
 | Criterion | Verdict | Note |
 |---|---|---|
 | Payout record | Unknown | We found no recent pattern of reports either way. |
 | Payout terms | Unknown | Not documented on pages we read. |
 | Account safety | Unknown | No reports found. |
-| Fit with how CashPilot runs it | Good |  |
+| Fit with how CashPilot runs it | Fair |  |
 | Traffic transparency | Unknown | Not documented on pages we read. |
 | Privacy | Unknown | Not reviewed. |
 | Identity checks | Unknown | Not documented. |
@@ -1221,23 +1223,24 @@ What a cited con or pro may rest on:
 **Cons**
 
 - Mining rewards are in DPR and depend on a credit score that grows slowly or by staking DPR. [Source](https://deeper-network-inc.gitbook.io/deeper-connect-knowledge-base/faq/mining), checked 2026-11-04.
+- CashPilot does not run Deeper Network: you use the provider's own router hardware, so CashPilot cannot deploy or update it for you. Its terms were not checked for containers. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/depin/deeper-network.yml), checked 2026-11-04.
 
 **Pros**
 
-- CashPilot does not run Deeper Network: you use the provider's own router hardware, so there is no container for its terms to forbid. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/depin/deeper-network.yml), checked 2026-11-04.
+- None found.
 
 <a id="spide"></a>
 
 ### Spide
 
-**Grade F**, 2 of 20 points, 8 of 10 criteria unchecked, reviewed 2026-11-04. Setup guide: [Spide](guides/spide.md).
+**Grade F**, 1 of 20 points, 8 of 10 criteria unchecked, reviewed 2026-11-04. Setup guide: [Spide](guides/spide.md).
 
 | Criterion | Verdict | Note |
 |---|---|---|
 | Payout record | Unknown | We found no user reports or payout proof. |
 | Payout terms | Unknown | Our catalog lists crypto from $5; a third-party listing says Litecoin from $10. Not confirmed on Spide's own pages. |
 | Account safety | Unknown | No reports found. |
-| Fit with how CashPilot runs it | Good |  |
+| Fit with how CashPilot runs it | Fair |  |
 | Traffic transparency | Unknown | Spide calls itself a proxy network; it does not say who the buyers are. |
 | Privacy | Unknown | Not reviewed. |
 | Identity checks | Unknown | Not documented. |
@@ -1248,23 +1251,24 @@ What a cited con or pro may rest on:
 **Cons**
 
 - Spide's homepage calculator shows an example of about $45 a month, far above our catalog estimate of $0 to $3 for one device. [Source](https://spide.network/), checked 2026-11-04.
+- CashPilot does not run Spide: you use the provider's own app, so CashPilot cannot deploy or update it for you. Its terms were not checked for containers. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/bandwidth/spide.yml), checked 2026-11-04.
 
 **Pros**
 
-- CashPilot does not run Spide: you use the provider's own app, so there is no container for its terms to forbid. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/bandwidth/spide.yml), checked 2026-11-04.
+- None found.
 
 <a id="teneo"></a>
 
 ### Teneo Protocol
 
-**Grade F**, 2 of 20 points, 7 of 10 criteria unchecked, reviewed 2026-11-04. Setup guide: [Teneo Protocol](guides/teneo.md).
+**Grade F**, 1 of 20 points, 7 of 10 criteria unchecked, reviewed 2026-11-04. Setup guide: [Teneo Protocol](guides/teneo.md).
 
 | Criterion | Verdict | Note |
 |---|---|---|
 | Payout record | Unknown | No transferable token has been paid out yet. |
 | Payout terms | Poor |  |
 | Account safety | Unknown | No reports found. |
-| Fit with how CashPilot runs it | Good |  |
+| Fit with how CashPilot runs it | Fair |  |
 | Traffic transparency | Unknown | Not documented on pages we read. |
 | Privacy | Unknown | Not reviewed. |
 | Identity checks | Unknown | Not documented. |
@@ -1276,23 +1280,24 @@ What a cited con or pro may rest on:
 
 - Teneo says points will be consolidated into $AGENTIC, a non-transferable reward token, not the $TENEO token. [Source](https://teneo-protocol.ai/blog/the-first-step-towards-future-teneo-rewards), checked 2026-11-04.
 - No $TENEO launch date, allocation or claim process had been confirmed by November 2026, after an earlier target of the second quarter of 2026 passed. [Source](https://blog.mexc.com/crypto-knowledge/teneo-airdrop-guide/), checked 2026-11-04.
+- CashPilot does not run Teneo: you use the provider's own browser extension, so CashPilot cannot deploy or update it for you. Its terms were not checked for containers. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/depin/teneo.yml), checked 2026-11-04.
 
 **Pros**
 
-- CashPilot does not run Teneo: you use the provider's own browser extension, so there is no container for its terms to forbid. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/depin/teneo.yml), checked 2026-11-04.
+- None found.
 
 <a id="theta-edge"></a>
 
 ### Theta Edge Node
 
-**Grade F**, 2 of 20 points, 8 of 10 criteria unchecked, reviewed 2026-11-04. Setup guide: [Theta Edge Node](guides/theta-edge.md).
+**Grade F**, 1 of 20 points, 8 of 10 criteria unchecked, reviewed 2026-11-04. Setup guide: [Theta Edge Node](guides/theta-edge.md).
 
 | Criterion | Verdict | Note |
 |---|---|---|
 | Payout record | Unknown | We found no pattern of reports either way. |
 | Payout terms | Unknown | Elite edge nodes need at least 10,000 TFUEL staked; we did not find the full payout terms. |
 | Account safety | Unknown | No reports found. |
-| Fit with how CashPilot runs it | Good |  |
+| Fit with how CashPilot runs it | Fair |  |
 | Traffic transparency | Unknown | Not documented on pages we read. |
 | Privacy | Unknown | Not reviewed. |
 | Identity checks | Unknown | Not documented. |
@@ -1303,23 +1308,24 @@ What a cited con or pro may rest on:
 **Cons**
 
 - A Theta forum estimate puts a standard edge node at 3 to 30 TFUEL a month, which was $0.30 to $3 at a TFUEL price of $0.10. [Source](https://www.thetaforums.com/forum/theta-network-forum-aa/425-how-much-can-you-earn-running-a-theta-edge-node), checked 2026-11-04.
+- CashPilot does not run Theta Edge: you use the provider's own desktop app, so CashPilot cannot deploy or update it for you. Its terms were not checked for containers. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/depin/theta-edge.yml), checked 2026-11-04.
 
 **Pros**
 
-- CashPilot does not run Theta Edge: you use the provider's own desktop app, so there is no container for its terms to forbid. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/depin/theta-edge.yml), checked 2026-11-04.
+- None found.
 
 <a id="titan"></a>
 
 ### Titan Network
 
-**Grade F**, 2 of 20 points, 8 of 10 criteria unchecked, reviewed 2026-11-04. Setup guide: [Titan Network](guides/titan.md).
+**Grade F**, 1 of 20 points, 8 of 10 criteria unchecked, reviewed 2026-11-04. Setup guide: [Titan Network](guides/titan.md).
 
 | Criterion | Verdict | Note |
 |---|---|---|
 | Payout record | Unknown | We found no pattern of user reports either way. |
 | Payout terms | Unknown | Earlier reward rules locked 40% of daily rewards; those rules are marked replaced and we did not find the current ones. |
 | Account safety | Unknown | No reports found. |
-| Fit with how CashPilot runs it | Good |  |
+| Fit with how CashPilot runs it | Fair |  |
 | Traffic transparency | Unknown | Not documented on pages we read. |
 | Privacy | Unknown | Not reviewed. |
 | Identity checks | Unknown | Not documented. |
@@ -1330,9 +1336,10 @@ What a cited con or pro may rest on:
 **Cons**
 
 - Titan's own help says a running node does not guarantee earnings: with no task assigned it earns nothing, and rewards are in the TNT token. [Source](https://titannet.gitbook.io/titan-network-en/galileo-testnet/f.a.q./how-to-increase-node-rewards), checked 2026-11-04.
+- CashPilot does not run Titan: you use the provider's own app or extension, so CashPilot cannot deploy or update it for you. Its terms were not checked for containers. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/depin/titan.yml), checked 2026-11-04.
 
 **Pros**
 
-- CashPilot does not run Titan: you use the provider's own app or extension, so there is no container for its terms to forbid. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/depin/titan.yml), checked 2026-11-04.
+- None found.
 
 <!-- END GENERATED: ratings -->

@@ -70,15 +70,15 @@ payout:
 rating:
   reviewed_on: "2026-11-04"
   verdicts:
-    payout_record: fair
+    payout_record: good
     payout_terms: fair
     account_safety: unknown
-    terms_fit: good
+    terms_fit: fair
     traffic_transparency: unknown
     privacy: unknown
     identity_checks: unknown
     support: unknown
-    earnings_realism: poor
+    earnings_realism: fair
     longevity: unknown
   notes:
     account_safety: No pattern found.
@@ -88,27 +88,30 @@ rating:
     support: No pattern found.
     longevity: Not checked on a primary source.
   cons:
-  - text: Trustpilot's summary notes earnings that often fail to cover the electricity of high-end hardware
-      and unpredictable job availability; an August 2026 review calls the advertised earnings misleading.
+  - text: Trustpilot's own summary of its reviews says some reviewers find earnings low and often not
+      enough to cover electricity and hardware wear; one October 2026 reviewer says an RTX 3090 barely
+      covered its electricity.
     criterion: earnings_realism
     kind: user_reports
     source: https://www.trustpilot.com/review/salad.com
     checked_on: "2026-11-04"
-  - text: Some reviewers report withdrawal delays and a June 2026 reviewer a cancelled reward; others
-      report fast payouts.
-    criterion: payout_record
-    kind: user_reports
-    source: https://www.trustpilot.com/review/salad.com
-    checked_on: "2026-11-04"
-  - text: PayPal and gift cards only, through Salad's own storefront; some reviewers report steep fees.
+  - text: Rewards are redeemed in Salad's own storefront for PayPal or gift cards, with no crypto. Trustpilot's
+      summary says some payment methods are hard to use in some regions, and reviewers describe a Visa
+      card that cannot be added to Apple Pay in Europe and no payout option for India.
     criterion: payout_terms
     kind: user_reports
     source: https://www.trustpilot.com/review/salad.com
     checked_on: "2026-11-04"
-  pros:
-  - text: 'CashPilot does not run Salad: you use the provider''s own desktop app, so there is no container
-      for its terms to forbid.'
+  - text: 'CashPilot does not run Salad: you use the provider''s own desktop app, so CashPilot cannot deploy
+      or update it for you. Its terms were not checked for containers.'
     criterion: terms_fit
     kind: our_experience
     source: https://github.com/GeiserX/CashPilot/blob/main/services/compute/salad.yml
+    checked_on: "2026-11-04"
+  pros:
+  - text: Several Trustpilot reviewers in October and November 2026 report PayPal cash-outs arriving
+      quickly, some more than once; one reviewer in the same period says repeated cash-out attempts failed.
+    criterion: payout_record
+    kind: user_reports
+    source: https://www.trustpilot.com/review/salad.com
     checked_on: "2026-11-04"

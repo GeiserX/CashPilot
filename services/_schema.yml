@@ -191,9 +191,11 @@
 #     pros:                       same shape as cons
 #   A fair or poor verdict needs at least one con citing that criterion, a good
 #   one at least one pro. requirements.container_prohibited: true requires
-#   terms_fit: poor. A user_reports item must show a pattern: the source is an
-#   aggregate page or a thread with several matching reports, or a second
-#   source backs it. Never a single complaint. A fact from our own payouts goes
+#   terms_fit: poor. A user_reports item must show a pattern: at least three
+#   reviewers or posters describing the same specific problem, or two backed by
+#   an independent second source. Never a single complaint, and fewer than that
+#   is an unknown verdict with a note. A provider CashPilot does not run at all
+#   (an app, extension or device the user sets up) is terms_fit: fair. A fact from our own payouts goes
 #   into the provider's guide first, so the source is a public page with no
 #   account details. Thin evidence is an unknown verdict, never a padded one.
 

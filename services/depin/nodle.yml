@@ -68,7 +68,7 @@ rating:
     payout_record: fair
     payout_terms: unknown
     account_safety: unknown
-    terms_fit: good
+    terms_fit: fair
     traffic_transparency: unknown
     privacy: unknown
     identity_checks: unknown
@@ -96,9 +96,8 @@ rating:
     kind: user_reports
     source: https://www.appbrain.com/app/nodle-cash-simple-earning-app/io.nodle.cash
     checked_on: "2026-11-04"
-  pros:
-  - text: 'CashPilot does not run Nodle: you use the provider''s own phone app, so there is no container
-      for its terms to forbid.'
+  - text: 'CashPilot does not run Nodle: you use the provider''s own phone app, so CashPilot cannot deploy
+      or update it for you. Its terms were not checked for containers.'
     criterion: terms_fit
     kind: our_experience
     source: https://github.com/GeiserX/CashPilot/blob/main/services/depin/nodle.yml

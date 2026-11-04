@@ -68,7 +68,7 @@ rating:
     payout_record: unknown
     payout_terms: good
     account_safety: unknown
-    terms_fit: good
+    terms_fit: fair
     traffic_transparency: unknown
     privacy: unknown
     identity_checks: unknown
@@ -84,15 +84,16 @@ rating:
     support: No reports found.
     earnings_realism: Not measured.
     longevity: We found no named company. Mobile and Linux apps announced in early 2025 have not shipped.
+  cons:
+  - text: 'CashPilot does not run PassiveApp: you use the provider''s own desktop app, so CashPilot cannot
+      deploy or update it for you. Its terms were not checked for containers.'
+    criterion: terms_fit
+    kind: our_experience
+    source: https://github.com/GeiserX/CashPilot/blob/main/services/depin/passiveapp.yml
+    checked_on: "2026-11-04"
   pros:
   - text: PassiveApp's site lists PayPal, crypto and gift cards from a $3 minimum.
     criterion: payout_terms
     kind: terms
     source: https://www.passiveapp.com/
-    checked_on: "2026-11-04"
-  - text: 'CashPilot does not run PassiveApp: you use the provider''s own desktop app, so there is no
-      container for its terms to forbid.'
-    criterion: terms_fit
-    kind: our_experience
-    source: https://github.com/GeiserX/CashPilot/blob/main/services/depin/passiveapp.yml
     checked_on: "2026-11-04"

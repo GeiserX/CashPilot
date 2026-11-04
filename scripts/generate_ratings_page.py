@@ -16,6 +16,8 @@ import datetime as dt
 import sys
 from pathlib import Path
 
+import yaml
+
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
@@ -152,20 +154,52 @@ def stale(today: dt.date | None = None) -> list[str]:
     return out
 
 
+def problems(services: list[dict] | None = None, today: dt.date | None = None) -> list[str]:
+    """What the strict CI gate rejects: a live service with no valid rating.
+
+    The loader keeps a service whose rating block is invalid (it shows as not
+    rated), and it skips the future-date check, so this is where both fail.
+    The block is re-read from disk because the loader drops an invalid one.
+    """
+    out = []
+    for svc in services if services is not None else _live_raw():
+        if svc.get("status") not in ("active", "beta"):
+            continue
+        if "rating" not in svc:
+            out.append(f"{svc['slug']}: not rated")
+            continue
+        out += [f"{svc['slug']}: {err}" for err in ratings.validate(svc["rating"], svc, today=today)]
+    return out
+
+
+def _live_raw() -> list[dict]:
+    """Every service file as written, before the loader strips a bad rating."""
+    out = []
+    for path in sorted(catalog.SERVICES_DIR.rglob("*.y*ml")):
+        if path.name.startswith("_"):
+            continue
+        data = yaml.safe_load(path.read_text(encoding="utf-8"))
+        if isinstance(data, dict) and data.get("slug"):
+            out.append(data)
+    return out
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--check", action="store_true", help="fail if docs/ratings.md is out of date")
     args = parser.parse_args()
 
-    unrated = [s["slug"] for s in _live() if not ratings.for_service(s)["rated"]]
-    if unrated:
-        print(f"Not rated yet: {', '.join(unrated)}")
+    bad = problems()
+    for line in bad:
+        print(f"Rating problem: {line}")
     for line in stale():
         print(f"Review is over {STALE_DAYS} days old: {line}")
 
     current = PAGE.read_text(encoding="utf-8")
     wanted = render_file(current)
     if args.check:
+        if bad:
+            return 1
         if current != wanted:
             print("docs/ratings.md is out of date. Run: python scripts/generate_ratings_page.py")
             return 1

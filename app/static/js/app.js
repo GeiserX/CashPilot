@@ -3523,8 +3523,8 @@ const CP = (() => {
     container.innerHTML = `
       <table class="catalog-table">
         <thead><tr>
-          <th scope="col">Service</th><th scope="col">Kind</th><th scope="col">Runs on</th>
-          <th scope="col" class="num">Est. per month</th><th scope="col">Grade</th><th scope="col">Needs</th><th scope="col"><span class="sr-only">Action</span></th>
+          <th scope="col">Service</th><th scope="col" class="cat-col-kind">Kind</th><th scope="col" class="cat-col-plat">Runs on</th>
+          <th scope="col" class="num">Est. per month</th><th scope="col" class="cat-col-grade">Grade</th><th scope="col" class="cat-col-needs">Needs</th><th scope="col"><span class="sr-only">Action</span></th>
         </tr></thead>
         ${group('Running in your fleet', running)}${group('Not running', rest)}
       </table>`;

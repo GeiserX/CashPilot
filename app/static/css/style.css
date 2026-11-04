@@ -2130,8 +2130,9 @@ body.gate { display: flex; flex-direction: column; }
   .detail-item + .detail-item { border-left: none; padding-left: 0; border-top: 1px solid var(--border-color); }
   .category-grid { grid-template-columns: 1fr; }
   .wizard-step-label { display: none; }
+  /* Headers hide by class with their cells, so a new column cannot shift them. */
   .catalog-table .cat-plat, .catalog-table .cat-needs, .catalog-table .cat-kind,
-  .catalog-table thead th:nth-child(2), .catalog-table thead th:nth-child(3), .catalog-table thead th:nth-child(5) { display: none; }
+  .catalog-table .cat-col-plat, .catalog-table .cat-col-needs, .catalog-table .cat-col-kind { display: none; }
   .catalog-table .cat-est { white-space: normal; }
   /* 320 px: the five filters wrap and long service words break, instead of
      pushing the page sideways. */

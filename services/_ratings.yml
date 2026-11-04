@@ -1,5 +1,5 @@
 # How CashPilot grades providers. This file is the published method: the docs
-# page (docs/ratings.md), the app and CashPilot-Desktop all grade from it.
+# page (docs/ratings.md) and the app grade from it.
 #
 # A grade is never typed by a person. Each service YAML records one verdict per
 # criterion below, in its `rating:` block (see _schema.yml), and every verdict
@@ -7,9 +7,8 @@
 # letter. The rating block has no field for a typed grade or an override, and
 # the loader rejects an entry that has one.
 #
-# CashPilot-Desktop re-implements the grading in Go with these values as
-# constants, and a test there compares them with this file. Change a value
-# here and the Desktop port has to change with it.
+# CashPilot-Desktop does not show grades yet: it reads the catalog but
+# ignores the rating block. When it does, it has to grade from this file too.
 
 criteria:
   - key: payout_record
@@ -37,7 +36,7 @@ criteria:
     title: Fit with how CashPilot runs it
     question: Do the terms allow running it the way CashPilot does, in a container on a home server?
     good: Containers or servers are allowed, or the official client is a container image.
-    fair: The terms are silent on containers, or allow them with conditions such as one device per IP.
+    fair: The terms are silent on containers, or allow them with conditions such as one device per IP, or CashPilot does not run the provider at all (it is an app, extension or device you set up yourself), so the question does not apply.
     poor: The terms forbid containers, virtual machines or servers.
 
   - key: traffic_transparency
@@ -125,5 +124,5 @@ kinds:
   terms: The provider's own terms, help centre or documentation.
   provider_reply: The provider's own reply to a user, for example on a review site.
   our_experience: What happened when we ran it or cashed out, written up in this repo.
-  user_reports: A pattern in user reports, from an aggregate page or a thread with several matching reports, or backed by a second source.
+  user_reports: A pattern in user reports, never a single complaint. At least three reviewers or posters describing the same specific problem, or two backed by an independent second source. An aggregate summary written by the review site counts as one source.
   press: A news article, a court record or a public filing.
