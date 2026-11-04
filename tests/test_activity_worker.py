@@ -888,22 +888,42 @@ class TestHostNetworkByCgroup:
 
 
 class TestTwoWorkersOneHost:
-    def test_sweep_keeps_another_workers_probe_and_running_legacy_ones(self):
+    def test_sweep_keeps_another_workers_live_probe_and_running_legacy_ones(self):
+        def theirs(name, status):
+            return Probe(
+                name, attrs={"Config": {"Labels": {"cashpilot.probe.worker": "other"}}, "State": {"Status": status}}
+            )
+
         client = FakeClient([])
         client.listed_leftovers = [
             Probe(
                 "ours", attrs={"Config": {"Labels": {"cashpilot.probe.worker": WORKER}}, "State": {"Status": "running"}}
             ),
-            Probe(
-                "theirs",
-                attrs={"Config": {"Labels": {"cashpilot.probe.worker": "other"}}, "State": {"Status": "exited"}},
-            ),
+            theirs("theirs-running", "running"),
+            theirs("theirs-created", "created"),
             Probe("legacy-running", attrs={"Config": {"Labels": {}}, "State": {"Status": "running"}}),
             Probe("legacy-exited", attrs={"Config": {"Labels": {}}, "State": {"Status": "exited"}}),
         ]
         assert activity.sweep(client) == []
         removed = [p.name for p in client.listed_leftovers if p.removed]
         assert removed == ["ours", "legacy-exited"]
+
+    @pytest.mark.parametrize("status", ["exited", "dead"])
+    def test_sweep_removes_a_finished_probe_of_another_worker(self, status):
+        """A finished probe keeps its round's addresses in its Docker log; it is never mid-round, so any worker removes it.
+
+        A worker without a writable /data gets a new id on every start, so its old probes would
+        otherwise stay on the host for good.
+        """
+        client = FakeClient([])
+        client.listed_leftovers = [
+            Probe(
+                "theirs-done",
+                attrs={"Config": {"Labels": {"cashpilot.probe.worker": "other"}}, "State": {"Status": status}},
+            ),
+        ]
+        assert activity.sweep(client) == []
+        assert client.listed_leftovers[0].removed
 
     def test_probe_names_differ_per_worker(self, monkeypatch):
         mine = activity.probe_name("a" * 64)

@@ -317,8 +317,10 @@ _DIAG_REQ = struct.Struct("=BBBxI48x")
 #: expires, rqueue, wqueue, uid, inode.
 _DIAG_MSG = struct.Struct("=BBBB2H16s16sI8xIIIII")
 _RTA_HDR = struct.Struct("=HH")
-#: Bounds on what one dump may hold, so a host with a huge table cannot run the helper out of memory.
+#: Bound on the sockets one dump reads, so a host with a huge table cannot keep the helper busy.
 MAX_DIAG_MESSAGES = 200_000
+#: Every TCP state but TIME_WAIT (6) and NEW_SYN_RECV (12): those never carry a cgroup id.
+DIAG_STATES = 0xFFFFFFFF & ~((1 << 6) | (1 << 12))
 DIAG_DUMPS = (
     ("tcp", socket.AF_INET, 6),
     ("tcp6", socket.AF_INET6, 6),
@@ -394,28 +396,34 @@ def parse_diag(data, proto):
     return found, False, 0
 
 
-def diag_dump(proto, family, ipproto, cap=MAX_DIAG_MESSAGES):
-    """Every socket of one family and protocol in this network namespace, via sock_diag.
+def diag_dump(proto, family, ipproto, keep=None, cap=MAX_DIAG_MESSAGES):
+    """(sockets, truncated): the sockets of one family and protocol in this network namespace, via sock_diag.
 
-    Raises OSError when netlink refuses (no socket, or an error reply).
+    ``keep`` filters each socket as it is read, so memory follows what is kept,
+    not the host's whole table. ``truncated`` is True when ``cap`` sockets were
+    read before the dump ended. Raises OSError when netlink refuses (no socket,
+    or an error reply).
     """
-    req = _DIAG_REQ.pack(family, ipproto, 0, 0xFFFFFFFF)
+    req = _DIAG_REQ.pack(family, ipproto, 0, DIAG_STATES)
     msg = _NLMSG_HDR.pack(_NLMSG_HDR.size + len(req), SOCK_DIAG_BY_FAMILY, NLM_F_REQUEST | NLM_F_DUMP, 1, 0) + req
     family_netlink = getattr(socket, "AF_NETLINK", None)
     if family_netlink is None:
         raise OSError("no netlink on this system")
-    found = []
+    found, read = [], 0
     with socket.socket(family_netlink, socket.SOCK_DGRAM, NETLINK_SOCK_DIAG) as s:
         s.settimeout(5)
         s.sendto(msg, (0, 0))
-        while len(found) < cap:
+        while True:
             sockets, done, err = parse_diag(s.recv(1 << 16), proto)
             if err:
                 raise OSError(err, "sock_diag")
-            found.extend(sockets)
+            sockets = sockets[: cap - read]
+            read += len(sockets)
+            found.extend(x for x in sockets if keep is None or keep(x))
             if done:
-                break
-    return found[:cap]
+                return found, False
+            if read >= cap:
+                return found, True
 
 
 def cgroup_ids(container_id, root=CGROUP_ROOT, max_depth=CGROUP_MAX_DEPTH, max_dirs=CGROUP_MAX_DIRS):
@@ -457,29 +465,40 @@ def cgroup_ids(container_id, root=CGROUP_ROOT, max_depth=CGROUP_MAX_DEPTH, max_d
 
 
 def cgroup_snapshot(ids, dumps=DIAG_DUMPS, dump=None):
-    """(sockets of these cgroups, any socket carried a real cgroup id, dumps that worked).
+    """(sockets of these cgroups, any socket carried a real cgroup id, dumps that worked, partial).
 
     An id of 1 is the root cgroup, which is also what every socket reports when
     the cgroup v1 net_cls or net_prio controller is active: a host where no
-    socket carries anything else cannot be told apart.
+    socket carries anything else cannot be told apart. ``partial`` is True when
+    a dump was refused (a kernel without udp_diag) or hit its cap, so the
+    reading misses sockets.
     """
     dump = dump or diag_dump
-    mine, tagged, worked = [], False, 0
+    tagged = False
+
+    def keep(s):
+        nonlocal tagged
+        cg = s.get("cgroup")
+        if cg is None:
+            # Never match a missing id: TIME_WAIT and request sockets carry
+            # none, and None == None would hand the host's to the earner.
+            return False
+        tagged = tagged or cg != 1
+        return cg in ids
+
+    mine, worked, partial = [], 0, False
     for proto, family, ipproto in dumps:
         try:
-            sockets = dump(proto, family, ipproto)
+            sockets, truncated = dump(proto, family, ipproto, keep)
         except OSError:
+            partial = True
             continue
         worked += 1
+        partial = partial or truncated
         for s in sockets:
-            cg = s.pop("cgroup")
-            if cg is not None:
-                tagged = tagged or cg != 1
-                # Never match a missing id: TIME_WAIT and request sockets carry
-                # none, and None == None would hand the host's to the earner.
-                if cg in ids:
-                    mine.append(s)
-    return mine, tagged, worked
+            s.pop("cgroup", None)
+            mine.append(s)
+    return mine, tagged, worked, partial and worked > 0
 
 
 def _read(path):
@@ -531,23 +550,24 @@ def _ctx_from_env():
 
 
 def _cgroup_reading(container_id, snapshots_n, gap):
-    """(snapshots, reason) of the sockets of one container's cgroups in this network namespace."""
+    """(snapshots, reason, partial) of the sockets of one container's cgroups in this network namespace."""
     ids, reason = cgroup_ids(container_id)
     if reason:
-        return [], reason
-    snapshots, tagged, worked = [], False, 0
+        return [], reason, False
+    snapshots, tagged, worked, partial = [], False, 0, False
     for i in range(snapshots_n):
         if i:
             time.sleep(gap)
-        mine, any_tagged, dumps = cgroup_snapshot(ids)
+        mine, any_tagged, dumps, missed = cgroup_snapshot(ids)
         tagged = tagged or any_tagged
         worked = max(worked, dumps)
+        partial = partial or missed
         snapshots.append(mine)
     if not worked:
-        return [], "sock_diag_refused"
+        return [], "sock_diag_refused", False
     if not tagged:
-        return [], "kernel_no_cgroup_id"
-    return snapshots, ""
+        return [], "kernel_no_cgroup_id", False
+    return snapshots, "", partial
 
 
 def main():
@@ -556,8 +576,10 @@ def main():
     ctx = _ctx_from_env()
     if os.environ.get("PROBE_MODE") == "cgroup":
         # The host's counters and namespace are the machine's, not the earner's.
-        snapshots, reason = _cgroup_reading(os.environ.get("PROBE_CONTAINER", ""), snapshots_n, gap)
+        snapshots, reason, partial = _cgroup_reading(os.environ.get("PROBE_CONTAINER", ""), snapshots_n, gap)
         summary = summarise(snapshots)
+        # A refused or capped dump missed sockets: never present the reading as complete.
+        summary["truncated"] = summary["truncated"] or partial
         out = {
             "v": 1,
             "attribution": "cgroup",

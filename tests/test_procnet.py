@@ -444,46 +444,121 @@ def _sock(lport, cgroup, rip="1.1.1.1"):
     }
 
 
+def _dump_of(socks, truncated=False):
+    """A sock_diag dump that applies the caller's keep filter, as diag_dump does."""
+
+    def dump(proto, family, ipproto, keep):
+        return [dict(s) for s in socks if keep(s)], truncated
+
+    return dump
+
+
 class TestCgroupSnapshot:
     def test_keeps_only_this_containers_sockets(self):
         dumps = (("tcp", 2, 6),)
-        mine, tagged, worked = procnet.cgroup_snapshot(
-            {10, 11}, dumps, lambda *a: [_sock(1, 10), _sock(2, 11), _sock(3, 99), _sock(4, None)]
+        mine, tagged, worked, partial = procnet.cgroup_snapshot(
+            {10, 11}, dumps, _dump_of([_sock(1, 10), _sock(2, 11), _sock(3, 99), _sock(4, None)])
         )
-        assert [s["lport"] for s in mine] == [1, 2] and tagged and worked == 1
+        assert [s["lport"] for s in mine] == [1, 2] and tagged and worked == 1 and partial is False
         assert "cgroup" not in mine[0]
 
     def test_a_missing_id_never_matches(self):
         """None == None must not hand the host's TIME_WAIT sockets to the earner."""
-        mine, tagged, _ = procnet.cgroup_snapshot({None, 10}, (("tcp", 2, 6),), lambda *a: [_sock(1, None)])
+        mine, tagged, _, _ = procnet.cgroup_snapshot({None, 10}, (("tcp", 2, 6),), _dump_of([_sock(1, None)]))
         assert mine == [] and tagged is False
 
     def test_only_root_ids_count_as_untagged(self):
-        _, tagged, _ = procnet.cgroup_snapshot({10}, (("tcp", 2, 6),), lambda *a: [_sock(1, 1), _sock(2, 1)])
+        _, tagged, _, _ = procnet.cgroup_snapshot({10}, (("tcp", 2, 6),), _dump_of([_sock(1, 1), _sock(2, 1)]))
         assert tagged is False
 
-    def test_a_refused_dump_is_skipped(self):
-        def dump(proto, *_):
-            if proto == "tcp6":
-                raise OSError(13, "refused")
-            return [_sock(1, 10)]
+    def test_a_refused_dump_makes_the_reading_partial(self):
+        """A kernel without udp_diag answers the UDP dumps with an error: the reading misses a protocol."""
 
-        mine, _, worked = procnet.cgroup_snapshot({10}, (("tcp", 2, 6), ("tcp6", 10, 6)), dump)
-        assert len(mine) == 1 and worked == 1
+        def dump(proto, family, ipproto, keep):
+            if proto.startswith("udp"):
+                raise OSError(2, "no udp_diag")
+            return [s for s in [_sock(1, 10)] if keep(s)], False
+
+        mine, _, worked, partial = procnet.cgroup_snapshot({10}, procnet.DIAG_DUMPS, dump)
+        assert len(mine) == 2 and worked == 2 and partial is True
+
+    def test_a_capped_dump_makes_the_reading_partial(self):
+        _, _, _, partial = procnet.cgroup_snapshot({10}, (("tcp", 2, 6),), _dump_of([_sock(1, 10)], truncated=True))
+        assert partial is True
+
+
+class _FakeNetlink:
+    """A netlink socket that records the request and answers with canned reads."""
+
+    def __init__(self, reads):
+        self.reads, self.sent = list(reads), []
+
+    def __call__(self, *a, **kw):
+        return self
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+    def settimeout(self, t):
+        pass
+
+    def sendto(self, msg, addr):
+        self.sent.append(msg)
+
+    def recv(self, n):
+        return self.reads.pop(0)
+
+
+class TestDiagDump:
+    def _dump(self, monkeypatch, reads, **kw):
+        fake = _FakeNetlink(reads)
+        monkeypatch.setattr(procnet.socket, "AF_NETLINK", 16, raising=False)
+        monkeypatch.setattr(procnet.socket, "socket", fake)
+        return fake, procnet.diag_dump("tcp", socket.AF_INET, 6, **kw)
+
+    def test_never_asks_for_sockets_that_carry_no_cgroup_id(self, monkeypatch):
+        """TIME_WAIT and NEW_SYN_RECV never carry a cgroup id: asking for them only fills memory."""
+        fake, _ = self._dump(monkeypatch, [_done()])
+        _family, _proto, _ext, states = procnet._DIAG_REQ.unpack_from(fake.sent[0], procnet._NLMSG_HDR.size)
+        assert not states & (1 << 6) and not states & (1 << 12)
+        assert states & (1 << 1) and states & (1 << 2) and states & (1 << 7) and states & (1 << 10)
+
+    def test_keeps_only_what_the_filter_keeps(self, monkeypatch):
+        """The host's other sockets are dropped as they are read, so memory follows the earner's."""
+        batch = b"".join(
+            _diag_msg(socket.AF_INET, 1, 40000 + i, 443, "10.0.0.5", "1.1.1.1", cgroup=i) for i in range(50)
+        )
+        _, (found, truncated) = self._dump(monkeypatch, [batch, _done()], keep=lambda s: s["cgroup"] == 7)
+        assert [s["lport"] for s in found] == [40007] and truncated is False
+
+    def test_hitting_the_cap_is_reported(self, monkeypatch):
+        batch = b"".join(
+            _diag_msg(socket.AF_INET, 1, 40000 + i, 443, "10.0.0.5", "1.1.1.1", cgroup=7) for i in range(5)
+        )
+        _, (found, truncated) = self._dump(monkeypatch, [batch, batch, _done()], keep=lambda s: True, cap=6)
+        assert truncated is True and len(found) <= 6
 
 
 class TestCgroupReading:
     CID = "ab" * 32
 
     def _patch(self, monkeypatch, ids=({5}, ""), snap=None):
+        snap = snap if snap is None or len(snap) == 4 else (*snap, False)
         monkeypatch.setattr(procnet, "cgroup_ids", lambda cid: ids)
         monkeypatch.setattr(procnet, "cgroup_snapshot", lambda ids: snap)
         monkeypatch.setattr(procnet.time, "sleep", lambda s: None)
 
     def test_ok(self, monkeypatch):
         self._patch(monkeypatch, snap=([_sock(1, 5)], True, 4))
-        snaps, reason = procnet._cgroup_reading(self.CID, 3, 0)
-        assert reason == "" and len(snaps) == 3
+        snaps, reason, partial = procnet._cgroup_reading(self.CID, 3, 0)
+        assert reason == "" and len(snaps) == 3 and partial is False
+
+    def test_a_partial_snapshot_makes_the_reading_partial(self, monkeypatch):
+        self._patch(monkeypatch, snap=([_sock(1, 5)], True, 2, True))
+        assert procnet._cgroup_reading(self.CID, 2, 0)[2] is True
 
     @pytest.mark.parametrize(
         "ids,snap,reason",
@@ -496,7 +571,7 @@ class TestCgroupReading:
     )
     def test_reasons(self, monkeypatch, ids, snap, reason):
         self._patch(monkeypatch, ids=ids, snap=snap)
-        assert procnet._cgroup_reading(self.CID, 2, 0) == ([], reason)
+        assert procnet._cgroup_reading(self.CID, 2, 0) == ([], reason, False)
 
 
 class TestMainModes:
@@ -510,21 +585,27 @@ class TestMainModes:
 
     def test_cgroup_mode_reports_no_namespace_or_counters(self, capsys, monkeypatch):
         monkeypatch.setattr(
-            procnet, "_cgroup_reading", lambda cid, n, g: ([[_sock(1, 5) | {"rip": "1.1.1.1"}]] * n, "")
+            procnet, "_cgroup_reading", lambda cid, n, g: ([[_sock(1, 5) | {"rip": "1.1.1.1"}]] * n, "", False)
         )
         out = self._run(capsys, monkeypatch, {"PROBE_MODE": "cgroup", "PROBE_CONTAINER": "ab" * 32})
         assert out["attribution"] == "cgroup" and out["reason"] == ""
         assert out["netns"] is None and out["snmp_start"] is None and out["snmp_end"] is None
         assert out["summary"]["est_max"] == 1 and "classified" not in out
 
+    def test_cgroup_mode_partial_reading_is_marked_truncated(self, capsys, monkeypatch):
+        """A reading that missed a protocol or hit the cap never passes as complete."""
+        monkeypatch.setattr(procnet, "_cgroup_reading", lambda cid, n, g: ([[_sock(1, 5)]] * n, "", True))
+        out = self._run(capsys, monkeypatch, {"PROBE_MODE": "cgroup", "PROBE_CONTAINER": "ab" * 32})
+        assert out["reason"] == "" and out["summary"]["truncated"] is True
+
     def test_cgroup_mode_failure_carries_its_reason(self, capsys, monkeypatch):
-        monkeypatch.setattr(procnet, "_cgroup_reading", lambda cid, n, g: ([], "cgroup_v1"))
+        monkeypatch.setattr(procnet, "_cgroup_reading", lambda cid, n, g: ([], "cgroup_v1", False))
         out = self._run(capsys, monkeypatch, {"PROBE_MODE": "cgroup", "PROBE_CONTAINER": "ab" * 32})
         assert out["reason"] == "cgroup_v1" and out["summary"]["out"] == []
 
     def test_probe_ctx_classifies_rows_in_the_helper(self, capsys, monkeypatch):
         socks = [_sock(1, 5, "192.168.1.1"), _sock(2, 5, "1.1.1.1")]
-        monkeypatch.setattr(procnet, "_cgroup_reading", lambda cid, n, g: ([socks] * n, ""))
+        monkeypatch.setattr(procnet, "_cgroup_reading", lambda cid, n, g: ([socks] * n, "", False))
         ctx = {"gateways": [], "dns": [], "subnets": [], "peers": []}
         out = self._run(
             capsys, monkeypatch, {"PROBE_MODE": "cgroup", "PROBE_CONTAINER": "ab" * 32, "PROBE_CTX": json.dumps(ctx)}

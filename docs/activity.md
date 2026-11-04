@@ -73,7 +73,11 @@ for the dashboard's usage graphs; Activity stores no second byte counter.
   the host's cgroup namespace). This needs no extra privilege. What that row
   cannot show, and says so:
   - connections already closing (TIME_WAIT) carry no cgroup, so a finished
-    connection may be missed;
+    connection may be missed; the helper does not even ask for them, so a
+    busy host does not run it out of memory;
+  - when the kernel answers only part of the socket list (one without UDP
+    socket listing, for example) or the list passes 200,000 sockets, the row
+    keeps what it read and shows the `+`, so it never passes as complete;
   - the connection counters are the machine's, so opens and failures show a
     dash;
   - traffic an earner forwards for VPN customers is routed by the kernel, not
@@ -113,9 +117,10 @@ created, and the labels `cashpilot.probe=activity` and
 `cashpilot.probe.worker=<worker id>`. Its name carries a short hash of the
 worker id too, so two workers on one Docker host never collide. It is removed
 on every path. At start and before every round the worker removes any helper
-of its own that is left, and any stopped helper from an older release that
-labelled no worker; it never touches another worker's helper. A helper Docker
-refuses to remove is named on the page.
+of its own that is left, any finished helper of another worker (its log still
+holds that round's addresses), and any stopped helper from an older release
+that labelled no worker. It never touches another worker's running helper. A
+helper Docker refuses to remove is named on the page.
 
 The helper for a host-network earner runs with `network_mode: host` and the
 host's cgroup namespace, with every other limit above unchanged.

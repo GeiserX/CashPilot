@@ -49,6 +49,8 @@ WORKER_LABEL = "cashpilot.probe.worker"
 WORKER_ID = ""
 #: Container states a probe of an older worker (no WORKER_LABEL) may be swept in.
 STOPPED_STATES = ("created", "exited", "dead")
+#: States of a probe that ran and ended: removed whatever worker started it.
+FINISHED_STATES = ("exited", "dead")
 #: Seconds one probe may run: 5 snapshots 2 s apart is about 8 s.
 PROBE_TIMEOUT = 30
 PROBE_SNAPSHOTS = 5
@@ -100,21 +102,29 @@ def _remove(container: Any) -> bool:
 
 
 def _ours(c: Any) -> bool:
-    """A probe this worker may remove: its own, or a stopped one an older worker left unlabelled."""
+    """A probe this worker may remove: its own, a finished one of any worker, or a stopped unlabelled one.
+
+    A finished probe (exited or dead) is never mid-round, and its Docker log still holds its
+    round's addresses, so any worker removes it. Otherwise a worker that gets a new id on every
+    start (no writable /data) would leave its old probes, and their logs, on the host for good.
+    A foreign probe that is only "created" may be between create and start, so it is left alone;
+    it never ran, so it holds no log.
+    """
     labels = (_attrs(c).get("Config") or {}).get("Labels") or getattr(c, "labels", None) or {}
-    if WORKER_LABEL in labels:
-        return labels[WORKER_LABEL] == WORKER_ID
     state = _attrs(c).get("State")
-    status = state.get("Status") if isinstance(state, dict) else state
-    return str(status or "") in STOPPED_STATES
+    status = str((state.get("Status") if isinstance(state, dict) else state) or "")
+    if WORKER_LABEL in labels:
+        return labels[WORKER_LABEL] == WORKER_ID or status in FINISHED_STATES
+    return status in STOPPED_STATES
 
 
 def sweep(client: Any) -> list[str]:
     """Remove this worker's activity probes still on the host. Returns the ones Docker kept.
 
-    Another worker's probe is never touched, even when it shares the Docker
-    host: it may be mid-round. A probe with no worker label (from a release
-    before the label) is removed only once it has stopped.
+    Another worker's running probe is never touched, even when it shares the
+    Docker host: it may be mid-round. Its finished probe is removed, because its
+    log holds raw addresses and nothing else may ever remove it. A probe with no
+    worker label (from a release before the label) is removed once it has stopped.
     """
     left = []
     try:
