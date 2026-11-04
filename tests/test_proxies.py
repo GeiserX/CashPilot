@@ -671,6 +671,88 @@ class TestStorageAndRoutes:
         assert PASSWORD not in str(err.value.detail)
 
 
+def _slow_first_read():
+    """Patch get_proxy so its first caller holds a stale read while the others run."""
+    real = database.get_proxy
+    calls = {"n": 0}
+
+    async def get_proxy(pid):
+        calls["n"] += 1
+        first = calls["n"] == 1
+        proxy = await real(pid)
+        await asyncio.sleep(0.2 if first else 0)
+        return proxy
+
+    return patch.object(main.database, "get_proxy", side_effect=get_proxy)
+
+
+def _discard_spawn(coro):
+    coro.close()
+
+
+class TestProxyStateWriters:
+    """Every read-modify-write of proxies.state runs one at a time per proxy."""
+
+    def test_two_heartbeats_at_once_both_count(self, db):
+        async def go():
+            created = await main.api_create_proxy(_Req(_socks(cap_gb=10)), {})
+            pid = created["id"]
+            hb = [{**_entry(500_000_000, 0), "proxy_id": pid}]
+            with _slow_first_read():
+                await asyncio.gather(main._account_proxy_traffic(7, hb), main._account_proxy_traffic(8, hb))
+            return (await database.get_proxy(pid))["state"]["used_bytes"]
+
+        assert _run(go) == 1_000_000_000
+
+    def test_a_reset_during_a_heartbeat_sticks(self, db):
+        async def go():
+            created = await main.api_create_proxy(_Req(_socks(cap_gb=1)), {})
+            pid = created["id"]
+            await database.update_proxy_state(
+                pid,
+                {
+                    "used_bytes": 950_000_000,
+                    "capped_at": "2026-11-04T01:00:00+00:00",
+                    "cap_reason": "P hit",
+                    "counters": {"7:t1": [1000, 0, 100.0, "2026-11-01T00:00:00Z"]},
+                },
+            )
+            hb = [{**_entry(2100, 0), "proxy_id": pid}]
+            proxy = await database.get_proxy(pid)
+            with _slow_first_read(), patch.object(main, "_spawn", side_effect=_discard_spawn):
+                await asyncio.gather(main._account_proxy_traffic(7, hb), main._reset_proxy(proxy))
+            return (await database.get_proxy(pid))["state"]
+
+        state = _run(go)
+        assert "capped_at" not in state
+        assert state["used_bytes"] in (0, 1100)
+
+    def test_lifting_the_cap_during_a_heartbeat_sticks(self, db):
+        async def go():
+            created = await main.api_create_proxy(_Req(_socks(cap_gb=1)), {})
+            pid = created["id"]
+            await database.update_proxy_state(
+                pid,
+                {
+                    "used_bytes": 950_000_000,
+                    "capped_at": "2026-11-04T01:00:00+00:00",
+                    "cap_reason": "P hit",
+                    "counters": {"7:t1": [1000, 0, 100.0, "2026-11-01T00:00:00Z"]},
+                },
+            )
+            hb = [{**_entry(2100, 0), "proxy_id": pid}]
+            with _slow_first_read(), patch.object(main, "_spawn", side_effect=_discard_spawn):
+                await asyncio.gather(
+                    main._account_proxy_traffic(7, hb), main.api_update_proxy(_Req({"cap_gb": ""}), pid, {})
+                )
+            return await database.get_proxy(pid)
+
+        proxy = _run(go)
+        assert proxy["definition"].get("cap_gb") is None
+        assert "capped_at" not in proxy["state"]
+        assert proxy["state"]["used_bytes"] == 950_001_100
+
+
 class TestValidationEcho:
     def test_a_422_on_a_proxy_route_does_not_echo_the_body(self):
         from contextlib import asynccontextmanager

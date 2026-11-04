@@ -19,6 +19,7 @@ import secrets
 import socket
 import time
 import urllib.parse
+import weakref
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -4015,21 +4016,28 @@ async def api_create_proxy(request: Request, _auth: dict[str, Any] = Depends(_re
 async def api_update_proxy(
     request: Request, proxy_id: int, _auth: dict[str, Any] = Depends(_require_owner)
 ) -> dict[str, Any]:
-    proxy = await _proxy_or_404(proxy_id)
+    await _proxy_or_404(proxy_id)
     try:
         body = await request.json()
-        definition = proxies.clean_definition(body if isinstance(body, dict) else {}, proxy["definition"])
-    except proxies.ProxyInputError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from None
     except ValueError:
         raise HTTPException(status_code=400, detail="Send the proxy as a JSON object") from None
-    await database.update_proxy_definition(proxy_id, definition)
-    # A cap turned on starts a fresh period; one turned off or raised above
-    # this period's use lifts the stop and starts the copies it stopped.
-    current = await _proxy_or_404(proxy_id)
-    state, release = proxies.cap_change(proxy["definition"], definition, current["state"], datetime.now(UTC).date())
-    if state != current["state"]:
-        await database.update_proxy_state(proxy_id, state)
+    async with _proxy_state_lock(proxy_id):
+        # Read again under the lock, so a heartbeat or reset that ran while the
+        # body was parsed is neither lost nor allowed to undo this change.
+        current = await _proxy_or_404(proxy_id)
+        try:
+            definition = proxies.clean_definition(body if isinstance(body, dict) else {}, current["definition"])
+        except proxies.ProxyInputError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from None
+        await database.update_proxy_definition(proxy_id, definition)
+        # A cap turned on starts a fresh period; one turned off or raised above
+        # this period's use lifts the stop and starts the copies it stopped.
+        state, release = proxies.cap_change(
+            current["definition"], definition, current["state"], datetime.now(UTC).date()
+        )
+        if state != current["state"]:
+            await database.update_proxy_state(proxy_id, state)
+        current = {**current, "definition": definition}
     if release:
         await _release_capped_copies({**current, "state": state})
     return proxies.public_view(await _proxy_or_404(proxy_id), await database.list_proxied_copies(proxy_id))
@@ -4099,9 +4107,26 @@ async def _patch_proxy_state(proxy_id: int, changes: dict[str, Any]) -> None:
     A test runs for up to 90 s; writing back the state read before it would
     undo whatever the heartbeats counted meanwhile, a cap hit included.
     """
-    proxy = await database.get_proxy(proxy_id)
-    if proxy:
-        await database.update_proxy_state(proxy_id, {**proxy["state"], **changes})
+    async with _proxy_state_lock(proxy_id):
+        proxy = await database.get_proxy(proxy_id)
+        if proxy:
+            await database.update_proxy_state(proxy_id, {**proxy["state"], **changes})
+
+
+# One lock per proxy, per event loop, around every read-modify-write of
+# proxies.state. Heartbeats from several workers, the hourly reset job, a
+# manual reset, an edit and a proxy test all write that one JSON column; two
+# that overlap across an await would otherwise lose one write (a reset undone,
+# a heartbeat's bytes dropped). Keyed by loop because an asyncio.Lock binds to
+# the loop it first waits on.
+_proxy_state_locks: weakref.WeakKeyDictionary[asyncio.AbstractEventLoop, dict[int, asyncio.Lock]] = (
+    weakref.WeakKeyDictionary()
+)
+
+
+def _proxy_state_lock(proxy_id: int) -> asyncio.Lock:
+    locks = _proxy_state_locks.setdefault(asyncio.get_running_loop(), {})
+    return locks.setdefault(proxy_id, asyncio.Lock())
 
 
 @app.post("/api/proxies/{proxy_id}/copies")
@@ -4212,9 +4237,10 @@ async def api_reset_proxy_usage(proxy_id: int, _auth: dict[str, Any] = Depends(_
 
 
 async def _reset_proxy(proxy: dict[str, Any]) -> list[str]:
-    fresh = await database.get_proxy(proxy["id"]) or proxy
-    state = proxies.reset_state(fresh["state"], datetime.now(UTC).date())
-    await database.update_proxy_state(proxy["id"], state)
+    async with _proxy_state_lock(proxy["id"]):
+        fresh = await database.get_proxy(proxy["id"]) or proxy
+        state = proxies.reset_state(fresh["state"], datetime.now(UTC).date())
+        await database.update_proxy_state(proxy["id"], state)
     return await _release_capped_copies({**fresh, "state": state})
 
 
@@ -4280,11 +4306,12 @@ async def _account_proxy_traffic(worker_id: int, entries: list[Any]) -> None:
             by_proxy.setdefault(entry["proxy_id"], []).append(entry)
     now = time.time()
     for proxy_id, items in by_proxy.items():
-        proxy = await database.get_proxy(proxy_id)
-        if not proxy:
-            continue
-        state, crossed = proxies.account(proxy["state"], proxy["definition"], worker_id, items, now)
-        await database.update_proxy_state(proxy_id, state)
+        async with _proxy_state_lock(proxy_id):
+            proxy = await database.get_proxy(proxy_id)
+            if not proxy:
+                continue
+            state, crossed = proxies.account(proxy["state"], proxy["definition"], worker_id, items, now)
+            await database.update_proxy_state(proxy_id, state)
         if not state.get("capped_at"):
             continue
         targets = {(worker_id, egress.container_slug(e)) for e in items if _running(e)}
