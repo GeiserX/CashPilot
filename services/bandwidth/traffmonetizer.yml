@@ -3,7 +3,7 @@ slug: traffmonetizer
 category: bandwidth
 status: active
 priority: 6
-website: https://traffmonetizer.com
+website: https://traffmonetizer.io
 description: >
   Traffmonetizer lets you monetize your internet traffic by sharing bandwidth with
   verified businesses. One of the few bandwidth-sharing services that works well on
@@ -13,7 +13,7 @@ description: >
 short_description: Bandwidth sharing - works on VPS, token-based auth
 
 referral:
-  signup_url: "https://traffmonetizer.com/?aff=2111758"
+  signup_url: "https://traffmonetizer.io/?aff=2111758"
   code: "2111758"
 
 docker:
@@ -33,7 +33,7 @@ docker:
       label: "Token"
       required: true
       secret: true
-      description: "Log in at <a href=\"https://app.traffmonetizer.com\">app.traffmonetizer.com</a>, press F12 → Application → Local Storage → click <code>https://app.traffmonetizer.com</code> → copy the <code>token</code> value (a long JWT starting with eyJ)"
+      description: "Log in at <a href=\"https://app.traffmonetizer.io\">app.traffmonetizer.io</a>, press F12 → Application → Local Storage → click <code>https://app.traffmonetizer.io</code> → copy the <code>authToken</code> value (about 54 characters, digits, a <code>|</code>, then letters and digits)"
     - key: TRAFFMONETIZER_DEVICE_NAME
       label: "Device name"
       required: false
@@ -71,7 +71,7 @@ earnings:
 
 cashout:
   method: redirect
-  dashboard_url: "https://app.traffmonetizer.com/dashboard"
+  dashboard_url: "https://app.traffmonetizer.io/dashboard"
   min_amount: 10.0
   currency: USD
   notes: >-
@@ -87,8 +87,8 @@ platforms: [docker, windows, macos, android]
 
 collector:
   type: api
-  notes: "reCAPTCHA blocks programmatic login. Token extracted from browser Local Storage at app.traffmonetizer.com (same as deployment token)."
-  credential_hint: "Log in at <a href='https://app.traffmonetizer.com' target='_blank'>app.traffmonetizer.com</a>, press F12 → Application → Local Storage → <b>token</b> value (a long JWT starting with <code>eyJ</code>)."
+  notes: "reCAPTCHA blocks programmatic login. Token extracted from browser Local Storage at app.traffmonetizer.io (same as deployment token)."
+  credential_hint: "Log in at <a href='https://app.traffmonetizer.io' target='_blank'>app.traffmonetizer.io</a>, press F12 → Application → Local Storage → <b>authToken</b> value (about 54 characters, digits, a <code>|</code>, then letters and digits)."
 
 payout:
   model: internal

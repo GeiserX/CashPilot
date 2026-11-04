@@ -2,10 +2,10 @@
 
 Traffmonetizer enforces reCAPTCHA on their login endpoint, making
 programmatic email/password authentication impossible. Users must
-extract a JWT from their browser session.
+extract a token from their browser session.
 
-To get the token: open app.traffmonetizer.com, log in, press F12,
-go to Application > Local Storage > https://app.traffmonetizer.com,
+To get the token: open app.traffmonetizer.io, log in, press F12,
+go to Application > Local Storage > https://app.traffmonetizer.io,
 and copy the `authToken` value. It expires after some days, with no fixed
 lifetime (one lasted about 12), and a rejected token is reported as such.
 """
@@ -21,11 +21,11 @@ from app.collectors.base import BaseCollector, EarningsResult
 
 logger = logging.getLogger(__name__)
 
-API_BASE = "https://data.traffmonetizer.com/api"
+API_BASE = "https://data.traffmonetizer.io/api"
 
 
 class TraffmonetizerCollector(BaseCollector):
-    """Collect earnings from Traffmonetizer's API using a browser JWT."""
+    """Collect earnings from Traffmonetizer's API using a browser session token."""
 
     platform = "traffmonetizer"
 
@@ -46,8 +46,8 @@ class TraffmonetizerCollector(BaseCollector):
             client = self._get_client(timeout=30)
             headers = {
                 "Authorization": f"Bearer {self._token}",
-                "Origin": "https://app.traffmonetizer.com",
-                "Referer": "https://app.traffmonetizer.com/",
+                "Origin": "https://app.traffmonetizer.io",
+                "Referer": "https://app.traffmonetizer.io/",
             }
 
             resp = await self._retry(
