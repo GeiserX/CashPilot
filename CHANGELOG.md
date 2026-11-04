@@ -10,6 +10,16 @@ Every release, grouped by what changed. Generated from commit history.
 Releases before `1.0.0` were recorded by hand and are kept verbatim in
 [docs/changelog-0.x-handwritten.md](docs/changelog-0.x-handwritten.md).
 
+## [1.61.3] - 2026-11-04
+
+### Documentation
+
+- Regenerate CHANGELOG.md (#555)
+
+### Fixes
+
+- Follow the move to traffmonetizer.io so containers and earnings work again (#556)
+
 ## [1.61.2] - 2026-11-02
 
 ### CI
