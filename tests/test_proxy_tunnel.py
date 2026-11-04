@@ -484,3 +484,225 @@ class TestWorkerApi:
         assert resp.status_code == 200
         remove_all.assert_called_once_with("x")
         assert resp.json()["proxied"] == ["cashpilot-x-p1"]
+
+
+def _tailscale(**extra):
+    return {"kind": "tailscale", "auth_key": AUTH_KEY, "exit_node": "exit-1", **extra}
+
+
+class TestWorkerProxyValidation:
+    @pytest.mark.parametrize(
+        "proxy",
+        [
+            {"kind": "wireguard", "host": "203.0.113.9", "port": 51820},
+            _tailscale(auth_key=None),
+            _tailscale(exit_node="bad name; rm"),
+            _tailscale(login_server="http://headscale.example"),
+            _socks(host="bad host"),
+            _socks(port=0),
+            _socks(port=70000),
+        ],
+    )
+    def test_a_malformed_proxy_is_refused_before_any_tunnel(self, proxy):
+        with (
+            patch.object(worker_api, "_verify_api_key"),
+            patch.object(proxy_tunnel, "test") as test,
+        ):
+            resp = _api().post("/api/proxy-test", json={"proxy": proxy}, headers=AUTH)
+        assert resp.status_code == 400, resp.text
+        test.assert_not_called()
+        assert PASSWORD not in resp.text and AUTH_KEY not in resp.text
+
+    def test_a_tailscale_proxy_with_a_login_server_passes(self):
+        with (
+            patch.object(worker_api, "_verify_api_key"),
+            patch.object(worker_api, "_detect_egress_ip", side_effect=OSError("offline")),
+            patch.object(proxy_tunnel, "test", return_value={"ip": "93.184.215.14", "country": "DE", "ms": 9}) as test,
+        ):
+            resp = _api().post(
+                "/api/proxy-test",
+                json={"proxy": _tailscale(login_server="https://hs.example")},
+                headers=AUTH,
+            )
+        assert resp.status_code == 200, resp.text
+        proxy, own_ip = test.call_args.args
+        assert proxy["auth_key"] == AUTH_KEY and own_ip is None
+
+    def test_a_proxied_copy_has_no_instance_number(self):
+        body = {"earner": {"image": "honeygain/honeygain:1", "instance": 2}, "proxy": _socks()}
+        with (
+            patch.object(worker_api, "_verify_api_key"),
+            patch.object(proxy_tunnel, "deploy") as deploy,
+        ):
+            resp = _api().post("/api/proxied/honeygain/3/deploy", json=body, headers=AUTH)
+        assert resp.status_code == 400
+        deploy.assert_not_called()
+
+
+class TestWorkerProxiedOps:
+    def test_stop_start_and_remove_reach_the_tunnel_module(self):
+        with (
+            patch.object(worker_api, "_verify_api_key"),
+            patch.object(proxy_tunnel, "stop") as stop,
+            patch.object(proxy_tunnel, "start", return_value={"exit": {"ip": "93.184.215.14"}}) as start,
+            patch.object(proxy_tunnel, "remove", return_value=["cashpilot-x-p1", "cashpilot-tunnel-x-p1"]) as remove,
+        ):
+            api = _api()
+            assert api.post("/api/proxied/x/1/stop", headers=AUTH).json() == {"status": "stopped"}
+            assert api.post("/api/proxied/x/1/start", headers=AUTH).json() == {
+                "status": "started",
+                "exit": {"ip": "93.184.215.14"},
+            }
+            assert api.delete("/api/proxied/x/1", headers=AUTH).json() == {
+                "status": "removed",
+                "containers": ["cashpilot-x-p1", "cashpilot-tunnel-x-p1"],
+            }
+        stop.assert_called_once_with("x", 1)
+        start.assert_called_once_with("x", 1)
+        remove.assert_called_once_with("x", 1)
+
+    @pytest.mark.parametrize(
+        ("exc", "code"),
+        [
+            (proxy_tunnel.ProxyTunnelError("the proxy refused the login", 502), 502),
+            (orchestrator.ContainerNetworkError("no such network"), 409),
+            (ValueError("No proxied copy of x through proxy 1 on this worker"), 404),
+            (RuntimeError(f"dial socks5://u1:{PASSWORD}@203.0.113.9:1080 failed"), 503),
+            (KeyError(PASSWORD), 500),
+        ],
+    )
+    def test_errors_map_to_a_status_and_never_carry_the_password(self, exc, code):
+        for method, path in (
+            ("post", "/api/proxied/x/1/stop"),
+            ("post", "/api/proxied/x/1/start"),
+            ("delete", "/api/proxied/x/1"),
+        ):
+            with (
+                patch.object(worker_api, "_verify_api_key"),
+                patch.object(proxy_tunnel, "stop", side_effect=exc),
+                patch.object(proxy_tunnel, "start", side_effect=exc),
+                patch.object(proxy_tunnel, "remove", side_effect=exc),
+            ):
+                resp = getattr(_api(), method)(path, headers=AUTH)
+            assert resp.status_code == code, (path, resp.text)
+            assert PASSWORD not in resp.text
+
+    def test_a_docker_refusal_is_a_409_without_the_password(self):
+        from docker.errors import APIError
+
+        exc = APIError("conflict", explanation=f"bad mount socks5://u1:{PASSWORD}@h:1")
+        with (
+            patch.object(worker_api, "_verify_api_key"),
+            patch.object(proxy_tunnel, "deploy", side_effect=exc),
+            patch.object(worker_api, "_validate_deploy_spec"),
+            patch.object(worker_api, "_detect_egress_ip", return_value=None),
+        ):
+            resp = _api().post(
+                "/api/proxied/honeygain/3/deploy",
+                json={"earner": {"image": "honeygain/honeygain:1"}, "proxy": _socks()},
+                headers=AUTH,
+            )
+        assert resp.status_code == 409
+        assert "Docker refused" in resp.text and PASSWORD not in resp.text
+
+    def test_a_runtime_setting_error_keeps_its_status(self):
+        exc = orchestrator.ContainerRuntimeError("daemon unreachable")
+        exc.status_code = 503
+        with (
+            patch.object(worker_api, "_verify_api_key"),
+            patch.object(worker_api, "_detect_egress_ip", return_value=None),
+            patch.object(proxy_tunnel, "test", side_effect=exc),
+        ):
+            resp = _api().post("/api/proxy-test", json={"proxy": _socks()}, headers=AUTH)
+        assert resp.status_code == 503
+
+
+# ---------------------------------------------------------------------------
+# stop / start / remove / test on the worker side
+# ---------------------------------------------------------------------------
+
+
+def _client_with(*containers):
+    by_name = {c.name: c for c in containers}
+    client = MagicMock()
+
+    def get(name):
+        if name not in by_name:
+            raise NotFound(name)
+        return by_name[name]
+
+    client.containers.get.side_effect = get
+    return client
+
+
+class TestPairOps:
+    def _pair(self, earner_status="running", tunnel_status="running"):
+        earner = _container("cashpilot-x-p1", "x", proxy=1, status=earner_status)
+        tunnel = _container("cashpilot-tunnel-x-p1", "x", proxy=1, role="tunnel", status=tunnel_status)
+        return earner, tunnel
+
+    def test_stop_takes_the_earner_before_its_tunnel(self):
+        earner, tunnel = self._pair()
+        order = MagicMock()
+        order.attach_mock(earner.stop, "earner")
+        order.attach_mock(tunnel.stop, "tunnel")
+        with patch.object(orchestrator, "_get_client", return_value=_client_with(earner, tunnel)):
+            proxy_tunnel.stop("x", 1)
+        assert [c[0] for c in order.mock_calls] == ["earner", "tunnel"]
+
+    def test_stop_and_start_refuse_a_copy_that_is_not_ours(self):
+        stranger = _container("cashpilot-x-p1", "y", proxy=1)
+        with patch.object(orchestrator, "_get_client", return_value=_client_with(stranger)):
+            with pytest.raises(ValueError):
+                proxy_tunnel.stop("x", 1)
+            with pytest.raises(ValueError):
+                proxy_tunnel.start("x", 1)
+        stranger.stop.assert_not_called()
+
+    def test_start_refreshes_a_stopped_tunnel_and_waits_before_the_earner(self):
+        earner, tunnel = self._pair(earner_status="exited", tunnel_status="exited")
+        order = MagicMock()
+        with (
+            patch.object(orchestrator, "_get_client", return_value=_client_with(earner, tunnel)),
+            patch.object(proxy_tunnel, "refresh_proxy_ip", side_effect=lambda c: order("refresh")) as refresh,
+            patch.object(
+                proxy_tunnel, "_wait_ready", side_effect=lambda c: (order("ready"), {"ip": "93.184.215.14"})[1]
+            ),
+        ):
+            tunnel.start.side_effect = lambda: order("tunnel")
+            earner.start.side_effect = lambda: order("earner")
+            out = proxy_tunnel.start("x", 1)
+        assert [c.args[0] for c in order.call_args_list] == ["refresh", "tunnel", "ready", "earner"]
+        refresh.assert_called_once_with(tunnel)
+        earner.restart.assert_not_called()
+        assert out == {"exit": {"ip": "93.184.215.14"}}
+
+    def test_start_restarts_an_earner_still_running_in_the_old_namespace(self):
+        earner, tunnel = self._pair()
+        with (
+            patch.object(orchestrator, "_get_client", return_value=_client_with(earner, tunnel)),
+            patch.object(proxy_tunnel, "refresh_proxy_ip") as refresh,
+            patch.object(proxy_tunnel, "_wait_ready", return_value={"ip": "93.184.215.14"}),
+        ):
+            proxy_tunnel.start("x", 1)
+        refresh.assert_not_called()
+        earner.restart.assert_called_once()
+        earner.start.assert_not_called()
+
+    def test_remove_takes_only_our_containers_and_their_volumes(self):
+        earner, _ = self._pair()
+        with patch.object(orchestrator, "_get_client", return_value=_client_with(earner)):
+            assert proxy_tunnel.remove("x", 1) == ["cashpilot-x-p1"]
+        earner.remove.assert_called_once_with(force=True, v=True)
+
+    def test_a_proxy_test_removes_its_tunnel_on_success(self):
+        sidecar = MagicMock()
+        with (
+            patch.object(orchestrator, "_get_client", return_value=MagicMock()),
+            patch.object(
+                proxy_tunnel, "start_sidecar", return_value=(sidecar, {"ip": "93.184.215.14", "country": "DE"})
+            ),
+        ):
+            out = proxy_tunnel.test(_socks(), None)
+        assert out["ip"] == "93.184.215.14" and isinstance(out["ms"], int)
+        sidecar.remove.assert_called_once_with(force=True, v=True)
