@@ -21,6 +21,7 @@ CashPilot is a self-hosted platform that runs passive income services on your ow
 - Treats a balance drop as a probable payout and asks you to confirm it; nothing is counted as income by guess.
 - Runs a fleet: one worker per server, one dashboard for all of them, every figure per server and per service.
 - Checks before you deploy whether the machine fits (residential IP, GPU, disk), and warns when a stored credential is about to expire.
+- Shows, when you switch it on, what each earner does on the network: connections, ports, networks and countries, and alerts for mail ports and attempts on your LAN. It reads socket tables only, never traffic, and keeps addresses for 24 hours.
 - Encrypts stored credentials at rest; only the worker touches the Docker socket, and the dashboard listens on loopback until you say otherwise.
 - Runs on x86-64 and ARM: Raspberry Pi, Apple Silicon and ARM cloud boxes.
 - Works from a phone: the dashboard, catalog and wizard are responsive, in Classic night by default, with Dark, Light, Sunrise and Warm themes.
@@ -74,7 +75,7 @@ Full documentation: [geiserx.github.io/CashPilot](https://geiserx.github.io/Cash
 
 - [Getting started](https://geiserx.github.io/CashPilot/getting-started/): install, first run, updating, pinning a version
 - [Configuration](https://geiserx.github.io/CashPilot/configuration/): every setting and which source wins; [fleet management](https://geiserx.github.io/CashPilot/fleet/) and [running on ARM](https://geiserx.github.io/CashPilot/arm/)
-- Security: [security defaults](https://geiserx.github.io/CashPilot/security-defaults/), [protecting your home network](https://geiserx.github.io/CashPilot/home-network-security/), [network isolation](https://geiserx.github.io/CashPilot/isolation/), [testing your isolation](https://geiserx.github.io/CashPilot/isolation-check/)
+- Security: [security defaults](https://geiserx.github.io/CashPilot/security-defaults/), [protecting your home network](https://geiserx.github.io/CashPilot/home-network-security/), [network isolation](https://geiserx.github.io/CashPilot/isolation/), [testing your isolation](https://geiserx.github.io/CashPilot/isolation-check/), [Activity per container](https://geiserx.github.io/CashPilot/activity/)
 - [Service guides](https://geiserx.github.io/CashPilot/guides/): one page per service, plus [discontinued services](https://geiserx.github.io/CashPilot/discontinued-services/)
 - Operations: [backup and restore](https://geiserx.github.io/CashPilot/backup-restore/), [backing up node identities](https://geiserx.github.io/CashPilot/backup/), [Prometheus metrics](https://geiserx.github.io/CashPilot/guides/prometheus-metrics/)
 - [How it works](https://geiserx.github.io/CashPilot/how-it-works/): the UI and worker split
