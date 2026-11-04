@@ -317,6 +317,31 @@ class TestTheRealCatalog:
     def test_nobody_is_an_a(self):
         assert all(ratings.for_service(s)["grade"] != "A" for s in _live())
 
+    # Verdicts a review found resting on user reports below the published
+    # threshold (three reviewers, or two plus an independent source). Each
+    # stays unknown until a source that meets it is cited.
+    BELOW_THRESHOLD = [
+        ("theta-edge", "earnings_realism"),  # one forum post
+        ("packetstream", "earnings_realism"),  # two Trustpilot reviewers
+        ("earnfm", "payout_record"),  # two Trustpilot reviewers
+    ]
+
+    @pytest.mark.parametrize(("slug", "criterion"), BELOW_THRESHOLD)
+    def test_thin_user_reports_do_not_carry_a_verdict(self, slug, criterion):
+        rating = catalog.get_service(slug)["rating"]
+        assert rating["verdicts"][criterion] == "unknown"
+        assert "threshold" in rating["notes"][criterion]
+        cited = [
+            item
+            for item in rating.get("cons", []) + rating.get("pros", [])
+            if item["criterion"] == criterion and item["kind"] == "user_reports"
+        ]
+        assert cited == []
+
+    def test_grades_after_dropping_thin_reports(self):
+        assert ratings.for_service(catalog.get_service("theta-edge"))["grade"] == "F"
+        assert ratings.for_service(catalog.get_service("packetstream"))["grade"] == "C"
+
     def test_terms_fit_good_rests_on_the_providers_own_word(self):
         # "Good" means containers are allowed or the official client is an
         # image. A provider CashPilot does not run at all is fair, never good.

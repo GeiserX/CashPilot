@@ -71,7 +71,7 @@ What a cited con or pro may rest on:
 |---|:---:|:---:|:---:|---|---|
 | <a href="#sia-hostd">Sia (hostd)</a> | C | 13 of 20 | 2 | 2026-11-04 | Earnings are Siacoin in your own wallet: there is no payout to a bank, so you sell on an exchange yourself. |
 | <a href="#mysterium">MystNodes</a> | C | 12 of 20 | 3 | 2026-11-04 | About 21% of every settlement goes in fees, the 20% Hermes fee plus a transaction fee, and earnings are paid in the MYST token. |
-| <a href="#packetstream">PacketStream</a> | C | 12 of 20 | 1 | 2026-11-04 | Trustpilot reviewers in 2025 and 2026 report payouts arriving late or not at all, and one long-time user says payouts slowed and then stopped; others in 2026 report being paid. |
+| <a href="#packetstream">PacketStream</a> | C | 11 of 20 | 2 | 2026-11-04 | Trustpilot reviewers in 2025 and 2026 report payouts arriving late or not at all, and one long-time user says payouts slowed and then stopped; others in 2026 report being paid. |
 | <a href="#proxybase">ProxyBase</a> | D | 10 of 20 | 4 | 2026-11-04 | ProxyBase itself wrote in August 2025 that it is new and not yet the place to maximise earnings. |
 | <a href="#storj">Storj</a> | D | 10 of 20 | 3 | 2026-11-04 | Storj Labs filed for Chapter 11 on 26 July 2026; node earnings from before the filing are frozen until the court rules. |
 | <a href="#bytelixir">Bytelixir</a> | D | 8 of 20 | 5 | 2026-11-04 | Crypto only, and the minimum depends on the coin, from $5 for USDT to $250 for Bitcoin. |
@@ -79,13 +79,13 @@ What a cited con or pro may rest on:
 | <a href="#honeygain">Honeygain</a> | D | 8 of 20 | 3 | 2026-11-04 | The terms let Honeygain write off earnings that reached the $20 threshold and were not paid out within 24 months, and treat earnings as expired after six months without use. |
 | <a href="#earnapp">EarnApp</a> | D | 7 of 20 | 5 | 2026-11-04 | EarnApp's help centre says installing it in Docker containers, virtual machines, hosting services or home servers is strictly prohibited, which is how CashPilot runs it. |
 | <a href="#urnetwork">URnetwork</a> | D | 7 of 20 | 4 | 2026-11-04 | Unclaimed epochs expire, and the old USDC payouts were cancelled for networks with no wallet linked within 30 days. |
-| <a href="#earnfm">Earn.fm</a> | F | 6 of 20 | 5 | 2026-11-04 | Trustpilot reviewers in 2025 report a PayPal payout that never arrived and another pending for over ten days. |
 | <a href="#iproyal">IPRoyal Pawns</a> | F | 6 of 20 | 4 | 2026-11-04 | The terms say an account can be blocked without prior notice for abuse of withdrawal conditions or multiple accounts, and its earnings may then not be paid out. |
 | <a href="#noderr">Noderr Micronodes</a> | F | 6 of 20 | 4 | 2026-11-04 | Node rewards are unfunded testnet tokens with no market value, and none have been paid; the 5 to 10% APY on its site is a design target. |
 | <a href="#proxybase-xyz">ProxyBase Markets</a> | F | 6 of 20 | 6 | 2026-11-04 | Payouts are USDC on Tempo Chain and need a Tempo wallet address. |
 | <a href="#repocket">Repocket</a> | F | 6 of 20 | 2 | 2026-11-04 | Several Trustpilot reviewers report cancelled payouts and balances reset to zero; one says support cited irregular bandwidth earnings. The page rates Repocket 2.7 and notes it has not replied to negative reviews. |
 | <a href="#anyone-protocol">Anyone Protocol</a> | F | 5 of 20 | 5 | 2026-11-04 | A relay earns nothing unless 100 ANYONE is locked for it for at least 180 days, and each reward claim is signed in your wallet. |
 | <a href="#bitping">Bitping</a> | F | 5 of 20 | 7 | 2026-11-04 | Withdrawals are paid in Solana (SOL), to an address you type into each request. |
+| <a href="#earnfm">Earn.fm</a> | F | 5 of 20 | 6 | 2026-11-04 | A $15 minimum, a $1 to $3 fee on USDT, and a bank wire only from $1,000. |
 | <a href="#ebesucher">Ebesucher</a> | F | 5 of 20 | 7 | 2026-11-04 | CashPilot does not run eBesucher: it is a browser extension, so CashPilot cannot deploy or update it for you. Its terms were not checked for containers. |
 | <a href="#flux">Flux</a> | F | 5 of 20 | 6 | 2026-11-04 | The smallest node tier needs 1,000 FLUX locked as collateral. |
 | <a href="#salad">Salad</a> | F | 5 of 20 | 6 | 2026-11-04 | Trustpilot's own summary of its reviews says some reviewers find earnings low and often not enough to cover electricity and hardware wear; one October 2026 reviewer says an RTX 3090 barely covered its electricity. |
@@ -108,7 +108,7 @@ What a cited con or pro may rest on:
 | <a href="#deeper-network">Deeper Network</a> | F | 1 of 20 | 8 | 2026-11-04 | Mining rewards are in DPR and depend on a credit score that grows slowly or by staking DPR. |
 | <a href="#spide">Spide</a> | F | 1 of 20 | 8 | 2026-11-04 | Spide's homepage calculator shows an example of about $45 a month, far above our catalog estimate of $0 to $3 for one device. |
 | <a href="#teneo">Teneo Protocol</a> | F | 1 of 20 | 7 | 2026-11-04 | Teneo says points will be consolidated into $AGENTIC, a non-transferable reward token, not the $TENEO token. |
-| <a href="#theta-edge">Theta Edge Node</a> | F | 1 of 20 | 8 | 2026-11-04 | A Theta forum estimate puts a standard edge node at 3 to 30 TFUEL a month, which was $0.30 to $3 at a TFUEL price of $0.10. |
+| <a href="#theta-edge">Theta Edge Node</a> | F | 1 of 20 | 9 | 2026-11-04 | CashPilot does not run Theta Edge: you use the provider's own desktop app, so CashPilot cannot deploy or update it for you. Its terms were not checked for containers. |
 | <a href="#titan">Titan Network</a> | F | 1 of 20 | 8 | 2026-11-04 | Titan's own help says a running node does not guarantee earnings: with no task assigned it earns nothing, and rewards are in the TNT token. |
 
 ## Provider details
@@ -182,7 +182,7 @@ What a cited con or pro may rest on:
 
 ### PacketStream
 
-**Grade C**, 12 of 20 points, 1 of 10 criteria unchecked, reviewed 2026-11-04. Setup guide: [PacketStream](guides/packetstream.md).
+**Grade C**, 11 of 20 points, 2 of 10 criteria unchecked, reviewed 2026-11-04. Setup guide: [PacketStream](guides/packetstream.md).
 
 | Criterion | Verdict | Note |
 |---|---|---|
@@ -194,7 +194,7 @@ What a cited con or pro may rest on:
 | Privacy | Unknown | The client is closed source; we did not review the privacy policy in depth. |
 | Identity checks | Good |  |
 | Support | Fair |  |
-| Earnings realism | Fair |  |
+| Earnings realism | Unknown | Two Trustpilot reviewers report close to a year to reach the $5 minimum; two is below our user-reports threshold and we found no second source. |
 | Longevity | Good |  |
 
 **Cons**
@@ -204,7 +204,6 @@ What a cited con or pro may rest on:
 - The terms let PacketStream withhold, reverse or invalidate earnings it ties to fraud, manipulation or prohibited activity. [Source](https://packetstream.io/terms-of-service/), checked 2026-11-04.
 - The terms say proxy customers and PacketStream itself route traffic through your connection; they describe no vetting of ordinary buyers. [Source](https://packetstream.io/terms-of-service/), checked 2026-11-04.
 - Trustpilot notes PacketStream has not replied to negative reviews; reviewers report unanswered emails. [Source](https://www.trustpilot.com/review/packetstream.io), checked 2026-11-04.
-- Reviewers report taking close to a year to reach the $5 minimum. [Source](https://www.trustpilot.com/review/packetstream.io), checked 2026-11-04.
 
 **Pros**
 
@@ -432,37 +431,6 @@ What a cited con or pro may rest on:
 - URnetwork publishes its own Docker image, bringyour/community-provider, and works on VPS and residential connections. [Source](https://hub.docker.com/r/bringyour/community-provider), checked 2026-11-04.
 - A claim needs only a Bittensor wallet you control. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/bandwidth/urnetwork.yml), checked 2026-11-04.
 
-<a id="earnfm"></a>
-
-### Earn.fm
-
-**Grade F**, 6 of 20 points, 5 of 10 criteria unchecked, reviewed 2026-11-04. Setup guide: [Earn.fm](guides/earnfm.md).
-
-| Criterion | Verdict | Note |
-|---|---|---|
-| Payout record | Fair |  |
-| Payout terms | Fair |  |
-| Account safety | Unknown | One Trustpilot reviewer alleges bans for criticism; one report is not a pattern. |
-| Fit with how CashPilot runs it | Good |  |
-| Traffic transparency | Unknown | Earn.fm's terms page leads to the business terms of InfiniteProxies; we found no page that says how buyers are vetted. |
-| Privacy | Unknown | The client is closed source. One reviewer says a deleted account stayed in the database; one report is not a pattern. |
-| Identity checks | Fair |  |
-| Support | Fair |  |
-| Earnings realism | Unknown | Not measured. |
-| Longevity | Unknown | We could not find the legal entity behind Earn.fm on its own pages. |
-
-**Cons**
-
-- Trustpilot reviewers in 2025 report a PayPal payout that never arrived and another pending for over ten days. [Source](https://www.trustpilot.com/review/earn.fm), checked 2026-11-04.
-- A $15 minimum, a $1 to $3 fee on USDT, and a bank wire only from $1,000. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/bandwidth/earnfm.yml), checked 2026-11-04.
-- Before the first payout you fill in a billing profile with your legal name and address. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/bandwidth/earnfm.yml), checked 2026-11-04.
-- Reviewers in 2025 report support on email and Discord not answering; Trustpilot notes Earn.fm has not replied to negative reviews. [Source](https://www.trustpilot.com/review/earn.fm), checked 2026-11-04.
-
-**Pros**
-
-- Earn.fm publishes its own Docker image, earnfm/earnfm-client. [Source](https://hub.docker.com/r/earnfm/earnfm-client), checked 2026-11-04.
-- Other reviewers report payouts approved within a day. [Source](https://www.trustpilot.com/review/earn.fm), checked 2026-11-04.
-
 <a id="iproyal"></a>
 
 ### IPRoyal Pawns
@@ -649,6 +617,35 @@ What a cited con or pro may rest on:
 
 - Bitping's help says servers and Docker containers are supported. [Source](https://bitping.com/help/nodes/installing-the-node), checked 2026-11-04.
 - A withdrawal needs only a Solana address typed into the request. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/bandwidth/bitping.yml), checked 2026-11-04.
+
+<a id="earnfm"></a>
+
+### Earn.fm
+
+**Grade F**, 5 of 20 points, 6 of 10 criteria unchecked, reviewed 2026-11-04. Setup guide: [Earn.fm](guides/earnfm.md).
+
+| Criterion | Verdict | Note |
+|---|---|---|
+| Payout record | Unknown | Two Trustpilot reviewers report a late or missing payout and others report fast payouts; neither side reaches our user-reports threshold. |
+| Payout terms | Fair |  |
+| Account safety | Unknown | One Trustpilot reviewer alleges bans for criticism; one report is not a pattern. |
+| Fit with how CashPilot runs it | Good |  |
+| Traffic transparency | Unknown | Earn.fm's terms page leads to the business terms of InfiniteProxies; we found no page that says how buyers are vetted. |
+| Privacy | Unknown | The client is closed source. One reviewer says a deleted account stayed in the database; one report is not a pattern. |
+| Identity checks | Fair |  |
+| Support | Fair |  |
+| Earnings realism | Unknown | Not measured. |
+| Longevity | Unknown | We could not find the legal entity behind Earn.fm on its own pages. |
+
+**Cons**
+
+- A $15 minimum, a $1 to $3 fee on USDT, and a bank wire only from $1,000. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/bandwidth/earnfm.yml), checked 2026-11-04.
+- Before the first payout you fill in a billing profile with your legal name and address. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/bandwidth/earnfm.yml), checked 2026-11-04.
+- Reviewers in 2025 report support on email and Discord not answering; Trustpilot notes Earn.fm has not replied to negative reviews. [Source](https://www.trustpilot.com/review/earn.fm), checked 2026-11-04.
+
+**Pros**
+
+- Earn.fm publishes its own Docker image, earnfm/earnfm-client. [Source](https://hub.docker.com/r/earnfm/earnfm-client), checked 2026-11-04.
 
 <a id="ebesucher"></a>
 
@@ -1290,7 +1287,7 @@ What a cited con or pro may rest on:
 
 ### Theta Edge Node
 
-**Grade F**, 1 of 20 points, 8 of 10 criteria unchecked, reviewed 2026-11-04. Setup guide: [Theta Edge Node](guides/theta-edge.md).
+**Grade F**, 1 of 20 points, 9 of 10 criteria unchecked, reviewed 2026-11-04. Setup guide: [Theta Edge Node](guides/theta-edge.md).
 
 | Criterion | Verdict | Note |
 |---|---|---|
@@ -1302,12 +1299,11 @@ What a cited con or pro may rest on:
 | Privacy | Unknown | Not reviewed. |
 | Identity checks | Unknown | Not documented. |
 | Support | Unknown | No pattern found. |
-| Earnings realism | Poor |  |
+| Earnings realism | Unknown | The only estimate we found is one forum post, below our user-reports threshold, and Theta's own pages give no per-node figure. |
 | Longevity | Unknown | Not checked on a primary source. |
 
 **Cons**
 
-- A Theta forum estimate puts a standard edge node at 3 to 30 TFUEL a month, which was $0.30 to $3 at a TFUEL price of $0.10. [Source](https://www.thetaforums.com/forum/theta-network-forum-aa/425-how-much-can-you-earn-running-a-theta-edge-node), checked 2026-11-04.
 - CashPilot does not run Theta Edge: you use the provider's own desktop app, so CashPilot cannot deploy or update it for you. Its terms were not checked for containers. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/depin/theta-edge.yml), checked 2026-11-04.
 
 **Pros**

@@ -80,7 +80,7 @@ payout:
 rating:
   reviewed_on: "2026-11-04"
   verdicts:
-    payout_record: fair
+    payout_record: unknown
     payout_terms: fair
     account_safety: unknown
     terms_fit: good
@@ -91,6 +91,8 @@ rating:
     earnings_realism: unknown
     longevity: unknown
   notes:
+    payout_record: Two Trustpilot reviewers report a late or missing payout and others report fast
+      payouts; neither side reaches our user-reports threshold.
     account_safety: One Trustpilot reviewer alleges bans for criticism; one report is not a pattern.
     traffic_transparency: Earn.fm's terms page leads to the business terms of InfiniteProxies; we found
       no page that says how buyers are vetted.
@@ -99,12 +101,6 @@ rating:
     earnings_realism: Not measured.
     longevity: We could not find the legal entity behind Earn.fm on its own pages.
   cons:
-  - text: Trustpilot reviewers in 2025 report a PayPal payout that never arrived and another pending for
-      over ten days.
-    criterion: payout_record
-    kind: user_reports
-    source: https://www.trustpilot.com/review/earn.fm
-    checked_on: "2026-11-04"
   - text: A $15 minimum, a $1 to $3 fee on USDT, and a bank wire only from $1,000.
     criterion: payout_terms
     kind: our_experience
@@ -126,9 +122,4 @@ rating:
     criterion: terms_fit
     kind: terms
     source: https://hub.docker.com/r/earnfm/earnfm-client
-    checked_on: "2026-11-04"
-  - text: Other reviewers report payouts approved within a day.
-    criterion: payout_record
-    kind: user_reports
-    source: https://www.trustpilot.com/review/earn.fm
     checked_on: "2026-11-04"

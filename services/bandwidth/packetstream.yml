@@ -88,10 +88,12 @@ rating:
     privacy: unknown
     identity_checks: good
     support: fair
-    earnings_realism: fair
+    earnings_realism: unknown
     longevity: good
   notes:
     privacy: The client is closed source; we did not review the privacy policy in depth.
+    earnings_realism: Two Trustpilot reviewers report close to a year to reach the $5 minimum; two is
+      below our user-reports threshold and we found no second source.
   cons:
   - text: Trustpilot reviewers in 2025 and 2026 report payouts arriving late or not at all, and one long-time
       user says payouts slowed and then stopped; others in 2026 report being paid.
@@ -119,11 +121,6 @@ rating:
   - text: Trustpilot notes PacketStream has not replied to negative reviews; reviewers report unanswered
       emails.
     criterion: support
-    kind: user_reports
-    source: https://www.trustpilot.com/review/packetstream.io
-    checked_on: "2026-11-04"
-  - text: Reviewers report taking close to a year to reach the $5 minimum.
-    criterion: earnings_realism
     kind: user_reports
     source: https://www.trustpilot.com/review/packetstream.io
     checked_on: "2026-11-04"
