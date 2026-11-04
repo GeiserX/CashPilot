@@ -15,6 +15,8 @@ short_description: Bandwidth sharing - backed by Bright Data
 referral:
   signup_url: "https://earnapp.com/i/TSMD9wSm"
   code: "TSMD9wSm"
+  bonus:
+    referrer: "10% of their earnings for life, paid on top of theirs"
 
 docker:
   # CashPilot's own image (images/earnapp/). It carries no Bright Data code: the

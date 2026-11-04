@@ -90,3 +90,27 @@ def test_every_sign_up_button_in_the_app_carries_the_note(fn):
     buttons = len(re.findall(r"Sign Up", body))
     assert buttons, fn
     assert body.count("referralNote(svc)") >= (2 if fn == "renderServiceSetupForm" else 1), fn
+
+
+def test_the_new_user_bonus_is_shown_next_to_the_sign_up_button():
+    """The bonus is the reason to use the link; it used to sit only on the detail page."""
+    note_fn = APP_JS[APP_JS.index("function referralNote(svc)") :]
+    note_fn = note_fn[: note_fn.index("\n  }\n")]
+    assert "ref.bonus && ref.bonus.referee" in note_fn
+    detail = (ROOT / "app" / "templates" / "service_detail.html").read_text(encoding="utf-8")
+    assert "service.referral.bonus.referee" in detail.split("Sign Up", 1)[1]
+
+
+def test_the_detail_page_never_prints_na_for_a_missing_bonus():
+    """A row of N/A hid the bonus where it existed and said nothing where it did not."""
+    detail = (ROOT / "app" / "templates" / "service_detail.html").read_text(encoding="utf-8")
+    card = detail[detail.index("<!-- Referral Info") : detail.index("<!-- Right: Setup")]
+    assert "N/A" not in card
+
+
+def test_every_recorded_bonus_belongs_to_a_referral_code():
+    """A bonus without a code would promise a reward the link cannot deliver."""
+    for svc in catalog.get_services():
+        ref = svc.get("referral") or {}
+        if ref.get("bonus"):
+            assert ref.get("code"), f"{svc['slug']}: bonus recorded without a referral code"

@@ -89,19 +89,24 @@
       {% endif %}
     </div>
 
-    <!-- Referral Info -->
-    {% if service.referral %}
+    <!-- Referral Info: only what the catalog actually records. A placeholder row
+         hid the bonus a new user gets and said nothing useful. -->
+    {% if service.referral and service.referral.code and service.referral.bonus %}
     <div class="card" style="margin-bottom: 16px;">
       <h3 class="card-title" style="margin-bottom: 12px;">Referral Program</h3>
       <div class="detail-grid">
-        <div class="detail-item">
-          <div class="detail-label">Referrer Bonus</div>
-          <div class="detail-value">{{ service.referral.bonus.referrer if service.referral.bonus else 'N/A' }}</div>
-        </div>
+        {% if service.referral.bonus.referee %}
         <div class="detail-item">
           <div class="detail-label">New User Bonus</div>
-          <div class="detail-value">{{ service.referral.bonus.referee if service.referral.bonus else 'N/A' }}</div>
+          <div class="detail-value">{{ service.referral.bonus.referee }}</div>
         </div>
+        {% endif %}
+        {% if service.referral.bonus.referrer %}
+        <div class="detail-item">
+          <div class="detail-label">Referrer Bonus</div>
+          <div class="detail-value">{{ service.referral.bonus.referrer }}</div>
+        </div>
+        {% endif %}
       </div>
     </div>
     {% endif %}
@@ -129,6 +134,9 @@
           Sign Up
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
         </a>
+        {% if service.referral and service.referral.code and service.referral.signup_url %}
+        <p class="referral-note">{% if service.referral.bonus and service.referral.bonus.referee %}<strong>New-user bonus with this link:</strong> {{ service.referral.bonus.referee }}. {% endif %}Referral link: the CashPilot maintainer may earn a commission from it, which helps keep CashPilot free and maintained.</p>
+        {% endif %}
       </div>
 
       <p style="color: var(--text-muted); font-size: 0.85rem; margin-bottom: 16px;">
