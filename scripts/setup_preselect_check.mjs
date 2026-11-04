@@ -32,7 +32,7 @@ const box = (id, slugs, status = 'online') => ({ id, name: `box${id}`, status, c
 // ---- The catalog row --------------------------------------------------------
 const renderAs = (isOwner, onlineWorkers) => new Function(
   'escapeHtml', 'capFirst', '_isOwner', 'catalogOnlineWorkers',
-  `${grab('runsOn')}\n${grab('renderCatalogCard')}\nreturn renderCatalogCard;`,
+  `${grab('runsOn')}\n${grab('gradeBadge')}\n${grab('renderCatalogCard')}\nreturn renderCatalogCard;`,
 )(escapeHtml, capFirst, isOwner, onlineWorkers);
 const row = (slug, { owner = true, workers = null } = {}) => renderAs(owner, workers)(services.find(s => s.slug === slug));
 const addHref = html => (html.match(/<a href="(\/setup\?[^"]*)"/) || [])[1];
