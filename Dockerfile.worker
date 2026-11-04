@@ -63,6 +63,10 @@ COPY --chown=cashpilot:root app/version.py ./app/
 COPY --chown=cashpilot:root app/worker_api.py ./app/
 COPY --chown=cashpilot:root app/orchestrator.py ./app/
 COPY --chown=cashpilot:root app/isolation_check.py ./app/
+# Activity: per-container socket tables and counters, read by a short-lived
+# probe in each earner's network namespace (docs/activity.md).
+COPY --chown=cashpilot:root app/activity.py ./app/
+COPY --chown=cashpilot:root app/procnet.py ./app/
 # Reads a payout address set inside a container (Mysterium, Anyone).
 COPY --chown=cashpilot:root app/payout_read.py ./app/
 # Reads a node's own earnings figures from inside it (Mysterium, issue #488).

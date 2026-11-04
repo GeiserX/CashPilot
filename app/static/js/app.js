@@ -4953,6 +4953,8 @@ const CP = (() => {
         const isMissing = a.kind === 'missing';
         // The provider turned the account off: no credential or restart fixes it.
         const isDisabled = a.kind === 'account_disabled';
+        // What an earner did on the network (the Activity page): no credential fixes it.
+        const isActivity = (a.kind || '').startsWith('activity_');
         // The failure TAXONOMY (CashPilot-5bdm). Only 'auth' means "your
         // credential needs replacing"; a transient provider outage self-heals
         // and a shape change is our bug, so pointing the user at their
@@ -4966,6 +4968,7 @@ const CP = (() => {
         const isExpiring = category === 'expiring';
         const icon = isPayout ? PAYOUT_ICON : (isNotice || isTransient) ? NOTICE_ICON : WARNING_ICON;
         const suffix = isPayout ? ' — payout?'
+          : isActivity ? (a.kind === 'activity_spike' ? ' — unusual hour' : ' — network activity')
           : isContainer ? ' — not running'
           : isDisabled ? ' — account disabled'
           : isMissing ? (a.everywhere === false ? ' — gone from a box' : a.everywhere ? ' — runs nowhere' : ' — missing')
@@ -4977,7 +4980,7 @@ const CP = (() => {
           : isShape ? ' — page changed (our bug)'
           : '';
         const muted = isNotice || isTransient;
-        const showFix = !isPayout && !isNotice && !isTransient && !isShape && _isOwner && !isContainer && !isMissing && !isDisabled;
+        const showFix = !isPayout && !isNotice && !isTransient && !isShape && _isOwner && !isContainer && !isMissing && !isDisabled && !isActivity;
         return `
         <div class="notify-item" data-platform="${escapeHtml(a.platform)}" data-kind="${escapeHtml(a.kind || 'collector')}"${category ? ` data-category="${escapeHtml(category)}"` : ''}>
           <div class="notify-item-icon${muted ? ' muted' : ''}">
