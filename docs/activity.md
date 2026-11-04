@@ -65,8 +65,27 @@ for the dashboard's usage graphs; Activity stores no second byte counter.
 ## Limits
 
 - **Host network** (Mysterium, for example): the earner shares the machine's
-  network, so its sockets cannot be told apart from the host's. It shows
-  "host network" and no numbers.
+  socket table, so reading `/proc/net` would show every socket on the machine.
+  Its helper joins the host network instead and asks the kernel for the socket
+  list over `sock_diag`, which reports the cgroup each socket was created in.
+  It keeps only the sockets of the earner's own cgroup (found by its container
+  id under the read-only `/sys/fs/cgroup`, which is why the helper also joins
+  the host's cgroup namespace). This needs no extra privilege. What that row
+  cannot show, and says so:
+  - connections already closing (TIME_WAIT) carry no cgroup, so a finished
+    connection may be missed;
+  - the connection counters are the machine's, so opens and failures show a
+    dash;
+  - traffic an earner forwards for VPN customers is routed by the kernel, not
+    opened by the earner, so it is not shown. Seeing it would need the kernel's
+    connection tracking table, which needs `CAP_NET_ADMIN` on the host network
+    or root, and the helper gets neither.
+
+  When the cgroup cannot be found the row reads "host network: cannot be told
+  apart" with the reason: cgroup v1 (the machine needs cgroup v2), the cgroup
+  was not found (rootless Docker or Podman can hide it), the kernel refused the
+  socket list, or the kernel does not report a socket's cgroup. The mail and
+  LAN alerts apply to a matched host row like any other.
 - **Sandboxed runtimes**: gVisor with its own network stack (a `runsc`
   runtime without `--network=host`) keeps the earner's sockets inside the
   sandbox, and other runtimes CashPilot does not know may too. A helper would
@@ -90,9 +109,16 @@ The helper is the worker's own image, so nothing new is pulled. It runs with
 the same floor as the [isolation check](isolation-check.md)'s probes, and
 lower: user 65534, no capabilities, read-only filesystem, no new privileges,
 32 processes and 48 MB at most, a 64 KB tmpfs at `/data` so no volume is
-created, and the label `cashpilot.probe=activity`. It is removed on every path,
-and the worker removes any leftover with that label at start and before every
-round. A helper Docker refuses to remove is named on the page.
+created, and the labels `cashpilot.probe=activity` and
+`cashpilot.probe.worker=<worker id>`. Its name carries a short hash of the
+worker id too, so two workers on one Docker host never collide. It is removed
+on every path. At start and before every round the worker removes any helper
+of its own that is left, and any stopped helper from an older release that
+labelled no worker; it never touches another worker's helper. A helper Docker
+refuses to remove is named on the page.
+
+The helper for a host-network earner runs with `network_mode: host` and the
+host's cgroup namespace, with every other limit above unchanged.
 
 With 12 earners that is about 144 short-lived containers an hour. They can
 flash by in the Unraid Docker tab and in `docker events`.
