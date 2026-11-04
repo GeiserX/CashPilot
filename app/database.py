@@ -3358,29 +3358,77 @@ async def delete_activity(worker_id: int, raw_only: bool = False) -> int:
         await db.close()
 
 
-async def get_activity_samples(since: int, worker_id: int | None = None) -> list[dict[str, Any]]:
+def _activity_filter(since: int, worker_id: int | None, container: str | None, column: str) -> tuple[str, list[Any]]:
+    sql = f" WHERE {column} >= ?"
+    params: list[Any] = [since]
+    if worker_id is not None:
+        sql += " AND worker_id = ?"
+        params.append(worker_id)
+    if container is not None:
+        sql += " AND container = ?"
+        params.append(container)
+    return sql, params
+
+
+async def get_activity_latest(since: int, worker_id: int | None = None) -> list[dict[str, Any]]:
+    """The newest sample of every container seen since ``since``."""
+    where, params = _activity_filter(since, worker_id, None, "window_end")
     db = await _get_db()
     try:
-        sql = "SELECT * FROM activity_samples WHERE window_end >= ?"
-        params: list[Any] = [since]
-        if worker_id is not None:
-            sql += " AND worker_id = ?"
-            params.append(worker_id)
-        cursor = await db.execute(sql + " ORDER BY worker_id, container, window_end", tuple(params))
+        cursor = await db.execute(
+            f"""
+            SELECT s.* FROM activity_samples s
+            JOIN (SELECT worker_id, container, MAX(window_end) AS last FROM activity_samples{where}
+                  GROUP BY worker_id, container) t
+              ON s.worker_id = t.worker_id AND s.container = t.container AND s.window_end = t.last
+            ORDER BY s.worker_id, s.container
+            """,  # noqa: S608 - the filter is built from literals
+            tuple(params),
+        )
         return [dict(r) for r in await cursor.fetchall()]
     finally:
         await db.close()
 
 
-async def get_activity_hourly(since_hour: int, worker_id: int | None = None) -> list[dict[str, Any]]:
+async def get_activity_series(
+    since: int, hourly: bool, worker_id: int | None = None, container: str | None = None
+) -> list[dict[str, Any]]:
+    """Opens, failures and peak established per window, or summed per hour in SQL.
+
+    SUM over only NULLs is NULL, so an hour with no counted window stays unknown.
+    """
+    where, params = _activity_filter(since, worker_id, container, "window_end")
+    if hourly:
+        sql = (
+            "SELECT worker_id, container, (window_end - 1) / 3600 * 3600 AS t, SUM(opens) AS opens, "
+            f"SUM(attempt_fails) AS attempt_fails, MAX(est_max) AS est_max FROM activity_samples{where} "
+            "GROUP BY worker_id, container, t ORDER BY worker_id, container, t"
+        )
+    else:
+        sql = (
+            "SELECT worker_id, container, window_end AS t, opens, attempt_fails, est_max "
+            f"FROM activity_samples{where} ORDER BY worker_id, container, t"
+        )
     db = await _get_db()
     try:
-        sql = "SELECT * FROM activity_hourly WHERE hour >= ?"
-        params: list[Any] = [since_hour]
-        if worker_id is not None:
-            sql += " AND worker_id = ?"
-            params.append(worker_id)
         cursor = await db.execute(sql, tuple(params))
+        return [dict(r) for r in await cursor.fetchall()]
+    finally:
+        await db.close()
+
+
+async def get_activity_dims(
+    since_hour: int, worker_id: int | None = None, container: str | None = None
+) -> list[dict[str, Any]]:
+    """Sightings per (worker, container, dimension, value), summed in SQL over the period."""
+    where, params = _activity_filter(since_hour, worker_id, container, "hour")
+    db = await _get_db()
+    try:
+        cursor = await db.execute(
+            f"SELECT worker_id, container, dim, value, SUM(sightings) AS sightings FROM activity_hourly{where} "
+            "GROUP BY worker_id, container, dim, value",  # noqa: S608
+            tuple(params),
+        )
         return [dict(r) for r in await cursor.fetchall()]
     finally:
         await db.close()

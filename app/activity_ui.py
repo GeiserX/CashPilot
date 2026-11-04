@@ -273,27 +273,9 @@ def enabled(config: dict[str, Any], worker: dict[str, Any]) -> bool:
 # ---------------------------------------------------------------------------
 
 
-def _sum(values: list[Any]) -> int | None:
-    usable = [v for v in values if v is not None]
-    return sum(usable) if usable else None
-
-
-def _max(values: list[Any]) -> int | None:
-    usable = [v for v in values if v is not None]
-    return max(usable) if usable else None
-
-
-def series(rows: list[dict[str, Any]], days: int) -> list[list[Any]]:
-    """[time, opens, attempt_fails, est_max] per 5-minute window (1 day) or per hour."""
-    if days <= 1:
-        return [[r["window_end"], r["opens"], r["attempt_fails"], r["est_max"]] for r in rows]
-    by_hour: dict[int, list[dict[str, Any]]] = {}
-    for r in rows:
-        by_hour.setdefault((r["window_end"] - 1) // 3600 * 3600, []).append(r)
-    return [
-        [h, _sum([r["opens"] for r in rs]), _sum([r["attempt_fails"] for r in rs]), _max([r["est_max"] for r in rs])]
-        for h, rs in sorted(by_hour.items())
-    ]
+def series(rows: list[dict[str, Any]]) -> list[list[Any]]:
+    """[time, opens, attempt_fails, est_max] per point, from database.get_activity_series rows."""
+    return [[r["t"], r["opens"], r["attempt_fails"], r["est_max"]] for r in rows]
 
 
 def dims(rows: list[dict[str, Any]], top: int = 5) -> dict[str, list[list[Any]]]:
@@ -309,20 +291,23 @@ def dims(rows: list[dict[str, Any]], top: int = 5) -> dict[str, list[list[Any]]]
 
 
 def container_rows(
-    samples: list[dict[str, Any]], hourly: list[dict[str, Any]], alert_subjects: dict[str, int], cid: str, days: int
+    latest: list[dict[str, Any]],
+    series_rows: list[dict[str, Any]],
+    dim_rows: list[dict[str, Any]],
+    alert_subjects: dict[str, int],
+    cid: str,
 ) -> list[dict[str, Any]]:
-    """One entry per container of one worker, newest status first in each."""
-    by_container: dict[str, list[dict[str, Any]]] = {}
-    for r in samples:
-        by_container.setdefault(r["container"], []).append(r)
-    hourly_by: dict[str, list[dict[str, Any]]] = {}
-    for r in hourly:
-        hourly_by.setdefault(r["container"], []).append(r)
+    """One entry per container of one worker: its newest sample, its series and its top values."""
+    series_by: dict[str, list[dict[str, Any]]] = {}
+    for r in series_rows:
+        series_by.setdefault(r["container"], []).append(r)
+    dims_by: dict[str, list[dict[str, Any]]] = {}
+    for r in dim_rows:
+        dims_by.setdefault(r["container"], []).append(r)
     out = []
-    for name, rows in sorted(by_container.items()):
-        rows.sort(key=lambda r: r["window_end"])
-        last = rows[-1]
-        top = dims(hourly_by.get(name, []))
+    for last in sorted(latest, key=lambda r: r["container"]):
+        name = last["container"]
+        top = dims(dims_by.get(name, []))
         out.append(
             {
                 "container": name,
@@ -337,13 +322,13 @@ def container_rows(
                 "truncated": bool(last["truncated"]),
                 "opens_last": last["opens"],
                 "attempt_fails_last": last["attempt_fails"],
-                "series": series(rows, days),
+                "series": series(series_by.get(name, [])),
                 "top_ports": top.get("port", []),
                 "top_asn": top.get("asn", []),
                 "top_cc": top.get("cc", []),
-                "classes": dict(top_all(hourly_by.get(name, []), "class")),
-                "dirs": dict(top_all(hourly_by.get(name, []), "dir")),
-                "alerts": sum(n for subject, n in alert_subjects.items() if subject.startswith(f"{cid}:{name}")),
+                "classes": dict(top_all(dims_by.get(name, []), "class")),
+                "dirs": dict(top_all(dims_by.get(name, []), "dir")),
+                "alerts": sum(n for subject, n in alert_subjects.items() if subject.split(":")[:2] == [cid, name]),
             }
         )
     return out

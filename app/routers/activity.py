@@ -76,8 +76,9 @@ async def api_activity_summary(request: Request, days: int = 1) -> dict[str, Any
     now = int(time.time())
     since = now - days * 86400
     config = await database.get_config() or {}
-    samples = await database.get_activity_samples(since)
-    hourly = await database.get_activity_hourly(since - since % 3600)
+    latest = await database.get_activity_latest(since)
+    series_rows = await database.get_activity_series(since, hourly=days > 1)
+    dim_rows = await database.get_activity_dims(since - since % 3600)
     alerts = await _alert_subjects()
     last = await database.get_activity_last_windows()
     out = []
@@ -93,11 +94,11 @@ async def api_activity_summary(request: Request, days: int = 1) -> dict[str, Any
                 "last_window": last.get(w["id"]),
                 "round": activity_ui.LAST_STATUS.get(w["id"]),
                 "containers": activity_ui.container_rows(
-                    [r for r in samples if r["worker_id"] == w["id"]],
-                    [r for r in hourly if r["worker_id"] == w["id"]],
+                    [r for r in latest if r["worker_id"] == w["id"]],
+                    [r for r in series_rows if r["worker_id"] == w["id"]],
+                    [r for r in dim_rows if r["worker_id"] == w["id"]],
                     alerts,
                     cid,
-                    days,
                 ),
             }
         )
@@ -117,18 +118,16 @@ async def api_activity_container(
     w = await _worker(worker_id)
     now = int(time.time())
     since = now - days * 86400
-    samples = [r for r in await database.get_activity_samples(since, worker_id) if r["container"] == container]
-    hourly = [
-        r for r in await database.get_activity_hourly(since - since % 3600, worker_id) if r["container"] == container
-    ]
+    series_rows = await database.get_activity_series(since, days > 1, worker_id, container)
+    dim_rows = await database.get_activity_dims(since - since % 3600, worker_id, container)
     raw = await database.get_activity_raw(worker_id, container)
     return {
         "worker_id": worker_id,
         "name": w.get("name"),
         "container": container,
         "days": days,
-        "series": activity_ui.series(samples, days),
-        "dims": activity_ui.dims(hourly, top=50),
+        "series": activity_ui.series(series_rows),
+        "dims": activity_ui.dims(dim_rows, top=50),
         "raw": raw,
         "raw_hours": activity_ui.RAW_HOURS,
     }

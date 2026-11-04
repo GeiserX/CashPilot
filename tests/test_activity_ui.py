@@ -572,6 +572,54 @@ class TestGate:
         assert not IP_RE.search(json.dumps(data))
 
 
+class TestSeries:
+    def test_hourly_sums_keep_unknown_hours_unknown(self, tmp_path):
+        async def go():
+            db = await database._get_db()
+            hour = 1_800_000_000 // 3600 * 3600
+            for i, opens in enumerate([10, None, 5]):
+                await db.execute(
+                    "INSERT INTO activity_samples (worker_id, container, window_end, status, opens, attempt_fails, est_max) "
+                    "VALUES (1, 'c', ?, 'ok', ?, 1, ?)",
+                    (hour + 300 * (i + 1), opens, i),
+                )
+            await db.execute(
+                "INSERT INTO activity_samples (worker_id, container, window_end, status, opens) VALUES (1, 'c', ?, 'ok', NULL)",
+                (hour + 3600 + 300,),
+            )
+            await db.commit()
+            hourly = await database.get_activity_series(0, True)
+            raw = await database.get_activity_series(0, False, 1, "c")
+            latest = await database.get_activity_latest(0)
+            return hourly, raw, latest
+
+        hourly, raw, latest = run_db(tmp_path, go)
+        assert [(r["opens"], r["est_max"]) for r in hourly] == [(15, 2), (None, None)]
+        assert [r["opens"] for r in raw] == [10, None, 5, None]
+        assert len(latest) == 1 and latest[0]["window_end"] == 1_800_000_000 // 3600 * 3600 + 3900
+
+    def test_container_detail(self, tmp_path):
+        from app.routers import activity as router
+
+        async def go():
+            wid = await database.upsert_worker(
+                client_id="c1", name="box", url="", containers="[]", apps="[]", system_info="{}"
+            )
+            real_now = time.time()
+            await database.record_activity(
+                wid, activity_ui.sanitise(window(end=int(real_now // 300 * 300)), real_now), now=real_now
+            )
+            with patch.object(router.deps, "_require_owner", return_value={}):
+                return await router.api_activity_container(
+                    MagicMock(), worker_id=wid, container="cashpilot-honeygain", days=7
+                )
+
+        d = run_db(tmp_path, go)
+        assert d["series"][0][1] == 12
+        assert {r["ip"] for r in d["raw"]} == {"198.51.100.9", "203.0.113.20", "192.0.2.33"}
+        assert d["dims"]["class"] == [["public", 8]]
+
+
 # ---------------------------------------------------------------------------
 # the network table
 # ---------------------------------------------------------------------------
