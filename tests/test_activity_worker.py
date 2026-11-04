@@ -409,6 +409,49 @@ def wapi():
     ) = saved
 
 
+_FRESH_WORKER_SCRIPT = """
+import asyncio
+from unittest.mock import MagicMock, patch
+
+from app import worker_api
+
+assert worker_api._activity_enabled is False, "a fresh worker must start with Activity off"
+with (
+    patch("app.worker_api.orchestrator.docker_available", return_value=True) as docker_ok,
+    patch("app.worker_api.activity.run_round", return_value=None) as run_round,
+):
+    asyncio.run(worker_api._activity_cycle())
+    assert not docker_ok.called and not run_round.called, "a round ran before any reply"
+    reply = MagicMock()
+    reply.json.return_value = {"activity": {"enabled": True}}
+    worker_api._apply_activity_reply(reply, None)
+    asyncio.run(worker_api._activity_cycle())
+    assert docker_ok.called and run_round.called, "control: a reply switching it on must run a round"
+print("ok")
+"""
+
+
+def test_a_fresh_worker_starts_off_until_the_ui_says_on(tmp_path):
+    """The module's own default, in a new interpreter, so no other test's state leaks in."""
+    import os
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parent.parent
+    env = {**os.environ, "CASHPILOT_API_KEY": "test-key", "PYTHONPATH": str(root)}
+    out = subprocess.run(
+        [sys.executable, "-c", _FRESH_WORKER_SCRIPT],
+        cwd=tmp_path,
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    assert out.returncode == 0, out.stderr[-2000:]
+    assert out.stdout.strip().endswith("ok")
+
+
 class TestWorkerWiring:
     def test_disabled_never_runs_a_round(self, wapi):
         wapi._activity_enabled = False

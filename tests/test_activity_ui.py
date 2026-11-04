@@ -180,6 +180,30 @@ class TestStorage:
         purged, ages = run_db(tmp_path, go)
         assert purged == 1 and ages == [23 * 3600 + 59 * 60]
 
+    def test_hourly_job_purges_without_any_heartbeat(self, tmp_path):
+        """A box that went quiet sends no ingest, so only the hourly job ages its addresses out."""
+        from app import main
+
+        async def go():
+            real_now = int(time.time())
+            db = await database._get_db()
+            for age in (database.ACTIVITY_RAW_SECONDS + 600, 600):
+                await db.execute(
+                    "INSERT INTO activity_dest_raw (worker_id, container, window_end, dir, proto, ip, port, class) "
+                    "VALUES (1, 'c', ?, 'out', 'tcp', '198.51.100.9', 443, 'public')",
+                    (real_now - age,),
+                )
+            await db.commit()
+            with (
+                patch.object(main, "_activity_spikes", new_callable=AsyncMock),
+                patch.object(main, "_refresh_activity_bell", new_callable=AsyncMock),
+                patch.object(ipgeo, "needs_refresh", return_value=False),
+            ):
+                await main._run_activity_hourly()
+            return [real_now - r["window_end"] for r in await rows("activity_dest_raw")]
+
+        assert run_db(tmp_path, go) == [600]
+
     def test_ingest_purges_in_the_same_transaction(self, tmp_path):
         async def go():
             old = activity_ui.sanitise(window(end=END - 86400 + 300), NOW)
