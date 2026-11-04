@@ -33,8 +33,9 @@ Modes (the state lives in Docker, so a lost /data changes nothing):
 * ``off``: CASHPILOT_ISOLATION=off. Docker's default bridge, as before. If our
   network still exists, the table keeps only its masquerade, so earners still
   on it keep their internet until they are redeployed.
-* ``on``: CASHPILOT_ISOLATION=on, or our labeled network exists, or no managed
-  earner sits on the default bridge (a fresh install).
+* ``on``: CASHPILOT_ISOLATION=on, or our labeled network exists, or a managed
+  earner is still bound to it after it was removed (Unraid's reboot), or no
+  managed earner sits on the default bridge (a fresh install).
 * ``legacy``: an upgraded install whose earners are on the default bridge.
   Nothing changes until the owner turns isolation on from the fleet page.
 
@@ -522,13 +523,37 @@ def default_bridge_earners(client: Any) -> list[Any]:
     return [c for c in _managed(client) if _on_default_bridge(c)]
 
 
+def _bound_to_removed_network(client: Any) -> bool:
+    """A managed container still names our network after it was removed.
+
+    Unraid removes user-defined networks when Docker starts. Each earner keeps
+    its endpoint by name with the old ID, so this is the proof isolation was
+    on when the network itself is gone. A network by our name that someone
+    else created is not removed, so it never counts here.
+    """
+    from docker.errors import NotFound
+
+    try:
+        client.networks.get(NETWORK_NAME)
+        return False
+    except NotFound:
+        pass
+    except Exception:  # noqa: BLE001 - treated as absent; the deploy path reports Docker errors
+        return False
+    try:
+        earners = _managed(client)
+    except Exception:  # noqa: BLE001 - same
+        return False
+    return any(NETWORK_NAME in (((c.attrs or {}).get("NetworkSettings") or {}).get("Networks") or {}) for c in earners)
+
+
 def resolve_mode(client: Any) -> str:
     if _orchestrator()._CONTAINER_NETWORK:
         return MODE_OPERATOR
     chosen = setting()
     if chosen == "off":
         return MODE_OFF
-    if chosen == "on" or managed_network(client) is not None:
+    if chosen == "on" or managed_network(client) is not None or _bound_to_removed_network(client):
         return MODE_ON
     return MODE_LEGACY if default_bridge_earners(client) else MODE_ON
 

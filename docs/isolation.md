@@ -88,7 +88,7 @@ otherwise (older NAS kernels). Both write the same rules.
 
 | Mode | When | What happens |
 |---|---|---|
-| on | a new install, `CASHPILOT_ISOLATION=on`, or the `cashpilot-isolated` network CashPilot created exists | earners join the fenced network |
+| on | a new install, `CASHPILOT_ISOLATION=on`, the `cashpilot-isolated` network CashPilot created exists, or an earner is still bound to it after Unraid removed it | earners join the fenced network |
 | legacy | an upgraded install whose earners already sit on Docker's default bridge | nothing changes on upgrade; the fleet page offers **Turn on isolation** |
 | off | `CASHPILOT_ISOLATION=off` | Docker's default bridge, as before; earners left on the fenced network keep their internet until you redeploy them |
 | your own network | `CASHPILOT_CONTAINER_NETWORK` is set | that network, with your own rules, as before; CashPilot writes no table |
@@ -127,8 +127,10 @@ off button on purpose: one click should not take the fence down.
   starts, unless **Settings > Docker > Preserve user defined networks** is
   Yes. The worker creates the network again and moves each earner that
   failed to start because of it back onto the new one, then starts it, so
-  they come back within a few minutes of the worker. Setting it to Yes avoids
-  the gap.
+  they come back within a few minutes of the worker. This holds even when
+  stopped earners are still on Docker's default bridge from before the switch:
+  an earner bound to the removed network is enough to keep isolation on.
+  Setting it to Yes avoids the gap.
 - A LAN on a public range behind another router (not directly connected to the
   host) is not dropped. Use a VLAN or your own rules.
 - Tested on Linux Docker 29 with nf_tables (colima on macOS, the same VM model

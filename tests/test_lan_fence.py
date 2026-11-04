@@ -383,6 +383,17 @@ class TestModes:
         client = _docker(_network(labeled=False), earners=[_container("cashpilot-honeygain")])
         assert _mode(client) == lan_fence.MODE_LEGACY
 
+    def test_an_earner_still_bound_to_our_removed_network_keeps_it_on(self):
+        """Unraid removes our network on a Docker restart; a stopped earner on the default bridge must not flip it."""
+        fenced = _orphan("cashpilot-honeygain", "old-id", error=TestReattach.GONE)
+        client = _docker(earners=[fenced, _container("cashpilot-storj", status="exited")])
+        assert _mode(client) == lan_fence.MODE_ON
+
+    def test_an_earner_on_someone_elses_network_by_our_name_does_not_count(self):
+        theirs = _container("cashpilot-a", lan_fence.NETWORK_NAME, (lan_fence.NETWORK_NAME,))
+        client = _docker(_network(labeled=False), earners=[theirs, _container("cashpilot-b")])
+        assert _mode(client) == lan_fence.MODE_LEGACY
+
     def test_on_forces_it(self):
         assert _mode(_docker(earners=[_container("cashpilot-honeygain")]), "on") == lan_fence.MODE_ON
 
@@ -626,6 +637,29 @@ class TestReattach:
         net.connect.assert_called_once_with(c)
         c.start.assert_called_once()
         assert state["fence"]["state"] == "applied"
+
+
+class TestTheMixedReboot:
+    """An upgraded install switched over, with a stopped earner left on the default bridge, after Unraid's reboot."""
+
+    def _client(self):
+        fenced = _orphan("cashpilot-honeygain", "old-id", error=TestReattach.GONE)
+        stopped = _container("cashpilot-storj", status="exited")
+        return _docker(earners=[fenced, stopped]), fenced
+
+    def test_reconcile_recreates_the_network_and_brings_the_earner_back(self):
+        client, fenced = self._client()
+        state, _helper = _reconcile(client, "auto")
+        assert state["mode"] == "on" and state["network"] == lan_fence.NETWORK_NAME
+        assert state["fence"]["state"] == "applied"
+        client._nets[lan_fence.NETWORK_NAME].connect.assert_called_once_with(fenced)
+        fenced.start.assert_called_once()
+        assert state["earners_outside_stopped"] == ["storj"]
+
+    def test_the_next_deploy_lands_behind_the_fence(self):
+        client, _fenced = self._client()
+        kwargs, _helper = _deploy(client, "auto")
+        assert kwargs["network"] == lan_fence.NETWORK_NAME
 
 
 def test_the_helper_gets_the_egress_ip():
