@@ -200,6 +200,12 @@
 #     the outcome is a terminated account with the pending balance cancelled,
 #     and CashPilot deploying the service as a container IS the violation.
 #     Requires a first-party source; never infer it from a residential-IP rule.
+#   proxy_prohibited:  (optional)
+#     source: "https://..."  (the provider's own terms that say so)
+#     Set ONLY when the provider's own terms forbid running its software
+#     through a proxy or VPN. The dashboard then refuses a proxied copy of the
+#     service (docs/proxies.md). Absent means nobody has documented it, never
+#     that it is allowed.
 #   note: ""  (footnote text for special cases in README table)
 #   note_column: ""  (which column footnote applies to: vps_ip, devices_per_ip)
 #   min_bandwidth: ""

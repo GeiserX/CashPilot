@@ -2256,6 +2256,8 @@ class TestLifespanScheduler:
                         # other; it carries the same hardening kwargs, which the
                         # loop below asserts for every job uniformly.
                         "update_check_android",
+                        # Proxy traffic caps that reset on a chosen day.
+                        "proxy_cap_resets",
                     }
                     # Every job carries the hardening kwargs (audit fix).
                     for job in jobs.values():

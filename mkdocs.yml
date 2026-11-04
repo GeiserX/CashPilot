@@ -227,6 +227,7 @@ nav:
     - Multi-node fleet management: fleet.md
     - Running on ARM: arm.md
     - Custom services: custom-services.md
+    - Proxied copies: proxies.md
   - Security:
     - Security defaults: security-defaults.md
     - Protecting your home network: home-network-security.md

@@ -115,7 +115,8 @@ probe_until_ready() {
 # 3: routes and the tunnel process.
 if [ "$KIND" = tailscale ]; then
     mkdir -p /run/ts
-    tailscaled --tun=tailscale0 --state=mem: --statedir=/run/ts --socket=/run/ts/ts.sock &
+    # No log upload: nothing about this node leaves except its own tunnel traffic.
+    tailscaled --tun=tailscale0 --state=mem: --statedir=/run/ts --socket=/run/ts/ts.sock --no-logs-no-support &
     TPID=$!
     i=0
     until tailscale --socket=/run/ts/ts.sock status >/dev/null 2>&1 || [ "$i" -ge 20 ]; do

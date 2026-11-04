@@ -445,4 +445,7 @@ You do not have to configure any of this; it is always on
   declares it and it is on a fixed allow-list, which today holds only
   `/dev/net/tun`, for Mysterium;
 - no bind mounts of system paths, including the Docker socket;
-- credentials encrypted at rest.
+- credentials encrypted at rest;
+- for a [proxied copy](proxies.md), a tunnel container that drops every packet
+  not bound for the proxy, so the copy can never fall back to your own
+  connection or reach your LAN.

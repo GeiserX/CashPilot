@@ -649,6 +649,29 @@ CREATE TABLE IF NOT EXISTS state_backups (
     PRIMARY KEY (slug, worker_id)
 );
 
+-- Proxies an owner can run copies of services through (app/proxies.py,
+-- docs/proxies.md). What the owner set, credentials included, is one Fernet
+-- blob like a custom service; `state` holds only what CashPilot measured
+-- (traffic used against the cap, the last exit IP seen), never a secret.
+CREATE TABLE IF NOT EXISTS proxies (
+    id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+    definition_encrypted TEXT    NOT NULL,
+    state                TEXT    NOT NULL DEFAULT '{}',
+    created_at           TEXT    NOT NULL DEFAULT (datetime('now'))
+);
+
+-- Which service runs through which proxy on which worker. stopped_by_cap is
+-- 1 when the traffic cap stopped it, so a reset starts only those and never
+-- one the owner stopped by hand.
+CREATE TABLE IF NOT EXISTS proxied_copies (
+    proxy_id       INTEGER NOT NULL,
+    worker_id      INTEGER NOT NULL,
+    slug           TEXT    NOT NULL,
+    stopped_by_cap INTEGER NOT NULL DEFAULT 0,
+    created_at     TEXT    NOT NULL DEFAULT (datetime('now')),
+    PRIMARY KEY (proxy_id, worker_id, slug)
+);
+
 CREATE TABLE IF NOT EXISTS usage_counters (
     worker_id    INTEGER NOT NULL,
     container_id TEXT    NOT NULL,
@@ -2017,6 +2040,141 @@ async def list_deployment_placements() -> list[dict[str, Any]]:
 async def forget_deployment(slug: str) -> None:
     """Drop every record of ``slug`` being deployed: the fleet row and each box's."""
     await remove_deployment(slug)
+
+
+# --- Proxies (app/proxies.py) ---
+
+
+async def create_proxy(definition: dict[str, Any]) -> int:
+    blob = encrypt_value(json.dumps(definition, sort_keys=True))
+    db = await _get_db()
+    try:
+        cursor = await db.execute("INSERT INTO proxies (definition_encrypted) VALUES (?)", (blob,))
+        await db.commit()
+        return int(cursor.lastrowid)
+    finally:
+        await db.close()
+
+
+async def update_proxy_definition(proxy_id: int, definition: dict[str, Any]) -> bool:
+    blob = encrypt_value(json.dumps(definition, sort_keys=True))
+    db = await _get_db()
+    try:
+        cursor = await db.execute("UPDATE proxies SET definition_encrypted = ? WHERE id = ?", (blob, proxy_id))
+        await db.commit()
+        return (cursor.rowcount or 0) > 0
+    finally:
+        await db.close()
+
+
+async def update_proxy_state(proxy_id: int, state: dict[str, Any]) -> None:
+    db = await _get_db()
+    try:
+        await db.execute("UPDATE proxies SET state = ? WHERE id = ?", (json.dumps(state, sort_keys=True), proxy_id))
+        await db.commit()
+    finally:
+        await db.close()
+
+
+def _decode_proxy(row: Any) -> dict[str, Any] | None:
+    raw = decrypt_value(row["definition_encrypted"] or "")
+    try:
+        definition = json.loads(raw) if raw else None
+    except ValueError:
+        definition = None
+    if not isinstance(definition, dict):
+        _logger.warning("Proxy %s could not be decrypted or read; it is skipped", row["id"])
+        return None
+    try:
+        state = json.loads(row["state"] or "{}")
+    except ValueError:
+        state = {}
+    return {"id": int(row["id"]), "definition": definition, "state": state if isinstance(state, dict) else {}}
+
+
+async def get_proxy(proxy_id: int) -> dict[str, Any] | None:
+    db = await _get_db()
+    try:
+        cursor = await db.execute("SELECT id, definition_encrypted, state FROM proxies WHERE id = ?", (proxy_id,))
+        row = await cursor.fetchone()
+    finally:
+        await db.close()
+    return _decode_proxy(row) if row else None
+
+
+async def list_proxies() -> list[dict[str, Any]]:
+    db = await _get_db()
+    try:
+        cursor = await db.execute("SELECT id, definition_encrypted, state FROM proxies ORDER BY id")
+        rows = await cursor.fetchall()
+    finally:
+        await db.close()
+    return [p for p in (_decode_proxy(r) for r in rows) if p is not None]
+
+
+async def delete_proxy(proxy_id: int) -> bool:
+    db = await _get_db()
+    try:
+        await db.execute("DELETE FROM proxied_copies WHERE proxy_id = ?", (proxy_id,))
+        cursor = await db.execute("DELETE FROM proxies WHERE id = ?", (proxy_id,))
+        await db.commit()
+        return (cursor.rowcount or 0) > 0
+    finally:
+        await db.close()
+
+
+async def save_proxied_copy(proxy_id: int, worker_id: int, slug: str) -> None:
+    db = await _get_db()
+    try:
+        await db.execute(
+            """
+            INSERT INTO proxied_copies (proxy_id, worker_id, slug) VALUES (?, ?, ?)
+            ON CONFLICT(proxy_id, worker_id, slug) DO UPDATE SET stopped_by_cap = 0
+            """,
+            (proxy_id, worker_id, slug),
+        )
+        await db.commit()
+    finally:
+        await db.close()
+
+
+async def list_proxied_copies(proxy_id: int | None = None) -> list[dict[str, Any]]:
+    db = await _get_db()
+    try:
+        if proxy_id is None:
+            cursor = await db.execute("SELECT * FROM proxied_copies ORDER BY proxy_id, worker_id, slug")
+        else:
+            cursor = await db.execute(
+                "SELECT * FROM proxied_copies WHERE proxy_id = ? ORDER BY worker_id, slug", (proxy_id,)
+            )
+        return [dict(r) for r in await cursor.fetchall()]
+    finally:
+        await db.close()
+
+
+async def set_proxied_copy_capped(proxy_id: int, worker_id: int, slug: str, capped: bool) -> None:
+    db = await _get_db()
+    try:
+        await db.execute(
+            "UPDATE proxied_copies SET stopped_by_cap = ? WHERE proxy_id = ? AND worker_id = ? AND slug = ?",
+            (1 if capped else 0, proxy_id, worker_id, slug),
+        )
+        await db.commit()
+    finally:
+        await db.close()
+
+
+async def delete_proxied_copy(proxy_id: int, worker_id: int, slug: str) -> bool:
+    db = await _get_db()
+    try:
+        cursor = await db.execute(
+            "DELETE FROM proxied_copies WHERE proxy_id = ? AND worker_id = ? AND slug = ?",
+            (proxy_id, worker_id, slug),
+        )
+        await db.commit()
+        return (cursor.rowcount or 0) > 0
+    finally:
+        await db.close()
 
 
 # --- Custom services ---

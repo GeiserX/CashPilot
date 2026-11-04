@@ -217,7 +217,7 @@ def sidecar_kwargs(name: str, slug: str, proxy_id: int | None, network: str | No
         "security_opt": ["no-new-privileges:true"],
         "pids_limit": 64,
         "read_only": True,
-        "tmpfs": {"/run": "size=2m,mode=0755"},
+        "tmpfs": {"/run": "size=8m,mode=0755"},
         "volumes": [SECRET_DIR],
         "init": True,
         "sysctls": {

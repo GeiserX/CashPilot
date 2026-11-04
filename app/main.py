@@ -61,6 +61,7 @@ from app import (
     power,
     preflight,
     producer_state,
+    proxies,
     setup_token,
     update_check,
     usage,
@@ -2058,6 +2059,16 @@ async def lifespan(app: FastAPI):
         coalesce=True,
         misfire_grace_time=300,
     )
+    # Proxy traffic caps that reset on a day of the month (app/proxies.py).
+    scheduler.add_job(
+        _run_proxy_cap_resets,
+        "interval",
+        hours=1,
+        id="proxy_cap_resets",
+        max_instances=1,
+        coalesce=True,
+        misfire_grace_time=300,
+    )
     scheduler.add_job(
         exchange_rates.refresh,
         "interval",
@@ -2195,7 +2206,12 @@ async def _validation_error_handler(request: Request, exc: RequestValidationErro
     # validator's error carries the raised ValueError OBJECT in ctx, which is not
     # serialisable either. Encoding then sanitising fixes both without changing
     # the body for any error that was already fine.
-    return JSONResponse(status_code=422, content={"detail": _json_safe(jsonable_encoder(exc.errors()))})
+    errors = exc.errors()
+    if request.url.path.startswith("/api/proxies"):
+        # A proxy body carries its password or auth key, and the default 422
+        # echoes the rejected input.
+        errors = [{k: v for k, v in err.items() if k not in ("input", "ctx")} for err in errors]
+    return JSONResponse(status_code=422, content={"detail": _json_safe(jsonable_encoder(errors))})
 
 
 def _json_safe(value: Any) -> Any:
@@ -3887,6 +3903,293 @@ async def _proxy_worker_logs(worker_id: int, slug: str, lines: int = 50, instanc
     if instance > 1:
         params["instance"] = instance
     return await _proxy_to_worker(worker_id, "GET", f"/api/containers/{slug}/logs", params=params)
+
+
+# ---------------------------------------------------------------------------
+# API: Proxies and proxied copies (app/proxies.py, docs/proxies.md)
+# ---------------------------------------------------------------------------
+
+
+class ProxyCopyRequest(BaseModel):
+    worker_id: int
+    slug: str
+
+
+async def _proxy_or_404(proxy_id: int) -> dict[str, Any]:
+    proxy = await database.get_proxy(proxy_id)
+    if not proxy:
+        raise HTTPException(status_code=404, detail="No such proxy")
+    return proxy
+
+
+def _mask(text: Any, secrets_: list[str]) -> Any:
+    if not isinstance(text, str):
+        return text
+    for value in sorted(secrets_, key=len, reverse=True):
+        if value:
+            text = text.replace(value, "***")
+    return text
+
+
+async def _proxy_worker_call(
+    worker_id: int, method: str, path: str, definition: dict[str, Any], *, json: Any = None, timeout: float = 30
+) -> dict[str, Any]:
+    """_proxy_to_worker for the proxy routes, with every proxy secret masked
+    out of whatever the worker answers."""
+    try:
+        return await _proxy_to_worker(worker_id, method, path, json=json, timeout=timeout)
+    except HTTPException as exc:
+        raise HTTPException(status_code=exc.status_code, detail=_mask(exc.detail, proxies.secret_values(definition)))
+
+
+async def _require_proxy_feature(worker_id: int) -> None:
+    if "proxy_tunnel" not in await _worker_features(worker_id):
+        raise HTTPException(
+            status_code=409,
+            detail="This worker is too old to run copies through a proxy, or has no Docker socket. Update it first.",
+        )
+
+
+@app.get("/api/proxies")
+async def api_list_proxies(request: Request, _auth: dict[str, Any] = Depends(_require_owner)) -> dict[str, Any]:
+    """Every proxy, without its secrets, and running copies grouped by exit IP."""
+    items = await database.list_proxies()
+    copies = await database.list_proxied_copies()
+    workers = await database.list_workers()
+    for w in workers:
+        _parse_worker_json(w)
+    rotating = {p["id"] for p in items if (p.get("definition") or {}).get("rotating")}
+    return {
+        "proxies": [proxies.public_view(p, [c for c in copies if c["proxy_id"] == p["id"]]) for p in items],
+        "exits": proxies.proxy_exits(workers, rotating),
+    }
+
+
+@app.post("/api/proxies")
+async def api_create_proxy(request: Request, _auth: dict[str, Any] = Depends(_require_owner)) -> dict[str, Any]:
+    try:
+        body = await request.json()
+        definition = proxies.clean_definition(body if isinstance(body, dict) else {})
+    except proxies.ProxyInputError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from None
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Send the proxy as a JSON object") from None
+    proxy_id = await database.create_proxy(definition)
+    return proxies.public_view(await _proxy_or_404(proxy_id))
+
+
+@app.patch("/api/proxies/{proxy_id}")
+async def api_update_proxy(
+    request: Request, proxy_id: int, _auth: dict[str, Any] = Depends(_require_owner)
+) -> dict[str, Any]:
+    proxy = await _proxy_or_404(proxy_id)
+    try:
+        body = await request.json()
+        definition = proxies.clean_definition(body if isinstance(body, dict) else {}, proxy["definition"])
+    except proxies.ProxyInputError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from None
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Send the proxy as a JSON object") from None
+    await database.update_proxy_definition(proxy_id, definition)
+    return proxies.public_view(await _proxy_or_404(proxy_id), await database.list_proxied_copies(proxy_id))
+
+
+@app.delete("/api/proxies/{proxy_id}")
+async def api_delete_proxy(proxy_id: int, _auth: dict[str, Any] = Depends(_require_owner)) -> dict[str, str]:
+    await _proxy_or_404(proxy_id)
+    if await database.list_proxied_copies(proxy_id):
+        raise HTTPException(status_code=409, detail="Remove the copies running through this proxy first")
+    await database.delete_proxy(proxy_id)
+    return {"status": "deleted"}
+
+
+@app.post("/api/proxies/{proxy_id}/test")
+async def api_test_proxy(
+    proxy_id: int, worker_id: int | None = None, _auth: dict[str, Any] = Depends(_require_owner)
+) -> dict[str, Any]:
+    """Bring up a throwaway tunnel on a worker and report the exit IP and country it gets."""
+    proxy = await _proxy_or_404(proxy_id)
+    worker_id = await _resolve_worker_id(worker_id)
+    await _require_proxy_feature(worker_id)
+    definition = proxy["definition"]
+    result = await _proxy_worker_call(
+        worker_id,
+        "POST",
+        "/api/proxy-test",
+        definition,
+        json={"proxy": proxies.worker_proxy_spec(definition)},
+        timeout=90,
+    )
+    state = dict(proxy["state"])
+    state["last_exit_ip"] = egress.public_ip(result.get("exit_ip"))
+    state["last_country"] = str(result.get("country") or "") or None
+    state["last_checked_at"] = datetime.now(UTC).isoformat(timespec="seconds")
+    await database.update_proxy_state(proxy_id, state)
+    return {"exit_ip": state["last_exit_ip"], "country": state["last_country"], "ms": result.get("ms")}
+
+
+@app.post("/api/proxies/{proxy_id}/copies")
+async def api_add_proxied_copy(
+    proxy_id: int, body: ProxyCopyRequest, _auth: dict[str, Any] = Depends(_require_owner)
+) -> dict[str, Any]:
+    """Run a copy of a service already deployed on a worker through this proxy.
+
+    The copy is built from that deployment's own record, so it carries the
+    same image, credentials and limits, under its own device names.
+    """
+    proxy = await _proxy_or_404(proxy_id)
+    definition, state = proxy["definition"], proxy["state"]
+    if state.get("capped_at"):
+        raise HTTPException(status_code=409, detail=state.get("cap_reason") or "This proxy reached its traffic cap")
+    slug = body.slug
+    svc = catalog.get_service(slug) or await _custom_service(slug, reveal=True)
+    if not svc:
+        raise HTTPException(status_code=404, detail=f"Service '{slug}' not found")
+    if svc.get("status") in _UNDEPLOYABLE_STATUSES:
+        raise HTTPException(status_code=409, detail=f"Service '{slug}' is no longer available for deployment")
+    if why := proxies.refusal(svc):
+        raise HTTPException(status_code=400, detail=why)
+    worker_id = await _resolve_worker_id(body.worker_id)
+    await _require_proxy_feature(worker_id)
+    recorded = await database.get_deployment_spec(slug, worker_id=worker_id)
+    if not recorded:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Deploy {svc.get('name') or slug} on this worker first; the proxied copy runs with its settings.",
+        )
+    docker_conf = svc.get("docker") or {}
+    earner = proxies.earner_spec(recorded, docker_conf, proxy_id)
+    if not recorded.get("custom_image") and isinstance(docker_conf.get("image_by_arch"), dict):
+        worker = await database.get_worker(worker_id) or {}
+        arch_image = _image_for_arch(docker_conf, _safe_json(worker.get("system_info", "{}"), {}).get("arch"))
+        if arch_image:
+            earner["image"] = arch_image
+    result = await _proxy_worker_call(
+        worker_id,
+        "POST",
+        f"/api/proxied/{slug}/{proxy_id}/deploy",
+        definition,
+        json={"earner": earner, "proxy": proxies.worker_proxy_spec(definition)},
+        timeout=180,
+    )
+    await database.save_proxied_copy(proxy_id, worker_id, slug)
+    exit_info = result.get("exit") if isinstance(result.get("exit"), dict) else {}
+    exit_ip = egress.public_ip(exit_info.get("ip"))
+    workers = await database.list_workers()
+    for w in workers:
+        _parse_worker_json(w)
+    response: dict[str, Any] = {"status": "deployed", "exit_ip": exit_ip, "country": exit_info.get("country") or None}
+    # Preflight after the fact: the exit IP is only known once the tunnel is up.
+    others = [o for o in proxies.same_exit_copies(workers, slug, exit_ip)]
+    if others:
+        limit = egress.devices_per_ip_limit(svc)
+        response["warning"] = f"{svc.get('name') or slug} already leaves from {exit_ip} on {', '.join(others)}. " + (
+            "Its provider allows one device per IP, so this copy earns nothing there."
+            if limit == 1
+            else "Copies on one IP share its bandwidth, and the provider may limit devices per IP."
+        )
+    return response
+
+
+@app.post("/api/proxies/{proxy_id}/copies/{worker_id}/{slug}/{command}")
+async def api_proxied_copy_command(
+    proxy_id: int, worker_id: int, slug: str, command: str, _auth: dict[str, Any] = Depends(_require_owner)
+) -> dict[str, Any]:
+    if command not in ("start", "stop"):
+        raise HTTPException(status_code=400, detail="The command is start or stop")
+    proxy = await _proxy_or_404(proxy_id)
+    if command == "start" and proxy["state"].get("capped_at"):
+        raise HTTPException(status_code=409, detail=proxy["state"].get("cap_reason") or "This proxy reached its cap")
+    result = await _proxy_worker_call(
+        worker_id, "POST", f"/api/proxied/{slug}/{proxy_id}/{command}", proxy["definition"], timeout=90
+    )
+    # A start or stop by hand is the owner's decision; a later reset must not undo it.
+    await database.set_proxied_copy_capped(proxy_id, worker_id, slug, False)
+    return result
+
+
+@app.delete("/api/proxies/{proxy_id}/copies/{worker_id}/{slug}")
+async def api_remove_proxied_copy(
+    proxy_id: int, worker_id: int, slug: str, _auth: dict[str, Any] = Depends(_require_owner)
+) -> dict[str, Any]:
+    proxy = await _proxy_or_404(proxy_id)
+    result = await _proxy_worker_call(worker_id, "DELETE", f"/api/proxied/{slug}/{proxy_id}", proxy["definition"])
+    await database.delete_proxied_copy(proxy_id, worker_id, slug)
+    return result
+
+
+@app.post("/api/proxies/{proxy_id}/reset-usage")
+async def api_reset_proxy_usage(proxy_id: int, _auth: dict[str, Any] = Depends(_require_owner)) -> dict[str, Any]:
+    """Start a new traffic period by hand, and start the copies the cap stopped."""
+    proxy = await _proxy_or_404(proxy_id)
+    started = await _reset_proxy(proxy)
+    return {"status": "reset", "started": started}
+
+
+async def _reset_proxy(proxy: dict[str, Any]) -> list[str]:
+    await database.update_proxy_state(proxy["id"], proxies.reset_state(proxy["state"], datetime.now(UTC).date()))
+    await database.clear_alerts(kind="proxy_cap", subject=str(proxy["id"]))
+    started: list[str] = []
+    for copy in await database.list_proxied_copies(proxy["id"]):
+        if not copy.get("stopped_by_cap"):
+            continue
+        try:
+            await _proxy_worker_call(
+                copy["worker_id"],
+                "POST",
+                f"/api/proxied/{copy['slug']}/{proxy['id']}/start",
+                proxy["definition"],
+                timeout=90,
+            )
+            await database.set_proxied_copy_capped(proxy["id"], copy["worker_id"], copy["slug"], False)
+            started.append(f"{copy['slug']} on worker {copy['worker_id']}")
+        except HTTPException as exc:
+            logger.warning(
+                "Could not restart %s through proxy %s after a reset: %s", copy["slug"], proxy["id"], exc.detail
+            )
+    return started
+
+
+async def _run_proxy_cap_resets() -> None:
+    """Scheduler job: start a new period for every proxy whose reset day has come."""
+    today = datetime.now(UTC).date()
+    for proxy in await database.list_proxies():
+        if proxies.reset_due(proxy["definition"], proxy["state"], today):
+            await _reset_proxy(proxy)
+
+
+async def _account_proxy_traffic(worker_id: int, entries: list[Any]) -> None:
+    """Add one heartbeat's tunnel traffic to each proxy, and stop its copies at the cap.
+
+    Heartbeats arrive every 60 s, so the copies can run up to a minute past the
+    threshold; the 90% default leaves room for that (docs/proxies.md).
+    """
+    by_proxy: dict[int, list[dict[str, Any]]] = {}
+    for entry in entries:
+        if isinstance(entry, dict) and isinstance(entry.get("proxy_id"), int):
+            by_proxy.setdefault(entry["proxy_id"], []).append(entry)
+    now = time.time()
+    for proxy_id, items in by_proxy.items():
+        proxy = await database.get_proxy(proxy_id)
+        if not proxy:
+            continue
+        state, crossed = proxies.account(proxy["state"], proxy["definition"], worker_id, items, now)
+        await database.update_proxy_state(proxy_id, state)
+        if crossed:
+            _spawn(_stop_capped_proxy({**proxy, "state": state}))
+
+
+async def _stop_capped_proxy(proxy: dict[str, Any]) -> None:
+    reason = proxy["state"].get("cap_reason") or "This proxy reached its traffic cap"
+    for copy in await database.list_proxied_copies(proxy["id"]):
+        try:
+            await _proxy_worker_call(
+                copy["worker_id"], "POST", f"/api/proxied/{copy['slug']}/{proxy['id']}/stop", proxy["definition"]
+            )
+            await database.set_proxied_copy_capped(proxy["id"], copy["worker_id"], copy["slug"], True)
+        except HTTPException as exc:
+            logger.warning("Could not stop %s at proxy %s's cap: %s", copy["slug"], proxy["id"], exc.detail)
+    await database.record_alert("proxy_cap", str(proxy["id"]), f"Stopped: {reason}.")
 
 
 # ---------------------------------------------------------------------------
@@ -6825,6 +7128,14 @@ async def api_worker_heartbeat(request: Request, body: WorkerHeartbeat) -> dict[
             await database.record_usage(worker_id, body.containers)
         except Exception as exc:  # noqa: BLE001
             logger.warning("Could not record resource usage for worker %s: %s", worker_id, exc)
+    # Traffic through each proxy, for its cap. Never allowed to reject a
+    # heartbeat: a missed reading is one minute of uncounted traffic.
+    proxied = (body.system_info or {}).get("proxied") if isinstance(body.system_info, dict) else None
+    if isinstance(proxied, list) and proxied:
+        try:
+            await _account_proxy_traffic(worker_id, proxied)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Could not count proxy traffic for worker %s: %s", worker_id, exc)
     if previous is not None and previous[0] == "offline":
         # Deliberately NO alert clearing here. This used to drop the stored
         # alert on the first heartbeat after offline — which re-armed the push
