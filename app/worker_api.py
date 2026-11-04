@@ -641,6 +641,10 @@ async def _send_heartbeat() -> None:
     # The isolation check needs the Docker socket, so a worker without one
     # does not offer it in "features": the button could only fail.
     docker_ok = await asyncio.to_thread(orchestrator.docker_available)
+    egress_ip = await _detect_egress_ip()
+    # The fence drops this address too, so the router's NAT loopback cannot
+    # carry an earner back into the LAN. The next fence check picks it up.
+    lan_fence.set_egress_ip(egress_ip)
     payload = {
         "name": WORKER_NAME,
         "client_id": CLIENT_ID,
@@ -661,7 +665,7 @@ async def _send_heartbeat() -> None:
             "features": ["instances", "isolation_check", "state_backup"] if docker_ok else ["instances"],
             # Providers count devices per public IP, so the UI needs the address
             # the provider sees — not this container's LAN or tailnet address.
-            "egress_ip": await _detect_egress_ip(),
+            "egress_ip": egress_ip,
             "egress_network_type": _detect_network_type(),
             # Disk is earning capacity for Storj; GPU decides whether the compute
             # services can earn at all. Both are None/unknown-aware -- see the

@@ -415,17 +415,25 @@ CASHPILOT_WORKER_NAME=server-name</code>
     if (!iso || !iso.mode) return '';
     const fence = iso.fence || {};
     const outside = iso.earners_outside || [];
+    const stopped = iso.earners_outside_stopped || [];
+    // A redeploy starts the container, so the switch leaves stopped earners
+    // where they are; they move the next time they are deployed.
+    const stoppedNote = stopped.length
+      ? ` <span class="muted">Stopped, so left alone: ${esc(stopped.join(', '))}. Each moves when you next deploy it; starting it as it is keeps it on the old network.</span>`
+      : '';
     const canSwitch = _isOwner && (sysInfo.features || []).includes('isolation_default');
     const button = (text) => canSwitch && !(sw && sw.busy)
       ? ` <button class="btn btn-primary btn-sm btn-fence-on" data-worker-id="${w.id}" data-worker-name="${esc(w.name)}">${text}</button>`
       : '';
     let line = '';
     if (iso.mode === 'legacy') {
-      line = `<span class="text-warn">Earners on this worker can reach your LAN and this host: ${esc(outside.join(', ') || 'none running')}.</span>${button('Turn on isolation')}`;
+      line = `<span class="text-warn">Earners on this worker can reach your LAN and this host: ${esc(outside.join(', ') || 'none running')}.</span>${button('Turn on isolation')}${stoppedNote}`;
     } else if (iso.mode === 'on' && fence.state === 'failed') {
       line = `<span class="text-fail">The LAN fence is not in place on this worker: ${esc(fence.error || 'unknown error')}. Earners on its network have no internet until it is back; that is how it fails safe. Deploys are refused until then. To run without the fence, set CASHPILOT_ISOLATION=off on the worker.</span>`;
     } else if (iso.mode === 'on' && outside.length) {
-      line = `<span class="text-warn">These earners are still outside the isolated network and can reach your LAN: ${esc(outside.join(', '))}.</span>${button('Move them')}`;
+      line = `<span class="text-warn">These earners are still outside the isolated network and can reach your LAN: ${esc(outside.join(', '))}.</span>${button('Move them')}${stoppedNote}`;
+    } else if (iso.mode === 'on' && stopped.length) {
+      line = stoppedNote.trim();
     } else if (iso.mode === 'off' && outside.length === 0 && fence.state === 'reduced') {
       line = '<span class="muted">Isolation is off (CASHPILOT_ISOLATION=off). Earners still on the isolated network keep their internet; redeploy them to move them back to Docker\'s default bridge.</span>';
     }
@@ -439,30 +447,41 @@ CASHPILOT_WORKER_NAME=server-name</code>
   async function enableFence(workerId, name) {
     if (!confirm(`Turn on LAN isolation on "${name}"?\n\n`
       + '- The worker creates a Docker network (cashpilot-isolated) and one firewall table (ip cashpilot) on its host.\n'
-      + '- Each earner on Docker\'s default bridge is redeployed once onto that network. Storj gets its full clean stop first, so it can take a few minutes.\n'
+      + '- Each running earner on Docker\'s default bridge is redeployed once onto that network. Storj gets its full clean stop first, so it can take a few minutes.\n'
+      + '- Stopped earners stay stopped and move the next time you deploy them.\n'
       + '- Identities and data are kept: the same volumes and settings are used.\n\n'
       + 'To undo it, set CASHPILOT_ISOLATION=off on the worker and redeploy the earners.')) return;
     _fenceSwitch[workerId] = { busy: 'Turning on isolation…' };
     loadFleet();
-    let current = '';
+    let slugs;
     try {
       const r = await CP.api(`/api/workers/${workerId}/isolation`, { method: 'POST' });
-      const slugs = r.earners_outside || [];
-      for (let i = 0; i < slugs.length; i++) {
-        current = slugs[i];
-        _fenceSwitch[workerId] = { busy: `Moving ${current} (${i + 1} of ${slugs.length})…` };
-        loadFleet();
-        // An empty body redeploys from the recorded spec, onto the new network.
-        await CP.api(`/api/deploy/${encodeURIComponent(current)}?worker_id=${workerId}`, { method: 'POST', body: {} });
-      }
-      _fenceSwitch[workerId] = { done: slugs.length ? `Isolation is on. Moved ${slugs.join(', ')}.` : 'Isolation is on.' };
+      slugs = r.earners_outside || [];
     } catch (err) {
-      _fenceSwitch[workerId] = {
-        error: current
-          ? `Isolation is on, but ${current} could not be moved: ${err.message}. Redeploy it from its service page; the rest were not tried.`
-          : `Isolation could not be turned on: ${err.message}`,
-      };
+      _fenceSwitch[workerId] = { error: `Isolation could not be turned on: ${err.message}` };
+      loadFleet();
+      return;
     }
+    // One earner that cannot be redeployed (retired, broken, no recorded spec)
+    // must not keep the rest exposed, so every one is tried.
+    const moved = [];
+    const failed = [];
+    for (let i = 0; i < slugs.length; i++) {
+      const slug = slugs[i];
+      _fenceSwitch[workerId] = { busy: `Moving ${slug} (${i + 1} of ${slugs.length})…` };
+      loadFleet();
+      try {
+        // An empty body redeploys from the recorded spec, onto the new network.
+        await CP.api(`/api/deploy/${encodeURIComponent(slug)}?worker_id=${workerId}`, { method: 'POST', body: {} });
+        moved.push(slug);
+      } catch (err) {
+        failed.push(`${slug} (${err.message})`);
+      }
+    }
+    const done = moved.length ? `Isolation is on. Moved ${moved.join(', ')}.` : 'Isolation is on.';
+    _fenceSwitch[workerId] = failed.length
+      ? { error: `${done} Could not move: ${failed.join('; ')}. Redeploy or remove each from its service page.` }
+      : { done };
     loadFleet();
   }
 

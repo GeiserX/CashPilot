@@ -31,7 +31,7 @@ How it works:
   traffic between containers on it. The network carries the label
   `cashpilot.isolation=managed`.
 - The worker writes one firewall table, `table ip cashpilot`, into the host's
-  network namespace. It does that through a short-lived helper container started
+  network namespace, plus `table ip6 cashpilot` when the host has IPv6. It does that through a short-lived helper container started
   from its own image, with host networking and the `NET_ADMIN` and `NET_RAW`
   capabilities. The helper is removed when it finishes. The worker process
   itself never gets those capabilities.
@@ -39,20 +39,43 @@ How it works:
   `10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`, `100.64.0.0/10` (carrier-grade
   NAT and Tailscale), `169.254.0.0/16` (cloud metadata), any subnet directly
   connected to a real interface of the host (a LAN numbered in public space, a
-  VPS's neighbours), and the host itself. Replies to published ports still go
-  out, so Storj, Sia and Anyone Protocol keep accepting inbound connections.
+  VPS's neighbours), the host itself, and your home's own public IP. That last
+  one matters because most home routers loop a connection to their own public
+  address straight back into the LAN (NAT loopback), where it arrives with a
+  LAN source address. The worker learns the address from its public IP
+  detection; with detection off (`CASHPILOT_EGRESS_DETECT=off`) and no
+  `CASHPILOT_EGRESS_IP`, this drop is missing. Replies to published ports
+  still go out, so Storj, Sia and Anyone Protocol keep accepting inbound
+  connections.
+- The IPv6 table drops every IPv6 packet that enters from the bridge. The
+  network has IPv6 off, but Docker engines before 26 (Unraid 6.12, Synology
+  and QNAP ship them) still give each container an `fe80::` address, and over
+  it an earner could reach any host service listening on `[::]`.
 - Every service the worker deploys onto a bridge joins that network, with DNS
   servers `1.1.1.1` and `9.9.9.9` (`CASHPILOT_CONTAINER_DNS` changes them).
   Services on host networking, such as Mysterium, are not covered: see
   [Mysterium, which uses host networking](isolation-check.md#mysterium-which-uses-host-networking).
 
-**It fails closed.** The NAT and the drops live in the same table. When
-something removes the table (a reboot, `nft flush ruleset`, a firewalld reload),
-the earners lose their internet; they do not gain your LAN. The worker writes
-the table again when it starts, before every deploy, and every 5 minutes. After a
-restart of the Docker VM on a test host, the table was back 1.4 s after the
-worker container started. In that gap
-an earner can still reach the host itself, though not the LAN or the internet.
+**It fails closed, with three conditions.** The NAT and the drops live in the
+same table. When something removes the table (a reboot, `nft flush ruleset`, a
+firewalld reload), the earners lose their internet and do not gain your LAN
+for TCP. The worker writes the table again when it starts, before every
+deploy, and every 5 minutes. After a restart of the Docker VM on a test host,
+the table was back 1.4 s after the worker container started. While the table
+is missing:
+
+- An earner can reach the host itself on every port, since traffic to the
+  host needs no NAT. That lasts as long as the worker is not running: earners
+  come back with the Docker daemon on their own, and a worker that is stopped
+  or crash-looping writes nothing. Keep the worker running with a restart
+  policy, as the shipped compose files do.
+- A host that already has its own masquerade rule covering other subnets (a
+  common WireGuard `PostUp` line, a UFW `before.rules` recipe, or a firewalld
+  zone with masquerade on) NATs the earners' traffic with that rule. They then
+  reach your LAN and the internet with nothing filtering them until the
+  worker writes the table again.
+- One-way traffic, such as a UDP packet to a LAN device, still leaves without
+  NAT; only the reply cannot come back.
 
 **When the table cannot be written, deploys are refused.** The message says why
 and how to opt out. The running container is never touched first. The fleet page
@@ -80,8 +103,11 @@ reach your LAN and this host" and a **Turn on isolation** button (owner only).
 It creates the network and the table, then redeploys each earner on Docker's
 default bridge once onto the new network, one at a time, from its recorded
 settings. Volumes, identities and settings stay the same. Storj gets its full
-clean stop first, so that one can take a few minutes. If one redeploy fails,
-the page stops there and names it; redeploy that one from its service page.
+clean stop first, so that one can take a few minutes. A redeploy starts the
+container, so stopped earners are left alone: the page names them, and each
+moves the next time you deploy it. Starting one as it is keeps it on the old
+network. If one redeploy fails, the page carries on with the rest and names
+the ones it could not move; redeploy or remove those from their service pages.
 The same switch is `POST /api/workers/{id}/isolation`.
 
 ### Turning it off
@@ -93,7 +119,16 @@ off button on purpose: one click should not take the fence down.
 ### Limits
 
 - Host-networked services (Mysterium) are not covered.
-- IPv6: the fenced network has IPv6 off, so earners have no IPv6 path at all.
+- IPv6: the fenced network has IPv6 off. On Docker 26 and later the earners
+  get no IPv6 address at all; on older engines they get a link-local one,
+  which the IPv6 table drops. A host booted with IPv6 disabled gets no IPv6
+  table, since it has no IPv6 to filter.
+- Unraid removes every user-defined Docker network when its Docker service
+  starts, unless **Settings > Docker > Preserve user defined networks** is
+  Yes. The worker creates the network again and moves each earner that
+  failed to start because of it back onto the new one, then starts it, so
+  they come back within a few minutes of the worker. Setting it to Yes avoids
+  the gap.
 - A LAN on a public range behind another router (not directly connected to the
   host) is not dropped. Use a VLAN or your own rules.
 - Tested on Linux Docker 29 with nf_tables (colima on macOS, the same VM model
@@ -200,7 +235,11 @@ no firewall rule.
    read before and after. A counter that went up proves the fence dropped that
    connection, even on a host where nothing on the LAN answers, which is the
    case under Docker Desktop and colima. A counter that did not go up is
-   reported: something on the host routes that traffic around the fence.
+   reported: something on the host routes that traffic around the fence. Two
+   more targets join when the table holds their drops: your home's public IP,
+   and the host's IPv6 link-local address on the bridge. For those, a refused
+   connection also counts as reaching, since the drop answers nothing. An
+   earner with no IPv6 sends nothing to the second, which is not a finding.
 
 ### Reading the result
 
@@ -249,11 +288,11 @@ Two lines need a closer look.
   leak. Those earners were deployed before `CASHPILOT_CONTAINER_DNS` and wait
   about 4 s on every name lookup. Redeploy them.
 
-The check covers IPv4 only. When the earners' network has IPv6 enabled, or an
-earner has an IPv6 address, the result says so, since reaching the LAN over
-IPv6 needs its own [ip6tables rules](home-network-security.md#the-rules). It
-shows what an earner can reach right now, so run it again after any change to
-the host.
+Apart from the fence's IPv6 target above, the check covers IPv4 only. When the
+earners' network has IPv6 enabled, or an earner has a global IPv6 address, the
+result says so, since reaching the LAN over IPv6 needs its own
+[ip6tables rules](home-network-security.md#the-rules). It shows what an
+earner can reach right now, so run it again after any change to the host.
 
 ## A VLAN is stronger
 

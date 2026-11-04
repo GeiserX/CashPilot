@@ -1,9 +1,11 @@
 table ip cashpilot
 delete table ip cashpilot
+table ip6 cashpilot
+delete table ip6 cashpilot
 table ip cashpilot {
   chain postrouting {
     type nat hook postrouting priority srcnat; policy accept;
-    ip saddr 172.18.0.0/16 oifname != "cp-isolated" counter masquerade comment "masquerade"
+    ip saddr 172.18.0.0/16 oifname != "cp-isolated" counter masquerade comment "masquerade-172.18.0.0/16"
   }
   chain forward {
     type filter hook forward priority -150; policy accept;
@@ -14,10 +16,21 @@ table ip cashpilot {
     iifname "cp-isolated" ip daddr 100.64.0.0/10 counter drop comment "cgnat"
     iifname "cp-isolated" ip daddr 169.254.0.0/16 counter drop comment "link-local"
     iifname "cp-isolated" ip daddr 203.0.113.0/24 counter drop comment "connected-203.0.113.0/24"
+    iifname "cp-isolated" ip daddr 198.51.100.7 counter drop comment "egress-198.51.100.7"
   }
   chain input {
     type filter hook input priority -150; policy accept;
     iifname "cp-isolated" ct state established,related counter accept comment "input-established"
     iifname "cp-isolated" counter drop comment "host"
+  }
+}
+table ip6 cashpilot {
+  chain forward {
+    type filter hook forward priority -150; policy accept;
+    iifname "cp-isolated" counter drop comment "ipv6-forward"
+  }
+  chain input {
+    type filter hook input priority -150; policy accept;
+    iifname "cp-isolated" counter drop comment "ipv6-host"
   }
 }

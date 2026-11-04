@@ -3,6 +3,6 @@ delete table ip cashpilot
 table ip cashpilot {
   chain postrouting {
     type nat hook postrouting priority srcnat; policy accept;
-    ip saddr 172.18.0.0/16 oifname != "cp-isolated" counter masquerade comment "masquerade"
+    ip saddr 172.18.0.0/16 oifname != "cp-isolated" counter masquerade comment "masquerade-172.18.0.0/16"
   }
 }

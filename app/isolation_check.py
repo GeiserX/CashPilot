@@ -144,6 +144,10 @@ def reach(t):
     try:
         with socket.create_connection((t["host"], int(t["port"])), timeout=2):
             return True
+    except ConnectionRefusedError:
+        # A reset came back, so the packet got there. For a fence sentinel on
+        # a closed port that is the exposure; elsewhere a closed port is not.
+        return bool(t.get("refused"))
     except OSError:
         return False
 
@@ -781,8 +785,20 @@ def dashboard_targets(ui_url: str | None = None) -> list[dict[str, Any]]:
 SENTINEL_PORT = 9
 
 
-def fence_targets(gateway: str | None) -> list[dict[str, Any]]:
-    """One connect per blocked range, plus the bridge gateway for the host rule."""
+def _address(host: str, port: int) -> str:
+    return f"[{host}]:{port}" if ":" in host else f"{host}:{port}"
+
+
+def fence_targets(gateway: str | None, fence: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+    """One connect per blocked range, plus the bridge gateway for the host rule.
+
+    ``fence`` is the helper's read. When the table holds a drop for the home's
+    public IP, that address is a target too: without the drop, the router's
+    NAT loopback would hand the connect back to the LAN. When it holds the
+    IPv6 drops and the bridge has a link-local address, that address is one:
+    an earner whose engine gave it IPv6 would reach the host there. Both count
+    a reset as reaching, since the drop answers nothing.
+    """
     found = [
         {
             "group": "fence",
@@ -801,6 +817,34 @@ def fence_targets(gateway: str | None) -> list[dict[str, Any]]:
                 "port": SENTINEL_PORT,
                 "label": lan_fence.HOST_RULE,
                 "range": "this host",
+            }
+        )
+    counters = (fence or {}).get("counters") or {}
+    egress = (fence or {}).get("egress")
+    if egress and lan_fence.egress_rule(egress) in counters:
+        found.append(
+            {
+                "group": "fence",
+                "host": egress,
+                "port": SENTINEL_PORT,
+                "label": lan_fence.egress_rule(egress),
+                "range": "this home's public IP",
+                "refused": True,
+            }
+        )
+    link_local = (fence or {}).get("bridge_ipv6")
+    if link_local and lan_fence.IPV6_HOST_RULE in counters:
+        found.append(
+            {
+                "group": "fence",
+                "host": f"{link_local}%eth0",
+                "port": SENTINEL_PORT,
+                "label": lan_fence.IPV6_HOST_RULE,
+                "range": "this host over IPv6",
+                "refused": True,
+                # An earner with no IPv6 sends nothing, so a flat counter is no finding;
+                # a reset or a connect is.
+                "optional": True,
             }
         )
     return found
@@ -826,9 +870,10 @@ def judge_fence(
             {
                 "rule": name,
                 "range": t["range"],
-                "address": f"{t['host']}:{t['port']}",
+                "address": _address(t["host"], t["port"]),
                 "reachable": bool(t.get("reachable")),
                 "proven": name in a and name in b and a[name] > b[name] and not t.get("reachable"),
+                "optional": bool(t.get("optional")),
             }
         )
     fence = {
@@ -837,7 +882,7 @@ def judge_fence(
         "ranges": ranges,
     }
     findings = []
-    missed = [r for r in ranges if not r["proven"]]
+    missed = [r for r in ranges if not r["proven"] and (r["reachable"] or not r["optional"])]
     if not (after or {}).get("present"):
         findings.append(
             {
@@ -921,13 +966,14 @@ def _probe(
     sentinels: list[dict[str, Any]] = []
     before = None
     if fenced:
-        sentinels = fence_targets(lan_fence.gateway(client))
         try:
             before = lan_fence.read_fence(client)
         except Exception as exc:  # noqa: BLE001 - the report says what went wrong
             return f"The fence's counters could not be read: {exc}"
+        sentinels = fence_targets(lan_fence.gateway(client), before)
 
-    targets = kept + [{k: t[k] for k in ("group", "host", "port", "label")} for t in sentinels] + [INTERNET]
+    keys = ("group", "host", "port", "label", "refused")
+    targets = kept + [{k: t[k] for k in keys if k in t} for t in sentinels] + [INTERNET]
     try:
         results = (
             run_probe(

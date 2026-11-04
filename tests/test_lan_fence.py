@@ -35,9 +35,12 @@ FIXTURES = ROOT / "tests" / "fixtures" / "lan_fence"
 @pytest.fixture(autouse=True)
 def _fresh_state():
     saved = json.loads(json.dumps(lan_fence._state))
+    egress = dict(lan_fence._egress)
     yield
     lan_fence._state.clear()
     lan_fence._state.update(saved)
+    lan_fence._egress.clear()
+    lan_fence._egress.update(egress)
 
 
 # ---------------------------------------------------------------------------
@@ -48,7 +51,7 @@ def _fresh_state():
 class TestTheRuleset:
     def test_nft_golden(self):
         """The text Desktop's port must produce byte for byte (shared fixture)."""
-        got = lan_fence.render_nft("cp-isolated", "172.18.0.0/16", ["203.0.113.0/24"])
+        got = lan_fence.render_nft("cp-isolated", "172.18.0.0/16", ["203.0.113.0/24"], egress="198.51.100.7", ipv6=True)
         assert got == (FIXTURES / "ruleset.nft").read_text()
 
     def test_reduced_keeps_only_the_masquerade(self):
@@ -57,7 +60,9 @@ class TestTheRuleset:
         assert "drop" not in got
 
     def test_iptables_golden(self):
-        got = lan_fence.render_iptables("cp-isolated", "172.18.0.0/16", ["203.0.113.0/24"])
+        got = lan_fence.render_iptables(
+            "cp-isolated", "172.18.0.0/16", ["203.0.113.0/24"], egress="198.51.100.7", ipv6=True
+        )
         assert got == (FIXTURES / "ruleset.iptables.sh").read_text()
 
     @pytest.mark.parametrize(
@@ -91,16 +96,49 @@ class TestTheRuleset:
             assert "ct state established,related" in lines[0], f"{chain}: the established accept must come first"
 
     @pytest.mark.parametrize("filtered", [True, False])
-    def test_every_rule_has_its_own_name(self, filtered):
+    @pytest.mark.parametrize(("egress", "ipv6"), [(None, False), ("198.51.100.7", True)])
+    def test_every_rule_has_its_own_name(self, filtered, egress, ipv6):
         """read_fence compares the names it finds with these; a duplicate would hide a missing rule."""
         extras = ["203.0.113.0/24"]
-        nft = lan_fence.render_nft("cp-isolated", "172.18.0.0/16", extras, filtered)
+        nft = lan_fence.render_nft("cp-isolated", "172.18.0.0/16", extras, filtered, egress, ipv6)
         names = [ln.rsplit('comment "', 1)[1].rstrip('"') for ln in nft.splitlines() if 'comment "' in ln]
         assert len(names) == len(set(names))
-        assert set(names) == lan_fence.rule_names(extras, filtered)
-        ipt = lan_fence.render_iptables("cp-isolated", "172.18.0.0/16", extras, filtered)
+        expected = lan_fence.rule_names("172.18.0.0/16", extras, filtered, egress, ipv6)
+        assert set(names) == expected
+        ipt = lan_fence.render_iptables("cp-isolated", "172.18.0.0/16", extras, filtered, egress, ipv6)
         ipt_names = [ln.split("--comment ", 1)[1].split()[0] for ln in ipt.splitlines() if "--comment" in ln]
-        assert set(ipt_names) == lan_fence.rule_names(extras, filtered)
+        assert set(ipt_names) == expected
+
+    def test_the_masquerade_name_carries_the_subnet(self):
+        """A network recreated on another subnet must change a name, or the helper keeps the old NAT."""
+        assert lan_fence.rule_names("172.18.0.0/16") != lan_fence.rule_names("172.19.0.0/16")
+        assert 'comment "masquerade-172.19.0.0/16"' in lan_fence.render_nft("cp-isolated", "172.19.0.0/16")
+
+    def test_the_homes_public_ip_is_dropped(self):
+        """NAT loopback: a connect to the WAN IP comes back into the LAN with a LAN source."""
+        nft = lan_fence.render_nft("cp-isolated", "172.18.0.0/16", egress="198.51.100.7")
+        forward = nft.split("chain forward {", 1)[1].split("}", 1)[0]
+        assert 'iifname "cp-isolated" ip daddr 198.51.100.7 counter drop comment "egress-198.51.100.7"' in forward
+        ipt = lan_fence.render_iptables("cp-isolated", "172.18.0.0/16", egress="198.51.100.7")
+        assert "-A CP-FWD -d 198.51.100.7/32 -m comment --comment egress-198.51.100.7 -j DROP" in ipt
+
+    @pytest.mark.parametrize("value", [None, "", "192.168.1.1", "100.64.1.1", "2001:db8::1", "x; flush ruleset"])
+    def test_only_a_public_ipv4_becomes_an_egress_drop(self, value):
+        assert lan_fence.egress_target(value) is None
+
+    def test_ipv6_from_the_bridge_is_dropped_on_both_hooks(self):
+        """Engines before 26 give containers an fe80:: address even on an IPv4-only network."""
+        nft = lan_fence.render_nft("cp-isolated", "172.18.0.0/16", ipv6=True)
+        table = nft.split("table ip6 cashpilot {", 1)[1]
+        assert 'iifname "cp-isolated" counter drop comment "ipv6-forward"' in table.split("chain input", 1)[0]
+        assert 'iifname "cp-isolated" counter drop comment "ipv6-host"' in table.split("chain input", 1)[1]
+        assert "delete table ip6 cashpilot" in nft, "the ip6 table is replaced atomically too"
+        ipt = lan_fence.render_iptables("cp-isolated", "172.18.0.0/16", ipv6=True)
+        assert "ip6tables-legacy -w -t mangle -A CP6-IN -m comment --comment ipv6-host -j DROP" in ipt
+
+    def test_reduced_with_ipv6_removes_the_ip6_table(self):
+        nft = lan_fence.render_nft("cp-isolated", "172.18.0.0/16", filtered=False, ipv6=True)
+        assert "delete table ip6 cashpilot" in nft and "table ip6 cashpilot {" not in nft
 
     def test_a_subnet_that_is_not_one_is_refused(self):
         with pytest.raises(ValueError):
@@ -174,7 +212,7 @@ exit 2
 
 
 class TestTheHelperScript:
-    def _run(self, tmp_path, action, filtered="1"):
+    def _run(self, tmp_path, action, filtered="1", subnet="172.18.0.0/16", ipv6=False, egress=""):
         bin_dir = tmp_path / "bin"
         bin_dir.mkdir(exist_ok=True)
         nft = bin_dir / "nft"
@@ -185,9 +223,17 @@ class TestTheHelperScript:
             PATH=f"{bin_dir}:{os.environ['PATH']}",
             FAKE_NFT_DIR=str(tmp_path),
             FENCE_IFACE="cp-isolated",
-            FENCE_SUBNET="172.18.0.0/16",
+            FENCE_SUBNET=subnet,
             FENCE_FILTER=filtered,
             FENCE_BACKEND="auto",
+            FENCE_EGRESS=egress,
+            FENCE_PROC_IPV6=str(tmp_path / ("ipv6" if ipv6 else "no-ipv6")),
+            FENCE_PROC_IF_INET6=str(tmp_path / "if_inet6"),
+        )
+        (tmp_path / "ipv6").mkdir(exist_ok=True)
+        (tmp_path / "if_inet6").write_text(
+            "fe80000000000000a8c1abfffe010203 0c 40 20 80  cp-isolated\n"
+            "fe80000000000000a8c1abfffe0a0b0c 03 40 20 80  docker0\n"
         )
         out = subprocess.run(
             [sys.executable, "-c", lan_fence.HELPER_SCRIPT, action],
@@ -227,7 +273,33 @@ class TestTheHelperScript:
     def test_reduce_drops_the_filters_and_keeps_the_masquerade(self, tmp_path):
         self._run(tmp_path, "apply")
         got = self._run(tmp_path, "apply", filtered="0")
-        assert got["changed"] and set(got["counters"]) == {"masquerade"}
+        assert got["changed"] and set(got["counters"]) == {"masquerade-172.18.0.0/16"}
+
+    def test_a_new_subnet_rewrites_the_table(self, tmp_path):
+        """The network came back on another subnet: the old masquerade would leave the earners offline."""
+        self._run(tmp_path, "apply")
+        got = self._run(tmp_path, "apply", subnet="172.19.0.0/16")
+        assert got["changed"] and got["matches"]
+        assert "ip saddr 172.19.0.0/16" in (tmp_path / "table").read_text()
+
+    def test_the_egress_ip_is_written_and_a_change_rewrites(self, tmp_path):
+        first = self._run(tmp_path, "apply", egress="81.61.1.9")
+        assert first["egress"] == "81.61.1.9" and "egress-81.61.1.9" in first["counters"]
+        again = self._run(tmp_path, "apply", egress="81.61.1.10")
+        assert again["changed"] and "egress-81.61.1.10" in again["counters"]
+        assert "egress-81.61.1.9" not in again["counters"]
+
+    def test_with_ipv6_on_the_host_the_ip6_drops_are_written(self, tmp_path):
+        got = self._run(tmp_path, "apply", ipv6=True)
+        assert got["ipv6"] and got["matches"]
+        assert {"ipv6-forward", "ipv6-host"} <= set(got["counters"])
+        assert got["bridge_ipv6"] == "fe80::a8c1:abff:fe01:203"
+
+    def test_without_ipv6_on_the_host_no_ip6_table(self, tmp_path):
+        """A kernel booted with ipv6.disable=1 has no ip6 hooks; asking for them would fail the whole apply."""
+        got = self._run(tmp_path, "apply", ipv6=False)
+        assert not got["ipv6"] and got["matches"] and got["bridge_ipv6"] is None
+        assert "ip6" not in (tmp_path / "table").read_text()
 
 
 # ---------------------------------------------------------------------------
@@ -235,9 +307,10 @@ class TestTheHelperScript:
 # ---------------------------------------------------------------------------
 
 
-def _container(name, mode="bridge", nets=("bridge",), slug=None):
+def _container(name, mode="bridge", nets=("bridge",), slug=None, status="running"):
     c = MagicMock()
     c.name = name
+    c.status = status
     c.labels = {"cashpilot.service": slug or name.removeprefix("cashpilot-")}
     c.attrs = {
         "HostConfig": {"NetworkMode": mode},
@@ -489,6 +562,85 @@ class TestReconcile:
         state, _helper = _reconcile(client, "auto")
         assert state["fence"]["state"] == "failed" and "daemon said no" in state["fence"]["error"]
 
+    def test_stopped_earners_are_listed_apart(self):
+        """The switch redeploys earners_outside, and a redeploy starts the container."""
+        earners = [_container("cashpilot-earnapp"), _container("cashpilot-storj", status="exited")]
+        state, _helper = _reconcile(_docker(earners=earners), "auto")
+        assert state["mode"] == "legacy"
+        assert state["earners_outside"] == ["earnapp"] and state["earners_outside_stopped"] == ["storj"]
+        state, _helper = _reconcile(_docker(_network(), earners=earners), "auto")
+        assert state["earners_outside"] == ["earnapp"] and state["earners_outside_stopped"] == ["storj"]
+
+
+def _orphan(name, network_id, status="exited", error=""):
+    c = _container(name, lan_fence.NETWORK_NAME, (lan_fence.NETWORK_NAME,), status=status)
+    c.attrs["NetworkSettings"]["Networks"][lan_fence.NETWORK_NAME] = {"NetworkID": network_id}
+    c.attrs["State"] = {"Status": status, "Error": error}
+    return c
+
+
+class TestReattach:
+    """Unraid removes user-defined networks when Docker starts; earners keep the old ID."""
+
+    GONE = "failed to set up container networking: network 0cf2f7961ba2 not found"
+
+    def test_an_earner_the_missing_network_stopped_is_moved_and_started(self):
+        net = _network()
+        c = _orphan("cashpilot-honeygain", "old-id", error=self.GONE)
+        assert lan_fence.reattach(_docker(net, earners=[c]), net) == ["cashpilot-honeygain"]
+        net.disconnect.assert_called_once_with(c, force=True)
+        net.connect.assert_called_once_with(c)
+        c.start.assert_called_once()
+
+    def test_one_the_owner_stopped_is_moved_but_left_stopped(self):
+        net = _network()
+        c = _orphan("cashpilot-storj", "old-id")
+        assert lan_fence.reattach(_docker(net, earners=[c]), net) == ["cashpilot-storj"]
+        net.connect.assert_called_once_with(c)
+        c.start.assert_not_called()
+
+    @pytest.mark.parametrize(
+        ("network_id", "status"), [("net-cashpilot-isolated", "exited"), ("", "created"), ("old-id", "running")]
+    )
+    def test_earners_on_the_current_network_are_not_touched(self, network_id, status):
+        """A never-started container has no NetworkID yet and resolves by name."""
+        net = _network()
+        c = _orphan("cashpilot-honeygain", network_id, status=status, error=self.GONE)
+        assert lan_fence.reattach(_docker(net, earners=[c]), net) == []
+        net.disconnect.assert_not_called()
+        c.start.assert_not_called()
+
+    def test_one_failure_does_not_stop_the_rest(self):
+        net = _network()
+        a = _orphan("cashpilot-a", "old-id", error=self.GONE)
+        b = _orphan("cashpilot-b", "old-id", error=self.GONE)
+        net.connect.side_effect = [RuntimeError("nope"), None]
+        assert lan_fence.reattach(_docker(net, earners=[a, b]), net) == ["cashpilot-b"]
+
+    def test_every_apply_reattaches_before_writing_the_table(self):
+        """The recreated network is what reconcile sees after a reboot; the earners must come back with it."""
+        c = _orphan("cashpilot-honeygain", "old-id", error=self.GONE)
+        client = _docker(earners=[c])
+        state, _helper = _reconcile(client, "auto")
+        net = client._nets[lan_fence.NETWORK_NAME]
+        net.connect.assert_called_once_with(c)
+        c.start.assert_called_once()
+        assert state["fence"]["state"] == "applied"
+
+
+def test_the_helper_gets_the_egress_ip():
+    lan_fence.set_egress_ip("81.61.1.9")
+    client = MagicMock()
+    helper = client.containers.run.return_value
+    helper.wait.return_value = {"StatusCode": 0}
+    helper.logs.return_value = b'{"ok": true}'
+    client.containers.get.side_effect = NotFound("gone")
+    with patch.object(lan_fence, "_helper_image", return_value="img"):
+        lan_fence.run_helper(client, "apply", "172.18.0.0/16")
+    assert client.containers.run.call_args.kwargs["environment"]["FENCE_EGRESS"] == "81.61.1.9"
+    lan_fence.set_egress_ip("10.0.0.1")
+    assert lan_fence._egress["ip"] is None, "a detection failure clears it rather than dropping a LAN address"
+
 
 # ---------------------------------------------------------------------------
 # The switch: worker route, UI route, fleet page
@@ -609,6 +761,7 @@ def test_the_heartbeat_carries_the_isolation_state(docker_ok, offered):
     client.post = post
     lan_fence._state.update(mode="legacy", earners_outside=["earnapp"])
     with (
+        patch.object(worker_api, "_detect_egress_ip", AsyncMock(return_value="81.61.1.9")),
         patch.object(worker_api, "_worker_key", "own"),
         patch.object(worker_api, "UI_URL", "http://ui:8080"),
         patch("app.worker_api.orchestrator.get_status", return_value=[]),
@@ -621,6 +774,8 @@ def test_the_heartbeat_carries_the_isolation_state(docker_ok, offered):
     assert ("isolation_default" in info["features"]) is offered
     assert info["isolation"]["mode"] == "legacy" and info["isolation"]["earners_outside"] == ["earnapp"]
     helper.assert_not_called()
+    assert info["egress_ip"] == "81.61.1.9"
+    assert lan_fence._egress["ip"] == "81.61.1.9", "the next fence apply drops the home's public IP"
 
 
 def test_the_worker_image_ships_the_fence():
@@ -664,6 +819,8 @@ const out = {
   failed: renderFence({id: 3, name: 'box'}, {features: feat, isolation: {mode: 'on', fence: {state: 'failed', error: 'no nf_tables'}, earners_outside: []}}),
   quiet: renderFence({id: 3, name: 'box'}, {features: feat, isolation: {mode: 'on', fence: {state: 'applied'}, earners_outside: []}}),
   old: renderFence({id: 3, name: 'box'}, {features: [], isolation: {mode: 'legacy', fence: {}, earners_outside: ['earnapp']}}),
+  stopped: renderFence({id: 3, name: 'box'}, {features: feat, isolation: {mode: 'legacy', fence: {state: 'n/a'}, earners_outside: ['earnapp'], earners_outside_stopped: ['storj']}}),
+  onlyStopped: renderFence({id: 3, name: 'box'}, {features: feat, isolation: {mode: 'on', fence: {state: 'applied'}, earners_outside: [], earners_outside_stopped: ['storj']}}),
 };
 await enableFence(3, 'box');
 out.calls = calls;
@@ -713,13 +870,22 @@ class TestTheFleetPage:
         assert all(c[2] == {} for c in out["calls"][1:]), "an empty body redeploys from the recorded spec"
         assert "Moved earnapp, honeygain, storj" in out["after"]["done"]
 
-    def test_it_stops_at_the_first_failure_and_says_which(self):
+    def test_one_failure_does_not_stop_the_rest(self):
+        """A retired or broken earner would otherwise keep every later one exposed, on every click."""
         out = self._render(fail_on="honeygain")
         assert [c[0] for c in out["calls"][1:]] == [
             "/api/deploy/earnapp?worker_id=3",
             "/api/deploy/honeygain?worker_id=3",
+            "/api/deploy/storj?worker_id=3",
         ]
-        assert "honeygain could not be moved: worker said no" in out["after"]["error"]
+        assert "Moved earnapp, storj." in out["after"]["error"]
+        assert "Could not move: honeygain (worker said no)" in out["after"]["error"]
+
+    def test_stopped_earners_are_named_and_not_moved(self):
+        out = self._render()
+        assert "Stopped, so left alone: storj" in out["stopped"]
+        assert "Stopped, so left alone: storj" in out["onlyStopped"]
+        assert "btn-fence-on" not in out["onlyStopped"]
 
 
 # ---------------------------------------------------------------------------
@@ -766,6 +932,65 @@ class TestCounterProof:
         _fence, findings = isolation_check.judge_fence(targets, {"present": False}, {"present": False})
         assert findings[0]["kind"] == "fence_missing" and findings[0]["exposure"]
 
+    READ = {
+        "present": True,
+        "egress": "198.51.100.7",
+        "bridge_ipv6": "fe80::a8c1:abff:fe01:203",
+        "counters": {"egress-198.51.100.7": 0, "ipv6-host": 0},
+    }
+
+    def test_the_public_ip_and_the_ipv6_host_get_targets_when_the_table_has_them(self):
+        targets = {t["label"]: t for t in isolation_check.fence_targets("172.18.0.1", self.READ)}
+        assert targets["egress-198.51.100.7"]["host"] == "198.51.100.7"
+        assert targets["egress-198.51.100.7"]["refused"], "a reset from the router means the connect got out"
+        assert targets["ipv6-host"]["host"] == "fe80::a8c1:abff:fe01:203%eth0"
+        bare = {t["label"] for t in isolation_check.fence_targets("172.18.0.1", {"present": True, "counters": {}})}
+        assert "ipv6-host" not in bare and not any(n.startswith("egress-") for n in bare)
+
+    def _judge(self, rise, reachable_label=None):
+        targets = isolation_check.fence_targets("172.18.0.1", self.READ)
+        for t in targets:
+            t["reachable"] = t["label"] == reachable_label
+        names = {t["label"] for t in targets}
+        before = {"present": True, "counters": dict.fromkeys(names, 0)}
+        after = {"present": True, "counters": {n: (1 if n in rise else 0) for n in names}}
+        return isolation_check.judge_fence(targets, before, after)
+
+    def test_a_flat_egress_counter_is_a_finding(self):
+        everything = {n for n, _c, _s in lan_fence.BLOCKED} | {"host"}
+        _fence, findings = self._judge(everything)
+        assert findings and "this home's public IP" in findings[0]["detail"]
+
+    def test_an_earner_without_ipv6_is_no_finding(self):
+        """It sends nothing, so the ipv6-host counter stays flat; that is not a gap."""
+        everything = {n for n, _c, _s in lan_fence.BLOCKED} | {"host", "egress-198.51.100.7"}
+        fence, findings = self._judge(everything)
+        assert findings == []
+        assert not next(r for r in fence["ranges"] if r["rule"] == "ipv6-host")["proven"]
+
+    def test_an_earner_that_reaches_the_host_over_ipv6_is_exposed(self):
+        everything = {n for n, _c, _s in lan_fence.BLOCKED} | {"host", "egress-198.51.100.7"}
+        _fence, findings = self._judge(everything, reachable_label="ipv6-host")
+        assert findings[0]["kind"] == "fence_not_hit" and "[fe80::a8c1:abff:fe01:203%eth0]:9" in findings[0]["detail"]
+
+
+def _probe_reach():
+    ns = {"__name__": "probe"}
+    exec(isolation_check.PROBE_SCRIPT, ns)  # noqa: S102 - our own probe script, run as the probe would
+    return ns["reach"]
+
+
+def test_a_reset_counts_as_reaching_only_for_a_fence_sentinel():
+    """With the drop gone, a closed port on the target answers with a reset: the packet got there."""
+    import socket
+
+    with socket.socket() as s:
+        s.bind(("127.0.0.1", 0))
+        port = s.getsockname()[1]
+    reach = _probe_reach()
+    assert reach({"host": "127.0.0.1", "port": port, "refused": True}) is True
+    assert reach({"host": "127.0.0.1", "port": port}) is False
+
 
 class TestTheCheckInOnMode:
     """_run end to end with fake probes: proven with nothing on the LAN answering."""
@@ -781,13 +1006,13 @@ class TestTheCheckInOnMode:
                     "present": True,
                     "matches": True,
                     "backend": "nft",
-                    "counters": dict.fromkeys(lan_fence.rule_names(), 0),
+                    "counters": dict.fromkeys(lan_fence.rule_names("172.18.0.0/16"), 0),
                 },
                 {
                     "present": True,
                     "matches": True,
                     "backend": "nft",
-                    "counters": dict.fromkeys(lan_fence.rule_names(), 1 if rise else 0),
+                    "counters": dict.fromkeys(lan_fence.rule_names("172.18.0.0/16"), 1 if rise else 0),
                 },
             ]
         )
