@@ -200,6 +200,20 @@
     </div>
   </div>
 
+  <!-- Custom Service Editor (global: opened from the catalog and from a service's detail) -->
+  <div class="modal-overlay" id="custom-service-modal">
+    <div class="modal modal-md">
+      <div class="modal-header">
+        <h3 class="modal-title" id="custom-service-title">Custom service</h3>
+        <button class="modal-close" data-action="closeModal" data-a1="custom-service-modal" aria-label="Close">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <div class="modal-body" id="custom-service-body">
+      </div>
+    </div>
+  </div>
+
   {% if user %}
   <!-- Change Password Modal (global) -->
   <div class="modal-overlay" id="password-modal">

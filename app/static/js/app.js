@@ -1567,7 +1567,10 @@ const CP = (() => {
         });
       }
       if (svc.image_outdated === true) {
-        items.push({ level: 'warn', tag: 'Outdated', what: svc.name, why: 'runs an image that no longer matches the catalog. Re-deploy it to update.', actions: `<button class="btn btn-ghost btn-sm" data-action="openServiceDetail" data-a1="${escapeHtml(svc.slug)}">Open</button>` });
+        const outdatedWhy = svc.custom
+          ? 'runs an older image than its custom service definition. Redeploy it to update.'
+          : 'runs an image that no longer matches the catalog. Re-deploy it to update.';
+        items.push({ level: 'warn', tag: 'Outdated', what: svc.name, why: outdatedWhy, actions: `<button class="btn btn-ghost btn-sm" data-action="openServiceDetail" data-a1="${escapeHtml(svc.slug)}">Open</button>` });
       }
       // A container made before a catalog fix (app/drift.py). One row per box:
       // a redeploy there rebuilds every copy on it.
@@ -1890,7 +1893,13 @@ const CP = (() => {
     // (provider migrated or re-pinned). Prompt a re-deploy — otherwise a retired
     // image keeps looking healthy while it silently stops earning.
     const outdatedBadge = svc.image_outdated === true
-      ? ` <span class="badge badge-stopped" title="This service is running an image that no longer matches the catalog (the provider changed or re-pinned it). Re-deploy it from the catalog to update.">update available</span>`
+      ? (svc.custom
+        ? ` <span class="badge badge-stopped" title="This container runs an older image than the one in its custom service definition. Redeploy it to update.">update available</span>`
+        : ` <span class="badge badge-stopped" title="This service is running an image that no longer matches the catalog (the provider changed or re-pinned it). Re-deploy it from the catalog to update.">update available</span>`)
+      : '';
+    // A service the user added from an image reference: not reviewed, no collector.
+    const customLabel = svc.custom
+      ? ` <span class="badge badge-category" title="${CUSTOM_SERVICE_TITLE}">Custom</span>`
       : '';
 
     // Earnings-collector state. "disconnected" = collector ran and failed
@@ -1910,7 +1919,10 @@ const CP = (() => {
     if (!balanceKnown) {
       // Never read. An em dash, not a number — the user must be able to tell
       // "nothing has looked at this" from "this earned nothing".
-      balanceHtml = `<span class="muted" title="CashPilot has not read a balance for this service yet">&mdash;</span>${disconnectedLabel}`;
+      const why = svc.custom
+        ? 'CashPilot cannot read the earnings of a custom service. Check them on the provider\'s own dashboard.'
+        : 'CashPilot has not read a balance for this service yet';
+      balanceHtml = `<span class="muted" title="${why}">&mdash;</span>${disconnectedLabel}`;
     } else if (nativeLabel && formatCurrency(displayBalance, currency).includes(currency)) {
       // No price for this unit, so the "converted" figure already IS the
       // native one. Printing it twice read as two different numbers.
@@ -2000,7 +2012,7 @@ const CP = (() => {
       : '';
 
     // Settings gear (owner-only) — opens credential + bonus modal
-    const settingsBtn = _isOwner
+    const settingsBtn = _isOwner && !svc.custom
       ? `<button class="btn btn-icon" data-action="openCredentialModal" data-stop="1" data-a1="${escapeHtml(svc.slug)}" title="Credentials &amp; settings">
            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
          </button>` : '';
@@ -2051,7 +2063,7 @@ const CP = (() => {
       <td class="c-name">${nameHtml}<div class="cell-sub cell-mono c-name-image">${subtitle}</div></td>
       <td class="c-status">${partialDown
         ? `<span class="badge badge-stopped" title="${downCount} of ${details.length} instances are not running"><span class="status-dot stopped"></span> ${details.length - downCount} of ${details.length} up</span>`
-        : `<span class="badge badge-${statusClass}"><span class="status-dot ${statusClass}"></span> ${statusLabel}</span>${instanceLabel}`}${unmanagedLabel}${outdatedBadge}</td>
+        : `<span class="badge badge-${statusClass}"><span class="status-dot ${statusClass}"></span> ${statusLabel}</span>${instanceLabel}`}${unmanagedLabel}${customLabel}${outdatedBadge}</td>
       <td class="c-health c-num" data-label="Health">${healthBadge}</td>
       <td class="c-bal c-num">${balanceHtml}</td>
       <td class="c-chg c-num"><span class="delta">${deltaStr}</span></td>
@@ -3474,6 +3486,7 @@ const CP = (() => {
     catalogServices = services;
     catalogOnlineWorkers = Array.isArray(workers) ? workers.filter(w => w.status === 'online') : null;
     filterCatalog();
+    loadCustomServices();
   }
 
   function filterCatalog() {
@@ -3789,7 +3802,9 @@ const CP = (() => {
     // --- Deploy section (worker-aware) ---
     // Built separately so a service that already runs shows its instances
     // first and keeps the deploy form folded away below them.
-    const infoHtml = html;
+    // A custom service has no guide, sign-up, payout or risk facts to show:
+    // its block says what it is and what CashPilot does and does not grant it.
+    const infoHtml = svc.custom ? customServiceBanner(svc) : html;
     html = '';
     const hasDocker = svc.docker && svc.docker.image;
     if (hasDocker) {
@@ -3807,7 +3822,8 @@ const CP = (() => {
 
       html += isDeployed ? '' : `<h4 class="sd-h">Deploy</h4>`;
       html += envFields;
-      html += imageChoiceSection(svc, workers);
+      // A custom service's image is edited in its definition, not per deploy.
+      if (!svc.custom) html += imageChoiceSection(svc, workers);
 
       // Earnings tracking uses SEPARATE credentials (Settings → Collectors).
       // The fields above only configure the container that earns; they don't
@@ -3865,6 +3881,7 @@ const CP = (() => {
             <button class="btn btn-secondary btn-sm" data-action="workerAction" data-a1="${svc.slug}" data-a2="restart" data-a3="${inst.worker.id}" data-a4="${inst.container.instance || 1}">Restart</button>
             <button class="btn btn-secondary btn-sm" data-action="workerAction" data-a1="${svc.slug}" data-a2="stop" data-a3="${inst.worker.id}" data-a4="${inst.container.instance || 1}">Stop</button>
             <button class="btn btn-ghost btn-sm" data-action="loadWorkerLogs" data-a1="${svc.slug}" data-a2="${inst.worker.id}" data-a3="logs-${svc.slug}-${inst.worker.id}-${inst.container.instance || 1}" data-a4="${inst.container.instance || 1}">Logs</button>
+            ${svc.custom && (inst.container.instance || 1) === 1 ? `<button class="btn btn-danger btn-sm" data-action="removeCustomFromBox" data-a1="${escapeHtml(svc.slug)}" data-a2="${inst.worker.id}" data-a3="${escapeHtml(inst.worker.name)}">Remove from this box</button>` : ''}
           </div>` : ''}
         </div>
         <div class="log-viewer log-viewer-inline" id="logs-${svc.slug}-${inst.worker.id}-${inst.container.instance || 1}" style="display:none;"></div>`;
@@ -3875,9 +3892,249 @@ const CP = (() => {
     const instancesHtml = html;
     if (isDeployed && instancesHtml) {
       return infoHtml.replace('<p class="sd-desc">', instancesHtml + '<p class="sd-desc">')
-        + (deployHtml ? `<details class="sd-more"><summary>Deploy to more boxes, or change the image</summary>${deployHtml}</details>` : '');
+        + (deployHtml ? `<details class="sd-more"><summary>${svc.custom ? 'Deploy to more boxes' : 'Deploy to more boxes, or change the image'}</summary>${deployHtml}</details>` : '');
     }
     return infoHtml + deployHtml + instancesHtml;
+  }
+
+  // -----------------------------------------------------------
+  // Custom services: the user's own image, deployed with the catalog's
+  // restrictions and no earnings collector (app/custom_services.py).
+  // -----------------------------------------------------------
+  const CUSTOM_SERVICE_TITLE = 'User-supplied image, not reviewed by CashPilot';
+
+  function customServiceBanner(svc) {
+    const def = svc.definition || {};
+    const docker = svc.docker || {};
+    const mem = (docker.resources && docker.resources.mem_limit) || def.mem_limit || '';
+    const data = def.data_path
+      ? `keeps data only in its own volume, mounted at <code>${escapeHtml(def.data_path)}</code>`
+      : 'keeps no data between redeploys';
+    const warnings = (svc.warnings || []).map(w => `<p class="form-hint text-warn">${escapeHtml(w)}</p>`).join('');
+    const actions = _isOwner ? `
+        <div class="sd-actions">
+          <button class="btn btn-secondary btn-sm" data-action="openCustomServiceEditor" data-a1="${escapeHtml(svc.slug)}">Edit</button>
+          <button class="btn btn-danger btn-sm" data-action="deleteCustomService" data-a1="${escapeHtml(svc.slug)}">Delete</button>
+        </div>` : '';
+    return `
+    <div class="inline-note inline-note-warn sd-block custom-service-banner">
+      <strong>${CUSTOM_SERVICE_TITLE}.</strong>
+      You added <code>${escapeHtml(docker.image || def.image || '')}</code> yourself. It receives the variables you set
+      for it and runs with no added capabilities, no devices, no host network and no published ports, under a
+      ${escapeHtml(mem)} memory limit, and ${data}. CashPilot cannot read its earnings, so the dashboard shows no
+      balance for it. Only run images you trust.
+      ${warnings}${actions}
+    </div>
+    <p class="sd-desc">${escapeHtml(svc.description || '')}</p>`;
+  }
+
+  let _customServices = [];
+
+  async function loadCustomServices() {
+    const box = document.getElementById('custom-services');
+    if (!box) return;
+    try {
+      _customServices = await api('/api/custom-services');
+    } catch (err) {
+      _customServices = [];
+    }
+    if (!_customServices.length && !_isOwner) {
+      box.innerHTML = '';
+      return;
+    }
+    const rows = _customServices.map(svc => `
+      <tr class="service-card cat-row" data-slug="${escapeHtml(svc.slug)}">
+        <td class="cat-svc">
+          <span class="service-name">${escapeHtml(svc.name)}</span>
+          <span class="badge badge-category" title="${CUSTOM_SERVICE_TITLE}">Custom</span>
+          <span class="service-desc"><code>${escapeHtml((svc.docker && svc.docker.image) || '')}</code></span>
+        </td>
+        <td class="cat-act"><button class="btn btn-secondary btn-sm" data-action="openServiceDetail" data-a1="${escapeHtml(svc.slug)}">Manage</button></td>
+      </tr>`).join('');
+    box.innerHTML = `
+      <div class="custom-services-head">
+        <h3 class="sd-h">Your custom services</h3>
+        ${_isOwner ? '<button class="btn btn-secondary btn-sm" data-action="openCustomServiceEditor">Add custom service</button>' : ''}
+      </div>
+      ${rows
+        ? `<table class="catalog-table"><tbody>${rows}</tbody></table>`
+        : '<p class="sd-note">Run an image the catalog does not list, from Docker Hub or any registry. CashPilot deploys it with the same restrictions as every catalog service, but cannot read its earnings.</p>'}`;
+  }
+
+  function _customEnvRow(env) {
+    const e = env || { key: '', value: '', secret: false, is_set: false };
+    const placeholder = e.secret && e.is_set ? 'unchanged' : 'value';
+    return `
+      <div class="custom-env-row">
+        <input class="form-input" type="text" data-env="key" value="${escapeHtml(e.key || '')}" placeholder="NAME" spellcheck="false" autocomplete="off" aria-label="Variable name">
+        <input class="form-input" type="${e.secret ? 'password' : 'text'}" data-env="value" value="${escapeHtml(e.secret ? '' : (e.value || ''))}" placeholder="${placeholder}" spellcheck="false" autocomplete="off" aria-label="Value">
+        <label class="custom-env-secret"><input type="checkbox" data-env="secret"${e.secret ? ' checked' : ''}> Secret</label>
+        <button class="btn btn-ghost btn-sm" data-action="removeCustomEnvRow" data-a1="event">Remove</button>
+      </div>`;
+  }
+
+  function addCustomEnvRow() {
+    document.getElementById('custom-env-rows')?.insertAdjacentHTML('beforeend', _customEnvRow());
+  }
+
+  function removeCustomEnvRow(event) {
+    event.target.closest('.custom-env-row')?.remove();
+  }
+
+  async function openCustomServiceEditor(slug) {
+    let def = { name: '', image: '', env: [], command: '', data_path: '', mem_limit: '512m' };
+    if (slug) {
+      try {
+        def = (await api(`/api/services/${encodeURIComponent(slug)}`)).definition || def;
+      } catch (err) {
+        toast(`Could not load ${slug}: ${err.message}`, 'error');
+        return;
+      }
+    }
+    closeModal('service-detail-modal');
+    const title = document.getElementById('custom-service-title');
+    const body = document.getElementById('custom-service-body');
+    if (!body) return;
+    if (title) title.textContent = slug ? `Edit ${def.name}` : 'Add custom service';
+    body.innerHTML = `
+      <div class="inline-note inline-note-warn">
+        CashPilot has not reviewed the image you add here. It gets the variables you set and runs with the same
+        restrictions as every catalog service: no added capabilities, no devices, no host network, no published ports.
+        CashPilot cannot read its earnings.
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="custom-name">Name</label>
+        <input class="form-input" type="text" id="custom-name" maxlength="60" value="${escapeHtml(def.name)}" autocomplete="off">
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="custom-image">Image</label>
+        <input class="form-input" type="text" id="custom-image" value="${escapeHtml(def.image)}" placeholder="publisher/image:1.2.3" spellcheck="false" autocomplete="off">
+        <div class="form-hint">A Docker Hub name or a full registry path, with a version tag or digest.</div>
+      </div>
+      <div class="form-group">
+        <div class="form-label">Environment variables</div>
+        <div id="custom-env-rows">${(def.env || []).map(_customEnvRow).join('')}</div>
+        <button class="btn btn-ghost btn-sm" data-action="addCustomEnvRow">Add variable</button>
+        <div class="form-hint">Every value is stored encrypted. A secret one is never shown again; leave it blank to keep it.</div>
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="custom-command">Command (optional)</label>
+        <input class="form-input" type="text" id="custom-command" value="${escapeHtml(def.command || '')}" spellcheck="false" autocomplete="off">
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="custom-data-path">Data path in the container (optional)</label>
+        <input class="form-input" type="text" id="custom-data-path" value="${escapeHtml(def.data_path || '')}" placeholder="/data" spellcheck="false" autocomplete="off">
+        <div class="form-hint">Kept in a Docker volume of its own across redeploys. Blank means nothing is kept.</div>
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="custom-mem">Memory limit</label>
+        <input class="form-input" type="text" id="custom-mem" value="${escapeHtml(def.mem_limit || '512m')}" placeholder="512m" spellcheck="false" autocomplete="off">
+      </div>
+      <div id="custom-service-notes"></div>
+      <div class="sd-actions">
+        <button class="btn btn-primary" data-action="saveCustomService" data-a1="${escapeHtml(slug || '')}">Save</button>
+        <button class="btn btn-ghost" data-action="closeModal" data-a1="custom-service-modal">Cancel</button>
+        <span id="custom-service-status" class="sd-status"></span>
+      </div>`;
+    openModal('custom-service-modal');
+  }
+
+  async function saveCustomService(slug) {
+    const value = (id) => (document.getElementById(id)?.value || '').trim();
+    const env = Array.from(document.querySelectorAll('#custom-env-rows .custom-env-row')).map(row => ({
+      key: row.querySelector('[data-env="key"]').value.trim(),
+      value: row.querySelector('[data-env="value"]').value,
+      secret: row.querySelector('[data-env="secret"]').checked,
+    })).filter(e => e.key || e.value);
+    const body = {
+      name: value('custom-name'),
+      image: value('custom-image'),
+      env,
+      command: value('custom-command'),
+      data_path: value('custom-data-path'),
+      mem_limit: value('custom-mem'),
+    };
+    const statusEl = document.getElementById('custom-service-status');
+    const notes = document.getElementById('custom-service-notes');
+    if (statusEl) statusEl.textContent = 'Saving...';
+    let res;
+    try {
+      res = slug
+        ? await api(`/api/custom-services/${encodeURIComponent(slug)}`, { method: 'PUT', body })
+        : await api('/api/custom-services', { method: 'POST', body });
+    } catch (err) {
+      if (statusEl) statusEl.textContent = '';
+      toast(err.message, 'error');
+      return;
+    }
+    const target = slug || res.slug;
+    const warnings = (res.warnings || []).map(w => `<p class="form-hint text-warn">${escapeHtml(w)}</p>`).join('');
+    loadCustomServices();
+    if (slug && res.deployed) {
+      // The running containers keep the old definition until they are redeployed.
+      if (statusEl) statusEl.textContent = 'Saved.';
+      if (notes) {
+        notes.innerHTML = `${warnings}
+          <div class="inline-note">Running instances still use the previous settings.
+            <button class="btn btn-secondary btn-sm" data-action="redeployCustomService" data-a1="${escapeHtml(target)}">Redeploy running instances</button>
+          </div>`;
+      }
+      return;
+    }
+    (res.warnings || []).forEach(w => toast(w, 'warning'));
+    toast(slug ? 'Custom service saved' : 'Custom service added', 'success');
+    closeModal('custom-service-modal');
+    openServiceDetail(target);
+  }
+
+  async function redeployCustomService(slug) {
+    const workers = (await api('/api/workers')).filter(w => w.status === 'online' && (w.containers || []).some(c => c.slug === slug));
+    if (!workers.length) { toast('No running instances to redeploy', 'warning'); return; }
+    if (!window.confirm(`Redeploy ${slug} on ${workers.map(w => w.name).join(', ')} with its saved settings?`)) return;
+    let ok = 0;
+    for (const w of workers) {
+      try {
+        await api(`/api/deploy/${encodeURIComponent(slug)}?worker_id=${w.id}`, { method: 'POST', body: { env: {} } });
+        ok++;
+      } catch (err) {
+        toast(`Redeploy on ${w.name} failed: ${err.message}`, 'error');
+      }
+    }
+    if (ok) toast(`${slug} redeployed on ${ok} box(es)`, 'success');
+    closeModal('custom-service-modal');
+    loadServicesTable();
+  }
+
+  async function deleteCustomService(slug) {
+    if (!window.confirm(`Delete the custom service ${slug}? CashPilot forgets its definition and its saved variables.`)) return;
+    try {
+      await api(`/api/custom-services/${encodeURIComponent(slug)}`, { method: 'DELETE' });
+    } catch (err) {
+      toast(err.message, 'error');
+      return;
+    }
+    toast(`${slug} deleted`, 'success');
+    closeModal('service-detail-modal');
+    loadCustomServices();
+  }
+
+  // Removing a custom container from a box. Its data volume stays unless the
+  // owner asks for it to go too: the worker cannot judge whether a volume of
+  // a service its catalog does not know is irreplaceable, so it only deletes
+  // one with allow_delete_critical, which is owner-only on the server too.
+  async function removeCustomFromBox(slug, workerId, boxName) {
+    if (!window.confirm(`Remove ${slug} from ${boxName}? Its container is stopped and deleted.`)) return;
+    let query = `?worker_id=${encodeURIComponent(workerId)}`;
+    if (_isOwner && window.confirm(`Also delete its data volume on ${boxName}? This cannot be undone. Cancel keeps the data for a later deploy.`)) {
+      query += '&delete_volumes=true&allow_delete_critical=true';
+    }
+    try {
+      await api(`/api/services/${encodeURIComponent(slug)}${query}`, { method: 'DELETE' });
+      toast(`${slug} removed from ${boxName}`, 'success');
+    } catch (err) {
+      toast(`Remove failed: ${err.message}`, 'error');
+    }
+    openServiceDetail(slug);
   }
 
   async function deployServiceToWorkers(slug) {
@@ -4970,6 +5227,13 @@ const CP = (() => {
     deployServiceToWorkers,
     redeployWithImage,
     redeployOnWorker,
+    openCustomServiceEditor,
+    saveCustomService,
+    addCustomEnvRow,
+    removeCustomEnvRow,
+    redeployCustomService,
+    deleteCustomService,
+    removeCustomFromBox,
     ignoreDrift,
     workerAction,
     loadWorkerLogs,

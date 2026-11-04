@@ -41,6 +41,7 @@ from app import (
     compose_generator,
     constants,
     credential_test,
+    custom_services,
     database,
     disclosure,
     drift,
@@ -2284,18 +2285,8 @@ def _collector_needs_setup(slug: str, config: dict[str, str]) -> bool:
 from app.constants import MAX_INSTANCES  # noqa: E402
 from app.constants import UNDEPLOYABLE_STATUSES as _UNDEPLOYABLE_STATUSES  # noqa: E402 - single source, see constants
 
-
-def _split_image(ref: str) -> tuple[str, str, str]:
-    """Split a Docker image reference into (repository, tag, digest)."""
-    digest = ""
-    if "@" in ref:
-        ref, digest = ref.split("@", 1)
-    repo, tag = ref, ""
-    # A ':' is a tag only if it comes after the last '/', else it's a registry port.
-    last_colon = ref.rfind(":")
-    if last_colon > ref.rfind("/"):
-        repo, tag = ref[:last_colon], ref[last_colon + 1 :]
-    return repo, tag, digest
+# One definition each, shared with custom services (app/custom_services.py).
+_split_image = custom_services.split_image
 
 
 # The architecture table and the per-arch image resolver live in app/arch.py so
@@ -2324,6 +2315,44 @@ def _image_outdated(deployed: str, catalog_image: str) -> bool:
     if d_repo != c_repo:
         return True
     return bool(c_digest and d_digest and c_digest != d_digest)
+
+
+def _docker_hub_short(ref: str) -> str:
+    """docker.io/library/busybox:1 as Docker reports it back: busybox:1."""
+    for prefix in (
+        "docker.io/library/",
+        "index.docker.io/library/",
+        "registry-1.docker.io/library/",
+        "docker.io/",
+        "index.docker.io/",
+        "registry-1.docker.io/",
+        "library/",
+    ):
+        if ref.startswith(prefix):
+            return ref[len(prefix) :]
+    return ref
+
+
+def _custom_image_outdated(deployed: str, wanted: str) -> bool:
+    """Whether a box runs another image than the custom service's definition.
+
+    Stricter than _image_outdated, which ignores a tag change of the same
+    repository on purpose: a custom service's reference is the user's own
+    choice, so any edit (a tag, a digest, a switch between the two) shows the
+    redeploy prompt. Docker Hub spellings are compared in their short form, and
+    no tag reads as "latest", which is what Docker pulls and reports. A bare
+    image ID tells nothing, so it is never flagged.
+    """
+    deployed, wanted = _docker_hub_short(deployed), _docker_hub_short(wanted)
+    if not deployed or not wanted or deployed.startswith("sha256:"):
+        return False
+    d_repo, d_tag, d_digest = _split_image(deployed)
+    w_repo, w_tag, w_digest = _split_image(wanted)
+    if d_repo != w_repo or bool(d_digest) != bool(w_digest):
+        return True
+    if w_digest:
+        return d_digest != w_digest
+    return (d_tag or "latest") != (w_tag or "latest")
 
 
 def _apply_service_meta(entry: dict[str, Any], svc: dict[str, Any] | None) -> None:
@@ -2496,6 +2525,14 @@ async def api_services_deployed(request: Request) -> list[dict[str, Any]]:
             agg["best_status"] = cur
 
     result = []
+    # Custom definitions, read only when a custom container is on the fleet, so
+    # a dashboard without one asks the database nothing new.
+    customs: dict[str, dict[str, Any]] = {}
+    if any(custom_services.is_custom_slug(slug) for slug in slug_agg):
+        try:
+            customs = {row["slug"]: row["definition"] for row in await database.list_custom_services()}
+        except Exception as exc:
+            logger.warning("Could not load custom services for the dashboard: %s", exc)
     # Deployment records read for the drift check, one per (slug, worker).
     specs: dict[tuple[str, int], dict[str, Any] | None] = {}
     drift_on = constants.drift_warnings_enabled()
@@ -2616,6 +2653,17 @@ async def api_services_deployed(request: Request) -> list[dict[str, Any]]:
                 _image_outdated(inst.get("image", ""), custom_images.get(inst.get("_worker_id")) or catalog_image)
                 for inst in agg["instances"]
             )
+        elif slug in customs:
+            # The user's own service: named and categorised from its definition
+            # (the container's category label is the worker's default), no
+            # collector, and outdated when the definition's image was edited.
+            definition = customs[slug]
+            entry["name"] = definition.get("name") or slug
+            entry["category"] = "custom"
+            entry["custom"] = True
+            entry["image_outdated"] = any(
+                _custom_image_outdated(inst.get("image", ""), definition.get("image", "")) for inst in agg["instances"]
+            )
         result.append(entry)
 
     # Include external services (no Docker container, e.g. Grass, Bytelixir)
@@ -2718,10 +2766,13 @@ async def api_services_available(request: Request) -> list[dict[str, Any]]:
 
 @app.get("/api/services/{slug}")
 async def api_get_service(request: Request, slug: str) -> dict[str, Any]:
-    _require_auth_api(request)
-    svc = catalog.get_service(slug)
+    user = _require_auth_api(request)
+    svc = catalog.get_service(slug) or await _custom_service(slug, reveal=False)
     if not svc:
         raise HTTPException(status_code=404, detail=f"Service '{slug}' not found")
+    if svc.get("custom") and not auth.require_role(user, "owner"):
+        # Plain-text variables and the command are the owner's, as /api/config is.
+        svc = custom_services.redacted(svc)
 
     # Enrich with deployment status (same logic as /api/services/available)
     deployments = await database.get_deployments()
@@ -2751,6 +2802,129 @@ async def api_get_service(request: Request, slug: str) -> dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
+# API: Custom services (app/custom_services.py)
+# ---------------------------------------------------------------------------
+
+
+async def _custom_service(slug: str, *, reveal: bool) -> dict[str, Any] | None:
+    """The catalog-shaped dict of a custom service, or None.
+
+    ``reveal=True`` carries decrypted env values and is for api_deploy only;
+    nothing built with it may reach a response.
+    """
+    if not custom_services.is_custom_slug(slug):
+        return None
+    definition = await database.get_custom_service(slug)
+    if definition is None:
+        return None
+    return custom_services.as_service(slug, definition, reveal=reveal)
+
+
+class CustomServiceBody(BaseModel):
+    name: str
+    image: str
+    env: list[dict[str, Any]] = []
+    command: str = ""
+    data_path: str = ""
+    mem_limit: str = ""
+
+
+async def _custom_deployed_on(slug: str) -> list[str]:
+    """Where a custom service still runs or is recorded: box names, or ids."""
+    workers = await database.list_workers()
+    names = {r["name"] for r in placement.runs_on(workers).get(slug, [])}
+    by_id = {w.get("id"): str(w.get("name") or w.get("id")) for w in workers}
+    for row in await database.list_deployment_placements():
+        if row["slug"] == slug:
+            names.add(by_id.get(row["worker_id"], f"worker {row['worker_id']}"))
+    if not names and await database.get_deployment(slug) is not None:
+        names.add("a box CashPilot has a record for")
+    return sorted(names)
+
+
+@app.get("/api/custom-services")
+async def api_list_custom_services(request: Request) -> list[dict[str, Any]]:
+    """Every custom service, secrets masked.
+
+    Non-secret values and the command are the owner's alone, as /api/config is:
+    a viewer or a writer gets the variable names only, and the read-only token
+    (_require_auth_api refuses it) gets nothing.
+    """
+    user = _require_auth_api(request)
+    owner = auth.require_role(user, "owner")
+    out = []
+    for row in await database.list_custom_services():
+        svc = custom_services.as_service(row["slug"], row["definition"], reveal=False)
+        out.append(svc if owner else custom_services.redacted(svc))
+    return out
+
+
+@app.post("/api/custom-services")
+async def api_create_custom_service(
+    request: Request, body: CustomServiceBody, _auth: dict[str, Any] = Depends(_require_owner)
+) -> dict[str, Any]:
+    try:
+        definition, warnings = custom_services.validate(body.model_dump())
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from None
+    slug = custom_services.make_slug(definition["name"], await database.custom_service_slugs())
+    await database.save_custom_service(slug, definition)
+    logger.info("Custom service %s added from %s", slug, definition["image"])
+    return {"slug": slug, "warnings": warnings}
+
+
+@app.put("/api/custom-services/{slug}")
+async def api_update_custom_service(
+    request: Request, slug: str, body: CustomServiceBody, _auth: dict[str, Any] = Depends(_require_owner)
+) -> dict[str, Any]:
+    previous = await database.get_custom_service(slug) if custom_services.is_custom_slug(slug) else None
+    if previous is None:
+        raise HTTPException(status_code=404, detail=f"Custom service '{slug}' not found")
+    try:
+        definition, warnings = custom_services.validate(body.model_dump(), previous)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from None
+    if definition["data_path"]:
+        # A data path allows one copy per box (scaling_limit), and a redeploy
+        # reuses each box's recorded copy count, so saving it while a box runs
+        # several would leave every redeploy refused.
+        for row in await database.list_deployment_placements():
+            if row["slug"] != slug:
+                continue
+            recorded = await database.get_deployment_spec(slug, worker_id=row["worker_id"])
+            if int((recorded or {}).get("instances") or 1) > 1:
+                raise HTTPException(
+                    status_code=409,
+                    detail=(
+                        f"{definition['name']} runs several copies on a box, and a service with a data path "
+                        "runs one per box. Scale it to one copy on every box first, then add the data path."
+                    ),
+                )
+    await database.save_custom_service(slug, definition)
+    logger.info("Custom service %s updated (image %s)", slug, definition["image"])
+    # A running container keeps the old definition until it is redeployed.
+    return {"warnings": warnings, "deployed": bool(await _custom_deployed_on(slug))}
+
+
+@app.delete("/api/custom-services/{slug}")
+async def api_delete_custom_service(
+    request: Request, slug: str, _auth: dict[str, Any] = Depends(_require_owner)
+) -> dict[str, str]:
+    """Delete a definition, refused while any box runs or records it."""
+    if not custom_services.is_custom_slug(slug) or await database.get_custom_service(slug) is None:
+        raise HTTPException(status_code=404, detail=f"Custom service '{slug}' not found")
+    where = await _custom_deployed_on(slug)
+    if where:
+        raise HTTPException(
+            status_code=409,
+            detail=f"{slug} is still deployed on {', '.join(where)}. Remove it from every box first.",
+        )
+    await database.delete_custom_service(slug)
+    logger.info("Custom service %s deleted", slug)
+    return {"status": "deleted"}
+
+
+# ---------------------------------------------------------------------------
 # API: Container management
 # ---------------------------------------------------------------------------
 
@@ -2775,15 +2949,8 @@ class DeployRequest(BaseModel):
     image: str | None = None
 
 
-# repository[:tag][@sha256:digest], with an optional registry host (and port) in
-# front. No scheme, no spaces, nothing a shell or Docker would read as an option.
-_IMAGE_REF = re.compile(
-    r"(?:[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?(?::[0-9]{1,5})?/)?"
-    r"[a-z0-9]+(?:(?:[._]|__|-+)[a-z0-9]+)*"
-    r"(?:/[a-z0-9]+(?:(?:[._]|__|-+)[a-z0-9]+)*)*"
-    r"(?::[A-Za-z0-9_][A-Za-z0-9_.-]{0,127})?"
-    r"(?:@sha256:[a-f0-9]{64})?"
-)
+# repository[:tag][@sha256:digest]; see custom_services.IMAGE_REF.
+_IMAGE_REF = custom_services.IMAGE_REF
 
 
 def _custom_image(requested: str | None, recorded: dict[str, Any] | None) -> str:
@@ -2797,7 +2964,7 @@ def _custom_image(requested: str | None, recorded: dict[str, Any] | None) -> str
         kept = (recorded or {}).get("custom_image")
         return kept if isinstance(kept, str) else ""
     image = requested.strip()
-    if image and (len(image) > 255 or not _IMAGE_REF.fullmatch(image)):
+    if image and (len(image) > custom_services.IMAGE_MAX_LEN or not _IMAGE_REF.fullmatch(image)):
         raise HTTPException(status_code=400, detail="Image is not a valid image reference (repository[:tag][@digest])")
     return image
 
@@ -2823,7 +2990,7 @@ def scaling_limit(svc: dict[str, Any]) -> tuple[int, str]:
     if egress.devices_per_ip_limit(svc) == 1:
         return 1, f"{name} allows one device per IP address, so a second copy on one machine earns nothing."
     if docker_conf.get("volumes"):
-        return 1, f"{name} keeps data in a host directory, which two copies would share."
+        return 1, f"{name} keeps data in a volume or host directory, which two copies would share."
     if docker_conf.get("ports"):
         return 1, f"{name} publishes a port on the host, which two copies cannot share."
     link = svc.get("device_link")
@@ -2872,9 +3039,18 @@ async def api_deploy(
     # the deploy has run and persisted — a stricter type turns the successful
     # deployments that had something to report into 500s.
     worker_id = await _resolve_worker_id(worker_id)
-    svc = catalog.get_service(slug)
+    svc = catalog.get_service(slug) or await _custom_service(slug, reveal=True)
     if not svc:
         raise HTTPException(status_code=404, detail=f"Service '{slug}' not found")
+    # A custom service is deployed from its stored definition and nothing else:
+    # the image and the variables are edited there, so a deploy that tries to
+    # change them is refused rather than silently ignored.
+    is_custom = bool(svc.get("custom"))
+    if is_custom:
+        if (body.image or "").strip():
+            raise HTTPException(status_code=400, detail="Change the image by editing the custom service")
+        if any(str(v).strip() for v in (body.env or {}).values()):
+            raise HTTPException(status_code=400, detail="Edit the custom service to change its variables")
     status = svc.get("status")
     if status in _UNDEPLOYABLE_STATUSES:
         # 410 for a service that is permanently gone, 409 for one that is merely
@@ -2921,7 +3097,7 @@ async def api_deploy(
     # THIS worker's record: another machine's carries another machine's env.
     recorded = await database.get_deployment_spec(slug, worker_id=worker_id)
     recorded_env = (recorded or {}).get("env") or {}
-    custom_image = _custom_image(body.image, recorded)
+    custom_image = "" if is_custom else _custom_image(body.image, recorded)
 
     # What the operator actually TYPED on this deploy. The dashboard has no
     # separate redeploy action: it posts the deploy form, and the form posts
@@ -3030,7 +3206,9 @@ async def api_deploy(
             continue
         host_part, target = raw.split(":")[0], raw.split(":")[1]
         keys_by_target.setdefault(target, set()).update(m.group(1) for m in re.finditer(r"\$\{(\w+)\}", host_part))
-    if recorded:
+    # Not for a custom service: its definition is the only source, so an edit
+    # to it always reaches the redeploy instead of losing to the record.
+    if recorded and not is_custom:
         spec, divergence = _merge_recorded_spec(spec, recorded, typed_env, keys_by_target)
 
     # The command always comes from the catalog, filled from the MERGED env.
@@ -3074,7 +3252,11 @@ async def api_deploy(
         spec["command"] = re.sub(r"\$\{(\w+)\}", lambda m: merged_env.get(m.group(1), m.group(0)), raw_command)
     else:
         spec.pop("command", None)
-    if recorded and "command" in recorded and recorded.get("command") != spec.get("command"):
+    if is_custom:
+        # What the worker labels the container with, so it reads as user-supplied
+        # wherever it shows up. _instance_spec carries it to every copy.
+        spec["labels"] = {constants.LABEL_CUSTOM: "true"}
+    elif recorded and "command" in recorded and recorded.get("command") != spec.get("command"):
         # Never the command itself: it carries credentials.
         divergence.append("command: using the catalog's current command; this service last ran a different one")
     # The image is the catalog's unless the operator chose another; the choice is

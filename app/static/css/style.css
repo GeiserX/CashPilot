@@ -1154,6 +1154,16 @@ img { max-width: 100%; }
 .deploy-risk-body-text { font-size: var(--fs-1); color: var(--text-secondary); margin-top: 4px; max-width: 70ch; }
 .deploy-risk-source { font-size: var(--fs-1); color: var(--text-muted); margin-top: 4px; }
 
+/* Custom services: the catalog section and the editor's variable rows. */
+.custom-services { margin: 0 0 20px; }
+.custom-services-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
+.custom-env-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr) auto auto; gap: 8px; align-items: center; margin-bottom: 6px; }
+.custom-env-secret { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; font-size: var(--fs-1); }
+.custom-service-banner .sd-actions { margin-top: 8px; }
+@media (max-width: 640px) {
+  .custom-env-row { grid-template-columns: 1fr 1fr; }
+}
+
 /* After a deploy: a device id the user must add to their account, or it earns
    for nobody. Warning-toned because skipping it loses money silently. */
 .device-link {
