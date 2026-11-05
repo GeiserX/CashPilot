@@ -105,6 +105,37 @@ class TestBands:
         assert result["grade"] == grade
         assert result["caps"] == []
 
+    def test_the_published_bands_fall_and_no_verdict_scores_below_zero(self):
+        # The first band whose threshold the score meets wins, so the bands must
+        # fall strictly. CashPilot-Desktop refuses a rules file that breaks this
+        # and shows everyone as not rated; here it would hand out wrong letters.
+        thresholds = [b["min_percent"] for b in RULES["bands"]]
+        assert thresholds == sorted(thresholds, reverse=True)
+        assert len(set(thresholds)) == len(thresholds)
+        assert min(RULES["points"].values()) >= 0
+
+    def test_a_score_below_every_band_is_the_lowest_grade(self):
+        rules = {**RULES, "bands": [{"grade": "B", "min_percent": 75}]}
+        assert ratings._band(10.0, rules) == "F"
+
+    def test_a_rules_file_that_is_not_a_mapping_is_refused(self, tmp_path):
+        bad = tmp_path / "rules.yml"
+        bad.write_text("- just a list\n", encoding="utf-8")
+        with pytest.raises(ValueError, match="expected a mapping"):
+            ratings.load_rules(bad)
+
+    def test_an_unknown_cap_is_refused_rather_than_ignored(self):
+        rules = {**RULES, "caps": [{"key": "vibes", "max_grade": "C", "reason": "x"}]}
+        with pytest.raises(ValueError, match="unknown cap 'vibes'"):
+            ratings.for_service(_svc(_rating(support="fair")), rules=rules)
+
+    def test_without_a_thin_evidence_cap_nobody_is_flagged_thin(self):
+        rules = {**RULES, "caps": [c for c in RULES["caps"] if c["key"] != "thin_evidence"]}
+        unknowns = dict.fromkeys(KEYS[:5], "unknown")
+        result = ratings.for_service(_svc(_rating(**unknowns)), rules=rules)
+        assert result["thin_evidence"] is False
+        assert "thin evidence" not in result["summary"]
+
 
 class TestCaps:
     def test_container_prohibited_caps_at_d(self):
@@ -225,6 +256,37 @@ class TestValidator:
             "terms_fit must be poor" in e for e in _errors(_rating(), {"requirements": {"container_prohibited": True}})
         )
         assert _errors(_rating(terms_fit="poor"), {"requirements": {"container_prohibited": True}}) == []
+
+    @pytest.mark.parametrize(
+        ("edit", "expected"),
+        [
+            (lambda b: "not a block", "rating must be a mapping"),
+            (lambda b: b.__setitem__("reviewed_on", "04/11/2026"), "reviewed_on must be an ISO date"),
+            (lambda b: b.__setitem__("reviewed_on", "2026-12-01"), "reviewed_on is in the future"),
+            (lambda b: b.__setitem__("reviewed_on", 20261104), "reviewed_on must be an ISO date"),
+            (lambda b: b.__setitem__("verdicts", ["good"]), "verdicts must be a mapping"),
+            (lambda b: b["verdicts"].__setitem__("vibes", "good"), "names unknown criteria ['vibes']"),
+            (lambda b: b["verdicts"].__setitem__("support", "great"), "verdicts.support must be one of"),
+            (lambda b: b.__setitem__("notes", ["x"]), "notes must be a mapping"),
+            (lambda b: b["notes"].__setitem__("vibes", "x"), "notes names unknown criterion 'vibes'"),
+            (lambda b: b["notes"].__setitem__("support", " "), "notes.support must be text"),
+            (lambda b: b.__setitem__("cons", "one con"), "rating.cons must be a list"),
+            (lambda b: b["pros"].append("a pro"), "must be a mapping"),
+            (lambda b: b["pros"][0].__setitem__("text", ""), ".text must be text"),
+            (lambda b: b["pros"][0].__setitem__("checked_on", "yesterday"), "checked_on must be an ISO date"),
+        ],
+    )
+    def test_a_malformed_block_says_what_is_wrong(self, edit, expected):
+        block = _rating()
+        replaced = edit(block)
+        errs = _errors(replaced if isinstance(replaced, str) else block)
+        assert any(expected in e for e in errs), errs
+
+    def test_yaml_dates_are_read_as_dates(self):
+        block = _rating()
+        block["reviewed_on"] = dt.date(2026, 11, 4)
+        block["pros"][0]["checked_on"] = dt.datetime(2026, 11, 4, 9, 0)
+        assert _errors(block) == []
 
     def test_a_typed_grade_never_shows_and_never_drops_the_service(self, tmp_path, monkeypatch):
         # The rating is a display field: a bad block makes the provider "Not
