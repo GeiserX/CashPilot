@@ -21,7 +21,7 @@
 #   control: the same checks against a namespace opened on purpose must see
 #      the leak.
 #
-# Usage: TUNNEL_IMAGE=cashpilot-tunnel:test LAN_PROBE=192.168.10.1 scripts/proxy_leak_test_tailscale.sh
+# Usage: TUNNEL_IMAGE=cashpilot-tunnel:test LAN_PROBE=<a LAN address> scripts/proxy_leak_test_tailscale.sh
 set -euo pipefail
 
 TUNNEL_IMAGE=${TUNNEL_IMAGE:?set TUNNEL_IMAGE to the tunnel image to test}
