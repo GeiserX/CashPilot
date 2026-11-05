@@ -354,6 +354,10 @@ def field_problem(var: dict[str, Any], text: str) -> str | None:
     The same rule api_deploy applies (a value must fullmatch the field's
     pattern), so the dry run shows what the deploy would refuse.
     """
+    # A JSON "\u0000" decodes to a NUL after the file's own NUL check; no env
+    # value can carry one.
+    if "\x00" in text:
+        return "invalid"
     pattern = var.get("pattern")
     if pattern and text and not re.fullmatch(pattern, text):
         return "invalid"

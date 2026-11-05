@@ -393,6 +393,16 @@ class TestHostileInput:
         with pytest.raises(parse.ImportRefused, match="UTF-8"):
             parse.read_files([{"name": "f", "content": "A=\ud800"}])
 
+    def test_a_decoded_nul_is_an_invalid_value(self):
+        # The raw text has no NUL, so read_files passes it; the JSON escape decodes to one.
+        conf = {"enabled": True, "email": "hg@example.com"}
+        conf["password"] = "a\x00b"  # ggignore: fake test value, not a credential
+        content = json.dumps({"apps": {"honeygain": conf}})
+        assert "\\u0000" in content and "\x00" not in content
+        row = _rows(_preview([{"name": "user-config.json", "content": content}], "money4band"))["honeygain"]
+        assert row["state"] != "ready"
+        assert _field(row, "HONEYGAIN_PASSWORD")["state"] == "invalid"
+
     @pytest.mark.parametrize("depth", [25, 5000])
     def test_deep_json(self, depth):
         with pytest.raises(parse.ImportRefused):
