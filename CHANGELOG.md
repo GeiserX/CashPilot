@@ -10,6 +10,16 @@ Every release, grouped by what changed. Generated from commit history.
 Releases before `1.0.0` were recorded by hand and are kept verbatim in
 [docs/changelog-0.x-handwritten.md](docs/changelog-0.x-handwritten.md).
 
+## [1.65.2] - 2026-11-05
+
+### Documentation
+
+- Regenerate CHANGELOG.md (#564)
+
+### Testing
+
+- Keep private host names out of fixtures and docs (#577)
+
 ## [1.65.1] - 2026-11-04
 
 ### Fixes
@@ -682,7 +692,7 @@ Releases before `1.0.0` were recorded by hand and are kept verbatim in
 - Name the tracker's remote by an alias, so this repo no longer says where it is (#415)
 - Keep Co-Authored-By trailers out of commits made with the beads hooks (#414)
 - Tell agents this repo tracks work in beads (#413)
-- Drop a machine-specific lefthook path from the committed hook (#412)
+- Drop a MacBook-only lefthook path from the committed hook (#412)
 - Keep wallet-bearing beads off this public repo for good (#411)
 
 ## [1.39.6] - 2026-10-01
