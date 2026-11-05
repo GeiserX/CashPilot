@@ -134,7 +134,7 @@ class TestHeartbeatClientId:
                 api_worker_heartbeat(
                     _request(),
                     SimpleNamespace(
-                        name="watchtower",
+                        name="charlie",
                         url="",
                         client_id="",
                         containers=[{"slug": "honeygain", "status": "running"}],
@@ -144,7 +144,7 @@ class TestHeartbeatClientId:
                 )
             )
         assert result["status"] == "ok"
-        assert mock_upsert.call_args.kwargs["client_id"] == "watchtower"
+        assert mock_upsert.call_args.kwargs["client_id"] == "charlie"
 
     def test_two_devices_same_name_different_client_id(self):
         """Two devices with the same display name but different client_ids are separate."""

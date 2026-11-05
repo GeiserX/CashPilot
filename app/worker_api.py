@@ -4,7 +4,7 @@ Runs on each server in the fleet. Manages local Docker containers,
 sends heartbeats to the CashPilot UI, and accepts commands from it.
 
 Configure via environment variables:
-    CASHPILOT_UI_URL        URL of the CashPilot UI (e.g. http://192.168.10.100:8080)
+    CASHPILOT_UI_URL        URL of the CashPilot UI (e.g. http://192.168.50.100:8080)
     CASHPILOT_API_KEY       Shared API key for worker<->UI auth
     CASHPILOT_WORKER_NAME   Human-readable name (default: hostname)
     CASHPILOT_PORT          Mini-UI port (default: 8081)

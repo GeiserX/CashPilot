@@ -48,7 +48,7 @@ async def _economics(config, *, rate=0.92, rate_available=True):
     worker = {
         "id": 1,
         "client_id": "abc",
-        "name": "watchtower",
+        "name": "charlie",
         "status": "online",
         "system_info": {},
     }

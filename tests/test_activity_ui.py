@@ -819,7 +819,7 @@ class TestReviewFixes:
         async def go():
             real_now = time.time()
             end = int(real_now // 300 * 300)
-            w = window(end=end, inbound=[["192.168.10.20", 8080, "lan", 1]])
+            w = window(end=end, inbound=[["192.168.50.20", 8080, "lan", 1]])
             await database.record_activity(1, activity_ui.sanitise(w, real_now), now=real_now)
             since = int(real_now) - 86400
             return activity_ui.container_rows(
@@ -839,7 +839,7 @@ class TestReviewFixes:
         async def go():
             real_now = time.time()
             end = int(real_now // 300 * 300)
-            w = window(end=end, out=[["tcp", "192.168.10.20", 22, "lan", 1, {"syn_sent": 1}]])
+            w = window(end=end, out=[["tcp", "192.168.50.20", 22, "lan", 1, {"syn_sent": 1}]])
             await database.record_activity(1, activity_ui.sanitise(w, real_now), now=real_now)
             since = int(real_now) - 86400
             return activity_ui.container_rows(

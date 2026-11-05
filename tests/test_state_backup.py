@@ -220,7 +220,7 @@ class TestTheHeaderNeverCarriesSecrets:
 
     def test_the_header_is_readable_without_any_secret(self):
         """A user must be able to see WHICH service a bundle belongs to."""
-        bundle = sb.seal(PAYLOAD, passphrase=PASSPHRASE, metadata={"slug": "mysterium", "worker": "watchtower"})
+        bundle = sb.seal(PAYLOAD, passphrase=PASSPHRASE, metadata={"slug": "mysterium", "worker": "charlie"})
         header = sb.read_header(bundle)
         assert header["metadata"]["slug"] == "mysterium"
         assert header["mode"] == sb.MODE_PASSPHRASE

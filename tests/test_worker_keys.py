@@ -295,9 +295,9 @@ class TestClientIdIsNotTheContainerHostname:
         with (
             patch.object(w, "_WORKER_ID_FILE", f),
             patch.object(w, "_worker_key", "already-enrolled-key"),
-            patch.object(w, "WORKER_NAME", "watchtower"),
+            patch.object(w, "WORKER_NAME", "charlie"),
         ):
-            assert w._load_or_create_client_id() == "watchtower"
+            assert w._load_or_create_client_id() == "charlie"
 
     def test_container_id_shape_outside_docker_still_migrates(self, tmp_path):
         # A host legitimately named like a hex string is not a container.
@@ -334,7 +334,7 @@ class TestClientIdIsNotTheContainerHostname:
     def test_ephemeral_detection(self):
         with patch.object(w.Path, "exists", lambda self: True):
             assert w._name_is_ephemeral("515ccbc46cd9")
-            assert not w._name_is_ephemeral("watchtower")
+            assert not w._name_is_ephemeral("charlie")
             assert not w._name_is_ephemeral("515CCBC46CD9")
             assert not w._name_is_ephemeral("515ccbc46cd")
 

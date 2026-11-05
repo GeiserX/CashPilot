@@ -73,7 +73,7 @@ class TestPhonesAreRecognised:
 
     def test_a_phone_does_not_switch_off_the_missing_container_check(self):
         """It did: the phone read as a Docker host that cannot see its socket."""
-        workers = [_docker(1, "watchtower", []), _phone(2, "OPPO", [("grass", True)])]
+        workers = [_docker(1, "charlie", []), _phone(2, "OPPO", [("grass", True)])]
         found = placement.missing(
             [{"slug": "storj", "status": "running", "deployed_at": _sql(NOW - timedelta(days=3))}],
             [],
@@ -87,24 +87,24 @@ class TestPhonesAreRecognised:
 class TestRunsOn:
     def test_lists_every_box_that_reports_it_with_its_status(self):
         workers = [
-            _docker(1, "watchtower", [("mysterium", "running")]),
-            _docker(2, "geiserct", [("mysterium", "exited")]),
-            _docker(3, "geiserback", [("mysterium", "running")], status="offline"),
+            _docker(1, "charlie", [("mysterium", "running")]),
+            _docker(2, "bravo", [("mysterium", "exited")]),
+            _docker(3, "alpha", [("mysterium", "running")], status="offline"),
             _phone(4, "OPPO", [("grass", True), ("titan", None)]),
         ]
         where = placement.runs_on(workers)
         assert [(r["name"], r["status"], r["online"]) for r in where["mysterium"]] == [
-            ("geiserback", "running", False),
-            ("geiserct", "exited", True),
-            ("watchtower", "running", True),
+            ("alpha", "running", False),
+            ("bravo", "exited", True),
+            ("charlie", "running", True),
         ]
         assert where["grass"][0]["android"] is True
         assert where["titan"][0]["status"] == "unknown"
 
     def test_two_copies_on_one_box_are_one_box_and_running_wins(self):
-        workers = [_docker(1, "watchtower", [("earnapp", "exited"), ("earnapp", "running")])]
+        workers = [_docker(1, "charlie", [("earnapp", "exited"), ("earnapp", "running")])]
         assert placement.runs_on(workers)["earnapp"] == [
-            {"worker_id": 1, "name": "watchtower", "online": True, "android": False, "status": "running"}
+            {"worker_id": 1, "name": "charlie", "online": True, "android": False, "status": "running"}
         ]
 
 
@@ -120,7 +120,7 @@ class TestMissing:
 
     def test_a_recorded_container_no_box_runs_is_reported_after_the_grace(self):
         deps = [{"slug": "bitping", "status": "running", "deployed_at": _sql(NOW - timedelta(days=9))}]
-        workers = [_docker(1, "watchtower", [("honeygain", "running")])]
+        workers = [_docker(1, "charlie", [("honeygain", "running")])]
         first: dict = {}
         assert self._run(deps, [], workers, first) == {}, "inside the grace on first sight"
         later = NOW + placement.MISSING_GRACE
@@ -130,13 +130,13 @@ class TestMissing:
     def test_a_fresh_redeploy_gets_the_full_grace(self):
         deps = [{"slug": "bitping", "status": "running", "deployed_at": _sql(NOW - timedelta(minutes=5))}]
         first = {("bitping", None): NOW - timedelta(hours=2)}
-        assert self._run(deps, [], [_docker(1, "watchtower", [])], first) == {}
+        assert self._run(deps, [], [_docker(1, "charlie", [])], first) == {}
 
     def test_credentials_only_rows_are_not_alerts(self):
         """uprock: tracked for its balance, runs on something CashPilot never deployed."""
         deps = [{"slug": "uprock", "status": "external", "deployed_at": _sql(NOW - timedelta(days=200))}]
         first = {("uprock", None): NOW - timedelta(days=1)}
-        assert self._run(deps, [], [_docker(1, "watchtower", [])], first) == {}
+        assert self._run(deps, [], [_docker(1, "charlie", [])], first) == {}
 
     def test_a_box_that_no_longer_runs_its_deployment_is_named(self):
         specs = [
@@ -144,14 +144,14 @@ class TestMissing:
             {"slug": "earnapp", "worker_id": 2, "deployed_at": _sql(NOW - timedelta(days=2))},
         ]
         deps = [{"slug": "earnapp", "status": "running", "deployed_at": _sql(NOW - timedelta(days=2))}]
-        workers = [_docker(1, "watchtower", [("earnapp", "running")]), _docker(2, "geiserct", [])]
+        workers = [_docker(1, "charlie", [("earnapp", "running")]), _docker(2, "bravo", [])]
         first = {("earnapp", 2): NOW - timedelta(hours=1)}
         found = self._run(deps, specs, workers, first)
         assert found == {
             "earnapp": {
                 "everywhere": False,
-                "boxes": [{"worker_id": 2, "name": "geiserct"}],
-                "still_on": ["watchtower"],
+                "boxes": [{"worker_id": 2, "name": "bravo"}],
+                "still_on": ["charlie"],
             }
         }
 
@@ -159,23 +159,23 @@ class TestMissing:
         """Its containers may well be running; it has its own offline alert."""
         specs = [{"slug": "storj", "worker_id": 2, "deployed_at": _sql(NOW - timedelta(days=30))}]
         deps = [{"slug": "storj", "status": "running", "deployed_at": _sql(NOW - timedelta(days=30))}]
-        workers = [_docker(1, "watchtower", []), _docker(2, "geiserback", [("storj", "running")], status="offline")]
+        workers = [_docker(1, "charlie", []), _docker(2, "alpha", [("storj", "running")], status="offline")]
         first = {("storj", 2): NOW - timedelta(hours=3), ("storj", None): NOW - timedelta(hours=3)}
         assert self._run(deps, specs, workers, first) == {}
 
     def test_a_blind_docker_host_means_the_fleet_cannot_tell(self):
         deps = [{"slug": "bitping", "status": "running", "deployed_at": _sql(NOW - timedelta(days=9))}]
-        workers = [_docker(1, "watchtower", []), _docker(2, "geiserct", [], docker=False)]
+        workers = [_docker(1, "charlie", []), _docker(2, "bravo", [], docker=False)]
         assert self._run(deps, [], workers, {("bitping", None): NOW - timedelta(hours=2)}) is None
 
     def test_no_worker_online_means_the_fleet_cannot_tell(self):
         deps = [{"slug": "bitping", "status": "running"}]
-        assert self._run(deps, [], [_docker(1, "watchtower", [], status="offline")], {}) is None
+        assert self._run(deps, [], [_docker(1, "charlie", [], status="offline")], {}) is None
 
     def test_coming_back_resets_the_clock(self):
         first = {("bitping", None): NOW - timedelta(hours=2)}
         deps = [{"slug": "bitping", "status": "running"}]
-        assert self._run(deps, [], [_docker(1, "watchtower", [("bitping", "running")])], first) == {}
+        assert self._run(deps, [], [_docker(1, "charlie", [("bitping", "running")])], first) == {}
         assert first == {}
 
 
@@ -227,7 +227,7 @@ class TestTheAlert:
 
     def test_it_reaches_the_bell_and_the_push_path_once(self):
         deps = [{"slug": "bitping", "status": "running", "deployed_at": "2026-01-01 00:00:00"}]
-        workers = [_docker(1, "watchtower", [])]
+        workers = [_docker(1, "charlie", [])]
         main._deployment_first_missing[("bitping", None)] = datetime.now(UTC) - timedelta(hours=1)
         alerts = _Alerts()
         self._check(alerts, deps, [], workers)
@@ -242,7 +242,7 @@ class TestTheAlert:
         alerts.rows["bitping"] = "old"
         main._missing_bell["bitping"] = {"kind": "missing", "platform": "bitping", "error": "old"}
         deps = [{"slug": "bitping", "status": "running"}]
-        self._check(alerts, deps, [], [_docker(1, "watchtower", [("bitping", "running")])])
+        self._check(alerts, deps, [], [_docker(1, "charlie", [("bitping", "running")])])
         assert alerts.rows == {} and main._missing_bell == {}
         assert not [a for a in main._collector_alerts if a["kind"] == "missing"]
 
@@ -250,7 +250,7 @@ class TestTheAlert:
         alerts = _Alerts()
         alerts.rows["bitping"] = "old"
         deps = [{"slug": "bitping", "status": "running"}]
-        self._check(alerts, deps, [], [_docker(1, "watchtower", [], docker=False)])
+        self._check(alerts, deps, [], [_docker(1, "charlie", [], docker=False)])
         assert alerts.rows == {"bitping": "old"}
 
     def test_a_restart_keeps_it_in_the_bell(self):
@@ -294,7 +294,7 @@ class TestForgettingIsTheWayOut:
             p[3],
             p[4],
             p[5],
-            patch.object(main.database, "list_workers", AsyncMock(return_value=[_docker(1, "watchtower", [])])),
+            patch.object(main.database, "list_workers", AsyncMock(return_value=[_docker(1, "charlie", [])])),
             patch.object(main.database, "forget_deployment", forget),
             patch.object(main.database, "get_deployment", AsyncMock(return_value=None)),
         ):
@@ -310,13 +310,13 @@ class TestForgettingIsTheWayOut:
             patch.object(
                 main.database,
                 "list_workers",
-                AsyncMock(return_value=[_docker(1, "watchtower", [("bitping", "running")])]),
+                AsyncMock(return_value=[_docker(1, "charlie", [("bitping", "running")])]),
             ),
             patch.object(main.database, "forget_deployment", forget),
             patch.object(main.database, "list_deployment_placements", AsyncMock(return_value=[])),
         ):
             resp = client.delete("/api/deployments/bitping")
-        assert resp.status_code == 409 and "watchtower" in resp.text
+        assert resp.status_code == 409 and "charlie" in resp.text
         forget.assert_not_awaited()
 
     def test_one_box_forgets_only_that_box(self, client):
@@ -333,9 +333,7 @@ class TestForgettingIsTheWayOut:
             patch.object(
                 main.database,
                 "list_workers",
-                AsyncMock(
-                    return_value=[_docker(1, "watchtower", [("earnapp", "running")]), _docker(2, "geiserct", [])]
-                ),
+                AsyncMock(return_value=[_docker(1, "charlie", [("earnapp", "running")]), _docker(2, "bravo", [])]),
             ),
             patch.object(main.database, "remove_deployment", remove),
             patch.object(main.database, "get_deployment", AsyncMock(return_value=None)),
@@ -395,7 +393,7 @@ def _row(result, slug):
 class TestTheRegistry:
     def test_deployed_means_a_box_runs_it_not_that_a_row_exists(self):
         deps = [{"slug": "bitping", "status": "running"}, {"slug": "grass", "status": "external"}]
-        workers = [_docker(1, "watchtower", [("honeygain", "running")]), _phone(2, "OPPO", [("grass", True)])]
+        workers = [_docker(1, "charlie", [("honeygain", "running")]), _phone(2, "OPPO", [("grass", True)])]
         result = _registry(deps, workers)
         bitping, grass, honeygain = _row(result, "bitping"), _row(result, "grass"), _row(result, "honeygain")
         assert bitping["deployed"] is False and bitping["recorded"] is True
@@ -404,15 +402,15 @@ class TestTheRegistry:
         assert result["summary"]["recorded_not_running"] == 1
 
     def test_a_credentials_only_row_nothing_reports_is_not_counted_as_runs_nowhere(self):
-        result = _registry([{"slug": "uprock", "status": "external"}], [_docker(1, "watchtower", [])])
+        result = _registry([{"slug": "uprock", "status": "external"}], [_docker(1, "charlie", [])])
         uprock = _row(result, "uprock")
         assert uprock["tracked_only"] is True and uprock["deployed"] is False
         assert result["summary"]["recorded_not_running"] == 0
 
     def test_a_wallet_set_inside_the_container_is_read_from_each_box(self):
         workers = [
-            _docker(1, "watchtower", [("mysterium", "running")]),
-            _docker(2, "geiserct", [("mysterium", "running")]),
+            _docker(1, "charlie", [("mysterium", "running")]),
+            _docker(2, "bravo", [("mysterium", "running")]),
         ]
 
         async def read(worker_id):
@@ -420,12 +418,12 @@ class TestTheRegistry:
 
         mysterium = _row(_registry([{"slug": "mysterium", "status": "running"}], workers, read=read), "mysterium")
         assert mysterium["address"] == WALLET_A
-        assert mysterium["addresses"] == [{"address": WALLET_A, "servers": ["geiserct", "watchtower"]}]
+        assert mysterium["addresses"] == [{"address": WALLET_A, "servers": ["bravo", "charlie"]}]
         assert mysterium["address_missing"] is False and mysterium["address_unchecked"] is None
 
     def test_a_manual_wallet_that_could_not_be_read_is_not_checked_never_not_set(self):
         """The old code said "Not set" for Mysterium and Anyone on every box."""
-        workers = [_docker(1, "watchtower", [("mysterium", "running"), ("anyone-protocol", "running")])]
+        workers = [_docker(1, "charlie", [("mysterium", "running"), ("anyone-protocol", "running")])]
 
         async def read(worker_id):
             raise RuntimeError("404 from an older worker")
@@ -438,12 +436,12 @@ class TestTheRegistry:
         assert result["summary"]["needs_an_address"] == 0
 
     def test_a_wallet_linked_in_the_provider_app_is_not_checked(self):
-        result = _registry([], [_docker(1, "watchtower", [("urnetwork", "running")])])
+        result = _registry([], [_docker(1, "charlie", [("urnetwork", "running")])])
         urnetwork = _row(result, "urnetwork")
         assert urnetwork["address_missing"] is False and urnetwork["address_unchecked"] == "app"
 
     def test_boxes_with_different_wallets_are_shown_apart(self):
-        workers = [_docker(1, "watchtower", [("storj", "running")]), _docker(2, "geiserback", [("storj", "running")])]
+        workers = [_docker(1, "charlie", [("storj", "running")]), _docker(2, "alpha", [("storj", "running")])]
         specs = {
             ("storj", 1): {"env": {"WALLET": WALLET_A}},
             ("storj", 2): {"env": {"WALLET": WALLET_B}},
@@ -451,18 +449,18 @@ class TestTheRegistry:
         storj = _row(_registry([{"slug": "storj", "status": "running"}], workers, specs=specs), "storj")
         assert storj["address"] is None
         assert storj["addresses"] == [
-            {"address": WALLET_A, "servers": ["watchtower"]},
-            {"address": WALLET_B, "servers": ["geiserback"]},
+            {"address": WALLET_A, "servers": ["charlie"]},
+            {"address": WALLET_B, "servers": ["alpha"]},
         ]
         assert storj["address_missing"] is False
 
     def test_a_box_whose_own_record_has_no_wallet_is_still_not_set(self):
         """The one state that asks the user to act stays."""
-        workers = [_docker(1, "watchtower", [("storj", "running")]), _docker(2, "geiserback", [("storj", "running")])]
+        workers = [_docker(1, "charlie", [("storj", "running")]), _docker(2, "alpha", [("storj", "running")])]
         specs = {("storj", 1): {"env": {"WALLET": WALLET_A}}, ("storj", 2): {"env": {}}}
         storj = _row(_registry([{"slug": "storj", "status": "running"}], workers, specs=specs), "storj")
-        assert storj["address_missing"] is True and storj["address_missing_on"] == ["geiserback"]
-        assert storj["addresses"] == [{"address": WALLET_A, "servers": ["watchtower"]}]
+        assert storj["address_missing"] is True and storj["address_missing_on"] == ["alpha"]
+        assert storj["addresses"] == [{"address": WALLET_A, "servers": ["charlie"]}]
 
 
 # ---------------------------------------------------------------------------
@@ -540,7 +538,7 @@ class TestARemovalThroughTheUIRaisesNothing:
 
         with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "t.db"):
             deployments, specs = asyncio.run(go())
-        workers = [_docker(1, "watchtower", []), _docker(2, "geiserct", [])]
+        workers = [_docker(1, "charlie", []), _docker(2, "bravo", [])]
         first = {("bitping", None): NOW - timedelta(days=1), ("bitping", 1): NOW - timedelta(days=1)}
         assert placement.missing(deployments, specs, workers, now=NOW, first_missing=first) == {}
         assert first == {}
@@ -548,7 +546,7 @@ class TestARemovalThroughTheUIRaisesNothing:
     def test_control_the_same_containers_gone_without_a_removal_do_alert(self):
         deployments = [{"slug": "bitping", "status": "running", "deployed_at": "2026-10-01 00:00:00"}]
         specs = [{"slug": "bitping", "worker_id": 1, "deployed_at": "2026-10-01 00:00:00"}]
-        workers = [_docker(1, "watchtower", []), _docker(2, "geiserct", [])]
+        workers = [_docker(1, "charlie", []), _docker(2, "bravo", [])]
         first = {("bitping", None): NOW - timedelta(days=1), ("bitping", 1): NOW - timedelta(days=1)}
         found = placement.missing(deployments, specs, workers, now=NOW, first_missing=first)
         assert found["bitping"]["everywhere"] is True
@@ -594,7 +592,7 @@ class TestARemovedServiceStaysRemovedAcrossARestart:
         assert "honeygain" not in rows
         assert self._creds("honeygain").keys() <= config.keys(), "the saved credentials must survive"
         deployments = [{"slug": s, "status": "external"} for s in rows]
-        workers = [_docker(1, "watchtower", []), _docker(2, "geiserct", [])]
+        workers = [_docker(1, "charlie", []), _docker(2, "bravo", [])]
         first = {("honeygain", None): NOW - timedelta(days=1)}
         assert placement.missing(deployments, specs, workers, now=NOW, first_missing=first) == {}
 
@@ -650,22 +648,22 @@ class TestAnAlertSurvivesWhatCannotBeJudged:
         deps = [{"slug": "bitping", "status": "running", "deployed_at": _sql(NOW - timedelta(days=3))}]
         first: dict = {}
         found = placement.missing(
-            deps, [], [_docker(1, "watchtower", [])], now=NOW, first_missing=first, alerted={"bitping"}
+            deps, [], [_docker(1, "charlie", [])], now=NOW, first_missing=first, alerted={"bitping"}
         )
         assert found["bitping"]["everywhere"] is True
 
     def test_control_without_a_stored_alert_the_grace_applies(self):
         deps = [{"slug": "bitping", "status": "running", "deployed_at": _sql(NOW - timedelta(days=3))}]
         first: dict = {}
-        assert placement.missing(deps, [], [_docker(1, "watchtower", [])], now=NOW, first_missing=first) == {}
+        assert placement.missing(deps, [], [_docker(1, "charlie", [])], now=NOW, first_missing=first) == {}
         assert ("bitping", None) in first, "still pending, so the caller keeps any alert"
 
     def test_a_box_going_offline_keeps_its_verdict(self):
         specs = [{"slug": "earnapp", "worker_id": 2, "deployed_at": _sql(NOW - timedelta(days=3))}]
         deps = [{"slug": "earnapp", "status": "running", "deployed_at": _sql(NOW - timedelta(days=3))}]
         workers = [
-            _docker(1, "watchtower", [("earnapp", "running")]),
-            _docker(2, "geiserct", [], status="offline"),
+            _docker(1, "charlie", [("earnapp", "running")]),
+            _docker(2, "bravo", [], status="offline"),
         ]
         first = {("earnapp", 2): NOW - timedelta(hours=2)}
         assert placement.missing(deps, specs, workers, now=NOW, first_missing=first) == {}
@@ -673,10 +671,10 @@ class TestAnAlertSurvivesWhatCannotBeJudged:
 
     def test_an_offline_box_that_went_quiet_before_the_deploy_may_be_running_it(self):
         deps = [{"slug": "bitping", "status": "running", "deployed_at": _sql(NOW - timedelta(hours=2))}]
-        quiet = _docker(2, "geiserct", [], status="offline")
+        quiet = _docker(2, "bravo", [], status="offline")
         quiet["last_heartbeat"] = _sql(NOW - timedelta(hours=5))
         first = {("bitping", None): NOW - timedelta(hours=2)}
-        workers = [_docker(1, "watchtower", []), quiet]
+        workers = [_docker(1, "charlie", []), quiet]
         assert placement.missing(deps, [], workers, now=NOW, first_missing=first) == {}
         quiet["last_heartbeat"] = _sql(NOW - timedelta(minutes=30))
         assert "bitping" in placement.missing(deps, [], workers, now=NOW, first_missing=first)
@@ -694,17 +692,17 @@ class TestTheAlertAcrossARestart:
         assert "bitping" in main._missing_bell, "restored into what the collection rebuild re-adds"
         p = alerts.patches(deps, [])
         with p[0], p[1], p[2], p[3], p[4], p[5]:
-            asyncio.run(main._missing_deployment_check([_docker(1, "watchtower", [])]))
+            asyncio.run(main._missing_deployment_check([_docker(1, "charlie", [])]))
         assert alerts.rows == {"bitping": "runs nowhere"} or "bitping" in alerts.rows
         assert alerts.pushed == []
         assert main._missing_bell["bitping"]["everywhere"] is True, "Forget's fields are back"
 
     def test_a_box_offline_does_not_clear_its_alert(self):
         alerts = _Alerts()
-        alerts.rows["earnapp"] = "gone from geiserct"
+        alerts.rows["earnapp"] = "gone from bravo"
         main._deployment_first_missing[("earnapp", 2)] = datetime.now(UTC) - timedelta(hours=2)
         specs = [{"slug": "earnapp", "worker_id": 2, "deployed_at": "2026-01-01 00:00:00"}]
-        workers = [_docker(1, "watchtower", [("earnapp", "running")]), _docker(2, "geiserct", [], status="offline")]
+        workers = [_docker(1, "charlie", [("earnapp", "running")]), _docker(2, "bravo", [], status="offline")]
         p = alerts.patches([{"slug": "earnapp", "status": "running"}], specs)
         with p[0], p[1], p[2], p[3], p[4], p[5]:
             asyncio.run(main._missing_deployment_check(workers))
@@ -720,7 +718,7 @@ class TestForgetReviewFixes:
             patch.object(
                 main.database,
                 "list_workers",
-                AsyncMock(return_value=[_docker(1, "watchtower", []), _docker(2, "geiserct", [], docker=False)]),
+                AsyncMock(return_value=[_docker(1, "charlie", []), _docker(2, "bravo", [], docker=False)]),
             ),
             patch.object(
                 main.database,
@@ -730,7 +728,7 @@ class TestForgetReviewFixes:
             patch.object(main.database, "forget_deployment", forget),
         ):
             resp = client.delete("/api/deployments/earnapp")
-        assert resp.status_code == 409 and "geiserct" in resp.text
+        assert resp.status_code == 409 and "bravo" in resp.text
         forget.assert_not_awaited()
 
     def test_control_a_blind_box_with_no_record_does_not_block(self, client):
@@ -746,7 +744,7 @@ class TestForgetReviewFixes:
             patch.object(
                 main.database,
                 "list_workers",
-                AsyncMock(return_value=[_docker(1, "watchtower", []), _docker(2, "geiserct", [], docker=False)]),
+                AsyncMock(return_value=[_docker(1, "charlie", []), _docker(2, "bravo", [], docker=False)]),
             ),
             patch.object(main.database, "forget_deployment", AsyncMock()),
             patch.object(main.database, "get_deployment", AsyncMock(return_value=None)),
@@ -769,7 +767,7 @@ class TestForgetReviewFixes:
             patch.object(
                 main.database,
                 "list_workers",
-                AsyncMock(return_value=[_docker(1, "watchtower", []), _docker(3, "blind", [], docker=False)]),
+                AsyncMock(return_value=[_docker(1, "charlie", []), _docker(3, "blind", [], docker=False)]),
             ),
             patch.object(main.database, "remove_deployment", AsyncMock()),
             patch.object(main.database, "get_deployment", AsyncMock(return_value=None)),
@@ -810,7 +808,7 @@ class TestRegistryReviewFixes:
         assert result["summary"]["recorded_not_running"] == 0
 
     def test_every_wallet_on_one_box_is_kept(self):
-        workers = [_docker(1, "watchtower", [("mysterium", "running"), ("mysterium", "running")])]
+        workers = [_docker(1, "charlie", [("mysterium", "running"), ("mysterium", "running")])]
 
         async def read(worker_id):
             return [
@@ -822,7 +820,7 @@ class TestRegistryReviewFixes:
         assert [a["address"] for a in mysterium["addresses"]] == [WALLET_A, WALLET_B]
 
     def test_a_box_without_a_readable_record_beside_one_with_is_flagged(self):
-        workers = [_docker(1, "watchtower", [("storj", "running")]), _docker(2, "geiserback", [("storj", "running")])]
+        workers = [_docker(1, "charlie", [("storj", "running")]), _docker(2, "alpha", [("storj", "running")])]
         specs = {("storj", 1): {"env": {"WALLET": WALLET_A}}}
         storj = _row(_registry([{"slug": "storj", "status": "running"}], workers, specs=specs), "storj")
         assert storj["address"] == WALLET_A and storj["address_unchecked"] == "record"
@@ -847,9 +845,9 @@ class TestSecondReviewRound:
             {"slug": "earnapp", "worker_id": 2, "deployed_at": old},
         ]
         workers = [
-            _docker(1, "watchtower", []),
-            _docker(2, "geiserback", []),
-            _docker(3, "geiserct", [("earnapp", "running")]),
+            _docker(1, "charlie", []),
+            _docker(2, "alpha", []),
+            _docker(3, "bravo", [("earnapp", "running")]),
         ]
         deps = [{"slug": "earnapp", "status": "running", "deployed_at": old}]
         found = placement.missing(deps, specs, workers, now=NOW, first_missing={}, alerted={("earnapp", 1)})
@@ -881,24 +879,24 @@ class TestSecondReviewRound:
 class TestARetainedAlertNamesOnlyWhatIsStillMissing:
     def test_a_recovered_box_leaves_the_forget_actions(self):
         alerts = _Alerts()
-        alerts.rows["earnapp"] = "gone from watchtower and geiserct"
+        alerts.rows["earnapp"] = "gone from charlie and bravo"
         main._missing_bell["earnapp"] = {
             "kind": "missing",
             "platform": "earnapp",
             "name": "EarnApp",
             "error": "gone",
             "everywhere": False,
-            "boxes": [{"worker_id": 1, "name": "watchtower"}, {"worker_id": 2, "name": "geiserct"}],
+            "boxes": [{"worker_id": 1, "name": "charlie"}, {"worker_id": 2, "name": "bravo"}],
         }
         main._deployment_first_missing[("earnapp", 2)] = datetime.now(UTC) - timedelta(hours=2)
         specs = [{"slug": "earnapp", "worker_id": 2, "deployed_at": "2026-01-01 00:00:00"}]
-        workers = [_docker(1, "watchtower", [("earnapp", "running")]), _docker(2, "geiserct", [], status="offline")]
+        workers = [_docker(1, "charlie", [("earnapp", "running")]), _docker(2, "bravo", [], status="offline")]
         p = alerts.patches([{"slug": "earnapp", "status": "running"}], specs)
         with p[0], p[1], p[2], p[3], p[4], p[5]:
             asyncio.run(main._missing_deployment_check(workers))
         assert "earnapp" in alerts.rows
         assert [b["worker_id"] for b in main._missing_bell["earnapp"]["boxes"]] == [2]
-        assert "watchtower" not in main._missing_bell["earnapp"]["error"].split("still")[0]
+        assert "charlie" not in main._missing_bell["earnapp"]["error"].split("still")[0]
 
     def test_a_restored_alert_has_no_scope_until_a_check_names_it(self):
         stored = [{"kind": "missing", "subject": "bitping", "message": "runs nowhere"}]
@@ -927,7 +925,7 @@ def _desktop(wid, name, containers, *, status="online"):
 
 class TestAPairedDesktopIsNotABlindHost:
     def test_it_does_not_switch_off_the_runs_nowhere_alert(self):
-        workers = [_docker(1, "watchtower", []), _desktop(2, "MacBook", [("honeygain", "running")])]
+        workers = [_docker(1, "charlie", []), _desktop(2, "laptop", [("honeygain", "running")])]
         found = placement.missing(
             [{"slug": "bitping", "status": "running", "deployed_at": _sql(NOW - timedelta(days=3))}],
             [],
@@ -938,12 +936,12 @@ class TestAPairedDesktopIsNotABlindHost:
         assert found is not None and "bitping" in found
 
     def test_control_a_docker_host_that_cannot_read_its_socket_still_does(self):
-        workers = [_docker(1, "watchtower", []), _docker(2, "geiserct", [], docker=False)]
+        workers = [_docker(1, "charlie", []), _docker(2, "bravo", [], docker=False)]
         deps = [{"slug": "bitping", "status": "running", "deployed_at": _sql(NOW - timedelta(days=3))}]
         assert placement.missing(deps, [], workers, now=NOW, first_missing={}) is None
 
     def test_it_does_not_switch_off_the_container_down_check(self):
-        workers = [_docker(1, "watchtower", []), _desktop(2, "MacBook", [])]
+        workers = [_docker(1, "charlie", []), _desktop(2, "laptop", [])]
         record = AsyncMock()
         with (
             patch.object(main.database, "list_workers", AsyncMock(return_value=workers)),
@@ -1005,8 +1003,8 @@ class TestARemovalOnOneBoxStaysOnThatBox:
             await database.init_db()
             await database.save_deployment("honeygain", "c1", status="running")
             await database.upsert_worker(
-                "geiserback-id",
-                name="geiserback",
+                "alpha-id",
+                name="alpha",
                 url="http://b",
                 containers=json.dumps([{"slug": "honeygain", "status": "running"}]),
                 system_info=json.dumps({"docker_available": True}),
@@ -1026,8 +1024,8 @@ class TestARemovalOnOneBoxStaysOnThatBox:
             await database.init_db()
             await database.save_deployment("honeygain", "c1", status="running")
             await database.upsert_worker(
-                "geiserback-id",
-                name="geiserback",
+                "alpha-id",
+                name="alpha",
                 url="http://b",
                 containers="[]",
                 system_info=json.dumps({"docker_available": False}),
@@ -1046,8 +1044,8 @@ class TestARemovalOnOneBoxStaysOnThatBox:
             await database.init_db()
             await database.save_deployment("honeygain", "c1", status="running")
             await database.upsert_worker(
-                "geiserback-id",
-                name="geiserback",
+                "alpha-id",
+                name="alpha",
                 url="http://b",
                 containers="[]",
                 system_info=json.dumps({"docker_available": True}),
