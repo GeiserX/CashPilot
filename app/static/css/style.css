@@ -2006,9 +2006,12 @@ body.gate { display: flex; flex-direction: column; }
 /* ----- Responsive ----- */
 @media (max-width: 1100px) {
   .dash-split { grid-template-columns: minmax(0, 1fr); gap: 0; }
-  /* Just above 768 px all six catalog columns still show; headers and the
-     estimate wrap so the table fits instead of scrolling (728 px in 713). */
+  /* Just above 768 px all seven catalog columns still show; headers and the
+     estimate wrap so the table fits instead of scrolling in 713 px. */
   .catalog-table thead th, .catalog-table .cat-est { white-space: normal; }
+  /* The Grade column took the slack: Manage and Add now stack in this range
+     too, or a wide fallback font pushes the table past 713 px at 769. */
+  .catalog-table .cat-act { white-space: normal; }
   .settings-layout { grid-template-columns: minmax(0, 1fr); gap: 0; }
   .settings-index { position: static; flex-direction: row; flex-wrap: wrap; gap: 0 12px; margin-bottom: 16px; }
   .settings-index a { border-left: none; padding-left: 0; }
@@ -2143,6 +2146,10 @@ body.gate { display: flex; flex-direction: column; }
   .catalog-table .cat-svc { overflow-wrap: anywhere; }
   /* Add and Details stack rather than widen the table. */
   .catalog-table .cat-act { white-space: normal; }
+  /* Four columns at 320 px with the Grade column: tighter cell padding keeps
+     them inside the window with a wide fallback font. */
+  .catalog-table thead th, .catalog-table td { padding-left: 6px; padding-right: 6px; }
+  .catalog-table th:first-child, .catalog-table td:first-child { padding-left: 0; }
   /* Headers wrap too ("Est. per / month"). */
   .catalog-table thead th { white-space: normal; }
   /* Narrower box columns in the placement grid, so eight boxes still fit 320 px. */
