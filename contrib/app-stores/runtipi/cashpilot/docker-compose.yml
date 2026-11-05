@@ -1,0 +1,42 @@
+services:
+  cashpilot:
+    image: drumsergio/cashpilot:1.64.0
+    ports:
+      - ${APP_PORT}:8080
+    volumes:
+      - ${APP_DATA_DIR}/data/ui:/data
+      - ${APP_DATA_DIR}/data/fleet:/fleet
+    environment:
+      - TZ=${TZ}
+    init: true
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp:size=64M
+    x-runtipi:
+      internal_port: 8080
+      is_main: true
+  cashpilot-worker:
+    image: drumsergio/cashpilot-worker:1.64.0
+    volumes:
+      # The worker starts and stops the earning containers through the host's
+      # Docker socket.
+      - /var/run/docker.sock:/var/run/docker.sock
+      # Kept apart from the UI's /data on purpose: the worker holds the Docker
+      # socket and must not be able to read the credential store.
+      - ${APP_DATA_DIR}/data/worker:/data
+      # Shared with the UI: holds only the enrolment key both sides need.
+      - ${APP_DATA_DIR}/data/fleet:/fleet
+    environment:
+      - TZ=${TZ}
+      - CASHPILOT_UI_URL=http://cashpilot:8080
+      - CASHPILOT_WORKER_NAME=local
+    depends_on:
+      - cashpilot
+    init: true
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp:size=64M
+x-runtipi:
+  schema_version: 2
