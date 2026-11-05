@@ -60,7 +60,7 @@
 
   var STATUS = {
     ok: ['ok', ''],
-    host_network: ['host network', "Shares the machine's network, so its connections cannot be told apart from the host's."],
+    host_network: ['host network', "Shares the machine's network, and its connections could not be told apart from the machine's."],
     no_network: ['no network', 'Runs with networking off.'],
     sandboxed: ['sandboxed', 'Runs under a sandboxed runtime (such as gVisor), whose network a helper cannot join.'],
     probe_failed: ['could not sample', 'The helper did not produce a reading this round.'],
@@ -71,10 +71,27 @@
     lan: 'your LAN', tailnet: 'tailnet', docker_host: 'Docker host', metadata: 'cloud metadata',
     link_local: 'link-local', multicast: 'multicast'
   };
+  // Why a host-network earner's sockets could not be told apart, and what fixes it.
+  var CGROUP_REASON = {
+    cgroup_v1: 'this machine uses cgroup v1; a host on cgroup v2 is needed',
+    cgroup_missing: 'its cgroup was not found',
+    sock_diag_refused: 'the kernel refused the socket list',
+    kernel_no_cgroup_id: 'this kernel does not report a socket\'s cgroup'
+  };
+  var HOST_CGROUP_NOTE = 'host network, matched by cgroup: connections already closed (TIME_WAIT) are not seen; connection counters are machine-wide and not shown';
+  var FORWARDED_NOTE = 'Traffic an earner routes for VPN customers is forwarded by the kernel, not opened by the earner, and is not shown.';
   // Only outbound rows of these kinds are the earner reaching into your networks.
   var ALARM = { lan: 1, tailnet: 1, docker_host: 1, docker_peer: 1, metadata: 1, link_local: 1 };
 
   function num(v) { return v == null ? '—' : String(v); }
+  // An element id for a detail box. Injective: every character outside
+  // [A-Za-z0-9-], "_" included, becomes "_" and four hex digits, so "a.b" and
+  // "a_b" never share a box.
+  function domId(key) {
+    return 'activity-detail-' + String(key).replace(/[^A-Za-z0-9-]/g, function (c) {
+      return '_' + ('000' + c.charCodeAt(0).toString(16)).slice(-4);
+    });
+  }
   function when(ts) {
     if (!ts) return 'never';
     return new Date(ts * 1000).toLocaleString();
@@ -119,6 +136,13 @@
     var s = STATUS[status] || [status, ''];
     var text = s[0];
     if (members && members.length > 1) text = 'shared with ' + members.join(', ');
+    if (status === 'ok' && reason === 'host_cgroup') {
+      return '<span class="activity-chip activity-chip-muted" title="' + esc(FORWARDED_NOTE) + '">' + esc(HOST_CGROUP_NOTE) + '</span>';
+    }
+    if (status === 'host_network' && CGROUP_REASON[reason]) {
+      return '<span class="activity-chip activity-chip-muted" title="' + esc(s[1]) + '">' +
+        esc('host network: cannot be told apart (' + CGROUP_REASON[reason] + ')') + '</span>';
+    }
     if (status === 'ok' && reason === 'shared_namespace') {
       return '<span class="activity-chip activity-chip-muted" title="This network belongs to a container that is not an earner (a VPN or Tailscale sidecar), which other apps may share. Only the counters are kept; no destinations and no alerts.">' +
         esc('network of this container, used by ' + (members || []).join(', ')) + '</span>';
@@ -179,7 +203,7 @@
             '<td>' + tops(c.top_ports) + '</td><td>' + tops(c.top_asn) + '</td><td>' + tops(c.top_cc) + '</td>' +
             '<td>' + (c.alerts ? '<span class="activity-chip activity-chip-warn">' + c.alerts + '</span>' : (alarm ? '<span class="activity-chip activity-chip-warn">LAN</span>' : '')) + '</td></tr>';
           if (state.open[key]) {
-            row += '<tr class="worker-detail"><td colspan="11"><div id="activity-detail-' + esc(key.replace(/[^A-Za-z0-9_-]/g, '_')) + '" class="activity-detail"><div class="loading-line"><div class="spinner"></div> Loading</div></div></td></tr>';
+            row += '<tr class="worker-detail"><td colspan="11"><div id="' + domId(key) + '" class="activity-detail"><div class="loading-line"><div class="spinner"></div> Loading</div></div></td></tr>';
           }
           return row;
         }).join('') + '</tbody></table></div></section>';
@@ -197,7 +221,7 @@
 
   function loadDetail(key) {
     var parts = key.split('|'), wid = parts[0], name = parts.slice(1).join('|');
-    var box = document.getElementById('activity-detail-' + key.replace(/[^A-Za-z0-9_-]/g, '_'));
+    var box = document.getElementById(domId(key));
     if (!box) return;
     // The usage graph is per container. A namespace named after a sidecar has
     // no usage of its own; its earners report the namespace's bytes, so chart
@@ -219,7 +243,8 @@
       // usage rows; that total must never be shown as this container's.
       if (usage && usage.container !== usageName) usage = null;
       var raw = d.raw || [];
-      box.innerHTML =
+      var hostNet = row && (row.network_mode === 'host' || row.reason === 'host_cgroup' || row.status === 'host_network');
+      box.innerHTML = (hostNet ? '<p class="muted">' + esc(FORWARDED_NOTE) + '</p>' : '') +
         '<div class="activity-charts"><div><h3 class="activity-h3">Connections</h3><canvas class="ac-conn" height="140"></canvas></div>' +
         '<div><h3 class="activity-h3">Traffic, last 7 days' + (usageName !== name ? ' (' + esc(usageName) + ')' : '') + '</h3>' +
         (usage ? '<canvas class="ac-traffic" height="140"></canvas>' : '<p class="muted">No traffic reading for this container yet.</p>') + '</div></div>' +

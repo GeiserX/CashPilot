@@ -51,7 +51,7 @@ const build = new Function('esc', 'fmtBytes', 'CP', `${source}; return {renderCo
 const {renderContainers, renderApps, staleNote, countWorkerNames} = build(esc, fmtBytes, CP);
 
 const WORKER = {
-  name: 'geiserback',
+  name: 'alpha',
   last_heartbeat: '2026-08-04 09:12',
   containers: [{slug: 'honeygain', status: 'running'}, {slug: 'traffmonetizer', status: 'running'}],
 };
@@ -135,11 +135,11 @@ check('offline apps keep both tooltips', appsOffline.includes('Last reported') &
 //    so two such workers are never flagged, which is the one case the feature
 //    exists for. This cannot be seen from the source; it has to be run.
 const named = names => names.map(n => ({name: n}));
-const ordinary = countWorkerNames(named(['watchtower', 'watchtower', 'geiserback']));
-check('an ordinary duplicate is counted', ordinary['watchtower'] === 2,
-  `expected 2, got ${JSON.stringify(ordinary['watchtower'])}`);
-check('a unique name is counted once', ordinary['geiserback'] === 1,
-  `expected 1, got ${JSON.stringify(ordinary['geiserback'])}`);
+const ordinary = countWorkerNames(named(['charlie', 'charlie', 'alpha']));
+check('an ordinary duplicate is counted', ordinary['charlie'] === 2,
+  `expected 2, got ${JSON.stringify(ordinary['charlie'])}`);
+check('a unique name is counted once', ordinary['alpha'] === 1,
+  `expected 1, got ${JSON.stringify(ordinary['alpha'])}`);
 
 for (const hostile of ['__proto__', 'toString', 'constructor', 'valueOf', 'hasOwnProperty']) {
   const counts = countWorkerNames(named([hostile, hostile]));

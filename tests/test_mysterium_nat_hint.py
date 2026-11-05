@@ -33,7 +33,7 @@ DIRECT = "2026-10-29T12:00:00Z DBG event={Identity:0xabc Method:manual Success:t
 FAILING = "\n".join([FAILED, PUNCHED] * 5)
 RECORDED = {"env": {"UDP_PORTS": "56000:56100"}}
 
-WORKER = {"id": 7, "name": "nas", "status": "online", "url": "http://192.168.10.100:8081"}
+WORKER = {"id": 7, "name": "nas", "status": "online", "url": "http://192.168.50.100:8081"}
 RUNNING = {"slug": "mysterium", "status": "running", "instance": 1, "_worker_id": 7}
 
 
@@ -75,7 +75,7 @@ def test_only_failed_direct_connections_raise_the_hint_with_the_rule_to_create()
     hints, calls = _sweep(FAILING)
     assert len(hints) == 1
     assert "forward the UDP port range 56000:56100" in hints[0]
-    assert "to 192.168.10.100" in hints[0]
+    assert "to 192.168.50.100" in hints[0]
     assert "redeploy" not in hints[0].lower()
     _, path, params = calls[0]
     assert path == "/api/containers/mysterium/logs"

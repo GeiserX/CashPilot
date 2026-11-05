@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+
+{% block title %}Import - CashPilot{% endblock %}
+{% block page %}import{% endblock %}
+{% block topbar_title %}Import from another tool{% endblock %}
+
+{% block content %}
+<p class="page-lede">
+  Coming from money4band, CashFactory or InternetIncome? Add the config files
+  from that tool and CashPilot shows what it can bring over before it saves
+  anything. Nothing in the files is run or fetched, and the files themselves
+  are not kept.
+</p>
+
+<div class="card settings-section" id="import-input">
+  <h3 class="settings-section-title">1. Your old config</h3>
+  <p class="settings-section-desc">
+    money4band: <code>config/user-config.json</code> (or its <code>.env</code>).
+    CashFactory: <code>.env</code>.
+    InternetIncome: <code>properties.conf</code>, plus <code>earnapp.txt</code> and
+    <code>proxyrack.txt</code> if you have them, so your linked devices come over.
+    Up to 4 files, 64 KiB in total. The guides under "Moving from another tool" in
+    the docs explain each tool.
+  </p>
+  <div class="form-group">
+    <label class="form-label" for="import-source">Tool</label>
+    <select class="form-input" id="import-source">
+      <option value="auto">Tell from the files</option>
+      <option value="money4band">money4band</option>
+      <option value="cashfactory">CashFactory</option>
+      <option value="internetincome">InternetIncome</option>
+    </select>
+  </div>
+  <div class="form-group">
+    <label class="form-label" for="import-files">Files</label>
+    <input class="form-input" type="file" id="import-files" multiple>
+  </div>
+  <div class="form-group">
+    <label class="form-label" for="import-paste">Or paste one file here</label>
+    <textarea class="form-input" id="import-paste" rows="8" spellcheck="false" autocomplete="off"></textarea>
+  </div>
+  <div class="settings-actions">
+    <button class="btn btn-primary" data-action="importPreview">Check what comes over</button>
+    <span id="import-status" class="muted"></span>
+  </div>
+</div>
+
+<div class="card settings-section" id="import-preview" hidden>
+  <h3 class="settings-section-title">2. What CashPilot found</h3>
+  <div id="import-notices"></div>
+  <div id="import-rows" class="table-scroll"></div>
+  <div id="import-skipped"></div>
+  <div class="settings-actions">
+    <button class="btn btn-primary" data-action="importApply">Save the ticked services</button>
+    <span id="import-apply-status" class="muted"></span>
+  </div>
+</div>
+
+<div class="card settings-section" id="import-drafts">
+  <h3 class="settings-section-title">3. Deploy what you imported</h3>
+  <p class="settings-section-desc">
+    Saved imports stay here, encrypted, so you can deploy them to more workers later.
+    Stop the old tool on a machine before you deploy there: two copies behind one
+    connection earn as one, and a device id must not run twice.
+  </p>
+  <div id="import-drafts-body"><p class="loading-line">Loading...</p></div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/import.js?v={{ app_version() }}"></script>
+{% endblock %}
