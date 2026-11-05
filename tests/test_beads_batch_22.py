@@ -43,7 +43,7 @@ def without_comments(text: str) -> str:
 
 
 class TestThePlaceholderIsResolvedEvenWhenItArrivesAsAUserValue:
-    def _env_after_merge(self, user_env, hostname="watchtower"):
+    def _env_after_merge(self, user_env, hostname="charlie"):
         """Reproduce the exact merge the handler performs.
 
         Driving api_deploy end to end needs most of the app mocked; the merge is
@@ -74,12 +74,12 @@ class TestThePlaceholderIsResolvedEvenWhenItArrivesAsAUserValue:
     def test_the_untouched_default_still_resolves(self):
         """The behaviour that already worked must keep working."""
         env = self._env_after_merge(None)
-        assert env["HONEYGAIN_DEVICE_NAME"] == "cashpilot-watchtower"
+        assert env["HONEYGAIN_DEVICE_NAME"] == "cashpilot-charlie"
 
     def test_a_posted_template_resolves_too(self):
         """The defect: the wizard posts the raw default back as a user value."""
         env = self._env_after_merge({"HONEYGAIN_DEVICE_NAME": "cashpilot-{hostname}"})
-        assert env["HONEYGAIN_DEVICE_NAME"] == "cashpilot-watchtower", (
+        assert env["HONEYGAIN_DEVICE_NAME"] == "cashpilot-charlie", (
             "the literal placeholder still ships as the device name"
         )
 
@@ -90,8 +90,8 @@ class TestThePlaceholderIsResolvedEvenWhenItArrivesAsAUserValue:
 
     def test_two_hosts_get_two_names(self):
         """Providers count devices BY NAME; identical names is the real damage."""
-        a = self._env_after_merge({"HONEYGAIN_DEVICE_NAME": "cashpilot-{hostname}"}, hostname="watchtower")
-        b = self._env_after_merge({"HONEYGAIN_DEVICE_NAME": "cashpilot-{hostname}"}, hostname="geiserback")
+        a = self._env_after_merge({"HONEYGAIN_DEVICE_NAME": "cashpilot-{hostname}"}, hostname="charlie")
+        b = self._env_after_merge({"HONEYGAIN_DEVICE_NAME": "cashpilot-{hostname}"}, hostname="alpha")
         assert a["HONEYGAIN_DEVICE_NAME"] != b["HONEYGAIN_DEVICE_NAME"]
 
     def test_an_unrelated_value_is_untouched(self):

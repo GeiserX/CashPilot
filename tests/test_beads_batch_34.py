@@ -137,7 +137,7 @@ class TestTheBackendStillNeedsBoth:
         from app import machine_economics
 
         out = machine_economics.assess_machine(
-            name="watchtower", monthly_gross=5.0, watts=watts, price_per_kwh=price, dedicated=True
+            name="charlie", monthly_gross=5.0, watts=watts, price_per_kwh=price, dedicated=True
         )
         assert (out["monthly_cost"] is not None) is known
 
@@ -145,6 +145,6 @@ class TestTheBackendStillNeedsBoth:
         from app import machine_economics
 
         out = machine_economics.assess_machine(
-            name="watchtower", monthly_gross=5.0, watts=None, price_per_kwh=None, dedicated=True
+            name="charlie", monthly_gross=5.0, watts=None, price_per_kwh=None, dedicated=True
         )
         assert out["verdict"] == machine_economics.UNKNOWN
