@@ -25,7 +25,7 @@ class TestAnUnreadableMachineGetsNoVerdict:
 
     per_worker_gross is built only from online workers, and the endpoint
     defaulted a missing entry to 0.0. So a host that had merely stopped
-    heartbeating produced: "geiserback earns about 0.00 a month and costs about
+    heartbeating produced: "alpha earns about 0.00 a month and costs about
     9.49 in electricity — roughly 9.49 out of pocket. Since this machine runs
     only these services, turning it off would save that."
 
@@ -37,7 +37,7 @@ class TestAnUnreadableMachineGetsNoVerdict:
         from app import machine_economics
 
         return machine_economics.assess_machine(
-            name="geiserback", monthly_gross=gross, watts=65.0, price_per_kwh=0.20, dedicated=True
+            name="alpha", monthly_gross=gross, watts=65.0, price_per_kwh=0.20, dedicated=True
         )
 
     def test_unknown_earnings_produce_an_unknown_verdict(self):
@@ -142,8 +142,8 @@ class TestTheFleetTotalSaysWhatItCouldNotSee:
     def test_an_unreadable_machine_is_counted(self):
         out = self._summary(
             [
-                {"machine": "watchtower", "monthly_gross": 40.0, "monthly_cost": 9.0},
-                {"machine": "geiserback", "monthly_gross": None, "monthly_cost": None},
+                {"machine": "charlie", "monthly_gross": 40.0, "monthly_cost": 9.0},
+                {"machine": "alpha", "monthly_gross": None, "monthly_cost": None},
             ]
         )
         assert out["gross_unknown_for"] == 1
@@ -151,8 +151,8 @@ class TestTheFleetTotalSaysWhatItCouldNotSee:
     def test_the_summary_says_the_total_is_incomplete(self):
         out = self._summary(
             [
-                {"machine": "watchtower", "monthly_gross": 40.0, "monthly_cost": 9.0},
-                {"machine": "geiserback", "monthly_gross": None, "monthly_cost": None},
+                {"machine": "charlie", "monthly_gross": 40.0, "monthly_cost": 9.0},
+                {"machine": "alpha", "monthly_gross": None, "monthly_cost": None},
             ]
         )
         assert "not reporting" in out["summary"]
@@ -162,7 +162,7 @@ class TestTheFleetTotalSaysWhatItCouldNotSee:
         """The control: this must not nag when everything is known."""
         out = self._summary(
             [
-                {"machine": "watchtower", "monthly_gross": 40.0, "monthly_cost": 9.0},
+                {"machine": "charlie", "monthly_gross": 40.0, "monthly_cost": 9.0},
                 {"machine": "nuc", "monthly_gross": 10.0, "monthly_cost": 3.0},
             ]
         )

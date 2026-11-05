@@ -209,14 +209,14 @@ class TestRefreshGauges:
         mock_workers = [
             {
                 "status": "online",
-                "name": "watchtower",
+                "name": "charlie",
                 "last_heartbeat": "2026-01-01T00:00:00",
                 "system_info": '{"docker_available": true}',
                 "containers": '[{"slug": "earnapp", "status": "running", "image": "fazalfarhan01/earnapp:lite-latest", "cpu_percent": 1.2, "memory_mb": 45}]',
             },
             {
                 "status": "offline",
-                "name": "geiserback",
+                "name": "alpha",
                 "last_heartbeat": "2025-12-31T00:00:00",
                 "system_info": '{"docker_available": true}',
                 "containers": "[]",
@@ -245,17 +245,15 @@ class TestRefreshGauges:
         m = metrics._metrics
         assert m["workers_total"].labels(status="online")._value.get() == 1
         assert m["workers_total"].labels(status="offline")._value.get() == 1
-        assert m["worker_docker_available"].labels(worker="watchtower")._value.get() == 1
-        assert m["worker_containers_count"].labels(worker="watchtower")._value.get() == 1
+        assert m["worker_docker_available"].labels(worker="charlie")._value.get() == 1
+        assert m["worker_containers_count"].labels(worker="charlie")._value.get() == 1
         assert m["earnings_total_usd"]._value.get() == pytest.approx(8.33)
         assert m["services_deployed_total"]._value.get() == 2
         assert m["services_available_total"]._value.get() == 3
         assert m["health_score"].labels(service="earnapp")._value.get() == 95.0
         assert m["health_uptime_percent"].labels(service="earnapp")._value.get() == 99.2
-        assert m["container_cpu_percent"].labels(service="earnapp", node="watchtower")._value.get() == pytest.approx(
-            1.2
-        )
-        assert m["container_memory_mb"].labels(service="earnapp", node="watchtower")._value.get() == 45
+        assert m["container_cpu_percent"].labels(service="earnapp", node="charlie")._value.get() == pytest.approx(1.2)
+        assert m["container_memory_mb"].labels(service="earnapp", node="charlie")._value.get() == 45
 
         metrics.METRICS_ENABLED = orig_enabled
         metrics._registry = orig_registry
@@ -280,7 +278,7 @@ class TestRefreshGauges:
         mock_workers = [
             {
                 "status": "online",
-                "name": "watchtower",
+                "name": "charlie",
                 "last_heartbeat": recent,
                 "system_info": "{}",
                 "containers": "[]",
@@ -317,8 +315,8 @@ class TestRefreshGauges:
         samples = {s.labels["worker"]: s.value for s in gauge.collect()[0].samples}
 
         # Worker with a real last_heartbeat: gauge IS populated and reflects freshness.
-        assert "watchtower" in samples, "heartbeat gauge must be set from last_heartbeat"
-        assert 0 <= samples["watchtower"] < 60
+        assert "charlie" in samples, "heartbeat gauge must be set from last_heartbeat"
+        assert 0 <= samples["charlie"] < 60
         # Worker with only the legacy last_seen key: gauge must NOT be set.
         assert "legacy_only" not in samples, "gauge must not populate from the legacy last_seen key"
 

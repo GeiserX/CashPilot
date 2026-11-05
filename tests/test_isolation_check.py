@@ -179,7 +179,7 @@ class TestTheControl:
         assert _earner_targets(fake) == ["192.168.1.1:80", "100.100.100.100:53", "100.100.100.100:80", "1.1.1.1:443"]
 
     def test_the_host_keeps_a_port_it_serves_beside_a_forwarded_one(self):
-        """geiserback: docker-proxy on 0.0.0.0:1993 answered first and pushed sshd out.
+        """alpha: docker-proxy on 0.0.0.0:1993 answered first and pushed sshd out.
 
         A published port is DNAT'd and crosses FORWARD; the host's own sshd
         arrives on INPUT. Keeping only the first port per address tested the
@@ -187,31 +187,31 @@ class TestTheControl:
         """
         forwarded = {
             "group": "host",
-            "host": "192.168.10.110",
+            "host": "192.168.50.110",
             "port": 1993,
             "label": "this host, port 1993, forwarded to a container",
             "via": "forwarded",
         }
         second_forwarded = dict(forwarded, port=2020)
-        sshd = dict(HOST, host="192.168.10.110", via="host")
+        sshd = dict(HOST, host="192.168.50.110", via="host")
         nginx = dict(sshd, port=80, label="this host, port 80")
         fake = FakeDocker(_ok(forwarded, second_forwarded, sshd, nginx), INTERNET_OK)
         _check(fake)
-        assert _earner_targets(fake) == ["192.168.10.110:1993", "192.168.10.110:22", "1.1.1.1:443"]
+        assert _earner_targets(fake) == ["192.168.50.110:1993", "192.168.50.110:22", "1.1.1.1:443"]
 
     def test_the_control_is_told_which_ports_docker_publishes(self):
         published = [
             {"Ports": [{"IP": "0.0.0.0", "PrivatePort": 80, "PublicPort": 1993, "Type": "tcp"}]},
             {"Ports": [{"IP": "::", "PrivatePort": 80, "PublicPort": 1993, "Type": "tcp"}]},
-            {"Ports": [{"IP": "192.168.10.110", "PrivatePort": 53, "PublicPort": 5353, "Type": "udp"}]},
+            {"Ports": [{"IP": "192.168.50.110", "PrivatePort": 53, "PublicPort": 5353, "Type": "udp"}]},
             {"Ports": [{"PrivatePort": 9000, "Type": "tcp"}]},
-            {"Ports": [{"IP": "192.168.10.110", "PrivatePort": 8080, "PublicPort": 8081, "Type": "tcp"}]},
+            {"Ports": [{"IP": "192.168.50.110", "PrivatePort": 8080, "PublicPort": 8081, "Type": "tcp"}]},
         ]
         fake = FakeDocker(_ok(GATEWAY), INTERNET_OK, published=published)
         _check(fake)
         sent = json.loads(fake.runs[0]["environment"]["PROBE_PUBLISHED"])
         # TCP and IPv4 only; an unpublished container port is not a host port.
-        assert sent == [["0.0.0.0", 1993], ["192.168.10.110", 8081]]
+        assert sent == [["0.0.0.0", 1993], ["192.168.50.110", 8081]]
 
     def test_docker_refusing_the_port_list_does_not_stop_the_check(self):
         fake = FakeDocker(_ok(GATEWAY), INTERNET_OK)
@@ -606,8 +606,8 @@ def _tcp6_line(local, lport, state="0A"):
 TCP6_HEADER = "  sl  local_address                         remote_address                        st tx_queue\n"
 ROUTE = (
     "Iface\tDestination\tGateway\tFlags\n"
-    f"br0\t00000000\t{_hex('192.168.10.1')}\t0003\n"
-    f"br0\t{_hex('192.168.10.0')}\t00000000\t0001\n"
+    f"br0\t00000000\t{_hex('192.168.50.1')}\t0003\n"
+    f"br0\t{_hex('192.168.50.0')}\t00000000\t0001\n"
 )
 
 
@@ -621,9 +621,9 @@ def probe():
 class TestDiscovery:
     """The discover half of the probe script, fed fixture text instead of /proc."""
 
-    def _watchtower(self):
-        """45 addresses, as on watchtower: Docker bridges in 10.x and 172.x sort ahead of br0."""
-        ifaces = {"lo": "127.0.0.1", "br0": "192.168.10.100", "tailscale1": "100.70.1.2"}
+    def _charlie(self):
+        """45 addresses, as on charlie: Docker bridges in 10.x and 172.x sort ahead of br0."""
+        ifaces = {"lo": "127.0.0.1", "br0": "192.168.50.100", "tailscale1": "100.70.1.2"}
         ifaces.update({f"br-a{i}": f"10.{i}.0.1" for i in range(14)})
         ifaces.update({f"br-b{i}": f"172.{17 + i}.0.1" for i in range(15)})
         ifaces.update({f"br-c{i}": f"192.168.{100 + i}.1" for i in range(14)})
@@ -631,30 +631,30 @@ class TestDiscovery:
 
     def test_the_lan_address_survives_many_docker_bridges(self, probe):
         tcp = TCP_HEADER + _tcp_line("0.0.0.0", 22, "0.0.0.0", 0, "0A")
-        out = probe["candidates"](self._watchtower(), ROUTE, tcp, "", ["172.99.0.1", "172.31.0.1"])
+        out = probe["candidates"](self._charlie(), ROUTE, tcp, "", ["172.99.0.1", "172.31.0.1"])
         hosts = {t["host"] for t in out["candidates"] if t["group"] == "host"}
-        assert {"192.168.10.100", "100.70.1.2", "172.31.0.1"} <= hosts
+        assert {"192.168.50.100", "100.70.1.2", "172.31.0.1"} <= hosts
         assert "172.99.0.1" not in hosts, "a first address that is not ours is not added"
         assert len(hosts) == probe["MAX_OWN"]
         assert len(out["addresses_left_out"]) == 45 - probe["MAX_OWN"]
         assert not hosts & set(out["addresses_left_out"])
 
     def test_the_default_gateway_comes_from_the_route_table(self, probe):
-        out = probe["candidates"]({"eth0": "192.168.10.100"}, ROUTE, TCP_HEADER, "")
-        gw = [t["port"] for t in out["candidates"] if t["host"] == "192.168.10.1"]
+        out = probe["candidates"]({"eth0": "192.168.50.100"}, ROUTE, TCP_HEADER, "")
+        gw = [t["port"] for t in out["candidates"] if t["host"] == "192.168.50.1"]
         assert gw == [80, 443, 22, 53]
 
     # tailscale1 on a custom range (Headscale): only the name gives it away.
     # tun9 in 100.64.0.0/10: only the address does.
     @pytest.mark.parametrize("ifaces", [{"tailscale1": "10.200.0.5"}, {"tun9": "100.70.1.2"}])
     def test_tailscale_by_interface_name_or_cgnat_address(self, probe, ifaces):
-        out = probe["candidates"](dict(ifaces, eth0="192.168.10.100"), ROUTE, TCP_HEADER, "")
+        out = probe["candidates"](dict(ifaces, eth0="192.168.50.100"), ROUTE, TCP_HEADER, "")
         assert {"100.100.100.100:53", "100.100.100.100:80"} <= {
             f"{t['host']}:{t['port']}" for t in out["candidates"] if t["group"] == "overlay"
         }
 
     def test_no_tailscale_no_overlay_targets(self, probe):
-        out = probe["candidates"]({"eth0": "192.168.10.100"}, ROUTE, TCP_HEADER, "")
+        out = probe["candidates"]({"eth0": "192.168.50.100"}, ROUTE, TCP_HEADER, "")
         assert not [t for t in out["candidates"] if t["group"] == "overlay"]
 
     def test_the_tailnet_peer_is_one_this_host_connected_to(self, probe):
@@ -694,7 +694,7 @@ class TestDiscovery:
         assert host == [22, 21, 25, 8080, 9000]
 
     def test_a_dual_stack_listener_is_a_wildcard_ipv4_candidate(self, probe):
-        """syncthing, node_exporter and dockerd metrics on geiserback bind [::] only.
+        """syncthing, node_exporter and dockerd metrics on alpha bind [::] only.
 
         A dual-stack socket accepts IPv4 too, so it is the host's own service on
         every IPv4 address. Loopback and real IPv6 listeners stay out of scope.
@@ -719,8 +719,8 @@ class TestDiscovery:
         ]
         assert not [t for t in out["candidates"] if ":" in t["host"]], "IPv6 targets stay out of scope"
 
-    def test_dual_stack_listeners_are_not_crowded_out_on_geiserback(self, probe):
-        """geiserback, read off the box: apcupsd 3551 on 0.0.0.0, wsdd 3702 and
+    def test_dual_stack_listeners_are_not_crowded_out_on_alpha(self, probe):
+        """alpha, read off the box: apcupsd 3551 on 0.0.0.0, wsdd 3702 and
         LLMNR 5355 bound per interface (they read 0.0.0.0 in /proc and answer
         on none of the other addresses), then syncthing, node_exporter and
         dockerd metrics on [::]. Three ports per address went to the first three."""
@@ -761,9 +761,9 @@ class TestTheHostRowNamesAKnownService:
 class TestTheHostsTwoPaths:
     """The host has two paths in, and the control must offer both on every address."""
 
-    # geiserback, read off the box: sshd and the Unraid nginx bind the LAN and
+    # alpha, read off the box: sshd and the Unraid nginx bind the LAN and
     # tailnet addresses; the only wildcard listeners are docker-proxy.
-    LAN, TAILNET = "192.168.10.110", "100.111.219.97"
+    LAN, TAILNET = "192.168.50.110", "100.111.219.97"
     PUBLISHED = [("0.0.0.0", 1993), ("0.0.0.0", 2020), ("0.0.0.0", 2993)]
 
     def _tcp(self):

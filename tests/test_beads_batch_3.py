@@ -45,7 +45,7 @@ class TestAnInterruptedMigrationDoesNotBrickStartup:
                 "containers TEXT NOT NULL DEFAULT '[]', system_info TEXT NOT NULL DEFAULT '{}', "
                 "last_heartbeat TEXT, registered_at TEXT NOT NULL DEFAULT (datetime('now')))"
             )
-            await db.execute("INSERT INTO workers (name, url) VALUES ('watchtower','http://w:8081')")
+            await db.execute("INSERT INTO workers (name, url) VALUES ('charlie','http://w:8081')")
             if leftover:
                 await db.execute(
                     "CREATE TABLE workers_new (id INTEGER PRIMARY KEY AUTOINCREMENT, client_id TEXT NOT NULL UNIQUE)"
@@ -61,7 +61,7 @@ class TestAnInterruptedMigrationDoesNotBrickStartup:
         with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", db_path):
             await database.init_db()
             workers = await database.list_workers()
-        assert [w["name"] for w in workers] == ["watchtower"], "the worker row was lost in recovery"
+        assert [w["name"] for w in workers] == ["charlie"], "the worker row was lost in recovery"
 
     @pytest.mark.asyncio
     async def test_it_is_idempotent(self, tmp_path):
@@ -84,7 +84,7 @@ class TestAnInterruptedMigrationDoesNotBrickStartup:
         with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", db_path):
             await database.init_db()
             workers = await database.list_workers()
-        assert workers[0]["client_id"] == "watchtower", "client_id was not back-filled from name"
+        assert workers[0]["client_id"] == "charlie", "client_id was not back-filled from name"
 
     def test_the_leftover_is_dropped_first(self):
         source = (ROOT / "app" / "database.py").read_text(encoding="utf-8")

@@ -53,10 +53,10 @@ const svc = hints => ({
 });
 const workers = [{id: 7, name: 'nas', status: 'online'}, {id: 8, name: 'pi', status: 'online'}];
 
-await run.renderAttention([svc(['Forward UDP 56000:56100 to <192.168.10.100>.'])], workers);
+await run.renderAttention([svc(['Forward UDP 56000:56100 to <192.168.50.100>.'])], workers);
 check('the hint is one Needs fixing row', (list.innerHTML.match(/Needs fixing/g) || []).length === 1 && run.count() === 1);
 check('it names the box it is about', /attn-where">nas</.test(list.innerHTML));
-check('its text is escaped', list.innerHTML.includes('&lt;192.168.10.100&gt;') && !list.innerHTML.includes('<192.168'));
+check('its text is escaped', list.innerHTML.includes('&lt;192.168.50.100&gt;') && !list.innerHTML.includes('<192.168'));
 
 await run.renderAttention([svc([])], workers);
 check('no hint, no row', !list.innerHTML.includes('Needs fixing') && run.count() === 0);

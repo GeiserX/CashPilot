@@ -4530,7 +4530,7 @@ const CP = (() => {
       return;
     }
     const secrets = config._secrets || {};
-    const items = meta.map(col => {
+    const items = meta.map((col, i) => {
       // A collector is "configured" if any secret field has a stored value
       // (per _secrets) or any non-secret field carries a real value.
       // EVERY required field, not any field.
@@ -4575,7 +4575,7 @@ const CP = (() => {
         ? `<div class="kv-actions kv-actions-end"><button class="btn btn-danger btn-sm" data-action="clearServiceCredentials" data-a1="${escapeHtml(col.slug)}" data-a2="${escapeHtml(col.name)}">Clear credentials</button></div>`
         : '';
       return `
-      <details class="collector-section" id="collector-${col.slug}">
+      <details class="collector-section" id="collector-${col.slug}" style="order:${i}">
         <summary class="collector-header">
           <span class="collector-name">${escapeHtml(col.name)}</span>
           ${statusBadge}
@@ -4586,8 +4586,14 @@ const CP = (() => {
           ${clearBtn}
         </div>
       </details>`;
-    }).join('');
-    container.innerHTML = `<div class="collectors-grid">${items}</div>`;
+    });
+    // Two independent stacks, not one grid: in a grid an opened card stretches
+    // its whole row and leaves a gap under the card beside it. Left gets the
+    // 1st, 3rd, 5th... so the reading order stays row by row; on a phone the
+    // stacks dissolve (display: contents) and `order` restores that sequence.
+    const left = items.filter((_, i) => i % 2 === 0).join('');
+    const right = items.filter((_, i) => i % 2 === 1).join('');
+    container.innerHTML = `<div class="collectors-grid"><div class="collectors-col">${left}</div><div class="collectors-col">${right}</div></div>`;
   }
 
   async function saveCollectorCredentials() {
