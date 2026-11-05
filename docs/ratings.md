@@ -92,7 +92,6 @@ What a cited con or pro may rest on:
 | <a href="#traffmonetizer">Traffmonetizer</a> | F | 5 of 20 | 4 | 2026-11-04 | Trustpilot rates it 1.9; reviewers from 2023 to November 2026 report payouts pending for weeks, or marked completed with no matching transaction. |
 | <a href="#helium">Helium</a> | F | 4 of 20 | 6 | 2026-11-04 | HIP 149 retired Proof-of-Coverage rewards on 6 July 2026; IoT hotspots now earn only for data they carry, and more than 114,000 of them carried none. |
 | <a href="#proxylite">ProxyLite</a> | F | 4 of 20 | 7 | 2026-11-04 | The site's owner is hidden in its domain records, and we found no named company behind it. |
-| <a href="#salad">Salad</a> | F | 4 of 20 | 7 | 2026-11-04 | Rewards are redeemed in Salad's own storefront for PayPal or gift cards, with no crypto. Trustpilot's summary says some payment methods are hard to use in some regions, and reviewers describe a Visa card that cannot be added to Apple Pay in Europe and no payout option for India. |
 | <a href="#vast-ai">Vast.ai</a> | F | 4 of 20 | 7 | 2026-11-04 | CashPilot does not run Vast.ai: you install Vast's host software on your own GPU machine, so CashPilot cannot deploy or update it for you. Vast builds hosting around Docker on a Linux host. |
 | <a href="#bytebenefit">Bytebenefit</a> | F | 3 of 20 | 7 | 2026-11-04 | The app's Google Play listing says your traffic serves web-intelligence requests by Infatica's clients, without saying who they are or how they are checked. |
 | <a href="#grass">Grass</a> | F | 3 of 20 | 6 | 2026-11-04 | Rewards come only through airdrop seasons. Long-running node operators reported season 2 estimates in the single to low double-digit dollar range. |
@@ -101,6 +100,7 @@ What a cited con or pro may rest on:
 | <a href="#nosana">Nosana</a> | F | 3 of 20 | 7 | 2026-11-04 | Each host must lock a NOS stake sized to its GPU's hourly price. |
 | <a href="#passiveapp">PassiveApp</a> | F | 3 of 20 | 8 | 2026-11-04 | CashPilot does not run PassiveApp: you use the provider's own desktop app, so CashPilot cannot deploy or update it for you. Its terms were not checked for containers. |
 | <a href="#proxyrack">ProxyRack</a> | F | 3 of 20 | 8 | 2026-11-04 | ProxyRack's help centre says removing a device takes that device's earnings off your account, and they come back only if the same device is added again. |
+| <a href="#salad">Salad</a> | F | 3 of 20 | 8 | 2026-11-04 | CashPilot does not run Salad: you use the provider's own desktop app, so CashPilot cannot deploy or update it for you. Its terms were not checked for containers. |
 | <a href="#gradient">Gradient Network</a> | F | 2 of 20 | 6 | 2026-11-04 | The Sentry Node points program ended on 28 August 2025, and Sentry nodes no longer earn rewards. |
 | <a href="#nodle">Nodle</a> | F | 2 of 20 | 7 | 2026-11-04 | App Store reviewers report being unable to bridge or send NODL after the move to zkSync, and needing ETH to move tokens out. |
 | <a href="#uprock">Uprock</a> | F | 2 of 20 | 7 | 2026-11-04 | Trustpilot reviewers reported a 255 UPT minimum and a 55 UPT fee to withdraw to a wallet; these reports are old and the current terms may differ. |
@@ -820,34 +820,6 @@ What a cited con or pro may rest on:
 - A $5 minimum, by crypto or PayPal. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/bandwidth/proxylite.yml), checked 2026-11-04.
 - ProxyLite publishes a Docker image, proxylite/proxyservice, and accepts datacentre connections at a lower rate. [Source](https://hub.docker.com/r/proxylite/proxyservice), checked 2026-11-04.
 
-<a id="salad"></a>
-
-### Salad
-
-**Grade F**, 4 of 20 points, 7 of 10 criteria unchecked, reviewed 2026-11-04. Setup guide: [Salad](guides/salad.md).
-
-| Criterion | Verdict | Note |
-|---|---|---|
-| Payout record | Good |  |
-| Payout terms | Fair |  |
-| Account safety | Unknown | No pattern found. |
-| Fit with how CashPilot runs it | Fair |  |
-| Traffic transparency | Unknown | Salad rents your GPU to its cloud customers; we did not find how they are checked. |
-| Privacy | Unknown | Not reviewed. |
-| Identity checks | Unknown | Not documented on pages we read. |
-| Support | Unknown | No pattern found. |
-| Earnings realism | Unknown | Trustpilot's own summary says some reviewers find earnings low, and one October 2026 reviewer says an RTX 3090 barely covered its electricity. That is one site, below our user-reports threshold, and we found no second source. |
-| Longevity | Unknown | Not checked on a primary source. |
-
-**Cons**
-
-- Rewards are redeemed in Salad's own storefront for PayPal or gift cards, with no crypto. Trustpilot's summary says some payment methods are hard to use in some regions, and reviewers describe a Visa card that cannot be added to Apple Pay in Europe and no payout option for India. [Source](https://www.trustpilot.com/review/salad.com), checked 2026-11-04.
-- CashPilot does not run Salad: you use the provider's own desktop app, so CashPilot cannot deploy or update it for you. Its terms were not checked for containers. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/compute/salad.yml), checked 2026-11-04.
-
-**Pros**
-
-- Several Trustpilot reviewers in October and November 2026 report PayPal cash-outs arriving quickly, some more than once; one reviewer in the same period says repeated cash-out attempts failed. [Source](https://www.trustpilot.com/review/salad.com), checked 2026-11-04.
-
 <a id="vast-ai"></a>
 
 ### Vast.ai
@@ -1077,6 +1049,33 @@ What a cited con or pro may rest on:
 **Pros**
 
 - ProxyRack publishes its own Docker image, proxyrack/pop, and accepts datacentre IPs at a lower rate. [Source](https://hub.docker.com/r/proxyrack/pop), checked 2026-11-04.
+
+<a id="salad"></a>
+
+### Salad
+
+**Grade F**, 3 of 20 points, 8 of 10 criteria unchecked, reviewed 2026-11-04. Setup guide: [Salad](guides/salad.md).
+
+| Criterion | Verdict | Note |
+|---|---|---|
+| Payout record | Good |  |
+| Payout terms | Unknown | Rewards go through Salad's own storefront to PayPal or gift cards, with no crypto. Trustpilot's summary mentions regional payment problems, and two reviewers describe two different ones; that is below our user-reports threshold. |
+| Account safety | Unknown | No pattern found. |
+| Fit with how CashPilot runs it | Fair |  |
+| Traffic transparency | Unknown | Salad rents your GPU to its cloud customers; we did not find how they are checked. |
+| Privacy | Unknown | Not reviewed. |
+| Identity checks | Unknown | Not documented on pages we read. |
+| Support | Unknown | No pattern found. |
+| Earnings realism | Unknown | Trustpilot's own summary says some reviewers find earnings low, and one October 2026 reviewer says an RTX 3090 barely covered its electricity. That is one site, below our user-reports threshold, and we found no second source. |
+| Longevity | Unknown | Not checked on a primary source. |
+
+**Cons**
+
+- CashPilot does not run Salad: you use the provider's own desktop app, so CashPilot cannot deploy or update it for you. Its terms were not checked for containers. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/compute/salad.yml), checked 2026-11-04.
+
+**Pros**
+
+- Several Trustpilot reviewers in October and November 2026 report PayPal cash-outs arriving quickly, some more than once; one reviewer in the same period says repeated cash-out attempts failed. [Source](https://www.trustpilot.com/review/salad.com), checked 2026-11-04.
 
 <a id="gradient"></a>
 

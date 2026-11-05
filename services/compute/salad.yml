@@ -71,7 +71,7 @@ rating:
   reviewed_on: "2026-11-04"
   verdicts:
     payout_record: good
-    payout_terms: fair
+    payout_terms: unknown
     account_safety: unknown
     terms_fit: fair
     traffic_transparency: unknown
@@ -81,6 +81,9 @@ rating:
     earnings_realism: unknown
     longevity: unknown
   notes:
+    payout_terms: Rewards go through Salad's own storefront to PayPal or gift cards, with no crypto. Trustpilot's
+      summary mentions regional payment problems, and two reviewers describe two different ones; that is
+      below our user-reports threshold.
     account_safety: No pattern found.
     traffic_transparency: Salad rents your GPU to its cloud customers; we did not find how they are checked.
     privacy: Not reviewed.
@@ -91,13 +94,6 @@ rating:
       threshold, and we found no second source.
     longevity: Not checked on a primary source.
   cons:
-  - text: Rewards are redeemed in Salad's own storefront for PayPal or gift cards, with no crypto. Trustpilot's
-      summary says some payment methods are hard to use in some regions, and reviewers describe a Visa
-      card that cannot be added to Apple Pay in Europe and no payout option for India.
-    criterion: payout_terms
-    kind: user_reports
-    source: https://www.trustpilot.com/review/salad.com
-    checked_on: "2026-11-04"
   - text: 'CashPilot does not run Salad: you use the provider''s own desktop app, so CashPilot cannot deploy
       or update it for you. Its terms were not checked for containers.'
     criterion: terms_fit

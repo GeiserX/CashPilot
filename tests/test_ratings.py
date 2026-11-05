@@ -113,6 +113,8 @@ class TestBands:
         assert thresholds == sorted(thresholds, reverse=True)
         assert len(set(thresholds)) == len(thresholds)
         assert min(RULES["points"].values()) >= 0
+        thin = [c for c in RULES["caps"] if c["key"] == "thin_evidence"]
+        assert all(c["min_unknown"] > 0 for c in thin), "a zero threshold would cap everyone"
 
     def test_a_score_below_every_band_is_the_lowest_grade(self):
         rules = {**RULES, "bands": [{"grade": "B", "min_percent": 75}]}
@@ -397,6 +399,7 @@ class TestTheRealCatalog:
         ("packetstream", "earnings_realism"),  # two Trustpilot reviewers
         ("earnfm", "payout_record"),  # two Trustpilot reviewers
         ("salad", "earnings_realism"),  # one site's summary and one reviewer
+        ("salad", "payout_terms"),  # one site's summary and two different complaints
     ]
 
     @pytest.mark.parametrize(("slug", "criterion"), BELOW_THRESHOLD)
