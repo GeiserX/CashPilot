@@ -4530,7 +4530,7 @@ const CP = (() => {
       return;
     }
     const secrets = config._secrets || {};
-    const items = meta.map(col => {
+    const items = meta.map((col, i) => {
       // A collector is "configured" if any secret field has a stored value
       // (per _secrets) or any non-secret field carries a real value.
       // EVERY required field, not any field.
@@ -4575,7 +4575,7 @@ const CP = (() => {
         ? `<div class="kv-actions kv-actions-end"><button class="btn btn-danger btn-sm" data-action="clearServiceCredentials" data-a1="${escapeHtml(col.slug)}" data-a2="${escapeHtml(col.name)}">Clear credentials</button></div>`
         : '';
       return `
-      <details class="collector-section" id="collector-${col.slug}">
+      <details class="collector-section" id="collector-${col.slug}" style="order:${i}">
         <summary class="collector-header">
           <span class="collector-name">${escapeHtml(col.name)}</span>
           ${statusBadge}
@@ -4586,8 +4586,14 @@ const CP = (() => {
           ${clearBtn}
         </div>
       </details>`;
-    }).join('');
-    container.innerHTML = `<div class="collectors-grid">${items}</div>`;
+    });
+    // Two independent stacks, not one grid: in a grid an opened card stretches
+    // its whole row and leaves a gap under the card beside it. Left gets the
+    // 1st, 3rd, 5th... so the reading order stays row by row; on a phone the
+    // stacks dissolve (display: contents) and `order` restores that sequence.
+    const left = items.filter((_, i) => i % 2 === 0).join('');
+    const right = items.filter((_, i) => i % 2 === 1).join('');
+    container.innerHTML = `<div class="collectors-grid"><div class="collectors-col">${left}</div><div class="collectors-col">${right}</div></div>`;
   }
 
   async function saveCollectorCredentials() {
@@ -4917,6 +4923,8 @@ const CP = (() => {
         const isMissing = a.kind === 'missing';
         // The provider turned the account off: no credential or restart fixes it.
         const isDisabled = a.kind === 'account_disabled';
+        // What an earner did on the network (the Activity page): no credential fixes it.
+        const isActivity = (a.kind || '').startsWith('activity_');
         // The failure TAXONOMY (CashPilot-5bdm). Only 'auth' means "your
         // credential needs replacing"; a transient provider outage self-heals
         // and a shape change is our bug, so pointing the user at their
@@ -4930,6 +4938,7 @@ const CP = (() => {
         const isExpiring = category === 'expiring';
         const icon = isPayout ? PAYOUT_ICON : (isNotice || isTransient) ? NOTICE_ICON : WARNING_ICON;
         const suffix = isPayout ? ' — payout?'
+          : isActivity ? (a.kind === 'activity_spike' ? ' — unusual hour' : ' — network activity')
           : isContainer ? ' — not running'
           : isDisabled ? ' — account disabled'
           : isMissing ? (a.everywhere === false ? ' — gone from a box' : a.everywhere ? ' — runs nowhere' : ' — missing')
@@ -4941,7 +4950,7 @@ const CP = (() => {
           : isShape ? ' — page changed (our bug)'
           : '';
         const muted = isNotice || isTransient;
-        const showFix = !isPayout && !isNotice && !isTransient && !isShape && _isOwner && !isContainer && !isMissing && !isDisabled;
+        const showFix = !isPayout && !isNotice && !isTransient && !isShape && _isOwner && !isContainer && !isMissing && !isDisabled && !isActivity;
         return `
         <div class="notify-item" data-platform="${escapeHtml(a.platform)}" data-kind="${escapeHtml(a.kind || 'collector')}"${category ? ` data-category="${escapeHtml(category)}"` : ''}>
           <div class="notify-item-icon${muted ? ' muted' : ''}">

@@ -205,7 +205,7 @@ class TestWorkerMatch:
     def test_the_ui_keeps_the_field_from_the_heartbeat(self):
         worker = {
             "id": 1,
-            "name": "watchtower",
+            "name": "charlie",
             "status": "online",
             "system_info": json.dumps({"docker_available": True}),
             "containers": json.dumps(
@@ -237,7 +237,7 @@ def _status(node, wid, status="restarting", fatal="account_disabled", fatal_at="
     return entry
 
 
-THREE_BOXES = [_status("watchtower", 1), _status("geiserback", 2), _status("geiserct", 3)]
+THREE_BOXES = [_status("charlie", 1), _status("alpha", 2), _status("bravo", 3)]
 
 
 class _Alerts:
@@ -337,7 +337,7 @@ class TestOneAlert:
     def test_the_collector_alone_can_say_it(self):
         main._collector_says_disabled = {"iproyal"}
         alerts = _Alerts()
-        alerts.run([_status("watchtower", 1, status="running", fatal=None)])
+        alerts.run([_status("charlie", 1, status="running", fatal=None)])
         assert ("account_disabled", "iproyal") in alerts.rows
 
     def test_nothing_is_stopped_or_removed(self):
@@ -349,7 +349,7 @@ class TestOneAlert:
     def test_an_explained_exit_raises_no_container_down_alert(self, monkeypatch):
         monkeypatch.setattr(main, "_container_first_seen_down", {})
         monkeypatch.setattr(main, "_container_down_bell", {})
-        exited = {**_status("watchtower", 1, status="exited"), "finished_at": "2026-10-01T00:00:00Z"}
+        exited = {**_status("charlie", 1, status="exited"), "finished_at": "2026-10-01T00:00:00Z"}
         record = AsyncMock(return_value=1)
         with (
             patch.object(main.database, "record_alert", record),
@@ -365,7 +365,7 @@ class TestTheWayOut:
     def test_the_container_staying_up_clears_it(self):
         alerts = _Alerts()
         alerts.run(THREE_BOXES)
-        alerts.run([_status(n, w, status="running", fatal=None) for n, w in (("watchtower", 1), ("geiserback", 2))])
+        alerts.run([_status(n, w, status="running", fatal=None) for n, w in (("charlie", 1), ("alpha", 2))])
         assert main._account_disabled == {}
         assert ("account_disabled", "iproyal") in alerts.cleared
         assert not any(a["kind"] == "account_disabled" for a in main._collector_alerts)
@@ -470,7 +470,7 @@ class TestTheWayOut:
     def test_it_alerts_again_after_a_recovery(self):
         alerts = _Alerts()
         alerts.run(THREE_BOXES)
-        alerts.run([_status("watchtower", 1, status="running", fatal=None)])
+        alerts.run([_status("charlie", 1, status="running", fatal=None)])
         alerts.run(THREE_BOXES)
         assert alerts.pushed == ["push", "push"]
 
@@ -479,7 +479,7 @@ def _deployed(collector_alerts, account_disabled):
     containers = [{"slug": "iproyal", "name": "cashpilot-iproyal", "status": "restarting", "fatal": "account_disabled"}]
     worker = {
         "id": 1,
-        "name": "watchtower",
+        "name": "charlie",
         "status": "online",
         "system_info": json.dumps({"docker_available": True}),
         "containers": json.dumps(containers),
@@ -549,7 +549,7 @@ let _attentionSeq = 0;
 const run = new Function('escapeHtml', 'document', 'api', 'fmtTimestamp', '_isOwner', '_canWrite', '_attentionSeq',
   `${src.slice(from, to)}; return renderAttention;`)(escapeHtml, document, api, fmtTimestamp, _isOwner, _canWrite, _attentionSeq);
 const svc = JSON.parse(process.argv[process.argv.length - 1]);
-run([svc], [{ id: 1, name: 'watchtower', status: 'online' }]).then(() => {
+run([svc], [{ id: 1, name: 'charlie', status: 'online' }]).then(() => {
   const html = els['attention-list'].innerHTML;
   const tags = [...html.matchAll(/class="attn-tag">([^<]*)</g)].map(m => m[1]);
   console.log(JSON.stringify({ tags, html }));
@@ -590,7 +590,7 @@ def _pawns(account_disabled: bool) -> dict:
                 "container_name": "cashpilot-iproyal",
                 "fatal": "account_disabled",
             }
-            for n, w in (("watchtower", 1), ("geiserback", 2), ("geiserct", 3))
+            for n, w in (("charlie", 1), ("alpha", 2), ("bravo", 3))
         ],
     }
 
@@ -674,7 +674,7 @@ def _collect(error: str | None, alerts: _Alerts, fleet: list[dict], deployed=("i
 
 
 # A box whose container is up and says nothing: only the collector can speak.
-_UP = [_status("watchtower", 1, status="running", fatal=None)]
+_UP = [_status("charlie", 1, status="running", fatal=None)]
 
 
 class TestCollectorSaysDisabled:

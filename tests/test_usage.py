@@ -243,8 +243,8 @@ class TestEarnedByPlatform:
 
 
 WORKERS = [
-    {"id": 1, "name": "watchtower", "status": "online"},
-    {"id": 2, "name": "geiserback", "status": "online"},
+    {"id": 1, "name": "charlie", "status": "online"},
+    {"id": 2, "name": "alpha", "status": "online"},
     {"id": 3, "name": "pixel", "status": "online", "system_info": '{"os": "Android"}'},
 ]
 
@@ -292,7 +292,7 @@ class TestUsageEndpoint:
         assert len(data["hours"]) == 7 * 24
         assert data["hours"][-2] == last_hour()
         # Sorted by name; the phone is not a server.
-        assert [s["name"] for s in data["servers"]] == ["geiserback", "watchtower"]
+        assert [s["name"] for s in data["servers"]] == ["alpha", "charlie"]
         assert data["worker_id"] == 2 and data["container"] is None
         s = data["series"]
         assert s["cpu_percent"][-2] == 35.0

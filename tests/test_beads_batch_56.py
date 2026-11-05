@@ -122,7 +122,8 @@ class TestTheHeartbeatCarriesThem:
 
         source = inspect.getsource(worker_api)
         start = source.index('"system_info": {')
-        block = source[start : start + 1400]
+        # Wide enough for the whole literal (the features list grew with "activity").
+        block = source[start : start + 1600]
         assert '"disk"' in block
         assert '"gpu"' in block
         # Off the event loop: disk_usage and a subprocess both block.

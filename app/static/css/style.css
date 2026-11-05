@@ -1039,6 +1039,8 @@ img { max-width: 100%; }
 }
 
 .collectors-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 4px; align-items: start; }
+.collectors-col { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.collectors-col .collector-section { margin-bottom: 0; }
 .collectors-grid .collector-section {
   min-width: 0;
   overflow: hidden;
@@ -1050,6 +1052,7 @@ img { max-width: 100%; }
   .collectors-grid {
     grid-template-columns: 1fr;
   }
+  .collectors-col { display: contents; }
 }
 
 /* Payouts awaiting an answer (dashboard).
@@ -2324,3 +2327,20 @@ body.gate { display: flex; flex-direction: column; }
 }
 :where(:root[data-theme="warm"]) :is(.wizard-step, .gate-step).active .wizard-step-number { background: var(--accent); border-color: var(--accent); }
 :where(:root[data-theme="warm"]) :is(.payout-progress-bar:not(.eligible), .payout-progress-fill) { background: var(--accent); }
+
+/* ----- Activity page (templates/activity.html) ----- */
+.activity-toolbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 0 0 20px; }
+.activity-toolbar .form-label { margin: 0; }
+.activity-toolbar select { width: auto; }
+.activity-chip { display: inline-block; font-size: var(--fs-1); padding: 1px 6px; border: 1px solid var(--border-color); border-radius: 999px; color: var(--text-secondary); white-space: nowrap; }
+.activity-chip-warn { color: var(--warning); border-color: var(--warning); }
+.activity-chip-muted { color: var(--text-muted); }
+.activity-top { display: inline-block; margin-right: 6px; font-family: var(--font-mono); font-size: var(--fs-1); color: var(--text-secondary); }
+.activity-spark { color: var(--text-secondary); vertical-align: middle; }
+.activity-row { cursor: pointer; }
+.activity-switch { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
+.activity-detail { padding: 8px 0 16px; }
+.activity-charts { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 24px; margin-bottom: 16px; }
+.activity-dims { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 12px; }
+.activity-h3 { font-size: var(--fs-2); font-weight: 600; margin: 0 0 6px; color: var(--text-secondary); }
+.activity-raw summary { cursor: pointer; color: var(--text-secondary); }
