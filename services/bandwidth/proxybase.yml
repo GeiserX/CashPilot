@@ -97,7 +97,7 @@ rating:
   reviewed_on: "2026-11-04"
   verdicts:
     payout_record: good
-    payout_terms: good
+    payout_terms: fair
     account_safety: unknown
     terms_fit: good
     traffic_transparency: unknown
@@ -112,6 +112,12 @@ rating:
     privacy: The peer client is closed source.
     support: No reports found.
   cons:
+  - text: Crypto only, as USDC on Polygon, POL or Litecoin, with no fiat method. The minimum is $0.20 and
+      ProxyBase pays the network fee.
+    criterion: payout_terms
+    kind: our_experience
+    source: https://github.com/GeiserX/CashPilot/blob/main/docs/guides/proxybase.md
+    checked_on: "2026-11-04"
   - text: ProxyBase itself wrote in August 2025 that it is new and not yet the place to maximise earnings.
     criterion: earnings_realism
     kind: provider_reply
@@ -127,12 +133,7 @@ rating:
   - text: Our $0.75 withdrawal went through in October 2026.
     criterion: payout_record
     kind: our_experience
-    source: https://github.com/GeiserX/CashPilot/blob/main/services/bandwidth/proxybase.yml
-    checked_on: "2026-11-04"
-  - text: A $0.20 minimum in USDC, POL or Litecoin, and ProxyBase pays the network fee.
-    criterion: payout_terms
-    kind: our_experience
-    source: https://github.com/GeiserX/CashPilot/blob/main/services/bandwidth/proxybase.yml
+    source: https://github.com/GeiserX/CashPilot/blob/main/docs/guides/proxybase.md
     checked_on: "2026-11-04"
   - text: A withdrawal needs only an address typed into the request.
     criterion: identity_checks

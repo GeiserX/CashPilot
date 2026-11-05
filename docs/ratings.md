@@ -69,31 +69,31 @@ What a cited con or pro may rest on:
 
 | Provider | Grade | Score | Unchecked | Reviewed | Worst con |
 |---|:---:|:---:|:---:|---|---|
-| <a href="#sia-hostd">Sia (hostd)</a> | C | 13 of 20 | 2 | 2026-11-04 | Earnings are Siacoin in your own wallet: there is no payout to a bank, so you sell on an exchange yourself. |
-| <a href="#mysterium">MystNodes</a> | C | 12 of 20 | 3 | 2026-11-04 | About 21% of every settlement goes in fees, the 20% Hermes fee plus a transaction fee, and earnings are paid in the MYST token. |
-| <a href="#packetstream">PacketStream</a> | C | 11 of 20 | 2 | 2026-11-04 | Trustpilot reviewers in 2025 and 2026 report payouts arriving late or not at all, and one long-time user says payouts slowed and then stopped; others in 2026 report being paid. |
-| <a href="#proxybase">ProxyBase</a> | D | 10 of 20 | 4 | 2026-11-04 | ProxyBase itself wrote in August 2025 that it is new and not yet the place to maximise earnings. |
-| <a href="#storj">Storj</a> | D | 10 of 20 | 3 | 2026-11-04 | Storj Labs filed for Chapter 11 on 26 July 2026; node earnings from before the filing are frozen until the court rules. |
-| <a href="#bytelixir">Bytelixir</a> | D | 8 of 20 | 5 | 2026-11-04 | Crypto only, and the minimum depends on the coin, from $5 for USDT to $250 for Bitcoin. |
-| <a href="#golem">Golem Network</a> | D | 8 of 20 | 5 | 2026-11-04 | A 2026 review finds Golem with no protocol revenue and low demand, so providers earn little and are paid in GLM. |
+| <a href="#sia-hostd">Sia (hostd)</a> | C | 12 of 20 | 2 | 2026-11-04 | Renters store encrypted file fragments and nobody routes traffic through your IP, but we did not find where Sia says who the renters are or how they are checked. |
+| <a href="#mysterium">MystNodes</a> | D | 10 of 20 | 4 | 2026-11-04 | About 21% of every settlement goes in fees, the 20% Hermes fee plus a transaction fee, and earnings are paid in the MYST token. |
+| <a href="#packetstream">PacketStream</a> | D | 10 of 20 | 2 | 2026-11-04 | Trustpilot reviewers in 2025 and 2026 report payouts arriving late or not at all, and one long-time user says payouts slowed and then stopped; others in 2026 report being paid. |
+| <a href="#proxybase">ProxyBase</a> | D | 9 of 20 | 4 | 2026-11-04 | Crypto only, as USDC on Polygon, POL or Litecoin, with no fiat method. The minimum is $0.20 and ProxyBase pays the network fee. |
+| <a href="#storj">Storj</a> | D | 9 of 20 | 3 | 2026-11-04 | Customers store encrypted file fragments and nobody routes traffic through your IP, but we did not find where Storj says who the customers are or how they are checked. |
 | <a href="#honeygain">Honeygain</a> | D | 8 of 20 | 3 | 2026-11-04 | The terms let Honeygain write off earnings that reached the $20 threshold and were not paid out within 24 months, and treat earnings as expired after six months without use. |
 | <a href="#earnapp">EarnApp</a> | D | 7 of 20 | 5 | 2026-11-04 | EarnApp's help centre says installing it in Docker containers, virtual machines, hosting services or home servers is strictly prohibited, which is how CashPilot runs it. |
+| <a href="#golem">Golem Network</a> | D | 7 of 20 | 5 | 2026-11-04 | CashPilot does not run Golem: you install the provider agent yourself, so CashPilot cannot deploy or update it for you. Golem documents running the provider in its own Docker image. |
 | <a href="#urnetwork">URnetwork</a> | D | 7 of 20 | 4 | 2026-11-04 | Unclaimed epochs expire, and the old USDC payouts were cancelled for networks with no wallet linked within 30 days. |
-| <a href="#iproyal">IPRoyal Pawns</a> | F | 6 of 20 | 4 | 2026-11-04 | The terms say an account can be blocked without prior notice for abuse of withdrawal conditions or multiple accounts, and its earnings may then not be paid out. |
+| <a href="#anyone-protocol">Anyone Protocol</a> | F | 6 of 20 | 5 | 2026-11-04 | A relay earns nothing unless 100 ANYONE is locked for it for at least 180 days, and each reward claim is signed in your wallet. |
+| <a href="#bytelixir">Bytelixir</a> | F | 6 of 20 | 6 | 2026-11-04 | Crypto only, and the minimum depends on the coin, from $5 for USDT to $250 for Bitcoin. |
 | <a href="#noderr">Noderr Micronodes</a> | F | 6 of 20 | 4 | 2026-11-04 | Node rewards are unfunded testnet tokens with no market value, and none have been paid; the 5 to 10% APY on its site is a design target. |
 | <a href="#proxybase-xyz">ProxyBase Markets</a> | F | 6 of 20 | 6 | 2026-11-04 | Payouts are USDC on Tempo Chain and need a Tempo wallet address. |
 | <a href="#repocket">Repocket</a> | F | 6 of 20 | 2 | 2026-11-04 | Several Trustpilot reviewers report cancelled payouts and balances reset to zero; one says support cited irregular bandwidth earnings. The page rates Repocket 2.7 and notes it has not replied to negative reviews. |
-| <a href="#anyone-protocol">Anyone Protocol</a> | F | 5 of 20 | 5 | 2026-11-04 | A relay earns nothing unless 100 ANYONE is locked for it for at least 180 days, and each reward claim is signed in your wallet. |
 | <a href="#bitping">Bitping</a> | F | 5 of 20 | 7 | 2026-11-04 | Withdrawals are paid in Solana (SOL), to an address you type into each request. |
 | <a href="#earnfm">Earn.fm</a> | F | 5 of 20 | 6 | 2026-11-04 | A $15 minimum, a $1 to $3 fee on USDT, and a bank wire only from $1,000. |
 | <a href="#ebesucher">Ebesucher</a> | F | 5 of 20 | 7 | 2026-11-04 | CashPilot does not run eBesucher: it is a browser extension, so CashPilot cannot deploy or update it for you. Its terms were not checked for containers. |
 | <a href="#flux">Flux</a> | F | 5 of 20 | 6 | 2026-11-04 | The smallest node tier needs 1,000 FLUX locked as collateral. |
+| <a href="#iproyal">IPRoyal Pawns</a> | F | 5 of 20 | 4 | 2026-11-04 | The terms say an account can be blocked without prior notice for abuse of withdrawal conditions or multiple accounts, and its earnings may then not be paid out. |
 | <a href="#sentinel-dvpn">Sentinel dVPN</a> | F | 5 of 20 | 6 | 2026-11-04 | Payments are in the P2P token, and 20% of every bandwidth payment goes to stakers rather than the node host. |
 | <a href="#traffmonetizer">Traffmonetizer</a> | F | 5 of 20 | 4 | 2026-11-04 | Trustpilot rates it 1.9; reviewers from 2023 to November 2026 report payouts pending for weeks, or marked completed with no matching transaction. |
-| <a href="#vast-ai">Vast.ai</a> | F | 5 of 20 | 7 | 2026-11-04 | A host earns only while rented, and Vast's own figures for a consumer GPU depend on rental type and reliability score. |
 | <a href="#helium">Helium</a> | F | 4 of 20 | 6 | 2026-11-04 | HIP 149 retired Proof-of-Coverage rewards on 6 July 2026; IoT hotspots now earn only for data they carry, and more than 114,000 of them carried none. |
 | <a href="#proxylite">ProxyLite</a> | F | 4 of 20 | 7 | 2026-11-04 | The site's owner is hidden in its domain records, and we found no named company behind it. |
 | <a href="#salad">Salad</a> | F | 4 of 20 | 7 | 2026-11-04 | Rewards are redeemed in Salad's own storefront for PayPal or gift cards, with no crypto. Trustpilot's summary says some payment methods are hard to use in some regions, and reviewers describe a Visa card that cannot be added to Apple Pay in Europe and no payout option for India. |
+| <a href="#vast-ai">Vast.ai</a> | F | 4 of 20 | 7 | 2026-11-04 | CashPilot does not run Vast.ai: you install Vast's host software on your own GPU machine, so CashPilot cannot deploy or update it for you. Vast builds hosting around Docker on a Linux host. |
 | <a href="#bytebenefit">Bytebenefit</a> | F | 3 of 20 | 7 | 2026-11-04 | The app's Google Play listing says your traffic serves web-intelligence requests by Infatica's clients, without saying who they are or how they are checked. |
 | <a href="#grass">Grass</a> | F | 3 of 20 | 6 | 2026-11-04 | Rewards come only through airdrop seasons. Long-running node operators reported season 2 estimates in the single to low double-digit dollar range. |
 | <a href="#ionet">io.net</a> | F | 3 of 20 | 6 | 2026-11-04 | Supplier rewards were paid from token emissions regardless of paid jobs, and GPU owners report sitting idle most of the time. |
@@ -117,7 +117,7 @@ What a cited con or pro may rest on:
 
 ### Sia (hostd)
 
-**Grade C**, 13 of 20 points, 2 of 10 criteria unchecked, reviewed 2026-11-04. Setup guide: [Sia (hostd)](guides/sia-hostd.md).
+**Grade C**, 12 of 20 points, 2 of 10 criteria unchecked, reviewed 2026-11-04. Setup guide: [Sia (hostd)](guides/sia-hostd.md).
 
 | Criterion | Verdict | Note |
 |---|---|---|
@@ -125,7 +125,7 @@ What a cited con or pro may rest on:
 | Payout terms | Fair |  |
 | Account safety | Fair |  |
 | Fit with how CashPilot runs it | Good |  |
-| Traffic transparency | Good |  |
+| Traffic transparency | Fair |  |
 | Privacy | Good |  |
 | Identity checks | Good |  |
 | Support | Unknown | No pattern found. |
@@ -134,6 +134,7 @@ What a cited con or pro may rest on:
 
 **Cons**
 
+- Renters store encrypted file fragments and nobody routes traffic through your IP, but we did not find where Sia says who the renters are or how they are checked. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/storage/sia-hostd.yml), checked 2026-11-04.
 - Earnings are Siacoin in your own wallet: there is no payout to a bank, so you sell on an exchange yourself. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/storage/sia-hostd.yml), checked 2026-11-04.
 - Collateral is locked per contract and burned if the host misses storage proofs by going offline or losing data. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/storage/sia-hostd.yml), checked 2026-11-04.
 - Only about 30% of the storage offered on the network is in use, so a new host competes for little demand. [Source](https://sia.tech/provide-storage), checked 2026-11-04.
@@ -143,20 +144,19 @@ What a cited con or pro may rest on:
 - hostd is developed in the open by the Sia Foundation, since 2022. [Source](https://github.com/SiaFoundation/hostd), checked 2026-11-04.
 - hostd is open source under the MIT licence. [Source](https://github.com/SiaFoundation/hostd), checked 2026-11-04.
 - The Sia Foundation publishes hostd as a container image. [Source](https://github.com/SiaFoundation/hostd), checked 2026-11-04.
-- Renters store encrypted file fragments; nobody routes their own traffic through your IP. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/storage/sia-hostd.yml), checked 2026-11-04.
 - Permissionless: no signup or account. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/storage/sia-hostd.yml), checked 2026-11-04.
 
 <a id="mysterium"></a>
 
 ### MystNodes
 
-**Grade C**, 12 of 20 points, 3 of 10 criteria unchecked, reviewed 2026-11-04. Setup guide: [MystNodes](guides/mysterium.md).
+**Grade D**, 10 of 20 points, 4 of 10 criteria unchecked, reviewed 2026-11-04. Setup guide: [MystNodes](guides/mysterium.md).
 
 | Criterion | Verdict | Note |
 |---|---|---|
 | Payout record | Unknown | Settlements are on-chain and automatic; we have not published our own settlement history yet. |
 | Payout terms | Fair |  |
-| Account safety | Good |  |
+| Account safety | Unknown | Settled earnings sit in a wallet you own, but we found no stated ban rule and no reports either way. |
 | Fit with how CashPilot runs it | Good |  |
 | Traffic transparency | Fair |  |
 | Privacy | Good |  |
@@ -173,7 +173,6 @@ What a cited con or pro may rest on:
 **Pros**
 
 - The node software is open source under the GPL-3.0. [Source](https://github.com/mysteriumnetwork/node), checked 2026-11-04.
-- Earnings settle on-chain to a wallet you own, and there is no limit on nodes per account or per IP. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/bandwidth/mysterium.yml), checked 2026-11-04.
 - Mysterium publishes its own Docker image, mysteriumnetwork/myst. [Source](https://hub.docker.com/r/mysteriumnetwork/myst), checked 2026-11-04.
 - Settlement goes to a wallet you own; no phone number or ID is needed. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/bandwidth/mysterium.yml), checked 2026-11-04.
 - The node project has run since 2017. [Source](https://github.com/mysteriumnetwork/node), checked 2026-11-04.
@@ -182,7 +181,7 @@ What a cited con or pro may rest on:
 
 ### PacketStream
 
-**Grade C**, 11 of 20 points, 2 of 10 criteria unchecked, reviewed 2026-11-04. Setup guide: [PacketStream](guides/packetstream.md).
+**Grade D**, 10 of 20 points, 2 of 10 criteria unchecked, reviewed 2026-11-04. Setup guide: [PacketStream](guides/packetstream.md).
 
 | Criterion | Verdict | Note |
 |---|---|---|
@@ -193,7 +192,7 @@ What a cited con or pro may rest on:
 | Traffic transparency | Fair |  |
 | Privacy | Unknown | The client is closed source; we did not review the privacy policy in depth. |
 | Identity checks | Good |  |
-| Support | Fair |  |
+| Support | Poor |  |
 | Earnings realism | Unknown | Two Trustpilot reviewers report close to a year to reach the $5 minimum; two is below our user-reports threshold and we found no second source. |
 | Longevity | Good |  |
 
@@ -216,12 +215,12 @@ What a cited con or pro may rest on:
 
 ### ProxyBase
 
-**Grade D**, 10 of 20 points, 4 of 10 criteria unchecked, reviewed 2026-11-04. Setup guide: [ProxyBase](guides/proxybase.md).
+**Grade D**, 9 of 20 points, 4 of 10 criteria unchecked, reviewed 2026-11-04. Setup guide: [ProxyBase](guides/proxybase.md).
 
 | Criterion | Verdict | Note |
 |---|---|---|
 | Payout record | Good |  |
-| Payout terms | Good |  |
+| Payout terms | Fair |  |
 | Account safety | Unknown | No reports found. |
 | Fit with how CashPilot runs it | Good |  |
 | Traffic transparency | Unknown | We did not find who buys the traffic or how buyers are checked. |
@@ -233,13 +232,13 @@ What a cited con or pro may rest on:
 
 **Cons**
 
+- Crypto only, as USDC on Polygon, POL or Litecoin, with no fiat method. The minimum is $0.20 and ProxyBase pays the network fee. [Source](https://github.com/GeiserX/CashPilot/blob/main/docs/guides/proxybase.md), checked 2026-11-04.
 - ProxyBase itself wrote in August 2025 that it is new and not yet the place to maximise earnings. [Source](https://github.com/engageub/InternetIncome/discussions/239), checked 2026-11-04.
 - ProxyBase switched peer clients in 2026 and shut the old backend, so containers on the old image kept running and stopped earning. [Source](https://github.com/GeiserX/CashPilot/blob/main/docs/guides/proxybase.md), checked 2026-11-04.
 
 **Pros**
 
-- Our $0.75 withdrawal went through in October 2026. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/bandwidth/proxybase.yml), checked 2026-11-04.
-- A $0.20 minimum in USDC, POL or Litecoin, and ProxyBase pays the network fee. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/bandwidth/proxybase.yml), checked 2026-11-04.
+- Our $0.75 withdrawal went through in October 2026. [Source](https://github.com/GeiserX/CashPilot/blob/main/docs/guides/proxybase.md), checked 2026-11-04.
 - A withdrawal needs only an address typed into the request. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/bandwidth/proxybase.yml), checked 2026-11-04.
 - ProxyBase publishes its own peer client image and supports datacentre IPs. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/bandwidth/proxybase.yml), checked 2026-11-04.
 
@@ -247,7 +246,7 @@ What a cited con or pro may rest on:
 
 ### Storj
 
-**Grade D**, 10 of 20 points, 3 of 10 criteria unchecked, reviewed 2026-11-04. Setup guide: [Storj](guides/storj.md).
+**Grade D**, 9 of 20 points, 3 of 10 criteria unchecked, reviewed 2026-11-04. Setup guide: [Storj](guides/storj.md).
 
 | Criterion | Verdict | Note |
 |---|---|---|
@@ -255,7 +254,7 @@ What a cited con or pro may rest on:
 | Payout terms | Fair |  |
 | Account safety | Unknown | Nodes are permissionless; disqualification for lost data is the stated rule, and we found no pattern of disputes. |
 | Fit with how CashPilot runs it | Good |  |
-| Traffic transparency | Good |  |
+| Traffic transparency | Fair |  |
 | Privacy | Good |  |
 | Identity checks | Good |  |
 | Support | Unknown | No pattern found. |
@@ -264,6 +263,7 @@ What a cited con or pro may rest on:
 
 **Cons**
 
+- Customers store encrypted file fragments and nobody routes traffic through your IP, but we did not find where Storj says who the customers are or how they are checked. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/storage/storj.yml), checked 2026-11-04.
 - Storj Labs filed for Chapter 11 on 26 July 2026; node earnings from before the filing are frozen until the court rules. [Source](https://www.coindesk.com/business/2026/07/27/cloud-data-firm-storj-files-for-chapter-11-extending-a-week-of-crypto-failures-token-slides-16), checked 2026-11-04.
 - Pre-filing payments to node operators went into the bankruptcy claims process. [Source](https://www.cryptotimes.io/2026/07/27/storj-files-for-chapter-11-pre-filing-node-operator-payments-in-limbo/), checked 2026-11-04.
 - A new node has 75%, then 50%, then 25% of its earnings held in its first nine months; half comes back in month 16 and the rest only on a graceful exit. [Source](https://github.com/GeiserX/CashPilot/blob/main/docs/guides/storj.md), checked 2026-11-04.
@@ -272,69 +272,8 @@ What a cited con or pro may rest on:
 
 - The storage node software is open source under the AGPL-3.0. [Source](https://github.com/storj/storj), checked 2026-11-04.
 - Storj publishes its own Docker image, storjlabs/storagenode. [Source](https://hub.docker.com/r/storjlabs/storagenode), checked 2026-11-04.
-- You store encrypted fragments of customer data; nobody routes their own traffic through your IP. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/storage/storj.yml), checked 2026-11-04.
 - No account: a wallet address and an email for operator notices. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/storage/storj.yml), checked 2026-11-04.
 - Active nodes kept being paid after the filing. [Source](https://startupfortune.com/storj-labs-filed-for-chapter-11-bankruptcy-and-token-holders-are-last-in-line/), checked 2026-11-04.
-
-<a id="bytelixir"></a>
-
-### Bytelixir
-
-**Grade D**, 8 of 20 points, 5 of 10 criteria unchecked, reviewed 2026-11-04. Setup guide: [Bytelixir](guides/bytelixir.md).
-
-| Criterion | Verdict | Note |
-|---|---|---|
-| Payout record | Good |  |
-| Payout terms | Fair |  |
-| Account safety | Unknown | No reports of banned accounts found. |
-| Fit with how CashPilot runs it | Fair |  |
-| Traffic transparency | Unknown | We could not load Bytelixir's terms. |
-| Privacy | Unknown | The client is closed source; we could not load the privacy terms. |
-| Identity checks | Good |  |
-| Support | Good |  |
-| Earnings realism | Unknown | Not measured. |
-| Longevity | Unknown | We could not find the legal entity behind Bytelixir on a page that loaded. |
-
-**Cons**
-
-- Crypto only, and the minimum depends on the coin, from $5 for USDT to $250 for Bitcoin. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/bandwidth/bytelixir.yml), checked 2026-11-04.
-- CashPilot does not run Bytelixir: you use the provider's own app, so CashPilot cannot deploy or update it for you. Its terms were not checked for containers. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/bandwidth/bytelixir.yml), checked 2026-11-04.
-
-**Pros**
-
-- Trustpilot rates it 4.6 from 283 reviews, most of them praising crypto payouts; a few report payouts not arriving. [Source](https://www.trustpilot.com/review/bytelixir.com), checked 2026-11-04.
-- Bytelixir replies to all negative reviews on Trustpilot, typically within a day. [Source](https://www.trustpilot.com/review/bytelixir.com), checked 2026-11-04.
-- A payout needs only a crypto address typed into the request. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/bandwidth/bytelixir.yml), checked 2026-11-04.
-
-<a id="golem"></a>
-
-### Golem Network
-
-**Grade D**, 8 of 20 points, 5 of 10 criteria unchecked, reviewed 2026-11-04. Setup guide: [Golem Network](guides/golem.md).
-
-| Criterion | Verdict | Note |
-|---|---|---|
-| Payout record | Unknown | Payments are on-chain per task; we have no provider of our own to report. |
-| Payout terms | Unknown | Payments are in GLM on Polygon; we did not find fees worth grading. |
-| Account safety | Unknown | There is no account to ban. |
-| Fit with how CashPilot runs it | Good |  |
-| Traffic transparency | Unknown | Requestors run tasks on your machine; we did not find how they are checked. |
-| Privacy | Good |  |
-| Identity checks | Good |  |
-| Support | Unknown | No pattern found. |
-| Earnings realism | Poor |  |
-| Longevity | Good |  |
-
-**Cons**
-
-- A 2026 review finds Golem with no protocol revenue and low demand, so providers earn little and are paid in GLM. [Source](https://ownyourmind.ai/projects/golem/), checked 2026-11-04.
-
-**Pros**
-
-- The provider agent, yagna, is open source under the GPL-3.0. [Source](https://github.com/golemfactory/yagna), checked 2026-11-04.
-- Golem documents running the provider in its own Docker image. [Source](https://docs.golem.network/docs/providers/provider-installation), checked 2026-11-04.
-- No account: you set a payout wallet in the provider setup. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/compute/golem.yml), checked 2026-11-04.
-- The network has run for about ten years. [Source](https://ownyourmind.ai/tokenomics/akash-vs-golem/), checked 2026-11-04.
 
 <a id="honeygain"></a>
 
@@ -396,9 +335,39 @@ What a cited con or pro may rest on:
 
 **Pros**
 
-- Our PayPal payout arrived in October 2026: a $37.54 balance came in as $36.81, about 2% less. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/bandwidth/earnapp.yml), checked 2026-11-04.
+- Our PayPal payout arrived in October 2026: a $37.54 balance came in as $36.81, about 2% less. [Source](https://github.com/GeiserX/CashPilot/blob/main/docs/guides/earnapp.md), checked 2026-11-04.
 - A $10 minimum for PayPal and Wise, with auto-redeem that pays out by itself. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/bandwidth/earnapp.yml), checked 2026-11-04.
 - EarnApp belongs to Bright Data, and its PayPal payments arrive from Bright Data Ltd., a named company. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/bandwidth/earnapp.yml), checked 2026-11-04.
+
+<a id="golem"></a>
+
+### Golem Network
+
+**Grade D**, 7 of 20 points, 5 of 10 criteria unchecked, reviewed 2026-11-04. Setup guide: [Golem Network](guides/golem.md).
+
+| Criterion | Verdict | Note |
+|---|---|---|
+| Payout record | Unknown | Payments are on-chain per task; we have no provider of our own to report. |
+| Payout terms | Unknown | Payments are in GLM on Polygon; we did not find fees worth grading. |
+| Account safety | Unknown | There is no account to ban. |
+| Fit with how CashPilot runs it | Fair |  |
+| Traffic transparency | Unknown | Requestors run tasks on your machine; we did not find how they are checked. |
+| Privacy | Good |  |
+| Identity checks | Good |  |
+| Support | Unknown | No pattern found. |
+| Earnings realism | Poor |  |
+| Longevity | Good |  |
+
+**Cons**
+
+- CashPilot does not run Golem: you install the provider agent yourself, so CashPilot cannot deploy or update it for you. Golem documents running the provider in its own Docker image. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/compute/golem.yml), checked 2026-11-04.
+- A 2026 review finds Golem with no protocol revenue and low demand, so providers earn little and are paid in GLM. [Source](https://ownyourmind.ai/projects/golem/), checked 2026-11-04.
+
+**Pros**
+
+- The provider agent, yagna, is open source under the GPL-3.0. [Source](https://github.com/golemfactory/yagna), checked 2026-11-04.
+- No account: you set a payout wallet in the provider setup. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/compute/golem.yml), checked 2026-11-04.
+- The network has run for about ten years. [Source](https://ownyourmind.ai/tokenomics/akash-vs-golem/), checked 2026-11-04.
 
 <a id="urnetwork"></a>
 
@@ -431,37 +400,65 @@ What a cited con or pro may rest on:
 - URnetwork publishes its own Docker image, bringyour/community-provider, and works on VPS and residential connections. [Source](https://hub.docker.com/r/bringyour/community-provider), checked 2026-11-04.
 - A claim needs only a Bittensor wallet you control. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/bandwidth/urnetwork.yml), checked 2026-11-04.
 
-<a id="iproyal"></a>
+<a id="anyone-protocol"></a>
 
-### IPRoyal Pawns
+### Anyone Protocol
 
-**Grade F**, 6 of 20 points, 4 of 10 criteria unchecked, reviewed 2026-11-04. Setup guide: [IPRoyal Pawns](guides/iproyal.md).
+**Grade F**, 6 of 20 points, 5 of 10 criteria unchecked, reviewed 2026-11-04. Setup guide: [Anyone Protocol](guides/anyone-protocol.md).
 
 | Criterion | Verdict | Note |
 |---|---|---|
-| Payout record | Unknown | Trustpilot withholds the rating of pawns.app for a breach of its guidelines and says it removed fake reviews, so its payout reviews cannot be taken at face value. We have not yet published a completed payout of our own. |
-| Payout terms | Fair |  |
-| Account safety | Fair | One Trustpilot reviewer says an account was blocked during a withdrawal after a phone number was mistyped; we could not confirm a wider pattern on the page. |
-| Fit with how CashPilot runs it | Fair |  |
-| Traffic transparency | Fair |  |
-| Privacy | Unknown | The client is closed source; we did not review the privacy policy in depth. |
-| Identity checks | Fair |  |
-| Support | Unknown | No repeated support complaint found and no ticket of our own. |
-| Earnings realism | Unknown | We have not measured Pawns earnings per IP against a provider figure. |
-| Longevity | Fair |  |
+| Payout record | Unknown | We have not published a reward claim of our own and found no pattern of reports. |
+| Payout terms | Poor |  |
+| Account safety | Unknown | There is no account to ban. |
+| Fit with how CashPilot runs it | Good |  |
+| Traffic transparency | Poor |  |
+| Privacy | Good |  |
+| Identity checks | Good |  |
+| Support | Unknown | No pattern found. |
+| Earnings realism | Unknown | Not measured. |
+| Longevity | Unknown | Not checked on a primary source. |
 
 **Cons**
 
-- The terms say an account can be blocked without prior notice for abuse of withdrawal conditions or multiple accounts, and its earnings may then not be paid out. [Source](https://pawns.app/terms-of-use/), checked 2026-11-04.
-- The terms say Pawns does not allow any servers, VPNs or proxy services for traffic sharing, and only one device per IP. [Source](https://pawns.app/terms-of-use/), checked 2026-11-04.
-- PayPal costs 4% (at least $0.25) through Tremendous, and every payout is reviewed for up to 72 hours. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/bandwidth/iproyal.yml), checked 2026-11-04.
-- The first payout needs an SMS check of your phone number, and every payout a code sent by email. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/bandwidth/iproyal.yml), checked 2026-11-04.
-- The terms name no legal entity, only Pawns.app; the app is run by IPRoyal, a proxy company that started in late 2020. [Source](https://proxyway.com/reviews/iproyal-proxies), checked 2026-11-04.
-- The terms say Pawns and its business clients route traffic through your device, and that you cannot identify which client uses it. [Source](https://pawns.app/terms-of-use/), checked 2026-11-04.
+- A relay earns nothing unless 100 ANYONE is locked for it for at least 180 days, and each reward claim is signed in your wallet. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/depin/anyone-protocol.yml), checked 2026-11-04.
+- It relays other people's traffic by design, with no vetting of who they are; exit relays attract abuse complaints. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/depin/anyone-protocol.yml), checked 2026-11-04.
+- The relay's identity, IP and uptime are published to the network directory, and any ContactInfo you set is public for good. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/depin/anyone-protocol.yml), checked 2026-11-04.
 
 **Pros**
 
-- A $5 minimum, with gift cards at no fee. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/bandwidth/iproyal.yml), checked 2026-11-04.
+- No account is needed at all. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/depin/anyone-protocol.yml), checked 2026-11-04.
+- The relay software is a published fork of Tor, under Tor's licence. [Source](https://github.com/anyone-protocol/ator-protocol), checked 2026-11-04.
+- CashPilot builds its own image from Anyone's published relay software, which needs no account. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/depin/anyone-protocol.yml), checked 2026-11-04.
+
+<a id="bytelixir"></a>
+
+### Bytelixir
+
+**Grade F**, 6 of 20 points, 6 of 10 criteria unchecked, reviewed 2026-11-04. Setup guide: [Bytelixir](guides/bytelixir.md).
+
+| Criterion | Verdict | Note |
+|---|---|---|
+| Payout record | Good |  |
+| Payout terms | Fair |  |
+| Account safety | Unknown | No reports of banned accounts found. |
+| Fit with how CashPilot runs it | Fair |  |
+| Traffic transparency | Unknown | We could not load Bytelixir's terms. |
+| Privacy | Unknown | The client is closed source; we could not load the privacy terms. |
+| Identity checks | Good |  |
+| Support | Unknown | Bytelixir replies to negative Trustpilot reviews, typically within a day, but that is not a ticket answer; we have no ticket of our own and found no reports about tickets either way. |
+| Earnings realism | Unknown | Not measured. |
+| Longevity | Unknown | We could not find the legal entity behind Bytelixir on a page that loaded. |
+
+**Cons**
+
+- Crypto only, and the minimum depends on the coin, from $5 for USDT to $250 for Bitcoin. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/bandwidth/bytelixir.yml), checked 2026-11-04.
+- CashPilot does not run Bytelixir: you use the provider's own app, so CashPilot cannot deploy or update it for you. Its terms were not checked for containers. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/bandwidth/bytelixir.yml), checked 2026-11-04.
+
+**Pros**
+
+- Trustpilot rates it 4.6 from 283 reviews, most of them praising crypto payouts; a few report payouts not arriving. [Source](https://www.trustpilot.com/review/bytelixir.com), checked 2026-11-04.
+- A payout needs only a crypto address typed into the request. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/bandwidth/bytelixir.yml), checked 2026-11-04.
 
 <a id="noderr"></a>
 
@@ -557,37 +554,6 @@ What a cited con or pro may rest on:
 
 - Repocket publishes its own Docker image, repocket/repocket, and its terms allow containers you own. [Source](https://repocket.com/terms-and-conditions), checked 2026-11-04.
 - The minimum is low: $4 before the first payout and $2 after it. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/bandwidth/repocket.yml), checked 2026-11-04.
-
-<a id="anyone-protocol"></a>
-
-### Anyone Protocol
-
-**Grade F**, 5 of 20 points, 5 of 10 criteria unchecked, reviewed 2026-11-04. Setup guide: [Anyone Protocol](guides/anyone-protocol.md).
-
-| Criterion | Verdict | Note |
-|---|---|---|
-| Payout record | Unknown | We have not published a reward claim of our own and found no pattern of reports. |
-| Payout terms | Poor |  |
-| Account safety | Unknown | There is no account to ban. |
-| Fit with how CashPilot runs it | Good |  |
-| Traffic transparency | Poor |  |
-| Privacy | Fair |  |
-| Identity checks | Good |  |
-| Support | Unknown | No pattern found. |
-| Earnings realism | Unknown | Not measured. |
-| Longevity | Unknown | Not checked on a primary source. |
-
-**Cons**
-
-- A relay earns nothing unless 100 ANYONE is locked for it for at least 180 days, and each reward claim is signed in your wallet. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/depin/anyone-protocol.yml), checked 2026-11-04.
-- It relays other people's traffic by design, with no vetting of who they are; exit relays attract abuse complaints. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/depin/anyone-protocol.yml), checked 2026-11-04.
-- The relay's identity, IP and uptime are published to the network directory, and any ContactInfo you set is public for good. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/depin/anyone-protocol.yml), checked 2026-11-04.
-
-**Pros**
-
-- No account is needed at all. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/depin/anyone-protocol.yml), checked 2026-11-04.
-- The relay software is a published fork of Tor, under Tor's licence. [Source](https://github.com/anyone-protocol/ator-protocol), checked 2026-11-04.
-- CashPilot builds its own image from Anyone's published relay software, which needs no account. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/depin/anyone-protocol.yml), checked 2026-11-04.
 
 <a id="bitping"></a>
 
@@ -704,6 +670,38 @@ What a cited con or pro may rest on:
 
 - The Flux daemon is open source under the MIT licence. [Source](https://github.com/RunOnFlux/fluxd), checked 2026-11-04.
 
+<a id="iproyal"></a>
+
+### IPRoyal Pawns
+
+**Grade F**, 5 of 20 points, 4 of 10 criteria unchecked, reviewed 2026-11-04. Setup guide: [IPRoyal Pawns](guides/iproyal.md).
+
+| Criterion | Verdict | Note |
+|---|---|---|
+| Payout record | Unknown | Trustpilot withholds the rating of pawns.app for a breach of its guidelines and says it removed fake reviews, so its payout reviews cannot be taken at face value. We have not yet published a completed payout of our own. |
+| Payout terms | Fair |  |
+| Account safety | Fair | One Trustpilot reviewer says an account was blocked during a withdrawal after a phone number was mistyped; we could not confirm a wider pattern on the page. |
+| Fit with how CashPilot runs it | Poor |  |
+| Traffic transparency | Fair |  |
+| Privacy | Unknown | The client is closed source; we did not review the privacy policy in depth. |
+| Identity checks | Fair |  |
+| Support | Unknown | No repeated support complaint found and no ticket of our own. |
+| Earnings realism | Unknown | We have not measured Pawns earnings per IP against a provider figure. |
+| Longevity | Fair |  |
+
+**Cons**
+
+- The terms say an account can be blocked without prior notice for abuse of withdrawal conditions or multiple accounts, and its earnings may then not be paid out. [Source](https://pawns.app/terms-of-use/), checked 2026-11-04.
+- The terms say Pawns does not allow any servers, VPNs or proxy services for traffic sharing, and only one device per IP. [Source](https://pawns.app/terms-of-use/), checked 2026-11-04.
+- PayPal costs 4% (at least $0.25) through Tremendous, and every payout is reviewed for up to 72 hours. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/bandwidth/iproyal.yml), checked 2026-11-04.
+- The first payout needs an SMS check of your phone number, and every payout a code sent by email. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/bandwidth/iproyal.yml), checked 2026-11-04.
+- The terms name no legal entity, only Pawns.app; the app is run by IPRoyal, a proxy company that started in late 2020. [Source](https://proxyway.com/reviews/iproyal-proxies), checked 2026-11-04.
+- The terms say Pawns and its business clients route traffic through your device, and that you cannot identify which client uses it. [Source](https://pawns.app/terms-of-use/), checked 2026-11-04.
+
+**Pros**
+
+- A $5 minimum, with gift cards at no fee. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/bandwidth/iproyal.yml), checked 2026-11-04.
+
 <a id="sentinel-dvpn"></a>
 
 ### Sentinel dVPN
@@ -764,34 +762,6 @@ What a cited con or pro may rest on:
 
 - A payout needs only a saved crypto address confirmed by email; the dashboard may ask for a messenger contact. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/bandwidth/traffmonetizer.yml), checked 2026-11-04.
 - Traffmonetizer publishes its own Docker image, traffmonetizer/cli_v2. [Source](https://hub.docker.com/r/traffmonetizer/cli_v2), checked 2026-11-04.
-
-<a id="vast-ai"></a>
-
-### Vast.ai
-
-**Grade F**, 5 of 20 points, 7 of 10 criteria unchecked, reviewed 2026-11-04. Setup guide: [Vast.ai](guides/vast-ai.md).
-
-| Criterion | Verdict | Note |
-|---|---|---|
-| Payout record | Unknown | We found no host complaint threads either way. |
-| Payout terms | Good |  |
-| Account safety | Unknown | No reports found. |
-| Fit with how CashPilot runs it | Good |  |
-| Traffic transparency | Unknown | Renters run their own containers on your machine; we did not find how they are checked. |
-| Privacy | Unknown | Not reviewed. |
-| Identity checks | Unknown | A competitor's summary says hosts must complete identity, tax or business checks before choosing a payout method; we did not confirm it on Vast's own pages. |
-| Support | Unknown | No pattern found. |
-| Earnings realism | Fair |  |
-| Longevity | Unknown | Not checked on a primary source. |
-
-**Cons**
-
-- A host earns only while rented, and Vast's own figures for a consumer GPU depend on rental type and reliability score. [Source](https://vast.ai/article/how-much-money-can-you-earn-renting-out-your-gpu-on-vast-ai), checked 2026-11-04.
-
-**Pros**
-
-- Vast says the rate a host sets is the rate it receives, with no fee deducted. [Source](https://vast.ai/hosting), checked 2026-11-04.
-- Hosting is built around Docker on a Linux host, the way Vast documents it. [Source](https://vast.ai/hosting), checked 2026-11-04.
 
 <a id="helium"></a>
 
@@ -866,7 +836,7 @@ What a cited con or pro may rest on:
 | Privacy | Unknown | Not reviewed. |
 | Identity checks | Unknown | Not documented on pages we read. |
 | Support | Unknown | No pattern found. |
-| Earnings realism | Unknown | Trustpilot's own summary says some reviewers find earnings low, and one October 2026 reviewer says an RTX 3090 barely covered its electricity. That is one site, short of the three matching reports a user-report con needs. |
+| Earnings realism | Unknown | Trustpilot's own summary says some reviewers find earnings low, and one October 2026 reviewer says an RTX 3090 barely covered its electricity. That is one site, below our user-reports threshold, and we found no second source. |
 | Longevity | Unknown | Not checked on a primary source. |
 
 **Cons**
@@ -877,6 +847,34 @@ What a cited con or pro may rest on:
 **Pros**
 
 - Several Trustpilot reviewers in October and November 2026 report PayPal cash-outs arriving quickly, some more than once; one reviewer in the same period says repeated cash-out attempts failed. [Source](https://www.trustpilot.com/review/salad.com), checked 2026-11-04.
+
+<a id="vast-ai"></a>
+
+### Vast.ai
+
+**Grade F**, 4 of 20 points, 7 of 10 criteria unchecked, reviewed 2026-11-04. Setup guide: [Vast.ai](guides/vast-ai.md).
+
+| Criterion | Verdict | Note |
+|---|---|---|
+| Payout record | Unknown | We found no host complaint threads either way. |
+| Payout terms | Good |  |
+| Account safety | Unknown | No reports found. |
+| Fit with how CashPilot runs it | Fair |  |
+| Traffic transparency | Unknown | Renters run their own containers on your machine; we did not find how they are checked. |
+| Privacy | Unknown | Not reviewed. |
+| Identity checks | Unknown | A competitor's summary says hosts must complete identity, tax or business checks before choosing a payout method; we did not confirm it on Vast's own pages. |
+| Support | Unknown | No pattern found. |
+| Earnings realism | Fair |  |
+| Longevity | Unknown | Not checked on a primary source. |
+
+**Cons**
+
+- CashPilot does not run Vast.ai: you install Vast's host software on your own GPU machine, so CashPilot cannot deploy or update it for you. Vast builds hosting around Docker on a Linux host. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/compute/vast-ai.yml), checked 2026-11-04.
+- A host earns only while rented, and Vast's own figures for a consumer GPU depend on rental type and reliability score. [Source](https://vast.ai/article/how-much-money-can-you-earn-renting-out-your-gpu-on-vast-ai), checked 2026-11-04.
+
+**Pros**
+
+- Vast says the rate a host sets is the rate it receives, with no fee deducted. [Source](https://vast.ai/hosting), checked 2026-11-04.
 
 <a id="bytebenefit"></a>
 

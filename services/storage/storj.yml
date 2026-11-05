@@ -224,7 +224,7 @@ rating:
     payout_terms: fair
     account_safety: unknown
     terms_fit: good
-    traffic_transparency: good
+    traffic_transparency: fair
     privacy: good
     identity_checks: good
     support: unknown
@@ -236,6 +236,12 @@ rating:
     support: No pattern found.
     earnings_realism: Not measured against a provider figure.
   cons:
+  - text: Customers store encrypted file fragments and nobody routes traffic through your IP, but we
+      did not find where Storj says who the customers are or how they are checked.
+    criterion: traffic_transparency
+    kind: our_experience
+    source: https://github.com/GeiserX/CashPilot/blob/main/services/storage/storj.yml
+    checked_on: "2026-11-04"
   - text: Storj Labs filed for Chapter 11 on 26 July 2026; node earnings from before the filing are frozen
       until the court rules.
     criterion: longevity
@@ -263,12 +269,6 @@ rating:
     criterion: terms_fit
     kind: terms
     source: https://hub.docker.com/r/storjlabs/storagenode
-    checked_on: "2026-11-04"
-  - text: You store encrypted fragments of customer data; nobody routes their own traffic through your
-      IP.
-    criterion: traffic_transparency
-    kind: our_experience
-    source: https://github.com/GeiserX/CashPilot/blob/main/services/storage/storj.yml
     checked_on: "2026-11-04"
   - text: 'No account: a wallet address and an email for operator notices.'
     criterion: identity_checks

@@ -2262,6 +2262,8 @@ body.gate { display: flex; flex-direction: column; }
 .grade-badge.grade-c { color: var(--warning); background: var(--warning-soft); }
 .grade-badge.grade-d { color: var(--error); background: var(--error-soft); }
 .grade-badge.grade-f { color: var(--text-primary); background: var(--error-soft); border-color: var(--error); }
+.grade-link { text-decoration: none; }
+.grade-link .grade-badge { cursor: pointer; }
 .sd-rating-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .sd-rating-score { color: var(--text-secondary); }
 .sd-rating-caps, .sd-rating-list { margin: 6px 0 0; padding-left: 18px; }

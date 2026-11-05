@@ -180,7 +180,7 @@ class TestUnknown:
         unknowns = ["support", "privacy", "identity_checks", "longevity"]
         result = _grade(_rating(**dict.fromkeys(unknowns, "unknown")))
         assert result["thin_evidence"] is True
-        assert result["grade"] in ("C", "D")
+        assert result["grade"] == "C"
         three = _grade(_rating(**dict.fromkeys(unknowns[:3], "unknown")))
         assert three["thin_evidence"] is False
 
@@ -281,6 +281,16 @@ class TestValidator:
         replaced = edit(block)
         errs = _errors(replaced if isinstance(replaced, str) else block)
         assert any(expected in e for e in errs), errs
+
+    def test_a_kind_that_is_not_text_is_an_error_not_a_crash(self):
+        block = _rating()
+        block["pros"][0]["kind"] = ["terms"]
+        assert any("kind must be one of" in e for e in _errors(block))
+
+    def test_requirements_that_are_not_a_mapping_do_not_break_grading(self):
+        service = {"slug": "x", "requirements": ["residential_ip"], "rating": _rating()}
+        assert ratings.validate(service["rating"], service, rules=RULES, today=TODAY) == []
+        assert ratings.for_service(service, rules=RULES)["grade"] == "B"
 
     def test_yaml_dates_are_read_as_dates(self):
         block = _rating()
@@ -386,6 +396,7 @@ class TestTheRealCatalog:
         ("theta-edge", "earnings_realism"),  # one forum post
         ("packetstream", "earnings_realism"),  # two Trustpilot reviewers
         ("earnfm", "payout_record"),  # two Trustpilot reviewers
+        ("salad", "earnings_realism"),  # one site's summary and one reviewer
     ]
 
     @pytest.mark.parametrize(("slug", "criterion"), BELOW_THRESHOLD)
@@ -402,7 +413,8 @@ class TestTheRealCatalog:
 
     def test_grades_after_dropping_thin_reports(self):
         assert ratings.for_service(catalog.get_service("theta-edge"))["grade"] == "F"
-        assert ratings.for_service(catalog.get_service("packetstream"))["grade"] == "C"
+        # Unanswered support emails are the poor support criterion, so D, not C.
+        assert ratings.for_service(catalog.get_service("packetstream"))["grade"] == "D"
 
     def test_terms_fit_good_rests_on_the_providers_own_word(self):
         # "Good" means containers are allowed or the official client is an
@@ -411,8 +423,9 @@ class TestTheRealCatalog:
             rating = svc["rating"]
             if rating["verdicts"]["terms_fit"] != "good":
                 continue
-            pros = [p for p in rating["pros"] if p["criterion"] == "terms_fit"]
-            assert not any(p["text"].startswith("CashPilot does not run") for p in pros), svc["slug"]
+            assert (svc.get("docker") or {}).get("image"), (
+                f"{svc['slug']}: CashPilot does not run it, so terms_fit is fair"
+            )
 
 
 class TestCatalogNarrowScreen:

@@ -3583,7 +3583,9 @@ const CP = (() => {
       <td class="cat-kind">${escapeHtml(svc.category === 'depin' ? 'DePIN' : capFirst(svc.category))}</td>
       <td class="cat-plat">${platforms || '<span class="muted">none listed</span>'}</td>
       <td class="num cat-est">${escapeHtml(earning)}</td>
-      <td class="cat-grade">${gradeBadge(svc.rating_result)}</td>
+      <td class="cat-grade">${(svc.rating_result && svc.rating_result.rated)
+        ? `<a class="grade-link" href="https://geiserx.github.io/CashPilot/ratings/#${encodeURIComponent(svc.slug || '')}" target="_blank" rel="noopener" aria-label="${escapeHtml(`${svc.name}: grade ${svc.rating_result.grade}, its cons and sources`)}">${gradeBadge(svc.rating_result)}</a>`
+        : gradeBadge(svc.rating_result)}</td>
       <td class="cat-needs">${needs.length ? escapeHtml(needs.join(', ')) : '<span class="muted">nothing special</span>'}</td>
       <td class="cat-act">${actionBtn}</td>
     </tr>`;

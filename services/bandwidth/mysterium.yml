@@ -250,7 +250,7 @@ rating:
   verdicts:
     payout_record: unknown
     payout_terms: fair
-    account_safety: good
+    account_safety: unknown
     terms_fit: good
     traffic_transparency: fair
     privacy: good
@@ -263,6 +263,8 @@ rating:
       yet.
     support: Trustpilot has 16 reviews and none in the last year; not enough to judge.
     earnings_realism: Not measured against a provider figure.
+    account_safety: Settled earnings sit in a wallet you own, but we found no stated ban rule and no
+      reports either way.
   cons:
   - text: About 21% of every settlement goes in fees, the 20% Hermes fee plus a transaction fee, and earnings
       are paid in the MYST token.
@@ -281,12 +283,6 @@ rating:
     criterion: privacy
     kind: terms
     source: https://github.com/mysteriumnetwork/node
-    checked_on: "2026-11-04"
-  - text: Earnings settle on-chain to a wallet you own, and there is no limit on nodes per account or
-      per IP.
-    criterion: account_safety
-    kind: our_experience
-    source: https://github.com/GeiserX/CashPilot/blob/main/services/bandwidth/mysterium.yml
     checked_on: "2026-11-04"
   - text: Mysterium publishes its own Docker image, mysteriumnetwork/myst.
     criterion: terms_fit

@@ -87,8 +87,8 @@ rating:
     identity_checks: Not documented on pages we read.
     support: No pattern found.
     earnings_realism: Trustpilot's own summary says some reviewers find earnings low, and one October 2026
-      reviewer says an RTX 3090 barely covered its electricity. That is one site, short of the three matching
-      reports a user-report con needs.
+      reviewer says an RTX 3090 barely covered its electricity. That is one site, below our user-reports
+      threshold, and we found no second source.
     longevity: Not checked on a primary source.
   cons:
   - text: Rewards are redeemed in Salad's own storefront for PayPal or gift cards, with no crypto. Trustpilot's

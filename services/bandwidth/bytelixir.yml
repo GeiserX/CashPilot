@@ -95,13 +95,15 @@ rating:
     traffic_transparency: unknown
     privacy: unknown
     identity_checks: good
-    support: good
+    support: unknown
     earnings_realism: unknown
     longevity: unknown
   notes:
     account_safety: No reports of banned accounts found.
     traffic_transparency: We could not load Bytelixir's terms.
     privacy: The client is closed source; we could not load the privacy terms.
+    support: Bytelixir replies to negative Trustpilot reviews, typically within a day, but that is not a
+      ticket answer; we have no ticket of our own and found no reports about tickets either way.
     earnings_realism: Not measured.
     longevity: We could not find the legal entity behind Bytelixir on a page that loaded.
   cons:
@@ -121,11 +123,6 @@ rating:
       payouts not arriving.
     criterion: payout_record
     kind: user_reports
-    source: https://www.trustpilot.com/review/bytelixir.com
-    checked_on: "2026-11-04"
-  - text: Bytelixir replies to all negative reviews on Trustpilot, typically within a day.
-    criterion: support
-    kind: provider_reply
     source: https://www.trustpilot.com/review/bytelixir.com
     checked_on: "2026-11-04"
   - text: A payout needs only a crypto address typed into the request.

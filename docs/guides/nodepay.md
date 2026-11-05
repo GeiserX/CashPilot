@@ -18,7 +18,7 @@ Nodepay is a DePIN network that rewards users for sharing bandwidth through a br
 | Payout frequency | Token airdrop (TBA) |
 | Payment methods | Crypto |
 
-> Earns Nodepay Points pre-token launch. Cloudflare protection may block automated collection. Browser extension required.
+> Earns Nodepay Points, which convert to the NC token. Cloudflare protection may block automated collection. Browser extension required.
 
 ## Requirements
 

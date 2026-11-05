@@ -165,7 +165,7 @@ rating:
     payout_terms: fair
     account_safety: fair
     terms_fit: good
-    traffic_transparency: good
+    traffic_transparency: fair
     privacy: good
     identity_checks: good
     support: unknown
@@ -175,6 +175,12 @@ rating:
     payout_record: Payment is by on-chain contract; we have no host of our own to report.
     support: No pattern found.
   cons:
+  - text: Renters store encrypted file fragments and nobody routes traffic through your IP, but we
+      did not find where Sia says who the renters are or how they are checked.
+    criterion: traffic_transparency
+    kind: our_experience
+    source: https://github.com/GeiserX/CashPilot/blob/main/services/storage/sia-hostd.yml
+    checked_on: "2026-11-04"
   - text: 'Earnings are Siacoin in your own wallet: there is no payout to a bank, so you sell on an exchange
       yourself.'
     criterion: payout_terms
@@ -208,11 +214,6 @@ rating:
     criterion: terms_fit
     kind: terms
     source: https://github.com/SiaFoundation/hostd
-    checked_on: "2026-11-04"
-  - text: Renters store encrypted file fragments; nobody routes their own traffic through your IP.
-    criterion: traffic_transparency
-    kind: our_experience
-    source: https://github.com/GeiserX/CashPilot/blob/main/services/storage/sia-hostd.yml
     checked_on: "2026-11-04"
   - text: 'Permissionless: no signup or account.'
     criterion: identity_checks

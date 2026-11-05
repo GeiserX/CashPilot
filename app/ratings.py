@@ -143,7 +143,8 @@ def validate(
                 errors.append(f"{where}.criterion {criterion!r} is not a published criterion")
             else:
                 tagged[section].add(criterion)
-            if item.get("kind") not in kinds:
+            kind = item.get("kind")
+            if not isinstance(kind, str) or kind not in kinds:
                 errors.append(f"{where}.kind must be one of {sorted(kinds)}, got {item.get('kind')!r}")
             source = item.get("source")
             if not isinstance(source, str) or not source.startswith("https://") or " " in source.strip():
@@ -185,7 +186,8 @@ def _worse(a: str, b: str) -> str:
 def _cap_holds(cap: dict[str, Any], service: dict[str, Any], verdicts: dict[str, str], unknowns: int) -> bool:
     key = cap["key"]
     if key == "container_prohibited":
-        return bool((service.get("requirements") or {}).get("container_prohibited"))
+        reqs = service.get("requirements") or {}
+        return isinstance(reqs, dict) and bool(reqs.get("container_prohibited"))
     if key == "poor_payout_or_safety":
         return verdicts.get("payout_record") == "poor" or verdicts.get("account_safety") == "poor"
     if key == "thin_evidence":
