@@ -173,28 +173,28 @@ class TestAPhoneIsNotABlindDockerHost:
     def test_an_android_worker_does_not_warn(self, caplog):
         phone = _worker("motorola", docker=False, device_type="android")
         with caplog.at_level(logging.WARNING, logger="app.main"):
-            _health_check([_worker("watchtower", docker=True), phone])
+            _health_check([_worker("charlie", docker=True), phone])
         assert not _blind_warnings(caplog)
 
     def test_an_android_worker_does_not_switch_off_missing_container_downtime(self):
         """A phone cannot host the missing container, so the evidence still holds."""
         phone = _worker("motorola", docker=False, device_type="android")
-        events = _health_check([_worker("watchtower", docker=True), phone])
+        events = _health_check([_worker("charlie", docker=True), phone])
         assert ("honeygain", "check_down", "missing from heartbeat") in events
 
     def test_a_blind_server_still_suppresses_and_warns(self, caplog):
         """The control: the safety behaviour for a real Docker host is unchanged."""
         with caplog.at_level(logging.WARNING, logger="app.main"):
-            events = _health_check([_worker("geiserback", docker=False)])
+            events = _health_check([_worker("alpha", docker=False)])
         assert not [e for e in events if e[2] == "missing from heartbeat"]
-        assert any("geiserback" in m for m in _blind_warnings(caplog))
+        assert any("alpha" in m for m in _blind_warnings(caplog))
 
     def test_a_blind_server_is_warned_about_once_per_change(self, caplog):
         with caplog.at_level(logging.INFO, logger="app.main"):
             for _ in range(4):
-                _health_check([_worker("geiserback", docker=False)])
-            _health_check([_worker("geiserback", docker=False), _worker("geiserct", docker=False)])
-            _health_check([_worker("geiserback", docker=True)])
-            _health_check([_worker("geiserback", docker=True)])
+                _health_check([_worker("alpha", docker=False)])
+            _health_check([_worker("alpha", docker=False), _worker("bravo", docker=False)])
+            _health_check([_worker("alpha", docker=True)])
+            _health_check([_worker("alpha", docker=True)])
         assert len(_blind_warnings(caplog)) == 2
         assert len([r for r in caplog.records if "can read Docker again" in r.getMessage()]) == 1

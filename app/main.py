@@ -7,6 +7,7 @@ management, and earnings tracking.
 from __future__ import annotations
 
 import asyncio
+import collections
 import contextlib
 import hmac
 import ipaddress
@@ -2932,16 +2933,25 @@ async def api_update_custom_service(
 async def api_delete_custom_service(
     request: Request, slug: str, _auth: dict[str, Any] = Depends(_require_owner)
 ) -> dict[str, str]:
-    """Delete a definition, refused while any box runs or records it."""
-    if not custom_services.is_custom_slug(slug) or await database.get_custom_service(slug) is None:
-        raise HTTPException(status_code=404, detail=f"Custom service '{slug}' not found")
-    where = await _custom_deployed_on(slug)
-    if where:
-        raise HTTPException(
-            status_code=409,
-            detail=f"{slug} is still deployed on {', '.join(where)}. Remove it from every box first.",
-        )
-    await database.delete_custom_service(slug)
+    """Delete a definition, refused while any box runs or records it, or a deploy of it is in flight."""
+    # Before any await, so no deploy can start between this check and the delete.
+    if _custom_deploying.get(slug):
+        raise HTTPException(status_code=409, detail=f"{slug} is being deployed right now. Try again when it is done.")
+    _custom_deleting[slug] += 1
+    try:
+        if not custom_services.is_custom_slug(slug) or await database.get_custom_service(slug) is None:
+            raise HTTPException(status_code=404, detail=f"Custom service '{slug}' not found")
+        where = await _custom_deployed_on(slug)
+        if where:
+            raise HTTPException(
+                status_code=409,
+                detail=f"{slug} is still deployed on {', '.join(where)}. Remove it from every box first.",
+            )
+        await database.delete_custom_service(slug)
+    finally:
+        _custom_deleting[slug] -= 1
+        if not _custom_deleting[slug]:
+            del _custom_deleting[slug]
     logger.info("Custom service %s deleted", slug)
     return {"status": "deleted"}
 
@@ -3056,6 +3066,30 @@ async def api_deploy(
     _auth: dict[str, Any] = Depends(_require_owner),
 ) -> dict[str, Any]:
     """Validate the effective service configuration and deploy it to the selected worker."""
+    if not custom_services.is_custom_slug(slug):
+        return await _deploy(slug, body, worker_id)
+    # A custom deploy holds its slug until it is recorded, so a delete cannot
+    # remove the definition while the worker is still pulling and starting it,
+    # which would leave a container running that no definition describes.
+    # Checked and taken with no await in between: one event loop, one UI process.
+    if slug in _custom_deleting:
+        raise HTTPException(status_code=409, detail=f"{slug} is being deleted")
+    _custom_deploying[slug] += 1
+    try:
+        return await _deploy(slug, body, worker_id)
+    finally:
+        _custom_deploying[slug] -= 1
+        if not _custom_deploying[slug]:
+            del _custom_deploying[slug]
+
+
+#: Custom slugs with deploys in flight, and with deletes in flight (how many of each).
+#: See api_deploy and api_delete_custom_service.
+_custom_deploying: collections.Counter[str] = collections.Counter()
+_custom_deleting: collections.Counter[str] = collections.Counter()
+
+
+async def _deploy(slug: str, body: DeployRequest, worker_id: int | None) -> dict[str, Any]:
     # dict[str, Any], not dict[str, str]: kept_from_previous_deployment is a
     # list, and FastAPI validates the response against this annotation AFTER
     # the deploy has run and persisted — a stricter type turns the successful

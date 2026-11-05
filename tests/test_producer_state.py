@@ -630,7 +630,7 @@ class TestMismatchNamesTheNode:
                 "status": "running",
                 "advertised_address": "84.54.25.89:28967",
                 "_worker_id": 1,
-                "_node": "watchtower",
+                "_node": "charlie",
             }
         ]
 
@@ -642,4 +642,4 @@ class TestMismatchNamesTheNode:
                 return await main._advertised_address_mismatch(entry)
 
         reason = asyncio.run(go())
-        assert reason and reason.startswith("On watchtower:"), "a fleet finding must name its node"
+        assert reason and reason.startswith("On charlie:"), "a fleet finding must name its node"

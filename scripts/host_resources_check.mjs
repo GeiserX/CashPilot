@@ -61,8 +61,8 @@ const svc = (...workerIds) => ({slug: 's', instance_details: workerIds.map(w => 
 
 // ---------------------------------------------------------------- disk
 const FLEET = [
-  worker(1, 'watchtower', {disk: {free_bytes: 900 * GB, total_bytes: 1000 * GB}, gpu: {available: true, devices: ['DRM render node (3)']}}),
-  worker(2, 'geiserct', {disk: {free_bytes: 24 * GB, total_bytes: 98 * GB}, gpu: {available: null, reason: 'no GPU is visible from inside this container'}}),
+  worker(1, 'charlie', {disk: {free_bytes: 900 * GB, total_bytes: 1000 * GB}, gpu: {available: true, devices: ['DRM render node (3)']}}),
+  worker(2, 'bravo', {disk: {free_bytes: 24 * GB, total_bytes: 98 * GB}, gpu: {available: null, reason: 'no GPU is visible from inside this container'}}),
   worker(3, 'nodisk', {gpu: {available: false, devices: []}}),
 ];
 api.setHosts(api.buildHostResourceMap(FLEET));
@@ -184,13 +184,13 @@ for (const asc of [true, false]) {
 // GPU, because the workers are containerised and the devices were never passed
 // through -- while the hosts have three render nodes each.
 const REAL = [
-  {id: 1, name: 'watchtower', status: 'online', system_info: {
+  {id: 1, name: 'charlie', status: 'online', system_info: {
     disk: {free_bytes: 1073 * GB, total_bytes: 1798 * GB},
     gpu: {available: null, devices: [], reason: 'no GPU is visible from inside this container; the host may still have one that was not passed through'}}},
-  {id: 2, name: 'geiserback', status: 'online', system_info: {
+  {id: 2, name: 'alpha', status: 'online', system_info: {
     disk: {free_bytes: 545 * GB, total_bytes: 899 * GB},
     gpu: {available: null, devices: [], reason: 'no GPU is visible from inside this container; the host may still have one that was not passed through'}}},
-  {id: 3, name: 'geiserct', status: 'online', system_info: {
+  {id: 3, name: 'bravo', status: 'online', system_info: {
     disk: {free_bytes: 23 * GB, total_bytes: 98 * GB},
     gpu: {available: null, devices: [], reason: 'no GPU is visible from inside this container; the host may still have one that was not passed through'}}},
   // The phone reports neither, and never will -- it is not a Docker host.
