@@ -74,6 +74,51 @@ def test_ui_and_worker_carry_the_same_tag(compose):
     assert len(tags) == 1, f"{compose}: UI and worker pinned to different tags {sorted(tags)}"
 
 
+def _mounts(service: dict) -> list[tuple[str, str]]:
+    """(source, target) for every volume, in short ``src:dst`` or long syntax."""
+    out = []
+    for v in service.get("volumes") or []:
+        if isinstance(v, dict):
+            out.append((str(v.get("source", "")), str(v.get("target", ""))))
+        else:
+            src, _, rest = str(v).partition(":")
+            out.append((src, rest.split(":", 1)[0]))
+    return out
+
+
+def _services(compose: Path) -> dict[str, dict]:
+    return {k: v for k, v in (_load(compose).get("services") or {}).items() if isinstance(v, dict)}
+
+
+def _is_worker(service: dict) -> bool:
+    return str(service.get("image", "")).startswith("drumsergio/cashpilot-worker")
+
+
+@pytest.mark.parametrize("compose", COMPOSE, ids=_ids(COMPOSE))
+def test_only_the_worker_mounts_the_docker_socket(compose):
+    services = _services(compose)
+    workers = [name for name, svc in services.items() if _is_worker(svc)]
+    assert workers, f"{compose}: no worker service"
+    for name, svc in services.items():
+        has_socket = any(t == "/var/run/docker.sock" for _, t in _mounts(svc))
+        if _is_worker(svc):
+            assert has_socket, f"{compose}: worker {name} cannot reach Docker"
+        else:
+            assert not has_socket, f"{compose}: {name} mounts the Docker socket; only the worker may"
+
+
+@pytest.mark.parametrize("compose", COMPOSE, ids=_ids(COMPOSE))
+def test_the_worker_data_is_kept_apart_from_the_ui_data(compose):
+    """The UI's /data holds the credential store and its key; the worker holds the
+    Docker socket, so it must not mount the same host folder."""
+    services = _services(compose)
+    data = {name: {s for s, t in _mounts(svc) if t == "/data"} for name, svc in services.items()}
+    ui = set().union(*(d for n, d in data.items() if not _is_worker(services[n])))
+    worker = set().union(*(d for n, d in data.items() if _is_worker(services[n])))
+    assert ui and worker, f"{compose}: UI or worker has no /data mount"
+    assert not ui & worker, f"{compose}: worker mounts the UI's /data ({sorted(ui & worker)})"
+
+
 def _cashpilot_tag(compose: Path) -> str:
     return next(_tag(i) for i in _images(_load(compose)) if i.startswith("drumsergio/cashpilot"))
 

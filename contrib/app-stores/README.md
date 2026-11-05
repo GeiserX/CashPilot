@@ -25,8 +25,8 @@ TrueNAS app is maintained in https://github.com/truenas/apps under
   apart from the UI's `/data`, which holds the credential store and its key.
   `/fleet` is shared, because it holds only the enrolment key both sides need.
 
-`tests/test_app_store_templates.py` checks the first two rules on every
-compose file under this folder.
+`tests/test_app_store_templates.py` checks these rules on every compose file
+under this folder.
 
 ## Refreshing a package before a submission
 
