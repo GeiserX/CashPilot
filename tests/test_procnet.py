@@ -587,6 +587,21 @@ class TestDiagDump:
         _, (found, truncated) = self._dump(monkeypatch, [batch, batch, _done()], keep=lambda s: True, cap=6)
         assert truncated is True and len(found) <= 6
 
+    def test_a_cut_in_the_last_batch_is_truncated(self, monkeypatch):
+        """Sockets dropped by the cap in the batch that also ends the dump still make it truncated."""
+        batch = b"".join(
+            _diag_msg(socket.AF_INET, 1, 40000 + i, 443, "10.0.0.5", "1.1.1.1", cgroup=7) for i in range(5)
+        )
+        _, (found, truncated) = self._dump(monkeypatch, [batch + _done()], keep=lambda s: True, cap=3)
+        assert len(found) == 3 and truncated is True
+
+    def test_a_last_batch_that_fits_the_cap_is_complete(self, monkeypatch):
+        batch = b"".join(
+            _diag_msg(socket.AF_INET, 1, 40000 + i, 443, "10.0.0.5", "1.1.1.1", cgroup=7) for i in range(3)
+        )
+        _, (found, truncated) = self._dump(monkeypatch, [batch + _done()], keep=lambda s: True, cap=3)
+        assert len(found) == 3 and truncated is False
+
     def test_an_interrupted_dump_is_truncated(self, monkeypatch):
         """A dump the kernel marks interrupted may miss sockets: report it, never raise."""
         batch = _diag_msg(socket.AF_INET, 1, 40000, 443, "10.0.0.5", "1.1.1.1", cgroup=7)

@@ -404,7 +404,7 @@ def diag_dump(proto, family, ipproto, keep=None, cap=MAX_DIAG_MESSAGES):
 
     ``keep`` filters each socket as it is read, so memory follows what is kept,
     not the host's whole table. ``truncated`` is True when ``cap`` sockets were
-    read before the dump ended, or the kernel marked the dump interrupted. Raises OSError when netlink refuses (no socket,
+    read before the dump ended (even in the batch that ends it), or the kernel marked the dump interrupted. Raises OSError when netlink refuses (no socket,
     or an error reply).
     """
     req = _DIAG_REQ.pack(family, ipproto, 0, DIAG_STATES)
@@ -420,11 +420,12 @@ def diag_dump(proto, family, ipproto, keep=None, cap=MAX_DIAG_MESSAGES):
             sockets, done, err, interrupted = parse_diag(s.recv(1 << 16), proto)
             if err:
                 raise OSError(err, "sock_diag")
+            clipped = len(sockets) > cap - read
             sockets = sockets[: cap - read]
             read += len(sockets)
             found.extend(x for x in sockets if keep is None or keep(x))
             if done:
-                return found, interrupted
+                return found, interrupted or clipped
             if read >= cap:
                 return found, True
 
