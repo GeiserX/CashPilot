@@ -23,7 +23,7 @@ CashPilot is a self-hosted platform that runs passive income services on your ow
 - Runs a fleet: one worker per server, one dashboard for all of them, every figure per server and per service.
 - Checks before you deploy whether the machine fits (residential IP, GPU, disk), and warns when a stored credential is about to expire.
 - Shows, when you switch it on, what each earner does on the network: connections, ports, networks and countries, and alerts for mail ports and attempts on your LAN. It reads socket tables only, never traffic, and keeps addresses for 24 hours.
-- Encrypts stored credentials at rest; only the worker touches the Docker socket, and the dashboard listens on loopback until you say otherwise.
+- Encrypts stored credentials at rest; the worker reaches Docker only through a pinned socket proxy that refuses privileged containers and host binds, and the dashboard listens on loopback until you say otherwise.
 - Runs on x86-64 and ARM: Raspberry Pi, Apple Silicon and ARM cloud boxes.
 - Works from a phone: the dashboard, catalog and wizard are responsive, in Classic night by default, with Dark, Light, Sunrise and Warm themes.
 - Exports Prometheus metrics, and a compose file per service if you would rather run it yourself.

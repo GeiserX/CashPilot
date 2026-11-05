@@ -63,6 +63,7 @@ COPY --chown=cashpilot:root app/version.py ./app/
 COPY --chown=cashpilot:root app/worker_api.py ./app/
 COPY --chown=cashpilot:root app/orchestrator.py ./app/
 COPY --chown=cashpilot:root app/isolation_check.py ./app/
+COPY --chown=cashpilot:root app/socket_policy.py ./app/
 # Proxied copies: the tunnel sidecar and the earner inside it (docs/proxies.md).
 COPY --chown=cashpilot:root app/proxy_tunnel.py ./app/
 # Activity: per-container socket tables and counters, read by a short-lived

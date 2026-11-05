@@ -966,7 +966,11 @@ async def lifespan(app: FastAPI):
 
     logger.info("CashPilot Worker '%s' starting", WORKER_NAME)
     docker_mode = "direct" if await asyncio.to_thread(orchestrator.docker_available) else "monitor-only"
-    logger.info("Docker: %s", docker_mode)
+    logger.info(
+        "Docker: %s (%s)", docker_mode, "through the socket proxy" if orchestrator.proxied() else "direct socket"
+    )
+    if orchestrator.proxy_policy_current() is False:
+        logger.warning("Docker socket proxy: %s", PROXY_POLICY_STALE)
 
     if UI_URL:
         _heartbeat_task = asyncio.create_task(_heartbeat_loop())
@@ -1013,6 +1017,20 @@ def jsonable_errors(errors: Any) -> Any:
 # ---------------------------------------------------------------------------
 # Mini-UI (status page)
 # ---------------------------------------------------------------------------
+
+
+PROXY_POLICY_STALE = (
+    "its policy is not the one this worker image expects, so some calls may be refused. "
+    "Replace your compose file with the one from this release (keep your .env), then run docker compose up -d."
+)
+
+
+def _docker_access_text() -> str:
+    if not orchestrator.proxied():
+        return "direct socket (root on this host)"
+    if orchestrator.proxy_policy_current() is False:
+        return f"socket proxy: {PROXY_POLICY_STALE}"
+    return "socket proxy"
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -1079,6 +1097,7 @@ async def worker_status_page(request: Request):
             <div><label>Host</label><span>{_esc(socket.gethostname())}</span></div>
             <div><label>Platform</label><span>{_esc(platform.system())} {_esc(platform.machine())}</span></div>
             <div><label>Docker</label><span>{"Available" if await asyncio.to_thread(orchestrator.docker_available) else "Not available"}</span></div>
+            <div><label>Docker access</label><span>{_esc(_docker_access_text())}</span></div>
             <div><label>UI Connection</label><span>{ui_status}</span></div>
             <div><label>Last Heartbeat</label><span>{_last_heartbeat}</span></div>
         </div>
@@ -1266,7 +1285,13 @@ def _allowlist_refusal(entry: str) -> str | None:
     return None
 
 
-_ALLOWED_VOLUME_ROOTS = _parse_allowed_volume_roots(os.getenv("CASHPILOT_ALLOWED_VOLUME_ROOTS", ""))
+# The socket proxy's bind folders count too, so one setting opens a folder for
+# both; each entry still has to clear the gates above.
+_ALLOWED_VOLUME_ROOTS = _parse_allowed_volume_roots(
+    os.getenv("CASHPILOT_ALLOWED_VOLUME_ROOTS", "")
+    + ":"
+    + os.getenv("CASHPILOT_PROXY_BIND_MOUNTS", "").replace(",", ":")
+)
 
 # Docker memory size syntax: a positive integer with an optional b/k/m/g unit.
 _MEM_LIMIT_RE = re.compile(r"^\d+[bkmgBKMG]?$")
@@ -1428,9 +1453,28 @@ def _validate_deploy_spec(spec: DeploySpec, slug: str | None = None) -> None:
         raise HTTPException(status_code=403, detail=f"Network mode '{spec.network_mode}' is not allowed")
     if spec.network_mode == "host" and slug not in _catalog_host_network_slugs():
         raise HTTPException(status_code=403, detail=f"Network mode 'host' is not allowed for '{slug}'")
+    proxy_roots = orchestrator._proxy_bind_roots() if orchestrator.proxied() else None
     for source in spec.volumes:
+        if source == orchestrator.PROXY_VOLUME:
+            # The volume holds the worker's own Docker socket; a container
+            # given it could drive Docker exactly as the worker does.
+            raise HTTPException(status_code=403, detail=f"Volume '{source}' is the worker's Docker socket")
         if not source.startswith("/"):
             continue  # named volume (e.g. "mysterium-data") — always allowed
+        if proxy_roots is not None and not any(
+            os.path.normpath(source) == root or os.path.normpath(source).startswith(root.rstrip("/") + "/")
+            for root in proxy_roots
+        ):
+            # Refused here, before the running container is removed, rather
+            # than by the proxy halfway through the replacement.
+            raise HTTPException(
+                status_code=403,
+                detail=(
+                    f"The Docker socket proxy does not let containers bind {source}. To allow it, add "
+                    f"the folder to {orchestrator.BIND_MOUNTS_ENV} in the .env next to your compose "
+                    "file (comma-separated), then run docker compose up -d"
+                ),
+            )
         real = os.path.realpath(source)
         if any(real == root or real.startswith(root + "/") for root in _ALLOWED_VOLUME_ROOTS):
             continue  # explicitly opted in by the operator (see _parse_allowed_volume_roots)
@@ -1568,6 +1612,9 @@ def _proxy_http_error(exc: Exception) -> HTTPException:
     if isinstance(exc, ValueError):
         return HTTPException(status_code=404, detail=str(exc))
     if isinstance(exc, APIError):
+        refusal = orchestrator.proxy_refusal(exc)
+        if refusal:
+            return HTTPException(status_code=403, detail=refusal)
         reason = " ".join(proxy_tunnel.redact(str(exc.explanation or exc)).split())[:300]
         return HTTPException(status_code=409, detail=f"Docker refused the container: {reason}")
     if isinstance(exc, RuntimeError):
@@ -1723,6 +1770,11 @@ async def api_deploy_container(request: Request, slug: str, spec: DeploySpec) ->
         # was touched; 503 when the daemon could not be asked at all.
         raise HTTPException(status_code=exc.status_code, detail=str(exc)) from None
     except APIError as exc:
+        refusal = orchestrator.proxy_refusal(exc)
+        if refusal:
+            # The socket proxy's policy said no; its reason names the rule.
+            logger.warning("Deploy of %s refused by the Docker socket proxy: %s", slug, refusal)
+            raise HTTPException(status_code=403, detail=refusal) from None
         # Docker itself refused to create or start the container: a host port
         # another container holds, a device the host lacks. Its explanation is
         # what the operator needs, so it goes back as a 409 the UI shows, on one

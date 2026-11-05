@@ -109,38 +109,26 @@ docker compose -f docker-compose.fleet.yml up -d
 
 ### Adding remote workers
 
-On each additional server, deploy only a worker pointing back to the UI:
+On each additional server, deploy only a worker pointing back to the UI, with
+its Docker socket proxy. `docker-compose.worker.yml` is that file:
 
-```yaml
-services:
-  cashpilot-worker:
-    image: drumsergio/cashpilot-worker:1.57
-    pull_policy: always
-    container_name: cashpilot-worker
-    # The worker's API is Docker-socket-backed (= root on the host). Bind it to a
-    # PRIVATE/VPN interface the UI can reach (e.g. this server's Tailscale IP),
-    # never 0.0.0.0 or a public IP. Defaults to loopback if left unset.
-    ports:
-      - "${CASHPILOT_WORKER_BIND_ADDR:-127.0.0.1}:8081:8081"
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
-      - cashpilot_worker_data:/data
-    environment:
-      - TZ=${TZ:-UTC}
-      - CASHPILOT_UI_URL=http://main-server:8080  # the UI's published host port (CASHPILOT_UI_PORT)
-      - CASHPILOT_API_KEY=your-shared-api-key
-      - CASHPILOT_WORKER_NAME=server-b
-      - CASHPILOT_WORKER_URL=http://server-b:8081
-    init: true
-    restart: unless-stopped
-    security_opt:
-      - no-new-privileges:true
-    tmpfs:
-      - /tmp:size=64M
-
-volumes:
-  cashpilot_worker_data:
+```bash
+curl -fsSLO https://raw.githubusercontent.com/GeiserX/CashPilot/main/docker-compose.worker.yml
+cat > .env <<EOF
+CASHPILOT_UI_URL=http://main-server:8080
+CASHPILOT_API_KEY=your-shared-api-key
+CASHPILOT_WORKER_NAME=server-b
+CASHPILOT_WORKER_URL=http://server-b:8081
+CASHPILOT_WORKER_BIND_ADDR=100.x.y.z
+CASHPILOT_COMPOSE_DIR=$PWD
+EOF
+docker compose -f docker-compose.worker.yml up -d
 ```
+
+`CASHPILOT_UI_URL` is the UI's published host port (`CASHPILOT_UI_PORT`).
+`CASHPILOT_WORKER_BIND_ADDR` is this server's private or VPN address, never
+`0.0.0.0` or a public IP. `CASHPILOT_COMPOSE_DIR` lets the in-app update reach
+the compose folder through the proxy.
 
 !!! important "CASHPILOT_WORKER_URL"
     Set this to the address the UI should use to reach this worker (e.g. its LAN IP or Tailscale MagicDNS name, port 8081). Without it, the worker auto-detects its own outbound IP, which inside a container is often the Docker bridge address -- unreachable from the UI on another host.
@@ -154,9 +142,12 @@ The shipped compose files give each its own `/data` volume (`cashpilot_data`
 for the UI, `cashpilot_worker_data` for the worker), and that is a security
 boundary, not tidiness.
 
-The worker mounts the Docker socket. **That is root on the host**: anything that
-can talk to it can start a privileged container and read any file on the
-machine. The UI's `/data` holds `cashpilot.db` and `.fernet_key`: the credential
+The worker drives Docker. With the raw socket **that is root on the host**:
+anything that can talk to it can start a privileged container and read any file
+on the machine. The shipped compose files put a
+[socket proxy](security-defaults.md#docker-socket-proxy) in between, which
+refuses that, but the worker can still read the files of any container on the
+host. The UI's `/data` holds `cashpilot.db` and `.fernet_key`: the credential
 store and the only key that can decrypt it.
 
 Keeping them apart means a compromised or misbehaving worker cannot simply read

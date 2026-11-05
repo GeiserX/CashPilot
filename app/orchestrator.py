@@ -41,6 +41,7 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
+from app import socket_policy  # noqa: E402
 from app.constants import (  # noqa: E402
     CASHPILOT_DEPLOYED,
     CONTAINER_PREFIX,
@@ -128,11 +129,101 @@ def _get_client() -> docker.DockerClient:
         return client
     except DockerException as exc:
         _mark_docker_unavailable("client connect failed", exc)
+        if proxied():
+            raise RuntimeError(
+                "The Docker socket proxy is not answering. Check that the "
+                f"{PROXY_SERVICE} container is running (docker compose ps) and "
+                f"read its log (docker logs {PROXY_SERVICE})."
+            ) from exc
         raise RuntimeError(
             "Docker socket not available. Mount /var/run/docker.sock to "
             "enable container management, or use CashPilot in monitor-only "
             "mode for earnings tracking and compose file export."
         ) from exc
+
+
+# ---------------------------------------------------------------------------
+# Docker socket proxy
+#
+# The shipped compose files give the worker no Docker socket. A pinned
+# sockguard container holds it and serves a filtered copy as a unix socket in
+# the named volume below; DOCKER_HOST points every docker.from_env() at it.
+# The proxy reads request bodies, so it refuses a privileged container, a bind
+# of / or of the socket, an added capability outside the catalog's, and exec
+# of anything but the catalog's readers. The policy is in the compose file.
+# ---------------------------------------------------------------------------
+
+#: Where the proxy's socket is mounted, in the worker and in the update helper.
+PROXY_SOCKET_DIR = "/run/cashpilot-docker"
+#: The named volume that carries it. Fixed name (`name:` in compose), so the
+#: update helper can mount it whatever the compose project is called.
+PROXY_VOLUME = "cashpilot-docker-api"
+#: The proxy's compose service and container name.
+PROXY_SERVICE = "cashpilot-socket-proxy"
+#: Host paths the proxy lets the worker bind, as the compose file passes them.
+COMPOSE_DIR_ENV = "CASHPILOT_COMPOSE_DIR"
+BIND_MOUNTS_ENV = "CASHPILOT_PROXY_BIND_MOUNTS"
+
+
+def proxied() -> bool:
+    """True when the worker reaches Docker through the socket proxy."""
+    return os.getenv("DOCKER_HOST", "").strip().startswith(f"unix://{PROXY_SOCKET_DIR}/")
+
+
+def docker_access() -> str:
+    """How the worker reaches Docker, "proxy" or "socket", for the status page."""
+    return "proxy" if proxied() else "socket"
+
+
+_policy_digest: str | None = None
+
+
+def proxy_policy_current() -> bool | None:
+    """Whether the proxy's policy is the one this worker image was built for.
+
+    The policy sits in the operator's compose file, which an image update never
+    rewrites, while the catalog in the image can need new exec readers,
+    capabilities or Docker calls. The compose file gives the worker the policy's
+    fingerprint (CASHPILOT_PROXY_POLICY); a different one means the proxy runs
+    an older (or newer) policy than the image expects. None when not proxied.
+    """
+    global _policy_digest
+    if not proxied():
+        return None
+    if _policy_digest is None:
+        _policy_digest = socket_policy.digest()
+    return os.getenv("CASHPILOT_PROXY_POLICY", "").strip() == _policy_digest
+
+
+def proxy_refusal(exc: BaseException) -> str | None:
+    """The proxy's reason for refusing a call, as a sentence, or None.
+
+    sockguard answers a refused call with 403 and a JSON body whose ``reason``
+    names the rule. docker-py keeps only the body's ``message`` (the generic
+    "request denied by sockguard policy") as the explanation, so the reason is
+    read from the response. Anything that is not the proxy's 403, Docker's own
+    errors included, returns None and keeps its existing handling.
+    """
+    if getattr(exc, "status_code", None) != 403:
+        return None
+    response = getattr(exc, "response", None)
+    try:
+        body = response.json() if response is not None else None
+    except Exception:  # noqa: BLE001 - not JSON: not the proxy
+        return None
+    if not isinstance(body, dict):
+        return None
+    message = " ".join(str(body.get("message") or "").split())
+    if "sockguard" not in message and "policy denied" not in message:
+        return None
+    reason = " ".join(str(body.get("reason") or message).split())[:300]
+    text = f"The Docker socket proxy refused this: {reason}."
+    if "bind" in reason.lower() or "mount" in reason.lower():
+        text += (
+            f" To let containers use a host folder, add it to {BIND_MOUNTS_ENV} in the .env "
+            "next to your compose file (comma-separated), then run docker compose up -d."
+        )
+    return text
 
 
 def _container_name(slug: str, instance: int = 1) -> str:
@@ -580,6 +671,22 @@ def _runtime_overrides() -> dict[str, str]:
     return overrides
 
 
+def _proxy_allows_runtime(slug: str, runtime: str) -> str:
+    """Refuse, before anything is touched, a runtime the socket proxy would refuse.
+
+    The daemon may offer more runtimes (io.containerd.runc.v2, nvidia, crun,
+    kata) than the proxy policy allows; a create the proxy refuses comes after
+    the old container is gone, so it is caught here instead.
+    """
+    if proxied() and runtime not in socket_policy.ALLOWED_RUNTIMES:
+        raise ContainerRuntimeError(
+            f"{slug} would run under the {runtime!r} runtime, and the Docker socket proxy allows only "
+            f"{', '.join(socket_policy.ALLOWED_RUNTIMES)}. The running container was not touched. Pick one "
+            f"of those in CASHPILOT_CONTAINER_RUNTIME or its overrides, or deploy without a runtime."
+        )
+    return runtime
+
+
 def container_runtime(slug: str, network_mode: str | None, requested: str | None) -> str | None:
     """The runtime a new container runs under, or None for Docker's default.
 
@@ -594,12 +701,13 @@ def container_runtime(slug: str, network_mode: str | None, requested: str | None
     file cannot take a service down.
     """
     if requested:
-        return requested
+        return _proxy_allows_runtime(slug, requested)
     if (network_mode or "bridge") != "bridge":
         return None
     runtime = _runtime_overrides().get(slug, _CONTAINER_RUNTIME)
     if not runtime:
         return None
+    _proxy_allows_runtime(slug, runtime)
     available = available_runtimes()
     if available is None:
         raise ContainerRuntimeError(
@@ -712,6 +820,17 @@ def deploy_raw(
             )
         if kept_mounts is not None:
             kept_mounts.extend(kept)
+        # A kept mount is the running container's own, never checked against
+        # the proxy's folders by the worker API. One the proxy will not bind
+        # would otherwise be found only after the running node is gone.
+        refused = _outside_proxy_roots(volumes)
+        if refused:
+            raise ContainerRuntimeError(
+                f"{name} keeps its data in {', '.join(refused)}, and the Docker socket proxy does not let "
+                f"containers bind that folder, so the replacement could not be created. The running "
+                f"container was not touched. Add the folder to {BIND_MOUNTS_ENV} in the .env next to your "
+                "compose file (comma-separated), then run docker compose up -d."
+            )
         # Stop it the way stop and restart do, with the catalog's timeout, before
         # removing it. remove(force=True) alone is SIGKILL: a storage node gets no
         # chance to flush (storj declares 300 s for that reason) and pays for it
@@ -1474,6 +1593,8 @@ def self_update_info() -> dict[str, Any]:
         "worker_image": "",
         "ui_image": "",
         "updater_running": False,
+        "docker_access": docker_access(),
+        "proxy_policy_current": proxy_policy_current(),
     }
     if me is not None:
         project = _compose_project(me)
@@ -1550,10 +1671,14 @@ def _resolve_compose_config(
             volumes={path: {**spec, "mode": "ro"} for path, spec in volumes.items()},
             environment=environment,
             labels={"cashpilot.updater": "check"},
+            security_opt=["no-new-privileges:true"],
             detach=True,
         )
     except APIError as exc:
         logger.warning("Self-update preflight failed to start: %s", exc)
+        refusal = proxy_refusal(exc)
+        if refusal:
+            raise SelfUpdateUnavailable(f"Not updating. {refusal}") from exc
         raise RuntimeError("Docker refused to start the update helper.") from exc
     try:
         try:
@@ -1579,6 +1704,102 @@ def _resolve_compose_config(
     finally:
         with contextlib.suppress(Exception):
             check.remove(force=True)
+
+
+def _proxy_bind_roots() -> list[str]:
+    """The host folders the proxy lets containers bind, as the worker was told.
+
+    The compose file hands the proxy and the worker the same two variables, so
+    the worker can refuse an update the proxy would refuse, with a sentence
+    instead of a 403 halfway through.
+    """
+    roots: list[str] = []
+    for raw in (os.getenv("CASHPILOT_COMPOSE_DIR", ""), *os.getenv("CASHPILOT_PROXY_BIND_MOUNTS", "").split(",")):
+        path = raw.strip()
+        if path.startswith("/"):
+            roots.append(path.rstrip("/") or "/")
+    return roots
+
+
+def _within_proxy_roots(path: str, roots: list[str]) -> bool:
+    path = os.path.normpath(path)
+    return any(root == "/" or path == root or path.startswith(root + "/") for root in roots)
+
+
+def _outside_proxy_roots(volumes: dict[str, Any] | list[str] | None) -> list[str]:
+    """Host folders in a deploy's mounts the socket proxy would refuse; [] when not proxied."""
+    if not proxied() or not volumes:
+        return []
+    sources = [str(v).split(":", 1)[0] for v in volumes] if isinstance(volumes, list) else list(volumes)
+    roots = _proxy_bind_roots()
+    return [src for src in sources if src.startswith("/") and not _within_proxy_roots(src, roots)]
+
+
+def _compose_device_path(entry: Any) -> str:
+    if isinstance(entry, dict):
+        return str(entry.get("source") or "")
+    return str(entry).split(":", 1)[0]
+
+
+def _proxy_compose_refusals(cfg: dict[str, Any], services: list[str]) -> list[str]:
+    """What, in the resolved compose file, the socket proxy would refuse to create.
+
+    The update helper recreates the UI and the worker through the proxy, so a
+    service with a GPU, a device or a host folder outside the allowed ones would
+    fail after Compose has started. Listed per service, so the operator knows
+    which line to change.
+    """
+    roots = _proxy_bind_roots()
+    caps = set(socket_policy.ALLOWED_CAPABILITIES)
+    found: list[str] = []
+    for name in services:
+        svc = (cfg.get("services") or {}).get(name)
+        if not isinstance(svc, dict):
+            continue
+        why: list[str] = []
+        for vol in svc.get("volumes") or []:
+            if isinstance(vol, dict) and vol.get("type") == "bind":
+                source = str(vol.get("source") or "")
+                if source.startswith("/") and not _within_proxy_roots(source, roots):
+                    why.append(f"the host folder {source}")
+        for dev in svc.get("devices") or []:
+            if _compose_device_path(dev) not in socket_policy.ALLOWED_DEVICES:
+                why.append(f"the device {_compose_device_path(dev)}")
+        reservations = ((svc.get("deploy") or {}).get("resources") or {}).get("reservations") or {}
+        if svc.get("gpus") or reservations.get("devices"):
+            why.append("a GPU request")
+        if svc.get("privileged"):
+            why.append("privileged mode")
+        extra_caps = sorted({str(c).upper().removeprefix("CAP_") for c in svc.get("cap_add") or []} - caps)
+        if extra_caps:
+            why.append(f"the capabilities {', '.join(extra_caps)}")
+        runtime = svc.get("runtime")
+        if runtime and runtime not in socket_policy.ALLOWED_RUNTIMES:
+            why.append(f"the {runtime} runtime")
+        if why:
+            found.append(f"{name}, which asks for {', '.join(why)}")
+    return found
+
+
+def _check_proxy_binds(working_dir: str, extra_paths: list[str]) -> None:
+    """Refuse, with the line to paste, an update the proxy would not let bind its folders."""
+    compose_dir = os.getenv("CASHPILOT_COMPOSE_DIR", "").strip().rstrip("/")
+    if compose_dir != working_dir.rstrip("/"):
+        raise SelfUpdateUnavailable(
+            "The update helper needs your compose folder, and the Docker socket proxy lets "
+            "containers bind only the folders it was told about. Add this line to the .env "
+            f"next to your compose file, then run docker compose up -d once: "
+            f"{COMPOSE_DIR_ENV}={working_dir}"
+        )
+    roots = _proxy_bind_roots()
+    outside = [p for p in extra_paths if not _within_proxy_roots(p, roots)]
+    if outside:
+        raise SelfUpdateUnavailable(
+            f"This install reads its settings from {', '.join(outside)}, outside your compose folder, "
+            "and the Docker socket proxy will not let the update helper read it. Add the file's "
+            f"folder to {BIND_MOUNTS_ENV} in that settings file, then run docker compose up -d once, "
+            f"or update by hand: {_MANUAL_UPDATE}"
+        )
 
 
 def spawn_self_update() -> dict[str, Any]:
@@ -1670,6 +1891,9 @@ def spawn_self_update() -> dict[str, Any]:
             if not f.startswith(root):
                 env_mounts[f] = {"bind": f, "mode": "ro"}
 
+    if proxied():
+        _check_proxy_binds(working_dir, list(env_mounts))
+
     # Only one update at a time; checked before the preflight so a second
     # click does not even resolve the config.
     try:
@@ -1686,6 +1910,16 @@ def spawn_self_update() -> dict[str, Any]:
         raise RuntimeError("Docker refused to start the update helper.") from exc
 
     cfg = _resolve_compose_config(client, working_dir, environment, services, {**project_mount, **env_mounts})
+    if proxied():
+        refused = _proxy_compose_refusals(cfg, services)
+        if refused:
+            raise SelfUpdateUnavailable(
+                "Not updating: the Docker socket proxy would refuse to recreate "
+                + "; ".join(refused)
+                + ". Compose would stop halfway. A host folder can be allowed by adding it to "
+                f"{BIND_MOUNTS_ENV} in the .env next to your compose file; anything else has to go from the "
+                f"CashPilot services in that file, or update by hand: {_MANUAL_UPDATE}"
+            )
     drift = _port_drift(live, cfg)
     if drift:
         source = (
@@ -1700,6 +1934,15 @@ def spawn_self_update() -> dict[str, Any]:
             "Put the values there, or update by hand: " + _MANUAL_UPDATE
         )
 
+    if proxied():
+        # The helper gets what the worker has: the filtered socket, never the
+        # host's. Its compose pull and up then pass the same policy, and
+        # --no-deps keeps it from recreating the proxy it is talking through.
+        docker_mount = {PROXY_VOLUME: {"bind": PROXY_SOCKET_DIR, "mode": "rw"}}
+        helper_env = {**environment, "DOCKER_HOST": os.environ["DOCKER_HOST"].strip()}
+    else:
+        docker_mount = {"/var/run/docker.sock": {"bind": "/var/run/docker.sock", "mode": "rw"}}
+        helper_env = environment
     try:
         updater = client.containers.run(
             UPDATER_IMAGE,
@@ -1707,12 +1950,13 @@ def spawn_self_update() -> dict[str, Any]:
             command=["sh", "-c", _updater_script(services)],
             working_dir=working_dir,
             volumes={
-                "/var/run/docker.sock": {"bind": "/var/run/docker.sock", "mode": "rw"},
+                **docker_mount,
                 working_dir: {"bind": working_dir, "mode": "rw"},
                 **env_mounts,
             },
-            environment=environment,
+            environment=helper_env,
             labels={"cashpilot.updater": "true"},
+            security_opt=["no-new-privileges:true"],
             detach=True,
             remove=True,
         )
@@ -1723,6 +1967,9 @@ def spawn_self_update() -> dict[str, Any]:
         if getattr(exc, "status_code", None) == 409:
             raise SelfUpdateUnavailable("An update is already running (the helper name is in use).") from exc
         logger.warning("Self-update helper failed to start: %s", exc)
+        refusal = proxy_refusal(exc)
+        if refusal:
+            raise SelfUpdateUnavailable(f"Not updating. {refusal}") from exc
         raise RuntimeError("Docker refused to start the update helper.") from exc
 
     logger.info(
