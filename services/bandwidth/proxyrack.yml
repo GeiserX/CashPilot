@@ -90,3 +90,44 @@ collector:
 payout:
   model: internal
   notes: "Balance held by ProxyRack; withdrawn on request."
+
+# Provider rating: the verdicts behind the grade (method: services/_ratings.yml,
+# published at docs/ratings.md). The grade itself is computed, never written here.
+rating:
+  reviewed_on: "2026-11-04"
+  verdicts:
+    payout_record: unknown
+    payout_terms: unknown
+    account_safety: fair
+    terms_fit: good
+    traffic_transparency: unknown
+    privacy: unknown
+    identity_checks: unknown
+    support: unknown
+    earnings_realism: unknown
+    longevity: unknown
+  notes:
+    payout_record: ProxyRack's Trustpilot reviews are mostly from proxy buyers; one peer reports payouts
+      within three days and warns against deleting devices while a payout is pending. Not enough to judge.
+    payout_terms: Third-party reviews disagree on the minimum ($5 or $20) and the help page did not load
+      for us.
+    traffic_transparency: We could not load the peer program's terms.
+    privacy: The client is closed source; we could not load the privacy terms.
+    identity_checks: Not documented on pages we could load.
+    support: No peer-program pattern found.
+    earnings_realism: Not measured.
+    longevity: We could not confirm the legal entity on a page that loaded.
+  cons:
+  - text: ProxyRack's help centre says removing a device takes that device's earnings off your account,
+      and they come back only if the same device is added again.
+    criterion: account_safety
+    kind: terms
+    source: https://help.proxyrack.com/en/articles/6532814-my-earnings-were-removed
+    checked_on: "2026-11-04"
+  pros:
+  - text: ProxyRack publishes its own Docker image, proxyrack/pop, and accepts datacentre IPs at a lower
+      rate.
+    criterion: terms_fit
+    kind: terms
+    source: https://hub.docker.com/r/proxyrack/pop
+    checked_on: "2026-11-04"

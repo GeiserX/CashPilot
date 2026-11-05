@@ -66,3 +66,46 @@ collector:
 payout:
   model: unknown
   notes: "Not yet determined. Flagged rather than shown blank -- see CashPilot-luj."
+
+# Provider rating: the verdicts behind the grade (method: services/_ratings.yml,
+# published at docs/ratings.md). The grade itself is computed, never written here.
+rating:
+  reviewed_on: "2026-11-04"
+  verdicts:
+    payout_record: unknown
+    payout_terms: good
+    account_safety: unknown
+    terms_fit: good
+    traffic_transparency: unknown
+    privacy: unknown
+    identity_checks: unknown
+    support: unknown
+    earnings_realism: unknown
+    longevity: poor
+  notes:
+    payout_record: We found no user reports in a language we could check, and no payout of our own.
+    account_safety: No reports found.
+    traffic_transparency: 'The author of a widely used installer for it warns that some of the traffic
+      is used to send spam; one source, so not graded, but read it before running ProxyLite: https://github.com/spiritLHLS/proxylite-one-click-command-installation'
+    privacy: The client is closed source.
+    identity_checks: Not documented on pages we read.
+    support: No reports found.
+    earnings_realism: Not measured.
+  cons:
+  - text: The site's owner is hidden in its domain records, and we found no named company behind it.
+    criterion: longevity
+    kind: press
+    source: https://www.scamadviser.com/check-website/proxylite.ru
+    checked_on: "2026-11-04"
+  pros:
+  - text: A $5 minimum, by crypto or PayPal.
+    criterion: payout_terms
+    kind: our_experience
+    source: https://github.com/GeiserX/CashPilot/blob/main/services/bandwidth/proxylite.yml
+    checked_on: "2026-11-04"
+  - text: ProxyLite publishes a Docker image, proxylite/proxyservice, and accepts datacentre connections
+      at a lower rate.
+    criterion: terms_fit
+    kind: terms
+    source: https://hub.docker.com/r/proxylite/proxyservice
+    checked_on: "2026-11-04"

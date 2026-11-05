@@ -73,6 +73,8 @@ COPY --chown=cashpilot:root app/payout_read.py ./app/
 COPY --chown=cashpilot:root app/node_read.py ./app/
 COPY --chown=cashpilot:root app/arch.py ./app/
 COPY --chown=cashpilot:root app/catalog.py ./app/
+# catalog.py validates each entry's rating block with it (the rules ship in services/).
+COPY --chown=cashpilot:root app/ratings.py ./app/
 COPY --chown=cashpilot:root services/ ./services/
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh

@@ -64,6 +64,7 @@ from app import (
     power,
     preflight,
     producer_state,
+    ratings,
     setup_token,
     update_check,
     usage,
@@ -2783,6 +2784,8 @@ async def api_services_available(request: Request) -> list[dict[str, Any]]:
         # detail view already says so, and the wizard is the screen a new user
         # actually sees (CashPilot-p6s).
         svc["has_collector"] = slug in collector_map
+        # The grade and its top cons, computed from the published criteria.
+        svc["rating_result"] = ratings.for_service(svc)
         available.append(svc)
     return available
 
@@ -2821,6 +2824,8 @@ async def api_get_service(request: Request, slug: str) -> dict[str, Any]:
     # Worker id -> the image chosen instead of the catalog's, for the deploy
     # form's Image box and the custom-image badge. Absent workers use the catalog.
     svc["custom_images"] = {str(wid): image for wid, image in (await database.get_custom_images(slug)).items()}
+    # Only catalog services are graded; a service a user added is not reviewed.
+    svc["rating_result"] = ratings.for_service(None if svc.get("custom") else svc)
     return svc
 
 
