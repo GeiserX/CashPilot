@@ -132,6 +132,15 @@ its own value. To go back to loopback only, enter `localhost`: the form treats
 the prefilled `127.0.0.1` as untouched and keeps the address recorded for that
 machine.
 
+### Activity page
+
+Because the node shares the machine's network, the [Activity](../activity.md)
+page matches its connections by the node's cgroup rather than by a network of
+its own. The row shows the node's destinations and alerts, but not its
+connection counters, which are the machine's. Traffic the node forwards for VPN
+customers is routed by the kernel and does not appear there. On a cgroup v1
+machine the row reads "host network: cannot be told apart".
+
 ## Troubleshooting
 
 ### "Running but not earning": monitoring failed, quality 0

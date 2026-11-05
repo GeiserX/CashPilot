@@ -297,6 +297,8 @@ def _load_or_create_client_id() -> str:
 
 
 CLIENT_ID: str = _load_or_create_client_id()
+# Activity probes carry it, so two workers on one Docker host never remove each other's.
+activity.WORKER_ID = CLIENT_ID
 
 
 def _active_key() -> str:
