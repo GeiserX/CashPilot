@@ -10,6 +10,16 @@ Every release, grouped by what changed. Generated from commit history.
 Releases before `1.0.0` were recorded by hand and are kept verbatim in
 [docs/changelog-0.x-handwritten.md](docs/changelog-0.x-handwritten.md).
 
+## [1.65.3] - 2026-11-05
+
+### Documentation
+
+- Regenerate CHANGELOG.md (#578)
+
+### Fixes
+
+- Stop redeploys piling up anonymous volumes and deletes orphaning a deploying container (#570)
+
 ## [1.65.2] - 2026-11-05
 
 ### Documentation
