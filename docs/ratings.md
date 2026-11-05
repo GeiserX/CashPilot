@@ -2,7 +2,7 @@
 
 Every provider CashPilot can run or track gets a letter grade. The grade comes from the same ten questions, asked of every provider the same way, and each answer rests on a source you can open: the provider's own terms or help pages, its replies to users, a repeated pattern in user reports, or what happened when we ran it and cashed out.
 
-Nobody types a grade. Each provider's entry in the catalog records a verdict per question (good, fair, poor or unknown) with the cons and pros behind it, and the code turns those verdicts into the letter. The entry has no field for a grade or an override, and a catalog entry that tries is shown as not rated and fails our checks. The app shows the grade; CashPilot-Desktop does not show grades yet.
+Nobody types a grade. Each provider's entry in the catalog records a verdict per question (good, fair, poor or unknown) with the cons and pros behind it, and the code turns those verdicts into the letter. The entry has no field for a grade or an override, and a catalog entry that tries is shown as not rated and fails our checks. The web app and CashPilot-Desktop both show the grade, computed from the same published method.
 
 ## Why nothing gets an A
 
@@ -88,12 +88,12 @@ What a cited con or pro may rest on:
 | <a href="#earnfm">Earn.fm</a> | F | 5 of 20 | 6 | 2026-11-04 | A $15 minimum, a $1 to $3 fee on USDT, and a bank wire only from $1,000. |
 | <a href="#ebesucher">Ebesucher</a> | F | 5 of 20 | 7 | 2026-11-04 | CashPilot does not run eBesucher: it is a browser extension, so CashPilot cannot deploy or update it for you. Its terms were not checked for containers. |
 | <a href="#flux">Flux</a> | F | 5 of 20 | 6 | 2026-11-04 | The smallest node tier needs 1,000 FLUX locked as collateral. |
-| <a href="#salad">Salad</a> | F | 5 of 20 | 6 | 2026-11-04 | Trustpilot's own summary of its reviews says some reviewers find earnings low and often not enough to cover electricity and hardware wear; one October 2026 reviewer says an RTX 3090 barely covered its electricity. |
 | <a href="#sentinel-dvpn">Sentinel dVPN</a> | F | 5 of 20 | 6 | 2026-11-04 | Payments are in the P2P token, and 20% of every bandwidth payment goes to stakers rather than the node host. |
 | <a href="#traffmonetizer">Traffmonetizer</a> | F | 5 of 20 | 4 | 2026-11-04 | Trustpilot rates it 1.9; reviewers from 2023 to November 2026 report payouts pending for weeks, or marked completed with no matching transaction. |
 | <a href="#vast-ai">Vast.ai</a> | F | 5 of 20 | 7 | 2026-11-04 | A host earns only while rented, and Vast's own figures for a consumer GPU depend on rental type and reliability score. |
 | <a href="#helium">Helium</a> | F | 4 of 20 | 6 | 2026-11-04 | HIP 149 retired Proof-of-Coverage rewards on 6 July 2026; IoT hotspots now earn only for data they carry, and more than 114,000 of them carried none. |
 | <a href="#proxylite">ProxyLite</a> | F | 4 of 20 | 7 | 2026-11-04 | The site's owner is hidden in its domain records, and we found no named company behind it. |
+| <a href="#salad">Salad</a> | F | 4 of 20 | 7 | 2026-11-04 | Rewards are redeemed in Salad's own storefront for PayPal or gift cards, with no crypto. Trustpilot's summary says some payment methods are hard to use in some regions, and reviewers describe a Visa card that cannot be added to Apple Pay in Europe and no payout option for India. |
 | <a href="#bytebenefit">Bytebenefit</a> | F | 3 of 20 | 7 | 2026-11-04 | The app's Google Play listing says your traffic serves web-intelligence requests by Infatica's clients, without saying who they are or how they are checked. |
 | <a href="#grass">Grass</a> | F | 3 of 20 | 6 | 2026-11-04 | Rewards come only through airdrop seasons. Long-running node operators reported season 2 estimates in the single to low double-digit dollar range. |
 | <a href="#ionet">io.net</a> | F | 3 of 20 | 6 | 2026-11-04 | Supplier rewards were paid from token emissions regardless of paid jobs, and GPU owners report sitting idle most of the time. |
@@ -106,7 +106,7 @@ What a cited con or pro may rest on:
 | <a href="#uprock">Uprock</a> | F | 2 of 20 | 7 | 2026-11-04 | Trustpilot reviewers reported a 255 UPT minimum and a 55 UPT fee to withdraw to a wallet; these reports are old and the current terms may differ. |
 | <a href="#dawn">Dawn Internet</a> | F | 1 of 20 | 7 | 2026-11-04 | The extension earns points; no token distribution to node operators had been confirmed by October 2026. |
 | <a href="#deeper-network">Deeper Network</a> | F | 1 of 20 | 8 | 2026-11-04 | Mining rewards are in DPR and depend on a credit score that grows slowly or by staking DPR. |
-| <a href="#spide">Spide</a> | F | 1 of 20 | 8 | 2026-11-04 | Spide's homepage calculator shows an example of about $45 a month, far above our catalog estimate of $0 to $3 for one device. |
+| <a href="#spide">Spide</a> | F | 1 of 20 | 9 | 2026-11-04 | CashPilot does not run Spide: you use the provider's own app, so CashPilot cannot deploy or update it for you. Its terms were not checked for containers. |
 | <a href="#teneo">Teneo Protocol</a> | F | 1 of 20 | 7 | 2026-11-04 | Teneo says points will be consolidated into $AGENTIC, a non-transferable reward token, not the $TENEO token. |
 | <a href="#theta-edge">Theta Edge Node</a> | F | 1 of 20 | 9 | 2026-11-04 | CashPilot does not run Theta Edge: you use the provider's own desktop app, so CashPilot cannot deploy or update it for you. Its terms were not checked for containers. |
 | <a href="#titan">Titan Network</a> | F | 1 of 20 | 8 | 2026-11-04 | Titan's own help says a running node does not guarantee earnings: with no task assigned it earns nothing, and rewards are in the TNT token. |
@@ -704,35 +704,6 @@ What a cited con or pro may rest on:
 
 - The Flux daemon is open source under the MIT licence. [Source](https://github.com/RunOnFlux/fluxd), checked 2026-11-04.
 
-<a id="salad"></a>
-
-### Salad
-
-**Grade F**, 5 of 20 points, 6 of 10 criteria unchecked, reviewed 2026-11-04. Setup guide: [Salad](guides/salad.md).
-
-| Criterion | Verdict | Note |
-|---|---|---|
-| Payout record | Good |  |
-| Payout terms | Fair |  |
-| Account safety | Unknown | No pattern found. |
-| Fit with how CashPilot runs it | Fair |  |
-| Traffic transparency | Unknown | Salad rents your GPU to its cloud customers; we did not find how they are checked. |
-| Privacy | Unknown | Not reviewed. |
-| Identity checks | Unknown | Not documented on pages we read. |
-| Support | Unknown | No pattern found. |
-| Earnings realism | Fair |  |
-| Longevity | Unknown | Not checked on a primary source. |
-
-**Cons**
-
-- Trustpilot's own summary of its reviews says some reviewers find earnings low and often not enough to cover electricity and hardware wear; one October 2026 reviewer says an RTX 3090 barely covered its electricity. [Source](https://www.trustpilot.com/review/salad.com), checked 2026-11-04.
-- Rewards are redeemed in Salad's own storefront for PayPal or gift cards, with no crypto. Trustpilot's summary says some payment methods are hard to use in some regions, and reviewers describe a Visa card that cannot be added to Apple Pay in Europe and no payout option for India. [Source](https://www.trustpilot.com/review/salad.com), checked 2026-11-04.
-- CashPilot does not run Salad: you use the provider's own desktop app, so CashPilot cannot deploy or update it for you. Its terms were not checked for containers. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/compute/salad.yml), checked 2026-11-04.
-
-**Pros**
-
-- Several Trustpilot reviewers in October and November 2026 report PayPal cash-outs arriving quickly, some more than once; one reviewer in the same period says repeated cash-out attempts failed. [Source](https://www.trustpilot.com/review/salad.com), checked 2026-11-04.
-
 <a id="sentinel-dvpn"></a>
 
 ### Sentinel dVPN
@@ -878,6 +849,34 @@ What a cited con or pro may rest on:
 
 - A $5 minimum, by crypto or PayPal. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/bandwidth/proxylite.yml), checked 2026-11-04.
 - ProxyLite publishes a Docker image, proxylite/proxyservice, and accepts datacentre connections at a lower rate. [Source](https://hub.docker.com/r/proxylite/proxyservice), checked 2026-11-04.
+
+<a id="salad"></a>
+
+### Salad
+
+**Grade F**, 4 of 20 points, 7 of 10 criteria unchecked, reviewed 2026-11-04. Setup guide: [Salad](guides/salad.md).
+
+| Criterion | Verdict | Note |
+|---|---|---|
+| Payout record | Good |  |
+| Payout terms | Fair |  |
+| Account safety | Unknown | No pattern found. |
+| Fit with how CashPilot runs it | Fair |  |
+| Traffic transparency | Unknown | Salad rents your GPU to its cloud customers; we did not find how they are checked. |
+| Privacy | Unknown | Not reviewed. |
+| Identity checks | Unknown | Not documented on pages we read. |
+| Support | Unknown | No pattern found. |
+| Earnings realism | Unknown | Trustpilot's own summary says some reviewers find earnings low, and one October 2026 reviewer says an RTX 3090 barely covered its electricity. That is one site, short of the three matching reports a user-report con needs. |
+| Longevity | Unknown | Not checked on a primary source. |
+
+**Cons**
+
+- Rewards are redeemed in Salad's own storefront for PayPal or gift cards, with no crypto. Trustpilot's summary says some payment methods are hard to use in some regions, and reviewers describe a Visa card that cannot be added to Apple Pay in Europe and no payout option for India. [Source](https://www.trustpilot.com/review/salad.com), checked 2026-11-04.
+- CashPilot does not run Salad: you use the provider's own desktop app, so CashPilot cannot deploy or update it for you. Its terms were not checked for containers. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/compute/salad.yml), checked 2026-11-04.
+
+**Pros**
+
+- Several Trustpilot reviewers in October and November 2026 report PayPal cash-outs arriving quickly, some more than once; one reviewer in the same period says repeated cash-out attempts failed. [Source](https://www.trustpilot.com/review/salad.com), checked 2026-11-04.
 
 <a id="bytebenefit"></a>
 
@@ -1230,7 +1229,7 @@ What a cited con or pro may rest on:
 
 ### Spide
 
-**Grade F**, 1 of 20 points, 8 of 10 criteria unchecked, reviewed 2026-11-04. Setup guide: [Spide](guides/spide.md).
+**Grade F**, 1 of 20 points, 9 of 10 criteria unchecked, reviewed 2026-11-04. Setup guide: [Spide](guides/spide.md).
 
 | Criterion | Verdict | Note |
 |---|---|---|
@@ -1242,12 +1241,11 @@ What a cited con or pro may rest on:
 | Privacy | Unknown | Not reviewed. |
 | Identity checks | Unknown | Not documented. |
 | Support | Unknown | No reports found. |
-| Earnings realism | Poor |  |
+| Earnings realism | Unknown | Spide's homepage calculator shows an example of about $45 a month. We found no user reports or measured figures to compare it with. |
 | Longevity | Unknown | We did not find the company behind Spide. |
 
 **Cons**
 
-- Spide's homepage calculator shows an example of about $45 a month, far above our catalog estimate of $0 to $3 for one device. [Source](https://spide.network/), checked 2026-11-04.
 - CashPilot does not run Spide: you use the provider's own app, so CashPilot cannot deploy or update it for you. Its terms were not checked for containers. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/bandwidth/spide.yml), checked 2026-11-04.
 
 **Pros**

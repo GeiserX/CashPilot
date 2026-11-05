@@ -82,7 +82,7 @@ rating:
     privacy: unknown
     identity_checks: unknown
     support: unknown
-    earnings_realism: poor
+    earnings_realism: unknown
     longevity: unknown
   notes:
     payout_record: We found no user reports or payout proof.
@@ -93,14 +93,10 @@ rating:
     privacy: Not reviewed.
     identity_checks: Not documented.
     support: No reports found.
+    earnings_realism: Spide's homepage calculator shows an example of about $45 a month. We found no
+      user reports or measured figures to compare it with.
     longevity: We did not find the company behind Spide.
   cons:
-  - text: Spide's homepage calculator shows an example of about $45 a month, far above our catalog estimate
-      of $0 to $3 for one device.
-    criterion: earnings_realism
-    kind: terms
-    source: https://spide.network/
-    checked_on: "2026-11-04"
   - text: 'CashPilot does not run Spide: you use the provider''s own app, so CashPilot cannot deploy or
       update it for you. Its terms were not checked for containers.'
     criterion: terms_fit

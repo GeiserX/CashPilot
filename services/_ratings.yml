@@ -7,8 +7,8 @@
 # letter. The rating block has no field for a typed grade or an override, and
 # the loader rejects an entry that has one.
 #
-# CashPilot-Desktop does not show grades yet: it reads the catalog but
-# ignores the rating block. When it does, it has to grade from this file too.
+# CashPilot-Desktop grades from this file too (internal/catalog/rating.go), so
+# a change to the criteria, points, bands or caps changes its grades as well.
 
 criteria:
   - key: payout_record
