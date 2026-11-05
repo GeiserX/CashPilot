@@ -2012,6 +2012,7 @@ body.gate { display: flex; flex-direction: column; }
   /* The Grade column took the slack: Manage and Add now stack in this range
      too, or a wide fallback font pushes the table past 713 px at 769. */
   .catalog-table .cat-act { white-space: normal; }
+  .catalog-table .cat-svc { overflow-wrap: anywhere; }
   .settings-layout { grid-template-columns: minmax(0, 1fr); gap: 0; }
   .settings-index { position: static; flex-direction: row; flex-wrap: wrap; gap: 0 12px; margin-bottom: 16px; }
   .settings-index a { border-left: none; padding-left: 0; }
