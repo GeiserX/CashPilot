@@ -166,6 +166,10 @@ def probe_kwargs(image: str, owner_id: str) -> dict[str, Any]:
         # volume is created at all, so none can leak.
         "tmpfs": {"/data": "size=64k"},
         "healthcheck": {"test": ["NONE"]},
+        # The output holds remote addresses. With the daemon's default driver
+        # (journald, syslog, a remote one) they would outlive the helper; a
+        # json-file log is deleted with it.
+        "log_config": {"type": "json-file", "config": {"max-size": "1m"}},
         "labels": {PROBE_LABEL: PROBE_KIND, WORKER_LABEL: WORKER_ID},
         "detach": True,
     }

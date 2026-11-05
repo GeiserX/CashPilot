@@ -76,8 +76,10 @@ for the dashboard's usage graphs; Activity stores no second byte counter.
     connection may be missed; the helper does not even ask for them, so a
     busy host does not run it out of memory;
   - when the kernel answers only part of the socket list (one without UDP
-    socket listing, for example) or the list passes 200,000 sockets, the row
-    keeps what it read and shows the `+`, so it never passes as complete;
+    socket listing, for example), the list passes 200,000 sockets, the socket
+    table changed while the kernel listed it, or the earner's cgroup tree is
+    deeper or larger than the helper reads, the row keeps what it read and
+    shows the `+`, so it never passes as complete;
   - the connection counters are the machine's, so opens and failures show a
     dash;
   - traffic an earner forwards for VPN customers is routed by the kernel, not
@@ -113,7 +115,8 @@ The helper is the worker's own image, so nothing new is pulled. It runs with
 the same floor as the [isolation check](isolation-check.md)'s probes, and
 lower: user 65534, no capabilities, read-only filesystem, no new privileges,
 32 processes and 48 MB at most, a 64 KB tmpfs at `/data` so no volume is
-created, and the labels `cashpilot.probe=activity` and
+created, a `json-file` log (so the addresses it prints are deleted with it,
+whatever log driver the daemon uses by default), and the labels `cashpilot.probe=activity` and
 `cashpilot.probe.worker=<worker id>`. Its name carries a short hash of the
 worker id too, so two workers on one Docker host never collide. It is removed
 on every path. At start and before every round the worker removes any helper

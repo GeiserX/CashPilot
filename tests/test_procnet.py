@@ -333,8 +333,8 @@ def _diag_msg(family, state, sport, dport, src, dst, cgroup=None, pad_attr=False
     return struct.pack("=IHHII", 16 + len(body), procnet.SOCK_DIAG_BY_FAMILY, 2, 1, 0) + body
 
 
-def _done():
-    return struct.pack("=IHHII", 20, procnet.NLMSG_DONE, 2, 1, 0) + b"\0" * 4
+def _done(flags=2):
+    return struct.pack("=IHHII", 20, procnet.NLMSG_DONE, flags, 1, 0) + b"\0" * 4
 
 
 def _error(errno):
@@ -345,8 +345,8 @@ class TestParseDiag:
     def test_reads_addresses_ports_state_and_cgroup(self):
         data = _diag_msg(socket.AF_INET, 1, 40000, 443, "10.0.0.5", "1.1.1.1", cgroup=4242, pad_attr=True)
         data += _diag_msg(socket.AF_INET6, 10, 4449, 0, "::", "::")
-        socks, done, err = procnet.parse_diag(data, "tcp")
-        assert (done, err) == (False, 0)
+        socks, done, err, intr = procnet.parse_diag(data, "tcp")
+        assert (done, err, intr) == (False, 0, False)
         assert socks == [
             {
                 "proto": "tcp",
@@ -363,19 +363,24 @@ class TestParseDiag:
     def test_udp_state_is_connected_or_not(self):
         data = _diag_msg(socket.AF_INET, 7, 5000, 53, "10.0.0.5", "9.9.9.9", cgroup=7)
         data += _diag_msg(socket.AF_INET, 7, 5001, 0, "0.0.0.0", "0.0.0.0", cgroup=7)
-        socks, _, _ = procnet.parse_diag(data, "udp")
+        socks, _, _, _ = procnet.parse_diag(data, "udp")
         assert [s["state"] for s in socks] == ["est", "other"]
 
     def test_done_and_error_end_the_dump(self):
-        socks, done, err = procnet.parse_diag(
+        socks, done, err, intr = procnet.parse_diag(
             _diag_msg(socket.AF_INET, 1, 1, 2, "10.0.0.1", "10.0.0.2", 3) + _done(), "tcp"
         )
-        assert len(socks) == 1 and (done, err) == (True, 0)
-        assert procnet.parse_diag(_error(13), "tcp") == ([], True, 13)
+        assert len(socks) == 1 and (done, err, intr) == (True, 0, False)
+        assert procnet.parse_diag(_error(13), "tcp") == ([], True, 13, False)
+
+    def test_an_interrupted_dump_is_reported(self):
+        """The kernel sets NLM_F_DUMP_INTR on DONE when the table changed mid-dump."""
+        _, done, err, intr = procnet.parse_diag(_done(2 | procnet.NLM_F_DUMP_INTR), "tcp")
+        assert (done, err, intr) == (True, 0, True)
 
     def test_a_truncated_message_stops_with_an_error(self):
         data = _diag_msg(socket.AF_INET, 1, 1, 2, "10.0.0.1", "10.0.0.2", 3)
-        assert procnet.parse_diag(data[:-4], "tcp") == ([], True, -1)
+        assert procnet.parse_diag(data[:-4], "tcp") == ([], True, -1, False)
 
 
 class TestCgroupIds:
@@ -428,8 +433,44 @@ class TestCgroupIds:
         mine = root / self.CID
         for i in range(50):
             (mine / f"c{i:02d}").mkdir(parents=True)
-        ids, _ = procnet.cgroup_ids(self.CID, root=str(root), max_dirs=5)
+        ids, reason = procnet.cgroup_ids(self.CID, root=str(root), max_dirs=5)
         assert 1 <= len(ids) <= 5
+        assert reason == "cgroup_partial", "a subtree cut by the cap must not pass as complete"
+
+    def test_a_subtree_past_the_depth_limit_is_partial(self, tmp_path):
+        root = self._tree(tmp_path)
+        mine = root / "a" / self.CID
+        (mine / "init").mkdir(parents=True)
+        # The container's cgroup sits at the last depth read; its child is never read.
+        ids, reason = procnet.cgroup_ids(self.CID, root=str(root), max_depth=2)
+        assert ids == {mine.stat().st_ino} and reason == "cgroup_partial"
+        assert procnet.cgroup_ids(self.CID, root=str(root), max_depth=3) == (
+            {mine.stat().st_ino, (mine / "init").stat().st_ino},
+            "",
+        )
+
+    def test_the_cap_inside_the_containers_own_directory_is_partial(self, tmp_path):
+        root = self._tree(tmp_path)
+        mine = root / self.CID
+        for i in range(50):
+            (mine / f"c{i:02d}").mkdir(parents=True)
+        # Children sit at the last depth read, so only the unread rest of the directory is cut.
+        assert procnet.cgroup_ids(self.CID, root=str(root), max_depth=2, max_dirs=5)[1] == "cgroup_partial"
+
+    def test_the_cap_before_a_queued_child_is_read_is_partial(self, tmp_path):
+        root = self._tree(tmp_path)
+        (root / self.CID / "init").mkdir(parents=True)
+        for i in range(3):
+            (root / f"x{i}").mkdir()
+        # The root's four directories use the whole cap; the container's child stays unread.
+        ids, reason = procnet.cgroup_ids(self.CID, root=str(root), max_dirs=4)
+        assert ids == {(root / self.CID).stat().st_ino} and reason == "cgroup_partial"
+
+    def test_a_leaf_at_the_depth_limit_is_complete(self, tmp_path):
+        root = self._tree(tmp_path)
+        mine = root / "a" / self.CID
+        mine.mkdir(parents=True)
+        assert procnet.cgroup_ids(self.CID, root=str(root), max_depth=2) == ({mine.stat().st_ino}, "")
 
 
 def _sock(lport, cgroup, rip="1.1.1.1"):
@@ -481,6 +522,11 @@ class TestCgroupSnapshot:
 
         mine, _, worked, partial = procnet.cgroup_snapshot({10}, procnet.DIAG_DUMPS, dump)
         assert len(mine) == 2 and worked == 2 and partial is True
+
+    def test_an_empty_dump_is_no_evidence_against_the_kernel(self):
+        """No socket at all says nothing about cgroup ids: never report kernel_no_cgroup_id for it."""
+        mine, tagged, worked, partial = procnet.cgroup_snapshot({10}, (("tcp", 2, 6),), _dump_of([]))
+        assert mine == [] and tagged is True and worked == 1 and partial is False
 
     def test_a_capped_dump_makes_the_reading_partial(self):
         _, _, _, partial = procnet.cgroup_snapshot({10}, (("tcp", 2, 6),), _dump_of([_sock(1, 10)], truncated=True))
@@ -541,6 +587,14 @@ class TestDiagDump:
         _, (found, truncated) = self._dump(monkeypatch, [batch, batch, _done()], keep=lambda s: True, cap=6)
         assert truncated is True and len(found) <= 6
 
+    def test_an_interrupted_dump_is_truncated(self, monkeypatch):
+        """A dump the kernel marks interrupted may miss sockets: report it, never raise."""
+        batch = _diag_msg(socket.AF_INET, 1, 40000, 443, "10.0.0.5", "1.1.1.1", cgroup=7)
+        _, (found, truncated) = self._dump(
+            monkeypatch, [batch, _done(2 | procnet.NLM_F_DUMP_INTR)], keep=lambda s: True
+        )
+        assert len(found) == 1 and truncated is True
+
 
 class TestCgroupReading:
     CID = "ab" * 32
@@ -555,6 +609,11 @@ class TestCgroupReading:
         self._patch(monkeypatch, snap=([_sock(1, 5)], True, 4))
         snaps, reason, partial = procnet._cgroup_reading(self.CID, 3, 0)
         assert reason == "" and len(snaps) == 3 and partial is False
+
+    def test_a_partial_cgroup_walk_makes_the_reading_partial(self, monkeypatch):
+        self._patch(monkeypatch, ids=({5}, "cgroup_partial"), snap=([_sock(1, 5)], True, 4))
+        snaps, reason, partial = procnet._cgroup_reading(self.CID, 2, 0)
+        assert reason == "" and len(snaps) == 2 and partial is True
 
     def test_a_partial_snapshot_makes_the_reading_partial(self, monkeypatch):
         self._patch(monkeypatch, snap=([_sock(1, 5)], True, 2, True))

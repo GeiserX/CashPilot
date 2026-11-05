@@ -306,6 +306,8 @@ NETLINK_SOCK_DIAG = 4
 SOCK_DIAG_BY_FAMILY = 20
 NLM_F_REQUEST = 0x1
 NLM_F_DUMP = 0x300
+#: Set on NLMSG_DONE when the table changed during the dump, so the dump may miss sockets.
+NLM_F_DUMP_INTR = 0x10
 NLMSG_ERROR = 2
 NLMSG_DONE = 3
 #: enum in include/uapi/linux/inet_diag.h; emitted for every full socket since Linux 5.8.
@@ -344,26 +346,27 @@ def _diag_addr(raw, family):
 
 
 def parse_diag(data, proto):
-    """(sockets, done, error) from one netlink read of a sock_diag dump.
+    """(sockets, done, error, interrupted) from one netlink read of a sock_diag dump.
 
     Each socket is the dict parse_sockets makes, plus ``cgroup``: the cgroup v2
     id the kernel reported, or None when it reported none (TIME_WAIT and
     request sockets never carry one). ``done`` is True at NLMSG_DONE; ``error``
-    is the errno of an NLMSG_ERROR, else 0.
+    is the errno of an NLMSG_ERROR, else 0. ``interrupted`` is True when the
+    kernel ended the dump with NLM_F_DUMP_INTR: the table changed meanwhile.
     """
     family = "udp" if proto.startswith("udp") else "tcp"
     found, off = [], 0
     while off + _NLMSG_HDR.size <= len(data):
-        length, kind, _flags, _seq, _pid = _NLMSG_HDR.unpack_from(data, off)
+        length, kind, flags, _seq, _pid = _NLMSG_HDR.unpack_from(data, off)
         if length < _NLMSG_HDR.size or off + length > len(data):
-            return found, True, -1
+            return found, True, -1, False
         body = data[off + _NLMSG_HDR.size : off + length]
         off += _align4(length)
         if kind == NLMSG_DONE:
-            return found, True, 0
+            return found, True, 0, bool(flags & NLM_F_DUMP_INTR)
         if kind == NLMSG_ERROR:
             err = struct.unpack_from("=i", body)[0] if len(body) >= 4 else -1
-            return found, True, -err if err < 0 else err
+            return found, True, (-err if err < 0 else err), False
         if kind != SOCK_DIAG_BY_FAMILY or len(body) < _DIAG_MSG.size:
             continue
         fam, state, _t, _r, sport, dport, src, dst, _if, _exp, _rq, _wq, _uid, _ino = _DIAG_MSG.unpack_from(body)
@@ -393,7 +396,7 @@ def parse_diag(data, proto):
         else:
             sock["state"] = STATES.get(f"{state:02X}", "other")
         found.append(sock)
-    return found, False, 0
+    return found, False, 0, False
 
 
 def diag_dump(proto, family, ipproto, keep=None, cap=MAX_DIAG_MESSAGES):
@@ -401,7 +404,7 @@ def diag_dump(proto, family, ipproto, keep=None, cap=MAX_DIAG_MESSAGES):
 
     ``keep`` filters each socket as it is read, so memory follows what is kept,
     not the host's whole table. ``truncated`` is True when ``cap`` sockets were
-    read before the dump ended. Raises OSError when netlink refuses (no socket,
+    read before the dump ended, or the kernel marked the dump interrupted. Raises OSError when netlink refuses (no socket,
     or an error reply).
     """
     req = _DIAG_REQ.pack(family, ipproto, 0, DIAG_STATES)
@@ -414,14 +417,14 @@ def diag_dump(proto, family, ipproto, keep=None, cap=MAX_DIAG_MESSAGES):
         s.settimeout(5)
         s.sendto(msg, (0, 0))
         while True:
-            sockets, done, err = parse_diag(s.recv(1 << 16), proto)
+            sockets, done, err, interrupted = parse_diag(s.recv(1 << 16), proto)
             if err:
                 raise OSError(err, "sock_diag")
             sockets = sockets[: cap - read]
             read += len(sockets)
             found.extend(x for x in sockets if keep is None or keep(x))
             if done:
-                return found, False
+                return found, interrupted
             if read >= cap:
                 return found, True
 
@@ -432,21 +435,23 @@ def cgroup_ids(container_id, root=CGROUP_ROOT, max_depth=CGROUP_MAX_DEPTH, max_d
     The container's cgroup is the directory whose name holds its full id
     (cgroupfs ``docker/<id>``, systemd ``docker-<id>.scope``, podman
     ``libpod-<id>.scope``); a cgroup's id is its directory's inode number.
-    ``reason`` is "" on success, else cgroup_v1 or cgroup_missing.
+    ``reason`` is "" on success, else cgroup_v1 or cgroup_missing, or
+    cgroup_partial when the container's cgroup was found but a walk limit
+    left part of its subtree unread (the ids are then incomplete).
     """
     if not os.path.exists(os.path.join(root, "cgroup.controllers")):
         return set(), "cgroup_v1"
     cid = str(container_id or "").lower()
     if len(cid) != 64 or any(c not in "0123456789abcdef" for c in cid):
         return set(), "cgroup_missing"
-    queue, seen, ids = [(root, 0, False)], 0, set()
+    queue, seen, ids, cut = [(root, 0, False)], 0, set(), False
     while queue and seen < max_dirs:
         path, depth, inside = queue.pop()
         try:
             entries = list(os.scandir(path))
         except OSError:
             continue
-        for e in entries:
+        for i, e in enumerate(entries):
             try:
                 if not e.is_dir(follow_symlinks=False):
                     continue
@@ -455,17 +460,35 @@ def cgroup_ids(container_id, root=CGROUP_ROOT, max_depth=CGROUP_MAX_DEPTH, max_d
                 continue
             seen += 1
             if seen > max_dirs:
+                # The rest of this directory is unread: it matters only if it is the container's.
+                cut = cut or inside or any(cid in x.name for x in entries[i:])
                 break
             mine = inside or cid in e.name
             if mine:
                 ids.add(ino)
             if depth + 1 < max_depth:
                 queue.append((e.path, depth + 1, mine))
-    return ids, "" if ids else "cgroup_missing"
+            elif mine and _has_subdir(e.path):
+                cut = True
+    # A directory of the container's subtree still queued was never read.
+    cut = cut or any(mine for _, _, mine in queue)
+    if not ids:
+        return ids, "cgroup_missing"
+    return ids, "cgroup_partial" if cut else ""
+
+
+def _has_subdir(path):
+    try:
+        return any(e.is_dir(follow_symlinks=False) for e in os.scandir(path))
+    except OSError:
+        return False
 
 
 def cgroup_snapshot(ids, dumps=DIAG_DUMPS, dump=None):
-    """(sockets of these cgroups, any socket carried a real cgroup id, dumps that worked, partial).
+    """(sockets of these cgroups, tagged, dumps that worked, partial).
+
+    ``tagged`` is True when any socket carried a real cgroup id, or when the
+    dumps held no socket at all, so there was nothing to judge the kernel by.
 
     An id of 1 is the root cgroup, which is also what every socket reports when
     the cgroup v1 net_cls or net_prio controller is active: a host where no
@@ -474,10 +497,11 @@ def cgroup_snapshot(ids, dumps=DIAG_DUMPS, dump=None):
     reading misses sockets.
     """
     dump = dump or diag_dump
-    tagged = False
+    tagged, seen = False, False
 
     def keep(s):
-        nonlocal tagged
+        nonlocal tagged, seen
+        seen = True
         cg = s.get("cgroup")
         if cg is None:
             # Never match a missing id: TIME_WAIT and request sockets carry
@@ -498,7 +522,7 @@ def cgroup_snapshot(ids, dumps=DIAG_DUMPS, dump=None):
         for s in sockets:
             s.pop("cgroup", None)
             mine.append(s)
-    return mine, tagged, worked, partial and worked > 0
+    return mine, tagged or not seen, worked, partial and worked > 0
 
 
 def _read(path):
@@ -552,9 +576,10 @@ def _ctx_from_env():
 def _cgroup_reading(container_id, snapshots_n, gap):
     """(snapshots, reason, partial) of the sockets of one container's cgroups in this network namespace."""
     ids, reason = cgroup_ids(container_id)
-    if reason:
+    cut = reason == "cgroup_partial"
+    if reason and not cut:
         return [], reason, False
-    snapshots, tagged, worked, partial = [], False, 0, False
+    snapshots, tagged, worked, partial = [], False, 0, cut
     for i in range(snapshots_n):
         if i:
             time.sleep(gap)

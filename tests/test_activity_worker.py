@@ -194,6 +194,7 @@ class TestProbeKwargs:
             "mem_limit": "48m",
             "tmpfs": {"/data": "size=64k"},
             "healthcheck": {"test": ["NONE"]},
+            "log_config": {"type": "json-file", "config": {"max-size": "1m"}},
             "labels": {"cashpilot.probe": "activity", "cashpilot.probe.worker": WORKER},
             "detach": True,
         }
@@ -880,7 +881,17 @@ class TestHostNetworkByCgroup:
     def test_probe_kwargs_host_keeps_every_floor_key(self):
         net = activity.probe_kwargs("img", "m" * 64)
         host = activity.probe_kwargs_host("img", "m" * 64)
-        for key in ("user", "read_only", "cap_drop", "security_opt", "privileged", "pids_limit", "mem_limit", "tmpfs"):
+        for key in (
+            "user",
+            "read_only",
+            "cap_drop",
+            "security_opt",
+            "privileged",
+            "pids_limit",
+            "mem_limit",
+            "tmpfs",
+            "log_config",
+        ):
             assert host[key] == net[key], key
         assert host["user"] == "65534:65534" and host["cap_drop"] == ["ALL"] and host["privileged"] is False
         assert "cap_add" not in host and "volumes" not in host and "devices" not in host
