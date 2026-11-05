@@ -48,6 +48,7 @@ assert.doesNotMatch(row('grass'), /\/setup/);
 assert.match(row('grass'), />Visit</);
 // A row without a Details modal (no Docker image) still reaches the full rating:
 // the badge links to the provider's section of the ratings page.
+assert.match(row('grass'), /<td class="cat-grade"><span class="muted">not rated<\/span><\/td>/, 'an unrated row says not rated');
 assert.doesNotMatch(row('grass'), /grade-link/, 'an unrated row links nowhere');
 {
   const rated = { ...services.find(s => s.slug === 'grass'), rating_result: { rated: true, grade: 'F', top_cons: [{ text: 'A con.' }] } };
