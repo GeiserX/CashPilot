@@ -289,13 +289,18 @@ class TestValidator:
         block["pros"][0]["kind"] = ["terms"]
         assert any("kind must be one of" in e for e in _errors(block))
 
-    def test_requirements_that_are_not_a_mapping_are_an_error_not_a_crash(self):
+    @pytest.mark.parametrize("reqs", [["residential_ip"], [], "", 0])
+    def test_requirements_that_are_not_a_mapping_are_an_error_not_a_crash(self, reqs):
         # The container rule cannot be checked, so the block is refused (Not
         # rated at runtime); grading such a service directly must not raise.
-        service = {"slug": "x", "requirements": ["residential_ip"], "rating": _rating()}
+        service = {"slug": "x", "requirements": reqs, "rating": _rating()}
         errs = ratings.validate(service["rating"], service, rules=RULES, today=TODAY)
         assert any("requirements must be a mapping" in e for e in errs)
         assert ratings.for_service(service, rules=RULES)["rated"] is True
+
+    def test_absent_requirements_are_fine(self):
+        assert ratings.validate(_rating(), {"slug": "x"}, rules=RULES, today=TODAY) == []
+        assert ratings.validate(_rating(), {"slug": "x", "requirements": None}, rules=RULES, today=TODAY) == []
 
     def test_yaml_dates_are_read_as_dates(self):
         block = _rating()
