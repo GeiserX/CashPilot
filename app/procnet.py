@@ -451,6 +451,8 @@ def cgroup_ids(container_id, root=CGROUP_ROOT, max_depth=CGROUP_MAX_DEPTH, max_d
         try:
             entries = list(os.scandir(path))
         except OSError:
+            # An unreadable directory of the container's subtree leaves its sockets out.
+            cut = cut or inside
             continue
         for i, e in enumerate(entries):
             try:

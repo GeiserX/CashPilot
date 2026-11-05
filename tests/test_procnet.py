@@ -8,6 +8,7 @@ lines for a little-endian host, which every supported platform is.
 from __future__ import annotations
 
 import json
+import os
 import socket
 import struct
 import subprocess
@@ -465,6 +466,37 @@ class TestCgroupIds:
         # The root's four directories use the whole cap; the container's child stays unread.
         ids, reason = procnet.cgroup_ids(self.CID, root=str(root), max_dirs=4)
         assert ids == {(root / self.CID).stat().st_ino} and reason == "cgroup_partial"
+
+    def test_an_unreadable_directory_of_the_subtree_is_partial(self, tmp_path, monkeypatch):
+        root = self._tree(tmp_path)
+        mine = root / self.CID
+        (mine / "init").mkdir(parents=True)
+        (root / "other").mkdir()
+        real = os.scandir
+
+        def scandir(path):
+            if str(path) in (str(mine), str(root / "other")):
+                raise PermissionError(13, "denied")
+            return real(path)
+
+        monkeypatch.setattr(procnet.os, "scandir", scandir)
+        ids, reason = procnet.cgroup_ids(self.CID, root=str(root))
+        assert ids == {mine.stat().st_ino} and reason == "cgroup_partial"
+
+    def test_an_unreadable_directory_outside_the_subtree_changes_nothing(self, tmp_path, monkeypatch):
+        root = self._tree(tmp_path)
+        mine = root / self.CID
+        mine.mkdir()
+        (root / "other").mkdir()
+        real = os.scandir
+
+        def scandir(path):
+            if str(path) == str(root / "other"):
+                raise PermissionError(13, "denied")
+            return real(path)
+
+        monkeypatch.setattr(procnet.os, "scandir", scandir)
+        assert procnet.cgroup_ids(self.CID, root=str(root)) == ({mine.stat().st_ino}, "")
 
     def test_a_leaf_at_the_depth_limit_is_complete(self, tmp_path):
         root = self._tree(tmp_path)
