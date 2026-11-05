@@ -89,7 +89,7 @@ class TestTheAggregateDoesNotCountUnknownAsZero:
         ):
             return asyncio.run(main.api_services_deployed(MagicMock()))
 
-    def _instance(self, cpu, mem, node="watchtower"):
+    def _instance(self, cpu, mem, node="charlie"):
         return {
             "slug": "honeygain",
             "name": "honeygain",

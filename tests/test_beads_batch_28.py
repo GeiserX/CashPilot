@@ -36,7 +36,7 @@ def without_comments(text: str) -> str:
     return "\n".join(re.sub(r"(^|\s)//.*$", "", line) for line in text.splitlines())
 
 
-def _worker(containers, name="watchtower"):
+def _worker(containers, name="charlie"):
     return {
         "id": 1,
         "client_id": f"cid-{name}",
@@ -55,7 +55,7 @@ async def _containers(rows):
         return await main._get_all_worker_containers()
 
 
-MANAGED = {"slug": "honeygain", "name": "cashpilot-honeygain", "status": "running", "deployed_by": "watchtower"}
+MANAGED = {"slug": "honeygain", "name": "cashpilot-honeygain", "status": "running", "deployed_by": "charlie"}
 EXTERNAL = {"slug": "honeygain", "name": "honeygain", "status": "running", "deployed_by": "external"}
 
 
@@ -75,14 +75,14 @@ class TestTheWorkersAnswerSurvives:
     async def test_a_container_with_no_answer_falls_back_to_the_node(self):
         """An older worker sends no deployed_by; the previous value is the sane default."""
         row = {"slug": "honeygain", "name": "x", "status": "running"}
-        out = await _containers([_worker([row], name="geiserback")])
-        assert out[0]["deployed_by"] == "geiserback"
+        out = await _containers([_worker([row], name="alpha")])
+        assert out[0]["deployed_by"] == "alpha"
 
     @pytest.mark.asyncio
     async def test_the_node_name_is_still_carried(self):
         """_node is what the UI labels instances with; it must not be collateral."""
-        out = await _containers([_worker([EXTERNAL], name="geiserback")])
-        assert out[0]["_node"] == "geiserback"
+        out = await _containers([_worker([EXTERNAL], name="alpha")])
+        assert out[0]["_node"] == "alpha"
 
 
 class TestTheEndpointReportsIt:
@@ -111,7 +111,7 @@ class TestTheEndpointReportsIt:
             "cpu_percent": 0,
             "memory_mb": 0,
             "deployed_by": deployed_by,
-            "_node": "watchtower",
+            "_node": "charlie",
             "_worker_id": 1,
             "_has_docker": True,
             "_is_android": False,
@@ -124,7 +124,7 @@ class TestTheEndpointReportsIt:
 
     @pytest.mark.asyncio
     async def test_a_managed_service_is_not(self):
-        rows = await self._deployed([self._instance("watchtower")])
+        rows = await self._deployed([self._instance("charlie")])
         assert rows[0]["unmanaged"] is False
 
     @pytest.mark.asyncio
@@ -134,7 +134,7 @@ class TestTheEndpointReportsIt:
         Flagging the whole row would remove the buttons that DO work; the
         per-instance flag marks the odd one out instead.
         """
-        rows = await self._deployed([self._instance("external"), self._instance("watchtower")])
+        rows = await self._deployed([self._instance("external"), self._instance("charlie")])
         assert rows[0]["unmanaged"] is False
         flags = [i["unmanaged"] for i in rows[0]["instance_details"]]
         assert sorted(flags) == [False, True]
