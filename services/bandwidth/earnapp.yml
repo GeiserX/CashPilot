@@ -80,8 +80,8 @@ cashout:
   notes: >-
     Turn on auto-redeem once and EarnApp pays by itself whenever the balance
     reaches the method's minimum: PayPal $10, Wise $10, Amazon $50. PayPal
-    payments arrive from Bright Data Ltd. In October 2026 a $37.54 balance
-    arrived as $36.81 in PayPal, about 2% less.
+    payments arrive from Bright Data Ltd. In October 2026 a PayPal payment
+    arrived about 2% below the redeemed balance.
 
 platforms: [docker, windows, macos, linux, android]
 
@@ -135,7 +135,7 @@ rating:
     source: https://help.earnapp.com/hc/en-us/articles/10199416541969--Can-I-install-EarnApp-on-Hosting-Services-Virtual-Machines-or-Dockers
     checked_on: "2026-11-04"
   pros:
-  - text: 'Our PayPal payout arrived in October 2026: a $37.54 balance came in as $36.81, about 2% less.'
+  - text: 'Our PayPal payout arrived in October 2026, about 2% below the redeemed balance.'
     criterion: payout_record
     kind: our_experience
     source: https://github.com/GeiserX/CashPilot/blob/main/docs/guides/earnapp.md

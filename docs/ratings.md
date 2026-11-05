@@ -335,7 +335,7 @@ What a cited con or pro may rest on:
 
 **Pros**
 
-- Our PayPal payout arrived in October 2026: a $37.54 balance came in as $36.81, about 2% less. [Source](https://github.com/GeiserX/CashPilot/blob/main/docs/guides/earnapp.md), checked 2026-11-04.
+- Our PayPal payout arrived in October 2026, about 2% below the redeemed balance. [Source](https://github.com/GeiserX/CashPilot/blob/main/docs/guides/earnapp.md), checked 2026-11-04.
 - A $10 minimum for PayPal and Wise, with auto-redeem that pays out by itself. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/bandwidth/earnapp.yml), checked 2026-11-04.
 - EarnApp belongs to Bright Data, and its PayPal payments arrive from Bright Data Ltd., a named company. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/bandwidth/earnapp.yml), checked 2026-11-04.
 

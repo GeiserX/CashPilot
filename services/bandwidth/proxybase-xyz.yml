@@ -72,7 +72,7 @@ cashout:
   dashboard_url: "https://proxybase.xyz"
   min_amount: 1.0
   currency: USD
-  notes: "Lock earnings via <code>proxybase-cli seller payout create</code>, received as USDC on Tempo Chain (Tempo MPP). Requires a Tempo wallet address."
+  notes: "Lock earnings via <code>proxybase-cli seller payout create</code>, received as USDC on Tempo Chain (Tempo MPP). Requires a Tempo wallet address. Tempo is an EVM chain, so any EVM address whose key you hold receives the USDC with nothing to sign; add the Tempo network to the wallet to see it."
 
 platforms: [docker, linux, macos, windows]
 

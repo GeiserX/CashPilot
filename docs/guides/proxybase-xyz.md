@@ -101,7 +101,7 @@ docker run --rm -v proxybase-data:/home/proxybase/.proxybase \
   ghcr.io/proxybasehq/proxybase-cli@sha256:007e2be8087e6926230ac69de9b23b4b9d7d195f63e0d87fd8626916c91cc268 proxybase-cli seller payout list
 ```
 
-Payments settle in USDC on Tempo via the Micropayments Protocol (MPP / Tempo). Minimum payout is $1.
+Payments settle in USDC on Tempo via the Micropayments Protocol (MPP / Tempo). Minimum payout is $1. Tempo is an EVM chain, so any EVM address whose key you hold, such as a MetaMask one, receives the USDC with nothing to sign. Add the Tempo network to the wallet to see it.
 
 ## Troubleshooting
 
