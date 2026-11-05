@@ -85,17 +85,17 @@ rating:
     traffic_transparency: Requestors run tasks on your machine; we did not find how they are checked.
     support: No pattern found.
   cons:
-  - text: 'CashPilot does not run Golem: you install the provider agent yourself, so CashPilot cannot deploy
-      or update it for you. Golem documents running the provider in its own Docker image.'
-    criterion: terms_fit
-    kind: our_experience
-    source: https://github.com/GeiserX/CashPilot/blob/main/services/compute/golem.yml
-    checked_on: "2026-11-04"
   - text: A 2026 review finds Golem with no protocol revenue and low demand, so providers earn little
       and are paid in GLM.
     criterion: earnings_realism
     kind: press
     source: https://ownyourmind.ai/projects/golem/
+    checked_on: "2026-11-04"
+  - text: 'CashPilot does not run Golem: you install the provider agent yourself, so CashPilot cannot deploy
+      or update it for you. Golem documents running the provider in its own Docker image.'
+    criterion: terms_fit
+    kind: our_experience
+    source: https://github.com/GeiserX/CashPilot/blob/main/services/compute/golem.yml
     checked_on: "2026-11-04"
   pros:
   - text: The provider agent, yagna, is open source under the GPL-3.0.

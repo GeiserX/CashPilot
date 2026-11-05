@@ -69,14 +69,14 @@ What a cited con or pro may rest on:
 
 | Provider | Grade | Score | Unchecked | Reviewed | Worst con |
 |---|:---:|:---:|:---:|---|---|
-| <a href="#sia-hostd">Sia (hostd)</a> | C | 12 of 20 | 2 | 2026-11-04 | Renters store encrypted file fragments and nobody routes traffic through your IP, but we did not find where Sia says who the renters are or how they are checked. |
+| <a href="#sia-hostd">Sia (hostd)</a> | C | 12 of 20 | 2 | 2026-11-04 | Earnings are Siacoin in your own wallet: there is no payout to a bank, so you sell on an exchange yourself. |
 | <a href="#mysterium">MystNodes</a> | D | 10 of 20 | 4 | 2026-11-04 | About 21% of every settlement goes in fees, the 20% Hermes fee plus a transaction fee, and earnings are paid in the MYST token. |
 | <a href="#packetstream">PacketStream</a> | D | 10 of 20 | 2 | 2026-11-04 | Trustpilot reviewers in 2025 and 2026 report payouts arriving late or not at all, and one long-time user says payouts slowed and then stopped; others in 2026 report being paid. |
-| <a href="#proxybase">ProxyBase</a> | D | 9 of 20 | 4 | 2026-11-04 | Crypto only, as USDC on Polygon, POL or Litecoin, with no fiat method. The minimum is $0.20 and ProxyBase pays the network fee. |
-| <a href="#storj">Storj</a> | D | 9 of 20 | 3 | 2026-11-04 | Customers store encrypted file fragments and nobody routes traffic through your IP, but we did not find where Storj says who the customers are or how they are checked. |
+| <a href="#proxybase">ProxyBase</a> | D | 9 of 20 | 4 | 2026-11-04 | ProxyBase itself wrote in August 2025 that it is new and not yet the place to maximise earnings. |
+| <a href="#storj">Storj</a> | D | 9 of 20 | 3 | 2026-11-04 | Storj Labs filed for Chapter 11 on 26 July 2026; node earnings from before the filing are frozen until the court rules. |
 | <a href="#honeygain">Honeygain</a> | D | 8 of 20 | 3 | 2026-11-04 | The terms let Honeygain write off earnings that reached the $20 threshold and were not paid out within 24 months, and treat earnings as expired after six months without use. |
 | <a href="#earnapp">EarnApp</a> | D | 7 of 20 | 5 | 2026-11-04 | EarnApp's help centre says installing it in Docker containers, virtual machines, hosting services or home servers is strictly prohibited, which is how CashPilot runs it. |
-| <a href="#golem">Golem Network</a> | D | 7 of 20 | 5 | 2026-11-04 | CashPilot does not run Golem: you install the provider agent yourself, so CashPilot cannot deploy or update it for you. Golem documents running the provider in its own Docker image. |
+| <a href="#golem">Golem Network</a> | D | 7 of 20 | 5 | 2026-11-04 | A 2026 review finds Golem with no protocol revenue and low demand, so providers earn little and are paid in GLM. |
 | <a href="#urnetwork">URnetwork</a> | D | 7 of 20 | 4 | 2026-11-04 | Unclaimed epochs expire, and the old USDC payouts were cancelled for networks with no wallet linked within 30 days. |
 | <a href="#anyone-protocol">Anyone Protocol</a> | F | 6 of 20 | 5 | 2026-11-04 | A relay earns nothing unless 100 ANYONE is locked for it for at least 180 days, and each reward claim is signed in your wallet. |
 | <a href="#bytelixir">Bytelixir</a> | F | 6 of 20 | 6 | 2026-11-04 | Crypto only, and the minimum depends on the coin, from $5 for USDT to $250 for Bitcoin. |
@@ -92,7 +92,7 @@ What a cited con or pro may rest on:
 | <a href="#traffmonetizer">Traffmonetizer</a> | F | 5 of 20 | 4 | 2026-11-04 | Trustpilot rates it 1.9; reviewers from 2023 to November 2026 report payouts pending for weeks, or marked completed with no matching transaction. |
 | <a href="#helium">Helium</a> | F | 4 of 20 | 6 | 2026-11-04 | HIP 149 retired Proof-of-Coverage rewards on 6 July 2026; IoT hotspots now earn only for data they carry, and more than 114,000 of them carried none. |
 | <a href="#proxylite">ProxyLite</a> | F | 4 of 20 | 7 | 2026-11-04 | The site's owner is hidden in its domain records, and we found no named company behind it. |
-| <a href="#vast-ai">Vast.ai</a> | F | 4 of 20 | 7 | 2026-11-04 | CashPilot does not run Vast.ai: you install Vast's host software on your own GPU machine, so CashPilot cannot deploy or update it for you. Vast builds hosting around Docker on a Linux host. |
+| <a href="#vast-ai">Vast.ai</a> | F | 4 of 20 | 7 | 2026-11-04 | A host earns only while rented, and Vast's own figures for a consumer GPU depend on rental type and reliability score. |
 | <a href="#bytebenefit">Bytebenefit</a> | F | 3 of 20 | 7 | 2026-11-04 | The app's Google Play listing says your traffic serves web-intelligence requests by Infatica's clients, without saying who they are or how they are checked. |
 | <a href="#grass">Grass</a> | F | 3 of 20 | 6 | 2026-11-04 | Rewards come only through airdrop seasons. Long-running node operators reported season 2 estimates in the single to low double-digit dollar range. |
 | <a href="#ionet">io.net</a> | F | 3 of 20 | 6 | 2026-11-04 | Supplier rewards were paid from token emissions regardless of paid jobs, and GPU owners report sitting idle most of the time. |
@@ -134,10 +134,10 @@ What a cited con or pro may rest on:
 
 **Cons**
 
-- Renters store encrypted file fragments and nobody routes traffic through your IP, but we did not find where Sia says who the renters are or how they are checked. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/storage/sia-hostd.yml), checked 2026-11-04.
 - Earnings are Siacoin in your own wallet: there is no payout to a bank, so you sell on an exchange yourself. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/storage/sia-hostd.yml), checked 2026-11-04.
 - Collateral is locked per contract and burned if the host misses storage proofs by going offline or losing data. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/storage/sia-hostd.yml), checked 2026-11-04.
 - Only about 30% of the storage offered on the network is in use, so a new host competes for little demand. [Source](https://sia.tech/provide-storage), checked 2026-11-04.
+- Renters store encrypted file fragments and nobody routes traffic through your IP, but we did not find where Sia says who the renters are or how they are checked. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/storage/sia-hostd.yml), checked 2026-11-04.
 
 **Pros**
 
@@ -232,9 +232,9 @@ What a cited con or pro may rest on:
 
 **Cons**
 
-- Crypto only, as USDC on Polygon, POL or Litecoin, with no fiat method. The minimum is $0.20 and ProxyBase pays the network fee. [Source](https://github.com/GeiserX/CashPilot/blob/main/docs/guides/proxybase.md), checked 2026-11-04.
 - ProxyBase itself wrote in August 2025 that it is new and not yet the place to maximise earnings. [Source](https://github.com/engageub/InternetIncome/discussions/239), checked 2026-11-04.
 - ProxyBase switched peer clients in 2026 and shut the old backend, so containers on the old image kept running and stopped earning. [Source](https://github.com/GeiserX/CashPilot/blob/main/docs/guides/proxybase.md), checked 2026-11-04.
+- Crypto only, as USDC on Polygon, POL or Litecoin, with no fiat method. The minimum is $0.20 and ProxyBase pays the network fee. [Source](https://github.com/GeiserX/CashPilot/blob/main/docs/guides/proxybase.md), checked 2026-11-04.
 
 **Pros**
 
@@ -263,10 +263,10 @@ What a cited con or pro may rest on:
 
 **Cons**
 
-- Customers store encrypted file fragments and nobody routes traffic through your IP, but we did not find where Storj says who the customers are or how they are checked. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/storage/storj.yml), checked 2026-11-04.
 - Storj Labs filed for Chapter 11 on 26 July 2026; node earnings from before the filing are frozen until the court rules. [Source](https://www.coindesk.com/business/2026/07/27/cloud-data-firm-storj-files-for-chapter-11-extending-a-week-of-crypto-failures-token-slides-16), checked 2026-11-04.
 - Pre-filing payments to node operators went into the bankruptcy claims process. [Source](https://www.cryptotimes.io/2026/07/27/storj-files-for-chapter-11-pre-filing-node-operator-payments-in-limbo/), checked 2026-11-04.
 - A new node has 75%, then 50%, then 25% of its earnings held in its first nine months; half comes back in month 16 and the rest only on a graceful exit. [Source](https://github.com/GeiserX/CashPilot/blob/main/docs/guides/storj.md), checked 2026-11-04.
+- Customers store encrypted file fragments and nobody routes traffic through your IP, but we did not find where Storj says who the customers are or how they are checked. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/storage/storj.yml), checked 2026-11-04.
 
 **Pros**
 
@@ -360,8 +360,8 @@ What a cited con or pro may rest on:
 
 **Cons**
 
-- CashPilot does not run Golem: you install the provider agent yourself, so CashPilot cannot deploy or update it for you. Golem documents running the provider in its own Docker image. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/compute/golem.yml), checked 2026-11-04.
 - A 2026 review finds Golem with no protocol revenue and low demand, so providers earn little and are paid in GLM. [Source](https://ownyourmind.ai/projects/golem/), checked 2026-11-04.
+- CashPilot does not run Golem: you install the provider agent yourself, so CashPilot cannot deploy or update it for you. Golem documents running the provider in its own Docker image. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/compute/golem.yml), checked 2026-11-04.
 
 **Pros**
 
@@ -841,8 +841,8 @@ What a cited con or pro may rest on:
 
 **Cons**
 
-- CashPilot does not run Vast.ai: you install Vast's host software on your own GPU machine, so CashPilot cannot deploy or update it for you. Vast builds hosting around Docker on a Linux host. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/compute/vast-ai.yml), checked 2026-11-04.
 - A host earns only while rented, and Vast's own figures for a consumer GPU depend on rental type and reliability score. [Source](https://vast.ai/article/how-much-money-can-you-earn-renting-out-your-gpu-on-vast-ai), checked 2026-11-04.
+- CashPilot does not run Vast.ai: you install Vast's host software on your own GPU machine, so CashPilot cannot deploy or update it for you. Vast builds hosting around Docker on a Linux host. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/compute/vast-ai.yml), checked 2026-11-04.
 
 **Pros**
 

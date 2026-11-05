@@ -166,7 +166,9 @@ def validate(
             errors.append(f"rating.verdicts.{key} is unknown but rating.notes.{key} does not say what was searched")
 
     reqs = (service or {}).get("requirements") or {}
-    if isinstance(reqs, dict) and reqs.get("container_prohibited") and verdicts.get("terms_fit") != "poor":
+    if not isinstance(reqs, dict):
+        errors.append("requirements must be a mapping, so the container rule can be checked")
+    elif reqs.get("container_prohibited") and verdicts.get("terms_fit") != "poor":
         errors.append("requirements.container_prohibited is true, so rating.verdicts.terms_fit must be poor")
 
     return errors

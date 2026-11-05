@@ -91,17 +91,17 @@ rating:
     support: No pattern found.
     longevity: Not checked on a primary source.
   cons:
-  - text: 'CashPilot does not run Vast.ai: you install Vast''s host software on your own GPU machine, so
-      CashPilot cannot deploy or update it for you. Vast builds hosting around Docker on a Linux host.'
-    criterion: terms_fit
-    kind: our_experience
-    source: https://github.com/GeiserX/CashPilot/blob/main/services/compute/vast-ai.yml
-    checked_on: "2026-11-04"
   - text: A host earns only while rented, and Vast's own figures for a consumer GPU depend on rental type
       and reliability score.
     criterion: earnings_realism
     kind: terms
     source: https://vast.ai/article/how-much-money-can-you-earn-renting-out-your-gpu-on-vast-ai
+    checked_on: "2026-11-04"
+  - text: 'CashPilot does not run Vast.ai: you install Vast''s host software on your own GPU machine, so
+      CashPilot cannot deploy or update it for you. Vast builds hosting around Docker on a Linux host.'
+    criterion: terms_fit
+    kind: our_experience
+    source: https://github.com/GeiserX/CashPilot/blob/main/services/compute/vast-ai.yml
     checked_on: "2026-11-04"
   pros:
   - text: Vast says the rate a host sets is the rate it receives, with no fee deducted.

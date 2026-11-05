@@ -112,12 +112,6 @@ rating:
     privacy: The peer client is closed source.
     support: No reports found.
   cons:
-  - text: Crypto only, as USDC on Polygon, POL or Litecoin, with no fiat method. The minimum is $0.20 and
-      ProxyBase pays the network fee.
-    criterion: payout_terms
-    kind: our_experience
-    source: https://github.com/GeiserX/CashPilot/blob/main/docs/guides/proxybase.md
-    checked_on: "2026-11-04"
   - text: ProxyBase itself wrote in August 2025 that it is new and not yet the place to maximise earnings.
     criterion: earnings_realism
     kind: provider_reply
@@ -126,6 +120,12 @@ rating:
   - text: ProxyBase switched peer clients in 2026 and shut the old backend, so containers on the old image
       kept running and stopped earning.
     criterion: longevity
+    kind: our_experience
+    source: https://github.com/GeiserX/CashPilot/blob/main/docs/guides/proxybase.md
+    checked_on: "2026-11-04"
+  - text: Crypto only, as USDC on Polygon, POL or Litecoin, with no fiat method. The minimum is $0.20 and
+      ProxyBase pays the network fee.
+    criterion: payout_terms
     kind: our_experience
     source: https://github.com/GeiserX/CashPilot/blob/main/docs/guides/proxybase.md
     checked_on: "2026-11-04"
