@@ -165,6 +165,10 @@ nav:
     - How it works: how-it-works.md
     - FAQ: faq.md
     - How CashPilot compares: comparison.md
+    - Moving from another tool:
+      - money4band: migrate/money4band.md
+      - CashFactory: migrate/cashfactory.md
+      - InternetIncome: migrate/internetincome.md
   - Service guides:
     - Overview: guides/index.md
     - Bandwidth Sharing:

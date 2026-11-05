@@ -1,0 +1,26 @@
+{
+  "user": {"Nickname": "fake-nick", "email": "owner@example.com"},
+  "device_info": {"device_name": "fake-box", "os_type": "Linux", "detected_architecture": "amd64", "detected_docker_arch": "amd64"},
+  "apps": {
+    "earnapp": {"enabled": true, "uuid": "sdk-node-0123456789abcdef0123456789abcdef"},
+    "honeygain": {"enabled": true, "email": "hg@example.com", "password": "fake-pass-honeygain"},
+    "iproyalpawns": {"enabled": true, "email": "ip@example.com", "password": "fake-pass-$iproyal"},
+    "packetstream": {"enabled": true, "cid": "FakeCid1"},
+    "traffmonetizer": {"enabled": true, "token": "fake-token-traffmonetizer"},
+    "repocket": {"enabled": true, "email": "rp@example.com", "apikey": "11111111-2222-4333-8444-555555555555"},
+    "earnfm": {"enabled": false, "apikey": "fake-token-earnfm"},
+    "proxyrack": {"enabled": true, "apikey": "fake-key-proxyrack", "uuid": "ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789"},
+    "proxylite": {"enabled": true, "userid": "123456"},
+    "bitping": {"enabled": true, "email": "bp@example.com", "password": "fake-pass-bitping", "mfa": ""},
+    "mystnode": {"enabled": true, "ports": [4449]},
+    "proxybase": {"enabled": true, "userid": "fake-proxybase-user"},
+    "grass": {"enabled": true, "email": "gr@example.com", "password": "fake-pass-grass"},
+    "peer2profit": {"enabled": true, "email": "p2p@example.com"},
+    "antgain": {"enabled": true, "apikey": "fake-antgain"}
+  },
+  "m4b_dashboard": {"enabled": true, "ports": [8081]},
+  "watchtower": {"enabled": true},
+  "proxies": {"enabled": true, "url": "socks5://fake-user:fake-proxy-pass@192.0.2.1:1080", "url_example": "protocol://username:password@ip:port"},
+  "notifications": {"enabled": false, "url": "", "url_example": "yourApp:yourToken@yourWebHook"},
+  "resource_limits": {"app_cpu_limit_little": 0.8}
+}
