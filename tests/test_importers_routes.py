@@ -314,6 +314,58 @@ class TestApply:
         assert rows["honeygain"]["existing"]["deployed"] is False
         assert rows["repocket"]["existing"]["deployed"] is True
 
+    @pytest.mark.parametrize("apps", [[1], "x", 5])
+    def test_an_apps_value_that_is_not_an_object_is_a_400(self, owner, apps):
+        files = [{"name": "user-config.json", "content": json.dumps({"apps": apps})}]
+        res = owner.post("/api/import/preview", json={"source": "money4band", "files": files})
+        assert res.status_code == 400, res.text
+        assert "apps" in res.json()["detail"]
+
+    def test_a_failed_save_names_what_was_already_saved(self, owner):
+        real = database.save_import_draft
+
+        async def second_fails(slug, source, env):
+            if slug == "repocket":
+                raise RuntimeError("disk I/O error")
+            return await real(slug, source, env)
+
+        with patch.object(database, "save_import_draft", side_effect=second_fails):
+            res = owner.post("/api/import/apply", json={"files": M4B, "slugs": ["honeygain", "repocket"]})
+        assert res.status_code == 500
+        detail = res.json()["detail"]
+        assert "Already saved: honeygain." in detail and "Repocket" in detail
+        assert "disk I/O" not in res.text  # the exception text never reaches the browser
+        assert [d["slug"] for d in owner.get("/api/import/drafts").json()] == ["honeygain"]
+
+    def test_overlapping_applies_set_the_earnings_login_once(self, db):
+        config: dict[str, str] = {}
+        calls: list[dict[str, str]] = []
+        payload = json.dumps({"files": M4B, "slugs": ["honeygain"]}).encode()
+
+        class _Req:
+            async def stream(self):
+                yield payload
+
+        async def get_config():
+            return dict(config)
+
+        async def set_collector_config(keys):
+            await asyncio.sleep(0.01)  # let the other apply run in between
+            calls.append(keys)
+            config.update(keys)
+
+        async def both():
+            await asyncio.gather(
+                importers.apply(_Req(), set_collector_config), importers.apply(_Req(), set_collector_config)
+            )
+
+        with (
+            patch.object(database, "get_config", side_effect=get_config),
+            patch.object(database, "save_import_draft", AsyncMock()),
+        ):
+            asyncio.run(both())
+        assert len(calls) == 1
+
     def test_refused_under_an_ephemeral_key(self, owner):
         with patch.object(database, "_fernet_key_is_ephemeral", True):
             res = owner.post("/api/import/apply", json={"files": M4B, "slugs": ["honeygain"]})

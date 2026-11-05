@@ -384,7 +384,10 @@ def _apps_from_json(files: list[FileSettings], spec: dict[str, Any], skipped: li
                 continue
             reason = _not_carried_reason(top, spec) or "CashPilot does not read this setting."
             skipped.append({"key": top, "reason": reason})
-        for app_name, app_conf in (data.get("apps") or {}).items():
+        apps_conf = data.get("apps") or {}
+        if not isinstance(apps_conf, dict):
+            raise ImportRefused("The apps setting is not an object.")
+        for app_name, app_conf in apps_conf.items():
             if not isinstance(app_conf, dict):
                 continue
             app_spec = apps_spec.get(app_name)

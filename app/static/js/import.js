@@ -39,6 +39,11 @@
   async function readFiles() {
     const files = [];
     const picked = Array.from(document.getElementById('import-files').files || []);
+    // Refuse by size before reading, so a huge file is never loaded into the page.
+    if (picked.length > MAX_FILES) throw new Error(`At most ${MAX_FILES} files at a time.`);
+    if (picked.reduce((n, f) => n + f.size, 0) > MAX_TOTAL) {
+      throw new Error(`The files add up to more than ${MAX_TOTAL / 1024} KiB.`);
+    }
     for (const file of picked) {
       files.push({ name: file.name, content: await file.text() });
     }
@@ -108,6 +113,9 @@
 
   window.importPreview = async function importPreview() {
     setStatus('import-status', '');
+    // A failed preview must not leave the earlier files ready to save.
+    lastRequest = null;
+    document.getElementById('import-preview').hidden = true;
     let files;
     try {
       files = await readFiles();
@@ -126,7 +134,10 @@
   };
 
   window.importApply = async function importApply() {
-    if (!lastRequest) return;
+    if (!lastRequest) {
+      setStatus('import-apply-status', 'Check the files before saving.');
+      return;
+    }
     const slugs = Array.from(document.querySelectorAll('.import-pick:checked')).map((el) => el.dataset.importSlug);
     if (!slugs.length) {
       setStatus('import-apply-status', 'Tick at least one service.');
@@ -168,8 +179,11 @@
       try {
         const res = await CP.api(`/api/import/drafts/${encodeURIComponent(slug)}/deploy?worker_id=${encodeURIComponent(wid)}`, { method: 'POST' });
         ok++;
-        if (res && res.device_link && res.device_link.url) {
-          CP.toast(`${slug}: ${res.device_link.steps} ${res.device_link.url}`, 'warning');
+        const link = res && res.device_link;
+        // Registered means CashPilot already added the device to the account.
+        if (link && link.url && !link.registered) {
+          const id = link.id ? ` Device id: ${link.id}.` : '';
+          CP.toast(`${slug}: ${link.steps}${id} ${link.url}`, 'warning');
         }
       } catch (err) {
         CP.toast(`${slug} on worker ${wid}: ${err.message}`, 'error');

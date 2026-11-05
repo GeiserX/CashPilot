@@ -18,6 +18,7 @@ pydantic model: a 422 would echo the pasted text, which holds passwords.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 from collections.abc import Awaitable, Callable
@@ -131,6 +132,13 @@ def _extra(body: dict[str, Any]) -> dict[str, dict[str, str]]:
     return out
 
 
+_apply_lock = asyncio.Lock()
+
+
+def _already_saved(saved: list[str]) -> str:
+    return f" Already saved: {', '.join(saved)}." if saved else " Nothing was saved."
+
+
 async def apply(request: Request, set_collector_config: Callable[[dict[str, str]], Awaitable[Any]]) -> dict[str, Any]:
     """Save the chosen rows as drafts. Only rows that end up ready are written.
 
@@ -153,23 +161,35 @@ async def apply(request: Request, set_collector_config: Callable[[dict[str, str]
             raise HTTPException(status_code=400, detail=f"{row['name']} cannot be imported yet: {row['reason']}")
         chosen.append(row)
 
-    config = await database.get_config() or {}
-    saved, collectors = [], []
-    for row in chosen:
-        try:
-            await database.save_import_draft(row["slug"], preview["source"], row["env"])
-        except database.EphemeralKeyError:
-            raise HTTPException(
-                status_code=409,
-                detail="CashPilot's encryption key is temporary, so it will not store credentials. "
-                "Set CASHPILOT_ENCRYPTION_KEY or fix the data directory, then restart.",
-            ) from None
-        saved.append(row["slug"])
-        keys = _collector_keys(row["slug"], row["env"])
-        # Never over working earnings credentials: only where none are set.
-        if keys and not any(config.get(k) for k in keys):
-            await set_collector_config(keys)
-            collectors.append(row["slug"])
+    saved: list[str] = []
+    collectors: list[str] = []
+    # One apply at a time, with the config read inside the lock, so two
+    # overlapping imports cannot both see an empty earnings login and both write it.
+    async with _apply_lock:
+        config = await database.get_config() or {}
+        for row in chosen:
+            try:
+                await database.save_import_draft(row["slug"], preview["source"], row["env"])
+                saved.append(row["slug"])
+                keys = _collector_keys(row["slug"], row["env"])
+                # Never over working earnings credentials: only where none are set.
+                if keys and not any(config.get(k) for k in keys):
+                    await set_collector_config(keys)
+                    collectors.append(row["slug"])
+            except database.EphemeralKeyError:
+                raise HTTPException(
+                    status_code=409,
+                    detail="CashPilot's encryption key is temporary, so it will not store credentials. "
+                    "Set CASHPILOT_ENCRYPTION_KEY or fix the data directory, then restart." + _already_saved(saved),
+                ) from None
+            except Exception as exc:
+                # Each write commits on its own, so say what is already saved.
+                # The exception text is left out: it could carry a pasted value.
+                logger.error("Import of %s failed (%s); already saved: %s", row["slug"], type(exc).__name__, saved)
+                status = exc.status_code if isinstance(exc, HTTPException) else 500
+                raise HTTPException(
+                    status_code=status, detail=f"Saving {row['name']} failed." + _already_saved(saved)
+                ) from None
     logger.info("Imported from %s: %s (earnings login set for: %s)", preview["source"], saved, collectors or "none")
     return {"saved": saved, "collectors_set": collectors}
 
