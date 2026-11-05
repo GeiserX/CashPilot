@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import json
 import re
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 import pytest
 import yaml
@@ -65,13 +65,16 @@ def test_every_image_pins_an_exact_tag(compose):
         tag = _tag(image)
         assert tag, f"{compose}: {image} has no tag, which is latest by another name"
         assert tag != "latest", f"{compose}: {image} floats on latest; pin the release tag"
-        assert re.search(r"\d", tag), f"{compose}: {image} tag {tag!r} names no version"
+        assert re.fullmatch(r"\d+\.\d+\.\d+", tag), f"{compose}: {image} tag {tag!r} is not a full release version"
 
 
 @pytest.mark.parametrize("compose", COMPOSE, ids=_ids(COMPOSE))
 def test_ui_and_worker_carry_the_same_tag(compose):
-    tags = {_tag(i) for i in _images(_load(compose)) if i.startswith("drumsergio/cashpilot")}
-    assert len(tags) == 1, f"{compose}: UI and worker pinned to different tags {sorted(tags)}"
+    images = _images(_load(compose))
+    ui = {_tag(i) for i in images if i.startswith("drumsergio/cashpilot:")}
+    worker = {_tag(i) for i in images if i.startswith("drumsergio/cashpilot-worker:")}
+    assert ui and worker, f"{compose}: needs a CashPilot UI image and a worker image"
+    assert ui == worker, f"{compose}: UI and worker pinned to different tags {sorted(ui | worker)}"
 
 
 def _mounts(service: dict) -> list[tuple[str, str]]:
@@ -100,7 +103,7 @@ def test_only_the_worker_mounts_the_docker_socket(compose):
     workers = [name for name, svc in services.items() if _is_worker(svc)]
     assert workers, f"{compose}: no worker service"
     for name, svc in services.items():
-        has_socket = any(t == "/var/run/docker.sock" for _, t in _mounts(svc))
+        has_socket = any("/var/run/docker.sock" in (s, t) for s, t in _mounts(svc))
         if _is_worker(svc):
             assert has_socket, f"{compose}: worker {name} cannot reach Docker"
         else:
@@ -113,14 +116,29 @@ def test_the_worker_data_is_kept_apart_from_the_ui_data(compose):
     Docker socket, so it must not mount the same host folder."""
     services = _services(compose)
     data = {name: {s for s, t in _mounts(svc) if t == "/data"} for name, svc in services.items()}
-    ui = set().union(*(d for n, d in data.items() if not _is_worker(services[n])))
-    worker = set().union(*(d for n, d in data.items() if _is_worker(services[n])))
+    ui = {PurePosixPath(s) for n, d in data.items() if not _is_worker(services[n]) for s in d}
+    worker = {PurePosixPath(s) for n, d in data.items() if _is_worker(services[n]) for s in d}
     assert ui and worker, f"{compose}: UI or worker has no /data mount"
-    assert not ui & worker, f"{compose}: worker mounts the UI's /data ({sorted(ui & worker)})"
+    for w in worker:
+        for u in ui:
+            # One folder inside the other is as bad as the same folder.
+            assert w != u and w not in u.parents and u not in w.parents, (
+                f"{compose}: worker /data {w} overlaps UI /data {u}"
+            )
+
+
+@pytest.mark.parametrize("compose", COMPOSE, ids=_ids(COMPOSE))
+def test_ui_and_worker_share_the_fleet_volume(compose):
+    """/fleet holds the enrolment key, which both sides need."""
+    services = _services(compose)
+    fleet = {name: {s for s, t in _mounts(svc) if t == "/fleet"} for name, svc in services.items()}
+    ui = set().union(*(f for n, f in fleet.items() if not _is_worker(services[n])))
+    worker = set().union(*(f for n, f in fleet.items() if _is_worker(services[n])))
+    assert ui and ui == worker, f"{compose}: UI and worker must mount the same /fleet folder ({ui} vs {worker})"
 
 
 def _cashpilot_tag(compose: Path) -> str:
-    return next(_tag(i) for i in _images(_load(compose)) if i.startswith("drumsergio/cashpilot"))
+    return next(_tag(i) for i in _images(_load(compose)) if i.startswith("drumsergio/cashpilot:"))
 
 
 def test_casaos_lists_the_version_it_installs():
