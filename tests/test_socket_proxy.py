@@ -368,7 +368,7 @@ def test_the_proxy_volume_can_never_go_to_a_container():
 def test_proxied_a_bind_outside_the_allowed_folders_is_refused_before_anything_is_touched(monkeypatch):
     monkeypatch.setenv("DOCKER_HOST", PROXY_SOCKET)
     monkeypatch.setenv("CASHPILOT_COMPOSE_DIR", "/srv/cashpilot")
-    monkeypatch.setenv("CASHPILOT_PROXY_BIND_MOUNTS", "/storage/storj, /storage/data/")
+    monkeypatch.setenv("CASHPILOT_PROXY_BIND_MOUNTS", "/storage/storj,/storage/data/")
     ok, deploy = _worker_deploy({"image": "img", "volumes": {"/storage/data/node": {"bind": "/d", "mode": "rw"}}})
     assert ok.status_code == 200, ok.text
     resp, deploy = _worker_deploy({"image": "img", "volumes": {"/storage/storjx": {"bind": "/d", "mode": "rw"}}})
@@ -406,10 +406,15 @@ def _proxied_env(monkeypatch, compose_dir="/srv/cashpilot", bind_mounts=""):
     monkeypatch.setenv("CASHPILOT_PROXY_BIND_MOUNTS", bind_mounts)
 
 
+#: The resolved compose file of a worker the proxy would recreate: the shipped
+#: files give every CashPilot service no-new-privileges, which the proxy requires.
+PROXY_OK_CFG = {"name": "cashpilot", "services": {"cashpilot-worker": {"security_opt": ["no-new-privileges:true"]}}}
+
+
 def _run_update(labels=None):
     me = tuf._fake_container(labels=labels or tuf._COMPOSE_LABELS)
     client = tuf._fake_docker(me=me)
-    tuf._wire_runs(client)
+    tuf._wire_runs(client, preflight=tuf._preflight(cfg=PROXY_OK_CFG))
     with patch.object(orchestrator, "_get_client", return_value=client):
         result = orchestrator.spawn_self_update()
     return client, result
@@ -484,7 +489,7 @@ def test_a_proxy_refusal_of_the_helper_says_why(monkeypatch):
     _proxied_env(monkeypatch)
     me = tuf._fake_container(labels=tuf._COMPOSE_LABELS)
     client = tuf._fake_docker(me=me)
-    preflight = tuf._preflight()
+    preflight = tuf._preflight(cfg=PROXY_OK_CFG)
 
     def run(image, *args, **kwargs):
         if kwargs.get("name") == orchestrator.UPDATER_NAME:
@@ -660,6 +665,10 @@ def _update_with_config(monkeypatch, worker_cfg, bind_mounts=""):
         ({"privileged": True}, "privileged"),
         ({"cap_add": ["SYS_ADMIN"]}, "SYS_ADMIN"),
         ({"runtime": "nvidia"}, "nvidia"),
+        ({"pid": "host"}, "PID namespace"),
+        ({"ipc": "host"}, "IPC namespace"),
+        ({"security_opt": []}, "no-new-privileges"),
+        ({"security_opt": ["no-new-privileges:true", "seccomp:unconfined"]}, "seccomp:unconfined"),
     ],
 )
 def test_proxied_an_update_compose_would_fail_halfway_is_refused_first(monkeypatch, worker_cfg, needle):
@@ -676,6 +685,7 @@ def test_proxied_an_update_the_proxy_allows_starts(monkeypatch):
         ],
         "devices": ["/dev/net/tun:/dev/net/tun"],
         "cap_add": ["NET_ADMIN"],
+        "security_opt": ["no-new-privileges:true"],
     }
     client, error = _update_with_config(monkeypatch, cfg, bind_mounts="/srv/data")
     assert error is None
@@ -728,3 +738,9 @@ def test_the_proxy_holds_a_capability_no_created_container_may_have(name):
     proxy = _compose(name)["services"]["cashpilot-socket-proxy"]
     assert proxy["cap_add"] == ["WAKE_ALARM"]
     assert "WAKE_ALARM" not in socket_policy.ALLOWED_CAPABILITIES
+
+
+def test_a_bind_root_padded_with_spaces_opens_nothing(monkeypatch):
+    """The proxy takes the entry as written; the worker must not be more lenient."""
+    _proxied_env(monkeypatch, bind_mounts="/storage/storj, /storage/data")
+    assert orchestrator._proxy_bind_roots() == ["/srv/cashpilot", "/storage/storj"]

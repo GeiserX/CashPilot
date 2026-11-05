@@ -183,6 +183,10 @@ proxy stands between the worker and root.
 - Stop, remove, inspect and read the logs and files of **any** container on the
   host, not only CashPilot's, and read their environment variables.
 - Run the allowed reader commands in any container.
+- Delete any named volume. The worker refuses to delete the ones the catalog
+  marks critical (Mysterium's keystore, Storj's identity), but the proxy
+  does not know about them, so a compromised worker can delete them, and the
+  UI's `cashpilot_data`, directly.
 - Mount any named volume into a new container, including the UI's
   `cashpilot_data` when the UI runs on the same host.
 - Start a container on host networking with `NET_ADMIN`, `NET_RAW` and

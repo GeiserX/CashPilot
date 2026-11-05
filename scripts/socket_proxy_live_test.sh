@@ -93,6 +93,14 @@ if docker volume inspect cashpilot-docker-api >/dev/null 2>&1; then
     exit 2
 fi
 
+# The positive control turns the daemon into a swarm manager and force-leaves
+# afterwards, which would take a host out of a swarm it already belongs to.
+if [ "$(docker info -f '{{.Swarm.LocalNodeState}}')" != inactive ]; then
+    echo "This daemon is part of a swarm; the positive control would make it leave. Use another host." >&2
+    trap - EXIT
+    exit 2
+fi
+
 mkdir -p "$WORK_DIR/project" "$WORK_DIR/binds/plain"
 
 echo "== build the worker from this checkout and serve it from a local registry"

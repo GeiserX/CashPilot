@@ -1715,9 +1715,10 @@ def _proxy_bind_roots() -> list[str]:
     """
     roots: list[str] = []
     for raw in (os.getenv("CASHPILOT_COMPOSE_DIR", ""), *os.getenv("CASHPILOT_PROXY_BIND_MOUNTS", "").split(",")):
-        path = raw.strip()
-        if path.startswith("/"):
-            roots.append(path.rstrip("/") or "/")
+        # Taken exactly as the proxy reads them: an entry padded with spaces is
+        # not a path to it, so it opens nothing here either.
+        if raw.startswith("/") and raw == raw.strip():
+            roots.append(raw.rstrip("/") or "/")
     return roots
 
 
@@ -1773,6 +1774,20 @@ def _proxy_compose_refusals(cfg: dict[str, Any], services: list[str]) -> list[st
         extra_caps = sorted({str(c).upper().removeprefix("CAP_") for c in svc.get("cap_add") or []} - caps)
         if extra_caps:
             why.append(f"the capabilities {', '.join(extra_caps)}")
+        for key, label in (
+            ("pid", "the PID"),
+            ("ipc", "the IPC"),
+            ("userns_mode", "the user"),
+            ("cgroup", "the cgroup"),
+        ):
+            if str(svc.get(key) or "").startswith("host"):
+                why.append(f"{label} namespace of the host")
+        security_opt = [str(o).replace("=", ":").replace(" ", "") for o in svc.get("security_opt") or []]
+        if not any(o in ("no-new-privileges", "no-new-privileges:true") for o in security_opt):
+            why.append("no no-new-privileges")
+        for opt in security_opt:
+            if opt in ("seccomp:unconfined", "apparmor:unconfined", "systempaths:unconfined"):
+                why.append(opt)
         runtime = svc.get("runtime")
         if runtime and runtime not in socket_policy.ALLOWED_RUNTIMES:
             why.append(f"the {runtime} runtime")

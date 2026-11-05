@@ -158,7 +158,7 @@ def phase_allowed() -> None:
     check("activity round", lambda: activity.run_round())
     check("update facts", orchestrator.self_update_info)
 
-    for slug in ("cplive-earner", "cplive-host", plain):
+    for slug in (["cplive-earner"] if TUNNEL_IMAGE else []) + ["cplive-host", plain]:
         check(
             f"remove {slug} and its volumes",
             lambda slug=slug: orchestrator.remove_service(slug, delete_volumes=True, allow_delete_critical=True),
@@ -269,22 +269,24 @@ def phase_refused_or_control(control: bool) -> None:
     client = docker.from_env()
     api = client.api
     target = _target(client)
-    for name, method, path, body in REQUESTS:
-        code, text = _send(api, method, path.format(target=target), body)
-        by_proxy = code == 403 and "sockguard" in text
+    try:
+        for name, method, path, body in REQUESTS:
+            code, text = _send(api, method, path.format(target=target), body)
+            by_proxy = code == 403 and "sockguard" in text
+            if control:
+                # The raw daemon must take the request: proof it is well formed
+                # and that a 403 from the proxy is the proxy's own decision.
+                result(200 <= code < 300, f"raw socket accepts: {name}", f"{code} {text[:120]}")
+            else:
+                reason = ""
+                with contextlib.suppress(ValueError, AttributeError):
+                    reason = json.loads(text).get("reason", "")
+                result(by_proxy, f"proxy refuses: {name}", f"{code} {reason or text[:120]}")
+    finally:
         if control:
-            # The raw daemon must take the request: proof it is well formed
-            # and that a 403 from the proxy is the proxy's own decision.
-            result(200 <= code < 300, f"raw socket accepts: {name}", f"{code} {text[:120]}")
-        else:
-            reason = ""
-            with contextlib.suppress(ValueError, AttributeError):
-                reason = json.loads(text).get("reason", "")
-            result(by_proxy, f"proxy refuses: {name}", f"{code} {reason or text[:120]}")
-    if control:
-        _undo_control(client)
-    for c in client.containers.list(all=True, filters={"label": "cashpilot.live-test=1"}):
-        c.remove(force=True, v=True)
+            _undo_control(client)
+        for c in client.containers.list(all=True, filters={"label": "cashpilot.live-test=1"}):
+            c.remove(force=True, v=True)
 
 
 def _undo_control(client: docker.DockerClient) -> None:

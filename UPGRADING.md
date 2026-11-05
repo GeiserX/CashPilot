@@ -65,7 +65,9 @@ no longer mounts the socket.
    root on the host ([why](docs/security-defaults.md#docker-socket-proxy)).
    Leave both settings unset if you update by hand and run no host-folder
    service.
-4. Run `docker compose up -d` once. It starts the proxy and recreates the
+4. Run `docker compose up -d` once (on a worker-only server,
+   `docker compose -f docker-compose.worker.yml up -d`, unless you saved it as
+   `docker-compose.yml`). It starts the proxy and recreates the
    worker behind it. The containers the worker deployed keep running.
 5. Open the worker's status page: it should say *Docker access: socket proxy*.
    If it adds that the policy is not the one the image expects, a later
@@ -73,12 +75,15 @@ no longer mounts the socket.
 
 **If something is refused.** The dashboard shows the proxy's reason, and
 `docker logs cashpilot-socket-proxy` lists every refused call. A bind outside
-the allowed folders names `CASHPILOT_PROXY_BIND_MOUNTS`. A container runtime
-other than `runc` or gVisor needs adding to `allowed_runtimes` in the compose
-file's policy. If the **Update** button says it needs `CASHPILOT_COMPOSE_DIR`,
+the allowed folders names `CASHPILOT_PROXY_BIND_MOUNTS`. The proxy and the worker
+both allow only `runc` and the gVisor runtimes; a deploy that names another one
+(`crun`, `nvidia`, `io.containerd.runc.v2`) is refused before the running
+container is touched, so pick one of those in `CASHPILOT_CONTAINER_RUNTIME`
+and its overrides. If the **Update** button says it needs `CASHPILOT_COMPOSE_DIR`,
 it prints the exact line to add.
 
-**To go back,** put your old compose file back, run `docker compose up -d`,
+**To go back,** put your old compose file back, run `docker compose up -d`
+(with the same `-f` as above if you used one),
 then remove the proxy with `docker rm -f cashpilot-socket-proxy`.
 
 ---
