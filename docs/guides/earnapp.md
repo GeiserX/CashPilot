@@ -40,7 +40,7 @@ EarnApp by Bright Data lets you sell your unused bandwidth for passive income. B
 
 ## Cashing out
 
-Turn on auto-redeem once and EarnApp pays by itself whenever the balance reaches the method's minimum: PayPal $10, Wise $10, Amazon $50. PayPal payments arrive from Bright Data Ltd. In October 2026 a $37.54 balance arrived as $36.81 in PayPal, about 2% less.
+Turn on auto-redeem once and EarnApp pays by itself whenever the balance reaches the method's minimum: PayPal $10, Wise $10, Amazon $50. PayPal payments arrive from Bright Data Ltd. In October 2026 a PayPal payment arrived about 2% below the redeemed balance.
 
 ## Requirements
 

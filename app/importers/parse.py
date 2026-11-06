@@ -406,6 +406,15 @@ def _apps_from_json(files: list[FileSettings], spec: dict[str, Any], skipped: li
                 text = str(leaf)
                 values[env_key] = Value(None, retype=True) if len(text.encode()) > MAX_VALUE_BYTES else Value(text)
             enabled = app_conf.get("enabled") is True
+            # Off with only template placeholders: the user never set this app up. Every
+            # leaf counts, mapped or not, so an app CashPilot cannot carry still shows why.
+            has_value = any(
+                isinstance(leaf, (str, int)) and not isinstance(leaf, bool) and not is_placeholder(str(leaf))
+                for key, leaf in app_conf.items()
+                if key != "enabled"
+            )
+            if not (enabled or has_value):
+                continue
             found.append(_App(app_name, app_spec, values, present=True, enabled=enabled))
     return found
 
@@ -480,7 +489,12 @@ def build_preview(
     notices = [spec["stop"]]
     proxies = sum(1 for s in skipped if "Proxies" in s["reason"])
     if proxies:
-        notices.append("Proxy settings were found and left out. Each CashPilot worker uses its own connection.")
+        notices.append(
+            "Proxy settings were found and left out. CashPilot deploys each service on the worker's own "
+            "connection first; a proxied copy then runs beside it, and you can stop the original if you want "
+            "the service on the proxy only. Add each proxy in the Proxies section of the Fleet page, then run "
+            "copies of your services through it."
+        )
     for fs in files:
         if fs.kind == "devices" and fs.extra_lines:
             notices.append(

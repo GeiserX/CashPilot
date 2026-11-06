@@ -22,7 +22,7 @@ ProxyBase is a bandwidth-sharing platform that pays users in cryptocurrency for 
 
 ## Cashing out
 
-The site lists a $0.20 minimum, and a $0.75 request went through in October 2026. A request always withdraws the full balance, as USDC on Polygon, POL or Litecoin, to an address you type in. ProxyBase covers the network fee.
+The site lists a $0.20 minimum, and a request under $1 went through in October 2026. A request always withdraws the full balance, as USDC on Polygon, POL or Litecoin, to an address you type in. ProxyBase covers the network fee.
 
 ## Requirements
 

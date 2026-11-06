@@ -14,6 +14,34 @@ Releases before `1.0.0` were recorded by hand and are kept verbatim in
 
 ### Documentation
 
+- Regenerate CHANGELOG.md (#616)
+
+## [1.72.6] - 2026-11-06
+
+### Documentation
+
+- Say what a first payout really asks for, before users request one (#584)
+
+## [1.72.5] - 2026-11-06
+
+### Documentation
+
+- Regenerate CHANGELOG.md (#615)
+
+### Fixes
+
+- Stop an untouched money4band config filling the import table, and stop one worker losing another's Activity sample (#609)
+
+### Maintenance
+
+- Move the site to Zensical (#602)
+
+## [1.72.4] - 2026-11-06
+
+### Documentation
+
+- Warn that a fixed egress IP goes stale on a dynamic line and leaves NAT loopback open (#608)
+- Regenerate CHANGELOG.md (#611)
 - Regenerate CHANGELOG.md (#610)
 
 ## [1.72.3] - 2026-11-06

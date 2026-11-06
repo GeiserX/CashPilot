@@ -82,7 +82,11 @@ cashout:
     minutes), then asks for your name, address, country and date of birth,
     and your PayPal address. Tipalti charges $2.02 per payment; choose USD to
     avoid its 1.9-3% currency conversion fee. Payment follows within 2
-    business days.
+    business days. The balance leaves your account as soon as you request,
+    even while the payout waits for Tipalti. Each later Tipalti login sends
+    a new SMS code unless you tick the option to remember the device for 30
+    days. In October 2026 Tipalti did not ask a payee in Spain for a tax
+    form.
 
 platforms: [docker, windows, macos, linux, android]
 
