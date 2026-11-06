@@ -115,7 +115,7 @@ it prints the exact line to add.
 (with the same `-f` as above if you used one),
 then remove the proxy with `docker rm -f cashpilot-socket-proxy`.
 
-## LAN isolation by default (the release after v1.63)
+## LAN isolation by default (since v1.70.0)
 
 **Affects you if** a worker runs earners on Docker's default bridge, which is
 every worker deployed before this release unless you set

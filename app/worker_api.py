@@ -1021,9 +1021,10 @@ async def lifespan(app: FastAPI):
 
     # The fence goes in before anything else, so the gap after a reboot in
     # which earners run without it is as short as this worker can make it.
-    # Without the fence they have no internet, never the LAN (app/lan_fence.py).
-    # The public IP is looked up first (bounded by _EGRESS_TOTAL_TIMEOUT), so
-    # the first table already drops it and NAT loopback has no window.
+    # Without the fence they have no internet unless the host or an upstream
+    # router masquerades their subnet, and they can still reach the host itself
+    # (docs/isolation.md). The public IP is looked up first (bounded by
+    # _EGRESS_TOTAL_TIMEOUT), so the first table drops it unless that lookup fails.
     if docker_mode == "direct":
         lan_fence.set_egress_ip(await _detect_egress_ip())
     await _check_fence(startup=True)
