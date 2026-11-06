@@ -129,6 +129,13 @@ class TestMoney4bandEnv:
         # Every app off with placeholder values: the user never set any of them up.
         assert _preview(_files("money4band/template-user-config.json"))["rows"] == []
 
+    def test_an_off_app_cashpilot_cannot_carry_still_shows_why(self):
+        # Grass has no mapped field, so only its raw values say the user set it up.
+        content = (FIX / "money4band/template-user-config.json").read_text(encoding="utf-8")
+        content = content.replace('"email": "yourGRASSMail"', '"email": "gr@example.com"')
+        rows = _rows(_preview([{"name": "user-config.json", "content": content}]))
+        assert list(rows) == ["grass"] and rows["grass"]["state"] == "unusable"
+
     def test_only_the_app_filled_in_on_a_json_template_comes_in(self):
         content = (FIX / "money4band/template-user-config.json").read_text(encoding="utf-8")
         content = content.replace(

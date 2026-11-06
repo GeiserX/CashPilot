@@ -406,8 +406,13 @@ def _apps_from_json(files: list[FileSettings], spec: dict[str, Any], skipped: li
                 text = str(leaf)
                 values[env_key] = Value(None, retype=True) if len(text.encode()) > MAX_VALUE_BYTES else Value(text)
             enabled = app_conf.get("enabled") is True
-            # Off with only template placeholders: the user never set this app up.
-            has_value = any(v.retype or not is_placeholder(v.text or "") for v in values.values())
+            # Off with only template placeholders: the user never set this app up. Every
+            # leaf counts, mapped or not, so an app CashPilot cannot carry still shows why.
+            has_value = any(
+                isinstance(leaf, (str, int)) and not isinstance(leaf, bool) and not is_placeholder(str(leaf))
+                for key, leaf in app_conf.items()
+                if key != "enabled"
+            )
             if not (enabled or has_value):
                 continue
             found.append(_App(app_name, app_spec, values, present=True, enabled=enabled))
