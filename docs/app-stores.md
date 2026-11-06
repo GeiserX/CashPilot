@@ -1,10 +1,10 @@
 # App stores
 
 You can install CashPilot from the app store of several home-server systems.
-Each listing installs the same two containers as `docker-compose.yml`: the
-dashboard (`drumsergio/cashpilot`) and the worker
-(`drumsergio/cashpilot-worker`), which mounts the Docker socket to start and
-stop the service containers.
+Each listing installs two containers: the dashboard (`drumsergio/cashpilot`)
+and the worker (`drumsergio/cashpilot-worker`). The listings do not yet include
+the socket proxy that `docker-compose.yml` runs, so there the worker mounts the
+Docker socket itself to start and stop the service containers.
 
 Whichever store you use, keep the dashboard on your LAN or VPN. It can command
 the worker, and the worker's Docker socket is root on the host.
