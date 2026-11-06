@@ -9,7 +9,7 @@ CashPilot runs passive income services on your own server and shows what they ea
 
 ## Before you install
 
-- The app has two containers. Only the worker mounts the Docker socket, which it needs to start and stop the service containers. The Docker socket gives root on the host.
+- The app has three containers. Only `cashpilot-socket-proxy` mounts the Docker socket, read-only, because the socket gives root on the host. The worker starts and stops the service containers through the proxy, which refuses every Docker call the worker does not make.
 - The dashboard can command the worker, so keep it on your LAN or VPN and do not expose it to the internet.
 - For that reason the package turns off Runtipi's reverse proxy options (public and local domains). Open the dashboard at your server's address on the app port.
 - On the first visit CashPilot asks for a setup token. Find it in the logs of the `cashpilot` container, in the line that says "setup token". It then creates the owner account and opens the setup wizard.

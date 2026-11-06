@@ -15,12 +15,13 @@ curl -fsSLO https://raw.githubusercontent.com/GeiserX/CashPilot/main/docker-comp
 docker compose up -d
 ```
 
-This starts two containers:
+This starts three containers:
 
 | Container | Port | Purpose |
 |-----------|------|---------|
 | **cashpilot-ui** | 8080 | Web dashboard, earnings collection, service catalog |
 | **cashpilot-worker** | 8081 | Docker agent that deploys and monitors service containers |
+| **cashpilot-socket-proxy** | none | Holds the Docker socket read-only and gives the worker a filtered copy ([Security defaults](security-defaults.md)) |
 
 ### 2. Open the dashboard
 
@@ -147,7 +148,7 @@ The UI's web port inside the container is fixed at `8080` (set via the container
 
 ## Updating CashPilot
 
-The compose file pins the `1.57` series, so `pull` fetches the newest patch of that series:
+The compose file pins a major.minor series, such as `drumsergio/cashpilot:X.Y`, so `pull` fetches the newest patch of that series:
 
 ```bash
 docker compose pull
@@ -176,9 +177,10 @@ instead. Put that value in `.env` and the button works.
 
 ### Pinning a specific version
 
-To stay on one exact release, replace `1.57` with the patch tag, for example
-`drumsergio/cashpilot:1.57.0` and `drumsergio/cashpilot-worker:1.57.0` (always
-the same tag on both), and remove `pull_policy: always`. To move to a newer
+To stay on one exact release, replace the `X.Y` series tag in
+`docker-compose.yml` with a full release tag `X.Y.Z` on both
+`drumsergio/cashpilot` and `drumsergio/cashpilot-worker` (always the same tag on
+both), and remove `pull_policy: always`. To move to a newer
 series, edit both tags. Browse tags on
 [Docker Hub](https://hub.docker.com/r/drumsergio/cashpilot/tags).
 

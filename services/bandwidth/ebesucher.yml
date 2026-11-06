@@ -87,7 +87,7 @@ rating:
     identity_checks: Not documented on pages we read.
     support: No reports found.
     earnings_realism: Not measured.
-    longevity: Running since 2002
+    longevity: TurboAd GmbH in Germany, running since 2002
   cons:
   - text: 'CashPilot does not run eBesucher: it is a browser extension, so CashPilot cannot deploy or update
       it for you. Its terms were not checked for containers.'
@@ -106,3 +106,9 @@ rating:
     kind: terms
     source: https://www.ebesucher.com/earn-money/beermoney
     checked_on: "2026-11-04"
+  - text: The imprint names the operator, TurboAd GmbH, registered in Berlin-Charlottenburg (HRB 160730
+      B).
+    criterion: longevity
+    kind: terms
+    source: https://www.ebesucher.com/imprint
+    checked_on: "2026-11-06"

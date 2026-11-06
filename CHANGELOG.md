@@ -10,6 +10,32 @@ Every release, grouped by what changed. Generated from commit history.
 Releases before `1.0.0` were recorded by hand and are kept verbatim in
 [docs/changelog-0.x-handwritten.md](docs/changelog-0.x-handwritten.md).
 
+## Unreleased
+
+### Documentation
+
+- Regenerate CHANGELOG.md (#610)
+
+## [1.72.3] - 2026-11-06
+
+### Fixes
+
+- Stop provider ratings claiming more than their sources say (#604)
+- Stop store installs giving the worker root on the host, and let tunnel fixes ship (#607)
+
+## [1.72.2] - 2026-11-06
+
+### Documentation
+
+- Stop telling users the worker holds the Docker socket and nothing fences the LAN (#603)
+- Stop saying CashPilot has no proxies and no default LAN fence (#596)
+- Regenerate CHANGELOG.md (#600)
+
+### Fixes
+
+- Make proxy edits reach running copies, and stop the cap restarting copies the owner stopped (#606)
+- Stop the worker-only compose file pinning an old worker, and fix the v1.72.1 upgrade steps (#601)
+
 ## [1.72.1] - 2026-11-06
 
 ### Fixes
@@ -816,7 +842,7 @@ Releases before `1.0.0` were recorded by hand and are kept verbatim in
 - Name the tracker's remote by an alias, so this repo no longer says where it is (#415)
 - Keep Co-Authored-By trailers out of commits made with the beads hooks (#414)
 - Tell agents this repo tracks work in beads (#413)
-- Drop a MacBook-only lefthook path from the committed hook (#412)
+- Drop a machine-specific lefthook path from the committed hook (#412)
 - Keep wallet-bearing beads off this public repo for good (#411)
 
 ## [1.39.6] - 2026-10-01
