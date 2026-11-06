@@ -3611,7 +3611,11 @@ async def _svc_remove(
     # remove_all), so their records go too. The removal itself already
     # happened; a failure here must not report it as failed.
     try:
-        await database.delete_proxied_copies_of(worker_id, slug)
+        if isinstance(result, dict) and result.get("proxied_error"):
+            # Some proxied copies survived; their records stay so they can be removed.
+            logger.warning("Removed %s, but some proxied copies remain: %s", slug, result["proxied_error"])
+        else:
+            await database.delete_proxied_copies_of(worker_id, slug)
     except Exception as exc:  # noqa: BLE001
         logger.warning("Removed %s, but could not drop its proxied copy records: %s", slug, exc)
     await database.record_health_event(slug, "remove")
@@ -4048,6 +4052,10 @@ async def api_create_proxy(request: Request, _auth: dict[str, Any] = Depends(_re
     except ValueError:
         raise HTTPException(status_code=400, detail="Send the proxy as a JSON object") from None
     proxy_id = await database.create_proxy(definition)
+    if definition.get("reset_day"):
+        # The first period starts now; with no start the first hourly sweep
+        # would take it for a missed reset and zero what was counted so far.
+        await database.update_proxy_state(proxy_id, proxies.reset_state({}, datetime.now(UTC).date()))
     return proxies.public_view(await _proxy_or_404(proxy_id))
 
 
@@ -4085,9 +4093,12 @@ async def api_update_proxy(
 @app.delete("/api/proxies/{proxy_id}")
 async def api_delete_proxy(proxy_id: int, _auth: dict[str, Any] = Depends(_require_owner)) -> dict[str, str]:
     await _proxy_or_404(proxy_id)
-    if await database.list_proxied_copies(proxy_id):
-        raise HTTPException(status_code=409, detail="Remove the copies running through this proxy first")
-    await database.delete_proxy(proxy_id)
+    # Under the lock a copy being added records itself first, so it is either
+    # seen here or finds the proxy gone.
+    async with _proxy_state_lock(proxy_id):
+        if await database.list_proxied_copies(proxy_id):
+            raise HTTPException(status_code=409, detail="Remove the copies running through this proxy first")
+        await database.delete_proxy(proxy_id)
     return {"status": "deleted"}
 
 
@@ -4204,15 +4215,37 @@ async def api_add_proxied_copy(
         arch_image = _image_for_arch(docker_conf, _safe_json(worker.get("system_info", "{}"), {}).get("arch"))
         if arch_image:
             earner["image"] = arch_image
-    result = await _proxy_worker_call(
-        worker_id,
-        "POST",
-        f"/api/proxied/{slug}/{proxy_id}/deploy",
-        definition,
-        json={"earner": earner, "proxy": proxies.worker_proxy_spec(definition)},
-        timeout=180,
-    )
-    await database.save_proxied_copy(proxy_id, worker_id, slug)
+    # The record goes in before the worker is asked, under the proxy's lock: a
+    # deploy that times out may still finish on the worker, and a copy with no
+    # record would be outside the cap and the delete guard.
+    async with _proxy_state_lock(proxy_id):
+        fresh = await database.get_proxy(proxy_id)
+        if not fresh:
+            raise HTTPException(status_code=404, detail="No such proxy")
+        if fresh["state"].get("capped_at"):
+            raise HTTPException(
+                status_code=409, detail=fresh["state"].get("cap_reason") or "This proxy reached its traffic cap"
+            )
+        definition = fresh["definition"]
+        had_record = any(
+            c["worker_id"] == worker_id and c["slug"] == slug for c in await database.list_proxied_copies(proxy_id)
+        )
+        await database.save_proxied_copy(proxy_id, worker_id, slug)
+    try:
+        result = await _proxy_worker_call(
+            worker_id,
+            "POST",
+            f"/api/proxied/{slug}/{proxy_id}/deploy",
+            definition,
+            json={"earner": earner, "proxy": proxies.worker_proxy_spec(definition)},
+            timeout=180,
+        )
+    except HTTPException as exc:
+        # A 504 says the worker may still be deploying: the record stays, so
+        # the copy is listed and can be removed. Any other answer is final.
+        if exc.status_code != 504 and not had_record:
+            await database.delete_proxied_copy(proxy_id, worker_id, slug)
+        raise
     exit_info = result.get("exit") if isinstance(result.get("exit"), dict) else {}
     exit_ip = egress.public_ip(exit_info.get("ip"))
     workers = await database.list_workers()
@@ -4241,7 +4274,13 @@ async def api_proxied_copy_command(
     if command == "start" and proxy["state"].get("capped_at"):
         raise HTTPException(status_code=409, detail=proxy["state"].get("cap_reason") or "This proxy reached its cap")
     result = await _proxy_worker_call(
-        worker_id, "POST", f"/api/proxied/{slug}/{proxy_id}/{command}", proxy["definition"], timeout=90
+        worker_id,
+        "POST",
+        f"/api/proxied/{slug}/{proxy_id}/{command}",
+        proxy["definition"],
+        # The proxy as stored now, so an edit since the deploy reaches the copy.
+        json={"proxy": proxies.worker_proxy_spec(proxy["definition"])} if command == "start" else None,
+        timeout=90,
     )
     # A start or stop by hand is the owner's decision; a later reset must not undo it.
     await database.set_proxied_copy_capped(proxy_id, worker_id, slug, False)
@@ -4292,13 +4331,7 @@ async def _release_capped_copies(proxy: dict[str, Any]) -> list[str]:
         if not copy.get("stopped_by_cap"):
             continue
         try:
-            await _proxy_worker_call(
-                copy["worker_id"],
-                "POST",
-                f"/api/proxied/{copy['slug']}/{proxy['id']}/start",
-                proxy["definition"],
-                timeout=90,
-            )
+            await _start_proxied_copy(proxy, copy["worker_id"], copy["slug"])
             await database.set_proxied_copy_capped(proxy["id"], copy["worker_id"], copy["slug"], False)
             started.append(f"{copy['slug']} on worker {copy['worker_id']}")
         except HTTPException as exc:
@@ -4306,6 +4339,18 @@ async def _release_capped_copies(proxy: dict[str, Any]) -> list[str]:
                 "Could not restart %s through proxy %s after a reset: %s", copy["slug"], proxy["id"], exc.detail
             )
     return started
+
+
+async def _start_proxied_copy(proxy: dict[str, Any], worker_id: int, slug: str) -> dict[str, Any]:
+    """Start one copy with the proxy's current settings."""
+    return await _proxy_worker_call(
+        worker_id,
+        "POST",
+        f"/api/proxied/{slug}/{proxy['id']}/start",
+        proxy["definition"],
+        json={"proxy": proxies.worker_proxy_spec(proxy["definition"])},
+        timeout=90,
+    )
 
 
 async def _run_proxy_cap_resets() -> None:
@@ -4343,18 +4388,27 @@ async def _account_proxy_traffic(worker_id: int, entries: list[Any]) -> None:
     for entry in entries:
         if isinstance(entry, dict) and isinstance(entry.get("proxy_id"), int):
             by_proxy.setdefault(entry["proxy_id"], []).append(entry)
+    if not by_proxy:
+        return
+    # Only traffic of copies the UI recorded on this worker counts, so a worker
+    # cannot spend, or cap, a proxy it runs nothing through.
+    recorded = {(c["proxy_id"], c["slug"]) for c in await database.list_proxied_copies() if c["worker_id"] == worker_id}
     now = time.time()
     for proxy_id, items in by_proxy.items():
+        counted = [e for e in items if (proxy_id, egress.container_slug(e)) in recorded]
         async with _proxy_state_lock(proxy_id):
             proxy = await database.get_proxy(proxy_id)
             if not proxy:
                 continue
-            state, crossed = proxies.account(proxy["state"], proxy["definition"], worker_id, items, now)
+            state, crossed = proxies.account(proxy["state"], proxy["definition"], worker_id, counted, now)
             await database.update_proxy_state(proxy_id, state)
         if not state.get("capped_at"):
             continue
         targets = {(worker_id, egress.container_slug(e)) for e in items if _running(e)}
         if crossed:
+            # Every recorded copy, on every worker, is asked to stop. Only those
+            # that were running are marked as stopped by the cap (see
+            # _stop_capped_proxy), so one the owner stopped stays stopped.
             targets |= {(c["worker_id"], c["slug"]) for c in await database.list_proxied_copies(proxy_id)}
         targets = {t for t in targets if t[1] and (proxy_id, *t) not in _proxy_cap_stopping}
         if targets or crossed:
@@ -4368,11 +4422,25 @@ async def _stop_capped_proxy(proxy: dict[str, Any], targets: set[tuple[int, str]
     try:
         for worker_id, slug in sorted(targets):
             try:
-                await _proxy_worker_call(
+                answer = await _proxy_worker_call(
                     worker_id, "POST", f"/api/proxied/{slug}/{pid}/stop", proxy["definition"], timeout=60
                 )
-                await database.set_proxied_copy_capped(pid, worker_id, slug, True)
                 unstopped.pop((worker_id, slug), None)
+                # An older worker does not say; it is taken as running, as before.
+                if isinstance(answer, dict) and answer.get("was_running") is False:
+                    continue
+                # A reset or a cap change may have lifted the cap while the stop
+                # was on its way; then the copy goes back up instead.
+                async with _proxy_state_lock(pid):
+                    fresh = await database.get_proxy(pid)
+                    still_capped = bool(fresh and fresh["state"].get("capped_at"))
+                    if still_capped:
+                        await database.set_proxied_copy_capped(pid, worker_id, slug, True)
+                if not still_capped and fresh:
+                    try:
+                        await _start_proxied_copy(fresh, worker_id, slug)
+                    except HTTPException as exc:
+                        logger.warning("Could not start %s again through proxy %s: %s", slug, pid, exc.detail)
             except HTTPException as exc:
                 if exc.status_code == 404 and any(
                     t in str(exc.detail) for t in ("No proxied copy", "Worker not found")
