@@ -27,6 +27,14 @@ GB = 1_000_000_000
 
 _HOST_RE = re.compile(r"^[A-Za-z0-9.-]{1,253}$")
 _EXIT_NODE_RE = re.compile(r"^[A-Za-z0-9._:-]{1,253}$")
+# https://host[:port][/path]: no user name or password (the API shows this
+# field back), no query and no fragment.
+_LOGIN_SERVER_RE = re.compile(r"^https://[A-Za-z0-9.-]{1,253}(:[0-9]{1,5})?(/[A-Za-z0-9._~/-]*)?$")
+
+
+def valid_login_server(value: str) -> bool:
+    """A Tailscale login server is a plain https:// URL with nothing secret in it."""
+    return bool(_LOGIN_SERVER_RE.match(value))
 
 
 class ProxyInputError(ValueError):
@@ -70,8 +78,10 @@ def clean_definition(body: dict[str, Any], existing: dict[str, Any] | None = Non
             raise ProxyInputError("A Tailscale proxy needs an auth key")
         if not _EXIT_NODE_RE.match(out["exit_node"]):
             raise ProxyInputError("Name the exit node by its Tailscale name or IP")
-        if out["login_server"] and not out["login_server"].startswith("https://"):
-            raise ProxyInputError("The login server must be an https:// URL")
+        if out["login_server"] and not valid_login_server(out["login_server"]):
+            raise ProxyInputError(
+                "The login server must be an https:// URL with no user name, password, query or fragment"
+            )
         out["host"], out["port"] = "", 0
         out["username"] = out["password"] = ""
     else:
