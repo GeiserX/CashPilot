@@ -721,10 +721,17 @@ def _helper_image(client: Any) -> str:
 
 
 def _remove_helper(client: Any) -> None:
+    """Remove a leftover helper by name, only when it carries the helper's label.
+
+    A container someone else named cashpilot-fence is left alone; the run that
+    follows then fails on the name instead of deleting it.
+    """
     from docker.errors import NotFound
 
     try:
-        client.containers.get(HELPER_NAME).remove(force=True, v=True)
+        found = client.containers.get(HELPER_NAME)
+        if (getattr(found, "labels", None) or {}).get(PROBE_LABEL) == "fence":
+            found.remove(force=True, v=True)
     except NotFound:
         pass
     except Exception as exc:  # noqa: BLE001 - logged; the next run removes it by name first
@@ -877,7 +884,8 @@ def _outside_containers(client: Any, network: str) -> list[Any]:
         if mode in ("host", "none") or mode.startswith("container:"):
             continue
         nets = set(((attrs.get("NetworkSettings") or {}).get("Networks") or {}).keys())
-        if network not in nets:
+        # On our network and another one: it reaches whatever the other reaches.
+        if nets != {network}:
             found.append(c)
     return found
 

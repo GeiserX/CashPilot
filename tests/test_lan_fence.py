@@ -554,7 +554,7 @@ class TestTheNetwork:
 # ---------------------------------------------------------------------------
 
 
-def _deploy(client, setting, helper_result=None, helper_error=None, old=None):
+def _deploy(client, setting, helper_result=None, helper_error=None, old=None, network_mode=None):
     if old is None:
         client.containers.get.side_effect = NotFound("nope")
     else:
@@ -571,7 +571,7 @@ def _deploy(client, setting, helper_result=None, helper_error=None, old=None):
         patch.object(orchestrator, "_get_client", return_value=client),
         patch.object(lan_fence, "run_helper", helper),
     ):
-        orchestrator.deploy_raw(slug="honeygain", image="honeygain/honeygain")
+        orchestrator.deploy_raw(slug="honeygain", image="honeygain/honeygain", network_mode=network_mode)
     return client.containers.run.call_args.kwargs, helper
 
 
@@ -584,6 +584,13 @@ class TestDeploys:
         assert kwargs["dns"] == ["1.1.1.1", "9.9.9.9"], "a LAN resolver is behind the fence"
         assert helper.call_args.args[1:] == ("apply", "172.18.0.0/16")
         assert lan_fence.status()["fence"]["state"] == "applied"
+
+    def test_default_network_mode_is_the_bridge_and_is_fenced(self):
+        """Docker's "default" is the same default bridge; spelled that way it must not skip the fence."""
+        client = _docker()
+        kwargs, helper = _deploy(client, "auto", network_mode="default")
+        assert kwargs["network"] == lan_fence.NETWORK_NAME and kwargs["network_mode"] is None
+        helper.assert_called_once()
 
     def test_an_upgraded_install_keeps_the_default_bridge(self):
         client = _docker(earners=[_container("cashpilot-earnapp")])
@@ -862,6 +869,25 @@ class TestTheWorkerRoute:
     def test_a_conflict_says_how_to_fix_it(self):
         resp, _ = self._post({"enable": True}, side_effect=lan_fence.IsolationConflict("set this or that"))
         assert resp.status_code == 409 and resp.json()["detail"] == "set this or that"
+
+
+class TestOutsideAndHelperOwnership:
+    def test_an_earner_on_our_network_and_another_is_outside(self):
+        both = _container("cashpilot-repocket", lan_fence.NETWORK_NAME, (lan_fence.NETWORK_NAME, "lan"))
+        only = _container("cashpilot-honeygain", lan_fence.NETWORK_NAME, (lan_fence.NETWORK_NAME,))
+        found = lan_fence._outside_containers(_docker(_network(), earners=[both, only]), lan_fence.NETWORK_NAME)
+        assert [c.name for c in found] == ["cashpilot-repocket"]
+
+    def test_a_foreign_container_by_the_helpers_name_is_left_alone(self):
+        foreign = MagicMock(labels={})
+        client = MagicMock()
+        client.containers.get.return_value = foreign
+        lan_fence._remove_helper(client)
+        foreign.remove.assert_not_called()
+        ours = MagicMock(labels={lan_fence.PROBE_LABEL: "fence"})
+        client.containers.get.return_value = ours
+        lan_fence._remove_helper(client)
+        ours.remove.assert_called_once_with(force=True, v=True)
 
 
 class TestEnable:
