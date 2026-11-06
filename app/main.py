@@ -7,6 +7,7 @@ management, and earnings tracking.
 from __future__ import annotations
 
 import asyncio
+import collections
 import contextlib
 import hmac
 import ipaddress
@@ -63,6 +64,7 @@ from app import (
     power,
     preflight,
     producer_state,
+    ratings,
     setup_token,
     update_check,
     usage,
@@ -2782,6 +2784,8 @@ async def api_services_available(request: Request) -> list[dict[str, Any]]:
         # detail view already says so, and the wizard is the screen a new user
         # actually sees (CashPilot-p6s).
         svc["has_collector"] = slug in collector_map
+        # The grade and its top cons, computed from the published criteria.
+        svc["rating_result"] = ratings.for_service(svc)
         available.append(svc)
     return available
 
@@ -2820,6 +2824,8 @@ async def api_get_service(request: Request, slug: str) -> dict[str, Any]:
     # Worker id -> the image chosen instead of the catalog's, for the deploy
     # form's Image box and the custom-image badge. Absent workers use the catalog.
     svc["custom_images"] = {str(wid): image for wid, image in (await database.get_custom_images(slug)).items()}
+    # Only catalog services are graded; a service a user added is not reviewed.
+    svc["rating_result"] = ratings.for_service(None if svc.get("custom") else svc)
     return svc
 
 
@@ -2932,16 +2938,25 @@ async def api_update_custom_service(
 async def api_delete_custom_service(
     request: Request, slug: str, _auth: dict[str, Any] = Depends(_require_owner)
 ) -> dict[str, str]:
-    """Delete a definition, refused while any box runs or records it."""
-    if not custom_services.is_custom_slug(slug) or await database.get_custom_service(slug) is None:
-        raise HTTPException(status_code=404, detail=f"Custom service '{slug}' not found")
-    where = await _custom_deployed_on(slug)
-    if where:
-        raise HTTPException(
-            status_code=409,
-            detail=f"{slug} is still deployed on {', '.join(where)}. Remove it from every box first.",
-        )
-    await database.delete_custom_service(slug)
+    """Delete a definition, refused while any box runs or records it, or a deploy of it is in flight."""
+    # Before any await, so no deploy can start between this check and the delete.
+    if _custom_deploying.get(slug):
+        raise HTTPException(status_code=409, detail=f"{slug} is being deployed right now. Try again when it is done.")
+    _custom_deleting[slug] += 1
+    try:
+        if not custom_services.is_custom_slug(slug) or await database.get_custom_service(slug) is None:
+            raise HTTPException(status_code=404, detail=f"Custom service '{slug}' not found")
+        where = await _custom_deployed_on(slug)
+        if where:
+            raise HTTPException(
+                status_code=409,
+                detail=f"{slug} is still deployed on {', '.join(where)}. Remove it from every box first.",
+            )
+        await database.delete_custom_service(slug)
+    finally:
+        _custom_deleting[slug] -= 1
+        if not _custom_deleting[slug]:
+            del _custom_deleting[slug]
     logger.info("Custom service %s deleted", slug)
     return {"status": "deleted"}
 
@@ -3056,6 +3071,30 @@ async def api_deploy(
     _auth: dict[str, Any] = Depends(_require_owner),
 ) -> dict[str, Any]:
     """Validate the effective service configuration and deploy it to the selected worker."""
+    if not custom_services.is_custom_slug(slug):
+        return await _deploy(slug, body, worker_id)
+    # A custom deploy holds its slug until it is recorded, so a delete cannot
+    # remove the definition while the worker is still pulling and starting it,
+    # which would leave a container running that no definition describes.
+    # Checked and taken with no await in between: one event loop, one UI process.
+    if slug in _custom_deleting:
+        raise HTTPException(status_code=409, detail=f"{slug} is being deleted")
+    _custom_deploying[slug] += 1
+    try:
+        return await _deploy(slug, body, worker_id)
+    finally:
+        _custom_deploying[slug] -= 1
+        if not _custom_deploying[slug]:
+            del _custom_deploying[slug]
+
+
+#: Custom slugs with deploys in flight, and with deletes in flight (how many of each).
+#: See api_deploy and api_delete_custom_service.
+_custom_deploying: collections.Counter[str] = collections.Counter()
+_custom_deleting: collections.Counter[str] = collections.Counter()
+
+
+async def _deploy(slug: str, body: DeployRequest, worker_id: int | None) -> dict[str, Any]:
     # dict[str, Any], not dict[str, str]: kept_from_previous_deployment is a
     # list, and FastAPI validates the response against this annotation AFTER
     # the deploy has run and persisted — a stricter type turns the successful
@@ -7318,6 +7357,7 @@ async def api_fleet_api_key_reveal(request: Request) -> dict[str, str]:
 # ---------------------------------------------------------------------------
 from app.routers import activity as activity_router  # noqa: E402
 from app.routers import auth as auth_router  # noqa: E402
+from app.routers import importers as importers_router  # noqa: E402
 from app.routers import pages as pages_router  # noqa: E402
 from app.routers import users as users_router  # noqa: E402
 
@@ -7325,3 +7365,24 @@ app.include_router(activity_router.router)
 app.include_router(auth_router.router)
 app.include_router(pages_router.router)
 app.include_router(users_router.router)
+app.include_router(importers_router.router)
+
+
+# The two import routes that need api_set_config and api_deploy. Their logic
+# lives in app/routers/importers.py; they are declared here because no module
+# may import main.
+@app.post("/api/import/apply")
+async def api_import_apply(request: Request, user: dict[str, Any] = Depends(_require_owner)) -> dict[str, Any]:
+    async def set_collector_config(data: dict[str, str]) -> None:
+        await api_set_config(request, ConfigUpdate(data=data), _auth=user)
+
+    return await importers_router.apply(request, set_collector_config)
+
+
+@app.post("/api/import/drafts/{slug}/deploy")
+async def api_import_draft_deploy(
+    request: Request, slug: str, worker_id: int | None = None, user: dict[str, Any] = Depends(_require_owner)
+) -> dict[str, Any]:
+    """Deploy an imported service through the normal deploy route, which does every check."""
+    env = await importers_router.draft_env(slug)
+    return await api_deploy(request, slug, DeployRequest(env=env), worker_id=worker_id, _auth=user)

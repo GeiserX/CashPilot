@@ -51,8 +51,8 @@ def _request():
 def _worker_row(**over):
     row = {
         "id": 1,
-        "client_id": "cid-watchtower",
-        "name": "watchtower",
+        "client_id": "cid-charlie",
+        "name": "charlie",
         "url": "",
         "status": "online",
         "containers": "[]",
@@ -109,12 +109,12 @@ class TestOfflineTransition:
         r = self._sweep()
         r.mark.assert_awaited_once_with(1, "2026-04-04T12:00:00")
         assert r.record.await_args.args[0] == "worker"
-        assert r.record.await_args.args[1] == "cid-watchtower"  # identity, not the name
-        assert "watchtower" in r.record.await_args.args[2]  # the name travels in the message
-        assert r.sends == [("CashPilot: worker 'watchtower' went offline", "worker", "cid-watchtower")]
+        assert r.record.await_args.args[1] == "cid-charlie"  # identity, not the name
+        assert "charlie" in r.record.await_args.args[2]  # the name travels in the message
+        assert r.sends == [("CashPilot: worker 'charlie' went offline", "worker", "cid-charlie")]
         entry = next(a for a in main._collector_alerts if a["kind"] == "worker")
-        assert entry["platform"] == "watchtower"
-        assert entry["client_id"] == "cid-watchtower"
+        assert entry["platform"] == "charlie"
+        assert entry["client_id"] == "cid-charlie"
 
     def test_a_recovery_racing_the_sweep_wins(self):
         """The conditional write loses when a heartbeat landed in the gap —
@@ -125,9 +125,7 @@ class TestOfflineTransition:
         assert main._collector_alerts == []
 
     def test_cooldown_dedupes_the_push_but_not_the_bell(self):
-        main._collector_alerts = [
-            {"kind": "worker", "platform": "watchtower", "client_id": "cid-watchtower", "error": "x"}
-        ]
+        main._collector_alerts = [{"kind": "worker", "platform": "charlie", "client_id": "cid-charlie", "error": "x"}]
         r = self._sweep(record_returns=False)
         assert r.sends == []
         assert len([a for a in main._collector_alerts if a["kind"] == "worker"]) == 1
@@ -149,7 +147,7 @@ class TestOfflineTransition:
         # Enrolled (api_key_enc set): never purge-eligible, however long offline.
         offline = _worker_row(status="offline", api_key_enc="enc")
         r = self._sweep(rows=[offline])
-        assert r.record.await_args.args[:2] == ("worker", "cid-watchtower")
+        assert r.record.await_args.args[:2] == ("worker", "cid-charlie")
         r.delete.assert_not_awaited()
 
     def test_an_online_worker_with_a_lingering_alert_is_reconciled(self):
@@ -158,14 +156,12 @@ class TestOfflineTransition:
         from datetime import UTC, datetime
 
         fresh = _worker_row(last_heartbeat=datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%S"))
-        main._collector_alerts = [
-            {"kind": "worker", "platform": "watchtower", "client_id": "cid-watchtower", "error": "x"}
-        ]
+        main._collector_alerts = [{"kind": "worker", "platform": "charlie", "client_id": "cid-charlie", "error": "x"}]
         first = self._sweep(rows=[fresh])
         first.clear.assert_not_awaited()  # one online sweep is not a recovery yet
         assert main._collector_alerts  # bell stays honest meanwhile
         second = self._sweep(rows=[fresh])
-        second.clear.assert_awaited_once_with("worker", "cid-watchtower")
+        second.clear.assert_awaited_once_with("worker", "cid-charlie")
         assert main._collector_alerts == []
 
 
@@ -173,11 +169,11 @@ class TestBellRebuildDerivesOfflineWorkers:
     def test_offline_workers_are_derived_each_rebuild(self):
         rows = [
             _worker_row(status="offline"),
-            _worker_row(id=2, client_id="cid-geiserback", name="geiserback", status="online"),
+            _worker_row(id=2, client_id="cid-alpha", name="alpha", status="online"),
         ]
         with patch("app.main.database.list_workers", new_callable=AsyncMock, return_value=rows):
             entries = _run(_offline_worker_alerts())
-        assert [(e["platform"], e["client_id"]) for e in entries] == [("watchtower", "cid-watchtower")]
+        assert [(e["platform"], e["client_id"]) for e in entries] == [("charlie", "cid-charlie")]
         assert entries[0]["kind"] == "worker"
 
     def test_no_offline_workers_is_empty(self):
@@ -199,7 +195,7 @@ class TestWarmRestoresWorkerAlerts:
         stored = [
             # Worker alerts are stored under client_id; the warm pass resolves
             # the display name and keeps the id beside it.
-            {"kind": "worker", "subject": "cid-watchtower", "message": "offline", "category": None},
+            {"kind": "worker", "subject": "cid-charlie", "message": "offline", "category": None},
             {"kind": "notice", "subject": "storj", "message": "unreachable", "category": None},
             {"kind": "bogus", "subject": "x", "message": "y", "category": None},
         ]
@@ -210,8 +206,8 @@ class TestWarmRestoresWorkerAlerts:
         ):
             _run(_warm_collector_alerts())
         by_kind = {a["kind"]: a for a in main._collector_alerts}
-        assert by_kind["worker"]["platform"] == "watchtower"  # resolved for display
-        assert by_kind["worker"]["client_id"] == "cid-watchtower"  # identity kept
+        assert by_kind["worker"]["platform"] == "charlie"  # resolved for display
+        assert by_kind["worker"]["client_id"] == "cid-charlie"  # identity kept
         assert "notice" in by_kind
         assert "bogus" not in by_kind  # negative control: unknown kinds still dropped
 
@@ -247,9 +243,9 @@ class TestRecoveryClears:
                 api_worker_heartbeat(
                     _request(),
                     SimpleNamespace(
-                        name="watchtower",
+                        name="charlie",
                         url="",
-                        client_id="cid-watchtower",
+                        client_id="cid-charlie",
                         containers=[],
                         apps=[],
                         system_info={},
@@ -265,22 +261,22 @@ class TestRecoveryClears:
         nap. The route now only logs; the sweep clears after a sustained
         recovery."""
         main._collector_alerts = [
-            {"kind": "worker", "platform": "watchtower", "client_id": "cid-watchtower", "error": "offline"},
+            {"kind": "worker", "platform": "charlie", "client_id": "cid-charlie", "error": "offline"},
             {"kind": "collector", "platform": "honeygain", "error": "kept"},
         ]
-        cleared, result = self._heartbeat(previous=("offline", "watchtower"))
+        cleared, result = self._heartbeat(previous=("offline", "charlie"))
         assert result["status"] == "ok"
         assert cleared == []
         kinds = [(a["kind"], a.get("client_id")) for a in main._collector_alerts]
-        assert ("worker", "cid-watchtower") in kinds  # bell stays until the sweep decides
+        assert ("worker", "cid-charlie") in kinds  # bell stays until the sweep decides
         assert ("collector", None) in kinds
 
     def test_an_online_worker_heartbeat_clears_nothing(self):
         # Negative control: no transition, no clearing.
         main._collector_alerts = [
-            {"kind": "worker", "platform": "watchtower", "client_id": "cid-watchtower", "error": "offline"}
+            {"kind": "worker", "platform": "charlie", "client_id": "cid-charlie", "error": "offline"}
         ]
-        cleared, _ = self._heartbeat(previous=("online", "watchtower"))
+        cleared, _ = self._heartbeat(previous=("online", "charlie"))
         assert cleared == []
         assert len(main._collector_alerts) == 1
 
@@ -338,11 +334,11 @@ class TestFlapDamping:
         self._sweep(rows=[_worker_row()])  # episode 1: push
         self._sweep(rows=[self._fresh_row()])  # online sweep 1 — no clear yet
         second = self._sweep(rows=[self._fresh_row()])  # online sweep 2 — clears
-        second.clear.assert_awaited_once_with("worker", "cid-watchtower")
+        second.clear.assert_awaited_once_with("worker", "cid-charlie")
         # Cleared row -> a NEW offline episode records fresh again. The PUSH
         # additionally obeys the per-worker floor (TestOfflinePushFloor), so
         # it fires here only once the floor has passed.
-        main._worker_last_offline_push["cid-watchtower"] -= main._WORKER_OFFLINE_PUSH_COOLDOWN_S + 1
+        main._worker_last_offline_push["cid-charlie"] -= main._WORKER_OFFLINE_PUSH_COOLDOWN_S + 1
         episode2 = self._sweep(rows=[_worker_row()])
         episode2.record.assert_awaited_once()
         assert len(episode2.sends) == 1
@@ -366,7 +362,7 @@ class TestFlapDamping:
         failing.clear.assert_awaited_once()  # threshold reached, clear attempted
         main._collector_alerts = []  # hourly rebuild dropped the bell entry
         retry = self._sweep(rows=[self._fresh_row()])
-        retry.clear.assert_awaited_once_with("worker", "cid-watchtower")
+        retry.clear.assert_awaited_once_with("worker", "cid-charlie")
 
     def test_a_successful_clear_is_not_repeated_while_online(self):
         self._sweep(rows=[_worker_row()])
@@ -404,7 +400,7 @@ class TestOfflinePushFloor:
 
     def test_the_floor_expires_and_the_next_episode_pushes(self):
         self._cycle_to_rearmed()
-        main._worker_last_offline_push["cid-watchtower"] -= main._WORKER_OFFLINE_PUSH_COOLDOWN_S + 1
+        main._worker_last_offline_push["cid-charlie"] -= main._WORKER_OFFLINE_PUSH_COOLDOWN_S + 1
         second = self._sweep(rows=[_worker_row()])
         assert len(second.sends) == 1
 
@@ -412,10 +408,10 @@ class TestOfflinePushFloor:
         # The whole point: recovering is what re-armed the spam loop, so a
         # recovery must not shorten the floor.
         self._cycle_to_rearmed()
-        armed_at = main._worker_last_offline_push["cid-watchtower"]
+        armed_at = main._worker_last_offline_push["cid-charlie"]
         self._sweep(rows=[self._fresh_row()])
         self._sweep(rows=[self._fresh_row()])
-        assert main._worker_last_offline_push["cid-watchtower"] == armed_at
+        assert main._worker_last_offline_push["cid-charlie"] == armed_at
 
     def test_a_failed_delivery_releases_the_floor(self):
         """The floor is armed at spawn time, before the outcome is known — a
@@ -423,11 +419,11 @@ class TestOfflinePushFloor:
         suppressed for the whole floor window."""
         import time as _time
 
-        main._worker_last_offline_push["cid-watchtower"] = _time.monotonic()
+        main._worker_last_offline_push["cid-charlie"] = _time.monotonic()
         with (
             patch("app.main.notify.send", new_callable=AsyncMock, return_value=0),
             patch("app.main.notify.is_enabled", return_value=True),
             patch("app.main.database.delete_alert", new_callable=AsyncMock, return_value=True),
         ):
-            _run(main._push_alert("worker", "cid-watchtower", "t", "m", 123))
-        assert "cid-watchtower" not in main._worker_last_offline_push
+            _run(main._push_alert("worker", "cid-charlie", "t", "m", 123))
+        assert "cid-charlie" not in main._worker_last_offline_push

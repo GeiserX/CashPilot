@@ -1,0 +1,274 @@
+# How the config files of other passive-income stacks map onto the catalog.
+#
+# Data only: app/importers/parse.py reads it and runs nothing from it. It lives
+# here rather than in services/ because it describes other projects' file
+# formats, not our services, and services/ is vendored byte for byte into
+# CashPilot-Desktop, whose strict decoder refuses unknown keys.
+# tests/test_importers.py ties every slug, env key and collector key below to
+# the catalog, so a renamed field fails a test instead of importing nothing.
+#
+# Per tool:
+#   stop:        how to stop the old stack, shown on the import page.
+#   markers:     what tells a .env/properties file apart. `keys` are names only
+#                that tool writes; `values` are KEY: value pairs it always writes.
+#   apps:        <the tool's own app name>: {slug, fields, other_env, on_env, unusable}
+#     fields:    <catalog env key>: {json: <flag in money4band's user-config.json>,
+#                                    env: [<keys in the .env, newest first>]}
+#     other_env: keys that belong to this app but carry nothing CashPilot uses.
+#     on_env:    KEY: value that turns the app on with no credential ("*" = any value).
+#     unusable:  why CashPilot cannot run it from this tool's values.
+#     note:      shown on the row whatever its state; missing_note only while a field is missing.
+#   ignore_env:  settings that only steer the old tool; never listed. fnmatch patterns.
+#   ignore_json: top-level keys of user-config.json that are never listed.
+#   not_carried: settings the user may expect to come over, and why they do not.
+#
+# Upstream sources, pinned:
+#   money4band  https://github.com/MRColorR/money4band/tree/3bfafb1d9a738aac11f2049d6f2c3515ff783bb8
+#               (template/user-config.json, utils/generator.py) and the 3.x .env at
+#               https://github.com/MRColorR/money4band/blob/v3.4.1/.env.template
+#   CashFactory https://github.com/OlivierGaland/CashFactory/tree/0ff4bd0c3b020d82c91e095db43ba5c9e356ac94 (.env)
+#   InternetIncome https://github.com/engageub/InternetIncome/tree/db9338ab5a77539db8420476742af647b6cf82e5
+#               (properties.conf, internetIncome.sh: earnapp.txt and proxyrack.txt)
+
+# Where the old tool's deploy login is also the earnings login CashPilot's
+# collector signs in with: catalog env key -> collector config arg. Only these
+# three, because their container takes the account email and password itself.
+collector_links:
+  honeygain: {HONEYGAIN_EMAIL: email, HONEYGAIN_PASSWORD: password}
+  iproyal: {IPROYALPAWNS_EMAIL: email, IPROYALPAWNS_PASSWORD: password}
+  bitping: {BITPING_EMAIL: email, BITPING_PASSWORD: password}
+
+tools:
+  money4band:
+    name: money4band
+    stop: "Stop money4band first: choose 'Stop apps stack' in its menu, or run `docker compose down` in its folder."
+    markers:
+      keys: [STACK_PROXY_URL, STACK_PROXY_ENABLED, STACK_PROXY, M4B_DASHBOARD_PORT, M4B_WATCHTOWER_SCOPE,
+             REPOCKET_APIKEY, PROXYRACK_APIKEY, PROXYRACK_DEVICE_UUID, EARNAPP_DEVICE_UUID]
+      values: {COMPOSE_PROJECT_NAME: money4band}
+    apps:
+      earnapp:
+        slug: earnapp
+        fields:
+          EARNAPP_UUID: {json: uuid, env: [EARNAPP_UUID, EARNAPP_DEVICE_UUID]}
+      honeygain:
+        slug: honeygain
+        fields:
+          HONEYGAIN_EMAIL: {json: email, env: [HONEYGAIN_EMAIL]}
+          HONEYGAIN_PASSWORD: {json: password, env: [HONEYGAIN_PASSWORD, HONEYGAIN_PASSWD]}
+      iproyalpawns:
+        slug: iproyal
+        fields:
+          IPROYALPAWNS_EMAIL: {json: email, env: [IPROYALPAWNS_EMAIL]}
+          IPROYALPAWNS_PASSWORD: {json: password, env: [IPROYALPAWNS_PASSWORD, IPROYALPAWNS_PASSWD]}
+      packetstream:
+        slug: packetstream
+        fields:
+          CID: {json: cid, env: [PACKETSTREAM_CID]}
+      traffmonetizer:
+        slug: traffmonetizer
+        fields:
+          TRAFFMONETIZER_TOKEN: {json: token, env: [TRAFFMONETIZER_TOKEN]}
+      repocket:
+        slug: repocket
+        fields:
+          RP_EMAIL: {json: email, env: [REPOCKET_EMAIL]}
+          RP_API_KEY: {json: apikey, env: [REPOCKET_APIKEY]}
+      earnfm:
+        slug: earnfm
+        fields:
+          EARNFM_TOKEN: {json: apikey, env: [EARNFM_APIKEY]}
+      proxyrack:
+        slug: proxyrack
+        fields:
+          API_KEY: {json: apikey, env: [PROXYRACK_APIKEY]}
+          UUID: {json: uuid, env: [PROXYRACK_UUID, PROXYRACK_DEVICE_UUID]}
+      proxylite:
+        slug: proxylite
+        fields:
+          USER_ID: {json: userid, env: [PROXYLITE_USERID, PROXYLITE_USER_ID]}
+      bitping:
+        slug: bitping
+        fields:
+          BITPING_EMAIL: {json: email, env: [BITPING_EMAIL]}
+          BITPING_PASSWORD: {json: password, env: [BITPING_PASSWORD, BITPING_PASSWD]}
+        other_env: [BITPING_MFA]
+      mystnode:
+        slug: mysterium
+        # Not MYSTNODE_DASHBOARD_PORT: the 3.x .env.template always holds it. The 4.x
+        # generator writes the ports only for an enabled app.
+        on_env: {MYSTNODE_PORT: "*", MYSTNODE_PORT_1: "*"}
+        note: "CashPilot starts a new Mysterium node with a new identity. Settle the old node's earnings or copy its keystore first; the Mysterium guide shows how."
+      proxybase:
+        slug: proxybase
+        other_env: [PROXYBASE_USERID]
+        unusable: "money4band runs ProxyBase's retired client with a user id; CashPilot runs the current one, which needs the Access Token from proxybase.org."
+      urnetwork:
+        slug: urnetwork
+        other_env: [URNETWORK_AUTH_TOKEN]
+        unusable: "CashPilot signs URnetwork in with your email and password; money4band keeps a session token instead."
+      grass:
+        slug: grass
+        other_env: [GRASS_EMAIL, GRASS_PASSWORD, GRASS_PASSWD, GRASS_USERID]
+        unusable: "Grass runs as a browser extension; CashPilot only tracks it, with the access token from the Grass dashboard."
+      gradient: {slug: gradient, other_env: [GRADIENT_EMAIL, GRADIENT_PASSWORD]}
+      dawn: {slug: dawn, other_env: [DAWN_EMAIL, DAWN_PASSWORD]}
+      teneo: {slug: teneo, other_env: [TENEO_EMAIL, TENEO_PASSWORD]}
+      titan: {slug: titan, other_env: [TITAN_HASH]}
+      spide: {slug: spide, other_env: [SPIDE_MACHINE_ID]}
+      wipter: {slug: wipter, other_env: [WIPTER_EMAIL, WIPTER_PASSWORD]}
+      packetshare: {slug: packetshare, other_env: [PACKETSHARE_EMAIL, PACKETSHARE_PASSWORD]}
+      peer2profit: {slug: peer2profit, other_env: [PEER2PROFIT_EMAIL]}
+      speedshare: {slug: speedshare, other_env: [SPEEDSHARE_CODE, SPEEDSHARE_UUID, SPEEDSHARE_DEVICE_UUID]}
+    ignore_env: [PROJECT_VERSION, COMPOSE_PROJECT_NAME, DS_PROJECT_SERVER_URL, OS_TYPE, "DETECTED_*",
+                 "APP_CPU_*", "APP_MEM_*", "RAM_CAP_*", "NETWORK_*", "M4B_*", "*_PORT", "*_PORT_[0-9]*",
+                 "*_DUMMY", "*_DASHBOARD_PORT", NICKNAME, EMAIL,
+                 # The generator writes every key of the proxies block, the sample URL included.
+                 STACK_PROXY_URL_EXAMPLE]
+    ignore_json: [user, compose_config_common, resource_limits]
+    not_carried:
+      DEVICE_NAME: "CashPilot names each device after the worker it runs on."
+      device_info: "CashPilot names each device after the worker it runs on."
+      STACK_PROXY*: "Proxies are not imported. Each CashPilot worker uses its own connection."
+      proxies: "Proxies are not imported. Each CashPilot worker uses its own connection."
+      SHOUTRRR_URL: "Update notifications are not imported."
+      WATCHTOWER_NOTIFICATION_*: "Update notifications are not imported."
+      notifications: "Update notifications are not imported."
+      watchtower: "CashPilot updates its own containers; money4band's Watchtower is not needed."
+      m4b_dashboard: "money4band's dashboard is not needed; CashPilot has its own."
+
+  cashfactory:
+    name: CashFactory
+    stop: "Stop CashFactory first: run `docker compose down` in its folder, then remove its Portainer and Watchtower containers, which hold the Docker socket."
+    markers:
+      keys: [_COMPOSE_PROJECT_STACK_ID, EARNAPP_DEVICE_ID, PROXYRACK_HOST_UUID]
+      values: {_COMPOSE_PROJECT_NAME: cashfactory}
+    apps:
+      earnapp:
+        slug: earnapp
+        fields:
+          EARNAPP_UUID: {env: [EARNAPP_DEVICE_ID]}
+      honeygain:
+        slug: honeygain
+        fields:
+          HONEYGAIN_EMAIL: {env: [HONEYGAIN_EMAIL]}
+          HONEYGAIN_PASSWORD: {env: [HONEYGAIN_PASSWD]}
+      iproyalpawns:
+        slug: iproyal
+        fields:
+          IPROYALPAWNS_EMAIL: {env: [IPROYALPAWNS_EMAIL]}
+          IPROYALPAWNS_PASSWORD: {env: [IPROYALPAWNS_PASSWD]}
+      packetstream:
+        slug: packetstream
+        fields:
+          CID: {env: [PACKETSTREAM_CID]}
+      traffmonetizer:
+        slug: traffmonetizer
+        fields:
+          TRAFFMONETIZER_TOKEN: {env: [TRAFFMONETIZER_TOKEN]}
+      repocket:
+        slug: repocket
+        fields:
+          RP_EMAIL: {env: [RP_EMAIL]}
+          RP_API_KEY: {env: [RP_API_KEY]}
+      proxylite:
+        slug: proxylite
+        fields:
+          USER_ID: {env: [PROXYLITE_USER_ID]}
+      proxyrack:
+        slug: proxyrack
+        fields:
+          UUID: {env: [PROXYRACK_HOST_UUID]}
+      earnfm:
+        slug: earnfm
+        fields:
+          EARNFM_TOKEN: {env: [EARNFM_APIKEY]}
+      peer2profit: {slug: peer2profit, other_env: [PEER2PROFIT_EMAIL]}
+    ignore_env: [_COMPOSE_PROJECT_NAME, _COMPOSE_PROJECT_STACK_ID]
+    ignore_json: []
+    not_carried:
+      DEVICE_NAME: "CashPilot names each device after the worker it runs on."
+
+  internetincome:
+    name: InternetIncome
+    stop: "Stop InternetIncome first: run `sudo bash internetIncome.sh --delete` in its folder."
+    markers:
+      keys: [IPROYALS_EMAIL, IPROYALS_PASSWORD, EARN_FM_API, REPOCKET_API, UR_AUTH_TOKEN, USE_PROXIES,
+             PROXYRACK_API, PROXYBASE_ACCOUNT_ID, CLOSE_ALL_PORTS, earnapp.txt, proxyrack.txt]
+      values: {}
+    apps:
+      repocket:
+        slug: repocket
+        fields:
+          RP_API_KEY: {env: [REPOCKET_API]}
+      traffmonetizer:
+        slug: traffmonetizer
+        fields:
+          TRAFFMONETIZER_TOKEN: {env: [TRAFFMONETIZER_TOKEN]}
+      proxybase:
+        slug: proxybase
+        fields:
+          ID: {env: [PROXYBASE_ACCOUNT_ID]}
+      proxyrack:
+        slug: proxyrack
+        fields:
+          API_KEY: {env: [PROXYRACK_API]}
+          UUID: {env: [proxyrack.txt]}
+      iproyals:
+        slug: iproyal
+        fields:
+          IPROYALPAWNS_EMAIL: {env: [IPROYALS_EMAIL]}
+          IPROYALPAWNS_PASSWORD: {env: [IPROYALS_PASSWORD]}
+      honeygain:
+        slug: honeygain
+        fields:
+          HONEYGAIN_EMAIL: {env: [HONEYGAIN_EMAIL]}
+          HONEYGAIN_PASSWORD: {env: [HONEYGAIN_PASSWORD]}
+      packetstream:
+        slug: packetstream
+        fields:
+          CID: {env: [PACKETSTREAM_CID]}
+      proxylite:
+        slug: proxylite
+        fields:
+          USER_ID: {env: [PROXYLITE_USER_ID]}
+      earnfm:
+        slug: earnfm
+        fields:
+          EARNFM_TOKEN: {env: [EARN_FM_API]}
+      earnapp:
+        slug: earnapp
+        on_env: {EARNAPP: "true"}
+        missing_note: "Upload earnapp.txt from the InternetIncome folder to keep the device you linked, or the node starts unlinked."
+        fields:
+          EARNAPP_UUID: {env: [earnapp.txt]}
+      bitping:
+        slug: bitping
+        fields:
+          BITPING_EMAIL: {env: [BITPING_EMAIL]}
+          BITPING_PASSWORD: {env: [BITPING_PASSWORD]}
+      mysterium:
+        slug: mysterium
+        on_env: {MYSTERIUM: "true"}
+        note: "CashPilot starts a new Mysterium node with a new identity. Settle the old node's earnings or copy its keystore first; the Mysterium guide shows how."
+      urnetwork:
+        slug: urnetwork
+        other_env: [UR_AUTH_TOKEN]
+        unusable: "CashPilot signs URnetwork in with your email and password; InternetIncome uses a session token instead."
+      grass:
+        slug: grass
+        other_env: [GRASS_EMAIL, GRASS_PASSWORD]
+        unusable: "Grass runs as a browser extension; CashPilot only tracks it, with the access token from the Grass dashboard."
+      titan: {slug: titan, other_env: [TITAN_HASH]}
+      wipter: {slug: wipter, other_env: [WIPTER_EMAIL, WIPTER_PASSWORD]}
+      peer2profit: {slug: peer2profit, other_env: [PEER2PROFIT_EMAIL]}
+      ebesucher: {slug: ebesucher, other_env: [EBESUCHER_USERNAME]}
+    ignore_env: [AUTO_UPDATE_CONTAINERS, USE_SOCKS5_DNS, USE_DNS_OVER_HTTPS, ENABLE_LOGS, CLOSE_ALL_PORTS,
+                 UR_NETWORK_PROXY_MODE, EBESUCHER_USE_CHROME, USE_EARN_FM_FLEETSHARE, EARNAPP, MYSTERIUM]
+    ignore_json: []
+    not_carried:
+      DEVICE_NAME: "CashPilot names each device after the worker it runs on."
+      USE_PROXIES: "Proxies are not imported. Each CashPilot worker uses its own connection."
+      proxies.txt: "Proxies are not imported. Each CashPilot worker uses its own connection."
+      BROWSER_USERNAME: "This is InternetIncome's own browser login, which CashPilot does not need."
+      BROWSER_PASSWORD: "This is InternetIncome's own browser login, which CashPilot does not need."

@@ -161,9 +161,14 @@ nav:
   - Home: index.md
   - Get started:
     - Getting started: getting-started.md
+    - App stores: app-stores.md
     - How it works: how-it-works.md
     - FAQ: faq.md
     - How CashPilot compares: comparison.md
+    - Moving from another tool:
+      - money4band: migrate/money4band.md
+      - CashFactory: migrate/cashfactory.md
+      - InternetIncome: migrate/internetincome.md
   - Service guides:
     - Overview: guides/index.md
     - Bandwidth Sharing:
@@ -239,6 +244,7 @@ nav:
     - Prometheus metrics: guides/prometheus-metrics.md
     - Upgrade to v1.0.0: upgrade-v1.md
   - Reference:
+    - Provider ratings: ratings.md
     - Discontinued services: discontinued-services.md
     - Related projects: related.md
     - Research:

@@ -32,7 +32,7 @@ const box = (id, slugs, status = 'online') => ({ id, name: `box${id}`, status, c
 // ---- The catalog row --------------------------------------------------------
 const renderAs = (isOwner, onlineWorkers) => new Function(
   'escapeHtml', 'capFirst', '_isOwner', 'catalogOnlineWorkers',
-  `${grab('runsOn')}\n${grab('renderCatalogCard')}\nreturn renderCatalogCard;`,
+  `${grab('runsOn')}\n${grab('gradeBadge')}\n${grab('renderCatalogCard')}\nreturn renderCatalogCard;`,
 )(escapeHtml, capFirst, isOwner, onlineWorkers);
 const row = (slug, { owner = true, workers = null } = {}) => renderAs(owner, workers)(services.find(s => s.slug === slug));
 const addHref = html => (html.match(/<a href="(\/setup\?[^"]*)"/) || [])[1];
@@ -46,6 +46,15 @@ assert.match(row('storj', { workers: [box(1, ['storj']), box(2, [])] }), /title=
 assert.doesNotMatch(row('storj', { workers: [box(1, ['storj']), box(2, ['storj'])] }), /\/setup/, 'no Add when every online box runs it');
 assert.doesNotMatch(row('grass'), /\/setup/);
 assert.match(row('grass'), />Visit</);
+// A row without a Details modal (no Docker image) still reaches the full rating:
+// the badge links to the provider's section of the ratings page.
+assert.match(row('grass'), /<td class="cat-grade"><span class="muted">not rated<\/span><\/td>/, 'an unrated row says not rated');
+assert.doesNotMatch(row('grass'), /grade-link/, 'an unrated row links nowhere');
+{
+  const rated = { ...services.find(s => s.slug === 'grass'), rating_result: { rated: true, grade: 'F', top_cons: [{ text: 'A con.' }] } };
+  const html = renderAs(true, null)(rated);
+  assert.match(html, /<a class="grade-link" href="https:\/\/geiserx\.github\.io\/CashPilot\/ratings\/#grass"[^>]*><span class="grade-badge grade-f"/, 'a rated row links its grade to the ratings page');
+}
 for (const slug of ['honeygain', 'storj', ODD]) {
   assert.doesNotMatch(row(slug, { owner: false }), /\/setup/, `a non-owner gets no Add on ${slug}`);
 }

@@ -88,3 +88,83 @@ collector:
 payout:
   model: internal
   notes: "Balance held by Repocket; withdrawn on request."
+
+# Provider rating: the verdicts behind the grade (method: services/_ratings.yml,
+# published at docs/ratings.md). The grade itself is computed, never written here.
+rating:
+  reviewed_on: "2026-11-04"
+  verdicts:
+    payout_record: poor
+    payout_terms: poor
+    account_safety: poor
+    terms_fit: good
+    traffic_transparency: fair
+    privacy: unknown
+    identity_checks: fair
+    support: fair
+    earnings_realism: unknown
+    longevity: fair
+  notes:
+    privacy: The client is closed source; we did not review the privacy policy in depth.
+    earnings_realism: Reviewers report very small amounts, but we have not measured Repocket's earnings
+      against a provider figure.
+  cons:
+  - text: Several Trustpilot reviewers report cancelled payouts and balances reset to zero; one says support
+      cited irregular bandwidth earnings. The page rates Repocket 2.7 and notes it has not replied to
+      negative reviews.
+    criterion: account_safety
+    kind: user_reports
+    source: https://www.trustpilot.com/review/repocket.com
+    checked_on: "2026-11-04"
+  - text: Reviewers report rejected withdrawals and having to chase payment.
+    criterion: payout_record
+    kind: user_reports
+    source: https://www.trustpilot.com/review/repocket.com
+    checked_on: "2026-11-04"
+  - text: Repocket's payment policy lets it reverse, cancel or permanently forfeit earnings whenever it
+      suspects they are invalid, and forfeit the unpaid earnings of a dormant account.
+    criterion: payout_terms
+    kind: terms
+    source: https://repocket.com/payment-and-rewards-policy
+    checked_on: "2026-11-04"
+  - text: The same policy lets Repocket add, remove or replace payout methods at any time without notice;
+      PayPal was removed.
+    criterion: payout_terms
+    kind: terms
+    source: https://repocket.com/payment-and-rewards-policy
+    checked_on: "2026-11-04"
+  - text: The terms say Repocket may require identity or account verification at any time, and payout
+      eligibility depends on it.
+    criterion: identity_checks
+    kind: terms
+    source: https://repocket.com/terms-and-conditions
+    checked_on: "2026-11-04"
+  - text: The terms say Repocket and its partners use the network capacity, but do not say who the partners
+      are or how they are vetted.
+    criterion: traffic_transparency
+    kind: terms
+    source: https://repocket.com/terms-and-conditions
+    checked_on: "2026-11-04"
+  - text: Trustpilot notes Repocket has not replied to negative reviews, and reviewers say messages are
+      ignored.
+    criterion: support
+    kind: user_reports
+    source: https://www.trustpilot.com/review/repocket.com
+    checked_on: "2026-11-04"
+  - text: The current terms name Repocket Pte. Ltd. in Singapore; older terms named no company.
+    criterion: longevity
+    kind: terms
+    source: https://repocket.com/terms-and-conditions
+    checked_on: "2026-11-04"
+  pros:
+  - text: Repocket publishes its own Docker image, repocket/repocket, and its terms allow containers you
+      own.
+    criterion: terms_fit
+    kind: terms
+    source: https://repocket.com/terms-and-conditions
+    checked_on: "2026-11-04"
+  - text: 'The minimum is low: $4 before the first payout and $2 after it.'
+    criterion: payout_terms
+    kind: our_experience
+    source: https://github.com/GeiserX/CashPilot/blob/main/services/bandwidth/repocket.yml
+    checked_on: "2026-11-04"

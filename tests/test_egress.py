@@ -36,8 +36,8 @@ def worker(wid, name, ip=None, network=None, running=(), status="running", worke
     }
 
 
-HOME_A = worker(1, "watchtower", "81.61.1.9", running=["honeygain"])
-HOME_B = worker(2, "geiserback", "81.61.1.9")
+HOME_A = worker(1, "charlie", "81.61.1.9", running=["honeygain"])
+HOME_B = worker(2, "alpha", "81.61.1.9")
 REMOTE = worker(3, "vps", "95.216.4.7", network="hosting")
 UNSEEN = worker(4, "pi")
 
@@ -50,7 +50,7 @@ class TestOnlyRealPublicAddressesCount:
     @pytest.mark.parametrize(
         "addr",
         [
-            "192.168.10.100",  # LAN
+            "192.168.50.100",  # LAN
             "10.0.0.5",
             "172.16.4.1",
             "127.0.0.1",
@@ -181,7 +181,7 @@ class TestPreflightSeesTheRestOfTheFleet:
         out = preflight.assess(ONE_PER_IP, worker=HOME_B, fleet_workers=[HOME_A, HOME_B])
         assert out["verdict"] == preflight.EARNS_NOTHING
         joined = " ".join(f["message"] for f in out["findings"])
-        assert "watchtower" in joined, "the user has to know WHICH machine"
+        assert "charlie" in joined, "the user has to know WHICH machine"
         assert "81.61.1.9" in joined
 
     def test_an_undocumented_limit_says_it_does_not_know(self):
@@ -580,7 +580,7 @@ class TestEndpoints:
         """Shipped code passed the raw TEXT column to code expecting a mapping."""
         out = self._call(main_preflight(), "honeygain", 2, workers=[HOME_A, HOME_B])
         assert out["verdict"] == "will_earn_nothing"
-        assert "watchtower" in " ".join(f["message"] for f in out["findings"])
+        assert "charlie" in " ".join(f["message"] for f in out["findings"])
 
     def test_preflight_for_an_unknown_worker_is_a_404(self):
         from fastapi import HTTPException
@@ -599,7 +599,7 @@ class TestEndpoints:
         assert out["undetermined"] == 1
         shared = next(g for g in out["groups"] if g["shared"])
         assert shared["egress_ip"] == "81.61.1.9"
-        assert {w["name"] for w in shared["workers"]} == {"watchtower", "geiserback"}
+        assert {w["name"] for w in shared["workers"]} == {"charlie", "alpha"}
 
     def test_egress_groups_on_an_empty_fleet_is_empty_not_an_error(self):
         out = self._call(main_groups(), workers=[])
@@ -772,7 +772,7 @@ class TestAdvertisedAddressVerdict:
         assert egress.advertised_address_verdict(f"{self.EGRESS}:28967", self.EGRESS, None) is None
 
     def test_a_private_literal_is_a_finding_without_any_egress_comparison(self):
-        reason = egress.advertised_address_verdict("192.168.10.100:28967", self.EGRESS, None)
+        reason = egress.advertised_address_verdict("192.168.50.100:28967", self.EGRESS, None)
         assert reason and "private" in reason
 
     def test_a_hostname_resolving_to_the_egress_is_no_finding(self):
@@ -853,8 +853,8 @@ class TestAdvertisedAddressVerdictFamilies:
     def test_private_resolved_addresses_are_not_echoed_back(self):
         # resolved IPs originate from a worker-supplied name; repeating a
         # private answer would leak the hub's internal DNS view.
-        reason = egress.advertised_address_verdict("intra.example.org:28967", "213.217.28.154", {"192.168.10.100"})
-        assert reason and "192.168.10.100" not in reason and "non-public" in reason
+        reason = egress.advertised_address_verdict("intra.example.org:28967", "213.217.28.154", {"192.168.50.100"})
+        assert reason and "192.168.50.100" not in reason and "non-public" in reason
 
 
 class TestAdvertisedHostTrailingColon:

@@ -459,6 +459,17 @@ CREATE TABLE IF NOT EXISTS custom_service_tombstones (
     deleted_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+-- Settings brought over from another tool (app/importers), one row per
+-- service, kept so the owner can deploy them to more workers later. The env is
+-- one Fernet-encrypted JSON blob: it holds the credentials. The pasted files
+-- themselves are never stored.
+CREATE TABLE IF NOT EXISTS import_drafts (
+    slug          TEXT PRIMARY KEY,
+    source        TEXT NOT NULL,
+    env_encrypted TEXT NOT NULL,
+    imported_at   TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 CREATE TABLE IF NOT EXISTS users (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
     username   TEXT    NOT NULL UNIQUE,
@@ -1036,7 +1047,7 @@ async def _encrypt_legacy_plaintext_credentials(db: Any) -> int:
 #: missing a column -- an interrupted upgrade, a restored backup, a hand-edited
 #: file -- could never be repaired, because the gate would say there was nothing
 #: to do. The guards are idempotent and cheap; the version is for the operator.
-SCHEMA_VERSION = 15
+SCHEMA_VERSION = 16
 
 
 async def init_db() -> None:
@@ -2161,6 +2172,97 @@ async def delete_custom_service(slug: str) -> bool:
         cursor = await db.execute("DELETE FROM custom_services WHERE slug = ?", (slug,))
         if (cursor.rowcount or 0) > 0:
             await db.execute("INSERT OR IGNORE INTO custom_service_tombstones (slug) VALUES (?)", (slug,))
+        await db.commit()
+        return (cursor.rowcount or 0) > 0
+    finally:
+        await db.close()
+
+
+# --- Import drafts ---
+
+
+class EphemeralKeyError(RuntimeError):
+    """Refused: the encryption key would not survive a restart."""
+
+
+async def save_import_draft(slug: str, source: str, env: dict[str, str]) -> None:
+    """Store an imported service's env, encrypted whole, replacing any earlier one.
+
+    Refused under an ephemeral key, like the plaintext re-encryption pass: a
+    credential encrypted now would be unreadable after the next restart.
+    """
+    if _fernet_key_is_ephemeral:
+        raise EphemeralKeyError("the credential-encryption key is temporary")
+    blob = encrypt_value(json.dumps(env, sort_keys=True))
+    db = await _get_db()
+    try:
+        await db.execute(
+            """
+            INSERT INTO import_drafts (slug, source, env_encrypted) VALUES (?, ?, ?)
+            ON CONFLICT(slug) DO UPDATE SET
+                source = excluded.source,
+                env_encrypted = excluded.env_encrypted,
+                imported_at = datetime('now')
+            """,
+            (slug, source, blob),
+        )
+        await db.commit()
+    finally:
+        await db.close()
+
+
+def _decode_draft(row: Any) -> dict[str, str] | None:
+    raw = decrypt_value(row["env_encrypted"] or "")
+    try:
+        env = json.loads(raw) if raw else None
+    except ValueError:
+        env = None
+    if not isinstance(env, dict):
+        _logger.warning("Import draft for %s could not be decrypted or read; it is skipped", row["slug"])
+        return None
+    return {str(k): str(v) for k, v in env.items()}
+
+
+async def get_import_draft(slug: str) -> dict[str, Any] | None:
+    """``{"slug", "source", "imported_at", "env"}`` with the env decrypted, or None."""
+    db = await _get_db()
+    try:
+        cursor = await db.execute(
+            "SELECT slug, source, env_encrypted, imported_at FROM import_drafts WHERE slug = ?", (slug,)
+        )
+        row = await cursor.fetchone()
+    finally:
+        await db.close()
+    if not row:
+        return None
+    env = _decode_draft(row)
+    if env is None:
+        return None
+    return {"slug": row["slug"], "source": row["source"], "imported_at": row["imported_at"], "env": env}
+
+
+async def list_import_drafts() -> list[dict[str, Any]]:
+    """Every readable draft, keys only: ``{"slug", "source", "imported_at", "keys"}``."""
+    db = await _get_db()
+    try:
+        cursor = await db.execute("SELECT slug, source, env_encrypted, imported_at FROM import_drafts ORDER BY slug")
+        rows = await cursor.fetchall()
+    finally:
+        await db.close()
+    out = []
+    for row in rows:
+        env = _decode_draft(row)
+        if env is not None:
+            out.append(
+                {"slug": row["slug"], "source": row["source"], "imported_at": row["imported_at"], "keys": sorted(env)}
+            )
+    return out
+
+
+async def delete_import_draft(slug: str) -> bool:
+    db = await _get_db()
+    try:
+        cursor = await db.execute("DELETE FROM import_drafts WHERE slug = ?", (slug,))
         await db.commit()
         return (cursor.rowcount or 0) > 0
     finally:
