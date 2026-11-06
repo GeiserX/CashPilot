@@ -10,6 +10,26 @@ Every release, grouped by what changed. Generated from commit history.
 Releases before `1.0.0` were recorded by hand and are kept verbatim in
 [docs/changelog-0.x-handwritten.md](docs/changelog-0.x-handwritten.md).
 
+## [1.72.1] - 2026-11-06
+
+### Fixes
+
+- Let fresh installs behind the socket proxy deploy bridge earners again (#598)
+
+### Maintenance
+
+- Pin the examples to 1.72 (#599)
+
+## [1.72.0] - 2026-11-06
+
+### Documentation
+
+- Regenerate CHANGELOG.md (#595)
+
+### Features
+
+- Make A the top grade at 90% and say a grade is a judgement call (#597)
+
 ## [1.71.1] - 2026-11-06
 
 ### Documentation
