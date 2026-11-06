@@ -1,8 +1,7 @@
 """Checks run by scripts/socket_proxy_live_test.sh inside a worker image.
 
 Not a module of the app. The live test pipes it into ``python -`` in the
-running worker container (phases ``allowed``, ``refused``, ``update``,
-``access``) and in a throwaway copy of the worker image that holds the host's
+running worker container (every phase below but ``control``) and in a throwaway copy of the worker image that holds the host's
 raw socket (phase ``control``). Each check prints one PASS or FAIL line; the
 exit code is the number of failures.
 
@@ -12,6 +11,12 @@ exit code is the number of failures.
              so each refusal is the proxy's and not a malformed request
     update   start the in-app update (the shell script checks what it did)
     access   print how this worker reaches Docker
+    attacks  the three ways a compromised worker read the UI's data (its
+             files, its environment, its volume), each of which must be refused
+    hidden   a container the user started by hand, which the worker must not see
+    migrated what the worker does with an earner the migration moved: find,
+             restart, back up its critical volume, redeploy over its volume
+    fresh    deploy an earner on a new named volume, then remove both
 """
 
 from __future__ import annotations
@@ -136,7 +141,9 @@ def phase_allowed() -> None:
     check("start", lambda: orchestrator.start_service(plain))
     check("restart", lambda: orchestrator.restart_service(plain))
     check("inspect a named volume", lambda: client.volumes.get(PREFIX + "data").attrs)
-    check("inspect the bridge network", lambda: client.networks.get("bridge").attrs)
+    # Docker's default bridge carries no owner label, so the proxy refuses an
+    # inspect of it; the worker reads its own network instead.
+    check("inspect the fenced network", lambda: client.networks.get(lan_fence.NETWORK_NAME).attrs)
 
     if TUNNEL_IMAGE:
         kwargs = proxy_tunnel.sidecar_kwargs(PREFIX + "tunnel", "cplive", 1, None, hostname="cplive-tunnel")
@@ -341,6 +348,90 @@ def _undo_control(client: docker.DockerClient) -> None:
 # ---------------------------------------------------------------------------
 
 
+def _refused(code: int, text: str) -> bool:
+    return code in (403, 404) and ("owner policy" in text or "sockguard" in text)
+
+
+def phase_attacks() -> None:
+    """On a host where the UI runs, read its data the three ways the proxy used to allow."""
+    ui, volume = os.environ["LIVE_UI"], os.environ["LIVE_UI_VOLUME"]
+    api = docker.from_env().api
+    attacks = [
+        ("read the UI's /data (archive)", "GET", f"/containers/{ui}/archive?path=/data", None),
+        ("read the UI's environment (inspect)", "GET", f"/containers/{ui}/json", None),
+        (
+            "mount the UI's data volume in a new container",
+            "POST",
+            *_create({"Binds": [f"{volume}:/stolen:ro"], "SecurityOpt": NNP}, Cmd=["cat", "/stolen/.fernet_key"]),
+        ),
+    ]
+    try:
+        for name, method, path, body in attacks:
+            code, text = _send(api, method, path, body)
+            detail = f"{code} {text[:160]!r}"
+            if code < 300 and path.endswith("/json"):
+                env = json.loads(text if len(text) < 300 else api._get(api._url(path)).text)["Config"]["Env"]
+                detail = f"{code} Env: {[e for e in env if 'SECRET' in e or 'KEY' in e]}"
+            result(_refused(code, text), f"proxy refuses: {name}", detail)
+    finally:
+        with contextlib.suppress(APIError):
+            for c in docker.from_env().containers.list(all=True, filters={"label": "cashpilot.live-test=1"}):
+                c.remove(force=True)
+
+
+def phase_hidden() -> None:
+    hand = os.environ["LIVE_HAND"]
+    client = docker.from_env()
+    code, text = _send(client.api, "GET", f"/containers/{hand}/json", None)
+    result(_refused(code, text), "the worker cannot inspect a container the user started by hand", f"{code}")
+    names = [c.name for c in client.containers.list(all=True)]
+    result(hand not in names, "nor see it in a list", ",".join(names))
+
+
+def phase_migrated() -> None:
+    from app import orchestrator
+
+    slug = "mysterium"
+    found = check("the worker finds the migrated earner", lambda: orchestrator._find_container(slug))
+    if found is None:
+        return
+    check("restart it through the proxy", lambda: orchestrator.restart_service(slug))
+    archive = check("back up its critical volume", lambda: orchestrator.read_critical_state(slug))
+    if archive:
+        print(f"    backup archive: {len(archive[0])} bytes of {archive[1]}", flush=True)
+    new_id = check(
+        "redeploy it over its volume, the way every update does",
+        lambda: orchestrator.deploy_raw(
+            slug=slug,
+            image=ALPINE,
+            command="sleep infinity",
+            volumes={"mysterium-data": {"bind": "/var/lib/mysterium-node", "mode": "rw"}},
+            labels={"cashpilot.live-test.redeployed": "1"},
+        ),
+    )
+    result(bool(new_id) and new_id != found.id, "the redeploy made a new container", str(new_id)[:12])
+
+
+def phase_fresh() -> None:
+    """A new earner on a new named volume, then gone again."""
+    from app import orchestrator
+
+    check(
+        "deploy an earner on a new named volume",
+        lambda: orchestrator.deploy_raw(
+            slug="cplive-fresh",
+            image=ALPINE,
+            command="sleep 600",
+            volumes={"cplive-fresh-data": {"bind": "/data", "mode": "rw"}},
+            labels={"cashpilot.live-test": "1"},
+        ),
+    )
+    check(
+        "remove it and its volume",
+        lambda: orchestrator.remove_service("cplive-fresh", delete_volumes=True, allow_delete_critical=True),
+    )
+
+
 def phase_update() -> None:
     from app import orchestrator
 
@@ -361,10 +452,18 @@ if __name__ == "__main__":
         phase_allowed()
     elif phase in ("refused", "control"):
         phase_refused_or_control(phase == "control")
+    elif phase == "fresh":
+        phase_fresh()
     elif phase == "update":
         phase_update()
     elif phase == "access":
         phase_access()
+    elif phase == "attacks":
+        phase_attacks()
+    elif phase == "hidden":
+        phase_hidden()
+    elif phase == "migrated":
+        phase_migrated()
     else:
         raise SystemExit(f"unknown phase {phase}")
     sys.exit(min(FAILS, 100))

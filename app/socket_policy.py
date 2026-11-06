@@ -17,6 +17,8 @@ from pathlib import Path
 
 import yaml
 
+from app.constants import LABEL_DEPLOYED_BY
+
 SERVICES_DIR = Path(__file__).resolve().parent.parent / "services"
 
 #: Exec commands the worker runs that the catalog does not declare.
@@ -31,6 +33,13 @@ ALLOWED_CAPABILITIES = ("NET_ADMIN", "NET_RAW", "SETUID", "SETGID")
 ALLOWED_DEVICES = ("/dev/net/tun",)
 #: Docker's default runtime and the gVisor ones docs/security-defaults.md names.
 ALLOWED_RUNTIMES = ("runc", "runsc", "runsc-hostnet", "runsc-hostnet-raw")
+
+#: Owner isolation: the proxy stamps this label on everything the worker
+#: creates and refuses it every container, volume and network without it, so a
+#: compromised worker cannot read the UI's files, environment or data volume.
+#: app/owner_migrate.py puts it on what older releases created.
+OWNER_LABEL = LABEL_DEPLOYED_BY
+OWNER = "worker"
 
 #: (method, path) of every Docker API call the worker, its update helper and
 #: the helper's Compose make, as the live test (scripts/socket_proxy_live_test.sh)
@@ -71,6 +80,9 @@ ALLOWED_CALLS: list[tuple[str, str]] = [
     ("POST", "/networks/*/connect"),
     ("POST", "/networks/*/disconnect"),
     ("DELETE", "/networks/*"),
+    # Under owner isolation a volume a container names must exist and carry
+    # the owner label, so the worker creates each one before the container.
+    ("POST", "/volumes/create"),
     ("GET", "/volumes/*"),
     ("DELETE", "/volumes/*"),
 ]
@@ -151,6 +163,19 @@ request_body:
     # scope, custom IPAM and endpoint settings stay refused.
     allow_driver_options: true
     allow_disconnect_force: true
+  volume:
+    # Plain local volumes only: driver options could point one at a host folder.
+    allow_custom_drivers: false
+    allow_driver_opts: false
+# The worker sees and touches only what carries the owner label below: what
+# it created through this proxy, and what app/owner_migrate.py labelled. The
+# UI's container and its data volume never carry it.
+ownership:
+  owner: {owner}
+  label_key: {owner_label}
+  # Images carry no owner: one pulled for an earner is shared with the host.
+  allow_unowned_images: true
+  allow_cross_owner_namespace_sharing: false
 rules:
 {rules}
 """
@@ -193,6 +218,8 @@ def policy(services_dir: Path = SERVICES_DIR) -> str:
         devices=", ".join(ALLOWED_DEVICES),
         runtimes=", ".join(ALLOWED_RUNTIMES),
         commands=commands,
+        owner=OWNER,
+        owner_label=OWNER_LABEL,
         rules=rules,
     )
 

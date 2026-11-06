@@ -1,0 +1,495 @@
+"""The one-shot owner-label migration (app/owner_migrate.py), against an
+in-memory Docker. The live proof, real daemon and a killed run included, is
+scripts/owner_migration_live_test.sh."""
+
+from __future__ import annotations
+
+import hashlib
+import itertools
+import json
+
+import pytest
+from docker.errors import APIError, NotFound
+
+from app import owner_migrate as om
+
+OWNER = {om.OWNER_LABEL: om.OWNER}
+WORKER_LABELS = {"cashpilot.managed": "true", "cashpilot.service": "mysterium", **OWNER}
+_ids = itertools.count(1)
+
+
+def _id() -> str:
+    return f"{next(_ids):064x}"
+
+
+class Crash(BaseException):  # noqa: N818 - a kill, which nothing catches
+    """A kill: the run stops right here."""
+
+
+class Volume:
+    def __init__(self, docker, name, labels=None, driver="local", options=None):
+        self.docker, self.name = docker, name
+        self.attrs = {"Name": name, "Labels": labels, "Driver": driver, "Options": options}
+
+    def remove(self, force=False):
+        if any(name == self.name for c in self.docker.cs.values() for name in c.volume_names()):
+            raise APIError("volume is in use")
+        del self.docker.vols[self.name]
+
+
+class Network:
+    def __init__(self, docker, name, labels=None, options=None, ipam=None):
+        self.docker, self.name, self.id = docker, name, _id()
+        self.attrs = {
+            "Name": name,
+            "Id": self.id,
+            "Labels": labels or {},
+            "Driver": "bridge",
+            "Options": options or {},
+            "IPAM": ipam or {},
+            "Containers": {},
+        }
+
+    def reload(self):
+        self.attrs["Containers"] = {
+            c.id: {"Name": c.name} for c in self.docker.cs.values() if self.name in c.networks()
+        }
+
+    def disconnect(self, cid, force=False):
+        self.docker.cs[cid].attrs["NetworkSettings"]["Networks"].pop(self.name)
+
+    def connect(self, name, aliases=None):
+        c = self.docker.containers.get(name)
+        c.attrs["NetworkSettings"]["Networks"][self.name] = {"Aliases": aliases}
+        self.docker.connects.append((self.name, name))
+
+    def remove(self):
+        self.reload()
+        if self.attrs["Containers"]:
+            raise APIError("network has active endpoints")
+        del self.docker.nets[self.name]
+
+
+class Container:
+    def __init__(
+        self,
+        docker,
+        name,
+        labels,
+        mounts=(),
+        networks=("bridge",),
+        image="sha256:img",
+        host=None,
+        config=None,
+        running=True,
+    ):
+        self.docker, self.id, self.name = docker, _id(), name
+        self.attrs = {
+            "Id": self.id,
+            "Name": "/" + name,
+            "Image": image,
+            "Config": {"Image": "earner:1", "Labels": dict(labels), "Hostname": name, **(config or {})},
+            "HostConfig": {
+                "NetworkMode": networks[0] if networks else "none",
+                "Binds": [f"{v}:{t}" for v, t in mounts],
+                **(host or {}),
+            },
+            "Mounts": [{"Type": "volume", "Name": v, "Destination": t, "RW": True} for v, t in mounts],
+            "NetworkSettings": {"Networks": {n: {"Aliases": [name]} for n in networks}},
+            "State": {"Running": running},
+        }
+
+    @property
+    def labels(self):
+        return self.attrs["Config"]["Labels"]
+
+    @property
+    def status(self):
+        return "running" if self.attrs["State"]["Running"] else "exited"
+
+    def volume_names(self):
+        return [m["Name"] for m in self.attrs["Mounts"]]
+
+    def networks(self):
+        return list(self.attrs["NetworkSettings"]["Networks"])
+
+    def start(self):
+        self.attrs["State"]["Running"] = True
+
+    def remove(self, force=False):
+        self.docker.removed.append(self.name)
+        del self.docker.cs[self.id]
+
+
+class Containers:
+    def __init__(self, docker):
+        self.docker = docker
+
+    def get(self, ref):
+        for c in self.docker.cs.values():
+            if ref in (c.id, c.name):
+                return c
+        raise NotFound(ref)
+
+    def list(self, all=False, filters=None):
+        out = list(self.docker.cs.values())
+        for f in (
+            (filters or {}).get("label", [])
+            if isinstance((filters or {}).get("label"), list)
+            else [(filters or {}).get("label")]
+        ):
+            if f is None:
+                continue
+            key, _, value = f.partition("=")
+            out = [c for c in out if key in c.labels and (not value or c.labels[key] == value)]
+        if "volume" in (filters or {}):
+            out = [c for c in out if filters["volume"] in c.volume_names()]
+        return out
+
+
+class Volumes:
+    def __init__(self, docker):
+        self.docker = docker
+
+    def get(self, name):
+        if name not in self.docker.vols:
+            raise NotFound(name)
+        return self.docker.vols[name]
+
+    def create(self, name, driver="local", labels=None):
+        self.docker.vols[name] = Volume(self.docker, name, labels)
+        self.docker.data.setdefault(name, {})
+        return self.docker.vols[name]
+
+    def list(self, filters=None):
+        wanted = dict(f.split("=", 1) for f in (filters or {}).get("label", []))
+        return [
+            v
+            for v in self.docker.vols.values()
+            if all((v.attrs["Labels"] or {}).get(k) == x for k, x in wanted.items())
+        ]
+
+
+class Networks:
+    def __init__(self, docker):
+        self.docker = docker
+
+    def get(self, name):
+        if name not in self.docker.nets:
+            raise NotFound(name)
+        return self.docker.nets[name]
+
+    def list(self, filters=None):
+        key = (filters or {}).get("label")
+        return [n for n in self.docker.nets.values() if key in n.attrs["Labels"]]
+
+    def create(
+        self,
+        name,
+        driver=None,
+        options=None,
+        ipam=None,
+        enable_ipv6=False,
+        internal=False,
+        attachable=False,
+        labels=None,
+    ):
+        net = Network(self.docker, name, labels, options, ipam)
+        self.docker.nets[name] = net
+        return net
+
+
+class Images:
+    def __init__(self, docker):
+        self.docker = docker
+
+    def get(self, ref):
+        if ref in self.docker.tags:
+            return type("I", (), {"id": self.docker.tags[ref]})()
+        raise NotFound(ref)
+
+
+class Api:
+    def __init__(self, docker):
+        self.docker = docker
+        self.crash_on_create = False
+
+    def stop(self, cid):
+        self.docker.cs[cid].attrs["State"]["Running"] = False
+
+    def _url(self, path):
+        return path
+
+    def _post_json(self, url, data, params):
+        if self.crash_on_create:
+            self.crash_on_create = False
+            raise Crash("killed while recreating")
+        d = self.docker
+        c = Container(d, params["name"], data["Labels"], running=False, image=data["Image"])
+        c.attrs["Config"] = {k: v for k, v in data.items() if k not in ("HostConfig", "NetworkingConfig")}
+        c.attrs["HostConfig"] = data["HostConfig"]
+        mounts = []
+        for bind in data["HostConfig"].get("Binds") or []:
+            src, dst = bind.split(":")[:2]
+            if src not in d.vols:
+                raise APIError(f"no such volume {src}")
+            mounts.append({"Type": "volume", "Name": src, "Destination": dst, "RW": True})
+        c.attrs["Mounts"] = mounts
+        c.attrs["NetworkSettings"]["Networks"] = {
+            n: dict(ep) for n, ep in data["NetworkingConfig"]["EndpointsConfig"].items()
+        } or ({} if data["HostConfig"]["NetworkMode"] != "bridge" else {"bridge": {}})
+        for n in c.networks():
+            if n != "bridge" and n not in d.nets:
+                raise APIError(f"no such network {n}")
+        d.cs[c.id] = c
+        d.created.append(params["name"])
+        return c.id
+
+    def _result(self, resp, json_=False):
+        return {"Id": resp}
+
+
+class FakeDocker:
+    def __init__(self):
+        self.cs: dict[str, Container] = {}
+        self.vols: dict[str, Volume] = {}
+        self.nets: dict[str, Network] = {"bridge": Network(self, "bridge")}
+        self.data: dict[str, dict[str, str]] = {}
+        self.tags = {"earner:1": "sha256:img"}
+        self.removed, self.created, self.connects = [], [], []
+        self.containers, self.volumes, self.networks = Containers(self), Volumes(self), Networks(self)
+        self.images, self.api = Images(self), Api(self)
+
+    def add(self, container: Container) -> Container:
+        self.cs[container.id] = container
+        return container
+
+    def volume(self, name, files=None, labels=None, **kw):
+        self.vols[name] = Volume(self, name, labels, **kw)
+        self.data[name] = dict(files or {})
+
+
+def _digest(files: dict[str, str]) -> dict:
+    return {
+        "digest": hashlib.sha256(json.dumps(sorted(files.items())).encode()).hexdigest(),
+        "files": len(files),
+        "bytes": sum(len(v) for v in files.values()),
+    }
+
+
+class FakeMigrator(om.Migrator):
+    def __init__(self, docker, state, **kw):
+        super().__init__(docker, state, image="sha256:worker", project="cashpilot", **kw)
+        self.docker = docker
+        self.copies: list[tuple[str, str]] = []
+        self.crash_at: int | None = None  # kill during the Nth copy, after it wiped the target
+
+    def copy(self, source, target):
+        self.docker.data[target] = {}
+        if self.crash_at is not None and len(self.copies) + 1 == self.crash_at:
+            self.crash_at = None
+            self.docker.data[target] = {"half": "copied"}
+            raise Crash(f"killed copying {source} into {target}")
+        self.copies.append((source, target))
+        self.docker.data[target] = dict(self.docker.data[source])
+        return _digest(self.docker.data[target])
+
+
+IDENTITY = {"keystore/UTC--key": "the private key", "node.db": "settings"}
+
+
+@pytest.fixture
+def install():
+    """An install made before owner isolation, through the raw socket."""
+    d = FakeDocker()
+    d.volume("mysterium-data", IDENTITY)
+    d.nets["cashpilot-isolated"] = Network(
+        d,
+        "cashpilot-isolated",
+        {"cashpilot.isolation": "managed"},
+        {"com.docker.network.bridge.name": "cashpilot0"},
+        {"Driver": "default", "Config": [{"Subnet": "172.30.0.0/24", "Gateway": "172.30.0.1"}]},
+    )
+    myst = d.add(
+        Container(
+            d,
+            "cashpilot-mysterium",
+            WORKER_LABELS,
+            [("mysterium-data", "/var/lib/mysterium-node")],
+            networks=("cashpilot-isolated",),
+        )
+    )
+    d.volume("hand-data", {"x": "1"})
+    hand = d.add(Container(d, "my-honeygain", {}, [("hand-data", "/data")]))
+    return d, myst, hand
+
+
+def _run(m: om.Migrator) -> int:
+    try:
+        return m.run([])
+    except Crash:
+        return -9
+
+
+def test_the_identity_moves_onto_a_labelled_volume_of_the_same_name(install, tmp_path):
+    d, myst, hand = install
+    m = FakeMigrator(d, om.State(tmp_path))
+    assert m.run([]) == 0
+    assert d.vols["mysterium-data"].attrs["Labels"] == OWNER
+    assert d.data["mysterium-data"] == IDENTITY
+    backup = d.vols[om.backup_name("mysterium-data")]
+    assert backup.attrs["Labels"] == {om.BACKUP_LABEL: "mysterium-data"}
+    assert d.data[backup.name] == IDENTITY
+    new = d.containers.get("cashpilot-mysterium")
+    assert new.id != myst.id and new.status == "running"
+    assert new.labels == WORKER_LABELS
+    assert new.volume_names() == ["mysterium-data"]
+    assert new.networks() == ["cashpilot-isolated"]
+    assert d.nets["cashpilot-isolated"].attrs["Labels"] == {"cashpilot.isolation": "managed", **OWNER}
+    assert d.nets["cashpilot-isolated"].attrs["Options"] == {"com.docker.network.bridge.name": "cashpilot0"}
+    # The container the user started by hand, and its volume, are not CashPilot's.
+    assert d.containers.get("my-honeygain") is hand and hand.status == "running"
+    assert d.vols["hand-data"].attrs["Labels"] is None
+
+
+def test_a_second_run_finds_nothing_to_do(install, tmp_path):
+    d, _, _ = install
+    assert FakeMigrator(d, om.State(tmp_path)).run([]) == 0
+    before = d.containers.get("cashpilot-mysterium").id
+    again = FakeMigrator(d, om.State(tmp_path))
+    assert again.run([]) == 0
+    assert again.copies == []
+    assert d.containers.get("cashpilot-mysterium").id == before
+
+
+def test_a_stopped_earner_stays_stopped(tmp_path):
+    d = FakeDocker()
+    d.volume("earnapp-data", {"uuid": "sdk-node-1"})
+    d.add(Container(d, "cashpilot-earnapp", WORKER_LABELS, [("earnapp-data", "/etc/earnapp")], running=False))
+    assert FakeMigrator(d, om.State(tmp_path)).run([]) == 0
+    assert d.containers.get("cashpilot-earnapp").status == "exited"
+
+
+@pytest.mark.parametrize("crash_at", [1, 2], ids=["killed copying into the backup", "killed copying back"])
+def test_a_run_killed_mid_copy_is_finished_by_the_next(install, tmp_path, crash_at):
+    d, _, _ = install
+    first = FakeMigrator(d, om.State(tmp_path))
+    first.crash_at = crash_at
+    assert _run(first) == -9
+    # Whatever the kill left, the identity is whole in one verified place.
+    assert IDENTITY in (d.data.get("mysterium-data"), d.data.get(om.backup_name("mysterium-data")))
+    assert FakeMigrator(d, om.State(tmp_path)).run([]) == 0
+    assert d.data["mysterium-data"] == IDENTITY
+    assert d.data[om.backup_name("mysterium-data")] == IDENTITY
+    assert d.vols["mysterium-data"].attrs["Labels"] == OWNER
+    assert d.containers.get("cashpilot-mysterium").status == "running"
+
+
+def test_a_run_killed_after_the_container_went_recreates_it(install, tmp_path):
+    d, myst, _ = install
+    first = FakeMigrator(d, om.State(tmp_path))
+    d.api.crash_on_create = True
+    assert _run(first) == -9
+    with pytest.raises(NotFound):
+        d.containers.get("cashpilot-mysterium")
+    assert FakeMigrator(d, om.State(tmp_path)).run([]) == 0
+    new = d.containers.get("cashpilot-mysterium")
+    assert new.status == "running" and new.volume_names() == ["mysterium-data"]
+    assert d.data["mysterium-data"] == IDENTITY
+
+
+def test_a_run_killed_at_every_copy_still_ends_whole(install, tmp_path):
+    d, _, _ = install
+    state = om.State(tmp_path)
+    for attempt in range(1, 6):
+        m = FakeMigrator(d, state)
+        m.crash_at = 1
+        if _run(m) != -9:
+            break
+        assert IDENTITY in (d.data.get("mysterium-data"), d.data.get(om.backup_name("mysterium-data"))), attempt
+    assert FakeMigrator(d, state).run([]) == 0
+    assert d.data["mysterium-data"] == IDENTITY
+
+
+def test_a_volume_another_container_shares_is_left_alone(install, tmp_path):
+    d, myst, _ = install
+    d.add(Container(d, "users-backup-job", {}, [("mysterium-data", "/backup")]))
+    m = FakeMigrator(d, om.State(tmp_path))
+    assert m.run([]) == 0 and m.warnings == 1
+    assert d.vols["mysterium-data"].attrs["Labels"] is None
+    assert d.containers.get("cashpilot-mysterium") is myst
+    assert m.copies == []
+
+
+def test_a_volume_with_driver_options_is_left_alone(tmp_path):
+    d = FakeDocker()
+    d.volume("storj-identity", {"id": "x"}, options={"type": "none", "o": "bind", "device": "/mnt/storj"})
+    c = d.add(Container(d, "cashpilot-storj", WORKER_LABELS, [("storj-identity", "/app/identity")]))
+    m = FakeMigrator(d, om.State(tmp_path))
+    assert m.run([]) == 0 and m.warnings == 1
+    assert d.containers.get("cashpilot-storj") is c and m.copies == []
+
+
+def test_a_fence_shared_with_a_users_container_is_left_alone(install, tmp_path):
+    d, _, hand = install
+    hand.attrs["NetworkSettings"]["Networks"]["cashpilot-isolated"] = {}
+    m = FakeMigrator(d, om.State(tmp_path))
+    assert m.run([]) == 0 and m.warnings == 1
+    assert om.OWNER_LABEL not in d.nets["cashpilot-isolated"].attrs["Labels"]
+
+
+def test_the_operators_own_bridge_the_earners_are_on_gets_the_label(tmp_path):
+    d = FakeDocker()
+    d.nets["my-earners"] = Network(d, "my-earners", {}, {"com.docker.network.bridge.name": "cp-isolated"})
+    d.add(Container(d, "cashpilot-honeygain", WORKER_LABELS, networks=("my-earners",)))
+    d.add(Container(d, "cashpilot-repocket", WORKER_LABELS, networks=("bridge",)))
+    assert FakeMigrator(d, om.State(tmp_path)).run([]) == 0
+    assert d.nets["my-earners"].attrs["Labels"] == OWNER
+    assert d.nets["my-earners"].attrs["Options"] == {"com.docker.network.bridge.name": "cp-isolated"}
+    assert d.containers.get("cashpilot-honeygain").networks() == ["my-earners"]
+    assert d.nets["bridge"].attrs["Labels"] == {}
+
+
+def test_renamed_compose_volumes_are_copied_once_and_the_old_ones_kept(tmp_path):
+    d = FakeDocker()
+    labels = lambda key: {"com.docker.compose.project": "cashpilot", "com.docker.compose.volume": key}  # noqa: E731
+    d.volume("cashpilot_cashpilot_fleet", {"fleet_key": "enrol"}, labels=labels("cashpilot_fleet"))
+    d.volume("cashpilot_cashpilot_fleet_owned", {}, labels={**labels("cashpilot_fleet_owned"), **OWNER})
+    pairs = [("cashpilot_fleet", "cashpilot_fleet_owned"), ("cashpilot_worker_data", "cashpilot_worker_data_owned")]
+    m = FakeMigrator(d, om.State(tmp_path))
+    assert m.run(pairs) == 0
+    assert d.data["cashpilot_cashpilot_fleet_owned"] == {"fleet_key": "enrol"}
+    assert d.data["cashpilot_cashpilot_fleet"] == {"fleet_key": "enrol"}
+    d.data["cashpilot_cashpilot_fleet_owned"]["fleet_key"] = "rotated since"
+    again = FakeMigrator(d, om.State(tmp_path))
+    assert again.run(pairs) == 0
+    assert again.copies == []
+    assert d.data["cashpilot_cashpilot_fleet_owned"] == {"fleet_key": "rotated since"}
+
+
+def test_a_leftover_helper_the_worker_cannot_remove_any_more_goes(tmp_path):
+    d = FakeDocker()
+    d.add(Container(d, "cashpilot-updater", {"cashpilot.updater": "true"}, running=False))
+    running = d.add(Container(d, "cashpilot-fence", {"cashpilot.probe": "fence"}, running=True))
+    assert FakeMigrator(d, om.State(tmp_path)).run([]) == 0
+    assert "cashpilot-updater" in d.removed
+    assert d.containers.get("cashpilot-fence") is running
+
+
+def test_the_recreate_names_an_anonymous_volume_and_keeps_the_image_it_ran(tmp_path):
+    d = FakeDocker()
+    d.tags["earner:1"] = "sha256:newer"
+    c = Container(d, "cashpilot-x", WORKER_LABELS, networks=())
+    c.attrs["HostConfig"]["NetworkMode"] = "container:abc"
+    c.attrs["Mounts"] = [{"Type": "volume", "Name": "f" * 64, "Destination": "/var/lib/x", "RW": True}]
+    body = FakeMigrator(d, om.State(tmp_path)).create_body(c.attrs)
+    assert body["Image"] == "sha256:img"
+    assert f"{'f' * 64}:/var/lib/x" in body["HostConfig"]["Binds"]
+    assert "Hostname" not in body
+    assert body["Labels"][om.OWNER_LABEL] == om.OWNER
+    assert body["NetworkingConfig"] == {"EndpointsConfig": {}}
+
+
+def test_the_compose_volume_list_parses_like_the_compose_files_write_it():
+    assert om._pairs("a=b, c=d,,bad") == [("a", "b"), ("c", "d")]
+    assert om._pairs("") == []

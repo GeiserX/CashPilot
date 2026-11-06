@@ -23,10 +23,13 @@
 #      update, swarm init, a build, plugins and events;
 #   b2. a container created in the proxy's process namespace cannot read the
 #      proxy's files (/proc/1/root, where the host socket is);
+#   b3. owner isolation: the worker cannot read the UI's files, its environment
+#      or its data volume, the three ways a compromised worker reached them;
 #   c. the raw socket accepts every request in (b), so each refusal is the
 #      proxy's own and not a malformed request (the positive control);
-#   d. the in-app update recreates the UI and worker through the proxy, keeps
-#      the proxy, and the new worker still reaches Docker through it;
+#   d. the in-app update recreates the worker through the proxy, leaves the UI
+#      (not the worker's to touch) and the proxy, and the new worker still
+#      reaches Docker through it;
 #   e. a restarted proxy replaces its socket and the worker reconnects.
 #
 # Needs: docker, base64, and either the compose plugin or the docker CLI image
@@ -87,7 +90,9 @@ cleanup() {
     docker ps -aq --filter "label=$P=1" | xargs -r docker rm -fv >/dev/null 2>&1 || true
     docker rm -f cashpilot-updater >/dev/null 2>&1 || true
     docker volume ls -q --filter label=cashpilot.live-test=1 | xargs -r docker volume rm -f >/dev/null 2>&1 || true
-    docker volume rm -f cashpilot-docker-api cashpilot-cplive-data >/dev/null 2>&1 || true
+    docker volume rm -f cashpilot-docker-api-owned cashpilot-cplive-data >/dev/null 2>&1 || true
+    # cashpilot-migrate's records: root's, in the compose folder.
+    docker run --rm -v "$WORK_DIR/project:/p" "$ALPINE" rm -rf /p/cashpilot-migrate-state >/dev/null 2>&1 || true
     # The fence this run built: its network and its host firewall tables, removed
     # with the worker image it ran from, before that image goes.
     docker network rm cashpilot-isolated >/dev/null 2>&1 || true
@@ -104,7 +109,7 @@ cleanup() {
 }
 trap 'jobs -p | xargs -r kill 2>/dev/null; cleanup' EXIT
 
-for name in cashpilot-ui cashpilot-worker cashpilot-socket-proxy cashpilot-updater; do
+for name in cashpilot-ui cashpilot-worker cashpilot-socket-proxy cashpilot-updater cashpilot-migrate; do
     if docker inspect "$name" >/dev/null 2>&1; then
         echo "A container named $name already exists; this test needs a host without CashPilot." >&2
         trap - EXIT
@@ -126,8 +131,8 @@ if [ -n "$(docker ps -aq --filter label=cashpilot.managed=true)" ]; then
     trap - EXIT
     exit 2
 fi
-if docker volume inspect cashpilot-docker-api >/dev/null 2>&1; then
-    echo "The volume cashpilot-docker-api already exists; this test needs a host without CashPilot." >&2
+if docker volume inspect cashpilot-docker-api-owned >/dev/null 2>&1; then
+    echo "The volume cashpilot-docker-api-owned already exists; this test needs a host without CashPilot." >&2
     trap - EXIT
     exit 2
 fi
@@ -150,6 +155,9 @@ docker tag "$P-worker:build" "$WORKER_IMAGE"
 docker build -q -t "$UI_IMAGE" - >/dev/null <<EOF
 FROM $ALPINE
 LABEL cashpilot.live-test.role=ui
+# A stand-in for the key that decrypts every stored credential: owner isolation
+# must keep the worker from reading it.
+RUN mkdir -p /data && echo live-test-fernet-key > /data/.fernet_key
 CMD ["sleep", "infinity"]
 EOF
 for _ in $(seq 1 20); do docker push -q "$WORKER_IMAGE" >/dev/null 2>&1 && break; sleep 1; done
@@ -165,6 +173,7 @@ CASHPILOT_COMPOSE_DIR=$WORK_DIR/project
 CASHPILOT_PROXY_BIND_MOUNTS=$WORK_DIR/binds
 CASHPILOT_UI_PORT=18080
 CASHPILOT_API_KEY=live-test-key
+CASHPILOT_SECRET_KEY=live-test-session-secret
 CASHPILOT_ALLOW_EPHEMERAL_KEY=true
 EOF
 compose up -d 2>&1 | tail -3
@@ -182,10 +191,20 @@ driver() {
     local phase=$1
     shift
     docker exec -i -u 1000:1000 -e LIVE_POLICY="$POLICY" -e LIVE_ALPINE="$ALPINE" \
-        -e LIVE_BIND_DIR="$WORK_DIR/binds" -e LIVE_TUNNEL_IMAGE="$TUNNEL_IMAGE" -e CASHPILOT_TUNNEL_IMAGE="$TUNNEL_IMAGE" "$@" \
+        -e LIVE_BIND_DIR="$WORK_DIR/binds" -e LIVE_TUNNEL_IMAGE="$TUNNEL_IMAGE" -e CASHPILOT_TUNNEL_IMAGE="$TUNNEL_IMAGE" \
+        -e LIVE_UI=cashpilot-ui -e LIVE_UI_VOLUME="${PROJECT}_cashpilot_data" "$@" \
         cashpilot-worker python - "$phase" <"$ROOT/scripts/socket_proxy_live_driver.py"
 }
 count() { grep -c "$1" || true; }
+# The update facts and the update itself look for the UI's container, and the
+# proxy refuses that by design (owner isolation): those are the only refusals
+# the worker's own work may cause.
+# The UI is not the worker's to inspect, and a 404 is the proxy saying a thing
+# does not exist yet (a volume before it is created, the image before its pull).
+unexpected_denials() {
+    docker logs --since "$1" cashpilot-socket-proxy 2>&1 | grep 'request_denied' | grep -v 'containers/cashpilot-ui/json' \
+        | grep -v '"status":404' || true
+}
 show() {
     echo "$1" | grep -E '^(PASS|FAIL)' || true
     echo "$1" | grep -vE '^(PASS|FAIL)' | sed 's/^/    | /' | tail -15 || true
@@ -198,7 +217,7 @@ out=$(driver allowed 2>&1) || true
 show "$out"
 FAILS=$((FAILS + $(echo "$out" | count '^FAIL')))
 [ "$(echo "$out" | count '^PASS')" -ge 25 ] || fail "too few allowed checks ran: $(echo "$out" | tail -3 | tr '\n' ' ')"
-denied=$(docker logs --since "$since" cashpilot-socket-proxy 2>&1 | grep 'request_denied' || true)
+denied=$(unexpected_denials "$since")
 [ -z "$denied" ] && pass "the proxy refused nothing while the worker ran" \
     || fail "the proxy refused calls the worker makes: $(echo "$denied" | head -3)"
 
@@ -217,8 +236,9 @@ case "$proxy_log" in
 esac
 
 echo "== b2. a container in the proxy's process namespace cannot reach its files"
-# sockguard lets PidMode container:<name> through; the proxy's extra capability
-# is what keeps the joiner out of /proc/1/root, where the host socket is.
+# Owner isolation refuses to join the namespace of a container the worker does
+# not own, the proxy included. Behind that, the proxy's extra capability keeps
+# a joiner out of /proc/1/root, where the host socket is.
 joined=$(docker exec -i -u 1000:1000 cashpilot-worker python - "$ALPINE" <<'PY' 2>&1
 import sys, docker
 c = docker.from_env().containers.run(
@@ -230,8 +250,17 @@ print(c.logs().decode().strip())
 c.remove(force=True)
 PY
 ) || true
-echo "$joined" | grep -q "Permission denied" && pass "the joiner is refused the proxy's files" \
-    || fail "a container in the proxy's process namespace reached its files: $joined"
+case "$joined" in
+*'namespace-sharing target container "cashpilot-socket-proxy"'*) pass "the proxy refuses to let a container join its namespace" ;;
+*"Permission denied"*) pass "the joiner is refused the proxy's files" ;;
+*) fail "a container in the proxy's process namespace reached its files: $joined" ;;
+esac
+
+echo "== b3. owner isolation keeps the worker out of the UI's data"
+out=$(driver attacks 2>&1) || true
+show "$out"
+FAILS=$((FAILS + $(echo "$out" | count '^FAIL')))
+[ "$(echo "$out" | count '^PASS')" -ge 3 ] || fail "too few attack checks ran"
 
 echo "== c. positive control: the raw socket accepts the same requests"
 out=$(docker run --rm -i --label "$P=1" -u 0:0 --entrypoint python -e LIVE_ALPINE="$ALPINE" \
@@ -240,10 +269,19 @@ out=$(docker run --rm -i --label "$P=1" -u 0:0 --entrypoint python -e LIVE_ALPIN
 show "$out"
 FAILS=$((FAILS + $(echo "$out" | count '^FAIL')))
 [ "$(echo "$out" | count '^PASS')" -ge 17 ] || fail "too few control checks ran"
+# The raw socket must let all three attacks through, so each refusal in (b3) is
+# the proxy's owner isolation and not a request that could never work.
+out=$(docker run --rm -i --label "$P=1" -u 0:0 --entrypoint python -e LIVE_ALPINE="$ALPINE" \
+    -e LIVE_UI=cashpilot-ui -e LIVE_UI_VOLUME="${PROJECT}_cashpilot_data" \
+    -v /var/run/docker.sock:/var/run/docker.sock "$WORKER_IMAGE" - attacks \
+    <"$ROOT/scripts/socket_proxy_live_driver.py" 2>&1) || true
+echo "$out" | sed 's/^/    | /'
+[ "$(echo "$out" | count '^FAIL')" -eq 3 ] && pass "the raw socket allows all three attacks" \
+    || fail "the raw socket refused an attack, so (b3) proves nothing"
 docker info -f '{{.Swarm.LocalNodeState}}' | grep -qx inactive && pass "the control left swarm mode" \
     || fail "the daemon is still in swarm mode; run docker swarm leave --force"
 
-echo "== d. the in-app update recreates the UI and worker through the proxy"
+echo "== d. the in-app update recreates the worker through the proxy"
 old_worker=$(docker inspect -f '{{.Id}}' cashpilot-worker)
 old_ui=$(docker inspect -f '{{.Id}}' cashpilot-ui)
 old_proxy=$(docker inspect -f '{{.Id}}' cashpilot-socket-proxy)
@@ -271,15 +309,15 @@ for _ in $(seq 1 60); do
 done
 [ "$(docker inspect -f '{{.Id}}' cashpilot-worker 2>/dev/null)" != "$old_worker" ] && pass "the update recreated the worker" \
     || fail "the worker was not recreated"
-[ "$(docker inspect -f '{{.Id}}' cashpilot-ui 2>/dev/null)" != "$old_ui" ] && pass "the update recreated the UI" \
-    || fail "the UI was not recreated"
+[ "$(docker inspect -f '{{.Id}}' cashpilot-ui 2>/dev/null)" = "$old_ui" ] \
+    && pass "the update left the UI alone: the worker may not touch it" || fail "the update recreated the UI"
 [ "$(docker inspect -f '{{.Id}}' cashpilot-socket-proxy)" = "$old_proxy" ] && pass "the update left the proxy alone" \
     || fail "the update recreated the proxy"
 [ "$(docker inspect -f '{{index .Config.Labels "cashpilot.live-test.update"}}' cashpilot-worker 2>/dev/null)" = 2 ] \
     && pass "the new worker runs the pulled image" || fail "the new worker does not run the pulled image"
 [ "$(driver access 2>/dev/null)" = proxy ] && pass "the new worker reaches Docker through the proxy" \
     || fail "the new worker does not reach Docker through the proxy"
-denied=$(docker logs --since "$since" cashpilot-socket-proxy 2>&1 | grep 'request_denied' || true)
+denied=$(unexpected_denials "$since")
 [ -z "$denied" ] && pass "the proxy refused nothing the update or Compose asked for" \
     || fail "the proxy refused part of the update: $(echo "$denied" | head -3)"
 

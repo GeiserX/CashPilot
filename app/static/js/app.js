@@ -4434,6 +4434,9 @@ const CP = (() => {
           ? 'You are on the newest known release. The button re-runs the documented pull anyway.'
           : 'The newest release is unknown; the button still runs the documented pull for your pinned series.';
       }
+      if (info.ui_by_hand) {
+        note += ' It updates the worker only: the worker may not touch the dashboard\'s container on this server, so update the dashboard there with docker compose pull && docker compose up -d.';
+      }
       action = `
       <div class="kv-actions">
         <button class="btn btn-primary" data-action="runSelfUpdate">${escapeHtml(label)}</button>

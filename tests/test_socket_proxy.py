@@ -117,6 +117,18 @@ def policy_problems(policy: dict, catalog: list[dict]) -> list[str]:
             problems.append(f"{key} on: the worker reads those fields")
     if create.get("allowed_bind_mounts"):
         problems.append("bind mounts allowed in YAML, not only through the environment")
+    # Owner isolation: what keeps a compromised worker out of the UI's
+    # container, its environment and its data volume (app/owner_migrate.py).
+    ownership = policy.get("ownership") or {}
+    if ownership.get("owner") != "worker" or ownership.get("label_key") != "cashpilot.deployed-by":
+        problems.append("owner isolation off, or not on the worker's cashpilot.deployed-by label")
+    if ownership.get("allow_cross_owner_namespace_sharing") is not False:
+        problems.append("a container may join a namespace of a container the worker does not own")
+    if ownership.get("allow_unowned_images") is not True:
+        problems.append("allow_unowned_images off: earner images carry no owner label")
+    volume = policy["request_body"].get("volume") or {}
+    if volume.get("allow_driver_opts") or volume.get("allow_custom_drivers"):
+        problems.append("volume driver options or drivers allowed: a volume could point at a host folder")
     for method, path in (
         ("POST", "/swarm/init"),
         ("POST", "/plugins/pull"),
@@ -127,7 +139,6 @@ def policy_problems(policy: dict, catalog: list[dict]) -> list[str]:
         ("POST", "/commit"),
         ("GET", "/containers/abc/export"),
         ("GET", "/events"),
-        ("POST", "/volumes/create"),
         ("POST", "/images/load"),
         ("POST", "/session"),
         ("DELETE", "/images/abc"),
@@ -185,10 +196,93 @@ def test_the_proxy_is_pinned_and_holds_the_socket_read_only(name):
 
 
 @pytest.mark.parametrize("name", COMPOSE_FILES)
-def test_only_the_proxy_binds_the_socket(name):
+def test_only_the_proxy_and_the_one_shot_migration_bind_the_socket(name):
     for svc_name, svc in _compose(name)["services"].items():
-        if svc_name != "cashpilot-socket-proxy":
+        if svc_name not in ("cashpilot-socket-proxy", "cashpilot-migrate"):
             assert not any("docker.sock" in str(v) for v in svc.get("volumes") or []), svc_name
+
+
+#: Compose files whose worker the in-app update recreates through the proxy:
+#: everything it mounts and joins has to carry the owner label.
+UPDATED_THROUGH_THE_PROXY = (
+    "docker-compose.yml",
+    "docker-compose.fleet.yml",
+    "docker-compose.build.yml",
+    "docker-compose.worker.yml",
+)
+OWNER = {"cashpilot.deployed-by": "worker"}
+
+
+@pytest.mark.parametrize("name", COMPOSE_FILES)
+def test_the_migration_runs_once_before_the_proxy_and_holds_nothing_else(name):
+    services = _compose(name)["services"]
+    migrate = services["cashpilot-migrate"]
+    assert migrate["entrypoint"] == ["python", "-m", "app.owner_migrate"]
+    assert migrate["image"] == services["cashpilot-worker"]["image"]
+    assert migrate["restart"] == "no"
+    assert migrate["network_mode"] == "none"
+    assert migrate["cap_drop"] == ["ALL"]
+    assert "no-new-privileges:true" in migrate["security_opt"]
+    mounts = {}
+    for m in migrate["volumes"]:
+        source, target = (m["source"], m["target"]) if isinstance(m, dict) else str(m).split(":")[:2]
+        mounts[target] = source
+    assert mounts.keys() == {"/var/run/docker.sock", "/state"}
+    assert mounts["/var/run/docker.sock"] == "/var/run/docker.sock"
+    # A host folder: a named volume here would be one the in-app update's
+    # Compose run asks the proxy about, and the proxy refuses.
+    assert mounts["/state"].startswith(("./", "/", "${")), mounts["/state"]
+    assert "labels" not in migrate, "the migration must not be the worker's to touch"
+    condition = {"cashpilot-migrate": {"condition": "service_completed_successfully"}}
+    assert services["cashpilot-socket-proxy"]["depends_on"] == condition
+    if "cashpilot-ui" in services:
+        assert services["cashpilot-ui"]["depends_on"] == condition
+
+
+@pytest.mark.parametrize("name", COMPOSE_FILES)
+def test_the_worker_and_its_socket_volume_carry_the_owner_label(name):
+    compose = _compose(name)
+    assert compose["services"]["cashpilot-worker"]["labels"] == OWNER
+    assert compose["volumes"]["cashpilot_docker_api"]["labels"] == OWNER
+
+
+@pytest.mark.parametrize("name", UPDATED_THROUGH_THE_PROXY)
+def test_what_the_update_recreates_the_worker_with_is_labelled_and_the_ui_data_is_not(name):
+    compose = _compose(name)
+    services = compose["services"]
+    worker = services["cashpilot-worker"]
+    # `up -d --no-deps cashpilot-worker` still makes sure every named volume and
+    # network of the worker's dependencies exists, asking the proxy for each one.
+    chain, todo = set(), ["cashpilot-worker"]
+    while todo:
+        svc = todo.pop()
+        if svc not in chain:
+            chain.add(svc)
+            todo.extend(services[svc].get("depends_on") or [])
+    assert {"cashpilot-socket-proxy", "cashpilot-migrate"} <= chain
+    for svc in sorted(chain):
+        for mount in services[svc].get("volumes") or []:
+            key = str(mount).split(":", 1)[0]
+            if key in (compose.get("volumes") or {}):
+                assert (compose["volumes"][key] or {}).get("labels") == OWNER, f"{svc}: {key}"
+        for net in services[svc].get("networks") or []:
+            assert compose["networks"][net]["labels"] == OWNER, f"{svc}: {net}"
+    if "cashpilot-ui" in services:
+        assert not (compose["volumes"]["cashpilot_data"] or {}).get("labels")
+        assert "cashpilot_data:/data" in services["cashpilot-ui"]["volumes"]
+        assert "labels" not in services["cashpilot-ui"]
+    pairs = dict(
+        item.split("=", 1)
+        for e in services["cashpilot-migrate"]["environment"]
+        if e.startswith("CASHPILOT_MIGRATE_COMPOSE_VOLUMES=")
+        for item in e.split("=", 1)[1].split(",")
+    )
+    # Every renamed volume is copied from its old name into the one the worker mounts.
+    assert pairs["cashpilot_worker_data"] == "cashpilot_worker_data_owned"
+    assert "cashpilot_worker_data_owned:/data" in worker["volumes"]
+    if "cashpilot-ui" in services:
+        assert pairs["cashpilot_fleet"] == "cashpilot_fleet_owned"
+        assert "cashpilot_fleet_owned:/fleet" in worker["volumes"]
 
 
 def test_every_compose_file_carries_the_generated_policy():
@@ -246,6 +340,12 @@ MUTATIONS = {
         0, {"match": {"method": "POST", "path": "/containers/*/update"}, "action": "allow"}
     ),
     "no final deny": lambda p: p["rules"].pop(),
+    "no ownership": lambda p: p.pop("ownership"),
+    "another owner": lambda p: p["ownership"].update(owner="ui"),
+    "another label": lambda p: p["ownership"].update(label_key="cashpilot.managed"),
+    "cross-owner namespaces": lambda p: p["ownership"].update(allow_cross_owner_namespace_sharing=True),
+    "unowned images refused": lambda p: p["ownership"].update(allow_unowned_images=False),
+    "volume driver opts": lambda p: p["request_body"]["volume"].update(allow_driver_opts=True),
 }
 
 
@@ -390,10 +490,10 @@ def test_the_deploy_route_keeps_docker_errors_as_409():
     assert resp.json()["detail"].startswith("Docker refused the container: ")
 
 
-def test_the_proxy_volume_can_never_go_to_a_container():
-    resp, deploy = _worker_deploy(
-        {"image": "img", "volumes": {orchestrator.PROXY_VOLUME: {"bind": "/x", "mode": "rw"}}}
-    )
+@pytest.mark.parametrize("volume", orchestrator.PROXY_VOLUMES)
+def test_the_proxy_volume_can_never_go_to_a_container(volume):
+    # The old name too: a worker on an older compose file still has its socket there.
+    resp, deploy = _worker_deploy({"image": "img", "volumes": {volume: {"bind": "/x", "mode": "rw"}}})
     assert resp.status_code == 403
     assert "Docker socket" in resp.json()["detail"]
     deploy.assert_not_called()
@@ -467,6 +567,22 @@ def test_proxied_the_helper_gets_the_filtered_socket_not_the_host_one(monkeypatc
     assert "DOCKER_HOST" not in preflight["environment"]
     assert orchestrator.PROXY_VOLUME not in preflight["volumes"]
     assert preflight["security_opt"] == ["no-new-privileges:true"]
+
+
+def test_a_worker_on_an_older_compose_file_gives_the_helper_the_socket_volume_it_has(monkeypatch):
+    _proxied_env(monkeypatch)
+    me = tuf._fake_container(labels=tuf._COMPOSE_LABELS)
+    me.attrs["Mounts"] = [
+        {"Type": "volume", "Name": "cashpilot-worker-data", "Destination": "/data"},
+        {"Type": "volume", "Name": "cashpilot-docker-api", "Destination": orchestrator.PROXY_SOCKET_DIR},
+    ]
+    client = tuf._fake_docker(me=me)
+    tuf._wire_runs(client, preflight=tuf._preflight(cfg=PROXY_OK_CFG))
+    with patch.object(orchestrator, "_get_client", return_value=client):
+        orchestrator.spawn_self_update()
+    volumes = tuf._updater_call(client).kwargs["volumes"]
+    assert volumes["cashpilot-docker-api"] == {"bind": orchestrator.PROXY_SOCKET_DIR, "mode": "rw"}
+    assert orchestrator.PROXY_VOLUME not in volumes
 
 
 def test_with_the_raw_socket_the_helper_is_unchanged(monkeypatch):

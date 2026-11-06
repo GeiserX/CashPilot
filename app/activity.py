@@ -262,8 +262,11 @@ def _network_info(client: Any, net_id: str, earners: set[str]) -> tuple[str, lis
     """(driver, addresses of the earners on it) of one network, from one inspect."""
     try:
         attrs = _attrs(client.networks.get(net_id))
-    except Exception:  # noqa: BLE001 - an unknown driver reads as a bridge with no known earners
-        return "", []
+    except Exception:  # noqa: BLE001 - an unknown driver reads as a bridge
+        # The socket proxy refuses an inspect of Docker's default bridge, which
+        # carries no owner label. The earners are the worker's own, so their
+        # addresses on it come from their own inspects instead.
+        return "", _earner_addresses(client, net_id, earners)
     ips = []
     for member in (attrs.get("Containers") or {}).values():
         member = member or {}
@@ -273,6 +276,20 @@ def _network_info(client: Any, net_id: str, earners: set[str]) -> tuple[str, lis
             if member.get(key):
                 ips.append(str(member[key]).split("/", 1)[0])
     return str(attrs.get("Driver") or ""), ips
+
+
+def _earner_addresses(client: Any, net_id: str, earners: set[str]) -> list[str]:
+    ips = []
+    for name in sorted(earners):
+        try:
+            nets = (_attrs(client.containers.get(name)).get("NetworkSettings") or {}).get("Networks") or {}
+        except Exception:  # noqa: BLE001 - gone since the list, or not the worker's
+            continue
+        for net in nets.values():
+            net = net or {}
+            if str(net.get("NetworkID") or "") == net_id:
+                ips += [str(net[key]) for key in ("IPAddress", "GlobalIPv6Address") if net.get(key)]
+    return ips
 
 
 def network_context(

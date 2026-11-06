@@ -93,12 +93,21 @@ def _services(compose: Path) -> dict[str, dict]:
     return {k: v for k, v in (_load(compose).get("services") or {}).items() if isinstance(v, dict)}
 
 
+def _is_migration(service: dict) -> bool:
+    """The one-shot owner-label migration: the worker image, another entrypoint."""
+    return service.get("entrypoint") == ["python", "-m", "app.owner_migrate"]
+
+
 def _is_worker(service: dict) -> bool:
-    return str(service.get("image", "")).startswith("drumsergio/cashpilot-worker")
+    return str(service.get("image", "")).startswith("drumsergio/cashpilot-worker") and not _is_migration(service)
 
 
 def _is_proxy(service: dict) -> bool:
     return str(service.get("image", "")).startswith("codeswhat/sockguard:")
+
+
+def _proxy_name(services: dict) -> str:
+    return next(name for name, svc in services.items() if _is_proxy(svc))
 
 
 def _env(service: dict) -> dict[str, str]:
@@ -124,6 +133,14 @@ def test_only_the_socket_proxy_holds_the_docker_socket(compose):
             assert "/var/run/docker.sock:/var/run/docker.sock:ro" in (svc.get("volumes") or []), (
                 f"{compose}: the proxy {name} must hold the socket read-only"
             )
+        elif _is_migration(svc):
+            # It exits before the proxy starts.
+            assert svc.get("restart") == "no" and svc.get("network_mode") == "none", (
+                f"{compose}: the migration {name} must run once, with no network"
+            )
+            assert services[_proxy_name(services)]["depends_on"] == {
+                name: {"condition": "service_completed_successfully"}
+            }, f"{compose}: the proxy must start only after the migration finished"
         else:
             assert not sockets, f"{compose}: {name} mounts the Docker socket; only the proxy may"
     for name in workers:
