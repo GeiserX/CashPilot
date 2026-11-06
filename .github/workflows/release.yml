@@ -7,6 +7,8 @@ on:
       - 'Dockerfile'
       - 'entrypoint.sh'
       - 'Dockerfile.worker'
+      - 'Dockerfile.tunnel'
+      - 'tunnel/**'
       - 'pyproject.toml'
       - 'uv.lock'
       - 'app/**'
@@ -172,6 +174,13 @@ jobs:
             [ -n "$mod" ] || continue
             if echo "$CHANGED" | grep -qxF "$mod"; then BUILD_WORKER=true; fi
           done <<< "$WORKER_MODULES"
+
+          # The tunnel image (Dockerfile.tunnel, tunnel/) is built with the
+          # worker and pinned by the worker to its own version, so a change to
+          # its firewall or probe ships only in a new worker release.
+          if echo "$CHANGED" | grep -qE '^(Dockerfile\.tunnel|tunnel/)'; then
+            BUILD_WORKER=true
+          fi
 
           if echo "$CHANGED" | grep -qE '^app/__init__\.py'; then
             BUILD_UI=true

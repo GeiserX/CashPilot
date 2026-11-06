@@ -13,6 +13,7 @@ from fastapi import HTTPException
 from app import database, egress, main, proxies
 
 PASSWORD = "Pr0xy-P4ss-7c1e9"
+NEW_PASSWORD = "n3w-pass"  # ggignore: fake test value, not a credential
 USERNAME = "customer-sergio-cc-es"
 AUTH_KEY = "tskey-auth-kTEST-abcdef0123"
 
@@ -259,9 +260,14 @@ class TestCap:
         assert new_state["used_bytes"] == 0 and "capped_at" not in new_state
 
     def test_crossing_stops_every_copy_and_raises_an_alert(self):
-        proxy = {"id": 1, "definition": {**CAPPED, "password": PASSWORD}, "state": {"cap_reason": "P reached 90%"}}
+        proxy = {
+            "id": 1,
+            "definition": {**CAPPED, "password": PASSWORD},
+            "state": {"capped_at": "x", "cap_reason": "P reached 90%"},
+        }
         call = AsyncMock(return_value={})
         with (
+            patch.object(main.database, "get_proxy", new_callable=AsyncMock, return_value=proxy),
             patch.object(main.database, "set_proxied_copy_capped", new_callable=AsyncMock) as mark,
             patch.object(main.database, "record_alert", new_callable=AsyncMock, return_value=None) as alert,
             patch.object(main, "_proxy_worker_call", call),
@@ -271,6 +277,39 @@ class TestCap:
         assert all(c.args[3] is True for c in mark.call_args_list) and mark.call_count == 2
         assert alert.call_args.args[:2] == ("proxy_cap", "1")
         assert alert.call_args.args[2] == "Stopped: P reached 90%."
+        main._drop_proxy_cap_bell(1)
+
+    def test_a_copy_the_owner_had_stopped_is_not_marked_by_the_cap(self):
+        """Docker answers a stop of a stopped container with success, so the
+        worker says whether the copy was running; only those are the cap's."""
+        proxy = {"id": 1, "definition": dict(CAPPED), "state": {"capped_at": "x", "cap_reason": "P reached 90%"}}
+
+        async def worker_call(worker_id, method, path, definition, **kw):
+            return {"status": "stopped", "was_running": worker_id == 7}
+
+        with (
+            patch.object(main.database, "get_proxy", new_callable=AsyncMock, return_value=proxy),
+            patch.object(main.database, "set_proxied_copy_capped", new_callable=AsyncMock) as mark,
+            patch.object(main.database, "record_alert", new_callable=AsyncMock, return_value=None),
+            patch.object(main, "_proxy_worker_call", AsyncMock(side_effect=worker_call)),
+        ):
+            asyncio.run(main._stop_capped_proxy(proxy, {(7, "a"), (8, "b")}))
+        assert [c.args[:4] for c in mark.call_args_list] == [(1, 7, "a", True)]
+        main._drop_proxy_cap_bell(1)
+
+    def test_a_cap_lifted_while_the_stop_ran_starts_the_copy_again(self):
+        proxy = {"id": 1, "definition": dict(CAPPED), "state": {"capped_at": "x", "cap_reason": "r"}}
+        lifted = {**proxy, "state": {}}
+        call = AsyncMock(return_value={"status": "stopped", "was_running": True})
+        with (
+            patch.object(main.database, "get_proxy", new_callable=AsyncMock, return_value=lifted),
+            patch.object(main.database, "set_proxied_copy_capped", new_callable=AsyncMock) as mark,
+            patch.object(main.database, "record_alert", new_callable=AsyncMock, return_value=None),
+            patch.object(main, "_proxy_worker_call", call),
+        ):
+            asyncio.run(main._stop_capped_proxy(proxy, {(7, "a")}))
+        assert [c.args[2] for c in call.call_args_list] == ["/api/proxied/a/1/stop", "/api/proxied/a/1/start"]
+        mark.assert_not_called()
         main._drop_proxy_cap_bell(1)
 
 
@@ -322,15 +361,17 @@ class TestCapEnforcement:
         main._proxy_cap_stopping.clear()
 
     def test_a_failed_stop_is_tried_again_on_the_next_heartbeat(self):
-        fails = [HTTPException(status_code=503, detail="Worker offline")]
+        fails = {8: [HTTPException(status_code=503, detail="Worker offline")]}
 
         async def worker_call(worker_id, method, path, definition, **kw):
-            if fails:
-                raise fails.pop()
+            if fails.get(worker_id):
+                raise fails[worker_id].pop()
             return {}
 
         call = AsyncMock(side_effect=worker_call)
-        rig = _CapRig([{"proxy_id": 1, "worker_id": 8, "slug": "a"}], call)
+        rig = _CapRig(
+            [{"proxy_id": 1, "worker_id": 7, "slug": "a"}, {"proxy_id": 1, "worker_id": 8, "slug": "a"}], call
+        )
 
         async def go():
             await rig.heartbeat(7, [_entry(0, 0)])
@@ -343,7 +384,7 @@ class TestCapEnforcement:
 
         asyncio.run(go())
         stops = [(c.args[0], c.args[2]) for c in call.call_args_list]
-        assert stops == [(8, "/api/proxied/a/1/stop"), (8, "/api/proxied/a/1/stop")]
+        assert stops == [(7, "/api/proxied/a/1/stop"), (8, "/api/proxied/a/1/stop"), (8, "/api/proxied/a/1/stop")]
         assert rig.alerts[-1][2].startswith("Stopped: ")
         assert len(rig.pushed) == 1 and rig.pushed[0][0] == "proxy_cap"
 
@@ -697,6 +738,8 @@ class TestProxyStateWriters:
         async def go():
             created = await main.api_create_proxy(_Req(_socks(cap_gb=10)), {})
             pid = created["id"]
+            await database.save_proxied_copy(pid, 7, "a")
+            await database.save_proxied_copy(pid, 8, "a")
             hb = [{**_entry(500_000_000, 0), "proxy_id": pid}]
             with _slow_first_read():
                 await asyncio.gather(main._account_proxy_traffic(7, hb), main._account_proxy_traffic(8, hb))
@@ -740,6 +783,7 @@ class TestProxyStateWriters:
                     "counters": {"7:t1": [1000, 0, 100.0, "2026-11-01T00:00:00Z"]},
                 },
             )
+            await database.save_proxied_copy(pid, 7, "a")
             hb = [{**_entry(2100, 0), "proxy_id": pid}]
             with _slow_first_read(), patch.object(main, "_spawn", side_effect=_discard_spawn):
                 await asyncio.gather(
@@ -770,3 +814,138 @@ class TestValidationEcho:
             )
         assert resp.status_code == 422
         assert PASSWORD not in resp.text
+
+
+class TestReviewFollowUps:
+    """Fixes from the review of the proxied-copies work."""
+
+    SVC = {"slug": "honeygain", "name": "Honeygain", "status": "active", "docker": {"image": "honeygain/honeygain:1"}}
+    RECORDED = {"image": "honeygain/honeygain:1", "env": {"EMAIL": "a@b"}, "ports": {}}
+
+    def _add(self, created_id, call):
+        return (
+            patch.object(main.catalog, "get_service", return_value=self.SVC),
+            patch.object(main, "_resolve_worker_id", new_callable=AsyncMock, return_value=7),
+            patch.object(main, "_worker_features", new_callable=AsyncMock, return_value={"proxy_tunnel"}),
+            patch.object(main.database, "get_deployment_spec", new_callable=AsyncMock, return_value=self.RECORDED),
+            patch.object(main.database, "list_workers", new_callable=AsyncMock, return_value=[]),
+            patch.object(main, "_proxy_to_worker", call),
+        )
+
+    @pytest.mark.parametrize(("status", "kept"), [(504, True), (409, False)])
+    def test_a_deploy_whose_outcome_is_unknown_keeps_its_record(self, db, status, kept):
+        """A 504 means the worker may still finish the copy; without a record
+        it would run outside the cap and the delete guard."""
+        call = AsyncMock(side_effect=HTTPException(status_code=status, detail="x"))
+
+        async def go():
+            created = await main.api_create_proxy(_Req(_socks()), {})
+            a, b, c, d, e, f = self._add(created["id"], call)
+            with a, b, c, d, e, f, pytest.raises(HTTPException):
+                await main.api_add_proxied_copy(created["id"], main.ProxyCopyRequest(worker_id=7, slug="honeygain"), {})
+            return await database.list_proxied_copies()
+
+        assert bool(_run(go)) is kept
+
+    def test_a_copy_being_added_blocks_deleting_its_proxy(self, db):
+        async def go():
+            created = await main.api_create_proxy(_Req(_socks()), {})
+            pid = created["id"]
+
+            async def slow_deploy(*a, **kw):
+                with pytest.raises(HTTPException) as err:
+                    await main.api_delete_proxy(pid, {})
+                return {"status": "deployed", "exit": {}, "delete": err.value.status_code}
+
+            a, b, c, d, e, f = self._add(pid, AsyncMock(side_effect=slow_deploy))
+            with a, b, c, d, e, f:
+                await main.api_add_proxied_copy(pid, main.ProxyCopyRequest(worker_id=7, slug="honeygain"), {})
+            return await database.get_proxy(pid)
+
+        assert _run(go) is not None
+
+    def test_traffic_of_a_copy_this_worker_has_no_record_of_is_not_counted(self, db):
+        async def go():
+            created = await main.api_create_proxy(_Req(_socks(cap_gb=1)), {})
+            pid = created["id"]
+            await database.save_proxied_copy(pid, 8, "a")
+            await main._account_proxy_traffic(7, [{**_entry(2_000_000_000, 0), "proxy_id": pid}])
+            first = (await database.get_proxy(pid))["state"].get("used_bytes")
+            await main._account_proxy_traffic(8, [{**_entry(1000, 0, tid="t8"), "proxy_id": pid}])
+            return first, (await database.get_proxy(pid))["state"]
+
+        first, state = _run(go)
+        assert first == 0
+        assert state["used_bytes"] == 1000 and "capped_at" not in state
+
+    def test_a_new_proxy_with_a_reset_day_starts_its_period(self, db):
+        async def go():
+            created = await main.api_create_proxy(_Req(_socks(cap_gb=1, reset_day=1)), {})
+            return await database.get_proxy(created["id"])
+
+        proxy = _run(go)
+        assert proxy["state"]["period_start"]
+        assert not proxies.reset_due(proxy["definition"], proxy["state"], date.today())
+
+    def test_a_start_by_hand_sends_the_proxy_as_stored_now(self, db):
+        call = AsyncMock(return_value={"status": "started"})
+
+        async def go():
+            created = await main.api_create_proxy(_Req(_socks(username=USERNAME, password=PASSWORD)), {})
+            pid = created["id"]
+            await main.api_update_proxy(_Req({"password": NEW_PASSWORD}), pid, {})
+            with patch.object(main, "_proxy_to_worker", call):
+                await main.api_proxied_copy_command(pid, 7, "honeygain", "start", {})
+                await main.api_proxied_copy_command(pid, 7, "honeygain", "stop", {})
+
+        _run(go)
+        start, stop = call.call_args_list
+        assert start.kwargs["json"]["proxy"]["password"] == NEW_PASSWORD
+        assert stop.kwargs["json"] is None
+
+    def test_removing_a_service_keeps_records_of_copies_that_survived(self, db):
+        async def go():
+            created = await main.api_create_proxy(_Req(_socks()), {})
+            await database.save_proxied_copy(created["id"], 7, "honeygain")
+            answer = {"status": "removed", "proxied_error": "Docker did not remove cashpilot-honeygain-p1"}
+            with (
+                patch.object(main, "_require_writer"),
+                patch.object(main, "_resolve_worker_id", new_callable=AsyncMock, return_value=7),
+                patch.object(main, "_proxy_worker_command", new_callable=AsyncMock, return_value=answer),
+            ):
+                await main._svc_remove(MagicMock(), "honeygain", 7, False)
+            return await database.list_proxied_copies()
+
+        assert len(_run(go)) == 1
+
+    @pytest.mark.parametrize(
+        "server",
+        ["https://u:p@hs.example", "https://hs.example/?token=x", "https://hs.example/#f", "http://hs.example"],
+    )
+    def test_a_login_server_with_a_secret_part_is_refused(self, server):
+        with pytest.raises(proxies.ProxyInputError):
+            proxies.clean_definition(
+                {"name": "T", "kind": "tailscale", "auth_key": "k", "exit_node": "exit-1", "login_server": server}
+            )
+
+    def test_a_plain_login_server_is_kept(self):
+        d = proxies.clean_definition(
+            {
+                "name": "T",
+                "kind": "tailscale",
+                "auth_key": "k",
+                "exit_node": "e",
+                "login_server": "https://hs.example:8443/x",
+            }
+        )
+        assert d["login_server"] == "https://hs.example:8443/x"
+
+    def test_a_cap_too_small_to_measure_is_refused(self):
+        with pytest.raises(proxies.ProxyInputError):
+            proxies.clean_definition({**_socks(), "cap_gb": "0.0000000001"})
+        assert proxies.clean_definition({**_socks(), "cap_gb": "0.001"})["cap_gb"] == 0.001
+
+    def test_a_cap_out_of_range_names_both_bounds(self):
+        for gb in ("0.0000000001", "2000000"):
+            with pytest.raises(proxies.ProxyInputError, match=r"between 0\.001 and 1,000,000 GB"):
+                proxies.clean_definition({**_socks(), "cap_gb": gb})

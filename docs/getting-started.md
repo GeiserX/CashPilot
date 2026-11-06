@@ -15,12 +15,13 @@ curl -fsSLO https://raw.githubusercontent.com/GeiserX/CashPilot/main/docker-comp
 docker compose up -d
 ```
 
-This starts two containers:
+This starts three containers:
 
 | Container | Port | Purpose |
 |-----------|------|---------|
 | **cashpilot-ui** | 8080 | Web dashboard, earnings collection, service catalog |
 | **cashpilot-worker** | 8081 | Docker agent that deploys and monitors service containers |
+| **cashpilot-socket-proxy** | none | Holds the Docker socket read-only and gives the worker a filtered copy ([Security defaults](security-defaults.md)) |
 
 ### 2. Open the dashboard
 

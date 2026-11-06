@@ -386,3 +386,51 @@ class TestOnlyARealDependencyChangeBuilds:
                 check=False,
             )
             assert result.returncode == 0, f"{tag} is missing, so the behaviour tests measure nothing"
+
+
+class TestTheTunnelImageShips:
+    """A change to tunnel/cp-tunnel or tunnel/cp-probe (the fail-closed
+    firewall and the readiness probe) cut no release: neither the push paths
+    nor the detect step named them, so a fix there merged green and no new
+    drumsergio/cashpilot-tunnel image was ever published."""
+
+    def _flags(self, changed: str) -> dict[str, str]:
+        doc = yaml.safe_load(RELEASE.read_text(encoding="utf-8"))
+        step = next(s["run"] for s in doc["jobs"]["release"]["steps"] if s.get("name") == "Detect what changed")
+        lines = step.splitlines()
+        start = next(i for i, line in enumerate(lines) if "grep -qE '^(Dockerfile|entrypoint" in line)
+        end = next(i for i, line in enumerate(lines) if 'echo "Build UI:' in line)
+        script = "\n".join(lines[start : end + 1])
+        out = ROOT / ".pytest-release-output"
+        try:
+            subprocess.run(
+                ["bash", "-c", script],
+                cwd=ROOT,
+                env={
+                    **os.environ,
+                    "CHANGED": changed,
+                    "BUILD_UI": "false",
+                    "BUILD_WORKER": "false",
+                    "RUNTIME_CHANGED": "false",
+                    "GITHUB_OUTPUT": str(out),
+                },
+                check=True,
+                capture_output=True,
+                timeout=30,
+            )
+            return dict(line.split("=", 1) for line in out.read_text().split())
+        finally:
+            out.unlink(missing_ok=True)
+
+    @pytest.mark.parametrize("path", ["tunnel/cp-tunnel", "tunnel/cp-probe", "Dockerfile.tunnel"])
+    def test_a_tunnel_change_builds_the_worker(self, path):
+        assert self._flags(path)["worker"] == "true"
+
+    def test_an_unrelated_file_builds_nothing(self):
+        """The control: the extracted block can answer false."""
+        assert self._flags("README.md") == {"ui": "false", "worker": "false"}
+
+    def test_a_push_of_tunnel_files_runs_the_workflow(self):
+        doc = yaml.safe_load(RELEASE.read_text(encoding="utf-8"))
+        paths = doc[True]["push"]["paths"] if True in doc else doc["on"]["push"]["paths"]
+        assert "tunnel/**" in paths and "Dockerfile.tunnel" in paths

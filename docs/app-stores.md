@@ -3,12 +3,15 @@
 You can install CashPilot from the app store of several home-server systems.
 Each listing installs the dashboard (`drumsergio/cashpilot`) and the worker
 (`drumsergio/cashpilot-worker`), which starts and stops the service
-containers. The CasaOS and Runtipi packages also install the Docker socket
-proxy from `docker-compose.yml`, so their worker never holds the raw Docker
-socket. The Unraid templates still give the worker the socket directly.
+containers. Only the CasaOS and Runtipi packages in this repository also
+install the Docker socket proxy from `docker-compose.yml`, so their worker
+never holds the raw Docker socket. The Unraid templates, the TrueNAS app and
+the package in the open CasaOS app store pull request still mount the Docker
+socket in the worker directly.
 
 Whichever store you use, keep the dashboard on your LAN or VPN. It can command
-the worker, and the worker drives Docker on the host.
+the worker, and the worker drives Docker on the host. Where the worker holds
+the socket itself, that is root on the host.
 
 ## Listed today
 

@@ -24,6 +24,7 @@ from app import orchestrator, proxy_tunnel, worker_api  # noqa: E402
 from app.constants import LABEL_INSTANCE, LABEL_MANAGED, LABEL_PROXY, LABEL_ROLE, LABEL_SERVICE  # noqa: E402
 
 PASSWORD = "s3cr3t-p@ss"
+NEW_PASSWORD = "n3w-pass"  # ggignore: fake test value, not a credential
 AUTH_KEY = "tskey-auth-kTEST-0123456789"
 
 
@@ -299,6 +300,7 @@ class TestOrder:
 
         with (
             patch.object(orchestrator, "_get_client", return_value=MagicMock()),
+            patch.object(proxy_tunnel, "tunnel_image", return_value="drumsergio/cashpilot-tunnel:1.64.0"),
             patch.object(proxy_tunnel, "remove", side_effect=lambda *a: calls.append("old-removed") or []),
             patch.object(proxy_tunnel, "start_sidecar", side_effect=fake_start_sidecar),
             patch.object(orchestrator, "deploy_raw", side_effect=fake_deploy_raw),
@@ -311,6 +313,7 @@ class TestOrder:
         sidecar = MagicMock(id="sidecar-id")
         with (
             patch.object(orchestrator, "_get_client", return_value=MagicMock()),
+            patch.object(proxy_tunnel, "tunnel_image", return_value="drumsergio/cashpilot-tunnel:1.64.0"),
             patch.object(proxy_tunnel, "remove", return_value=[]),
             patch.object(proxy_tunnel, "start_sidecar", return_value=(sidecar, {"ip": "93.184.215.14"})),
             patch.object(orchestrator, "deploy_raw", side_effect=RuntimeError("boom")),
@@ -322,10 +325,36 @@ class TestOrder:
     def test_remove_all_takes_earners_before_tunnels(self):
         tunnel = _container("cashpilot-tunnel-x-p1", "x", proxy=1, role="tunnel")
         earner = _container("cashpilot-x-p1", "x", proxy=1)
+        tunnel.reload.side_effect = earner.reload.side_effect = NotFound("gone")
         client = MagicMock()
         client.containers.list.return_value = [tunnel, earner]
         with patch.object(orchestrator, "_get_client", return_value=client):
             assert proxy_tunnel.remove_all("x") == ["cashpilot-x-p1", "cashpilot-tunnel-x-p1"]
+
+    def test_remove_all_says_so_when_a_copy_survives(self):
+        """A copy Docker would not remove keeps its record on the UI, so the
+        worker must not report it as removed."""
+        tunnel = _container("cashpilot-tunnel-x-p1", "x", proxy=1, role="tunnel")
+        earner = _container("cashpilot-x-p1", "x", proxy=1)
+        tunnel.reload.side_effect = NotFound("gone")
+        client = MagicMock()
+        client.containers.list.return_value = [tunnel, earner]
+        with (
+            patch.object(orchestrator, "_get_client", return_value=client),
+            pytest.raises(proxy_tunnel.ProxyTunnelError, match="cashpilot-x-p1"),
+        ):
+            proxy_tunnel.remove_all("x")
+
+    def test_a_deploy_with_settings_that_cannot_work_keeps_the_running_copy(self):
+        with (
+            patch.object(orchestrator, "_get_client", return_value=MagicMock()),
+            patch.object(proxy_tunnel, "tunnel_image", return_value="drumsergio/cashpilot-tunnel:1.64.0"),
+            patch.object(proxy_tunnel, "resolve_proxy_ip", side_effect=proxy_tunnel.ProxyTunnelError("no such host")),
+            patch.object(proxy_tunnel, "remove") as remove,
+            pytest.raises(proxy_tunnel.ProxyTunnelError),
+        ):
+            proxy_tunnel.deploy("x", 1, {"image": "x:1"}, _socks(host="gone.example"), None)
+        remove.assert_not_called()
 
     def test_earner_restarts_when_its_tunnel_restarted_after_it(self):
         earner = _container("cashpilot-x-p1", "x", proxy=1)
@@ -543,12 +572,15 @@ class TestWorkerProxiedOps:
     def test_stop_start_and_remove_reach_the_tunnel_module(self):
         with (
             patch.object(worker_api, "_verify_api_key"),
-            patch.object(proxy_tunnel, "stop") as stop,
+            patch.object(proxy_tunnel, "stop", return_value=True) as stop,
             patch.object(proxy_tunnel, "start", return_value={"exit": {"ip": "93.184.215.14"}}) as start,
             patch.object(proxy_tunnel, "remove", return_value=["cashpilot-x-p1", "cashpilot-tunnel-x-p1"]) as remove,
         ):
             api = _api()
-            assert api.post("/api/proxied/x/1/stop", headers=AUTH).json() == {"status": "stopped"}
+            assert api.post("/api/proxied/x/1/stop", headers=AUTH).json() == {
+                "status": "stopped",
+                "was_running": True,
+            }
             assert api.post("/api/proxied/x/1/start", headers=AUTH).json() == {
                 "status": "started",
                 "exit": {"ip": "93.184.215.14"},
@@ -558,8 +590,35 @@ class TestWorkerProxiedOps:
                 "containers": ["cashpilot-x-p1", "cashpilot-tunnel-x-p1"],
             }
         stop.assert_called_once_with("x", 1)
-        start.assert_called_once_with("x", 1)
+        start.assert_called_once_with("x", 1, None, None)
         remove.assert_called_once_with("x", 1)
+
+    def test_a_start_with_the_proxy_hands_it_to_the_tunnel(self):
+        with (
+            patch.object(worker_api, "_verify_api_key"),
+            patch.object(worker_api, "_detect_egress_ip", return_value="192.0.2.1"),
+            patch.object(proxy_tunnel, "start", return_value={"exit": {"ip": "93.184.215.14"}}) as start,
+        ):
+            resp = _api().post("/api/proxied/x/1/start", json={"proxy": _socks()}, headers=AUTH)
+        assert resp.status_code == 200
+        slug, pid, proxy, own_ip = start.call_args.args
+        assert (slug, pid, proxy["host"], own_ip) == ("x", 1, "203.0.113.9", "192.0.2.1")
+        assert proxy == worker_api.ProxySpec(**_socks()).plain()
+
+    def test_a_service_removal_reports_proxied_copies_that_survived(self):
+        with (
+            patch.object(worker_api, "_verify_api_key"),
+            patch.object(orchestrator, "remove_service", return_value={"container": "cashpilot-x"}),
+            patch.object(orchestrator, "remove_extra_instances", return_value=[]),
+            patch.object(
+                proxy_tunnel,
+                "remove_all",
+                side_effect=proxy_tunnel.ProxyTunnelError("Docker did not remove cashpilot-x-p1"),
+            ),
+        ):
+            resp = _api().delete("/api/containers/x", headers=AUTH)
+        assert resp.status_code == 200
+        assert "cashpilot-x-p1" in resp.json()["proxied_error"]
 
     @pytest.mark.parametrize(
         ("exc", "code"),
@@ -706,3 +765,141 @@ class TestPairOps:
             out = proxy_tunnel.test(_socks(), None)
         assert out["ip"] == "93.184.215.14" and isinstance(out["ms"], int)
         sidecar.remove.assert_called_once_with(force=True, v=True)
+
+
+# ---------------------------------------------------------------------------
+# An edited proxy reaches its copies; review follow-ups
+# ---------------------------------------------------------------------------
+
+
+def _files_in(blob):
+    with tarfile.open(fileobj=io.BytesIO(blob)) as tar:
+        return {m.name: tar.extractfile(m).read().decode() for m in tar.getmembers()}
+
+
+class TestStartAppliesTheStoredProxy:
+    def _pair(self, earner_status="exited", tunnel_status="exited"):
+        earner = _container("cashpilot-x-p1", "x", proxy=1, status=earner_status)
+        tunnel = _container("cashpilot-tunnel-x-p1", "x", proxy=1, role="tunnel", status=tunnel_status)
+        tunnel.put_archive.return_value = True
+        return earner, tunnel
+
+    def test_a_stopped_tunnel_gets_every_setting_rewritten(self):
+        """A new password (or key, port, kind) reached nothing before: start
+        only refreshed proxy_ip. Old keys the new settings do not use are
+        written empty, so cp-tunnel cannot pick them up."""
+        earner, tunnel = self._pair()
+        new = _socks(password=NEW_PASSWORD, port=2080)
+        with (
+            patch.object(orchestrator, "_get_client", return_value=_client_with(earner, tunnel)),
+            patch.object(proxy_tunnel, "_wait_ready", return_value={"ip": "93.184.215.14"}),
+            patch.object(proxy_tunnel, "refresh_proxy_ip") as refresh,
+        ):
+            proxy_tunnel.start("x", 1, new, "192.0.2.1")
+        files = _files_in(tunnel.put_archive.call_args.args[1])
+        assert set(files) == set(proxy_tunnel.SECRET_KEYS)
+        assert files["proxy_auth"] == f"u1:{NEW_PASSWORD}@" and files["proxy_port"] == "2080"
+        assert files["auth_key"] == files["login_server"] == "" and files["own_ip"] == "192.0.2.1"
+        refresh.assert_not_called()
+        earner.start.assert_called_once()
+
+    def test_a_running_tunnel_on_old_settings_is_stopped_and_rewritten(self):
+        earner, tunnel = self._pair("running", "running")
+
+        def reload():
+            if tunnel.stop.called:
+                tunnel.status = "exited"
+
+        tunnel.reload.side_effect = reload
+        with (
+            patch.object(orchestrator, "_get_client", return_value=_client_with(earner, tunnel)),
+            patch.object(proxy_tunnel, "_wait_ready", return_value={"ip": "93.184.215.14"}),
+            patch.object(proxy_tunnel, "_read_secret_file", return_value="digest-of-the-old-settings"),
+        ):
+            proxy_tunnel.start("x", 1, _socks(password=NEW_PASSWORD), None)
+        earner.stop.assert_called_once()
+        tunnel.stop.assert_called_once()
+        assert _files_in(tunnel.put_archive.call_args.args[1])["proxy_auth"] == f"u1:{NEW_PASSWORD}@"
+
+    def test_a_running_tunnel_on_the_same_settings_is_left_running(self):
+        earner, tunnel = self._pair("running", "running")
+        same = proxy_tunnel.secret_files(_socks(), None, "x-p1")["settings"]
+        with (
+            patch.object(orchestrator, "_get_client", return_value=_client_with(earner, tunnel)),
+            patch.object(proxy_tunnel, "_wait_ready", return_value={"ip": "93.184.215.14"}),
+            patch.object(proxy_tunnel, "_read_secret_file", return_value=same),
+        ):
+            proxy_tunnel.start("x", 1, _socks(), "192.0.2.1")
+        tunnel.stop.assert_not_called()
+        tunnel.put_archive.assert_not_called()
+
+    def test_a_host_that_no_longer_resolves_stops_the_start(self):
+        """Keeping the old address would send the proxy login to whoever holds it now."""
+        earner, tunnel = self._pair()
+        with (
+            patch.object(orchestrator, "_get_client", return_value=_client_with(earner, tunnel)),
+            patch.object(proxy_tunnel, "resolve_proxy_ip", side_effect=proxy_tunnel.ProxyTunnelError("no such host")),
+            pytest.raises(proxy_tunnel.ProxyTunnelError),
+        ):
+            proxy_tunnel.start("x", 1, _socks(host="gw.example.net"), None)
+        tunnel.start.assert_not_called()
+        tunnel.put_archive.assert_not_called()
+
+    def test_without_the_proxy_a_failed_lookup_stops_the_start_too(self):
+        tunnel = MagicMock()
+        tunnel.get_archive.return_value = (iter([b""]), {})
+        with (
+            patch.object(proxy_tunnel, "_read_secret_file", return_value="gw.example.net"),
+            patch.object(proxy_tunnel, "resolve_proxy_ip", side_effect=proxy_tunnel.ProxyTunnelError("no such host")),
+            pytest.raises(proxy_tunnel.ProxyTunnelError),
+        ):
+            proxy_tunnel.refresh_proxy_ip(tunnel)
+        tunnel.put_archive.assert_not_called()
+
+
+class TestReviewFollowUps:
+    def test_stop_says_whether_the_copy_was_running(self):
+        for earner_status, tunnel_status, expected in (("running", "running", True), ("exited", "exited", False)):
+            earner = _container("cashpilot-x-p1", "x", proxy=1, status=earner_status)
+            tunnel = _container("cashpilot-tunnel-x-p1", "x", proxy=1, role="tunnel", status=tunnel_status)
+            with patch.object(orchestrator, "_get_client", return_value=_client_with(earner, tunnel)):
+                assert proxy_tunnel.stop("x", 1) is expected
+
+    def test_a_test_tunnel_does_not_restart_with_docker(self):
+        with patch.dict(os.environ, {"CASHPILOT_TUNNEL_IMAGE": "drumsergio/cashpilot-tunnel:1.64.0"}):
+            test_kw = proxy_tunnel.sidecar_kwargs("cashpilot-tunnel-test-ab", proxy_tunnel.TEST_SLUG, None, None, "t")
+            copy_kw = proxy_tunnel.sidecar_kwargs("cashpilot-tunnel-x-p1", "x", 1, None, "x-p1")
+        assert test_kw["restart_policy"] == {"Name": "no"}
+        assert copy_kw["restart_policy"] == {"Name": "unless-stopped"}
+
+    def test_leftover_test_tunnels_are_swept_and_copies_are_not(self):
+        leftover = _container("cashpilot-tunnel-test-ab", proxy_tunnel.TEST_SLUG, role="tunnel")
+        copy_tunnel = _container("cashpilot-tunnel-proxy-test-p1", proxy_tunnel.TEST_SLUG, proxy=1, role="tunnel")
+        client = MagicMock()
+        client.containers.list.return_value = [leftover, copy_tunnel]
+        with patch.object(orchestrator, "_get_client", return_value=client):
+            assert proxy_tunnel.sweep_test_tunnels() == ["cashpilot-tunnel-test-ab"]
+        leftover.remove.assert_called_once_with(force=True, v=True)
+        copy_tunnel.remove.assert_not_called()
+
+    def test_a_probe_answer_that_is_not_an_ip_is_not_ready(self):
+        sidecar = MagicMock(status="running")
+        sidecar.exec_run.return_value = (0, b'{"ip":"e","country":""}\n')
+        assert proxy_tunnel._read_exit(sidecar) is None
+        sidecar.exec_run.return_value = (0, b'{"ip":"93.184.215.14","country":"DE"}\n')
+        assert proxy_tunnel._read_exit(sidecar)["ip"] == "93.184.215.14"
+
+    def test_an_unversioned_worker_has_no_tunnel_image(self):
+        with (
+            patch.dict(os.environ, {"CASHPILOT_VERSION": "latest", "CASHPILOT_TUNNEL_IMAGE": ""}),
+            pytest.raises(proxy_tunnel.ProxyTunnelError),
+        ):
+            proxy_tunnel.tunnel_image()
+
+    @pytest.mark.parametrize(
+        "server", ["https://u:p@hs.example", "https://hs.example/?k=v", "https://hs.example/#x", "https://@hs.example"]
+    )
+    def test_a_login_server_with_a_secret_part_is_refused(self, server):
+        with patch.object(worker_api, "_verify_api_key"):
+            resp = _api().post("/api/proxy-test", json={"proxy": _tailscale(login_server=server)}, headers=AUTH)
+        assert resp.status_code == 400
