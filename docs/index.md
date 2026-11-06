@@ -140,7 +140,7 @@ graph LR
 
 - Every service container runs with all Linux capabilities dropped (a few services add back only the ones they declare), `no-new-privileges` set and a PID limit.
 - Stored credentials are encrypted at rest with a Fernet key at `/data/.fernet_key`. Back that file up: without it nothing can be decrypted. `CASHPILOT_ENCRYPTION_KEY` is adopted only when that file is absent, so on an instance that already has a key the variable changes nothing. It is not `CASHPILOT_SECRET_KEY`, which only signs login sessions.
-- Only the socket proxy holds the Docker socket, and the worker reaches Docker only through it ([Security defaults](security-defaults.md)). The UI is published on loopback by default, and the worker's port 8081 is never published, because either could start containers on the host.
+- With the shipped compose files, only the socket proxy holds the Docker socket, and the worker reaches Docker only through it ([Security defaults](security-defaults.md)). The [app-store listings](app-stores.md) do not include the proxy yet, so there the worker mounts the socket itself. The UI is published on loopback by default, and the worker's port 8081 is never published, because either could start containers on the host.
 - [Security defaults](security-defaults.md) lists what ships enabled, [Protecting your home network](home-network-security.md) and [Network isolation](isolation.md) show how to keep the earners away from your LAN, router and host.
 - To report a security problem, follow the [security policy](https://github.com/GeiserX/CashPilot/blob/main/SECURITY.md) and do not open a public issue.
 

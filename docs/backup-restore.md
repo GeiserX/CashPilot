@@ -50,8 +50,9 @@ There are two other volumes, and neither is precious:
   Lose it and the worker re-enrolls on its next heartbeat. Nothing is destroyed.
 
     The worker's `/data` is a **separate volume from the UI's, deliberately**.
-    The worker drives Docker (through the socket proxy), which is close to root
-    on the host; it has no business being able to read the credential store. Do not consolidate them.
+    The worker drives Docker, which is close to root on the host: through the
+    socket proxy with the shipped compose files, and with the raw socket, which
+    is root, in the [app-store listings](app-stores.md); it has no business being able to read the credential store. Do not consolidate them.
 
 ---
 

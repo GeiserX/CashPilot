@@ -22,7 +22,7 @@ CashPilot is a self-hosted platform that runs passive income services on your ow
 - Treats a balance drop as a probable payout and asks you to confirm it; nothing is counted as income by guess.
 - Runs a fleet: one worker per server, one dashboard for all of them, every figure per server and per service.
 - Runs extra copies of a deployed service through a SOCKS5, HTTP CONNECT or Tailscale exit-node proxy, so one box earns on several IPs; a dead proxy stops the copy instead of leaking ([proxied copies](https://geiserx.github.io/CashPilot/proxies/)).
-- Fences earners off your LAN, the host, your tailnet and cloud metadata by default on new installs; an upgraded install turns it on with one button ([network isolation](https://geiserx.github.io/CashPilot/isolation/)).
+- Fences earners off your LAN, the host, your tailnet and cloud metadata by default on new installs; an upgraded install whose earners sit on Docker's default bridge turns it on with one button, and a network you name in `CASHPILOT_CONTAINER_NETWORK` keeps your own rules ([network isolation](https://geiserx.github.io/CashPilot/isolation/)).
 - Grades every provider from A to F on the same ten questions, each answer backed by a source you can open ([provider ratings](https://geiserx.github.io/CashPilot/ratings/)).
 - Imports your service logins from money4band, CashFactory or InternetIncome, and shows them for review before saving ([moving from money4band](https://geiserx.github.io/CashPilot/migrate/money4band/)).
 - Checks before you deploy whether the machine fits (residential IP, GPU, disk), and warns when a stored credential is about to expire.

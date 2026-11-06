@@ -55,7 +55,7 @@ CashPilot's column describes v1.64.0, except the proxy, Docker socket and LAN is
 
 None of the projects sends usage telemetry in the code we read. IGM's closed binary could not be read.
 
-Every project here passes app credentials to containers as environment variables, so on the host that runs the apps they are plain text in Docker's container config, readable by anyone with Docker access. The "Credentials at rest" row describes the stored copy only.
+Every project here passes app credentials to containers as environment variables, and InternetIncome passes some as command arguments too, so on the host that runs the apps they are plain text in Docker's container config (`Env` and `Args` in `docker inspect`), readable by anyone with Docker access. The "Credentials at rest" row describes the stored copy only.
 
 ## How we counted
 
