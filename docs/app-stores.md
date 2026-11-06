@@ -43,9 +43,15 @@ Until it is merged, install it as a custom app: in CasaOS choose App Store,
 then Custom Install, then Import, and paste the contents of
 https://github.com/GeiserX/CashPilot/blob/main/contrib/app-stores/casaos/CashPilot/docker-compose.yml
 
+It needs CasaOS 0.4.5 or newer: from that release its app manager is built on
+Docker Compose 2.23, which reads the socket proxy's policy from the file.
+Older ones drop it, and the worker then cannot reach Docker.
+
 That file pins an exact release. Before you import it, set both image tags
 (`drumsergio/cashpilot` and `drumsergio/cashpilot-worker`) to the newest
-release from https://github.com/GeiserX/CashPilot/releases.
+release from https://github.com/GeiserX/CashPilot/releases. The proxy policy
+in the file follows `main`; if the worker's status page says its policy is
+out of date, import the file again.
 
 ## Prepared, not yet submitted
 

@@ -74,6 +74,7 @@ protect_breaking_commits = true
 # the rewrite lives here.
 commit_preprocessors = [
   { pattern = "(?i)MacBook-only", replace = "machine-specific" },
+  { pattern = "(?i)MacBook|Mac ?mini", replace = "a maintainer machine" },
 ]
 filter_commits = false
 topo_order = false
