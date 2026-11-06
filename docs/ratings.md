@@ -504,7 +504,7 @@ What a cited con or pro may rest on:
 | Criterion | Verdict | Note |
 |---|---|---|
 | Payout record | Unknown | We found no independent payout reports and have no payout of our own. |
-| Payout terms | Fair | USDC on Tempo Chain, to any EVM address |
+| Payout terms | Fair | USDC on Tempo Chain, to an EVM address whose key you hold |
 | Account safety | Unknown | There is no account in the usual sense; the client mints its own wallet. |
 | Fit with how CashPilot runs it | Good | Own client image, accepts datacentre connections |
 | Traffic transparency | Fair | Sold as a SOCKS5 proxy, no buyer checks described |
