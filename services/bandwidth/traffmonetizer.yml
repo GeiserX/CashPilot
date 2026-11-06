@@ -119,7 +119,7 @@ rating:
     privacy: The client is closed source; we did not review the privacy policy in depth.
     identity_checks: Only a crypto address confirmed by email
     support: Live chat and email not answering, sometimes for weeks
-    earnings_realism: Reviewers report about $0.10 per GB
+    earnings_realism: Four reviewers from 2023 to 2025 report very slow earnings
     longevity: A third-party summary names Bytemarket OU in Estonia as the operator; we could not confirm
       it on Traffmonetizer's own pages.
   cons:
@@ -145,7 +145,8 @@ rating:
     kind: our_experience
     source: https://github.com/GeiserX/CashPilot/blob/main/services/bandwidth/traffmonetizer.yml
     checked_on: "2026-11-04"
-  - text: Reviewers report about $0.10 per GB, and one cent a day across four devices.
+  - text: Four Trustpilot reviewers from 2023 to 2025 report very slow earnings, such as one cent a
+      day across four devices, or almost two years to reach $10.
     criterion: earnings_realism
     kind: user_reports
     source: https://www.trustpilot.com/review/traffmonetizer.com

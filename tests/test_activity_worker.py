@@ -10,6 +10,7 @@ import asyncio
 import hashlib
 import json
 import threading
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -152,6 +153,14 @@ class FakeClient:
 
 
 WORKER = "worker-one"
+
+
+def _stamp(offset_s):
+    """A Docker timestamp (RFC 3339 in UTC, nanoseconds) offset_s seconds from now."""
+    t = datetime.now(UTC) + timedelta(seconds=offset_s)
+    return t.strftime("%Y-%m-%dT%H:%M:%S.%f") + "123Z"
+
+
 TAG = hashlib.sha256(WORKER.encode()).hexdigest()[:8]
 
 
@@ -911,7 +920,14 @@ class TestTwoWorkersOneHost:
                 "ours", attrs={"Config": {"Labels": {"cashpilot.probe.worker": WORKER}}, "State": {"Status": "running"}}
             ),
             theirs("theirs-running", "running"),
-            theirs("theirs-created", "created"),
+            Probe(
+                "theirs-created",
+                attrs={
+                    "Config": {"Labels": {"cashpilot.probe.worker": "other"}},
+                    "State": {"Status": "created"},
+                    "Created": _stamp(-1),
+                },
+            ),
             Probe("legacy-running", attrs={"Config": {"Labels": {}}, "State": {"Status": "running"}}),
             Probe("legacy-exited", attrs={"Config": {"Labels": {}}, "State": {"Status": "exited"}}),
         ]
@@ -935,6 +951,28 @@ class TestTwoWorkersOneHost:
         ]
         assert activity.sweep(client) == []
         assert client.listed_leftovers[0].removed
+
+    @pytest.mark.parametrize("status", ["exited", "dead"])
+    def test_sweep_leaves_another_workers_just_finished_probe_for_its_owner(self, status):
+        """Its owner calls logs() right after wait(); removing it in that gap would lose the owner's sample."""
+        client = FakeClient([])
+        fresh = {"Status": status, "FinishedAt": _stamp(-2)}
+        client.listed_leftovers = [
+            Probe("theirs-fresh", attrs={"Config": {"Labels": {"cashpilot.probe.worker": "other"}}, "State": fresh}),
+        ]
+        assert activity.sweep(client) == []
+        assert not client.listed_leftovers[0].removed
+
+    def test_sweep_removes_stale_finished_and_stuck_created_probes_of_another_worker(self):
+        old = _stamp(-(activity.PROBE_TIMEOUT + 5))
+        labels = {"Config": {"Labels": {"cashpilot.probe.worker": "other"}}}
+        client = FakeClient([])
+        client.listed_leftovers = [
+            Probe("theirs-old-exit", attrs={**labels, "State": {"Status": "exited", "FinishedAt": old}}),
+            Probe("theirs-stuck", attrs={**labels, "State": {"Status": "created"}, "Created": old}),
+        ]
+        assert activity.sweep(client) == []
+        assert all(p.removed for p in client.listed_leftovers)
 
     def test_probe_names_differ_per_worker(self, monkeypatch):
         mine = activity.probe_name("a" * 64)

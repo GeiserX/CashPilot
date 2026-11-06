@@ -48,6 +48,10 @@ socks5 | http)
     case "$PROXY_PORT" in *[!0-9]* | "") die "proxy_port is not a number" ;; esac
     TUN=tun0
     EGRESS_RULE="oifname \"$DEV\" ip daddr $PROXY_IP tcp dport $PROXY_PORT accept"
+    # A literal private or tailnet address sent into the tunnel would ask the
+    # proxy to connect there, which reaches the proxy's own LAN. Host names are
+    # mapped into 198.18.0.0/15 by tun2proxy's virtual DNS and stay allowed.
+    TUN_DENY="oifname \"$TUN\" ip daddr { 100.64.0.0/10, 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16 } drop"
     ;;
 tailscale)
     TUN=tailscale0
@@ -161,7 +165,7 @@ else
 fi
 
 # 4: ready only when traffic really leaves through the tunnel.
-(probe_until_ready || echo "cp-tunnel: no working exit through the tunnel after 40 s" >&2) &
+(probe_until_ready || echo "cp-tunnel: no working exit through the tunnel after 40 probe attempts" >&2) &
 
 wait "$TPID"
 die "the tunnel process exited; the earner stays cut off until this container restarts"

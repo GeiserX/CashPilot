@@ -14,7 +14,7 @@ A grade is our reading of the evidence, so it is a bit subjective: someone weigh
 - **D**: serious drawbacks, or most of the criteria could not be checked.
 - **F**: the evidence we have is poor, or almost nothing could be checked. The "Unchecked" column tells the two apart: a low grade with many unchecked criteria means "we could not verify this provider", not "we found it bad".
 
-**Unknown is not a pass.** When we could not find evidence either way, the verdict is unknown and it scores the same as poor. A provider with four or more unknowns is capped at C for thin evidence, and its score usually puts it lower still. New and token-based projects often land at D or F this way: that says how little can be verified about them, which is itself worth knowing before you hand one your connection.
+**Unknown is not a pass.** When we could not find evidence either way, the verdict is unknown and it scores the same as poor. With four or more unknowns a provider can score at most 12 of 20 (60%), so its score alone keeps it at C or below. The thin-evidence ceiling at C says the same thing as a rule, so it still holds if the points ever change. New and token-based projects often land at D or F this way: that says how little can be verified about them, which is itself worth knowing before you hand one your connection.
 
 ## Which complaints count
 
@@ -75,10 +75,10 @@ What a cited con or pro may rest on:
 | <a href="#mysterium">MystNodes</a> | D | 10 of 20 | 4 | 2026-11-04 | About 21% of every settlement goes in fees, the 20% Hermes fee plus a transaction fee, and earnings are paid in the MYST token. |
 | <a href="#packetstream">PacketStream</a> | D | 10 of 20 | 2 | 2026-11-04 | Trustpilot reviewers in 2025 and 2026 report payouts arriving late or not at all, and one long-time user says payouts slowed and then stopped; others in 2026 report being paid. |
 | <a href="#proxybase">ProxyBase</a> | D | 9 of 20 | 4 | 2026-11-04 | ProxyBase itself wrote in August 2025 that it is new and not yet the place to maximise earnings. |
-| <a href="#storj">Storj</a> | D | 9 of 20 | 3 | 2026-11-04 | Storj Labs filed for Chapter 11 on 26 July 2026; node earnings from before the filing are frozen until the court rules. |
+| <a href="#storj">Storj</a> | D | 9 of 20 | 3 | 2026-11-04 | CoinDesk reported on 27 July 2026 that Storj Labs had filed for Chapter 11 bankruptcy protection. |
 | <a href="#honeygain">Honeygain</a> | D | 8 of 20 | 3 | 2026-11-04 | The terms let Honeygain write off earnings that reached the $20 threshold and were not paid out within 24 months, and treat earnings as expired after six months without use. |
 | <a href="#earnapp">EarnApp</a> | D | 7 of 20 | 5 | 2026-11-04 | EarnApp's help centre says installing it in Docker containers, virtual machines, hosting services or home servers is strictly prohibited, which is how CashPilot runs it. |
-| <a href="#golem">Golem Network</a> | D | 7 of 20 | 5 | 2026-11-04 | A 2026 review finds Golem with no protocol revenue and low demand, so providers earn little and are paid in GLM. |
+| <a href="#golem">Golem Network</a> | D | 7 of 20 | 6 | 2026-11-04 | CashPilot does not run Golem: you install the provider agent yourself, so CashPilot cannot deploy or update it for you. Golem documents running the provider in its own Docker image. |
 | <a href="#urnetwork">URnetwork</a> | D | 7 of 20 | 4 | 2026-11-04 | Unclaimed epochs expire, and the old USDC payouts were cancelled for networks with no wallet linked within 30 days. |
 | <a href="#anyone-protocol">Anyone Protocol</a> | F | 6 of 20 | 5 | 2026-11-04 | A relay earns nothing unless 100 ANYONE is locked for it for at least 180 days, and each reward claim is signed in your wallet. |
 | <a href="#bytelixir">Bytelixir</a> | F | 6 of 20 | 6 | 2026-11-04 | Crypto only, and the minimum depends on the coin, from $5 for USDT to $250 for Bitcoin. |
@@ -98,16 +98,16 @@ What a cited con or pro may rest on:
 | <a href="#bytebenefit">Bytebenefit</a> | F | 3 of 20 | 7 | 2026-11-04 | The app's Google Play listing says your traffic serves web-intelligence requests by Infatica's clients, without saying who they are or how they are checked. |
 | <a href="#grass">Grass</a> | F | 3 of 20 | 6 | 2026-11-04 | Rewards come only through airdrop seasons. Long-running node operators reported season 2 estimates in the single to low double-digit dollar range. |
 | <a href="#ionet">io.net</a> | F | 3 of 20 | 6 | 2026-11-04 | Supplier rewards were paid from token emissions regardless of paid jobs, and GPU owners report sitting idle most of the time. |
-| <a href="#nodepay">Nodepay</a> | F | 3 of 20 | 6 | 2026-11-04 | In its first season review Nodepay removed more than 300,000 accounts it judged to be bots and cancelled 17 billion points. |
 | <a href="#nosana">Nosana</a> | F | 3 of 20 | 7 | 2026-11-04 | Each host must lock a NOS stake sized to its GPU's hourly price. |
 | <a href="#passiveapp">PassiveApp</a> | F | 3 of 20 | 8 | 2026-11-04 | CashPilot does not run PassiveApp: you use the provider's own desktop app, so CashPilot cannot deploy or update it for you. Its terms were not checked for containers. |
 | <a href="#proxyrack">ProxyRack</a> | F | 3 of 20 | 8 | 2026-11-04 | ProxyRack's help centre says removing a device takes that device's earnings off your account, and they come back only if the same device is added again. |
 | <a href="#salad">Salad</a> | F | 3 of 20 | 8 | 2026-11-04 | CashPilot does not run Salad: you use the provider's own desktop app, so CashPilot cannot deploy or update it for you. Its terms were not checked for containers. |
 | <a href="#gradient">Gradient Network</a> | F | 2 of 20 | 6 | 2026-11-04 | The Sentry Node points program ended on 28 August 2025, and Sentry nodes no longer earn rewards. |
-| <a href="#nodle">Nodle</a> | F | 2 of 20 | 7 | 2026-11-04 | App Store reviewers report being unable to bridge or send NODL after the move to zkSync, and needing ETH to move tokens out. |
-| <a href="#uprock">Uprock</a> | F | 2 of 20 | 7 | 2026-11-04 | Trustpilot reviewers reported a 255 UPT minimum and a 55 UPT fee to withdraw to a wallet; these reports are old and the current terms may differ. |
+| <a href="#nodepay">Nodepay</a> | F | 2 of 20 | 7 | 2026-11-04 | In its first season review Nodepay removed more than 300,000 accounts it judged to be bots and cancelled 17 billion points. |
+| <a href="#uprock">Uprock</a> | F | 2 of 20 | 7 | 2026-11-04 | UpRock's help centre says withdrawals are UPT tokens to a Solana wallet, with a 250 UPT minimum. |
 | <a href="#dawn">Dawn Internet</a> | F | 1 of 20 | 7 | 2026-11-04 | The extension earns points; no token distribution to node operators had been confirmed by October 2026. |
 | <a href="#deeper-network">Deeper Network</a> | F | 1 of 20 | 8 | 2026-11-04 | Mining rewards are in DPR and depend on a credit score that grows slowly or by staking DPR. |
+| <a href="#nodle">Nodle</a> | F | 1 of 20 | 8 | 2026-11-04 | One reviewer reports about $3 earned over three to four years; others report daily earnings falling sharply. |
 | <a href="#spide">Spide</a> | F | 1 of 20 | 9 | 2026-11-04 | CashPilot does not run Spide: you use the provider's own app, so CashPilot cannot deploy or update it for you. Its terms were not checked for containers. |
 | <a href="#teneo">Teneo Protocol</a> | F | 1 of 20 | 7 | 2026-11-04 | Teneo says points will be consolidated into $AGENTIC, a non-transferable reward token, not the $TENEO token. |
 | <a href="#theta-edge">Theta Edge Node</a> | F | 1 of 20 | 9 | 2026-11-04 | CashPilot does not run Theta Edge: you use the provider's own desktop app, so CashPilot cannot deploy or update it for you. Its terms were not checked for containers. |
@@ -167,7 +167,7 @@ What a cited con or pro may rest on:
 | Identity checks | Good | Paid to your own wallet, no phone or ID needed |
 | Support | Unknown | Trustpilot has 16 reviews and none in the last year; not enough to judge. |
 | Earnings realism | Unknown | Not measured against a provider figure. |
-| Longevity | Good | Node project running since 2017 |
+| Longevity | Good | Developed by Blockdev AG in Zug, node project running since 2017 |
 
 **Cons**
 
@@ -180,6 +180,7 @@ What a cited con or pro may rest on:
 - Mysterium publishes its own Docker image, mysteriumnetwork/myst. [Source](https://hub.docker.com/r/mysteriumnetwork/myst), checked 2026-11-04.
 - Settlement goes to a wallet you own; no phone number or ID is needed. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/bandwidth/mysterium.yml), checked 2026-11-04.
 - The node project has run since 2017. [Source](https://github.com/mysteriumnetwork/node), checked 2026-11-04.
+- Mysterium's site says the network is developed by Blockdev AG, Zug, Switzerland. [Source](https://www.mysterium.network/), checked 2026-11-06.
 
 <a id="packetstream"></a>
 
@@ -210,7 +211,8 @@ What a cited con or pro may rest on:
 
 **Pros**
 
-- PacketStream publishes its own Docker image, packetstream/psclient, and its terms only require a device and connection you own or may use. [Source](https://packetstream.io/terms-of-service/), checked 2026-11-04.
+- PacketStream publishes its own Docker image, packetstream/psclient. [Source](https://hub.docker.com/r/packetstream/psclient), checked 2026-11-06.
+- The terms only require a device and connection you own or may use. [Source](https://packetstream.io/terms-of-service/), checked 2026-11-04.
 - The terms describe no identity check; a payout needs a PayPal address. [Source](https://packetstream.io/terms-of-service/), checked 2026-11-04.
 - The terms name PacketStream Inc. under California law. [Source](https://packetstream.io/terms-of-service/), checked 2026-11-04.
 - PacketStream has run since 2018. [Source](https://proxyway.com/reviews/packetstream-proxies), checked 2026-11-04.
@@ -263,11 +265,11 @@ What a cited con or pro may rest on:
 | Identity checks | Good | No account, a wallet address and an email |
 | Support | Unknown | No pattern found. |
 | Earnings realism | Unknown | Not measured against a provider figure. |
-| Longevity | Poor | Chapter 11 filed 26 July 2026, pre-filing earnings frozen |
+| Longevity | Poor | Storj Labs filed for Chapter 11 in July 2026 |
 
 **Cons**
 
-- Storj Labs filed for Chapter 11 on 26 July 2026; node earnings from before the filing are frozen until the court rules. [Source](https://www.coindesk.com/business/2026/07/27/cloud-data-firm-storj-files-for-chapter-11-extending-a-week-of-crypto-failures-token-slides-16), checked 2026-11-04.
+- CoinDesk reported on 27 July 2026 that Storj Labs had filed for Chapter 11 bankruptcy protection. [Source](https://www.coindesk.com/business/2026/07/27/cloud-data-firm-storj-files-for-chapter-11-extending-a-week-of-crypto-failures-token-slides-16), checked 2026-11-04.
 - Pre-filing payments to node operators went into the bankruptcy claims process. [Source](https://www.cryptotimes.io/2026/07/27/storj-files-for-chapter-11-pre-filing-node-operator-payments-in-limbo/), checked 2026-11-04.
 - A new node has 75%, then 50%, then 25% of its earnings held in its first nine months; half comes back in month 16 and the rest only on a graceful exit. [Source](https://github.com/GeiserX/CashPilot/blob/main/docs/guides/storj.md), checked 2026-11-04.
 - Customers store encrypted file fragments and nobody routes traffic through your IP, but we did not find where Storj says who the customers are or how they are checked. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/storage/storj.yml), checked 2026-11-04.
@@ -347,7 +349,7 @@ What a cited con or pro may rest on:
 
 ### Golem Network
 
-**Grade D**, 7 of 20 points, 5 of 10 criteria unchecked, reviewed 2026-11-04. Setup guide: [Golem Network](guides/golem.md).
+**Grade D**, 7 of 20 points, 6 of 10 criteria unchecked, reviewed 2026-11-04. Setup guide: [Golem Network](guides/golem.md).
 
 | Criterion | Verdict | Note |
 |---|---|---|
@@ -359,12 +361,11 @@ What a cited con or pro may rest on:
 | Privacy | Good | Open-source provider agent, yagna (GPL-3.0) |
 | Identity checks | Good | No account, just a payout wallet |
 | Support | Unknown | No pattern found. |
-| Earnings realism | Poor | No protocol revenue and low demand, paid in GLM |
-| Longevity | Good | Network running for about ten years |
+| Earnings realism | Unknown | Paid in GLM, a traded token. We found no source that compares what Golem suggests a provider earns with what providers report. |
+| Longevity | Good | Golem Factory GmbH in Zug, network running for about ten years |
 
 **Cons**
 
-- A 2026 review finds Golem with no protocol revenue and low demand, so providers earn little and are paid in GLM. [Source](https://ownyourmind.ai/projects/golem/), checked 2026-11-04.
 - CashPilot does not run Golem: you install the provider agent yourself, so CashPilot cannot deploy or update it for you. Golem documents running the provider in its own Docker image. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/compute/golem.yml), checked 2026-11-04.
 
 **Pros**
@@ -372,6 +373,7 @@ What a cited con or pro may rest on:
 - The provider agent, yagna, is open source under the GPL-3.0. [Source](https://github.com/golemfactory/yagna), checked 2026-11-04.
 - No account: you set a payout wallet in the provider setup. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/compute/golem.yml), checked 2026-11-04.
 - The network has run for about ten years. [Source](https://ownyourmind.ai/tokenomics/akash-vs-golem/), checked 2026-11-04.
+- Golem's privacy policy names the operator, Golem Factory GmbH in Zug, Switzerland. [Source](https://www.golem.network/privacy), checked 2026-11-06.
 
 <a id="urnetwork"></a>
 
@@ -634,7 +636,7 @@ What a cited con or pro may rest on:
 | Identity checks | Unknown | Not documented on pages we read. |
 | Support | Unknown | No reports found. |
 | Earnings realism | Unknown | Not measured. |
-| Longevity | Good | Running since 2002 |
+| Longevity | Good | TurboAd GmbH in Germany, running since 2002 |
 
 **Cons**
 
@@ -644,6 +646,7 @@ What a cited con or pro may rest on:
 
 - Payouts from 2 euros by PayPal or SEPA, at least weekly, with no fee. [Source](https://www.ebesucher.com/earn-money/get-paid-to-surf), checked 2026-11-04.
 - eBesucher has run since 2002. [Source](https://www.ebesucher.com/earn-money/beermoney), checked 2026-11-04.
+- The imprint names the operator, TurboAd GmbH, registered in Berlin-Charlottenburg (HRB 160730 B). [Source](https://www.ebesucher.com/imprint), checked 2026-11-06.
 
 <a id="flux"></a>
 
@@ -691,7 +694,7 @@ What a cited con or pro may rest on:
 | Identity checks | Fair | SMS phone check first, email code every payout |
 | Support | Unknown | No repeated support complaint found and no ticket of our own. |
 | Earnings realism | Unknown | We have not measured Pawns earnings per IP against a provider figure. |
-| Longevity | Fair | No legal entity in the terms, run by proxy firm IPRoyal |
+| Longevity | Fair | Pawns.App Ltd, incorporated in England and Wales on 28 October 2024 |
 
 **Cons**
 
@@ -699,7 +702,7 @@ What a cited con or pro may rest on:
 - The terms say Pawns does not allow any servers, VPNs or proxy services for traffic sharing, and only one device per IP. [Source](https://pawns.app/terms-of-use/), checked 2026-11-04.
 - PayPal costs 4% (at least $0.25) through Tremendous, and every payout is reviewed for up to 72 hours. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/bandwidth/iproyal.yml), checked 2026-11-04.
 - The first payout needs an SMS check of your phone number, and every payout a code sent by email. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/bandwidth/iproyal.yml), checked 2026-11-04.
-- The terms name no legal entity, only Pawns.app; the app is run by IPRoyal, a proxy company that started in late 2020. [Source](https://proxyway.com/reviews/iproyal-proxies), checked 2026-11-04.
+- The privacy policy names the operator, Pawns.App Ltd (company 16043795 in England and Wales), which Companies House shows was incorporated on 28 October 2024, under three years ago. [Source](https://pawns.app/privacy-policy/), checked 2026-11-06.
 - The terms say Pawns and its business clients route traffic through your device, and that you cannot identify which client uses it. [Source](https://pawns.app/terms-of-use/), checked 2026-11-04.
 
 **Pros**
@@ -751,7 +754,7 @@ What a cited con or pro may rest on:
 | Privacy | Unknown | The client is closed source; we did not review the privacy policy in depth. |
 | Identity checks | Good | Only a crypto address confirmed by email |
 | Support | Poor | Live chat and email not answering, sometimes for weeks |
-| Earnings realism | Fair | Reviewers report about $0.10 per GB |
+| Earnings realism | Fair | Four reviewers from 2023 to 2025 report very slow earnings |
 | Longevity | Unknown | A third-party summary names Bytemarket OU in Estonia as the operator; we could not confirm it on Traffmonetizer's own pages. |
 
 **Cons**
@@ -760,7 +763,7 @@ What a cited con or pro may rest on:
 - The same reviewers report live chat and email support not answering, sometimes for weeks. [Source](https://www.trustpilot.com/review/traffmonetizer.com), checked 2026-11-04.
 - Crypto or a bank wire from $1,000 only; PayPal is gone, and a request pays whole dollars only. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/bandwidth/traffmonetizer.yml), checked 2026-11-04.
 - Traffmonetizer's terms require a residential IP, so a server on a hosting connection is outside them. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/bandwidth/traffmonetizer.yml), checked 2026-11-04.
-- Reviewers report about $0.10 per GB, and one cent a day across four devices. [Source](https://www.trustpilot.com/review/traffmonetizer.com), checked 2026-11-04.
+- Four Trustpilot reviewers from 2023 to 2025 report very slow earnings, such as one cent a day across four devices, or almost two years to reach $10. [Source](https://www.trustpilot.com/review/traffmonetizer.com), checked 2026-11-04.
 
 **Pros**
 
@@ -833,7 +836,7 @@ What a cited con or pro may rest on:
 | Criterion | Verdict | Note |
 |---|---|---|
 | Payout record | Unknown | We found no host complaint threads either way. |
-| Payout terms | Good | Host keeps the full rate it sets, no fee |
+| Payout terms | Good | No fee, Wise, PayPal or Stripe from $20, smaller balances roll forward |
 | Account safety | Unknown | No reports found. |
 | Fit with how CashPilot runs it | Fair | Own host software on your GPU machine, not run by CashPilot |
 | Traffic transparency | Unknown | Renters run their own containers on your machine; we did not find how they are checked. |
@@ -851,6 +854,7 @@ What a cited con or pro may rest on:
 **Pros**
 
 - Vast says the rate a host sets is the rate it receives, with no fee deducted. [Source](https://vast.ai/hosting), checked 2026-11-04.
+- Payouts go by Wise, PayPal or Stripe from a $20 minimum, invoiced weekly; a smaller balance rolls forward to the next week. [Source](https://docs.vast.ai/host/payment), checked 2026-11-06.
 
 <a id="bytebenefit"></a>
 
@@ -936,36 +940,6 @@ What a cited con or pro may rest on:
 - Rewards are in the IO token and the payout model changed in 2026 to a dollar-pegged engine. [Source](https://ownyourmind.ai/projects/io-net/), checked 2026-11-04.
 - In April 2024 about 1.8 million fake GPUs tried to join through a leaked authentication token, and the CEO later stepped down before the token launch. [Source](https://www.theblock.co/news/defi/2024-04-28-solana-based-depin-io-net-ceo-claims-network-was-attacked-in-detailed-postmortem-291315), checked 2026-11-04.
 - CashPilot does not run io.net: you use the provider's own worker software, so CashPilot cannot deploy or update it for you. Its terms were not checked for containers. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/compute/ionet.yml), checked 2026-11-04.
-
-**Pros**
-
-- None found.
-
-<a id="nodepay"></a>
-
-### Nodepay
-
-**Grade F**, 3 of 20 points, 6 of 10 criteria unchecked, reviewed 2026-11-04. Setup guide: [Nodepay](guides/nodepay.md).
-
-| Criterion | Verdict | Note |
-|---|---|---|
-| Payout record | Unknown | The NC token launched in January 2025; we found no pattern of reports about claims either way. |
-| Payout terms | Unknown | Sources disagree on whether earning now requires staking NC; not confirmed on Nodepay's own pages. |
-| Account safety | Fair | Removed 300,000+ bot accounts, cancelled 17 billion points |
-| Fit with how CashPilot runs it | Fair | Browser extension, CashPilot cannot deploy or update it |
-| Traffic transparency | Unknown | Not documented on pages we read. |
-| Privacy | Unknown | Not reviewed. |
-| Identity checks | Fair | Needed a Solana wallet plus verified email, Discord and X |
-| Support | Unknown | No pattern found. |
-| Earnings realism | Poor | Points convert to NC token, value rests on the token |
-| Longevity | Unknown | We did not confirm the company behind Nodepay. |
-
-**Cons**
-
-- In its first season review Nodepay removed more than 300,000 accounts it judged to be bots and cancelled 17 billion points. [Source](https://coinmarketcap.com/academy/article/nodepay-airdrop-guide-everything-you-need-to-know), checked 2026-11-04.
-- Eligibility needed a Solana wallet plus verified email, Discord and X accounts. [Source](https://coinmarketcap.com/academy/article/nodepay-airdrop-guide-everything-you-need-to-know), checked 2026-11-04.
-- Rewards are points converted to the NC token, so their value rests on the token. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/depin/nodepay.yml), checked 2026-11-04.
-- CashPilot does not run Nodepay: you use the provider's own browser extension, so CashPilot cannot deploy or update it for you. Its terms were not checked for containers. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/depin/nodepay.yml), checked 2026-11-04.
 
 **Pros**
 
@@ -1111,30 +1085,30 @@ What a cited con or pro may rest on:
 
 - None found.
 
-<a id="nodle"></a>
+<a id="nodepay"></a>
 
-### Nodle
+### Nodepay
 
-**Grade F**, 2 of 20 points, 7 of 10 criteria unchecked, reviewed 2026-11-04. Setup guide: [Nodle](guides/nodle.md).
+**Grade F**, 2 of 20 points, 7 of 10 criteria unchecked, reviewed 2026-11-04. Setup guide: [Nodepay](guides/nodepay.md).
 
 | Criterion | Verdict | Note |
 |---|---|---|
-| Payout record | Fair | Reviewers report they cannot bridge or send NODL after zkSync |
-| Payout terms | Unknown | Not documented on pages we read. |
-| Account safety | Unknown | No reports found. |
-| Fit with how CashPilot runs it | Fair | Own phone app, CashPilot cannot deploy or update it |
+| Payout record | Unknown | The NC token launched in January 2025; we found no pattern of reports about claims either way. |
+| Payout terms | Unknown | Sources disagree on whether earning now requires staking NC; not confirmed on Nodepay's own pages. |
+| Account safety | Fair | Removed 300,000+ bot accounts, cancelled 17 billion points |
+| Fit with how CashPilot runs it | Fair | Browser extension, CashPilot cannot deploy or update it |
 | Traffic transparency | Unknown | Not documented on pages we read. |
-| Privacy | Unknown | The app uses Bluetooth in the background; we did not review its privacy policy. |
-| Identity checks | Unknown | Not documented. |
-| Support | Unknown | Reviewers report unanswered messages; we could not confirm a pattern. |
-| Earnings realism | Poor | One reviewer earned about $3 over three to four years |
-| Longevity | Unknown | Not checked on a primary source. |
+| Privacy | Unknown | Not reviewed. |
+| Identity checks | Unknown | Claiming needs a Solana wallet; the email, Discord and X checks in the guide we read earn a bonus medal and are not required. We found nothing else on what a claim asks for. |
+| Support | Unknown | No pattern found. |
+| Earnings realism | Poor | Points convert to NC token, value rests on the token |
+| Longevity | Unknown | We did not confirm the company behind Nodepay. |
 
 **Cons**
 
-- App Store reviewers report being unable to bridge or send NODL after the move to zkSync, and needing ETH to move tokens out. [Source](https://apps.apple.com/us/app/nodle-cash-wallet-earn-crypto/id1480763553), checked 2026-11-04.
-- One reviewer reports about $3 earned over three to four years; others report daily earnings falling sharply. [Source](https://www.appbrain.com/app/nodle-cash-simple-earning-app/io.nodle.cash), checked 2026-11-04.
-- CashPilot does not run Nodle: you use the provider's own phone app, so CashPilot cannot deploy or update it for you. Its terms were not checked for containers. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/depin/nodle.yml), checked 2026-11-04.
+- In its first season review Nodepay removed more than 300,000 accounts it judged to be bots and cancelled 17 billion points. [Source](https://coinmarketcap.com/academy/article/nodepay-airdrop-guide-everything-you-need-to-know), checked 2026-11-04.
+- Rewards are points converted to the NC token, so their value rests on the token. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/depin/nodepay.yml), checked 2026-11-04.
+- CashPilot does not run Nodepay: you use the provider's own browser extension, so CashPilot cannot deploy or update it for you. Its terms were not checked for containers. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/depin/nodepay.yml), checked 2026-11-04.
 
 **Pros**
 
@@ -1149,7 +1123,7 @@ What a cited con or pro may rest on:
 | Criterion | Verdict | Note |
 |---|---|---|
 | Payout record | Unknown | We found no recent pattern of reports either way. |
-| Payout terms | Fair | Old reports of a 255 UPT minimum and 55 UPT fee |
+| Payout terms | Fair | UPT tokens to a Solana wallet only, 250 UPT minimum |
 | Account safety | Unknown | No reports found. |
 | Fit with how CashPilot runs it | Fair | Own app or extension, CashPilot cannot deploy or update it |
 | Traffic transparency | Unknown | Not documented on pages we read. |
@@ -1161,7 +1135,7 @@ What a cited con or pro may rest on:
 
 **Cons**
 
-- Trustpilot reviewers reported a 255 UPT minimum and a 55 UPT fee to withdraw to a wallet; these reports are old and the current terms may differ. [Source](https://www.trustpilot.com/review/uprock.com), checked 2026-11-04.
+- UpRock's help centre says withdrawals are UPT tokens to a Solana wallet, with a 250 UPT minimum. [Source](https://help.uprock.com/en/articles/2057635-security-and-user-asset-protection-2fa-and-withdrawals), checked 2026-11-06.
 - Rewards are UPT tokens; reviewers and a third-party review say their value is very low. [Source](https://paidfromsurveys.com/uprock-ai-earnings-review), checked 2026-11-04.
 - CashPilot does not run UpRock: you use the provider's own app or extension, so CashPilot cannot deploy or update it for you. Its terms were not checked for containers. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/depin/uprock.yml), checked 2026-11-04.
 
@@ -1221,6 +1195,34 @@ What a cited con or pro may rest on:
 
 - Mining rewards are in DPR and depend on a credit score that grows slowly or by staking DPR. [Source](https://deeper-network-inc.gitbook.io/deeper-connect-knowledge-base/faq/mining), checked 2026-11-04.
 - CashPilot does not run Deeper Network: you use the provider's own router hardware, so CashPilot cannot deploy or update it for you. Its terms were not checked for containers. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/depin/deeper-network.yml), checked 2026-11-04.
+
+**Pros**
+
+- None found.
+
+<a id="nodle"></a>
+
+### Nodle
+
+**Grade F**, 1 of 20 points, 8 of 10 criteria unchecked, reviewed 2026-11-04. Setup guide: [Nodle](guides/nodle.md).
+
+| Criterion | Verdict | Note |
+|---|---|---|
+| Payout record | Unknown | Two App Store reviewers report they cannot bridge or send NODL after the move to zkSync; two is below our user-reports threshold and we found no second source. |
+| Payout terms | Unknown | Not documented on pages we read. |
+| Account safety | Unknown | No reports found. |
+| Fit with how CashPilot runs it | Fair | Own phone app, CashPilot cannot deploy or update it |
+| Traffic transparency | Unknown | Not documented on pages we read. |
+| Privacy | Unknown | The app uses Bluetooth in the background; we did not review its privacy policy. |
+| Identity checks | Unknown | Not documented. |
+| Support | Unknown | Reviewers report unanswered messages; we could not confirm a pattern. |
+| Earnings realism | Poor | One reviewer earned about $3 over three to four years |
+| Longevity | Unknown | Not checked on a primary source. |
+
+**Cons**
+
+- One reviewer reports about $3 earned over three to four years; others report daily earnings falling sharply. [Source](https://www.appbrain.com/app/nodle-cash-simple-earning-app/io.nodle.cash), checked 2026-11-04.
+- CashPilot does not run Nodle: you use the provider's own phone app, so CashPilot cannot deploy or update it for you. Its terms were not checked for containers. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/depin/nodle.yml), checked 2026-11-04.
 
 **Pros**
 

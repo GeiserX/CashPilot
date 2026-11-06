@@ -1021,13 +1021,21 @@ async def lifespan(app: FastAPI):
 
     # The fence goes in before anything else, so the gap after a reboot in
     # which earners run without it is as short as this worker can make it.
-    # Without the fence they have no internet, never the LAN (app/lan_fence.py).
-    # The public IP is looked up first (bounded by _EGRESS_TOTAL_TIMEOUT), so
-    # the first table already drops it and NAT loopback has no window.
+    # Without the fence they have no internet unless the host or an upstream
+    # router masquerades their subnet, and they can still reach the host itself
+    # (docs/isolation.md). The public IP is looked up first (bounded by
+    # _EGRESS_TOTAL_TIMEOUT), so the first table drops it unless that lookup fails.
     if docker_mode == "direct":
         lan_fence.set_egress_ip(await _detect_egress_ip())
     await _check_fence(startup=True)
     _fence_task = asyncio.create_task(_fence_loop())
+    if docker_mode == "direct":
+        # A proxy Test tunnel this worker left behind when it stopped mid-test.
+        try:
+            if swept := await asyncio.to_thread(proxy_tunnel.sweep_test_tunnels):
+                logger.info("Removed %d leftover proxy test tunnel(s)", len(swept))
+        except Exception as exc:  # noqa: BLE001 - never block the start on it
+            logger.warning("Could not look for leftover proxy test tunnels: %s", exc)
 
     if UI_URL:
         _heartbeat_task = asyncio.create_task(_heartbeat_loop())
@@ -1611,7 +1619,16 @@ class ProxyTestSpec(BaseModel):
     proxy: ProxySpec
 
 
+class ProxiedStartSpec(BaseModel):
+    """The proxy as the UI stores it now, so a start applies an edit."""
+
+    proxy: ProxySpec
+
+
 _EXIT_NODE_RE = re.compile(r"^[A-Za-z0-9._:-]{1,253}$")
+# The same rule as app/proxies.py (the UI image has it, this one does not):
+# no user name or password, query or fragment in a login server.
+_LOGIN_SERVER_RE = re.compile(r"^https://[A-Za-z0-9.-]{1,253}(:[0-9]{1,5})?(/[A-Za-z0-9._~/-]*)?$")
 
 
 def _validate_proxy(proxy: ProxySpec) -> None:
@@ -1622,7 +1639,7 @@ def _validate_proxy(proxy: ProxySpec) -> None:
             raise HTTPException(
                 status_code=400, detail="A Tailscale proxy needs an auth key and an exit node name or IP"
             )
-        if proxy.login_server and not proxy.login_server.startswith("https://"):
+        if proxy.login_server and not _LOGIN_SERVER_RE.match(proxy.login_server):
             raise HTTPException(status_code=400, detail="The Tailscale login server must be an https:// URL")
         return
     if not re.match(r"^[A-Za-z0-9.-]{1,253}$", proxy.host or "") or not 1 <= proxy.port <= 65535:
@@ -1703,20 +1720,30 @@ async def api_proxied_deploy(request: Request, slug: str, proxy_id: int, spec: P
 
 
 @app.post("/api/proxied/{slug}/{proxy_id}/stop")
-async def api_proxied_stop(request: Request, slug: str, proxy_id: int) -> dict[str, str]:
+async def api_proxied_stop(request: Request, slug: str, proxy_id: int) -> dict[str, Any]:
     _verify_api_key(request)
     try:
-        await asyncio.to_thread(proxy_tunnel.stop, slug, proxy_id)
+        was_running = await asyncio.to_thread(proxy_tunnel.stop, slug, proxy_id)
     except Exception as exc:  # noqa: BLE001
         raise _proxy_http_error(exc) from None
-    return {"status": "stopped"}
+    return {"status": "stopped", "was_running": bool(was_running)}
 
 
 @app.post("/api/proxied/{slug}/{proxy_id}/start")
-async def api_proxied_start(request: Request, slug: str, proxy_id: int) -> dict[str, Any]:
+async def api_proxied_start(
+    request: Request, slug: str, proxy_id: int, spec: ProxiedStartSpec | None = None
+) -> dict[str, Any]:
+    """Start a proxied copy. With a body, the tunnel's settings are rewritten
+    from it first; a UI older than this worker sends none."""
     _verify_api_key(request)
+    proxy: dict[str, Any] | None = None
+    own_ip: str | None = None
+    if spec is not None:
+        await asyncio.to_thread(_validate_proxy, spec.proxy)
+        proxy = spec.proxy.plain()
+        own_ip = await _own_egress_ip()
     try:
-        result = await asyncio.to_thread(proxy_tunnel.start, slug, proxy_id)
+        result = await asyncio.to_thread(proxy_tunnel.start, slug, proxy_id, proxy, own_ip)
     except Exception as exc:  # noqa: BLE001
         raise _proxy_http_error(exc) from None
     return {"status": "started", **result}
@@ -1909,6 +1936,9 @@ async def api_remove_container(
         except Exception as exc:  # noqa: BLE001 - the service itself is already gone
             logger.warning("Removed %s, but could not remove its proxied copies: %s", slug, exc)
             proxied = []
+            # The UI keeps the copies' records when this is set, so a copy that
+            # survived stays listed and can be removed again.
+            result["proxied_error"] = proxy_tunnel.redact(str(exc))[:300]
         if proxied:
             result["proxied"] = proxied
         await asyncio.to_thread(lan_fence.refresh_outside)

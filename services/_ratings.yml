@@ -111,6 +111,8 @@ caps:
   - key: poor_payout_or_safety
     max_grade: C
     reason: A poor payout record or poor account safety caps the grade at C.
+  # With the points above, four unknowns already hold the score to 60% (C), so
+  # this ceiling never lowers a grade today. It is a guard for a points change.
   - key: thin_evidence
     max_grade: C
     min_unknown: 4

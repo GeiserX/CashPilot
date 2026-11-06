@@ -65,7 +65,7 @@ payout:
 rating:
   reviewed_on: "2026-11-04"
   verdicts:
-    payout_record: fair
+    payout_record: unknown
     payout_terms: unknown
     account_safety: unknown
     terms_fit: fair
@@ -76,7 +76,8 @@ rating:
     earnings_realism: poor
     longevity: unknown
   notes:
-    payout_record: Reviewers report they cannot bridge or send NODL after zkSync
+    payout_record: Two App Store reviewers report they cannot bridge or send NODL after the move to
+      zkSync; two is below our user-reports threshold and we found no second source.
     payout_terms: Not documented on pages we read.
     account_safety: No reports found.
     terms_fit: Own phone app, CashPilot cannot deploy or update it
@@ -87,12 +88,6 @@ rating:
     earnings_realism: One reviewer earned about $3 over three to four years
     longevity: Not checked on a primary source.
   cons:
-  - text: App Store reviewers report being unable to bridge or send NODL after the move to zkSync, and
-      needing ETH to move tokens out.
-    criterion: payout_record
-    kind: user_reports
-    source: https://apps.apple.com/us/app/nodle-cash-wallet-earn-crypto/id1480763553
-    checked_on: "2026-11-04"
   - text: One reviewer reports about $3 earned over three to four years; others report daily earnings
       falling sharply.
     criterion: earnings_realism
