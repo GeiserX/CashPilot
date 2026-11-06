@@ -938,3 +938,8 @@ class TestReviewFollowUps:
             }
         )
         assert d["login_server"] == "https://hs.example:8443/x"
+
+    def test_a_cap_too_small_to_measure_is_refused(self):
+        with pytest.raises(proxies.ProxyInputError):
+            proxies.clean_definition({**_socks(), "cap_gb": "0.0000000001"})
+        assert proxies.clean_definition({**_socks(), "cap_gb": "0.001"})["cap_gb"] == 0.001
