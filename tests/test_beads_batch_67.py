@@ -21,7 +21,7 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 PAGE = ROOT / "docs" / "backup-restore.md"
-MKDOCS = ROOT / "mkdocs.yml"
+ZENSICAL = ROOT / "zensical.toml"
 DATABASE = ROOT / "app" / "database.py"
 AUTH = ROOT / "app" / "auth.py"
 
@@ -37,7 +37,7 @@ class TestThePageExistsAndIsReachable:
     def test_it_is_in_the_nav(self):
         """An orphaned page is reachable only by URL — the exact defect the docs
         restructure fixed. Adding another one here would be poor form."""
-        assert "backup-restore.md" in MKDOCS.read_text(encoding="utf-8")
+        assert "backup-restore.md" in ZENSICAL.read_text(encoding="utf-8")
 
     def test_the_node_identity_page_points_at_it(self):
         """Someone looking for "backup" finds backup.md first. It is about a

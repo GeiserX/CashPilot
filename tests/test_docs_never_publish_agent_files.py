@@ -1,7 +1,7 @@
 """Agent working files were live on the public documentation site.
 
-MkDocs builds **every** file in ``docs_dir``, whether or not it appears in
-``nav``. Three agent scratch files sat there and were therefore published:
+MkDocs built **every** file in ``docs_dir``, whether or not it appeared in
+``nav``, and Zensical does the same. Three agent scratch files sat there and were therefore published:
 
     https://geiserx.github.io/CashPilot/GOAL/               -> HTTP 200
     https://geiserx.github.io/CashPilot/AUTOPILOT-WORKLOG/  -> HTTP 200
@@ -10,10 +10,10 @@ Between them they published this project's internal planning verbatim, quoted
 the maintainer directly, and printed a real Mysterium node identity address —
 which links this public repository to a specific earning node.
 
-``mkdocs build --strict`` does **not** catch this by default:
-``validation.nav.omitted_files`` defaults to ``info``, so the orphans are reported
-and the build stays green. Setting it to ``warn`` would make the strict build fail
-on them; the exclusion list is what keeps them off the site.
+The strict build does **not** catch this: under MkDocs
+``validation.nav.omitted_files`` defaulted to ``info``, and Zensical has no such
+check (``.github/scripts/site-check.py`` fails on a page in no nav entry, after
+the build). The exclusion list is what keeps them off the site.
 
 This test is the guard: any file matching the agent-artifact patterns must be
 excluded from the built site, and the exclusion is asserted against the parsed
@@ -23,38 +23,28 @@ config rather than a substring, so reformatting cannot silently defeat it.
 from __future__ import annotations
 
 import re
+import tomllib
 from pathlib import Path
 
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
-MKDOCS = ROOT / "mkdocs.yml"
+ZENSICAL = ROOT / "zensical.toml"
 
 #: Files that are agent working artifacts, never documentation.
 AGENT_ARTIFACTS = ("GOAL.md", "AUTOPILOT-WORKLOG.md", "DEFERRED-QUESTIONS.md")
 
 
 def _exclude_docs_entries():
-    """The exclude_docs block, parsed without a full YAML load.
-
-    mkdocs.yml carries Material's ``!!python/name:`` tags, which safe_load
-    rejects, so this reads the block structurally instead of guessing.
-    """
-    text = MKDOCS.read_text(encoding="utf-8")
-    match = re.search(r"^exclude_docs:\s*\|\s*$", text, re.MULTILINE)
-    if not match:
-        return []
-    entries = []
-    for line in text[match.end() :].splitlines()[1:]:
-        if not line.startswith("  ") or not line.strip():
-            break
-        entries.append(line.strip())
-    return entries
+    """The exclude_docs patterns, from the parsed config, comments left out."""
+    project = tomllib.loads(ZENSICAL.read_text(encoding="utf-8")).get("project", {})
+    block = project.get("exclude_docs", "")
+    return [ln.strip() for ln in block.splitlines() if ln.strip() and not ln.strip().startswith("#")]
 
 
 class TestNoAgentArtifactIsPublished:
     def test_the_exclude_block_exists(self):
-        assert _exclude_docs_entries(), "mkdocs.yml has no exclude_docs block; every file in docs/ is published"
+        assert _exclude_docs_entries(), "zensical.toml has no exclude_docs block; every file in docs/ is published"
 
     @pytest.mark.parametrize("name", AGENT_ARTIFACTS)
     def test_it_is_excluded(self, name):
@@ -116,6 +106,7 @@ class TestNoAgentArtifactIsCommitted:
 class TestTheReasonIsRecorded:
     def test_the_reason_is_recorded_beside_the_rule(self):
         """Without it, a later tidy-up deletes the block as unexplained."""
-        text = MKDOCS.read_text(encoding="utf-8")
-        head = text[: text.index("exclude_docs:")]
-        assert "nav" in head.split("# Files that live under")[-1] or "published" in text[: text.index("exclude_docs:")]
+        text = ZENSICAL.read_text(encoding="utf-8")
+        head = text[: text.index("exclude_docs =")]
+        reason = head.split("# Files that live under")[-1]
+        assert "# Files that live under" in head and "published" in reason

@@ -117,10 +117,10 @@ class TestThereIsOneDependencySourceOfTruth:
     """A second list of the app's dependencies is a second resolution.
 
     ``docs/requirements-docs.txt`` is deliberately exempt. It is genuinely
-    installed — docs.yml pip-installs it to run MkDocs — and it must stay OUT of
-    uv.lock, because release.yml treats uv.lock as a release trigger and a
-    mkdocs-material bump would otherwise cut an app release that changes nothing
-    in the app.
+    installed — docs.yml pip-installs it to run Zensical — and it must stay OUT
+    of uv.lock, because release.yml treats uv.lock as a release trigger and a
+    docs-tool bump would otherwise cut an app release that changes nothing in
+    the app.
     """
 
     #: Install surfaces that are real, separate toolchains rather than a copy of
@@ -216,13 +216,13 @@ class TestDependabotUpdatesWhatShips:
         assert len(docs) == 1, (
             "nothing that can read a requirements file watches docs/requirements-docs.txt. "
             "docs.yml pip-installs it, and `uv` does not see requirements files at all, so "
-            f"a uv entry here would leave MkDocs frozen: {self._updates()}"
+            f"a uv entry here would leave the docs build frozen: {self._updates()}"
         )
 
     def test_the_docs_deps_stay_out_of_the_app_lock(self):
-        """Otherwise every mkdocs bump would cut an app release."""
+        """Otherwise every docs-tool bump would cut an app release."""
         lock = (ROOT / "uv.lock").read_text(encoding="utf-8")
-        assert 'name = "mkdocs-material"' not in lock, (
-            "mkdocs-material is in uv.lock, so a docs-tool bump now rewrites a release trigger "
+        assert 'name = "zensical"' not in lock, (
+            "zensical is in uv.lock, so a docs-tool bump now rewrites a release trigger "
             "and ships an app release that changes nothing in the app"
         )

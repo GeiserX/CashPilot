@@ -3,7 +3,7 @@
 Filed as "the docs site nav is a mess", but the diagnosis is narrower and the
 evidence is exact. One service was added and two lists were not updated:
 
-* ``mkdocs.yml`` listed **51 of 52** guides, so ``proxybase-xyz.md`` was
+* the nav (then in ``mkdocs.yml``) listed **51 of 52** guides, so ``proxybase-xyz.md`` was
   reachable only by URL — orphaned from the site's own navigation;
 * ``docs/guides/README.md`` linked **49** services and announced "**49
   services**" while the catalog held **50** — missing the same one.
@@ -21,16 +21,18 @@ connection" could previously only scan 52 siblings.
 from __future__ import annotations
 
 import collections
+import json
 import re
 import subprocess
 import sys
+import tomllib
 from pathlib import Path
 
 import pytest
 import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
-MKDOCS = ROOT / "mkdocs.yml"
+ZENSICAL = ROOT / "zensical.toml"
 INDEX = ROOT / "docs" / "guides" / "index.md"
 GUIDES = ROOT / "docs" / "guides"
 SCRIPT = ROOT / "scripts" / "sync_docs_nav.py"
@@ -49,9 +51,20 @@ def catalog_slugs() -> set[str]:
     return slugs
 
 
+def nav() -> list:
+    return tomllib.loads(ZENSICAL.read_text(encoding="utf-8"))["project"]["nav"]
+
+
 def nav_refs() -> list[str]:
-    text = MKDOCS.read_text(encoding="utf-8")
-    return re.findall(r"guides/([\w.-]+)\.md", text[text.index("\nnav:") :])
+    return re.findall(r"guides/([\w.-]+)\.md", json.dumps(nav()))
+
+
+def service_guides() -> list:
+    """The children of the "Service guides" nav section."""
+    for entry in nav():
+        if "Service guides" in entry:
+            return entry["Service guides"]
+    raise AssertionError("the nav has no Service guides section")
 
 
 class TestNoGuideIsOrphaned:
@@ -103,18 +116,23 @@ class TestTheIndexMatchesTheCatalog:
 
 class TestGuidesAreGroupedByCategory:
     def test_the_nav_uses_the_catalog_categories(self):
-        text = MKDOCS.read_text(encoding="utf-8")
-        block = text[text.index("  - Service guides:") :]
+        headings = {key for child in service_guides() for key, value in child.items() if isinstance(value, list)}
         for heading in ("Bandwidth Sharing", "DePIN", "GPU Compute", "Storage"):
-            assert f"- {heading}:" in block, f"nav is not grouped by {heading}"
+            assert heading in headings, f"nav is not grouped by {heading}"
 
     def test_the_guides_are_not_one_flat_list(self):
         """The original shape: 52 alphabetical siblings under one heading."""
-        text = MKDOCS.read_text(encoding="utf-8")
-        block = text[text.index("  - Service guides:") :]
-        block = block[: block.index("\n  - ", 1)] if "\n  - " in block[1:] else block
         # Guides sit one level deeper than the category headings that hold them.
-        assert re.search(r"^      - .+: guides/", block, re.M), "no guide is nested under a category"
+        nested = [
+            page
+            for child in service_guides()
+            for value in child.values()
+            if isinstance(value, list)
+            for leaf in value
+            for page in leaf.values()
+            if isinstance(page, str) and page.startswith("guides/")
+        ]
+        assert nested, "no guide is nested under a category"
 
 
 class TestTheGeneratorIsTheSourceOfTruth:
@@ -179,4 +197,4 @@ class TestGuideContentIsUntouched:
         """Structural: it must not open any other guide for writing."""
         text = SCRIPT.read_text(encoding="utf-8")
         writes = re.findall(r"(\w+)\.write_text\(", text)
-        assert set(writes) <= {"INDEX", "MKDOCS"}, f"the generator writes to {set(writes)}"
+        assert set(writes) <= {"INDEX", "ZENSICAL"}, f"the generator writes to {set(writes)}"

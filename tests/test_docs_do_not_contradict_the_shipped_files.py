@@ -30,6 +30,7 @@ Two smaller drifts fixed alongside:
 from __future__ import annotations
 
 import re
+import tomllib
 from pathlib import Path
 
 import pytest
@@ -45,11 +46,14 @@ class TestTheQuickstartShowsTheRealComposeFile:
             "the quickstart has gone back to hand-copying compose, which is how it drifted"
         )
 
-    def test_the_include_is_enabled_in_mkdocs(self):
+    def test_the_include_is_enabled_in_the_docs_config(self):
         """Without the extension the marker renders literally as text."""
-        text = (ROOT / "mkdocs.yml").read_text(encoding="utf-8")
-        assert "pymdownx.snippets" in text
-        assert "check_paths: true" in text, "a missing include would fail silently rather than failing the build"
+        config = tomllib.loads((ROOT / "zensical.toml").read_text(encoding="utf-8"))["project"]
+        snippets = config["markdown_extensions"].get("pymdownx.snippets")
+        assert snippets is not None
+        assert snippets.get("check_paths") is True, (
+            "a missing include would fail silently rather than failing the build"
+        )
 
     def test_the_page_no_longer_publishes_the_worker_port(self):
         assert '"8081:8081"' not in GETTING_STARTED.read_text(encoding="utf-8")
