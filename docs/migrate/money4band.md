@@ -62,8 +62,8 @@ writes (`<APP>_<FLAG>`, for example `REPOCKET_APIKEY`).
 | `mystnode` | Mysterium | turned on; see the Mysterium note below |
 
 An app you turned off in money4band shows up unticked. An app that is off and
-holds only the template's placeholders (`yourHONEYGAINMail`) is left out, so an
-untouched `user-config.json` gives an empty table.
+holds nothing but the template's placeholders (`yourHONEYGAINMail`) and port
+lists is left out, so an untouched `user-config.json` gives an empty table.
 
 These apps are listed but not brought over:
 
