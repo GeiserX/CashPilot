@@ -94,11 +94,11 @@ listed by name as not read.
 - **Proxies** (`USE_PROXIES`, `proxies.txt`). Add each one in the Proxies
   section of the Fleet page, then run copies of your services through it; adding
   a proxy starts nothing by itself. With `USE_PROXIES=true` InternetIncome ran
-  your services only through proxies. A proxied copy runs beside the same
-  service deployed on the worker, never instead of it, so every imported service
-  also uses the worker's own connection. A service that must never use that
-  connection cannot come over through the import: leave it unticked. See
-  [Proxied copies](../proxies.md).
+  your services only through proxies. Saving an import starts nothing either. A
+  proxied copy needs the same service deployed on the worker first, and
+  deploying it runs it on the worker's own connection, so a service that must
+  never use that connection should stay unticked. See [Proxied
+  copies](../proxies.md).
 - **`BROWSER_USERNAME` and `BROWSER_PASSWORD`**, InternetIncome's own browser
   login.
 
