@@ -181,7 +181,7 @@ services:
       - DOCKER_HOST=unix:///run/cashpilot-docker/docker.sock
       # The proxy policy's fingerprint (scripts/socket_proxy_policy.py), so the
       # worker can say when its image needs a newer policy than this file has.
-      - CASHPILOT_PROXY_POLICY=d798d33594bf7e59
+      - CASHPILOT_PROXY_POLICY=ec66faec71f2e7ac
       # The same two values the proxy gets, so the worker can say what to set
       # before the proxy refuses (the in-app update, a host-folder bind).
       - CASHPILOT_COMPOSE_DIR=${CASHPILOT_COMPOSE_DIR:-}
@@ -285,6 +285,13 @@ configs:
             - ["cat", "/etc/anon/anonrc"]
         image_pull:
           allow_all_registries: true        # catalog and custom services come from many registries
+        network:
+          # The LAN fence (app/lan_fence.py) creates its bridge with three driver
+          # options (interface name, no masquerade, no inter-container traffic) and
+          # moves an earner across with a forced disconnect. Custom drivers, swarm
+          # scope, custom IPAM and endpoint settings stay refused.
+          allow_driver_options: true
+          allow_disconnect_force: true
       rules:
         - {match: {method: GET, path: "/_ping"}, action: allow}
         - {match: {method: HEAD, path: "/_ping"}, action: allow}

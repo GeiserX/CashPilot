@@ -144,6 +144,13 @@ request_body:
 {commands}
   image_pull:
     allow_all_registries: true        # catalog and custom services come from many registries
+  network:
+    # The LAN fence (app/lan_fence.py) creates its bridge with three driver
+    # options (interface name, no masquerade, no inter-container traffic) and
+    # moves an earner across with a forced disconnect. Custom drivers, swarm
+    # scope, custom IPAM and endpoint settings stay refused.
+    allow_driver_options: true
+    allow_disconnect_force: true
 rules:
 {rules}
 """

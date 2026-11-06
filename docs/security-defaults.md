@@ -200,7 +200,9 @@ proxy stands between the worker and root.
   hand, and the folder is not bindable at all.
 - Create, attach, detach and delete Docker networks. The LAN fence needs this
   to build `cashpilot-isolated` and move earners onto it, and sockguard 2.4.5
-  cannot limit it to that one network. It adds little reach, since the worker
+  cannot limit it to that one network. The proxy lets bridge driver options and
+  a forced disconnect through, because the fence uses both; custom drivers,
+  swarm scope, custom address plans and endpoint settings stay refused. It adds little reach, since the worker
   can already start a container on host networking, but a compromised worker
   can take an earner off the fence or delete a network another app uses.
 - Start a container in the host's cgroup namespace. The Activity reader of a

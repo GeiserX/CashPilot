@@ -82,6 +82,15 @@ def policy_problems(policy: dict, catalog: list[dict]) -> list[str]:
     # namespace to tell that earner's sockets from the host's (app/activity.py).
     if not create.get("allow_host_cgroupns"):
         problems.append("allow_host_cgroupns off: the host-network Activity probe needs it")
+    # The LAN fence creates its bridge with driver options and moves earners
+    # with a forced disconnect (app/lan_fence.py); nothing else may open up.
+    network = policy["request_body"].get("network") or {}
+    for key in ("allow_driver_options", "allow_disconnect_force"):
+        if network.get(key) is not True:
+            problems.append(f"network {key} off: the LAN fence needs it")
+    for key in sorted(set(network) - {"allow_driver_options", "allow_disconnect_force"}):
+        if network.get(key):
+            problems.append(f"network {key} on: the LAN fence does not need it")
     if create.get("allow_all_capabilities") or create.get("allow_all_devices"):
         problems.append("capability or device allowlist switched off")
     caps = {c.upper().removeprefix("CAP_") for c in create.get("allowed_capabilities") or []}
@@ -222,6 +231,9 @@ MUTATIONS = {
     "no nnp": lambda p: p["request_body"]["container_create"].update(require_no_new_privileges=False),
     "host pid": lambda p: p["request_body"]["container_create"].update(allow_host_pid=True),
     "no host cgroupns": lambda p: p["request_body"]["container_create"].update(allow_host_cgroupns=False),
+    "no network driver options": lambda p: p["request_body"]["network"].update(allow_driver_options=False),
+    "no forced disconnect": lambda p: p["request_body"]["network"].pop("allow_disconnect_force"),
+    "custom network drivers": lambda p: p["request_body"]["network"].update(allow_custom_drivers=True),
     "drop NET_ADMIN": lambda p: p["request_body"]["container_create"]["allowed_capabilities"].remove("NET_ADMIN"),
     "drop tun": lambda p: p["request_body"]["container_create"].update(allowed_devices=[]),
     "drop a reader": lambda p: p["request_body"]["exec"]["allowed_commands"].pop(),
