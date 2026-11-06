@@ -35,13 +35,18 @@ use to reach the host's files.
 1. If you set `CASHPILOT_ISOLATION=off` to get past that error, remove it (or
    set it to `auto`) first, so the new worker starts with the fence.
 2. Take the v1.72.1 compose file, the same way as in the next section.
-3. Run `docker compose up -d --force-recreate`. Without `--force-recreate`,
-   Compose can keep the running proxy and its old policy.
+3. Run `docker compose up -d --force-recreate`, with `-f` and the file you
+   use if it is not `docker-compose.yml` (for example
+   `docker compose -f docker-compose.worker.yml up -d --force-recreate` on a
+   worker-only server). Without `--force-recreate`, Compose can keep the
+   running proxy and its old policy.
 4. If your earners already sit on the default bridge, turn isolation on from
    the Fleet page.
 
-The worker's status page says when the policy the proxy loaded is older than
-the one its image expects.
+The worker's status page compares the policy fingerprint in the worker's own
+settings with the one its image expects. It catches an old compose file, but
+not a proxy that kept running with the old policy: `--force-recreate` is what
+covers that.
 
 ## Docker socket proxy: take the new compose file once
 
