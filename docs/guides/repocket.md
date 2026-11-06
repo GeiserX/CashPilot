@@ -16,7 +16,7 @@ Repocket lets you earn passive income by sharing your unused internet bandwidth.
 | Per | device |
 | Minimum payout | $4 ($2 after the first payout) |
 | Payout frequency | On request |
-| Payment methods | Paypal, Crypto |
+| Payment methods | Gift card (Tremendous), Crypto (USDT on Polygon) |
 
 > Residential IPs earn more. VPS/datacenter IPs accepted but at lower rates.
 

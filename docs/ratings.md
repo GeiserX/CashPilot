@@ -83,7 +83,7 @@ What a cited con or pro may rest on:
 | <a href="#anyone-protocol">Anyone Protocol</a> | F | 6 of 20 | 5 | 2026-11-04 | A relay earns nothing unless 100 ANYONE is locked for it for at least 180 days, and each reward claim is signed in your wallet. |
 | <a href="#bytelixir">Bytelixir</a> | F | 6 of 20 | 6 | 2026-11-04 | Crypto only, and the minimum depends on the coin, from $5 for USDT to $250 for Bitcoin. |
 | <a href="#noderr">Noderr Micronodes</a> | F | 6 of 20 | 4 | 2026-11-04 | Node rewards are unfunded testnet tokens with no market value, and none have been paid; the 5 to 10% APY on its site is a design target. |
-| <a href="#proxybase-xyz">ProxyBase Markets</a> | F | 6 of 20 | 6 | 2026-11-04 | Payouts are USDC on Tempo Chain and need a Tempo wallet address. |
+| <a href="#proxybase-xyz">ProxyBase Markets</a> | F | 6 of 20 | 6 | 2026-11-04 | Payouts are USDC on Tempo Chain, to any EVM address whose key you hold. |
 | <a href="#repocket">Repocket</a> | F | 6 of 20 | 2 | 2026-11-04 | Several Trustpilot reviewers report cancelled payouts and balances reset to zero; one says support cited irregular bandwidth earnings. The page rates Repocket 2.7 and notes it has not replied to negative reviews. |
 | <a href="#bitping">Bitping</a> | F | 5 of 20 | 7 | 2026-11-04 | Withdrawals are paid in Solana (SOL), to an address you type into each request. |
 | <a href="#earnfm">Earn.fm</a> | F | 5 of 20 | 6 | 2026-11-04 | A $15 minimum, a $1 to $3 fee on USDT, and a bank wire only from $1,000. |
@@ -223,7 +223,7 @@ What a cited con or pro may rest on:
 
 | Criterion | Verdict | Note |
 |---|---|---|
-| Payout record | Good | Our $0.75 withdrawal went through in October 2026 |
+| Payout record | Good | Our withdrawal of under $1 went through in October 2026 |
 | Payout terms | Fair | Crypto only (USDC, POL, Litecoin), $0.20 minimum |
 | Account safety | Unknown | No reports found. |
 | Fit with how CashPilot runs it | Good | Own peer client image, supports datacentre IPs |
@@ -242,7 +242,7 @@ What a cited con or pro may rest on:
 
 **Pros**
 
-- Our $0.75 withdrawal went through in October 2026. [Source](https://github.com/GeiserX/CashPilot/blob/main/docs/guides/proxybase.md), checked 2026-11-04.
+- Our withdrawal of under $1 went through in October 2026. [Source](https://github.com/GeiserX/CashPilot/blob/main/docs/guides/proxybase.md), checked 2026-11-04.
 - A withdrawal needs only an address typed into the request. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/bandwidth/proxybase.yml), checked 2026-11-04.
 - ProxyBase publishes its own peer client image and supports datacentre IPs. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/bandwidth/proxybase.yml), checked 2026-11-04.
 
@@ -504,7 +504,7 @@ What a cited con or pro may rest on:
 | Criterion | Verdict | Note |
 |---|---|---|
 | Payout record | Unknown | We found no independent payout reports and have no payout of our own. |
-| Payout terms | Fair | USDC on Tempo Chain, needs a Tempo wallet |
+| Payout terms | Fair | USDC on Tempo Chain, to any EVM address |
 | Account safety | Unknown | There is no account in the usual sense; the client mints its own wallet. |
 | Fit with how CashPilot runs it | Good | Own client image, accepts datacentre connections |
 | Traffic transparency | Fair | Sold as a SOCKS5 proxy, no buyer checks described |
@@ -516,7 +516,7 @@ What a cited con or pro may rest on:
 
 **Cons**
 
-- Payouts are USDC on Tempo Chain and need a Tempo wallet address. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/bandwidth/proxybase-xyz.yml), checked 2026-11-04.
+- Payouts are USDC on Tempo Chain, to any EVM address whose key you hold. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/bandwidth/proxybase-xyz.yml), checked 2026-11-04.
 - Your connection is sold as a SOCKS5 proxy to marketplace buyers; we found no description of how buyers are checked. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/bandwidth/proxybase-xyz.yml), checked 2026-11-04.
 
 **Pros**

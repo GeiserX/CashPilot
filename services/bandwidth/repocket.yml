@@ -54,7 +54,8 @@ requirements:
   min_storage: ""
 
 payment:
-  methods: [paypal, crypto]
+  methods: [giftcard, crypto]
+  crypto_token: "USDT"
   minimum_payout: "$4 ($2 after the first payout)"
   currency: USD
   frequency: "On request"

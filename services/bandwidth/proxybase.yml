@@ -107,7 +107,7 @@ rating:
     earnings_realism: fair
     longevity: fair
   notes:
-    payout_record: Our $0.75 withdrawal went through in October 2026
+    payout_record: Our withdrawal of under $1 went through in October 2026
     payout_terms: Crypto only (USDC, POL, Litecoin), $0.20 minimum
     account_safety: No reports found.
     terms_fit: Own peer client image, supports datacentre IPs
@@ -136,7 +136,7 @@ rating:
     source: https://github.com/GeiserX/CashPilot/blob/main/docs/guides/proxybase.md
     checked_on: "2026-11-04"
   pros:
-  - text: Our $0.75 withdrawal went through in October 2026.
+  - text: Our withdrawal of under $1 went through in October 2026.
     criterion: payout_record
     kind: our_experience
     source: https://github.com/GeiserX/CashPilot/blob/main/docs/guides/proxybase.md
