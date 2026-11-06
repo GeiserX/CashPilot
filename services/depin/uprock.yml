@@ -65,7 +65,7 @@ rating:
   reviewed_on: "2026-11-04"
   verdicts:
     payout_record: unknown
-    payout_terms: fair
+    payout_terms: unknown
     account_safety: unknown
     terms_fit: fair
     traffic_transparency: unknown
@@ -76,7 +76,8 @@ rating:
     longevity: unknown
   notes:
     payout_record: We found no recent pattern of reports either way.
-    payout_terms: Old reports of a 255 UPT minimum and 55 UPT fee
+    payout_terms: Two Trustpilot reviewers describe withdrawal fees (55 UPT in 2025, 85 tokens in 2026);
+      two is below our user-reports threshold, and we found no current terms on fees or minimums.
     account_safety: No reports found.
     terms_fit: Own app or extension, CashPilot cannot deploy or update it
     traffic_transparency: Not documented on pages we read.
@@ -86,12 +87,6 @@ rating:
     earnings_realism: Paid in UPT tokens, value reported very low
     longevity: We did not confirm the company behind UpRock.
   cons:
-  - text: Trustpilot reviewers reported a 255 UPT minimum and a 55 UPT fee to withdraw to a wallet; these
-      reports are old and the current terms may differ.
-    criterion: payout_terms
-    kind: user_reports
-    source: https://www.trustpilot.com/review/uprock.com
-    checked_on: "2026-11-04"
   - text: Rewards are UPT tokens; reviewers and a third-party review say their value is very low.
     criterion: earnings_realism
     kind: press

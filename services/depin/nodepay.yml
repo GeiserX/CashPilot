@@ -33,7 +33,7 @@ payment:
   methods: [crypto]
   minimum_payout: ""
   currency: NC
-  frequency: "Token airdrop (TBA)"
+  frequency: "Seasonal NC token airdrop"
 
 earnings:
   monthly_low: 0
@@ -73,7 +73,7 @@ rating:
     terms_fit: fair
     traffic_transparency: unknown
     privacy: unknown
-    identity_checks: fair
+    identity_checks: unknown
     support: unknown
     earnings_realism: poor
     longevity: unknown
@@ -86,7 +86,8 @@ rating:
     terms_fit: Browser extension, CashPilot cannot deploy or update it
     traffic_transparency: Not documented on pages we read.
     privacy: Not reviewed.
-    identity_checks: Needed a Solana wallet plus verified email, Discord and X
+    identity_checks: Claiming needs a Solana wallet; the email, Discord and X checks in the guide we
+      read earn a bonus medal and are not required. We found nothing else on what a claim asks for.
     support: No pattern found.
     earnings_realism: Points convert to NC token, value rests on the token
     longevity: We did not confirm the company behind Nodepay.
@@ -94,11 +95,6 @@ rating:
   - text: In its first season review Nodepay removed more than 300,000 accounts it judged to be bots and
       cancelled 17 billion points.
     criterion: account_safety
-    kind: press
-    source: https://coinmarketcap.com/academy/article/nodepay-airdrop-guide-everything-you-need-to-know
-    checked_on: "2026-11-04"
-  - text: Eligibility needed a Solana wallet plus verified email, Discord and X accounts.
-    criterion: identity_checks
     kind: press
     source: https://coinmarketcap.com/academy/article/nodepay-airdrop-guide-everything-you-need-to-know
     checked_on: "2026-11-04"
