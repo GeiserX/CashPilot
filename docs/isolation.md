@@ -52,7 +52,9 @@ How it works:
   address up before it writes the first table, a new address is fenced as soon
   as the worker sees it, and while a lookup fails the table keeps the address it
   already drops. A host whose first lookup after a reboot fails has no such
-  drop until a lookup succeeds. On a static IP, setting `CASHPILOT_EGRESS_IP`
+  drop until a lookup succeeds. The worker looks again with each heartbeat, so
+  a worker without `CASHPILOT_UI_URL` never retries: restart it once the lookup
+  works. On a static IP, setting `CASHPILOT_EGRESS_IP`
   to the router's public IPv4, with detection left on, closes that gap: the
   worker then needs no lookup. The same value is the egress IP the fleet page
   and the provider-limit warnings use, so behind a VPN whose exit address
