@@ -37,10 +37,12 @@ FIXTURES = ROOT / "tests" / "fixtures" / "lan_fence"
 
 
 @pytest.fixture(autouse=True)
-def _fresh_state():
+def _fresh_state(tmp_path):
     saved = json.loads(json.dumps(lan_fence._state))
     egress = dict(lan_fence._egress)
-    yield
+    # Each test gets its own /data, so one test's "on" never leaks into the next.
+    with patch.object(lan_fence, "ON_MARKER", tmp_path / "data" / ".isolation_on"):
+        yield
     lan_fence._state.clear()
     lan_fence._state.update(saved)
     lan_fence._egress.clear()
@@ -492,6 +494,51 @@ class TestModes:
     def test_an_unknown_setting_reads_as_auto(self):
         with patch.object(lan_fence, "_SETTING", "yes please"):
             assert lan_fence.setting() == "auto"
+
+
+class TestTheRememberedState:
+    """Isolation on is recorded in /data, for when Docker no longer shows it."""
+
+    def test_on_survives_a_reboot_that_took_the_network_after_every_fenced_earner_was_removed(self):
+        """The fenced earners were removed, a stopped default-bridge one was left, and the reboot took the network."""
+        stopped = _container("cashpilot-storj", status="exited")
+        assert _mode(_docker(_network(), earners=[stopped])) == lan_fence.MODE_ON
+        assert _mode(_docker(earners=[stopped])) == lan_fence.MODE_ON
+
+    def test_enable_records_it(self):
+        client = _docker(earners=[_container("cashpilot-earnapp")])
+        with (
+            patch.object(lan_fence, "_SETTING", "auto"),
+            patch.object(orchestrator, "_CONTAINER_NETWORK", ""),
+            patch.object(orchestrator, "_get_client", return_value=client),
+            patch.object(lan_fence, "run_helper", return_value={"ok": True, "backend": "nft"}),
+        ):
+            lan_fence.enable()
+        assert lan_fence.ON_MARKER.is_file()
+        assert _mode(_docker(earners=[_container("cashpilot-earnapp", status="exited")])) == lan_fence.MODE_ON
+
+    def test_legacy_records_nothing(self):
+        assert _mode(_docker(earners=[_container("cashpilot-honeygain")])) == lan_fence.MODE_LEGACY
+        assert not lan_fence.ON_MARKER.exists()
+
+    def test_off_forgets_it(self):
+        """The way out: after off, an install with bridge earners and no network of ours is legacy again."""
+        assert _mode(_docker()) == lan_fence.MODE_ON
+        assert _mode(_docker(), "off") == lan_fence.MODE_OFF
+        assert not lan_fence.ON_MARKER.exists()
+        assert _mode(_docker(earners=[_container("cashpilot-honeygain")])) == lan_fence.MODE_LEGACY
+
+    def test_the_operators_network_leaves_it_alone(self):
+        assert _mode(_docker()) == lan_fence.MODE_ON
+        assert _mode(_docker(), operator="mine") == lan_fence.MODE_OPERATOR
+        assert lan_fence.ON_MARKER.is_file()
+
+    def test_an_unwritable_data_dir_still_resolves(self, tmp_path):
+        blocker = tmp_path / "not-a-dir"
+        blocker.write_text("")
+        with patch.object(lan_fence, "ON_MARKER", blocker / ".isolation_on"):
+            assert _mode(_docker()) == lan_fence.MODE_ON
+            assert _mode(_docker(earners=[_container("cashpilot-honeygain")])) == lan_fence.MODE_LEGACY
 
 
 class TestTheNetwork:
