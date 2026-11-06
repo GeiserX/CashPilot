@@ -21,7 +21,7 @@ Architecturally it is two components, always separate:
 
 - The **UI**: the single dashboard. Collects earnings, schedules work, manages
   users. It has **no Docker socket** and cannot touch containers directly.
-- One **Worker** per machine: holds the Docker socket, manages local containers,
+- One **Worker** per machine: drives Docker through a socket proxy, manages local containers,
   reports back over an authenticated heartbeat.
 
 The catalog of services is plain YAML under `services/`, and it is the single source
@@ -182,7 +182,7 @@ currently a manual, error-prone process. Users overwhelmingly do not back these
 files up on their own, because nothing tells them the files exist.
 
 **Against.** Reading key material out of a container volume is a genuinely new
-capability for the Worker, the component that already holds the Docker socket. It
+capability for the Worker, the component that already drives Docker. It
 must be designed so that a compromised installation cannot decrypt past exports.
 
 **Risk.** The highest of any avenue, in two directions. Technically, it creates a
