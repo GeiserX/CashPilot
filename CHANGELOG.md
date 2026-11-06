@@ -10,6 +10,18 @@ Every release, grouped by what changed. Generated from commit history.
 Releases before `1.0.0` were recorded by hand and are kept verbatim in
 [docs/changelog-0.x-handwritten.md](docs/changelog-0.x-handwritten.md).
 
+## Unreleased
+
+### Documentation
+
+- Regenerate CHANGELOG.md (#616)
+
+## [1.72.6] - 2026-11-06
+
+### Documentation
+
+- Say what a first payout really asks for, before users request one (#584)
+
 ## [1.72.5] - 2026-11-06
 
 ### Documentation
