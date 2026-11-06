@@ -944,3 +944,8 @@ class TestReviewFollowUps:
         with pytest.raises(proxies.ProxyInputError):
             proxies.clean_definition({**_socks(), "cap_gb": "0.0000000001"})
         assert proxies.clean_definition({**_socks(), "cap_gb": "0.001"})["cap_gb"] == 0.001
+
+    def test_a_cap_out_of_range_names_both_bounds(self):
+        for gb in ("0.0000000001", "2000000"):
+            with pytest.raises(proxies.ProxyInputError, match=r"between 0\.001 and 1,000,000 GB"):
+                proxies.clean_definition({**_socks(), "cap_gb": gb})

@@ -64,7 +64,10 @@ The tunnel sets things up in this order:
    tunnel's own connection to the proxy (for Tailscale: a packet tailscaled
    marked as its own). Packets into the tunnel addressed to a private or
    tailnet range are dropped too, so the earner cannot ask the proxy to
-   connect to the proxy's own LAN by address.
+   connect to the proxy's own LAN by address. The rule checks addresses
+   only. A name the proxy resolves to a private address, or a request sent
+   straight to the proxy's port, is up to the proxy's own rules, so use a
+   proxy that refuses private destinations.
 2. Name lookups sent to Docker's resolver are redirected into the tunnel, and
    anything else sent to that resolver is dropped.
 3. The routes and the tunnel process: [tun2proxy](https://github.com/tun2proxy/tun2proxy)

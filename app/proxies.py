@@ -112,7 +112,7 @@ def clean_definition(body: dict[str, Any], existing: dict[str, Any] | None = Non
         # Below a megabyte the threshold rounds to nothing measurable and the
         # first heartbeat would stop every copy.
         if not MIN_CAP_GB <= out["cap_gb"] <= 1_000_000:
-            raise ProxyInputError("The traffic cap must be at least 0.001 GB")
+            raise ProxyInputError("The traffic cap must be between 0.001 and 1,000,000 GB")
     try:
         pct = int(body.get("cap_threshold_pct", base.get("cap_threshold_pct")) or DEFAULT_THRESHOLD_PCT)
     except (TypeError, ValueError):
