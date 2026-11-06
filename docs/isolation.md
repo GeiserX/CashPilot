@@ -45,8 +45,10 @@ How it works:
   LAN source address. The worker learns the address from its public IP
   detection; with detection off (`CASHPILOT_EGRESS_DETECT=off`) and no
   `CASHPILOT_EGRESS_IP`, this drop is missing. A starting worker looks the
-  address up before it writes the first table, and a new address is fenced as
-  soon as the worker sees it. Replies to published ports still go out, so Storj,
+  address up before it writes the first table, a new address is fenced as soon
+  as the worker sees it, and while a lookup fails the table keeps the address it
+  already drops. A host whose first lookup after a reboot fails has no such
+  drop until a lookup succeeds; `CASHPILOT_EGRESS_IP` closes that gap. Replies to published ports still go out, so Storj,
   Sia and Anyone Protocol keep accepting inbound connections. Only replies pass:
   a connection an earner opened while the table was missing meets the drops
   again once the table is back.

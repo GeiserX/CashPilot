@@ -453,8 +453,13 @@ except OSError as exc:
     # the table is left as it is rather than rewritten without it.
     extras, route_error = [], "could not read the host's routes (%s)" % exc
 b = backend(os.environ.get("FENCE_BACKEND", "auto"))
-expected = f.rule_names(subnet, extras, filtered, egress, ipv6)
 counters, present = read(b, ipv6)
+if not egress:
+    # The worker does not know its public IP yet (a lookup failed, or it just
+    # started): keep the drop the table already has rather than lose it.
+    kept = [n[len(f.EGRESS_PREFIX):] for n in counters if n.startswith(f.EGRESS_PREFIX)]
+    egress = f.egress_target(kept[0]) if len(kept) == 1 else None
+expected = f.rule_names(subnet, extras, filtered, egress, ipv6)
 out = {"backend": b, "ok": True, "changed": False, "error": "", "extra_subnets": extras, "egress": egress, "ipv6": ipv6}
 if action == "apply" and filtered and route_error:
     out["ok"] = False
@@ -503,14 +508,17 @@ _egress: dict[str, str | None] = {"ip": None}
 
 
 def set_egress_ip(value: Any) -> bool:
-    """Remember the home's public IP for the next apply. A non-public value clears it.
+    """Remember the home's public IP for the next apply.
 
-    Returns True when a new public address arrived, so the caller can apply at once.
+    A failed lookup (None, or a non-public answer) keeps the last address: not
+    knowing the IP is no reason to stop dropping it. Returns True when a new
+    public address arrived, so the caller can apply at once.
     """
     new = egress_target(value)
-    changed = new is not None and new != _egress["ip"]
+    if new is None or new == _egress["ip"]:
+        return False
     _egress["ip"] = new
-    return changed
+    return True
 
 
 def setting() -> str:

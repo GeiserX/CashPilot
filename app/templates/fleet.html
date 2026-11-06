@@ -493,7 +493,8 @@ CASHPILOT_WORKER_NAME=server-name</code>
           failed.push(`${slug} (an instance is still running outside the isolated network)`);
         }
       } catch (err) {
-        failed.push(`the recount after the moves (${err.message})`);
+        // Not confirmed is not moved.
+        for (const slug of moved.splice(0)) failed.push(`${slug} (redeployed, but the worker could not confirm it moved: ${err.message})`);
       }
     }
     const done = moved.length ? `Isolation is on. Moved ${moved.join(', ')}.` : 'Isolation is on.';

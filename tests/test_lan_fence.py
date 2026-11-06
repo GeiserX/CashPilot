@@ -365,6 +365,15 @@ class TestTheHelperScript:
         assert again["changed"] and "egress-81.61.1.10" in again["counters"]
         assert "egress-81.61.1.9" not in again["counters"]
 
+    def test_an_unknown_public_ip_keeps_the_drop_the_table_has(self, tmp_path):
+        """A worker restart or a failed lookup must not reopen NAT loopback."""
+        self._run(tmp_path, "apply", egress="81.61.1.9")
+        got = self._run(tmp_path, "apply", egress="")
+        assert got["ok"] and not got["changed"] and got["matches"]
+        assert got["egress"] == "81.61.1.9" and "egress-81.61.1.9" in got["counters"]
+        self._run(tmp_path, "apply", filtered="0")
+        assert self._run(tmp_path, "apply", egress="")["egress"] is None, "nothing to keep, nothing invented"
+
     def test_with_ipv6_on_the_host_the_ip6_drops_are_written(self, tmp_path):
         got = self._run(tmp_path, "apply", ipv6=True)
         assert got["ipv6"] and got["matches"]
@@ -793,6 +802,7 @@ class TestTheMixedReboot:
         assert kwargs["network"] == lan_fence.NETWORK_NAME
 
 
+@patch.object(lan_fence, "_egress", {"ip": None})
 def test_the_helper_gets_the_egress_ip():
     lan_fence.set_egress_ip("81.61.1.9")
     client = MagicMock()
@@ -804,7 +814,7 @@ def test_the_helper_gets_the_egress_ip():
         lan_fence.run_helper(client, "apply", "172.18.0.0/16")
     assert client.containers.run.call_args.kwargs["environment"]["FENCE_EGRESS"] == "81.61.1.9"
     lan_fence.set_egress_ip("10.0.0.1")
-    assert lan_fence._egress["ip"] is None, "a detection failure clears it rather than dropping a LAN address"
+    assert lan_fence._egress["ip"] == "81.61.1.9", "a LAN answer is a failed lookup: never dropped, the last IP kept"
 
 
 # ---------------------------------------------------------------------------
@@ -952,7 +962,11 @@ def test_the_same_public_ip_triggers_no_extra_check():
     with patch.object(lan_fence, "_egress", {"ip": None}):
         assert lan_fence.set_egress_ip("81.61.1.9") is True
         assert lan_fence.set_egress_ip("81.61.1.9") is False
-        assert lan_fence.set_egress_ip(None) is False and lan_fence._egress["ip"] is None
+        assert lan_fence.set_egress_ip(None) is False and lan_fence._egress["ip"] == "81.61.1.9", (
+            "a failed lookup keeps dropping the last known address"
+        )
+        assert lan_fence.set_egress_ip("192.168.1.1") is False and lan_fence._egress["ip"] == "81.61.1.9"
+        assert lan_fence.set_egress_ip("81.61.1.10") is True and lan_fence._egress["ip"] == "81.61.1.10"
 
 
 def test_the_worker_image_ships_the_fence():
@@ -990,9 +1004,10 @@ const CP = {api: async (url, opts) => {
   if (url.endsWith('/isolation')) {
     isolationCalls++;
     if (isolationCalls === 1) return {mode: 'on', earners_outside: ['earnapp', 'honeygain', 'storj']};
+    if (failOn === 'recount') throw new Error('worker gone');
     return {mode: 'on', earners_outside: [leftOn || failOn].filter(Boolean)};
   }
-  if (failOn && !leftOn && url.includes(failOn)) throw new Error('worker said no');
+  if (failOn && !leftOn && failOn !== 'recount' && url.includes(failOn)) throw new Error('worker said no');
   return {status: 'deployed'};
 }};
 const renderFence = eval('(' + extract('renderFence') + ')');
@@ -1062,6 +1077,11 @@ class TestTheFleetPage:
         out = self._render(fail_on="left:honeygain")
         assert "Moved earnapp, storj." in out["after"]["error"]
         assert "honeygain (an instance is still running outside the isolated network)" in out["after"]["error"]
+
+    def test_a_recount_that_fails_confirms_nothing(self):
+        out = self._render(fail_on="recount")
+        assert "Moved" not in out["after"]["error"]
+        assert "earnapp (redeployed, but the worker could not confirm it moved: worker gone)" in out["after"]["error"]
 
     def test_one_failure_does_not_stop_the_rest(self):
         """A retired or broken earner would otherwise keep every later one exposed, on every click."""
