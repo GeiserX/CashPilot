@@ -128,11 +128,16 @@ rating:
     payout_record: Trustpilot withholds the rating of pawns.app for a breach of its guidelines and says
       it removed fake reviews, so its payout reviews cannot be taken at face value. We have not yet published
       a completed payout of our own.
-    privacy: The client is closed source; we did not review the privacy policy in depth.
-    support: No repeated support complaint found and no ticket of our own.
-    earnings_realism: We have not measured Pawns earnings per IP against a provider figure.
+    payout_terms: PayPal 4% fee via Tremendous, payouts reviewed up to 72 hours
     account_safety: One Trustpilot reviewer says an account was blocked during a withdrawal after a phone
       number was mistyped; we could not confirm a wider pattern on the page.
+    terms_fit: No servers, VPNs or proxies, one device per IP
+    traffic_transparency: Business clients route traffic, you cannot see which
+    privacy: The client is closed source; we did not review the privacy policy in depth.
+    identity_checks: SMS phone check first, email code every payout
+    support: No repeated support complaint found and no ticket of our own.
+    earnings_realism: We have not measured Pawns earnings per IP against a provider figure.
+    longevity: No legal entity in the terms, run by proxy firm IPRoyal
   cons:
   - text: The terms say an account can be blocked without prior notice for abuse of withdrawal conditions
       or multiple accounts, and its earnings may then not be paid out.

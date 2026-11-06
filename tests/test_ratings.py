@@ -372,6 +372,15 @@ class TestStrictCheck:
         svc = {"slug": "x", "name": "X", "status": "active", "rating": block}
         assert any("future" in p for p in gen.problems([svc], today=TODAY))
 
+    def test_every_row_needs_a_note(self):
+        from scripts import generate_ratings_page as gen
+
+        block = _rating(support="fair")
+        svc = {"slug": "x", "name": "X", "status": "active", "rating": block}
+        assert any("every row needs one" in p for p in gen.problems([svc], today=TODAY))
+        block["notes"] = dict.fromkeys(KEYS, "A short note.")
+        assert gen.problems([svc], today=TODAY) == []
+
     def test_an_unrated_live_service_fails(self):
         from scripts import generate_ratings_page as gen
 

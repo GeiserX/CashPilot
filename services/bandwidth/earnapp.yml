@@ -110,17 +110,21 @@ rating:
     earnings_realism: unknown
     longevity: good
   notes:
-    identity_checks: We found no EarnApp page that lists what a payout asks for, and our own notes do
-      not record it.
-    traffic_transparency: EarnApp is run by Bright Data; we did not find an EarnApp page that says how
-      the buyers of the traffic are vetted.
-    privacy: The client is closed source; we did not review the privacy policy in depth.
+    payout_record: Our $37.54 PayPal payout arrived as $36.81 in October 2026
+    payout_terms: $10 minimum for PayPal and Wise, with auto-redeem
     account_safety: We found no repeated pattern of accounts banned at cash-out with the balance kept.
       Trustpilot withholds EarnApp's rating for a breach of its guidelines and says it removed fake reviews,
       so we did not count its reviews either way.
+    terms_fit: Help centre strictly prohibits Docker, VMs and home servers
+    traffic_transparency: EarnApp is run by Bright Data; we did not find an EarnApp page that says how
+      the buyers of the traffic are vetted.
+    privacy: The client is closed source; we did not review the privacy policy in depth.
+    identity_checks: We found no EarnApp page that lists what a payout asks for, and our own notes do
+      not record it.
     support: One Trustpilot review says a ticket was closed without a reply; one is not a pattern, and
       we have no ticket of our own.
     earnings_realism: We have not measured EarnApp's earnings per IP against any figure the provider publishes.
+    longevity: Owned by Bright Data, payments from Bright Data Ltd.
   cons:
   - text: EarnApp's help centre says installing it in Docker containers, virtual machines, hosting services
       or home servers is strictly prohibited, which is how CashPilot runs it.

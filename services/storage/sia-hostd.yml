@@ -173,7 +173,15 @@ rating:
     longevity: good
   notes:
     payout_record: Payment is by on-chain contract; we have no host of our own to report.
+    payout_terms: Siacoin to your own wallet, you sell on an exchange
+    account_safety: Collateral burned if the host misses storage proofs
+    terms_fit: Published as a container image by the Sia Foundation
+    traffic_transparency: Encrypted fragments, no IP routing, renters not described
+    privacy: Open-source hostd (MIT)
+    identity_checks: Permissionless, no signup or account
     support: No pattern found.
+    earnings_realism: Only about 30% of offered storage is in use
+    longevity: Developed in the open by the Sia Foundation since 2022
   cons:
   - text: 'Earnings are Siacoin in your own wallet: there is no payout to a bank, so you sell on an exchange
       yourself.'
