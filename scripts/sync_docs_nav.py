@@ -6,7 +6,7 @@ WHY THIS EXISTS
 Two hand-maintained lists both drifted from ``services/*/*.yml``, and they
 drifted in exactly the same way:
 
-* ``mkdocs.yml`` listed 51 of the 52 guides, so ``proxybase-xyz.md`` was
+* the nav (then in ``mkdocs.yml``) listed 51 of the 52 guides, so ``proxybase-xyz.md`` was
   reachable only by URL — orphaned from the site's own navigation;
 * ``docs/guides/README.md`` linked 49 services and said "**49 services**" while
   the catalog held 50 — missing the same one.
@@ -18,7 +18,7 @@ README tables, so the docs should read from it too.
 
 WHAT IT WRITES
 --------------
-1. The ``Service Guides`` section of ``mkdocs.yml``'s nav, grouped by the
+1. The ``Service guides`` section of ``zensical.toml``'s nav, grouped by the
    catalog's own four categories instead of one flat alphabetical list of 52.
 2. ``docs/guides/index.md`` — a filterable index table carrying the fields a
    visitor actually chooses on: category, what it needs (GPU / residential IP /
@@ -35,6 +35,7 @@ are revenue; this only rewrites the index and the nav.
 from __future__ import annotations
 
 import argparse
+import json
 import pathlib
 import re
 import sys
@@ -43,7 +44,7 @@ import yaml
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 GUIDES = ROOT / "docs" / "guides"
-MKDOCS = ROOT / "mkdocs.yml"
+ZENSICAL = ROOT / "zensical.toml"
 INDEX = GUIDES / "index.md"
 
 #: Display order and headings. Deliberately not alphabetical: bandwidth is what
@@ -173,16 +174,23 @@ def render_index(services: list[dict]) -> str:
     return "\n".join(out)
 
 
+def toml_key(name: str) -> str:
+    """A nav title as a TOML key: bare when TOML allows it, quoted otherwise."""
+    return name if re.fullmatch(r"[A-Za-z0-9_-]+", name) else json.dumps(name, ensure_ascii=False)
+
+
 def render_nav(services: list[dict]) -> str:
-    """The nav block, grouped by category and indented for mkdocs.yml."""
+    """The nav block, grouped by category and indented for zensical.toml."""
     grouped = by_category(services)
-    lines = ["  - Service guides:", "    - Overview: guides/index.md"]
+    lines = ['  { "Service guides" = [', '      { Overview = "guides/index.md" },']
     for key, title in CATEGORY_TITLES:
         items = grouped.get(key)
         if not items:
             continue
-        lines.append(f"    - {title}:")
-        lines += [f"      - {svc['name']}: guides/{svc['slug']}.md" for svc in items]
+        lines.append(f"      {{ {toml_key(title)} = [")
+        lines += [f'          {{ {toml_key(svc["name"])} = "guides/{svc["slug"]}.md" }},' for svc in items]
+        lines.append("        ] },")
+    lines.append("    ] },")
     # prometheus-metrics.md is NOT added here: it already has a top-level nav
     # entry, and it is a reference page rather than a service guide. Listing it
     # in both places put the same page in the nav twice -- caught by counting
@@ -190,12 +198,16 @@ def render_nav(services: list[dict]) -> str:
     return "\n".join(lines)
 
 
-def splice_nav(mkdocs_text: str, nav_block: str) -> str:
-    """Replace the existing Service Guides section, leaving the rest untouched."""
-    pattern = re.compile(r"^  - Service guides:\n(?:^ {4,}.*\n?)*", re.M)
-    if not pattern.search(mkdocs_text):
-        raise SystemExit("mkdocs.yml has no '  - Service guides:' section to replace")
-    return pattern.sub(nav_block + "\n", mkdocs_text, count=1)
+def splice_nav(config_text: str, nav_block: str) -> str:
+    """Replace the existing Service guides section, leaving the rest untouched.
+
+    The section runs from its opening line to the first line that closes it at
+    the same depth (``    ] },``); the category lists inside close deeper.
+    """
+    pattern = re.compile(r'^  \{ "Service guides" = \[\n(?:.*\n)*?^    \] \},\n', re.M)
+    if not pattern.search(config_text):
+        raise SystemExit("zensical.toml has no '  { \"Service guides\" = [' section to replace")
+    return pattern.sub(lambda _: nav_block + "\n", config_text, count=1)
 
 
 def main() -> int:
@@ -214,13 +226,13 @@ def main() -> int:
         raise SystemExit(f"guides with no catalog entry, so they cannot be placed: {sorted(unknown)}")
 
     new_index = render_index(services)
-    new_mkdocs = splice_nav(MKDOCS.read_text(encoding="utf-8"), render_nav(services))
+    new_config = splice_nav(ZENSICAL.read_text(encoding="utf-8"), render_nav(services))
 
     stale = []
     if INDEX.read_text(encoding="utf-8") != new_index:
         stale.append(str(INDEX.relative_to(ROOT)))
-    if MKDOCS.read_text(encoding="utf-8") != new_mkdocs:
-        stale.append(str(MKDOCS.relative_to(ROOT)))
+    if ZENSICAL.read_text(encoding="utf-8") != new_config:
+        stale.append(str(ZENSICAL.relative_to(ROOT)))
 
     if args.check:
         if stale:
@@ -231,7 +243,7 @@ def main() -> int:
         return 0
 
     INDEX.write_text(new_index, encoding="utf-8")
-    MKDOCS.write_text(new_mkdocs, encoding="utf-8")
+    ZENSICAL.write_text(new_config, encoding="utf-8")
     print(f"Wrote nav and index for {len(services)} services." if stale else "Already up to date.")
     return 0
 

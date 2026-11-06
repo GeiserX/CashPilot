@@ -37,29 +37,33 @@ children.
 
 from __future__ import annotations
 
-import re
+import tomllib
 from pathlib import Path
 
 import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
-MKDOCS = ROOT / "mkdocs.yml"
+ZENSICAL = ROOT / "zensical.toml"
 DOCS = ROOT / "docs"
 WORKFLOW = ROOT / ".github" / "workflows" / "docs.yml"
 
 
-def nav_text() -> str:
-    text = MKDOCS.read_text(encoding="utf-8")
-    start = text.index("\nnav:")
-    # Ends at the next top-level key, which is the first column-0 line after nav.
-    rest = text[start + 1 :]
-    match = re.search(r"\n(?=[A-Za-z_])", rest)
-    return rest[: match.start()] if match else rest
+def nav() -> list:
+    return tomllib.loads(ZENSICAL.read_text(encoding="utf-8"))["project"]["nav"]
 
 
 def top_level() -> list[str]:
-    """The entries that become TABS. Two-space indent, nothing deeper."""
-    return [line.strip()[2:].split(":")[0].strip() for line in nav_text().splitlines() if re.match(r"^  - \S", line)]
+    """The entries that become TABS: the first level of the nav, nothing deeper."""
+    return [next(iter(entry)) for entry in nav()]
+
+
+def nav_refs(entries: list | None = None) -> list[str]:
+    """Every page the nav links, at any depth."""
+    refs = []
+    for entry in nav() if entries is None else entries:
+        for value in entry.values():
+            refs += nav_refs(value) if isinstance(value, list) else [value]
+    return refs
 
 
 class TestTheTopLevelIsGroupedRatherThanFlat:
@@ -94,17 +98,7 @@ class TestTheTopLevelIsGroupedRatherThanFlat:
 
     def test_no_section_holds_a_single_page(self):
         """A group of one is a rename with extra clicks, not a grouping."""
-        text = nav_text()
-        groups: dict[str, int] = {}
-        current = None
-        for line in text.splitlines():
-            if re.match(r"^  - [^:]+:\s*$", line):  # a group header has no value
-                current = line.strip()[2:].rstrip(":")
-                groups[current] = 0
-            elif re.match(r"^  - \S", line):
-                current = None
-            elif current and re.match(r"^    - \S", line):
-                groups[current] += 1
+        groups = {name: len(value) for entry in nav() for name, value in entry.items() if isinstance(value, list)}
         lonely = [name for name, count in groups.items() if count == 1]
         assert not lonely, f"sections holding a single page: {lonely}"
 
@@ -113,7 +107,7 @@ class TestNoPageIsLostInTheMove:
     def test_every_page_that_was_in_the_nav_still_is(self):
         """The restructure moved eleven entries. Losing one would orphan a page
         as silently as the guide this bead started with."""
-        refs = set(re.findall(r": ([\w./-]+\.md)", nav_text()))
+        refs = set(nav_refs())
         for page in (
             "index.md",
             "getting-started.md",
@@ -132,13 +126,13 @@ class TestNoPageIsLostInTheMove:
     def test_the_research_pages_are_no_longer_orphans(self):
         """Both were reachable only by URL. They are real reference material —
         the measurements behind catalog thresholds — not drafts."""
-        refs = set(re.findall(r": ([\w./-]+\.md)", nav_text()))
+        refs = set(nav_refs())
         assert "research/idle-network-traffic.md" in refs
         assert "research/per-ip-device-limits.md" in refs
 
     def test_every_page_in_the_nav_exists_on_disk(self):
-        """--strict fails the build on this; catching it here is cheaper."""
-        missing = [ref for ref in re.findall(r": ([\w./-]+\.md)", nav_text()) if not (DOCS / ref).is_file()]
+        """site-check fails the build on this; catching it here is cheaper."""
+        missing = [ref for ref in nav_refs() if not (DOCS / ref).is_file()]
         assert not missing, f"nav points at files that do not exist: {missing}"
 
 
@@ -166,7 +160,7 @@ class TestTheDocsBuildRunsBeforeMergeNotAfter:
         gate back after the merge instead of before it. (CodeRabbit, PR #257.)
         """
         runs = [step.get("run", "") for step in self._doc()["jobs"]["build"]["steps"] if isinstance(step, dict)]
-        assert any("mkdocs build --strict" in run for run in runs), runs
+        assert any("zensical build --clean --strict" in run for run in runs), runs
 
     def test_the_deploy_waits_for_the_build(self):
         """Otherwise the check is decorative: main could deploy a site the
@@ -182,10 +176,13 @@ class TestTheDocsBuildRunsBeforeMergeNotAfter:
         The EXACT condition, not a substring. `"pull_request" in condition` is
         satisfied by `github.event_name == 'pull_request'` too — an inversion
         that would deploy on every pull request and on nothing else. The deploy
-        runs on push to main and on a manual dispatch, both from main.
+        runs on push to main and on a manual dispatch from main; a dispatch on
+        any other branch builds and does not deploy.
         """
         condition = str(self._doc()["jobs"]["deploy"].get("if", "")).strip()
-        assert condition == "github.event_name != 'pull_request'", f"deploy `if:` is {condition!r}"
+        assert condition == "github.event_name != 'pull_request' && github.ref == 'refs/heads/main'", (
+            f"deploy `if:` is {condition!r}"
+        )
 
     def test_only_the_deploy_job_can_publish(self):
         """Least privilege: the PR build needs to read the checkout and nothing

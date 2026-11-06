@@ -1,7 +1,7 @@
 """The Service guides page reloaded itself forever (issue #465).
 
 ``guides/README.md: guides/index.md`` in the redirects plugin looks like a
-rename, but MkDocs publishes a folder's ``README.md`` and ``index.md`` at the
+rename, but MkDocs published a folder's ``README.md`` and ``index.md`` at the
 same URL, ``guides/``. The plugin wrote its redirect page there, over the real
 index, and the page sent the browser to ``./``: itself. Every link to the guide
 list (the README, the docs nav, the app) showed a black page that kept
@@ -13,14 +13,14 @@ that, so none may exist.
 
 from __future__ import annotations
 
-import re
+import tomllib
 from pathlib import PurePosixPath
 
-from tests.test_docs_never_publish_agent_files import MKDOCS
+from tests.test_docs_never_publish_agent_files import ZENSICAL
 
 
 def _url(page: str) -> str:
-    """The URL MkDocs gives a page under use_directory_urls (its default)."""
+    """The URL a page gets under use_directory_urls (the default)."""
     path = PurePosixPath(page)
     stem = path.stem
     parent = "" if str(path.parent) == "." else f"{path.parent}/"
@@ -30,10 +30,8 @@ def _url(page: str) -> str:
 
 
 def _redirects() -> dict[str, str]:
-    text = MKDOCS.read_text()
-    block = re.search(r"redirect_maps:\n((?:[ \t]+\S.*\n)+)", text)
-    assert block, "mkdocs.yml has no redirect_maps block"
-    pairs = re.findall(r"^\s+(\S+\.md):\s*(\S+\.md)\s*$", block.group(1), re.M)
+    project = tomllib.loads(ZENSICAL.read_text(encoding="utf-8"))["project"]
+    pairs = project.get("plugins", {}).get("redirects", {}).get("redirect_maps", {})
     assert pairs, "redirect_maps parsed to nothing; this test would pass on any config"
     return dict(pairs)
 

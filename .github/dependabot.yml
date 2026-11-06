@@ -37,18 +37,19 @@ updates:
         update-types:
           - version-update:semver-major
   # The docs toolchain is a separate install and needs its own watcher: docs.yml
-  # pip-installs docs/requirements-docs.txt to run MkDocs, and `uv` does not see
-  # that file. Dependabot's pip ecosystem did (it opened #125 for
-  # mkdocs-material), so dropping pip entirely would have quietly frozen MkDocs.
+  # pip-installs docs/requirements-docs.txt to run Zensical, and `uv` does not
+  # see that file. Dependabot's pip ecosystem did (it opened #125 for
+  # mkdocs-material), so dropping pip entirely would have quietly frozen the
+  # docs build. Monthly: Zensical releases every week or two, and the strict
+  # build and site-check in the Docs workflow prove each bump.
   #
   # These deps stay OUT of uv.lock on purpose. release.yml treats uv.lock as a
-  # release trigger, so a mkdocs-material bump would otherwise cut an app
-  # release that changes nothing in the app.
+  # release trigger, so a docs-tool bump would otherwise cut an app release
+  # that changes nothing in the app.
   - package-ecosystem: pip
     directory: /docs
     schedule:
-      interval: weekly
-      day: monday
+      interval: monthly
     commit-message:
       prefix: docs
     labels:
