@@ -10,7 +10,7 @@
 # === Deploy on main server (e.g., server-a) ===
 services:
   cashpilot-ui:
-    image: drumsergio/cashpilot:1.69
+    image: drumsergio/cashpilot:1.70
     pull_policy: always
     container_name: cashpilot-ui
     # Loopback by default (the UI commands the Docker-socket worker). Set
@@ -101,7 +101,7 @@ services:
         target: /etc/sockguard/sockguard.yaml
 
   cashpilot-worker:
-    image: drumsergio/cashpilot-worker:1.69
+    image: drumsergio/cashpilot-worker:1.70
     pull_policy: always
     container_name: cashpilot-worker
     # The worker exposes a Docker-socket-backed API (deploy/stop/remove any

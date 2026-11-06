@@ -43,12 +43,14 @@ How it works:
   one matters because most home routers loop a connection to their own public
   address straight back into the LAN (NAT loopback), where it arrives with a
   LAN source address. The worker learns the address from its public IP
-  detection; with detection off (`CASHPILOT_EGRESS_DETECT=off`) and no
-  `CASHPILOT_EGRESS_IP`, this drop is missing. A starting worker looks the
+  detection, so with detection off (`CASHPILOT_EGRESS_DETECT=off`) this drop
+  is missing, even with `CASHPILOT_EGRESS_IP` set. A starting worker looks the
   address up before it writes the first table, a new address is fenced as soon
   as the worker sees it, and while a lookup fails the table keeps the address it
   already drops. A host whose first lookup after a reboot fails has no such
-  drop until a lookup succeeds; `CASHPILOT_EGRESS_IP` closes that gap. Replies to published ports still go out, so Storj,
+  drop until a lookup succeeds. Setting `CASHPILOT_EGRESS_IP` to your current
+  public IP, with detection left on, closes that gap: the worker then needs no
+  lookup. Replies to published ports still go out, so Storj,
   Sia and Anyone Protocol keep accepting inbound connections. Only replies pass:
   a connection an earner opened while the table was missing meets the drops
   again once the table is back.
