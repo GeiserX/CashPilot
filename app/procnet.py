@@ -351,7 +351,7 @@ def parse_diag(data, proto):
     Each socket is the dict parse_sockets makes, plus ``cgroup``: the cgroup v2
     id the kernel reported, or None when it reported none (TIME_WAIT and
     request sockets never carry one). ``done`` is True at NLMSG_DONE; ``error``
-    is the errno of an NLMSG_ERROR, else 0. ``interrupted`` is True when the
+    is the errno of an NLMSG_ERROR or of a DONE that ends a failed dump, else 0. ``interrupted`` is True when the
     kernel ended the dump with NLM_F_DUMP_INTR: the table changed meanwhile.
     """
     family = "udp" if proto.startswith("udp") else "tcp"
@@ -363,7 +363,9 @@ def parse_diag(data, proto):
         body = data[off + _NLMSG_HDR.size : off + length]
         off += _align4(length)
         if kind == NLMSG_DONE:
-            return found, True, 0, bool(flags & NLM_F_DUMP_INTR)
+            # The kernel ends a failed dump with DONE and a negative errno in its body.
+            err = struct.unpack_from("=i", body)[0] if len(body) >= 4 else 0
+            return found, True, (-err if err < 0 else 0), bool(flags & NLM_F_DUMP_INTR)
         if kind == NLMSG_ERROR:
             err = struct.unpack_from("=i", body)[0] if len(body) >= 4 else -1
             return found, True, (-err if err < 0 else err), False
@@ -525,7 +527,7 @@ def cgroup_snapshot(ids, dumps=DIAG_DUMPS, dump=None):
         for s in sockets:
             s.pop("cgroup", None)
             mine.append(s)
-    return mine, tagged or not seen, worked, partial and worked > 0
+    return mine, tagged or not seen, worked, partial
 
 
 def _read(path):
