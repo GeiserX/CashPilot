@@ -219,11 +219,15 @@ and a worker on the same host. A compromised worker there can read the UI's
 `cashpilot_data`), including `.fernet_key`, the key that decrypts every
 service login CashPilot stores. It can also read `CASHPILOT_SECRET_KEY`, `CASHPILOT_API_KEY` and
 `CASHPILOT_ADMIN_API_KEY` from the UI container's environment when they are set
-there. The proxy keeps the worker off
-the host's root; it does not keep it out of the UI. To keep the stored logins
-out of a worker's reach, run the UI on a host with no worker and put the
-earners behind `docker-compose.worker.yml` on other hosts, as
-[Fleet](fleet.md) describes.
+there. Even where the proxy keeps the worker off the host's root (both bind
+variables unset, no other socket-holding container, as above), it does not keep
+it out of the UI. To keep the stored logins out of a worker's reach, run the UI
+on a host with no worker and put the earners behind
+`docker-compose.worker.yml` on other hosts, as [Fleet](fleet.md) describes.
+A worker still receives the logins of the services you deploy to it, so a
+compromised worker leaks those, but not the rest. The UI talks to a worker over
+plain HTTP, carrying the worker's key and those logins, so keep that traffic on
+your LAN or a VPN such as Tailscale, never on the open internet.
 
 sockguard can also scope every call to containers, volumes and networks that
 carry its owner label, which would close the first three. CashPilot does not
