@@ -59,6 +59,9 @@ the table.
 - **`DEVICE_NAME`.** CashPilot names each device after the worker it runs on, so
   two workers never report the same name. Your old devices stay listed as
   offline in each provider's dashboard until you remove them there.
+- **Bitping.** CashFactory keeps the Bitping login in a Docker volume, not in
+  `.env`, so the import has nothing to read and shows no Bitping row. Type the
+  login in Bitping's deploy form.
 - **Portainer and Watchtower.** CashPilot manages and updates its own
   containers.
 
