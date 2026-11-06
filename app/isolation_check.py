@@ -621,7 +621,10 @@ def published_ports(client: Any) -> list[tuple[str, int]]:
 
 
 def _pick_earner(earners: list[Any], network: str) -> Any | None:
-    bridge = [c for c in earners if _is_bridge(c)]
+    # A tunnel sidecar sits on the bridge too, but its own firewall drops every
+    # LAN target, so probing from it would read "isolated" whatever the
+    # bridge's rules are. Only an ordinary earner says what the bridge allows.
+    bridge = [c for c in earners if _is_bridge(c) and not orchestrator.is_proxied(c)]
     on_network = [c for c in bridge if network and network in _networks(c)]
     return (on_network or bridge or [None])[0]
 

@@ -1,0 +1,15 @@
+#!/bin/sh
+# Prints the exit IP and country this network namespace reaches the internet
+# from, as one line of JSON: {"ip":"203.0.113.7","country":"ES"}.
+# Exit status 1 when no IP-echo endpoint answers.
+set -u
+
+ip=""
+for url in https://api.ipify.org https://ifconfig.me/ip https://icanhazip.com; do
+    ip=$(curl -fsS --max-time 8 "$url" 2>/dev/null | tr -cd '0-9a-fA-F.:' | cut -c1-45)
+    [ -n "$ip" ] && break
+done
+[ -n "$ip" ] || exit 1
+
+country=$(curl -fsS --max-time 8 "https://ipinfo.io/$ip/country" 2>/dev/null | tr -cd 'A-Z' | cut -c1-2)
+printf '{"ip":"%s","country":"%s"}\n' "$ip" "$country"

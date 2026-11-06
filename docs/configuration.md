@@ -73,6 +73,7 @@ defensible on its own; together they are impossible to guess.
 | `CASHPILOT_CONTAINER_DNS` | `1.1.1.1,9.9.9.9` | DNS servers, IP addresses separated by commas, for containers on CashPilot's isolated network or on `CASHPILOT_CONTAINER_NETWORK`. Other containers and the host keep the Docker daemon's list. Set it empty to give the isolated containers the daemon's list too. Applies when a container is next deployed. See [name lookups](home-network-security.md#name-lookups-need-a-resolver-the-rules-allow). | - |
 | `CASHPILOT_CONTAINER_RUNTIME` | unset | A Docker runtime, such as a gVisor runtime you registered in `daemon.json`, for containers on bridge networking. Host-networked services keep Docker's default. A deploy is refused while the daemon does not provide it. See [gVisor](home-network-security.md#7-gvisor-optional). | - |
 | `CASHPILOT_CONTAINER_RUNTIME_OVERRIDES` | unset | Per-service exceptions, `slug=runtime` separated by commas, e.g. `bitping=runsc-hostnet-raw`. `slug=runc` runs that service under `runc`, the runtime Docker ships with, whatever the daemon's default is. | - |
+| `CASHPILOT_TUNNEL_IMAGE` | `drumsergio/cashpilot-tunnel:<worker version>` | The tunnel image for [proxied copies](proxies.md), for a mirror or a test build. Only an exact version tag or a digest is accepted, never `latest`. | - |
 | `CASHPILOT_DATA_DIR` | `/data` | Where `.worker_id` and `.worker_key` live. | - |
 
 !!! danger "`CASHPILOT_PORT` does not change the port the worker listens on"
