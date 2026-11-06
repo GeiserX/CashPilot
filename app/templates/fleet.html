@@ -74,6 +74,57 @@
   <div id="fleet-economics-body"></div>
 </section>
 
+{% if user.r == 'owner' %}
+<!-- Proxies (docs/proxies.md): an owner adds a proxy once and runs copies of
+     services through it. Secrets are write-only: the API answers "set" and
+     never the value, so the form leaves those boxes empty on edit. -->
+<section class="fleet-proxies" id="fleet-proxies" aria-labelledby="proxies-title">
+  <div class="block-head">
+    <h2 class="block-title" id="proxies-title">Proxies</h2>
+    <span class="block-meta">Copies of a service that leave through a proxy instead of the box's own connection. <a href="https://geiserx.github.io/CashPilot/proxies/">How it works</a></span>
+  </div>
+  <div id="proxy-list" class="table-scroll"><div class="loading-line"><div class="spinner"></div> Loading proxies</div></div>
+  <div id="proxy-exits"></div>
+
+  <details class="add-worker" id="proxy-form-box">
+    <summary id="proxy-form-title">Add a proxy</summary>
+    <form id="proxy-form" class="add-worker-body power-settings" autocomplete="off">
+      <input type="hidden" id="proxy-id">
+      <div><label class="form-label" for="proxy-name">Name</label><input class="form-input" id="proxy-name" required maxlength="80"></div>
+      <div><label class="form-label" for="proxy-kind">Type</label>
+        <select class="form-input" id="proxy-kind">
+          <option value="socks5">SOCKS5</option><option value="http">HTTP CONNECT</option><option value="tailscale">Tailscale exit node</option>
+        </select></div>
+      <div class="proxy-net"><label class="form-label" for="proxy-host">Host</label><input class="form-input" id="proxy-host"></div>
+      <div class="proxy-net"><label class="form-label" for="proxy-port">Port</label><input class="form-input form-input-code" id="proxy-port" type="number" min="1" max="65535"></div>
+      <div class="proxy-net"><label class="form-label" for="proxy-username">User</label><input class="form-input" id="proxy-username" placeholder="unchanged if empty">
+        <label class="muted proxy-clear"><input type="checkbox" id="proxy-clear-username"> Remove the stored user</label></div>
+      <div class="proxy-net"><label class="form-label" for="proxy-password">Password</label><input class="form-input" id="proxy-password" type="password" placeholder="unchanged if empty">
+        <label class="muted proxy-clear"><input type="checkbox" id="proxy-clear-password"> Remove the stored password</label></div>
+      <div class="proxy-ts" style="display:none;"><label class="form-label" for="proxy-authkey">Auth key (reusable, ephemeral, tagged)</label><input class="form-input" id="proxy-authkey" type="password" placeholder="unchanged if empty"></div>
+      <div class="proxy-ts" style="display:none;"><label class="form-label" for="proxy-exitnode">Exit node</label><input class="form-input" id="proxy-exitnode" placeholder="name or 100.x address"></div>
+      <div class="proxy-ts" style="display:none;"><label class="form-label" for="proxy-login">Login server</label><input class="form-input" id="proxy-login" placeholder="empty for Tailscale's own"></div>
+      <div><label class="form-label" for="proxy-cap">Traffic cap (GB)</label><input class="form-input form-input-code" id="proxy-cap" type="number" min="0" step="0.1" placeholder="none"></div>
+      <div><label class="form-label" for="proxy-pct">Stop at (%)</label><input class="form-input form-input-code" id="proxy-pct" type="number" min="10" max="100" value="90"></div>
+      <div><label class="form-label" for="proxy-reset">Resets on day</label><input class="form-input form-input-code" id="proxy-reset" type="number" min="1" max="28" placeholder="by hand"></div>
+      <div><label class="form-label" for="proxy-rotating"><input type="checkbox" id="proxy-rotating"> Rotating exit IP</label></div>
+      <button class="btn btn-primary btn-sm" type="submit">Save</button>
+    </form>
+  </details>
+
+  <details class="add-worker" id="proxy-copy-box">
+    <summary>Run a copy through a proxy</summary>
+    <form id="proxy-copy-form" class="add-worker-body power-settings">
+      <div><label class="form-label" for="copy-worker">Box</label><select class="form-input" id="copy-worker"></select></div>
+      <div><label class="form-label" for="copy-slug">Service deployed there</label><select class="form-input" id="copy-slug"></select></div>
+      <div><label class="form-label" for="copy-proxy">Proxy</label><select class="form-input" id="copy-proxy"></select></div>
+      <button class="btn btn-primary btn-sm" type="submit">Run the copy</button>
+      <span class="muted">Only services without host networking, ports, volumes or devices can run through a proxy.</span>
+    </form>
+  </details>
+</section>
+{% endif %}
+
 <details class="add-worker" id="add-worker">
   <summary>Add a box</summary>
   <div class="add-worker-body">
@@ -394,7 +445,8 @@ CASHPILOT_WORKER_NAME=server-name</code>
             ${_isOwner ? `<button class="btn btn-danger btn-sm btn-remove-worker" data-worker-id="${w.id}" data-worker-name="${esc(w.name)}" data-worker-client="${esc(w.client_id || '')}" title="Remove worker">Remove</button>` : ''}
           </td>
         </tr>
-        ${_isolation[w.id] && _isolation[w.id] !== 'running' ? `<tr class="worker-detail"><td colspan="7">${renderIsolation(_isolation[w.id])}</td></tr>` : ''}`;
+        ${_isolation[w.id] && _isolation[w.id] !== 'running' ? `<tr class="worker-detail"><td colspan="7">${renderIsolation(_isolation[w.id])}</td></tr>` : ''}
+        ${isOnline && !isAndroid ? renderFence(w, sysInfo) : ''}`;
     }
     container.innerHTML = `
       <table class="fleet-table">
@@ -404,6 +456,103 @@ CASHPILOT_WORKER_NAME=server-name</code>
         </tr></thead>
         <tbody>${rows}</tbody>
       </table>`;
+  }
+
+  // Turning isolation on, per worker id: {busy}, {done}, or {error}.
+  const _fenceSwitch = {};
+
+  // The LAN fence of one worker (app/lan_fence.py), from its heartbeat. Says
+  // nothing when the fence holds and every earner sits behind it.
+  function renderFence(w, sysInfo) {
+    const iso = sysInfo.isolation;
+    const sw = _fenceSwitch[w.id];
+    if (!iso || !iso.mode) return '';
+    const fence = iso.fence || {};
+    const outside = iso.earners_outside || [];
+    const stopped = iso.earners_outside_stopped || [];
+    // A redeploy starts the container, so the switch leaves stopped earners
+    // where they are; they move the next time they are deployed.
+    const stoppedNote = stopped.length
+      ? ` <span class="muted">Stopped, so left alone: ${esc(stopped.join(', '))}. Each moves when you next deploy it; starting it as it is keeps it on the old network.</span>`
+      : '';
+    const canSwitch = _isOwner && (sysInfo.features || []).includes('isolation_default');
+    const button = (text) => canSwitch && !(sw && sw.busy)
+      ? ` <button class="btn btn-primary btn-sm btn-fence-on" data-worker-id="${w.id}" data-worker-name="${esc(w.name)}">${text}</button>`
+      : '';
+    let line = '';
+    if (iso.mode === 'legacy') {
+      line = `<span class="text-warn">Earners on this worker can reach your LAN and this host: ${esc(outside.join(', ') || 'none running')}.</span>${button('Turn on isolation')}${stoppedNote}`;
+    } else if (iso.mode === 'on' && fence.state === 'failed') {
+      line = `<span class="text-fail">The LAN fence is not in place on this worker: ${esc(fence.error || 'unknown error')}. While it is missing, earners on its network can reach this host's own services, and they may still reach the internet if another masquerade rule on the host covers them. Deploys are refused until it is back. To run without the fence, set CASHPILOT_ISOLATION=off on the worker.</span>`;
+    } else if (iso.mode === 'on' && outside.length) {
+      line = `<span class="text-warn">These earners are still outside the isolated network and can reach your LAN: ${esc(outside.join(', '))}.</span>${button('Move them')}${stoppedNote}`;
+    } else if (iso.mode === 'on' && stopped.length) {
+      line = stoppedNote.trim();
+    } else if (iso.mode === 'off' && outside.length === 0 && fence.state === 'reduced') {
+      line = '<span class="muted">Isolation is off (CASHPILOT_ISOLATION=off). Earners still on the isolated network keep their internet; redeploy them to move them back to Docker\'s default bridge.</span>';
+    }
+    if (sw) {
+      const tone = sw.error ? 'text-fail' : sw.busy ? 'muted' : 'text-ok';
+      line += `<div class="iso-line ${tone}">${esc(sw.error || sw.busy || sw.done)}</div>`;
+    }
+    return line ? `<tr class="worker-detail"><td colspan="7"><div class="iso-report">${line} <a href="https://geiserx.github.io/CashPilot/isolation/#lan-isolation-by-default" target="_blank" rel="noopener noreferrer">How it works</a></div></td></tr>` : '';
+  }
+
+  async function enableFence(workerId, name) {
+    if (!confirm(`Turn on LAN isolation on "${name}"?\n\n`
+      + '- The worker creates a Docker network (cashpilot-isolated) and one firewall table (ip cashpilot) on its host.\n'
+      + '- Each running earner on Docker\'s default bridge is redeployed once onto that network. Storj gets its full clean stop first, so it can take a few minutes.\n'
+      + '- Stopped earners stay stopped and move the next time you deploy them.\n'
+      + '- Identities and data are kept: the same volumes and settings are used.\n\n'
+      + 'To undo it, set CASHPILOT_ISOLATION=off on the worker and redeploy the earners.')) return;
+    _fenceSwitch[workerId] = { busy: 'Turning on isolation…' };
+    loadFleet();
+    let slugs;
+    try {
+      const r = await CP.api(`/api/workers/${workerId}/isolation`, { method: 'POST' });
+      slugs = r.earners_outside || [];
+    } catch (err) {
+      _fenceSwitch[workerId] = { error: `Isolation could not be turned on: ${err.message}` };
+      loadFleet();
+      return;
+    }
+    // One earner that cannot be redeployed (retired, broken, no recorded spec)
+    // must not keep the rest exposed, so every one is tried.
+    const moved = [];
+    const failed = [];
+    for (let i = 0; i < slugs.length; i++) {
+      const slug = slugs[i];
+      _fenceSwitch[workerId] = { busy: `Moving ${slug} (${i + 1} of ${slugs.length})…` };
+      loadFleet();
+      try {
+        // An empty body redeploys from the recorded spec, onto the new network.
+        await CP.api(`/api/deploy/${encodeURIComponent(slug)}?worker_id=${workerId}`, { method: 'POST', body: {} });
+        moved.push(slug);
+      } catch (err) {
+        failed.push(`${slug} (${err.message})`);
+      }
+    }
+    // A redeploy recreates the instances the UI has recorded. One left running
+    // beyond that (a scale-down that failed) is still outside, so ask the
+    // worker again rather than call a service moved because its deploy passed.
+    if (moved.length) {
+      try {
+        const again = await CP.api(`/api/workers/${workerId}/isolation`, { method: 'POST' });
+        const left = new Set(again.earners_outside || []);
+        for (const slug of moved.filter((s) => left.has(s))) {
+          moved.splice(moved.indexOf(slug), 1);
+          failed.push(`${slug} (an instance is still running outside the isolated network)`);
+        }
+      } catch (err) {
+        // Not confirmed is not moved.
+        for (const slug of moved.splice(0)) failed.push(`${slug} (redeployed, but the worker could not confirm it moved: ${err.message})`);
+      }
+    }
+    const done = moved.length ? `Isolation is on. Moved ${moved.join(', ')}.` : 'Isolation is on.';
+    _fenceSwitch[workerId] = failed.length
+      ? { error: `${done} Could not move: ${failed.join('; ')}. Redeploy or remove each from its service page.` }
+      : { done };
+    loadFleet();
   }
 
   // The last isolation check per worker id: 'running', a report, or {error}.
@@ -443,6 +592,15 @@ CASHPILOT_WORKER_NAME=server-name</code>
         const tone = t.reachable ? (bad ? 'iso-fail' : 'iso-warn') : 'iso-ok';
         const tip = `${t.label}${t.note ? '. ' + t.note : ''}`;
         html += `<span class="iso-target ${tone}" title="${esc(tip)}"><span class="mono">${esc(t.address)}</span> <span class="iso-state">${t.reachable ? 'reachable' : 'blocked'}</span></span>`;
+      }
+      html += '</span></div>';
+    }
+    // CashPilot's own fence: each range gets one connect to an unused address,
+    // and the drop rule's packet counter shows whether the fence caught it.
+    if (r.fence && (r.fence.ranges || []).length) {
+      html += `<div class="iso-group"><span class="iso-label" title="Each blocked range gets one test connection to an unused address; the fence's own packet counter shows it dropped it.">CashPilot's fence (${esc(r.fence.backend || '?')})</span><span class="iso-targets">`;
+      for (const x of r.fence.ranges) {
+        html += `<span class="iso-target ${x.proven ? 'iso-ok' : 'iso-fail'}" title="${esc(x.rule + ', test address ' + x.address)}"><span class="mono">${esc(x.range)}</span> <span class="iso-state">${x.proven ? 'dropped' : 'not caught'}</span></span>`;
       }
       html += '</span></div>';
     }
@@ -671,6 +829,13 @@ CASHPILOT_WORKER_NAME=server-name</code>
       return;
     }
 
+    const fenceBtn = e.target.closest('.btn-fence-on');
+    if (fenceBtn) {
+      const id = parseInt(fenceBtn.dataset.workerId, 10);
+      if (!isNaN(id) && !(_fenceSwitch[id] && _fenceSwitch[id].busy)) enableFence(id, fenceBtn.dataset.workerName);
+      return;
+    }
+
     const isoBtn = e.target.closest('.btn-isolation-check');
     if (isoBtn) {
       const id = parseInt(isoBtn.dataset.workerId, 10);
@@ -734,4 +899,210 @@ CASHPILOT_WORKER_NAME=server-name</code>
   fleetTimer = setInterval(loadFleet, 60000);
 })();
 </script>
+{% if user.r == 'owner' %}
+<script nonce="{{ csp_nonce(request) }}">
+(function() {
+  const esc = (v) => String(v == null ? '' : v).replace(/[&<>"']/g, (c) => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]));
+  const gb = (b) => (b / 1e9).toFixed(b < 1e10 ? 2 : 1);
+  let _proxies = [];
+  let _workers = [];
+
+  function workerName(id) {
+    const w = _workers.find((x) => x.id === id);
+    return w ? w.name : `box ${id}`;
+  }
+
+  function capLine(p) {
+    const c = p.cap;
+    // A stop that still holds is shown even with the cap now off, so it never hides.
+    if (c.capped_at) return `Stopped: ${c.cap_reason}`;
+    if (!c.enabled) return 'No cap';
+    const reset = c.reset_day ? `resets on day ${c.reset_day}` : 'resets by hand';
+    return `${gb(c.used_bytes)} of ${gb(c.cap_bytes)} GB, stops at ${c.threshold_pct}%, ${reset}`;
+  }
+
+  function copyStatus(workerId, slug, proxyId) {
+    const w = _workers.find((x) => x.id === workerId);
+    const entries = (w && w.system_info && w.system_info.proxied) || [];
+    const e = entries.find((x) => x.slug === slug && x.proxy_id === proxyId);
+    if (!e) return {status: 'unknown', via: ''};
+    const via = e.exit_ip ? `${e.exit_ip}${e.exit_country ? ' · ' + e.exit_country : ''}` : 'exit not seen yet';
+    return {status: e.status, via};
+  }
+
+  function render() {
+    const box = document.getElementById('proxy-list');
+    if (!_proxies.length) {
+      box.innerHTML = '<p class="muted">No proxies yet. Add one below.</p>';
+      return;
+    }
+    box.innerHTML = '<table class="fleet-table"><thead><tr><th>Proxy</th><th>Exit</th><th>Traffic</th><th>Copies</th><th></th></tr></thead><tbody>' +
+      _proxies.map((p) => {
+        const target = p.kind === 'tailscale' ? `Tailscale exit ${esc(p.exit_node)}` : `${esc(p.kind)} ${esc(p.host)}:${esc(p.port)}`;
+        let exit = p.last_exit_ip ? `${esc(p.last_exit_ip)}${p.last_country ? ' · ' + esc(p.last_country) : ''}${p.rotating ? ' (rotating)' : ''}` : '<span class="muted">not tested</span>';
+        const t = p.last_test;
+        if (t && !t.ok) exit += `<br><span class="muted">Last test failed on ${esc(t.worker)} (${esc((t.at || '').replace('T', ' ').slice(0, 16))}): ${esc(t.error)}</span>`;
+        const copies = p.copies.map((c) => {
+          const st = copyStatus(c.worker_id, c.slug, p.id);
+          const capped = c.stopped_by_cap ? ' <span class="muted">(stopped by the cap)</span>' : '';
+          return `<div>${esc(c.slug)} on ${esc(workerName(c.worker_id))}: ${esc(st.status)} via ${esc(st.via)}${capped}
+            <button class="btn btn-ghost btn-sm" data-copy="${p.id}:${c.worker_id}:${esc(c.slug)}" data-cmd="${st.status === 'running' ? 'stop' : 'start'}">${st.status === 'running' ? 'Stop' : 'Start'}</button>
+            <button class="btn btn-danger btn-sm" data-copy="${p.id}:${c.worker_id}:${esc(c.slug)}" data-cmd="remove">Remove</button></div>`;
+        }).join('') || '<span class="muted">none</span>';
+        return `<tr><td><strong>${esc(p.name)}</strong><br><span class="muted">${target}</span></td><td>${exit}</td>
+          <td>${esc(capLine(p))}${p.cap.enabled || p.cap.capped_at ? ` <button class="btn btn-ghost btn-sm" data-proxy="${p.id}" data-act="reset">Reset</button>` : ''}</td>
+          <td>${copies}</td>
+          <td><button class="btn btn-ghost btn-sm" data-proxy="${p.id}" data-act="test">Test</button>
+              <button class="btn btn-ghost btn-sm" data-proxy="${p.id}" data-act="edit">Edit</button>
+              <button class="btn btn-danger btn-sm" data-proxy="${p.id}" data-act="delete">Delete</button></td></tr>`;
+      }).join('') + '</tbody></table>';
+  }
+
+  function renderExits(exits) {
+    const box = document.getElementById('proxy-exits');
+    const known = exits.filter((g) => g.known);
+    const lines = known.map((g) => `<li>${esc(g.exit_ip)}: ${g.members.map((m) => `${esc(m.slug)} on ${esc(m.worker_name || m.worker_id)}`).join(', ')}${g.shared ? ' <strong>(shared)</strong>' : ''}</li>`);
+    exits.filter((g) => g.rotating).forEach((g) => lines.push(`<li>Rotating, not grouped: ${g.members.map((m) => esc(m.slug)).join(', ')}</li>`));
+    exits.filter((g) => !g.known && !g.rotating).forEach((g) => lines.push(`<li>Exit not seen yet: ${g.members.map((m) => esc(m.slug)).join(', ')}</li>`));
+    box.innerHTML = lines.length ? `<p class="block-meta">Proxied copies by the exit IP providers see</p><ul>${lines.join('')}</ul>` : '';
+  }
+
+  function fillCopyForm() {
+    const ws = document.getElementById('copy-worker');
+    const ps = document.getElementById('copy-proxy');
+    const keep = ws.value;
+    ws.innerHTML = _workers.filter((w) => (w.system_info && (w.system_info.features || []).includes('proxy_tunnel')))
+      .map((w) => `<option value="${w.id}">${esc(w.name)}</option>`).join('') || '<option value="">No box can run proxied copies yet</option>';
+    if (keep) ws.value = keep;
+    ps.innerHTML = _proxies.map((p) => `<option value="${p.id}">${esc(p.name)}</option>`).join('');
+    fillSlugs();
+  }
+
+  function fillSlugs() {
+    const id = Number(document.getElementById('copy-worker').value);
+    const w = _workers.find((x) => x.id === id);
+    const slugs = [...new Set(((w && w.containers) || []).map((c) => c.slug).filter(Boolean))].sort();
+    document.getElementById('copy-slug').innerHTML = slugs.map((s) => `<option>${esc(s)}</option>`).join('');
+  }
+
+  async function load() {
+    try {
+      const [data, workers] = await Promise.all([CP.api('/api/proxies'), CP.api('/api/workers').catch(() => [])]);
+      _proxies = data.proxies || [];
+      _workers = workers || [];
+      render();
+      renderExits(data.exits || []);
+      fillCopyForm();
+    } catch (err) {
+      document.getElementById('proxy-list').innerHTML = `<p class="muted">${esc(err.message)}</p>`;
+    }
+  }
+
+  function showKind() {
+    const ts = document.getElementById('proxy-kind').value === 'tailscale';
+    document.querySelectorAll('#proxy-form .proxy-ts').forEach((el) => { el.style.display = ts ? '' : 'none'; });
+    document.querySelectorAll('#proxy-form .proxy-net').forEach((el) => { el.style.display = ts ? 'none' : ''; });
+  }
+
+  function editForm(p) {
+    const f = (id, v) => { document.getElementById(id).value = v == null ? '' : v; };
+    f('proxy-id', p ? p.id : '');
+    f('proxy-name', p ? p.name : '');
+    f('proxy-kind', p ? p.kind : 'socks5');
+    f('proxy-host', p ? p.host : '');
+    f('proxy-port', p && p.port ? p.port : '');
+    ['proxy-username', 'proxy-password', 'proxy-authkey'].forEach((id) => f(id, ''));
+    ['proxy-clear-username', 'proxy-clear-password'].forEach((id) => { document.getElementById(id).checked = false; });
+    document.querySelectorAll('#proxy-form .proxy-clear').forEach((el) => { el.style.display = p ? '' : 'none'; });
+    f('proxy-exitnode', p ? p.exit_node : '');
+    f('proxy-login', p ? p.login_server : '');
+    f('proxy-cap', p && p.cap.cap_bytes ? p.cap.cap_bytes / 1e9 : '');
+    f('proxy-pct', p ? p.cap.threshold_pct : 90);
+    f('proxy-reset', p && p.cap.reset_day ? p.cap.reset_day : '');
+    document.getElementById('proxy-rotating').checked = !!(p && p.rotating);
+    document.getElementById('proxy-form-title').textContent = p ? `Edit ${p.name}` : 'Add a proxy';
+    document.getElementById('proxy-form-box').open = true;
+    showKind();
+  }
+
+  document.getElementById('proxy-kind').addEventListener('change', showKind);
+  document.getElementById('copy-worker').addEventListener('change', fillSlugs);
+
+  document.getElementById('proxy-form').addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    const v = (id) => document.getElementById(id).value;
+    const id = v('proxy-id');
+    const body = {
+      name: v('proxy-name'), kind: v('proxy-kind'), host: v('proxy-host'), port: v('proxy-port'),
+      username: v('proxy-username'), password: v('proxy-password'), auth_key: v('proxy-authkey'),
+      exit_node: v('proxy-exitnode'), login_server: v('proxy-login'),
+      cap_gb: v('proxy-cap'), cap_threshold_pct: v('proxy-pct'), reset_day: v('proxy-reset'),
+      rotating: document.getElementById('proxy-rotating').checked,
+      clear_username: document.getElementById('proxy-clear-username').checked,
+      clear_password: document.getElementById('proxy-clear-password').checked,
+    };
+    try {
+      await CP.api(id ? `/api/proxies/${id}` : '/api/proxies', {method: id ? 'PATCH' : 'POST', body});
+      CP.toast('Proxy saved', 'success');
+      editForm(null);
+      document.getElementById('proxy-form-box').open = false;
+      load();
+    } catch (err) { CP.toast(err.message, 'error'); }
+  });
+
+  document.getElementById('proxy-copy-form').addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    const proxyId = document.getElementById('copy-proxy').value;
+    const body = {worker_id: Number(document.getElementById('copy-worker').value), slug: document.getElementById('copy-slug').value};
+    CP.toast('Starting the tunnel, this can take up to a minute', 'info');
+    try {
+      const out = await CP.api(`/api/proxies/${proxyId}/copies`, {method: 'POST', body});
+      CP.toast(`Running through ${out.exit_ip || 'the proxy'}${out.country ? ' · ' + out.country : ''}`, 'success');
+      if (out.warning) CP.toast(out.warning, 'warning');
+      load();
+    } catch (err) { CP.toast(err.message, 'error'); }
+  });
+
+  document.getElementById('fleet-proxies').addEventListener('click', async (ev) => {
+    const btn = ev.target.closest('button[data-proxy], button[data-copy]');
+    if (!btn) return;
+    try {
+      if (btn.dataset.copy) {
+        const [pid, wid, slug] = btn.dataset.copy.split(':');
+        const base = `/api/proxies/${pid}/copies/${wid}/${encodeURIComponent(slug)}`;
+        if (btn.dataset.cmd === 'remove') {
+          if (!confirm(`Remove the proxied copy of ${slug}?`)) return;
+          await CP.api(base, {method: 'DELETE'});
+        } else {
+          await CP.api(`${base}/${btn.dataset.cmd}`, {method: 'POST'});
+        }
+      } else {
+        const id = btn.dataset.proxy;
+        const p = _proxies.find((x) => String(x.id) === id);
+        if (btn.dataset.act === 'edit') return editForm(p);
+        if (btn.dataset.act === 'delete') {
+          if (!confirm(`Delete the proxy ${p.name}?`)) return;
+          await CP.api(`/api/proxies/${id}`, {method: 'DELETE'});
+        } else if (btn.dataset.act === 'reset') {
+          await CP.api(`/api/proxies/${id}/reset-usage`, {method: 'POST'});
+        } else if (btn.dataset.act === 'test') {
+          const wid = document.getElementById('copy-worker').value;
+          CP.toast(`Testing on ${wid ? workerName(Number(wid)) : 'the default box'} through a throwaway tunnel`, 'info');
+          const out = await CP.api(`/api/proxies/${id}/test${wid ? `?worker_id=${wid}` : ''}`, {method: 'POST'});
+          CP.toast(`Exit ${out.exit_ip}${out.country ? ' · ' + out.country : ''} in ${out.ms} ms`, 'success');
+        }
+      }
+      load();
+    } catch (err) {
+      CP.toast(err.message, 'error');
+      // A failed test is stored on the proxy; show it in its row.
+      load();
+    }
+  });
+
+  load();
+  setInterval(load, 60000);
+})();
+</script>
+{% endif %}
 {% endblock %}

@@ -2257,6 +2257,8 @@ class TestLifespanScheduler:
                         # other; it carries the same hardening kwargs, which the
                         # loop below asserts for every job uniformly.
                         "update_check_android",
+                        # Proxy traffic caps that reset on a chosen day.
+                        "proxy_cap_resets",
                         # Activity: raw-address purge, spike check, network
                         # table refresh. Not spawned at startup.
                         "activity_hourly",
