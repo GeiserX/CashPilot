@@ -184,3 +184,77 @@ def test_runtipi_offers_no_public_exposure():
     Users reach it on APP_PORT instead."""
     config = json.loads((STORES / "runtipi" / "cashpilot" / "config.json").read_text(encoding="utf-8"))
     assert config.get("exposable", False) is False, "Runtipi listing offers public exposure; set exposable to false"
+
+
+# ---------------------------------------------------------------------------
+# CasaOS interpolates its compose file twice
+# ---------------------------------------------------------------------------
+#
+# Its importer (CasaOS-AppManagement NewComposeAppFromYAML) resolves variables,
+# answering "$NAME" for any it does not know, writes the result out, and
+# Compose resolves that file again on install. So `$$` reaches the container
+# as nothing useful, and `${VAR:-default}` with VAR unset ends as "", not as the
+# default. Checked against compose-go 1.20.2, the version CasaOS builds on.
+
+_TEMPLATE = re.compile(r"\$(?:(\$)|([_a-zA-Z][_a-zA-Z0-9]*)|\{([_a-zA-Z][_a-zA-Z0-9]*)(?:(:?[-?])([^}]*))?\}|(.|$))")
+
+
+def _interpolate(value, lookup):
+    if isinstance(value, dict):
+        return {k: _interpolate(v, lookup) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_interpolate(v, lookup) for v in value]
+    if not isinstance(value, str):
+        return value
+
+    def sub(m):
+        escaped, named, braced, op, default, invalid = m.groups()
+        if escaped:
+            return "$"
+        if invalid is not None:
+            raise ValueError(f"invalid template in {value!r}")
+        return lookup(named or braced, op, default)
+
+    return _TEMPLATE.sub(sub, value)
+
+
+def _casaos_install(doc: dict) -> dict:
+    def first(name, op, default):
+        return "$TZ" if name == "TZ" else f"${name}"
+
+    def second(name, op, default):
+        known = {"AppID": "cashpilot", "TZ": "UTC"}
+        if name in known:
+            return known[name]
+        return default if op and op.startswith(":") or op == "-" else ""
+
+    return _interpolate(_interpolate(doc, first), second)
+
+
+CASAOS = STORES / "casaos" / "CashPilot" / "docker-compose.yml"
+
+
+def test_casaos_install_gives_the_proxy_the_generated_policy():
+    import sys
+
+    sys.path.insert(0, str(ROOT / "scripts"))
+    import socket_proxy_policy as spp
+
+    installed = _casaos_install(_load(CASAOS))
+    policy = yaml.safe_load(installed["configs"]["cashpilot_socket_policy"]["content"])
+    assert policy == yaml.safe_load(spp.policy()), "the policy CasaOS hands the proxy is not the generated one"
+
+
+def test_casaos_install_never_leaves_an_empty_bind_entry():
+    """sockguard reads an empty entry as the prefix of every path, so an unset
+    variable turned into "" would let containers bind any host folder."""
+    installed = _casaos_install(_load(CASAOS))
+    env = _env(installed["services"]["cashpilot-socket-proxy"])
+    binds = env["SOCKGUARD_REQUEST_BODY_CONTAINER_CREATE_ALLOWED_BIND_MOUNTS"].split(",")
+    assert binds and all(b.strip() for b in binds), f"empty bind entry after a CasaOS install: {binds}"
+
+
+def test_the_casaos_simulation_can_fail():
+    """The control: the defaulted form plain Compose uses ends empty here."""
+    doc = {"x": "${UNSET_X:-/dev/null/x},$${Y}"}
+    assert _casaos_install(doc)["x"] == ","

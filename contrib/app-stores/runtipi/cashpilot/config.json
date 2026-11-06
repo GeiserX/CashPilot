@@ -6,7 +6,7 @@
   "exposable": false,
   "dynamic_config": true,
   "id": "cashpilot",
-  "tipi_version": 1,
+  "tipi_version": 2,
   "version": "1.72.1",
   "categories": ["finance", "automation"],
   "description": "CashPilot runs passive income services (bandwidth sharing, DePIN, storage and GPU compute) on your own server and shows what they earn in one web dashboard. A worker container starts the services that run in Docker; the dashboard reads the providers' balances into one earnings history.",

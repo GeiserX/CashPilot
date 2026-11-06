@@ -63,14 +63,15 @@ def _detector(tmp_path: Path, changed: str) -> dict[str, str]:
     target = tmp_path / changed
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text("v1\n")
-    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
-    subprocess.run([*git, "add", "-A"], cwd=tmp_path, check=True)
-    subprocess.run([*git, "commit", "-qm", "base"], cwd=tmp_path, check=True)
-    subprocess.run([*git, "tag", "v1.0.0"], cwd=tmp_path, check=True)
+    # Run inside a git hook, GIT_DIR and friends point at the real repository;
+    # drop them so every command here stays in the scratch one.
+    env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
+    for cmd in (["git", "init", "-q"], [*git, "add", "-A"], [*git, "commit", "-qm", "base"], [*git, "tag", "v1.0.0"]):
+        subprocess.run(cmd, cwd=tmp_path, env=env, check=True)
     target.write_text("v2\n")
-    subprocess.run([*git, "commit", "-qam", "fix: change it"], cwd=tmp_path, check=True)
+    subprocess.run([*git, "commit", "-qam", "fix: change it"], cwd=tmp_path, env=env, check=True)
     out = tmp_path / "out"
-    env = {**os.environ, "GITHUB_OUTPUT": str(out)}
+    env["GITHUB_OUTPUT"] = str(out)
     subprocess.run(["bash", "-e", "-c", script], cwd=tmp_path, env=env, check=True, capture_output=True)
     return dict(line.split("=", 1) for line in out.read_text().splitlines() if "=" in line)
 

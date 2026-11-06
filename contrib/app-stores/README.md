@@ -26,12 +26,17 @@ TrueNAS app is maintained in https://github.com/truenas/apps under
   proxy's filtered socket (`DOCKER_HOST`), never the raw one, which is root on
   the host. `scripts/socket_proxy_policy.py` writes the proxy's policy into
   these files along with the shipped compose files.
+- CasaOS interpolates its file twice (on import, then again when Compose loads
+  what it saved). So the CasaOS file writes each `$` in the policy as `$$$$`,
+  and uses no `${VAR:-default}`: CasaOS turns an unset variable into an empty
+  string, never the default.
 - The worker's `/data` stays
   apart from the UI's `/data`, which holds the credential store and its key.
   `/fleet` is shared, because it holds only the enrolment key both sides need.
 
-`tests/test_app_store_templates.py` and `tests/test_socket_proxy.py` check
-these rules on every compose file under this folder.
+`tests/test_app_store_templates.py` checks these rules on every compose file
+under this folder, and simulates the CasaOS install. `tests/test_socket_proxy.py`
+holds the Runtipi file to the same proxy rules as the shipped compose files.
 
 ## Refreshing a package before a submission
 
@@ -39,7 +44,7 @@ these rules on every compose file under this folder.
 2. CasaOS: update `version`, `update_at` and `release_notes` in the `x-casaos`
    block at the end of the file.
 3. Runtipi: update `version` and `updated_at` (milliseconds since the epoch) in
-   `config.json`, and add 1 to `tipi_version`.
+   `config.json`, and add 1 to `tipi_version`, so existing installs see the update.
 4. Run `uv run python scripts/socket_proxy_policy.py --check`, then
    `uv run pytest tests/test_app_store_templates.py tests/test_socket_proxy.py`.
 5. Copy the folder into your fork of the store and open the pull request there.

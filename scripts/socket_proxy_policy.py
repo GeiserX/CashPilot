@@ -34,10 +34,14 @@ COMPOSE_FILES = (
     "docker-compose.fleet.yml",
     "docker-compose.build.yml",
     "docker-compose.worker.yml",
-    # The app store packages install the same proxy, so they carry the same policy.
-    "contrib/app-stores/casaos/CashPilot/docker-compose.yml",
+    # The Runtipi package installs the same proxy, so it carries the same policy.
     "contrib/app-stores/runtipi/cashpilot/docker-compose.yml",
 )
+#: Files whose installer interpolates them twice. CasaOS resolves variables
+#: when it imports a compose file, writes the result out, and Compose then
+#: resolves that file again, so each `$` must be written `$$$$` to reach the
+#: proxy as `$`. tests/test_app_store_templates.py checks the rest of the file.
+TWICE_INTERPOLATED = ("contrib/app-stores/casaos/CashPilot/docker-compose.yml",)
 BEGIN = "      # BEGIN socket proxy policy: written by scripts/socket_proxy_policy.py, do not edit by hand\n"
 END = "      # END socket proxy policy\n"
 #: The worker's copy of the policy's fingerprint, so it can tell when its image
@@ -45,10 +49,11 @@ END = "      # END socket proxy policy\n"
 DIGEST_RE = re.compile(r"(CASHPILOT_PROXY_POLICY=)[0-9a-f]*")
 
 
-def compose_block(services_dir: Path = socket_policy.SERVICES_DIR) -> str:
-    """The policy as it sits in a compose file: indented, `$` escaped as `$$`."""
+def compose_block(services_dir: Path = socket_policy.SERVICES_DIR, passes: int = 1) -> str:
+    """The policy as it sits in a compose file: indented, each `$` doubled once
+    per interpolation pass the file goes through (`$$` for plain Compose)."""
     body = "".join(f"      {line}\n" if line else "\n" for line in policy(services_dir).splitlines())
-    return BEGIN + body.replace("$", "$$") + END
+    return BEGIN + body.replace("$", "$" * 2**passes) + END
 
 
 def render(text: str, block: str, fingerprint: str) -> str:
@@ -63,13 +68,13 @@ def render(text: str, block: str, fingerprint: str) -> str:
 
 def main(argv: list[str]) -> int:
     check = "--check" in argv
-    block = compose_block()
+    blocks = {1: compose_block(), 2: compose_block(passes=2)}
     fingerprint = socket_policy.digest()
     stale = []
-    for name in COMPOSE_FILES:
+    for name in (*COMPOSE_FILES, *TWICE_INTERPOLATED):
         path = ROOT / name
         text = path.read_text()
-        new = render(text, block, fingerprint)
+        new = render(text, blocks[2 if name in TWICE_INTERPOLATED else 1], fingerprint)
         if new != text:
             stale.append(name)
             if not check:

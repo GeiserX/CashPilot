@@ -91,14 +91,20 @@ services:
       - cashpilot_docker_api:/run/cashpilot-docker
     environment:
       # Host folders containers may bind (a folder a service keeps its data
-      # in, Storj for example), comma-separated. Set CASHPILOT_PROXY_BIND_MOUNTS
-      # in the app's environment to allow one.
-      # The placeholders sit under /dev/null, where no directory can ever exist
-      # (Docker cannot create one there), so an unset variable allows nothing.
-      - SOCKGUARD_REQUEST_BODY_CONTAINER_CREATE_ALLOWED_BIND_MOUNTS=${CASHPILOT_COMPOSE_DIR:-/dev/null/cashpilot-compose-dir-unset},${CASHPILOT_PROXY_BIND_MOUNTS:-/dev/null/cashpilot-bind-mounts-unset}
+      # in, Storj for example), comma-separated. The placeholders sit under
+      # /dev/null, where no directory can ever exist, so they allow nothing.
+      # Written out, not as ${VAR:-default}: CasaOS turns an unset variable
+      # into "$VAR" on import and then into an empty string, and an empty
+      # entry would allow every folder.
+      - SOCKGUARD_REQUEST_BODY_CONTAINER_CREATE_ALLOWED_BIND_MOUNTS=/dev/null/cashpilot-compose-dir-unset,/dev/null/cashpilot-bind-mounts-unset
     configs:
       - source: cashpilot_socket_policy
         target: /etc/sockguard/sockguard.yaml
+    x-casaos:
+      envs:
+        - container: SOCKGUARD_REQUEST_BODY_CONTAINER_CREATE_ALLOWED_BIND_MOUNTS
+          description:
+            en_US: Host folders service containers may bind, comma-separated. Put the same list in the worker's CASHPILOT_PROXY_BIND_MOUNTS.
 
   cashpilot-worker:
     image: drumsergio/cashpilot-worker:1.72.1
@@ -130,10 +136,10 @@ services:
       # The proxy policy's fingerprint (scripts/socket_proxy_policy.py), so the
       # worker can say when its image needs a newer policy than this file has.
       - CASHPILOT_PROXY_POLICY=ec66faec71f2e7ac
-      # The values the proxy gets, so the worker can say what to set before the
-      # proxy refuses a host-folder bind.
-      - CASHPILOT_COMPOSE_DIR=${CASHPILOT_COMPOSE_DIR:-}
-      - CASHPILOT_PROXY_BIND_MOUNTS=${CASHPILOT_PROXY_BIND_MOUNTS:-}
+      # The folders the proxy allows, so the worker can say what to set before
+      # the proxy refuses a host-folder bind. Empty means none.
+      - CASHPILOT_COMPOSE_DIR=
+      - CASHPILOT_PROXY_BIND_MOUNTS=
     depends_on:
       - cashpilot-socket-proxy
     networks:
@@ -154,6 +160,9 @@ services:
         - container: CASHPILOT_WORKER_NAME
           description:
             en_US: Name of this worker in the dashboard
+        - container: CASHPILOT_PROXY_BIND_MOUNTS
+          description:
+            en_US: Host folders service containers may bind, comma-separated. Must match the socket proxy's SOCKGUARD_REQUEST_BODY_CONTAINER_CREATE_ALLOWED_BIND_MOUNTS.
       volumes:
         - container: /run/cashpilot-docker
           description:
@@ -176,7 +185,8 @@ volumes:
     name: cashpilot-docker-api
 
 # The Docker socket proxy's policy. scripts/socket_proxy_policy.py writes it
-# from the catalog; `$$` is how compose spells a literal `$`.
+# from the catalog. Each `$` is written four times because CasaOS interpolates
+# the file twice (once on import, once when Compose loads what it saved).
 configs:
   cashpilot_socket_policy:
     content: |
@@ -246,9 +256,9 @@ configs:
           allowed_env_vars: [CASHPILOT_EXEC_SENDS_NO_ENV]
           allowed_commands:
             - ["cat", "/run/ready"]
-            - ["sh", "-c", "id=$$(wget -qO- -T 5 http://127.0.0.1:4050/identities | grep -o '0x[0-9a-fA-F]\\{40\\}' | head -1) && wget -qO- -T 5 \"http://127.0.0.1:4050/identities/$$id\" && { echo; wget -qO- -T 5 \"http://127.0.0.1:4050/transactor/settle/history?page_size=1000\" || true; }"]
-            - ["sh", "-c", "id=$$(wget -qO- -T 5 http://127.0.0.1:4050/identities | grep -o '0x[0-9a-fA-F]\\{40\\}' | head -1) && wget -qO- -T 5 \"http://127.0.0.1:4050/identities/$$id/beneficiary\""]
-            - ["sh", "-c", "T=\"\"; command -v timeout >/dev/null 2>&1 && T=\"timeout 5\"; $$T iptables-nft -t nat -S MYST 2>/dev/null; if grep -qx nat /proc/net/ip_tables_names 2>/dev/null; then $$T iptables-legacy -t nat -S MYST 2>/dev/null; $$T iptables -t nat -S MYST 2>/dev/null; else case \"$$($$T iptables -V 2>/dev/null)\" in *nf_tables*) $$T iptables -t nat -S MYST 2>/dev/null;; esac; fi"]
+            - ["sh", "-c", "id=$$$$(wget -qO- -T 5 http://127.0.0.1:4050/identities | grep -o '0x[0-9a-fA-F]\\{40\\}' | head -1) && wget -qO- -T 5 \"http://127.0.0.1:4050/identities/$$$$id\" && { echo; wget -qO- -T 5 \"http://127.0.0.1:4050/transactor/settle/history?page_size=1000\" || true; }"]
+            - ["sh", "-c", "id=$$$$(wget -qO- -T 5 http://127.0.0.1:4050/identities | grep -o '0x[0-9a-fA-F]\\{40\\}' | head -1) && wget -qO- -T 5 \"http://127.0.0.1:4050/identities/$$$$id/beneficiary\""]
+            - ["sh", "-c", "T=\"\"; command -v timeout >/dev/null 2>&1 && T=\"timeout 5\"; $$$$T iptables-nft -t nat -S MYST 2>/dev/null; if grep -qx nat /proc/net/ip_tables_names 2>/dev/null; then $$$$T iptables-legacy -t nat -S MYST 2>/dev/null; $$$$T iptables -t nat -S MYST 2>/dev/null; else case \"$$$$($$$$T iptables -V 2>/dev/null)\" in *nf_tables*) $$$$T iptables -t nat -S MYST 2>/dev/null;; esac; fi"]
             - ["cat", "/etc/anon/anonrc"]
         image_pull:
           allow_all_registries: true        # catalog and custom services come from many registries
