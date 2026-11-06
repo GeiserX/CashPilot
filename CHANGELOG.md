@@ -10,10 +10,26 @@ Every release, grouped by what changed. Generated from commit history.
 Releases before `1.0.0` were recorded by hand and are kept verbatim in
 [docs/changelog-0.x-handwritten.md](docs/changelog-0.x-handwritten.md).
 
-## Unreleased
+## [1.72.5] - 2026-11-06
 
 ### Documentation
 
+- Regenerate CHANGELOG.md (#615)
+
+### Fixes
+
+- Stop an untouched money4band config filling the import table, and stop one worker losing another's Activity sample (#609)
+
+### Maintenance
+
+- Move the site to Zensical (#602)
+
+## [1.72.4] - 2026-11-06
+
+### Documentation
+
+- Warn that a fixed egress IP goes stale on a dynamic line and leaves NAT loopback open (#608)
+- Regenerate CHANGELOG.md (#611)
 - Regenerate CHANGELOG.md (#610)
 
 ## [1.72.3] - 2026-11-06

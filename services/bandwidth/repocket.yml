@@ -54,7 +54,8 @@ requirements:
   min_storage: ""
 
 payment:
-  methods: [paypal, crypto]
+  methods: [giftcard, crypto]
+  crypto_token: "USDT"
   minimum_payout: "$4 ($2 after the first payout)"
   currency: USD
   frequency: "On request"
@@ -76,7 +77,8 @@ cashout:
     after it in October 2026, far below the $20 it used to advertise. Methods:
     Tremendous (to your email) or USDT on Polygon. Each request is confirmed
     from an emailed link within 2 hours, and only one request can be pending
-    at a time.
+    at a time. In October 2026 Repocket refused a Tremendous request with
+    "Please, message support", while USDT on Polygon went through.
 
 platforms: [docker, windows, macos, linux, android]
 

@@ -9,7 +9,7 @@ description: >
   through their internet connection, earning USDC on Tempo Chain per GB sold. Supports
   both direct (own bandwidth) and upstream (resell external proxies) modes with
   auto-reconnect. Buyers purchase proxy sessions by country, ISP, and bandwidth.
-  Payments flow through the Micropayments Protocol (MPP) on Tempo Chain.
+  Payments flow through the Machine Payments Protocol (MPP) on Tempo Chain.
 short_description: proxybase.xyz - SOCKS5 marketplace for AI agents, USDC payout. Generates a wallet whose volume holds the only copy of the key
 
 referral:
@@ -72,7 +72,7 @@ cashout:
   dashboard_url: "https://proxybase.xyz"
   min_amount: 1.0
   currency: USD
-  notes: "Lock earnings via <code>proxybase-cli seller payout create</code>, received as USDC on Tempo Chain (Tempo MPP). Requires a Tempo wallet address."
+  notes: "Lock earnings via <code>proxybase-cli seller payout create</code>, received as USDC on Tempo Chain (Tempo MPP). Pays to any EVM address whose key you hold (Tempo is an EVM chain), with nothing to sign; add the Tempo network to the wallet to see the USDC."
 
 platforms: [docker, linux, macos, windows]
 
@@ -122,7 +122,7 @@ rating:
     longevity: unknown
   notes:
     payout_record: We found no independent payout reports and have no payout of our own.
-    payout_terms: USDC on Tempo Chain, needs a Tempo wallet
+    payout_terms: USDC on Tempo Chain, to an EVM address whose key you hold
     account_safety: There is no account in the usual sense; the client mints its own wallet.
     terms_fit: Own client image, accepts datacentre connections
     traffic_transparency: Sold as a SOCKS5 proxy, no buyer checks described
@@ -134,7 +134,7 @@ rating:
       check.
     longevity: We could not confirm the company behind ProxyBase Markets or how long it has run.
   cons:
-  - text: Payouts are USDC on Tempo Chain and need a Tempo wallet address.
+  - text: Payouts are USDC on Tempo Chain, to any EVM address whose key you hold.
     criterion: payout_terms
     kind: our_experience
     source: https://github.com/GeiserX/CashPilot/blob/main/services/bandwidth/proxybase-xyz.yml

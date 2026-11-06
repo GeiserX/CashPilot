@@ -97,6 +97,9 @@ class TestMoney4bandJson:
         assert "device_info" in skipped
         assert "notifications" not in skipped, "a disabled notifications block is not news"
         assert any("Proxy" in n for n in preview["notices"])
+        # CashPilot runs proxied copies, so the text points there instead of saying it cannot.
+        assert "Fleet page" in skipped["proxies"]
+        assert any("Proxies section of the Fleet page" in n for n in preview["notices"])
 
 
 class TestMoney4bandEnv:
@@ -121,6 +124,24 @@ class TestMoney4bandEnv:
 
     def test_an_untouched_template_imports_nothing(self):
         assert _preview(_files("money4band/template.env"))["rows"] == []
+
+    def test_an_untouched_json_template_imports_nothing(self):
+        # Every app off with placeholder values: the user never set any of them up.
+        assert _preview(_files("money4band/template-user-config.json"))["rows"] == []
+
+    def test_an_off_app_cashpilot_cannot_carry_still_shows_why(self):
+        # Grass has no mapped field, so only its raw values say the user set it up.
+        content = (FIX / "money4band/template-user-config.json").read_text(encoding="utf-8")
+        content = content.replace('"email": "yourGRASSMail"', '"email": "gr@example.com"')
+        rows = _rows(_preview([{"name": "user-config.json", "content": content}]))
+        assert list(rows) == ["grass"] and rows["grass"]["state"] == "unusable"
+
+    def test_only_the_app_filled_in_on_a_json_template_comes_in(self):
+        content = (FIX / "money4band/template-user-config.json").read_text(encoding="utf-8")
+        content = content.replace(
+            '"enabled": false, "email": "yourHONEYGAINMail"', '"enabled": true, "email": "hg@example.com"'
+        )
+        assert list(_rows(_preview([{"name": "user-config.json", "content": content}]))) == ["honeygain"]
 
     def test_only_the_service_filled_in_on_a_template_comes_in(self):
         content = (FIX / "money4band/template.env").read_text(encoding="utf-8")

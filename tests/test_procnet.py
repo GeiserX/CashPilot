@@ -374,6 +374,11 @@ class TestParseDiag:
         assert len(socks) == 1 and (done, err, intr) == (True, 0, False)
         assert procnet.parse_diag(_error(13), "tcp") == ([], True, 13, False)
 
+    def test_a_done_carrying_an_errno_is_an_error(self):
+        """A dump the kernel aborts ends with DONE holding a negative errno, not a complete table."""
+        done = struct.pack("=IHHII", 20, procnet.NLMSG_DONE, 2, 1, 0) + struct.pack("=i", -16)
+        assert procnet.parse_diag(done, "tcp") == ([], True, 16, False)
+
     def test_an_interrupted_dump_is_reported(self):
         """The kernel sets NLM_F_DUMP_INTR on DONE when the table changed mid-dump."""
         _, done, err, intr = procnet.parse_diag(_done(2 | procnet.NLM_F_DUMP_INTR), "tcp")
@@ -554,6 +559,15 @@ class TestCgroupSnapshot:
 
         mine, _, worked, partial = procnet.cgroup_snapshot({10}, procnet.DIAG_DUMPS, dump)
         assert len(mine) == 2 and worked == 2 and partial is True
+
+    def test_a_snapshot_whose_every_dump_failed_is_partial(self):
+        """Another snapshot may have worked, so this one's empty table must still mark the reading partial."""
+
+        def dump(proto, family, ipproto, keep):
+            raise OSError(16, "busy")
+
+        mine, _, worked, partial = procnet.cgroup_snapshot({10}, procnet.DIAG_DUMPS, dump)
+        assert mine == [] and worked == 0 and partial is True
 
     def test_an_empty_dump_is_no_evidence_against_the_kernel(self):
         """No socket at all says nothing about cgroup ids: never report kernel_no_cgroup_id for it."""
