@@ -18,7 +18,7 @@ from urllib.parse import quote
 
 import yaml
 
-from app import arch
+from app import arch, ratings
 
 logger = logging.getLogger(__name__)
 
@@ -106,6 +106,19 @@ def _validate(data: dict[str, Any], path: Path) -> list[str]:
         # `disclosure: TODO` loaded fine and then 500'd the endpoint at request
         # time, so the fault was invisible until someone opened that one service.
         errors.append(f"{path.name}: disclosure must be a mapping, not {type(disclosure).__name__}")
+
+    if "rating" in data:
+        # The grade is computed from these verdicts (app/ratings.py). The rating
+        # is a display field, so a bad block (a typed grade, an override, a
+        # sponsor field, a typo) makes the provider "Not rated yet" instead of
+        # dropping a working service. The date-versus-today check is skipped
+        # here because a box with its clock behind would drop every block
+        # reviewed today. CI fails on both: scripts/generate_ratings_page.py --check.
+        rating_errors = ratings.validate(data["rating"], data, check_future=False)
+        if rating_errors:
+            for err in rating_errors:
+                logger.warning("Validation: %s: %s (shown as not rated)", path.name, err)
+            del data["rating"]
 
     docker = data.get("docker")
     if isinstance(docker, dict):

@@ -29,7 +29,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 
-def _worker(*, online=True, docker=True, name="watchtower", containers="[]"):
+def _worker(*, online=True, docker=True, name="charlie", containers="[]"):
     return {
         "id": 1,
         "client_id": f"cid-{name}",
@@ -136,10 +136,10 @@ class TestTheOperatorIsTold:
 
         with caplog.at_level(logging.WARNING, logger="app.main"):
             caplog.clear()
-            _events([_worker(docker=False, name="geiserback")], DEPLOYMENTS)
+            _events([_worker(docker=False, name="alpha")], DEPLOYMENTS)
         messages = [r.getMessage() for r in caplog.records]
         assert any("cannot read Docker" in m for m in messages)
-        assert any("geiserback" in m for m in messages)
+        assert any("alpha" in m for m in messages)
 
     def test_it_stays_quiet_on_a_healthy_fleet(self, caplog):
         """The control: this must not warn on every ordinary check cycle."""

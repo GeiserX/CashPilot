@@ -94,3 +94,79 @@ collector:
 payout:
   model: internal
   notes: "Balance held by Honeygain; withdrawn on request."
+
+# Provider rating: the verdicts behind the grade (method: services/_ratings.yml,
+# published at docs/ratings.md). The grade itself is computed, never written here.
+rating:
+  reviewed_on: "2026-11-04"
+  verdicts:
+    payout_record: unknown
+    payout_terms: poor
+    account_safety: fair
+    terms_fit: good
+    traffic_transparency: fair
+    privacy: unknown
+    identity_checks: fair
+    support: unknown
+    earnings_realism: fair
+    longevity: good
+  notes:
+    payout_record: Trustpilot withholds Honeygain's rating for a breach of its guidelines and says it
+      removed fake reviews, so its review pages cannot show a payout record either way. We have not yet
+      published a completed Honeygain payout of our own.
+    privacy: The client is closed source. We did not find a published list of what the client collects
+      beyond the privacy policy's general terms.
+    support: Two recent Trustpilot reviews say support did not answer; two is not a pattern, and we have
+      no ticket of our own.
+  cons:
+  - text: The terms let Honeygain write off earnings that reached the $20 threshold and were not paid
+      out within 24 months, and treat earnings as expired after six months without use.
+    criterion: payout_terms
+    kind: terms
+    source: https://www.honeygain.com/terms-of-use/
+    checked_on: "2026-11-04"
+  - text: The minimum is $20, and PayPal payouts go through Tipalti, which charges $2.02 per payment.
+    criterion: payout_terms
+    kind: our_experience
+    source: https://github.com/GeiserX/CashPilot/blob/main/services/bandwidth/honeygain.yml
+    checked_on: "2026-11-04"
+  - text: The terms let Honeygain suspend an account and withhold or write off earnings it considers accumulated
+      under false pretenses.
+    criterion: account_safety
+    kind: terms
+    source: https://www.honeygain.com/terms-of-use/
+    checked_on: "2026-11-04"
+  - text: Before the first PayPal payout, Tipalti makes you confirm a mobile number by SMS and give your
+      name, address and date of birth.
+    criterion: identity_checks
+    kind: our_experience
+    source: https://github.com/GeiserX/CashPilot/blob/main/services/bandwidth/honeygain.yml
+    checked_on: "2026-11-04"
+  - text: The terms say business clients use the traffic to gather publicly available web data, but name
+      no client, and you cannot know which client uses your connection.
+    criterion: traffic_transparency
+    kind: terms
+    source: https://www.honeygain.com/terms-of-use/
+    checked_on: "2026-11-04"
+  - text: Honeygain's own replies to low-earnings reviews say earnings depend on network demand and location;
+      reviewers report taking a very long time to reach the $20 minimum.
+    criterion: earnings_realism
+    kind: provider_reply
+    source: https://www.trustpilot.com/review/honeygain.com
+    checked_on: "2026-11-04"
+  pros:
+  - text: Honeygain publishes its own Docker image, honeygain/honeygain.
+    criterion: terms_fit
+    kind: terms
+    source: https://hub.docker.com/r/honeygain/honeygain
+    checked_on: "2026-11-04"
+  - text: The terms name the operator, Honeygain UAB, registered in Vilnius, Lithuania.
+    criterion: longevity
+    kind: terms
+    source: https://www.honeygain.com/terms-of-use/
+    checked_on: "2026-11-04"
+  - text: Honeygain's press page says it was founded in 2019.
+    criterion: longevity
+    kind: terms
+    source: https://www.honeygain.com/press-area/
+    checked_on: "2026-11-04"

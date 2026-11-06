@@ -214,3 +214,69 @@ payout:
   address_env: WALLET
   address_source: env
   notes: "Paid monthly in USDC on Ethereum mainnet to the address in WALLET once the balance clears the fee-based minimum. STORJ token until the September 2026 payout; zkSync Era payouts ended 1 September 2026."
+
+# Provider rating: the verdicts behind the grade (method: services/_ratings.yml,
+# published at docs/ratings.md). The grade itself is computed, never written here.
+rating:
+  reviewed_on: "2026-11-04"
+  verdicts:
+    payout_record: fair
+    payout_terms: fair
+    account_safety: unknown
+    terms_fit: good
+    traffic_transparency: fair
+    privacy: good
+    identity_checks: good
+    support: unknown
+    earnings_realism: unknown
+    longevity: poor
+  notes:
+    account_safety: Nodes are permissionless; disqualification for lost data is the stated rule, and we
+      found no pattern of disputes.
+    support: No pattern found.
+    earnings_realism: Not measured against a provider figure.
+  cons:
+  - text: Storj Labs filed for Chapter 11 on 26 July 2026; node earnings from before the filing are frozen
+      until the court rules.
+    criterion: longevity
+    kind: press
+    source: https://www.coindesk.com/business/2026/07/27/cloud-data-firm-storj-files-for-chapter-11-extending-a-week-of-crypto-failures-token-slides-16
+    checked_on: "2026-11-04"
+  - text: Pre-filing payments to node operators went into the bankruptcy claims process.
+    criterion: payout_record
+    kind: press
+    source: https://www.cryptotimes.io/2026/07/27/storj-files-for-chapter-11-pre-filing-node-operator-payments-in-limbo/
+    checked_on: "2026-11-04"
+  - text: A new node has 75%, then 50%, then 25% of its earnings held in its first nine months; half comes
+      back in month 16 and the rest only on a graceful exit.
+    criterion: payout_terms
+    kind: our_experience
+    source: https://github.com/GeiserX/CashPilot/blob/main/docs/guides/storj.md
+    checked_on: "2026-11-04"
+  - text: Customers store encrypted file fragments and nobody routes traffic through your IP, but we
+      did not find where Storj says who the customers are or how they are checked.
+    criterion: traffic_transparency
+    kind: our_experience
+    source: https://github.com/GeiserX/CashPilot/blob/main/services/storage/storj.yml
+    checked_on: "2026-11-04"
+  pros:
+  - text: The storage node software is open source under the AGPL-3.0.
+    criterion: privacy
+    kind: terms
+    source: https://github.com/storj/storj
+    checked_on: "2026-11-04"
+  - text: Storj publishes its own Docker image, storjlabs/storagenode.
+    criterion: terms_fit
+    kind: terms
+    source: https://hub.docker.com/r/storjlabs/storagenode
+    checked_on: "2026-11-04"
+  - text: 'No account: a wallet address and an email for operator notices.'
+    criterion: identity_checks
+    kind: our_experience
+    source: https://github.com/GeiserX/CashPilot/blob/main/services/storage/storj.yml
+    checked_on: "2026-11-04"
+  - text: Active nodes kept being paid after the filing.
+    criterion: payout_record
+    kind: press
+    source: https://startupfortune.com/storj-labs-filed-for-chapter-11-bankruptcy-and-token-holders-are-last-in-line/
+    checked_on: "2026-11-04"

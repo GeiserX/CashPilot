@@ -90,3 +90,58 @@ payout:
     wallet and the container keeps no state -- docker.volumes is empty.
     Not to be confused with proxybase-xyz (ProxyBase Markets, same org), which
     genuinely does mint a local wallet and declares it a critical volume.
+
+# Provider rating: the verdicts behind the grade (method: services/_ratings.yml,
+# published at docs/ratings.md). The grade itself is computed, never written here.
+rating:
+  reviewed_on: "2026-11-04"
+  verdicts:
+    payout_record: good
+    payout_terms: fair
+    account_safety: unknown
+    terms_fit: good
+    traffic_transparency: unknown
+    privacy: unknown
+    identity_checks: good
+    support: unknown
+    earnings_realism: fair
+    longevity: fair
+  notes:
+    account_safety: No reports found.
+    traffic_transparency: We did not find who buys the traffic or how buyers are checked.
+    privacy: The peer client is closed source.
+    support: No reports found.
+  cons:
+  - text: ProxyBase itself wrote in August 2025 that it is new and not yet the place to maximise earnings.
+    criterion: earnings_realism
+    kind: provider_reply
+    source: https://github.com/engageub/InternetIncome/discussions/239
+    checked_on: "2026-11-04"
+  - text: ProxyBase switched peer clients in 2026 and shut the old backend, so containers on the old image
+      kept running and stopped earning.
+    criterion: longevity
+    kind: our_experience
+    source: https://github.com/GeiserX/CashPilot/blob/main/docs/guides/proxybase.md
+    checked_on: "2026-11-04"
+  - text: Crypto only, as USDC on Polygon, POL or Litecoin, with no fiat method. The minimum is $0.20 and
+      ProxyBase pays the network fee.
+    criterion: payout_terms
+    kind: our_experience
+    source: https://github.com/GeiserX/CashPilot/blob/main/docs/guides/proxybase.md
+    checked_on: "2026-11-04"
+  pros:
+  - text: Our $0.75 withdrawal went through in October 2026.
+    criterion: payout_record
+    kind: our_experience
+    source: https://github.com/GeiserX/CashPilot/blob/main/docs/guides/proxybase.md
+    checked_on: "2026-11-04"
+  - text: A withdrawal needs only an address typed into the request.
+    criterion: identity_checks
+    kind: our_experience
+    source: https://github.com/GeiserX/CashPilot/blob/main/services/bandwidth/proxybase.yml
+    checked_on: "2026-11-04"
+  - text: ProxyBase publishes its own peer client image and supports datacentre IPs.
+    criterion: terms_fit
+    kind: our_experience
+    source: https://github.com/GeiserX/CashPilot/blob/main/services/bandwidth/proxybase.yml
+    checked_on: "2026-11-04"

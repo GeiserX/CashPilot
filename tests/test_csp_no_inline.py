@@ -128,7 +128,9 @@ class TestEveryDeclaredActionExists:
         app_js = (ROOT / "app" / "static" / "js" / "app.js").read_text(encoding="utf-8")
         exported = set(re.findall(r"^\s{4}([A-Za-z_][A-Za-z0-9_]*),\s*$", app_js, re.M))
         page_local: set[str] = set()
-        for path in TEMPLATES:
+        # A page's own script file (import.js) defines its handlers as window
+        # globals, the same way an inline page script does.
+        for path in TEMPLATES + [p for p in JS if p.name != "app.js"]:
             text = path.read_text(encoding="utf-8")
             page_local |= set(re.findall(r"function\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(", text))
             page_local |= set(re.findall(r"window\.([A-Za-z_][A-Za-z0-9_]*)\s*=", text))

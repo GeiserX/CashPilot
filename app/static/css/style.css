@@ -1039,6 +1039,8 @@ img { max-width: 100%; }
 }
 
 .collectors-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 4px; align-items: start; }
+.collectors-col { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.collectors-col .collector-section { margin-bottom: 0; }
 .collectors-grid .collector-section {
   min-width: 0;
   overflow: hidden;
@@ -1050,6 +1052,7 @@ img { max-width: 100%; }
   .collectors-grid {
     grid-template-columns: 1fr;
   }
+  .collectors-col { display: contents; }
 }
 
 /* Payouts awaiting an answer (dashboard).
@@ -2003,9 +2006,13 @@ body.gate { display: flex; flex-direction: column; }
 /* ----- Responsive ----- */
 @media (max-width: 1100px) {
   .dash-split { grid-template-columns: minmax(0, 1fr); gap: 0; }
-  /* Just above 768 px all six catalog columns still show; headers and the
-     estimate wrap so the table fits instead of scrolling (728 px in 713). */
+  /* Just above 768 px all seven catalog columns still show; headers and the
+     estimate wrap so the table fits instead of scrolling in 713 px. */
   .catalog-table thead th, .catalog-table .cat-est { white-space: normal; }
+  /* The Grade column took the slack: Manage and Add now stack in this range
+     too, or a wide fallback font pushes the table past 713 px at 769. */
+  .catalog-table .cat-act { white-space: normal; }
+  .catalog-table .cat-svc { overflow-wrap: anywhere; }
   .settings-layout { grid-template-columns: minmax(0, 1fr); gap: 0; }
   .settings-index { position: static; flex-direction: row; flex-wrap: wrap; gap: 0 12px; margin-bottom: 16px; }
   .settings-index a { border-left: none; padding-left: 0; }
@@ -2130,8 +2137,9 @@ body.gate { display: flex; flex-direction: column; }
   .detail-item + .detail-item { border-left: none; padding-left: 0; border-top: 1px solid var(--border-color); }
   .category-grid { grid-template-columns: 1fr; }
   .wizard-step-label { display: none; }
+  /* Headers hide by class with their cells, so a new column cannot shift them. */
   .catalog-table .cat-plat, .catalog-table .cat-needs, .catalog-table .cat-kind,
-  .catalog-table thead th:nth-child(2), .catalog-table thead th:nth-child(3), .catalog-table thead th:nth-child(5) { display: none; }
+  .catalog-table .cat-col-plat, .catalog-table .cat-col-needs, .catalog-table .cat-col-kind { display: none; }
   .catalog-table .cat-est { white-space: normal; }
   /* 320 px: the five filters wrap and long service words break, instead of
      pushing the page sideways. */
@@ -2139,6 +2147,10 @@ body.gate { display: flex; flex-direction: column; }
   .catalog-table .cat-svc { overflow-wrap: anywhere; }
   /* Add and Details stack rather than widen the table. */
   .catalog-table .cat-act { white-space: normal; }
+  /* Four columns at 320 px with the Grade column: tighter cell padding keeps
+     them inside the window with a wide fallback font. */
+  .catalog-table thead th, .catalog-table td { padding-left: 6px; padding-right: 6px; }
+  .catalog-table th:first-child, .catalog-table td:first-child { padding-left: 0; }
   /* Headers wrap too ("Est. per / month"). */
   .catalog-table thead th { white-space: normal; }
   /* Narrower box columns in the placement grid, so eight boxes still fit 320 px. */
@@ -2241,6 +2253,32 @@ body.gate { display: flex; flex-direction: column; }
 :root[data-theme="classic"] :focus-visible,
 :root[data-theme="classic"] .form-input:focus-visible { outline-color: var(--accent-secondary); }
 
+/* Provider grades (app/ratings.py). Colours come from the theme variables so
+   every theme keeps them readable; there is no A, so B is the best colour. */
+.grade-badge {
+  display: inline-block;
+  min-width: 1.6em;
+  padding: 1px 6px;
+  border: 1px solid currentColor;
+  border-radius: var(--radius-sm);
+  font-family: var(--font-mono);
+  font-weight: 600;
+  text-align: center;
+  cursor: help;
+}
+.grade-badge.grade-b { color: var(--success); background: var(--success-soft); }
+.grade-badge.grade-c { color: var(--warning); background: var(--warning-soft); }
+.grade-badge.grade-d { color: var(--error); background: var(--error-soft); }
+.grade-badge.grade-f { color: var(--text-primary); background: var(--error-soft); border-color: var(--error); }
+.grade-link { text-decoration: none; }
+.grade-link .grade-badge { cursor: pointer; }
+.sd-rating-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.sd-rating-score { color: var(--text-secondary); }
+.sd-rating-caps, .sd-rating-list { margin: 6px 0 0; padding-left: 18px; }
+.sd-rating-list li { margin-bottom: 4px; }
+.sd-rating-src { color: var(--text-muted); font-size: 0.9em; margin-left: 4px; }
+.sd-rating-pros { margin-top: 6px; }
+
 /* ----- Sunrise -----
    data-theme="sunrise": the dark theme, plus the logo's sunrise gradient at the
    edges only: a 2px line under the top bar, the active tab, the full-size
@@ -2324,3 +2362,20 @@ body.gate { display: flex; flex-direction: column; }
 }
 :where(:root[data-theme="warm"]) :is(.wizard-step, .gate-step).active .wizard-step-number { background: var(--accent); border-color: var(--accent); }
 :where(:root[data-theme="warm"]) :is(.payout-progress-bar:not(.eligible), .payout-progress-fill) { background: var(--accent); }
+
+/* ----- Activity page (templates/activity.html) ----- */
+.activity-toolbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 0 0 20px; }
+.activity-toolbar .form-label { margin: 0; }
+.activity-toolbar select { width: auto; }
+.activity-chip { display: inline-block; font-size: var(--fs-1); padding: 1px 6px; border: 1px solid var(--border-color); border-radius: 999px; color: var(--text-secondary); white-space: nowrap; }
+.activity-chip-warn { color: var(--warning); border-color: var(--warning); }
+.activity-chip-muted { color: var(--text-muted); }
+.activity-top { display: inline-block; margin-right: 6px; font-family: var(--font-mono); font-size: var(--fs-1); color: var(--text-secondary); }
+.activity-spark { color: var(--text-secondary); vertical-align: middle; }
+.activity-row { cursor: pointer; }
+.activity-switch { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
+.activity-detail { padding: 8px 0 16px; }
+.activity-charts { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 24px; margin-bottom: 16px; }
+.activity-dims { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 12px; }
+.activity-h3 { font-size: var(--fs-2); font-weight: 600; margin: 0 0 6px; color: var(--text-secondary); }
+.activity-raw summary { cursor: pointer; color: var(--text-secondary); }

@@ -93,3 +93,66 @@ collector:
 payout:
   model: internal
   notes: "USDT on the chain saved in the profile's payout settings (Solana, TON, Arbitrum or Tron), or a bank transfer. The address lives in Traffmonetizer's settings, not on the container."
+
+# Provider rating: the verdicts behind the grade (method: services/_ratings.yml,
+# published at docs/ratings.md). The grade itself is computed, never written here.
+rating:
+  reviewed_on: "2026-11-04"
+  verdicts:
+    payout_record: poor
+    payout_terms: fair
+    account_safety: unknown
+    terms_fit: fair
+    traffic_transparency: unknown
+    privacy: unknown
+    identity_checks: good
+    support: poor
+    earnings_realism: fair
+    longevity: unknown
+  notes:
+    account_safety: We found no repeated reports of banned accounts and could not read the current terms
+      on suspension.
+    traffic_transparency: We could not find a page that says who buys the traffic or how buyers are checked.
+    privacy: The client is closed source; we did not review the privacy policy in depth.
+    longevity: A third-party summary names Bytemarket OU in Estonia as the operator; we could not confirm
+      it on Traffmonetizer's own pages.
+  cons:
+  - text: Trustpilot rates it 1.9; reviewers from 2023 to November 2026 report payouts pending for weeks,
+      or marked completed with no matching transaction.
+    criterion: payout_record
+    kind: user_reports
+    source: https://www.trustpilot.com/review/traffmonetizer.com
+    checked_on: "2026-11-04"
+  - text: The same reviewers report live chat and email support not answering, sometimes for weeks.
+    criterion: support
+    kind: user_reports
+    source: https://www.trustpilot.com/review/traffmonetizer.com
+    checked_on: "2026-11-04"
+  - text: Crypto or a bank wire from $1,000 only; PayPal is gone, and a request pays whole dollars only.
+    criterion: payout_terms
+    kind: our_experience
+    source: https://github.com/GeiserX/CashPilot/blob/main/services/bandwidth/traffmonetizer.yml
+    checked_on: "2026-11-04"
+  - text: Traffmonetizer's terms require a residential IP, so a server on a hosting connection is outside
+      them.
+    criterion: terms_fit
+    kind: our_experience
+    source: https://github.com/GeiserX/CashPilot/blob/main/services/bandwidth/traffmonetizer.yml
+    checked_on: "2026-11-04"
+  - text: Reviewers report about $0.10 per GB, and one cent a day across four devices.
+    criterion: earnings_realism
+    kind: user_reports
+    source: https://www.trustpilot.com/review/traffmonetizer.com
+    checked_on: "2026-11-04"
+  pros:
+  - text: A payout needs only a saved crypto address confirmed by email; the dashboard may ask for a messenger
+      contact.
+    criterion: identity_checks
+    kind: our_experience
+    source: https://github.com/GeiserX/CashPilot/blob/main/services/bandwidth/traffmonetizer.yml
+    checked_on: "2026-11-04"
+  - text: Traffmonetizer publishes its own Docker image, traffmonetizer/cli_v2.
+    criterion: terms_fit
+    kind: terms
+    source: https://hub.docker.com/r/traffmonetizer/cli_v2
+    checked_on: "2026-11-04"

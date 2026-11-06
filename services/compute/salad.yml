@@ -64,3 +64,46 @@ payout:
   model: internal
   chain: none
   notes: "PayPal and gift cards ONLY -- no crypto whatsoever. Has no on-chain surface for tier 2 to reconcile."
+
+# Provider rating: the verdicts behind the grade (method: services/_ratings.yml,
+# published at docs/ratings.md). The grade itself is computed, never written here.
+rating:
+  reviewed_on: "2026-11-04"
+  verdicts:
+    payout_record: good
+    payout_terms: unknown
+    account_safety: unknown
+    terms_fit: fair
+    traffic_transparency: unknown
+    privacy: unknown
+    identity_checks: unknown
+    support: unknown
+    earnings_realism: unknown
+    longevity: unknown
+  notes:
+    payout_terms: Rewards go through Salad's own storefront to PayPal or gift cards, with no crypto. Trustpilot's
+      summary mentions regional payment problems, and two reviewers describe two different ones; that is
+      below our user-reports threshold.
+    account_safety: No pattern found.
+    traffic_transparency: Salad rents your GPU to its cloud customers; we did not find how they are checked.
+    privacy: Not reviewed.
+    identity_checks: Not documented on pages we read.
+    support: No pattern found.
+    earnings_realism: Trustpilot's own summary says some reviewers find earnings low, and one October 2026
+      reviewer says an RTX 3090 barely covered its electricity. That is one site, below our user-reports
+      threshold, and we found no second source.
+    longevity: Not checked on a primary source.
+  cons:
+  - text: 'CashPilot does not run Salad: you use the provider''s own desktop app, so CashPilot cannot deploy
+      or update it for you. Its terms were not checked for containers.'
+    criterion: terms_fit
+    kind: our_experience
+    source: https://github.com/GeiserX/CashPilot/blob/main/services/compute/salad.yml
+    checked_on: "2026-11-04"
+  pros:
+  - text: Several Trustpilot reviewers in October and November 2026 report PayPal cash-outs arriving
+      quickly, some more than once; one reviewer in the same period says repeated cash-out attempts failed.
+    criterion: payout_record
+    kind: user_reports
+    source: https://www.trustpilot.com/review/salad.com
+    checked_on: "2026-11-04"

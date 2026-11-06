@@ -1,0 +1,362 @@
+{% extends "base.html" %}
+
+{% block title %}Activity - CashPilot{% endblock %}
+{% block page %}activity{% endblock %}
+{% block topbar_title %}Activity{% endblock %}
+
+{% block content %}
+<p class="page-lede">
+  What each earner container does on the network: how many connections it opens, how many fail,
+  which ports and networks it talks to, and whether it reaches into your own network or sends mail.
+  It is off until you switch it on for a box. Every 5 minutes the box starts one short-lived helper
+  per earner that reads the kernel's socket tables and connection counters. It never reads what is
+  inside the traffic, the names looked up, or the sites visited.
+</p>
+<p class="page-lede">
+  Connection counts are complete; destinations are sampled (5 snapshots over 8 s every 5 min), so
+  short connections are counted but may be missing from the list. UDP without a fixed peer shows no
+  destination. Remote addresses are kept for 24 hours, the totals by port, network and country for
+  35 days. Everything stays on this server; network names come from a table downloaded to it.
+  <a href="https://geiserx.github.io/CashPilot/activity/" target="_blank" rel="noopener">How it works</a>
+</p>
+
+<div class="activity-toolbar">
+  <label for="activity-days" class="form-label">Period</label>
+  <select id="activity-days" class="form-input form-input-sm">
+    <option value="1">Last day</option>
+    <option value="7">Last 7 days</option>
+    <option value="30">Last 30 days</option>
+  </select>
+  <span id="activity-asn" class="block-meta"></span>
+</div>
+
+<section aria-labelledby="activity-workers-title">
+  <div class="block-head">
+    <h2 class="block-title" id="activity-workers-title">Boxes</h2>
+    <span class="block-meta">Switch Activity on per box. Switching it off deletes that box's remote addresses at once.</span>
+  </div>
+  <div id="activity-workers" class="table-scroll">
+    <div class="loading-line"><div class="spinner"></div> Loading</div>
+  </div>
+</section>
+
+<div id="activity-containers"></div>
+{% endblock %}
+
+{% block scripts %}
+<script nonce="{{ csp_nonce(request) }}">
+(function () {
+  'use strict';
+
+  // Container names, network names and countries come from workers and a
+  // downloaded table. Everything interpolated below goes through this.
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+      return {'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c];
+    });
+  }
+
+  var state = { days: 1, data: null, open: {}, charts: {} };
+
+  var STATUS = {
+    ok: ['ok', ''],
+    host_network: ['host network', "Shares the machine's network, and its connections could not be told apart from the machine's."],
+    no_network: ['no network', 'Runs with networking off.'],
+    sandboxed: ['sandboxed', 'Runs under a sandboxed runtime (such as gVisor), whose network a helper cannot join.'],
+    probe_failed: ['could not sample', 'The helper did not produce a reading this round.'],
+    skipped_budget: ['skipped', 'The round ran out of time before reaching this container.']
+  };
+  var CLASS_LABEL = {
+    public: 'internet', infra: 'DNS / Docker', peer: 'another earner', docker_peer: 'another container',
+    lan: 'your LAN', tailnet: 'tailnet', docker_host: 'Docker host', metadata: 'cloud metadata',
+    link_local: 'link-local', multicast: 'multicast'
+  };
+  // Why a host-network earner's sockets could not be told apart, and what fixes it.
+  var CGROUP_REASON = {
+    cgroup_v1: 'this machine uses cgroup v1; a host on cgroup v2 is needed',
+    cgroup_missing: 'its cgroup was not found',
+    sock_diag_refused: 'the kernel refused the socket list',
+    kernel_no_cgroup_id: 'this kernel does not report a socket\'s cgroup'
+  };
+  var HOST_CGROUP_NOTE = 'host network, matched by cgroup: connections already closed (TIME_WAIT) are not seen; connection counters are machine-wide and not shown';
+  var FORWARDED_NOTE = 'Traffic an earner routes for VPN customers is forwarded by the kernel, not opened by the earner, and is not shown.';
+  // Only outbound rows of these kinds are the earner reaching into your networks.
+  var ALARM = { lan: 1, tailnet: 1, docker_host: 1, docker_peer: 1, metadata: 1, link_local: 1 };
+
+  function num(v) { return v == null ? '—' : String(v); }
+  // An element id for a detail box. Injective: every character outside
+  // [A-Za-z0-9-], "_" included, becomes "_" and four hex digits, so "a.b" and
+  // "a_b" never share a box.
+  function domId(key) {
+    return 'activity-detail-' + String(key).replace(/[^A-Za-z0-9-]/g, function (c) {
+      return '_' + ('000' + c.charCodeAt(0).toString(16)).slice(-4);
+    });
+  }
+  function when(ts) {
+    if (!ts) return 'never';
+    return new Date(ts * 1000).toLocaleString();
+  }
+
+  function api(method, url, body) {
+    var opts = { method: method, credentials: 'same-origin', headers: {} };
+    if (body) { opts.headers['Content-Type'] = 'application/json'; opts.body = JSON.stringify(body); }
+    return fetch(url, opts).then(function (r) {
+      return r.json().catch(function () { return {}; }).then(function (j) {
+        if (!r.ok) throw new Error((j && j.detail) || ('HTTP ' + r.status));
+        return j;
+      });
+    });
+  }
+
+  function sparkline(series) {
+    var pts = series.map(function (p) { return p[1]; });
+    var known = pts.filter(function (v) { return v != null; });
+    if (known.length < 2) return '<span class="muted">—</span>';
+    var max = Math.max.apply(null, known) || 1;
+    var w = 90, h = 20, step = w / (pts.length - 1);
+    var d = '', pen = false;
+    pts.forEach(function (v, i) {
+      if (v == null) { pen = false; return; }
+      var x = (i * step).toFixed(1), y = (h - (v / max) * (h - 2) - 1).toFixed(1);
+      d += (pen ? ' L' : ' M') + x + ' ' + y;
+      pen = true;
+    });
+    return '<svg class="activity-spark" width="' + w + '" height="' + h + '" viewBox="0 0 ' + w + ' ' + h +
+      '" aria-hidden="true"><path d="' + d + '" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>';
+  }
+
+  function tops(list, label) {
+    if (!list || !list.length) return '<span class="muted">—</span>';
+    return list.slice(0, 3).map(function (r) {
+      return '<span class="activity-top">' + esc(label ? label(r[0]) : r[0]) + '</span>';
+    }).join(' ');
+  }
+
+  function chip(status, members, reason) {
+    var s = STATUS[status] || [status, ''];
+    var text = s[0];
+    if (members && members.length > 1) text = 'shared with ' + members.join(', ');
+    if (status === 'ok' && reason === 'host_cgroup') {
+      return '<span class="activity-chip activity-chip-muted" title="' + esc(FORWARDED_NOTE) + '">' + esc(HOST_CGROUP_NOTE) + '</span>';
+    }
+    if (status === 'host_network' && CGROUP_REASON[reason]) {
+      return '<span class="activity-chip activity-chip-muted" title="' + esc(s[1]) + '">' +
+        esc('host network: cannot be told apart (' + CGROUP_REASON[reason] + ')') + '</span>';
+    }
+    if (status === 'ok' && reason === 'shared_namespace') {
+      return '<span class="activity-chip activity-chip-muted" title="This network belongs to a container that is not an earner (a VPN or Tailscale sidecar), which other apps may share. Only the counters are kept; no destinations and no alerts.">' +
+        esc('network of this container, used by ' + (members || []).join(', ')) + '</span>';
+    }
+    var cls = status === 'ok' ? '' : (status === 'host_network' || status === 'sandboxed' ? ' activity-chip-muted' : ' activity-chip-warn');
+    return '<span class="activity-chip' + cls + '" title="' + esc(s[1]) + '">' + esc(text) + '</span>';
+  }
+
+  function renderWorkers(d) {
+    var el = document.getElementById('activity-workers');
+    var asn = d.asn || {};
+    document.getElementById('activity-asn').innerHTML =
+      (asn.present
+        ? 'Network table: ' + esc(asn.rows) + ' ranges, ' + Math.round((asn.age_seconds || 0) / 86400) + ' days old. '
+        : 'Network tables not downloaded, so networks and countries read as unknown. ') +
+      (asn.download_enabled
+        ? '<button class="btn btn-link" data-action="activityAsnRefresh">Download now</button>'
+        : '<span class="muted">Download disabled (CASHPILOT_ACTIVITY_ASN_URL is empty).</span>');
+    if (!d.workers.length) {
+      el.innerHTML = '<div class="empty-state"><div class="empty-state-title">No boxes yet</div></div>';
+      return;
+    }
+    el.innerHTML = '<table class="fleet-table"><thead><tr><th scope="col">Box</th><th scope="col">Activity</th>' +
+      '<th scope="col">Last window</th><th scope="col">Helpers</th><th scope="col"><span class="sr-only">Actions</span></th></tr></thead><tbody>' +
+      d.workers.map(function (w) {
+        var round = w.round || {};
+        var helper = '';
+        if (round.worker_status === 'no_image') helper = '<span class="activity-chip activity-chip-warn">cannot sample: the worker cannot find its own image</span>';
+        else if ((round.leftover_probes || []).length) helper = '<span class="activity-chip activity-chip-warn" title="' + esc(round.leftover_probes.join(', ')) + '">' + round.leftover_probes.length + ' helper(s) Docker would not remove</span>';
+        var toggle = w.supported
+          ? '<label class="activity-switch"><input type="checkbox" class="activity-toggle" data-worker-id="' + w.worker_id + '"' + (w.enabled ? ' checked' : '') + '> ' + (w.enabled ? 'on' : 'off') + '</label>'
+          : (w.enabled ? '<span class="muted">on, but this worker does not support it: update it</span>' : '<span class="muted">update this worker</span>');
+        return '<tr><td>' + esc(w.name) + (w.status !== 'online' ? ' <span class="muted">(' + esc(w.status || 'offline') + ')</span>' : '') + '</td>' +
+          '<td>' + toggle + '</td><td>' + esc(when(w.last_window)) + '</td><td>' + (helper || '<span class="muted">—</span>') + '</td>' +
+          '<td><button class="btn btn-ghost btn-sm" data-action="activityDelete" data-a1="' + w.worker_id + '" data-a2="' + esc(w.name) + '">Delete data</button></td></tr>';
+      }).join('') + '</tbody></table>';
+  }
+
+  function renderContainers(d) {
+    var el = document.getElementById('activity-containers');
+    el.innerHTML = d.workers.filter(function (w) { return w.containers.length; }).map(function (w) {
+      return '<section><div class="block-head"><h2 class="block-title">' + esc(w.name) + '</h2>' +
+        '<span class="block-meta">Opens and failures are per 5 minutes. Peak is the most connections open at once.</span></div>' +
+        '<div class="table-scroll"><table class="fleet-table activity-table"><thead><tr>' +
+        '<th scope="col">Container</th><th scope="col">Status</th><th scope="col">Opens</th><th scope="col">Trend</th>' +
+        '<th scope="col">Peak open</th><th scope="col">Failed</th><th scope="col">Destinations</th>' +
+        '<th scope="col">Top ports</th><th scope="col">Top networks</th><th scope="col" title="Country where the network is registered">Country (registered)</th>' +
+        '<th scope="col">Alerts</th></tr></thead><tbody>' +
+        w.containers.map(function (c) {
+          var key = w.worker_id + '|' + c.container;
+          var alarm = Object.keys(c.classes || {}).some(function (k) { return ALARM[k]; });
+          var row = '<tr class="activity-row" data-action="activityExpand" data-a1="' + w.worker_id + '" data-a2="' + esc(c.container) + '">' +
+            '<td><button class="btn btn-link" aria-expanded="' + (state.open[key] ? 'true' : 'false') + '">' + esc(c.container) + '</button></td>' +
+            '<td>' + chip(c.status, c.members, c.reason) + '</td>' +
+            '<td>' + num(c.opens_last) + '</td><td>' + sparkline(c.series) + '</td>' +
+            '<td>' + num(c.est_max) + '</td><td>' + num(c.attempt_fails_last) + '</td>' +
+            '<td>' + num(c.remotes_total) + (c.truncated ? '+' : '') + '</td>' +
+            '<td>' + tops(c.top_ports) + '</td><td>' + tops(c.top_asn) + '</td><td>' + tops(c.top_cc) + '</td>' +
+            '<td>' + (c.alerts ? '<span class="activity-chip activity-chip-warn">' + c.alerts + '</span>' : (alarm ? '<span class="activity-chip activity-chip-warn">LAN</span>' : '')) + '</td></tr>';
+          if (state.open[key]) {
+            row += '<tr class="worker-detail"><td colspan="11"><div id="' + domId(key) + '" class="activity-detail"><div class="loading-line"><div class="spinner"></div> Loading</div></div></td></tr>';
+          }
+          return row;
+        }).join('') + '</tbody></table></div></section>';
+    }).join('') || '<p class="muted">No windows yet. The first one arrives within 5 minutes of switching a box on; connection counts start with the second.</p>';
+    Object.keys(state.open).forEach(function (key) { loadDetail(key); });
+  }
+
+  function dimTable(title, rows, label) {
+    if (!rows || !rows.length) return '<div><h3 class="activity-h3">' + esc(title) + '</h3><p class="muted">none</p></div>';
+    return '<div><h3 class="activity-h3">' + esc(title) + '</h3><table class="fleet-table"><tbody>' +
+      rows.slice(0, 15).map(function (r) {
+        return '<tr><td>' + esc(label ? label(r[0]) : (r[0] || 'unknown')) + '</td><td>' + esc(r[1]) + '</td></tr>';
+      }).join('') + '</tbody></table></div>';
+  }
+
+  function loadDetail(key) {
+    var parts = key.split('|'), wid = parts[0], name = parts.slice(1).join('|');
+    var box = document.getElementById(domId(key));
+    if (!box) return;
+    // The usage graph is per container. A namespace named after a sidecar has
+    // no usage of its own; its earners report the namespace's bytes, so chart
+    // the first of them.
+    var row = null;
+    ((state.data && state.data.workers) || []).forEach(function (w) {
+      if (String(w.worker_id) === wid) (w.containers || []).forEach(function (c) { if (c.container === name) row = c; });
+    });
+    var members = (row && row.members) || [];
+    var usageName = members.indexOf(name) >= 0 || !members.length ? name : members[0];
+    var q = 'worker_id=' + encodeURIComponent(wid) + '&container=' + encodeURIComponent(name);
+    var uq = 'worker_id=' + encodeURIComponent(wid) + '&container=' + encodeURIComponent(usageName);
+    Promise.all([
+      api('GET', '/api/activity/container?' + q + '&days=' + state.days),
+      api('GET', '/api/usage?days=7&' + uq).catch(function () { return null; })
+    ]).then(function (res) {
+      var d = res[0], usage = res[1];
+      // /api/usage falls back to the whole box when the container has no
+      // usage rows; that total must never be shown as this container's.
+      if (usage && usage.container !== usageName) usage = null;
+      var raw = d.raw || [];
+      var hostNet = row && (row.network_mode === 'host' || row.reason === 'host_cgroup' || row.status === 'host_network');
+      box.innerHTML = (hostNet ? '<p class="muted">' + esc(FORWARDED_NOTE) + '</p>' : '') +
+        '<div class="activity-charts"><div><h3 class="activity-h3">Connections</h3><canvas class="ac-conn" height="140"></canvas></div>' +
+        '<div><h3 class="activity-h3">Traffic, last 7 days' + (usageName !== name ? ' (' + esc(usageName) + ')' : '') + '</h3>' +
+        (usage ? '<canvas class="ac-traffic" height="140"></canvas>' : '<p class="muted">No traffic reading for this container yet.</p>') + '</div></div>' +
+        '<div class="activity-dims">' +
+        dimTable('Ports', (d.dims || {}).port) +
+        dimTable('Networks', (d.dims || {}).asn) +
+        dimTable('Country (where the network is registered)', (d.dims || {}).cc) +
+        dimTable('Kind of destination', (d.dims || {}).class, function (v) { return CLASS_LABEL[v] || v; }) +
+        '</div>' +
+        '<details class="activity-raw"><summary>Destinations of the last ' + esc(d.raw_hours) + ' hours (' + raw.length + ')</summary>' +
+        (raw.length ? '<table class="fleet-table"><thead><tr><th>Time</th><th>Direction</th><th>Address</th><th>Port</th><th>Kind</th><th>Network</th><th>Country</th><th>Seen</th></tr></thead><tbody>' +
+          raw.slice(0, 500).map(function (r) {
+            return '<tr><td>' + esc(when(r.window_end)) + '</td><td>' + (r.dir === 'in' ? 'in' : 'out') + '</td><td class="mono">' + esc(r.ip) + '</td>' +
+              '<td>' + esc(r.proto) + '/' + esc(r.port) + '</td><td><span class="activity-chip' + (r.dir !== 'in' && ALARM[r['class']] ? ' activity-chip-warn' : '') + '">' + esc((r.dir === 'in' ? 'from ' : '') + (CLASS_LABEL[r['class']] || r['class'])) + '</span></td>' +
+              '<td>' + esc(r.asn || '—') + '</td><td>' + esc(r.cc || '—') + '</td><td>' + esc(r.seen) + '/5</td></tr>';
+          }).join('') + '</tbody></table>' +
+          (raw.length > 500 ? '<p class="muted">Showing the newest 500 of ' + esc(raw.length) + ' rows.</p>' : '') : '<p class="muted">none</p>') + '</details>';
+      drawCharts(key, box, d, usage);
+    }).catch(function (e) {
+      box.innerHTML = '<p class="muted">Could not load: ' + esc(e.message) + '</p>';
+    });
+  }
+
+  function drawCharts(key, box, d, usage) {
+    if (typeof Chart === 'undefined') return;
+    // Each expanded container has its own canvases, found inside its own box;
+    // the charts of a previous render of this container are destroyed first.
+    (state.charts[key] || []).forEach(function (c) { c.destroy(); });
+    state.charts[key] = [];
+    var labels = (d.series || []).map(function (p) { return new Date(p[0] * 1000).toLocaleString(); });
+    var conn = box.querySelector('canvas.ac-conn');
+    if (conn) {
+      state.charts[key].push(new Chart(conn, {
+        type: 'line',
+        data: { labels: labels, datasets: [
+          { label: 'Opened', data: d.series.map(function (p) { return p[1]; }), spanGaps: false, pointRadius: 0 },
+          { label: 'Failed', data: d.series.map(function (p) { return p[2]; }), spanGaps: false, pointRadius: 0 },
+          { label: 'Peak open', data: d.series.map(function (p) { return p[3]; }), spanGaps: false, pointRadius: 0 }
+        ] },
+        options: { animation: false, responsive: true, scales: { x: { display: false } } }
+      }));
+    }
+    var traffic = box.querySelector('canvas.ac-traffic');
+    if (traffic && usage && usage.series) {
+      var kb = function (v) { return v == null ? null : v / 1024; };
+      state.charts[key].push(new Chart(traffic, {
+        type: 'line',
+        data: { labels: (usage.hours || []).map(function (h) { return new Date(h * 1000).toLocaleString(); }), datasets: [
+          { label: 'In (KiB/s)', data: (usage.series.rx_rate || []).map(kb), spanGaps: false, pointRadius: 0 },
+          { label: 'Out (KiB/s)', data: (usage.series.tx_rate || []).map(kb), spanGaps: false, pointRadius: 0 }
+        ] },
+        options: { animation: false, responsive: true, scales: { x: { display: false } } }
+      }));
+    }
+  }
+
+  function load() {
+    return api('GET', '/api/activity/summary?days=' + state.days).then(function (d) {
+      state.data = d;
+      renderWorkers(d);
+      renderContainers(d);
+    }).catch(function (e) {
+      document.getElementById('activity-workers').innerHTML = '<p class="muted">Could not load Activity: ' + esc(e.message) + '</p>';
+    });
+  }
+
+  window.activityExpand = function (wid, name) {
+    var key = wid + '|' + name;
+    if (state.open[key]) {
+      delete state.open[key];
+      (state.charts[key] || []).forEach(function (c) { c.destroy(); });
+      delete state.charts[key];
+    } else {
+      state.open[key] = true;
+    }
+    if (state.data) renderContainers(state.data);
+  };
+
+  window.activityDelete = function (wid, name) {
+    if (!window.confirm('Delete every Activity record of ' + name + '? The switch stays as it is.')) return;
+    api('POST', '/api/activity/delete', { worker_id: Number(wid) }).then(load).catch(function (e) { window.alert(e.message); });
+  };
+
+  window.activityAsnRefresh = function () {
+    document.getElementById('activity-asn').textContent = 'Downloading the network table…';
+    api('POST', '/api/activity/asn/refresh').then(load).catch(function (e) { window.alert(e.message); load(); });
+  };
+
+  document.addEventListener('DOMContentLoaded', function () {
+    document.getElementById('activity-days').addEventListener('change', function (ev) {
+      state.days = Number(ev.target.value) || 1;
+      load();
+    });
+    document.getElementById('activity-workers').addEventListener('change', function (ev) {
+      var box = ev.target.closest('.activity-toggle');
+      if (!box) return;
+      var on = box.checked;
+      if (!on && !window.confirm('Switch Activity off for this box? Its remote addresses are deleted now; the totals stay until you delete them.')) {
+        box.checked = true;
+        return;
+      }
+      api('POST', '/api/activity/settings', { worker_id: Number(box.dataset.workerId), enabled: on }).then(function (r) {
+        if (!on && r.deleted_raw === null) window.alert('Activity is off, but its remote addresses could not be deleted just now. They expire within a day.');
+        load();
+      }).catch(function (e) {
+        box.checked = !on;
+        window.alert(e.message);
+      });
+    });
+    load();
+    setInterval(load, 300000);
+  });
+})();
+</script>
+{% endblock %}

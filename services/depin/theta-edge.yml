@@ -58,3 +58,38 @@ collector:
 payout:
   model: unknown
   notes: "Not yet determined. Flagged rather than shown blank -- see CashPilot-luj."
+
+# Provider rating: the verdicts behind the grade (method: services/_ratings.yml,
+# published at docs/ratings.md). The grade itself is computed, never written here.
+rating:
+  reviewed_on: "2026-11-04"
+  verdicts:
+    payout_record: unknown
+    payout_terms: unknown
+    account_safety: unknown
+    terms_fit: fair
+    traffic_transparency: unknown
+    privacy: unknown
+    identity_checks: unknown
+    support: unknown
+    earnings_realism: unknown
+    longevity: unknown
+  notes:
+    payout_record: We found no pattern of reports either way.
+    payout_terms: Elite edge nodes need at least 10,000 TFUEL staked; we did not find the full payout
+      terms.
+    account_safety: No reports found.
+    traffic_transparency: Not documented on pages we read.
+    privacy: Not reviewed.
+    identity_checks: Not documented.
+    support: No pattern found.
+    longevity: Not checked on a primary source.
+    earnings_realism: The only estimate we found is one forum post, below our user-reports threshold,
+      and Theta's own pages give no per-node figure.
+  cons:
+  - text: 'CashPilot does not run Theta Edge: you use the provider''s own desktop app, so CashPilot cannot
+      deploy or update it for you. Its terms were not checked for containers.'
+    criterion: terms_fit
+    kind: our_experience
+    source: https://github.com/GeiserX/CashPilot/blob/main/services/depin/theta-edge.yml
+    checked_on: "2026-11-04"

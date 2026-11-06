@@ -49,6 +49,7 @@ defensible on its own; together they are impossible to guess.
 | `CASHPILOT_WORKER_ALLOWED_HOSTS` | unset | Worker hosts allowed under the `strict` policy: CIDRs, host names and `*.suffix` patterns, separated by commas. | - |
 | `CASHPILOT_WORKER_ALLOW_METADATA` | `false` | Allow proxying to cloud metadata IPs. Leave off. | - |
 | `CASHPILOT_WORKER_URL_POLICY` | `permissive` | How worker URLs are validated. `permissive` accepts any address except loopback, link-local and cloud metadata, so LAN, Tailscale and public addresses all pass. `strict` accepts only `CASHPILOT_WORKER_ALLOWED_HOSTS`. | - |
+| `CASHPILOT_ACTIVITY_ASN_URL` | iptoasn.com's `ip2asn-combined.tsv.gz` | Where the [Activity](activity.md) page's network and country table is downloaded from, weekly while a box has Activity on. Empty disables the download; networks and countries then read as unknown unless you place `/data/ipgeo.sqlite` by hand. | - |
 
 ## Worker
 

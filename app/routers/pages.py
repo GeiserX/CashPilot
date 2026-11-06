@@ -72,6 +72,17 @@ async def page_settings(request: Request):
     return await _page(request, "settings.html", user)
 
 
+@router.get("/import", response_class=HTMLResponse)
+async def page_import(request: Request):
+    """Bring settings over from money4band, CashFactory or InternetIncome. Owner only, like its API."""
+    user = auth_module.get_current_user(request)
+    if not user:
+        return deps._login_redirect()
+    if not auth_module.require_role(user, "owner"):
+        raise HTTPException(status_code=403, detail="Owner access required")
+    return await _page(request, "import.html", user)
+
+
 @router.get("/payouts", response_class=HTMLResponse)
 async def page_payouts(request: Request):
     """Where every service pays out (CashPilot-luj, tier 1).
@@ -87,6 +98,21 @@ async def page_payouts(request: Request):
     if not auth_module.require_role(user, "owner"):
         raise HTTPException(status_code=403, detail="Owner access required")
     return await _page(request, "payouts.html", user)
+
+
+@router.get("/activity", response_class=HTMLResponse)
+async def page_activity(request: Request):
+    """What each earner does on the network (docs/activity.md).
+
+    OWNER-ONLY, like every /api/activity route: it shows metadata of other
+    people's traffic and holds the switch that makes a worker start probes.
+    """
+    user = auth_module.get_current_user(request)
+    if not user:
+        return deps._login_redirect()
+    if not auth_module.require_role(user, "owner"):
+        raise HTTPException(status_code=403, detail="Owner access required")
+    return await _page(request, "activity.html", user)
 
 
 @router.get("/fleet", response_class=HTMLResponse)

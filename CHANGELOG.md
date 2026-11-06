@@ -10,6 +10,114 @@ Every release, grouped by what changed. Generated from commit history.
 Releases before `1.0.0` were recorded by hand and are kept verbatim in
 [docs/changelog-0.x-handwritten.md](docs/changelog-0.x-handwritten.md).
 
+## [1.68.1] - 2026-11-05
+
+### Fixes
+
+- Stop the catalog scrolling sideways in narrow windows now that it has a Grade column (#586)
+
+## [1.68.0] - 2026-11-05
+
+### Features
+
+- Grade every provider on published criteria so its real cons are visible before you sign up (#572)
+
+### Maintenance
+
+- Pin the examples to 1.67 (#582)
+
+## [1.67.0] - 2026-11-05
+
+### Features
+
+- Bring logins over from money4band, CashFactory and InternetIncome without retyping them (#571)
+
+### Maintenance
+
+- Pin the examples to 1.66 (#580)
+
+## [1.66.0] - 2026-11-05
+
+### Documentation
+
+- Let home-server users install CashPilot from their app store (#567)
+- Regenerate CHANGELOG.md (#579)
+
+### Features
+
+- Show what Mysterium and other host-network earners connect to, without new privileges (#573)
+
+## [1.65.3] - 2026-11-05
+
+### Documentation
+
+- Regenerate CHANGELOG.md (#578)
+
+### Fixes
+
+- Stop redeploys piling up anonymous volumes and deletes orphaning a deploying container (#570)
+
+## [1.65.2] - 2026-11-05
+
+### Documentation
+
+- Regenerate CHANGELOG.md (#564)
+
+### Testing
+
+- Keep private host names out of fixtures and docs (#577)
+
+## [1.65.1] - 2026-11-04
+
+### Fixes
+
+- Open a collector card without leaving a gap in the other column (#575)
+
+### Maintenance
+
+- Pin the examples to 1.65 (#569)
+
+## [1.65.0] - 2026-11-04
+
+### Features
+
+- Show what each earner container does on the network, opt-in (#560)
+
+### Maintenance
+
+- Pin the examples to 1.64 (#566)
+- Pin the examples to 1.63 (#565)
+
+## [1.64.0] - 2026-11-04
+
+### Features
+
+- Run any image from a registry as a custom service, with no YAML to edit (#562)
+
+## [1.63.0] - 2026-11-04
+
+### Documentation
+
+- Say referral rewards can be points, not always a cash commission (#559)
+
+### Features
+
+- Let the dashboard move off a taken port 8080 and still update itself (#561)
+
+### Maintenance
+
+- Pin the examples to 1.62 (#563)
+
+## [1.62.0] - 2026-11-04
+
+### Documentation
+
+- Regenerate CHANGELOG.md (#557)
+
+### Features
+
+- Show the new user's sign-up bonus next to every Sign Up button (#558)
+
 ## [1.61.3] - 2026-11-04
 
 ### Documentation

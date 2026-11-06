@@ -54,15 +54,15 @@ class TestAContainerIdNeverOverwritesARealName:
     @pytest.mark.asyncio
     async def test_a_recreate_does_not_rename_a_named_worker(self, db):
         """The bead: a user-set name must survive an image bump."""
-        assert await _name_after(db, "watchtower", CONTAINER_ID) == "watchtower"
+        assert await _name_after(db, "charlie", CONTAINER_ID) == "charlie"
 
     @pytest.mark.asyncio
     async def test_it_survives_repeated_recreates(self, db):
-        await db.upsert_worker(client_id="c1", name="geiserback")
+        await db.upsert_worker(client_id="c1", name="alpha")
         for cid in (CONTAINER_ID, ANOTHER_CONTAINER_ID, "0111c4f0efd6"):
             await db.upsert_worker(client_id="c1", name=cid)
         workers = await db.list_workers()
-        assert next(w for w in workers if w["client_id"] == "c1")["name"] == "geiserback"
+        assert next(w for w in workers if w["client_id"] == "c1")["name"] == "alpha"
 
     @pytest.mark.asyncio
     async def test_one_container_id_does_not_replace_another(self, db):
@@ -75,7 +75,7 @@ class TestRealNamesStillWin:
 
     @pytest.mark.asyncio
     async def test_a_user_can_rename_a_worker(self, db):
-        assert await _name_after(db, CONTAINER_ID, "watchtower") == "watchtower"
+        assert await _name_after(db, CONTAINER_ID, "charlie") == "charlie"
 
     @pytest.mark.asyncio
     async def test_a_user_can_rename_one_real_name_to_another(self, db):
@@ -90,13 +90,13 @@ class TestRealNamesStillWin:
 
     @pytest.mark.parametrize(
         "name",
-        ["35c04a0f43f", "35c04a0f43f5a", "ABCDEF012345", "my-host-12ab", "raspberrypi", "watchtower"],
+        ["35c04a0f43f", "35c04a0f43f5a", "ABCDEF012345", "my-host-12ab", "raspberrypi", "charlie"],
         ids=["11-hex", "13-hex", "uppercase", "hyphenated", "hostname", "word"],
     )
     @pytest.mark.asyncio
     async def test_only_the_exact_container_id_shape_is_rejected(self, db, name):
         """Guards against a sloppy pattern eating legitimate hostnames."""
-        assert await _name_after(db, "watchtower", name) == name
+        assert await _name_after(db, "charlie", name) == name
 
 
 class TestTheOtherFieldsStillUpdate:
@@ -104,11 +104,11 @@ class TestTheOtherFieldsStillUpdate:
 
     @pytest.mark.asyncio
     async def test_containers_and_url_still_change(self, db):
-        await db.upsert_worker(client_id="c1", name="watchtower", url="http://a:8081", containers="[]")
+        await db.upsert_worker(client_id="c1", name="charlie", url="http://a:8081", containers="[]")
         await db.upsert_worker(client_id="c1", name=CONTAINER_ID, url="http://b:8081", containers='[{"slug": "grass"}]')
         workers = await db.list_workers()
         row = next(w for w in workers if w["client_id"] == "c1")
-        assert row["name"] == "watchtower"
+        assert row["name"] == "charlie"
         assert row["url"] == "http://b:8081"
         assert "grass" in row["containers"]
 
@@ -128,4 +128,4 @@ class TestTheIdentityGuardIsStillThere:
 
         monkeypatch.setattr(Path, "exists", lambda self: True)
         assert worker_api._name_is_ephemeral(CONTAINER_ID) is True
-        assert worker_api._name_is_ephemeral("watchtower") is False
+        assert worker_api._name_is_ephemeral("charlie") is False

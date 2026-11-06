@@ -690,7 +690,7 @@ def deploy_raw(
         except APIError as exc:
             logger.warning("Could not stop %s cleanly before replacing it: %s", name, exc)
         logger.info("Removing existing container %s", name)
-        old.remove(force=True)
+        _remove_container(old, slug)
     except NotFound:
         pass
 
@@ -933,6 +933,24 @@ def _keep_live_mounts(
     return binds, kept
 
 
+def _remove_container(container: Any, slug: str) -> None:
+    """Force-remove a container of ``slug``; a custom service's anonymous volumes go with it.
+
+    Only for a custom service (a ``custom-`` slug, which catalog._validate
+    refuses for any catalog entry). An image that declares VOLUME and has no
+    data path gets a fresh anonymous volume with every container, and nothing
+    ever mounts the old one again (_catalog_volume_targets keeps no mount for a
+    custom slug), so without ``v`` each redeploy or scale-down leaves one
+    behind. Docker's ``v`` removes anonymous volumes only, never a named one,
+    so the data path (cashpilot-custom-<name>-data) stays. A catalog service is
+    removed exactly as before: its data is never touched here.
+    """
+    if slug.startswith("custom-"):
+        container.remove(force=True, v=True)
+    else:
+        container.remove(force=True)
+
+
 def _norm_mount(path: str) -> str:
     """Normalise a container mount path for comparison.
 
@@ -1139,7 +1157,7 @@ def remove_instance(slug: str, instance: int) -> dict[str, Any]:
         container.stop(timeout=_get_stop_timeout(slug))
     except APIError as exc:
         logger.warning("Could not stop %s cleanly before removing it: %s", container.name, exc)
-    container.remove(force=True)
+    _remove_container(container, slug)
     logger.info("Removed container %s", container.name)
     return {"container": container.name}
 
@@ -1153,6 +1171,8 @@ def remove_extra_instances(slug: str) -> list[str]:
     removed: list[str] = []
     for extra in service_instances(slug):
         if _instance_of(extra) > 1:
+            # Not _remove_container: this is whole-service removal, where the
+            # operator decides about data, and the first copy keeps its volumes.
             extra.remove(force=True)
             logger.info("Removed container %s", extra.name)
             removed.append(extra.name)

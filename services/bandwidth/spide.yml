@@ -68,3 +68,38 @@ collector:
 payout:
   model: unknown
   notes: "Not yet determined. Flagged rather than shown blank -- see CashPilot-luj."
+
+# Provider rating: the verdicts behind the grade (method: services/_ratings.yml,
+# published at docs/ratings.md). The grade itself is computed, never written here.
+rating:
+  reviewed_on: "2026-11-04"
+  verdicts:
+    payout_record: unknown
+    payout_terms: unknown
+    account_safety: unknown
+    terms_fit: fair
+    traffic_transparency: unknown
+    privacy: unknown
+    identity_checks: unknown
+    support: unknown
+    earnings_realism: unknown
+    longevity: unknown
+  notes:
+    payout_record: We found no user reports or payout proof.
+    payout_terms: Our catalog lists crypto from $5; a third-party listing says Litecoin from $10. Not
+      confirmed on Spide's own pages.
+    account_safety: No reports found.
+    traffic_transparency: Spide calls itself a proxy network; it does not say who the buyers are.
+    privacy: Not reviewed.
+    identity_checks: Not documented.
+    support: No reports found.
+    earnings_realism: Spide's homepage calculator shows an example of about $45 a month. We found no
+      user reports or measured figures to compare it with.
+    longevity: We did not find the company behind Spide.
+  cons:
+  - text: 'CashPilot does not run Spide: you use the provider''s own app, so CashPilot cannot deploy or
+      update it for you. Its terms were not checked for containers.'
+    criterion: terms_fit
+    kind: our_experience
+    source: https://github.com/GeiserX/CashPilot/blob/main/services/bandwidth/spide.yml
+    checked_on: "2026-11-04"

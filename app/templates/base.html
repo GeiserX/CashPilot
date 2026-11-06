@@ -81,6 +81,7 @@
         <!-- Owner-only, matching /payouts and /api/payout-registry. This view maps
              one person to all of their wallets at once. -->
         <a href="/payouts" class="sidebar-link {% if active_page == 'payouts' %}active{% endif %}" data-key="p">Payouts</a>
+        <a href="/activity" class="sidebar-link {% if active_page == 'activity' %}active{% endif %}" data-key="n">Activity</a>
         <a href="/settings" class="sidebar-link {% if active_page == 'settings' %}active{% endif %}" data-key="s">Settings</a>
         {% elif user %}
         <!-- Only the owner can deploy (/api/deploy), so the others get no Add

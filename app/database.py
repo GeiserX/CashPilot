@@ -459,6 +459,17 @@ CREATE TABLE IF NOT EXISTS custom_service_tombstones (
     deleted_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+-- Settings brought over from another tool (app/importers), one row per
+-- service, kept so the owner can deploy them to more workers later. The env is
+-- one Fernet-encrypted JSON blob: it holds the credentials. The pasted files
+-- themselves are never stored.
+CREATE TABLE IF NOT EXISTS import_drafts (
+    slug          TEXT PRIMARY KEY,
+    source        TEXT NOT NULL,
+    env_encrypted TEXT NOT NULL,
+    imported_at   TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 CREATE TABLE IF NOT EXISTS users (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
     username   TEXT    NOT NULL UNIQUE,
@@ -657,6 +668,72 @@ CREATE TABLE IF NOT EXISTS usage_counters (
     seen_at      REAL    NOT NULL,
     PRIMARY KEY (worker_id, container_id)
 );
+-- Activity (app/activity.py, docs/activity.md): what each earner did on the
+-- network, per 5-minute window. Opt-in per worker. Counts and socket peaks
+-- only; no remote address is stored here. NULL counters mean the window had
+-- no previous reading to difference against, never zero.
+CREATE TABLE IF NOT EXISTS activity_samples (
+    worker_id      INTEGER NOT NULL,
+    container      TEXT    NOT NULL,
+    window_end     INTEGER NOT NULL,
+    status         TEXT    NOT NULL,
+    reason         TEXT    NOT NULL DEFAULT '',
+    members        TEXT    NOT NULL DEFAULT '[]',
+    network_mode   TEXT    NOT NULL DEFAULT '',
+    opens          INTEGER,
+    passive_opens  INTEGER,
+    attempt_fails  INTEGER,
+    resets         INTEGER,
+    udp_in         INTEGER,
+    udp_out        INTEGER,
+    est_max        INTEGER,
+    syn_sent_max   INTEGER,
+    udp_bound      INTEGER,
+    listen_ports   TEXT    NOT NULL DEFAULT '[]',
+    remotes_total  INTEGER,
+    truncated      INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (worker_id, container, window_end)
+);
+
+CREATE INDEX IF NOT EXISTS idx_activity_samples_window
+    ON activity_samples (window_end);
+
+-- The sampled destinations themselves, with the remote address. Other
+-- people's traffic: kept 24 hours, purged on every ingest and hourly.
+CREATE TABLE IF NOT EXISTS activity_dest_raw (
+    worker_id   INTEGER NOT NULL,
+    container   TEXT    NOT NULL,
+    window_end  INTEGER NOT NULL,
+    dir         TEXT    NOT NULL,
+    proto       TEXT    NOT NULL,
+    ip          TEXT    NOT NULL,
+    port        INTEGER NOT NULL,
+    class       TEXT    NOT NULL,
+    asn         TEXT    NOT NULL DEFAULT '',
+    cc          TEXT    NOT NULL DEFAULT '',
+    seen        INTEGER NOT NULL DEFAULT 1
+);
+
+CREATE INDEX IF NOT EXISTS idx_activity_dest_raw_window
+    ON activity_dest_raw (window_end);
+CREATE INDEX IF NOT EXISTS idx_activity_dest_raw_container
+    ON activity_dest_raw (worker_id, container, window_end);
+
+-- Destinations folded per hour and dimension (port, network, country, class,
+-- direction), so history outlives the raw rows without keeping an address.
+-- Bounded: one row per distinct value of one dimension.
+CREATE TABLE IF NOT EXISTS activity_hourly (
+    worker_id  INTEGER NOT NULL,
+    container  TEXT    NOT NULL,
+    hour       INTEGER NOT NULL,
+    dim        TEXT    NOT NULL CHECK (dim IN ('port', 'asn', 'cc', 'class', 'oclass', 'dir')),
+    value      TEXT    NOT NULL,
+    sightings  INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (worker_id, container, hour, dim, value)
+);
+
+CREATE INDEX IF NOT EXISTS idx_activity_hourly_hour
+    ON activity_hourly (hour);
 """
 
 
@@ -970,7 +1047,7 @@ async def _encrypt_legacy_plaintext_credentials(db: Any) -> int:
 #: missing a column -- an interrupted upgrade, a restored backup, a hand-edited
 #: file -- could never be repaired, because the gate would say there was nothing
 #: to do. The guards are idempotent and cheap; the version is for the operator.
-SCHEMA_VERSION = 14
+SCHEMA_VERSION = 16
 
 
 async def init_db() -> None:
@@ -2101,6 +2178,97 @@ async def delete_custom_service(slug: str) -> bool:
         await db.close()
 
 
+# --- Import drafts ---
+
+
+class EphemeralKeyError(RuntimeError):
+    """Refused: the encryption key would not survive a restart."""
+
+
+async def save_import_draft(slug: str, source: str, env: dict[str, str]) -> None:
+    """Store an imported service's env, encrypted whole, replacing any earlier one.
+
+    Refused under an ephemeral key, like the plaintext re-encryption pass: a
+    credential encrypted now would be unreadable after the next restart.
+    """
+    if _fernet_key_is_ephemeral:
+        raise EphemeralKeyError("the credential-encryption key is temporary")
+    blob = encrypt_value(json.dumps(env, sort_keys=True))
+    db = await _get_db()
+    try:
+        await db.execute(
+            """
+            INSERT INTO import_drafts (slug, source, env_encrypted) VALUES (?, ?, ?)
+            ON CONFLICT(slug) DO UPDATE SET
+                source = excluded.source,
+                env_encrypted = excluded.env_encrypted,
+                imported_at = datetime('now')
+            """,
+            (slug, source, blob),
+        )
+        await db.commit()
+    finally:
+        await db.close()
+
+
+def _decode_draft(row: Any) -> dict[str, str] | None:
+    raw = decrypt_value(row["env_encrypted"] or "")
+    try:
+        env = json.loads(raw) if raw else None
+    except ValueError:
+        env = None
+    if not isinstance(env, dict):
+        _logger.warning("Import draft for %s could not be decrypted or read; it is skipped", row["slug"])
+        return None
+    return {str(k): str(v) for k, v in env.items()}
+
+
+async def get_import_draft(slug: str) -> dict[str, Any] | None:
+    """``{"slug", "source", "imported_at", "env"}`` with the env decrypted, or None."""
+    db = await _get_db()
+    try:
+        cursor = await db.execute(
+            "SELECT slug, source, env_encrypted, imported_at FROM import_drafts WHERE slug = ?", (slug,)
+        )
+        row = await cursor.fetchone()
+    finally:
+        await db.close()
+    if not row:
+        return None
+    env = _decode_draft(row)
+    if env is None:
+        return None
+    return {"slug": row["slug"], "source": row["source"], "imported_at": row["imported_at"], "env": env}
+
+
+async def list_import_drafts() -> list[dict[str, Any]]:
+    """Every readable draft, keys only: ``{"slug", "source", "imported_at", "keys"}``."""
+    db = await _get_db()
+    try:
+        cursor = await db.execute("SELECT slug, source, env_encrypted, imported_at FROM import_drafts ORDER BY slug")
+        rows = await cursor.fetchall()
+    finally:
+        await db.close()
+    out = []
+    for row in rows:
+        env = _decode_draft(row)
+        if env is not None:
+            out.append(
+                {"slug": row["slug"], "source": row["source"], "imported_at": row["imported_at"], "keys": sorted(env)}
+            )
+    return out
+
+
+async def delete_import_draft(slug: str) -> bool:
+    db = await _get_db()
+    try:
+        cursor = await db.execute("DELETE FROM import_drafts WHERE slug = ?", (slug,))
+        await db.commit()
+        return (cursor.rowcount or 0) > 0
+    finally:
+        await db.close()
+
+
 # A service the user removed from the whole fleet. The startup backfill
 # (main._track_fully_configured_services) gives every service with saved
 # credentials a tracking row, so without this a removal came back as
@@ -2536,6 +2704,13 @@ async def delete_worker(worker_id: int) -> None:
         await db.commit()
     finally:
         await db.close()
+    # Its Activity history goes with it (own connection, secure_delete), so a
+    # removed box leaves none of its traffic behind. A failure here must not
+    # undo the removal; the raw addresses still expire within a day.
+    try:
+        await delete_activity(worker_id)
+    except Exception as exc:  # noqa: BLE001
+        _logger.warning("Could not delete the Activity rows of worker %s: %s", worker_id, type(exc).__name__)
 
 
 # --- Per-worker fleet keys ---
@@ -3211,6 +3386,363 @@ async def get_usage_hourly(since_hour: int, worker_id: int | None = None) -> lis
         await db.close()
 
 
+# --- Activity per container (app/activity.py, app/activity_ui.py) ---
+
+#: Samples and hourly aggregates: as long as the usage history beside them.
+ACTIVITY_RETENTION_DAYS = 35
+#: Rows holding a remote address. Other people's traffic, so one day only.
+ACTIVITY_RAW_SECONDS = 86400
+
+
+def _activity_hour(window_end: int) -> int:
+    """The hour a window belongs to: a window ending on the hour is the hour before."""
+    return (int(window_end) - 1) // 3600 * 3600
+
+
+async def _activity_connect() -> aiosqlite.Connection:
+    """An own connection for Activity writes and purges, zeroing what it deletes.
+
+    secure_delete overwrites deleted rows on disk, so a purged address does not
+    linger in a free page until the next VACUUM.
+    """
+    DB_DIR.mkdir(parents=True, exist_ok=True)
+    # timeout= is SQLite's busy timeout: BEGIN IMMEDIATE waits up to 30 s for
+    # the write lock. A busy_timeout PRAGMA here would silently replace it.
+    db = await aiosqlite.connect(str(DB_PATH), timeout=30)
+    db.row_factory = aiosqlite.Row
+    await db.execute("PRAGMA secure_delete=ON")
+    return db
+
+
+async def _activity_still_wanted(db: aiosqlite.Connection, worker_id: int, flag_keys: tuple[str, ...]) -> bool:
+    """Inside the write lock: the worker still exists and its switch is still on.
+
+    The flag keys are read in order and the first non-empty value decides, as
+    activity_ui.enabled does.
+    """
+    cursor = await db.execute("SELECT 1 FROM workers WHERE id = ?", (worker_id,))
+    if not await cursor.fetchone():
+        return False
+    for key in flag_keys:
+        cursor = await db.execute("SELECT value FROM config WHERE key = ?", (key,))
+        row = await cursor.fetchone()
+        value = str(row[0] if row else "").strip()
+        if value:
+            return value.lower() in _TRUTHY
+    return False
+
+
+async def record_activity(
+    worker_id: int,
+    window: dict[str, Any],
+    geo: Mapping[str, tuple[str, str]] | None = None,
+    now: float | None = None,
+    flag_keys: tuple[str, ...] | None = None,
+) -> int:
+    """Store one sanitised Activity window (activity_ui.sanitise). Returns samples written.
+
+    A window already stored for a container is ignored whole, so a heartbeat
+    retried after a lost reply cannot count its destinations twice. The raw
+    purge runs in the same transaction, so no ingest leaves an address older
+    than a day behind.
+
+    With ``flag_keys``, the worker row and its switch are read again inside the
+    write lock and nothing is stored when either is gone. Switching off or
+    removing a box deletes its rows under the same lock, so a heartbeat in
+    flight cannot write addresses back after that delete.
+    """
+    now = time.time() if now is None else now
+    geo = geo or {}
+    end = int(window["window_end"])
+    hour = _activity_hour(end)
+    written = 0
+    db = await _activity_connect()
+    try:
+        await db.execute("BEGIN IMMEDIATE")
+        try:
+            if flag_keys is not None and not await _activity_still_wanted(db, worker_id, flag_keys):
+                await db.rollback()
+                return 0
+            for s in window.get("samples") or []:
+                cursor = await db.execute(
+                    """
+                    INSERT OR IGNORE INTO activity_samples (
+                        worker_id, container, window_end, status, reason, members, network_mode, opens,
+                        passive_opens, attempt_fails, resets, udp_in, udp_out, est_max, syn_sent_max, udp_bound,
+                        listen_ports, remotes_total, truncated)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        worker_id,
+                        s["container"],
+                        end,
+                        s["status"],
+                        s.get("reason") or "",
+                        json.dumps(s.get("members") or []),
+                        s.get("network_mode") or "",
+                        s.get("opens"),
+                        s.get("passive_opens"),
+                        s.get("attempt_fails"),
+                        s.get("resets"),
+                        s.get("udp_in"),
+                        s.get("udp_out"),
+                        s.get("est_max"),
+                        s.get("syn_sent_max"),
+                        s.get("udp_bound"),
+                        json.dumps(s.get("listen_ports") or []),
+                        s.get("remotes_total"),
+                        1 if s.get("truncated") else 0,
+                    ),
+                )
+                if not cursor.rowcount:
+                    continue
+                written += 1
+                dims: dict[tuple[str, str], int] = {}
+                raw_rows = []
+                for direction, rows in (("out", s.get("out") or []), ("in", s.get("in") or [])):
+                    for d in rows:
+                        asn, cc = geo.get(d["ip"], ("", "")) if d["class"] == "public" else ("", "")
+                        proto = d.get("proto", "tcp")
+                        raw_rows.append(
+                            (
+                                worker_id,
+                                s["container"],
+                                end,
+                                direction,
+                                proto,
+                                d["ip"],
+                                d["port"],
+                                d["class"],
+                                asn,
+                                cc,
+                                d["seen"],
+                            )
+                        )
+                        values = [("dir", direction), ("class", d["class"])]
+                        if direction == "out":
+                            values.append(("port", f"{proto}/{d['port']}"))
+                            # Outbound class alone: what the page's LAN mark reads.
+                            values.append(("oclass", d["class"]))
+                        if asn:
+                            values.append(("asn", asn))
+                        if cc:
+                            values.append(("cc", cc))
+                        for dim in values:
+                            dims[dim] = dims.get(dim, 0) + int(d["seen"])
+                if raw_rows:
+                    await db.executemany(
+                        """
+                        INSERT INTO activity_dest_raw (worker_id, container, window_end, dir, proto, ip, port, class,
+                                                       asn, cc, seen)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        raw_rows,
+                    )
+                if dims:
+                    await db.executemany(
+                        """
+                        INSERT INTO activity_hourly (worker_id, container, hour, dim, value, sightings)
+                        VALUES (?, ?, ?, ?, ?, ?)
+                        ON CONFLICT(worker_id, container, hour, dim, value) DO UPDATE SET
+                            sightings = sightings + excluded.sightings
+                        """,
+                        [(worker_id, s["container"], hour, dim, value, n) for (dim, value), n in dims.items()],
+                    )
+            await db.execute("DELETE FROM activity_dest_raw WHERE window_end < ?", (int(now) - ACTIVITY_RAW_SECONDS,))
+            await db.commit()
+        except BaseException:
+            await db.rollback()
+            raise
+    finally:
+        await db.close()
+    return written
+
+
+async def _checkpoint(db: aiosqlite.Connection) -> bool:
+    """Fold the WAL back into the file and empty it. True when a reader kept it busy.
+
+    The WAL still holds the frames that inserted the deleted addresses until a
+    checkpoint resets it. A busy result is logged; the next hourly purge tries
+    again.
+    """
+    try:
+        cursor = await db.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+        row = await cursor.fetchone()
+    except Exception as exc:  # noqa: BLE001
+        _logger.warning("Activity WAL checkpoint failed: %s", type(exc).__name__)
+        return True
+    busy = bool(row and row[0])
+    if busy:
+        _logger.warning("Activity WAL checkpoint was busy; the next purge retries it")
+    return busy
+
+
+async def purge_activity_raw(now: float | None = None) -> int:
+    """Delete raw destinations older than a day, and every row of a removed box,
+    then fold the WAL back into the file.
+
+    delete_worker deletes a box's Activity rows after the box itself; when that
+    second step fails, this sweep is what still removes them.
+    """
+    now = time.time() if now is None else now
+    db = await _activity_connect()
+    try:
+        cursor = await db.execute(
+            "DELETE FROM activity_dest_raw WHERE window_end < ?", (int(now) - ACTIVITY_RAW_SECONDS,)
+        )
+        total = cursor.rowcount or 0
+        for table in ("activity_dest_raw", "activity_samples", "activity_hourly"):
+            cursor = await db.execute(
+                f"DELETE FROM {table} WHERE worker_id NOT IN (SELECT id FROM workers)"  # noqa: S608
+            )
+            total += cursor.rowcount or 0
+        await db.commit()
+        await _checkpoint(db)
+        return total
+    finally:
+        await db.close()
+
+
+async def delete_activity(worker_id: int, raw_only: bool = False) -> int:
+    """Delete a worker's Activity rows: only the raw addresses, or everything."""
+    tables = ("activity_dest_raw",) if raw_only else ("activity_dest_raw", "activity_samples", "activity_hourly")
+    db = await _activity_connect()
+    try:
+        total = 0
+        # The same write lock record_activity takes, so an ingest already past
+        # its switch check finishes first and its rows go with this delete.
+        await db.execute("BEGIN IMMEDIATE")
+        for table in tables:
+            cursor = await db.execute(f"DELETE FROM {table} WHERE worker_id = ?", (worker_id,))  # noqa: S608
+            total += cursor.rowcount or 0
+        await db.commit()
+        await _checkpoint(db)
+        return total
+    finally:
+        await db.close()
+
+
+def _activity_filter(since: int, worker_id: int | None, container: str | None, column: str) -> tuple[str, list[Any]]:
+    sql = f" WHERE {column} >= ?"
+    params: list[Any] = [since]
+    if worker_id is not None:
+        sql += " AND worker_id = ?"
+        params.append(worker_id)
+    if container is not None:
+        sql += " AND container = ?"
+        params.append(container)
+    return sql, params
+
+
+async def get_activity_latest(since: int, worker_id: int | None = None) -> list[dict[str, Any]]:
+    """The newest sample of every container seen since ``since``."""
+    where, params = _activity_filter(since, worker_id, None, "window_end")
+    db = await _get_db()
+    try:
+        cursor = await db.execute(
+            f"""
+            SELECT s.* FROM activity_samples s
+            JOIN (SELECT worker_id, container, MAX(window_end) AS last FROM activity_samples{where}
+                  GROUP BY worker_id, container) t
+              ON s.worker_id = t.worker_id AND s.container = t.container AND s.window_end = t.last
+            ORDER BY s.worker_id, s.container
+            """,  # noqa: S608 - the filter is built from literals
+            tuple(params),
+        )
+        return [dict(r) for r in await cursor.fetchall()]
+    finally:
+        await db.close()
+
+
+async def get_activity_series(
+    since: int, hourly: bool, worker_id: int | None = None, container: str | None = None
+) -> list[dict[str, Any]]:
+    """Opens, failures and peak established per window, or summed per hour in SQL.
+
+    SUM over only NULLs is NULL, so an hour with no counted window stays unknown.
+    """
+    where, params = _activity_filter(since, worker_id, container, "window_end")
+    if hourly:
+        sql = (
+            "SELECT worker_id, container, (window_end - 1) / 3600 * 3600 AS t, SUM(opens) AS opens, "
+            f"SUM(attempt_fails) AS attempt_fails, MAX(est_max) AS est_max FROM activity_samples{where} "
+            "GROUP BY worker_id, container, t ORDER BY worker_id, container, t"
+        )
+    else:
+        sql = (
+            "SELECT worker_id, container, window_end AS t, opens, attempt_fails, est_max "
+            f"FROM activity_samples{where} ORDER BY worker_id, container, t"
+        )
+    db = await _get_db()
+    try:
+        cursor = await db.execute(sql, tuple(params))
+        return [dict(r) for r in await cursor.fetchall()]
+    finally:
+        await db.close()
+
+
+async def get_activity_dims(
+    since_hour: int, worker_id: int | None = None, container: str | None = None
+) -> list[dict[str, Any]]:
+    """Sightings per (worker, container, dimension, value), summed in SQL over the period."""
+    where, params = _activity_filter(since_hour, worker_id, container, "hour")
+    db = await _get_db()
+    try:
+        cursor = await db.execute(
+            f"SELECT worker_id, container, dim, value, SUM(sightings) AS sightings FROM activity_hourly{where} "
+            "GROUP BY worker_id, container, dim, value",  # noqa: S608
+            tuple(params),
+        )
+        return [dict(r) for r in await cursor.fetchall()]
+    finally:
+        await db.close()
+
+
+async def get_activity_raw(worker_id: int, container: str, now: float | None = None) -> list[dict[str, Any]]:
+    """The raw destinations of one container still inside the one-day window."""
+    now = time.time() if now is None else now
+    db = await _get_db()
+    try:
+        cursor = await db.execute(
+            """
+            SELECT window_end, dir, proto, ip, port, class, asn, cc, seen FROM activity_dest_raw
+            WHERE worker_id = ? AND container = ? AND window_end >= ?
+            ORDER BY window_end DESC, seen DESC LIMIT 2000
+            """,
+            (worker_id, container, int(now) - ACTIVITY_RAW_SECONDS),
+        )
+        return [dict(r) for r in await cursor.fetchall()]
+    finally:
+        await db.close()
+
+
+async def get_activity_last_windows() -> dict[int, int]:
+    db = await _get_db()
+    try:
+        cursor = await db.execute("SELECT worker_id, MAX(window_end) AS last FROM activity_samples GROUP BY worker_id")
+        return {r["worker_id"]: r["last"] for r in await cursor.fetchall()}
+    finally:
+        await db.close()
+
+
+async def get_activity_opens_hourly(since_hour: int) -> list[dict[str, Any]]:
+    """Connections opened per (worker, container, hour); NULL when most windows had no count."""
+    db = await _get_db()
+    try:
+        cursor = await db.execute(
+            """
+            SELECT worker_id, container, (window_end - 1) / 3600 * 3600 AS hour,
+                   CASE WHEN COUNT(opens) * 2 >= COUNT(*) THEN SUM(opens) END AS opens
+            FROM activity_samples WHERE window_end > ?
+            GROUP BY worker_id, container, hour ORDER BY worker_id, container, hour
+            """,
+            (since_hour,),
+        )
+        return [dict(r) for r in await cursor.fetchall()]
+    finally:
+        await db.close()
+
+
 # --- Data Retention ---
 
 RETENTION_DAYS = 400
@@ -3259,8 +3791,11 @@ async def purge_old_data() -> int:
         )
         # A baseline is useless after an hour (app/usage.py); a day is plenty.
         c6 = await db.execute("DELETE FROM usage_counters WHERE seen_at < ?", (time.time() - 86400,))
+        activity_cutoff = int(time.time()) - ACTIVITY_RETENTION_DAYS * 86400
+        c7 = await db.execute("DELETE FROM activity_samples WHERE window_end < ?", (activity_cutoff,))
+        c8 = await db.execute("DELETE FROM activity_hourly WHERE hour < ?", (activity_cutoff,))
         await db.commit()
-        return sum((c.rowcount or 0) for c in (c1, c2, c3, c4, c5, c6))
+        return sum((c.rowcount or 0) for c in (c1, c2, c3, c4, c5, c6, c7, c8))
     finally:
         await db.close()
 
