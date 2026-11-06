@@ -21,23 +21,23 @@ Left out: [earning-machine](https://github.com/jf-m/earning-machine) and [passiv
 
 ## Short version
 
-- **If you want many proxies or IPs, use InternetIncome, money4band or IGM.** All three run each app once per proxy. CashPilot has no proxy support.
+- **InternetIncome, money4band, IGM and, since v1.69.0, CashPilot can earn on many IPs through proxies.** The first three run each app once per proxy, and proxies are InternetIncome's main feature. CashPilot runs extra copies of a service already deployed on a worker, each through a SOCKS5, HTTP CONNECT or Tailscale exit-node proxy ([proxied copies](proxies.md)).
 - **InternetIncome (23) and IGM (20) start more apps than CashPilot's worker (<!-- n:docker -->17<!-- /n -->).** CashPilot tracks more services in total (<!-- n:live -->41<!-- /n -->) because it also follows browser extension, desktop and GPU services that it does not run. Since v1.64.0 it can also run any image you name as a [custom service](custom-services.md).
 - **money4band and IGM claim daily rewards for you, and keep app images updated with Watchtower.** CashPilot does neither. It pulls an image again only when you deploy or redeploy.
 - **CashPilot is the only one here that reads balances from your provider accounts and keeps a history.** money4band 5.0.0 shows estimates from its own catalog, not your accounts. The others link to each provider's dashboard.
 - **CashPilot is the only open-source one here with one UI for many servers.** IGM's README claims fleet management, but that code is in its closed binary.
-- **No project here, CashPilot included, keeps earner containers off your LAN by default.**
+- **Since v1.70.0, CashPilot is the only one here that keeps earner containers off your LAN by default, and only on new installs.** An upgraded install keeps its earners on Docker's default bridge until you turn isolation on, and host-networked Mysterium is never fenced ([isolation](isolation.md#modes)).
 
 ## Side by side
 
-CashPilot's column describes v1.64.0. The other columns describe the commits in the table above.
+CashPilot's column describes v1.64.0, except the proxy and LAN isolation rows, which describe v1.71.1 (`0170dee`, 2026-11-06). The other columns describe the commits in the table above.
 
 | | CashPilot | money4band 5.0.0 | IGM | InternetIncome | CashFactory | HA add-ons |
 |---|---|---|---|---|---|---|
 | Apps it can start (see [how we counted](#how-we-counted)) | <!-- n:docker -->17<!-- /n --> run by the worker, plus [custom images](custom-services.md); <!-- n:live -->41<!-- /n --> tracked in total | 15 ([catalog][m4b-catalog]). The README says 35, which [includes][m4b-readme-35] community and dropped apps | 20 ([apps.json][igm-apps]) | 23 ([script][ii-script]) | 11 ([compose file][cf-compose]) | 10 ([add-on folders][ha-tree]) |
 | How you install it | Docker Compose: one UI plus a worker on each server; the worker starts earners through the Docker API ([fleet](fleet.md)) | Python CLI or a prebuilt binary that writes a compose file ([release][m4b-tree]) | `curl \| sh` installer ([README][igm-install]) that downloads a closed binary, checked only against a SHA256SUMS file from the same release ([installer][igm-installer-sums]) | One bash script of 1,608 lines that calls `sudo docker run` ([script][ii-script]) | A static compose file plus `setup.sh` run with sudo ([setup][cf-setup]) | A Home Assistant add-on repository; needs Home Assistant OS or Supervised |
 | Many servers, one view | Yes ([fleet](fleet.md)) | No, one stack per device | README claims yes, in the closed binary ([README][igm-features]) | No | No | No |
-| Many proxies or IPs | No | Yes ([README][m4b-features], [code][m4b-multiproxy]) | Yes ([README][igm-features], [compose][igm-proxy]) | Yes, its main feature ([README][ii-readme-top]) | No | No |
+| Many proxies or IPs | Yes, since v1.69.0: extra copies of a deployed service, each through a SOCKS5, HTTP CONNECT or Tailscale exit-node proxy. The earner shares a tunnel container's network namespace whose firewall drops every packet that does not go into the tunnel, so a dead proxy stops it instead of leaking ([proxied copies](proxies.md#how-it-works), [code][cp-proxy-deploy], [tunnel firewall][cp-tunnel-fw]). Services that need host networking, published ports, volumes, devices or `NET_ADMIN`, `NET_RAW` or `SYS_ADMIN` cannot run through a proxy ([proxied copies](proxies.md#what-cannot-run-through-a-proxy)) | Yes ([README][m4b-features], [code][m4b-multiproxy]) | Yes ([README][igm-features], [compose][igm-proxy]) | Yes, its main feature ([README][ii-readme-top]) | No | No |
 | Earnings | <!-- n:collectors -->15<!-- /n --> collectors read balances from provider accounts and keep a history. Some need a cookie or token copied from your browser, and some of those expire (see each service's guide) | Estimates from catalog ranges, not account data ([code][m4b-earnings]) | None found in the scripts | None | None | None |
 | Payouts | Proposes a payout when a balance drops, and records it once you confirm ([schema][cp-payouts]) | None | None | None | None | None |
 | Daily reward claiming | No | Yes, sidecars ([README][m4b-features]) | Yes ([README][igm-features], [compose][igm-sidecars]) | No | No | No |
@@ -46,7 +46,7 @@ CashPilot's column describes v1.64.0. The other columns describe the commits in 
 | Docker socket mounted into | The worker itself ([compose][cp-sock]); never an earner ([code][cp-mounts]) | Watchtower ([template][m4b-watchtower]) | Watchtower, which is read-only with `no-new-privileges` ([compose][igm-watchtower]) | Five restart helper containers ([script][ii-sock-helper]) and Watchtower ([script][ii-watchtower]) | Portainer, published on ports 8000, 9000 and 9443 on all interfaces ([compose][cf-portainer]), and two Watchtowers ([compose][cf-watchtower-ps], [compose][cf-watchtower-efm]) | None |
 | Image tags | 4 of the <!-- n:docker -->17<!-- /n --> earner images are pinned to a version or digest; the rest float | All 15 app images use `:latest` ([example][m4b-image]); proxy container pinned to v2.6.0, Watchtower to `:1` | No tag, so Docker uses `latest` ([compose][igm-hosting]); a tag is set only for some ARM builds | Mostly `:latest` ([example][ii-seccomp]); EarnApp `:lite`, Honeygain pinned to 0.6.6 when proxied on amd64 ([script][ii-honeygain]), Traffmonetizer per-arch tags on ARM; Watchtower `:nightly` | `:latest` or no tag, except EarnApp `:lite` ([compose][cf-compose]) | One version per add-on, bumped by a daily CI job ([workflow][ha-bump], [example][ha-dockerfile]) |
 | App image updates | Pulled again on each deploy or redeploy; no automatic updater | Watchtower ([template][m4b-watchtower]) | Watchtower every 4 hours ([compose][igm-watchtower]) | Watchtower once a day, if you turn it on ([script][ii-watchtower]) | Two Watchtowers, each limited to one app, PacketStream ([compose][cf-watchtower-ps]) and EarnFM ([compose][cf-watchtower-efm]); the other 9 apps are not updated | Home Assistant's add-on updates |
-| LAN isolation | Opt-in: the worker can put earners on a bridge you create, and a check shows what they can reach. It does not create firewall rules ([isolation](isolation.md)) | Own bridge subnet ([config][m4b-subnet]), which does not block the LAN | None merged | None found | None found | None found |
+| LAN isolation | On by default for new installs since v1.70.0: the worker puts earners on its own bridge and writes a firewall table that drops private ranges, the tailnet range, cloud metadata, the host's connected subnets, the host itself and, with public IP detection on, the home's public IP ([isolation](isolation.md#lan-isolation-by-default), [code][cp-fence]). An upgraded install stays on Docker's default bridge until you press **Turn on isolation**, and `CASHPILOT_ISOLATION=off` turns it off ([isolation](isolation.md#modes), [code][cp-fence-mode]). Host-networked Mysterium is not covered. A check shows what earners can reach ([check](isolation-check.md)) | Own bridge subnet ([config][m4b-subnet]), which does not block the LAN | None merged | None found | None found | None found |
 | ARM | arm64 UI and worker; checks each service's platforms before a deploy ([ARM](arm.md)) | arm64 and armv7 binaries ([release][m4b-release]) | README claims amd64 and arm64, arm32 with limits, and sets up QEMU ([README][igm-arch]) | Needs binfmt emulation for amd64-only images ([README][ii-arm]) | README says it does not work on a Raspberry Pi ([README][cf-raspberry]) | Per add-on; ProxyRack is amd64 only ([config][ha-proxyrack]) |
 | UI | Web UI, plus Desktop, Android, MCP and Home Assistant clients | CLI, menus and a local web dashboard bound to 127.0.0.1 by default ([code][m4b-bind]) | CLI, menus, and per the README a web UI on port 4747 reachable on the LAN ([README][igm-webui]) | None, a script | A bookmarks page on port 80 plus Portainer ([README][cf-ui]) | The Home Assistant add-on panel |
 | Commits on the default branch, 2026-08-06 to 2026-11-04 | 286 | 6, all docs (5.0.0 is on a separate history) | 6 | 31 | 0 | 23 |
@@ -70,7 +70,7 @@ We did not check whether each app on each list still pays out.
 
 ## Where CashPilot is behind
 
-- No proxy support, so one CashPilot server earns from one IP.
+- Services that need host networking, published ports, volumes, devices or extra network capabilities cannot run through a proxy, so Mysterium and Bitping earn only from the server's own IP ([proxied copies](proxies.md#what-cannot-run-through-a-proxy)).
 - Fewer apps that it starts itself than IGM or InternetIncome.
 - No daily reward claiming and no automatic image updates.
 - 13 of the <!-- n:docker -->17<!-- /n --> earner images float on their publisher's latest tag.
@@ -78,7 +78,7 @@ We did not check whether each app on each list still pays out.
 - The encryption key for stored credentials sits in the same volume as the data, and on each worker the earner credentials are plain text in Docker's container config.
 - Some collectors need a cookie or token copied from the browser, and some of those expire, so earnings tracking needs upkeep for those services.
 - The UI loads fonts and Chart.js from third-party CDNs.
-- LAN isolation needs firewall rules you write yourself.
+- LAN isolation is off on upgraded installs until you turn it on, and it never covers host-networked Mysterium ([isolation](isolation.md#modes)).
 - A much smaller community than money4band's.
 - It releases often, sometimes several times a day.
 
@@ -163,3 +163,7 @@ We did not check whether each app on each list still pays out.
 [cp-onchain]: https://github.com/GeiserX/CashPilot/blob/c7a12bd4a1e5ce06f5be0ad303afc14c28ec17b8/app/onchain.py#L84-L88
 [cp-cdn]: https://github.com/GeiserX/CashPilot/blob/c7a12bd4a1e5ce06f5be0ad303afc14c28ec17b8/app/templates/base.html#L12-L16
 [cp-chartjs]: https://github.com/GeiserX/CashPilot/blob/c7a12bd4a1e5ce06f5be0ad303afc14c28ec17b8/app/templates/base.html#L254
+[cp-proxy-deploy]: https://github.com/GeiserX/CashPilot/blob/0170deec45c1a5fe6e72682b94adc07e5878d2bf/app/proxy_tunnel.py#L336-L350
+[cp-tunnel-fw]: https://github.com/GeiserX/CashPilot/blob/0170deec45c1a5fe6e72682b94adc07e5878d2bf/tunnel/cp-tunnel#L86-L99
+[cp-fence]: https://github.com/GeiserX/CashPilot/blob/0170deec45c1a5fe6e72682b94adc07e5878d2bf/app/lan_fence.py#L83-L100
+[cp-fence-mode]: https://github.com/GeiserX/CashPilot/blob/0170deec45c1a5fe6e72682b94adc07e5878d2bf/app/lan_fence.py#L630-L646
