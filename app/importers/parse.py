@@ -490,8 +490,9 @@ def build_preview(
     proxies = sum(1 for s in skipped if "Proxies" in s["reason"])
     if proxies:
         notices.append(
-            "Proxy settings were found and left out. Add each proxy in the Proxies section of the Fleet page, "
-            "then run copies of your services through it."
+            "Proxy settings were found and left out. CashPilot deploys each service on the worker's own "
+            "connection, and a proxied copy runs beside it, never instead of it. Add each proxy in the Proxies "
+            "section of the Fleet page, then run copies of your services through it."
         )
     for fs in files:
         if fs.kind == "devices" and fs.extra_lines:
