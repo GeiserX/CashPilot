@@ -64,6 +64,13 @@ ALLOWED_CALLS: list[tuple[str, str]] = [
     ("POST", "/images/create"),
     ("GET", "/networks"),
     ("GET", "/networks/*"),
+    # The LAN fence (app/lan_fence.py) creates cashpilot-isolated, moves
+    # earners onto it and recreates it after a prune. sockguard 2.4.5 cannot
+    # limit these by network name, so they are allowed for any network.
+    ("POST", "/networks/create"),
+    ("POST", "/networks/*/connect"),
+    ("POST", "/networks/*/disconnect"),
+    ("DELETE", "/networks/*"),
     ("GET", "/volumes/*"),
     ("DELETE", "/volumes/*"),
 ]
@@ -105,7 +112,7 @@ request_body:
     allow_host_pid: false
     allow_host_ipc: false
     allow_host_userns: false
-    allow_host_cgroupns: false
+    allow_host_cgroupns: true         # the Activity probe of a host-network earner (app/activity.py)
     allowed_capabilities: [{capabilities}]
     allowed_devices: [{devices}]
     allowed_runtimes: [{runtimes}]
@@ -137,6 +144,13 @@ request_body:
 {commands}
   image_pull:
     allow_all_registries: true        # catalog and custom services come from many registries
+  network:
+    # The LAN fence (app/lan_fence.py) creates its bridge with three driver
+    # options (interface name, no masquerade, no inter-container traffic) and
+    # moves an earner across with a forced disconnect. Custom drivers, swarm
+    # scope, custom IPAM and endpoint settings stay refused.
+    allow_driver_options: true
+    allow_disconnect_force: true
 rules:
 {rules}
 """
