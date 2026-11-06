@@ -24,6 +24,7 @@ from app import orchestrator, proxy_tunnel, worker_api  # noqa: E402
 from app.constants import LABEL_INSTANCE, LABEL_MANAGED, LABEL_PROXY, LABEL_ROLE, LABEL_SERVICE  # noqa: E402
 
 PASSWORD = "s3cr3t-p@ss"
+NEW_PASSWORD = "n3w-pass"  # ggignore: fake test value, not a credential
 AUTH_KEY = "tskey-auth-kTEST-0123456789"
 
 
@@ -601,7 +602,8 @@ class TestWorkerProxiedOps:
             resp = _api().post("/api/proxied/x/1/start", json={"proxy": _socks()}, headers=AUTH)
         assert resp.status_code == 200
         slug, pid, proxy, own_ip = start.call_args.args
-        assert (slug, pid, proxy["password"], proxy["host"], own_ip) == ("x", 1, PASSWORD, "203.0.113.9", "192.0.2.1")
+        assert (slug, pid, proxy["host"], own_ip) == ("x", 1, "203.0.113.9", "192.0.2.1")
+        assert proxy == worker_api.ProxySpec(**_socks()).plain()
 
     def test_a_service_removal_reports_proxied_copies_that_survived(self):
         with (
@@ -787,7 +789,7 @@ class TestStartAppliesTheStoredProxy:
         only refreshed proxy_ip. Old keys the new settings do not use are
         written empty, so cp-tunnel cannot pick them up."""
         earner, tunnel = self._pair()
-        new = _socks(password="n3w-pass", port=2080)
+        new = _socks(password=NEW_PASSWORD, port=2080)
         with (
             patch.object(orchestrator, "_get_client", return_value=_client_with(earner, tunnel)),
             patch.object(proxy_tunnel, "_wait_ready", return_value={"ip": "93.184.215.14"}),
@@ -796,7 +798,7 @@ class TestStartAppliesTheStoredProxy:
             proxy_tunnel.start("x", 1, new, "192.0.2.1")
         files = _files_in(tunnel.put_archive.call_args.args[1])
         assert set(files) == set(proxy_tunnel.SECRET_KEYS)
-        assert files["proxy_auth"] == "u1:n3w-pass@" and files["proxy_port"] == "2080"
+        assert files["proxy_auth"] == f"u1:{NEW_PASSWORD}@" and files["proxy_port"] == "2080"
         assert files["auth_key"] == files["login_server"] == "" and files["own_ip"] == "192.0.2.1"
         refresh.assert_not_called()
         earner.start.assert_called_once()
@@ -814,10 +816,10 @@ class TestStartAppliesTheStoredProxy:
             patch.object(proxy_tunnel, "_wait_ready", return_value={"ip": "93.184.215.14"}),
             patch.object(proxy_tunnel, "_read_secret_file", return_value="digest-of-the-old-settings"),
         ):
-            proxy_tunnel.start("x", 1, _socks(password="n3w-pass"), None)
+            proxy_tunnel.start("x", 1, _socks(password=NEW_PASSWORD), None)
         earner.stop.assert_called_once()
         tunnel.stop.assert_called_once()
-        assert _files_in(tunnel.put_archive.call_args.args[1])["proxy_auth"] == "u1:n3w-pass@"
+        assert _files_in(tunnel.put_archive.call_args.args[1])["proxy_auth"] == f"u1:{NEW_PASSWORD}@"
 
     def test_a_running_tunnel_on_the_same_settings_is_left_running(self):
         earner, tunnel = self._pair("running", "running")

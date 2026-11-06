@@ -13,6 +13,7 @@ from fastapi import HTTPException
 from app import database, egress, main, proxies
 
 PASSWORD = "Pr0xy-P4ss-7c1e9"
+NEW_PASSWORD = "n3w-pass"  # ggignore: fake test value, not a credential
 USERNAME = "customer-sergio-cc-es"
 AUTH_KEY = "tskey-auth-kTEST-abcdef0123"
 
@@ -892,14 +893,14 @@ class TestReviewFollowUps:
         async def go():
             created = await main.api_create_proxy(_Req(_socks(username=USERNAME, password=PASSWORD)), {})
             pid = created["id"]
-            await main.api_update_proxy(_Req({"password": "n3w-pass"}), pid, {})
+            await main.api_update_proxy(_Req({"password": NEW_PASSWORD}), pid, {})
             with patch.object(main, "_proxy_to_worker", call):
                 await main.api_proxied_copy_command(pid, 7, "honeygain", "start", {})
                 await main.api_proxied_copy_command(pid, 7, "honeygain", "stop", {})
 
         _run(go)
         start, stop = call.call_args_list
-        assert start.kwargs["json"]["proxy"]["password"] == "n3w-pass"
+        assert start.kwargs["json"]["proxy"]["password"] == NEW_PASSWORD
         assert stop.kwargs["json"] is None
 
     def test_removing_a_service_keeps_records_of_copies_that_survived(self, db):
