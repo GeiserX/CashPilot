@@ -101,6 +101,14 @@ if docker network inspect cashpilot-isolated >/dev/null 2>&1; then
     trap - EXIT
     exit 2
 fi
+# A managed container already on the default bridge makes the fence treat
+# this host as an upgraded install and stay off, so the fenced deploy below
+# would land on the default bridge and prove nothing.
+if [ -n "$(docker ps -aq --filter label=cashpilot.managed=true)" ]; then
+    echo "CashPilot-managed containers already exist on this host; this test needs a host without CashPilot." >&2
+    trap - EXIT
+    exit 2
+fi
 if docker volume inspect cashpilot-docker-api >/dev/null 2>&1; then
     echo "The volume cashpilot-docker-api already exists; this test needs a host without CashPilot." >&2
     trap - EXIT
@@ -183,8 +191,13 @@ show "$out"
 FAILS=$((FAILS + $(echo "$out" | count '^FAIL')))
 [ "$(echo "$out" | count '^PASS')" -ge 17 ] || fail "too few refusal checks ran"
 # The "refused nothing" check in (a) reads the same log; it must be able to see a refusal.
-docker logs --since "$since" cashpilot-socket-proxy 2>&1 | grep -q 'request_denied' && pass "the proxy logs its refusals" \
-    || fail "the proxy logged none of the refusals, so the check in (a) cannot fail"
+# Captured first: under pipefail, grep -q closing the pipe early fails the
+# pipeline with SIGPIPE even when the line is there.
+proxy_log=$(docker logs --since "$since" cashpilot-socket-proxy 2>&1 || true)
+case "$proxy_log" in
+*request_denied*) pass "the proxy logs its refusals" ;;
+*) fail "the proxy logged none of the refusals, so the check in (a) cannot fail" ;;
+esac
 
 echo "== b2. a container in the proxy's process namespace cannot reach its files"
 # sockguard lets PidMode container:<name> through; the proxy's extra capability
