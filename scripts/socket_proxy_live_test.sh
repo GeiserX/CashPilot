@@ -68,6 +68,20 @@ else
     }
 fi
 
+LEGACY_CLEANUP=$(cat <<'SH'
+for spec in "iptables-legacy nat CP-POST POSTROUTING" "iptables-legacy mangle CP-FWD FORWARD" "iptables-legacy mangle CP-IN INPUT" "ip6tables-legacy mangle CP6-FWD FORWARD" "ip6tables-legacy mangle CP6-IN INPUT"; do
+    set -- $spec
+    command -v "$1" >/dev/null 2>&1 || continue
+    "$1" -w -t "$2" -S "$4" 2>/dev/null | grep -- "-j $3\$" | sed 's/^-A /-D /' | while read -r rule; do
+        eval "\"\$1\" -w -t \"\$2\" $rule"
+    done
+    "$1" -w -t "$2" -F "$3" 2>/dev/null
+    "$1" -w -t "$2" -X "$3" 2>/dev/null
+done
+true
+SH
+)
+
 cleanup() {
     [ "${KEEP:-0}" = 1 ] && return
     compose down -v --remove-orphans >/dev/null 2>&1 || true
@@ -83,6 +97,11 @@ cleanup() {
         docker run --rm --network host --cap-add NET_ADMIN --entrypoint nft "$P-worker:build" \
             delete table "$family" cashpilot >/dev/null 2>&1 || true
     done
+    # On a host without nftables the fence uses iptables-legacy: drop each jump
+    # into our chains (they match the subnet or interface, so read them back),
+    # then the chains.
+    docker run --rm --network host --cap-add NET_ADMIN --entrypoint sh "$P-worker:build" -c "$LEGACY_CLEANUP" \
+        >/dev/null 2>&1 || true
     docker rmi -f "$WORKER_IMAGE" "$UI_IMAGE" "$P-worker:build" >/dev/null 2>&1 || true
 }
 trap 'jobs -p | xargs -r kill 2>/dev/null; cleanup' EXIT

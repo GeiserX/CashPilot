@@ -318,7 +318,10 @@ def _placeholder_bind(client: docker.DockerClient) -> None:
         probe.start()
         result(False, name, "Docker created and started it")
     except APIError as exc:
-        result(True, name, str(exc)[:160])
+        # Only Docker failing on the stand-in path itself counts; any other
+        # error proves nothing about it.
+        text = str(exc)
+        result("/dev/null/cashpilot-compose-dir-unset: not a directory" in text, name, text[-200:])
     finally:
         if probe is not None:
             with contextlib.suppress(APIError):
