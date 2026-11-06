@@ -266,6 +266,7 @@ def test_a_catalog_reader_the_policy_lacks_fails_the_check(tmp_path):
 
 def test_the_policy_check_catches_a_hand_edited_compose_file(tmp_path, monkeypatch):
     for name in COMPOSE_FILES:
+        (tmp_path / name).parent.mkdir(parents=True, exist_ok=True)
         (tmp_path / name).write_text((ROOT / name).read_text())
     edited = tmp_path / COMPOSE_FILES[0]
     edited.write_text(edited.read_text().replace("allow_privileged: false", "allow_privileged: true", 1))

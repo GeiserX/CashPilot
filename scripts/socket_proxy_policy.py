@@ -34,6 +34,9 @@ COMPOSE_FILES = (
     "docker-compose.fleet.yml",
     "docker-compose.build.yml",
     "docker-compose.worker.yml",
+    # The app store packages install the same proxy, so they carry the same policy.
+    "contrib/app-stores/casaos/CashPilot/docker-compose.yml",
+    "contrib/app-stores/runtipi/cashpilot/docker-compose.yml",
 )
 BEGIN = "      # BEGIN socket proxy policy: written by scripts/socket_proxy_policy.py, do not edit by hand\n"
 END = "      # END socket proxy policy\n"

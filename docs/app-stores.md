@@ -1,13 +1,14 @@
 # App stores
 
 You can install CashPilot from the app store of several home-server systems.
-Each listing installs the same two containers as `docker-compose.yml`: the
-dashboard (`drumsergio/cashpilot`) and the worker
-(`drumsergio/cashpilot-worker`), which mounts the Docker socket to start and
-stop the service containers.
+Each listing installs the dashboard (`drumsergio/cashpilot`) and the worker
+(`drumsergio/cashpilot-worker`), which starts and stops the service
+containers. The CasaOS and Runtipi packages also install the Docker socket
+proxy from `docker-compose.yml`, so their worker never holds the raw Docker
+socket. The Unraid templates still give the worker the socket directly.
 
 Whichever store you use, keep the dashboard on your LAN or VPN. It can command
-the worker, and the worker's Docker socket is root on the host.
+the worker, and the worker drives Docker on the host.
 
 ## Listed today
 
@@ -41,6 +42,10 @@ https://github.com/IceWhaleTech/CasaOS-AppStore/pull/1088
 Until it is merged, install it as a custom app: in CasaOS choose App Store,
 then Custom Install, then Import, and paste the contents of
 https://github.com/GeiserX/CashPilot/blob/main/contrib/app-stores/casaos/CashPilot/docker-compose.yml
+
+That file pins an exact release. Before you import it, set both image tags
+(`drumsergio/cashpilot` and `drumsergio/cashpilot-worker`) to the newest
+release from https://github.com/GeiserX/CashPilot/releases.
 
 ## Prepared, not yet submitted
 

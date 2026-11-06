@@ -97,25 +97,47 @@ def _is_worker(service: dict) -> bool:
     return str(service.get("image", "")).startswith("drumsergio/cashpilot-worker")
 
 
+def _is_proxy(service: dict) -> bool:
+    return str(service.get("image", "")).startswith("codeswhat/sockguard:")
+
+
+def _env(service: dict) -> dict[str, str]:
+    env = service.get("environment") or {}
+    if isinstance(env, dict):
+        return {str(k): str(v) for k, v in env.items()}
+    return dict(str(e).split("=", 1) for e in env if "=" in str(e))
+
+
 @pytest.mark.parametrize("compose", COMPOSE, ids=_ids(COMPOSE))
-def test_only_the_worker_mounts_the_docker_socket(compose):
+def test_only_the_socket_proxy_holds_the_docker_socket(compose):
+    """The root compose files took the raw socket (root on the host) away from
+    the worker in v1.71.0 (#583). A store package that still bound it into the
+    worker installed the weaker layout the shipped files had left behind."""
     services = _services(compose)
+    proxies = [name for name, svc in services.items() if _is_proxy(svc)]
     workers = [name for name, svc in services.items() if _is_worker(svc)]
+    assert proxies, f"{compose}: no socket proxy service"
     assert workers, f"{compose}: no worker service"
     for name, svc in services.items():
-        has_socket = any("/var/run/docker.sock" in (s, t) for s, t in _mounts(svc))
-        if _is_worker(svc):
-            assert has_socket, f"{compose}: worker {name} cannot reach Docker"
+        sockets = [(s, t) for s, t in _mounts(svc) if "/var/run/docker.sock" in (s, t)]
+        if _is_proxy(svc):
+            assert "/var/run/docker.sock:/var/run/docker.sock:ro" in (svc.get("volumes") or []), (
+                f"{compose}: the proxy {name} must hold the socket read-only"
+            )
         else:
-            assert not has_socket, f"{compose}: {name} mounts the Docker socket; only the worker may"
+            assert not sockets, f"{compose}: {name} mounts the Docker socket; only the proxy may"
+    for name in workers:
+        assert _env(services[name]).get("DOCKER_HOST") == "unix:///run/cashpilot-docker/docker.sock", (
+            f"{compose}: worker {name} does not reach Docker through the proxy"
+        )
 
 
 @pytest.mark.parametrize("compose", COMPOSE, ids=_ids(COMPOSE))
 def test_the_worker_data_is_kept_apart_from_the_ui_data(compose):
-    """The UI's /data holds the credential store and its key; the worker holds the
-    Docker socket, so it must not mount the same host folder."""
+    """The UI's /data holds the credential store and its key; the worker drives
+    Docker, so it must not mount the same host folder."""
     services = _services(compose)
-    data = {name: {s for s, t in _mounts(svc) if t == "/data"} for name, svc in services.items()}
+    data = {name: {s for s, t in _mounts(svc) if t == "/data"} for name, svc in services.items() if not _is_proxy(svc)}
     ui = {PurePosixPath(s) for n, d in data.items() if not _is_worker(services[n]) for s in d}
     worker = {PurePosixPath(s) for n, d in data.items() if _is_worker(services[n]) for s in d}
     assert ui and worker, f"{compose}: UI or worker has no /data mount"
