@@ -129,3 +129,60 @@ payout:
     command: ["cat", "/etc/anon/anonrc"]
     # Only a live ContactInfo line: a commented-out old wallet is not where it pays.
     pattern: '(?m)^[ \t]*ContactInfo[ \t][^\n]*@anon:[ \t]*(0x[0-9a-fA-F]{40})(?![0-9a-fA-F])'
+
+# Provider rating: the verdicts behind the grade (method: services/_ratings.yml,
+# published at docs/ratings.md). The grade itself is computed, never written here.
+rating:
+  reviewed_on: "2026-11-04"
+  verdicts:
+    payout_record: unknown
+    payout_terms: poor
+    account_safety: unknown
+    terms_fit: good
+    traffic_transparency: poor
+    privacy: good
+    identity_checks: good
+    support: unknown
+    earnings_realism: unknown
+    longevity: unknown
+  notes:
+    payout_record: We have not published a reward claim of our own and found no pattern of reports.
+    account_safety: There is no account to ban.
+    support: No pattern found.
+    earnings_realism: Not measured.
+    longevity: Not checked on a primary source.
+  cons:
+  - text: A relay earns nothing unless 100 ANYONE is locked for it for at least 180 days, and each reward
+      claim is signed in your wallet.
+    criterion: payout_terms
+    kind: our_experience
+    source: https://github.com/GeiserX/CashPilot/blob/main/services/depin/anyone-protocol.yml
+    checked_on: "2026-11-04"
+  - text: It relays other people's traffic by design, with no vetting of who they are; exit relays attract
+      abuse complaints.
+    criterion: traffic_transparency
+    kind: our_experience
+    source: https://github.com/GeiserX/CashPilot/blob/main/services/depin/anyone-protocol.yml
+    checked_on: "2026-11-04"
+  - text: The relay's identity, IP and uptime are published to the network directory, and any ContactInfo
+      you set is public for good.
+    criterion: privacy
+    kind: our_experience
+    source: https://github.com/GeiserX/CashPilot/blob/main/services/depin/anyone-protocol.yml
+    checked_on: "2026-11-04"
+  pros:
+  - text: No account is needed at all.
+    criterion: identity_checks
+    kind: our_experience
+    source: https://github.com/GeiserX/CashPilot/blob/main/services/depin/anyone-protocol.yml
+    checked_on: "2026-11-04"
+  - text: The relay software is a published fork of Tor, under Tor's licence.
+    criterion: privacy
+    kind: terms
+    source: https://github.com/anyone-protocol/ator-protocol
+    checked_on: "2026-11-04"
+  - text: CashPilot builds its own image from Anyone's published relay software, which needs no account.
+    criterion: terms_fit
+    kind: our_experience
+    source: https://github.com/GeiserX/CashPilot/blob/main/services/depin/anyone-protocol.yml
+    checked_on: "2026-11-04"

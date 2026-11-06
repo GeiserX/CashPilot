@@ -21,7 +21,7 @@
 
 services:
   cashpilot-ui:
-    image: drumsergio/cashpilot:1.65
+    image: drumsergio/cashpilot:1.68
     pull_policy: always
     container_name: cashpilot-ui
     # Published on loopback by default: the dashboard can command the Docker-socket
@@ -116,7 +116,7 @@ services:
         target: /etc/sockguard/sockguard.yaml
 
   cashpilot-worker:
-    image: drumsergio/cashpilot-worker:1.65
+    image: drumsergio/cashpilot-worker:1.68
     pull_policy: always
     container_name: cashpilot-worker
     expose:

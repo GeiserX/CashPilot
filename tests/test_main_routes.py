@@ -1776,7 +1776,7 @@ class TestValidateWorkerUrl:
     def test_rfc1918_lan_allowed(self):
         from app.main import _validate_worker_url
 
-        assert _validate_worker_url("http://192.168.10.50:8081") == ("http://192.168.10.50:8081", None)
+        assert _validate_worker_url("http://192.168.50.50:8081") == ("http://192.168.50.50:8081", None)
 
     def test_metadata_ipv4_blocked(self):
         from app.main import _validate_worker_url
@@ -1858,8 +1858,8 @@ class TestValidateWorkerUrl:
         orig = (main._WORKER_URL_POLICY, main._WORKER_ALLOWED_CIDRS)
         try:
             main._WORKER_URL_POLICY = "strict"
-            main._WORKER_ALLOWED_CIDRS = [main.ipaddress.ip_network("192.168.10.0/24")]
-            assert main._validate_worker_url("http://192.168.10.50:8081") == ("http://192.168.10.50:8081", None)
+            main._WORKER_ALLOWED_CIDRS = [main.ipaddress.ip_network("192.168.50.0/24")]
+            assert main._validate_worker_url("http://192.168.50.50:8081") == ("http://192.168.50.50:8081", None)
         finally:
             main._WORKER_URL_POLICY, main._WORKER_ALLOWED_CIDRS = orig
 
@@ -1869,7 +1869,7 @@ class TestValidateWorkerUrl:
         orig = (main._WORKER_URL_POLICY, main._WORKER_ALLOWED_CIDRS)
         try:
             main._WORKER_URL_POLICY = "strict"
-            main._WORKER_ALLOWED_CIDRS = [main.ipaddress.ip_network("192.168.10.0/24")]
+            main._WORKER_ALLOWED_CIDRS = [main.ipaddress.ip_network("192.168.50.0/24")]
             with pytest.raises(Exception, match="strict mode"):
                 main._validate_worker_url("http://10.0.0.5:8081")
         finally:
@@ -1895,11 +1895,11 @@ class TestValidateWorkerUrl:
         orig = (main._WORKER_URL_POLICY, main._WORKER_ALLOWED_CIDRS)
         try:
             main._WORKER_URL_POLICY = "strict"
-            main._WORKER_ALLOWED_CIDRS = [main.ipaddress.ip_network("192.168.10.0/24")]
-            with patch("app.worker_proxy.socket.getaddrinfo", return_value=[(2, 1, 6, "", ("192.168.10.50", 8081))]):
+            main._WORKER_ALLOWED_CIDRS = [main.ipaddress.ip_network("192.168.50.0/24")]
+            with patch("app.worker_proxy.socket.getaddrinfo", return_value=[(2, 1, 6, "", ("192.168.50.50", 8081))]):
                 # Hostname resolves into the allowed CIDR -> accepted, and the
                 # validated IP is pinned for the request (anti-rebinding).
-                assert main._validate_worker_url("http://wk.local:8081") == ("http://wk.local:8081", "192.168.10.50")
+                assert main._validate_worker_url("http://wk.local:8081") == ("http://wk.local:8081", "192.168.50.50")
         finally:
             main._WORKER_URL_POLICY, main._WORKER_ALLOWED_CIDRS = orig
 
@@ -1909,7 +1909,7 @@ class TestValidateWorkerUrl:
         orig = (main._WORKER_URL_POLICY, main._WORKER_ALLOWED_CIDRS)
         try:
             main._WORKER_URL_POLICY = "strict"
-            main._WORKER_ALLOWED_CIDRS = [main.ipaddress.ip_network("192.168.10.0/24")]
+            main._WORKER_ALLOWED_CIDRS = [main.ipaddress.ip_network("192.168.50.0/24")]
             with (
                 patch("app.worker_proxy.socket.getaddrinfo", return_value=[(2, 1, 6, "", ("10.0.0.5", 8081))]),
                 pytest.raises(Exception, match="strict mode"),
@@ -2442,14 +2442,14 @@ class TestWorkerAllowlistParsing:
 
         with patch.dict(
             os.environ,
-            {"CASHPILOT_WORKER_ALLOWED_HOSTS": "192.168.10.0/24, *.ts.net , watchtower.local"},
+            {"CASHPILOT_WORKER_ALLOWED_HOSTS": "192.168.50.0/24, *.ts.net , charlie.local"},
         ):
             cidrs, suffixes, exact = main._parse_worker_allowlist()
         # Exact-collection asserts (not substring `in`) so CodeQL's
         # url-substring-sanitization heuristic isn't tripped by the test.
-        assert cidrs == [main.ipaddress.ip_network("192.168.10.0/24")]
+        assert cidrs == [main.ipaddress.ip_network("192.168.50.0/24")]
         assert suffixes == ["ts.net"]
-        assert exact == {"watchtower.local"}
+        assert exact == {"charlie.local"}
 
 
 class TestLoginRateLimitMetric:

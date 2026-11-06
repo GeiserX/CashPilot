@@ -108,3 +108,59 @@ platforms: [android, windows, macos, browser-extension]
 collector:
   type: manual
   notes: "No public API found. The dashboard at dapp.noderr.xyz/nodes sits behind a wallet signature. Nothing to collect while rewards are unfunded on testnet."
+
+# Provider rating: the verdicts behind the grade (method: services/_ratings.yml,
+# published at docs/ratings.md). The grade itself is computed, never written here.
+rating:
+  reviewed_on: "2026-11-04"
+  verdicts:
+    payout_record: unknown
+    payout_terms: unknown
+    account_safety: unknown
+    terms_fit: fair
+    traffic_transparency: fair
+    privacy: fair
+    identity_checks: good
+    support: unknown
+    earnings_realism: poor
+    longevity: fair
+  notes:
+    payout_record: 'Testnet beta: no rewards have been paid yet.'
+    payout_terms: Rewards are testnet tokens during the beta; mainnet terms are not published.
+    account_safety: There is no account in the usual sense; the identity is a wallet.
+    support: No reports found.
+  cons:
+  - text: Node rewards are unfunded testnet tokens with no market value, and none have been paid; the
+      5 to 10% APY on its site is a design target.
+    criterion: earnings_realism
+    kind: our_experience
+    source: https://github.com/GeiserX/CashPilot/blob/main/services/depin/noderr.yml
+    checked_on: "2026-11-04"
+  - text: For the desktop and browser clients Noderr describes automation tasks and does not say whether
+      they carry other people's traffic.
+    criterion: traffic_transparency
+    kind: our_experience
+    source: https://github.com/GeiserX/CashPilot/blob/main/services/depin/noderr.yml
+    checked_on: "2026-11-04"
+  - text: The provider says tasks are anonymised and sandboxed but publishes nothing more specific.
+    criterion: privacy
+    kind: our_experience
+    source: https://github.com/GeiserX/CashPilot/blob/main/services/depin/noderr.yml
+    checked_on: "2026-11-04"
+  - text: Still a testnet beta on Base Sepolia.
+    criterion: longevity
+    kind: our_experience
+    source: https://github.com/GeiserX/CashPilot/blob/main/services/depin/noderr.yml
+    checked_on: "2026-11-04"
+  - text: 'CashPilot does not run Noderr: you use the provider''s own app or extension, so CashPilot cannot
+      deploy or update it for you. Its terms were not checked for containers.'
+    criterion: terms_fit
+    kind: our_experience
+    source: https://github.com/GeiserX/CashPilot/blob/main/services/depin/noderr.yml
+    checked_on: "2026-11-04"
+  pros:
+  - text: 'No account: the app generates a wallet on first launch.'
+    criterion: identity_checks
+    kind: our_experience
+    source: https://github.com/GeiserX/CashPilot/blob/main/services/depin/noderr.yml
+    checked_on: "2026-11-04"

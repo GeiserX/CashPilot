@@ -47,7 +47,7 @@ Authorization: Bearer <this worker's own key, not the shared enrollment key>
 Content-Type: application/json
 
 {
-  "client_id": "desktop-macbook",
+  "client_id": "desktop-laptop",
   "readings": [
     {"slug": "honeygain", "balance": 12.4, "date": "2026-07-01", "currency": "USD"},
     {"slug": "mysterium", "balance": 88.0, "date": "2026-07-01", "currency": "MYST", "fx_rate_usd": 0.41}

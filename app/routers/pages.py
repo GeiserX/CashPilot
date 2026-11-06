@@ -72,6 +72,17 @@ async def page_settings(request: Request):
     return await _page(request, "settings.html", user)
 
 
+@router.get("/import", response_class=HTMLResponse)
+async def page_import(request: Request):
+    """Bring settings over from money4band, CashFactory or InternetIncome. Owner only, like its API."""
+    user = auth_module.get_current_user(request)
+    if not user:
+        return deps._login_redirect()
+    if not auth_module.require_role(user, "owner"):
+        raise HTTPException(status_code=403, detail="Owner access required")
+    return await _page(request, "import.html", user)
+
+
 @router.get("/payouts", response_class=HTMLResponse)
 async def page_payouts(request: Request):
     """Where every service pays out (CashPilot-luj, tier 1).

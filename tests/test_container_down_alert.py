@@ -31,7 +31,7 @@ def _ago(**kw) -> str:
     return (datetime.now(UTC) - timedelta(**kw)).strftime("%Y-%m-%dT%H:%M:%S.123456789Z")
 
 
-def _entry(status="exited", *, slug="urnetwork", node="geiserback", worker_id=1, **extra):
+def _entry(status="exited", *, slug="urnetwork", node="alpha", worker_id=1, **extra):
     return {
         "slug": slug,
         "name": f"cashpilot-{slug}",
@@ -85,14 +85,14 @@ class TestADownContainerIsAnAlert:
         alerts = _Alerts()
         statuses = [
             _entry(node=n, worker_id=i, finished_at=_ago(days=2), exit_code=0, restart_policy="no")
-            for i, n in enumerate(("watchtower", "geiserback", "geiserct"))
+            for i, n in enumerate(("charlie", "alpha", "bravo"))
         ]
         for _ in range(3):
             alerts.run(statuses)
         assert list(alerts.rows) == ["urnetwork"]
         assert len(alerts.pushed) == 1, "one push per service, not one per check or per server"
         message = alerts.rows["urnetwork"]
-        assert "geiserback" in message and "geiserct" in message and "watchtower" in message
+        assert "alpha" in message and "bravo" in message and "charlie" in message
         assert "exit code 0" in message
 
     def test_it_reaches_the_bell(self):
@@ -197,7 +197,7 @@ class TestTheWorkerReportsWhyItStopped:
 
         worker = {
             "id": 7,
-            "name": "geiserback",
+            "name": "alpha",
             "status": "online",
             "system_info": json.dumps({"docker_available": True}),
             "containers": json.dumps(

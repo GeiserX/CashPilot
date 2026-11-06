@@ -241,7 +241,7 @@ def test_settlements_count_as_cashed_out_and_lifetime_is_the_nodes(db):
 
 # --- Review of #526: fees, unread nodes, guards -------------------------------
 
-# Two items of a real GET /transactor/settle/history answer (watchtower, 2026-10-27).
+# Two items of a real GET /transactor/settle/history answer (charlie, 2026-10-27).
 HISTORY = (
     '{"items":[{"tx_hash":"0xd8de","provider_id":"0x55fd4a497237be0591b6c2423cde0e325398b6a8",'
     '"beneficiary":"0x9b3fEa36391651C2621283F6c0269790e15562C4","amount":3943301172065558488,'

@@ -104,3 +104,51 @@ disclosure:
 payout:
   model: minted
   notes: "The client mints its own wallet on first run. See tier 3."
+
+# Provider rating: the verdicts behind the grade (method: services/_ratings.yml,
+# published at docs/ratings.md). The grade itself is computed, never written here.
+rating:
+  reviewed_on: "2026-11-04"
+  verdicts:
+    payout_record: unknown
+    payout_terms: fair
+    account_safety: unknown
+    terms_fit: good
+    traffic_transparency: fair
+    privacy: unknown
+    identity_checks: good
+    support: unknown
+    earnings_realism: unknown
+    longevity: unknown
+  notes:
+    payout_record: We found no independent payout reports and have no payout of our own.
+    account_safety: There is no account in the usual sense; the client mints its own wallet.
+    privacy: Not reviewed beyond our own disclosure notes.
+    support: No reports found.
+    longevity: We could not confirm the company behind ProxyBase Markets or how long it has run.
+    earnings_realism: Search summaries of its marketing pages quote $1.80 per GB and $54 to $90 a month
+      for one device, far above our catalog estimate of $0 to $15, but the pages did not load for us to
+      check.
+  cons:
+  - text: Payouts are USDC on Tempo Chain and need a Tempo wallet address.
+    criterion: payout_terms
+    kind: our_experience
+    source: https://github.com/GeiserX/CashPilot/blob/main/services/bandwidth/proxybase-xyz.yml
+    checked_on: "2026-11-04"
+  - text: Your connection is sold as a SOCKS5 proxy to marketplace buyers; we found no description of
+      how buyers are checked.
+    criterion: traffic_transparency
+    kind: our_experience
+    source: https://github.com/GeiserX/CashPilot/blob/main/services/bandwidth/proxybase-xyz.yml
+    checked_on: "2026-11-04"
+  pros:
+  - text: Its own earn page is titled as needing no KYC, with a $1 payout.
+    criterion: identity_checks
+    kind: terms
+    source: https://proxybase.xyz/earn/sell-internet
+    checked_on: "2026-11-04"
+  - text: ProxyBase publishes its own client image and accepts datacentre connections.
+    criterion: terms_fit
+    kind: our_experience
+    source: https://github.com/GeiserX/CashPilot/blob/main/services/bandwidth/proxybase-xyz.yml
+    checked_on: "2026-11-04"

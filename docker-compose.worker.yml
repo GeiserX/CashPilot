@@ -61,7 +61,7 @@ services:
         target: /etc/sockguard/sockguard.yaml
 
   cashpilot-worker:
-    image: drumsergio/cashpilot-worker:1.65
+    image: drumsergio/cashpilot-worker:1.68
     pull_policy: always
     container_name: cashpilot-worker
     # The worker's API can deploy and remove containers on this server. Bind a
