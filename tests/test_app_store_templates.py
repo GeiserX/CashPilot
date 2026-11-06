@@ -97,25 +97,47 @@ def _is_worker(service: dict) -> bool:
     return str(service.get("image", "")).startswith("drumsergio/cashpilot-worker")
 
 
+def _is_proxy(service: dict) -> bool:
+    return str(service.get("image", "")).startswith("codeswhat/sockguard:")
+
+
+def _env(service: dict) -> dict[str, str]:
+    env = service.get("environment") or {}
+    if isinstance(env, dict):
+        return {str(k): str(v) for k, v in env.items()}
+    return dict(str(e).split("=", 1) for e in env if "=" in str(e))
+
+
 @pytest.mark.parametrize("compose", COMPOSE, ids=_ids(COMPOSE))
-def test_only_the_worker_mounts_the_docker_socket(compose):
+def test_only_the_socket_proxy_holds_the_docker_socket(compose):
+    """The root compose files took the raw socket (root on the host) away from
+    the worker in v1.71.0 (#583). A store package that still bound it into the
+    worker installed the weaker layout the shipped files had left behind."""
     services = _services(compose)
+    proxies = [name for name, svc in services.items() if _is_proxy(svc)]
     workers = [name for name, svc in services.items() if _is_worker(svc)]
+    assert proxies, f"{compose}: no socket proxy service"
     assert workers, f"{compose}: no worker service"
     for name, svc in services.items():
-        has_socket = any("/var/run/docker.sock" in (s, t) for s, t in _mounts(svc))
-        if _is_worker(svc):
-            assert has_socket, f"{compose}: worker {name} cannot reach Docker"
+        sockets = [(s, t) for s, t in _mounts(svc) if "/var/run/docker.sock" in (s, t)]
+        if _is_proxy(svc):
+            assert "/var/run/docker.sock:/var/run/docker.sock:ro" in (svc.get("volumes") or []), (
+                f"{compose}: the proxy {name} must hold the socket read-only"
+            )
         else:
-            assert not has_socket, f"{compose}: {name} mounts the Docker socket; only the worker may"
+            assert not sockets, f"{compose}: {name} mounts the Docker socket; only the proxy may"
+    for name in workers:
+        assert _env(services[name]).get("DOCKER_HOST") == "unix:///run/cashpilot-docker/docker.sock", (
+            f"{compose}: worker {name} does not reach Docker through the proxy"
+        )
 
 
 @pytest.mark.parametrize("compose", COMPOSE, ids=_ids(COMPOSE))
 def test_the_worker_data_is_kept_apart_from_the_ui_data(compose):
-    """The UI's /data holds the credential store and its key; the worker holds the
-    Docker socket, so it must not mount the same host folder."""
+    """The UI's /data holds the credential store and its key; the worker drives
+    Docker, so it must not mount the same host folder."""
     services = _services(compose)
-    data = {name: {s for s, t in _mounts(svc) if t == "/data"} for name, svc in services.items()}
+    data = {name: {s for s, t in _mounts(svc) if t == "/data"} for name, svc in services.items() if not _is_proxy(svc)}
     ui = {PurePosixPath(s) for n, d in data.items() if not _is_worker(services[n]) for s in d}
     worker = {PurePosixPath(s) for n, d in data.items() if _is_worker(services[n]) for s in d}
     assert ui and worker, f"{compose}: UI or worker has no /data mount"
@@ -162,3 +184,77 @@ def test_runtipi_offers_no_public_exposure():
     Users reach it on APP_PORT instead."""
     config = json.loads((STORES / "runtipi" / "cashpilot" / "config.json").read_text(encoding="utf-8"))
     assert config.get("exposable", False) is False, "Runtipi listing offers public exposure; set exposable to false"
+
+
+# ---------------------------------------------------------------------------
+# CasaOS interpolates its compose file twice
+# ---------------------------------------------------------------------------
+#
+# Its importer (CasaOS-AppManagement NewComposeAppFromYAML) resolves variables,
+# answering "$NAME" for any it does not know, writes the result out, and
+# Compose resolves that file again on install. So `$$` reaches the container
+# as nothing useful, and `${VAR:-default}` with VAR unset ends as "", not as the
+# default. Checked against compose-go 1.20.2, the version CasaOS builds on.
+
+_TEMPLATE = re.compile(r"\$(?:(\$)|([_a-zA-Z][_a-zA-Z0-9]*)|\{([_a-zA-Z][_a-zA-Z0-9]*)(?:(:?[-?])([^}]*))?\}|(.|$))")
+
+
+def _interpolate(value, lookup):
+    if isinstance(value, dict):
+        return {k: _interpolate(v, lookup) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_interpolate(v, lookup) for v in value]
+    if not isinstance(value, str):
+        return value
+
+    def sub(m):
+        escaped, named, braced, op, default, invalid = m.groups()
+        if escaped:
+            return "$"
+        if invalid is not None:
+            raise ValueError(f"invalid template in {value!r}")
+        return lookup(named or braced, op, default)
+
+    return _TEMPLATE.sub(sub, value)
+
+
+def _casaos_install(doc: dict) -> dict:
+    def first(name, op, default):
+        return "$TZ" if name == "TZ" else f"${name}"
+
+    def second(name, op, default):
+        known = {"AppID": "cashpilot", "TZ": "UTC"}
+        if name in known:
+            return known[name]
+        return default if op and op.startswith(":") or op == "-" else ""
+
+    return _interpolate(_interpolate(doc, first), second)
+
+
+CASAOS = STORES / "casaos" / "CashPilot" / "docker-compose.yml"
+
+
+def test_casaos_install_gives_the_proxy_the_generated_policy():
+    import sys
+
+    sys.path.insert(0, str(ROOT / "scripts"))
+    import socket_proxy_policy as spp
+
+    installed = _casaos_install(_load(CASAOS))
+    policy = yaml.safe_load(installed["configs"]["cashpilot_socket_policy"]["content"])
+    assert policy == yaml.safe_load(spp.policy()), "the policy CasaOS hands the proxy is not the generated one"
+
+
+def test_casaos_install_never_leaves_an_empty_bind_entry():
+    """sockguard reads an empty entry as the prefix of every path, so an unset
+    variable turned into "" would let containers bind any host folder."""
+    installed = _casaos_install(_load(CASAOS))
+    env = _env(installed["services"]["cashpilot-socket-proxy"])
+    binds = env["SOCKGUARD_REQUEST_BODY_CONTAINER_CREATE_ALLOWED_BIND_MOUNTS"].split(",")
+    assert binds and all(b.strip() for b in binds), f"empty bind entry after a CasaOS install: {binds}"
+
+
+def test_the_casaos_simulation_can_fail():
+    """The control: the defaulted form plain Compose uses ends empty here."""
+    doc = {"x": "${UNSET_X:-/dev/null/x},$${Y}"}
+    assert _casaos_install(doc)["x"] == ","

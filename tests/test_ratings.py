@@ -231,6 +231,17 @@ class TestValidator:
         block[key] = "B" if key in ("grade", "override") else True
         assert any("not allowed" in e for e in _errors(block))
 
+    def test_mixed_type_extra_keys_are_reported_not_raised(self):
+        # YAML reads `1:` as an int; sorting it next to a str key used to raise TypeError.
+        block = _rating()
+        block[1] = "x"
+        block["typo"] = "y"
+        block["verdicts"][2] = "good"
+        block["verdicts"]["zz"] = "fair"
+        errors = _errors(block)
+        assert any("not allowed" in e for e in errors)
+        assert any("unknown criteria" in e for e in errors)
+
     def test_non_https_source(self):
         block = _rating()
         block["pros"][0]["source"] = "http://example.com"
@@ -330,6 +341,15 @@ class TestValidator:
         # catalog. CI still fails on it (TestStrictCheck below).
         svc = _load_one(tmp_path, monkeypatch, lambda d: d["rating"].__setitem__("grade", "B"))
         assert svc is not None, "an invalid rating block dropped the whole service"
+        assert ratings.for_service(svc)["rated"] is False
+
+    def test_mixed_type_keys_leave_the_service_not_rated(self, tmp_path, monkeypatch):
+        def edit(d):
+            d["rating"][1] = "x"
+            d["rating"]["typo"] = "y"
+
+        svc = _load_one(tmp_path, monkeypatch, edit)
+        assert svc is not None, "a mixed-type rating key aborted the catalog load"
         assert ratings.for_service(svc)["rated"] is False
 
 

@@ -270,7 +270,7 @@ rating:
     identity_checks: Paid to your own wallet, no phone or ID needed
     support: Trustpilot has 16 reviews and none in the last year; not enough to judge.
     earnings_realism: Not measured against a provider figure.
-    longevity: Node project running since 2017
+    longevity: Developed by Blockdev AG in Zug, node project running since 2017
   cons:
   - text: About 21% of every settlement goes in fees, the 20% Hermes fee plus a transaction fee, and earnings
       are paid in the MYST token.
@@ -305,3 +305,8 @@ rating:
     kind: terms
     source: https://github.com/mysteriumnetwork/node
     checked_on: "2026-11-04"
+  - text: Mysterium's site says the network is developed by Blockdev AG, Zug, Switzerland.
+    criterion: longevity
+    kind: terms
+    source: https://www.mysterium.network/
+    checked_on: "2026-11-06"
