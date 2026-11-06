@@ -50,8 +50,8 @@ There are two other volumes, and neither is precious:
   Lose it and the worker re-enrolls on its next heartbeat. Nothing is destroyed.
 
     The worker's `/data` is a **separate volume from the UI's, deliberately**.
-    The worker holds the Docker socket, which is root on the host; it has no
-    business being able to read the credential store. Do not consolidate them.
+    The worker drives Docker (through the socket proxy), which is close to root
+    on the host; it has no business being able to read the credential store. Do not consolidate them.
 
 ---
 

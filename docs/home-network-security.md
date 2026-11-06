@@ -275,8 +275,8 @@ error but `wget http://1.1.1.1/` works, it is DNS: see
 
 ## 3. Keep CashPilot's control plane private
 
-The dashboard can command the worker, and the worker holds the Docker socket,
-which is as good as root on that machine. Both bind to `127.0.0.1` out of the box
+The dashboard can command the worker, and the worker can start containers
+through the socket proxy, which is close to root on that machine. Both bind to `127.0.0.1` out of the box
 ([security defaults](security-defaults.md)). Keep it that way:
 
 - **Never port-forward** the dashboard (8080) or the worker (8081) from your

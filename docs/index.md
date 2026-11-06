@@ -18,7 +18,7 @@ hide:
 
 ---
 
-**CashPilot** runs passive income services on your own servers and shows what they earn in one dashboard. It is two Docker containers: a UI that holds the catalog, the credentials and the earnings history, and a worker on each server that starts and watches the service containers. Start with [Getting started](getting-started.md), then pick services in the [Service guides](guides/index.md).
+**CashPilot** runs passive income services on your own servers and shows what they earn in one dashboard. It is a UI that holds the catalog, the credentials and the earnings history, and on each server a worker that starts and watches the service containers through a Docker socket proxy. Start with [Getting started](getting-started.md), then pick services in the [Service guides](guides/index.md).
 
 <div class="grid cards" markdown>
 
@@ -26,7 +26,7 @@ hide:
 
     ---
 
-    Fetch the compose file, start the two containers, create the owner account with the setup token.
+    Fetch the compose file, start the containers, create the owner account with the setup token.
 
 -   :material-view-grid-outline: **[Service guides](guides/index.md)**
 
@@ -102,6 +102,7 @@ The dashboard is what you look at every day: the balances, a 7-day or 30-day ear
 
 - **<!-- n:docker -->17<!-- /n --> services run in Docker**, started by the worker from the catalog: no compose file to write. Bandwidth sharing (Honeygain, EarnApp, IPRoyal Pawns, PacketStream, Repocket, Traffmonetizer, ProxyRack, and more), MystNodes, Anyone Protocol, Storj and Sia (hostd).
 - **<!-- n:extension -->18<!-- /n --> services run as a browser extension or a desktop app** (Grass, Nodepay, Dawn, Helium, and more). CashPilot lists them with signup links and reads their balances where a collector exists.
+- **Proxied copies**: an extra copy of a deployed service that leaves through a SOCKS5, HTTP CONNECT or Tailscale exit-node proxy, so one box earns on several IPs ([Proxied copies](proxies.md)).
 - **<!-- n:gpu -->6<!-- /n --> GPU compute services** (Salad, Vast.ai, io.net, Nosana, Golem, Flux) run on their own software, and Salad, Vast.ai, io.net and Nosana need a GPU; CashPilot tracks them the same way.
 - <!-- n:active -->40<!-- /n --> active services and <!-- n:beta -->1<!-- /n --> in beta, <!-- n:catalogued -->52<!-- /n --> catalogued. The other <!-- n:retired -->11<!-- /n --> died, broke or were dropped; [Discontinued services](discontinued-services.md) says why, so nobody re-adds them.
 
@@ -113,7 +114,8 @@ The [Service guides](guides/index.md) table shows, for every service, what it ne
 graph LR
     A[You, in a browser] -->|Configure and deploy| B[CashPilot UI<br>port 8080, loopback]
     B -->|Container specs| C[CashPilot worker<br>one per server]
-    C -->|Docker socket| D[Service containers]
+    C -->|Filtered Docker API| P[Socket proxy<br>one per server]
+    P -->|Docker socket| D[Service containers]
     D -->|Status and resources| C
     C -->|Heartbeat every 60 s| B
     B -->|Collect balances every 60 min| E[Provider APIs]
@@ -121,7 +123,7 @@ graph LR
 ```
 
 - The UI never touches Docker. It holds the catalog, the encrypted credentials, the earnings history and the users, and it is the only component that collects earnings, so nothing is counted twice.
-- A worker holds the Docker socket on its server, starts the containers the UI asks for, and reports their status every 60 seconds. Every server that runs containers needs a worker; the UI can run on a machine without Docker.
+- A worker reaches Docker on its server through a socket proxy, which holds the socket read-only and refuses privileged containers and binds of `/` or of the socket. The worker starts the containers the UI asks for, and reports their status every 60 seconds. Every server that runs containers needs a worker; the UI can run on a machine without Docker.
 - Both images (`drumsergio/cashpilot`, `drumsergio/cashpilot-worker`) share one version number and run on amd64 and arm64. See [How it works](how-it-works.md) and [Running on ARM](arm.md).
 - An upgrade is `docker compose pull && docker compose up -d`. [UPGRADING.md](https://github.com/GeiserX/CashPilot/blob/main/UPGRADING.md) lists only the releases that need more.
 
@@ -131,14 +133,14 @@ graph LR
 - It does not run the browser and desktop apps. It lists them, links their signup, and reads their balances where a collector exists.
 - It does not collect in real time. Collectors run every 60 minutes by default (`CASHPILOT_COLLECT_INTERVAL`).
 - It does not count a balance drop as a payout on its own. The dashboard asks you to confirm each one, because a drop can also be a provider correction.
-- It does not keep the containers off your LAN by itself. Docker lets them reach it; [Protecting your home network](home-network-security.md) puts them on a firewalled bridge.
+- It does not fence every earner off your LAN. New installs fence them by default, but an upgraded install whose earners sit on Docker's default bridge stays unfenced until you press **Turn on isolation**, a network you name in `CASHPILOT_CONTAINER_NETWORK` gets your own rules only, and host-networked Mysterium is never fenced ([Network isolation](isolation.md#modes)).
 - It cannot promise earnings. As a rough guide, one home server running 10 to 15 services makes about $30 to $100 a month, and it can make less, down to zero; see the [FAQ](faq.md).
 
 ## Security
 
 - Every service container runs with all Linux capabilities dropped (a few services add back only the ones they declare), `no-new-privileges` set and a PID limit.
 - Stored credentials are encrypted at rest with a Fernet key at `/data/.fernet_key`. Back that file up: without it nothing can be decrypted. `CASHPILOT_ENCRYPTION_KEY` is adopted only when that file is absent, so on an instance that already has a key the variable changes nothing. It is not `CASHPILOT_SECRET_KEY`, which only signs login sessions.
-- Only the worker touches the Docker socket. The UI is published on loopback by default, and the worker's port 8081 is never published, because either could command the socket.
+- Only the socket proxy holds the Docker socket, and the worker reaches Docker only through it ([Security defaults](security-defaults.md)). The UI is published on loopback by default, and the worker's port 8081 is never published, because either could start containers on the host.
 - [Security defaults](security-defaults.md) lists what ships enabled, [Protecting your home network](home-network-security.md) and [Network isolation](isolation.md) show how to keep the earners away from your LAN, router and host.
 - To report a security problem, follow the [security policy](https://github.com/GeiserX/CashPilot/blob/main/SECURITY.md) and do not open a public issue.
 
