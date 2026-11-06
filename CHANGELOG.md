@@ -10,6 +10,19 @@ Every release, grouped by what changed. Generated from commit history.
 Releases before `1.0.0` were recorded by hand and are kept verbatim in
 [docs/changelog-0.x-handwritten.md](docs/changelog-0.x-handwritten.md).
 
+## [1.72.2] - 2026-11-06
+
+### Documentation
+
+- Stop telling users the worker holds the Docker socket and nothing fences the LAN (#603)
+- Stop saying CashPilot has no proxies and no default LAN fence (#596)
+- Regenerate CHANGELOG.md (#600)
+
+### Fixes
+
+- Make proxy edits reach running copies, and stop the cap restarting copies the owner stopped (#606)
+- Stop the worker-only compose file pinning an old worker, and fix the v1.72.1 upgrade steps (#601)
+
 ## [1.72.1] - 2026-11-06
 
 ### Fixes
