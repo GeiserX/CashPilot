@@ -10,6 +10,20 @@ Every release, grouped by what changed. Generated from commit history.
 Releases before `1.0.0` were recorded by hand and are kept verbatim in
 [docs/changelog-0.x-handwritten.md](docs/changelog-0.x-handwritten.md).
 
+## [1.71.0] - 2026-11-06
+
+### Documentation
+
+- Regenerate CHANGELOG.md (#588)
+
+### Features
+
+- Take the raw Docker socket, which is root on the host, away from the worker (#583)
+
+### Maintenance
+
+- Pin the examples to 1.70 (#591)
+
 ## [1.70.0] - 2026-11-06
 
 ### Documentation
