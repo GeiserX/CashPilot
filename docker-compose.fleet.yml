@@ -5,7 +5,7 @@
 # Then deploy workers on each additional server using their own docker-compose.
 #
 # UI: Full dashboard + earnings collection (no Docker socket needed)
-# Workers: Agents with Docker socket that manage containers and report to UI
+# Workers: Agents that manage containers through a Docker socket proxy and report to UI
 
 # === Deploy on main server (e.g., server-a) ===
 services:
@@ -50,6 +50,55 @@ services:
       - no-new-privileges:true
     tmpfs:
       - /tmp:size=64M
+
+  # Holds the host's Docker socket so the worker does not have to. It serves
+  # a filtered copy in the cashpilot_docker_api volume and refuses every call
+  # the worker does not make: a privileged container, a bind of / or of the
+  # socket, a capability or device outside the catalog's, exec of anything but
+  # the catalog's readers, swarm, plugins, builds. The policy is the configs
+  # block at the end of this file. docs/security-defaults.md has the details.
+  #
+  # Pinned by digest and bumped on purpose; the in-app update never recreates
+  # it (it runs `up --no-deps` on the UI and worker only).
+  cashpilot-socket-proxy:
+    image: codeswhat/sockguard:2.4.5@sha256:d15f93e856626ff21f48400034d887874a4dafbbf6bb1e31799511beea07d84c
+    container_name: cashpilot-socket-proxy
+    # Root with no capabilities: uid 0 opens the root-owned host socket, and
+    # group 1000 (the worker's) lets it give the worker its socket.
+    user: "0:0"
+    group_add:
+      - "1000"
+    cap_drop:
+      - ALL
+    # One capability it never uses, and that no container the worker creates
+    # may ask for. A container that joins this one's process namespace then
+    # holds less than the proxy does, so the kernel refuses it the proxy's
+    # files (/proc/1/root), the host socket among them.
+    cap_add:
+      - WAKE_ALARM
+    security_opt:
+      - no-new-privileges:true
+    # Unix sockets only; it needs no network at all.
+    network_mode: none
+    restart: unless-stopped
+    # One log line per Docker call (refusals included), so the log is capped.
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "2"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - cashpilot_docker_api:/run/cashpilot-docker
+    environment:
+      # Host folders containers may bind: your compose folder (the in-app
+      # update needs it) and any folder a service keeps its data in (Storj,
+      # for example), comma-separated. Set both in the .env next to this file.
+      # The placeholders never exist, so an unset variable allows nothing.
+      - SOCKGUARD_REQUEST_BODY_CONTAINER_CREATE_ALLOWED_BIND_MOUNTS=${CASHPILOT_COMPOSE_DIR:-/nonexistent/cashpilot-compose-dir-unset},${CASHPILOT_PROXY_BIND_MOUNTS:-/nonexistent/cashpilot-bind-mounts-unset}
+    configs:
+      - source: cashpilot_socket_policy
+        target: /etc/sockguard/sockguard.yaml
 
   cashpilot-worker:
     image: drumsergio/cashpilot-worker:1.70
@@ -98,9 +147,11 @@ services:
       # "could not select device driver"), which is why they are commented out
       # too. Pick ONE; do not set both.
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
-      # SEPARATE FROM THE UI'S /data, DELIBERATELY. This container has the
-      # Docker socket, which is root on the host. The UI's /data holds
+      # No Docker socket here: the worker reaches Docker through the proxy's
+      # filtered socket in this volume (DOCKER_HOST below).
+      - cashpilot_docker_api:/run/cashpilot-docker
+      # SEPARATE FROM THE UI'S /data, DELIBERATELY. This container drives
+      # Docker, so a flaw in it reaches the host. The UI's /data holds
       # cashpilot.db and .fernet_key -- the credential store and the only key
       # that can decrypt it -- and the component that can start any container
       # on the machine has no business being able to read them.
@@ -118,10 +169,20 @@ services:
       - CASHPILOT_UI_URL=http://cashpilot-ui:8080
       - CASHPILOT_API_KEY=${CASHPILOT_API_KEY}
       - CASHPILOT_WORKER_NAME=server-a
+      - DOCKER_HOST=unix:///run/cashpilot-docker/docker.sock
+      # The proxy policy's fingerprint (scripts/socket_proxy_policy.py), so the
+      # worker can say when its image needs a newer policy than this file has.
+      - CASHPILOT_PROXY_POLICY=e4df1cd9c8aff97b
+      # The same two values the proxy gets, so the worker can say what to set
+      # before the proxy refuses (the in-app update, a host-folder bind).
+      - CASHPILOT_COMPOSE_DIR=${CASHPILOT_COMPOSE_DIR:-}
+      - CASHPILOT_PROXY_BIND_MOUNTS=${CASHPILOT_PROXY_BIND_MOUNTS:-}
       # Earners are fenced off your LAN and this host by default (docs/isolation.md).
       # off keeps Docker's default bridge.
       - CASHPILOT_ISOLATION=${CASHPILOT_ISOLATION:-auto}
       # CASHPILOT_WORKER_URL: override auto-detected URL if the UI can't reach the default
+    depends_on:
+      - cashpilot-socket-proxy
     init: true
     restart: unless-stopped
     security_opt:
@@ -130,41 +191,123 @@ services:
       - /tmp:size=64M
 
 # === Deploy on each remote server (e.g., server-b, server-c) ===
-# Copy this to a separate docker-compose.yml on each worker server:
-#
-#  services:
-#    cashpilot-worker:
-#      image: drumsergio/cashpilot-worker:1.70
-#      pull_policy: always
-#      container_name: cashpilot-worker
-#      # Docker-socket-backed API = full host control. Bind a PRIVATE/VPN interface
-#      # (e.g. the server's Tailscale IP), NEVER 0.0.0.0 or a public IP. The UI
-#      # authenticates with the fleet key, but the socket API must not be internet-
-#      # reachable. CASHPILOT_WORKER_BIND_ADDR defaults to loopback.
-#      ports:
-#        - "${CASHPILOT_WORKER_BIND_ADDR:-100.x.y.z}:8081:8081"  # this server's private/VPN IP
-#      volumes:
-#        - /var/run/docker.sock:/var/run/docker.sock
-#        - cashpilot_worker_data:/data
-#      environment:
-#        - TZ=${TZ:-UTC}
-#        # The UI's PUBLISHED host port: http://server-a:8088 if you set CASHPILOT_UI_PORT=8088
-#        # on server-a. (The local worker above uses cashpilot-ui:8080 over the compose network.)
-#        - CASHPILOT_UI_URL=http://server-a:8080
-#        - CASHPILOT_API_KEY=${CASHPILOT_API_KEY}
-#        - CASHPILOT_WORKER_NAME=server-b
-#        - CASHPILOT_WORKER_URL=http://server-b:8081  # URL the UI uses to reach this worker
-#      init: true
-#      restart: unless-stopped
-#      security_opt:
-#        - no-new-privileges:true
-#      tmpfs:
-#        - /tmp:size=64M
-#
-#  volumes:
-#    cashpilot_worker_data:
+# Use docker-compose.worker.yml on each worker server: the worker plus its
+# Docker socket proxy, nothing else.
 
 volumes:
   cashpilot_data:
   cashpilot_worker_data:
   cashpilot_fleet:
+  # Fixed name: the in-app update mounts it by name to reach the proxy.
+  cashpilot_docker_api:
+    name: cashpilot-docker-api
+
+# The Docker socket proxy's policy. scripts/socket_proxy_policy.py writes it
+# from the catalog; `$$` is how compose spells a literal `$`. Needs Docker
+# Compose 2.23.1 or newer (inline config content).
+configs:
+  cashpilot_socket_policy:
+    content: |
+      # BEGIN socket proxy policy: written by scripts/socket_proxy_policy.py, do not edit by hand
+      listen:
+        socket: /run/cashpilot-docker/docker.sock
+        # The worker runs as uid/gid 1000 (Dockerfile.worker). The proxy runs as
+        # root with no capabilities and joins group 1000, so it can hand the socket
+        # to that group without asking for the host's docker group id.
+        socket_mode: "0660"
+        socket_gid: 1000
+      upstream:
+        socket: /var/run/docker.sock
+        # Image pulls and container waits take minutes; the default cuts them at 60 s.
+        request_timeout: "off"
+      log:
+        level: info
+        format: json
+        # One line per call, refusals included: docker logs cashpilot-socket-proxy
+        # shows what was refused and why. The compose file caps the log's size.
+        access_log: true
+      health:
+        enabled: false
+      # The worker reads its own containers' logs and files (backups, the update check).
+      insecure_allow_read_exfiltration: true
+      response:
+        # A refusal carries the rule's reason, which the worker shows to you.
+        deny_verbosity: verbose
+        # The worker reads Env, Mounts and IPAM back (recreates, the isolation check).
+        redact_container_env: false
+        redact_mount_paths: false
+        redact_network_topology: false
+      request_body:
+        container_create:
+          allow_privileged: false
+          allow_host_network: true          # Mysterium runs on host networking
+          allow_host_pid: false
+          allow_host_ipc: false
+          allow_host_userns: false
+          allow_host_cgroupns: false
+          allowed_capabilities: [NET_ADMIN, NET_RAW, SETUID, SETGID]
+          allowed_devices: [/dev/net/tun]
+          allowed_runtimes: [runc, runsc, runsc-hostnet, runsc-hostnet-raw]
+          allow_sysctls: true               # the tunnel sidecar turns IPv6 off in its own namespace
+          require_no_new_privileges: true
+          deny_unconfined_seccomp: true
+          deny_unconfined_apparmor: true
+          deny_unconfined_system_paths: true
+          # Host folders containers may bind come from CASHPILOT_COMPOSE_DIR and
+          # CASHPILOT_PROXY_BIND_MOUNTS, through the proxy service's environment.
+          allowed_bind_mounts: []
+        container_remove:
+          allow_force: true
+          allow_remove_volumes: true
+        container_archive:
+          # The only folder the worker writes into a container: the tunnel
+          # sidecar's proxy settings.
+          allowed_paths: [/run/cashpilot-secret]
+          allow_setid: false
+          allow_device_nodes: false
+          allow_escaping_links: false
+        exec:
+          allow_privileged: false
+          allow_root_user: true
+          # The worker's exec calls send no environment. This name is never sent,
+          # so any Env entry (PATH, LD_PRELOAD) is refused.
+          allowed_env_vars: [CASHPILOT_EXEC_SENDS_NO_ENV]
+          allowed_commands:
+            - ["cat", "/run/ready"]
+            - ["sh", "-c", "id=$$(wget -qO- -T 5 http://127.0.0.1:4050/identities | grep -o '0x[0-9a-fA-F]\\{40\\}' | head -1) && wget -qO- -T 5 \"http://127.0.0.1:4050/identities/$$id\" && { echo; wget -qO- -T 5 \"http://127.0.0.1:4050/transactor/settle/history?page_size=1000\" || true; }"]
+            - ["sh", "-c", "id=$$(wget -qO- -T 5 http://127.0.0.1:4050/identities | grep -o '0x[0-9a-fA-F]\\{40\\}' | head -1) && wget -qO- -T 5 \"http://127.0.0.1:4050/identities/$$id/beneficiary\""]
+            - ["sh", "-c", "T=\"\"; command -v timeout >/dev/null 2>&1 && T=\"timeout 5\"; $$T iptables-nft -t nat -S MYST 2>/dev/null; if grep -qx nat /proc/net/ip_tables_names 2>/dev/null; then $$T iptables-legacy -t nat -S MYST 2>/dev/null; $$T iptables -t nat -S MYST 2>/dev/null; else case \"$$($$T iptables -V 2>/dev/null)\" in *nf_tables*) $$T iptables -t nat -S MYST 2>/dev/null;; esac; fi"]
+            - ["cat", "/etc/anon/anonrc"]
+        image_pull:
+          allow_all_registries: true        # catalog and custom services come from many registries
+      rules:
+        - {match: {method: GET, path: "/_ping"}, action: allow}
+        - {match: {method: HEAD, path: "/_ping"}, action: allow}
+        - {match: {method: GET, path: "/version"}, action: allow}
+        - {match: {method: GET, path: "/info"}, action: allow}
+        - {match: {method: GET, path: "/containers/json"}, action: allow}
+        - {match: {method: GET, path: "/containers/*/json"}, action: allow}
+        - {match: {method: POST, path: "/containers/create"}, action: allow}
+        - {match: {method: POST, path: "/containers/*/start"}, action: allow}
+        - {match: {method: POST, path: "/containers/*/stop"}, action: allow}
+        - {match: {method: POST, path: "/containers/*/restart"}, action: allow}
+        - {match: {method: POST, path: "/containers/*/pause"}, action: allow}
+        - {match: {method: POST, path: "/containers/*/unpause"}, action: allow}
+        - {match: {method: POST, path: "/containers/*/wait"}, action: allow}
+        - {match: {method: POST, path: "/containers/*/rename"}, action: allow}
+        - {match: {method: DELETE, path: "/containers/*"}, action: allow}
+        - {match: {method: GET, path: "/containers/*/logs"}, action: allow}
+        - {match: {method: GET, path: "/containers/*/stats"}, action: allow}
+        - {match: {method: GET, path: "/containers/*/archive"}, action: allow}
+        - {match: {method: PUT, path: "/containers/*/archive"}, action: allow}
+        - {match: {method: POST, path: "/containers/*/exec"}, action: allow}
+        - {match: {method: POST, path: "/exec/*/start"}, action: allow}
+        - {match: {method: GET, path: "/exec/*/json"}, action: allow}
+        - {match: {method: GET, path: "/images/**/json"}, action: allow}
+        - {match: {method: POST, path: "/images/create"}, action: allow}
+        - {match: {method: GET, path: "/networks"}, action: allow}
+        - {match: {method: GET, path: "/networks/*"}, action: allow}
+        - {match: {method: GET, path: "/volumes/*"}, action: allow}
+        - {match: {method: DELETE, path: "/volumes/*"}, action: allow}
+        - {match: {method: "*", path: "/**"}, action: deny, reason: "the CashPilot worker does not use this Docker API call"}
+      # END socket proxy policy

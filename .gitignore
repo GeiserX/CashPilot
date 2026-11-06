@@ -45,3 +45,6 @@ htmlcov/
 docs/GOAL.md
 docs/AUTOPILOT-WORKLOG.md
 docs/DEFERRED-QUESTIONS.md
+
+# scripts/socket_proxy_live_test.sh work folder
+.socket-proxy-live/

@@ -67,6 +67,7 @@ COPY --chown=cashpilot:root app/version.py ./app/
 COPY --chown=cashpilot:root app/worker_api.py ./app/
 COPY --chown=cashpilot:root app/orchestrator.py ./app/
 COPY --chown=cashpilot:root app/isolation_check.py ./app/
+COPY --chown=cashpilot:root app/socket_policy.py ./app/
 # Fences the earners off the LAN by default; the helper imports it too.
 COPY --chown=cashpilot:root app/lan_fence.py ./app/
 # Proxied copies: the tunnel sidecar and the earner inside it (docs/proxies.md).

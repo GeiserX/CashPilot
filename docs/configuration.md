@@ -66,6 +66,7 @@ defensible on its own; together they are impossible to guess.
 | `CASHPILOT_EGRESS_IP` | unset | State the public IP directly. A LAN or tailnet address is rejected. | - |
 | `CASHPILOT_EGRESS_IP_URL` | unset | Custom IP-echo endpoint. | - |
 | `CASHPILOT_ALLOWED_VOLUME_ROOTS` | unset | Host paths a deploy may bind-mount. | - |
+| `DOCKER_HOST` | set by compose | Where the worker reaches Docker. The shipped compose files point it at the [socket proxy](security-defaults.md#docker-socket-proxy) (`unix:///run/cashpilot-docker/docker.sock`); unset, the worker uses `/var/run/docker.sock`. | - |
 | `CASHPILOT_PIDS_LIMIT` | `512` | `pids` limit applied to managed containers. A value that is not a positive integer falls back to the default. | - |
 | `CASHPILOT_ISOLATION` | `auto` | `auto`, `on` or `off`. With `auto`, a new install fences its earners off your LAN, the host, your tailnet and cloud metadata, and an upgraded install whose earners are on Docker's default bridge keeps them there until you turn isolation on from the Fleet page. `on` fences from the start; `off` keeps Docker's default bridge. See [LAN isolation by default](isolation.md#lan-isolation-by-default). | - |
 | `CASHPILOT_FENCE_BACKEND` | `auto` | For testing only: `legacy` makes the fence use `iptables-legacy` on a host that has nf_tables, `nft` forces nf_tables. `auto` picks nf_tables when the kernel has it. | - |
@@ -160,7 +161,10 @@ These are read by the compose files, not by CashPilot itself.
 |---|---|---|
 | `CASHPILOT_BIND_ADDR` | `127.0.0.1` | Which host interface publishes the **UI** port. |
 | `CASHPILOT_UI_PORT` | `8080` | Which host port publishes the **UI**. Set it when 8080 is already taken on the host. |
-| `CASHPILOT_WORKER_BIND_ADDR` | `127.0.0.1` | Which host interface publishes the **worker** port, in the fleet compose. The worker holds the Docker socket, which is root-equivalent on the host, so publish it only on an interface the UI needs, never `0.0.0.0`. |
+| `CASHPILOT_WORKER_BIND_ADDR` | `127.0.0.1` | Which host interface publishes the **worker** port, in the fleet and worker-only compose files. The worker's API can create containers on the host, so publish it only on an interface the UI needs, never `0.0.0.0`. |
+| `CASHPILOT_COMPOSE_DIR` | unset | Your compose folder. The [socket proxy](security-defaults.md#docker-socket-proxy) lets containers bind it, which the in-app update needs. Unset, the **Update** button refuses and prints the line to add. |
+| `CASHPILOT_PROXY_BIND_MOUNTS` | unset | Other host folders the socket proxy lets containers bind, comma-separated with no spaces: the data folder of a service you deploy with a host path, such as Storj (`/mnt/user/storj`). Each entry also counts as a `CASHPILOT_ALLOWED_VOLUME_ROOTS` entry, so this one setting opens the folder for both the worker and the proxy. A deploy outside them is refused before anything is touched, with a message naming this variable. |
+| `CASHPILOT_PROXY_POLICY` | set by the compose file | The fingerprint of the socket proxy policy in the same compose file, written by `scripts/socket_proxy_policy.py`. Do not edit it. The worker compares it with the policy its own catalog needs and, when they differ, its status page says to take the compose file of the release you run. |
 
 The UI's web port inside the container is fixed at `8080` (set via the container's `CMD`). `CASHPILOT_UI_PORT` and `CASHPILOT_BIND_ADDR` choose only the host side: which port and which interface it is published on.
 

@@ -137,7 +137,7 @@ The UI's web port inside the container is fixed at `8080` (set via the container
     [security defaults](security-defaults.md) page tells you not to do.
 
 !!! warning "Docker Socket Access"
-    The worker container requires access to `/var/run/docker.sock` to manage service containers. This grants the worker significant privileges on the host. Run CashPilot on a dedicated machine or VLAN for best security.
+    The worker manages service containers through Docker, but it does not mount `/var/run/docker.sock`. The `cashpilot-socket-proxy` container holds the socket and passes the worker only the calls it makes, refusing privileged containers and binds of host folders you have not listed ([what it refuses](security-defaults.md#docker-socket-proxy)). Put `CASHPILOT_COMPOSE_DIR=<this folder>` in the `.env` next to the compose file so the in-app update can run. The worker still controls every container on the host, so run CashPilot on a dedicated machine or VLAN for best security.
 
 !!! tip "Secret Key Persistence"
     Credentials are encrypted with `CASHPILOT_ENCRYPTION_KEY`, **not** `CASHPILOT_SECRET_KEY`, which only signs login sessions. The encryption key is auto-generated on first run and stored at `/data/.fernet_key`. **Back that file up.** If the volume is recreated without it, a fresh key is generated and every stored credential becomes permanently unreadable. Setting `CASHPILOT_ENCRYPTION_KEY` is for restoring that backup; the key file always wins, so setting it on a healthy instance changes nothing.

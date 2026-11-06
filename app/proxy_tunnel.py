@@ -328,7 +328,8 @@ def start_sidecar(
         _remove_quietly(container, 2)
         if isinstance(exc, ProxyTunnelError):
             raise ProxyTunnelError(redact(str(exc), _secret_values(proxy)), exc.status_code) from None
-        raise ProxyTunnelError(redact(f"The tunnel could not start: {exc}", _secret_values(proxy))) from None
+        detail = orchestrator.proxy_refusal(exc) or str(exc)
+        raise ProxyTunnelError(redact(f"The tunnel could not start: {detail}", _secret_values(proxy))) from None
     return container, exit_info
 
 

@@ -19,6 +19,73 @@ commands, and [Backing up node identities](docs/backup.md) covers the rest.
 
 ---
 
+## Docker socket proxy: take the new compose file once
+
+**Affects you if** your worker runs from a compose file that mounts
+`/var/run/docker.sock` into `cashpilot-worker`. Nothing breaks if you do
+nothing: the in-app update and `docker compose pull && up -d` only pull new
+images and keep your compose file, so the worker keeps the raw socket, which is
+root on the host. The worker's status page says *Docker access: direct socket
+(root on this host)*.
+
+**What changed.** The shipped compose files add `cashpilot-socket-proxy`, a
+pinned sockguard container that holds the socket, passes the worker only the
+Docker calls it makes, and refuses dangerous containers
+([what it refuses](docs/security-defaults.md#docker-socket-proxy)). The worker
+no longer mounts the socket.
+
+**What to do.**
+
+1. Check `docker compose version` says 2.23.1 or newer; the policy is inline
+   in the compose file.
+2. Replace your compose file with the new `docker-compose.yml` (or
+   `docker-compose.fleet.yml`, or `docker-compose.worker.yml` on a worker-only
+   server). Keep your own changes, except these: the proxy refuses to recreate
+   a CashPilot service with a GPU (`devices: /dev/dri`, `gpus`, an NVIDIA
+   reservation), and the **Update** button says so before it starts. On a
+   GPU host, stay on your old compose file for now.
+3. In the `.env` next to it, add your compose folder, so the in-app update can
+   still run:
+
+       CASHPILOT_COMPOSE_DIR=/the/folder/with/docker-compose.yml
+
+   If a service keeps its data in a host folder (Storj, for example), add that
+   folder too, comma-separated for several. It also counts as a
+   `CASHPILOT_ALLOWED_VOLUME_ROOTS` entry, so you need not list it twice:
+
+       CASHPILOT_PROXY_BIND_MOUNTS=/mnt/user/storj
+
+   Named volumes (Mysterium's identity, EarnApp's device id) need nothing,
+   unless a container already keeps that data in a host folder (one created
+   by hand or by an old release): a redeploy keeps that folder, so it has to
+   be listed here too. The worker refuses such a redeploy, naming the folder,
+   before it stops the container.
+
+   Each folder you list here is one a compromised worker could use to reach
+   root on the host ([why](docs/security-defaults.md#docker-socket-proxy)).
+   Leave both settings unset if you update by hand and run no host-folder
+   service.
+4. Run `docker compose up -d` once (on a worker-only server,
+   `docker compose -f docker-compose.worker.yml up -d`, unless you saved it as
+   `docker-compose.yml`). It starts the proxy and recreates the
+   worker behind it. The containers the worker deployed keep running.
+5. Open the worker's status page: it should say *Docker access: socket proxy*.
+   If it adds that the policy is not the one the image expects, a later
+   release changed the policy: take that release's compose file the same way.
+
+**If something is refused.** The dashboard shows the proxy's reason, and
+`docker logs cashpilot-socket-proxy` lists every refused call. A bind outside
+the allowed folders names `CASHPILOT_PROXY_BIND_MOUNTS`. The proxy and the worker
+both allow only `runc` and the gVisor runtimes; a deploy that names another one
+(`crun`, `nvidia`, `io.containerd.runc.v2`) is refused before the running
+container is touched, so pick one of those in `CASHPILOT_CONTAINER_RUNTIME`
+and its overrides. If the **Update** button says it needs `CASHPILOT_COMPOSE_DIR`,
+it prints the exact line to add.
+
+**To go back,** put your old compose file back, run `docker compose up -d`
+(with the same `-f` as above if you used one),
+then remove the proxy with `docker rm -f cashpilot-socket-proxy`.
+
 ## LAN isolation by default (the release after v1.63)
 
 **Affects you if** a worker runs earners on Docker's default bridge, which is

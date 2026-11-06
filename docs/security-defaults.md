@@ -1,6 +1,6 @@
 # Security defaults
 
-CashPilot runs unattended, holds credentials for services that pay you real money, and talks to a worker that has the Docker socket, which is equivalent to root on that host. So it needs a stated position on what you may switch off, what you may not, and above all **what happens when you just follow the quickstart**.
+CashPilot runs unattended, holds credentials for services that pay you real money, and talks to a worker that drives Docker on that host. The shipped compose files put a [Docker socket proxy](#docker-socket-proxy) between the worker and the socket; without it the worker holds the socket itself, which is equivalent to root on that host. So it needs a stated position on what you may switch off, what you may not, and above all **what happens when you just follow the quickstart**.
 
 The governing principle:
 
@@ -36,6 +36,8 @@ You can change all of these. None of them require changing for a normal install.
 | `CASHPILOT_BIND_ADDR` | `127.0.0.1` | The dashboard can command a Docker-socket worker. Exposing it publicly exposes the host. Prefer a VPN or an authenticating reverse proxy. |
 | `CASHPILOT_WORKER_BIND_ADDR` | `127.0.0.1` | The worker API is equivalent to root on that machine. Never publish port 8081. |
 | `CASHPILOT_METRICS_ENABLED` | off | `/metrics` exposes balances and hostnames. If you enable it, set `CASHPILOT_METRICS_TOKEN` too. |
+| `CASHPILOT_PROXY_BIND_MOUNTS` | empty | Host folders the [Docker socket proxy](#docker-socket-proxy) lets containers bind, comma-separated. Each entry also counts as a `CASHPILOT_ALLOWED_VOLUME_ROOTS` entry and must pass the same checks (a service folder such as `/mnt/user/storj`, never a whole root). Any container the worker creates may then mount it. |
+| `CASHPILOT_COMPOSE_DIR` | empty | Your compose folder, which the proxy then lets the in-app update bind. Unset, the **Update** button tells you the line to add. |
 | `CASHPILOT_ALLOWED_VOLUME_ROOTS` | empty | Opts specific host paths past the volume block. Each entry is a deliberate widening; system paths are still refused. |
 | `CASHPILOT_ALLOW_EPHEMERAL_KEY` | off | Lets CashPilot start when the encryption key cannot be persisted. Every credential then dies on the next restart. |
 | `allow_delete_critical` (per request) | refuses | Permits deleting a volume that holds irreplaceable state. There is no undo. |
@@ -89,6 +91,131 @@ Account emails, API URLs, and public relay fingerprints are stored as-is. Emails
 ## Reporting a problem
 
 See [SECURITY.md](https://github.com/GeiserX/CashPilot/blob/main/SECURITY.md). Please do not open a public issue for a vulnerability.
+
+## Docker socket proxy
+
+The worker creates and runs containers, so something on the host has to hold
+the Docker socket. Whoever holds it is root on the host: one
+`POST /containers/create` with `"Privileged": true` and a bind of `/` takes the
+machine. In the shipped compose files that holder is a proxy, not the worker.
+
+The shipped compose files (`docker-compose.yml`, `docker-compose.fleet.yml`,
+`docker-compose.worker.yml`, `docker-compose.build.yml`) run
+[sockguard](https://github.com/CodesWhat/sockguard) 2.4.5 as
+`cashpilot-socket-proxy`, pinned by digest
+(`codeswhat/sockguard:2.4.5@sha256:d15f93e856626ff21f48400034d887874a4dafbbf6bb1e31799511beea07d84c`).
+It holds the socket read-only, runs as root with every capability dropped and no
+network, and serves a filtered socket in the `cashpilot-docker-api` volume. The
+worker mounts that volume and sets `DOCKER_HOST` to it. It has no Docker socket
+of its own.
+
+The proxy reads each request, including its JSON body, so it refuses
+dangerous containers, not only dangerous URLs:
+
+- **Only the calls the worker makes.** Every other Docker API call is refused:
+  swarm, services, secrets, plugins, builds, commit, export, events, attach,
+  container update, prune, image push or load. The allow list is the set of
+  calls the live test recorded from the worker, its update helper and Compose.
+- **Containers.** No privileged mode, no host PID, IPC, user or cgroup
+  namespace, `no-new-privileges` required, no unconfined seccomp, AppArmor or
+  system paths. Added capabilities only from `NET_ADMIN`, `NET_RAW`, `SETUID`,
+  `SETGID` (what the catalog declares), devices only `/dev/net/tun`, runtimes
+  only `runc` and the gVisor ones (the worker refuses any other runtime itself,
+  before the running container is touched). Host folders only from
+  `CASHPILOT_PROXY_BIND_MOUNTS` and `CASHPILOT_COMPOSE_DIR`, so a bind of `/`
+  or of the socket is refused. The body is parsed the way Docker parses it, so
+  `"privileged": true` in lowercase is refused too.
+- **Exec.** Only the exact commands the catalog's readers run (Mysterium's node
+  and wallet reads, Anyone Protocol's `anonrc`, the isolation check's firewall
+  read, the tunnel sidecar's readiness file). No environment variables at all,
+  so `PATH` or `LD_PRELOAD` cannot change what such a command runs.
+- **Files into a container** only under `/run/cashpilot-secret` (the tunnel
+  sidecar's proxy settings), with no setuid files, device nodes or escaping
+  links.
+
+The policy is the `configs` block at the end of each compose file, so it moves
+with the file that pins the CashPilot release. An image update does not rewrite
+that file, so the worker gets the policy's fingerprint (`CASHPILOT_PROXY_POLICY`)
+and compares it with the policy its own catalog needs; when they differ its
+status page says to replace the compose file. `scripts/socket_proxy_policy.py`
+writes it from the catalog, and `tests/test_socket_proxy.py` fails when a
+catalog change adds a reader the policy lacks, or when anyone loosens it.
+`scripts/socket_proxy_live_test.sh` runs the real proxy against a real daemon:
+every call the worker makes passes, every refusal above is refused, and the
+same refused requests sent to the raw socket succeed, which proves each refusal
+is the proxy's.
+
+When the proxy refuses a deploy, the dashboard shows its reason, for example
+*The Docker socket proxy refused this: container create denied: bind mount
+source "/mnt/user/storj" is not allowlisted.* `docker logs cashpilot-socket-proxy`
+has one line per call, refusals included.
+
+**Not yet a root boundary.** The proxy closes the one-call ways to root: a
+privileged container, a bind of `/` or of the socket, an added capability. It
+does not yet stop a compromised worker that takes two steps, because sockguard
+2.4.5 has no setting for either of these:
+
+- **Joining another container's process namespace.** sockguard refuses
+  `PidMode: host` but lets `container:<name>` through for the PID and IPC
+  namespaces. The only switch that refuses it also refuses
+  `NetworkMode: container:<id>`, which the tunnel sidecar, the activity
+  reader and the isolation check depend on. A container that joins a root
+  container's PID namespace can read that container's files through
+  `/proc/1/root`. The proxy itself is protected: it holds one capability
+  (`WAKE_ALARM`) that no created container may ask for, so the kernel refuses
+  the joiner its files. Any other container on the host that holds the Docker
+  socket (a dashboard, an auto-updater) is not, and the UI's files are
+  readable this way when the UI runs on the same host.
+- **A symlink in an allowed folder.** sockguard checks a bind's source as a
+  string; Docker follows symlinks when it mounts. A container that binds an
+  allowed folder can plant `evil -> /` in it, and a second container that
+  binds `<folder>/evil` gets the host's `/` and its socket. This applies to
+  every folder in `CASHPILOT_COMPOSE_DIR` and `CASHPILOT_PROXY_BIND_MOUNTS`.
+  With both unset, no host folder is bindable at all.
+
+Both need a change in sockguard (a per-namespace switch, and binds that are
+exact or symlink-free). Until then, an install that keeps both variables unset
+and runs no other socket-holding container on the host is the one where the
+proxy stands between the worker and root.
+
+**What a compromised worker can still do** even once those are closed:
+
+- Stop, remove, inspect and read the logs and files of **any** container on the
+  host, not only CashPilot's, and read their environment variables.
+- Run the allowed reader commands in any container.
+- Delete any named volume. The worker refuses to delete the ones the catalog
+  marks critical (Mysterium's keystore, Storj's identity), but the proxy
+  does not know about them, so a compromised worker can delete them, and the
+  UI's `cashpilot_data`, directly.
+- Mount any named volume into a new container, including the UI's
+  `cashpilot_data` when the UI runs on the same host.
+- Start a container on host networking with `NET_ADMIN`, `NET_RAW` and
+  `/dev/net/tun`, which can reconfigure the host's network but not reach its
+  files.
+- Write into your compose folder, through a container that binds it. A change
+  there takes effect the next time you run `docker compose up` yourself, which
+  uses the raw socket. Leave `CASHPILOT_COMPOSE_DIR` unset if you update by
+  hand, and the folder is not bindable at all.
+- Pull images from any registry (custom services need it) and set namespaced
+  sysctls on its own containers (the tunnel sidecar needs it).
+
+sockguard can also scope every call to containers, volumes and networks that
+carry its owner label, which would close the first three. CashPilot does not
+turn that on yet: labels cannot be added to an existing volume, so every
+Mysterium identity, EarnApp device id and compose volume created before it
+would become unusable through the proxy, and Compose offers to delete and
+recreate a volume whose labels change.
+
+Two upstream gaps are not exploitable on current Docker: sockguard does not
+decode `HostConfig.Capabilities` (Docker 29 drops that field), and a lowercase
+HTTP method skips body inspection (Docker's router answers 404 to it).
+
+**Without the proxy.** An install whose compose file predates it, the Unraid
+templates, and a worker started with `docker run` still mount
+`/var/run/docker.sock` into the worker, so the worker is root on the host.
+[UPGRADING.md](https://github.com/GeiserX/CashPilot/blob/main/UPGRADING.md)
+says how to move an existing install. The worker's status page says which one
+it uses: *Docker access: socket proxy* or *direct socket (root on this host)*.
 
 ## Container runtimes: gVisor where it works
 
