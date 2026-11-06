@@ -16,13 +16,13 @@ Repocket lets you earn passive income by sharing your unused internet bandwidth.
 | Per | device |
 | Minimum payout | $4 ($2 after the first payout) |
 | Payout frequency | On request |
-| Payment methods | Paypal, Crypto |
+| Payment methods | Gift card (Tremendous), Crypto (USDT on Polygon) |
 
 > Residential IPs earn more. VPS/datacenter IPs accepted but at lower rates.
 
 ## Cashing out
 
-Repocket sets the minimum per account: $4 before the first payout and $2 after it in October 2026, far below the $20 it used to advertise. Methods: Tremendous (to your email) or USDT on Polygon. Each request is confirmed from an emailed link within 2 hours, and only one request can be pending at a time.
+Repocket sets the minimum per account: $4 before the first payout and $2 after it in October 2026, far below the $20 it used to advertise. Methods: Tremendous (to your email) or USDT on Polygon. Each request is confirmed from an emailed link within 2 hours, and only one request can be pending at a time. In October 2026 Repocket refused a Tremendous request with "Please, message support", while USDT on Polygon went through.
 
 ## Requirements
 
