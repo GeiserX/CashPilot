@@ -11,10 +11,6 @@ on:
       - 'uv.lock'
       - 'app/**'
       - 'services/**'
-      # build.yml publishes the tunnel sidecar image on every release, so a
-      # tunnel-only change needs a release too, or no image carries it.
-      - 'Dockerfile.tunnel'
-      - 'tunnel/**'
   workflow_dispatch:
 
 permissions:
@@ -188,21 +184,13 @@ jobs:
             BUILD_WORKER=true
           fi
 
-          # The tunnel sidecar is versioned with the release and built by
-          # build.yml on every release, so a change to it alone must release.
-          BUILD_TUNNEL=false
-          if echo "$CHANGED" | grep -qE '^(Dockerfile\.tunnel|tunnel/)'; then
-            BUILD_TUNNEL=true
-          fi
-
           echo "ui=$BUILD_UI" >> "$GITHUB_OUTPUT"
           echo "worker=$BUILD_WORKER" >> "$GITHUB_OUTPUT"
-          echo "tunnel=$BUILD_TUNNEL" >> "$GITHUB_OUTPUT"
-          echo "Build UI: $BUILD_UI, Build Worker: $BUILD_WORKER, Tunnel changed: $BUILD_TUNNEL"
+          echo "Build UI: $BUILD_UI, Build Worker: $BUILD_WORKER"
 
       - name: Get latest version tag
         id: version
-        if: steps.changes.outputs.ui == 'true' || steps.changes.outputs.worker == 'true' || steps.changes.outputs.tunnel == 'true'
+        if: steps.changes.outputs.ui == 'true' || steps.changes.outputs.worker == 'true'
         run: |
           LATEST=$(git tag -l 'v*.*.*' --sort=-v:refname | head -1)
           if [ -z "$LATEST" ]; then
