@@ -10,7 +10,15 @@ Every release, grouped by what changed. Generated from commit history.
 Releases before `1.0.0` were recorded by hand and are kept verbatim in
 [docs/changelog-0.x-handwritten.md](docs/changelog-0.x-handwritten.md).
 
-## Unreleased
+## [1.72.5] - 2026-11-06
+
+### Documentation
+
+- Regenerate CHANGELOG.md (#615)
+
+### Fixes
+
+- Stop an untouched money4band config filling the import table, and stop one worker losing another's Activity sample (#609)
 
 ### Maintenance
 
