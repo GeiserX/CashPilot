@@ -177,6 +177,9 @@ services:
       # before the proxy refuses (the in-app update, a host-folder bind).
       - CASHPILOT_COMPOSE_DIR=${CASHPILOT_COMPOSE_DIR:-}
       - CASHPILOT_PROXY_BIND_MOUNTS=${CASHPILOT_PROXY_BIND_MOUNTS:-}
+      # Earners are fenced off your LAN and this host by default (docs/isolation.md).
+      # off keeps Docker's default bridge.
+      - CASHPILOT_ISOLATION=${CASHPILOT_ISOLATION:-auto}
       # CASHPILOT_WORKER_URL: override auto-detected URL if the UI can't reach the default
     depends_on:
       - cashpilot-socket-proxy

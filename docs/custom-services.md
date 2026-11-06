@@ -34,7 +34,12 @@ The same as a catalog service with no special needs, and nothing more:
 - never privileged, never on the host network, no host devices;
 - no host directories: its only mount is its own named volume;
 - no published ports;
-- on the bridge network you set with `CASHPILOT_CONTAINER_NETWORK`, when you set one. See
+- on CashPilot's isolated network, fenced off your LAN and the host, like every earner
+  ([LAN isolation by default](isolation.md#lan-isolation-by-default)), or on the bridge network
+  you set with `CASHPILOT_CONTAINER_NETWORK`. Two cases have no fence: a worker upgraded from
+  before isolation existed, until you turn isolation on from the Fleet page, and a worker with
+  `CASHPILOT_ISOLATION=off`. There a custom service lands on Docker's default bridge and can
+  reach your LAN and the host, like every other earner on that worker. See
   [protecting your home network](home-network-security.md).
 
 The worker enforces this on its own side as well. It grants capabilities, devices and host

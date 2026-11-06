@@ -10,6 +10,12 @@ So the goal is narrow: earners may reach the internet, and nothing else. Not
 your LAN, not the host, not your VPN or overlay network (Tailscale, ZeroTier,
 WireGuard), not cloud metadata.
 
+A CashPilot worker fences its earners by default
+([LAN isolation by default](isolation.md#lan-isolation-by-default)). The
+platform notes below are for running your own rules with
+`CASHPILOT_CONTAINER_NETWORK`, for upgraded installs not switched over yet, and
+for the places the default does not reach.
+
 [Protecting your home network](home-network-security.md) explains the rules for
 a plain Linux Docker host. This page is about two things that page cannot do for
 you: proving the rules work on *your* machine, and the platforms and setups
@@ -91,6 +97,19 @@ sudo nsenter -t "$PID" -n curl -m 3 -sS http://192.168.1.1/
     `--network cashpilot-isolated`.
 
 ## 2. Fix it, by platform
+
+What CashPilot's own fence has been tested on:
+
+| Platform | Default fence |
+|---|---|
+| Linux Docker with nf_tables (tested on Ubuntu 24.04, Docker 29.5, inside colima) | tested: LAN, host, tailnet and metadata blocked, internet works, fails closed without the table |
+| The same host forced onto `iptables-legacy` (older NAS kernels) | tested, same results |
+| Docker Desktop on Windows and macOS | not tested. It uses the same VM model as colima, so it is expected to work, unless Enhanced Container Isolation blocks the helper |
+| Rootless Docker, Podman | not tested |
+| Unraid, Synology, QNAP | not tested |
+
+When the fence cannot be written on a host, the worker refuses deploys and says
+so; `CASHPILOT_ISOLATION=off` opts out, and the recipes below apply.
 
 ### Plain Docker on Linux
 
@@ -254,6 +273,10 @@ containers and the LAN. Run the test after every DSM or QTS update, since an
 update can replace Docker and its rules.
 
 ### Docker Desktop on Windows and macOS
+
+CashPilot's own fence writes its table inside Docker Desktop's VM, where the
+containers' bridge lives, so it does not need the host firewall. The rest of
+this section is for running without it.
 
 Containers run inside a Linux virtual machine that Docker Desktop manages, and
 their traffic leaves through the Docker Desktop process on your computer. The

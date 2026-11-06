@@ -252,7 +252,7 @@ Notifications fire **only the first time** a particular failure appears: a colle
 | `CASHPILOT_EGRESS_IP` | No | -- | State this worker's public IP directly instead of looking it up. Must be a public address; a LAN or tailnet address is rejected |
 | `CASHPILOT_EGRESS_IP_URL` | No | -- | Use your own IP-echo endpoint (must return a bare IP) instead of the public ones |
 
-The worker also reads `CASHPILOT_DRIFT_WARNINGS`, `CASHPILOT_CONTAINER_NETWORK`, `CASHPILOT_CONTAINER_DNS`, `CASHPILOT_CONTAINER_RUNTIME` and `CASHPILOT_CONTAINER_RUNTIME_OVERRIDES`. They are described in the [configuration reference](configuration.md).
+The worker also reads `CASHPILOT_DRIFT_WARNINGS`, `CASHPILOT_ISOLATION`, `CASHPILOT_CONTAINER_NETWORK`, `CASHPILOT_CONTAINER_DNS`, `CASHPILOT_CONTAINER_RUNTIME` and `CASHPILOT_CONTAINER_RUNTIME_OVERRIDES`. They are described in the [configuration reference](configuration.md).
 
 ### Egress IP and per-IP limits
 

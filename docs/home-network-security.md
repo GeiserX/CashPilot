@@ -26,6 +26,7 @@ page is about the second and third.
 1. [Put the earning machine on its own network segment](#1-give-it-its-own-network-segment),
    a guest network or VLAN.
 2. [Firewall the containers off your LAN and off the host](#2-firewall-the-containers-off-your-lan-and-the-host).
+   CashPilot does this by default; check that it holds.
 3. [Keep CashPilot's own dashboard and worker private](#3-keep-cashpilots-control-plane-private).
 4. [Don't run it next to your valuable data](#4-dont-run-it-next-to-what-you-cannot-lose),
    or put it in a VM.
@@ -57,8 +58,20 @@ into the new segment and nothing else changes.
 
 ## 2. Firewall the containers off your LAN and the host
 
-When the machine has to stay on your main network, the host firewall can still
-keep the containers off it. Two separate things need blocking:
+**CashPilot does this for you.** A worker puts every earner it deploys onto a
+bridge into its own network, `cashpilot-isolated`, and writes one firewall
+table that drops traffic from it to private ranges, your tailnet, cloud
+metadata and the host itself. Nothing to set up on a new install. An upgraded
+install keeps its earners where they were until you press **Turn on isolation**
+on the Fleet page. [LAN isolation by default](isolation.md#lan-isolation-by-default)
+explains how it works, its modes, how to turn it off and what it does not
+cover. [Check isolation](isolation.md#check-it-from-the-dashboard) on the Fleet
+page proves it on your host.
+
+The rest of this section is for running your own rules instead, with
+`CASHPILOT_CONTAINER_NETWORK`. Then CashPilot writes no firewall rule at all.
+
+When you manage the firewall yourself, two separate things need blocking:
 
 - **Other machines on your networks.** Traffic from a container to another
   machine is *forwarded* by the host, and Docker's `DOCKER-USER` chain is where
@@ -83,7 +96,8 @@ docker network create --driver bridge \
 ```
 
 Then tell the CashPilot worker to use it, by adding this to the worker's
-environment and recreating the worker:
+environment and recreating the worker. This turns off CashPilot's own fence on
+that worker:
 
 ```yaml
 CASHPILOT_CONTAINER_NETWORK: cashpilot-isolated
@@ -159,8 +173,8 @@ on the host, it is often `100.100.100.100`, which the `100.64.0.0/10` rule
 blocks. Every lookup then fails, or waits about four seconds for Docker to fall
 through to the next server on its list.
 
-The worker handles this for you. A container it puts on
-`CASHPILOT_CONTAINER_NETWORK` gets its own DNS servers, `1.1.1.1` and `9.9.9.9`
+The worker handles this for you. A container it puts on CashPilot's own
+network or on `CASHPILOT_CONTAINER_NETWORK` gets its own DNS servers, `1.1.1.1` and `9.9.9.9`
 by default, which the rules allow. Containers on other networks, and the host
 itself, keep the Docker daemon's list. To pick other servers, give the worker
 their addresses:
