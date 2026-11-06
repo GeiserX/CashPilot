@@ -107,9 +107,15 @@ rating:
   notes:
     payout_record: The payout system changed in October 2026; we have no completed claim of our own to
       report.
+    payout_terms: Unclaimed epochs expire, unlinked USDC payouts cancelled
     account_safety: No reports found.
+    terms_fit: Own Docker image, works on VPS and residential connections
     traffic_transparency: We did not find how buyers of the traffic are checked.
+    privacy: Provider client source code is published
+    identity_checks: A claim needs only a Bittensor wallet you control
     support: URnetwork's support answered our email about the new payout page; one ticket is not a record.
+    earnings_realism: "Paid in SN25\u03B1 subnet token, each claim costs TAO gas"
+    longevity: Formerly BringYour, the whitepaper carries the old name
   cons:
   - text: Unclaimed epochs expire, and the old USDC payouts were cancelled for networks with no wallet
       linked within 30 days.

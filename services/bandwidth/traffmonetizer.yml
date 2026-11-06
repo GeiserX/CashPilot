@@ -110,10 +110,16 @@ rating:
     earnings_realism: fair
     longevity: unknown
   notes:
+    payout_record: Trustpilot 1.9, payouts pending for weeks or missing
+    payout_terms: Crypto, or bank wire from $1,000, PayPal gone
     account_safety: We found no repeated reports of banned accounts and could not read the current terms
       on suspension.
+    terms_fit: Terms require a residential IP, hosting is outside them
     traffic_transparency: We could not find a page that says who buys the traffic or how buyers are checked.
     privacy: The client is closed source; we did not review the privacy policy in depth.
+    identity_checks: Only a crypto address confirmed by email
+    support: Live chat and email not answering, sometimes for weeks
+    earnings_realism: Reviewers report about $0.10 per GB
     longevity: A third-party summary names Bytemarket OU in Estonia as the operator; we could not confirm
       it on Traffmonetizer's own pages.
   cons:

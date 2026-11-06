@@ -19,6 +19,35 @@ commands, and [Backing up node identities](docs/backup.md) covers the rest.
 
 ---
 
+## v1.72.1: take the compose file again if your worker runs behind the socket proxy
+
+**Affects you if** you took the compose file of v1.71.0, v1.71.1 or v1.72.0,
+the ones with `cashpilot-socket-proxy`. Their policy refused the Docker calls the
+LAN fence makes to build and use its network. On a fresh install, every earner
+on the bridge network was refused with an isolation error, and turning
+isolation on from the Fleet page failed. Activity could not read a
+host-network earner such as Mysterium either. Their stand-in for an unset bind
+folder was also a path Docker could create, which a compromised worker could
+use to reach the host's files.
+
+**What to do.**
+
+1. If you set `CASHPILOT_ISOLATION=off` to get past that error, remove it (or
+   set it to `auto`) first, so the new worker starts with the fence.
+2. Take the v1.72.1 compose file, the same way as in the next section.
+3. Run `docker compose up -d --force-recreate`, with `-f` and the file you
+   use if it is not `docker-compose.yml` (for example
+   `docker compose -f docker-compose.worker.yml up -d --force-recreate` on a
+   worker-only server). Without `--force-recreate`, Compose can keep the
+   running proxy and its old policy.
+4. If your earners already sit on the default bridge, turn isolation on from
+   the Fleet page.
+
+The worker's status page compares the policy fingerprint in the worker's own
+settings with the one its image expects. It catches an old compose file, but
+not a proxy that kept running with the old policy: `--force-recreate` is what
+covers that.
+
 ## Docker socket proxy: take the new compose file once
 
 **Affects you if** your worker runs from a compose file that mounts

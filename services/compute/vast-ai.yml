@@ -82,13 +82,16 @@ rating:
     longevity: unknown
   notes:
     payout_record: We found no host complaint threads either way.
+    payout_terms: Host keeps the full rate it sets, no fee
     account_safety: No reports found.
+    terms_fit: Own host software on your GPU machine, not run by CashPilot
     traffic_transparency: Renters run their own containers on your machine; we did not find how they are
       checked.
     privacy: Not reviewed.
     identity_checks: A competitor's summary says hosts must complete identity, tax or business checks
       before choosing a payout method; we did not confirm it on Vast's own pages.
     support: No pattern found.
+    earnings_realism: Earns only while rented, depends on rental type and reliability
     longevity: Not checked on a primary source.
   cons:
   - text: A host earns only while rented, and Vast's own figures for a consumer GPU depend on rental type

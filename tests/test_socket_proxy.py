@@ -75,9 +75,22 @@ def policy_problems(policy: dict, catalog: list[dict]) -> list[str]:
         problems.append("privileged containers allowed")
     if not create.get("require_no_new_privileges"):
         problems.append("no-new-privileges not required")
-    for key in ("allow_host_pid", "allow_host_ipc", "allow_host_userns", "allow_host_cgroupns"):
+    for key in ("allow_host_pid", "allow_host_ipc", "allow_host_userns"):
         if create.get(key):
             problems.append(f"{key} on")
+    # The Activity reader of a host-network earner joins the host cgroup
+    # namespace to tell that earner's sockets from the host's (app/activity.py).
+    if not create.get("allow_host_cgroupns"):
+        problems.append("allow_host_cgroupns off: the host-network Activity probe needs it")
+    # The LAN fence creates its bridge with driver options and moves earners
+    # with a forced disconnect (app/lan_fence.py); nothing else may open up.
+    network = policy["request_body"].get("network") or {}
+    for key in ("allow_driver_options", "allow_disconnect_force"):
+        if network.get(key) is not True:
+            problems.append(f"network {key} off: the LAN fence needs it")
+    for key in sorted(set(network) - {"allow_driver_options", "allow_disconnect_force"}):
+        if network.get(key):
+            problems.append(f"network {key} on: the LAN fence does not need it")
     if create.get("allow_all_capabilities") or create.get("allow_all_devices"):
         problems.append("capability or device allowlist switched off")
     caps = {c.upper().removeprefix("CAP_") for c in create.get("allowed_capabilities") or []}
@@ -115,7 +128,6 @@ def policy_problems(policy: dict, catalog: list[dict]) -> list[str]:
         ("GET", "/containers/abc/export"),
         ("GET", "/events"),
         ("POST", "/volumes/create"),
-        ("POST", "/networks/create"),
         ("POST", "/images/load"),
         ("POST", "/session"),
         ("DELETE", "/images/abc"),
@@ -163,9 +175,13 @@ def test_the_proxy_is_pinned_and_holds_the_socket_read_only(name):
     # proxy is never in the update's service list.
     assert proxy["configs"] == [{"source": "cashpilot_socket_policy", "target": "/etc/sockguard/sockguard.yaml"}]
     binds = next(e for e in proxy["environment"] if "ALLOWED_BIND_MOUNTS" in e)
-    # An unset variable must never become an empty allow-everything entry.
-    assert "${CASHPILOT_COMPOSE_DIR:-/nonexistent/" in binds
-    assert "${CASHPILOT_PROXY_BIND_MOUNTS:-/nonexistent/" in binds
+    # An unset variable must never become an empty entry: sockguard reads ""
+    # as the prefix of every absolute path. And the placeholder must be a path
+    # Docker can never create, or a first bind makes it a real, writable
+    # folder whose planted symlink a second bind follows to the host's /.
+    assert "${CASHPILOT_COMPOSE_DIR:-/dev/null/" in binds
+    assert "${CASHPILOT_PROXY_BIND_MOUNTS:-/dev/null/" in binds
+    assert ":-}" not in binds and ":-," not in binds
 
 
 @pytest.mark.parametrize("name", COMPOSE_FILES)
@@ -188,6 +204,19 @@ def test_the_shipped_policy_has_no_problems(name):
     assert policy_problems(_policy_of(_compose(name)), _catalog()) == []
 
 
+def test_the_policy_lets_the_lan_fence_build_and_use_its_network():
+    # Without these a fresh install with the fence on refuses every bridge
+    # deploy (app/lan_fence.py ensure_network, reattach).
+    policy = _policy_of(_compose("docker-compose.yml"))
+    for method, path in (
+        ("POST", "/networks/create"),
+        ("POST", "/networks/abc123/connect"),
+        ("POST", "/networks/abc123/disconnect"),
+        ("DELETE", "/networks/abc123"),
+    ):
+        assert _allowed(policy, method, path), (method, path)
+
+
 def test_the_policy_allows_every_call_the_worker_makes():
     policy = _policy_of(_compose("docker-compose.yml"))
     for method, path in spp.ALLOWED_CALLS:
@@ -201,6 +230,10 @@ MUTATIONS = {
     "privileged": lambda p: p["request_body"]["container_create"].update(allow_privileged=True),
     "no nnp": lambda p: p["request_body"]["container_create"].update(require_no_new_privileges=False),
     "host pid": lambda p: p["request_body"]["container_create"].update(allow_host_pid=True),
+    "no host cgroupns": lambda p: p["request_body"]["container_create"].update(allow_host_cgroupns=False),
+    "no network driver options": lambda p: p["request_body"]["network"].update(allow_driver_options=False),
+    "no forced disconnect": lambda p: p["request_body"]["network"].pop("allow_disconnect_force"),
+    "custom network drivers": lambda p: p["request_body"]["network"].update(allow_custom_drivers=True),
     "drop NET_ADMIN": lambda p: p["request_body"]["container_create"]["allowed_capabilities"].remove("NET_ADMIN"),
     "drop tun": lambda p: p["request_body"]["container_create"].update(allowed_devices=[]),
     "drop a reader": lambda p: p["request_body"]["exec"]["allowed_commands"].pop(),

@@ -78,9 +78,13 @@ rating:
     payout_record: Rewards are paid on-chain; we found no pattern of missing rewards.
     payout_terms: Rewards are in HNT; we did not find fees or minimums worth grading.
     account_safety: No reports found.
+    terms_fit: Own hotspot hardware, CashPilot cannot deploy or update it
     traffic_transparency: Not documented on pages we read.
+    privacy: Open-source gateway software (Apache-2.0)
     identity_checks: Not documented.
     support: No pattern found.
+    earnings_realism: PoC rewards retired 6 July 2026, now paid only for data carried
+    longevity: Reward model changed by vote, CEO left, HNT fell about 96%
   cons:
   - text: HIP 149 retired Proof-of-Coverage rewards on 6 July 2026; IoT hotspots now earn only for data
       they carry, and more than 114,000 of them carried none.

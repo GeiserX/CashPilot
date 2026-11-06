@@ -76,12 +76,15 @@ rating:
     earnings_realism: poor
     longevity: unknown
   notes:
+    payout_record: Reviewers report they cannot bridge or send NODL after zkSync
     payout_terms: Not documented on pages we read.
     account_safety: No reports found.
+    terms_fit: Own phone app, CashPilot cannot deploy or update it
     traffic_transparency: Not documented on pages we read.
     privacy: The app uses Bluetooth in the background; we did not review its privacy policy.
     identity_checks: Not documented.
     support: Reviewers report unanswered messages; we could not confirm a pattern.
+    earnings_realism: One reviewer earned about $3 over three to four years
     longevity: Not checked on a primary source.
   cons:
   - text: App Store reviewers report being unable to bridge or send NODL after the move to zkSync, and

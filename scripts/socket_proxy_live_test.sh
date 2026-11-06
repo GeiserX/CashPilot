@@ -68,6 +68,18 @@ else
     }
 fi
 
+# A plain string, not a here-document in $(...): bash 3.2 (macOS) misparses that.
+LEGACY_CLEANUP='for spec in "iptables-legacy nat CP-POST POSTROUTING" "iptables-legacy mangle CP-FWD FORWARD" "iptables-legacy mangle CP-IN INPUT" "ip6tables-legacy mangle CP6-FWD FORWARD" "ip6tables-legacy mangle CP6-IN INPUT"; do
+    set -- $spec
+    command -v "$1" >/dev/null 2>&1 || continue
+    "$1" -w -t "$2" -S "$4" 2>/dev/null | grep -- "-j $3\$" | sed "s/^-A /-D /" | while read -r rule; do
+        eval "\"\$1\" -w -t \"\$2\" $rule"
+    done
+    "$1" -w -t "$2" -F "$3" 2>/dev/null
+    "$1" -w -t "$2" -X "$3" 2>/dev/null
+done
+true'
+
 cleanup() {
     [ "${KEEP:-0}" = 1 ] && return
     compose down -v --remove-orphans >/dev/null 2>&1 || true
@@ -76,6 +88,18 @@ cleanup() {
     docker rm -f cashpilot-updater >/dev/null 2>&1 || true
     docker volume ls -q --filter label=cashpilot.live-test=1 | xargs -r docker volume rm -f >/dev/null 2>&1 || true
     docker volume rm -f cashpilot-docker-api cashpilot-cplive-data >/dev/null 2>&1 || true
+    # The fence this run built: its network and its host firewall tables, removed
+    # with the worker image it ran from, before that image goes.
+    docker network rm cashpilot-isolated >/dev/null 2>&1 || true
+    for family in ip ip6; do
+        docker run --rm --network host --cap-add NET_ADMIN --entrypoint nft "$P-worker:build" \
+            delete table "$family" cashpilot >/dev/null 2>&1 || true
+    done
+    # On a host without nftables the fence uses iptables-legacy: drop each jump
+    # into our chains (they match the subnet or interface, so read them back),
+    # then the chains.
+    docker run --rm --network host --cap-add NET_ADMIN --entrypoint sh "$P-worker:build" -c "$LEGACY_CLEANUP" \
+        >/dev/null 2>&1 || true
     docker rmi -f "$WORKER_IMAGE" "$UI_IMAGE" "$P-worker:build" >/dev/null 2>&1 || true
 }
 trap 'jobs -p | xargs -r kill 2>/dev/null; cleanup' EXIT
@@ -87,6 +111,21 @@ for name in cashpilot-ui cashpilot-worker cashpilot-socket-proxy cashpilot-updat
         exit 2
     fi
 done
+# A network left by an earlier run would let the fence skip the create call
+# the proxy has to allow, so a refusal there could never show.
+if docker network inspect cashpilot-isolated >/dev/null 2>&1; then
+    echo "A network named cashpilot-isolated already exists; this test needs a host without CashPilot." >&2
+    trap - EXIT
+    exit 2
+fi
+# A managed container already on the default bridge makes the fence treat
+# this host as an upgraded install and stay off, so the fenced deploy below
+# would land on the default bridge and prove nothing.
+if [ -n "$(docker ps -aq --filter label=cashpilot.managed=true)" ]; then
+    echo "CashPilot-managed containers already exist on this host; this test needs a host without CashPilot." >&2
+    trap - EXIT
+    exit 2
+fi
 if docker volume inspect cashpilot-docker-api >/dev/null 2>&1; then
     echo "The volume cashpilot-docker-api already exists; this test needs a host without CashPilot." >&2
     trap - EXIT
@@ -169,8 +208,13 @@ show "$out"
 FAILS=$((FAILS + $(echo "$out" | count '^FAIL')))
 [ "$(echo "$out" | count '^PASS')" -ge 17 ] || fail "too few refusal checks ran"
 # The "refused nothing" check in (a) reads the same log; it must be able to see a refusal.
-docker logs --since "$since" cashpilot-socket-proxy 2>&1 | grep -q 'request_denied' && pass "the proxy logs its refusals" \
-    || fail "the proxy logged none of the refusals, so the check in (a) cannot fail"
+# Captured first: under pipefail, grep -q closing the pipe early fails the
+# pipeline with SIGPIPE even when the line is there.
+proxy_log=$(docker logs --since "$since" cashpilot-socket-proxy 2>&1 || true)
+case "$proxy_log" in
+*request_denied*) pass "the proxy logs its refusals" ;;
+*) fail "the proxy logged none of the refusals, so the check in (a) cannot fail" ;;
+esac
 
 echo "== b2. a container in the proxy's process namespace cannot reach its files"
 # sockguard lets PidMode container:<name> through; the proxy's extra capability

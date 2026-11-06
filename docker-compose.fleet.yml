@@ -10,7 +10,7 @@
 # === Deploy on main server (e.g., server-a) ===
 services:
   cashpilot-ui:
-    image: drumsergio/cashpilot:1.71
+    image: drumsergio/cashpilot:1.72
     pull_policy: always
     container_name: cashpilot-ui
     # Loopback by default (the UI commands the Docker-socket worker). Set
@@ -94,14 +94,15 @@ services:
       # Host folders containers may bind: your compose folder (the in-app
       # update needs it) and any folder a service keeps its data in (Storj,
       # for example), comma-separated. Set both in the .env next to this file.
-      # The placeholders never exist, so an unset variable allows nothing.
-      - SOCKGUARD_REQUEST_BODY_CONTAINER_CREATE_ALLOWED_BIND_MOUNTS=${CASHPILOT_COMPOSE_DIR:-/nonexistent/cashpilot-compose-dir-unset},${CASHPILOT_PROXY_BIND_MOUNTS:-/nonexistent/cashpilot-bind-mounts-unset}
+      # The placeholders sit under /dev/null, where no directory can ever exist
+      # (Docker cannot create one there), so an unset variable allows nothing.
+      - SOCKGUARD_REQUEST_BODY_CONTAINER_CREATE_ALLOWED_BIND_MOUNTS=${CASHPILOT_COMPOSE_DIR:-/dev/null/cashpilot-compose-dir-unset},${CASHPILOT_PROXY_BIND_MOUNTS:-/dev/null/cashpilot-bind-mounts-unset}
     configs:
       - source: cashpilot_socket_policy
         target: /etc/sockguard/sockguard.yaml
 
   cashpilot-worker:
-    image: drumsergio/cashpilot-worker:1.71
+    image: drumsergio/cashpilot-worker:1.72
     pull_policy: always
     container_name: cashpilot-worker
     # The worker exposes a Docker-socket-backed API (deploy/stop/remove any
@@ -172,7 +173,7 @@ services:
       - DOCKER_HOST=unix:///run/cashpilot-docker/docker.sock
       # The proxy policy's fingerprint (scripts/socket_proxy_policy.py), so the
       # worker can say when its image needs a newer policy than this file has.
-      - CASHPILOT_PROXY_POLICY=e4df1cd9c8aff97b
+      - CASHPILOT_PROXY_POLICY=ec66faec71f2e7ac
       # The same two values the proxy gets, so the worker can say what to set
       # before the proxy refuses (the in-app update, a host-folder bind).
       - CASHPILOT_COMPOSE_DIR=${CASHPILOT_COMPOSE_DIR:-}
@@ -244,7 +245,7 @@ configs:
           allow_host_pid: false
           allow_host_ipc: false
           allow_host_userns: false
-          allow_host_cgroupns: false
+          allow_host_cgroupns: true         # the Activity probe of a host-network earner (app/activity.py)
           allowed_capabilities: [NET_ADMIN, NET_RAW, SETUID, SETGID]
           allowed_devices: [/dev/net/tun]
           allowed_runtimes: [runc, runsc, runsc-hostnet, runsc-hostnet-raw]
@@ -280,6 +281,13 @@ configs:
             - ["cat", "/etc/anon/anonrc"]
         image_pull:
           allow_all_registries: true        # catalog and custom services come from many registries
+        network:
+          # The LAN fence (app/lan_fence.py) creates its bridge with three driver
+          # options (interface name, no masquerade, no inter-container traffic) and
+          # moves an earner across with a forced disconnect. Custom drivers, swarm
+          # scope, custom IPAM and endpoint settings stay refused.
+          allow_driver_options: true
+          allow_disconnect_force: true
       rules:
         - {match: {method: GET, path: "/_ping"}, action: allow}
         - {match: {method: HEAD, path: "/_ping"}, action: allow}
@@ -307,6 +315,10 @@ configs:
         - {match: {method: POST, path: "/images/create"}, action: allow}
         - {match: {method: GET, path: "/networks"}, action: allow}
         - {match: {method: GET, path: "/networks/*"}, action: allow}
+        - {match: {method: POST, path: "/networks/create"}, action: allow}
+        - {match: {method: POST, path: "/networks/*/connect"}, action: allow}
+        - {match: {method: POST, path: "/networks/*/disconnect"}, action: allow}
+        - {match: {method: DELETE, path: "/networks/*"}, action: allow}
         - {match: {method: GET, path: "/volumes/*"}, action: allow}
         - {match: {method: DELETE, path: "/volumes/*"}, action: allow}
         - {match: {method: "*", path: "/**"}, action: deny, reason: "the CashPilot worker does not use this Docker API call"}

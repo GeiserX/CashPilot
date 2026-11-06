@@ -231,10 +231,17 @@ rating:
     earnings_realism: unknown
     longevity: poor
   notes:
+    payout_record: Pre-filing payments went into the bankruptcy claims process
+    payout_terms: 75%, 50%, 25% held over nine months, half back in month 16
     account_safety: Nodes are permissionless; disqualification for lost data is the stated rule, and we
       found no pattern of disputes.
+    terms_fit: Own Docker image, storjlabs/storagenode
+    traffic_transparency: Encrypted fragments, no IP routing, customers not described
+    privacy: Open-source node software (AGPL-3.0)
+    identity_checks: No account, a wallet address and an email
     support: No pattern found.
     earnings_realism: Not measured against a provider figure.
+    longevity: Chapter 11 filed 26 July 2026, pre-filing earnings frozen
   cons:
   - text: Storj Labs filed for Chapter 11 on 26 July 2026; node earnings from before the filing are frozen
       until the court rules.
