@@ -11,6 +11,10 @@ on:
       - 'uv.lock'
       - 'app/**'
       - 'services/**'
+      # build.yml publishes the tunnel sidecar image on every release, so a
+      # tunnel-only change needs a release too, or no image carries it.
+      - 'Dockerfile.tunnel'
+      - 'tunnel/**'
   workflow_dispatch:
 
 permissions:
@@ -46,8 +50,16 @@ jobs:
         run: uv sync --frozen --extra dev
       - name: Lint
         run: uv run ruff check . && uv run ruff format --check .
+      # The pin-drift test is left out here, and only here. A minor release
+      # opens the PR that moves the compose pins to its series, and until that
+      # PR merges the pins are one series behind. Any app/ merge in that window
+      # ran this job against the old pins, failed, and shipped nothing (#574
+      # waited for v1.70.0). The release fixes the drift itself, so gating the
+      # release on it blocks the fix; test.yml still runs it on every PR.
       - name: Test
-        run: uv run pytest
+        run: >-
+          uv run pytest
+          --deselect tests/test_compose_image_pins.py::TestTheComposePinTracksReleases::test_the_pin_matches_the_newest_released_series
 
   release:
     needs: ci
@@ -176,13 +188,21 @@ jobs:
             BUILD_WORKER=true
           fi
 
+          # The tunnel sidecar is versioned with the release and built by
+          # build.yml on every release, so a change to it alone must release.
+          BUILD_TUNNEL=false
+          if echo "$CHANGED" | grep -qE '^(Dockerfile\.tunnel|tunnel/)'; then
+            BUILD_TUNNEL=true
+          fi
+
           echo "ui=$BUILD_UI" >> "$GITHUB_OUTPUT"
           echo "worker=$BUILD_WORKER" >> "$GITHUB_OUTPUT"
-          echo "Build UI: $BUILD_UI, Build Worker: $BUILD_WORKER"
+          echo "tunnel=$BUILD_TUNNEL" >> "$GITHUB_OUTPUT"
+          echo "Build UI: $BUILD_UI, Build Worker: $BUILD_WORKER, Tunnel changed: $BUILD_TUNNEL"
 
       - name: Get latest version tag
         id: version
-        if: steps.changes.outputs.ui == 'true' || steps.changes.outputs.worker == 'true'
+        if: steps.changes.outputs.ui == 'true' || steps.changes.outputs.worker == 'true' || steps.changes.outputs.tunnel == 'true'
         run: |
           LATEST=$(git tag -l 'v*.*.*' --sort=-v:refname | head -1)
           if [ -z "$LATEST" ]; then

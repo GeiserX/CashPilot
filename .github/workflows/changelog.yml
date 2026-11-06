@@ -14,7 +14,8 @@ name: Changelog
 # WHY MERGING IT DOES NOT CAUSE ANOTHER RELEASE
 # --------------------------------------------
 # release.yml triggers on pushes to main filtered by path — Dockerfile,
-# entrypoint.sh, Dockerfile.worker, pyproject.toml, uv.lock, app/**, services/**.
+# entrypoint.sh, Dockerfile.worker, pyproject.toml, uv.lock, app/**, services/**,
+# Dockerfile.tunnel, tunnel/**.
 # CHANGELOG.md, cliff.toml and docs/** are all outside that list, so merging this
 # PR cannot start a release loop. If you ever add CHANGELOG.md to that filter,
 # this workflow becomes a release loop; do not.
