@@ -225,9 +225,14 @@ it out of the UI. To keep the stored logins out of a worker's reach, run the UI
 on a host with no worker and put the earners behind
 `docker-compose.worker.yml` on other hosts, as [Fleet](fleet.md) describes.
 A worker still receives the logins of the services you deploy to it, so a
-compromised worker leaks those, but not the rest. The UI talks to a worker over
-plain HTTP, carrying the worker's key and those logins, so keep that traffic on
-your LAN or a VPN such as Tailscale, never on the open internet.
+compromised worker leaks those, but not the rest. That holds only while
+`CASHPILOT_ADMIN_API_KEY` differs from `CASHPILOT_API_KEY`: every worker host
+holds the shared key, and the same value would give it the owner role. A worker
+that has not enrolled yet, or lost its own key, still accepts the shared key,
+so until then a compromised worker that can reach it can stop or remove its
+services. Commands and heartbeats both travel over plain HTTP, carrying the
+worker's key and those logins, so keep both directions on a LAN you trust or
+inside a VPN such as Tailscale, never on the open internet.
 
 sockguard can also scope every call to containers, volumes and networks that
 carry its owner label, which would close the first three. CashPilot does not
