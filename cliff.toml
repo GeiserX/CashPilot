@@ -69,6 +69,12 @@ conventional_commits = true
 filter_unconventional = false
 split_commits = false
 protect_breaking_commits = true
+# Commit subjects are public and permanent, and one names a maintainer's
+# machine. A hand edit of CHANGELOG.md is undone by the next regeneration, so
+# the rewrite lives here.
+commit_preprocessors = [
+  { pattern = "(?i)MacBook-only", replace = "machine-specific" },
+]
 filter_commits = false
 topo_order = false
 sort_commits = "newest"
