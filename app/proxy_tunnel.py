@@ -22,6 +22,7 @@ errors pass through ``redact`` before they leave this module.
 from __future__ import annotations
 
 import contextlib
+import hashlib
 import io
 import ipaddress
 import json
@@ -89,7 +90,9 @@ def tunnel_image() -> str:
             )
         return override
     current = version.current()
-    if current == version.UNKNOWN:
+    # An unversioned build reports "dev", or "latest" when it was dispatched
+    # without a version; neither names a tunnel image anyone published.
+    if current == version.UNKNOWN or current.lower().removeprefix("v") in _FLOATING_TAGS:
         raise ProxyTunnelError(
             "This worker is a development build, so it has no released tunnel image to pin. Set "
             "CASHPILOT_TUNNEL_IMAGE to an exact tag or digest."
@@ -133,8 +136,38 @@ def resolve_proxy_ip(host: str) -> str:
     raise ProxyTunnelError(f"The proxy host {host!r} has no IPv4 address")
 
 
+#: Every file cp-tunnel reads. A rewrite writes them all, the ones the new
+#: settings do not use as empty files, so nothing of the old settings (a login
+#: server, a host) is left for cp-tunnel to pick up.
+SECRET_KEYS = (
+    "kind",
+    "own_ip",
+    "auth_key",
+    "exit_node",
+    "hostname",
+    "login_server",
+    "proxy_host",
+    "proxy_ip",
+    "proxy_port",
+    "proxy_scheme",
+    "proxy_auth",
+    "settings",
+)
+
+
 def secret_files(proxy: dict[str, Any], own_ip: str | None, label: str) -> dict[str, str]:
-    """The files written into the sidecar's secret volume, one value per file."""
+    """The files written into the sidecar's secret volume, one value per file.
+
+    ``settings`` is a digest of everything but ``own_ip``, so a start can tell
+    whether the proxy was edited since the tunnel last read its files.
+    """
+    files = _secret_files(proxy, own_ip, label)
+    digest_of = {k: v for k, v in files.items() if k not in ("own_ip", "proxy_ip")}
+    files["settings"] = hashlib.sha256(json.dumps(digest_of, sort_keys=True).encode()).hexdigest()
+    return files
+
+
+def _secret_files(proxy: dict[str, Any], own_ip: str | None, label: str) -> dict[str, str]:
     kind = proxy.get("kind")
     if kind not in PROXY_KINDS:
         raise ProxyTunnelError(f"Unknown proxy type {kind!r}", status_code=400)
@@ -184,15 +217,14 @@ def _read_secret_file(container: Any, name: str) -> str | None:
 
 def refresh_proxy_ip(container: Any) -> None:
     """Resolve the proxy host again before a start, so a provider that moved its
-    gateway to a new address does not leave the copy dialing the old one."""
+    gateway to a new address does not leave the copy dialing the old one.
+
+    A host that no longer resolves stops the start: the old address may belong
+    to someone else by now, and cp-tunnel would hand it the proxy login."""
     host = _read_secret_file(container, "proxy_host")
     if not host:
         return
-    try:
-        fresh = resolve_proxy_ip(host)
-    except ProxyTunnelError as exc:
-        logger.warning("Could not resolve the proxy again before a start; keeping the old address: %s", exc)
-        return
+    fresh = resolve_proxy_ip(host)
     if fresh != _read_secret_file(container, "proxy_ip"):
         container.put_archive(SECRET_DIR, _secret_tar({"proxy_ip": fresh}))
         logger.info("The proxy of %s moved to a new address; the tunnel will use it", container.name)
@@ -221,8 +253,17 @@ def _secret_values(proxy: dict[str, Any]) -> list[str]:
     return [str(proxy.get(k) or "") for k in ("password", "auth_key", "username")]
 
 
+#: The service label of a throwaway Test tunnel.
+TEST_SLUG = "proxy-test"
+
+
 def sidecar_kwargs(name: str, slug: str, proxy_id: int | None, network: str | None, hostname: str) -> dict[str, Any]:
-    """Everything the sidecar is created with. No secret appears here."""
+    """Everything the sidecar is created with. No secret appears here.
+
+    A Test tunnel (no proxy id) gets no restart policy: one left behind by a
+    worker that died during the test must not come back with every daemon
+    restart, holding the proxy login. sweep_test_tunnels removes it.
+    """
     labels = {
         LABEL_MANAGED: "true",
         LABEL_ROLE: ROLE_TUNNEL,
@@ -254,7 +295,7 @@ def sidecar_kwargs(name: str, slug: str, proxy_id: int | None, network: str | No
             # keeps a loopback source until it is rewritten; see cp-tunnel.
             "net.ipv4.conf.all.route_localnet": "1",
         },
-        "restart_policy": {"Name": "unless-stopped"},
+        "restart_policy": {"Name": "unless-stopped" if proxy_id is not None else "no"},
         # tun2proxy runs at warn, so this log holds errors, never the sites the
         # earner reaches; the bound keeps even a noisy failure off the box disk.
         "log_config": {"type": "json-file", "config": {"max-size": "1m", "max-file": "2"}},
@@ -276,7 +317,7 @@ def _wait_ready(container: Any, timeout: float = READY_TIMEOUT) -> dict[str, Any
                     result = json.loads(out.decode().strip().splitlines()[-1])
                 except (ValueError, IndexError):
                     result = None
-                if isinstance(result, dict) and result.get("ip"):
+                if isinstance(result, dict) and _is_ip(result.get("ip")):
                     return {"ip": str(result["ip"]), "country": str(result.get("country") or "")}
         time.sleep(1)
     tail = ""
@@ -288,6 +329,16 @@ def _wait_ready(container: Any, timeout: float = READY_TIMEOUT) -> dict[str, Any
         "The tunnel did not reach the internet through the proxy within "
         f"{int(timeout)} s, so nothing was started behind it." + (f" Tunnel log: {reason}" if reason else "")
     )
+
+
+def _is_ip(value: Any) -> bool:
+    """cp-probe keeps only IP characters of what an echo site answered, so an
+    error page can still come through as "e"; only a real address counts."""
+    try:
+        ipaddress.ip_address(str(value or ""))
+    except ValueError:
+        return False
+    return True
 
 
 def _remove_quietly(container: Any, stop_timeout: int = 10) -> None:
@@ -340,6 +391,10 @@ def deploy(slug: str, proxy_id: int, earner: dict[str, Any], proxy: dict[str, An
     exit, and only then is the earner created inside its namespace.
     """
     client = orchestrator._get_client()
+    # Checked before the old pair goes: settings that cannot work (a host that
+    # does not resolve, no tunnel image) must not cost the copy running now.
+    secret_files(proxy, own_ip, f"{slug}-p{proxy_id}")
+    tunnel_image()
     remove(slug, proxy_id)
     sidecar, exit_info = start_sidecar(client, tunnel_name(slug, proxy_id), slug, proxy_id, proxy, own_ip)
     try:
@@ -376,19 +431,35 @@ def _is_ours(container: Any | None, slug: str, proxy_id: int) -> bool:
     )
 
 
-def stop(slug: str, proxy_id: int) -> None:
-    """Stop the earner, then its tunnel."""
+_LIVE = ("running", "restarting")
+
+
+def stop(slug: str, proxy_id: int) -> bool:
+    """Stop the earner, then its tunnel. Returns whether either was running.
+
+    Docker answers a stop of a stopped container with success, so the cap asks
+    this to tell a copy it stopped from one the owner had already stopped.
+    """
     earner, sidecar = _pair(slug, proxy_id)
     if not _is_ours(earner, slug, proxy_id) and not _is_ours(sidecar, slug, proxy_id):
         raise ValueError(f"No proxied copy of {slug} through proxy {proxy_id} on this worker")
+    was_running = any(_is_ours(c, slug, proxy_id) and getattr(c, "status", "") in _LIVE for c in (earner, sidecar))
     if _is_ours(earner, slug, proxy_id):
         earner.stop(timeout=orchestrator._get_stop_timeout(slug))
     if _is_ours(sidecar, slug, proxy_id):
         sidecar.stop(timeout=10)
+    return was_running
 
 
-def start(slug: str, proxy_id: int) -> dict[str, Any]:
+def start(slug: str, proxy_id: int, proxy: dict[str, Any] | None = None, own_ip: str | None = None) -> dict[str, Any]:
     """Start the tunnel, wait for its exit, then the earner.
+
+    ``proxy`` is the proxy as it is stored now. Its settings are written over
+    the ones the tunnel was deployed with, so a new password, port, auth key or
+    exit node reaches the copy on its next start. A tunnel still running on
+    other settings is stopped first, with its earner, and comes back on the new
+    ones. Without ``proxy`` (a UI older than this worker) only the address is
+    resolved again.
 
     The earner is restarted rather than started when it is still running in a
     namespace the old tunnel left behind.
@@ -397,7 +468,20 @@ def start(slug: str, proxy_id: int) -> dict[str, Any]:
     if not _is_ours(earner, slug, proxy_id) or not _is_ours(sidecar, slug, proxy_id):
         raise ValueError(f"No proxied copy of {slug} through proxy {proxy_id} on this worker")
     sidecar.reload()
-    if sidecar.status != "running":
+    if proxy is not None:
+        try:
+            files = secret_files(proxy, own_ip, f"{slug}-p{proxy_id}")
+        except ProxyTunnelError as exc:
+            raise ProxyTunnelError(redact(str(exc), _secret_values(proxy)), exc.status_code) from None
+        if sidecar.status == "running" and _read_secret_file(sidecar, "settings") != files["settings"]:
+            earner.stop(timeout=orchestrator._get_stop_timeout(slug))
+            sidecar.stop(timeout=10)
+            sidecar.reload()
+        if sidecar.status != "running":
+            full = {key: files.get(key, "") for key in SECRET_KEYS}
+            if not sidecar.put_archive(SECRET_DIR, _secret_tar(full)):
+                raise ProxyTunnelError("Could not hand the proxy settings to the tunnel container")
+    elif sidecar.status != "running":
         refresh_proxy_ip(sidecar)
     sidecar.start()
     exit_info = _wait_ready(sidecar)
@@ -429,10 +513,38 @@ def remove_all(slug: str) -> list[str]:
     # Earners first, so no tunnel is removed under a running earner.
     found.sort(key=lambda c: (c.labels or {}).get(LABEL_ROLE) == ROLE_TUNNEL)
     removed: list[str] = []
+    left: list[str] = []
     for container in found:
         _remove_quietly(container)
-        removed.append(container.name)
+        try:
+            container.reload()
+        except NotFound:
+            removed.append(container.name)
+        else:
+            left.append(container.name)
+    if left:
+        # Said out loud, so the UI keeps the records of copies that still exist.
+        raise ProxyTunnelError(f"Docker did not remove {', '.join(left)}", status_code=409)
     return removed
+
+
+def sweep_test_tunnels() -> list[str]:
+    """Remove Test tunnels a worker that stopped mid-test left behind.
+
+    Run at worker start, when no test of this worker can be in flight.
+    """
+    client = orchestrator._get_client()
+    found = client.containers.list(
+        all=True,
+        filters={"label": [f"{LABEL_MANAGED}=true", f"{LABEL_ROLE}={ROLE_TUNNEL}", f"{LABEL_SERVICE}={TEST_SLUG}"]},
+    )
+    swept: list[str] = []
+    for container in found:
+        if LABEL_PROXY in (container.labels or {}):
+            continue
+        _remove_quietly(container, 2)
+        swept.append(container.name)
+    return swept
 
 
 def _started_at(container: Any) -> str:
@@ -453,7 +565,7 @@ def _read_exit(sidecar: Any) -> dict[str, Any] | None:
         result = json.loads(out.decode().strip().splitlines()[-1])
     except (ValueError, IndexError):
         return None
-    return result if isinstance(result, dict) else None
+    return result if isinstance(result, dict) and _is_ip(result.get("ip")) else None
 
 
 def earner_action(earner: Any, sidecar: Any, ready: bool) -> str | None:
@@ -549,7 +661,7 @@ def test(proxy: dict[str, Any], own_ip: str | None) -> dict[str, Any]:
     client = orchestrator._get_client()
     name = f"{CONTAINER_PREFIX}tunnel-test-{uuid.uuid4().hex[:10]}"
     began = time.monotonic()
-    sidecar, exit_info = start_sidecar(client, name, "proxy-test", None, proxy, own_ip)
+    sidecar, exit_info = start_sidecar(client, name, TEST_SLUG, None, proxy, own_ip)
     try:
         return {**exit_info, "ms": int((time.monotonic() - began) * 1000)}
     finally:

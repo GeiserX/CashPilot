@@ -26,7 +26,8 @@ the stored password** and save.
 
 The **Test** button starts a throwaway tunnel on the box picked in **Run a copy
 through a proxy**, reports the exit IP and country it gets, and removes it. It
-passes only when the exit IP is public and is not the box's own. A failed test
+passes only when the exit IP is public and, when the worker knows its own
+public IP, is not the box's own. A failed test
 stays on the proxy's row, with the box and the reason, until the next test.
 
 ### Filling in a provider's details
@@ -61,7 +62,12 @@ The tunnel sets things up in this order:
 1. Firewall rules first (nftables, inside its own namespace only). Every
    outgoing packet is dropped unless it goes into the tunnel, or it is the
    tunnel's own connection to the proxy (for Tailscale: a packet tailscaled
-   marked as its own).
+   marked as its own). Packets into the tunnel addressed to a private or
+   tailnet range are dropped too, so the earner cannot ask the proxy to
+   connect to the proxy's own LAN by address. The rule checks addresses
+   only. A name the proxy resolves to a private address, or a request sent
+   straight to the proxy's port, is up to the proxy's own rules, so use a
+   proxy that refuses private destinations.
 2. Name lookups sent to Docker's resolver are redirected into the tunnel, and
    anything else sent to that resolver is dropped.
 3. The routes and the tunnel process: [tun2proxy](https://github.com/tun2proxy/tun2proxy)
@@ -117,6 +123,12 @@ every other capability dropped, never privileged, `no-new-privileges`, a
 read-only root filesystem, a process limit, no Docker socket and no published
 ports. It joins `CASHPILOT_CONTAINER_NETWORK` like every other earner, so your
 host firewall rules for that bridge still apply.
+
+The tunnel runs as root inside its own container, because cp-tunnel loads the
+firewall, sets the routes and creates the tun device, and the settings files
+are readable by root only. That root holds `NET_ADMIN` over the tunnel's own
+namespace and nothing else; the earner runs in a separate process namespace and
+cannot reach it.
 
 The earner keeps the hardening every deploy gets. The worker API refuses
 `network_mode: container:` from any caller; only the worker itself sets it for
@@ -177,7 +189,22 @@ proxy provider offers them (see [Filling in a provider's details](#filling-in-a-
 
 The proxy's host name is looked up on the worker when a copy is deployed, and
 again each time it is started from the page or by a cap reset, so a provider
-that moves its gateway to a new address needs only a Stop and Start.
+that moves its gateway to a new address needs only a Stop and Start. A host
+that no longer resolves stops the start, rather than sending the proxy login
+to the old address.
+
+## Editing a proxy
+
+A copy keeps the settings it was last started with. An edit (a new password,
+host, port, type, auth key or exit node) reaches a copy the next time it is
+started from the page or by a cap reset: the worker writes the proxy's current
+settings into the tunnel before it starts. To apply an edit to a copy that is
+running, press **Stop**, then **Start**. A restart that Docker does on its own,
+after a reboot or a Docker restart, uses the settings of the last start.
+
+This needs a worker at least as new as the UI; an older worker only looks the
+host name up again, and a copy on it keeps the rest until you remove it and run
+it again.
 
 ## Traffic cap
 
@@ -248,6 +275,7 @@ Before you add one, in this order:
 
 Each tunnel joins your tailnet as its own ephemeral node and is removed from
 it soon after it stops. Keys expire (90 days at most); when one does, every
-start fails the same way. Create a new key and paste it into the proxy's
-settings. A leaked reusable key lets anyone join your tailnet as that tag,
+start fails the same way. Create a new key, paste it into the proxy's
+settings, then press **Start** on each copy (see [Editing a proxy](#editing-a-proxy)).
+A leaked reusable key lets anyone join your tailnet as that tag,
 which is why it must be ephemeral, tagged and used for nothing else.

@@ -241,10 +241,9 @@ rating:
     identity_checks: No account, a wallet address and an email
     support: No pattern found.
     earnings_realism: Not measured against a provider figure.
-    longevity: Chapter 11 filed 26 July 2026, pre-filing earnings frozen
+    longevity: Storj Labs filed for Chapter 11 in July 2026
   cons:
-  - text: Storj Labs filed for Chapter 11 on 26 July 2026; node earnings from before the filing are frozen
-      until the court rules.
+  - text: CoinDesk reported on 27 July 2026 that Storj Labs had filed for Chapter 11 bankruptcy protection.
     criterion: longevity
     kind: press
     source: https://www.coindesk.com/business/2026/07/27/cloud-data-firm-storj-files-for-chapter-11-extending-a-week-of-crypto-failures-token-slides-16

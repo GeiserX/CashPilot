@@ -88,7 +88,7 @@ def validate(
         return [f"rating must be a mapping, not {type(rating).__name__}"]
     errors: list[str] = []
 
-    extra = sorted(set(rating) - ALLOWED_KEYS)
+    extra = sorted(set(rating) - ALLOWED_KEYS, key=str)
     if extra:
         errors.append(
             f"rating has key(s) {extra} that are not allowed; a grade comes only from the verdicts "
@@ -108,7 +108,7 @@ def validate(
     missing = [k for k in keys if k not in verdicts]
     if missing:
         errors.append(f"rating.verdicts is missing {missing}; every criterion needs a verdict")
-    unknown_keys = sorted(set(verdicts) - set(keys))
+    unknown_keys = sorted(set(verdicts) - set(keys), key=str)
     if unknown_keys:
         errors.append(f"rating.verdicts names unknown criteria {unknown_keys}")
     for key, value in verdicts.items():

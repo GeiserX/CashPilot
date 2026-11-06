@@ -82,7 +82,7 @@ rating:
     longevity: unknown
   notes:
     payout_record: We found no host complaint threads either way.
-    payout_terms: Host keeps the full rate it sets, no fee
+    payout_terms: No fee, Wise, PayPal or Stripe from $20, smaller balances roll forward
     account_safety: No reports found.
     terms_fit: Own host software on your GPU machine, not run by CashPilot
     traffic_transparency: Renters run their own containers on your machine; we did not find how they are
@@ -112,3 +112,9 @@ rating:
     kind: terms
     source: https://vast.ai/hosting
     checked_on: "2026-11-04"
+  - text: Payouts go by Wise, PayPal or Stripe from a $20 minimum, invoiced weekly; a smaller balance
+      rolls forward to the next week.
+    criterion: payout_terms
+    kind: terms
+    source: https://docs.vast.ai/host/payment
+    checked_on: "2026-11-06"
