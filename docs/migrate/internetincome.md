@@ -94,6 +94,10 @@ listed by name as not read.
 - **Proxies** (`USE_PROXIES`, `proxies.txt`). Add each one in the Proxies
   section of the Fleet page, then run copies of your services through it;
   adding a proxy starts nothing by itself. See [Proxied copies](../proxies.md).
+  With `USE_PROXIES=true` InternetIncome ran your services only through
+  proxies. CashPilot deploys each imported service on the worker's own
+  connection, and proxied copies come on top, so untick a service in the
+  import table if it must not use that connection.
 - **`BROWSER_USERNAME` and `BROWSER_PASSWORD`**, InternetIncome's own browser
   login.
 

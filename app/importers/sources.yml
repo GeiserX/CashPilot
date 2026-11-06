@@ -268,7 +268,7 @@ tools:
     ignore_json: []
     not_carried:
       DEVICE_NAME: "CashPilot names each device after the worker it runs on."
-      USE_PROXIES: "Proxies are not imported. Add each one in the Proxies section of the Fleet page, then run copies of your services through it."
+      USE_PROXIES: "Proxies are not imported. InternetIncome ran your services only through them, and CashPilot deploys each service on the worker's own connection. Add each proxy in the Proxies section of the Fleet page, then run copies of your services through it."
       proxies.txt: "Proxies are not imported. Add each one in the Proxies section of the Fleet page, then run copies of your services through it."
       BROWSER_USERNAME: "This is InternetIncome's own browser login, which CashPilot does not need."
       BROWSER_PASSWORD: "This is InternetIncome's own browser login, which CashPilot does not need."
