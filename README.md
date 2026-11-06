@@ -10,7 +10,7 @@
   <a href="https://github.com/GeiserX/CashPilot/stargazers"><img alt="GitHub Stars" src="https://img.shields.io/github/stars/GeiserX/CashPilot?style=flat-square&logo=github"></a>
 </p>
 
-CashPilot is a self-hosted platform that runs passive income services on your own servers and shows what they earn in one web dashboard. Two Docker containers start the <!-- n:docker -->17<!-- /n --> services that run in Docker, keep track of the <!-- n:tracked -->24<!-- /n --> that run as a browser extension, a desktop app or a GPU node, and read the balances of <!-- n:collectors -->15<!-- /n --> providers into one earnings history. Without it, each provider is a container you write by hand and a dashboard you log into separately.
+CashPilot is a self-hosted platform that runs passive income services on your own servers and shows what they earn in one web dashboard. A dashboard and a worker on each server start the <!-- n:docker -->17<!-- /n --> services that run in Docker, keep track of the <!-- n:tracked -->24<!-- /n --> that run as a browser extension, a desktop app or a GPU node, and read the balances of <!-- n:collectors -->15<!-- /n --> providers into one earnings history. Without it, each provider is a container you write by hand and a dashboard you log into separately.
 
 ![The CashPilot dashboard: the balance first, a short list of what needs attention (an offline box, a stopped container, a balance it could not read, a payout to confirm), which service runs on which box, earnings per day, and the deployed services table](https://raw.githubusercontent.com/GeiserX/CashPilot/main/docs/images/screenshots/dashboard.png)
 
@@ -21,6 +21,10 @@ CashPilot is a self-hosted platform that runs passive income services on your ow
 - Keeps every balance as history: <!-- n:collectors -->15<!-- /n --> providers are read by built-in collectors every hour, so "running but not earning" shows as a flat line.
 - Treats a balance drop as a probable payout and asks you to confirm it; nothing is counted as income by guess.
 - Runs a fleet: one worker per server, one dashboard for all of them, every figure per server and per service.
+- Runs extra copies of a deployed service through a SOCKS5, HTTP CONNECT or Tailscale exit-node proxy, so one box earns on several IPs; a dead proxy stops the copy instead of leaking ([proxied copies](https://geiserx.github.io/CashPilot/proxies/)).
+- Fences earners off your LAN, the host, your tailnet and cloud metadata by default on new installs; an upgraded install whose earners sit on Docker's default bridge turns it on with one button, and a network you name in `CASHPILOT_CONTAINER_NETWORK` keeps your own rules ([network isolation](https://geiserx.github.io/CashPilot/isolation/)).
+- Grades every provider from A to F on the same ten questions, each answer backed by a source you can open ([provider ratings](https://geiserx.github.io/CashPilot/ratings/)).
+- Imports your service logins from money4band, CashFactory or InternetIncome, and shows them for review before saving ([moving from money4band](https://geiserx.github.io/CashPilot/migrate/money4band/)).
 - Checks before you deploy whether the machine fits (residential IP, GPU, disk), and warns when a stored credential is about to expire.
 - Shows, when you switch it on, what each earner does on the network: connections, ports, networks and countries, and alerts for mail ports and attempts on your LAN. It reads socket tables only, never traffic, and keeps addresses for 24 hours.
 - Encrypts stored credentials at rest; the worker reaches Docker only through a pinned socket proxy that refuses privileged containers and binds of `/` or of the socket (it narrows what a compromised worker can do; it is not yet a full root boundary), and the dashboard listens on loopback until you say otherwise.
@@ -36,7 +40,7 @@ docker compose up -d
 docker compose logs cashpilot-ui | grep -i "setup token"
 ```
 
-You need Docker on a Linux, macOS or Windows host, amd64 or arm64. Open [http://localhost:8080](http://localhost:8080): the welcome page asks for the token from that log line, creates the owner account and opens the setup wizard. Port 8080 taken? Put `CASHPILOT_UI_PORT=8088` in a `.env` file next to `docker-compose.yml` instead of editing the file (this needs the current compose file; the one from v1.61 and older hard-codes 8080). The dashboard listens on loopback only and the worker's port 8081 is never published, because both can command the Docker socket; [Getting started](https://geiserx.github.io/CashPilot/getting-started/) covers remote access, updating and pinning a version.
+You need Docker on a Linux, macOS or Windows host, amd64 or arm64. Open [http://localhost:8080](http://localhost:8080): the welcome page asks for the token from that log line, creates the owner account and opens the setup wizard. Port 8080 taken? Put `CASHPILOT_UI_PORT=8088` in a `.env` file next to `docker-compose.yml` instead of editing the file (this needs the current compose file; the one from v1.61 and older hard-codes 8080). The dashboard listens on loopback only and the worker's port 8081 is never published, because either one can start containers on the host; [Getting started](https://geiserx.github.io/CashPilot/getting-started/) covers remote access, updating and pinning a version.
 
 ## Supported Services
 
