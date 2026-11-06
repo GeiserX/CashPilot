@@ -2,7 +2,7 @@
 
 The rules file (services/_ratings.yml) is the method; each service YAML holds
 verdicts with cited cons and pros; nobody types a letter. These tests pin the
-parts a later edit could quietly break: no A, the band edges, the ceilings,
+parts a later edit could quietly break: A as the top band, the band edges, the ceilings,
 unknown counting as poor, the validator refusing a typed grade or a sponsor
 field, and the real catalog being fully rated.
 """
@@ -77,15 +77,21 @@ def _with_score(score: int) -> dict:
     return _rating(**v)
 
 
-class TestNoA:
-    def test_every_criterion_good_is_a_b(self):
+class TestTopGrade:
+    def test_every_criterion_good_is_an_a(self):
         result = _grade(_rating())
         assert result["score"] == result["max"] == 20
-        assert result["grade"] == "B"
+        assert result["grade"] == "A"
 
-    def test_the_rules_have_no_a_band_and_say_why(self):
-        assert [b["grade"] for b in RULES["bands"]] == ["B", "C", "D", "F"]
-        assert "No provider gets an A" in RULES["cap_reason"]
+    def test_the_rules_put_a_on_top_at_90_percent(self):
+        assert [b["grade"] for b in RULES["bands"]] == ["A", "B", "C", "D", "F"]
+        assert RULES["bands"][0]["min_percent"] == 90
+        assert list(ratings.GRADE_ORDER) == [b["grade"] for b in RULES["bands"]]
+
+    def test_a_ceiling_still_holds_an_a_score_down(self):
+        result = _grade(_rating(payout_record="poor"))
+        assert result["band_grade"] == "A"
+        assert result["grade"] == "C"
 
     def test_the_rules_never_mention_money_to_the_project(self):
         text = ratings.RULES_PATH.read_text(encoding="utf-8").lower()
@@ -96,10 +102,10 @@ class TestNoA:
 class TestBands:
     @pytest.mark.parametrize(
         ("score", "grade"),
-        [(15, "B"), (14, "C"), (11, "C"), (10, "D"), (7, "D"), (6, "F")],
+        [(18, "A"), (17, "B"), (15, "B"), (14, "C"), (11, "C"), (10, "D"), (7, "D"), (6, "F")],
     )
     def test_band_edges(self, score, grade):
-        # 15/20 = 75 %, 11/20 = 55 %, 7/20 = 35 %.
+        # 18/20 = 90 %, 15/20 = 75 %, 11/20 = 55 %, 7/20 = 35 %.
         result = _grade(_with_score(score))
         assert result["score"] == score
         assert result["grade"] == grade
@@ -142,14 +148,14 @@ class TestBands:
 class TestCaps:
     def test_container_prohibited_caps_at_d(self):
         result = _grade(_rating(terms_fit="poor"), container_prohibited=True)
-        assert result["band_grade"] == "B"
+        assert result["band_grade"] == "A"
         assert result["grade"] == "D"
         assert [c["key"] for c in result["caps"]] == ["container_prohibited"]
 
     @pytest.mark.parametrize("key", ["payout_record", "account_safety"])
     def test_poor_payout_or_safety_caps_at_c(self, key):
         result = _grade(_rating(**{key: "poor"}))
-        assert result["band_grade"] == "B"
+        assert result["band_grade"] == "A"
         assert result["grade"] == "C"
         assert [c["key"] for c in result["caps"]] == ["poor_payout_or_safety"]
 
@@ -186,12 +192,12 @@ class TestUnknown:
         three = _grade(_rating(**dict.fromkeys(unknowns[:3], "unknown")))
         assert three["thin_evidence"] is False
 
-    def test_thin_evidence_cap_binds_when_the_score_alone_would_be_b(self):
+    def test_thin_evidence_cap_binds_when_the_score_alone_would_be_a(self):
         rules = copy.deepcopy(RULES)
-        rules["points"]["unknown"] = 2  # unknown worth as much as good: band B
+        rules["points"]["unknown"] = 2  # unknown worth as much as good: band A
         unknowns = ["support", "privacy", "identity_checks", "longevity"]
         result = ratings.for_service(_svc(_rating(**dict.fromkeys(unknowns, "unknown"))), rules=rules)
-        assert result["band_grade"] == "B"
+        assert result["band_grade"] == "A"
         assert result["grade"] == "C"
         assert [c["key"] for c in result["caps"]] == ["thin_evidence"]
 
@@ -388,7 +394,7 @@ class TestTheRealCatalog:
         assert "rating" in svc, f"{slug} has no rating block"
         assert ratings.validate(svc["rating"], svc) == []
         result = ratings.for_service(svc)
-        assert result["rated"] and result["grade"] in ("B", "C", "D", "F")
+        assert result["rated"] and result["grade"] in ratings.GRADE_ORDER
         for item in svc["rating"].get("cons", []) + svc["rating"].get("pros", []):
             assert item["source"].startswith("https://")
 
@@ -483,7 +489,7 @@ class TestApi:
             patch("app.main.database.list_workers", new_callable=AsyncMock, return_value=[]),
         ):
             data = client.get("/api/services/available").json()
-        assert data[0]["rating_result"]["grade"] == "B"
+        assert data[0]["rating_result"]["grade"] == "A"
 
     def test_detail_carries_the_grade(self, client):
         svc = {"slug": "hg", "name": "HG", "docker": {"image": "t"}, "rating": _rating(payout_record="poor")}

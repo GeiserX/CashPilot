@@ -75,8 +75,12 @@ def _method(rules: dict) -> list[str]:
 
 
 def _summary(rows: list[tuple[dict, dict]]) -> list[str]:
+    # The wrapper lets docs/stylesheets/theme.css keep the short columns narrow,
+    # so the worst con gets the width.
     out = [
         "## All providers",
+        "",
+        '<div class="ratings-summary" markdown>',
         "",
         "| Provider | Grade | Score | Unchecked | Reviewed | Worst con |",
         "|---|:---:|:---:|:---:|---|---|",
@@ -87,6 +91,7 @@ def _summary(rows: list[tuple[dict, dict]]) -> list[str]:
             f'| <a href="#{svc["slug"]}">{_cell(svc["name"])}</a> | {r["grade"]} | {r["score"]} of {r["max"]} '
             f"| {r['unknown_count']} | {r['reviewed_on']} | {_cell(worst)} |"
         )
+    out += ["", "</div>"]
     return out
 
 

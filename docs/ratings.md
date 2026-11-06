@@ -4,12 +4,11 @@ Every provider CashPilot can run or track gets a letter grade. The grade comes f
 
 Nobody types a grade. Each provider's entry in the catalog records a verdict per question (good, fair, poor or unknown) with the cons and pros behind it, and the code turns those verdicts into the letter. The entry has no field for a grade or an override, and a catalog entry that tries is shown as not rated and fails our checks. The web app and CashPilot-Desktop both show the grade, computed from the same published method.
 
-## Why nothing gets an A
-
-No provider gets an A. An A would mean we vouch for a provider, and we cannot: we can check what it publishes and what its users report, not what it will do with your account or your connection tomorrow. The best grade is B.
-
 ## How to read a grade
 
+A grade is our reading of the evidence, so it is a bit subjective: someone weighing the same sources could land a grade apart. Treat it as a guide and read the cons.
+
+- **A**: the top tier, 90% of the score or more. No provider reaches it today.
 - **B**: the provider does most things well and the evidence says so. Still read the cons.
 - **C**: real drawbacks, or too little evidence to say more.
 - **D**: serious drawbacks, or most of the criteria could not be checked.
@@ -46,6 +45,7 @@ Each verdict scores points: good 2, fair 1, poor 0, unknown 0. Unknown scores th
 
 | Grade | Share of the maximum score |
 |---|---|
+| A | 90% or more |
 | B | 75% or more |
 | C | 55% or more |
 | D | 35% or more |
@@ -66,6 +66,8 @@ What a cited con or pro may rest on:
 - `press`: A news article, a court record or a public filing.
 
 ## All providers
+
+<div class="ratings-summary" markdown>
 
 | Provider | Grade | Score | Unchecked | Reviewed | Worst con |
 |---|:---:|:---:|:---:|---|---|
@@ -110,6 +112,8 @@ What a cited con or pro may rest on:
 | <a href="#teneo">Teneo Protocol</a> | F | 1 of 20 | 7 | 2026-11-04 | Teneo says points will be consolidated into $AGENTIC, a non-transferable reward token, not the $TENEO token. |
 | <a href="#theta-edge">Theta Edge Node</a> | F | 1 of 20 | 9 | 2026-11-04 | CashPilot does not run Theta Edge: you use the provider's own desktop app, so CashPilot cannot deploy or update it for you. Its terms were not checked for containers. |
 | <a href="#titan">Titan Network</a> | F | 1 of 20 | 8 | 2026-11-04 | Titan's own help says a running node does not guarantee earnings: with no task assigned it earns nothing, and rewards are in the TNT token. |
+
+</div>
 
 ## Provider details
 
