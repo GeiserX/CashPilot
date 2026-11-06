@@ -19,10 +19,10 @@ commands, and [Backing up node identities](docs/backup.md) covers the rest.
 
 ---
 
-## Socket proxy policy fix: take the compose file again if your worker runs behind the proxy
+## v1.72.1: take the compose file again if your worker runs behind the socket proxy
 
-**Affects you if** you took the compose file of v1.71.0 or v1.71.1, the ones
-that add `cashpilot-socket-proxy`. Their policy refused the Docker calls the
+**Affects you if** you took the compose file of v1.71.0, v1.71.1 or v1.72.0,
+the ones with `cashpilot-socket-proxy`. Their policy refused the Docker calls the
 LAN fence makes to build and use its network. On a fresh install, every earner
 on the bridge network was refused with an isolation error, and turning
 isolation on from the Fleet page failed. Activity could not read a
@@ -30,7 +30,7 @@ host-network earner such as Mysterium either. Their stand-in for an unset bind
 folder was also a path Docker could create, which a compromised worker could
 use to reach the host's files.
 
-**What to do.** Take the compose file again, the same way as in the next
+**What to do.** Take the v1.72.1 compose file, the same way as in the next
 section, and run `docker compose up -d`. If you set `CASHPILOT_ISOLATION=off`
 to get past that error, remove it (or set it to `auto`) afterwards. The
 worker's status page says when the policy the proxy loaded is older than the
