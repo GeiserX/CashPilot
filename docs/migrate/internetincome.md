@@ -92,7 +92,8 @@ listed by name as not read.
   two workers never report the same name. Your old devices stay listed as
   offline in each provider's dashboard until you remove them there.
 - **Proxies** (`USE_PROXIES`, `proxies.txt`). Add each one in the Proxies
-  section of the Fleet page; see [Proxied copies](../proxies.md).
+  section of the Fleet page, then run copies of your services through it;
+  adding a proxy starts nothing by itself. See [Proxied copies](../proxies.md).
 - **`BROWSER_USERNAME` and `BROWSER_PASSWORD`**, InternetIncome's own browser
   login.
 

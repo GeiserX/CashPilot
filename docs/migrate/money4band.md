@@ -82,8 +82,9 @@ Any other app is listed as "CashPilot has no such service".
 - **Device name.** CashPilot names each device after the worker it runs on, so
   two workers never report the same name. Your old devices stay listed as
   offline in each provider's dashboard until you remove them there.
-- **Proxies.** Add each one in the Proxies section of the Fleet page; see
-  [Proxied copies](../proxies.md).
+- **Proxies.** Add each one in the Proxies section of the Fleet page, then run
+  copies of your services through it; adding a proxy starts nothing by itself.
+  See [Proxied copies](../proxies.md).
 - **Watchtower and notifications.** CashPilot updates its own containers.
 - **money4band's dashboard and its ports.**
 
