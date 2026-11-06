@@ -71,6 +71,13 @@ The tunnel sets things up in this order:
    one that is not the box's own. Otherwise the copy is refused and the tunnel
    removed.
 
+The tunnel joins the same network as every other earner. With
+[LAN isolation](isolation.md#lan-isolation-by-default) on, that network is fenced
+off private and tailnet ranges, so the proxy must be reachable at a public
+address: a proxy on your LAN or at a tailnet address is dropped by the fence and
+the probe fails. A Tailscale exit node still works, over its public endpoints or
+DERP relays rather than a direct LAN path.
+
 ### It fails closed
 
 If the proxy goes down, the tunnel process dies or the tunnel container stops,

@@ -118,6 +118,9 @@ services:
       - CASHPILOT_UI_URL=http://cashpilot-ui:8080
       - CASHPILOT_API_KEY=${CASHPILOT_API_KEY}
       - CASHPILOT_WORKER_NAME=server-a
+      # Earners are fenced off your LAN and this host by default (docs/isolation.md).
+      # off keeps Docker's default bridge.
+      - CASHPILOT_ISOLATION=${CASHPILOT_ISOLATION:-auto}
       # CASHPILOT_WORKER_URL: override auto-detected URL if the UI can't reach the default
     init: true
     restart: unless-stopped

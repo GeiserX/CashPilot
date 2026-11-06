@@ -18,12 +18,12 @@ Two decisions shape this module.
 in a tooltip. A self-hosting audience is persuaded by a project that owns the
 downside; burying it is what makes people distrust the whole category.
 
-**It does not silently reconfigure the host's network.** Creating bridges and
-firewall rules on someone's machine is a change with real blast radius, and
-several services would break in ways that cost money: Storj needs an inbound
-port and its own dashboard reachable for the collector, and Mysterium runs on
-the host network where no bridge applies at all. So this computes what CAN be
-isolated, names every exception and why, and leaves the act to the operator.
+**It names every exception.** The worker fences bridge earners off the LAN by
+default (app/lan_fence.py): its own bridge plus one firewall table, with replies
+to published ports still allowed, so Storj keeps its inbound port and its
+dashboard. What a bridge cannot cover is said here per service: Mysterium runs
+on the host network, where no bridge applies at all. Operators who run their own
+rules (CASHPILOT_CONTAINER_NETWORK) get the same list to write them from.
 """
 
 from __future__ import annotations

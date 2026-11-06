@@ -12,6 +12,11 @@ import pytest
 # is a read-only filesystem and in CI is not creatable — so the encryption key
 # could not be persisted and the app now (correctly) refuses to start.
 os.environ.setdefault("CASHPILOT_DATA_DIR", tempfile.mkdtemp(prefix="cashpilot-tests-"))
+# The suite's deploys run against mocked Docker clients that have no idea of
+# networks. Isolation is a default the worker resolves through Docker
+# (app/lan_fence.py), so every test starts with it off, which is the old
+# default-bridge behaviour; tests/test_lan_fence.py sets each mode on purpose.
+os.environ.setdefault("CASHPILOT_ISOLATION", "off")
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
