@@ -610,7 +610,21 @@ def _remember(on: bool) -> None:
         elif not on:
             ON_MARKER.unlink(missing_ok=True)
     except OSError as exc:
-        logger.warning("Could not record the isolation state in %s: %s", ON_MARKER, exc)
+        if on:
+            logger.warning(
+                "Could not record isolation on in %s (%s). Make /data writable: until then, losing the %s network "
+                "with only stopped default-bridge earners left would put this worker back in legacy mode.",
+                ON_MARKER,
+                exc,
+                NETWORK_NAME,
+            )
+        else:
+            logger.warning(
+                "Could not delete %s (%s). Delete it by hand, or this worker comes back isolated once "
+                "CASHPILOT_ISOLATION=off is removed.",
+                ON_MARKER,
+                exc,
+            )
 
 
 def resolve_mode(client: Any) -> str:

@@ -109,7 +109,9 @@ The mode lives in Docker and in the worker's `/data` (`.isolation_on`, written
 the first time the worker is on, deleted by `CASHPILOT_ISOLATION=off`), so losing
 either one alone does not switch it off: a reinstall with a fresh volume keeps
 the network, and a reboot or `docker network prune` that took the network after
-every fenced earner was removed keeps the file.
+every fenced earner was removed keeps the file. The file needs a writable
+`/data`: if the worker cannot write it, it logs a warning saying so and decides
+from Docker alone, as before.
 
 ### Turning it on for an upgraded install
 
