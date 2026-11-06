@@ -30,11 +30,18 @@ host-network earner such as Mysterium either. Their stand-in for an unset bind
 folder was also a path Docker could create, which a compromised worker could
 use to reach the host's files.
 
-**What to do.** Take the v1.72.1 compose file, the same way as in the next
-section, and run `docker compose up -d`. If you set `CASHPILOT_ISOLATION=off`
-to get past that error, remove it (or set it to `auto`) afterwards. The
-worker's status page says when the policy the proxy loaded is older than the
-one its image expects.
+**What to do.**
+
+1. If you set `CASHPILOT_ISOLATION=off` to get past that error, remove it (or
+   set it to `auto`) first, so the new worker starts with the fence.
+2. Take the v1.72.1 compose file, the same way as in the next section.
+3. Run `docker compose up -d --force-recreate`. Without `--force-recreate`,
+   Compose can keep the running proxy and its old policy.
+4. If your earners already sit on the default bridge, turn isolation on from
+   the Fleet page.
+
+The worker's status page says when the policy the proxy loaded is older than
+the one its image expects.
 
 ## Docker socket proxy: take the new compose file once
 

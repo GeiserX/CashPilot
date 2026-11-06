@@ -19,7 +19,7 @@ from pathlib import Path
 import pytest
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
-SHIPPED_COMPOSE = ["docker-compose.yml", "docker-compose.fleet.yml"]
+SHIPPED_COMPOSE = ["docker-compose.yml", "docker-compose.fleet.yml", "docker-compose.worker.yml"]
 
 _IMAGE = re.compile(r"^\s*image:\s*(\S+)", re.M)
 
@@ -91,7 +91,7 @@ class TestTheComposePinTracksReleases:
             )
         pytest.skip("no semver tags available in this local checkout")
 
-    @pytest.mark.parametrize("name", ["docker-compose.yml", "docker-compose.fleet.yml"])
+    @pytest.mark.parametrize("name", SHIPPED_COMPOSE)
     def test_the_pin_matches_the_newest_released_series(self, name):
         import re
 
