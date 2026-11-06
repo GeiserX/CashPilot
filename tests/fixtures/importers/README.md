@@ -15,3 +15,6 @@ files below; no upstream file text is copied.
 
 Each tool's `template.*` file keeps the upstream placeholders, so the
 placeholder detection is tested against what an untouched file looks like.
+money4band's `template-user-config.json` leaves the Teneo and Wipter passwords
+blank instead of upstream's `your...Pw`, because the secret scanner flags those
+two strings; a blank value is a placeholder too.
