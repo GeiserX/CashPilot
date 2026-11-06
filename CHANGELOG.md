@@ -10,6 +10,19 @@ Every release, grouped by what changed. Generated from commit history.
 Releases before `1.0.0` were recorded by hand and are kept verbatim in
 [docs/changelog-0.x-handwritten.md](docs/changelog-0.x-handwritten.md).
 
+## Unreleased
+
+### Documentation
+
+- Regenerate CHANGELOG.md (#610)
+
+## [1.72.3] - 2026-11-06
+
+### Fixes
+
+- Stop provider ratings claiming more than their sources say (#604)
+- Stop store installs giving the worker root on the host, and let tunnel fixes ship (#607)
+
 ## [1.72.2] - 2026-11-06
 
 ### Documentation
