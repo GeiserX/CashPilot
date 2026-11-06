@@ -182,7 +182,7 @@ class TestEndpoint:
 
         return asyncio.run(run())
 
-    WORKERS = [{"id": 1, "name": "watchtower"}, {"id": 2, "name": "geiserback"}]
+    WORKERS = [{"id": 1, "name": "charlie"}, {"id": 2, "name": "alpha"}]
 
     def test_without_a_tariff_every_machine_reports_unknown(self):
         out = self._call(workers=self.WORKERS)
@@ -197,9 +197,9 @@ class TestEndpoint:
             containers=[{"slug": "honeygain", "status": "running", "_worker_id": 1}],
         )
         by_name = {m["machine"]: m for m in out["machines"]}
-        assert by_name["watchtower"]["monthly_gross"] == 4.0
-        assert by_name["geiserback"]["monthly_gross"] == 0.0
-        assert by_name["watchtower"]["verdict"] == me.LOSING_MONEY
+        assert by_name["charlie"]["monthly_gross"] == 4.0
+        assert by_name["alpha"]["monthly_gross"] == 0.0
+        assert by_name["charlie"]["verdict"] == me.LOSING_MONEY
 
     def test_a_service_on_two_machines_splits_its_gross(self):
         """Without per-node earnings there is no better answer than an even split."""

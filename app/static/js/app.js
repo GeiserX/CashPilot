@@ -3518,13 +3518,13 @@ const CP = (() => {
     const running = filtered.filter(x => x.deployed).sort(byName);
     const rest = filtered.filter(x => !x.deployed).sort(byName);
     const group = (label, rows) => rows.length
-      ? `<tbody class="cat-group"><tr class="cat-group-row"><th colspan="6" scope="colgroup">${label} <span class="count">${rows.length}</span></th></tr>${rows.map(renderCatalogCard).join('')}</tbody>`
+      ? `<tbody class="cat-group"><tr class="cat-group-row"><th colspan="7" scope="colgroup">${label} <span class="count">${rows.length}</span></th></tr>${rows.map(renderCatalogCard).join('')}</tbody>`
       : '';
     container.innerHTML = `
       <table class="catalog-table">
         <thead><tr>
-          <th scope="col">Service</th><th scope="col">Kind</th><th scope="col">Runs on</th>
-          <th scope="col" class="num">Est. per month</th><th scope="col">Needs</th><th scope="col"><span class="sr-only">Action</span></th>
+          <th scope="col">Service</th><th scope="col" class="cat-col-kind">Kind</th><th scope="col" class="cat-col-plat">Runs on</th>
+          <th scope="col" class="num">Est. per month</th><th scope="col" class="cat-col-grade">Grade</th><th scope="col" class="cat-col-needs">Needs</th><th scope="col"><span class="sr-only">Action</span></th>
         </tr></thead>
         ${group('Running in your fleet', running)}${group('Not running', rest)}
       </table>`;
@@ -3583,9 +3583,46 @@ const CP = (() => {
       <td class="cat-kind">${escapeHtml(svc.category === 'depin' ? 'DePIN' : capFirst(svc.category))}</td>
       <td class="cat-plat">${platforms || '<span class="muted">none listed</span>'}</td>
       <td class="num cat-est">${escapeHtml(earning)}</td>
+      <td class="cat-grade">${(svc.rating_result && svc.rating_result.rated)
+        ? `<a class="grade-link" href="https://geiserx.github.io/CashPilot/ratings/#${encodeURIComponent(svc.slug || '')}" target="_blank" rel="noopener" aria-label="${escapeHtml(`${svc.name}: grade ${svc.rating_result.grade}, its cons and sources`)}">${gradeBadge(svc.rating_result)}</a>`
+        : gradeBadge(svc.rating_result)}</td>
       <td class="cat-needs">${needs.length ? escapeHtml(needs.join(', ')) : '<span class="muted">nothing special</span>'}</td>
       <td class="cat-act">${actionBtn}</td>
     </tr>`;
+  }
+
+  // The provider's grade, computed server-side from the published criteria
+  // (app/ratings.py). The badge's tooltip is the worst con.
+  function gradeBadge(r) {
+    if (!r || !r.rated) return '<span class="muted">not rated</span>';
+    const top = [r.thin_evidence ? `Thin evidence: ${r.unknown_count} criteria unchecked.` : '',
+      (r.top_cons && r.top_cons[0]) ? r.top_cons[0].text : ''].filter(Boolean).join(' ');
+    const g = escapeHtml(r.grade);
+    return `<span class="grade-badge grade-${g.toLowerCase()}" title="${escapeHtml(top)}">${g}</span>`;
+  }
+
+  function ratingBlock(svc) {
+    const r = svc.rating_result;
+    const how = `https://geiserx.github.io/CashPilot/ratings/#${encodeURIComponent(svc.slug || '')}`;
+    if (!r || !r.rated) {
+      return `<div class="sd-block sd-rating"><h4 class="sd-h">Rating</h4>
+        <p class="muted">Not rated yet. <a href="https://geiserx.github.io/CashPilot/ratings/" target="_blank" rel="noopener">How we grade</a></p></div>`;
+    }
+    const cited = (item) => `<li>${escapeHtml(item.text)}
+        <span class="sd-rating-src"><a href="${escapeHtml(item.source)}" target="_blank" rel="noopener noreferrer">source</a>, checked ${escapeHtml(item.checked_on)}</span></li>`;
+    const caps = (r.caps || []).map(c => `<li>${escapeHtml(c.reason)}</li>`).join('');
+    const cons = (r.top_cons || []).map(cited).join('');
+    const pros = (r.pros || []).map(cited).join('');
+    return `
+    <div class="sd-block sd-rating">
+      <h4 class="sd-h">Rating</h4>
+      <div class="sd-rating-head">${gradeBadge(r)}
+        <span class="sd-rating-score">${escapeHtml(r.summary || '')}</span>
+        <a href="${how}" target="_blank" rel="noopener">How we grade</a></div>
+      ${caps ? `<ul class="sd-rating-caps">${caps}</ul>` : ''}
+      ${cons ? `<div class="detail-label">Top cons</div><ul class="sd-rating-list">${cons}</ul>` : ''}
+      ${pros ? `<details class="sd-rating-pros"><summary>Pros (${(r.pros || []).length})</summary><ul class="sd-rating-list">${pros}</ul></details>` : ''}
+    </div>`;
   }
 
   function initCatalogFilters() {
@@ -3761,6 +3798,7 @@ const CP = (() => {
     <div id="deploy-risk-card" class="sd-block deploy-risk-card" data-slug="${escapeHtml(svc.slug || '')}" style="display:none;">
       <div id="deploy-risk-body" class="deploy-risk-body"></div>
     </div>
+    ${svc.custom ? '' : ratingBlock(svc)}
     <div class="detail-grid sd-facts">
       <div class="detail-item">
         <div class="detail-label">Category</div>
@@ -4530,7 +4568,7 @@ const CP = (() => {
       return;
     }
     const secrets = config._secrets || {};
-    const items = meta.map(col => {
+    const items = meta.map((col, i) => {
       // A collector is "configured" if any secret field has a stored value
       // (per _secrets) or any non-secret field carries a real value.
       // EVERY required field, not any field.
@@ -4575,7 +4613,7 @@ const CP = (() => {
         ? `<div class="kv-actions kv-actions-end"><button class="btn btn-danger btn-sm" data-action="clearServiceCredentials" data-a1="${escapeHtml(col.slug)}" data-a2="${escapeHtml(col.name)}">Clear credentials</button></div>`
         : '';
       return `
-      <details class="collector-section" id="collector-${col.slug}">
+      <details class="collector-section" id="collector-${col.slug}" style="order:${i}">
         <summary class="collector-header">
           <span class="collector-name">${escapeHtml(col.name)}</span>
           ${statusBadge}
@@ -4586,8 +4624,14 @@ const CP = (() => {
           ${clearBtn}
         </div>
       </details>`;
-    }).join('');
-    container.innerHTML = `<div class="collectors-grid">${items}</div>`;
+    });
+    // Two independent stacks, not one grid: in a grid an opened card stretches
+    // its whole row and leaves a gap under the card beside it. Left gets the
+    // 1st, 3rd, 5th... so the reading order stays row by row; on a phone the
+    // stacks dissolve (display: contents) and `order` restores that sequence.
+    const left = items.filter((_, i) => i % 2 === 0).join('');
+    const right = items.filter((_, i) => i % 2 === 1).join('');
+    container.innerHTML = `<div class="collectors-grid"><div class="collectors-col">${left}</div><div class="collectors-col">${right}</div></div>`;
   }
 
   async function saveCollectorCredentials() {
@@ -5255,6 +5299,9 @@ const CP = (() => {
     confirmPayout,
     rejectPayout,
     runSelfUpdate,
+    // Exposed for import.js, so a deploy from an import asks the same
+    // preflight question as every other deploy.
+    confirmPreflight: _confirmPreflight,
     // Exposed for fleet.html, which rendered running costs with a bare
     // Number(v).toFixed(2) — no unit at all, on figures that mixed USD earnings
     // with a tariff in the user's own currency. The API is canonical USD now,

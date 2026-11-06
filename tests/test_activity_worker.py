@@ -7,6 +7,7 @@ proven by the read-only smoke run named in the PR.
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import threading
 from types import SimpleNamespace
@@ -41,9 +42,36 @@ GOOD = {
 }
 
 
+HOST_GOOD = {
+    "v": 1,
+    "attribution": "cgroup",
+    "reason": "",
+    "netns": None,
+    "snmp_start": None,
+    "snmp_end": None,
+    "summary": {
+        "est_max": 2,
+        "syn_sent_max": 0,
+        "udp_bound": 1,
+        "listen_ports": [4449],
+        "remotes_total": 3,
+        "truncated": False,
+        "out": [
+            ["tcp", "198.51.100.9", 443, 5, {"est": 5}],
+            ["tcp", "198.51.100.25", 25, 1, {"closed": 1}],
+            ["udp", "192.168.1.1", 5351, 1, {"est": 1}],
+        ],
+        "in": [["203.0.113.7", 4449, 2]],
+    },
+    "snapshots": 5,
+}
+
+
 class Probe:
-    def __init__(self, name, status=0, logs=None, wait_exc=None, remove_exc=None):
+    def __init__(self, name, status=0, logs=None, wait_exc=None, remove_exc=None, attrs=None):
         self.name = name
+        if attrs is not None:
+            self.attrs = attrs
         self.status = status
         self._logs = json.dumps(GOOD).encode() if logs is None else logs
         self.wait_exc = wait_exc
@@ -123,9 +151,14 @@ class FakeClient:
         self.closed = True
 
 
+WORKER = "worker-one"
+TAG = hashlib.sha256(WORKER.encode()).hexdigest()[:8]
+
+
 @pytest.fixture(autouse=True)
-def _clean():
+def _clean(monkeypatch):
     activity.reset()
+    monkeypatch.setattr(activity, "WORKER_ID", WORKER)
     yield
     activity.reset()
 
@@ -148,7 +181,7 @@ class TestProbeKwargs:
         kw = activity.probe_kwargs("sha256:img", "abcdef0123456789xyz")
         assert kw == {
             "image": "sha256:img",
-            "name": "cashpilot-activity-probe-abcdef012345",
+            "name": f"cashpilot-activity-probe-{TAG}-abcdef012345",
             "entrypoint": ["python", "-c", activity.ACTIVITY_SCRIPT],
             "environment": {"PROBE_SNAPSHOTS": "5", "PROBE_GAP": "2"},
             "network_mode": "container:abcdef0123456789xyz",
@@ -161,7 +194,8 @@ class TestProbeKwargs:
             "mem_limit": "48m",
             "tmpfs": {"/data": "size=64k"},
             "healthcheck": {"test": ["NONE"]},
-            "labels": {"cashpilot.probe": "activity"},
+            "log_config": {"type": "json-file", "config": {"max-size": "1m"}},
+            "labels": {"cashpilot.probe": "activity", "cashpilot.probe.worker": WORKER},
             "detach": True,
         }
 
@@ -200,7 +234,7 @@ class TestRemovalOnEveryPath:
         assert reason == "bad_output" and probe.removed == [(True, True)]
 
     def test_run_exception_removes_by_name(self):
-        stuck = Probe("cashpilot-activity-probe-aaaaaaaaaaaa")
+        stuck = Probe(activity.probe_name("a" * 64))
         client = FakeClient([])
         client.by_key[stuck.name] = stuck
 
@@ -217,47 +251,51 @@ class TestRemovalOnEveryPath:
 
     def test_leftover_reported(self):
         _, _, left = self._run(Probe("p", remove_exc=RuntimeError("busy")))
-        assert left == ["cashpilot-activity-probe-aaaaaaaaaaaa"]
+        assert left == [f"cashpilot-activity-probe-{TAG}-aaaaaaaaaaaa"]
 
 
 class TestRound:
     def test_label_sweep_removes_old_probes(self):
-        client = FakeClient([], leftovers=["cashpilot-activity-probe-old"])
+        client = FakeClient([])
+        client.listed_leftovers = [
+            Probe(
+                "ours", attrs={"Config": {"Labels": {"cashpilot.probe.worker": WORKER}}, "State": {"Status": "running"}}
+            ),
+            Probe("legacy-done", attrs={"Config": {"Labels": {}}, "State": {"Status": "exited"}}),
+        ]
         window = _round(client, [])
-        assert client.listed_leftovers[0].removed == [(True, True)]
+        assert [p.removed for p in client.listed_leftovers] == [[(True, True)], [(True, True)]]
         assert window["leftover_probes"] == []
 
-    def test_host_none_and_sandboxed_never_probe(self):
+    def test_none_and_sandboxed_never_probe(self):
         client = FakeClient(
             [
-                earner("cashpilot-mysterium", "h" * 64, mode="host"),
                 earner("cashpilot-off", "n" * 64, mode="none"),
                 earner("cashpilot-gv", "g" * 64, runtime="runsc"),
             ]
         )
-        window = _round(client, ["cashpilot-mysterium", "cashpilot-off", "cashpilot-gv"])
+        window = _round(client, ["cashpilot-off", "cashpilot-gv"])
         assert client.runs == []
         got = {s["container"]: s["status"] for s in window["samples"]}
-        assert got == {
-            "cashpilot-mysterium": "host_network",
-            "cashpilot-off": "no_network",
-            "cashpilot-gv": "sandboxed",
-        }
-        host = next(s for s in window["samples"] if s["container"] == "cashpilot-mysterium")
-        assert host["est_max"] is None and host["out"] == []
+        assert got == {"cashpilot-off": "no_network", "cashpilot-gv": "sandboxed"}
 
-    def test_a_chain_ending_on_the_host_network_never_probes(self):
+    def test_a_chain_ending_on_the_host_network_is_matched_by_the_members_cgroup(self):
         """An earner joining a container that joins a host-network one is on the host network."""
         client = FakeClient(
             [
                 earner("hostgw", "h" * 64, mode="host"),
                 earner("relay", "r" * 64, mode="container:hostgw"),
                 earner("cashpilot-a", "a" * 64, mode="container:relay"),
-            ]
+            ],
+            probe_factory=lambda kw: Probe(kw["name"], logs=json.dumps(HOST_GOOD).encode()),
         )
         window = _round(client, ["cashpilot-a"])
-        assert client.runs == []
-        assert {s["container"]: s["status"] for s in window["samples"]} == {"cashpilot-a": "host_network"}
+        assert [(r["network_mode"], r["environment"].get("PROBE_CONTAINER")) for r in client.runs] == [
+            ("host", "a" * 64)
+        ]
+        assert [(s["container"], s["status"], s["reason"]) for s in window["samples"]] == [
+            ("cashpilot-a", "ok", "host_cgroup")
+        ]
 
     def test_gvisor_hostnet_is_probed_and_gvisor_netstack_is_sandboxed(self):
         """A gVisor runtime with --network=host keeps its sockets in the kernel's namespace."""
@@ -758,3 +796,171 @@ class TestWorkerReplyFixes:
         ):
             asyncio.run(wapi._activity_cycle())
         assert wapi._activity_enabled is True and wapi._pending_activity is None
+
+
+class TestHostNetworkByCgroup:
+    """Host-network earners: probed on the host network and matched by their cgroup."""
+
+    def _host_round(self, logs=None, names=("cashpilot-mysterium",)):
+        client = FakeClient(
+            [earner("cashpilot-mysterium", "m" * 64, mode="host", nets={})],
+            probe_factory=lambda kw: Probe(kw["name"], logs=json.dumps(logs or HOST_GOOD).encode()),
+        )
+        return client, _round(client, list(names))
+
+    def test_host_earner_is_probed_with_the_floor_on_the_host_network(self):
+        client, window = self._host_round()
+        assert len(client.runs) == 1
+        kw = client.runs[0]
+        assert kw["network_mode"] == "host" and kw["cgroupns"] == "host"
+        assert kw["environment"]["PROBE_MODE"] == "cgroup" and kw["environment"]["PROBE_CONTAINER"] == "m" * 64
+        s = window["samples"][0]
+        assert s["status"] == "ok" and s["reason"] == "host_cgroup"
+        assert [d[3] for d in s["out"]] == ["public", "public", "lan"]
+        assert s["in"] == [["203.0.113.7", 4449, "public", 2]]
+
+    def test_host_rows_never_carry_counter_changes(self):
+        """The host's counters are the machine's: a host row has no deltas, even on a second round."""
+        logs = dict(HOST_GOOD, netns="net:[1]", snmp_end=GOOD["snmp_end"])
+        client = FakeClient(
+            [earner("cashpilot-mysterium", "m" * 64, mode="host", nets={})],
+            probe_factory=lambda kw: Probe(kw["name"], logs=json.dumps(logs).encode()),
+        )
+        _round(client, ["cashpilot-mysterium"], now=1_000_000.0)
+        window = _round(client, ["cashpilot-mysterium"], now=1_000_300.0)
+        s = window["samples"][0]
+        assert all(s[k] is None for k in activity.DELTA_KEYS) and s["delta_seconds"] is None
+
+    def test_a_host_round_drops_the_previous_bridge_reading(self):
+        """bridge, host, bridge: the third round must not file a change measured across the host round."""
+        mode = {"m": "bridge"}
+
+        def containers():
+            nets = {} if mode["m"] == "host" else None
+            return [earner("cashpilot-x", "x" * 64, mode=mode["m"], nets=nets)]
+
+        def factory(kw):
+            return Probe(kw["name"], logs=json.dumps(HOST_GOOD if kw.get("network_mode") == "host" else GOOD).encode())
+
+        client = FakeClient(containers(), probe_factory=factory)
+        _round(client, ["cashpilot-x"], now=1_000_000.0)
+        mode["m"] = "host"
+        client.by_key.update({c.name: c for c in containers()} | {c.id: c for c in containers()})
+        assert _round(client, ["cashpilot-x"], now=1_000_300.0)["samples"][0]["reason"] == "host_cgroup"
+        mode["m"] = "bridge"
+        client.by_key.update({c.name: c for c in containers()} | {c.id: c for c in containers()})
+        window = _round(client, ["cashpilot-x"], now=1_000_600.0)
+        assert window["samples"][0]["opens"] is None
+
+    def test_host_rows_raise_mail_and_lan_alerts(self):
+        from app import activity_ui
+
+        _, window = self._host_round()
+        clean = activity_ui.sanitise(window, now=window["window_end"])
+        kinds = sorted(f["kind"] for f in activity_ui.alert_findings(clean))
+        assert kinds == ["activity_lan", "activity_mail"]
+
+    @pytest.mark.parametrize("reason", ["cgroup_v1", "cgroup_missing", "sock_diag_refused", "kernel_no_cgroup_id"])
+    def test_a_probe_that_cannot_attribute_shows_host_network_with_its_reason(self, reason):
+        _, window = self._host_round(logs=dict(HOST_GOOD, reason=reason))
+        s = window["samples"][0]
+        assert (s["status"], s["reason"]) == ("host_network", reason)
+        assert s["out"] == [] and s["in"] == [] and s["est_max"] is None
+
+    def test_a_reading_without_cgroup_attribution_is_not_trusted(self):
+        """A netns reading for a host earner is the whole machine's table: never shown as the earner's."""
+        _, window = self._host_round(logs=GOOD)
+        s = window["samples"][0]
+        assert s["status"] == "host_network" and s["out"] == []
+
+    def test_host_context_has_no_bridge(self):
+        c = earner("cashpilot-mysterium", "m" * 64, mode="host", nets={})
+        c.attrs["HostConfig"]["Dns"] = ["192.168.1.1"]
+        assert activity.host_context(c) == {"gateways": [], "dns": ["192.168.1.1"], "subnets": [], "peers": []}
+
+    def test_probe_kwargs_host_keeps_every_floor_key(self):
+        net = activity.probe_kwargs("img", "m" * 64)
+        host = activity.probe_kwargs_host("img", "m" * 64)
+        for key in (
+            "user",
+            "read_only",
+            "cap_drop",
+            "security_opt",
+            "privileged",
+            "pids_limit",
+            "mem_limit",
+            "tmpfs",
+            "log_config",
+        ):
+            assert host[key] == net[key], key
+        assert host["user"] == "65534:65534" and host["cap_drop"] == ["ALL"] and host["privileged"] is False
+        assert "cap_add" not in host and "volumes" not in host and "devices" not in host
+        assert set(host) - set(net) == {"cgroupns"}
+
+
+class TestTwoWorkersOneHost:
+    def test_sweep_keeps_another_workers_live_probe_and_running_legacy_ones(self):
+        def theirs(name, status):
+            return Probe(
+                name, attrs={"Config": {"Labels": {"cashpilot.probe.worker": "other"}}, "State": {"Status": status}}
+            )
+
+        client = FakeClient([])
+        client.listed_leftovers = [
+            Probe(
+                "ours", attrs={"Config": {"Labels": {"cashpilot.probe.worker": WORKER}}, "State": {"Status": "running"}}
+            ),
+            theirs("theirs-running", "running"),
+            theirs("theirs-created", "created"),
+            Probe("legacy-running", attrs={"Config": {"Labels": {}}, "State": {"Status": "running"}}),
+            Probe("legacy-exited", attrs={"Config": {"Labels": {}}, "State": {"Status": "exited"}}),
+        ]
+        assert activity.sweep(client) == []
+        removed = [p.name for p in client.listed_leftovers if p.removed]
+        assert removed == ["ours", "legacy-exited"]
+
+    @pytest.mark.parametrize("status", ["exited", "dead"])
+    def test_sweep_removes_a_finished_probe_of_another_worker(self, status):
+        """A finished probe keeps its round's addresses in its Docker log; it is never mid-round, so any worker removes it.
+
+        A worker without a writable /data gets a new id on every start, so its old probes would
+        otherwise stay on the host for good.
+        """
+        client = FakeClient([])
+        client.listed_leftovers = [
+            Probe(
+                "theirs-done",
+                attrs={"Config": {"Labels": {"cashpilot.probe.worker": "other"}}, "State": {"Status": status}},
+            ),
+        ]
+        assert activity.sweep(client) == []
+        assert client.listed_leftovers[0].removed
+
+    def test_probe_names_differ_per_worker(self, monkeypatch):
+        mine = activity.probe_name("a" * 64)
+        monkeypatch.setattr(activity, "WORKER_ID", "worker-two")
+        assert activity.probe_name("a" * 64) != mine
+
+    def test_the_worker_labels_its_probes_with_its_own_id(self, tmp_path):
+        """In a new interpreter: importing the worker sets the id its probes carry."""
+        import os
+        import subprocess
+        import sys
+        from pathlib import Path
+
+        root = Path(__file__).resolve().parent.parent
+        env = {
+            **os.environ,
+            "CASHPILOT_API_KEY": "test-key",
+            "PYTHONPATH": str(root),
+            "CASHPILOT_DATA_DIR": str(tmp_path),
+        }
+        script = (
+            "from app import activity, worker_api\n"
+            "assert worker_api.CLIENT_ID and activity.WORKER_ID == worker_api.CLIENT_ID, activity.WORKER_ID\n"
+            "print('ok')\n"
+        )
+        out = subprocess.run(
+            [sys.executable, "-c", script], cwd=tmp_path, env=env, capture_output=True, text=True, timeout=60
+        )
+        assert out.returncode == 0, out.stderr[-2000:]

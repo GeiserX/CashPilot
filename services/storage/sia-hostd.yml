@@ -155,3 +155,68 @@ disclosure:
   account_rules: >-
     Permissionless: no signup or account. Collateral is burned if the node
     misses storage proofs, by going offline or losing data.
+
+# Provider rating: the verdicts behind the grade (method: services/_ratings.yml,
+# published at docs/ratings.md). The grade itself is computed, never written here.
+rating:
+  reviewed_on: "2026-11-04"
+  verdicts:
+    payout_record: unknown
+    payout_terms: fair
+    account_safety: fair
+    terms_fit: good
+    traffic_transparency: fair
+    privacy: good
+    identity_checks: good
+    support: unknown
+    earnings_realism: fair
+    longevity: good
+  notes:
+    payout_record: Payment is by on-chain contract; we have no host of our own to report.
+    support: No pattern found.
+  cons:
+  - text: 'Earnings are Siacoin in your own wallet: there is no payout to a bank, so you sell on an exchange
+      yourself.'
+    criterion: payout_terms
+    kind: our_experience
+    source: https://github.com/GeiserX/CashPilot/blob/main/services/storage/sia-hostd.yml
+    checked_on: "2026-11-04"
+  - text: Collateral is locked per contract and burned if the host misses storage proofs by going offline
+      or losing data.
+    criterion: account_safety
+    kind: our_experience
+    source: https://github.com/GeiserX/CashPilot/blob/main/services/storage/sia-hostd.yml
+    checked_on: "2026-11-04"
+  - text: Only about 30% of the storage offered on the network is in use, so a new host competes for little
+      demand.
+    criterion: earnings_realism
+    kind: terms
+    source: https://sia.tech/provide-storage
+    checked_on: "2026-11-04"
+  - text: Renters store encrypted file fragments and nobody routes traffic through your IP, but we
+      did not find where Sia says who the renters are or how they are checked.
+    criterion: traffic_transparency
+    kind: our_experience
+    source: https://github.com/GeiserX/CashPilot/blob/main/services/storage/sia-hostd.yml
+    checked_on: "2026-11-04"
+  pros:
+  - text: hostd is developed in the open by the Sia Foundation, since 2022.
+    criterion: longevity
+    kind: terms
+    source: https://github.com/SiaFoundation/hostd
+    checked_on: "2026-11-04"
+  - text: hostd is open source under the MIT licence.
+    criterion: privacy
+    kind: terms
+    source: https://github.com/SiaFoundation/hostd
+    checked_on: "2026-11-04"
+  - text: The Sia Foundation publishes hostd as a container image.
+    criterion: terms_fit
+    kind: terms
+    source: https://github.com/SiaFoundation/hostd
+    checked_on: "2026-11-04"
+  - text: 'Permissionless: no signup or account.'
+    criterion: identity_checks
+    kind: our_experience
+    source: https://github.com/GeiserX/CashPilot/blob/main/services/storage/sia-hostd.yml
+    checked_on: "2026-11-04"
