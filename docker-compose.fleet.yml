@@ -94,8 +94,9 @@ services:
       # Host folders containers may bind: your compose folder (the in-app
       # update needs it) and any folder a service keeps its data in (Storj,
       # for example), comma-separated. Set both in the .env next to this file.
-      # The placeholders never exist, so an unset variable allows nothing.
-      - SOCKGUARD_REQUEST_BODY_CONTAINER_CREATE_ALLOWED_BIND_MOUNTS=${CASHPILOT_COMPOSE_DIR:-/nonexistent/cashpilot-compose-dir-unset},${CASHPILOT_PROXY_BIND_MOUNTS:-/nonexistent/cashpilot-bind-mounts-unset}
+      # The placeholders sit under /dev/null, where no directory can ever exist
+      # (Docker cannot create one there), so an unset variable allows nothing.
+      - SOCKGUARD_REQUEST_BODY_CONTAINER_CREATE_ALLOWED_BIND_MOUNTS=${CASHPILOT_COMPOSE_DIR:-/dev/null/cashpilot-compose-dir-unset},${CASHPILOT_PROXY_BIND_MOUNTS:-/dev/null/cashpilot-bind-mounts-unset}
     configs:
       - source: cashpilot_socket_policy
         target: /etc/sockguard/sockguard.yaml
@@ -172,7 +173,7 @@ services:
       - DOCKER_HOST=unix:///run/cashpilot-docker/docker.sock
       # The proxy policy's fingerprint (scripts/socket_proxy_policy.py), so the
       # worker can say when its image needs a newer policy than this file has.
-      - CASHPILOT_PROXY_POLICY=e4df1cd9c8aff97b
+      - CASHPILOT_PROXY_POLICY=d798d33594bf7e59
       # The same two values the proxy gets, so the worker can say what to set
       # before the proxy refuses (the in-app update, a host-folder bind).
       - CASHPILOT_COMPOSE_DIR=${CASHPILOT_COMPOSE_DIR:-}
@@ -244,7 +245,7 @@ configs:
           allow_host_pid: false
           allow_host_ipc: false
           allow_host_userns: false
-          allow_host_cgroupns: false
+          allow_host_cgroupns: true         # the Activity probe of a host-network earner (app/activity.py)
           allowed_capabilities: [NET_ADMIN, NET_RAW, SETUID, SETGID]
           allowed_devices: [/dev/net/tun]
           allowed_runtimes: [runc, runsc, runsc-hostnet, runsc-hostnet-raw]
@@ -307,6 +308,10 @@ configs:
         - {match: {method: POST, path: "/images/create"}, action: allow}
         - {match: {method: GET, path: "/networks"}, action: allow}
         - {match: {method: GET, path: "/networks/*"}, action: allow}
+        - {match: {method: POST, path: "/networks/create"}, action: allow}
+        - {match: {method: POST, path: "/networks/*/connect"}, action: allow}
+        - {match: {method: POST, path: "/networks/*/disconnect"}, action: allow}
+        - {match: {method: DELETE, path: "/networks/*"}, action: allow}
         - {match: {method: GET, path: "/volumes/*"}, action: allow}
         - {match: {method: DELETE, path: "/volumes/*"}, action: allow}
         - {match: {method: "*", path: "/**"}, action: deny, reason: "the CashPilot worker does not use this Docker API call"}

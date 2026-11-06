@@ -76,6 +76,13 @@ cleanup() {
     docker rm -f cashpilot-updater >/dev/null 2>&1 || true
     docker volume ls -q --filter label=cashpilot.live-test=1 | xargs -r docker volume rm -f >/dev/null 2>&1 || true
     docker volume rm -f cashpilot-docker-api cashpilot-cplive-data >/dev/null 2>&1 || true
+    # The fence this run built: its network and its host firewall tables, removed
+    # with the worker image it ran from, before that image goes.
+    docker network rm cashpilot-isolated >/dev/null 2>&1 || true
+    for family in ip ip6; do
+        docker run --rm --network host --cap-add NET_ADMIN --entrypoint nft "$P-worker:build" \
+            delete table "$family" cashpilot >/dev/null 2>&1 || true
+    done
     docker rmi -f "$WORKER_IMAGE" "$UI_IMAGE" "$P-worker:build" >/dev/null 2>&1 || true
 }
 trap 'jobs -p | xargs -r kill 2>/dev/null; cleanup' EXIT
@@ -87,6 +94,13 @@ for name in cashpilot-ui cashpilot-worker cashpilot-socket-proxy cashpilot-updat
         exit 2
     fi
 done
+# A network left by an earlier run would let the fence skip the create call
+# the proxy has to allow, so a refusal there could never show.
+if docker network inspect cashpilot-isolated >/dev/null 2>&1; then
+    echo "A network named cashpilot-isolated already exists; this test needs a host without CashPilot." >&2
+    trap - EXIT
+    exit 2
+fi
 if docker volume inspect cashpilot-docker-api >/dev/null 2>&1; then
     echo "The volume cashpilot-docker-api already exists; this test needs a host without CashPilot." >&2
     trap - EXIT

@@ -109,6 +109,37 @@ def phase_allowed() -> None:
     container = check("inspect a container", lambda: client.containers.get(name))
     if container is None:
         return
+    # A fresh install fences bridge earners by default: the deploy above had to
+    # create cashpilot-isolated through the proxy and land on it.
+    from app import lan_fence
+
+    nets = set((container.attrs.get("NetworkSettings") or {}).get("Networks") or {})
+    result(
+        nets == {lan_fence.NETWORK_NAME},
+        "the bridge earner landed on the fenced network the worker created",
+        ",".join(sorted(nets)),
+    )
+
+    # The stand-in for an unset bind folder is allowlisted, so the proxy passes
+    # it; Docker must then fail to create it, leaving nothing to plant a link in.
+    def _placeholder_bind():
+        probe = client.containers.create(
+            ALPINE,
+            command="true",
+            volumes={"/dev/null/cashpilot-compose-dir-unset": {"bind": "/x", "mode": "rw"}},
+            labels=dict(LABEL),
+            name=PREFIX + "placeholder",
+        )
+        try:
+            probe.start()
+        finally:
+            probe.remove(force=True)
+
+    try:
+        _placeholder_bind()
+        result(False, "a bind of the unset-folder stand-in cannot be made")
+    except Exception as exc:  # noqa: BLE001 - the failure is the point
+        result(True, "a bind of the unset-folder stand-in cannot be made", f"{type(exc).__name__}: {exc}"[:160])
     check("list containers", lambda: client.containers.list(all=True, filters={"label": "cashpilot.live-test=1"}))
     check("status of every managed container", orchestrator.get_status)
     check("logs", lambda: orchestrator.get_service_logs(plain))

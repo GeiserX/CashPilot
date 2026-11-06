@@ -171,7 +171,9 @@ does not yet stop a compromised worker that takes two steps, because sockguard
   allowed folder can plant `evil -> /` in it, and a second container that
   binds `<folder>/evil` gets the host's `/` and its socket. This applies to
   every folder in `CASHPILOT_COMPOSE_DIR` and `CASHPILOT_PROXY_BIND_MOUNTS`.
-  With both unset, no host folder is bindable at all.
+  With both unset, no host folder is bindable at all: the stand-ins the
+  compose file uses for them are paths under the null device, where Docker
+  cannot create a folder, so nothing can be planted there.
 
 Both need a change in sockguard (a per-namespace switch, and binds that are
 exact or symlink-free). Until then, an install that keeps both variables unset
@@ -196,6 +198,15 @@ proxy stands between the worker and root.
   there takes effect the next time you run `docker compose up` yourself, which
   uses the raw socket. Leave `CASHPILOT_COMPOSE_DIR` unset if you update by
   hand, and the folder is not bindable at all.
+- Create, attach, detach and delete Docker networks. The LAN fence needs this
+  to build `cashpilot-isolated` and move earners onto it, and sockguard 2.4.5
+  cannot limit it to that one network. It adds little reach, since the worker
+  can already start a container on host networking, but a compromised worker
+  can take an earner off the fence or delete a network another app uses.
+- Start a container in the host's cgroup namespace. The Activity reader of a
+  host-network earner such as Mysterium needs it to tell that earner's
+  sockets from the host's. The cgroup tree it shows is read-only and names
+  the host's containers and services, which the worker can list anyway.
 - Pull images from any registry (custom services need it) and set namespaced
   sysctls on its own containers (the tunnel sidecar needs it).
 
