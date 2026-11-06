@@ -10,6 +10,20 @@ Every release, grouped by what changed. Generated from commit history.
 Releases before `1.0.0` were recorded by hand and are kept verbatim in
 [docs/changelog-0.x-handwritten.md](docs/changelog-0.x-handwritten.md).
 
+## [1.71.1] - 2026-11-06
+
+### Documentation
+
+- Regenerate CHANGELOG.md (#593)
+
+### Fixes
+
+- Keep a worker isolated after a reboot that took its network (#594)
+
+### Maintenance
+
+- Pin the examples to 1.71 (#592)
+
 ## [1.71.0] - 2026-11-06
 
 ### Documentation
