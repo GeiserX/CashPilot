@@ -80,11 +80,14 @@ rating:
     longevity: unknown
   notes:
     payout_record: We found no host reports either way.
+    payout_terms: Each host locks a NOS stake sized to its GPU price
     account_safety: No reports found.
+    terms_fit: Own host software, CashPilot cannot deploy or update it
     traffic_transparency: Not documented on pages we read.
     privacy: Not reviewed.
     identity_checks: Payouts go to a Solana wallet; we did not find other requirements.
     support: No pattern found.
+    earnings_realism: Paid in NOS, dollar value moves with token and demand
     longevity: Not checked on a primary source.
   cons:
   - text: Each host must lock a NOS stake sized to its GPU's hourly price.

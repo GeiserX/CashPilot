@@ -107,10 +107,16 @@ rating:
     earnings_realism: fair
     longevity: fair
   notes:
+    payout_record: Our $0.75 withdrawal went through in October 2026
+    payout_terms: Crypto only (USDC, POL, Litecoin), $0.20 minimum
     account_safety: No reports found.
+    terms_fit: Own peer client image, supports datacentre IPs
     traffic_transparency: We did not find who buys the traffic or how buyers are checked.
     privacy: The peer client is closed source.
+    identity_checks: Only an address typed into the request
     support: No reports found.
+    earnings_realism: Says itself it is new, not the place to maximise earnings
+    longevity: Old backend shut in 2026, old-image containers stopped earning
   cons:
   - text: ProxyBase itself wrote in August 2025 that it is new and not yet the place to maximise earnings.
     criterion: earnings_realism

@@ -10,6 +10,120 @@ Every release, grouped by what changed. Generated from commit history.
 Releases before `1.0.0` were recorded by hand and are kept verbatim in
 [docs/changelog-0.x-handwritten.md](docs/changelog-0.x-handwritten.md).
 
+## [1.72.1] - 2026-11-06
+
+### Fixes
+
+- Let fresh installs behind the socket proxy deploy bridge earners again (#598)
+
+### Maintenance
+
+- Pin the examples to 1.72 (#599)
+
+## [1.72.0] - 2026-11-06
+
+### Documentation
+
+- Regenerate CHANGELOG.md (#595)
+
+### Features
+
+- Make A the top grade at 90% and say a grade is a judgement call (#597)
+
+## [1.71.1] - 2026-11-06
+
+### Documentation
+
+- Regenerate CHANGELOG.md (#593)
+
+### Fixes
+
+- Keep a worker isolated after a reboot that took its network (#594)
+
+### Maintenance
+
+- Pin the examples to 1.71 (#592)
+
+## [1.71.0] - 2026-11-06
+
+### Documentation
+
+- Regenerate CHANGELOG.md (#588)
+
+### Features
+
+- Take the raw Docker socket, which is root on the host, away from the worker (#583)
+
+### Maintenance
+
+- Pin the examples to 1.70 (#591)
+
+## [1.70.0] - 2026-11-06
+
+### Documentation
+
+- Compare CashPilot with five other stacks, every cell sourced and checkable (#568)
+- Say the public-IP drop needs detection on, even with CASHPILOT_EGRESS_IP set (#589)
+
+### Features
+
+- Fence new installs' earners off the LAN, host and tailnet by default (#574)
+
+### Fixes
+
+- Fence earners in Docker's "default" network mode and count a second network as exposed (#590)
+
+### Maintenance
+
+- Pin the examples to 1.69 (#587)
+
+## [1.69.0] - 2026-11-06
+
+### Documentation
+
+- Regenerate CHANGELOG.md (#581)
+
+### Features
+
+- Earn on more exit IPs by running extra copies of an earner through a proxy (#576)
+
+## [1.68.1] - 2026-11-05
+
+### Fixes
+
+- Stop the catalog scrolling sideways in narrow windows now that it has a Grade column (#586)
+
+## [1.68.0] - 2026-11-05
+
+### Features
+
+- Grade every provider on published criteria so its real cons are visible before you sign up (#572)
+
+### Maintenance
+
+- Pin the examples to 1.67 (#582)
+
+## [1.67.0] - 2026-11-05
+
+### Features
+
+- Bring logins over from money4band, CashFactory and InternetIncome without retyping them (#571)
+
+### Maintenance
+
+- Pin the examples to 1.66 (#580)
+
+## [1.66.0] - 2026-11-05
+
+### Documentation
+
+- Let home-server users install CashPilot from their app store (#567)
+- Regenerate CHANGELOG.md (#579)
+
+### Features
+
+- Show what Mysterium and other host-network earners connect to, without new privileges (#573)
+
 ## [1.65.3] - 2026-11-05
 
 ### Documentation

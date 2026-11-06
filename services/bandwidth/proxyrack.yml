@@ -111,6 +111,8 @@ rating:
       within three days and warns against deleting devices while a payout is pending. Not enough to judge.
     payout_terms: Third-party reviews disagree on the minimum ($5 or $20) and the help page did not load
       for us.
+    account_safety: Removing a device takes its earnings off your account
+    terms_fit: Own Docker image, proxyrack/pop, datacentre IPs accepted
     traffic_transparency: We could not load the peer program's terms.
     privacy: The client is closed source; we could not load the privacy terms.
     identity_checks: Not documented on pages we could load.

@@ -122,13 +122,17 @@ rating:
     longevity: unknown
   notes:
     payout_record: We found no independent payout reports and have no payout of our own.
+    payout_terms: USDC on Tempo Chain, needs a Tempo wallet
     account_safety: There is no account in the usual sense; the client mints its own wallet.
+    terms_fit: Own client image, accepts datacentre connections
+    traffic_transparency: Sold as a SOCKS5 proxy, no buyer checks described
     privacy: Not reviewed beyond our own disclosure notes.
+    identity_checks: Earn page says no KYC, $1 payout
     support: No reports found.
-    longevity: We could not confirm the company behind ProxyBase Markets or how long it has run.
     earnings_realism: Search summaries of its marketing pages quote $1.80 per GB and $54 to $90 a month
       for one device, far above our catalog estimate of $0 to $15, but the pages did not load for us to
       check.
+    longevity: We could not confirm the company behind ProxyBase Markets or how long it has run.
   cons:
   - text: Payouts are USDC on Tempo Chain and need a Tempo wallet address.
     criterion: payout_terms

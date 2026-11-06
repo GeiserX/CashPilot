@@ -93,11 +93,15 @@ rating:
   notes:
     payout_record: Two Trustpilot reviewers report a late or missing payout and others report fast
       payouts; neither side reaches our user-reports threshold.
+    payout_terms: $15 minimum, $1 to $3 USDT fee, bank wire from $1,000
     account_safety: One Trustpilot reviewer alleges bans for criticism; one report is not a pattern.
+    terms_fit: Own Docker image, earnfm/earnfm-client
     traffic_transparency: Earn.fm's terms page leads to the business terms of InfiniteProxies; we found
       no page that says how buyers are vetted.
     privacy: The client is closed source. One reviewer says a deleted account stayed in the database;
       one report is not a pattern.
+    identity_checks: Billing profile with legal name and address first
+    support: Reviewers report email and Discord support not answering
     earnings_realism: Not measured.
     longevity: We could not find the legal entity behind Earn.fm on its own pages.
   cons:

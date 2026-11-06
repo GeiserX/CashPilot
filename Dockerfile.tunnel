@@ -1,0 +1,55 @@
+# The tunnel sidecar for a proxied copy of a service (docs/proxies.md).
+#
+# The worker starts one of these per proxied copy and runs the earner inside
+# its network namespace (network_mode container:<this>). The entrypoint closes
+# every way out except the proxy before anything else runs, so if the proxy,
+# tun2proxy or tailscaled dies, the earner has nowhere to send a packet.
+#
+# Every input is pinned: the base image by digest, tun2proxy by release and
+# checksum, tailscale by tag and digest. The worker refers to this image by the
+# exact version it was released with, never a floating tag.
+
+# -- tun2proxy: the release zip, checked against the sha256 GitHub publishes --
+FROM debian:trixie-slim@sha256:f6b08b09a05725f9431502d3b5714f5c4576e82c1a84fa1debe0c24a7e0c3ec4 AS tun2proxy
+ARG TARGETARCH
+ARG TUN2PROXY_VERSION=v0.8.7
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates curl unzip \
+    && rm -rf /var/lib/apt/lists/*
+RUN set -eu; \
+    case "$TARGETARCH" in \
+      amd64) triple=x86_64-unknown-linux-gnu; sum=b6c4c68cb5e639f779665295286797cdc6f01c506452bc629a17288e210f77d4 ;; \
+      arm64) triple=aarch64-unknown-linux-gnu; sum=e9d7aaa265ccb4f8fa12c1e6438debee6a20abc36175e304bbf3b7197c63fb33 ;; \
+      *) echo "no tun2proxy build for $TARGETARCH" >&2; exit 1 ;; \
+    esac; \
+    curl -fsSL -o /tmp/t.zip "https://github.com/tun2proxy/tun2proxy/releases/download/${TUN2PROXY_VERSION}/tun2proxy-${triple}.zip"; \
+    echo "$sum  /tmp/t.zip" | sha256sum -c -; \
+    unzip -o /tmp/t.zip tun2proxy-bin -d /out; \
+    chmod 0755 /out/tun2proxy-bin
+
+# -- tailscale: the official image, for its two static binaries --
+FROM tailscale/tailscale:v1.104.4@sha256:ed6480b33c6eb67c9cbd203ed42b9fb57e361986725b6856def71b7a3d9e276c AS tailscale
+
+FROM debian:trixie-slim@sha256:f6b08b09a05725f9431502d3b5714f5c4576e82c1a84fa1debe0c24a7e0c3ec4
+
+ARG CASHPILOT_VERSION=dev
+# Read by build.yml's verify step, which requires every published image to
+# report the version it is tagged with.
+ENV CASHPILOT_VERSION=$CASHPILOT_VERSION
+LABEL maintainer="Sergio Fernandez <9169332+GeiserX@users.noreply.github.com>"
+LABEL org.opencontainers.image.description="CashPilot tunnel - routes one earner through a proxy, and nowhere else"
+LABEL org.opencontainers.image.source="https://github.com/GeiserX/CashPilot"
+LABEL org.opencontainers.image.licenses="GPL-3.0"
+LABEL org.opencontainers.image.version="$CASHPILOT_VERSION"
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates curl iproute2 nftables \
+    && rm -rf /var/lib/apt/lists/* /usr/share/doc /usr/share/man
+
+COPY --from=tun2proxy /out/tun2proxy-bin /usr/local/bin/tun2proxy-bin
+COPY --from=tailscale /usr/local/bin/tailscaled /usr/local/bin/tailscaled
+COPY --from=tailscale /usr/local/bin/tailscale /usr/local/bin/tailscale
+COPY tunnel/cp-tunnel tunnel/cp-probe /usr/local/bin/
+RUN chmod 0755 /usr/local/bin/cp-tunnel /usr/local/bin/cp-probe
+
+ENTRYPOINT ["/usr/local/bin/cp-tunnel"]

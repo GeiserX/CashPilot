@@ -36,21 +36,24 @@ import httpx
 import requests
 from docker.errors import APIError, DockerException
 from fastapi import FastAPI, HTTPException, Request, Response
-from fastapi.responses import HTMLResponse
-from pydantic import BaseModel
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import HTMLResponse, JSONResponse
+from pydantic import BaseModel, SecretStr
 
 from app import (
     activity,
     egress,
     fleet_key,
     isolation_check,
+    lan_fence,
     node_read,
     orchestrator,
     payout_read,
+    proxy_tunnel,
     state_backup,
     version,
 )
-from app.constants import MAX_INSTANCES
+from app.constants import MAX_INSTANCES, PROXIED_FORBIDDEN_CAPS
 
 try:
     from app.catalog import get_services as _catalog_get_services
@@ -664,6 +667,21 @@ async def _send_heartbeat() -> None:
     # The isolation check needs the Docker socket, so a worker without one
     # does not offer it in "features": the button could only fail.
     docker_ok = await asyncio.to_thread(orchestrator.docker_available)
+    egress_ip = await _detect_egress_ip()
+    # The fence drops this address too, so the router's NAT loopback cannot
+    # carry an earner back into the LAN. A new address is fenced at once,
+    # not at the next five-minute check.
+    if lan_fence.set_egress_ip(egress_ip) and docker_ok:
+        await _check_fence()
+    features = (
+        ["instances", "isolation_check", "state_backup", "activity", "proxy_tunnel"] if docker_ok else ["instances"]
+    )
+    proxied: list[dict[str, Any]] = []
+    if docker_ok:
+        try:
+            proxied = await asyncio.to_thread(proxy_tunnel.status)
+        except Exception as exc:  # noqa: BLE001 - one missed reading, not a missed heartbeat
+            logger.warning("Failed to read proxied copies for heartbeat: %s", exc)
     payload = {
         "name": WORKER_NAME,
         "client_id": CLIENT_ID,
@@ -681,18 +699,29 @@ async def _send_heartbeat() -> None:
             # What this worker can do that an older one cannot. The UI sends a
             # second copy of a service only to a worker listing "instances": an
             # older worker would read the deploy as the first copy and replace it.
-            "features": ["instances", "isolation_check", "state_backup", "activity"] if docker_ok else ["instances"],
+            "features": features,
             # Providers count devices per public IP, so the UI needs the address
             # the provider sees — not this container's LAN or tailnet address.
-            "egress_ip": await _detect_egress_ip(),
+            "egress_ip": egress_ip,
             "egress_network_type": _detect_network_type(),
             # Disk is earning capacity for Storj; GPU decides whether the compute
             # services can earn at all. Both are None/unknown-aware -- see the
             # helpers (CashPilot-cle).
             "disk": await asyncio.to_thread(_disk_usage),
             "gpu": await asyncio.to_thread(_gpu_info),
+            # Which isolation mode this worker is in and whether its fence holds.
+            # Cached by the fence check, so no helper container runs per heartbeat.
+            "isolation": lan_fence.status(),
+            # Copies of services that leave through a proxy (app/proxy_tunnel.py).
+            # Kept out of "containers": they are on another exit IP and are not
+            # copies of the service, so nothing that counts copies may see them.
+            "proxied": proxied,
         },
     }
+    if docker_ok:
+        # This worker fences its earners off the LAN by itself and takes
+        # POST /api/isolation to switch an upgraded install over (app/lan_fence.py).
+        payload["system_info"]["features"].append("isolation_default")
     # Only what the owner asked for, and only a finished round.
     sent_seq = _activity_seq
     if _activity_enabled and _pending_activity is not None:
@@ -837,6 +866,37 @@ async def _heartbeat_loop() -> None:
         await asyncio.sleep(HEARTBEAT_INTERVAL)
 
 
+_fence_task: asyncio.Task | None = None
+#: Seconds the startup fence check may hold the worker before it carries on.
+FENCE_STARTUP_TIMEOUT = 30
+
+
+async def _check_fence(startup: bool = False) -> None:
+    """Put the fence back if it went, and refresh what the heartbeat reports. Never raises."""
+    started = time.monotonic()
+    try:
+        state = await asyncio.wait_for(asyncio.to_thread(lan_fence.reconcile), FENCE_STARTUP_TIMEOUT)
+    except Exception as exc:  # noqa: BLE001 - a fence problem must never stop the worker
+        logger.warning("LAN fence check did not finish: %s", exc)
+        return
+    if startup:
+        fence = state.get("fence") or {}
+        logger.info(
+            "Isolation: mode %s, fence %s%s (%.1f s after start)",
+            state.get("mode"),
+            fence.get("state"),
+            f": {fence['error']}" if fence.get("error") else "",
+            time.monotonic() - started,
+        )
+
+
+async def _fence_loop() -> None:
+    """Every RECHECK_SECONDS: a reboot, ``nft flush ruleset`` or a firewalld reload removes the table."""
+    while True:
+        await asyncio.sleep(lan_fence.RECHECK_SECONDS)
+        await _check_fence()
+
+
 def _apply_activity_reply(resp: Any, delivered_seq: int | None) -> None:
     """Follow the UI's activity switch, and drop a round it has stored.
 
@@ -949,11 +1009,25 @@ def _get_local_ip() -> str:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global _heartbeat_task, _activity_task
+    global _heartbeat_task, _fence_task, _activity_task
 
     logger.info("CashPilot Worker '%s' starting", WORKER_NAME)
     docker_mode = "direct" if await asyncio.to_thread(orchestrator.docker_available) else "monitor-only"
-    logger.info("Docker: %s", docker_mode)
+    logger.info(
+        "Docker: %s (%s)", docker_mode, "through the socket proxy" if orchestrator.proxied() else "direct socket"
+    )
+    if orchestrator.proxy_policy_current() is False:
+        logger.warning("Docker socket proxy: %s", PROXY_POLICY_STALE)
+
+    # The fence goes in before anything else, so the gap after a reboot in
+    # which earners run without it is as short as this worker can make it.
+    # Without the fence they have no internet, never the LAN (app/lan_fence.py).
+    # The public IP is looked up first (bounded by _EGRESS_TOTAL_TIMEOUT), so
+    # the first table already drops it and NAT loopback has no window.
+    if docker_mode == "direct":
+        lan_fence.set_egress_ip(await _detect_egress_ip())
+    await _check_fence(startup=True)
+    _fence_task = asyncio.create_task(_fence_loop())
 
     if UI_URL:
         _heartbeat_task = asyncio.create_task(_heartbeat_loop())
@@ -966,7 +1040,7 @@ async def lifespan(app: FastAPI):
 
     yield
 
-    for task in (_heartbeat_task, _activity_task):
+    for task in (_heartbeat_task, _fence_task, _activity_task):
         if task and not task.done():
             task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
@@ -977,9 +1051,43 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="CashPilot Worker", version=version.current(), lifespan=lifespan)
 
 
+_SECRET_BODY_PATHS = ("/api/proxied/", "/api/proxy-test")
+
+
+@app.exception_handler(RequestValidationError)
+async def _validation_error_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
+    """FastAPI's 422 echoes the rejected input. On the proxy routes that input
+    can be a proxy password or a Tailscale auth key, so it is dropped there;
+    every other route keeps the default body."""
+    errors = exc.errors()
+    if request.url.path.startswith(_SECRET_BODY_PATHS):
+        errors = [{k: v for k, v in err.items() if k not in ("input", "ctx")} for err in errors]
+    return JSONResponse(status_code=422, content={"detail": jsonable_errors(errors)})
+
+
+def jsonable_errors(errors: Any) -> Any:
+    from fastapi.encoders import jsonable_encoder
+
+    return jsonable_encoder(errors)
+
+
 # ---------------------------------------------------------------------------
 # Mini-UI (status page)
 # ---------------------------------------------------------------------------
+
+
+PROXY_POLICY_STALE = (
+    "its policy is not the one this worker image expects, so some calls may be refused. "
+    "Replace your compose file with the one from this release (keep your .env), then run docker compose up -d."
+)
+
+
+def _docker_access_text() -> str:
+    if not orchestrator.proxied():
+        return "direct socket (root on this host)"
+    if orchestrator.proxy_policy_current() is False:
+        return f"socket proxy: {PROXY_POLICY_STALE}"
+    return "socket proxy"
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -1046,6 +1154,7 @@ async def worker_status_page(request: Request):
             <div><label>Host</label><span>{_esc(socket.gethostname())}</span></div>
             <div><label>Platform</label><span>{_esc(platform.system())} {_esc(platform.machine())}</span></div>
             <div><label>Docker</label><span>{"Available" if await asyncio.to_thread(orchestrator.docker_available) else "Not available"}</span></div>
+            <div><label>Docker access</label><span>{_esc(_docker_access_text())}</span></div>
             <div><label>UI Connection</label><span>{ui_status}</span></div>
             <div><label>Last Heartbeat</label><span>{_last_heartbeat}</span></div>
         </div>
@@ -1233,7 +1342,13 @@ def _allowlist_refusal(entry: str) -> str | None:
     return None
 
 
-_ALLOWED_VOLUME_ROOTS = _parse_allowed_volume_roots(os.getenv("CASHPILOT_ALLOWED_VOLUME_ROOTS", ""))
+# The socket proxy's bind folders count too, so one setting opens a folder for
+# both; each entry still has to clear the gates above.
+_ALLOWED_VOLUME_ROOTS = _parse_allowed_volume_roots(
+    os.getenv("CASHPILOT_ALLOWED_VOLUME_ROOTS", "")
+    + ":"
+    + os.getenv("CASHPILOT_PROXY_BIND_MOUNTS", "").replace(",", ":")
+)
 
 # Docker memory size syntax: a positive integer with an optional b/k/m/g unit.
 _MEM_LIMIT_RE = re.compile(r"^\d+[bkmgBKMG]?$")
@@ -1395,9 +1510,28 @@ def _validate_deploy_spec(spec: DeploySpec, slug: str | None = None) -> None:
         raise HTTPException(status_code=403, detail=f"Network mode '{spec.network_mode}' is not allowed")
     if spec.network_mode == "host" and slug not in _catalog_host_network_slugs():
         raise HTTPException(status_code=403, detail=f"Network mode 'host' is not allowed for '{slug}'")
+    proxy_roots = orchestrator._proxy_bind_roots() if orchestrator.proxied() else None
     for source in spec.volumes:
+        if source == orchestrator.PROXY_VOLUME:
+            # The volume holds the worker's own Docker socket; a container
+            # given it could drive Docker exactly as the worker does.
+            raise HTTPException(status_code=403, detail=f"Volume '{source}' is the worker's Docker socket")
         if not source.startswith("/"):
             continue  # named volume (e.g. "mysterium-data") — always allowed
+        if proxy_roots is not None and not any(
+            os.path.normpath(source) == root or os.path.normpath(source).startswith(root.rstrip("/") + "/")
+            for root in proxy_roots
+        ):
+            # Refused here, before the running container is removed, rather
+            # than by the proxy halfway through the replacement.
+            raise HTTPException(
+                status_code=403,
+                detail=(
+                    f"The Docker socket proxy does not let containers bind {source}. To allow it, add "
+                    f"the folder to {orchestrator.BIND_MOUNTS_ENV} in the .env next to your compose "
+                    "file (comma-separated), then run docker compose up -d"
+                ),
+            )
         real = os.path.realpath(source)
         if any(real == root or real.startswith(root + "/") for root in _ALLOWED_VOLUME_ROOTS):
             continue  # explicitly opted in by the operator (see _parse_allowed_volume_roots)
@@ -1437,6 +1571,183 @@ def _validate_resources(resources: ResourceSpec | None) -> None:
             status_code=400,
             detail=f"Invalid cpu_shares '{resources.cpu_shares}': must be between 2 and 262144 (Docker's default is 1024)",
         )
+
+
+class ProxySpec(BaseModel):
+    """The proxy a copy leaves through. Secrets are SecretStr so a repr or a
+    log line can never print them."""
+
+    kind: str
+    host: str = ""
+    port: int = 0
+    username: SecretStr | None = None
+    password: SecretStr | None = None
+    auth_key: SecretStr | None = None
+    exit_node: str = ""
+    login_server: str = ""
+
+    def plain(self) -> dict[str, Any]:
+        def reveal(value: SecretStr | None) -> str:
+            return value.get_secret_value() if value is not None else ""
+
+        return {
+            "kind": self.kind,
+            "host": self.host,
+            "port": self.port,
+            "username": reveal(self.username),
+            "password": reveal(self.password),
+            "auth_key": reveal(self.auth_key),
+            "exit_node": self.exit_node,
+            "login_server": self.login_server,
+        }
+
+
+class ProxiedDeploySpec(BaseModel):
+    earner: DeploySpec
+    proxy: ProxySpec
+
+
+class ProxyTestSpec(BaseModel):
+    proxy: ProxySpec
+
+
+_EXIT_NODE_RE = re.compile(r"^[A-Za-z0-9._:-]{1,253}$")
+
+
+def _validate_proxy(proxy: ProxySpec) -> None:
+    if proxy.kind not in proxy_tunnel.PROXY_KINDS:
+        raise HTTPException(status_code=400, detail=f"Unknown proxy type {proxy.kind!r}")
+    if proxy.kind == "tailscale":
+        if not proxy.auth_key or not _EXIT_NODE_RE.match(proxy.exit_node or ""):
+            raise HTTPException(
+                status_code=400, detail="A Tailscale proxy needs an auth key and an exit node name or IP"
+            )
+        if proxy.login_server and not proxy.login_server.startswith("https://"):
+            raise HTTPException(status_code=400, detail="The Tailscale login server must be an https:// URL")
+        return
+    if not re.match(r"^[A-Za-z0-9.-]{1,253}$", proxy.host or "") or not 1 <= proxy.port <= 65535:
+        raise HTTPException(status_code=400, detail="A proxy needs a host name or IPv4 address and a port")
+
+
+def _validate_proxied(slug: str, spec: ProxiedDeploySpec) -> None:
+    """A proxied copy uses the earner checks plus three of its own."""
+    if spec.earner.ports or spec.earner.volumes or spec.earner.network_mode:
+        raise HTTPException(
+            status_code=400,
+            detail="A proxied copy cannot publish ports, mount volumes or choose its network: it lives inside its tunnel",
+        )
+    if spec.earner.instance != 1:
+        raise HTTPException(status_code=400, detail="A proxied copy has no instance number")
+    # The earner shares the tunnel's network namespace, so anything that could
+    # rewrite or bypass the tunnel's firewall is refused whatever the catalog says.
+    caps = {str(c).upper().removeprefix("CAP_") for c in spec.earner.cap_add or []}
+    if risky := sorted(caps & PROXIED_FORBIDDEN_CAPS):
+        raise HTTPException(
+            status_code=400,
+            detail=f"A proxied copy cannot hold {', '.join(risky)}: it could change or bypass its tunnel's firewall",
+        )
+    if spec.earner.devices:
+        raise HTTPException(status_code=400, detail="A proxied copy gets no host devices")
+    _validate_deploy_spec(spec.earner, slug)
+    _validate_proxy(spec.proxy)
+
+
+async def _own_egress_ip() -> str | None:
+    try:
+        return await _detect_egress_ip()
+    except Exception:  # noqa: BLE001 - unknown just skips the comparison
+        return None
+
+
+def _proxy_http_error(exc: Exception) -> HTTPException:
+    if isinstance(exc, proxy_tunnel.ProxyTunnelError):
+        return HTTPException(status_code=exc.status_code, detail=str(exc))
+    if isinstance(exc, orchestrator.ContainerNetworkError):
+        return HTTPException(status_code=409, detail=str(exc))
+    if isinstance(exc, orchestrator.ContainerRuntimeError):
+        return HTTPException(status_code=exc.status_code, detail=str(exc))
+    if isinstance(exc, ValueError):
+        return HTTPException(status_code=404, detail=str(exc))
+    if isinstance(exc, APIError):
+        refusal = orchestrator.proxy_refusal(exc)
+        if refusal:
+            return HTTPException(status_code=403, detail=refusal)
+        reason = " ".join(proxy_tunnel.redact(str(exc.explanation or exc)).split())[:300]
+        return HTTPException(status_code=409, detail=f"Docker refused the container: {reason}")
+    if isinstance(exc, RuntimeError):
+        return HTTPException(status_code=503, detail=proxy_tunnel.redact(str(exc)))
+    logger.error("Proxied copy operation failed: %s", proxy_tunnel.redact(f"{type(exc).__name__}: {exc}"))
+    return HTTPException(status_code=500, detail="The proxied copy operation failed")
+
+
+@app.post("/api/proxied/{slug}/{proxy_id}/deploy")
+async def api_proxied_deploy(request: Request, slug: str, proxy_id: int, spec: ProxiedDeploySpec) -> dict[str, Any]:
+    """Run a copy of ``slug`` whose only way out is the given proxy (docs/proxies.md)."""
+    _verify_api_key(request)
+    await asyncio.to_thread(_validate_proxied, slug, spec)
+    own_ip = await _own_egress_ip()
+    earner = {
+        "image": spec.earner.image,
+        "env": spec.earner.env,
+        "cap_add": spec.earner.cap_add,
+        "devices": spec.earner.devices,
+        "command": spec.earner.command,
+        "labels": spec.earner.labels,
+        "resources": spec.earner.resources,
+    }
+    try:
+        result = await asyncio.to_thread(proxy_tunnel.deploy, slug, proxy_id, earner, spec.proxy.plain(), own_ip)
+    except Exception as exc:  # noqa: BLE001 - mapped to a status below
+        raise _proxy_http_error(exc) from None
+    return {"status": "deployed", **result}
+
+
+@app.post("/api/proxied/{slug}/{proxy_id}/stop")
+async def api_proxied_stop(request: Request, slug: str, proxy_id: int) -> dict[str, str]:
+    _verify_api_key(request)
+    try:
+        await asyncio.to_thread(proxy_tunnel.stop, slug, proxy_id)
+    except Exception as exc:  # noqa: BLE001
+        raise _proxy_http_error(exc) from None
+    return {"status": "stopped"}
+
+
+@app.post("/api/proxied/{slug}/{proxy_id}/start")
+async def api_proxied_start(request: Request, slug: str, proxy_id: int) -> dict[str, Any]:
+    _verify_api_key(request)
+    try:
+        result = await asyncio.to_thread(proxy_tunnel.start, slug, proxy_id)
+    except Exception as exc:  # noqa: BLE001
+        raise _proxy_http_error(exc) from None
+    return {"status": "started", **result}
+
+
+@app.delete("/api/proxied/{slug}/{proxy_id}")
+async def api_proxied_remove(request: Request, slug: str, proxy_id: int) -> dict[str, Any]:
+    _verify_api_key(request)
+    try:
+        removed = await asyncio.to_thread(proxy_tunnel.remove, slug, proxy_id)
+    except Exception as exc:  # noqa: BLE001
+        raise _proxy_http_error(exc) from None
+    return {"status": "removed", "containers": removed}
+
+
+@app.post("/api/proxy-test")
+async def api_proxy_test(request: Request, spec: ProxyTestSpec) -> dict[str, Any]:
+    """Start a throwaway tunnel through the proxy and report the exit IP it gets.
+
+    Passes only when the exit IP is public and is not this worker's own.
+    """
+    _verify_api_key(request)
+    await asyncio.to_thread(_validate_proxy, spec.proxy)
+    own_ip = await _own_egress_ip()
+    try:
+        result = await asyncio.to_thread(proxy_tunnel.test, spec.proxy.plain(), own_ip)
+    except Exception as exc:  # noqa: BLE001
+        raise _proxy_http_error(exc) from None
+    if not egress.public_ip(result.get("ip")):
+        raise HTTPException(status_code=409, detail="The tunnel came up, but its exit address is not a public IP")
+    return {"exit_ip": result["ip"], "country": result.get("country") or "", "ms": result.get("ms")}
 
 
 @app.get("/api/status")
@@ -1503,6 +1814,7 @@ async def api_deploy_container(request: Request, slug: str, spec: DeploySpec) ->
             keep_targets=_catalog_volume_targets(slug),
             instance=spec.instance,
         )
+        await asyncio.to_thread(lan_fence.refresh_outside)
         response: dict[str, Any] = {"status": "deployed", "container_id": container_id}
         if kept_mounts:
             response["kept_mounts"] = kept_mounts
@@ -1516,6 +1828,11 @@ async def api_deploy_container(request: Request, slug: str, spec: DeploySpec) ->
         # was touched; 503 when the daemon could not be asked at all.
         raise HTTPException(status_code=exc.status_code, detail=str(exc)) from None
     except APIError as exc:
+        refusal = orchestrator.proxy_refusal(exc)
+        if refusal:
+            # The socket proxy's policy said no; its reason names the rule.
+            logger.warning("Deploy of %s refused by the Docker socket proxy: %s", slug, refusal)
+            raise HTTPException(status_code=403, detail=refusal) from None
         # Docker itself refused to create or start the container: a host port
         # another container holds, a device the host lacks. Its explanation is
         # what the operator needs, so it goes back as a 409 the UI shows, on one
@@ -1585,6 +1902,16 @@ async def api_remove_container(
         extras = await asyncio.to_thread(orchestrator.remove_extra_instances, slug)
         if extras:
             result["extra_instances"] = extras
+        # Proxied copies go with the service, earners before their tunnels, so
+        # no tunnel is left running for a service the UI no longer knows.
+        try:
+            proxied = await asyncio.to_thread(proxy_tunnel.remove_all, slug)
+        except Exception as exc:  # noqa: BLE001 - the service itself is already gone
+            logger.warning("Removed %s, but could not remove its proxied copies: %s", slug, exc)
+            proxied = []
+        if proxied:
+            result["proxied"] = proxied
+        await asyncio.to_thread(lan_fence.refresh_outside)
         return {"status": "removed", **result}
     except orchestrator.CriticalVolumeError as exc:
         # 409, not 400: the request is well-formed, the state is what refuses.
@@ -1826,6 +2153,37 @@ async def api_isolation_check(request: Request) -> dict[str, Any]:
                 "message": "The worker's Docker daemon did not answer, so it cannot run the check.",
             },
         )
+
+
+@app.post("/api/isolation")
+async def api_isolation(request: Request) -> dict[str, Any]:
+    """Turn LAN isolation on for an upgraded worker.
+
+    Creates CashPilot's network and writes its firewall table, then answers with
+    the earners still on Docker's default bridge: the UI redeploys each one onto
+    the new network. Turning it off is the CASHPILOT_ISOLATION=off setting, never
+    a request, so one click cannot undo the fence.
+    """
+    _verify_api_key(request)
+    # Read after the key check, so an unauthenticated caller learns nothing
+    # about the body this route takes.
+    try:
+        body = await request.json()
+    except ValueError:
+        body = None
+    if not isinstance(body, dict) or body.get("enable") is not True:
+        raise HTTPException(
+            status_code=400,
+            detail="Isolation is turned off with CASHPILOT_ISOLATION=off on the worker, not from the dashboard.",
+        )
+    try:
+        return await asyncio.to_thread(lan_fence.enable)
+    except lan_fence.IsolationConflict as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from None
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from None
+    except (DockerException, requests.exceptions.RequestException):
+        raise HTTPException(status_code=503, detail="The worker's Docker daemon did not answer.") from None
 
 
 @app.get("/api/payout-addresses")

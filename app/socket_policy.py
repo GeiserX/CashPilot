@@ -1,0 +1,202 @@
+"""The Docker socket proxy's policy, built from the catalog.
+
+The worker reaches Docker through a pinned sockguard container (see
+docs/security-defaults.md). The policy sits inline in each shipped compose
+file; scripts/socket_proxy_policy.py writes it there from this module. The
+worker imports the same module, so it can tell when the policy the proxy
+loaded is older than the image it runs (``digest`` against the
+CASHPILOT_PROXY_POLICY value the compose file gives it), and refuse a runtime
+the proxy would refuse before a running container is touched.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import json
+from pathlib import Path
+
+import yaml
+
+SERVICES_DIR = Path(__file__).resolve().parent.parent / "services"
+
+#: Exec commands the worker runs that the catalog does not declare.
+FIXED_COMMANDS: list[list[str]] = [
+    # The tunnel sidecar's readiness file (app/proxy_tunnel.py).
+    ["cat", "/run/ready"],
+]
+
+#: What a created container may ask for. The worker's own ceilings
+#: (app/worker_api.py) are at least this strict.
+ALLOWED_CAPABILITIES = ("NET_ADMIN", "NET_RAW", "SETUID", "SETGID")
+ALLOWED_DEVICES = ("/dev/net/tun",)
+#: Docker's default runtime and the gVisor ones docs/security-defaults.md names.
+ALLOWED_RUNTIMES = ("runc", "runsc", "runsc-hostnet", "runsc-hostnet-raw")
+
+#: (method, path) of every Docker API call the worker, its update helper and
+#: the helper's Compose make, as the live test (scripts/socket_proxy_live_test.sh)
+#: recorded them from the proxy's access log. Anything else is refused.
+ALLOWED_CALLS: list[tuple[str, str]] = [
+    ("GET", "/_ping"),
+    ("HEAD", "/_ping"),
+    ("GET", "/version"),
+    ("GET", "/info"),
+    ("GET", "/containers/json"),
+    ("GET", "/containers/*/json"),
+    ("POST", "/containers/create"),
+    ("POST", "/containers/*/start"),
+    ("POST", "/containers/*/stop"),
+    ("POST", "/containers/*/restart"),
+    ("POST", "/containers/*/pause"),
+    ("POST", "/containers/*/unpause"),
+    ("POST", "/containers/*/wait"),
+    # Compose renames the old container while it recreates one.
+    ("POST", "/containers/*/rename"),
+    ("DELETE", "/containers/*"),
+    ("GET", "/containers/*/logs"),
+    ("GET", "/containers/*/stats"),
+    ("GET", "/containers/*/archive"),
+    # The tunnel sidecar's proxy settings; container_archive below limits where.
+    ("PUT", "/containers/*/archive"),
+    ("POST", "/containers/*/exec"),
+    ("POST", "/exec/*/start"),
+    ("GET", "/exec/*/json"),
+    ("GET", "/images/**/json"),
+    ("POST", "/images/create"),
+    ("GET", "/networks"),
+    ("GET", "/networks/*"),
+    # The LAN fence (app/lan_fence.py) creates cashpilot-isolated, moves
+    # earners onto it and recreates it after a prune. sockguard 2.4.5 cannot
+    # limit these by network name, so they are allowed for any network.
+    ("POST", "/networks/create"),
+    ("POST", "/networks/*/connect"),
+    ("POST", "/networks/*/disconnect"),
+    ("DELETE", "/networks/*"),
+    ("GET", "/volumes/*"),
+    ("DELETE", "/volumes/*"),
+]
+DENY_REASON = "the CashPilot worker does not use this Docker API call"
+
+TEMPLATE = """\
+listen:
+  socket: /run/cashpilot-docker/docker.sock
+  # The worker runs as uid/gid 1000 (Dockerfile.worker). The proxy runs as
+  # root with no capabilities and joins group 1000, so it can hand the socket
+  # to that group without asking for the host's docker group id.
+  socket_mode: "0660"
+  socket_gid: 1000
+upstream:
+  socket: /var/run/docker.sock
+  # Image pulls and container waits take minutes; the default cuts them at 60 s.
+  request_timeout: "off"
+log:
+  level: info
+  format: json
+  # One line per call, refusals included: docker logs cashpilot-socket-proxy
+  # shows what was refused and why. The compose file caps the log's size.
+  access_log: true
+health:
+  enabled: false
+# The worker reads its own containers' logs and files (backups, the update check).
+insecure_allow_read_exfiltration: true
+response:
+  # A refusal carries the rule's reason, which the worker shows to you.
+  deny_verbosity: verbose
+  # The worker reads Env, Mounts and IPAM back (recreates, the isolation check).
+  redact_container_env: false
+  redact_mount_paths: false
+  redact_network_topology: false
+request_body:
+  container_create:
+    allow_privileged: false
+    allow_host_network: true          # Mysterium runs on host networking
+    allow_host_pid: false
+    allow_host_ipc: false
+    allow_host_userns: false
+    allow_host_cgroupns: true         # the Activity probe of a host-network earner (app/activity.py)
+    allowed_capabilities: [{capabilities}]
+    allowed_devices: [{devices}]
+    allowed_runtimes: [{runtimes}]
+    allow_sysctls: true               # the tunnel sidecar turns IPv6 off in its own namespace
+    require_no_new_privileges: true
+    deny_unconfined_seccomp: true
+    deny_unconfined_apparmor: true
+    deny_unconfined_system_paths: true
+    # Host folders containers may bind come from CASHPILOT_COMPOSE_DIR and
+    # CASHPILOT_PROXY_BIND_MOUNTS, through the proxy service's environment.
+    allowed_bind_mounts: []
+  container_remove:
+    allow_force: true
+    allow_remove_volumes: true
+  container_archive:
+    # The only folder the worker writes into a container: the tunnel
+    # sidecar's proxy settings.
+    allowed_paths: [/run/cashpilot-secret]
+    allow_setid: false
+    allow_device_nodes: false
+    allow_escaping_links: false
+  exec:
+    allow_privileged: false
+    allow_root_user: true
+    # The worker's exec calls send no environment. This name is never sent,
+    # so any Env entry (PATH, LD_PRELOAD) is refused.
+    allowed_env_vars: [CASHPILOT_EXEC_SENDS_NO_ENV]
+    allowed_commands:
+{commands}
+  image_pull:
+    allow_all_registries: true        # catalog and custom services come from many registries
+  network:
+    # The LAN fence (app/lan_fence.py) creates its bridge with three driver
+    # options (interface name, no masquerade, no inter-container traffic) and
+    # moves an earner across with a forced disconnect. Custom drivers, swarm
+    # scope, custom IPAM and endpoint settings stay refused.
+    allow_driver_options: true
+    allow_disconnect_force: true
+rules:
+{rules}
+"""
+
+
+def catalog_commands(services_dir: Path = SERVICES_DIR) -> list[list[str]]:
+    """Every exec argv the worker can run, in a stable order without repeats."""
+    # Imported here: app.isolation_check imports the orchestrator, which imports this.
+    from app.isolation_check import CHAIN_READ
+
+    found: list[list[str]] = list(FIXED_COMMANDS)
+    for path in sorted(services_dir.rglob("*.yml")):
+        if path.name.startswith("_"):
+            continue
+        svc = yaml.safe_load(path.read_text()) or {}
+        collector = svc.get("collector") or {}
+        payout = svc.get("payout") or {}
+        for reader in (collector.get("node_read"), payout.get("address_read"), svc.get("node_read")):
+            if isinstance(reader, dict) and isinstance(reader.get("command"), list):
+                found.append([str(a) for a in reader["command"]])
+        firewall = (svc.get("docker") or {}).get("node_firewall")
+        if isinstance(firewall, dict) and firewall.get("chain"):
+            found.append(["sh", "-c", CHAIN_READ.format(chain=firewall["chain"])])
+    unique: list[list[str]] = []
+    for argv in found:
+        if argv not in unique:
+            unique.append(argv)
+    return unique
+
+
+def policy(services_dir: Path = SERVICES_DIR) -> str:
+    """The policy as sockguard reads it."""
+    commands = "\n".join(f"      - {json.dumps(argv)}" for argv in catalog_commands(services_dir))
+    rules = "\n".join(
+        [f'  - {{match: {{method: {m}, path: "{p}"}}, action: allow}}' for m, p in ALLOWED_CALLS]
+        + [f'  - {{match: {{method: "*", path: "/**"}}, action: deny, reason: "{DENY_REASON}"}}']
+    )
+    return TEMPLATE.format(
+        capabilities=", ".join(ALLOWED_CAPABILITIES),
+        devices=", ".join(ALLOWED_DEVICES),
+        runtimes=", ".join(ALLOWED_RUNTIMES),
+        commands=commands,
+        rules=rules,
+    )
+
+
+def digest(services_dir: Path = SERVICES_DIR) -> str:
+    """A short fingerprint of the policy, carried next to it in each compose file."""
+    return hashlib.sha256(policy(services_dir).encode()).hexdigest()[:16]

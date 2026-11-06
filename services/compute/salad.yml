@@ -81,10 +81,12 @@ rating:
     earnings_realism: unknown
     longevity: unknown
   notes:
+    payout_record: Late-2026 reviews report quick PayPal cash-outs, one failed
     payout_terms: Rewards go through Salad's own storefront to PayPal or gift cards, with no crypto. Trustpilot's
       summary mentions regional payment problems, and two reviewers describe two different ones; that is
       below our user-reports threshold.
     account_safety: No pattern found.
+    terms_fit: Own desktop app, CashPilot cannot deploy or update it
     traffic_transparency: Salad rents your GPU to its cloud customers; we did not find how they are checked.
     privacy: Not reviewed.
     identity_checks: Not documented on pages we read.

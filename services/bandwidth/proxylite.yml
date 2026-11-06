@@ -84,13 +84,16 @@ rating:
     longevity: poor
   notes:
     payout_record: We found no user reports in a language we could check, and no payout of our own.
+    payout_terms: $5 minimum, by crypto or PayPal
     account_safety: No reports found.
+    terms_fit: Own Docker image, accepts datacentre connections
     traffic_transparency: 'The author of a widely used installer for it warns that some of the traffic
       is used to send spam; one source, so not graded, but read it before running ProxyLite: https://github.com/spiritLHLS/proxylite-one-click-command-installation'
     privacy: The client is closed source.
     identity_checks: Not documented on pages we read.
     support: No reports found.
     earnings_realism: Not measured.
+    longevity: Owner hidden in domain records, no named company found
   cons:
   - text: The site's owner is hidden in its domain records, and we found no named company behind it.
     criterion: longevity

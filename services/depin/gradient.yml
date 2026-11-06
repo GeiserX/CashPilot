@@ -79,12 +79,16 @@ rating:
     longevity: fair
   notes:
     payout_record: No token has launched, so nothing has been paid out to judge.
+    payout_terms: No token, launch date or conversion rate announced
     account_safety: No reports found.
+    terms_fit: Own app or extension, CashPilot cannot deploy or update it
     traffic_transparency: Not documented on pages we read.
     privacy: Not reviewed.
     identity_checks: Not documented.
     support: Chrome Web Store reviews report login and connection problems; we found no pattern about
       tickets.
+    earnings_realism: Sentry Node points ended 28 August 2025, no rewards now
+    longevity: Funding round in June 2025, a young project
   cons:
   - text: The Sentry Node points program ended on 28 August 2025, and Sentry nodes no longer earn rewards.
     criterion: earnings_realism

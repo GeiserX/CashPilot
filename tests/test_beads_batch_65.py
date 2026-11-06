@@ -131,7 +131,11 @@ class TestTheReleaseMovesThePin:
 
     def test_the_step_names_the_compose_files_it_edits(self):
         """Derived, not restated, so a rename cannot slip past the next test."""
-        assert self._edited_files() == ["docker-compose.fleet.yml", "docker-compose.yml"], self._edited_files()
+        assert self._edited_files() == [
+            "docker-compose.fleet.yml",
+            "docker-compose.worker.yml",
+            "docker-compose.yml",
+        ], self._edited_files()
 
     def _edited_files(self):
         adds = [ln for ln in bump_step()["run"].splitlines() if ln.strip().startswith("git add")]

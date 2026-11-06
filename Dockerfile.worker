@@ -37,7 +37,11 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 # Both packages: upgrading only ca-certificates-bundle leaves the old hashed
 # links in /etc/ssl/certs, which still trust the compromised eMudhra roots.
-RUN apk add --no-cache su-exec \
+# nftables, and iptables-legacy with the iptables extensions it loads: the
+# one-shot helper the worker starts from its own image writes the LAN fence
+# into the host's network namespace with them (app/lan_fence.py). The worker
+# process itself never runs them.
+RUN apk add --no-cache su-exec nftables iptables iptables-legacy \
     && apk upgrade --no-cache ca-certificates ca-certificates-bundle
 
 RUN adduser -D -u 1000 cashpilot \
@@ -63,6 +67,11 @@ COPY --chown=cashpilot:root app/version.py ./app/
 COPY --chown=cashpilot:root app/worker_api.py ./app/
 COPY --chown=cashpilot:root app/orchestrator.py ./app/
 COPY --chown=cashpilot:root app/isolation_check.py ./app/
+COPY --chown=cashpilot:root app/socket_policy.py ./app/
+# Fences the earners off the LAN by default; the helper imports it too.
+COPY --chown=cashpilot:root app/lan_fence.py ./app/
+# Proxied copies: the tunnel sidecar and the earner inside it (docs/proxies.md).
+COPY --chown=cashpilot:root app/proxy_tunnel.py ./app/
 # Activity: per-container socket tables and counters, read by a short-lived
 # probe in each earner's network namespace (docs/activity.md).
 COPY --chown=cashpilot:root app/activity.py ./app/

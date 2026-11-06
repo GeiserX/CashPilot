@@ -128,7 +128,13 @@ rating:
     payout_record: 'Testnet beta: no rewards have been paid yet.'
     payout_terms: Rewards are testnet tokens during the beta; mainnet terms are not published.
     account_safety: There is no account in the usual sense; the identity is a wallet.
+    terms_fit: Own app or extension, CashPilot cannot deploy or update it
+    traffic_transparency: Automation tasks, unclear if they carry others' traffic
+    privacy: Says tasks are anonymised and sandboxed, no more detail
+    identity_checks: No account, the app generates a wallet
     support: No reports found.
+    earnings_realism: Unfunded testnet tokens with no market value, none paid
+    longevity: Still a testnet beta on Base Sepolia
   cons:
   - text: Node rewards are unfunded testnet tokens with no market value, and none have been paid; the
       5 to 10% APY on its site is a design target.

@@ -106,9 +106,17 @@ rating:
     earnings_realism: unknown
     longevity: fair
   notes:
+    payout_record: Reviewers report rejected withdrawals, chasing payment
+    payout_terms: Earnings can be forfeited on suspicion, PayPal removed
+    account_safety: Reviewers report cancelled payouts and balances reset to zero
+    terms_fit: Own Docker image, terms allow containers you own
+    traffic_transparency: Partners use your capacity, who they are is not said
     privacy: The client is closed source; we did not review the privacy policy in depth.
+    identity_checks: Verification can be required at any time, payouts depend on it
+    support: No replies to negative reviews, messages ignored
     earnings_realism: Reviewers report very small amounts, but we have not measured Repocket's earnings
       against a provider figure.
+    longevity: Current terms name Repocket Pte. Ltd., older ones no company
   cons:
   - text: Several Trustpilot reviewers report cancelled payouts and balances reset to zero; one says support
       cited irregular bandwidth earnings. The page rates Repocket 2.7 and notes it has not replied to

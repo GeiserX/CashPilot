@@ -74,11 +74,15 @@ class TestTheWorkerCannotReadTheCredentialStore:
     @pytest.mark.parametrize("name", COMPOSE_FILES)
     def test_the_worker_is_the_one_with_the_docker_socket(self, name):
         """The premise of the whole boundary, checked rather than assumed. If the
-        UI ever gained the socket, this test is where that gets noticed."""
+        UI ever gained the socket, this test is where that gets noticed.
+
+        The worker reaches Docker through the socket proxy's volume, not the raw
+        socket; either one is Docker access, and the UI must have neither."""
         worker_mounts = " ".join(str(m) for m in mounts(name, "worker"))
         ui_mounts = " ".join(str(m) for m in mounts(name, "cashpilot-ui"))
-        assert "docker.sock" in worker_mounts, f"{name}: the worker no longer has the Docker socket"
-        assert "docker.sock" not in ui_mounts, f"{name}: the UI has gained the Docker socket"
+        assert "/run/cashpilot-docker" in worker_mounts, f"{name}: the worker no longer reaches Docker"
+        for marker in ("docker.sock", "cashpilot_docker_api", "/run/cashpilot-docker"):
+            assert marker not in ui_mounts, f"{name}: the UI has gained Docker access ({marker})"
 
 
 class TestTheSharedVolumeIsStillShared:

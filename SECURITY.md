@@ -63,7 +63,8 @@ An embargo period applies between fix and disclosure. The reporter will be notif
 - Information disclosure (credentials, API keys, sensitive data leaks)
 - Container escape or unexpected Docker API abuse
 - Worker-to-UI communication security (API key auth bypass)
-- Dependency vulnerabilities in shipped Docker images
+- Dependency vulnerabilities in shipped Docker images, including the tunnel image (`drumsergio/cashpilot-tunnel`) that proxied copies run behind
+- A proxied copy reaching anything except its proxy, or a proxy credential showing up in labels, logs, API responses or `docker inspect` (see [docs/proxies.md](docs/proxies.md))
 
 ### Out of Scope
 
@@ -78,15 +79,21 @@ An embargo period applies between fix and disclosure. The reporter will be notif
 
 ### Docker Socket Access
 
-The CashPilot worker (`drumsergio/cashpilot-worker`) requires access to the Docker socket (`/var/run/docker.sock`) for container management. This is a privileged operation. The UI never mounts the socket; it commands workers over their authenticated API. Mitigations:
+The CashPilot worker (`drumsergio/cashpilot-worker`) creates and manages containers, so it needs the Docker API. Raw access to the Docker socket (`/var/run/docker.sock`) is root on the host. The UI never touches Docker; it commands workers over their authenticated API.
+
+**The shipped compose files do not give the worker the socket.** A Docker socket proxy, [sockguard](https://github.com/CodesWhat/sockguard) `codeswhat/sockguard:2.4.5` pinned by digest, holds it read-only and serves the worker a filtered socket. It refuses every Docker API call the worker does not make, and it reads request bodies, so it refuses privileged containers, binds of `/` or of the socket, capabilities and devices outside the catalog's, host namespaces, a container without `no-new-privileges`, and exec of anything but the catalog's reader commands. [Security defaults: Docker socket proxy](docs/security-defaults.md#docker-socket-proxy) has the full policy, how it is tested, and what a compromised worker can still do through it. It is not yet a full root boundary: on sockguard 2.4.5 a compromised worker can still reach root in two steps, by joining another root container's process namespace or through a symlink planted in a host folder the proxy allows, so it narrows the risk rather than removing it.
+
+Other mitigations:
 
 - The worker runs as a non-root user (`cashpilot`, UID 1000) inside the container
-- The entrypoint grants only the minimum group membership needed for socket access
+- The entrypoint grants only the minimum group membership needed for socket access, when a socket is mounted
 - `--security-opt no-new-privileges:true` prevents privilege escalation inside the container
 - Container management is gated behind authenticated API endpoints (writer or owner role; deploying needs owner)
-- The shipped compose files do not publish the worker's port (`docker-compose.yml`) or publish it on loopback only (`docker-compose.fleet.yml`)
+- The shipped compose files do not publish the worker's port (`docker-compose.yml`) or publish it on loopback only (`docker-compose.fleet.yml`, `docker-compose.worker.yml`)
 
-**User responsibility**: Do not expose the Docker socket to untrusted networks. CashPilot is designed for trusted, private networks.
+A worker started from an older compose file, from the Unraid template or with `docker run` still mounts the raw socket; its status page says *Docker access: direct socket (root on this host)*. [UPGRADING.md](UPGRADING.md) says how to move it behind the proxy.
+
+**User responsibility**: Do not expose the Docker socket or the worker's API to untrusted networks. CashPilot is designed for trusted, private networks.
 
 ### Authentication
 
@@ -159,7 +166,7 @@ The reasoning in full is in [Direction and Roadmap](https://geiserx.github.io/Ca
 3. **Do not use `--privileged`** for the CashPilot container itself
 4. **Keep Docker Engine updated** on all hosts
 5. **Use `--network host` only when necessary** (e.g., cross-subnet worker communication)
-6. **Restrict Docker socket access**: do not mount it in containers that don't need it
+6. **Restrict Docker socket access**: do not mount it in containers that don't need it, and run the worker behind the shipped Docker socket proxy
 7. **Review deployed service configurations**: CashPilot deploys third-party containers; review their security posture independently
 8. **Back up your SQLite database** regularly (`/data/cashpilot.db`)
 9. **Enable strict worker-URL mode** (`CASHPILOT_WORKER_URL_POLICY=strict`) for internet-exposed deployments, with `CASHPILOT_WORKER_ALLOWED_HOSTS` set to your worker subnets
