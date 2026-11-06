@@ -61,8 +61,9 @@ writes (`<APP>_<FLAG>`, for example `REPOCKET_APIKEY`).
 | `bitping` | Bitping | email, password |
 | `mystnode` | Mysterium | turned on; see the Mysterium note below |
 
-An app you turned off in money4band shows up unticked. An app whose values
-are still the template's placeholders (`yourHONEYGAINMail`) is left out.
+An app you turned off in money4band shows up unticked. An app that is off and
+holds nothing but the template's placeholders (`yourHONEYGAINMail`) and port
+lists is left out, so an untouched `user-config.json` gives an empty table.
 
 These apps are listed but not brought over:
 
@@ -81,7 +82,12 @@ Any other app is listed as "CashPilot has no such service".
 - **Device name.** CashPilot names each device after the worker it runs on, so
   two workers never report the same name. Your old devices stay listed as
   offline in each provider's dashboard until you remove them there.
-- **Proxies.** Each CashPilot worker uses its own connection.
+- **Proxies.** Add each one in the Proxies section of the Fleet page, then run
+  copies of your services through it; adding a proxy starts nothing by itself.
+  Saving an import starts nothing either. A proxied copy needs the same service
+  deployed on the worker first, and deploying it runs it on the worker's own
+  connection, so a service that must never use that connection should stay
+  unticked. See [Proxied copies](../proxies.md).
 - **Watchtower and notifications.** CashPilot updates its own containers.
 - **money4band's dashboard and its ports.**
 
