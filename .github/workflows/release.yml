@@ -328,7 +328,7 @@ jobs:
           # is the exact failure this step's retry/warning logic exists to avoid,
           # reappearing three lines earlier.
           CURRENT=$(grep -ohE 'drumsergio/cashpilot(-worker)?:[0-9]+\.[0-9]+' \
-                      docker-compose.yml docker-compose.fleet.yml \
+                      docker-compose.yml docker-compose.fleet.yml docker-compose.worker.yml \
                     | cut -d: -f2 | sort -u | tr '\n' ' ' || true)
           CURRENT=$(echo "$CURRENT" | xargs || true)   # trim
 
@@ -350,7 +350,7 @@ jobs:
           echo "Bumping the example pins [$CURRENT] -> $SERIES"
 
           sed -i -E "s|(drumsergio/cashpilot(-worker)?):[0-9]+\.[0-9]+|\1:$SERIES|g" \
-            docker-compose.yml docker-compose.fleet.yml
+            docker-compose.yml docker-compose.fleet.yml docker-compose.worker.yml
 
           # Prove the edit did what it claims before committing it. A silently
           # unmatched sed would otherwise commit nothing and report success,
@@ -361,7 +361,7 @@ jobs:
           # first version of this used both and appeared to work locally only
           # because that shell's `grep` is a ugrep shim, which accepts it.
           STRAY=$(grep -ohE 'drumsergio/cashpilot(-worker)?:[0-9]+\.[0-9]+' \
-                    docker-compose.yml docker-compose.fleet.yml \
+                    docker-compose.yml docker-compose.fleet.yml docker-compose.worker.yml \
                   | cut -d: -f2 | sort -u | grep -vx "$SERIES" || true)
           if [ -n "$STRAY" ]; then
             echo "::error::a pin did not move to $SERIES (still on: $STRAY)"; exit 1
@@ -369,7 +369,7 @@ jobs:
 
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add docker-compose.yml docker-compose.fleet.yml
+          git add docker-compose.yml docker-compose.fleet.yml docker-compose.worker.yml
           # No skip-CI marker, deliberately. `test` is a required check on
           # main now, and a skipped run never reports -- the check would sit
           # "Expected" forever and this PR could never merge. What stops a

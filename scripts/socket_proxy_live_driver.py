@@ -109,6 +109,17 @@ def phase_allowed() -> None:
     container = check("inspect a container", lambda: client.containers.get(name))
     if container is None:
         return
+    # A fresh install fences bridge earners by default: the deploy above had to
+    # create cashpilot-isolated through the proxy and land on it.
+    from app import lan_fence
+
+    nets = set((container.attrs.get("NetworkSettings") or {}).get("Networks") or {})
+    result(
+        nets == {lan_fence.NETWORK_NAME},
+        "the bridge earner landed on the fenced network the worker created",
+        ",".join(sorted(nets)),
+    )
+
     check("list containers", lambda: client.containers.list(all=True, filters={"label": "cashpilot.live-test=1"}))
     check("status of every managed container", orchestrator.get_status)
     check("logs", lambda: orchestrator.get_service_logs(plain))
@@ -282,11 +293,39 @@ def phase_refused_or_control(control: bool) -> None:
                 with contextlib.suppress(ValueError, AttributeError):
                     reason = json.loads(text).get("reason", "")
                 result(by_proxy, f"proxy refuses: {name}", f"{code} {reason or text[:120]}")
+        if control:
+            _placeholder_bind(client)
     finally:
         if control:
             _undo_control(client)
         for c in client.containers.list(all=True, filters={"label": "cashpilot.live-test=1"}):
             c.remove(force=True, v=True)
+
+
+def _placeholder_bind(client: docker.DockerClient) -> None:
+    """With a bind variable unset, the proxy allowlists a stand-in path. Docker
+    itself must be unable to create it, or a worker could plant a link there."""
+    name = "a bind of the unset-folder stand-in cannot be made, even on the raw socket"
+    probe = None
+    try:
+        probe = client.containers.create(
+            ALPINE,
+            command="true",
+            volumes={"/dev/null/cashpilot-compose-dir-unset": {"bind": "/x", "mode": "rw"}},
+            labels=dict(LABEL),
+            name=PREFIX + "placeholder",
+        )
+        probe.start()
+        result(False, name, "Docker created and started it")
+    except APIError as exc:
+        # Only Docker failing on the stand-in path itself counts; any other
+        # error proves nothing about it.
+        text = str(exc)
+        result("/dev/null/cashpilot-compose-dir-unset: not a directory" in text, name, text[-200:])
+    finally:
+        if probe is not None:
+            with contextlib.suppress(APIError):
+                probe.remove(force=True)
 
 
 def _undo_control(client: docker.DockerClient) -> None:

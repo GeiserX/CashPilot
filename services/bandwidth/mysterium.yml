@@ -261,10 +261,16 @@ rating:
   notes:
     payout_record: Settlements are on-chain and automatic; we have not published our own settlement history
       yet.
-    support: Trustpilot has 16 reviews and none in the last year; not enough to judge.
-    earnings_realism: Not measured against a provider figure.
+    payout_terms: About 21% of each settlement goes in fees, paid in MYST
     account_safety: Settled earnings sit in a wallet you own, but we found no stated ban rule and no
       reports either way.
+    terms_fit: Own Docker image, mysteriumnetwork/myst
+    traffic_transparency: Exit for VPN, proxy and scraping customers, no choice
+    privacy: Open-source node software (GPL-3.0)
+    identity_checks: Paid to your own wallet, no phone or ID needed
+    support: Trustpilot has 16 reviews and none in the last year; not enough to judge.
+    earnings_realism: Not measured against a provider figure.
+    longevity: Node project running since 2017
   cons:
   - text: About 21% of every settlement goes in fees, the 20% Hermes fee plus a transaction fee, and earnings
       are paid in the MYST token.

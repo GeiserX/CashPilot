@@ -75,8 +75,12 @@ def _method(rules: dict) -> list[str]:
 
 
 def _summary(rows: list[tuple[dict, dict]]) -> list[str]:
+    # The wrapper lets docs/stylesheets/theme.css keep the short columns narrow,
+    # so the worst con gets the width.
     out = [
         "## All providers",
+        "",
+        '<div class="ratings-summary" markdown>',
         "",
         "| Provider | Grade | Score | Unchecked | Reviewed | Worst con |",
         "|---|:---:|:---:|:---:|---|---|",
@@ -87,6 +91,7 @@ def _summary(rows: list[tuple[dict, dict]]) -> list[str]:
             f'| <a href="#{svc["slug"]}">{_cell(svc["name"])}</a> | {r["grade"]} | {r["score"]} of {r["max"]} '
             f"| {r['unknown_count']} | {r['reviewed_on']} | {_cell(worst)} |"
         )
+    out += ["", "</div>"]
     return out
 
 
@@ -169,6 +174,15 @@ def problems(services: list[dict] | None = None, today: dt.date | None = None) -
             out.append(f"{svc['slug']}: not rated")
             continue
         out += [f"{svc['slug']}: {err}" for err in ratings.validate(svc["rating"], svc, today=today)]
+        # Every row of a provider's table carries a short note, whatever its
+        # verdict. Kept out of ratings.validate so the running app never
+        # unrates a provider over a missing note.
+        verdicts = svc["rating"].get("verdicts") if isinstance(svc["rating"], dict) else None
+        notes = (svc["rating"].get("notes") or {}) if isinstance(svc["rating"], dict) else {}
+        if isinstance(verdicts, dict) and isinstance(notes, dict):
+            missing = [k for k in ratings.criteria_keys() if k in verdicts and not str(notes.get(k) or "").strip()]
+            if missing:
+                out.append(f"{svc['slug']}: rating.notes has no note for {missing}; every row needs one")
     return out
 
 

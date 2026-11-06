@@ -147,7 +147,12 @@ rating:
     longevity: unknown
   notes:
     payout_record: We have not published a reward claim of our own and found no pattern of reports.
+    payout_terms: Earns nothing without 100 ANYONE locked for 180 days
     account_safety: There is no account to ban.
+    terms_fit: CashPilot builds its own image from published relay software
+    traffic_transparency: Relays other people's traffic unvetted, exits draw abuse
+    privacy: Open-source fork of Tor, under Tor's licence
+    identity_checks: No account needed at all
     support: No pattern found.
     earnings_realism: Not measured.
     longevity: Not checked on a primary source.

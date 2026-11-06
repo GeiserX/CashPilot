@@ -79,13 +79,14 @@ rating:
     payout_terms: Elite edge nodes need at least 10,000 TFUEL staked; we did not find the full payout
       terms.
     account_safety: No reports found.
+    terms_fit: Own desktop app, CashPilot cannot deploy or update it
     traffic_transparency: Not documented on pages we read.
     privacy: Not reviewed.
     identity_checks: Not documented.
     support: No pattern found.
-    longevity: Not checked on a primary source.
     earnings_realism: The only estimate we found is one forum post, below our user-reports threshold,
       and Theta's own pages give no per-node figure.
+    longevity: Not checked on a primary source.
   cons:
   - text: 'CashPilot does not run Theta Edge: you use the provider''s own desktop app, so CashPilot cannot
       deploy or update it for you. Its terms were not checked for containers.'

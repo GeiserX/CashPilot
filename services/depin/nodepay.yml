@@ -82,9 +82,13 @@ rating:
       either way.
     payout_terms: Sources disagree on whether earning now requires staking NC; not confirmed on Nodepay's
       own pages.
+    account_safety: Removed 300,000+ bot accounts, cancelled 17 billion points
+    terms_fit: Browser extension, CashPilot cannot deploy or update it
     traffic_transparency: Not documented on pages we read.
     privacy: Not reviewed.
+    identity_checks: Needed a Solana wallet plus verified email, Discord and X
     support: No pattern found.
+    earnings_realism: Points convert to NC token, value rests on the token
     longevity: We did not confirm the company behind Nodepay.
   cons:
   - text: In its first season review Nodepay removed more than 300,000 accounts it judged to be bots and

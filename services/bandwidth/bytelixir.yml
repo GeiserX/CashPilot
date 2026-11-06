@@ -99,9 +99,13 @@ rating:
     earnings_realism: unknown
     longevity: unknown
   notes:
+    payout_record: Trustpilot 4.6 from 283 reviews, a few report missing payouts
+    payout_terms: Crypto only, minimum $5 (USDT) to $250 (Bitcoin)
     account_safety: No reports of banned accounts found.
+    terms_fit: Own app only, CashPilot cannot deploy or update it
     traffic_transparency: We could not load Bytelixir's terms.
     privacy: The client is closed source; we could not load the privacy terms.
+    identity_checks: Payout needs only a crypto address
     support: Bytelixir replies to negative Trustpilot reviews, typically within a day, but that is not a
       ticket answer; we have no ticket of our own and found no reports about tickets either way.
     earnings_realism: Not measured.

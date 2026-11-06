@@ -89,8 +89,10 @@ points:
   poor: 0
   unknown: 0
 
-# Grade bands on the percentage of the maximum score. There is no A band.
+# Grade bands on the percentage of the maximum score. A is the top tier.
 bands:
+  - grade: A
+    min_percent: 90
   - grade: B
     min_percent: 75
   - grade: C
@@ -113,11 +115,6 @@ caps:
     max_grade: C
     min_unknown: 4
     reason: Four or more criteria could not be checked, so the grade is capped at C for thin evidence.
-
-cap_reason: >-
-  No provider gets an A. An A would mean we vouch for a provider, and we cannot:
-  we can check what it publishes and what its users report, not what it will do
-  with your account or your connection tomorrow.
 
 # What a cited con or pro may rest on.
 kinds:

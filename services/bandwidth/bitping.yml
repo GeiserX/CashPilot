@@ -119,10 +119,13 @@ rating:
   notes:
     payout_record: We found no repeated user reports either way and have not published a payout of our
       own.
+    payout_terms: Paid in SOL, new empty wallets may need funding first
     account_safety: We found no Bitping terms page or reports of bans.
+    terms_fit: Help says servers and Docker containers are supported
     traffic_transparency: Bitping sells network monitoring from your connection; we found no page on who
       the customers are or how they are checked.
     privacy: The node is closed source; we did not find a privacy page specific to node runners.
+    identity_checks: Only a Solana address per withdrawal
     support: No repeated reports found either way.
     earnings_realism: Not measured against a provider figure.
     longevity: We did not find the legal entity behind Bitping.
