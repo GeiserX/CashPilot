@@ -423,6 +423,16 @@ class TestPlacementAndDns:
         report = _check(FakeDocker(_ok(GATEWAY), INTERNET_OK, network_attrs={"EnableIPv6": False}))
         assert report["findings"] == []
 
+    def test_a_tunnel_sidecar_is_never_the_earner_probed_from(self):
+        # Docker lists the newest first, so right after a proxied copy is
+        # deployed its tunnel comes before every ordinary earner.
+        tunnel = _earner("cashpilot-tunnel-honeygain-p1")
+        tunnel.labels = {"cashpilot.managed": "true", "cashpilot.role": "tunnel", "cashpilot.proxy": "1"}
+        plain = _earner("cashpilot-honeygain")
+        plain.labels = {"cashpilot.managed": "true", "cashpilot.service": "honeygain"}
+        assert isolation_check._pick_earner([tunnel, plain], "cashpilot-isolated") is plain
+        assert isolation_check._pick_earner([tunnel], "cashpilot-isolated") is None
+
     def test_the_earner_gateway_goes_to_the_control_first(self):
         fake = FakeDocker(_ok(GATEWAY), INTERNET_OK)
         _check(fake)

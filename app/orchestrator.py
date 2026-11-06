@@ -48,6 +48,8 @@ from app.constants import (  # noqa: E402
     LABEL_DEPLOYED_BY,
     LABEL_INSTANCE,
     LABEL_MANAGED,
+    LABEL_PROXY,
+    LABEL_ROLE,
     LABEL_SERVICE,
     LABEL_VERSION,
     drift_warnings_enabled,
@@ -320,11 +322,30 @@ def _shape_entry(container: Any) -> dict[str, Any]:
     return {"shape": _shape(container)}
 
 
+def is_proxied(container: Any) -> bool:
+    """A proxied copy or its tunnel sidecar (app/proxy_tunnel.py).
+
+    Neither is "copy N" of its service. A proxied copy carries no instance
+    label, so without this check _instance_of() reads it as copy 1, and
+    stopping or removing copy 1 could hit it instead.
+    """
+    try:
+        labels = container.labels
+        if not isinstance(labels, dict):
+            return False
+        return bool(labels.get(LABEL_PROXY) or labels.get(LABEL_ROLE))
+    except Exception:  # noqa: BLE001 - an unreadable container is handled by the caller's own guard
+        return False
+
+
 def service_instances(slug: str) -> list[Any]:
-    """Every managed container of ``slug`` on this worker, first copy first."""
+    """Every managed container of ``slug`` on this worker, first copy first.
+
+    Proxied copies and tunnels are not copies of the service; see is_proxied.
+    """
     client = _get_client()
     found = client.containers.list(all=True, filters={"label": [f"{LABEL_SERVICE}={slug}", f"{LABEL_MANAGED}=true"]})
-    return sorted(found, key=_instance_of)
+    return sorted((c for c in found if not is_proxied(c)), key=_instance_of)
 
 
 def _find_container(slug: str, instance: int = 1):
@@ -341,7 +362,11 @@ def _find_container(slug: str, instance: int = 1):
     name = _container_name(slug, instance)
     try:
         container = client.containers.get(name)
-        if (container.labels or {}).get(LABEL_MANAGED) == "true" and _instance_of(container) == instance:
+        if (
+            (container.labels or {}).get(LABEL_MANAGED) == "true"
+            and not is_proxied(container)
+            and _instance_of(container) == instance
+        ):
             return container
     except NotFound:
         pass
@@ -358,7 +383,7 @@ def _find_container(slug: str, instance: int = 1):
         },
     )
     for match in matches:
-        if _instance_of(match) == instance:
+        if not is_proxied(match) and _instance_of(match) == instance:
             return match
     raise ValueError(f"Container for {slug} not found" if instance <= 1 else f"Instance {instance} of {slug} not found")
 
@@ -608,6 +633,7 @@ def deploy_raw(
     kept_mounts: list[dict[str, str]] | None = None,
     keep_targets: set[str] | None = None,
     instance: int = 1,
+    name: str | None = None,
 ) -> str:
     """Deploy a container from a raw spec (no catalog lookup).
 
@@ -617,13 +643,19 @@ def deploy_raw(
     targets the caller vouches for; ``kept_mounts``, when given, is filled with
     what was kept so the caller can report it.
 
+    ``network_mode="container:<id>"`` and ``name`` are for app/proxy_tunnel.py
+    only: the worker API refuses a container: network mode from any caller.
+    A container that joins another's namespace gets no ports, resolvers or
+    hostname of its own, because Docker refuses them there.
+
     Used by CashPilot Worker when the UI sends a full container spec.
     ``resources`` (mem_limit / mem_reservation / oom_score_adj / cpu_shares)
     makes the container's cgroup limits durable across recreates. Returns the
     container ID.
     """
     client = _get_client()
-    name = _container_name(slug, instance)
+    name = name or _container_name(slug, instance)
+    joined = (network_mode or "").startswith("container:")
 
     # Decided before the old container is touched: a network or runtime that
     # cannot be used must fail the deploy while the running service is still running.
@@ -726,7 +758,7 @@ def deploy_raw(
         image=image,
         name=name,
         environment=env or {},
-        ports=ports if ports and network_mode != "host" else None,
+        ports=ports if ports and network_mode != "host" and not joined else None,
         volumes=volumes if volumes else None,
         # docker-py refuses network and network_mode together; a container moved
         # onto the operator's bridge is joined to it and nothing else.
@@ -758,9 +790,13 @@ def deploy_raw(
         # ones this worker sends with an explicit timeout.
         stop_timeout=_get_stop_timeout(slug),
         labels=all_labels,
-        hostname=hostname or name,
+        hostname=None if joined else (hostname or name),
         detach=True,
-        restart_policy={"Name": "unless-stopped"},
+        # A container inside another's namespace is never started by Docker on
+        # its own: after a reboot or a daemon restart it would join the tunnel's
+        # namespace before the tunnel's firewall is loaded. The worker starts it
+        # once the tunnel says it is ready (proxy_tunnel.status).
+        restart_policy={"Name": "no"} if joined else {"Name": "unless-stopped"},
         # None means Docker's default runtime. See container_runtime for when
         # the operator's CASHPILOT_CONTAINER_RUNTIME applies instead.
         runtime=runtime or None,
@@ -1874,6 +1910,11 @@ def get_status() -> list[dict[str, Any]]:
     seen_ids: set[str] = set()
 
     results: list[dict[str, Any]] = []
+    # Proxied copies and their tunnels are reported on their own
+    # (proxy_tunnel.status): they leave from another IP and are not copies of
+    # the service. Marked seen so the image match below cannot adopt them.
+    seen_ids.update(c.id for c in labeled if is_proxied(c))
+    labeled = [c for c in labeled if not is_proxied(c)]
     labeled_stats = _collect_stats_bulk(list(labeled))
     for c in labeled:
         try:
@@ -2070,7 +2111,8 @@ def get_status_light() -> list[dict[str, Any]]:
         # not serve an empty-but-healthy answer.
         _mark_docker_unavailable("container listing failed", exc)
         return []
-    seen_ids: set[str] = set()
+    seen_ids: set[str] = {c.id for c in labeled if is_proxied(c)}
+    labeled = [c for c in labeled if not is_proxied(c)]
 
     results: list[dict[str, Any]] = []
     for c in labeled:

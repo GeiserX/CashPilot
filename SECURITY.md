@@ -63,7 +63,8 @@ An embargo period applies between fix and disclosure. The reporter will be notif
 - Information disclosure (credentials, API keys, sensitive data leaks)
 - Container escape or unexpected Docker API abuse
 - Worker-to-UI communication security (API key auth bypass)
-- Dependency vulnerabilities in shipped Docker images
+- Dependency vulnerabilities in shipped Docker images, including the tunnel image (`drumsergio/cashpilot-tunnel`) that proxied copies run behind
+- A proxied copy reaching anything except its proxy, or a proxy credential showing up in labels, logs, API responses or `docker inspect` (see [docs/proxies.md](docs/proxies.md))
 
 ### Out of Scope
 

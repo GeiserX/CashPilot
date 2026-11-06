@@ -299,7 +299,8 @@ class TestTheWorker:
 
     def test_the_heartbeat_advertises_the_feature(self):
         src = (ROOT / "app" / "worker_api.py").read_text(encoding="utf-8")
-        assert '"features": ["instances", "isolation_check", "state_backup", "activity"]' in src
+        assert '["instances", "isolation_check", "state_backup", "activity", "proxy_tunnel"] if docker_ok' in src
+        assert '"features": features' in src
 
 
 class TestTheForm:
