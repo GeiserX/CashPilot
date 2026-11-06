@@ -486,7 +486,8 @@ def container_network(network_mode: str | None) -> str | None:
     that is missing, or is not a bridge, is refused here, BEFORE anything is
     removed, so a typo cannot take a running service down.
     """
-    if (network_mode or "bridge") != "bridge":
+    # "default" is Docker's other name for the default bridge, so it moves too.
+    if (network_mode or "bridge") not in ("bridge", "default"):
         return None
     if not _CONTAINER_NETWORK:
         # No network of the operator's: CashPilot's own fenced bridge, unless
@@ -604,7 +605,7 @@ def container_runtime(slug: str, network_mode: str | None, requested: str | None
     """
     if requested:
         return requested
-    if (network_mode or "bridge") != "bridge":
+    if (network_mode or "bridge") not in ("bridge", "default"):
         return None
     runtime = _runtime_overrides().get(slug, _CONTAINER_RUNTIME)
     if not runtime:
