@@ -26,7 +26,8 @@ itself stays reachable while the table is missing, a masquerade of the host's
 own that covers the subnet NATs the earners anyway, and one-way UDP still
 leaves.
 
-Modes (the state lives in Docker, so a lost /data changes nothing):
+Modes (the state lives in Docker and in the worker's /data, so losing either
+one alone changes nothing):
 
 * ``operator``: CASHPILOT_CONTAINER_NETWORK is set. That network is used as
   before and nothing on the host is touched, except the masquerade alone
@@ -34,9 +35,11 @@ Modes (the state lives in Docker, so a lost /data changes nothing):
 * ``off``: CASHPILOT_ISOLATION=off. Docker's default bridge, as before. If our
   network still exists, the table keeps only its masquerade, so earners still
   on it keep their internet until they are redeployed.
-* ``on``: CASHPILOT_ISOLATION=on, or our labeled network exists, or a managed
-  earner is still bound to it after it was removed (Unraid's reboot), or no
-  managed earner sits on the default bridge (a fresh install).
+* ``on``: CASHPILOT_ISOLATION=on, or /data/.isolation_on exists (written the
+  first time the worker resolves to ``on``), or our labeled network exists, or
+  a managed earner is still bound to it after it was removed (Unraid's
+  reboot), or no managed earner sits on the default bridge (a fresh install).
+  ``off`` deletes the file.
 * ``legacy``: an upgraded install whose earners are on the default bridge.
   Nothing changes until the owner turns isolation on from the fleet page.
 
@@ -54,6 +57,7 @@ import os
 import re
 import threading
 import time
+from pathlib import Path
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -117,6 +121,11 @@ PROC_IF_INET6 = "/proc/net/if_inet6"
 PROC_ROUTE = "/proc/net/route"
 
 _SETTING = os.getenv("CASHPILOT_ISOLATION", "auto").strip().lower() or "auto"
+#: Written in the worker's /data once it resolves to ``on``. Docker's evidence
+#: (our network, an earner bound to it) is gone when every fenced earner was
+#: removed and the network went with a reboot or a prune; without this file the
+#: stopped default-bridge earners left over would read as an upgraded install.
+ON_MARKER = Path(os.getenv("CASHPILOT_DATA_DIR", "/data")) / ".isolation_on"
 #: Test-only: force the iptables-legacy backend on a host that has nftables.
 _BACKEND = os.getenv("CASHPILOT_FENCE_BACKEND", "auto").strip().lower() or "auto"
 
@@ -585,15 +594,42 @@ def _bound_to_removed_network(client: Any) -> bool:
     return any(NETWORK_NAME in (((c.attrs or {}).get("NetworkSettings") or {}).get("Networks") or {}) for c in earners)
 
 
+def _remembered_on() -> bool:
+    try:
+        return ON_MARKER.is_file()
+    except OSError:
+        return False
+
+
+def _remember(on: bool) -> None:
+    """Record in /data whether isolation is on. Best effort: Docker's own evidence still counts."""
+    try:
+        if on and not ON_MARKER.is_file():
+            ON_MARKER.parent.mkdir(parents=True, exist_ok=True)
+            ON_MARKER.write_text("on\n")
+        elif not on:
+            ON_MARKER.unlink(missing_ok=True)
+    except OSError as exc:
+        logger.warning("Could not record the isolation state in %s: %s", ON_MARKER, exc)
+
+
 def resolve_mode(client: Any) -> str:
     if _orchestrator()._CONTAINER_NETWORK:
         return MODE_OPERATOR
     chosen = setting()
     if chosen == "off":
+        _remember(False)
         return MODE_OFF
-    if chosen == "on" or managed_network(client) is not None or _bound_to_removed_network(client):
+    if (
+        chosen == "on"
+        or _remembered_on()
+        or managed_network(client) is not None
+        or _bound_to_removed_network(client)
+        or not default_bridge_earners(client)
+    ):
+        _remember(True)
         return MODE_ON
-    return MODE_LEGACY if default_bridge_earners(client) else MODE_ON
+    return MODE_LEGACY
 
 
 def ensure_network(client: Any) -> Any:
@@ -996,6 +1032,7 @@ def enable() -> dict[str, Any]:
         )
     client = orch._get_client()
     apply_fence(client)
+    _remember(True)
     _state["mode"] = MODE_ON
     _state["network"] = NETWORK_NAME
     _set_outside(_outside_containers(client, NETWORK_NAME))

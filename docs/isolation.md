@@ -105,8 +105,11 @@ otherwise (older NAS kernels). Both write the same rules.
 | off | `CASHPILOT_ISOLATION=off` | Docker's default bridge, as before; earners left on the fenced network keep their internet until you redeploy them |
 | your own network | `CASHPILOT_CONTAINER_NETWORK` is set | that network, with your own rules, as before; CashPilot writes no table, except the NAT alone while earners are still on `cashpilot-isolated`, so they keep their internet until you redeploy them |
 
-The mode lives in Docker, not in the worker's `/data`, so a reinstall or a lost
-volume does not switch it off.
+The mode lives in Docker and in the worker's `/data` (`.isolation_on`, written
+the first time the worker is on, deleted by `CASHPILOT_ISOLATION=off`), so losing
+either one alone does not switch it off: a reinstall with a fresh volume keeps
+the network, and a reboot or `docker network prune` that took the network after
+every fenced earner was removed keeps the file.
 
 ### Turning it on for an upgraded install
 
