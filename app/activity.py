@@ -102,19 +102,27 @@ def _remove(container: Any) -> bool:
 
 
 def _ours(c: Any) -> bool:
-    """A probe this worker may remove: its own, a finished one of any worker, or a stopped unlabelled one.
+    """A probe this worker may remove: its own, a stale one of any worker, or a stopped unlabelled one.
 
-    A finished probe (exited or dead) is never mid-round, and its Docker log still holds its
-    round's addresses, so any worker removes it. Otherwise a worker that gets a new id on every
-    start (no writable /data) would leave its old probes, and their logs, on the host for good.
-    A foreign probe that is only "created" may be between create and start, so it is left alone;
-    it never ran, so it holds no log.
+    Another worker's probe is removed once it has sat finished (exited or dead) or only
+    "created" for longer than PROBE_TIMEOUT. Its owner reads the log right after the probe
+    exits, so a fresh finished probe is left for it; a stale one is never mid-round, and its
+    Docker log still holds its round's addresses. Otherwise a worker that gets a new id on
+    every start (no writable /data) would leave its old probes, and their logs, on the host
+    for good. A "created" probe younger than that may be between create and start.
     """
     labels = (_attrs(c).get("Config") or {}).get("Labels") or getattr(c, "labels", None) or {}
     state = _attrs(c).get("State")
     status = str((state.get("Status") if isinstance(state, dict) else state) or "")
     if WORKER_LABEL in labels:
-        return labels[WORKER_LABEL] == WORKER_ID or status in FINISHED_STATES
+        if labels[WORKER_LABEL] == WORKER_ID:
+            return True
+        if status not in STOPPED_STATES:
+            return False
+        finished = state.get("FinishedAt") if isinstance(state, dict) else None
+        stamp = orchestrator._docker_epoch(_attrs(c).get("Created") if status == "created" else finished)
+        # An age Docker does not report is treated as old: a leaked log is the worse outcome.
+        return stamp is None or time.time() - stamp > PROBE_TIMEOUT
     return status in STOPPED_STATES
 
 
@@ -122,8 +130,9 @@ def sweep(client: Any) -> list[str]:
     """Remove this worker's activity probes still on the host. Returns the ones Docker kept.
 
     Another worker's running probe is never touched, even when it shares the
-    Docker host: it may be mid-round. Its finished probe is removed, because its
-    log holds raw addresses and nothing else may ever remove it. A probe with no
+    Docker host: it may be mid-round. Its finished probe is removed once it is
+    older than PROBE_TIMEOUT (its owner reads the log first), because its log
+    holds raw addresses and nothing else may ever remove it. A probe with no
     worker label (from a release before the label) is removed once it has stopped.
     """
     left = []
