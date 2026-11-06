@@ -121,6 +121,12 @@ read-only root filesystem, a process limit, no Docker socket and no published
 ports. It joins `CASHPILOT_CONTAINER_NETWORK` like every other earner, so your
 host firewall rules for that bridge still apply.
 
+The tunnel runs as root inside its own container, because cp-tunnel loads the
+firewall, sets the routes and creates the tun device, and the settings files
+are readable by root only. That root holds `NET_ADMIN` over the tunnel's own
+namespace and nothing else; the earner runs in a separate process namespace and
+cannot reach it.
+
 The earner keeps the hardening every deploy gets. The worker API refuses
 `network_mode: container:` from any caller; only the worker itself sets it for
 a proxied copy. A proxied earner may never hold `NET_ADMIN`, `NET_RAW` or
