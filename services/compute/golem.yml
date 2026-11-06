@@ -76,7 +76,7 @@ rating:
     privacy: good
     identity_checks: good
     support: unknown
-    earnings_realism: poor
+    earnings_realism: unknown
     longevity: good
   notes:
     payout_record: Payments are on-chain per task; we have no provider of our own to report.
@@ -87,15 +87,10 @@ rating:
     privacy: Open-source provider agent, yagna (GPL-3.0)
     identity_checks: No account, just a payout wallet
     support: No pattern found.
-    earnings_realism: No protocol revenue and low demand, paid in GLM
-    longevity: Network running for about ten years
+    earnings_realism: Paid in GLM, a traded token. We found no source that compares what Golem
+      suggests a provider earns with what providers report.
+    longevity: Golem Factory GmbH in Zug, network running for about ten years
   cons:
-  - text: A 2026 review finds Golem with no protocol revenue and low demand, so providers earn little
-      and are paid in GLM.
-    criterion: earnings_realism
-    kind: press
-    source: https://ownyourmind.ai/projects/golem/
-    checked_on: "2026-11-04"
   - text: 'CashPilot does not run Golem: you install the provider agent yourself, so CashPilot cannot deploy
       or update it for you. Golem documents running the provider in its own Docker image.'
     criterion: terms_fit
@@ -118,3 +113,8 @@ rating:
     kind: press
     source: https://ownyourmind.ai/tokenomics/akash-vs-golem/
     checked_on: "2026-11-04"
+  - text: Golem's privacy policy names the operator, Golem Factory GmbH in Zug, Switzerland.
+    criterion: longevity
+    kind: terms
+    source: https://www.golem.network/privacy
+    checked_on: "2026-11-06"
