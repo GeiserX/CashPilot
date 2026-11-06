@@ -15,6 +15,7 @@ restore page that has drifted from the code is worse than none: it is followed.
 
 from __future__ import annotations
 
+import tomllib
 from pathlib import Path
 
 import pytest
@@ -30,6 +31,18 @@ def page() -> str:
     return PAGE.read_text(encoding="utf-8")
 
 
+def nav_refs(entries: list | None = None) -> list[str]:
+    """Every page the nav links, at any depth. Only the nav counts: the page
+    named in a redirect or a comment is still orphaned."""
+    if entries is None:
+        entries = tomllib.loads(ZENSICAL.read_text(encoding="utf-8"))["project"]["nav"]
+    refs = []
+    for entry in entries:
+        for value in entry.values():
+            refs += nav_refs(value) if isinstance(value, list) else [value]
+    return refs
+
+
 class TestThePageExistsAndIsReachable:
     def test_it_exists(self):
         assert PAGE.is_file()
@@ -37,7 +50,7 @@ class TestThePageExistsAndIsReachable:
     def test_it_is_in_the_nav(self):
         """An orphaned page is reachable only by URL — the exact defect the docs
         restructure fixed. Adding another one here would be poor form."""
-        assert "backup-restore.md" in ZENSICAL.read_text(encoding="utf-8")
+        assert "backup-restore.md" in nav_refs()
 
     def test_the_node_identity_page_points_at_it(self):
         """Someone looking for "backup" finds backup.md first. It is about a
