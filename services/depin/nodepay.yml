@@ -33,7 +33,7 @@ payment:
   methods: [crypto]
   minimum_payout: ""
   currency: NC
-  frequency: "Seasonal NC token airdrop"
+  frequency: "NC token airdrop (timing unconfirmed)"
 
 earnings:
   monthly_low: 0

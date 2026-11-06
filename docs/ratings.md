@@ -89,10 +89,10 @@ What a cited con or pro may rest on:
 | <a href="#earnfm">Earn.fm</a> | F | 5 of 20 | 6 | 2026-11-04 | A $15 minimum, a $1 to $3 fee on USDT, and a bank wire only from $1,000. |
 | <a href="#ebesucher">Ebesucher</a> | F | 5 of 20 | 7 | 2026-11-04 | CashPilot does not run eBesucher: it is a browser extension, so CashPilot cannot deploy or update it for you. Its terms were not checked for containers. |
 | <a href="#flux">Flux</a> | F | 5 of 20 | 6 | 2026-11-04 | The smallest node tier needs 1,000 FLUX locked as collateral. |
+| <a href="#iproyal">IPRoyal Pawns</a> | F | 5 of 20 | 4 | 2026-11-04 | The terms say an account can be blocked without prior notice for abuse of withdrawal conditions or multiple accounts, and its earnings may then not be paid out. |
 | <a href="#sentinel-dvpn">Sentinel dVPN</a> | F | 5 of 20 | 6 | 2026-11-04 | Payments are in the P2P token, and 20% of every bandwidth payment goes to stakers rather than the node host. |
 | <a href="#traffmonetizer">Traffmonetizer</a> | F | 5 of 20 | 4 | 2026-11-04 | Trustpilot rates it 1.9; reviewers from 2023 to November 2026 report payouts pending for weeks, or marked completed with no matching transaction. |
 | <a href="#helium">Helium</a> | F | 4 of 20 | 6 | 2026-11-04 | HIP 149 retired Proof-of-Coverage rewards on 6 July 2026; IoT hotspots now earn only for data they carry, and more than 114,000 of them carried none. |
-| <a href="#iproyal">IPRoyal Pawns</a> | F | 4 of 20 | 4 | 2026-11-04 | The terms say an account can be blocked without prior notice for abuse of withdrawal conditions or multiple accounts, and its earnings may then not be paid out. |
 | <a href="#proxylite">ProxyLite</a> | F | 4 of 20 | 7 | 2026-11-04 | The site's owner is hidden in its domain records, and we found no named company behind it. |
 | <a href="#vast-ai">Vast.ai</a> | F | 4 of 20 | 7 | 2026-11-04 | A host earns only while rented, and Vast's own figures for a consumer GPU depend on rental type and reliability score. |
 | <a href="#bytebenefit">Bytebenefit</a> | F | 3 of 20 | 7 | 2026-11-04 | The app's Google Play listing says your traffic serves web-intelligence requests by Infatica's clients, without saying who they are or how they are checked. |
@@ -104,6 +104,7 @@ What a cited con or pro may rest on:
 | <a href="#salad">Salad</a> | F | 3 of 20 | 8 | 2026-11-04 | CashPilot does not run Salad: you use the provider's own desktop app, so CashPilot cannot deploy or update it for you. Its terms were not checked for containers. |
 | <a href="#gradient">Gradient Network</a> | F | 2 of 20 | 6 | 2026-11-04 | The Sentry Node points program ended on 28 August 2025, and Sentry nodes no longer earn rewards. |
 | <a href="#nodepay">Nodepay</a> | F | 2 of 20 | 7 | 2026-11-04 | In its first season review Nodepay removed more than 300,000 accounts it judged to be bots and cancelled 17 billion points. |
+| <a href="#uprock">Uprock</a> | F | 2 of 20 | 7 | 2026-11-04 | UpRock's help centre says withdrawals are UPT tokens to a Solana wallet, with a 250 UPT minimum. |
 | <a href="#dawn">Dawn Internet</a> | F | 1 of 20 | 7 | 2026-11-04 | The extension earns points; no token distribution to node operators had been confirmed by October 2026. |
 | <a href="#deeper-network">Deeper Network</a> | F | 1 of 20 | 8 | 2026-11-04 | Mining rewards are in DPR and depend on a credit score that grows slowly or by staking DPR. |
 | <a href="#nodle">Nodle</a> | F | 1 of 20 | 8 | 2026-11-04 | One reviewer reports about $3 earned over three to four years; others report daily earnings falling sharply. |
@@ -111,7 +112,6 @@ What a cited con or pro may rest on:
 | <a href="#teneo">Teneo Protocol</a> | F | 1 of 20 | 7 | 2026-11-04 | Teneo says points will be consolidated into $AGENTIC, a non-transferable reward token, not the $TENEO token. |
 | <a href="#theta-edge">Theta Edge Node</a> | F | 1 of 20 | 9 | 2026-11-04 | CashPilot does not run Theta Edge: you use the provider's own desktop app, so CashPilot cannot deploy or update it for you. Its terms were not checked for containers. |
 | <a href="#titan">Titan Network</a> | F | 1 of 20 | 8 | 2026-11-04 | Titan's own help says a running node does not guarantee earnings: with no task assigned it earns nothing, and rewards are in the TNT token. |
-| <a href="#uprock">Uprock</a> | F | 1 of 20 | 8 | 2026-11-04 | Rewards are UPT tokens; reviewers and a third-party review say their value is very low. |
 
 </div>
 
@@ -677,6 +677,38 @@ What a cited con or pro may rest on:
 
 - The Flux daemon is open source under the MIT licence. [Source](https://github.com/RunOnFlux/fluxd), checked 2026-11-04.
 
+<a id="iproyal"></a>
+
+### IPRoyal Pawns
+
+**Grade F**, 5 of 20 points, 4 of 10 criteria unchecked, reviewed 2026-11-04. Setup guide: [IPRoyal Pawns](guides/iproyal.md).
+
+| Criterion | Verdict | Note |
+|---|---|---|
+| Payout record | Unknown | Trustpilot withholds the rating of pawns.app for a breach of its guidelines and says it removed fake reviews, so its payout reviews cannot be taken at face value. We have not yet published a completed payout of our own. |
+| Payout terms | Fair | PayPal 4% fee via Tremendous, payouts reviewed up to 72 hours |
+| Account safety | Fair | One Trustpilot reviewer says an account was blocked during a withdrawal after a phone number was mistyped; we could not confirm a wider pattern on the page. |
+| Fit with how CashPilot runs it | Poor | No servers, VPNs or proxies, one device per IP |
+| Traffic transparency | Fair | Business clients route traffic, you cannot see which |
+| Privacy | Unknown | The client is closed source; we did not review the privacy policy in depth. |
+| Identity checks | Fair | SMS phone check first, email code every payout |
+| Support | Unknown | No repeated support complaint found and no ticket of our own. |
+| Earnings realism | Unknown | We have not measured Pawns earnings per IP against a provider figure. |
+| Longevity | Fair | Pawns.App Ltd, incorporated in England and Wales on 28 October 2024 |
+
+**Cons**
+
+- The terms say an account can be blocked without prior notice for abuse of withdrawal conditions or multiple accounts, and its earnings may then not be paid out. [Source](https://pawns.app/terms-of-use/), checked 2026-11-04.
+- The terms say Pawns does not allow any servers, VPNs or proxy services for traffic sharing, and only one device per IP. [Source](https://pawns.app/terms-of-use/), checked 2026-11-04.
+- PayPal costs 4% (at least $0.25) through Tremendous, and every payout is reviewed for up to 72 hours. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/bandwidth/iproyal.yml), checked 2026-11-04.
+- The first payout needs an SMS check of your phone number, and every payout a code sent by email. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/bandwidth/iproyal.yml), checked 2026-11-04.
+- The privacy policy names the operator, Pawns.App Ltd (company 16043795 in England and Wales), which Companies House shows was incorporated on 28 October 2024, under three years ago. [Source](https://pawns.app/privacy-policy/), checked 2026-11-06.
+- The terms say Pawns and its business clients route traffic through your device, and that you cannot identify which client uses it. [Source](https://pawns.app/terms-of-use/), checked 2026-11-04.
+
+**Pros**
+
+- A $5 minimum, with gift cards at no fee. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/bandwidth/iproyal.yml), checked 2026-11-04.
+
 <a id="sentinel-dvpn"></a>
 
 ### Sentinel dVPN
@@ -766,38 +798,6 @@ What a cited con or pro may rest on:
 **Pros**
 
 - The hotspot gateway software is open source under the Apache-2.0 licence. [Source](https://github.com/helium/gateway-rs), checked 2026-11-04.
-
-<a id="iproyal"></a>
-
-### IPRoyal Pawns
-
-**Grade F**, 4 of 20 points, 4 of 10 criteria unchecked, reviewed 2026-11-04. Setup guide: [IPRoyal Pawns](guides/iproyal.md).
-
-| Criterion | Verdict | Note |
-|---|---|---|
-| Payout record | Unknown | Trustpilot withholds the rating of pawns.app for a breach of its guidelines and says it removed fake reviews, so its payout reviews cannot be taken at face value. We have not yet published a completed payout of our own. |
-| Payout terms | Fair | PayPal 4% fee via Tremendous, payouts reviewed up to 72 hours |
-| Account safety | Fair | One Trustpilot reviewer says an account was blocked during a withdrawal after a phone number was mistyped; we could not confirm a wider pattern on the page. |
-| Fit with how CashPilot runs it | Poor | No servers, VPNs or proxies, one device per IP |
-| Traffic transparency | Fair | Business clients route traffic, you cannot see which |
-| Privacy | Unknown | The client is closed source; we did not review the privacy policy in depth. |
-| Identity checks | Fair | SMS phone check first, email code every payout |
-| Support | Unknown | No repeated support complaint found and no ticket of our own. |
-| Earnings realism | Unknown | We have not measured Pawns earnings per IP against a provider figure. |
-| Longevity | Poor | No legal entity in the terms, run by proxy firm IPRoyal |
-
-**Cons**
-
-- The terms say an account can be blocked without prior notice for abuse of withdrawal conditions or multiple accounts, and its earnings may then not be paid out. [Source](https://pawns.app/terms-of-use/), checked 2026-11-04.
-- The terms say Pawns does not allow any servers, VPNs or proxy services for traffic sharing, and only one device per IP. [Source](https://pawns.app/terms-of-use/), checked 2026-11-04.
-- PayPal costs 4% (at least $0.25) through Tremendous, and every payout is reviewed for up to 72 hours. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/bandwidth/iproyal.yml), checked 2026-11-04.
-- The first payout needs an SMS check of your phone number, and every payout a code sent by email. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/bandwidth/iproyal.yml), checked 2026-11-04.
-- The terms name no legal entity, only Pawns.app; the app is run by IPRoyal, a proxy company that started in late 2020. [Source](https://proxyway.com/reviews/iproyal-proxies), checked 2026-11-04.
-- The terms say Pawns and its business clients route traffic through your device, and that you cannot identify which client uses it. [Source](https://pawns.app/terms-of-use/), checked 2026-11-04.
-
-**Pros**
-
-- A $5 minimum, with gift cards at no fee. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/bandwidth/iproyal.yml), checked 2026-11-04.
 
 <a id="proxylite"></a>
 
@@ -1114,6 +1114,35 @@ What a cited con or pro may rest on:
 
 - None found.
 
+<a id="uprock"></a>
+
+### Uprock
+
+**Grade F**, 2 of 20 points, 7 of 10 criteria unchecked, reviewed 2026-11-04. Setup guide: [Uprock](guides/uprock.md).
+
+| Criterion | Verdict | Note |
+|---|---|---|
+| Payout record | Unknown | We found no recent pattern of reports either way. |
+| Payout terms | Fair | UPT tokens to a Solana wallet only, 250 UPT minimum |
+| Account safety | Unknown | No reports found. |
+| Fit with how CashPilot runs it | Fair | Own app or extension, CashPilot cannot deploy or update it |
+| Traffic transparency | Unknown | Not documented on pages we read. |
+| Privacy | Unknown | Not reviewed. |
+| Identity checks | Unknown | Not documented. |
+| Support | Unknown | One Google Play review reports an unanswered ticket; one is not a pattern. |
+| Earnings realism | Poor | Paid in UPT tokens, value reported very low |
+| Longevity | Unknown | We did not confirm the company behind UpRock. |
+
+**Cons**
+
+- UpRock's help centre says withdrawals are UPT tokens to a Solana wallet, with a 250 UPT minimum. [Source](https://help.uprock.com/en/articles/2057635-security-and-user-asset-protection-2fa-and-withdrawals), checked 2026-11-06.
+- Rewards are UPT tokens; reviewers and a third-party review say their value is very low. [Source](https://paidfromsurveys.com/uprock-ai-earnings-review), checked 2026-11-04.
+- CashPilot does not run UpRock: you use the provider's own app or extension, so CashPilot cannot deploy or update it for you. Its terms were not checked for containers. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/depin/uprock.yml), checked 2026-11-04.
+
+**Pros**
+
+- None found.
+
 <a id="dawn"></a>
 
 ### Dawn Internet
@@ -1305,34 +1334,6 @@ What a cited con or pro may rest on:
 
 - Titan's own help says a running node does not guarantee earnings: with no task assigned it earns nothing, and rewards are in the TNT token. [Source](https://titannet.gitbook.io/titan-network-en/galileo-testnet/f.a.q./how-to-increase-node-rewards), checked 2026-11-04.
 - CashPilot does not run Titan: you use the provider's own app or extension, so CashPilot cannot deploy or update it for you. Its terms were not checked for containers. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/depin/titan.yml), checked 2026-11-04.
-
-**Pros**
-
-- None found.
-
-<a id="uprock"></a>
-
-### Uprock
-
-**Grade F**, 1 of 20 points, 8 of 10 criteria unchecked, reviewed 2026-11-04. Setup guide: [Uprock](guides/uprock.md).
-
-| Criterion | Verdict | Note |
-|---|---|---|
-| Payout record | Unknown | We found no recent pattern of reports either way. |
-| Payout terms | Unknown | Two Trustpilot reviewers describe withdrawal fees (55 UPT in 2025, 85 tokens in 2026); two is below our user-reports threshold, and we found no current terms on fees or minimums. |
-| Account safety | Unknown | No reports found. |
-| Fit with how CashPilot runs it | Fair | Own app or extension, CashPilot cannot deploy or update it |
-| Traffic transparency | Unknown | Not documented on pages we read. |
-| Privacy | Unknown | Not reviewed. |
-| Identity checks | Unknown | Not documented. |
-| Support | Unknown | One Google Play review reports an unanswered ticket; one is not a pattern. |
-| Earnings realism | Poor | Paid in UPT tokens, value reported very low |
-| Longevity | Unknown | We did not confirm the company behind UpRock. |
-
-**Cons**
-
-- Rewards are UPT tokens; reviewers and a third-party review say their value is very low. [Source](https://paidfromsurveys.com/uprock-ai-earnings-review), checked 2026-11-04.
-- CashPilot does not run UpRock: you use the provider's own app or extension, so CashPilot cannot deploy or update it for you. Its terms were not checked for containers. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/depin/uprock.yml), checked 2026-11-04.
 
 **Pros**
 

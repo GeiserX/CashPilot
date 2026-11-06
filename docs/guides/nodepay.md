@@ -15,7 +15,7 @@ Nodepay is a DePIN network that rewards users for sharing bandwidth through a br
 | Monthly range | $0 - $5 (estimate) |
 | Per | device |
 | Minimum payout |  |
-| Payout frequency | Seasonal NC token airdrop |
+| Payout frequency | NC token airdrop (timing unconfirmed) |
 | Payment methods | Crypto |
 
 > Earns Nodepay Points; points of users who pass Nodepay's eligibility checks convert to the NC token. Cloudflare protection may block automated collection. Browser extension required.
