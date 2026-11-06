@@ -44,9 +44,12 @@ How it works:
   address straight back into the LAN (NAT loopback), where it arrives with a
   LAN source address. The worker learns the address from its public IP
   detection; with detection off (`CASHPILOT_EGRESS_DETECT=off`) and no
-  `CASHPILOT_EGRESS_IP`, this drop is missing. Replies to published ports
-  still go out, so Storj, Sia and Anyone Protocol keep accepting inbound
-  connections.
+  `CASHPILOT_EGRESS_IP`, this drop is missing. A starting worker looks the
+  address up before it writes the first table, and a new address is fenced as
+  soon as the worker sees it. Replies to published ports still go out, so Storj,
+  Sia and Anyone Protocol keep accepting inbound connections. Only replies pass:
+  a connection an earner opened while the table was missing meets the drops
+  again once the table is back.
 - The IPv6 table drops every IPv6 packet that enters from the bridge. The
   network has IPv6 off, but Docker engines before 26 (Unraid 6.12, Synology
   and QNAP ship them) still give each container an `fe80::` address, and over
@@ -77,6 +80,11 @@ is missing:
 - One-way traffic, such as a UDP packet to a LAN device, still leaves without
   NAT; only the reply cannot come back.
 
+If the worker cannot read the host's routes, it leaves the table as it is
+rather than write one without the drops for directly connected subnets, and
+refuses deploys until it can. An earner that Unraid's reboot left on a removed
+copy of the network is started again only after the table is in place.
+
 **When the table cannot be written, deploys are refused.** The message says why
 and how to opt out. The running container is never touched first. The fleet page
 shows the error on the worker's row.
@@ -91,7 +99,7 @@ otherwise (older NAS kernels). Both write the same rules.
 | on | a new install, `CASHPILOT_ISOLATION=on`, the `cashpilot-isolated` network CashPilot created exists, or an earner is still bound to it after Unraid removed it | earners join the fenced network |
 | legacy | an upgraded install whose earners already sit on Docker's default bridge | nothing changes on upgrade; the fleet page offers **Turn on isolation** |
 | off | `CASHPILOT_ISOLATION=off` | Docker's default bridge, as before; earners left on the fenced network keep their internet until you redeploy them |
-| your own network | `CASHPILOT_CONTAINER_NETWORK` is set | that network, with your own rules, as before; CashPilot writes no table |
+| your own network | `CASHPILOT_CONTAINER_NETWORK` is set | that network, with your own rules, as before; CashPilot writes no table, except the NAT alone while earners are still on `cashpilot-isolated`, so they keep their internet until you redeploy them |
 
 The mode lives in Docker, not in the worker's `/data`, so a reinstall or a lost
 volume does not switch it off.

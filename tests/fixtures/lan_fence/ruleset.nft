@@ -9,7 +9,7 @@ table ip cashpilot {
   }
   chain forward {
     type filter hook forward priority -150; policy accept;
-    iifname "cp-isolated" ct state established,related counter accept comment "forward-established"
+    iifname "cp-isolated" ct state established,related ct direction reply counter accept comment "forward-reply"
     iifname "cp-isolated" ip daddr 10.0.0.0/8 counter drop comment "rfc1918-10"
     iifname "cp-isolated" ip daddr 172.16.0.0/12 counter drop comment "rfc1918-172"
     iifname "cp-isolated" ip daddr 192.168.0.0/16 counter drop comment "rfc1918-192"
@@ -20,7 +20,7 @@ table ip cashpilot {
   }
   chain input {
     type filter hook input priority -150; policy accept;
-    iifname "cp-isolated" ct state established,related counter accept comment "input-established"
+    iifname "cp-isolated" ct state established,related ct direction reply counter accept comment "input-reply"
     iifname "cp-isolated" counter drop comment "host"
   }
 }

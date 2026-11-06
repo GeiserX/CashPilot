@@ -432,7 +432,7 @@ CASHPILOT_WORKER_NAME=server-name</code>
     if (iso.mode === 'legacy') {
       line = `<span class="text-warn">Earners on this worker can reach your LAN and this host: ${esc(outside.join(', ') || 'none running')}.</span>${button('Turn on isolation')}${stoppedNote}`;
     } else if (iso.mode === 'on' && fence.state === 'failed') {
-      line = `<span class="text-fail">The LAN fence is not in place on this worker: ${esc(fence.error || 'unknown error')}. Earners on its network have no internet until it is back; that is how it fails safe. Deploys are refused until then. To run without the fence, set CASHPILOT_ISOLATION=off on the worker.</span>`;
+      line = `<span class="text-fail">The LAN fence is not in place on this worker: ${esc(fence.error || 'unknown error')}. While it is missing, earners on its network can reach this host's own services, and they may still reach the internet if another masquerade rule on the host covers them. Deploys are refused until it is back. To run without the fence, set CASHPILOT_ISOLATION=off on the worker.</span>`;
     } else if (iso.mode === 'on' && outside.length) {
       line = `<span class="text-warn">These earners are still outside the isolated network and can reach your LAN: ${esc(outside.join(', '))}.</span>${button('Move them')}${stoppedNote}`;
     } else if (iso.mode === 'on' && stopped.length) {
@@ -479,6 +479,21 @@ CASHPILOT_WORKER_NAME=server-name</code>
         moved.push(slug);
       } catch (err) {
         failed.push(`${slug} (${err.message})`);
+      }
+    }
+    // A redeploy recreates the instances the UI has recorded. One left running
+    // beyond that (a scale-down that failed) is still outside, so ask the
+    // worker again rather than call a service moved because its deploy passed.
+    if (moved.length) {
+      try {
+        const again = await CP.api(`/api/workers/${workerId}/isolation`, { method: 'POST' });
+        const left = new Set(again.earners_outside || []);
+        for (const slug of moved.filter((s) => left.has(s))) {
+          moved.splice(moved.indexOf(slug), 1);
+          failed.push(`${slug} (an instance is still running outside the isolated network)`);
+        }
+      } catch (err) {
+        failed.push(`the recount after the moves (${err.message})`);
       }
     }
     const done = moved.length ? `Isolation is on. Moved ${moved.join(', ')}.` : 'Isolation is on.';

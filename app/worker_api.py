@@ -667,8 +667,10 @@ async def _send_heartbeat() -> None:
     docker_ok = await asyncio.to_thread(orchestrator.docker_available)
     egress_ip = await _detect_egress_ip()
     # The fence drops this address too, so the router's NAT loopback cannot
-    # carry an earner back into the LAN. The next fence check picks it up.
-    lan_fence.set_egress_ip(egress_ip)
+    # carry an earner back into the LAN. A new address is fenced at once,
+    # not at the next five-minute check.
+    if lan_fence.set_egress_ip(egress_ip) and docker_ok:
+        await _check_fence()
     payload = {
         "name": WORKER_NAME,
         "client_id": CLIENT_ID,
@@ -1001,6 +1003,10 @@ async def lifespan(app: FastAPI):
     # The fence goes in before anything else, so the gap after a reboot in
     # which earners run without it is as short as this worker can make it.
     # Without the fence they have no internet, never the LAN (app/lan_fence.py).
+    # The public IP is looked up first (bounded by _EGRESS_TOTAL_TIMEOUT), so
+    # the first table already drops it and NAT loopback has no window.
+    if docker_mode == "direct":
+        lan_fence.set_egress_ip(await _detect_egress_ip())
     await _check_fence(startup=True)
     _fence_task = asyncio.create_task(_fence_loop())
 

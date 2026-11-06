@@ -895,7 +895,22 @@ def judge_fence(
                 "docs": ISOLATION_PAGE,
             }
         )
-    elif missed:
+    elif not fence["matches_expected"]:
+        # A missing drop (a connected public subnet, the home's public IP)
+        # has no sentinel of its own, so the sentinels can all pass without it.
+        findings.append(
+            {
+                "kind": "fence_incomplete",
+                "exposure": True,
+                "detail": (
+                    "CashPilot's firewall table on this host does not hold every rule it should, so a range it "
+                    "is meant to block may be reachable. The worker rewrites it within 5 minutes and before "
+                    "the next deploy; check again after that."
+                ),
+                "docs": ISOLATION_PAGE,
+            }
+        )
+    if (after or {}).get("present") and missed:
         findings.append(
             {
                 "kind": "fence_not_hit",

@@ -29,7 +29,8 @@ leaves.
 Modes (the state lives in Docker, so a lost /data changes nothing):
 
 * ``operator``: CASHPILOT_CONTAINER_NETWORK is set. That network is used as
-  before and nothing on the host is touched.
+  before and nothing on the host is touched, except the masquerade alone
+  while earners are still on our network, as in ``off``.
 * ``off``: CASHPILOT_ISOLATION=off. Docker's default bridge, as before. If our
   network still exists, the table keeps only its masquerade, so earners still
   on it keep their internet until they are redeployed.
@@ -96,8 +97,12 @@ EGRESS_PREFIX = "egress-"
 #: Every IPv6 packet from the bridge, forwarded or to the host.
 IPV6_FWD_RULE = "ipv6-forward"
 IPV6_HOST_RULE = "ipv6-host"
-FWD_EST_RULE = "forward-established"
-IN_EST_RULE = "input-established"
+#: Replies to connections that started outside the bridge (a published port,
+#: the host talking to an earner). Matched by conntrack direction, so a
+#: connection an earner opened while the table was missing gets no pass when
+#: the table comes back: its next packet meets the drops like any other.
+FWD_EST_RULE = "forward-reply"
+IN_EST_RULE = "input-reply"
 
 #: Interfaces whose subnets are Docker's, ours or an overlay's, never the LAN.
 _VIRTUAL_PREFIXES = ("docker", "br-", "veth", "cp-", "lo", "tailscale", "myst", "wg", "tun", "virbr")
@@ -109,6 +114,7 @@ HELPER_TIMEOUT = 20
 #: Read in the host's namespace by the helper. Constants so tests can point them at fixtures.
 PROC_IPV6 = "/proc/sys/net/ipv6"
 PROC_IF_INET6 = "/proc/net/if_inet6"
+PROC_ROUTE = "/proc/net/route"
 
 _SETTING = os.getenv("CASHPILOT_ISOLATION", "auto").strip().lower() or "auto"
 #: Test-only: force the iptables-legacy backend on a host that has nftables.
@@ -247,7 +253,7 @@ def render_nft(
         lines += [
             "  chain forward {",
             "    type filter hook forward priority -150; policy accept;",
-            f'    iifname {q} ct state established,related counter accept comment "{FWD_EST_RULE}"',
+            f'    iifname {q} ct state established,related ct direction reply counter accept comment "{FWD_EST_RULE}"',
         ]
         for name, cidr, _s in BLOCKED:
             lines.append(f'    iifname {q} ip daddr {cidr} counter drop comment "{name}"')
@@ -261,7 +267,7 @@ def render_nft(
             "  }",
             "  chain input {",
             "    type filter hook input priority -150; policy accept;",
-            f'    iifname {q} ct state established,related counter accept comment "{IN_EST_RULE}"',
+            f'    iifname {q} ct state established,related ct direction reply counter accept comment "{IN_EST_RULE}"',
             f'    iifname {q} counter drop comment "{HOST_RULE}"',
             "  }",
         ]
@@ -315,7 +321,7 @@ def render_iptables(
     chain(ipt, "mangle", "CP-FWD", "FORWARD", f"-i {iface}")
     chain(ipt, "mangle", "CP-IN", "INPUT", f"-i {iface}")
     if filtered:
-        est = "-m conntrack --ctstate ESTABLISHED,RELATED"
+        est = "-m conntrack --ctstate ESTABLISHED,RELATED --ctdir REPLY"
         out.append(f"{ipt} -t mangle -A CP-FWD {est} {comment(FWD_EST_RULE)} -j RETURN")
         for name, cidr, _s in BLOCKED:
             out.append(f"{ipt} -t mangle -A CP-FWD -d {cidr} {comment(name)} -j DROP")
@@ -407,13 +413,25 @@ def read(b, ipv6):
                 counters.update(f.parse_nft_counters(out6))
         return counters, rc == 0
     counters, present = {}, False
-    chains = [("iptables-legacy", "nat", "CP-POST"), ("iptables-legacy", "mangle", "CP-FWD"), ("iptables-legacy", "mangle", "CP-IN")]
+    chains = [
+        ("iptables-legacy", "nat", "CP-POST", "POSTROUTING", ["-s", subnet]),
+        ("iptables-legacy", "mangle", "CP-FWD", "FORWARD", ["-i", iface]),
+        ("iptables-legacy", "mangle", "CP-IN", "INPUT", ["-i", iface]),
+    ]
     if ipv6:
-        chains += [("ip6tables-legacy", "mangle", "CP6-FWD"), ("ip6tables-legacy", "mangle", "CP6-IN")]
-    for tool, table, chain in chains:
+        chains += [
+            ("ip6tables-legacy", "mangle", "CP6-FWD", "FORWARD", ["-i", iface]),
+            ("ip6tables-legacy", "mangle", "CP6-IN", "INPUT", ["-i", iface]),
+        ]
+    for tool, table, chain, hook, match in chains:
         rc, out, _ = sh([tool, "-w", "-t", table, "-L", chain, "-v", "-x", "-n"])
-        if rc == 0:
-            present = present or tool == "iptables-legacy"
+        if rc != 0:
+            continue
+        present = present or tool == "iptables-legacy"
+        # A firewall script that flushes FORWARD or INPUT keeps our chain but
+        # drops the jump into it. Its rules then count for nothing, so they are
+        # left out and the apply writes the jump back.
+        if sh([tool, "-w", "-t", table, "-C", hook] + match + ["-j", chain])[0] == 0:
             counters.update(f.parse_iptables_counters(out))
     return counters, present
 
@@ -426,16 +444,22 @@ if egress and local(egress):
     egress = None
 # A kernel booted with ipv6.disable=1 has no IPv6 at all, and no ip6 hooks to load.
 ipv6 = os.path.isdir(os.environ.get("FENCE_PROC_IPV6") or f.PROC_IPV6)
+route_error = ""
 try:
-    with open("/proc/net/route") as fh:
+    with open(os.environ.get("FENCE_PROC_ROUTE") or f.PROC_ROUTE) as fh:
         extras = f.connected_subnets(fh.read())
-except OSError:
-    extras = []
+except OSError as exc:
+    # Without the routes a LAN numbered in public space would lose its drop, so
+    # the table is left as it is rather than rewritten without it.
+    extras, route_error = [], "could not read the host's routes (%s)" % exc
 b = backend(os.environ.get("FENCE_BACKEND", "auto"))
 expected = f.rule_names(subnet, extras, filtered, egress, ipv6)
 counters, present = read(b, ipv6)
 out = {"backend": b, "ok": True, "changed": False, "error": "", "extra_subnets": extras, "egress": egress, "ipv6": ipv6}
-if action == "apply" and set(counters) != expected:
+if action == "apply" and filtered and route_error:
+    out["ok"] = False
+    out["error"] = route_error + "; the table was not changed"
+elif action == "apply" and set(counters) != expected:
     if b == "nft":
         rc, _o, err = sh(["nft", "-f", "-"], f.render_nft(iface, subnet, extras, filtered, egress, ipv6))
     else:
@@ -478,9 +502,15 @@ _state: dict[str, Any] = {
 _egress: dict[str, str | None] = {"ip": None}
 
 
-def set_egress_ip(value: Any) -> None:
-    """Remember the home's public IP for the next apply. A non-public value clears it."""
-    _egress["ip"] = egress_target(value)
+def set_egress_ip(value: Any) -> bool:
+    """Remember the home's public IP for the next apply. A non-public value clears it.
+
+    Returns True when a new public address arrived, so the caller can apply at once.
+    """
+    new = egress_target(value)
+    changed = new is not None and new != _egress["ip"]
+    _egress["ip"] = new
+    return changed
 
 
 def setting() -> str:
@@ -564,6 +594,7 @@ def ensure_network(client: Any) -> Any:
 
     net = managed_network(client)
     if net is not None:
+        _check_managed(net)
         return net
     try:
         other = client.networks.get(NETWORK_NAME)
@@ -590,6 +621,28 @@ def ensure_network(client: Any) -> Any:
         labels={NETWORK_LABEL: NETWORK_LABEL_VALUE},
         enable_ipv6=False,
     )
+
+
+#: The options the fence depends on: its rules match the interface by name,
+#: and Docker's own masquerade or inter-container traffic would bypass them.
+_REQUIRED_OPTIONS = {
+    "com.docker.network.bridge.name": BRIDGE_INTERFACE,
+    "com.docker.network.bridge.enable_ip_masquerade": "false",
+    "com.docker.network.bridge.enable_icc": "false",
+}
+
+
+def _check_managed(net: Any) -> None:
+    """Refuse a labeled network whose settings the fence cannot hold. Raises IsolationConflict."""
+    attrs = net.attrs or {}
+    options = attrs.get("Options") or {}
+    wrong = [k for k, v in _REQUIRED_OPTIONS.items() if str(options.get(k, "")).lower() != v]
+    if attrs.get("Driver", "bridge") != "bridge" or wrong:
+        raise IsolationConflict(
+            f"The {NETWORK_NAME} network carries CashPilot's label but not the settings its fence needs "
+            f"({', '.join(wrong) or 'driver ' + str(attrs.get('Driver'))}). Remove it, or move its containers "
+            "off it, so CashPilot can create it again."
+        )
 
 
 def _stale_endpoint(container: Any, net: Any) -> bool:
@@ -736,7 +789,6 @@ def apply_fence(client: Any) -> dict[str, Any]:
     """Make sure our network and its full table exist. Raises RuntimeError with the reason."""
     try:
         net = ensure_network(client)
-        reattach(client, net)
         result = run_helper(client, "apply", _subnet(net), filtered=True)
     except IsolationConflict as exc:
         _set_fence("failed", error=str(exc))
@@ -754,6 +806,9 @@ def apply_fence(client: Any) -> dict[str, Any]:
             "LAN fence applied (%s backend, %d rules)", result.get("backend"), len(result.get("counters") or {})
         )
     _set_fence("applied", result)
+    # Only now: an earner left on a removed copy of the network is started by
+    # the move, and it must not run before the drops are in place.
+    reattach(client, net)
     return result
 
 
@@ -850,7 +905,7 @@ def reconcile() -> dict[str, Any]:
         if mode == MODE_ON:
             with contextlib.suppress(RuntimeError, IsolationConflict):
                 apply_fence(client)
-        elif mode == MODE_OFF and managed_network(client) is not None:
+        elif _needs_reduced(client, mode, orch._CONTAINER_NETWORK):
             try:
                 reduce_fence(client)
             except Exception as exc:  # noqa: BLE001 - recorded in the status
@@ -867,6 +922,23 @@ def reconcile() -> dict[str, Any]:
         logger.warning("LAN fence check failed: %s", exc)
         _set_fence("failed", error=str(exc))
     return status()
+
+
+def _needs_reduced(client: Any, mode: str, operator_network: str) -> bool:
+    """Whether our network needs its masquerade back without the drops.
+
+    ``off`` always, while the network exists. ``operator`` only while earners are
+    still on our network: they keep their internet until they are redeployed
+    onto the operator's, and once none is left the host is not touched.
+    """
+    if mode not in (MODE_OFF, MODE_OPERATOR):
+        return False
+    net = managed_network(client)
+    if net is None:
+        return False
+    if mode == MODE_OFF:
+        return True
+    return operator_network != NETWORK_NAME and bool((net.attrs or {}).get("Containers"))
 
 
 def refresh_outside() -> None:

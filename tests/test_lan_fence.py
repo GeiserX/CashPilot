@@ -99,6 +99,16 @@ class TestTheRuleset:
             lines = [ln for ln in body.splitlines() if "iifname" in ln]
             assert "ct state established,related" in lines[0], f"{chain}: the established accept must come first"
 
+    def test_only_replies_pass_the_drops(self):
+        """A connection an earner opened while the table was missing must not keep going once it is back."""
+        nft = lan_fence.render_nft("cp-isolated", "172.18.0.0/16")
+        for name in (lan_fence.FWD_EST_RULE, lan_fence.IN_EST_RULE):
+            (line,) = [ln for ln in nft.splitlines() if f'comment "{name}"' in ln]
+            assert "ct direction reply" in line
+        ipt = lan_fence.render_iptables("cp-isolated", "172.18.0.0/16")
+        accepts = [ln for ln in ipt.splitlines() if "--ctstate" in ln]
+        assert len(accepts) == 2 and all("--ctdir REPLY" in ln for ln in accepts)
+
     @pytest.mark.parametrize("filtered", [True, False])
     @pytest.mark.parametrize(("egress", "ipv6"), [(None, False), ("198.51.100.7", True)])
     def test_every_rule_has_its_own_name(self, filtered, egress, ipv6):
@@ -185,7 +195,7 @@ NFT_LISTING = """table ip cashpilot {
 
 IPT_LISTING = """Chain CP-FWD (1 references)
     pkts      bytes target     prot opt in     out     source               destination
-       0        0 RETURN     0    --  *      *       0.0.0.0/0            0.0.0.0/0            ctstate RELATED,ESTABLISHED /* forward-established */
+       0        0 RETURN     0    --  *      *       0.0.0.0/0            0.0.0.0/0            ctstate RELATED,ESTABLISHED ctdir REPLY /* forward-reply */
        4      240 DROP       0    --  *      *       0.0.0.0/0            10.0.0.0/8           /* rfc1918-10 */
 """
 
@@ -195,12 +205,40 @@ class TestCounters:
         assert lan_fence.parse_nft_counters(NFT_LISTING) == {"masquerade": 12, "rfc1918-192": 3, "rfc1918-10": 0}
 
     def test_iptables(self):
-        assert lan_fence.parse_iptables_counters(IPT_LISTING) == {"forward-established": 0, "rfc1918-10": 4}
+        assert lan_fence.parse_iptables_counters(IPT_LISTING) == {"forward-reply": 0, "rfc1918-10": 4}
 
 
 # ---------------------------------------------------------------------------
 # The helper, end to end against a fake nft
 # ---------------------------------------------------------------------------
+
+#: A stand-in for iptables-legacy: each chain is a file of listing lines, and
+#: a jump into a chain is a marker file the -I adds and -C looks for.
+FAKE_IPT = r"""#!/bin/sh
+d="$FAKE_NFT_DIR/ipt"; mkdir -p "$d"
+op=""; chain=""; hook=""; name=""; target=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    -w) ;;
+    -t) shift ;;
+    -N|-F|-L) op="$1"; chain="$2"; shift ;;
+    -A) op="-A"; chain="$2"; shift ;;
+    -C|-I) op="$1"; hook="$2"; shift ;;
+    --comment) name="$2"; shift ;;
+    -j) target="$2"; shift ;;
+  esac
+  shift
+done
+case "$op" in
+  -N) [ -f "$d/chain-$chain" ] && exit 1; : > "$d/chain-$chain" ;;
+  -F) : > "$d/chain-$chain" ;;
+  -A) echo "       0        0 $target  0 -- * * 0.0.0.0/0 0.0.0.0/0 /* $name */" >> "$d/chain-$chain" ;;
+  -I) touch "$d/jump-$hook-$target" ;;
+  -C) [ -f "$d/jump-$hook-$target" ] || exit 1 ;;
+  -L) [ -f "$d/chain-$chain" ] || exit 1; echo "Chain $chain"; cat "$d/chain-$chain" ;;
+esac
+exit 0
+"""
 
 FAKE_NFT = """#!/bin/sh
 # A stand-in for nft: "-f -" stores the table as nft would list it, with
@@ -216,12 +254,20 @@ exit 2
 
 
 class TestTheHelperScript:
-    def _run(self, tmp_path, action, filtered="1", subnet="172.18.0.0/16", ipv6=False, egress=""):
+    def _run(
+        self, tmp_path, action, filtered="1", subnet="172.18.0.0/16", ipv6=False, egress="", route=None, backend="auto"
+    ):
         bin_dir = tmp_path / "bin"
         bin_dir.mkdir(exist_ok=True)
-        nft = bin_dir / "nft"
-        nft.write_text(FAKE_NFT)
-        nft.chmod(nft.stat().st_mode | stat.S_IEXEC)
+        for tool, text in (("nft", FAKE_NFT), ("iptables-legacy", FAKE_IPT), ("ip6tables-legacy", FAKE_IPT)):
+            path = bin_dir / tool
+            path.write_text(text)
+            path.chmod(path.stat().st_mode | stat.S_IEXEC)
+        route_file = tmp_path / "route"
+        if route is None:
+            route_file.write_text(ROUTE.splitlines()[0] + "\n" + ROUTE.splitlines()[2] + "\n")
+        elif route is not False:
+            route_file.write_text(route)
         env = dict(
             os.environ,
             PATH=f"{bin_dir}:{os.environ['PATH']}",
@@ -229,8 +275,9 @@ class TestTheHelperScript:
             FENCE_IFACE="cp-isolated",
             FENCE_SUBNET=subnet,
             FENCE_FILTER=filtered,
-            FENCE_BACKEND="auto",
+            FENCE_BACKEND=backend,
             FENCE_EGRESS=egress,
+            FENCE_PROC_ROUTE=str(route_file),
             FENCE_PROC_IPV6=str(tmp_path / ("ipv6" if ipv6 else "no-ipv6")),
             FENCE_PROC_IF_INET6=str(tmp_path / "if_inet6"),
         )
@@ -268,6 +315,31 @@ class TestTheHelperScript:
         assert not self._run(tmp_path, "read")["matches"]
         again = self._run(tmp_path, "apply")
         assert again["changed"] and again["matches"]
+
+    def test_unreadable_routes_leave_the_table_alone(self, tmp_path):
+        """Without the routes a LAN numbered in public space would lose its drop."""
+        first = self._run(tmp_path, "apply", route=ROUTE)
+        assert first["ok"] and "connected-203.0.113.0/24" in first["counters"]
+        (tmp_path / "route").unlink()
+        got = self._run(tmp_path, "apply", route=False)
+        assert not got["ok"] and not got["changed"] and "routes" in got["error"]
+        assert self._writes(tmp_path) == 1
+        assert "connected-203.0.113.0/24" in (tmp_path / "table").read_text()
+
+    def test_reduce_does_not_need_the_routes(self, tmp_path):
+        got = self._run(tmp_path, "apply", filtered="0", route=False)
+        assert got["ok"] and got["matches"]
+
+    def test_legacy_puts_a_lost_jump_back(self, tmp_path):
+        """A firewall script that flushes FORWARD keeps our chain but no longer jumps into it."""
+        first = self._run(tmp_path, "apply", backend="legacy")
+        assert first["ok"] and first["changed"] and first["matches"] and first["backend"] == "legacy"
+        assert not self._run(tmp_path, "apply", backend="legacy")["changed"]
+        (tmp_path / "ipt" / "jump-FORWARD-CP-FWD").unlink()
+        assert not self._run(tmp_path, "read", backend="legacy")["matches"]
+        again = self._run(tmp_path, "apply", backend="legacy")
+        assert again["changed"] and again["matches"]
+        assert (tmp_path / "ipt" / "jump-FORWARD-CP-FWD").exists()
 
     def test_read_never_writes(self, tmp_path):
         got = self._run(tmp_path, "read")
@@ -330,6 +402,7 @@ def _network(name=lan_fence.NETWORK_NAME, labeled=True, containers=None):
     net.attrs = {
         "Name": name,
         "Driver": "bridge",
+        "Options": dict(lan_fence._REQUIRED_OPTIONS),
         "Labels": {lan_fence.NETWORK_LABEL: lan_fence.NETWORK_LABEL_VALUE} if labeled else {},
         "IPAM": {"Config": [{"Subnet": "172.18.0.0/16", "Gateway": "172.18.0.1"}]},
         "Containers": containers or {},
@@ -431,6 +504,33 @@ class TestTheNetwork:
         old.remove.assert_called_once()
         client.networks.create.assert_called_once()
 
+    def test_the_created_options_are_the_ones_it_checks(self):
+        assert lan_fence._REQUIRED_OPTIONS == {
+            "com.docker.network.bridge.name": lan_fence.BRIDGE_INTERFACE,
+            "com.docker.network.bridge.enable_ip_masquerade": "false",
+            "com.docker.network.bridge.enable_icc": "false",
+        }
+
+    @pytest.mark.parametrize(
+        ("key", "value"),
+        [
+            ("com.docker.network.bridge.name", "br-other"),
+            ("com.docker.network.bridge.enable_ip_masquerade", "true"),
+            ("com.docker.network.bridge.enable_icc", None),
+        ],
+    )
+    def test_a_labeled_one_the_fence_cannot_hold_is_refused(self, key, value):
+        """The rules match the interface by name; on another bridge they would fence nothing."""
+        net = _network()
+        if value is None:
+            net.attrs["Options"].pop(key)
+        else:
+            net.attrs["Options"][key] = value
+        client = _docker(net)
+        with pytest.raises(lan_fence.IsolationConflict, match=key):
+            lan_fence.ensure_network(client)
+        client.networks.create.assert_not_called()
+
     def test_an_unlabeled_one_in_use_is_left_alone(self):
         old = _network(labeled=False, containers={"abc": {}})
         client = _docker(old)
@@ -525,13 +625,20 @@ class TestDeploys:
 # ---------------------------------------------------------------------------
 
 
-def _reconcile(client, setting):
+def _reconcile(client, setting, operator="", result=None, on_helper=None):
+    answer = result or {"ok": True, "backend": "nft", "counters": {}}
+
+    def _helper(*_a, **_kw):
+        if on_helper:
+            on_helper()
+        return answer
+
     with (
         patch.object(lan_fence, "_SETTING", setting),
-        patch.object(orchestrator, "_CONTAINER_NETWORK", ""),
+        patch.object(orchestrator, "_CONTAINER_NETWORK", operator),
         patch.object(orchestrator, "docker_available", return_value=True),
         patch.object(orchestrator, "_get_client", return_value=client),
-        patch.object(lan_fence, "run_helper", return_value={"ok": True, "backend": "nft", "counters": {}}) as helper,
+        patch.object(lan_fence, "run_helper", side_effect=_helper) as helper,
     ):
         return lan_fence.reconcile(), helper
 
@@ -547,6 +654,17 @@ class TestReconcile:
         state, helper = _reconcile(_docker(_network()), "off")
         assert helper.call_args.kwargs["filtered"] is False
         assert state["fence"]["state"] == "reduced"
+
+    def test_operator_keeps_the_nat_for_earners_still_on_our_network(self):
+        """A custom network was chosen; earners not yet redeployed must not lose their internet on a reload."""
+        net = _network(containers={"abc": {"Name": "cashpilot-honeygain"}})
+        state, helper = _reconcile(_docker(net), "auto", operator="my-net")
+        assert helper.call_args.kwargs["filtered"] is False
+        assert state["mode"] == "operator" and state["fence"]["state"] == "reduced"
+
+    def test_operator_with_our_network_empty_touches_nothing(self):
+        _state, helper = _reconcile(_docker(_network()), "auto", operator="my-net")
+        helper.assert_not_called()
 
     def test_off_without_our_network_touches_nothing(self):
         _state, helper = _reconcile(_docker(), "off")
@@ -632,15 +750,24 @@ class TestReattach:
         net.connect.side_effect = [RuntimeError("nope"), None]
         assert lan_fence.reattach(_docker(net, earners=[a, b]), net) == ["cashpilot-b"]
 
-    def test_every_apply_reattaches_before_writing_the_table(self):
-        """The recreated network is what reconcile sees after a reboot; the earners must come back with it."""
+    def test_every_apply_reattaches_after_writing_the_table(self):
+        """The recreated network is what reconcile sees after a reboot; the earners come back behind the fence."""
         c = _orphan("cashpilot-honeygain", "old-id", error=self.GONE)
         client = _docker(earners=[c])
-        state, _helper = _reconcile(client, "auto")
+        order = []
+        c.start.side_effect = lambda: order.append("start")
+        state, helper = _reconcile(client, "auto", on_helper=lambda: order.append("helper"))
         net = client._nets[lan_fence.NETWORK_NAME]
         net.connect.assert_called_once_with(c)
-        c.start.assert_called_once()
+        assert order == ["helper", "start"]
         assert state["fence"]["state"] == "applied"
+
+    def test_a_failed_apply_starts_no_earner(self):
+        c = _orphan("cashpilot-honeygain", "old-id", error=self.GONE)
+        client = _docker(earners=[c])
+        state, _helper = _reconcile(client, "auto", result={"ok": False, "error": "nft: no"})
+        c.start.assert_not_called()
+        assert state["fence"]["state"] == "failed"
 
 
 class TestTheMixedReboot:
@@ -806,14 +933,26 @@ def test_the_heartbeat_carries_the_isolation_state(docker_ok, offered):
         patch("app.worker_api.orchestrator.docker_available", return_value=docker_ok),
         patch("app.worker_api.httpx.AsyncClient", return_value=client),
         patch.object(lan_fence, "run_helper") as helper,
+        patch.object(lan_fence, "_egress", {"ip": None}),
+        patch.object(worker_api, "_check_fence", AsyncMock()) as check,
     ):
         asyncio.run(worker_api._send_heartbeat())
+        egress_after = lan_fence._egress["ip"]
+    # A new public IP is fenced at once, where there is a Docker to fence it on.
+    assert check.await_count == (1 if docker_ok else 0)
     info = sent["system_info"]
     assert ("isolation_default" in info["features"]) is offered
     assert info["isolation"]["mode"] == "legacy" and info["isolation"]["earners_outside"] == ["earnapp"]
     helper.assert_not_called()
     assert info["egress_ip"] == "81.61.1.9"
-    assert lan_fence._egress["ip"] == "81.61.1.9", "the next fence apply drops the home's public IP"
+    assert egress_after == "81.61.1.9", "the next fence apply drops the home's public IP"
+
+
+def test_the_same_public_ip_triggers_no_extra_check():
+    with patch.object(lan_fence, "_egress", {"ip": None}):
+        assert lan_fence.set_egress_ip("81.61.1.9") is True
+        assert lan_fence.set_egress_ip("81.61.1.9") is False
+        assert lan_fence.set_egress_ip(None) is False and lan_fence._egress["ip"] is None
 
 
 def test_the_worker_image_ships_the_fence():
@@ -843,10 +982,17 @@ const calls = [];
 const loadFleet = () => {};
 const confirm = () => true;
 const failOn = process.argv[process.argv.length - 1];
+// "left:<slug>": that service's deploy passes but an instance stays outside.
+const leftOn = failOn.startsWith('left:') ? failOn.slice(5) : '';
+let isolationCalls = 0;
 const CP = {api: async (url, opts) => {
   calls.push([url, opts && opts.method, opts && opts.body]);
-  if (url.endsWith('/isolation')) return {mode: 'on', earners_outside: ['earnapp', 'honeygain', 'storj']};
-  if (failOn && url.includes(failOn)) throw new Error('worker said no');
+  if (url.endsWith('/isolation')) {
+    isolationCalls++;
+    if (isolationCalls === 1) return {mode: 'on', earners_outside: ['earnapp', 'honeygain', 'storj']};
+    return {mode: 'on', earners_outside: [leftOn || failOn].filter(Boolean)};
+  }
+  if (failOn && !leftOn && url.includes(failOn)) throw new Error('worker said no');
   return {status: 'deployed'};
 }};
 const renderFence = eval('(' + extract('renderFence') + ')');
@@ -890,9 +1036,11 @@ class TestTheFleetPage:
     def test_a_worker_too_old_for_the_switch_gets_no_button(self):
         assert "btn-fence-on" not in self._render()["old"]
 
-    def test_a_failed_fence_says_the_earners_are_offline(self):
+    def test_a_failed_fence_warns_the_host_is_reachable(self):
+        """No promise that the internet is gone: another masquerade on the host can keep it."""
         out = self._render()["failed"]
-        assert "no nf_tables" in out and "no internet" in out and "CASHPILOT_ISOLATION=off" in out
+        assert "no nf_tables" in out and "reach this host" in out and "CASHPILOT_ISOLATION=off" in out
+        assert "fails safe" not in out
 
     def test_a_holding_fence_says_nothing(self):
         assert self._render()["quiet"] == ""
@@ -904,14 +1052,21 @@ class TestTheFleetPage:
             "/api/deploy/earnapp?worker_id=3",
             "/api/deploy/honeygain?worker_id=3",
             "/api/deploy/storj?worker_id=3",
+            "/api/workers/3/isolation",
         ]
-        assert all(c[2] == {} for c in out["calls"][1:]), "an empty body redeploys from the recorded spec"
+        assert all(c[2] == {} for c in out["calls"][1:4]), "an empty body redeploys from the recorded spec"
         assert "Moved earnapp, honeygain, storj" in out["after"]["done"]
+
+    def test_an_instance_left_outside_is_not_called_moved(self):
+        """A failed scale-down can leave a second instance running that the redeploy does not recreate."""
+        out = self._render(fail_on="left:honeygain")
+        assert "Moved earnapp, storj." in out["after"]["error"]
+        assert "honeygain (an instance is still running outside the isolated network)" in out["after"]["error"]
 
     def test_one_failure_does_not_stop_the_rest(self):
         """A retired or broken earner would otherwise keep every later one exposed, on every click."""
         out = self._render(fail_on="honeygain")
-        assert [c[0] for c in out["calls"][1:]] == [
+        assert [c[0] for c in out["calls"][1:4]] == [
             "/api/deploy/earnapp?worker_id=3",
             "/api/deploy/honeygain?worker_id=3",
             "/api/deploy/storj?worker_id=3",
@@ -951,7 +1106,7 @@ class TestCounterProof:
     def test_a_flat_counter_is_a_finding(self):
         targets = self._targets()
         before = {"present": True, "counters": {t["label"]: 5 for t in targets}}
-        after = {"present": True, "counters": {t["label"]: 7 for t in targets} | {"cgnat": 5}}
+        after = {"present": True, "matches": True, "counters": {t["label"]: 7 for t in targets} | {"cgnat": 5}}
         fence, findings = isolation_check.judge_fence(targets, before, after)
         assert [r["rule"] for r in fence["ranges"] if not r["proven"]] == ["cgnat"]
         assert findings[0]["kind"] == "fence_not_hit" and findings[0]["exposure"]
@@ -961,9 +1116,18 @@ class TestCounterProof:
         targets = self._targets()
         targets[0]["reachable"] = True
         before = {"present": True, "counters": {t["label"]: 0 for t in targets}}
-        after = {"present": True, "counters": {t["label"]: 1 for t in targets}}
+        after = {"present": True, "matches": True, "counters": {t["label"]: 1 for t in targets}}
         fence, findings = isolation_check.judge_fence(targets, before, after)
         assert not fence["ranges"][0]["proven"] and findings[0]["kind"] == "fence_not_hit"
+
+    def test_a_table_missing_a_rule_is_a_finding_even_when_every_sentinel_passes(self):
+        """A connected public subnet's drop has no sentinel; only the name check sees it is gone."""
+        targets = self._targets()
+        before = {"present": True, "matches": False, "counters": {t["label"]: 5 for t in targets}}
+        after = {"present": True, "matches": False, "counters": {t["label"]: 7 for t in targets}}
+        fence, findings = isolation_check.judge_fence(targets, before, after)
+        assert all(r["proven"] for r in fence["ranges"])
+        assert [f["kind"] for f in findings] == ["fence_incomplete"] and findings[0]["exposure"]
 
     def test_a_missing_table_is_a_finding(self):
         targets = self._targets()
@@ -991,7 +1155,7 @@ class TestCounterProof:
             t["reachable"] = t["label"] == reachable_label
         names = {t["label"] for t in targets}
         before = {"present": True, "counters": dict.fromkeys(names, 0)}
-        after = {"present": True, "counters": {n: (1 if n in rise else 0) for n in names}}
+        after = {"present": True, "matches": True, "counters": {n: (1 if n in rise else 0) for n in names}}
         return isolation_check.judge_fence(targets, before, after)
 
     def test_a_flat_egress_counter_is_a_finding(self):
@@ -1116,3 +1280,28 @@ class TestDashboardTarget:
             ]
         )
         assert {t["port"] for t in kept} == {22, 8080}
+
+
+@pytest.mark.parametrize(("docker_ok", "looked_up"), [(True, True), (False, False)])
+def test_the_first_table_already_drops_the_public_ip(docker_ok, looked_up):
+    """NAT loopback has no window at startup: the address is known before the first apply."""
+    seen = {}
+
+    async def check(startup=False):
+        seen["egress_at_check"] = lan_fence._egress["ip"]
+
+    async def run():
+        async with worker_api.lifespan(worker_api.app):
+            pass
+
+    with (
+        patch.object(lan_fence, "_egress", {"ip": None}),
+        patch("app.worker_api.orchestrator.docker_available", return_value=docker_ok),
+        patch.object(worker_api, "_detect_egress_ip", AsyncMock(return_value="81.61.1.9")) as detect,
+        patch.object(worker_api, "_check_fence", side_effect=check),
+        patch.object(worker_api, "_fence_loop", AsyncMock()),
+        patch.object(worker_api, "UI_URL", ""),
+    ):
+        asyncio.run(run())
+    assert detect.await_count == (1 if looked_up else 0)
+    assert seen["egress_at_check"] == ("81.61.1.9" if looked_up else None)
