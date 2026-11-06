@@ -162,6 +162,17 @@
   white-space: nowrap;
 }
 
+/* Ratings, All providers: Grade, Score, Unchecked and Reviewed hug their
+   content, so Provider and the worst con share the rest of the width. */
+.md-typeset .ratings-summary th:nth-child(n+2):nth-child(-n+5),
+.md-typeset .ratings-summary td:nth-child(n+2):nth-child(-n+5) {
+  white-space: nowrap;
+  width: 1%;
+}
+.md-typeset .ratings-summary td:last-child {
+  min-width: 22rem;
+}
+
 /* Screenshots are dark on a dark page; a faint rim shows where they end. */
 .md-typeset img[src*="screenshots/"] {
   border: 1px solid #ffffff14;

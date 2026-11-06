@@ -76,12 +76,16 @@ rating:
     longevity: fair
   notes:
     payout_record: We found no documented pattern of late or withheld supplier payouts.
+    payout_terms: Paid in IO token, payout model changed in 2026
     account_safety: io.net removed virtual GPU workers from rewards in 2024; we found no pattern affecting
       real hardware.
+    terms_fit: Own worker software, CashPilot cannot deploy or update it
     traffic_transparency: Not documented on pages we read.
     privacy: Not reviewed.
     identity_checks: Not documented.
     support: No pattern found.
+    earnings_realism: Rewards came from emissions, GPUs sit idle most of the time
+    longevity: About 1.8 million fake GPUs in April 2024, CEO stepped down
   cons:
   - text: Supplier rewards were paid from token emissions regardless of paid jobs, and GPU owners report
       sitting idle most of the time.

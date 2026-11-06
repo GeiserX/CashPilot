@@ -91,9 +91,17 @@ rating:
     earnings_realism: unknown
     longevity: good
   notes:
+    payout_record: Late or missing payouts reported in 2025 and 2026, others paid
+    payout_terms: PayPal only, 3% cashout fee
+    account_safety: Earnings tied to fraud can be withheld or reversed
+    terms_fit: Own Docker image, packetstream/psclient
+    traffic_transparency: Proxy customers route traffic, no vetting described
     privacy: The client is closed source; we did not review the privacy policy in depth.
+    identity_checks: No identity check, a PayPal address is enough
+    support: No replies to negative reviews, unanswered emails
     earnings_realism: Two Trustpilot reviewers report close to a year to reach the $5 minimum; two is
       below our user-reports threshold and we found no second source.
+    longevity: Named company under California law, running since 2018
   cons:
   - text: Trustpilot reviewers in 2025 and 2026 report payouts arriving late or not at all, and one long-time
       user says payouts slowed and then stopped; others in 2026 report being paid.

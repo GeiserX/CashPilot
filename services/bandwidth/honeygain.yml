@@ -114,10 +114,17 @@ rating:
     payout_record: Trustpilot withholds Honeygain's rating for a breach of its guidelines and says it
       removed fake reviews, so its review pages cannot show a payout record either way. We have not yet
       published a completed Honeygain payout of our own.
+    payout_terms: Unpaid earnings can be written off after 24 months
+    account_safety: Can suspend accounts and withhold or write off earnings
+    terms_fit: Own Docker image, honeygain/honeygain
+    traffic_transparency: Traffic serves business clients, none named
     privacy: The client is closed source. We did not find a published list of what the client collects
       beyond the privacy policy's general terms.
+    identity_checks: Tipalti needs SMS, name, address and date of birth before PayPal
     support: Two recent Trustpilot reviews say support did not answer; two is not a pattern, and we have
       no ticket of our own.
+    earnings_realism: Earnings depend on demand and location, slow to reach $20
+    longevity: Run by Honeygain UAB (Lithuania), founded 2019
   cons:
   - text: The terms let Honeygain write off earnings that reached the $20 threshold and were not paid
       out within 24 months, and treat earnings as expired after six months without use.

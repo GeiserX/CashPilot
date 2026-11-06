@@ -4,12 +4,11 @@ Every provider CashPilot can run or track gets a letter grade. The grade comes f
 
 Nobody types a grade. Each provider's entry in the catalog records a verdict per question (good, fair, poor or unknown) with the cons and pros behind it, and the code turns those verdicts into the letter. The entry has no field for a grade or an override, and a catalog entry that tries is shown as not rated and fails our checks. The web app and CashPilot-Desktop both show the grade, computed from the same published method.
 
-## Why nothing gets an A
-
-No provider gets an A. An A would mean we vouch for a provider, and we cannot: we can check what it publishes and what its users report, not what it will do with your account or your connection tomorrow. The best grade is B.
-
 ## How to read a grade
 
+A grade is our reading of the evidence, so it is a bit subjective: someone weighing the same sources could reasonably give a different grade. Treat it as a guide and read the cons.
+
+- **A**: the top tier, 90% of the score or more.
 - **B**: the provider does most things well and the evidence says so. Still read the cons.
 - **C**: real drawbacks, or too little evidence to say more.
 - **D**: serious drawbacks, or most of the criteria could not be checked.
@@ -46,6 +45,7 @@ Each verdict scores points: good 2, fair 1, poor 0, unknown 0. Unknown scores th
 
 | Grade | Share of the maximum score |
 |---|---|
+| A | 90% or more |
 | B | 75% or more |
 | C | 55% or more |
 | D | 35% or more |
@@ -66,6 +66,8 @@ What a cited con or pro may rest on:
 - `press`: A news article, a court record or a public filing.
 
 ## All providers
+
+<div class="ratings-summary" markdown>
 
 | Provider | Grade | Score | Unchecked | Reviewed | Worst con |
 |---|:---:|:---:|:---:|---|---|
@@ -111,6 +113,8 @@ What a cited con or pro may rest on:
 | <a href="#theta-edge">Theta Edge Node</a> | F | 1 of 20 | 9 | 2026-11-04 | CashPilot does not run Theta Edge: you use the provider's own desktop app, so CashPilot cannot deploy or update it for you. Its terms were not checked for containers. |
 | <a href="#titan">Titan Network</a> | F | 1 of 20 | 8 | 2026-11-04 | Titan's own help says a running node does not guarantee earnings: with no task assigned it earns nothing, and rewards are in the TNT token. |
 
+</div>
+
 ## Provider details
 
 <a id="sia-hostd"></a>
@@ -122,15 +126,15 @@ What a cited con or pro may rest on:
 | Criterion | Verdict | Note |
 |---|---|---|
 | Payout record | Unknown | Payment is by on-chain contract; we have no host of our own to report. |
-| Payout terms | Fair |  |
-| Account safety | Fair |  |
-| Fit with how CashPilot runs it | Good |  |
-| Traffic transparency | Fair |  |
-| Privacy | Good |  |
-| Identity checks | Good |  |
+| Payout terms | Fair | Siacoin to your own wallet, you sell on an exchange |
+| Account safety | Fair | Collateral burned if the host misses storage proofs |
+| Fit with how CashPilot runs it | Good | Published as a container image by the Sia Foundation |
+| Traffic transparency | Fair | Encrypted fragments, no IP routing, renters not described |
+| Privacy | Good | Open-source hostd (MIT) |
+| Identity checks | Good | Permissionless, no signup or account |
 | Support | Unknown | No pattern found. |
-| Earnings realism | Fair |  |
-| Longevity | Good |  |
+| Earnings realism | Fair | Only about 30% of offered storage is in use |
+| Longevity | Good | Developed in the open by the Sia Foundation since 2022 |
 
 **Cons**
 
@@ -155,15 +159,15 @@ What a cited con or pro may rest on:
 | Criterion | Verdict | Note |
 |---|---|---|
 | Payout record | Unknown | Settlements are on-chain and automatic; we have not published our own settlement history yet. |
-| Payout terms | Fair |  |
+| Payout terms | Fair | About 21% of each settlement goes in fees, paid in MYST |
 | Account safety | Unknown | Settled earnings sit in a wallet you own, but we found no stated ban rule and no reports either way. |
-| Fit with how CashPilot runs it | Good |  |
-| Traffic transparency | Fair |  |
-| Privacy | Good |  |
-| Identity checks | Good |  |
+| Fit with how CashPilot runs it | Good | Own Docker image, mysteriumnetwork/myst |
+| Traffic transparency | Fair | Exit for VPN, proxy and scraping customers, no choice |
+| Privacy | Good | Open-source node software (GPL-3.0) |
+| Identity checks | Good | Paid to your own wallet, no phone or ID needed |
 | Support | Unknown | Trustpilot has 16 reviews and none in the last year; not enough to judge. |
 | Earnings realism | Unknown | Not measured against a provider figure. |
-| Longevity | Good |  |
+| Longevity | Good | Node project running since 2017 |
 
 **Cons**
 
@@ -185,16 +189,16 @@ What a cited con or pro may rest on:
 
 | Criterion | Verdict | Note |
 |---|---|---|
-| Payout record | Fair |  |
-| Payout terms | Fair |  |
-| Account safety | Fair |  |
-| Fit with how CashPilot runs it | Good |  |
-| Traffic transparency | Fair |  |
+| Payout record | Fair | Late or missing payouts reported in 2025 and 2026, others paid |
+| Payout terms | Fair | PayPal only, 3% cashout fee |
+| Account safety | Fair | Earnings tied to fraud can be withheld or reversed |
+| Fit with how CashPilot runs it | Good | Own Docker image, packetstream/psclient |
+| Traffic transparency | Fair | Proxy customers route traffic, no vetting described |
 | Privacy | Unknown | The client is closed source; we did not review the privacy policy in depth. |
-| Identity checks | Good |  |
-| Support | Poor |  |
+| Identity checks | Good | No identity check, a PayPal address is enough |
+| Support | Poor | No replies to negative reviews, unanswered emails |
 | Earnings realism | Unknown | Two Trustpilot reviewers report close to a year to reach the $5 minimum; two is below our user-reports threshold and we found no second source. |
-| Longevity | Good |  |
+| Longevity | Good | Named company under California law, running since 2018 |
 
 **Cons**
 
@@ -219,16 +223,16 @@ What a cited con or pro may rest on:
 
 | Criterion | Verdict | Note |
 |---|---|---|
-| Payout record | Good |  |
-| Payout terms | Fair |  |
+| Payout record | Good | Our $0.75 withdrawal went through in October 2026 |
+| Payout terms | Fair | Crypto only (USDC, POL, Litecoin), $0.20 minimum |
 | Account safety | Unknown | No reports found. |
-| Fit with how CashPilot runs it | Good |  |
+| Fit with how CashPilot runs it | Good | Own peer client image, supports datacentre IPs |
 | Traffic transparency | Unknown | We did not find who buys the traffic or how buyers are checked. |
 | Privacy | Unknown | The peer client is closed source. |
-| Identity checks | Good |  |
+| Identity checks | Good | Only an address typed into the request |
 | Support | Unknown | No reports found. |
-| Earnings realism | Fair |  |
-| Longevity | Fair |  |
+| Earnings realism | Fair | Says itself it is new, not the place to maximise earnings |
+| Longevity | Fair | Old backend shut in 2026, old-image containers stopped earning |
 
 **Cons**
 
@@ -250,16 +254,16 @@ What a cited con or pro may rest on:
 
 | Criterion | Verdict | Note |
 |---|---|---|
-| Payout record | Fair |  |
-| Payout terms | Fair |  |
+| Payout record | Fair | Pre-filing payments went into the bankruptcy claims process |
+| Payout terms | Fair | 75%, 50%, 25% held over nine months, half back in month 16 |
 | Account safety | Unknown | Nodes are permissionless; disqualification for lost data is the stated rule, and we found no pattern of disputes. |
-| Fit with how CashPilot runs it | Good |  |
-| Traffic transparency | Fair |  |
-| Privacy | Good |  |
-| Identity checks | Good |  |
+| Fit with how CashPilot runs it | Good | Own Docker image, storjlabs/storagenode |
+| Traffic transparency | Fair | Encrypted fragments, no IP routing, customers not described |
+| Privacy | Good | Open-source node software (AGPL-3.0) |
+| Identity checks | Good | No account, a wallet address and an email |
 | Support | Unknown | No pattern found. |
 | Earnings realism | Unknown | Not measured against a provider figure. |
-| Longevity | Poor |  |
+| Longevity | Poor | Chapter 11 filed 26 July 2026, pre-filing earnings frozen |
 
 **Cons**
 
@@ -284,15 +288,15 @@ What a cited con or pro may rest on:
 | Criterion | Verdict | Note |
 |---|---|---|
 | Payout record | Unknown | Trustpilot withholds Honeygain's rating for a breach of its guidelines and says it removed fake reviews, so its review pages cannot show a payout record either way. We have not yet published a completed Honeygain payout of our own. |
-| Payout terms | Poor |  |
-| Account safety | Fair |  |
-| Fit with how CashPilot runs it | Good |  |
-| Traffic transparency | Fair |  |
+| Payout terms | Poor | Unpaid earnings can be written off after 24 months |
+| Account safety | Fair | Can suspend accounts and withhold or write off earnings |
+| Fit with how CashPilot runs it | Good | Own Docker image, honeygain/honeygain |
+| Traffic transparency | Fair | Traffic serves business clients, none named |
 | Privacy | Unknown | The client is closed source. We did not find a published list of what the client collects beyond the privacy policy's general terms. |
-| Identity checks | Fair |  |
+| Identity checks | Fair | Tipalti needs SMS, name, address and date of birth before PayPal |
 | Support | Unknown | Two recent Trustpilot reviews say support did not answer; two is not a pattern, and we have no ticket of our own. |
-| Earnings realism | Fair |  |
-| Longevity | Good |  |
+| Earnings realism | Fair | Earnings depend on demand and location, slow to reach $20 |
+| Longevity | Good | Run by Honeygain UAB (Lithuania), founded 2019 |
 
 **Cons**
 
@@ -317,16 +321,16 @@ What a cited con or pro may rest on:
 
 | Criterion | Verdict | Note |
 |---|---|---|
-| Payout record | Good |  |
-| Payout terms | Good |  |
+| Payout record | Good | Our $37.54 PayPal payout arrived as $36.81 in October 2026 |
+| Payout terms | Good | $10 minimum for PayPal and Wise, with auto-redeem |
 | Account safety | Fair | We found no repeated pattern of accounts banned at cash-out with the balance kept. Trustpilot withholds EarnApp's rating for a breach of its guidelines and says it removed fake reviews, so we did not count its reviews either way. |
-| Fit with how CashPilot runs it | Poor |  |
+| Fit with how CashPilot runs it | Poor | Help centre strictly prohibits Docker, VMs and home servers |
 | Traffic transparency | Unknown | EarnApp is run by Bright Data; we did not find an EarnApp page that says how the buyers of the traffic are vetted. |
 | Privacy | Unknown | The client is closed source; we did not review the privacy policy in depth. |
 | Identity checks | Unknown | We found no EarnApp page that lists what a payout asks for, and our own notes do not record it. |
 | Support | Unknown | One Trustpilot review says a ticket was closed without a reply; one is not a pattern, and we have no ticket of our own. |
 | Earnings realism | Unknown | We have not measured EarnApp's earnings per IP against any figure the provider publishes. |
-| Longevity | Good |  |
+| Longevity | Good | Owned by Bright Data, payments from Bright Data Ltd. |
 
 **Cons**
 
@@ -350,13 +354,13 @@ What a cited con or pro may rest on:
 | Payout record | Unknown | Payments are on-chain per task; we have no provider of our own to report. |
 | Payout terms | Unknown | Payments are in GLM on Polygon; we did not find fees worth grading. |
 | Account safety | Unknown | There is no account to ban. |
-| Fit with how CashPilot runs it | Fair |  |
+| Fit with how CashPilot runs it | Fair | You install the agent yourself, CashPilot cannot update it |
 | Traffic transparency | Unknown | Requestors run tasks on your machine; we did not find how they are checked. |
-| Privacy | Good |  |
-| Identity checks | Good |  |
+| Privacy | Good | Open-source provider agent, yagna (GPL-3.0) |
+| Identity checks | Good | No account, just a payout wallet |
 | Support | Unknown | No pattern found. |
-| Earnings realism | Poor |  |
-| Longevity | Good |  |
+| Earnings realism | Poor | No protocol revenue and low demand, paid in GLM |
+| Longevity | Good | Network running for about ten years |
 
 **Cons**
 
@@ -378,15 +382,15 @@ What a cited con or pro may rest on:
 | Criterion | Verdict | Note |
 |---|---|---|
 | Payout record | Unknown | The payout system changed in October 2026; we have no completed claim of our own to report. |
-| Payout terms | Poor |  |
+| Payout terms | Poor | Unclaimed epochs expire, unlinked USDC payouts cancelled |
 | Account safety | Unknown | No reports found. |
-| Fit with how CashPilot runs it | Good |  |
+| Fit with how CashPilot runs it | Good | Own Docker image, works on VPS and residential connections |
 | Traffic transparency | Unknown | We did not find how buyers of the traffic are checked. |
-| Privacy | Good |  |
-| Identity checks | Good |  |
+| Privacy | Good | Provider client source code is published |
+| Identity checks | Good | A claim needs only a Bittensor wallet you control |
 | Support | Unknown | URnetwork's support answered our email about the new payout page; one ticket is not a record. |
-| Earnings realism | Poor |  |
-| Longevity | Fair |  |
+| Earnings realism | Poor | Paid in SN25α subnet token, each claim costs TAO gas |
+| Longevity | Fair | Formerly BringYour, the whitepaper carries the old name |
 
 **Cons**
 
@@ -409,12 +413,12 @@ What a cited con or pro may rest on:
 | Criterion | Verdict | Note |
 |---|---|---|
 | Payout record | Unknown | We have not published a reward claim of our own and found no pattern of reports. |
-| Payout terms | Poor |  |
+| Payout terms | Poor | Earns nothing without 100 ANYONE locked for 180 days |
 | Account safety | Unknown | There is no account to ban. |
-| Fit with how CashPilot runs it | Good |  |
-| Traffic transparency | Poor |  |
-| Privacy | Good |  |
-| Identity checks | Good |  |
+| Fit with how CashPilot runs it | Good | CashPilot builds its own image from published relay software |
+| Traffic transparency | Poor | Relays other people's traffic unvetted, exits draw abuse |
+| Privacy | Good | Open-source fork of Tor, under Tor's licence |
+| Identity checks | Good | No account needed at all |
 | Support | Unknown | No pattern found. |
 | Earnings realism | Unknown | Not measured. |
 | Longevity | Unknown | Not checked on a primary source. |
@@ -439,13 +443,13 @@ What a cited con or pro may rest on:
 
 | Criterion | Verdict | Note |
 |---|---|---|
-| Payout record | Good |  |
-| Payout terms | Fair |  |
+| Payout record | Good | Trustpilot 4.6 from 283 reviews, a few report missing payouts |
+| Payout terms | Fair | Crypto only, minimum $5 (USDT) to $250 (Bitcoin) |
 | Account safety | Unknown | No reports of banned accounts found. |
-| Fit with how CashPilot runs it | Fair |  |
+| Fit with how CashPilot runs it | Fair | Own app only, CashPilot cannot deploy or update it |
 | Traffic transparency | Unknown | We could not load Bytelixir's terms. |
 | Privacy | Unknown | The client is closed source; we could not load the privacy terms. |
-| Identity checks | Good |  |
+| Identity checks | Good | Payout needs only a crypto address |
 | Support | Unknown | Bytelixir replies to negative Trustpilot reviews, typically within a day, but that is not a ticket answer; we have no ticket of our own and found no reports about tickets either way. |
 | Earnings realism | Unknown | Not measured. |
 | Longevity | Unknown | We could not find the legal entity behind Bytelixir on a page that loaded. |
@@ -471,13 +475,13 @@ What a cited con or pro may rest on:
 | Payout record | Unknown | Testnet beta: no rewards have been paid yet. |
 | Payout terms | Unknown | Rewards are testnet tokens during the beta; mainnet terms are not published. |
 | Account safety | Unknown | There is no account in the usual sense; the identity is a wallet. |
-| Fit with how CashPilot runs it | Fair |  |
-| Traffic transparency | Fair |  |
-| Privacy | Fair |  |
-| Identity checks | Good |  |
+| Fit with how CashPilot runs it | Fair | Own app or extension, CashPilot cannot deploy or update it |
+| Traffic transparency | Fair | Automation tasks, unclear if they carry others' traffic |
+| Privacy | Fair | Says tasks are anonymised and sandboxed, no more detail |
+| Identity checks | Good | No account, the app generates a wallet |
 | Support | Unknown | No reports found. |
-| Earnings realism | Poor |  |
-| Longevity | Fair |  |
+| Earnings realism | Poor | Unfunded testnet tokens with no market value, none paid |
+| Longevity | Fair | Still a testnet beta on Base Sepolia |
 
 **Cons**
 
@@ -500,12 +504,12 @@ What a cited con or pro may rest on:
 | Criterion | Verdict | Note |
 |---|---|---|
 | Payout record | Unknown | We found no independent payout reports and have no payout of our own. |
-| Payout terms | Fair |  |
+| Payout terms | Fair | USDC on Tempo Chain, needs a Tempo wallet |
 | Account safety | Unknown | There is no account in the usual sense; the client mints its own wallet. |
-| Fit with how CashPilot runs it | Good |  |
-| Traffic transparency | Fair |  |
+| Fit with how CashPilot runs it | Good | Own client image, accepts datacentre connections |
+| Traffic transparency | Fair | Sold as a SOCKS5 proxy, no buyer checks described |
 | Privacy | Unknown | Not reviewed beyond our own disclosure notes. |
-| Identity checks | Good |  |
+| Identity checks | Good | Earn page says no KYC, $1 payout |
 | Support | Unknown | No reports found. |
 | Earnings realism | Unknown | Search summaries of its marketing pages quote $1.80 per GB and $54 to $90 a month for one device, far above our catalog estimate of $0 to $15, but the pages did not load for us to check. |
 | Longevity | Unknown | We could not confirm the company behind ProxyBase Markets or how long it has run. |
@@ -528,16 +532,16 @@ What a cited con or pro may rest on:
 
 | Criterion | Verdict | Note |
 |---|---|---|
-| Payout record | Poor |  |
-| Payout terms | Poor |  |
-| Account safety | Poor |  |
-| Fit with how CashPilot runs it | Good |  |
-| Traffic transparency | Fair |  |
+| Payout record | Poor | Reviewers report rejected withdrawals, chasing payment |
+| Payout terms | Poor | Earnings can be forfeited on suspicion, PayPal removed |
+| Account safety | Poor | Reviewers report cancelled payouts and balances reset to zero |
+| Fit with how CashPilot runs it | Good | Own Docker image, terms allow containers you own |
+| Traffic transparency | Fair | Partners use your capacity, who they are is not said |
 | Privacy | Unknown | The client is closed source; we did not review the privacy policy in depth. |
-| Identity checks | Fair |  |
-| Support | Fair |  |
+| Identity checks | Fair | Verification can be required at any time, payouts depend on it |
+| Support | Fair | No replies to negative reviews, messages ignored |
 | Earnings realism | Unknown | Reviewers report very small amounts, but we have not measured Repocket's earnings against a provider figure. |
-| Longevity | Fair |  |
+| Longevity | Fair | Current terms name Repocket Pte. Ltd., older ones no company |
 
 **Cons**
 
@@ -564,12 +568,12 @@ What a cited con or pro may rest on:
 | Criterion | Verdict | Note |
 |---|---|---|
 | Payout record | Unknown | We found no repeated user reports either way and have not published a payout of our own. |
-| Payout terms | Fair |  |
+| Payout terms | Fair | Paid in SOL, new empty wallets may need funding first |
 | Account safety | Unknown | We found no Bitping terms page or reports of bans. |
-| Fit with how CashPilot runs it | Good |  |
+| Fit with how CashPilot runs it | Good | Help says servers and Docker containers are supported |
 | Traffic transparency | Unknown | Bitping sells network monitoring from your connection; we found no page on who the customers are or how they are checked. |
 | Privacy | Unknown | The node is closed source; we did not find a privacy page specific to node runners. |
-| Identity checks | Good |  |
+| Identity checks | Good | Only a Solana address per withdrawal |
 | Support | Unknown | No repeated reports found either way. |
 | Earnings realism | Unknown | Not measured against a provider figure. |
 | Longevity | Unknown | We did not find the legal entity behind Bitping. |
@@ -593,13 +597,13 @@ What a cited con or pro may rest on:
 | Criterion | Verdict | Note |
 |---|---|---|
 | Payout record | Unknown | Two Trustpilot reviewers report a late or missing payout and others report fast payouts; neither side reaches our user-reports threshold. |
-| Payout terms | Fair |  |
+| Payout terms | Fair | $15 minimum, $1 to $3 USDT fee, bank wire from $1,000 |
 | Account safety | Unknown | One Trustpilot reviewer alleges bans for criticism; one report is not a pattern. |
-| Fit with how CashPilot runs it | Good |  |
+| Fit with how CashPilot runs it | Good | Own Docker image, earnfm/earnfm-client |
 | Traffic transparency | Unknown | Earn.fm's terms page leads to the business terms of InfiniteProxies; we found no page that says how buyers are vetted. |
 | Privacy | Unknown | The client is closed source. One reviewer says a deleted account stayed in the database; one report is not a pattern. |
-| Identity checks | Fair |  |
-| Support | Fair |  |
+| Identity checks | Fair | Billing profile with legal name and address first |
+| Support | Fair | Reviewers report email and Discord support not answering |
 | Earnings realism | Unknown | Not measured. |
 | Longevity | Unknown | We could not find the legal entity behind Earn.fm on its own pages. |
 
@@ -622,15 +626,15 @@ What a cited con or pro may rest on:
 | Criterion | Verdict | Note |
 |---|---|---|
 | Payout record | Unknown | eBesucher says it has paid out over one million euros; we found no recent independent reports either way. |
-| Payout terms | Good |  |
+| Payout terms | Good | From 2 euros by PayPal or SEPA, at least weekly, no fee |
 | Account safety | Unknown | No reports found. |
-| Fit with how CashPilot runs it | Fair |  |
+| Fit with how CashPilot runs it | Fair | Browser extension, CashPilot cannot deploy or update it |
 | Traffic transparency | Unknown | The surfbar shows advertisers' pages; we did not find how advertisers are checked. |
 | Privacy | Unknown | Not reviewed. |
 | Identity checks | Unknown | Not documented on pages we read. |
 | Support | Unknown | No reports found. |
 | Earnings realism | Unknown | Not measured. |
-| Longevity | Good |  |
+| Longevity | Good | Running since 2002 |
 
 **Cons**
 
@@ -650,14 +654,14 @@ What a cited con or pro may rest on:
 | Criterion | Verdict | Note |
 |---|---|---|
 | Payout record | Unknown | Rewards are paid per block on-chain; we have no node of our own to report. |
-| Payout terms | Fair |  |
+| Payout terms | Fair | Smallest node tier locks 1,000 FLUX as collateral |
 | Account safety | Unknown | Nodes that fail Flux benchmarks stop earning; we found no pattern of disputes. |
-| Fit with how CashPilot runs it | Fair |  |
+| Fit with how CashPilot runs it | Fair | Own node software, CashPilot cannot deploy or update it |
 | Traffic transparency | Unknown | Not documented on pages we read. |
-| Privacy | Good |  |
+| Privacy | Good | Open-source daemon (MIT) |
 | Identity checks | Unknown | Not documented. |
 | Support | Unknown | No pattern found. |
-| Earnings realism | Fair |  |
+| Earnings realism | Fair | Block reward drops 10% a year, small tiers weak in dollars |
 | Longevity | Unknown | Not checked on a primary source. |
 
 **Cons**
@@ -679,15 +683,15 @@ What a cited con or pro may rest on:
 | Criterion | Verdict | Note |
 |---|---|---|
 | Payout record | Unknown | Trustpilot withholds the rating of pawns.app for a breach of its guidelines and says it removed fake reviews, so its payout reviews cannot be taken at face value. We have not yet published a completed payout of our own. |
-| Payout terms | Fair |  |
+| Payout terms | Fair | PayPal 4% fee via Tremendous, payouts reviewed up to 72 hours |
 | Account safety | Fair | One Trustpilot reviewer says an account was blocked during a withdrawal after a phone number was mistyped; we could not confirm a wider pattern on the page. |
-| Fit with how CashPilot runs it | Poor |  |
-| Traffic transparency | Fair |  |
+| Fit with how CashPilot runs it | Poor | No servers, VPNs or proxies, one device per IP |
+| Traffic transparency | Fair | Business clients route traffic, you cannot see which |
 | Privacy | Unknown | The client is closed source; we did not review the privacy policy in depth. |
-| Identity checks | Fair |  |
+| Identity checks | Fair | SMS phone check first, email code every payout |
 | Support | Unknown | No repeated support complaint found and no ticket of our own. |
 | Earnings realism | Unknown | We have not measured Pawns earnings per IP against a provider figure. |
-| Longevity | Fair |  |
+| Longevity | Fair | No legal entity in the terms, run by proxy firm IPRoyal |
 
 **Cons**
 
@@ -711,15 +715,15 @@ What a cited con or pro may rest on:
 | Criterion | Verdict | Note |
 |---|---|---|
 | Payout record | Unknown | Payments are on-chain per session or per hour; we have no node of our own to report. |
-| Payout terms | Fair |  |
+| Payout terms | Fair | Paid in P2P token, 20% of each payment goes to stakers |
 | Account safety | Unknown | There is no account to ban; nodes are permissionless. |
-| Fit with how CashPilot runs it | Fair |  |
+| Fit with how CashPilot runs it | Fair | Own node software, CashPilot cannot deploy or update it |
 | Traffic transparency | Unknown | VPN users route their traffic through your node; the protocol does not vet them. |
-| Privacy | Good |  |
+| Privacy | Good | Node source code published under its own licence |
 | Identity checks | Unknown | Not documented beyond a wallet. |
 | Support | Unknown | No pattern found. |
 | Earnings realism | Unknown | Hosts set their own prices; we found no published earnings figures to compare. |
-| Longevity | Fair |  |
+| Longevity | Fair | Token renamed SENT to DVPN in 2021, then P2P in 2025 |
 
 **Cons**
 
@@ -739,15 +743,15 @@ What a cited con or pro may rest on:
 
 | Criterion | Verdict | Note |
 |---|---|---|
-| Payout record | Poor |  |
-| Payout terms | Fair |  |
+| Payout record | Poor | Trustpilot 1.9, payouts pending for weeks or missing |
+| Payout terms | Fair | Crypto, or bank wire from $1,000, PayPal gone |
 | Account safety | Unknown | We found no repeated reports of banned accounts and could not read the current terms on suspension. |
-| Fit with how CashPilot runs it | Fair |  |
+| Fit with how CashPilot runs it | Fair | Terms require a residential IP, hosting is outside them |
 | Traffic transparency | Unknown | We could not find a page that says who buys the traffic or how buyers are checked. |
 | Privacy | Unknown | The client is closed source; we did not review the privacy policy in depth. |
-| Identity checks | Good |  |
-| Support | Poor |  |
-| Earnings realism | Fair |  |
+| Identity checks | Good | Only a crypto address confirmed by email |
+| Support | Poor | Live chat and email not answering, sometimes for weeks |
+| Earnings realism | Fair | Reviewers report about $0.10 per GB |
 | Longevity | Unknown | A third-party summary names Bytemarket OU in Estonia as the operator; we could not confirm it on Traffmonetizer's own pages. |
 
 **Cons**
@@ -774,13 +778,13 @@ What a cited con or pro may rest on:
 | Payout record | Unknown | Rewards are paid on-chain; we found no pattern of missing rewards. |
 | Payout terms | Unknown | Rewards are in HNT; we did not find fees or minimums worth grading. |
 | Account safety | Unknown | No reports found. |
-| Fit with how CashPilot runs it | Fair |  |
+| Fit with how CashPilot runs it | Fair | Own hotspot hardware, CashPilot cannot deploy or update it |
 | Traffic transparency | Unknown | Not documented on pages we read. |
-| Privacy | Good |  |
+| Privacy | Good | Open-source gateway software (Apache-2.0) |
 | Identity checks | Unknown | Not documented. |
 | Support | Unknown | No pattern found. |
-| Earnings realism | Poor |  |
-| Longevity | Fair |  |
+| Earnings realism | Poor | PoC rewards retired 6 July 2026, now paid only for data carried |
+| Longevity | Fair | Reward model changed by vote, CEO left, HNT fell about 96% |
 
 **Cons**
 
@@ -801,15 +805,15 @@ What a cited con or pro may rest on:
 | Criterion | Verdict | Note |
 |---|---|---|
 | Payout record | Unknown | We found no user reports in a language we could check, and no payout of our own. |
-| Payout terms | Good |  |
+| Payout terms | Good | $5 minimum, by crypto or PayPal |
 | Account safety | Unknown | No reports found. |
-| Fit with how CashPilot runs it | Good |  |
+| Fit with how CashPilot runs it | Good | Own Docker image, accepts datacentre connections |
 | Traffic transparency | Unknown | The author of a widely used installer for it warns that some of the traffic is used to send spam; one source, so not graded, but read it before running ProxyLite: https://github.com/spiritLHLS/proxylite-one-click-command-installation |
 | Privacy | Unknown | The client is closed source. |
 | Identity checks | Unknown | Not documented on pages we read. |
 | Support | Unknown | No reports found. |
 | Earnings realism | Unknown | Not measured. |
-| Longevity | Poor |  |
+| Longevity | Poor | Owner hidden in domain records, no named company found |
 
 **Cons**
 
@@ -829,14 +833,14 @@ What a cited con or pro may rest on:
 | Criterion | Verdict | Note |
 |---|---|---|
 | Payout record | Unknown | We found no host complaint threads either way. |
-| Payout terms | Good |  |
+| Payout terms | Good | Host keeps the full rate it sets, no fee |
 | Account safety | Unknown | No reports found. |
-| Fit with how CashPilot runs it | Fair |  |
+| Fit with how CashPilot runs it | Fair | Own host software on your GPU machine, not run by CashPilot |
 | Traffic transparency | Unknown | Renters run their own containers on your machine; we did not find how they are checked. |
 | Privacy | Unknown | Not reviewed. |
 | Identity checks | Unknown | A competitor's summary says hosts must complete identity, tax or business checks before choosing a payout method; we did not confirm it on Vast's own pages. |
 | Support | Unknown | No pattern found. |
-| Earnings realism | Fair |  |
+| Earnings realism | Fair | Earns only while rented, depends on rental type and reliability |
 | Longevity | Unknown | Not checked on a primary source. |
 
 **Cons**
@@ -859,13 +863,13 @@ What a cited con or pro may rest on:
 | Payout record | Unknown | Trustpilot has four reviews. Two say the PayPal and Stripe payout pages return a 404 and the money never arrived, and one says it was paid. Two matching reports is under our threshold for a pattern, so we could not grade it either way. |
 | Payout terms | Unknown | The catalog records a $5 minimum paid by PayPal, but two reviewers say the PayPal and Stripe payout pages return a 404, so we cannot say the route works. |
 | Account safety | Unknown | No reports either way. |
-| Fit with how CashPilot runs it | Fair |  |
-| Traffic transparency | Fair |  |
+| Fit with how CashPilot runs it | Fair | Own app only, CashPilot cannot deploy or update it |
+| Traffic transparency | Fair | Serves Infatica's clients, who are not named |
 | Privacy | Unknown | The client is closed source; we did not review the privacy policy. |
 | Identity checks | Unknown | Not documented on pages we read. |
 | Support | Unknown | One Trustpilot reviewer says ByteBenefit support did not reply and Infatica's support sent them back to it; one is not a pattern. |
 | Earnings realism | Unknown | Not measured. |
-| Longevity | Fair |  |
+| Longevity | Fair | Android app left Google Play in April 2026 after 17 months |
 
 **Cons**
 
@@ -885,15 +889,15 @@ What a cited con or pro may rest on:
 
 | Criterion | Verdict | Note |
 |---|---|---|
-| Payout record | Good |  |
-| Payout terms | Poor |  |
+| Payout record | Good | First airdrop reached nearly 1.5 million claiming addresses |
+| Payout terms | Poor | Season 2 rewards unclaimed by 22 January 2027 are lost |
 | Account safety | Unknown | We found no repeated reports of banned accounts. |
-| Fit with how CashPilot runs it | Fair |  |
+| Fit with how CashPilot runs it | Fair | Own app or extension, CashPilot cannot deploy or update it |
 | Traffic transparency | Unknown | Grass sells web data scraped through your connection; we did not find how its buyers are checked. |
 | Privacy | Unknown | Not reviewed. |
 | Identity checks | Unknown | Claims go to a wallet; we did not find what else a claim asks for. |
 | Support | Unknown | No pattern found. |
-| Earnings realism | Poor |  |
+| Earnings realism | Poor | Season 2 estimates in single to low double-digit dollars |
 | Longevity | Unknown | Grass is built by Wynd Network, a named and funded company; we did not confirm how long it has run. |
 
 **Cons**
@@ -916,15 +920,15 @@ What a cited con or pro may rest on:
 | Criterion | Verdict | Note |
 |---|---|---|
 | Payout record | Unknown | We found no documented pattern of late or withheld supplier payouts. |
-| Payout terms | Fair |  |
+| Payout terms | Fair | Paid in IO token, payout model changed in 2026 |
 | Account safety | Unknown | io.net removed virtual GPU workers from rewards in 2024; we found no pattern affecting real hardware. |
-| Fit with how CashPilot runs it | Fair |  |
+| Fit with how CashPilot runs it | Fair | Own worker software, CashPilot cannot deploy or update it |
 | Traffic transparency | Unknown | Not documented on pages we read. |
 | Privacy | Unknown | Not reviewed. |
 | Identity checks | Unknown | Not documented. |
 | Support | Unknown | No pattern found. |
-| Earnings realism | Poor |  |
-| Longevity | Fair |  |
+| Earnings realism | Poor | Rewards came from emissions, GPUs sit idle most of the time |
+| Longevity | Fair | About 1.8 million fake GPUs in April 2024, CEO stepped down |
 
 **Cons**
 
@@ -947,13 +951,13 @@ What a cited con or pro may rest on:
 |---|---|---|
 | Payout record | Unknown | The NC token launched in January 2025; we found no pattern of reports about claims either way. |
 | Payout terms | Unknown | Sources disagree on whether earning now requires staking NC; not confirmed on Nodepay's own pages. |
-| Account safety | Fair |  |
-| Fit with how CashPilot runs it | Fair |  |
+| Account safety | Fair | Removed 300,000+ bot accounts, cancelled 17 billion points |
+| Fit with how CashPilot runs it | Fair | Browser extension, CashPilot cannot deploy or update it |
 | Traffic transparency | Unknown | Not documented on pages we read. |
 | Privacy | Unknown | Not reviewed. |
-| Identity checks | Fair |  |
+| Identity checks | Fair | Needed a Solana wallet plus verified email, Discord and X |
 | Support | Unknown | No pattern found. |
-| Earnings realism | Poor |  |
+| Earnings realism | Poor | Points convert to NC token, value rests on the token |
 | Longevity | Unknown | We did not confirm the company behind Nodepay. |
 
 **Cons**
@@ -976,14 +980,14 @@ What a cited con or pro may rest on:
 | Criterion | Verdict | Note |
 |---|---|---|
 | Payout record | Unknown | We found no host reports either way. |
-| Payout terms | Fair |  |
+| Payout terms | Fair | Each host locks a NOS stake sized to its GPU price |
 | Account safety | Unknown | No reports found. |
-| Fit with how CashPilot runs it | Fair |  |
+| Fit with how CashPilot runs it | Fair | Own host software, CashPilot cannot deploy or update it |
 | Traffic transparency | Unknown | Not documented on pages we read. |
 | Privacy | Unknown | Not reviewed. |
 | Identity checks | Unknown | Payouts go to a Solana wallet; we did not find other requirements. |
 | Support | Unknown | No pattern found. |
-| Earnings realism | Fair |  |
+| Earnings realism | Fair | Paid in NOS, dollar value moves with token and demand |
 | Longevity | Unknown | Not checked on a primary source. |
 
 **Cons**
@@ -1005,9 +1009,9 @@ What a cited con or pro may rest on:
 | Criterion | Verdict | Note |
 |---|---|---|
 | Payout record | Unknown | We found no independent payout reports; the testimonials on its site are its own. |
-| Payout terms | Good |  |
+| Payout terms | Good | PayPal, crypto and gift cards from a $3 minimum |
 | Account safety | Unknown | No reports found. |
-| Fit with how CashPilot runs it | Fair |  |
+| Fit with how CashPilot runs it | Fair | Own desktop app, CashPilot cannot deploy or update it |
 | Traffic transparency | Unknown | Not documented on pages we read. |
 | Privacy | Unknown | Not reviewed. |
 | Identity checks | Unknown | Not documented. |
@@ -1033,8 +1037,8 @@ What a cited con or pro may rest on:
 |---|---|---|
 | Payout record | Unknown | ProxyRack's Trustpilot reviews are mostly from proxy buyers; one peer reports payouts within three days and warns against deleting devices while a payout is pending. Not enough to judge. |
 | Payout terms | Unknown | Third-party reviews disagree on the minimum ($5 or $20) and the help page did not load for us. |
-| Account safety | Fair |  |
-| Fit with how CashPilot runs it | Good |  |
+| Account safety | Fair | Removing a device takes its earnings off your account |
+| Fit with how CashPilot runs it | Good | Own Docker image, proxyrack/pop, datacentre IPs accepted |
 | Traffic transparency | Unknown | We could not load the peer program's terms. |
 | Privacy | Unknown | The client is closed source; we could not load the privacy terms. |
 | Identity checks | Unknown | Not documented on pages we could load. |
@@ -1058,10 +1062,10 @@ What a cited con or pro may rest on:
 
 | Criterion | Verdict | Note |
 |---|---|---|
-| Payout record | Good |  |
+| Payout record | Good | Late-2026 reviews report quick PayPal cash-outs, one failed |
 | Payout terms | Unknown | Rewards go through Salad's own storefront to PayPal or gift cards, with no crypto. Trustpilot's summary mentions regional payment problems, and two reviewers describe two different ones; that is below our user-reports threshold. |
 | Account safety | Unknown | No pattern found. |
-| Fit with how CashPilot runs it | Fair |  |
+| Fit with how CashPilot runs it | Fair | Own desktop app, CashPilot cannot deploy or update it |
 | Traffic transparency | Unknown | Salad rents your GPU to its cloud customers; we did not find how they are checked. |
 | Privacy | Unknown | Not reviewed. |
 | Identity checks | Unknown | Not documented on pages we read. |
@@ -1086,15 +1090,15 @@ What a cited con or pro may rest on:
 | Criterion | Verdict | Note |
 |---|---|---|
 | Payout record | Unknown | No token has launched, so nothing has been paid out to judge. |
-| Payout terms | Poor |  |
+| Payout terms | Poor | No token, launch date or conversion rate announced |
 | Account safety | Unknown | No reports found. |
-| Fit with how CashPilot runs it | Fair |  |
+| Fit with how CashPilot runs it | Fair | Own app or extension, CashPilot cannot deploy or update it |
 | Traffic transparency | Unknown | Not documented on pages we read. |
 | Privacy | Unknown | Not reviewed. |
 | Identity checks | Unknown | Not documented. |
 | Support | Unknown | Chrome Web Store reviews report login and connection problems; we found no pattern about tickets. |
-| Earnings realism | Poor |  |
-| Longevity | Fair |  |
+| Earnings realism | Poor | Sentry Node points ended 28 August 2025, no rewards now |
+| Longevity | Fair | Funding round in June 2025, a young project |
 
 **Cons**
 
@@ -1115,15 +1119,15 @@ What a cited con or pro may rest on:
 
 | Criterion | Verdict | Note |
 |---|---|---|
-| Payout record | Fair |  |
+| Payout record | Fair | Reviewers report they cannot bridge or send NODL after zkSync |
 | Payout terms | Unknown | Not documented on pages we read. |
 | Account safety | Unknown | No reports found. |
-| Fit with how CashPilot runs it | Fair |  |
+| Fit with how CashPilot runs it | Fair | Own phone app, CashPilot cannot deploy or update it |
 | Traffic transparency | Unknown | Not documented on pages we read. |
 | Privacy | Unknown | The app uses Bluetooth in the background; we did not review its privacy policy. |
 | Identity checks | Unknown | Not documented. |
 | Support | Unknown | Reviewers report unanswered messages; we could not confirm a pattern. |
-| Earnings realism | Poor |  |
+| Earnings realism | Poor | One reviewer earned about $3 over three to four years |
 | Longevity | Unknown | Not checked on a primary source. |
 
 **Cons**
@@ -1145,14 +1149,14 @@ What a cited con or pro may rest on:
 | Criterion | Verdict | Note |
 |---|---|---|
 | Payout record | Unknown | We found no recent pattern of reports either way. |
-| Payout terms | Fair |  |
+| Payout terms | Fair | Old reports of a 255 UPT minimum and 55 UPT fee |
 | Account safety | Unknown | No reports found. |
-| Fit with how CashPilot runs it | Fair |  |
+| Fit with how CashPilot runs it | Fair | Own app or extension, CashPilot cannot deploy or update it |
 | Traffic transparency | Unknown | Not documented on pages we read. |
 | Privacy | Unknown | Not reviewed. |
 | Identity checks | Unknown | Not documented. |
 | Support | Unknown | One Google Play review reports an unanswered ticket; one is not a pattern. |
-| Earnings realism | Poor |  |
+| Earnings realism | Poor | Paid in UPT tokens, value reported very low |
 | Longevity | Unknown | We did not confirm the company behind UpRock. |
 
 **Cons**
@@ -1174,14 +1178,14 @@ What a cited con or pro may rest on:
 | Criterion | Verdict | Note |
 |---|---|---|
 | Payout record | Unknown | No token has been paid out yet. |
-| Payout terms | Poor |  |
+| Payout terms | Poor | Earns points, no token distribution confirmed by October 2026 |
 | Account safety | Unknown | No reports found. |
-| Fit with how CashPilot runs it | Fair |  |
+| Fit with how CashPilot runs it | Fair | Browser extension, CashPilot cannot deploy or update it |
 | Traffic transparency | Unknown | Not documented on pages we read. |
 | Privacy | Unknown | Not reviewed. |
 | Identity checks | Unknown | Not documented. |
 | Support | Unknown | No pattern found. |
-| Earnings realism | Poor |  |
+| Earnings realism | Poor | Points have no settled value until a token launches |
 | Longevity | Unknown | DAWN is built by Andrena, a named and funded US company; we did not confirm how long it has run. |
 
 **Cons**
@@ -1205,12 +1209,12 @@ What a cited con or pro may rest on:
 | Payout record | Unknown | We found no recent pattern of reports either way. |
 | Payout terms | Unknown | Not documented on pages we read. |
 | Account safety | Unknown | No reports found. |
-| Fit with how CashPilot runs it | Fair |  |
+| Fit with how CashPilot runs it | Fair | Own router hardware, CashPilot cannot deploy or update it |
 | Traffic transparency | Unknown | Not documented on pages we read. |
 | Privacy | Unknown | Not reviewed. |
 | Identity checks | Unknown | Not documented. |
 | Support | Unknown | No pattern found. |
-| Earnings realism | Poor |  |
+| Earnings realism | Poor | Paid in DPR, tied to a slow-growing credit score |
 | Longevity | Unknown | Not checked on a primary source. |
 
 **Cons**
@@ -1233,7 +1237,7 @@ What a cited con or pro may rest on:
 | Payout record | Unknown | We found no user reports or payout proof. |
 | Payout terms | Unknown | Our catalog lists crypto from $5; a third-party listing says Litecoin from $10. Not confirmed on Spide's own pages. |
 | Account safety | Unknown | No reports found. |
-| Fit with how CashPilot runs it | Fair |  |
+| Fit with how CashPilot runs it | Fair | Own app only, CashPilot cannot deploy or update it |
 | Traffic transparency | Unknown | Spide calls itself a proxy network; it does not say who the buyers are. |
 | Privacy | Unknown | Not reviewed. |
 | Identity checks | Unknown | Not documented. |
@@ -1258,14 +1262,14 @@ What a cited con or pro may rest on:
 | Criterion | Verdict | Note |
 |---|---|---|
 | Payout record | Unknown | No transferable token has been paid out yet. |
-| Payout terms | Poor |  |
+| Payout terms | Poor | Points become non-transferable $AGENTIC, not $TENEO |
 | Account safety | Unknown | No reports found. |
-| Fit with how CashPilot runs it | Fair |  |
+| Fit with how CashPilot runs it | Fair | Browser extension, CashPilot cannot deploy or update it |
 | Traffic transparency | Unknown | Not documented on pages we read. |
 | Privacy | Unknown | Not reviewed. |
 | Identity checks | Unknown | Not documented. |
 | Support | Unknown | No pattern found. |
-| Earnings realism | Poor |  |
+| Earnings realism | Poor | No $TENEO launch date confirmed, Q2 2026 target passed |
 | Longevity | Unknown | We did not confirm the company behind Teneo. |
 
 **Cons**
@@ -1289,7 +1293,7 @@ What a cited con or pro may rest on:
 | Payout record | Unknown | We found no pattern of reports either way. |
 | Payout terms | Unknown | Elite edge nodes need at least 10,000 TFUEL staked; we did not find the full payout terms. |
 | Account safety | Unknown | No reports found. |
-| Fit with how CashPilot runs it | Fair |  |
+| Fit with how CashPilot runs it | Fair | Own desktop app, CashPilot cannot deploy or update it |
 | Traffic transparency | Unknown | Not documented on pages we read. |
 | Privacy | Unknown | Not reviewed. |
 | Identity checks | Unknown | Not documented. |
@@ -1316,12 +1320,12 @@ What a cited con or pro may rest on:
 | Payout record | Unknown | We found no pattern of user reports either way. |
 | Payout terms | Unknown | Earlier reward rules locked 40% of daily rewards; those rules are marked replaced and we did not find the current ones. |
 | Account safety | Unknown | No reports found. |
-| Fit with how CashPilot runs it | Fair |  |
+| Fit with how CashPilot runs it | Fair | Own app or extension, CashPilot cannot deploy or update it |
 | Traffic transparency | Unknown | Not documented on pages we read. |
 | Privacy | Unknown | Not reviewed. |
 | Identity checks | Unknown | Not documented. |
 | Support | Unknown | No pattern found. |
-| Earnings realism | Poor |  |
+| Earnings realism | Poor | No task means no earnings, rewards in TNT |
 | Longevity | Unknown | We did not confirm the company behind Titan. |
 
 **Cons**

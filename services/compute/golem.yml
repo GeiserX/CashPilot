@@ -82,8 +82,13 @@ rating:
     payout_record: Payments are on-chain per task; we have no provider of our own to report.
     payout_terms: Payments are in GLM on Polygon; we did not find fees worth grading.
     account_safety: There is no account to ban.
+    terms_fit: You install the agent yourself, CashPilot cannot update it
     traffic_transparency: Requestors run tasks on your machine; we did not find how they are checked.
+    privacy: Open-source provider agent, yagna (GPL-3.0)
+    identity_checks: No account, just a payout wallet
     support: No pattern found.
+    earnings_realism: No protocol revenue and low demand, paid in GLM
+    longevity: Network running for about ten years
   cons:
   - text: A 2026 review finds Golem with no protocol revenue and low demand, so providers earn little
       and are paid in GLM.

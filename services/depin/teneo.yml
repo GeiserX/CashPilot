@@ -79,11 +79,14 @@ rating:
     longevity: unknown
   notes:
     payout_record: No transferable token has been paid out yet.
+    payout_terms: Points become non-transferable $AGENTIC, not $TENEO
     account_safety: No reports found.
+    terms_fit: Browser extension, CashPilot cannot deploy or update it
     traffic_transparency: Not documented on pages we read.
     privacy: Not reviewed.
     identity_checks: Not documented.
     support: No pattern found.
+    earnings_realism: No $TENEO launch date confirmed, Q2 2026 target passed
     longevity: We did not confirm the company behind Teneo.
   cons:
   - text: Teneo says points will be consolidated into $AGENTIC, a non-transferable reward token, not the

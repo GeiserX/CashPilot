@@ -10,7 +10,8 @@ Three rules hold the design together:
 * **Nobody types a grade.** The rating block has no grade, override, sponsor or
   featured field, and ``validate`` rejects any key it does not know, so the
   only way to move a grade is to change a verdict and cite why.
-* **There is no A.** The bands stop at B, and the reason is published.
+* **A is the top tier.** It needs 90% of the maximum score; the bands and
+  their thresholds are published in the rules file.
 * **Missing evidence never reads as good.** ``unknown`` scores the same as
   ``poor``, four unknowns cap the grade, and a service with no block is
   "Not rated yet", never a neutral grade. Same stance as app/disclosure.py.
@@ -34,7 +35,7 @@ RULES_PATH = Path(__file__).resolve().parent.parent / "services" / "_ratings.yml
 ALLOWED_KEYS = frozenset({"reviewed_on", "verdicts", "notes", "cons", "pros"})
 VERDICTS = ("good", "fair", "poor", "unknown")
 #: Best first. A ceiling of D means the grade is D or anything after it.
-GRADE_ORDER = ("B", "C", "D", "F")
+GRADE_ORDER = ("A", "B", "C", "D", "F")
 NOT_RATED = "Not rated yet"
 
 
@@ -212,10 +213,13 @@ def for_service(service: dict[str, Any] | None, *, rules: dict[str, Any] | None 
     verdicts = {key: raw.get(key, "unknown") for key in titles}
     score = sum(points.get(v, 0) for v in verdicts.values())
     maximum = max(points.values()) * len(verdicts)
-    percent = round(100 * score / maximum, 1) if maximum else 0.0
+    exact = 100 * score / maximum if maximum else 0.0
+    # Rounded for display only: a band compares the exact share, so 89.96%
+    # never rounds up into A.
+    percent = round(exact, 1)
     unknowns = sum(1 for v in verdicts.values() if v == "unknown")
 
-    band = _band(percent, rules)
+    band = _band(exact, rules)
     grade = band
     applied: list[dict[str, str]] = []
     for cap in rules["caps"]:
