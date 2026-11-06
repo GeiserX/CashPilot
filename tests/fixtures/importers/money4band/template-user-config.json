@@ -1,0 +1,28 @@
+{
+  "user": {"Nickname": "yourNickname", "email": "your@mail.com"},
+  "apps": {
+    "earnapp": {"enabled": false, "uuid": "sdk-node-yourEARNAPPDeviceUUID"},
+    "honeygain": {"enabled": false, "email": "yourHONEYGAINMail", "password": "yourHONEYGAINPw"},
+    "iproyalpawns": {"enabled": false, "email": "yourIPROYALPAWNSMail", "password": "yourIPROYALPAWNSPw"},
+    "packetstream": {"enabled": false, "cid": "yourPACKETSTREAMCID"},
+    "traffmonetizer": {"enabled": false, "token": "yourTRAFFMONETIZERToken"},
+    "repocket": {"enabled": false, "email": "yourREPOCKETMail", "apikey": "yourREPOCKETAPIKey"},
+    "earnfm": {"enabled": false, "apikey": "yourEARNFMAPIKey"},
+    "proxyrack": {"enabled": false, "apikey": "yourPROXYRACKAPIKey", "uuid": "yourPROXYRACKDeviceUUID"},
+    "proxylite": {"enabled": false, "userid": "yourPROXYLITEUserID"},
+    "bitping": {"enabled": false, "email": "yourBITPINGMail", "password": "yourBITPINGPw"},
+    "packetshare": {"enabled": false, "email": "yourPACKETSHAREMail", "password": "yourPACKETSHAREPw"},
+    "speedshare": {"enabled": false, "code": "yourSPEEDSHARECode", "uuid": "yourSPEEDSHAREDeviceUUID"},
+    "grass": {"enabled": false, "email": "yourGRASSMail", "password": "yourGRASSPw"},
+    "gradient": {"enabled": false, "email": "yourGRADIENTMail", "password": "yourGRADIENTPw"},
+    "dawn": {"enabled": false, "email": "yourDAWNMail", "password": "yourDAWNPw", "ports": [5000]},
+    "teneo": {"enabled": false, "email": "yourTENEOMail", "password": "yourTENEOPw"},
+    "mystnode": {"enabled": false, "ports": [4449]},
+    "peer2profit": {"enabled": false, "email": "yourPEER2PROFITMail"},
+    "proxybase": {"enabled": false, "userid": "yourPROXYBASEUserID"},
+    "wipter": {"enabled": false, "email": "yourWIPTERMail", "password": "yourWIPTERPw", "ports": [5900, 6080]}
+  },
+  "m4b_dashboard": {"enabled": false, "ports": [8081]},
+  "proxies": {"enabled": false, "url": "", "url_example": "protocol://username:password@ip:port"},
+  "notifications": {"enabled": false, "url": "", "url_example": "yourApp:yourToken@yourWebHook"}
+}

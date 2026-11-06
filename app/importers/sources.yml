@@ -129,8 +129,8 @@ tools:
     not_carried:
       DEVICE_NAME: "CashPilot names each device after the worker it runs on."
       device_info: "CashPilot names each device after the worker it runs on."
-      STACK_PROXY*: "Proxies are not imported. Each CashPilot worker uses its own connection."
-      proxies: "Proxies are not imported. Each CashPilot worker uses its own connection."
+      STACK_PROXY*: "Proxies are not imported. Add each one in the Proxies section of the Fleet page."
+      proxies: "Proxies are not imported. Add each one in the Proxies section of the Fleet page."
       SHOUTRRR_URL: "Update notifications are not imported."
       WATCHTOWER_NOTIFICATION_*: "Update notifications are not imported."
       notifications: "Update notifications are not imported."
@@ -268,7 +268,7 @@ tools:
     ignore_json: []
     not_carried:
       DEVICE_NAME: "CashPilot names each device after the worker it runs on."
-      USE_PROXIES: "Proxies are not imported. Each CashPilot worker uses its own connection."
-      proxies.txt: "Proxies are not imported. Each CashPilot worker uses its own connection."
+      USE_PROXIES: "Proxies are not imported. Add each one in the Proxies section of the Fleet page."
+      proxies.txt: "Proxies are not imported. Add each one in the Proxies section of the Fleet page."
       BROWSER_USERNAME: "This is InternetIncome's own browser login, which CashPilot does not need."
       BROWSER_PASSWORD: "This is InternetIncome's own browser login, which CashPilot does not need."

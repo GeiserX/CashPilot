@@ -37,7 +37,7 @@ used and the one you linked to your account. The other lines belonged to proxy
 copies, and the page tells you how many it left out.
 
 InternetIncome runs every value through the shell
-([line 1374](https://github.com/engageub/InternetIncome/blob/db9338ab5a77539db8420476742af647b6cf82e5/internetIncome.sh#L1374)).
+([line 1375](https://github.com/engageub/InternetIncome/blob/db9338ab5a77539db8420476742af647b6cf82e5/internetIncome.sh#L1375)).
 A value in single quotes is taken as written, as the comments in
 [properties.conf](https://github.com/engageub/InternetIncome/blob/db9338ab5a77539db8420476742af647b6cf82e5/properties.conf)
 advise. A value outside single quotes that holds `$`, a backtick, a space or
@@ -91,8 +91,8 @@ listed by name as not read.
 - **`DEVICE_NAME`.** CashPilot names each device after the worker it runs on, so
   two workers never report the same name. Your old devices stay listed as
   offline in each provider's dashboard until you remove them there.
-- **Proxies** (`USE_PROXIES`, `proxies.txt`). Each CashPilot worker uses its
-  own connection.
+- **Proxies** (`USE_PROXIES`, `proxies.txt`). Add each one in the Proxies
+  section of the Fleet page; see [Proxied copies](../proxies.md).
 - **`BROWSER_USERNAME` and `BROWSER_PASSWORD`**, InternetIncome's own browser
   login.
 
