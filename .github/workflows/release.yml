@@ -48,8 +48,16 @@ jobs:
         run: uv sync --frozen --extra dev
       - name: Lint
         run: uv run ruff check . && uv run ruff format --check .
+      # The pin-drift test is left out here, and only here. A minor release
+      # opens the PR that moves the compose pins to its series, and until that
+      # PR merges the pins are one series behind. Any app/ merge in that window
+      # ran this job against the old pins, failed, and shipped nothing (#574
+      # waited for v1.70.0). The release fixes the drift itself, so gating the
+      # release on it blocks the fix; test.yml still runs it on every PR.
       - name: Test
-        run: uv run pytest
+        run: >-
+          uv run pytest
+          --deselect tests/test_compose_image_pins.py::TestTheComposePinTracksReleases::test_the_pin_matches_the_newest_released_series
 
   release:
     needs: ci

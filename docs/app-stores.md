@@ -1,13 +1,17 @@
 # App stores
 
 You can install CashPilot from the app store of several home-server systems.
-Each listing installs two containers: the dashboard (`drumsergio/cashpilot`)
-and the worker (`drumsergio/cashpilot-worker`). The listings do not yet include
-the socket proxy that `docker-compose.yml` runs, so there the worker mounts the
-Docker socket itself to start and stop the service containers.
+Each listing installs the dashboard (`drumsergio/cashpilot`) and the worker
+(`drumsergio/cashpilot-worker`), which starts and stops the service
+containers. Only the CasaOS and Runtipi packages in this repository also
+install the Docker socket proxy from `docker-compose.yml`, so their worker
+never holds the raw Docker socket. The Unraid templates, the TrueNAS app and
+the package in the open CasaOS app store pull request still mount the Docker
+socket in the worker directly.
 
 Whichever store you use, keep the dashboard on your LAN or VPN. It can command
-the worker, and the worker's Docker socket is root on the host.
+the worker, and the worker drives Docker on the host. Where the worker holds
+the socket itself, that is root on the host.
 
 ## Listed today
 
@@ -41,6 +45,16 @@ https://github.com/IceWhaleTech/CasaOS-AppStore/pull/1088
 Until it is merged, install it as a custom app: in CasaOS choose App Store,
 then Custom Install, then Import, and paste the contents of
 https://github.com/GeiserX/CashPilot/blob/main/contrib/app-stores/casaos/CashPilot/docker-compose.yml
+
+It needs CasaOS 0.4.5 or newer: from that release its app manager is built on
+Docker Compose 2.23, which reads the socket proxy's policy from the file.
+Older ones drop it, and the worker then cannot reach Docker.
+
+That file pins an exact release. Before you import it, set both image tags
+(`drumsergio/cashpilot` and `drumsergio/cashpilot-worker`) to the newest
+release from https://github.com/GeiserX/CashPilot/releases. The proxy policy
+in the file follows `main`; if the worker's status page says its policy is
+out of date, import the file again.
 
 ## Prepared, not yet submitted
 
