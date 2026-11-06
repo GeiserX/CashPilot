@@ -18,6 +18,7 @@ the file" and "you can see it at 24px" are different claims.
 from __future__ import annotations
 
 import re
+import tomllib
 from pathlib import Path
 
 import pytest
@@ -146,9 +147,9 @@ class TestTheWordmarkMatchesTheBanner:
 
 
 class TestTheDocsStillBuild:
-    def test_mkdocs_points_at_this_logo_and_stylesheet(self):
+    def test_the_docs_config_points_at_this_logo_and_stylesheet(self):
         """A perfect logo the site does not load is not a fix."""
-        config = (ROOT / "mkdocs.yml").read_text(encoding="utf-8")
-        assert "logo: images/logo.svg" in config
-        assert "favicon: images/icon.svg" in config
-        assert "stylesheets/theme.css" in config
+        config = tomllib.loads((ROOT / "zensical.toml").read_text(encoding="utf-8"))["project"]
+        assert config["theme"]["logo"] == "images/logo.svg"
+        assert config["theme"]["favicon"] == "images/icon.svg"
+        assert "stylesheets/theme.css" in config["extra_css"]

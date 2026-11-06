@@ -23,8 +23,10 @@ Two things here are load-bearing and easy to undo by accident:
 
 from __future__ import annotations
 
+import json
 import re
 import subprocess
+import tomllib
 from pathlib import Path
 
 import pytest
@@ -259,29 +261,31 @@ class TestTheChangelogStaysOutOfTheDocsSite:
     against the one they are about to pull will look. Two independent reasons
     reinforce it: their links are written relative to the REPOSITORY root
     (``../CHANGELOG.md``, ``docs/guides/proxybase.md``), so publishing them makes
-    ``mkdocs build --strict`` fail on seven broken links.
+    the strict docs build fail on seven broken links.
     """
 
-    MKDOCS = ROOT / "mkdocs.yml"
+    ZENSICAL = ROOT / "zensical.toml"
+
+    def _project(self) -> dict:
+        return tomllib.loads(self.ZENSICAL.read_text(encoding="utf-8"))["project"]
 
     def _excluded(self) -> list[str]:
-        text = self.MKDOCS.read_text(encoding="utf-8")
-        block = text[text.index("exclude_docs:") :]
-        block = block[: block.index("\nnav:")]
-        return [ln.strip() for ln in block.splitlines()[1:] if ln.strip() and not ln.strip().startswith("#")]
+        block = self._project()["exclude_docs"]
+        return [ln.strip() for ln in block.splitlines() if ln.strip() and not ln.strip().startswith("#")]
+
+    def _nav(self) -> str:
+        return json.dumps(self._project()["nav"])
 
     def test_the_archive_is_excluded_from_the_site(self):
         assert "changelog-0.x-handwritten.md" in self._excluded()
 
     def test_the_nav_does_not_link_it(self):
         """exclude_docs plus a nav entry is a build error, not a silent skip."""
-        text = self.MKDOCS.read_text(encoding="utf-8")
-        nav = text[text.index("\nnav:") :]
+        nav = self._nav()
         assert "changelog-0.x-handwritten" not in nav
 
     def test_neither_changelog_file_lives_under_docs_nav(self):
-        text = self.MKDOCS.read_text(encoding="utf-8")
-        nav = text[text.index("\nnav:") :]
+        nav = self._nav()
         assert "CHANGELOG" not in nav
         assert "UPGRADING" not in nav
 

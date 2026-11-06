@@ -18,7 +18,7 @@ Self-hosted passive income platform with a web UI that guides setup, deploys Doc
 | Chart.js | Frontend earnings charts |
 | su-exec | Drops root to the `cashpilot` user after entrypoint setup (Dockerfile) |
 | pytest | Testing |
-| MkDocs | Documentation |
+| Zensical | Documentation site (`zensical.toml`) |
 
 ## Development
 
@@ -34,8 +34,11 @@ uv run pytest tests/
 # Run dev environment
 docker compose up -d
 
-# Build docs
-mkdocs serve
+# Build docs (separate install: python -m pip install -r docs/requirements-docs.txt)
+python -m zensical serve
+# What CI runs: the strict build, then the checks it does not make
+python -m zensical build --clean --strict
+python -I .github/scripts/site-check.py site
 ```
 
 Two containers: `cashpilot-ui` (port 8080, web dashboard + earnings collection) and `cashpilot-worker` (port 8081, Docker agent requiring socket access).
