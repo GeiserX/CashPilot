@@ -43,10 +43,10 @@ unreadable credentials.
 
 There are two other volumes, and neither is precious:
 
-- `cashpilot_fleet` (`/fleet/.fleet_key`): the shared enrollment key. Shared by
+- `cashpilot_fleet_owned` (`/fleet/.fleet_key`): the shared enrollment key. Shared by
   the UI and its co-located worker. If you lose it, set `CASHPILOT_API_KEY`
   explicitly or let it regenerate and re-enroll the workers.
-- `cashpilot_worker_data` (`/data/.worker_key`): that worker's own issued key.
+- `cashpilot_worker_data_owned` (`/data/.worker_key`): that worker's own issued key.
   Lose it and the worker re-enrolls on its next heartbeat. Nothing is destroyed.
 
     The worker's `/data` is a **separate volume from the UI's, deliberately**.

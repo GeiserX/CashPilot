@@ -139,7 +139,7 @@ the compose folder through the proxy.
 ## Why the UI and worker have separate data directories
 
 The shipped compose files give each its own `/data` volume (`cashpilot_data`
-for the UI, `cashpilot_worker_data` for the worker), and that is a security
+for the UI, `cashpilot_worker_data_owned` for the worker), and that is a security
 boundary, not tidiness.
 
 The worker drives Docker. With the raw socket **that is root on the host**:
