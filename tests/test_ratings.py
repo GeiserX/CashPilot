@@ -122,6 +122,16 @@ class TestBands:
         thin = [c for c in RULES["caps"] if c["key"] == "thin_evidence"]
         assert all(c["min_unknown"] > 0 for c in thin), "a zero threshold would cap everyone"
 
+    def test_a_band_compares_the_exact_share_not_the_rounded_one(self):
+        # 9 good and 1 fair at these points is 99.992%, shown as 100.0%. With A
+        # from 99.995% the score is short of it, whatever the display says.
+        rules = copy.deepcopy(RULES)
+        rules["points"] = {"good": 10000, "fair": 9992, "poor": 0, "unknown": 0}
+        rules["bands"] = [{"grade": "A", "min_percent": 99.995}] + [b for b in RULES["bands"] if b["grade"] != "A"]
+        result = ratings.for_service(_svc(_rating(support="fair")), rules=rules)
+        assert result["percent"] == 100.0
+        assert result["grade"] == "B"
+
     def test_a_score_below_every_band_is_the_lowest_grade(self):
         rules = {**RULES, "bands": [{"grade": "B", "min_percent": 75}]}
         assert ratings._band(10.0, rules) == "F"

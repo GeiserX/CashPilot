@@ -6,9 +6,9 @@ Nobody types a grade. Each provider's entry in the catalog records a verdict per
 
 ## How to read a grade
 
-A grade is our reading of the evidence, so it is a bit subjective: someone weighing the same sources could land a grade apart. Treat it as a guide and read the cons.
+A grade is our reading of the evidence, so it is a bit subjective: someone weighing the same sources could reasonably give a different grade. Treat it as a guide and read the cons.
 
-- **A**: the top tier, 90% of the score or more. No provider reaches it today.
+- **A**: the top tier, 90% of the score or more.
 - **B**: the provider does most things well and the evidence says so. Still read the cons.
 - **C**: real drawbacks, or too little evidence to say more.
 - **D**: serious drawbacks, or most of the criteria could not be checked.

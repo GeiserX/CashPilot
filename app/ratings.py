@@ -213,10 +213,13 @@ def for_service(service: dict[str, Any] | None, *, rules: dict[str, Any] | None 
     verdicts = {key: raw.get(key, "unknown") for key in titles}
     score = sum(points.get(v, 0) for v in verdicts.values())
     maximum = max(points.values()) * len(verdicts)
-    percent = round(100 * score / maximum, 1) if maximum else 0.0
+    exact = 100 * score / maximum if maximum else 0.0
+    # Rounded for display only: a band compares the exact share, so 89.96%
+    # never rounds up into A.
+    percent = round(exact, 1)
     unknowns = sum(1 for v in verdicts.values() if v == "unknown")
 
-    band = _band(percent, rules)
+    band = _band(exact, rules)
     grade = band
     applied: list[dict[str, str]] = []
     for cap in rules["caps"]:
