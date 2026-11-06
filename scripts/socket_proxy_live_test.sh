@@ -68,19 +68,17 @@ else
     }
 fi
 
-LEGACY_CLEANUP=$(cat <<'SH'
-for spec in "iptables-legacy nat CP-POST POSTROUTING" "iptables-legacy mangle CP-FWD FORWARD" "iptables-legacy mangle CP-IN INPUT" "ip6tables-legacy mangle CP6-FWD FORWARD" "ip6tables-legacy mangle CP6-IN INPUT"; do
+# A plain string, not a here-document in $(...): bash 3.2 (macOS) misparses that.
+LEGACY_CLEANUP='for spec in "iptables-legacy nat CP-POST POSTROUTING" "iptables-legacy mangle CP-FWD FORWARD" "iptables-legacy mangle CP-IN INPUT" "ip6tables-legacy mangle CP6-FWD FORWARD" "ip6tables-legacy mangle CP6-IN INPUT"; do
     set -- $spec
     command -v "$1" >/dev/null 2>&1 || continue
-    "$1" -w -t "$2" -S "$4" 2>/dev/null | grep -- "-j $3\$" | sed 's/^-A /-D /' | while read -r rule; do
+    "$1" -w -t "$2" -S "$4" 2>/dev/null | grep -- "-j $3\$" | sed "s/^-A /-D /" | while read -r rule; do
         eval "\"\$1\" -w -t \"\$2\" $rule"
     done
     "$1" -w -t "$2" -F "$3" 2>/dev/null
     "$1" -w -t "$2" -X "$3" 2>/dev/null
 done
-true
-SH
-)
+true'
 
 cleanup() {
     [ "${KEEP:-0}" = 1 ] && return
