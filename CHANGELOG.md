@@ -10,6 +10,35 @@ Every release, grouped by what changed. Generated from commit history.
 Releases before `1.0.0` were recorded by hand and are kept verbatim in
 [docs/changelog-0.x-handwritten.md](docs/changelog-0.x-handwritten.md).
 
+## [1.70.0] - 2026-11-06
+
+### Documentation
+
+- Compare CashPilot with five other stacks, every cell sourced and checkable (#568)
+- Say the public-IP drop needs detection on, even with CASHPILOT_EGRESS_IP set (#589)
+
+### Features
+
+- Fence new installs' earners off the LAN, host and tailnet by default (#574)
+
+### Fixes
+
+- Fence earners in Docker's "default" network mode and count a second network as exposed (#590)
+
+### Maintenance
+
+- Pin the examples to 1.69 (#587)
+
+## [1.69.0] - 2026-11-06
+
+### Documentation
+
+- Regenerate CHANGELOG.md (#581)
+
+### Features
+
+- Earn on more exit IPs by running extra copies of an earner through a proxy (#576)
+
 ## [1.68.1] - 2026-11-05
 
 ### Fixes
