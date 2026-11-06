@@ -10,6 +10,43 @@ Every release, grouped by what changed. Generated from commit history.
 Releases before `1.0.0` were recorded by hand and are kept verbatim in
 [docs/changelog-0.x-handwritten.md](docs/changelog-0.x-handwritten.md).
 
+## [1.68.1] - 2026-11-05
+
+### Fixes
+
+- Stop the catalog scrolling sideways in narrow windows now that it has a Grade column (#586)
+
+## [1.68.0] - 2026-11-05
+
+### Features
+
+- Grade every provider on published criteria so its real cons are visible before you sign up (#572)
+
+### Maintenance
+
+- Pin the examples to 1.67 (#582)
+
+## [1.67.0] - 2026-11-05
+
+### Features
+
+- Bring logins over from money4band, CashFactory and InternetIncome without retyping them (#571)
+
+### Maintenance
+
+- Pin the examples to 1.66 (#580)
+
+## [1.66.0] - 2026-11-05
+
+### Documentation
+
+- Let home-server users install CashPilot from their app store (#567)
+- Regenerate CHANGELOG.md (#579)
+
+### Features
+
+- Show what Mysterium and other host-network earners connect to, without new privileges (#573)
+
 ## [1.65.3] - 2026-11-05
 
 ### Documentation
