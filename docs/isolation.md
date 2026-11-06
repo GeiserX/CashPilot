@@ -46,13 +46,18 @@ How it works:
   detection. With detection off (`CASHPILOT_EGRESS_DETECT=off`), even with
   `CASHPILOT_EGRESS_IP` set, it can neither learn nor update the drop: one
   already in the table stays, unchanged, until the table is lost (a reboot or a
-  flush), and after that there is none. A starting worker looks the
+  flush), and after that there is none. This holds in the `on` mode only; with
+  `CASHPILOT_CONTAINER_NETWORK` set, the table keeps the NAT and none of the
+  drops (see [Modes](#modes)). A starting worker looks the
   address up before it writes the first table, a new address is fenced as soon
   as the worker sees it, and while a lookup fails the table keeps the address it
   already drops. A host whose first lookup after a reboot fails has no such
   drop until a lookup succeeds. On a static IP, setting `CASHPILOT_EGRESS_IP`
   to the router's public IPv4, with detection left on, closes that gap: the
-  worker then needs no lookup. It also never looks again, so if the address
+  worker then needs no lookup. The same value is the egress IP the fleet page
+  and the provider-limit warnings use, so behind a VPN whose exit address
+  differs, set it to the VPN's exit and block the router's own public address
+  with a router rule instead. The worker also never looks again, so if the address
   changes the drop stays on the old one and NAT loopback through the new one
   is open, with nothing reported; update the value and recreate the worker
   whenever the address changes. An IPv6 value gives no drop. Replies to published ports still go out, so Storj,
@@ -105,10 +110,10 @@ otherwise (older NAS kernels). Both write the same rules.
 
 | Mode | When | What happens |
 |---|---|---|
-| on | a new install, `CASHPILOT_ISOLATION=on`, the `cashpilot-isolated` network CashPilot created exists, an earner is still bound to it after Unraid removed it, or the worker recorded it in `/data/.isolation_on` | earners join the fenced network |
+| on | a new install, `CASHPILOT_ISOLATION=on`, the `cashpilot-isolated` network CashPilot created exists, an earner is still bound to it after Unraid removed it, or the worker recorded it in `.isolation_on` in its data folder (`CASHPILOT_DATA_DIR`, `/data` by default) | earners join the fenced network |
 | legacy | an upgraded install whose earners already sit on Docker's default bridge | nothing changes on upgrade; the fleet page offers **Turn on isolation** |
 | off | `CASHPILOT_ISOLATION=off` | Docker's default bridge, as before; earners left on the fenced network keep their internet until you redeploy them |
-| your own network | `CASHPILOT_CONTAINER_NETWORK` is set | that network, with your own rules, as before; CashPilot writes no table, except the NAT alone while earners are still on `cashpilot-isolated`, so they keep their internet until you redeploy them |
+| your own network | `CASHPILOT_CONTAINER_NETWORK` is set | that network, with your own rules, as before; CashPilot writes no table, except the NAT alone while earners are still on `cashpilot-isolated`, so they keep their internet, without the fence's drops, until you redeploy them |
 
 The mode lives in Docker and in the worker's `/data` (`.isolation_on`, written
 the first time the worker is on, deleted by `CASHPILOT_ISOLATION=off`), so losing
@@ -156,7 +161,8 @@ off button on purpose: one click should not take the fence down.
 - Only the one public IPv4 the worker sees as its egress is dropped. With a
   second WAN or more public IPs, the others can still loop back through NAT
   into port-forwarded LAN services or the router's own page. Block them on the
-  router or use a VLAN.
+  router, or put the earners on a VLAN whose firewall rule lets it reach the
+  internet but not the LAN or the router's other public addresses.
 - A LAN on a public range behind another router (not directly connected to the
   host) is not dropped. Use a VLAN or your own rules.
 - Tested on Linux Docker 29 with nf_tables (colima on macOS, the same VM model
