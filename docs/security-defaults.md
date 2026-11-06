@@ -213,6 +213,27 @@ proxy stands between the worker and root.
 - Pull images from any registry (custom services need it) and set namespaced
   sysctls on its own containers (the tunnel sidecar needs it).
 
+**What that means for the default install.** `docker-compose.yml` runs the UI
+and a worker on the same host. A compromised worker there can read the UI's
+`/data` (through a file read, or a new container that mounts
+`cashpilot_data`), including `.fernet_key`, the key that decrypts every
+service login CashPilot stores. It can also read `CASHPILOT_SECRET_KEY`, `CASHPILOT_API_KEY` and
+`CASHPILOT_ADMIN_API_KEY` from the UI container's environment when they are set
+there. Even where the proxy keeps the worker off the host's root (both bind
+variables unset, no other socket-holding container, as above), it does not keep
+it out of the UI. To keep the stored logins out of a worker's reach, run the UI
+on a host with no worker and put the earners behind
+`docker-compose.worker.yml` on other hosts, as [Fleet](fleet.md) describes.
+A worker still receives the logins of the services you deploy to it, so a
+compromised worker leaks those, but not the rest. That holds only while
+`CASHPILOT_ADMIN_API_KEY` differs from `CASHPILOT_API_KEY`: every worker host
+holds the shared key, and the same value would give it the owner role. A worker
+that has not enrolled yet, or lost its own key, still accepts the shared key,
+so until then a compromised worker that can reach it can stop or remove its
+services. Commands and heartbeats both travel over plain HTTP, carrying the
+worker's key and those logins, so keep both directions on a LAN you trust or
+inside a VPN such as Tailscale, never on the open internet.
+
 sockguard can also scope every call to containers, volumes and networks that
 carry its owner label, which would close the first three. CashPilot does not
 turn that on yet: labels cannot be added to an existing volume, so every
