@@ -10,10 +10,20 @@ Every release, grouped by what changed. Generated from commit history.
 Releases before `1.0.0` were recorded by hand and are kept verbatim in
 [docs/changelog-0.x-handwritten.md](docs/changelog-0.x-handwritten.md).
 
-## Unreleased
+## [1.72.7] - 2026-11-06
+
+### CI
+
+- Bump github/codeql-action (#614)
+
+### Dependencies
+
+- Bump python-multipart (#612)
+- Bump pytest-asyncio from 1.4.1 to 1.4.1.post1 (#613)
 
 ### Documentation
 
+- Regenerate CHANGELOG.md (#617)
 - Regenerate CHANGELOG.md (#616)
 
 ## [1.72.6] - 2026-11-06
