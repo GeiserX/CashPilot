@@ -4328,8 +4328,10 @@ async def _release_capped_copies(proxy: dict[str, Any]) -> list[str]:
     _drop_proxy_cap_bell(proxy["id"])
     started: list[str] = []
     for copy in await database.list_proxied_copies(proxy["id"]):
-        if not copy.get("stopped_by_cap"):
+        key = (proxy["id"], copy["worker_id"], copy["slug"])
+        if not copy.get("stopped_by_cap") or key in _proxy_cap_starting:
             continue
+        _proxy_cap_starting.add(key)
         try:
             await _start_proxied_copy(proxy, copy["worker_id"], copy["slug"])
             await database.set_proxied_copy_capped(proxy["id"], copy["worker_id"], copy["slug"], False)
@@ -4338,6 +4340,8 @@ async def _release_capped_copies(proxy: dict[str, Any]) -> list[str]:
             logger.warning(
                 "Could not restart %s through proxy %s after a reset: %s", copy["slug"], proxy["id"], exc.detail
             )
+        finally:
+            _proxy_cap_starting.discard(key)
     return started
 
 
@@ -4366,6 +4370,9 @@ async def _run_proxy_cap_resets() -> None:
 _proxy_cap_unstopped: dict[int, dict[tuple[int, str], str]] = {}
 # Stops already on their way, so a slow worker is not sent a second one.
 _proxy_cap_stopping: set[tuple[int, int, str]] = set()
+# Starts of copies the cap stopped (by a reset or a heartbeat retry) on their way,
+# so the two paths never send a second start for the same copy.
+_proxy_cap_starting: set[tuple[int, int, str]] = set()
 
 
 def _running(entry: dict[str, Any]) -> bool:
@@ -4392,7 +4399,9 @@ async def _account_proxy_traffic(worker_id: int, entries: list[Any]) -> None:
         return
     # Only traffic of copies the UI recorded on this worker counts, so a worker
     # cannot spend, or cap, a proxy it runs nothing through.
-    recorded = {(c["proxy_id"], c["slug"]) for c in await database.list_proxied_copies() if c["worker_id"] == worker_id}
+    copies = [c for c in await database.list_proxied_copies() if c["worker_id"] == worker_id]
+    recorded = {(c["proxy_id"], c["slug"]) for c in copies}
+    held_by_cap = {(c["proxy_id"], c["slug"]) for c in copies if c.get("stopped_by_cap")}
     now = time.time()
     for proxy_id, items in by_proxy.items():
         counted = [e for e in items if (proxy_id, egress.container_slug(e)) in recorded]
@@ -4403,6 +4412,18 @@ async def _account_proxy_traffic(worker_id: int, entries: list[Any]) -> None:
             state, crossed = proxies.account(proxy["state"], proxy["definition"], worker_id, counted, now)
             await database.update_proxy_state(proxy_id, state)
         if not state.get("capped_at"):
+            # A reset whose start failed leaves the copy marked as the cap's and
+            # down; while the proxy stays uncapped, every heartbeat tries again.
+            retry = {
+                slug
+                for e in items
+                if not _running(e)
+                and (proxy_id, slug := egress.container_slug(e)) in held_by_cap
+                and (proxy_id, worker_id, slug) not in _proxy_cap_starting
+            }
+            if retry:
+                _proxy_cap_starting.update((proxy_id, worker_id, slug) for slug in retry)
+                _spawn(_restart_capped_copies(proxy_id, worker_id, retry))
             continue
         targets = {(worker_id, egress.container_slug(e)) for e in items if _running(e)}
         if crossed:
@@ -4414,6 +4435,37 @@ async def _account_proxy_traffic(worker_id: int, entries: list[Any]) -> None:
         if targets or crossed:
             _proxy_cap_stopping.update((proxy_id, *t) for t in targets)
             _spawn(_stop_capped_proxy({**proxy, "state": state}, targets))
+
+
+async def _restart_capped_copies(proxy_id: int, worker_id: int, slugs: set[str]) -> None:
+    """Start copies the cap stopped and a reset could not start, unless the cap is back."""
+    try:
+        for slug in sorted(slugs):
+            async with _proxy_state_lock(proxy_id):
+                fresh = await database.get_proxy(proxy_id)
+                # The owner may have started or stopped it since the heartbeat; that
+                # clears the mark, and the owner's decision stands.
+                marked = any(
+                    c["worker_id"] == worker_id and c["slug"] == slug and c.get("stopped_by_cap")
+                    for c in await database.list_proxied_copies(proxy_id)
+                )
+            if not fresh or fresh["state"].get("capped_at"):
+                return
+            if not marked:
+                continue
+            try:
+                await _start_proxied_copy(fresh, worker_id, slug)
+            except HTTPException as exc:
+                logger.warning("Could not restart %s through proxy %s after a reset: %s", slug, proxy_id, exc.detail)
+                continue
+            # The cap may have come back while the start ran. Then the mark stays, so
+            # the next heartbeat stops the copy again and the next reset starts it.
+            async with _proxy_state_lock(proxy_id):
+                again = await database.get_proxy(proxy_id)
+                if again and not again["state"].get("capped_at"):
+                    await database.set_proxied_copy_capped(proxy_id, worker_id, slug, False)
+    finally:
+        _proxy_cap_starting.difference_update((proxy_id, worker_id, slug) for slug in slugs)
 
 
 async def _stop_capped_proxy(proxy: dict[str, Any], targets: set[tuple[int, str]]) -> None:

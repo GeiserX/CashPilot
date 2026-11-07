@@ -227,7 +227,9 @@ the moment of the stop is stopped when it comes back. If a stop fails, the
 alert says which copy is still running.
 
 A reset, on the day or by hand, starts only the copies the cap stopped; a copy
-you stopped yourself stays stopped. Turning a cap on starts a fresh period, so
+you stopped yourself stays stopped. If a copy cannot be started at the reset,
+for example because its box is offline, every report from that box tries again
+until it starts or the cap holds again. Turning a cap on starts a fresh period, so
 traffic from before it existed does not count. Turning it off, or raising it
 above what this period has used, lifts the stop and starts those copies again.
 
