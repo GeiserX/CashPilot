@@ -13,7 +13,10 @@ import pytest
 
 GUIDE = Path(__file__).resolve().parents[1] / "docs" / "guides" / "storj.md"
 
-FILING = "https://www.storj.io/blog/storj-announces-voluntary-financial-restructuring"
+FILING = (
+    "https://www.storj.io/blog/"
+    "storj-announces-voluntary-financial-restructuring-to-resolve-legacy-liabilities-and-position-the-business-for-growth/"
+)
 FREEZE = "https://forum.storj.io/t/storagenode-payout-update-august-prepayments-and-july-2026-status/32266"
 HELD = "https://storj.dev/node/faq/held-back-amount"
 
@@ -33,4 +36,4 @@ def _line(marker: str) -> str:
 )
 def test_each_claim_links_its_source(marker: str, sources: list[str]):
     line = _line(marker)
-    assert [s for s in sources if f"]({s}" not in line] == []
+    assert [s for s in sources if f"]({s})" not in line] == []
