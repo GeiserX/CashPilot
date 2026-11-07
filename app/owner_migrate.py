@@ -127,6 +127,9 @@ class State:
         tmp.write_text(json.dumps(record, indent=1, sort_keys=True))
         os.replace(tmp, path)
 
+    def drop(self, kind: str, key: str) -> None:
+        self._path(kind, key).unlink(missing_ok=True)
+
     def all(self, kind: str) -> list[dict[str, Any]]:
         folder = self.root / kind
         return [json.loads(p.read_text()) for p in sorted(folder.glob("*.json"))] if folder.is_dir() else []
@@ -502,8 +505,21 @@ class Migrator:
             if old is not None:
                 # No timeout: Docker uses the container's own (deploy_raw sets the catalog's).
                 self.client.api.stop(old.id)
-        for vol in plan["volumes"]:
-            self.back_up(vol, names)
+        try:
+            for vol in plan["volumes"]:
+                self.back_up(vol, names)
+        except Exception:
+            # Nothing is removed yet, so the earners go back to earning on their
+            # own volumes. Their backups are now stale: the plan and its records
+            # go, and the next run copies everything again.
+            for info in plan["containers"]:
+                old = self._current(info)
+                if old is not None and plan["running"].get(info["Id"]):
+                    self.client.api.start(old.id)
+            for vol in plan["volumes"]:
+                self.state.drop("volumes", vol)
+            self.state.drop("plans", plan["key"])
+            raise
         for info in plan["containers"]:
             old = self._current(info)
             if old is not None:

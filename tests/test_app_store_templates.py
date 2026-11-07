@@ -141,6 +141,10 @@ def test_only_the_socket_proxy_holds_the_docker_socket(compose):
             assert services[_proxy_name(services)]["depends_on"] == {
                 name: {"condition": "service_completed_successfully"}
             }, f"{compose}: the proxy must start only after the migration finished"
+            # It moves volumes and recreates containers, so it needs the raw socket.
+            assert sockets == [("/var/run/docker.sock", "/var/run/docker.sock")], (
+                f"{compose}: the migration {name} cannot reach Docker"
+            )
         else:
             assert not sockets, f"{compose}: {name} mounts the Docker socket; only the proxy may"
     for name in workers:

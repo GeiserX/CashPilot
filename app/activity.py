@@ -262,10 +262,13 @@ def _network_info(client: Any, net_id: str, earners: set[str]) -> tuple[str, lis
     """(driver, addresses of the earners on it) of one network, from one inspect."""
     try:
         attrs = _attrs(client.networks.get(net_id))
-    except Exception:  # noqa: BLE001 - an unknown driver reads as a bridge
+    except Exception as exc:  # noqa: BLE001 - an unknown driver reads as a bridge with no known earners
         # The socket proxy refuses an inspect of Docker's default bridge, which
         # carries no owner label. The earners are the worker's own, so their
-        # addresses on it come from their own inspects instead.
+        # addresses on it come from their own inspects instead. A daemon that
+        # fails gets no further calls this round.
+        if orchestrator.proxy_refusal(exc) is None:
+            return "", []
         return "", _earner_addresses(client, net_id, earners)
     ips = []
     for member in (attrs.get("Containers") or {}).values():

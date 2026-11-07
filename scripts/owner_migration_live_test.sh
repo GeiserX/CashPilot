@@ -230,7 +230,9 @@ update_worker
     && pass "the old worker's update brought the new image" || fail "the worker does not run the new image"
 [ "$(driver access 2>/dev/null)" = proxy ] && pass "it still reaches Docker through the old proxy" \
     || fail "it does not reach Docker through the old proxy"
-out=$(driver fresh 2>&1) || true
+rc=0
+out=$(driver fresh 2>&1) || rc=$?
+[ "$rc" -eq 0 ] || fail "the fresh phase exited $rc"
 show "$out"
 FAILS=$((FAILS + $(echo "$out" | count '^FAIL')))
 [ "$(echo "$out" | count '^PASS')" -eq 3 ] || fail "the fresh-earner checks did not all run"
@@ -333,11 +335,15 @@ out=$(driver attacks 2>&1) || true
 show "$out"
 FAILS=$((FAILS + $(echo "$out" | count '^FAIL')))
 [ "$(echo "$out" | count '^PASS')" -eq 3 ] || fail "the attack checks did not all run"
-out=$(driver hidden 2>&1) || true
+rc=0
+out=$(driver hidden 2>&1) || rc=$?
+[ "$rc" -eq 0 ] || fail "the hidden phase exited $rc"
 show "$out"
 FAILS=$((FAILS + $(echo "$out" | count '^FAIL')))
 [ "$(echo "$out" | count '^PASS')" -eq 2 ] || fail "the hidden-container checks did not all run"
-out=$(driver migrated 2>&1) || true
+rc=0
+out=$(driver migrated 2>&1) || rc=$?
+[ "$rc" -eq 0 ] || fail "the migrated phase exited $rc"
 echo "$out" | sed 's/^/    /'
 FAILS=$((FAILS + $(echo "$out" | count '^FAIL')))
 [ "$(echo "$out" | count '^PASS')" -ge 5 ] || fail "the migrated-earner checks did not all run"

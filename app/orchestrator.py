@@ -839,7 +839,6 @@ def deploy_raw(
         # the proxy's folders by the worker API. One the proxy will not bind
         # would otherwise be found only after the running node is gone.
         refused = _outside_proxy_roots(volumes)
-        _ensure_volumes(client, volumes)
         if refused:
             raise ContainerRuntimeError(
                 f"{name} keeps its data in {', '.join(refused)}, and the Docker socket proxy does not let "
@@ -847,6 +846,7 @@ def deploy_raw(
                 f"container was not touched. Add the folder to {BIND_MOUNTS_ENV} in the .env next to your "
                 "compose file (comma-separated), then run docker compose up -d."
             )
+        _ensure_volumes(client, volumes)
         # Stop it the way stop and restart do, with the catalog's timeout, before
         # removing it. remove(force=True) alone is SIGKILL: a storage node gets no
         # chance to flush (storj declares 300 s for that reason) and pays for it

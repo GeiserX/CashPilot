@@ -218,6 +218,9 @@ class Api:
     def stop(self, cid):
         self.docker.cs[cid].attrs["State"]["Running"] = False
 
+    def start(self, cid):
+        self.docker.cs[cid].attrs["State"]["Running"] = True
+
     def _url(self, path):
         return path
 
@@ -375,18 +378,39 @@ def test_a_stopped_earner_stays_stopped(tmp_path):
     assert d.containers.get("cashpilot-earnapp").status == "exited"
 
 
-def test_a_backup_that_fails_twice_still_brings_the_earner_back_running(install, tmp_path):
-    d, _, _ = install
+def test_a_backup_that_fails_puts_the_earner_back_to_work_and_counts_once(install, tmp_path):
+    d, myst, _ = install
     for _ in range(2):
         failing = FakeMigrator(d, om.State(tmp_path))
-        failing.fail_copies = 1
+        failing.fail_copies = 1  # a full disk
         assert failing.run([]) == 1
-        # Counted once: the stopped earner is the stored plan's, not a new one.
         assert failing.failures == 1
-        assert d.containers.get("cashpilot-mysterium").status == "exited"
+        # Nothing was removed, so the same earner earns on its own volume again.
+        assert d.containers.get("cashpilot-mysterium") is myst and myst.status == "running"
     assert FakeMigrator(d, om.State(tmp_path)).run([]) == 0
     assert d.containers.get("cashpilot-mysterium").status == "running"
     assert d.data["mysterium-data"] == IDENTITY
+
+
+def test_after_a_failed_backup_the_retry_copies_what_the_earner_wrote_since(tmp_path):
+    d = FakeDocker()
+    d.volume("a-data", {"f": "old"})
+    d.volume("b-data", {"g": "1"})
+    c = d.add(Container(d, "cashpilot-two", WORKER_LABELS, [("a-data", "/a"), ("b-data", "/b")]))
+    failing = FakeMigrator(d, om.State(tmp_path))
+    real_copy = failing.copy
+
+    def second_fails(source, target):
+        if source == "b-data":
+            raise RuntimeError("no space left")
+        return real_copy(source, target)
+
+    failing.copy = second_fails
+    assert failing.run([]) == 1
+    assert c.status == "running"
+    d.data["a-data"] = {"f": "new"}  # the earner kept working
+    assert FakeMigrator(d, om.State(tmp_path)).run([]) == 0
+    assert d.data["a-data"] == {"f": "new"}
 
 
 @pytest.mark.parametrize("crash_at", [1, 2], ids=["killed copying into the backup", "killed copying back"])

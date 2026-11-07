@@ -108,6 +108,15 @@ def test_a_server_without_a_dashboard_says_nothing_about_it():
     assert "ui_by_hand" not in _info(orchestrator.NotFound("no such container"))
 
 
+def test_activity_asks_nothing_more_of_a_daemon_that_failed():
+    from app import activity
+
+    client = MagicMock()
+    client.networks.get.side_effect = _api_error(500, {"message": "daemon stalled"})
+    assert activity._network_info(client, "n1", {"cashpilot-honeygain"}) == ("", [])
+    client.containers.get.assert_not_called()
+
+
 def test_activity_knows_the_earners_on_the_default_bridge_it_may_not_inspect():
     from app import activity
 
