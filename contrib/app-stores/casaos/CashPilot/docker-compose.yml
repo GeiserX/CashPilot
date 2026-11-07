@@ -403,7 +403,7 @@ x-casaos:
     en_US: |-
       - First listing in the store, on CashPilot 1.73.0.
       - The worker reaches Docker through a socket proxy that refuses every call it does not make; only the proxy holds the Docker socket.
-      - The proxy keeps the worker away from the dashboard's data, its environment and every container it did not create.
+      - The proxy keeps the worker away from the dashboard's data and environment: it reaches only containers, volumes and networks labelled cashpilot.deployed-by=worker.
       - The first visit asks for the setup token printed in the cashpilot-ui log, then creates the owner account.
   website: https://geiserx.github.io/CashPilot/
   repo: https://github.com/GeiserX/CashPilot
