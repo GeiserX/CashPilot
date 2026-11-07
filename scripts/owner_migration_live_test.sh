@@ -209,7 +209,7 @@ done
 echo "== 2. red control: on the old install the worker reads the UI's data"
 out=$(driver attacks 2>&1) || true
 echo "$out" | sed 's/^/    | /'
-[ "$(echo "$out" | count '^FAIL')" -eq 3 ] && pass "all three attacks succeed before the upgrade" \
+[ "$(echo "$out" | count '^FAIL  proxy refuses: .*  20[01] ')" -eq 3 ] && pass "all three attacks succeed before the upgrade" \
     || fail "an attack was already refused before the upgrade, so the checks below prove nothing"
 
 echo "== 2b. the Update button brings the new worker image to the old compose file"
@@ -233,6 +233,7 @@ update_worker
 out=$(driver fresh 2>&1) || true
 show "$out"
 FAILS=$((FAILS + $(echo "$out" | count '^FAIL')))
+[ "$(echo "$out" | count '^PASS')" -eq 3 ] || fail "the fresh-earner checks did not all run"
 before_second=$(docker inspect -f '{{.Id}}' cashpilot-worker)
 printf 'FROM %s\nLABEL cashpilot.live-test.update=old-compose\n' "$REG/cashpilot-worker:new" \
     | docker build -q -t "$REG/cashpilot-worker:old" - >/dev/null
@@ -260,6 +261,12 @@ for _ in $(seq 1 600); do
     logs=$(docker logs cashpilot-migrate 2>&1 || true)
     case "$logs" in
     *"Copying $IDENTITY into its backup"*)
+        # Wait for data to land in the backup, so the kill falls inside the copy.
+        for _ in $(seq 1 200); do
+            got=$(docker exec cashpilot-migrate-copy du -sk /to 2>/dev/null | cut -f1 || true)
+            [ "${got:-0}" -ge 1024 ] 2>/dev/null && break
+            sleep 0.02
+        done
         docker kill cashpilot-migrate >/dev/null 2>&1 || true
         docker kill cashpilot-migrate-copy >/dev/null 2>&1 || true
         killed=yes
@@ -274,6 +281,8 @@ tail -4 "$WORK_DIR/up1.log" | sed 's/^/    | /'
 docker logs cashpilot-migrate 2>&1 | tail -6 | sed 's/^/    migrate| /'
 partial=$(docker run --rm -v "$BACKUP:/b:ro" "$ALPINE" sh -c 'du -sk /b | cut -f1' 2>/dev/null || echo none)
 echo "    what the kill left: backup $BACKUP holds ${partial} KiB of ~40964 KiB"
+[ "${partial:-0}" -gt 4 ] 2>/dev/null && pass "the kill came after data reached the backup" \
+    || fail "the backup was still empty when the kill came (${partial} KiB)"
 recorded=$(docker run --rm -v "$WORK_DIR/project:/p:ro" "$ALPINE" sh -c 'ls /p/cashpilot-migrate-state/volumes 2>/dev/null' || true)
 [ -z "$recorded" ] && pass "no verified backup was recorded before the kill" || fail "a backup was recorded: $recorded"
 [ "$(tree_sum "$IDENTITY")" = "$before" ] && pass "the identity is untouched by the killed run" \
@@ -327,6 +336,7 @@ FAILS=$((FAILS + $(echo "$out" | count '^FAIL')))
 out=$(driver hidden 2>&1) || true
 show "$out"
 FAILS=$((FAILS + $(echo "$out" | count '^FAIL')))
+[ "$(echo "$out" | count '^PASS')" -eq 2 ] || fail "the hidden-container checks did not all run"
 out=$(driver migrated 2>&1) || true
 echo "$out" | sed 's/^/    /'
 FAILS=$((FAILS + $(echo "$out" | count '^FAIL')))

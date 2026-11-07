@@ -194,8 +194,10 @@ class Migrator:
                 self.fail(f"{exc}")
         if self.failures:
             logger.error(
-                "Migration incomplete (%d problem(s) above). Nothing was deleted. Fix what is named, "
-                "then run docker compose up -d again: it carries on from where this run stopped.",
+                "Migration incomplete (%d problem(s) above). An earner named above may be stopped or "
+                "removed, but no data is lost: each volume it removed has a checked backup and each "
+                "container it removed is recorded. Fix what is named, then run docker compose up -d "
+                "again: it carries on from where this run stopped.",
                 self.failures,
             )
             return 1

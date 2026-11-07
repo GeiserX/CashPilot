@@ -398,7 +398,13 @@ def phase_migrated() -> None:
     check("restart it through the proxy", lambda: orchestrator.restart_service(slug))
     archive = check("back up its critical volume", lambda: orchestrator.read_critical_state(slug))
     if archive:
-        print(f"    backup archive: {len(archive[0])} bytes of {archive[1]}", flush=True)
+        with tarfile.open(fileobj=io.BytesIO(archive[0])) as tar:
+            names = tar.getnames()
+        result(
+            any(n.endswith("keystore/UTC--node-key") for n in names),
+            "the backup holds the node's keystore",
+            f"{len(archive[0])} bytes, {len(names)} entries of {archive[1]}",
+        )
     new_id = check(
         "redeploy it over its volume, the way every update does",
         lambda: orchestrator.deploy_raw(
@@ -430,6 +436,12 @@ def phase_fresh() -> None:
         "remove it and its volume",
         lambda: orchestrator.remove_service("cplive-fresh", delete_volumes=True, allow_delete_critical=True),
     )
+    try:
+        docker.from_env().volumes.get("cplive-fresh-data")
+        gone = False
+    except NotFound:
+        gone = True
+    result(gone, "the volume is gone")
 
 
 def phase_update() -> None:

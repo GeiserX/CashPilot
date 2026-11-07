@@ -252,7 +252,7 @@ PY
 ) || true
 case "$joined" in
 *'namespace-sharing target container "cashpilot-socket-proxy"'*) pass "the proxy refuses to let a container join its namespace" ;;
-*"Permission denied"*) pass "the joiner is refused the proxy's files" ;;
+*"Permission denied"*) fail "the proxy let a container join its namespace (only its capability kept the files out)" ;;
 *) fail "a container in the proxy's process namespace reached its files: $joined" ;;
 esac
 
@@ -276,7 +276,7 @@ out=$(docker run --rm -i --label "$P=1" -u 0:0 --entrypoint python -e LIVE_ALPIN
     -v /var/run/docker.sock:/var/run/docker.sock "$WORKER_IMAGE" - attacks \
     <"$ROOT/scripts/socket_proxy_live_driver.py" 2>&1) || true
 echo "$out" | sed 's/^/    | /'
-[ "$(echo "$out" | count '^FAIL')" -eq 3 ] && pass "the raw socket allows all three attacks" \
+[ "$(echo "$out" | count '^FAIL  proxy refuses: .*  20[01] ')" -eq 3 ] && pass "the raw socket allows all three attacks" \
     || fail "the raw socket refused an attack, so (b3) proves nothing"
 docker info -f '{{.Swarm.LocalNodeState}}' | grep -qx inactive && pass "the control left swarm mode" \
     || fail "the daemon is still in swarm mode; run docker swarm leave --force"
