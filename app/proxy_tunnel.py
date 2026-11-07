@@ -277,6 +277,9 @@ def sidecar_kwargs(name: str, slug: str, proxy_id: int | None, network: str | No
         "name": name,
         "labels": labels,
         "network": network,
+        # The isolated bridge's resolvers, as every earner on it gets them: its
+        # rules refuse the daemon's LAN resolver. None on the default bridge.
+        "dns": orchestrator.container_dns(network),
         "hostname": hostname,
         "cap_drop": ["ALL"],
         "cap_add": ["NET_ADMIN"],
