@@ -1,11 +1,32 @@
 # What's new in 2.0
 
 CashPilot 2.0 adds no big feature of its own. It closes a run of releases,
-1.62 to 1.73, that changed what the worker can do on your host, how
-far an earner can reach into your network, and how many IPs one box can earn on.
-Several of those releases need a step from you when you upgrade, so they get
-a major version together. This page lists what changed, with a link to the page
-that covers each part, and then [how to upgrade](#upgrading-from-1x).
+1.62 to 1.73, that changed what the worker can do on your host, how far an
+earner can reach into your network, and how many IPs one box can earn on.
+Several of those releases need a step from you when you upgrade, so they get a
+major version together. This page says why the upgrade is worth it, what
+changed, with a link to the page that covers each part, and then
+[how to upgrade](#upgrading-from-1x).
+
+## Why upgrade
+
+What an older install leaves open, by version:
+
+- **1.70 and older:** the worker holds the raw Docker socket. Whoever takes
+  over the worker is root on your host.
+- **1.72 and older,** with the dashboard and a worker on one host: a
+  compromised worker can read `.fernet_key` and decrypt every provider login
+  you stored.
+- **Anything deployed before 1.70:** earners carrying strangers' traffic can
+  reach your LAN, your router and your other machines, until you turn the
+  fence on.
+
+2.0 closes all three. It also carries the fixes since 1.73: the in-app update
+works behind the socket proxy, identity backups you confirmed stay confirmed
+through the migration, earners from the old pre-worker deploy path stay
+visible after it, Podman workers can deploy, and traffic caps on proxies
+recover after a box was offline. Releases are cut from one branch, so every
+fix from now on ships in 2.x and the `1.73` tag gets no more patches.
 
 ## Security
 
@@ -63,7 +84,8 @@ and **Check isolation** starts two short-lived containers to test that it holds.
 
 Limits: Mysterium runs on host networking and is not covered by the fence. A
 second WAN or extra public IPs are not dropped. Docker Desktop, rootless Docker,
-Podman and Unraid are not tested yet.
+and Unraid are not tested yet. On Podman the fence is not available yet: a
+worker there deploys on Podman's default network and the Fleet page says so.
 [Network isolation](isolation.md#lan-isolation-by-default) has the details, and
 [Test your isolation](isolation-check.md) has the checks by platform.
 
@@ -109,7 +131,8 @@ one IP per proxy.
 Limits: services that need host networking, published ports, volumes, devices
 or extra network capabilities cannot run through a proxy. That rules out
 Mysterium, Bitping and Storj. Neither can a service whose terms forbid proxies.
-UDP works only through a SOCKS5 proxy that supports it.
+UDP goes out only through a Tailscale exit node, never through SOCKS5 or HTTP
+CONNECT.
 [Proxied copies](proxies.md) covers setup and DNS.
 
 ## Also new since 1.62
@@ -131,14 +154,6 @@ UDP works only through a SOCKS5 proxy that supports it.
   confirm. The [service guides](guides/index.md) give each minimum payout, and
   several say what a first cash-out asks for, such as a one-time registration
   link or a phone check by SMS.
-- **Android phones in the fleet.** The
-  [Android app](https://github.com/GeiserX/CashPilot-android) reports a phone's
-  earning apps to the [Fleet page](fleet.md#fleet-dashboard) next to your
-  servers. The app is waiting for review on
-  [F-Droid](https://gitlab.com/fdroid/fdroiddata/-/merge_requests/56196).
-- **Desktop app.** [CashPilot Desktop](https://github.com/GeiserX/CashPilot-Desktop)
-  runs the same catalog as an app for macOS (Apple Silicon), Windows and Linux,
-  and pins every service image by digest.
 - **App stores.** Install from Unraid Community Applications or TrueNAS SCALE.
   CasaOS and Runtipi packages are in this repository and run the socket proxy.
   [App stores](app-stores.md)
@@ -149,42 +164,95 @@ UDP works only through a SOCKS5 proxy that supports it.
   [How CashPilot compares](comparison.md) sets this against five other stacks,
   every cell sourced.
 
+## Companion apps
+
+- **[CashPilot Desktop 1.0](https://github.com/GeiserX/CashPilot-Desktop)**
+  runs the same catalog as an app for macOS (Apple Silicon), Windows and
+  Linux. It works as a full dashboard or as a worker that joins this one, and
+  pins every service image by digest.
+- **[CashPilot for Android 1.0](https://github.com/GeiserX/CashPilot-android)**
+  reports a phone's earning apps to the [Fleet page](fleet.md#fleet-dashboard)
+  next to your servers. It ships from GitHub releases and is waiting for
+  review on [F-Droid](https://gitlab.com/fdroid/fdroiddata/-/merge_requests/56196).
+
 ## Upgrading from 1.x
-
-### Back up first
-
-- `/data` of the dashboard: `cashpilot.db` holds your earnings history and
-  `.fernet_key` decrypts every stored login. Without that key the logins
-  cannot be recovered. [Backing up and restoring](backup-restore.md)
-- Node identities: use **Download backup** on the Payouts page for every box
-  it lists. [Backing up node identities](backup.md)
-
-### What to do
 
 The compose files pin a release series (`drumsergio/cashpilot:1.73`), so
 `docker compose pull` and the in-app **Update** button stay inside 1.x. Moving
-to 2.0 means changing the tags.
+to 2.0 means taking the new compose file or changing the tags.
 
-1. Take the new compose file for each host: `docker-compose.yml`,
-   `docker-compose.fleet.yml`, or `docker-compose.worker.yml` on a worker-only
-   host. Keep your own changes. If you keep your old file instead, change
-   every `drumsergio/cashpilot:1.x` and `drumsergio/cashpilot-worker:1.x` tag
-   to `2.0`.
-2. Run `docker compose up -d --force-recreate`, with `-f` and your file if it
-   is not `docker-compose.yml`.
-3. Do the same on every worker host. The dashboard and every worker should run
-   the same version.
+### 1. Back up first
 
-What else happens depends on the version you come from:
+- **The dashboard's `/data`.** `cashpilot.db` holds your earnings history and
+  `.fernet_key` decrypts every stored login. Without that key the logins
+  cannot be recovered. [Backing up and restoring](backup-restore.md#backup)
+  has a script that copies both without stopping the container, and the
+  commands to check the copy.
+- **Node identities.** On the Payouts page, use **Download backup** for every
+  box listed under **Back these up**. A Mysterium keystore or a Storj identity
+  has no other copy. [Backing up node identities](backup.md)
 
-| You run | What 2.0 adds |
-|---|---|
-| 1.73 | Nothing else. Only the tag changes. |
-| 1.71 or 1.72, behind the socket proxy | `cashpilot-migrate` runs once before the proxy starts. It moves your volumes onto labelled ones, checking the data before and after, and keeps every original. |
-| Any version whose worker still mounts `/var/run/docker.sock` | The new compose file adds the socket proxy and runs the migration. Set `CASHPILOT_COMPOSE_DIR` in `.env` if you want the in-app update, knowing it opens the symlink path above. On a GPU host, read UPGRADING.md first: the proxy refuses to recreate a CashPilot service with a GPU. |
-| 1.69 or older | Your earners stay on Docker's default bridge until you press **Turn on isolation** on the Fleet page. |
+The migration below keeps its own copy of every volume it touches, but a
+backup you hold is the one that survives a lost disk.
 
-Two things work differently after the upgrade:
+### 2. Take the 2.0 compose file
+
+On each host, replace your compose file with the 2.0 one:
+`docker-compose.yml` where the dashboard runs, `docker-compose.fleet.yml` for a
+dashboard with remote workers, or `docker-compose.worker.yml` on a worker-only
+host. Carry over your own changes and keep your `.env`. If you keep your old
+file, it must already have the `cashpilot-socket-proxy` and
+`cashpilot-migrate` services; then change every `drumsergio/cashpilot:1.x` and
+`drumsergio/cashpilot-worker:1.x` tag to `2.0`.
+
+If your worker still mounts `/var/run/docker.sock`, the new file is what moves
+the socket to the proxy. Set `CASHPILOT_COMPOSE_DIR=/folder/with/the/compose/file`
+in `.env` if you want the in-app update, which opens the symlink path
+described above. On a GPU host, read
+[UPGRADING.md](https://github.com/GeiserX/CashPilot/blob/main/UPGRADING.md#docker-socket-proxy-take-the-new-compose-file-once)
+first: the proxy refuses to recreate a CashPilot service with a GPU.
+
+### 3. Start it
+
+```sh
+docker compose up -d --force-recreate
+```
+
+Add `-f` and your file name if it is not `docker-compose.yml`. Do the
+dashboard host first, then every worker host. The dashboard and every worker
+should run the same version.
+
+### What the one-shot migrator does
+
+On an install from before 1.73, `cashpilot-migrate` runs once, before the
+socket proxy starts. Docker cannot add a label to an existing volume or
+network, so it moves your data onto labelled ones:
+
+- each volume of an earner the worker started is copied to a backup named
+  `<volume>-pre-isolation`, checked by digest, recreated with the label,
+  filled back from the backup and checked again. The earner is then recreated
+  as it was. A Mysterium identity keeps its address;
+- the worker's own volumes are copied into new ones named
+  `cashpilot_worker_data_owned` and, where the dashboard runs too,
+  `cashpilot_fleet_owned`;
+- the `cashpilot-isolated` network is rebuilt with the label, with its earners
+  put back on it.
+
+It deletes nothing. It can take a few minutes on a node with a large volume. If it stops halfway, after a reboot
+or a kill, run the same command again and it finishes from where it stopped.
+If it already ran on 1.73, it finds nothing to do and exits.
+
+### What you see when it is done
+
+- `docker logs cashpilot-migrate` ends with *Migration complete: everything the
+  worker uses carries cashpilot.deployed-by=worker.* A run that had to leave
+  something alone ends with *Migration done, with N thing(s) left as they
+  were*, and the lines above it say what and why.
+- The worker's status page says *Docker access: socket proxy*.
+- The dashboard shows every earner running, the Fleet page shows each worker on
+  2.0, and a Mysterium node shows the same address as before.
+
+Two things work differently afterwards:
 
 - On the host where the dashboard and a worker run together, the in-app update
   updates the worker only. Update the dashboard with
@@ -192,20 +260,23 @@ Two things work differently after the upgrade:
 - Earners you started by hand, or from a compose file CashPilot exported, no
   longer show in the dashboard. They keep running and earning.
 
-[UPGRADING.md](https://github.com/GeiserX/CashPilot/blob/main/UPGRADING.md)
-has every step in full, including the leftovers the migration keeps and how to
-remove them.
+If you came from 1.69 or older, your earners are still on Docker's default
+bridge. Press **Turn on isolation** on each worker's row on the Fleet page,
+then **Check isolation**.
+
+Once everything has run well for a while, remove what the migration left
+behind. [UPGRADING.md](https://github.com/GeiserX/CashPilot/blob/main/UPGRADING.md#owner-isolation-take-the-compose-file-again-two-features-change-on-the-uis-host)
+lists each leftover and the commands.
 
 ### Rolling back
 
-2.0 does not change the database: it uses the same schema as every release
-since 1.67. To go back to 1.73, set the tags back to `1.73` and run
-`docker compose up -d`.
+2.0 uses the same database schema as every release since 1.67. To go back to
+1.73, set the tags back to `1.73` and run `docker compose up -d`.
 
-To go back further than 1.73, put your old compose file back and run
-`docker compose up -d`. The migration copies and never deletes: your old
-worker volumes and each `<volume>-pre-isolation` backup stay until you remove
-them yourself. Keep them until 2.0 has run well for a while. A compose file
+To go back further, put your old compose file back and run
+`docker compose up -d`. The migration copies and never deletes, so your old
+worker volumes and each `<volume>-pre-isolation` backup are still there,
+unless you removed them. That is why you keep them for a while. A compose file
 from before the socket proxy leaves the proxy running: remove it with
 `docker rm -f cashpilot-socket-proxy`. Going back past 1.67, restore the
-`/data` backup you took too.
+`/data` backup you took as well.
