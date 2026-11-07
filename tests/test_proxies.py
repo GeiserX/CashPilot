@@ -440,6 +440,48 @@ class TestCapEnforcement:
         ]
         assert [c.args for c in rig.mark.call_args_list] == [(1, 7, "a", False)]
 
+    def test_a_retry_respects_the_owner_and_a_cap_that_came_back(self):
+        uncapped = {"id": 1, "definition": dict(CAPPED), "state": {}}
+        capped = {**uncapped, "state": {"capped_at": "x", "cap_reason": "r"}}
+
+        def run(copies, proxies_seen):
+            call = AsyncMock(return_value={})
+            mark = AsyncMock()
+            with (
+                patch.object(main.database, "get_proxy", new_callable=AsyncMock, side_effect=proxies_seen),
+                patch.object(main.database, "list_proxied_copies", new_callable=AsyncMock, return_value=copies),
+                patch.object(main.database, "set_proxied_copy_capped", mark),
+                patch.object(main, "_proxy_worker_call", call),
+            ):
+                asyncio.run(main._restart_capped_copies(1, 7, {"a"}))
+            return call, mark
+
+        # The owner started or stopped it since the heartbeat: the mark is gone, no start.
+        call, mark = run([{"proxy_id": 1, "worker_id": 7, "slug": "a", "stopped_by_cap": 0}], [uncapped])
+        assert call.call_count == 0 and mark.call_count == 0
+        # The cap came back while the start ran: the mark stays for the next stop and reset.
+        call, mark = run([{"proxy_id": 1, "worker_id": 7, "slug": "a", "stopped_by_cap": 1}], [uncapped, capped])
+        assert call.call_count == 1 and mark.call_count == 0
+        assert not main._proxy_cap_starting
+
+    def test_a_reset_skips_a_copy_whose_start_is_already_on_its_way(self):
+        proxy = {"id": 1, "definition": dict(CAPPED), "state": {}}
+        call = AsyncMock(return_value={})
+        main._proxy_cap_starting.add((1, 7, "a"))
+        with (
+            patch.object(main.database, "clear_alerts", new_callable=AsyncMock),
+            patch.object(
+                main.database,
+                "list_proxied_copies",
+                new_callable=AsyncMock,
+                return_value=[{"proxy_id": 1, "worker_id": 7, "slug": "a", "stopped_by_cap": 1}],
+            ),
+            patch.object(main.database, "set_proxied_copy_capped", new_callable=AsyncMock),
+            patch.object(main, "_proxy_worker_call", call),
+        ):
+            assert asyncio.run(main._release_capped_copies(proxy)) == []
+        assert call.call_count == 0
+
     def test_a_copy_the_cap_stopped_stays_down_while_the_cap_holds(self):
         call = AsyncMock(return_value={})
         rig = _CapRig([{"proxy_id": 1, "worker_id": 7, "slug": "a", "stopped_by_cap": 1}], call)
