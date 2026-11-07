@@ -4356,7 +4356,10 @@ async def _release_capped_copies(proxy: dict[str, Any]) -> list[str]:
             started.append(f"{copy['slug']} on worker {copy['worker_id']}")
         except HTTPException as exc:
             logger.warning(
-                "Could not restart %s through proxy %s after a reset: %s", copy["slug"], proxy["id"], exc.detail
+                "Could not restart %s through proxy %s after a reset (its box's next heartbeat tries again): %s",
+                copy["slug"],
+                proxy["id"],
+                exc.detail,
             )
         finally:
             _proxy_cap_starting.discard(key)
@@ -4510,6 +4513,8 @@ async def _stop_capped_proxy(proxy: dict[str, Any], targets: set[tuple[int, str]
                     try:
                         await _start_proxied_copy(fresh, worker_id, slug)
                     except HTTPException as exc:
+                        # Marked, so the box's next heartbeat starts it.
+                        await database.set_proxied_copy_capped(pid, worker_id, slug, True)
                         logger.warning("Could not start %s again through proxy %s: %s", slug, pid, exc.detail)
             except HTTPException as exc:
                 if exc.status_code == 404 and any(
