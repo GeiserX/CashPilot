@@ -4312,6 +4312,13 @@ async def api_proxied_copy_command(
     if command == "start" and proxy["state"].get("capped_at"):
         raise HTTPException(status_code=409, detail=proxy["state"].get("cap_reason") or "This proxy reached its cap")
     async with _proxy_copy_lock(proxy_id, worker_id, slug):
+        if command == "start":
+            # Again under the lock: the cap may have stopped the copy while this waited.
+            proxy = await _proxy_or_404(proxy_id)
+            if proxy["state"].get("capped_at"):
+                raise HTTPException(
+                    status_code=409, detail=proxy["state"].get("cap_reason") or "This proxy reached its cap"
+                )
         result = await _proxy_worker_call(
             worker_id,
             "POST",
@@ -4373,11 +4380,22 @@ async def _release_capped_copies(proxy: dict[str, Any]) -> list[str]:
         _proxy_cap_starting.add(key)
         try:
             async with _proxy_copy_lock(*key):
-                # The owner may have started or stopped it since the list was read.
-                if not await _copy_marked_by_cap(*key):
+                # The owner may have started or stopped it since the list was read,
+                # and a heartbeat may have capped the proxy again.
+                async with _proxy_state_lock(proxy["id"]):
+                    fresh = await database.get_proxy(proxy["id"])
+                    marked = await _copy_marked_by_cap(*key)
+                if not fresh or fresh["state"].get("capped_at"):
+                    return started
+                if not marked:
                     continue
-                await _start_proxied_copy(proxy, copy["worker_id"], copy["slug"])
-                await database.set_proxied_copy_capped(proxy["id"], copy["worker_id"], copy["slug"], False)
+                await _start_proxied_copy(fresh, copy["worker_id"], copy["slug"])
+                # The cap may have come back while the start ran: then the mark
+                # stays, so the next heartbeat stops it and the next reset starts it.
+                async with _proxy_state_lock(proxy["id"]):
+                    again = await database.get_proxy(proxy["id"])
+                    if again and not again["state"].get("capped_at"):
+                        await database.set_proxied_copy_capped(proxy["id"], copy["worker_id"], copy["slug"], False)
             started.append(f"{copy['slug']} on worker {copy['worker_id']}")
         except HTTPException as exc:
             logger.warning(
@@ -4520,37 +4538,39 @@ async def _stop_capped_proxy(proxy: dict[str, Any], targets: set[tuple[int, str]
     unstopped = _proxy_cap_unstopped.setdefault(pid, {})
     try:
         for worker_id, slug in sorted(targets):
-            try:
-                answer = await _proxy_worker_call(
-                    worker_id, "POST", f"/api/proxied/{slug}/{pid}/stop", proxy["definition"], timeout=60
-                )
-                unstopped.pop((worker_id, slug), None)
-                # An older worker does not say; it is taken as running, as before.
-                if isinstance(answer, dict) and answer.get("was_running") is False:
-                    continue
-                # A reset or a cap change may have lifted the cap while the stop
-                # was on its way; then the copy goes back up instead.
-                async with _proxy_state_lock(pid):
-                    fresh = await database.get_proxy(pid)
-                    still_capped = bool(fresh and fresh["state"].get("capped_at"))
-                    if still_capped:
-                        await database.set_proxied_copy_capped(pid, worker_id, slug, True)
-                if not still_capped and fresh:
-                    try:
-                        await _start_proxied_copy(fresh, worker_id, slug)
-                    except HTTPException as exc:
-                        # Marked, so the box's next heartbeat starts it.
-                        await database.set_proxied_copy_capped(pid, worker_id, slug, True)
-                        logger.warning("Could not start %s again through proxy %s: %s", slug, pid, exc.detail)
-            except HTTPException as exc:
-                if exc.status_code == 404 and any(
-                    t in str(exc.detail) for t in ("No proxied copy", "Worker not found")
-                ):
-                    # Already gone from that box, or the box itself is gone: nothing left to stop.
+            # The owner's start or stop of this copy waits, so its mark is never overwritten.
+            async with _proxy_copy_lock(pid, worker_id, slug):
+                try:
+                    answer = await _proxy_worker_call(
+                        worker_id, "POST", f"/api/proxied/{slug}/{pid}/stop", proxy["definition"], timeout=60
+                    )
                     unstopped.pop((worker_id, slug), None)
-                    continue
-                unstopped[(worker_id, slug)] = str(exc.detail)[:200]
-                logger.warning("Could not stop %s at proxy %s's cap: %s", slug, pid, exc.detail)
+                    # An older worker does not say; it is taken as running, as before.
+                    if isinstance(answer, dict) and answer.get("was_running") is False:
+                        continue
+                    # A reset or a cap change may have lifted the cap while the stop
+                    # was on its way; then the copy goes back up instead.
+                    async with _proxy_state_lock(pid):
+                        fresh = await database.get_proxy(pid)
+                        still_capped = bool(fresh and fresh["state"].get("capped_at"))
+                        if still_capped:
+                            await database.set_proxied_copy_capped(pid, worker_id, slug, True)
+                    if not still_capped and fresh:
+                        try:
+                            await _start_proxied_copy(fresh, worker_id, slug)
+                        except HTTPException as exc:
+                            # Marked, so the box's next heartbeat starts it.
+                            await database.set_proxied_copy_capped(pid, worker_id, slug, True)
+                            logger.warning("Could not start %s again through proxy %s: %s", slug, pid, exc.detail)
+                except HTTPException as exc:
+                    if exc.status_code == 404 and any(
+                        t in str(exc.detail) for t in ("No proxied copy", "Worker not found")
+                    ):
+                        # Already gone from that box, or the box itself is gone: nothing left to stop.
+                        unstopped.pop((worker_id, slug), None)
+                        continue
+                    unstopped[(worker_id, slug)] = str(exc.detail)[:200]
+                    logger.warning("Could not stop %s at proxy %s's cap: %s", slug, pid, exc.detail)
     finally:
         _proxy_cap_stopping.difference_update((pid, *t) for t in targets)
     message = await _proxy_cap_message(proxy)
