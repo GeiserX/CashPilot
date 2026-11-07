@@ -101,9 +101,9 @@ machine. In the shipped compose files that holder is a proxy, not the worker.
 
 The shipped compose files (`docker-compose.yml`, `docker-compose.fleet.yml`,
 `docker-compose.worker.yml`, `docker-compose.build.yml`) run
-[sockguard](https://github.com/CodesWhat/sockguard) 2.4.5 as
+[sockguard](https://github.com/CodesWhat/sockguard) 2.4.6 as
 `cashpilot-socket-proxy`, pinned by digest
-(`codeswhat/sockguard:2.4.5@sha256:d15f93e856626ff21f48400034d887874a4dafbbf6bb1e31799511beea07d84c`).
+(`codeswhat/sockguard:2.4.6@sha256:9a7142d9f8254e7fde7543e046eff920463f5df27b36d959915b44fb4878d06f`).
 It holds the socket read-only, runs as root with every capability dropped and no
 network, and serves a filtered socket in the `cashpilot-docker-api-owned` volume. The
 worker mounts that volume and sets `DOCKER_HOST` to it. It has no Docker socket
@@ -164,7 +164,7 @@ those. Images are not scoped: a custom service can still pull any image.
 privileged container, a bind of `/` or of the socket, an added capability.
 Owner isolation closes joining another container's process namespace, which
 read a root container's files through `/proc/1/root`. One two-step way is
-left, because sockguard 2.4.5 has no setting for it:
+left, because sockguard 2.4.6 has no setting for it:
 
 - **A symlink in an allowed folder.** sockguard checks a bind's source as a
   string; Docker follows symlinks when it mounts. A container that binds an
@@ -198,7 +198,7 @@ stands between the worker and root.
   folder is not bindable at all.
 - Create Docker networks, and attach, detach and delete the ones it created.
   The LAN fence needs this to build `cashpilot-isolated` and move earners onto
-  it, and sockguard 2.4.5 cannot limit it to that one network. The proxy lets bridge driver options and
+  it, and sockguard 2.4.6 cannot limit it to that one network. The proxy lets bridge driver options and
   a forced disconnect through, because the fence uses both; custom drivers,
   swarm scope, custom address plans and endpoint settings stay refused, except
   network aliases, which sockguard always lets through. It adds little reach, since the worker
