@@ -52,6 +52,7 @@ from app.constants import (  # noqa: E402
     LABEL_PROXY,
     LABEL_ROLE,
     LABEL_SERVICE,
+    LABEL_STATE_CREATED,
     LABEL_VERSION,
     drift_warnings_enabled,
 )
@@ -1216,7 +1217,7 @@ def state_id(container: Any, targets: dict[str, str] | list[str] | None, client:
     """A short fingerprint of WHERE a service's irreplaceable state lives.
 
     Built from each critical mount's type and source, plus a named volume's
-    creation time. It changes when the state can have changed under the user:
+    creation time (the replaced volume's, for one the owner migration moved). It changes when the state can have changed under the user:
     the volume was removed and made again (same name, new creation time), the
     service now points at another volume or host path, or the state sits in the
     container's own layer and the container was replaced. It does NOT change
@@ -1248,7 +1249,10 @@ def state_id(container: Any, targets: dict[str, str] | list[str] | None, client:
             name = str(mount.get("Name") or "")
             created = ""
             try:
-                created = str(((client or _get_client()).volumes.get(name).attrs or {}).get("CreatedAt") or "")
+                attrs = (client or _get_client()).volumes.get(name).attrs or {}
+                # The owner migration copies a volume's data onto a new one of the
+                # same name and keeps the old creation time in this label.
+                created = str((attrs.get("Labels") or {}).get(LABEL_STATE_CREATED) or attrs.get("CreatedAt") or "")
             except Exception as exc:  # noqa: BLE001 - unknown, not a change
                 logger.debug("Could not read volume %s for the state fingerprint: %s", name, exc)
                 return None

@@ -72,7 +72,9 @@ ones:
 - every volume of an earner the worker started is copied to a backup named
   `<volume>-pre-isolation`, checked, recreated with the label, filled back from
   the backup and checked again, and the earner is recreated as it was. A
-  Mysterium identity keeps its address. Each backup carries the label
+  Mysterium identity keeps its address, and a backup you confirmed on the
+  Payouts page stays confirmed (if you migrated with 1.73.0 or 1.73.1, the
+  page shows those boxes as changed: confirm them again). Each backup carries the label
   `cashpilot.backup-of=<volume>`, and the log line
   *Backup … holds the data of …* says which earner it belonged to;
 - the worker's own volumes are copied into new ones with `_owned` names
