@@ -350,7 +350,7 @@ def test_the_identity_moves_onto_a_labelled_volume_of_the_same_name(install, tmp
     assert d.data[backup.name] == IDENTITY
     new = d.containers.get("cashpilot-mysterium")
     assert new.id != myst.id and new.status == "running"
-    assert new.labels == WORKER_LABELS
+    assert new.labels == {**WORKER_LABELS, om.RECREATED_LABEL: myst.id}
     assert new.volume_names() == ["mysterium-data"]
     assert new.networks() == ["cashpilot-isolated"]
     assert d.nets["cashpilot-isolated"].attrs["Labels"] == {"cashpilot.isolation": "managed", **OWNER}
@@ -576,3 +576,134 @@ def test_the_recreate_names_an_anonymous_volume_and_keeps_the_image_it_ran(tmp_p
 def test_the_compose_volume_list_parses_like_the_compose_files_write_it():
     assert om._pairs("a=b, c=d,,bad") == [("a", "b"), ("c", "d")]
     assert om._pairs("") == []
+
+
+def test_a_volume_that_only_shares_the_backups_name_is_never_copied_into(install, tmp_path):
+    d, myst, _ = install
+    stray = om.backup_name("mysterium-data")
+    d.volume(stray, {"photos": "the operator's own"})
+    m = FakeMigrator(d, om.State(tmp_path))
+    assert m.run([]) == 1
+    assert d.data[stray] == {"photos": "the operator's own"}
+    assert m.copies == []
+    # Nothing was removed: the earner earns on its own volume, as before.
+    assert d.containers.get("cashpilot-mysterium") is myst and myst.status == "running"
+    assert d.data["mysterium-data"] == IDENTITY
+
+
+def test_a_backup_of_another_volume_is_not_reused_either(install, tmp_path):
+    d, _, _ = install
+    stray = om.backup_name("mysterium-data")
+    d.volume(stray, {"k": "v"}, labels={om.BACKUP_LABEL: "some-other-volume"})
+    assert FakeMigrator(d, om.State(tmp_path)).run([]) == 1
+    assert d.data[stray] == {"k": "v"}
+
+
+def _compose(key, owner=False):
+    return {"com.docker.compose.project": "cashpilot", "com.docker.compose.volume": key, **(OWNER if owner else {})}
+
+
+def test_the_old_worker_is_stopped_before_its_volume_is_copied(tmp_path):
+    d = FakeDocker()
+    d.volume("cashpilot_cashpilot_worker_data", {".worker_key": "k1"}, labels=_compose("cashpilot_worker_data"))
+    d.volume("cashpilot_cashpilot_worker_data_owned", {}, labels=_compose("cashpilot_worker_data_owned", True))
+    old = d.add(Container(d, "cashpilot-worker", {}, [("cashpilot_cashpilot_worker_data", "/data")]))
+    me = d.add(Container(d, "cashpilot-migrate", {}, [("cashpilot_cashpilot_worker_data", "/peek")]))
+    m = FakeMigrator(d, om.State(tmp_path), self_id=me.id)
+    real_copy = m.copy
+    seen = []
+
+    def copy(source, target):
+        seen.append(old.status)
+        return real_copy(source, target)
+
+    m.copy = copy
+    assert m.run([("cashpilot_worker_data", "cashpilot_worker_data_owned")]) == 0
+    assert seen == ["exited"]
+    assert me.status == "running"
+    assert d.data["cashpilot_cashpilot_worker_data_owned"] == {".worker_key": "k1"}
+
+
+def test_a_new_compose_volume_without_the_label_is_refused_before_any_copy(tmp_path):
+    d = FakeDocker()
+    d.volume("cashpilot_cashpilot_fleet", {"fleet_key": "enrol"}, labels=_compose("cashpilot_fleet"))
+    d.volume("cashpilot_cashpilot_fleet_owned", {}, labels=_compose("cashpilot_fleet_owned"))
+    m = FakeMigrator(d, om.State(tmp_path))
+    assert m.run([("cashpilot_fleet", "cashpilot_fleet_owned")]) == 1
+    assert m.copies == []
+
+
+def _two_on_a_bridge():
+    d = FakeDocker()
+    d.nets["my-earners"] = Network(d, "my-earners", {}, {})
+    a = d.add(Container(d, "cashpilot-a", WORKER_LABELS, networks=("my-earners",)))
+    b = d.add(Container(d, "cashpilot-b", WORKER_LABELS, networks=("my-earners",)))
+    return d, a, b
+
+
+def _crash_on_second_disconnect(net):
+    real, calls = net.disconnect, []
+
+    def disconnect(cid, force=False):
+        calls.append(cid)
+        if len(calls) == 2:
+            raise Crash("killed while disconnecting")
+        real(cid, force)
+
+    net.disconnect = disconnect
+    return real
+
+
+def test_a_stranger_that_joined_before_the_retry_leaves_the_network_whole(tmp_path):
+    d, a, b = _two_on_a_bridge()
+    net = d.nets["my-earners"]
+    real = _crash_on_second_disconnect(net)
+    assert _run(FakeMigrator(d, om.State(tmp_path))) == -9
+    net.disconnect = real
+    stranger = d.add(Container(d, "my-own-app", {}, networks=("my-earners",)))
+    m = FakeMigrator(d, om.State(tmp_path))
+    assert m.run([]) == 0 and m.warnings == 1
+    assert d.nets["my-earners"] is net and om.OWNER_LABEL not in net.attrs["Labels"]
+    for c in (a, b, stranger):
+        assert "my-earners" in c.networks(), c.name
+
+
+def test_a_worker_container_that_joined_before_the_retry_comes_along(tmp_path):
+    d, a, b = _two_on_a_bridge()
+    real = _crash_on_second_disconnect(d.nets["my-earners"])
+    assert _run(FakeMigrator(d, om.State(tmp_path))) == -9
+    d.nets["my-earners"].disconnect = real
+    late = d.add(Container(d, "cashpilot-c", WORKER_LABELS, networks=("my-earners",)))
+    assert FakeMigrator(d, om.State(tmp_path)).run([]) == 0
+    assert d.nets["my-earners"].attrs["Labels"] == OWNER
+    for c in (a, b, late):
+        assert "my-earners" in c.networks(), c.name
+
+
+def test_a_network_that_cannot_be_made_again_is_made_by_the_next_run(tmp_path):
+    d, a, b = _two_on_a_bridge()
+    real_create = d.networks.create
+
+    def taken(*args, **kw):
+        raise APIError("Pool overlaps with other one on this address space")
+
+    d.networks.create = taken
+    m = FakeMigrator(d, om.State(tmp_path))
+    assert m.run([]) == 1
+    d.networks.create = real_create
+    assert FakeMigrator(d, om.State(tmp_path)).run([]) == 0
+    assert d.nets["my-earners"].attrs["Labels"] == OWNER
+    assert "my-earners" in a.networks() and "my-earners" in b.networks()
+
+
+def test_a_container_that_took_the_earners_name_is_not_taken_for_it(install, tmp_path):
+    d, _, _ = install
+    d.api.crash_on_create = True
+    assert _run(FakeMigrator(d, om.State(tmp_path))) == -9
+    squatter = d.add(Container(d, "cashpilot-mysterium", {}, running=False))
+    assert FakeMigrator(d, om.State(tmp_path)).run([]) == 1
+    assert squatter.status == "exited"
+    squatter.remove()
+    assert FakeMigrator(d, om.State(tmp_path)).run([]) == 0
+    new = d.containers.get("cashpilot-mysterium")
+    assert new.status == "running" and new.volume_names() == ["mysterium-data"]

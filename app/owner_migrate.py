@@ -43,6 +43,9 @@ BACKUP_SUFFIX = "-pre-isolation"
 #: On every helper container, so a leftover from a killed run can be found.
 HELPER_LABEL = "cashpilot.migrate"
 HELPER_NAME = "cashpilot-migrate-copy"
+# On each container the migration recreates: the id of the one it replaces, so
+# a retry knows a container under that name is its own and not someone else's.
+RECREATED_LABEL = "cashpilot.migrated-from"
 #: The fence network's own label (app/lan_fence.py NETWORK_LABEL).
 FENCE_LABEL = "cashpilot.isolation"
 #: Docker's own networks: they carry no labels and cannot be recreated.
@@ -136,11 +139,12 @@ class State:
 
 
 class Migrator:
-    def __init__(self, client: Any, state: State, image: str, project: str = "") -> None:
+    def __init__(self, client: Any, state: State, image: str, project: str = "", self_id: str = "") -> None:
         self.client = client
         self.state = state
         self.image = image
         self.project = project
+        self.self_id = self_id
         self.failures = 0
         self.warnings = 0
 
@@ -235,8 +239,18 @@ class Migrator:
             new = self._compose_volume(new_key)
             if new is None:
                 raise MigrationError(f"{new_key} does not exist; run this from docker compose up, which creates it")
+            if not owned((new.attrs or {}).get("Labels")):
+                # The proxy would refuse the worker this volume, in-app updates included.
+                raise MigrationError(
+                    f"{new.name} does not carry {OWNER_LABEL}={OWNER}, so the worker could not use it. It was made "
+                    f"by an older compose file or by hand: if it holds nothing of yours, remove it (docker volume "
+                    f"rm {new.name}) and run docker compose up -d again, which creates it labelled."
+                )
             if (self.state.get("compose", new.name) or {}).get("done"):
                 continue
+            # The old worker may still be running on it; a key it wrote after the
+            # copy would stay behind. Compose recreates it on the new volume next.
+            self._stop_users(old.name)
             result = self.copy(old.name, new.name)
             self.state.put("compose", new.name, {"done": True, "from": old.name, "digest": result})
             logger.info(
@@ -247,6 +261,13 @@ class Migrator:
                 result["digest"],
                 old.name,
             )
+
+    def _stop_users(self, vol: str) -> None:
+        for c in self.client.containers.list(filters={"volume": vol}):
+            if c.id == self.self_id or c.status != "running":
+                continue
+            logger.info("Stopping %s, which uses %s, before copying it; compose starts it again", c.name, vol)
+            self.client.api.stop(c.id)
 
     # -- leftovers ----------------------------------------------------------
 
@@ -303,18 +324,7 @@ class Migrator:
                         f"was, and the worker cannot put services on it. To move it, disconnect that container "
                         f"(docker network disconnect {name} {c.name}) and run docker compose up -d again."
                     )
-                endpoint = ((c.attrs.get("NetworkSettings") or {}).get("Networks") or {}).get(name) or {}
-                aliases = [a for a in endpoint.get("Aliases") or [] if a != c.id[:12]]
-                # An address the operator pinned; Docker's own picks are not kept.
-                static = endpoint.get("IPAMConfig") or {}
-                members.append(
-                    {
-                        "name": c.name,
-                        "aliases": aliases,
-                        "ipv4": static.get("IPv4Address") or None,
-                        "ipv6": static.get("IPv6Address") or None,
-                    }
-                )
+                members.append(self._member(c, name))
             record = {
                 "name": name,
                 "driver": attrs.get("Driver") or "bridge",
@@ -336,12 +346,63 @@ class Migrator:
         except NotFound:
             net = None
         if net is not None and not owned((net.attrs or {}).get("Labels")):
+            # A retry: someone may have joined since the record was made.
+            known = {m["name"] for m in record["members"]}
+            for cid in (net.attrs or {}).get("Containers") or {}:
+                c = self.client.containers.get(cid)
+                if c.name in known:
+                    continue
+                if not owned(c.labels):
+                    # Leave it as it is, with the members an earlier run took off back on.
+                    self._reconnect(net, record)
+                    self.state.drop("networks", name)
+                    raise LeftAlone(
+                        f"{c.name} joined it since the last run and was not deployed by the worker, so the "
+                        f"network was left as it was. To move it, disconnect that container (docker network "
+                        f"disconnect {name} {c.name}) and run docker compose up -d again."
+                    )
+                record["members"].append(self._member(c, name))
+            self.state.put("networks", name, record)
             for cid in list((net.attrs or {}).get("Containers") or {}):
                 net.disconnect(cid, force=True)
             net.remove()
             net = None
         if net is None:
-            net = self._create_network(record)
+            try:
+                net = self._create_network(record)
+            except Exception as exc:
+                raise MigrationError(
+                    f"it was removed but could not be created again ({exc}); its {len(record['members'])} "
+                    f"container(s) are off it until it is. If another network took its subnet, remove or move "
+                    f"that one and run docker compose up -d again: the settings and members are recorded."
+                ) from exc
+        self._reconnect(net, record)
+        record["done"] = True
+        self.state.put("networks", name, record)
+        logger.info(
+            "Recreated the network %s with %s=%s; %d container(s) back on it.",
+            name,
+            OWNER_LABEL,
+            OWNER,
+            len(record["members"]),
+        )
+
+    @staticmethod
+    def _member(c: Any, name: str) -> dict[str, Any]:
+        endpoint = ((c.attrs.get("NetworkSettings") or {}).get("Networks") or {}).get(name) or {}
+        # An address the operator pinned; Docker's own picks are not kept.
+        static = endpoint.get("IPAMConfig") or {}
+        return {
+            "name": c.name,
+            "aliases": [a for a in endpoint.get("Aliases") or [] if a != c.id[:12]],
+            "ipv4": static.get("IPv4Address") or None,
+            "ipv6": static.get("IPv6Address") or None,
+        }
+
+    def _reconnect(self, net: Any, record: dict[str, Any]) -> None:
+        """Put every recorded member that is off ``net`` back on it."""
+        from docker.errors import NotFound
+
         net.reload()
         connected = {v.get("Name") for v in ((net.attrs or {}).get("Containers") or {}).values()}
         # Pinned addresses first, so no member Docker addresses itself takes one.
@@ -358,15 +419,6 @@ class Migrator:
                 ipv4_address=member.get("ipv4"),
                 ipv6_address=member.get("ipv6"),
             )
-        record["done"] = True
-        self.state.put("networks", name, record)
-        logger.info(
-            "Recreated the network %s with %s=%s; %d container(s) back on it.",
-            name,
-            OWNER_LABEL,
-            OWNER,
-            len(record["members"]),
-        )
 
     def _create_network(self, record: dict[str, Any]) -> Any:
         from docker.types import IPAMConfig, IPAMPool
@@ -551,9 +603,17 @@ class Migrator:
             raise MigrationError(f"{vol} already carries the label but no backup of it is recorded; not touching it")
         backup = backup_name(vol)
         try:
-            self.client.volumes.get(backup)
+            existing = self.client.volumes.get(backup)
         except NotFound:
             self.client.volumes.create(backup, driver="local", labels={BACKUP_LABEL: vol})
+        else:
+            # Ours from an interrupted run, or a volume of the operator's that
+            # only shares the name: the copy wipes it, so only ever the first.
+            if ((existing.attrs or {}).get("Labels") or {}).get(BACKUP_LABEL) != vol:
+                raise MigrationError(
+                    f"{backup}, where the backup of {vol} goes, already exists and is not a CashPilot backup of "
+                    f"it, so nothing was copied into it. Rename or remove it and run docker compose up -d again."
+                )
         logger.info("Copying %s into its backup %s", vol, backup)
         result = self.copy(vol, backup)
         record = {
@@ -615,6 +675,12 @@ class Migrator:
             existing = None
         if existing is not None and existing.id == info["Id"]:
             raise MigrationError(f"{name} still exists as it was; it should have been removed")
+        if existing is not None and (existing.labels or {}).get(RECREATED_LABEL) != info["Id"]:
+            raise MigrationError(
+                f"another container took the name {name} after the migration removed the earner, so it was not "
+                f"recreated. Its settings are recorded: remove or rename that container and run docker compose "
+                f"up -d again."
+            )
         if existing is None:
             body = self.create_body(info)
             api = self.client.api
@@ -642,7 +708,7 @@ class Migrator:
             # Docker refuses a hostname in another container's namespace.
             config.pop("Hostname", None)
             config.pop("Domainname", None)
-        config["Labels"] = {**(config.get("Labels") or {}), OWNER_LABEL: OWNER}
+        config["Labels"] = {**(config.get("Labels") or {}), OWNER_LABEL: OWNER, RECREATED_LABEL: info["Id"]}
         # An image VOLUME the container got an anonymous volume for: name it, or
         # the new container would get an empty one.
         binds = list(host.get("Binds") or [])
@@ -692,7 +758,7 @@ def main() -> int:
     root = Path("/state")
     root.chmod(0o700)
     state = State(root)
-    migrator = Migrator(client, state, image=me.image.id, project=project)
+    migrator = Migrator(client, state, image=me.image.id, project=project, self_id=me.id)
     return migrator.run(_pairs(os.environ.get("CASHPILOT_MIGRATE_COMPOSE_VOLUMES", "")))
 
 

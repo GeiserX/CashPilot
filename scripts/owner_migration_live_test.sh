@@ -259,6 +259,17 @@ fi
 
 echo "== 3. upgrade with the new compose file, and kill the migration while it copies the identity"
 use_compose "$ROOT" new
+# The old worker keeps writing into its old volume until something stops it;
+# the last write that went through must reach the new volume.
+(
+    for i in $(seq 1 6000); do
+        docker exec -u 0 cashpilot-worker sh -c "echo $i > /data/live-late-write" >/dev/null 2>&1 || break
+        echo "$i" >"$WORK_DIR/last-write"
+        sleep 0.05
+    done
+) &
+writer=$!
+sleep 1
 (compose up -d --force-recreate >"$WORK_DIR/up1.log" 2>&1; echo "exit $?" >>"$WORK_DIR/up1.log") &
 upgrade=$!
 killed=""
@@ -280,10 +291,20 @@ for _ in $(seq 1 600); do
     esac
     sleep 0.1
 done
+migrate_logs=$(docker logs cashpilot-migrate 2>&1 || true)
 wait "$upgrade" || true
+kill "$writer" 2>/dev/null || true
+wait "$writer" 2>/dev/null || true
 [ -n "$killed" ] && pass "killed the migration and its copy helper mid-copy" || fail "the copy never started"
 tail -4 "$WORK_DIR/up1.log" | sed 's/^/    | /'
-docker logs cashpilot-migrate 2>&1 | tail -6 | sed 's/^/    migrate| /'
+echo "$migrate_logs" | tail -6 | sed 's/^/    migrate| /'
+case "$migrate_logs" in
+*"Stopping cashpilot-worker, which uses ${PROJECT}_cashpilot_worker_data"*)
+    pass "the migration stopped the old worker before copying its volume" ;;
+*) fail "the migration did not stop the old worker before copying its volume" ;;
+esac
+last_write=$(cat "$WORK_DIR/last-write" 2>/dev/null || echo none)
+echo "    the old worker's last write that went through: $last_write"
 partial=$(docker run --rm -v "$BACKUP:/b:ro" "$ALPINE" sh -c 'du -sk /b | cut -f1' 2>/dev/null || echo none)
 echo "    what the kill left: backup $BACKUP holds ${partial} KiB of ~40964 KiB"
 [ "${partial:-0}" -gt 4 ] 2>/dev/null && pass "the kill came after data reached the backup" \
@@ -329,6 +350,10 @@ for pair in "cashpilot_fleet:live-fleet-key:the-enrolment-key" "cashpilot_worker
     docker volume inspect "${PROJECT}_${key}" >/dev/null 2>&1 && pass "the old ${PROJECT}_${key} is kept" \
         || fail "the old ${PROJECT}_${key} is gone"
 done
+got=$(docker run --rm -v "${PROJECT}_cashpilot_worker_data_owned:/v:ro" "$ALPINE" cat /v/live-late-write 2>&1 || true)
+[ "$last_write" != none ] && [ "$got" = "$last_write" ] \
+    && pass "the old worker's last write ($last_write) reached cashpilot_worker_data_owned" \
+    || fail "cashpilot_worker_data_owned holds write $got, the old worker's last was $last_write"
 [ "$(docker inspect -f '{{.Id}} {{.State.Running}}' "$HAND")" = "$hand_before true" ] \
     && pass "the hand-started earner is the same container, still running" || fail "the hand-started earner was touched"
 [ "$(docker volume inspect -f '{{json .Labels}}' "$HAND-data")" = null ] \
