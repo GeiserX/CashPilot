@@ -70,8 +70,9 @@ STAGED_SUFFIX = "-next"
 # deploy() swapping the old pair for the staged one, and status(), take turns: a
 # heartbeat must not start an earner that is being removed, or read a half swap.
 _swap_lock = threading.Lock()
-# One deploy per copy at a time: a second one would take the first one's staged
-# sidecar for a leftover and remove it.
+# One operation per copy at a time: a second deploy would take the first one's
+# staged sidecar for a leftover, and a stop, start or removal that ran during a
+# deploy would be undone when the deploy promotes its sidecar.
 _deploy_locks: dict[tuple[str, int], threading.Lock] = {}
 _deploy_locks_guard = threading.Lock()
 #: A staged sidecar older than this is a leftover: a deploy is past its ready
@@ -448,15 +449,21 @@ def _deploy(slug: str, proxy_id: int, earner: dict[str, Any], proxy: dict[str, A
     tunnel_image()
     final = tunnel_name(slug, proxy_id)
     staged = final + STAGED_SUFFIX
-    # Left by a deploy that died midway, on this name only if it is ours.
+    # Left by a deploy that died midway, on this name only if it is ours. A young
+    # one can belong to a deploy another worker on this daemon is running.
     if (leftover := _get(client, staged)) is not None:
         if not _is_ours(leftover, slug, proxy_id):
             raise ProxyTunnelError(f"A container named {staged} that CashPilot did not create is in the way")
+        if _age_seconds(leftover) < STAGED_STALE_SECONDS:
+            raise ProxyTunnelError(
+                f"Another deploy of this copy started {int(_age_seconds(leftover))} s ago and may still be running. "
+                f"Try again in a few minutes."
+            )
         _remove_quietly(leftover, 2)
     sidecar, exit_info = start_sidecar(client, staged, slug, proxy_id, proxy, own_ip, hostname=_hostname(final))
     try:
         with _swap_lock:
-            remove(slug, proxy_id)
+            _remove(slug, proxy_id)
             sidecar.rename(final)
     except Exception:
         _remove_quietly(sidecar, 2)
@@ -509,6 +516,11 @@ def stop(slug: str, proxy_id: int) -> bool:
     state (earner_action), which would undo the stop. An earner left running
     after its tunnel stopped has no way out, and earner_action leaves it alone.
     """
+    with _deploy_lock(slug, proxy_id):
+        return _stop(slug, proxy_id)
+
+
+def _stop(slug: str, proxy_id: int) -> bool:
     earner, sidecar = _pair(slug, proxy_id)
     if not _is_ours(earner, slug, proxy_id) and not _is_ours(sidecar, slug, proxy_id):
         raise ValueError(f"No proxied copy of {slug} through proxy {proxy_id} on this worker")
@@ -533,6 +545,11 @@ def start(slug: str, proxy_id: int, proxy: dict[str, Any] | None = None, own_ip:
     The earner is restarted rather than started when it is still running in a
     namespace the old tunnel left behind.
     """
+    with _deploy_lock(slug, proxy_id):
+        return _start(slug, proxy_id, proxy, own_ip)
+
+
+def _start(slug: str, proxy_id: int, proxy: dict[str, Any] | None, own_ip: str | None) -> dict[str, Any]:
     earner, sidecar = _pair(slug, proxy_id)
     if not _is_ours(earner, slug, proxy_id) or not _is_ours(sidecar, slug, proxy_id):
         raise ValueError(f"No proxied copy of {slug} through proxy {proxy_id} on this worker")
@@ -564,6 +581,11 @@ def start(slug: str, proxy_id: int, proxy: dict[str, Any] | None = None, own_ip:
 
 def remove(slug: str, proxy_id: int) -> list[str]:
     """Remove the earner, then its tunnel and the tunnel's secret volume."""
+    with _deploy_lock(slug, proxy_id):
+        return _remove(slug, proxy_id)
+
+
+def _remove(slug: str, proxy_id: int) -> list[str]:
     removed: list[str] = []
     earner, sidecar = _pair(slug, proxy_id)
     for container, timeout in ((earner, orchestrator._get_stop_timeout(slug)), (sidecar, 10)):
@@ -694,7 +716,12 @@ def _status(collect_stats: bool) -> list[dict[str, Any]]:
     pairs: dict[tuple[str, str], dict[str, Any]] = {}
     for container in found:
         if str(getattr(container, "name", "")).endswith(STAGED_SUFFIX):
-            continue  # a redeploy's sidecar, not promoted yet
+            # A redeploy's sidecar, not promoted yet. One past any deploy's
+            # timeout is a leftover holding the proxy login: removed here, since
+            # the startup sweep skips those still young when the worker starts.
+            if _age_seconds(container) >= STAGED_STALE_SECONDS:
+                _remove_quietly(container, 2)
+            continue
         labels = container.labels or {}
         key = (labels.get(LABEL_SERVICE, ""), labels.get(LABEL_PROXY, ""))
         role = "tunnel" if labels.get(LABEL_ROLE) == ROLE_TUNNEL else "earner"

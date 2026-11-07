@@ -9,6 +9,7 @@ from __future__ import annotations
 import io
 import os
 import tarfile
+from datetime import UTC, datetime, timedelta
 from unittest.mock import MagicMock, patch
 
 os.environ.setdefault("CASHPILOT_API_KEY", "test-fleet-key")
@@ -42,7 +43,9 @@ def _container(name, slug, *, proxy=None, role=None, instance=None, status="runn
     if instance:
         labels[LABEL_INSTANCE] = str(instance)
     c.labels = labels
-    c.attrs = {"Created": "2026-11-04T00:00:00Z", "State": {"StartedAt": "2026-11-04T10:00:00Z"}}
+    # A day old, so a staged sidecar built here is past STAGED_STALE_SECONDS whatever the clock says.
+    created = (datetime.now(UTC) - timedelta(days=1)).isoformat().replace("+00:00", "Z")
+    c.attrs = {"Created": created, "State": {"StartedAt": "2026-11-04T10:00:00Z"}}
     c.image.tags = [f"{slug}:1"]
     return c
 
@@ -314,7 +317,7 @@ class TestOrder:
         with (
             patch.object(orchestrator, "_get_client", return_value=client),
             patch.object(proxy_tunnel, "tunnel_image", return_value="drumsergio/cashpilot-tunnel:1.64.0"),
-            patch.object(proxy_tunnel, "remove", side_effect=lambda *a: calls.append("old-removed") or []),
+            patch.object(proxy_tunnel, "_remove", side_effect=lambda *a: calls.append("old-removed") or []),
             patch.object(proxy_tunnel, "start_sidecar", side_effect=fake_start_sidecar) as start,
             patch.object(orchestrator, "deploy_raw", side_effect=fake_deploy_raw),
         ):
@@ -331,7 +334,7 @@ class TestOrder:
         with (
             patch.object(orchestrator, "_get_client", return_value=client),
             patch.object(proxy_tunnel, "tunnel_image", return_value="drumsergio/cashpilot-tunnel:1.64.0"),
-            patch.object(proxy_tunnel, "remove") as remove,
+            patch.object(proxy_tunnel, "_remove") as remove,
             patch.object(proxy_tunnel, "start_sidecar", side_effect=proxy_tunnel.ProxyTunnelError("No such image")),
             pytest.raises(proxy_tunnel.ProxyTunnelError),
         ):
@@ -346,7 +349,7 @@ class TestOrder:
         with (
             patch.object(orchestrator, "_get_client", return_value=client),
             patch.object(proxy_tunnel, "tunnel_image", return_value="drumsergio/cashpilot-tunnel:1.64.0"),
-            patch.object(proxy_tunnel, "remove", return_value=[]),
+            patch.object(proxy_tunnel, "_remove", return_value=[]),
             patch.object(proxy_tunnel, "start_sidecar", return_value=(sidecar, {"ip": "93.184.215.14"})),
             patch.object(orchestrator, "deploy_raw") as deploy_raw,
             pytest.raises(RuntimeError),
@@ -365,7 +368,7 @@ class TestOrder:
             with (
                 patch.object(orchestrator, "_get_client", return_value=client),
                 patch.object(proxy_tunnel, "tunnel_image", return_value="drumsergio/cashpilot-tunnel:1.64.0"),
-                patch.object(proxy_tunnel, "remove", return_value=[]),
+                patch.object(proxy_tunnel, "_remove", return_value=[]),
                 patch.object(proxy_tunnel, "start_sidecar", return_value=(sidecar, {"ip": "93.184.215.14"})),
                 patch.object(orchestrator, "deploy_raw", return_value="earner-id"),
             ):
@@ -375,6 +378,54 @@ class TestOrder:
                     with pytest.raises(proxy_tunnel.ProxyTunnelError, match="did not create"):
                         proxy_tunnel.deploy("honeygain", 3, {"image": "honeygain/honeygain:1"}, _socks(), None)
             assert found.remove.called is ok
+
+    def test_a_young_staged_sidecar_is_never_removed_by_another_deploy(self):
+        young = _container("cashpilot-tunnel-honeygain-p3-next", "honeygain", proxy=3, role="tunnel")
+        young.attrs["Created"] = datetime.now(UTC).isoformat().replace("+00:00", "Z")
+        client = MagicMock()
+        client.containers.get.return_value = young
+        with (
+            patch.object(orchestrator, "_get_client", return_value=client),
+            patch.object(proxy_tunnel, "tunnel_image", return_value="drumsergio/cashpilot-tunnel:1.64.0"),
+            patch.object(proxy_tunnel, "start_sidecar") as start,
+            pytest.raises(proxy_tunnel.ProxyTunnelError, match="may still be running"),
+        ):
+            proxy_tunnel.deploy("honeygain", 3, {"image": "honeygain/honeygain:1"}, _socks(), None)
+        young.remove.assert_not_called()
+        start.assert_not_called()
+
+    def test_the_heartbeat_removes_a_stale_staged_sidecar_and_keeps_a_young_one(self):
+        stale = _container("cashpilot-tunnel-x-p1-next", "x", proxy=1, role="tunnel")
+        young = _container("cashpilot-tunnel-y-p1-next", "y", proxy=1, role="tunnel")
+        young.attrs["Created"] = datetime.now(UTC).isoformat().replace("+00:00", "Z")
+        client = MagicMock()
+        client.containers.list.return_value = [stale, young]
+        with (
+            patch.object(orchestrator, "_get_client", return_value=client),
+            patch.object(proxy_tunnel, "_read_exit", return_value=None),
+        ):
+            assert proxy_tunnel.status(collect_stats=False) == []
+        stale.remove.assert_called_once_with(force=True, v=True)
+        young.remove.assert_not_called()
+
+    @pytest.mark.parametrize("op", ["stop", "start", "remove"])
+    def test_stop_start_and_remove_wait_for_a_deploy_of_the_same_copy(self, op):
+        import threading
+
+        done = threading.Event()
+        lock = proxy_tunnel._deploy_lock("x", 1)
+        lock.acquire()
+        try:
+            with patch.object(proxy_tunnel, f"_{op}", side_effect=lambda *a: done.set()):
+                t = threading.Thread(target=getattr(proxy_tunnel, op), args=("x", 1))
+                t.start()
+                assert not done.wait(0.2), f"{op} ran while a deploy of the copy held its lock"
+                lock.release()
+                t.join(2)
+            assert done.is_set()
+        finally:
+            if lock.locked():
+                lock.release()
 
     def test_the_heartbeat_never_reports_a_staged_sidecar(self):
         earner = _container("cashpilot-x-p1", "x", proxy=1)
@@ -397,7 +448,7 @@ class TestOrder:
         with (
             patch.object(orchestrator, "_get_client", return_value=client),
             patch.object(proxy_tunnel, "tunnel_image", return_value="drumsergio/cashpilot-tunnel:1.64.0"),
-            patch.object(proxy_tunnel, "remove", return_value=[]),
+            patch.object(proxy_tunnel, "_remove", return_value=[]),
             patch.object(proxy_tunnel, "start_sidecar", return_value=(sidecar, {"ip": "93.184.215.14"})),
             patch.object(orchestrator, "deploy_raw", side_effect=RuntimeError("boom")),
             pytest.raises(RuntimeError),
@@ -433,7 +484,7 @@ class TestOrder:
             patch.object(orchestrator, "_get_client", return_value=MagicMock()),
             patch.object(proxy_tunnel, "tunnel_image", return_value="drumsergio/cashpilot-tunnel:1.64.0"),
             patch.object(proxy_tunnel, "resolve_proxy_ip", side_effect=proxy_tunnel.ProxyTunnelError("no such host")),
-            patch.object(proxy_tunnel, "remove") as remove,
+            patch.object(proxy_tunnel, "_remove") as remove,
             pytest.raises(proxy_tunnel.ProxyTunnelError),
         ):
             proxy_tunnel.deploy("x", 1, {"image": "x:1"}, _socks(host="gone.example"), None)
@@ -994,7 +1045,6 @@ class TestReviewFollowUps:
         live.remove.assert_not_called()
 
     def test_a_young_staged_sidecar_is_left_to_its_deploy(self):
-        from datetime import UTC, datetime
 
         young = _container("cashpilot-tunnel-x-p1-next", "x", proxy=1, role="tunnel")
         young.attrs["Created"] = datetime.now(UTC).isoformat().replace("+00:00", "123Z")
