@@ -547,6 +547,38 @@ class TestUpdaterImage:
             orchestrator.spawn_self_update()
         client.containers.run.assert_not_called()
 
+    def test_a_failed_image_check_still_pulls(self):
+        from docker.errors import APIError
+
+        me = _fake_container(labels=_COMPOSE_LABELS)
+        client = _fake_docker(me=me)
+        _wire_runs(client)
+        client.images.get.side_effect = APIError("daemon busy", response=MagicMock(status_code=500))
+        with patch.object(orchestrator, "_get_client", return_value=client):
+            orchestrator.spawn_self_update()
+        client.images.pull.assert_called_once_with(orchestrator.UPDATER_IMAGE)
+        assert _updater_started(client)
+
+    def test_a_pull_the_proxy_refuses_says_why_and_starts_nothing(self):
+        from docker.errors import APIError
+
+        me = _fake_container(labels=_COMPOSE_LABELS)
+        client = _fake_docker(me=me)
+        _wire_runs(client)
+        client.images.get.side_effect = self._proxy_404()
+        response = MagicMock(status_code=403)
+        response.json.return_value = {
+            "message": "request denied by sockguard policy",
+            "reason": "image pull denied: registry docker.io is not allowlisted",
+        }
+        client.images.pull.side_effect = APIError("denied", response=response)
+        with (
+            patch.object(orchestrator, "_get_client", return_value=client),
+            pytest.raises(orchestrator.SelfUpdateUnavailable, match="registry docker.io is not allowlisted"),
+        ):
+            orchestrator.spawn_self_update()
+        client.containers.run.assert_not_called()
+
 
 _UI_LABELS = {
     "com.docker.compose.project": "cashpilot",
