@@ -230,6 +230,7 @@ A reset, on the day or by hand, starts only the copies the cap stopped; a copy
 you stopped yourself stays stopped. Turning a cap on starts a fresh period, so
 traffic from before it existed does not count. Turning it off, or raising it
 above what this period has used, lifts the stop and starts those copies again.
+A copy whose box was offline then is started when that box next reports.
 
 Workers report every 60 seconds, so the copies can run up to a minute past the
 threshold. That is why the default is 90%, not 100%.
