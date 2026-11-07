@@ -124,7 +124,8 @@ dangerous containers, not only dangerous URLs:
   only `runc` and the gVisor ones (the worker refuses any other runtime itself,
   before the running container is touched). Host folders only from
   `CASHPILOT_PROXY_BIND_MOUNTS` and `CASHPILOT_COMPOSE_DIR`, so a bind of `/`
-  or of the socket is refused. The body is parsed the way Docker parses it, so
+  or of the socket is refused as long as neither variable lists `/`, the
+  socket or a folder above it: the proxy takes both as given. The body is parsed the way Docker parses it, so
   `"privileged": true` in lowercase is refused too.
 - **Exec.** Only the exact commands the catalog's readers run (Mysterium's node
   and wallet reads, Anyone Protocol's `anonrc`, the isolation check's firewall

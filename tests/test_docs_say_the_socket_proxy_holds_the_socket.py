@@ -40,6 +40,8 @@ ALLOWED = {
     # worker mounts the socket); the page says so.
     ("app-stores.md", STALE[0]),
     ("app-stores.md", STALE[1]),
+    ("app-stores.md", STALE[5]),
+    ("app-stores.md", STALE[6]),
     # A proxied copy really is two containers (the earner and its tunnel).
     ("proxies.md", STALE[0]),
 }
@@ -75,4 +77,10 @@ def test_no_page_says_the_worker_holds_the_socket(page: Path):
     ],
 )
 def test_the_check_catches_each_old_claim(text: str):
+    assert stale_claims("index.md", text)
+
+
+def test_the_app_store_page_may_say_its_listings_need_the_socket():
+    text = "The Unraid worker requires Docker socket access, which is root on the host."
+    assert stale_claims("app-stores.md", text) == []
     assert stale_claims("index.md", text)

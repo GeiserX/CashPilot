@@ -125,7 +125,7 @@ Two separate Docker images:
 ### Core Principles
 
 1. **Separation of concerns.** UI handles: dashboard, earnings collection, scheduling, user auth. Workers handle: Docker container lifecycle, health reporting.
-2. **Workers need Docker, through the socket proxy.** A worker without Docker access is useless, but in the shipped compose files it never gets the raw socket: the proxy refuses privileged containers and binds of `/` or the socket, and limits the worker to containers, volumes and networks with its owner label. The Unraid and TrueNAS listings still give it the raw socket, which is root on the host (`docs/app-stores.md`).
+2. **Workers need Docker, through the socket proxy.** A worker without Docker access is useless, but in the shipped compose files it never gets the raw socket: the proxy refuses privileged containers and binds of `/` or the socket (unless the operator lists one of them in `CASHPILOT_PROXY_BIND_MOUNTS` or `CASHPILOT_COMPOSE_DIR`, which it takes as given), and limits the worker to containers, volumes and networks with its owner label. The Unraid and TrueNAS listings still give it the raw socket, which is root on the host (`docs/app-stores.md`).
 3. **Single source of truth.** The UI instance is the only one that collects earnings and stores historical data.
 4. **Earnings are never duplicated.** Since only the UI collects, there is no risk of double-counting.
 5. **Workers are stateless satellites.** A worker knows which containers to keep running and the UI URL to report to.
