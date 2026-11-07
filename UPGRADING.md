@@ -19,6 +19,27 @@ commands, and [Backing up node identities](docs/backup.md) covers the rest.
 
 ---
 
+## 2.0: change the image tags
+
+**Affects everyone on 1.x.** The compose files pin a release series, so
+`docker compose pull` and the in-app **Update** button never move a 1.x install
+to 2.0.
+
+Beyond the fixes since 1.73, 2.0 changes nothing of its own, and it uses the
+same database. It is the major version for the releases below, several of which need
+a step from you: the socket proxy, owner isolation and its one-shot migration,
+and LAN isolation for upgraded installs.
+
+**What to do.** Back up `/data` and your node identities, then take the 2.0
+compose file for each host (or change every `drumsergio/cashpilot:1.x` and
+`drumsergio/cashpilot-worker:1.x` tag to `2.0`) and run
+`docker compose up -d --force-recreate`. Coming from before 1.73, also follow
+the sections below for your version.
+[What's new in 2.0](docs/whats-new-2.0.md#upgrading-from-1x) has a table by
+version and how to roll back.
+
+---
+
 ## Socket proxy on sockguard 2.4.6: take the new proxy line
 
 **Affects you if** your worker runs behind `cashpilot-socket-proxy`. sockguard

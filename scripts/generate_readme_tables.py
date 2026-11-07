@@ -43,7 +43,13 @@ EXTENSION = "extension-services"
 GPU = "gpu-services"
 
 #: Files whose counts are generated. The README also carries the lists above.
-COUNTED_FILES = ["README.md", "docs/index.md", "docs/getting-started.md", "docs/comparison.md"]
+COUNTED_FILES = [
+    "README.md",
+    "docs/index.md",
+    "docs/getting-started.md",
+    "docs/comparison.md",
+    "docs/whats-new-2.0.md",
+]
 _COUNT = re.compile(r"<!-- n:(\w+) -->\d*<!-- /n -->")
 
 

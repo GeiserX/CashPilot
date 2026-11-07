@@ -1,6 +1,6 @@
 services:
   cashpilot:
-    image: drumsergio/cashpilot:1.73.0
+    image: drumsergio/cashpilot:2.0.0
     networks:
       - cashpilot_owned
     ports:
@@ -24,7 +24,7 @@ services:
   # labelled one, data checked, and keeps the original as <volume>-pre-isolation.
   # It holds the raw socket only while it runs.
   cashpilot-migrate:
-    image: drumsergio/cashpilot-worker:1.73.0
+    image: drumsergio/cashpilot-worker:2.0.0
     container_name: cashpilot-migrate
     user: "0:0"
     entrypoint: ["python", "-m", "app.owner_migrate"]
@@ -95,7 +95,7 @@ services:
         condition: service_completed_successfully
 
   cashpilot-worker:
-    image: drumsergio/cashpilot-worker:1.73.0
+    image: drumsergio/cashpilot-worker:2.0.0
     # The proxy's owner label, so the worker may read its own container.
     labels:
       cashpilot.deployed-by: worker
