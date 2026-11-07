@@ -10,7 +10,7 @@
 # === Deploy on main server (e.g., server-a) ===
 services:
   cashpilot-ui:
-    image: drumsergio/cashpilot:1.72
+    image: drumsergio/cashpilot:1.73
     pull_policy: always
     container_name: cashpilot-ui
     # Loopback by default (the UI commands the Docker-socket worker). Set
@@ -68,7 +68,7 @@ services:
   # never deleted: UPGRADING.md says how to remove them. It holds the raw
   # socket only while it runs; a second run finds nothing to do.
   cashpilot-migrate:
-    image: drumsergio/cashpilot-worker:1.72
+    image: drumsergio/cashpilot-worker:1.73
     pull_policy: always
     container_name: cashpilot-migrate
     user: "0:0"
@@ -146,7 +146,7 @@ services:
         condition: service_completed_successfully
 
   cashpilot-worker:
-    image: drumsergio/cashpilot-worker:1.72
+    image: drumsergio/cashpilot-worker:1.73
     pull_policy: always
     container_name: cashpilot-worker
     # The proxy's owner label: the worker may read its own container, and the
