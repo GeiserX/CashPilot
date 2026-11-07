@@ -316,8 +316,7 @@ class Migrator:
             net.reload()
             attrs = net.attrs or {}
             members = []
-            for cid in attrs.get("Containers") or {}:
-                c = self.client.containers.get(cid)
+            for c in self._on_network(name):
                 if not owned(c.labels):
                     raise LeftAlone(
                         f"{c.name} is on it and was not deployed by the worker, so the network was left as it "
@@ -348,8 +347,7 @@ class Migrator:
         if net is not None and not owned((net.attrs or {}).get("Labels")):
             # A retry: someone may have joined since the record was made.
             known = {m["name"] for m in record["members"]}
-            for cid in (net.attrs or {}).get("Containers") or {}:
-                c = self.client.containers.get(cid)
+            for c in self._on_network(name):
                 if c.name in known:
                     continue
                 if not owned(c.labels):
@@ -363,8 +361,8 @@ class Migrator:
                     )
                 record["members"].append(self._member(c, name))
             self.state.put("networks", name, record)
-            for cid in list((net.attrs or {}).get("Containers") or {}):
-                net.disconnect(cid, force=True)
+            for c in self._on_network(name):
+                net.disconnect(c.id, force=True)
             net.remove()
             net = None
         if net is None:
@@ -387,6 +385,11 @@ class Migrator:
             len(record["members"]),
         )
 
+    def _on_network(self, name: str) -> list[Any]:
+        """Every container on the network. The network's own list leaves out
+        stopped ones, which would then point at a network that is gone."""
+        return self.client.containers.list(all=True, filters={"network": name})
+
     @staticmethod
     def _member(c: Any, name: str) -> dict[str, Any]:
         endpoint = ((c.attrs.get("NetworkSettings") or {}).get("Networks") or {}).get(name) or {}
@@ -404,15 +407,15 @@ class Migrator:
         from docker.errors import NotFound
 
         net.reload()
-        connected = {v.get("Name") for v in ((net.attrs or {}).get("Containers") or {}).values()}
         # Pinned addresses first, so no member Docker addresses itself takes one.
         for member in sorted(record["members"], key=lambda m: not (m.get("ipv4") or m.get("ipv6"))):
-            if member["name"] in connected:
-                continue
             try:
-                self.client.containers.get(member["name"])
+                c = self.client.containers.get(member["name"])
             except NotFound:
                 continue  # removed since; a volume plan recreates it on this network
+            endpoint = ((c.attrs.get("NetworkSettings") or {}).get("Networks") or {}).get(record["name"])
+            if endpoint is not None and endpoint.get("NetworkID") in (net.id, "", None):
+                continue
             net.connect(
                 member["name"],
                 aliases=member["aliases"] or None,
@@ -494,8 +497,20 @@ class Migrator:
                 merged[0].update(group[0])
                 merged[1].update(group[1])
             groups.append(merged)
+        groups = self._with_joiners(groups, attrs, held)
         plans = []
         for cids, vols in groups:
+            strangers = sorted(
+                attrs[cid]["Name"].lstrip("/")
+                for cid in cids
+                if not owned((attrs[cid].get("Config") or {}).get("Labels"))
+            )
+            if strangers:
+                self.warn(
+                    f"{', '.join(strangers)} shares the network of a container on {', '.join(sorted(vols))} and was "
+                    "not deployed by the worker, so both were left alone. Move them by hand."
+                )
+                continue
             outsiders = self._outside_users(vols, cids)
             if outsiders:
                 self.warn(
@@ -523,6 +538,40 @@ class Migrator:
             self.state.put("plans", key, plan)
             plans.append(plan)
         return plans
+
+    def _with_joiners(
+        self, groups: list[tuple[set[str], set[str]]], attrs: dict[str, dict[str, Any]], held: set[str]
+    ) -> list[tuple[set[str], set[str]]]:
+        """Each group with the containers that share the network namespace of
+        one of its own (network_mode container:<id>: a proxied earner and its
+        tunnel). They move together, or the new tunnel id leaves the earner
+        with no network."""
+        everyone = self.client.containers.list(all=True)
+        by_ref = {c.id: c for c in everyone} | {c.name: c for c in everyone}
+        joiners: dict[str, list[Any]] = {}
+        for c in everyone:
+            owner = by_ref.get(_namespace_of(c.attrs or {}) or "")
+            if owner is not None:
+                joiners.setdefault(owner.id, []).append(c)
+        pending, done = list(groups), []
+        while pending:
+            cids, vols = pending.pop()
+            grew = True
+            while grew:
+                grew = False
+                for owner_id in list(cids):
+                    for joiner in joiners.get(owner_id, []):
+                        if joiner.id in cids or joiner.id in held:
+                            continue
+                        cids.add(joiner.id)
+                        attrs[joiner.id] = joiner.attrs
+                        grew = True
+                        for other in [g for g in pending if joiner.id in g[0]]:
+                            pending.remove(other)
+                            cids |= other[0]
+                            vols |= other[1]
+            done.append((cids, vols))
+        return done
 
     def _outside_users(self, vols: set[str], cids: set[str]) -> list[str]:
         found = []
@@ -552,7 +601,11 @@ class Migrator:
     def run_plan(self, plan: dict[str, Any]) -> None:
         names = [c["Name"].lstrip("/") for c in plan["containers"]]
         logger.info("Moving %s onto labelled volumes: %s", ", ".join(names), ", ".join(plan["volumes"]))
-        for info in plan["containers"]:
+        # A container in another's namespace goes first and comes back last.
+        in_plan = {c["Id"]: c["Name"].lstrip("/") for c in plan["containers"]}
+        joined = [c for c in plan["containers"] if _namespace_of(c) in in_plan]
+        owners = [c for c in plan["containers"] if c not in joined]
+        for info in joined + owners:
             old = self._current(info)
             if old is not None:
                 # No timeout: Docker uses the container's own (deploy_raw sets the catalog's).
@@ -568,7 +621,7 @@ class Migrator:
             for vol in plan["volumes"]:
                 self.state.drop("volumes", vol)
             all_back = True
-            for info in plan["containers"]:
+            for info in owners:
                 old = self._current(info)
                 if old is None or not plan["running"].get(info["Id"]):
                     continue
@@ -577,20 +630,33 @@ class Migrator:
                 except Exception as exc:  # noqa: BLE001 - each earner gets its own try
                     all_back = False
                     self.fail(f"{info['Name'].lstrip('/')} did not start again ({exc}); the next run retries it")
+            for info in joined:
+                self._left_for_the_worker(info)
             if all_back:
                 self.state.drop("plans", plan["key"])
             raise
-        for info in plan["containers"]:
+        for info in joined + owners:
             old = self._current(info)
             if old is not None:
                 old.remove(force=True)
         for vol in plan["volumes"]:
             self.restore(vol)
-        for info in plan["containers"]:
+        for info in owners:
             self.recreate(info, plan["running"].get(info["Id"], False))
+        for info in joined:
+            # Into the new namespace, stopped: the worker starts a proxied
+            # earner only once its tunnel's firewall is up.
+            self.recreate(info, False, namespace=self.client.containers.get(in_plan[_namespace_of(info)]).id)
+            self._left_for_the_worker(info)
         plan["done"] = True
         self.state.put("plans", plan["key"], plan)
         logger.info("%s back as before, on labelled volumes.", ", ".join(names))
+
+    @staticmethod
+    def _left_for_the_worker(info: dict[str, Any]) -> None:
+        logger.info(
+            "%s is left stopped: the worker starts it once its tunnel is ready again.", info["Name"].lstrip("/")
+        )
 
     def back_up(self, vol: str, used_by: list[str]) -> None:
         from docker.errors import NotFound
@@ -664,9 +730,10 @@ class Migrator:
         self.state.put("volumes", vol, record)
         logger.info("%s carries the label now and holds the same data (sha256 %s).", vol, result["digest"])
 
-    def recreate(self, info: dict[str, Any], running: bool) -> None:
+    def recreate(self, info: dict[str, Any], running: bool, namespace: str | None = None) -> None:
         """Create the container again from its recorded inspect, under its name."""
         from docker.errors import NotFound
+        from docker.utils import version_gte
 
         name = info["Name"].lstrip("/")
         try:
@@ -681,20 +748,45 @@ class Migrator:
                 f"recreated. Its settings are recorded: remove or rename that container and run docker compose "
                 f"up -d again."
             )
+        body = self.create_body(info, namespace)
+        # Engines before API 1.44 take one network at create; the rest are connected after.
+        endpoints = body["NetworkingConfig"]["EndpointsConfig"]
+        mode = body["HostConfig"].get("NetworkMode")
+        first = mode if mode in endpoints else next(iter(sorted(endpoints)), None)
+        later = {net: ep for net, ep in endpoints.items() if net != first}
+        body["NetworkingConfig"]["EndpointsConfig"] = {first: endpoints[first]} if first else {}
+        api = self.client.api
         if existing is None:
-            body = self.create_body(info)
-            api = self.client.api
             created = api._result(
                 api._post_json(api._url("/containers/create"), data=body, params={"name": name}), True
             )
             existing = self.client.containers.get(created["Id"])
             logger.info("Recreated %s", name)
+        on = ((existing.attrs or {}).get("NetworkSettings") or {}).get("Networks") or {}
+        for net, ep in sorted(later.items()):
+            if net in on:
+                continue
+            ipam = ep.get("IPAMConfig") or {}
+            mac = ep.get("MacAddress") if version_gte(getattr(api, "_version", "1.44"), "1.44") else None
+            api.connect_container_to_network(
+                existing.id,
+                net,
+                ipv4_address=ipam.get("IPv4Address"),
+                ipv6_address=ipam.get("IPv6Address"),
+                aliases=ep.get("Aliases"),
+                links=ep.get("Links"),
+                link_local_ips=ipam.get("LinkLocalIPs"),
+                driver_opt=ep.get("DriverOpts"),
+                mac_address=mac,
+            )
         if running and existing.status != "running":
             existing.start()
 
-    def create_body(self, info: dict[str, Any]) -> dict[str, Any]:
+    def create_body(self, info: dict[str, Any], namespace: str | None = None) -> dict[str, Any]:
         config = dict(info.get("Config") or {})
         host = dict(info.get("HostConfig") or {})
+        if namespace:
+            host["NetworkMode"] = f"container:{namespace}"
         mode = str(host.get("NetworkMode") or "")
         # The same image, even if its tag moved since: by id when the tag points elsewhere now.
         image_id = info.get("Image") or ""
@@ -729,6 +821,12 @@ class Migrator:
                     keep["Aliases"] = aliases
                 endpoints[net] = keep
         return {**config, "HostConfig": host, "NetworkingConfig": {"EndpointsConfig": endpoints}}
+
+
+def _namespace_of(info: dict[str, Any]) -> str | None:
+    """The container whose network namespace this one shares, if any."""
+    mode = str((info.get("HostConfig") or {}).get("NetworkMode") or "")
+    return mode.split(":", 1)[1] if mode.startswith("container:") else None
 
 
 def _self_container(client: Any) -> Any:

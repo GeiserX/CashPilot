@@ -93,12 +93,15 @@ cleanup() {
     docker ps -aq --filter label=cashpilot.probe | xargs -r docker rm -fv >/dev/null 2>&1 || true
     for v in "$IDENTITY" "$BACKUP" "$HAND-data" cashpilot-docker-api cashpilot-docker-api-owned \
         "${PROJECT}_cashpilot_data" "${PROJECT}_cashpilot_worker_data" "${PROJECT}_cashpilot_fleet" \
-        "${PROJECT}_cashpilot_worker_data_owned" "${PROJECT}_cashpilot_fleet_owned"; do
+        "${PROJECT}_cashpilot_worker_data_owned" "${PROJECT}_cashpilot_fleet_owned" "$P-multi-data" \
+        "$P-multi-data-pre-isolation" $(cat "$WORK_DIR/tunnel-volume" 2>/dev/null) \
+        $(sed 's/$/-pre-isolation/' "$WORK_DIR/tunnel-volume" 2>/dev/null); do
         docker volume rm -f "$v" >/dev/null 2>&1 || true
     done
+    rm -f "$WORK_DIR/tunnel-volume"
     # The migration's records: root's, in the compose folder.
     docker run --rm -v "$WORK_DIR/project:/p" "$ALPINE" rm -rf /p/cashpilot-migrate-state >/dev/null 2>&1 || true
-    docker network rm cashpilot-isolated "${PROJECT}_default" "${PROJECT}_cashpilot_owned" >/dev/null 2>&1 || true
+    docker network rm cashpilot-isolated "${PROJECT}_default" "${PROJECT}_cashpilot_owned" "$P-second" >/dev/null 2>&1 || true
     for family in ip ip6; do
         docker run --rm --network host --cap-add NET_ADMIN --entrypoint nft "$REG/cashpilot-worker:new" \
             delete table "$family" cashpilot >/dev/null 2>&1 || true
@@ -200,6 +203,24 @@ docker run -d --name "$HAND" -v "$HAND-data:/data" "$ALPINE" sleep infinity >/de
 docker run --rm -v "${PROJECT}_cashpilot_fleet:/f" "$ALPINE" sh -c 'echo the-enrolment-key > /f/live-fleet-key'
 docker run --rm -v "${PROJECT}_cashpilot_worker_data:/d" "$ALPINE" sh -c 'echo the-worker-state > /d/live-worker-file'
 before=$(tree_sum "$IDENTITY")
+# Three more shapes the migration must carry over, all deployed by the worker:
+# a stopped one on the fence (the fence's own list leaves it out), a tunnel with
+# its secrets in an anonymous volume and an earner in its namespace, and an
+# earner on two networks (engines before API 1.44 take one at create).
+W="--label cashpilot.managed=true --label cashpilot.deployed-by=worker --label $P=1"
+# shellcheck disable=SC2086
+docker create --name "$P-stopped" $W --network cashpilot-isolated "$ALPINE" sleep infinity >/dev/null
+# shellcheck disable=SC2086
+docker run -d --name "$P-tunnel" $W -v /run/secrets "$ALPINE" sh -c 'echo the-proxy > /run/secrets/settings; exec sleep infinity' >/dev/null
+# shellcheck disable=SC2086
+docker run -d --name "$P-proxied" $W --network "container:$(docker inspect -f '{{.Id}}' "$P-tunnel")" "$ALPINE" sleep infinity >/dev/null
+docker inspect -f '{{range .Mounts}}{{.Name}}{{end}}' "$P-tunnel" >"$WORK_DIR/tunnel-volume"
+docker network create --label cashpilot.deployed-by=worker --label "$P=1" --subnet 172.31.250.0/24 "$P-second" >/dev/null
+# shellcheck disable=SC2086
+docker create --name "$P-multi" $W --network cashpilot-isolated -v "$P-multi-data:/d" "$ALPINE" sleep infinity >/dev/null
+docker network connect --ip 172.31.250.5 "$P-second" "$P-multi"
+docker start "$P-multi" >/dev/null
+tunnel_before=$(docker inspect -f '{{.Id}}' "$P-tunnel")
 earner_before=$(docker inspect -f '{{.Id}}' "$EARNER")
 hand_before=$(docker inspect -f '{{.Id}}' "$HAND")
 echo "    identity $IDENTITY sha256 $before"
@@ -316,7 +337,7 @@ partial=$(docker run --rm -v "$BACKUP:/b:ro" "$ALPINE" sh -c 'du -sk /b | cut -f
 echo "    what the kill left: backup $BACKUP holds ${partial} KiB of ~40964 KiB"
 [ "${partial:-0}" -gt 4 ] 2>/dev/null && pass "the kill came after data reached the backup" \
     || fail "the backup was still empty when the kill came (${partial} KiB)"
-recorded=$(docker run --rm -v "$WORK_DIR/project:/p:ro" "$ALPINE" sh -c 'ls /p/cashpilot-migrate-state/volumes 2>/dev/null' || true)
+recorded=$(docker run --rm -v "$WORK_DIR/project:/p:ro" "$ALPINE" sh -c "ls /p/cashpilot-migrate-state/volumes 2>/dev/null | grep -F '$IDENTITY.json'" || true)
 [ -z "$recorded" ] && pass "no verified backup was recorded before the kill" || fail "a backup was recorded: $recorded"
 [ "$(tree_sum "$IDENTITY")" = "$before" ] && pass "the identity is untouched by the killed run" \
     || fail "the killed run changed the identity"
@@ -362,6 +383,26 @@ got=$(docker run --rm -v "${PROJECT}_cashpilot_worker_data_owned:/v:ro" "$ALPINE
 [ "$last_write" != none ] && [ "$got" -ge "$last_write" ] 2>/dev/null \
     && pass "cashpilot_worker_data_owned holds write $got, the old worker's last confirmed was $last_write" \
     || fail "cashpilot_worker_data_owned holds write $got, the old worker's last confirmed was $last_write"
+fence_id=$(docker network inspect -f '{{.Id}}' cashpilot-isolated)
+[ "$(docker inspect -f '{{.State.Running}}' "$P-stopped")" = false ] && pass "the stopped worker container is still stopped" \
+    || fail "the stopped worker container was started"
+docker start "$P-stopped" >/dev/null 2>&1 || fail "the stopped container does not start"
+[ "$(docker inspect -f '{{(index .NetworkSettings.Networks "cashpilot-isolated").NetworkID}}' "$P-stopped")" = "$fence_id" ] \
+    && pass "it starts on the new fence" || fail "it did not start on the new fence"
+tunnel_now=$(docker inspect -f '{{.Id}}' "$P-tunnel")
+[ "$tunnel_now" != "$tunnel_before" ] && [ "$(docker inspect -f '{{.State.Running}}' "$P-tunnel")" = true ] \
+    && pass "the tunnel was recreated and runs" || fail "the tunnel was not recreated, or is not running"
+[ "$(docker exec "$P-tunnel" cat /run/secrets/settings 2>&1)" = the-proxy ] \
+    && pass "the tunnel's anonymous secret volume came along" || fail "the tunnel lost its secrets"
+[ "$(docker inspect -f '{{.HostConfig.NetworkMode}} {{.State.Running}}' "$P-proxied")" = "container:$tunnel_now false" ] \
+    && pass "the proxied earner is in the new tunnel's namespace, left for the worker to start" \
+    || fail "the proxied earner: $(docker inspect -f '{{.HostConfig.NetworkMode}} {{.State.Running}}' "$P-proxied")"
+docker start "$P-proxied" >/dev/null 2>&1 && pass "and it starts" || fail "the proxied earner does not start"
+nets=$(docker inspect -f '{{range $k, $v := .NetworkSettings.Networks}}{{$k}} {{end}}{{.State.Running}}' "$P-multi")
+[ "$nets" = "cashpilot-isolated $P-second true" ] && pass "the two-network earner is back on both, running" \
+    || fail "the two-network earner: $nets"
+addr=$(docker inspect -f '{{(index .NetworkSettings.Networks "'"$P-second"'").IPAddress}}' "$P-multi" 2>&1)
+[ "$addr" = 172.31.250.5 ] && pass "with its pinned address on the second network" || fail "its address there is $addr"
 [ "$(docker inspect -f '{{.Id}} {{.State.Running}}' "$HAND")" = "$hand_before true" ] \
     && pass "the hand-started earner is the same container, still running" || fail "the hand-started earner was touched"
 [ "$(docker volume inspect -f '{{json .Labels}}' "$HAND-data")" = null ] \

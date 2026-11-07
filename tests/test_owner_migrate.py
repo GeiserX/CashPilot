@@ -51,8 +51,11 @@ class Network:
         }
 
     def reload(self):
+        # As Docker's: only containers with a live endpoint, so never a stopped one.
         self.attrs["Containers"] = {
-            c.id: {"Name": c.name} for c in self.docker.cs.values() if self.name in c.networks()
+            c.id: {"Name": c.name}
+            for c in self.docker.cs.values()
+            if c.status == "running" and self.name in c.networks()
         }
 
     def disconnect(self, cid, force=False):
@@ -61,7 +64,13 @@ class Network:
     def connect(self, name, aliases=None, ipv4_address=None, ipv6_address=None):
         c = self.docker.containers.get(name)
         ipam = {k: v for k, v in (("IPv4Address", ipv4_address), ("IPv6Address", ipv6_address)) if v}
-        c.attrs["NetworkSettings"]["Networks"][self.name] = {"Aliases": aliases, "IPAMConfig": ipam or None}
+        if self.name in c.attrs["NetworkSettings"]["Networks"]:
+            raise APIError(f"endpoint with name {c.name} already exists in network {self.name}")
+        c.attrs["NetworkSettings"]["Networks"][self.name] = {
+            "Aliases": aliases,
+            "IPAMConfig": ipam or None,
+            "NetworkID": self.id,
+        }
         self.docker.connects.append((self.name, name))
 
     def remove(self):
@@ -96,7 +105,11 @@ class Container:
                 **(host or {}),
             },
             "Mounts": [{"Type": "volume", "Name": v, "Destination": t, "RW": True} for v, t in mounts],
-            "NetworkSettings": {"Networks": {n: {"Aliases": [name]} for n in networks}},
+            "NetworkSettings": {
+                "Networks": {
+                    n: {"Aliases": [name], "NetworkID": docker.nets[n].id if n in docker.nets else ""} for n in networks
+                }
+            },
             "State": {"Running": running},
         }
 
@@ -145,6 +158,16 @@ class Containers:
             out = [c for c in out if key in c.labels and (not value or c.labels[key] == value)]
         if "volume" in (filters or {}):
             out = [c for c in out if filters["volume"] in c.volume_names()]
+        if "network" in (filters or {}):
+            ref = filters["network"]
+            out = [
+                c
+                for c in out
+                if any(
+                    n == ref or (ep or {}).get("NetworkID") == ref
+                    for n, ep in c.attrs["NetworkSettings"]["Networks"].items()
+                )
+            ]
         return out
 
 
@@ -224,11 +247,21 @@ class Api:
     def _url(self, path):
         return path
 
+    def connect_container_to_network(self, container, net_id, aliases=None, ipv4_address=None, ipv6_address=None, **kw):
+        self.docker.nets[net_id].connect(
+            container, aliases=aliases, ipv4_address=ipv4_address, ipv6_address=ipv6_address
+        )
+
     def _post_json(self, url, data, params):
         if self.crash_on_create:
             self.crash_on_create = False
             raise Crash("killed while recreating")
         d = self.docker
+        if len(data["NetworkingConfig"]["EndpointsConfig"]) > 1:
+            raise APIError("Container cannot be connected to network endpoints")  # API before 1.44
+        mode = str(data["HostConfig"].get("NetworkMode") or "")
+        if mode.startswith("container:"):
+            d.containers.get(mode.split(":", 1)[1])  # NotFound, as Docker refuses a gone namespace
         c = Container(d, params["name"], data["Labels"], running=False, image=data["Image"])
         c.attrs["Config"] = {k: v for k, v in data.items() if k not in ("HostConfig", "NetworkingConfig")}
         c.attrs["HostConfig"] = data["HostConfig"]
@@ -240,8 +273,9 @@ class Api:
             mounts.append({"Type": "volume", "Name": src, "Destination": dst, "RW": True})
         c.attrs["Mounts"] = mounts
         c.attrs["NetworkSettings"]["Networks"] = {
-            n: dict(ep) for n, ep in data["NetworkingConfig"]["EndpointsConfig"].items()
-        } or ({} if data["HostConfig"]["NetworkMode"] != "bridge" else {"bridge": {}})
+            n: {**ep, "NetworkID": d.nets[n].id if n in d.nets else ""}
+            for n, ep in data["NetworkingConfig"]["EndpointsConfig"].items()
+        } or ({} if data["HostConfig"]["NetworkMode"] != "bridge" else {"bridge": {"NetworkID": d.nets["bridge"].id}})
         for n in c.networks():
             if n != "bridge" and n not in d.nets:
                 raise APIError(f"no such network {n}")
@@ -707,3 +741,70 @@ def test_a_container_that_took_the_earners_name_is_not_taken_for_it(install, tmp
     assert FakeMigrator(d, om.State(tmp_path)).run([]) == 0
     new = d.containers.get("cashpilot-mysterium")
     assert new.status == "running" and new.volume_names() == ["mysterium-data"]
+
+
+def test_a_stopped_worker_container_on_the_network_comes_back_on_it(tmp_path):
+    d = FakeDocker()
+    d.nets["my-earners"] = Network(d, "my-earners", {}, {})
+    d.add(Container(d, "cashpilot-a", WORKER_LABELS, networks=("my-earners",)))
+    stopped = d.add(Container(d, "cashpilot-b", WORKER_LABELS, networks=("my-earners",), running=False))
+    assert FakeMigrator(d, om.State(tmp_path)).run([]) == 0
+    net = d.nets["my-earners"]
+    assert net.attrs["Labels"] == OWNER
+    assert stopped.attrs["NetworkSettings"]["Networks"]["my-earners"]["NetworkID"] == net.id
+    assert stopped.status == "exited"
+
+
+def test_a_stopped_stranger_on_the_network_leaves_it_alone(tmp_path):
+    d = FakeDocker()
+    d.nets["my-earners"] = Network(d, "my-earners", {}, {})
+    d.add(Container(d, "cashpilot-a", WORKER_LABELS, networks=("my-earners",)))
+    d.add(Container(d, "my-own-app", {}, networks=("my-earners",), running=False))
+    m = FakeMigrator(d, om.State(tmp_path))
+    assert m.run([]) == 0 and m.warnings == 1
+    assert om.OWNER_LABEL not in d.nets["my-earners"].attrs["Labels"]
+
+
+def _proxied():
+    """A proxied earner in its tunnel's namespace; the tunnel's secrets sit in an anonymous volume."""
+    d = FakeDocker()
+    secrets = "a" * 64
+    d.volume(secrets, {"settings": "the proxy"})
+    tunnel = d.add(Container(d, "cashpilot-tunnel-honeygain-p1", WORKER_LABELS, [(secrets, "/run/secrets")]))
+    earner = d.add(Container(d, "cashpilot-honeygain-p1", WORKER_LABELS, networks=()))
+    earner.attrs["HostConfig"]["NetworkMode"] = f"container:{tunnel.id}"
+    return d, tunnel, earner
+
+
+def test_a_proxied_earner_moves_with_its_tunnel_and_waits_for_it(tmp_path):
+    d, tunnel, earner = _proxied()
+    assert FakeMigrator(d, om.State(tmp_path)).run([]) == 0
+    new_tunnel = d.containers.get("cashpilot-tunnel-honeygain-p1")
+    new_earner = d.containers.get("cashpilot-honeygain-p1")
+    assert new_tunnel.id != tunnel.id and new_tunnel.status == "running"
+    assert new_earner.id != earner.id
+    assert new_earner.attrs["HostConfig"]["NetworkMode"] == f"container:{new_tunnel.id}"
+    # Started by the worker once the tunnel's firewall is up, never by the migration.
+    assert new_earner.status == "exited"
+
+
+def test_a_failed_tunnel_backup_restarts_the_tunnel_and_leaves_its_earner_for_the_worker(tmp_path):
+    d, tunnel, earner = _proxied()
+    failing = FakeMigrator(d, om.State(tmp_path))
+    failing.fail_copies = 1
+    assert failing.run([]) == 1
+    assert tunnel.status == "running" and earner.status == "exited"
+    assert d.containers.get("cashpilot-honeygain-p1") is earner
+
+
+def test_an_earner_on_two_networks_is_recreated_on_both_on_an_engine_that_takes_one_at_create(tmp_path):
+    d = FakeDocker()
+    d.nets["first"] = Network(d, "first", OWNER, {})
+    d.nets["second"] = Network(d, "second", OWNER, {})
+    d.volume("two-data", {"f": "1"})
+    c = d.add(Container(d, "cashpilot-two", WORKER_LABELS, [("two-data", "/d")], networks=("first", "second")))
+    c.attrs["NetworkSettings"]["Networks"]["second"]["IPAMConfig"] = {"IPv4Address": "10.9.0.5"}
+    assert FakeMigrator(d, om.State(tmp_path)).run([]) == 0
+    new = d.containers.get("cashpilot-two")
+    assert sorted(new.networks()) == ["first", "second"] and new.status == "running"
+    assert new.attrs["NetworkSettings"]["Networks"]["second"]["IPAMConfig"] == {"IPv4Address": "10.9.0.5"}
