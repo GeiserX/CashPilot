@@ -649,7 +649,8 @@ def is_podman(client: Any) -> bool:
     """
     try:
         version = client.version() or {}
-    except Exception:  # noqa: BLE001 - taken for Docker, as above
+    except Exception as exc:  # noqa: BLE001 - taken for Docker, as above
+        logger.debug("Could not read the engine's /version, so it is taken for Docker: %s", exc)
         return False
     names = [str((version.get("Platform") or {}).get("Name") or "")]
     names += [str((c or {}).get("Name") or "") for c in version.get("Components") or []]
