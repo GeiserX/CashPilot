@@ -2125,6 +2125,10 @@ async def lifespan(app: FastAPI):
     # The Activity purge too: its hourly timer restarts with the process, so a
     # UI restarted more often than hourly would keep addresses past a day.
     _spawn(_run_activity_purge())
+    # And the proxy cap reset: its hourly timer restarts with the process too, so
+    # a UI restarted more often than hourly would leave a capped proxy's copies
+    # stopped past its reset day.
+    _spawn(_run_proxy_cap_resets())
     _spawn(_run_collection())
     _spawn(_check_windowed_signals())
     logger.info("CashPilot UI started (container ops via workers)")
