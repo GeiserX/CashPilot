@@ -408,7 +408,9 @@ def test_one_earner_that_will_not_start_again_does_not_keep_the_others_stopped(t
 
     d.api.start = start
     assert failing.run([]) == 1
-    assert second.status == "running"
+    # The backup error and the earner that would not start, each reported.
+    assert failing.failures == 2
+    assert first.status == "exited" and second.status == "running"
     # The plan stays, so the retry still knows cashpilot-a was running; its
     # backup record does not, so the retry copies the volume again.
     assert om.State(tmp_path).all("volumes") == []
