@@ -45,6 +45,7 @@ def test_the_purge_runs_once_at_startup():
             patch("app.main._run_data_retention", retention),
             patch("app.main._run_activity_purge", new_callable=AsyncMock),
             patch("app.main._run_vacuum", new_callable=AsyncMock),
+            patch("app.main._run_proxy_cap_resets", new_callable=AsyncMock),
             patch("app.main._check_windowed_signals", new_callable=AsyncMock),
         ):
             async with main.lifespan(main.app):
@@ -77,12 +78,46 @@ def test_the_activity_purge_runs_once_at_startup():
             patch("app.main._run_data_retention", new_callable=AsyncMock),
             patch("app.main._run_activity_purge", purge),
             patch("app.main._run_vacuum", new_callable=AsyncMock),
+            patch("app.main._run_proxy_cap_resets", new_callable=AsyncMock),
             patch("app.main._check_windowed_signals", new_callable=AsyncMock),
         ):
             async with main.lifespan(main.app):
                 await asyncio.sleep(0)
                 assert purge.await_count == 1, (
                     "the raw-address purge only ran an hour after start, which a UI restarting hourly never reaches"
+                )
+
+    asyncio.run(run())
+
+
+def test_the_proxy_cap_reset_runs_once_at_startup():
+    """Runs the real lifespan: the call must happen before it yields, not merely exist."""
+    resets = AsyncMock()
+
+    async def run():
+        with (
+            patch("app.main.database.init_db", new_callable=AsyncMock),
+            patch("app.main.database.connect_shared", new_callable=AsyncMock),
+            patch("app.main.database.close_shared", new_callable=AsyncMock),
+            patch("app.main.database.list_users_with_pwd_epoch", new_callable=AsyncMock, return_value=[]),
+            patch("app.main.database.list_session_revocations", new_callable=AsyncMock, return_value=[]),
+            patch("app.main.database.has_any_users", new_callable=AsyncMock, return_value=True),
+            patch("app.main.catalog.load_services"),
+            patch("app.main.catalog.register_sighup"),
+            patch("app.main.exchange_rates.refresh", new_callable=AsyncMock),
+            patch("app.main.update_check.refresh", new_callable=AsyncMock),
+            patch("app.main.update_check.refresh_android", new_callable=AsyncMock),
+            patch("app.main._run_collection", new_callable=AsyncMock),
+            patch("app.main._run_data_retention", new_callable=AsyncMock),
+            patch("app.main._run_activity_purge", new_callable=AsyncMock),
+            patch("app.main._run_vacuum", new_callable=AsyncMock),
+            patch("app.main._run_proxy_cap_resets", resets),
+            patch("app.main._check_windowed_signals", new_callable=AsyncMock),
+        ):
+            async with main.lifespan(main.app):
+                await asyncio.sleep(0)
+                assert resets.await_count == 1, (
+                    "the cap reset only ran an hour after start, so a UI restarting hourly left capped copies stopped"
                 )
 
     asyncio.run(run())

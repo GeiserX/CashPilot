@@ -2236,6 +2236,7 @@ class TestLifespanScheduler:
                 patch("app.main._run_data_retention", new_callable=AsyncMock),
                 patch("app.main._run_activity_purge", new_callable=AsyncMock),
                 patch("app.main._run_vacuum", new_callable=AsyncMock),
+                patch("app.main._run_proxy_cap_resets", new_callable=AsyncMock),
                 patch("app.main._check_windowed_signals", new_callable=AsyncMock),
                 patch("app.main.close_all_collectors", new_callable=AsyncMock, create=True),
             ):
@@ -2294,6 +2295,7 @@ class TestLifespanScheduler:
                 patch("app.main._run_data_retention", new_callable=AsyncMock),
                 patch("app.main._run_activity_purge", new_callable=AsyncMock),
                 patch("app.main._run_vacuum", new_callable=AsyncMock),
+                patch("app.main._run_proxy_cap_resets", new_callable=AsyncMock),
                 patch("app.main._check_windowed_signals", new_callable=AsyncMock),
                 patch("app.main.close_all_collectors", new_callable=AsyncMock, create=True),
                 patch("app.main.logger.error") as err,
@@ -2330,6 +2332,7 @@ class TestLifespanScheduler:
                 patch("app.main._run_data_retention", new_callable=AsyncMock),
                 patch("app.main._run_activity_purge", new_callable=AsyncMock),
                 patch("app.main._run_vacuum", new_callable=AsyncMock),
+                patch("app.main._run_proxy_cap_resets", new_callable=AsyncMock),
                 patch("app.main._check_windowed_signals", new_callable=AsyncMock),
                 patch("app.main.close_all_collectors", new_callable=AsyncMock, create=True),
                 patch("app.main.scheduler"),  # isolate from the real module scheduler
