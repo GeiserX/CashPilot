@@ -302,7 +302,16 @@ class Migrator:
                     )
                 endpoint = ((c.attrs.get("NetworkSettings") or {}).get("Networks") or {}).get(name) or {}
                 aliases = [a for a in endpoint.get("Aliases") or [] if a != c.id[:12]]
-                members.append({"name": c.name, "aliases": aliases})
+                # An address the operator pinned; Docker's own picks are not kept.
+                static = endpoint.get("IPAMConfig") or {}
+                members.append(
+                    {
+                        "name": c.name,
+                        "aliases": aliases,
+                        "ipv4": static.get("IPv4Address") or None,
+                        "ipv6": static.get("IPv6Address") or None,
+                    }
+                )
             record = {
                 "name": name,
                 "driver": attrs.get("Driver") or "bridge",
@@ -332,14 +341,20 @@ class Migrator:
             net = self._create_network(record)
         net.reload()
         connected = {v.get("Name") for v in ((net.attrs or {}).get("Containers") or {}).values()}
-        for member in record["members"]:
+        # Pinned addresses first, so no member Docker addresses itself takes one.
+        for member in sorted(record["members"], key=lambda m: not (m.get("ipv4") or m.get("ipv6"))):
             if member["name"] in connected:
                 continue
             try:
                 self.client.containers.get(member["name"])
             except NotFound:
                 continue  # removed since; a volume plan recreates it on this network
-            net.connect(member["name"], aliases=member["aliases"] or None)
+            net.connect(
+                member["name"],
+                aliases=member["aliases"] or None,
+                ipv4_address=member.get("ipv4"),
+                ipv6_address=member.get("ipv6"),
+            )
         record["done"] = True
         self.state.put("networks", name, record)
         logger.info(
@@ -396,9 +411,14 @@ class Migrator:
         from docker.errors import NotFound
 
         workers = self.client.containers.list(all=True, filters={"label": f"{OWNER_LABEL}={OWNER}"})
+        # A stored plan that did not finish already holds these, stopped by it;
+        # a new plan would record them as stopped and bring them back stopped.
+        held = {c["Id"] for p in self.state.all("plans") if not p.get("done") for c in p["containers"]}
         users: dict[str, set[str]] = {}
         attrs: dict[str, dict[str, Any]] = {}
         for c in workers:
+            if c.id in held:
+                continue
             for mount in (c.attrs or {}).get("Mounts") or []:
                 if mount.get("Type") != "volume" or not mount.get("Name"):
                     continue

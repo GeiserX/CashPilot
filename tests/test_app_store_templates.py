@@ -150,6 +150,19 @@ def test_only_the_socket_proxy_holds_the_docker_socket(compose):
 
 
 @pytest.mark.parametrize("compose", COMPOSE, ids=_ids(COMPOSE))
+def test_the_worker_joins_only_networks_that_carry_the_owner_label(compose):
+    # The migration moves every network a worker container is on; one shared
+    # with the unlabelled UI it can only warn about, at every start.
+    doc = _load(compose)
+    worker = next(s for s in doc["services"].values() if _is_worker(s))
+    nets = worker.get("networks")
+    assert nets, f"{compose}: the worker would join the project's unlabelled default network"
+    for net in nets:
+        labels = ((doc.get("networks") or {}).get(net) or {}).get("labels") or {}
+        assert labels.get("cashpilot.deployed-by") == "worker", f"{compose}: {net}"
+
+
+@pytest.mark.parametrize("compose", COMPOSE, ids=_ids(COMPOSE))
 def test_the_worker_data_is_kept_apart_from_the_ui_data(compose):
     """The UI's /data holds the credential store and its key; the worker drives
     Docker, so it must not mount the same host folder."""

@@ -58,9 +58,10 @@ class Network:
     def disconnect(self, cid, force=False):
         self.docker.cs[cid].attrs["NetworkSettings"]["Networks"].pop(self.name)
 
-    def connect(self, name, aliases=None):
+    def connect(self, name, aliases=None, ipv4_address=None, ipv6_address=None):
         c = self.docker.containers.get(name)
-        c.attrs["NetworkSettings"]["Networks"][self.name] = {"Aliases": aliases}
+        ipam = {k: v for k, v in (("IPv4Address", ipv4_address), ("IPv6Address", ipv6_address)) if v}
+        c.attrs["NetworkSettings"]["Networks"][self.name] = {"Aliases": aliases, "IPAMConfig": ipam or None}
         self.docker.connects.append((self.name, name))
 
     def remove(self):
@@ -283,9 +284,13 @@ class FakeMigrator(om.Migrator):
         self.docker = docker
         self.copies: list[tuple[str, str]] = []
         self.crash_at: int | None = None  # kill during the Nth copy, after it wiped the target
+        self.fail_copies = 0  # the next N copies fail with an error, as a full disk would
 
     def copy(self, source, target):
         self.docker.data[target] = {}
+        if self.fail_copies:
+            self.fail_copies -= 1
+            raise RuntimeError(f"no space left copying {source} into {target}")
         if self.crash_at is not None and len(self.copies) + 1 == self.crash_at:
             self.crash_at = None
             self.docker.data[target] = {"half": "copied"}
@@ -370,6 +375,20 @@ def test_a_stopped_earner_stays_stopped(tmp_path):
     assert d.containers.get("cashpilot-earnapp").status == "exited"
 
 
+def test_a_backup_that_fails_twice_still_brings_the_earner_back_running(install, tmp_path):
+    d, _, _ = install
+    for _ in range(2):
+        failing = FakeMigrator(d, om.State(tmp_path))
+        failing.fail_copies = 1
+        assert failing.run([]) == 1
+        # Counted once: the stopped earner is the stored plan's, not a new one.
+        assert failing.failures == 1
+        assert d.containers.get("cashpilot-mysterium").status == "exited"
+    assert FakeMigrator(d, om.State(tmp_path)).run([]) == 0
+    assert d.containers.get("cashpilot-mysterium").status == "running"
+    assert d.data["mysterium-data"] == IDENTITY
+
+
 @pytest.mark.parametrize("crash_at", [1, 2], ids=["killed copying into the backup", "killed copying back"])
 def test_a_run_killed_mid_copy_is_finished_by_the_next(install, tmp_path, crash_at):
     d, _, _ = install
@@ -448,6 +467,18 @@ def test_the_operators_own_bridge_the_earners_are_on_gets_the_label(tmp_path):
     assert d.nets["my-earners"].attrs["Options"] == {"com.docker.network.bridge.name": "cp-isolated"}
     assert d.containers.get("cashpilot-honeygain").networks() == ["my-earners"]
     assert d.nets["bridge"].attrs["Labels"] == {}
+
+
+def test_a_member_with_a_static_address_gets_it_back_before_anyone_else_connects(tmp_path):
+    d = FakeDocker()
+    d.nets["my-earners"] = Network(d, "my-earners", {}, {})
+    d.add(Container(d, "cashpilot-honeygain", WORKER_LABELS, networks=("my-earners",)))
+    pinned = d.add(Container(d, "cashpilot-repocket", WORKER_LABELS, networks=("my-earners",)))
+    pinned.attrs["NetworkSettings"]["Networks"]["my-earners"]["IPAMConfig"] = {"IPv4Address": "172.30.0.9"}
+    assert FakeMigrator(d, om.State(tmp_path)).run([]) == 0
+    endpoint = d.containers.get("cashpilot-repocket").attrs["NetworkSettings"]["Networks"]["my-earners"]
+    assert endpoint["IPAMConfig"] == {"IPv4Address": "172.30.0.9"}
+    assert [n for net, n in d.connects if net == "my-earners"][0] == "cashpilot-repocket"
 
 
 def test_renamed_compose_volumes_are_copied_once_and_the_old_ones_kept(tmp_path):

@@ -1,6 +1,8 @@
 services:
   cashpilot:
     image: drumsergio/cashpilot:1.72.1
+    networks:
+      - cashpilot_owned
     ports:
       - ${APP_PORT}:8080
     volumes:
@@ -97,6 +99,8 @@ services:
     # The proxy's owner label, so the worker may read its own container.
     labels:
       cashpilot.deployed-by: worker
+    networks:
+      - cashpilot_owned
     volumes:
       # No Docker socket here: the worker starts and stops the earning
       # containers through the proxy's filtered socket in this volume.
@@ -126,6 +130,13 @@ services:
       - no-new-privileges:true
     tmpfs:
       - /tmp:size=64M
+
+networks:
+  # Carries the proxy's owner label, so the worker may use the network it is on,
+  # instead of the project's default network, which the UI shares unlabelled.
+  cashpilot_owned:
+    labels:
+      cashpilot.deployed-by: worker
 
 volumes:
   # Fixed name, as in the repository's compose files: the worker and the proxy

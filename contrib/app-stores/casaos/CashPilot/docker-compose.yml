@@ -24,7 +24,7 @@ services:
       TZ: $TZ
       CASHPILOT_SECRET_KEY: ""
     networks:
-      - cashpilot-network
+      - cashpilot_owned
     init: true
     security_opt:
       - no-new-privileges:true
@@ -174,7 +174,7 @@ services:
     depends_on:
       - cashpilot-socket-proxy
     networks:
-      - cashpilot-network
+      - cashpilot_owned
     init: true
     security_opt:
       - no-new-privileges:true
@@ -206,8 +206,12 @@ services:
             en_US: Enrolment key shared between the UI and the worker
 
 networks:
-  cashpilot-network:
-    name: cashpilot-network
+  # Carries the proxy's owner label, so the worker may use the network it is on.
+  # A new name: Compose never adds a label to a network that exists.
+  cashpilot_owned:
+    name: cashpilot-owned
+    labels:
+      cashpilot.deployed-by: worker
 
 volumes:
   # Fixed name, as in the repository's compose files: the worker and the proxy
