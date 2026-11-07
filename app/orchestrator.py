@@ -1738,6 +1738,34 @@ def _read_file_from_container(container: Any, path: str) -> bytes:
     raise ValueError(f"{path} is not a file in the archive")
 
 
+def _ensure_updater_image(client: docker.DockerClient) -> None:
+    """Pull the helper image if this host does not have it yet.
+
+    ``containers.run`` pulls a missing image by itself only when the daemon
+    answers "No such image". Behind the socket proxy the create is refused
+    before it reaches the daemon, with the proxy's own 404 ("owner policy
+    could not resolve image"), so ``run`` raised instead of pulling, and the
+    first in-app update on a proxied install failed with "Docker refused to
+    start the update helper". Pulling first works the same with or without
+    the proxy.
+    """
+    try:
+        client.images.get(UPDATER_IMAGE)
+        return
+    except NotFound:
+        pass
+    except APIError as exc:
+        logger.warning("Could not check for the update helper image: %s", exc)
+    try:
+        client.images.pull(UPDATER_IMAGE)
+    except APIError as exc:
+        logger.warning("Could not pull the update helper image %s: %s", UPDATER_IMAGE, exc)
+        refusal = proxy_refusal(exc)
+        if refusal:
+            raise SelfUpdateUnavailable(f"Not updating. {refusal}") from exc
+        raise RuntimeError(f"Docker could not pull the update helper image {UPDATER_IMAGE}.") from exc
+
+
 def _resolve_compose_config(
     client: docker.DockerClient,
     working_dir: str,
@@ -2031,6 +2059,7 @@ def spawn_self_update() -> dict[str, Any]:
         logger.warning("Self-update lock check failed: %s", exc)
         raise RuntimeError("Docker refused to start the update helper.") from exc
 
+    _ensure_updater_image(client)
     cfg = _resolve_compose_config(client, working_dir, environment, services, {**project_mount, **env_mounts})
     if proxied():
         refused = _proxy_compose_refusals(cfg, services)

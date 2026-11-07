@@ -476,6 +476,78 @@ class TestSpawnSelfUpdate:
             orchestrator.spawn_self_update()
 
 
+class TestUpdaterImage:
+    """The helper image has to be on the host before the preflight starts. Behind
+    the socket proxy, a create naming a missing image gets the proxy's 404
+    ("owner policy could not resolve image"), not Docker's "No such image", so
+    containers.run never pulls it by itself."""
+
+    @staticmethod
+    def _proxy_404():
+        from docker.errors import NotFound
+
+        return NotFound(
+            "404 Client Error: Not Found",
+            response=MagicMock(status_code=404),
+            explanation=f'owner policy could not resolve image "{orchestrator.UPDATER_IMAGE}" referenced by container Image',
+        )
+
+    def test_a_missing_helper_image_is_pulled_before_the_preflight(self):
+        me = _fake_container(labels=_COMPOSE_LABELS)
+        client = _fake_docker(me=me)
+        _wire_runs(client)
+        order = []
+        missing = self._proxy_404()
+        run = client.containers.run.side_effect
+
+        def get(ref):
+            order.append(("get", ref))
+            raise missing
+
+        def pull(ref, *args, **kwargs):
+            order.append(("pull", ref))
+
+        def tracked_run(image, *args, **kwargs):
+            order.append(("run", image))
+            return run(image, *args, **kwargs)
+
+        client.images.get.side_effect = get
+        client.images.pull.side_effect = pull
+        client.containers.run.side_effect = tracked_run
+        with patch.object(orchestrator, "_get_client", return_value=client):
+            orchestrator.spawn_self_update()
+        assert order[:3] == [
+            ("get", orchestrator.UPDATER_IMAGE),
+            ("pull", orchestrator.UPDATER_IMAGE),
+            ("run", orchestrator.UPDATER_IMAGE),
+        ]
+        assert _updater_started(client)
+
+    def test_a_present_helper_image_is_not_pulled_again(self):
+        me = _fake_container(labels=_COMPOSE_LABELS)
+        client = _fake_docker(me=me)
+        _wire_runs(client)
+        with patch.object(orchestrator, "_get_client", return_value=client):
+            orchestrator.spawn_self_update()
+        client.images.get.assert_called_once_with(orchestrator.UPDATER_IMAGE)
+        client.images.pull.assert_not_called()
+
+    def test_a_pull_the_daemon_refuses_is_an_outage_and_starts_nothing(self):
+        from docker.errors import APIError
+
+        me = _fake_container(labels=_COMPOSE_LABELS)
+        client = _fake_docker(me=me)
+        _wire_runs(client)
+        client.images.get.side_effect = self._proxy_404()
+        client.images.pull.side_effect = APIError("pull access denied", response=MagicMock(status_code=500))
+        with (
+            patch.object(orchestrator, "_get_client", return_value=client),
+            pytest.raises(RuntimeError, match="could not pull the update helper image"),
+        ):
+            orchestrator.spawn_self_update()
+        client.containers.run.assert_not_called()
+
+
 _UI_LABELS = {
     "com.docker.compose.project": "cashpilot",
     "com.docker.compose.service": "cashpilot-ui",
