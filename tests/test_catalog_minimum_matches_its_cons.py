@@ -27,10 +27,21 @@ def quoted_minimums(entry: dict) -> list[tuple[float, str]]:
     return found
 
 
+def _stated(text: object) -> tuple[float, str] | None:
+    """payment.minimum_payout as (amount, unit): "$5" is (5.0, "USD"), "250 UPT" is (250.0, "UPT")."""
+    m = re.fullmatch(r"(?P<usd>\$)?(?P<amount>\d[\d,]*(?:\.\d+)?) ?(?P<unit>[A-Z]{2,6})?", str(text or "").strip())
+    if not m:
+        return None
+    unit = "USD" if m.group("usd") else (m.group("unit") or "")
+    return float(m.group("amount").replace(",", "")), unit
+
+
 def mismatches(entry: dict) -> list[tuple[float, str]]:
+    """Quoted minimums that disagree with cashout.min_amount or payment.minimum_payout."""
     cashout = entry.get("cashout") or {}
-    declared = (cashout.get("min_amount"), str(cashout.get("currency") or "").upper())
-    return [q for q in quoted_minimums(entry) if (q[0], q[1]) != declared]
+    derived = (cashout.get("min_amount"), str(cashout.get("currency") or "").upper())
+    stated = _stated((entry.get("payment") or {}).get("minimum_payout"))
+    return [q for q in quoted_minimums(entry) if q != derived or q != stated]
 
 
 ENTRIES = {p.stem: yaml.safe_load(p.read_text(encoding="utf-8")) or {} for p in sorted(ROOT.glob("services/*/*.yml"))}
@@ -48,7 +59,18 @@ def test_some_entry_quotes_a_minimum():
 
 def test_the_check_catches_the_old_uprock_entry():
     old = {
+        "payment": {"minimum_payout": "$5"},
         "cashout": {"min_amount": 5.0, "currency": "USD"},
         "rating": {"cons": [{"text": "withdrawals are UPT tokens to a Solana wallet, with a 250 UPT minimum."}]},
     }
     assert mismatches(old) == [(250.0, "UPT")]
+
+
+def test_the_check_catches_a_stale_payment_minimum():
+    """cashout.min_amount is derived from payment.minimum_payout; a stale source is caught too."""
+    entry = {
+        "payment": {"minimum_payout": "$5"},
+        "cashout": {"min_amount": 250.0, "currency": "UPT"},
+        "rating": {"cons": [{"text": "with a 250 UPT minimum."}]},
+    }
+    assert mismatches(entry) == [(250.0, "UPT")]

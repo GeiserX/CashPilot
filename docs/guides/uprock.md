@@ -56,7 +56,7 @@ No Docker image available. Uprock is a browser extension and mobile app only.
 
 ## Important Notes
 
-- **Withdrawals**: rewards are UPT tokens, withdrawn to a Solana wallet once you hold 250 UPT, with two-factor authentication on. A withdrawal fee applies ([UpRock help centre](https://help.uprock.com/en/articles/2057635-security-and-user-asset-protection-2fa-and-withdrawals)).
+- **Withdrawals**: rewards are UPT tokens, withdrawn to a Solana wallet once 250 UPT are available to withdraw, with two-factor authentication on. A withdrawal fee applies ([UpRock help centre](https://help.uprock.com/en/articles/2057635-security-and-user-asset-protection-2fa-and-withdrawals)). Earnings from an Android device stay locked until UpRock's device verification completes, so they do not count toward the 250 UPT until then ([device verification](https://help.uprock.com/en/help/articles/8124029-what-is-device-verification)).
 
 - **Android works well**: The Android app runs reliably in the background with proper battery optimization settings.
 - **No IP conflicts**: Can run alongside other bandwidth-sharing services on the same device/network.
