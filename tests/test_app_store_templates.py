@@ -258,3 +258,13 @@ def test_the_casaos_simulation_can_fail():
     """The control: the defaulted form plain Compose uses ends empty here."""
     doc = {"x": "${UNSET_X:-/dev/null/x},$${Y}"}
     assert _casaos_install(doc)["x"] == ","
+
+
+@pytest.mark.parametrize("compose", COMPOSE, ids=_ids(COMPOSE))
+def test_the_store_proxy_pin_matches_the_root_compose(compose):
+    """Dependabot bumps the sockguard pin in every compose file in one grouped
+    PR. A store package left on the old pin would ship a proxy the policy and
+    the docs were not checked against."""
+    root = _load(ROOT / "docker-compose.yml")["services"]["cashpilot-socket-proxy"]["image"]
+    pins = {svc["image"] for svc in _services(compose).values() if _is_proxy(svc)}
+    assert pins == {root}, f"{compose}: proxy pinned to {sorted(pins)}, docker-compose.yml has {root}"

@@ -95,3 +95,28 @@ updates:
         applies-to: security-updates
         patterns:
           - '*'
+  # sockguard, the Docker socket proxy, is pinned by tag and digest in every
+  # compose file, which the `docker` entry above does not read. One grouped PR
+  # moves all six pins together; tests fail when any file is left behind, and
+  # tests/test_socket_proxy.py fails until SECURITY.md and
+  # docs/security-defaults.md name the new version, so a bump is reviewed
+  # against the policy rather than merged on green.
+  - package-ecosystem: docker-compose
+    directories:
+      - /
+      - /contrib/app-stores/casaos/CashPilot
+      - /contrib/app-stores/runtipi/cashpilot
+    schedule:
+      interval: weekly
+      day: monday
+    allow:
+      - dependency-name: codeswhat/sockguard
+    commit-message:
+      prefix: deps
+    labels:
+      - docker
+      - automated
+    groups:
+      sockguard:
+        patterns:
+          - codeswhat/sockguard
