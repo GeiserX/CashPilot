@@ -55,18 +55,37 @@ ANDROID_LATEST_URL = "https://api.github.com/repos/GeiserX/CashPilot-android/rel
 #: party more often than that is rude.
 CHECK_INTERVAL_SECONDS = 24 * 60 * 60
 
+#: After a FAILED check, the next try comes an hour later instead of a day. A
+#: home connection shares GitHub's unauthenticated limit (60 requests an hour
+#: per public IP) with everything else in the house, so the one check made at
+#: startup is often refused with a 403; waiting a full day after that left the
+#: release unknown, and every phone unjudged, for 24 hours after each restart.
+#: The scheduler calls refresh() hourly; refresh() decides whether a fetch is
+#: due, so a working install still asks GitHub once a day.
+RETRY_AFTER_FAILURE_SECONDS = 60 * 60
+
 _HTTP_TIMEOUT = 10.0
 
 #: Cached result. `tag` is None for UNKNOWN -- never for "up to date", which is a
 #: different statement and is carried by `known`.
 _latest_tag: str | None = None
 _checked_at: float = 0.0
+_last_failed: bool = False
 
 #: Same shape, for the Android client. Kept separate rather than folded into a
 #: dict so the existing server path cannot be perturbed by a failure fetching
 #: the Android one.
 _android_tag: str | None = None
 _android_checked_at: float = 0.0
+_android_last_failed: bool = False
+
+
+def _due(checked_at: float, last_failed: bool) -> bool:
+    """Whether the cooldown since the last attempt has run out."""
+    if not checked_at:
+        return True
+    wait = RETRY_AFTER_FAILURE_SECONDS if last_failed else CHECK_INTERVAL_SECONDS
+    return (time.time() - checked_at) >= wait
 
 
 def enabled() -> bool:
@@ -99,11 +118,11 @@ async def refresh(*, force: bool = False) -> str | None:
     that is not JSON, a tag that is not a version -- lands on the same answer:
     UNKNOWN. That is what makes the banner safe on an air-gapped install.
     """
-    global _latest_tag, _checked_at
+    global _latest_tag, _checked_at, _last_failed
 
     if not enabled():
         return None
-    if not force and _checked_at and (time.time() - _checked_at) < CHECK_INTERVAL_SECONDS:
+    if not force and not _due(_checked_at, _last_failed):
         return _latest_tag
 
     try:
@@ -117,10 +136,12 @@ async def refresh(*, force: bool = False) -> str | None:
         # log full of harmless warnings is a log nobody reads.
         logger.debug("Update check could not reach %s: %s", LATEST_URL, exc)
         _checked_at = time.time()  # do not hammer a host that is refusing us
+        _last_failed = True
         return _latest_tag
 
     _latest_tag = tag
     _checked_at = time.time()
+    _last_failed = False
     if tag:
         logger.debug("Newest published release is %s", tag)
     return tag
@@ -134,11 +155,11 @@ async def refresh_android(*, force: bool = False) -> str | None:
     value feeds a WARNING on the fleet page -- an unreachable GitHub must make
     the warning disappear, never make every phone look out of date.
     """
-    global _android_tag, _android_checked_at
+    global _android_tag, _android_checked_at, _android_last_failed
 
     if not enabled():
         return None
-    if not force and _android_checked_at and (time.time() - _android_checked_at) < CHECK_INTERVAL_SECONDS:
+    if not force and not _due(_android_checked_at, _android_last_failed):
         return _android_tag
 
     try:
@@ -149,10 +170,12 @@ async def refresh_android(*, force: bool = False) -> str | None:
     except Exception as exc:  # noqa: BLE001 - every failure means the same thing
         logger.debug("Android update check could not reach %s: %s", ANDROID_LATEST_URL, exc)
         _android_checked_at = time.time()
+        _android_last_failed = True
         return _android_tag
 
     _android_tag = tag
     _android_checked_at = time.time()
+    _android_last_failed = False
     return _android_tag
 
 
@@ -202,6 +225,6 @@ def _tuple(series_text: str) -> tuple[int, ...]:
 
 def _reset_for_tests() -> None:
     """Clear the module cache. Tests only."""
-    global _latest_tag, _checked_at, _android_tag, _android_checked_at
-    _latest_tag, _checked_at = None, 0.0
-    _android_tag, _android_checked_at = None, 0.0
+    global _latest_tag, _checked_at, _last_failed, _android_tag, _android_checked_at, _android_last_failed
+    _latest_tag, _checked_at, _last_failed = None, 0.0, False
+    _android_tag, _android_checked_at, _android_last_failed = None, 0.0, False

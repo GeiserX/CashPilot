@@ -2269,6 +2269,11 @@ class TestLifespanScheduler:
                         assert job.max_instances == 1, f"{job.id} max_instances"
                         assert job.coalesce is True, f"{job.id} coalesce"
                         assert job.misfire_grace_time == 300, f"{job.id} misfire_grace_time"
+                    # The release checks tick hourly so a refused check is
+                    # retried within the hour; refresh() itself keeps a
+                    # working install to one GitHub call a day.
+                    for job_id in ("update_check", "update_check_android"):
+                        assert jobs[job_id].trigger.interval.total_seconds() == 3600, job_id
                     # The error/missed listener is attached.
                     assert len(sched._listeners) >= 1
 
