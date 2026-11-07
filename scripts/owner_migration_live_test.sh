@@ -207,8 +207,11 @@ for kind in volume network; do
 done
 
 echo "== 2. red control: on the old install the worker reads the UI's data"
-out=$(driver attacks 2>&1) || true
+rc=0
+out=$(driver attacks 2>&1) || rc=$?
 echo "$out" | sed 's/^/    | /'
+# The driver exits with its number of failures: exactly the three attacks.
+[ "$rc" -eq 3 ] || fail "the attacks phase exited $rc, not 3"
 [ "$(echo "$out" | count '^FAIL  proxy refuses: .*  20[01] ')" -eq 3 ] && pass "all three attacks succeed before the upgrade" \
     || fail "an attack was already refused before the upgrade, so the checks below prove nothing"
 
@@ -331,8 +334,10 @@ done
 [ "$(docker volume inspect -f '{{json .Labels}}' "$HAND-data")" = null ] \
     && pass "its volume was left as it was" || fail "its volume was relabelled"
 
-out=$(driver attacks 2>&1) || true
+rc=0
+out=$(driver attacks 2>&1) || rc=$?
 show "$out"
+[ "$rc" -eq 0 ] || fail "the attacks phase exited $rc"
 FAILS=$((FAILS + $(echo "$out" | count '^FAIL')))
 [ "$(echo "$out" | count '^PASS')" -eq 3 ] || fail "the attack checks did not all run"
 rc=0

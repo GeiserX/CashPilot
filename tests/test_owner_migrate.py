@@ -392,6 +392,32 @@ def test_a_backup_that_fails_puts_the_earner_back_to_work_and_counts_once(instal
     assert d.data["mysterium-data"] == IDENTITY
 
 
+def test_one_earner_that_will_not_start_again_does_not_keep_the_others_stopped(tmp_path):
+    d = FakeDocker()
+    d.volume("shared", {"f": "1"})
+    first = d.add(Container(d, "cashpilot-a", WORKER_LABELS, [("shared", "/s")]))
+    second = d.add(Container(d, "cashpilot-b", WORKER_LABELS, [("shared", "/s")]))
+    failing = FakeMigrator(d, om.State(tmp_path))
+    failing.fail_copies = 1
+    real_start = d.api.start
+
+    def start(cid):
+        if cid == first.id:
+            raise RuntimeError("port already in use")
+        real_start(cid)
+
+    d.api.start = start
+    assert failing.run([]) == 1
+    assert second.status == "running"
+    # The plan stays, so the retry still knows cashpilot-a was running; its
+    # backup record does not, so the retry copies the volume again.
+    assert om.State(tmp_path).all("volumes") == []
+    assert len(om.State(tmp_path).all("plans")) == 1
+    d.api.start = real_start
+    assert FakeMigrator(d, om.State(tmp_path)).run([]) == 0
+    assert {c.status for c in (d.containers.get("cashpilot-a"), d.containers.get("cashpilot-b"))} == {"running"}
+
+
 def test_after_a_failed_backup_the_retry_copies_what_the_earner_wrote_since(tmp_path):
     d = FakeDocker()
     d.volume("a-data", {"f": "old"})

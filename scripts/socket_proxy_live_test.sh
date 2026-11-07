@@ -257,7 +257,9 @@ case "$joined" in
 esac
 
 echo "== b3. owner isolation keeps the worker out of the UI's data"
-out=$(driver attacks 2>&1) || true
+rc=0
+out=$(driver attacks 2>&1) || rc=$?
+[ "$rc" -eq 0 ] || fail "the attacks phase exited $rc"
 show "$out"
 FAILS=$((FAILS + $(echo "$out" | count '^FAIL')))
 [ "$(echo "$out" | count '^PASS')" -ge 3 ] || fail "too few attack checks ran"
@@ -271,11 +273,14 @@ FAILS=$((FAILS + $(echo "$out" | count '^FAIL')))
 [ "$(echo "$out" | count '^PASS')" -ge 17 ] || fail "too few control checks ran"
 # The raw socket must let all three attacks through, so each refusal in (b3) is
 # the proxy's owner isolation and not a request that could never work.
+rc=0
 out=$(docker run --rm -i --label "$P=1" -u 0:0 --entrypoint python -e LIVE_ALPINE="$ALPINE" \
     -e LIVE_UI=cashpilot-ui -e LIVE_UI_VOLUME="${PROJECT}_cashpilot_data" \
     -v /var/run/docker.sock:/var/run/docker.sock "$WORKER_IMAGE" - attacks \
-    <"$ROOT/scripts/socket_proxy_live_driver.py" 2>&1) || true
+    <"$ROOT/scripts/socket_proxy_live_driver.py" 2>&1) || rc=$?
 echo "$out" | sed 's/^/    | /'
+# The driver exits with its number of failures: exactly the three attacks.
+[ "$rc" -eq 3 ] || fail "the attacks control exited $rc, not 3"
 [ "$(echo "$out" | count '^FAIL  proxy refuses: .*  20[01] ')" -eq 3 ] && pass "the raw socket allows all three attacks" \
     || fail "the raw socket refused an attack, so (b3) proves nothing"
 docker info -f '{{.Swarm.LocalNodeState}}' | grep -qx inactive && pass "the control left swarm mode" \

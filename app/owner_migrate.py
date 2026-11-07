@@ -510,15 +510,23 @@ class Migrator:
                 self.back_up(vol, names)
         except Exception:
             # Nothing is removed yet, so the earners go back to earning on their
-            # own volumes. Their backups are now stale: the plan and its records
-            # go, and the next run copies everything again.
-            for info in plan["containers"]:
-                old = self._current(info)
-                if old is not None and plan["running"].get(info["Id"]):
-                    self.client.api.start(old.id)
+            # own volumes. Their backups are stale from now on: the records go
+            # first, so the next run copies everything again. The plan goes too,
+            # unless an earner would not start: it is what remembers which ran.
             for vol in plan["volumes"]:
                 self.state.drop("volumes", vol)
-            self.state.drop("plans", plan["key"])
+            all_back = True
+            for info in plan["containers"]:
+                old = self._current(info)
+                if old is None or not plan["running"].get(info["Id"]):
+                    continue
+                try:
+                    self.client.api.start(old.id)
+                except Exception as exc:  # noqa: BLE001 - each earner gets its own try
+                    all_back = False
+                    self.fail(f"{info['Name'].lstrip('/')} did not start again ({exc}); the next run retries it")
+            if all_back:
+                self.state.drop("plans", plan["key"])
             raise
         for info in plan["containers"]:
             old = self._current(info)
