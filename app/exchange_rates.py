@@ -35,6 +35,8 @@ CRYPTO_IDS: dict[str, str] = {
     # renamed from ATOR and CoinGecko kept the original slug. Taken from the
     # collector, which has been querying that id for the price all along.
     "ANYONE": "airtor-protocol",
+    # UpRock's token; its payout minimum is set in UPT (services/depin/uprock.yml).
+    "UPT": "uprock",
 }
 
 CACHE_TTL = 900  # 15 minutes

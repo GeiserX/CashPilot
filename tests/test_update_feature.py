@@ -574,6 +574,21 @@ class TestUpdaterImage:
             orchestrator.spawn_self_update()
         client.containers.run.assert_not_called()
 
+    def test_an_image_check_that_times_out_is_an_outage_not_a_crash(self):
+        import requests
+
+        me = _fake_container(labels=_COMPOSE_LABELS)
+        client = _fake_docker(me=me)
+        _wire_runs(client)
+        client.images.get.side_effect = requests.exceptions.ReadTimeout("read timed out")
+        client.images.pull.side_effect = requests.exceptions.ConnectionError("connection reset")
+        with (
+            patch.object(orchestrator, "_get_client", return_value=client),
+            pytest.raises(RuntimeError, match="could not pull the update helper image"),
+        ):
+            orchestrator.spawn_self_update()
+        client.containers.run.assert_not_called()
+
     def test_a_pull_the_proxy_refuses_says_why_and_starts_nothing(self):
         from docker.errors import APIError
 

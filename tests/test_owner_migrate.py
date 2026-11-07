@@ -929,3 +929,18 @@ def test_earners_the_pre_worker_deploy_path_made_are_adopted_with_the_fence(inst
     again = FakeMigrator(d, om.State(tmp_path))
     assert again.run([]) == 0 and again.copies == []
     assert d.containers.get("cashpilot-honeygain").id == hg.id
+
+
+def test_a_stranger_in_a_direct_containers_namespace_is_named_with_it(tmp_path, caplog):
+    """No volume to name: the warning says which CashPilot container was left alone, and why."""
+    d = FakeDocker()
+    direct = {"cashpilot.managed": "true", "cashpilot.service": "honeygain", om.OWNER_LABEL: "direct"}
+    hg = d.add(Container(d, "cashpilot-honeygain", direct))
+    stranger = d.add(Container(d, "my-sidecar", {}, networks=()))
+    stranger.attrs["HostConfig"]["NetworkMode"] = f"container:{hg.id}"
+    m = FakeMigrator(d, om.State(tmp_path))
+    with caplog.at_level("WARNING", logger=om.logger.name):
+        assert m.run([]) == 0 and m.warnings == 1
+    (message,) = [r.getMessage() for r in caplog.records if "my-sidecar" in r.getMessage()]
+    assert "shares a network namespace with cashpilot-honeygain and was not deployed" in message
+    assert d.containers.get("cashpilot-honeygain") is hg

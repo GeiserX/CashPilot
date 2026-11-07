@@ -525,9 +525,15 @@ class Migrator:
                 if not ours((attrs[cid].get("Config") or {}).get("Labels"))
             )
             if strangers:
+                mine = sorted(
+                    attrs[cid]["Name"].lstrip("/")
+                    for cid in cids
+                    if ours((attrs[cid].get("Config") or {}).get("Labels"))
+                )
+                uses = f", which uses {', '.join(sorted(vols))}," if vols else ""
                 self.warn(
-                    f"{', '.join(strangers)} shares the network of a container on {', '.join(sorted(vols))} and was "
-                    "not deployed by the worker, so both were left alone. Move them by hand."
+                    f"{', '.join(strangers)} shares a network namespace with {', '.join(mine) or 'a worker container'}"
+                    f"{uses} and was not deployed by the worker, so both were left alone. Move them by hand."
                 )
                 continue
             outsiders = self._outside_users(vols, cids)

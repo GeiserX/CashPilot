@@ -41,6 +41,7 @@ ALLOWED = {
     # on a third-party price API, not a CashPilot service, and the mapping it
     # lives in is keyed by CURRENCY code.
     ("app/exchange_rates.py", "mysterium"),
+    ("app/exchange_rates.py", "uprock"),
 }
 
 

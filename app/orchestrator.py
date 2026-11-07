@@ -1763,6 +1763,8 @@ def _ensure_updater_image(client: docker.DockerClient) -> None:
         if refusal:
             raise SelfUpdateUnavailable(f"Not updating. {refusal}") from exc
         logger.warning("Could not check for the update helper image: %s", exc)
+    except Exception as exc:  # noqa: BLE001 - a read timeout or a dropped socket: the pull below reports it
+        logger.warning("Could not check for the update helper image: %s", type(exc).__name__)
     try:
         # The client's read timeout (60 s by default) ends a pull that stalls;
         # a slow pull that keeps sending progress goes on.
