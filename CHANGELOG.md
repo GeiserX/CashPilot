@@ -10,6 +10,40 @@ Every release, grouped by what changed. Generated from commit history.
 Releases before `1.0.0` were recorded by hand and are kept verbatim in
 [docs/changelog-0.x-handwritten.md](docs/changelog-0.x-handwritten.md).
 
+## [1.73.1] - 2026-11-07
+
+### Documentation
+
+- Show a preview image in the site's colours when a page link is shared (#623)
+
+### Fixes
+
+- Stop an oversized backup from leaving the earner paused (#625)
+
+### Maintenance
+
+- Ship the store packages on 1.73.0, which carries the migrator (#628)
+- Pin the examples to 1.73 (#626)
+
+## [1.73.0] - 2026-11-07
+
+### CI
+
+- Open a PR when sockguard ships a new release (#622)
+
+### Documentation
+
+- Say a worker on the UI's host can read the stored logins' key (#618)
+- Regenerate CHANGELOG.md (#620)
+
+### Features
+
+- Keep a compromised worker out of the UI's data with owner isolation (#621)
+
+### Fixes
+
+- Make the site check fail on self-closed raw tags and bad config, never crash (#619)
+
 ## [1.72.7] - 2026-11-06
 
 ### CI
