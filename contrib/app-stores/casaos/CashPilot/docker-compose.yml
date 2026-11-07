@@ -2,7 +2,7 @@ name: cashpilot
 
 services:
   cashpilot-ui:
-    image: drumsergio/cashpilot:1.72.1
+    image: drumsergio/cashpilot:1.73.0
     container_name: cashpilot-ui
     deploy:
       resources:
@@ -57,7 +57,7 @@ services:
   # labelled one, data checked, and keeps the original as <volume>-pre-isolation.
   # It holds the raw socket only while it runs.
   cashpilot-migrate:
-    image: drumsergio/cashpilot-worker:1.72.1
+    image: drumsergio/cashpilot-worker:1.73.0
     container_name: cashpilot-migrate
     user: "0:0"
     entrypoint: ["python", "-m", "app.owner_migrate"]
@@ -135,7 +135,7 @@ services:
             en_US: Host folders service containers may bind, comma-separated. Put the same list in the worker's CASHPILOT_PROXY_BIND_MOUNTS.
 
   cashpilot-worker:
-    image: drumsergio/cashpilot-worker:1.72.1
+    image: drumsergio/cashpilot-worker:1.73.0
     # The proxy's owner label, so the worker may read its own container.
     labels:
       cashpilot.deployed-by: worker
@@ -397,12 +397,13 @@ x-casaos:
   index: /
   port_map: "8080"
   scheme: http
-  version: "1.72.1"
-  update_at: "2026-11-06"
+  version: "1.73.0"
+  update_at: "2026-11-07"
   release_notes:
     en_US: |-
-      - First listing in the store, on CashPilot 1.72.1.
+      - First listing in the store, on CashPilot 1.73.0.
       - The worker reaches Docker through a socket proxy that refuses every call it does not make; only the proxy holds the Docker socket.
+      - The proxy keeps the worker away from the dashboard's data and environment: it reaches only containers, volumes and networks labelled cashpilot.deployed-by=worker.
       - The first visit asks for the setup token printed in the cashpilot-ui log, then creates the owner account.
   website: https://geiserx.github.io/CashPilot/
   repo: https://github.com/GeiserX/CashPilot
