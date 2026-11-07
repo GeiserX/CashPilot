@@ -1308,19 +1308,29 @@ def read_critical_state(slug: str) -> tuple[bytes, list[str]]:
     try:
         for target in sorted(targets):
             stream, _stat = container.get_archive(target)
-            for chunk in stream:
-                size += len(chunk)
-                if size > MAX_BACKUP_BYTES:
-                    # Storj and Sia mark their whole storage directory critical.
-                    # Reading terabytes into memory, with the node paused, would
-                    # take the worker and the node down for nothing.
-                    raise ValueError(
-                        f"{slug}'s state is larger than {MAX_BACKUP_BYTES // (1024 * 1024)} MB, too big to "
-                        f"export here. That is a data folder, not an identity: Storj and Sia keep their "
-                        f"whole storage folder there. Back up {target} at the disk level with your own "
-                        "tools, then use I have a backup."
-                    )
-                chunks.append(chunk)
+            try:
+                for chunk in stream:
+                    size += len(chunk)
+                    if size > MAX_BACKUP_BYTES:
+                        # Storj and Sia mark their whole storage directory critical.
+                        # Reading terabytes into memory, with the node paused, would
+                        # take the worker and the node down for nothing.
+                        raise ValueError(
+                            f"{slug}'s state is larger than {MAX_BACKUP_BYTES // (1024 * 1024)} MB, too big to "
+                            f"export here. That is a data folder, not an identity: Storj and Sia keep their "
+                            f"whole storage folder there. Back up {target} at the disk level with your own "
+                            "tools, then use I have a backup."
+                        )
+                    chunks.append(chunk)
+            finally:
+                # Close it before the unpause below. An archive stream left open
+                # (the raise above keeps it alive through the traceback) holds the
+                # container, so Docker never answers the unpause: the earner stays
+                # PAUSED and earns nothing. Proven on Docker 29.5: unpause timed
+                # out with the stream open, returned at once once it was closed.
+                close = getattr(stream, "close", None)
+                if callable(close):
+                    close()
             read.append(target)
     except BaseException as exc:
         read_failure = exc

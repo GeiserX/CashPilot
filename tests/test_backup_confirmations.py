@@ -253,6 +253,31 @@ class TestTheSizeCap:
             orchestrator.read_critical_state("storj")
         container.unpause.assert_called_once()
 
+    def test_the_archive_stream_is_closed_before_the_unpause(self):
+        """An open archive stream holds the container, so Docker never answers
+        the unpause and the earner stays paused. The cap's raise kept the stream
+        alive through its traceback; it must be closed first."""
+        order: list[str] = []
+
+        def stream():
+            try:
+                while True:
+                    yield b"x" * (1024 * 1024)
+            finally:
+                order.append("closed")
+
+        container = MagicMock(status="running")
+        container.get_archive.return_value = (stream(), {})
+        container.unpause.side_effect = lambda: order.append("unpaused")
+        with (
+            patch.object(orchestrator, "_critical_volume_targets", return_value={"/app/config": "x"}),
+            patch.object(orchestrator, "_find_container", return_value=container),
+            patch.object(orchestrator, "MAX_BACKUP_BYTES", 2 * 1024 * 1024),
+            pytest.raises(ValueError, match="too big to export here"),
+        ):
+            orchestrator.read_critical_state("storj")
+        assert order == ["closed", "unpaused"]
+
 
 # ---------------------------------------------------------------------------
 # The confirmations table
