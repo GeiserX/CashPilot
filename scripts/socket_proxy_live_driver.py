@@ -396,14 +396,23 @@ def phase_migrated() -> None:
     if found is None:
         return
     check("restart it through the proxy", lambda: orchestrator.restart_service(slug))
-    archive = check("back up its critical volume", lambda: orchestrator.read_critical_state(slug))
-    if archive:
-        with tarfile.open(fileobj=io.BytesIO(archive[0])) as tar:
+
+    def back_up() -> tuple[bytes, str, list[str]]:
+        data, source = orchestrator.read_critical_state(slug)
+        # Opened here, so an empty or broken archive fails this check, not the next.
+        with tarfile.open(fileobj=io.BytesIO(data)) as tar:
             names = tar.getnames()
+        if not names:
+            raise ValueError(f"the archive of {source} is empty")
+        return data, source, names
+
+    archive = check("back up its critical volume", back_up)
+    if archive:
+        data, source, names = archive
         result(
             any(n.endswith("keystore/UTC--node-key") for n in names),
             "the backup holds the node's keystore",
-            f"{len(archive[0])} bytes, {len(names)} entries of {archive[1]}",
+            f"{len(data)} bytes, {len(names)} entries of {source}",
         )
     new_id = check(
         "redeploy it over its volume, the way every update does",
