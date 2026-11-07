@@ -41,7 +41,7 @@ python -m zensical build --clean --strict
 python -I .github/scripts/site-check.py site
 ```
 
-Two containers: `cashpilot-ui` (port 8080, web dashboard + earnings collection) and `cashpilot-worker` (port 8081, Docker agent requiring socket access).
+Three long-running containers in `docker-compose.yml`: `cashpilot-ui` (port 8080, web dashboard + earnings collection), `cashpilot-worker` (port 8081, Docker agent) and `cashpilot-socket-proxy` (holds the host's Docker socket). Since v1.71.0 the worker has no Docker socket: it reaches Docker through the proxy's filtered socket (`DOCKER_HOST=unix:///run/cashpilot-docker/docker.sock`), and since v1.73.0 the proxy's owner isolation limits it to the containers, volumes and networks it created. See `docs/security-defaults.md`.
 
 ### Testing traps
 
@@ -114,7 +114,7 @@ CashPilot is split into two **always-separate** components. The UI never touches
 | Component | Description |
 |-----------|-------------|
 | **CashPilot UI** | The single web dashboard. Collects all earnings centrally, shows global fleet view, manages workers. **Has NO Docker socket.** Can be hosted anywhere. Only ONE UI instance exists. |
-| **CashPilot Worker** | Agent running on each server that has Docker. **Must have Docker socket access**. Manages local containers, reports status to UI via heartbeats. Has a minimal config page. |
+| **CashPilot Worker** | Agent running on each server that has Docker. **Reaches Docker through the socket proxy** (`cashpilot-socket-proxy`), never the raw socket. Manages local containers, reports status to UI via heartbeats. Has a minimal config page. |
 
 Two separate Docker images:
 - **`drumsergio/cashpilot`** — UI image: FastAPI, Jinja2, templates, static assets, collectors, APScheduler. **No Docker SDK.**
@@ -125,7 +125,7 @@ Two separate Docker images:
 ### Core Principles
 
 1. **Separation of concerns.** UI handles: dashboard, earnings collection, scheduling, user auth. Workers handle: Docker container lifecycle, health reporting.
-2. **Workers must be privileged.** A worker without Docker socket is useless.
+2. **Workers need Docker, through the socket proxy.** A worker without Docker access is useless, but it never gets the raw socket: the proxy refuses privileged containers, binds of `/` or the socket, and anything the worker did not create.
 3. **Single source of truth.** The UI instance is the only one that collects earnings and stores historical data.
 4. **Earnings are never duplicated.** Since only the UI collects, there is no risk of double-counting.
 5. **Workers are stateless satellites.** A worker knows which containers to keep running and the UI URL to report to.
@@ -204,7 +204,7 @@ filtered on `service` silently matched nothing in production. Use
 ## Key Rules
 - Never hardcode credentials; all secrets via environment variables
 - Docker images: `drumsergio/cashpilot` with semver tags, never `:latest`
-- Worker requires Docker socket access (`/var/run/docker.sock`)
+- Worker reaches Docker only through the socket proxy (`DOCKER_HOST=unix:///run/cashpilot-docker/docker.sock`); the worker never mounts `/var/run/docker.sock` (the proxy does, and so does the one-shot `cashpilot-migrate`)
 - Always use bind mounts (not named volumes) on Unraid
 - License: GPL-3.0
 
