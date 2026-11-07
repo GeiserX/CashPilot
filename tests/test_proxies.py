@@ -124,6 +124,26 @@ class TestEarner:
         assert spec["command"] == "run --device cashpilot-box-p4 --token t0k"
         assert not {"ports", "volumes", "network_mode", "hostname", "instances"} & set(spec)
 
+    def test_the_copy_reports_its_own_device_id_not_the_original(self):
+        original = "ab" * 32
+        docker_conf = {"env": [{"key": "UUID"}, {"key": "DEVICE_NAME", "default": "Device-${UUID}"}]}
+        recorded = {"image": "x/x:1", "env": {"UUID": original, "DEVICE_NAME": f"Device-{original}", "API_KEY": "k"}}
+        spec = proxies.earner_spec(recorded, docker_conf, 1, "UUID")
+        new = spec["env"]["UUID"]
+        assert new != original and len(new) == 64 and int(new, 16) >= 0
+        assert spec["env"]["DEVICE_NAME"] == f"Device-{new}" and spec["env"]["API_KEY"] == "k"
+        # Derived, so a redeploy keeps the device; another proxy gets another one.
+        assert proxies.earner_spec(recorded, docker_conf, 1, "UUID")["env"]["UUID"] == new
+        assert proxies.earner_spec(recorded, docker_conf, 2, "UUID")["env"]["UUID"] not in (new, original)
+
+    def test_a_device_id_that_cannot_be_derived_refuses_the_copy(self):
+        with pytest.raises(ValueError):
+            proxies.earner_spec({"env": {"ID": "sdk-node-1"}}, {}, 1, "ID")
+
+    def test_the_copy_id_keeps_the_original_shape(self):
+        assert len(proxies.copy_device_id("abc", 3)) == 3
+        assert proxies.copy_device_id("ABCDEF", 3).isupper()
+
 
 # ---------------------------------------------------------------------------
 # Traffic cap
@@ -780,6 +800,40 @@ class TestStorageAndRoutes:
                 "created_at": copies[0]["created_at"],
             }
         ]
+
+    def test_a_copy_of_a_linked_device_runs_and_registers_its_own_id(self, db):
+        original = "cd" * 32
+        svc = {
+            "slug": "proxyrack",
+            "name": "ProxyRack",
+            "status": "active",
+            "docker": {"image": "proxyrack/pop", "env": [{"key": "UUID"}, {"key": "API_KEY", "secret": True}]},
+            "device_link": {"id_env": "UUID", "steps": "Add the device."},
+        }
+        recorded = {"image": "proxyrack/pop", "env": {"UUID": original, "API_KEY": "k"}}
+        call = AsyncMock(return_value={"status": "deployed", "exit": {"ip": "93.184.215.14", "country": "US"}})
+        register = AsyncMock(return_value=True)
+
+        async def go():
+            created = await main.api_create_proxy(_Req(_socks()), {})
+            with (
+                patch.object(main.catalog, "get_service", return_value=svc),
+                patch.object(main, "_resolve_worker_id", new_callable=AsyncMock, return_value=7),
+                patch.object(main, "_worker_features", new_callable=AsyncMock, return_value={"proxy_tunnel"}),
+                patch.object(main.database, "get_deployment_spec", new_callable=AsyncMock, return_value=recorded),
+                patch.object(main.database, "list_workers", new_callable=AsyncMock, return_value=[]),
+                patch.object(main, "_proxy_to_worker", call),
+                patch.object(main, "_register_device", register),
+            ):
+                return await main.api_add_proxied_copy(
+                    created["id"], main.ProxyCopyRequest(worker_id=7, slug="proxyrack"), {}
+                )
+
+        result = _run(go)
+        sent_id = call.call_args.kwargs["json"]["earner"]["env"]["UUID"]
+        assert sent_id != original and len(sent_id) == 64
+        assert register.call_args.args[:2] == ("proxyrack", sent_id)
+        assert result["device_link"]["id"] == sent_id and result["device_link"]["registered"] is True
 
     def test_dropping_the_cap_lifts_the_stop_and_starts_the_copies(self, db):
         call = AsyncMock(return_value={})

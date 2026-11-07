@@ -12,6 +12,7 @@ the exit IP a provider sees.
 
 from __future__ import annotations
 
+import hashlib
 import re
 from datetime import UTC, date, datetime
 from typing import Any
@@ -216,12 +217,32 @@ def refusal(svc: dict[str, Any]) -> str | None:
     return None
 
 
-def earner_spec(recorded: dict[str, Any], docker_conf: dict[str, Any], proxy_id: int) -> dict[str, Any]:
+def copy_device_id(device_id: str, proxy_id: int) -> str:
+    """The device id of the copy through proxy ``proxy_id``: same shape, its own value.
+
+    The provider knows each device by this id (ProxyRack's 64-hex UUID), so a
+    copy that kept the original's would report as the same device and earn
+    nothing of its own. Derived, not random, so a redeploy of the copy keeps
+    its device. Only hex ids can be derived this way; anything else is refused.
+    """
+    if not re.fullmatch(r"[0-9a-fA-F]+", device_id):
+        raise ValueError("its device id is not a hex string, so the copy cannot be given one of its own")
+    digest = hashlib.shake_256(f"{device_id}-p{proxy_id}".encode()).hexdigest((len(device_id) + 1) // 2)
+    digest = digest[: len(device_id)]
+    return digest.upper() if device_id.isupper() else digest
+
+
+def earner_spec(
+    recorded: dict[str, Any], docker_conf: dict[str, Any], proxy_id: int, id_env: str | None = None
+) -> dict[str, Any]:
     """The spec of a proxied copy: the deployed copy's, under its own device names.
 
     Built from what the service was actually deployed with on that worker (the
     record api_deploy writes after its own validation), the same way
     main._instance_spec makes extra copies, so the two paths cannot drift.
+    ``id_env`` is the catalog's ``device_link.id_env``: that id gets a value of
+    its own too, wherever it appears (a device name filled from it included).
+    Raises ValueError when that id cannot be derived.
     """
     suffix = f"p{proxy_id}"
     named = {var["key"] for var in docker_conf.get("env", []) if "{hostname}" in str(var.get("default", ""))}
@@ -229,6 +250,10 @@ def earner_spec(recorded: dict[str, Any], docker_conf: dict[str, Any], proxy_id:
         key: (f"{value}-{suffix}" if key in named and value else value)
         for key, value in (recorded.get("env") or {}).items()
     }
+    old_id = str(env.get(id_env) or "") if id_env else ""
+    new_id = copy_device_id(old_id, proxy_id) if old_id else ""
+    if old_id:
+        env = {key: (value.replace(old_id, new_id) if isinstance(value, str) else value) for key, value in env.items()}
     spec: dict[str, Any] = {
         "image": recorded.get("custom_image") or recorded.get("image"),
         "env": env,
@@ -240,7 +265,7 @@ def earner_spec(recorded: dict[str, Any], docker_conf: dict[str, Any], proxy_id:
     if recorded.get("command") and docker_conf.get("command"):
         spec["command"] = re.sub(r"\$\{(\w+)\}", lambda m: env.get(m.group(1), m.group(0)), docker_conf["command"])
     elif recorded.get("command"):
-        spec["command"] = recorded["command"]
+        spec["command"] = recorded["command"].replace(old_id, new_id) if old_id else recorded["command"]
     return spec
 
 
