@@ -74,7 +74,7 @@ ALLOWED_CALLS: list[tuple[str, str]] = [
     ("GET", "/networks"),
     ("GET", "/networks/*"),
     # The LAN fence (app/lan_fence.py) creates cashpilot-isolated, moves
-    # earners onto it and recreates it after a prune. sockguard 2.4.5 cannot
+    # earners onto it and recreates it after a prune. sockguard 2.4.6 cannot
     # limit these by network name, so they are allowed for any network.
     ("POST", "/networks/create"),
     ("POST", "/networks/*/connect"),
