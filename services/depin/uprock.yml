@@ -31,8 +31,10 @@ requirements:
 
 payment:
   methods: [crypto]
-  minimum_payout: "$5"
-  currency: USD
+  # help.uprock.com/en/articles/2057635: "The minimum withdrawal is 250 UPT",
+  # to a Solana wallet (checked 2026-11-07).
+  minimum_payout: "250 UPT"
+  currency: UPT
   frequency: "On request"
 
 earnings:
@@ -45,9 +47,9 @@ earnings:
 cashout:
   method: redirect
   dashboard_url: "https://uprock.com"
-  min_amount: 5.0
-  currency: USD
-  notes: "Crypto token-based rewards. Claim from dashboard."
+  min_amount: 250.0
+  currency: UPT
+  notes: "UPT tokens, withdrawn to a Solana wallet from 250 UPT, with two-factor authentication on. A withdrawal fee applies."
 
 platforms: [browser-extension, android]
 

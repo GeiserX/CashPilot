@@ -14,7 +14,7 @@ Uprock is a DePIN (Decentralized Physical Infrastructure Network) platform that 
 |--------|-------|
 | Monthly range | $0 - $5 (estimate) |
 | Per | device |
-| Minimum payout | $5 |
+| Minimum payout | 250 UPT |
 | Payout frequency | On request |
 | Payment methods | Crypto |
 
@@ -55,6 +55,8 @@ Log in with your account, enable the extension/app, and it runs in the backgroun
 No Docker image available. Uprock is a browser extension and mobile app only.
 
 ## Important Notes
+
+- **Withdrawals**: rewards are UPT tokens, withdrawn to a Solana wallet once you hold 250 UPT, with two-factor authentication on. A withdrawal fee applies ([UpRock help centre](https://help.uprock.com/en/articles/2057635-security-and-user-asset-protection-2fa-and-withdrawals)).
 
 - **Android works well**: The Android app runs reliably in the background with proper battery optimization settings.
 - **No IP conflicts**: Can run alongside other bandwidth-sharing services on the same device/network.
