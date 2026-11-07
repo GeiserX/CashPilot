@@ -10,6 +10,21 @@ Every release, grouped by what changed. Generated from commit history.
 Releases before `1.0.0` were recorded by hand and are kept verbatim in
 [docs/changelog-0.x-handwritten.md](docs/changelog-0.x-handwritten.md).
 
+## [1.73.2] - 2026-11-07
+
+### CI
+
+- Bump github/codeql-action (#624)
+
+### Documentation
+
+- Regenerate CHANGELOG.md (#627)
+
+### Fixes
+
+- Stop marking Android phones offline between their 15-minute reports (#644)
+- Fit the ratings table on the page with the worst con cut to three lines (#645)
+
 ## [1.73.1] - 2026-11-07
 
 ### Documentation
