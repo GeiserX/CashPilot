@@ -34,7 +34,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from app.constants import LABEL_STATE_CREATED
+from app.constants import CASHPILOT_DEPLOYED, LABEL_STATE_CREATED
 from app.socket_policy import OWNER, OWNER_LABEL
 
 logger = logging.getLogger("cashpilot.migrate")
@@ -105,6 +105,14 @@ class LeftAlone(MigrationError):  # noqa: N818 - not a failure: something else s
 
 def owned(labels: dict[str, str] | None) -> bool:
     return (labels or {}).get(OWNER_LABEL) == OWNER
+
+
+def ours(labels: dict[str, str] | None) -> bool:
+    """A container CashPilot deployed: by the worker, or by the deploy path
+    before workers ("direct"), whose earners still run on old installs. The
+    proxy shows the worker neither kind until it carries the worker label, so
+    the migration moves both and recreates each "direct" one with it."""
+    return (labels or {}).get(OWNER_LABEL) in CASHPILOT_DEPLOYED
 
 
 def backup_name(volume: str) -> str:
@@ -185,6 +193,9 @@ class Migrator:
 
         with contextlib.suppress(NotFound):
             self.client.containers.get(HELPER_NAME).remove(force=True)
+
+    def _ours(self) -> list[Any]:
+        return [c for c in self.client.containers.list(all=True, filters={"label": OWNER_LABEL}) if ours(c.labels)]
 
     # -- the run ------------------------------------------------------------
 
@@ -290,7 +301,7 @@ class Migrator:
         names = {r["name"] for r in self.state.all("networks") if not r.get("done")}
         for net in self.client.networks.list(filters={"label": FENCE_LABEL}):
             names.add((net.attrs or {}).get("Name") or net.name)
-        for c in self.client.containers.list(all=True, filters={"label": f"{OWNER_LABEL}={OWNER}"}):
+        for c in self._ours():
             names.update(((c.attrs or {}).get("NetworkSettings") or {}).get("Networks") or {})
         for name in sorted(names - BUILTIN_NETWORKS):
             try:
@@ -318,7 +329,7 @@ class Migrator:
             attrs = net.attrs or {}
             members = []
             for c in self._on_network(name):
-                if not owned(c.labels):
+                if not ours(c.labels):
                     raise LeftAlone(
                         f"{c.name} is on it and was not deployed by the worker, so the network was left as it "
                         f"was, and the worker cannot put services on it. To move it, disconnect that container "
@@ -351,7 +362,7 @@ class Migrator:
             for c in self._on_network(name):
                 if c.name in known:
                     continue
-                if not owned(c.labels):
+                if not ours(c.labels):
                     # Leave it as it is, with the members an earlier run took off back on.
                     self._reconnect(net, record)
                     self.state.drop("networks", name)
@@ -466,10 +477,12 @@ class Migrator:
             self.fail(f"{', '.join(c['Name'].lstrip('/') for c in plan['containers'])}: {exc}")
 
     def _new_plans(self) -> list[dict[str, Any]]:
-        """Groups of worker containers that share unlabelled volumes, one plan each."""
+        """Groups of worker containers that share unlabelled volumes, one plan each.
+        A "direct" container gets a plan even with no such volume: recreating
+        it is the only way to give it the worker label."""
         from docker.errors import NotFound
 
-        workers = self.client.containers.list(all=True, filters={"label": f"{OWNER_LABEL}={OWNER}"})
+        workers = self._ours()
         # A stored plan that did not finish already holds these, stopped by it;
         # a new plan would record them as stopped and bring them back stopped.
         held = {c["Id"] for p in self.state.all("plans") if not p.get("done") for c in p["containers"]}
@@ -489,6 +502,7 @@ class Migrator:
                     continue
                 users.setdefault(mount["Name"], set()).add(c.id)
                 attrs[c.id] = c.attrs
+        legacy = [c for c in workers if c.id not in held and not owned(c.labels)]
         # Join containers that share a volume: they stop and come back together.
         groups: list[tuple[set[str], set[str]]] = []
         for vol, cids in users.items():
@@ -498,13 +512,17 @@ class Migrator:
                 merged[0].update(group[0])
                 merged[1].update(group[1])
             groups.append(merged)
+        for c in legacy:
+            if not any(c.id in g[0] for g in groups):
+                attrs[c.id] = c.attrs
+                groups.append(({c.id}, set()))
         groups = self._with_joiners(groups, attrs, held)
         plans = []
         for cids, vols in groups:
             strangers = sorted(
                 attrs[cid]["Name"].lstrip("/")
                 for cid in cids
-                if not owned((attrs[cid].get("Config") or {}).get("Labels"))
+                if not ours((attrs[cid].get("Config") or {}).get("Labels"))
             )
             if strangers:
                 self.warn(
@@ -604,7 +622,10 @@ class Migrator:
 
     def run_plan(self, plan: dict[str, Any]) -> None:
         names = [c["Name"].lstrip("/") for c in plan["containers"]]
-        logger.info("Moving %s onto labelled volumes: %s", ", ".join(names), ", ".join(plan["volumes"]))
+        if plan["volumes"]:
+            logger.info("Moving %s onto labelled volumes: %s", ", ".join(names), ", ".join(plan["volumes"]))
+        else:
+            logger.info("Recreating %s with %s=%s, as the worker deploys it", ", ".join(names), OWNER_LABEL, OWNER)
         # A container in another's namespace goes first and comes back last.
         in_plan = {c["Id"]: c["Name"].lstrip("/") for c in plan["containers"]}
         joined = [c for c in plan["containers"] if _namespace_of(c) in in_plan]
@@ -654,7 +675,7 @@ class Migrator:
             self._left_for_the_worker(info)
         plan["done"] = True
         self.state.put("plans", plan["key"], plan)
-        logger.info("%s back as before, on labelled volumes.", ", ".join(names))
+        logger.info("%s back as before, labelled for the worker.", ", ".join(names))
 
     @staticmethod
     def _left_for_the_worker(info: dict[str, Any]) -> None:
